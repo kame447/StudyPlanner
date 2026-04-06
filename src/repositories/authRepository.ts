@@ -1,13 +1,5 @@
 import { createId } from '../lib/id';
-import { localStorageStore } from './localStorageStore';
-import type { EmailChallenge, User } from '../types/domain';
-
-export interface AuthRepository {
-  requestEmailCode(email: string): Promise<EmailChallenge>;
-  verifyEmailCode(email: string, code: string): Promise<User>;
-  getCurrentUser(): Promise<User | null>;
-  signOut(): Promise<void>;
-}
+import type { AuthRepository, AuthStorageGateway } from './repositoryContracts';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -17,7 +9,9 @@ function buildCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-export function createLocalAuthRepository(): AuthRepository {
+export function createAuthRepository(
+  storageGateway: AuthStorageGateway,
+): AuthRepository {
   return {
     async requestEmailCode(email) {
       const normalizedEmail = normalizeEmail(email);
@@ -28,9 +22,9 @@ export function createLocalAuthRepository(): AuthRepository {
 
       const code = buildCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-      const pendingCodes = localStorageStore
+      const pendingCodes = (await storageGateway
         .readPendingCodes()
-        .filter((item) => item.email !== normalizedEmail);
+      ).filter((item) => item.email !== normalizedEmail);
 
       pendingCodes.push({
         email: normalizedEmail,
@@ -38,7 +32,7 @@ export function createLocalAuthRepository(): AuthRepository {
         expiresAt,
       });
 
-      localStorageStore.writePendingCodes(pendingCodes);
+      await storageGateway.writePendingCodes(pendingCodes);
 
       return {
         email: normalizedEmail,
@@ -49,7 +43,7 @@ export function createLocalAuthRepository(): AuthRepository {
     async verifyEmailCode(email, code) {
       const normalizedEmail = normalizeEmail(email);
       const trimmedCode = code.trim();
-      const pendingCodes = localStorageStore.readPendingCodes();
+      const pendingCodes = await storageGateway.readPendingCodes();
       const challenge = pendingCodes.find((item) => item.email === normalizedEmail);
 
       if (!challenge) {
@@ -64,7 +58,7 @@ export function createLocalAuthRepository(): AuthRepository {
         throw new Error('認証コードが一致しません。');
       }
 
-      const users = localStorageStore.readUsers();
+      const users = await storageGateway.readUsers();
       let user = users.find((item) => item.email === normalizedEmail);
 
       if (!user) {
@@ -73,28 +67,28 @@ export function createLocalAuthRepository(): AuthRepository {
           email: normalizedEmail,
           createdAt: new Date().toISOString(),
         };
-        localStorageStore.writeUsers([...users, user]);
+        await storageGateway.writeUsers([...users, user]);
       }
 
-      localStorageStore.writeSessionUserId(user.id);
-      localStorageStore.writePendingCodes(
+      await storageGateway.writeSessionUserId(user.id);
+      await storageGateway.writePendingCodes(
         pendingCodes.filter((item) => item.email !== normalizedEmail),
       );
 
       return user;
     },
     async getCurrentUser() {
-      const sessionUserId = localStorageStore.readSessionUserId();
+      const sessionUserId = await storageGateway.readSessionUserId();
 
       if (!sessionUserId) {
         return null;
       }
 
-      const users = localStorageStore.readUsers();
+      const users = await storageGateway.readUsers();
       return users.find((item) => item.id === sessionUserId) ?? null;
     },
     async signOut() {
-      localStorageStore.clearSessionUserId();
+      await storageGateway.clearSessionUserId();
     },
   };
 }

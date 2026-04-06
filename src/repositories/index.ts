@@ -1,5 +1,10 @@
-import { createLocalAuthRepository } from './authRepository';
-import { createLocalPlannerRepository } from './plannerRepository';
+import { createRepositories } from './createRepositories';
+import {
+  createLocalAuthStorageGateway,
+  createLocalPlannerStorageGateway,
+} from './localStorageGateway';
 
-export const authRepository = createLocalAuthRepository();
-export const plannerRepository = createLocalPlannerRepository();
+export const { authRepository, plannerRepository } = createRepositories({
+  authStorageGateway: createLocalAuthStorageGateway(),
+  plannerStorageGateway: createLocalPlannerStorageGateway(),
+});

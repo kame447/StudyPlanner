@@ -129,12 +129,68 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
 
 ### このMVPでのデータ保存
 - 予定、実績、認証状態は localStorage に保存
-- データアクセス層は repository に分離してあり、将来のバックエンド移行をしやすくしている
+- データアクセス層は `storage gateway -> repository` の構成に分離してある
+- 現在は `localStorageGateway` を使っているが、将来はこの gateway を外部DB版に差し替えられる
+- repository の生成は `createRepositories` に集約してあり、保存先の切り替え箇所を1か所にしている
+- 現時点では外部データベースは使っていない
+
+### 保守性のための整理
+- 予定・実績・日次メモの生成処理は `src/domain/planner.ts` に集約
+- 画面全体の状態管理は `src/hooks/usePlannerAppState.ts` にまとめ、`App.tsx` は描画中心にしている
+- 自然言語解析の辞書は JSON で管理し、ロジック本体から分離している
 
 ### このMVPでのAI機能
 - 自然言語入力はUIから分離した service で叩き台を生成
 - AI評価も service 側でスコア算出と短いコメント生成を行う
 - どちらも必ずユーザー確認を挟む前提
+- 自然言語入力は OpenAI 互換クライアント経由で Ollama / OpenAI互換API を切り替えられる
+- Ollama が使えない場合はルールベース解析にフォールバックする
+- ルールベース解析で使う科目・予定種別の辞書は JSON で管理する
+
+### AI接続の考え方
+- AI接続設定は画面上から切り替えられる
+- OpenAI の APIキーは UI から入力すると `sessionStorage` にだけ保存される
+- そのため、キーをこのリポジトリの `.env` や `.env.local` に置かなければ、作業中のコード参照からは見えない
+- ただし、フロントエンドから直接 OpenAI API を呼ぶ方式は個人ローカル利用向け
+- 公開Webアプリとして使う場合は、後でバックエンドやプロキシ経由に移すこと
+
+### Ollamaで自然言語入力補助を使う
+1. Ollama を起動
+2. 使うモデルを取得
+
+```bash
+ollama pull llama3.2:3b
+```
+
+3. 必要なら `.env.example` を元に `.env.local` を作成
+
+```bash
+VITE_AI_PROVIDER=ollama
+VITE_AI_BASE_URL=http://127.0.0.1:11434/v1
+VITE_AI_MODEL=llama3.2:3b
+VITE_AI_API_KEY=ollama
+```
+
+4. アプリ起動後、AI入力補助の `AI接続` から `Ollama / OpenAI互換 / ルールのみ` を切り替える
+
+ローカルLLMのプリセット:
+- `速度重視`: `gemma4:e2b`
+- `両立`: `gemma4:e4b`
+- `精度重視`: `gemma4:31b`
+- それ以外のモデル名を入れると `カスタム` として扱う
+
+### OpenAI互換APIを個人利用で使う
+1. `npm run dev`
+2. AI入力補助の `AI接続` を開く
+3. `OpenAI互換` を選ぶ
+4. `接続先URL` を `https://api.openai.com/v1` にする
+5. `モデル名` を使いたいモデルにする
+6. APIキーを画面で入力して `設定を反映` する
+
+補足:
+- この入力方法なら、APIキーはこの会話にも repo にも出ない
+- ただしブラウザ実行環境には入るので、公開用途ではそのまま使わない
+- 既に `.env` を git 管理している場合は、秘密情報を入れないこと
 
 ## 起動方法
 ```bash

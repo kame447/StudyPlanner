@@ -270,6 +270,52 @@ h2 {
   justify-content: space-between;
 }
 
+.assistant-runtime {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.assistant-runtime-help {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.assistant-settings-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(23, 109, 102, 0.1);
+}
+
+.assistant-settings-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.assistant-feedback-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(23, 109, 102, 0.08);
+  border: 1px solid rgba(23, 109, 102, 0.12);
+}
+
+.assistant-feedback-card.warning {
+  background: rgba(169, 131, 47, 0.08);
+  border-color: rgba(169, 131, 47, 0.16);
+}
+
+.assistant-feedback-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+}
+
 .type-badge,
 .event-pill,
 .event-empty,

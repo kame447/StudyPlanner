@@ -1,257 +1,944 @@
-import {
-  addDays,
-  minutesFromTime,
-  timeFromMinutes,
-} from '../lib/date';
+import { minutesFromTime, timeFromMinutes } from '../lib/date';
+import { getAiConfig, getAiProviderLabel, type AiConfig } from '../lib/aiConfig';
 import { buildDefaultPlanTitle } from '../lib/plans';
 import type {
-  NaturalLanguageMode,
   NaturalLanguageSuggestion,
   Plan,
   PlanDraft,
   PlanType,
+  SuggestionField,
 } from '../types/domain';
+import type { JsonSchemaResponseFormat } from './ai/openAiCompatibleClient';
+import { createOpenAiCompatibleClient } from './ai/openAiCompatibleClient';
+import {
+  defaultDraft,
+  detectSubject,
+  detectType,
+  extractMemoHint,
+  hasExplicitClockTime,
+  matchPlan,
+  parseDate,
+  parseDurationMinutes,
+  parseTimes,
+  sanitizeSuggestedTitle,
+  type SuggestionInput,
+} from './naturalLanguageRules';
 
-interface SuggestionInput {
-  mode: NaturalLanguageMode;
-  text: string;
-  selectedDate: string;
-  plans: Plan[];
-  userId: string;
+interface PlannerExtraction {
+  matchedPlanId?: string | null;
+  date?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  subject?: string | null;
+  type?: PlanType | null;
+  title?: string | null;
+  memo?: string | null;
+  confidence?: number | null;
+  reason?: string | null;
+  assumptions?: string[] | null;
+  unresolvedFields?: string[] | null;
 }
 
-const SUBJECT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
-  { pattern: /数学|算数/, label: '数学' },
-  { pattern: /英語/, label: '英語' },
-  { pattern: /国語|現代文|古文|漢文/, label: '国語' },
-  { pattern: /理科|物理/, label: '物理' },
-  { pattern: /化学/, label: '化学' },
-  { pattern: /生物/, label: '生物' },
-  { pattern: /日本史|世界史|歴史/, label: '歴史' },
-  { pattern: /地理/, label: '地理' },
-  { pattern: /情報|プログラミング/, label: '情報' },
+interface TimeResolutionResult {
+  startTime: string;
+  endTime: string;
+  assumptions: string[];
+  unresolvedFields: SuggestionField[];
+}
+
+export interface PlannerAiRuntimeInfo {
+  providerLabel: string;
+  fallbackLabel: string;
+}
+
+type ValidationPolicy = 'strict' | 'relaxed';
+
+const ALLOWED_PLAN_TYPES: PlanType[] = [
+  'study',
+  'mock-exam',
+  'school-event',
+  'cram-school',
+  'deadline',
+  'other',
 ];
 
-function defaultDraft(userId: string, date: string): PlanDraft {
+const ALLOWED_SUGGESTION_FIELDS: SuggestionField[] = [
+  'targetPlan',
+  'date',
+  'startTime',
+  'endTime',
+  'subject',
+  'type',
+  'title',
+  'memo',
+];
+
+const EXTRACTION_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'planner_extraction',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'matchedPlanId',
+        'date',
+        'startTime',
+        'endTime',
+        'subject',
+        'type',
+        'title',
+        'memo',
+        'confidence',
+        'reason',
+        'assumptions',
+        'unresolvedFields',
+      ],
+      properties: {
+        matchedPlanId: { type: ['string', 'null'] },
+        date: { type: ['string', 'null'] },
+        startTime: { type: ['string', 'null'] },
+        endTime: { type: ['string', 'null'] },
+        subject: { type: ['string', 'null'] },
+        type: {
+          type: ['string', 'null'],
+          enum: [
+            'study',
+            'mock-exam',
+            'school-event',
+            'cram-school',
+            'deadline',
+            'other',
+            null,
+          ],
+        },
+        title: { type: ['string', 'null'] },
+        memo: { type: ['string', 'null'] },
+        confidence: { type: ['number', 'null'] },
+        reason: { type: ['string', 'null'] },
+        assumptions: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        unresolvedFields: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ALLOWED_SUGGESTION_FIELDS,
+          },
+        },
+      },
+    },
+  },
+};
+
+function normalizeParsingText(text: string): string {
+  return text
+    .replace(/[０-９]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0),
+    )
+    .replace(/[：]/g, ':')
+    .replace(/[／]/g, '/')
+    .replace(/[〜～]/g, '~')
+    .replace(/[　]/g, ' ');
+}
+
+function normalizeDate(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+}
+
+function normalizeTime(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return /^\d{2}:\d{2}$/.test(value) ? value : undefined;
+}
+
+function normalizeType(value: string | null | undefined): PlanType | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return ALLOWED_PLAN_TYPES.find((type) => type === value) ?? undefined;
+}
+
+function clampConfidence(value: number | null | undefined, fallback = 0.72): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeText(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeComparableText(value: string): string {
+  return normalizeParsingText(value)
+    .replace(/\s+/g, '')
+    .replace(/[「」"'、。,.:：~\-]/g, '')
+    .replace(/問題番号は/g, '問題番号')
+    .replace(/第(\d+)/g, '$1');
+}
+
+function isGroundedInSources(
+  candidate: string | undefined,
+  ...sources: Array<string | undefined>
+): boolean {
+  const normalizedCandidate = normalizeComparableText(candidate ?? '');
+
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  return sources.some((source) => {
+    const normalizedSource = normalizeComparableText(source ?? '');
+    return (
+      Boolean(normalizedSource) &&
+      (normalizedSource.includes(normalizedCandidate) ||
+        normalizedCandidate.includes(normalizedSource))
+    );
+  });
+}
+
+function getValidationPolicy(config: AiConfig): ValidationPolicy {
+  return config.provider === 'openai' ? 'relaxed' : 'strict';
+}
+
+function extractFirstJsonObject(content: string): string | null {
+  const fencedMatch =
+    content.match(/```json\s*([\s\S]*?)```/i) ??
+    content.match(/```\s*([\s\S]*?)```/i);
+  const source = fencedMatch?.[1]?.trim() || content.trim();
+  let depth = 0;
+  let startIndex = -1;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (char === '{') {
+      if (depth === 0) {
+        startIndex = index;
+      }
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+
+      if (depth === 0 && startIndex >= 0) {
+        return source.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function formatPlansForPrompt(plans: Plan[], selectedDate: string): string {
+  const nearbyPlans = plans
+    .filter((plan) => {
+      const deltaDays =
+        Math.abs(
+          new Date(`${plan.date}T00:00:00`).getTime() -
+            new Date(`${selectedDate}T00:00:00`).getTime(),
+        ) /
+        (1000 * 60 * 60 * 24);
+
+      return deltaDays <= 14;
+    })
+    .slice(0, 16);
+
+  if (nearbyPlans.length === 0) {
+    return 'none';
+  }
+
+  return nearbyPlans
+    .map(
+      (plan) =>
+        `${plan.id} | ${plan.date} | ${plan.startTime}-${plan.endTime} | ${plan.title} | ${plan.subject || '-'} | ${plan.type}`,
+    )
+    .join('\n');
+}
+
+function hasExplicitDateExpression(text: string): boolean {
+  const normalizedText = normalizeParsingText(text);
+  return /明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(
+    normalizedText,
+  );
+}
+
+function mergeDistinctText(...values: Array<string | undefined>): string {
+  const uniqueValues = values.filter(
+    (value, index, array): value is string =>
+      Boolean(value) && array.indexOf(value) === index,
+  );
+  return uniqueValues.join(' / ');
+}
+
+function mergeSuggestionFields(
+  ...fieldGroups: SuggestionField[][]
+): SuggestionField[] {
+  return fieldGroups
+    .flat()
+    .filter(
+      (field, index, array) =>
+        ALLOWED_SUGGESTION_FIELDS.includes(field) && array.indexOf(field) === index,
+    );
+}
+
+function normalizeFieldName(value: string): SuggestionField | undefined {
+  const normalizedValue = value.trim();
+
+  if (
+    normalizedValue === 'matchedPlanId' ||
+    normalizedValue === 'targetPlanId' ||
+    normalizedValue === 'planId'
+  ) {
+    return 'targetPlan';
+  }
+
+  return ALLOWED_SUGGESTION_FIELDS.find((field) => field === normalizedValue);
+}
+
+function normalizeFieldList(
+  values: string[] | null | undefined,
+): SuggestionField[] {
+  return (values ?? [])
+    .map((value) => normalizeFieldName(value))
+    .filter((value): value is SuggestionField => Boolean(value));
+}
+
+function buildBaseDraft(
+  userId: string,
+  selectedDate: string,
+  matchedPlan?: Plan,
+): PlanDraft {
+  if (!matchedPlan) {
+    return defaultDraft(userId, selectedDate);
+  }
+
   return {
     userId,
-    title: '',
-    subject: '',
-    date,
-    startTime: '19:00',
-    endTime: '20:00',
-    type: 'study',
-    memo: '',
+    title: matchedPlan.title,
+    subject: matchedPlan.subject,
+    date: matchedPlan.date,
+    startTime: matchedPlan.startTime,
+    endTime: matchedPlan.endTime,
+    type: matchedPlan.type,
+    memo: matchedPlan.memo,
   };
 }
 
-function detectType(text: string): PlanType {
-  if (/模試|試験|テスト/.test(text)) {
-    return 'mock-exam';
-  }
-
-  if (/学校|行事|面談|授業/.test(text)) {
-    return 'school-event';
-  }
-
-  if (/塾|講習/.test(text)) {
-    return 'cram-school';
-  }
-
-  if (/締切|提出/.test(text)) {
-    return 'deadline';
-  }
-
-  if (/予定|勉強|学習/.test(text)) {
-    return 'study';
-  }
-
-  return 'study';
-}
-
-function detectSubject(text: string): string {
-  const matched = SUBJECT_PATTERNS.find((item) => item.pattern.test(text));
-  return matched?.label ?? '';
-}
-
-function parseDate(text: string, selectedDate: string): string {
-  if (/明後日/.test(text)) {
-    return addDays(selectedDate, 2);
-  }
-
-  if (/明日/.test(text)) {
-    return addDays(selectedDate, 1);
-  }
-
-  if (/今日/.test(text)) {
-    return selectedDate;
-  }
-
-  const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})/);
-  const monthMatch = text.match(/(\d{1,2})月(\d{1,2})日/);
-  const parts = slashMatch ?? monthMatch;
-
-  if (parts) {
-    const currentYear = Number(selectedDate.slice(0, 4));
-    const month = parts[1].padStart(2, '0');
-    const day = parts[2].padStart(2, '0');
-    return `${currentYear}-${month}-${day}`;
-  }
-
-  return selectedDate;
-}
-
-function normalizeTime(hoursText: string, minutesText?: string, hasHalf?: boolean): string {
-  const hours = Number(hoursText);
-  const minutes = hasHalf ? 30 : Number(minutesText ?? '0');
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-}
-
-function parseTimes(text: string): { startTime?: string; endTime?: string } {
-  const rangeMatch = text.match(
-    /(\d{1,2})(?::(\d{2}))?時?(半)?\s*(?:-|〜|~|から)\s*(\d{1,2})(?::(\d{2}))?時?(半)?/,
-  );
-
-  if (rangeMatch) {
-    return {
-      startTime: normalizeTime(rangeMatch[1], rangeMatch[2], Boolean(rangeMatch[3])),
-      endTime: normalizeTime(rangeMatch[4], rangeMatch[5], Boolean(rangeMatch[6])),
-    };
-  }
-
-  const singleMatch = text.match(/(\d{1,2})(?::(\d{2}))?時?(半)?/);
-  const durationHourMatch = text.match(/(\d+(?:\.\d+)?)時間/);
-  const durationMinuteMatch = text.match(/(\d+)分/);
-
-  if (!singleMatch) {
-    return {};
-  }
-
-  const startTime = normalizeTime(
-    singleMatch[1],
-    singleMatch[2],
-    Boolean(singleMatch[3]),
-  );
-
-  let durationMinutes = 60;
-
-  if (durationHourMatch) {
-    durationMinutes = Math.round(Number(durationHourMatch[1]) * 60);
-  } else if (durationMinuteMatch) {
-    durationMinutes = Number(durationMinuteMatch[1]);
-  }
-
-  const endTime = timeFromMinutes(minutesFromTime(startTime) + durationMinutes);
-  return { startTime, endTime };
-}
-
-function stripKeywords(text: string): string {
-  return text
-    .replace(/明後日|明日|今日/g, '')
-    .replace(/\d{1,2}\/\d{1,2}/g, '')
-    .replace(/\d{1,2}月\d{1,2}日/g, '')
-    .replace(
-      /(\d{1,2})(?::\d{2})?時?(半)?\s*(?:-|〜|~|から)\s*(\d{1,2})(?::\d{2})?時?(半)?/g,
-      '',
-    )
-    .replace(/(\d{1,2})(?::\d{2})?時?(半)?/g, '')
-    .replace(/\d+(?:\.\d+)?時間|\d+分/g, '')
-    .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定/g, '')
-    .replace(/[「」"'、。,]/g, ' ')
+function trimContentPhrase(value: string): string {
+  return value
+    .replace(/^(今日|明日|明後日)(?:の)?/g, '')
+    .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
+    .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定)$/g, '')
+    .replace(/^(?:に|で|を|は|が|の|へ)+/g, '')
+    .replace(/(?:に|で|を|は|が|の|へ)+$/g, '')
+    .replace(/^(?:ちょっと|少し|ちょい)+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function matchPlan(text: string, plans: Plan[]): Plan | undefined {
-  const normalized = text.trim();
+function deriveDeterministicTitle(
+  inputText: string,
+  subject: string,
+  type: PlanType,
+  fallbackTitle = '',
+): string {
+  const candidate = trimContentPhrase(sanitizeSuggestedTitle(inputText));
 
-  return [...plans]
-    .map((plan) => {
-      let score = 0;
-
-      if (normalized.includes(plan.title)) {
-        score += 4;
-      }
-
-      if (plan.subject && normalized.includes(plan.subject)) {
-        score += 2;
-      }
-
-      if (normalized.includes(plan.date.slice(5))) {
-        score += 1;
-      }
-
-      return { plan, score };
-    })
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score)[0]?.plan;
-}
-
-function buildReason(mode: NaturalLanguageMode, matchedPlan?: Plan): string {
-  if (mode === 'edit' && matchedPlan) {
-    return `既存予定「${matchedPlan.title}」を基準に、文中の日付と時刻を反映した叩き台です。`;
+  if (candidate && candidate !== '分') {
+    return candidate;
   }
 
-  if (mode === 'edit') {
-    return '変更対象は未確定です。候補の予定を選んでから反映してください。';
+  if (fallbackTitle.trim()) {
+    return fallbackTitle.trim();
   }
 
-  return '日付・時刻・予定種別を自然言語から推定した追加案です。';
+  return buildDefaultPlanTitle(type, subject);
 }
 
-export function generateNaturalLanguageSuggestion({
-  mode,
-  text,
-  selectedDate,
-  plans,
-  userId,
-}: SuggestionInput): NaturalLanguageSuggestion {
-  const matchedPlan = mode === 'edit' ? matchPlan(text, plans) : undefined;
-  const detectedDate = parseDate(text, selectedDate);
-  const detectedType = detectType(text);
-  const detectedSubject = detectSubject(text);
-  const detectedTimes = parseTimes(text);
-  const cleanedTitle = stripKeywords(text);
-  const baseDraft = matchedPlan
-    ? {
-        userId,
-        title: matchedPlan.title,
-        subject: matchedPlan.subject,
-        date: matchedPlan.date,
-        startTime: matchedPlan.startTime,
-        endTime: matchedPlan.endTime,
-        type: matchedPlan.type,
-        memo: matchedPlan.memo,
-      }
-    : defaultDraft(userId, detectedDate);
+function deriveDeterministicTimeValues(
+  input: SuggestionInput,
+  baseDraft: PlanDraft,
+): TimeResolutionResult {
+  const assumptions: string[] = [];
+  const unresolvedFields: SuggestionField[] = [];
+  const explicitClockTime = hasExplicitClockTime(input.text);
+  const durationMinutes = parseDurationMinutes(input.text);
 
-  const nextDraft: PlanDraft = {
-    ...baseDraft,
-    date: detectedDate,
-    startTime: detectedTimes.startTime ?? baseDraft.startTime,
-    endTime: detectedTimes.endTime ?? baseDraft.endTime,
-    type: detectedType ?? baseDraft.type,
-    subject: detectedSubject || baseDraft.subject,
-    title:
-      cleanedTitle ||
-      baseDraft.title ||
-      buildDefaultPlanTitle(detectedType, detectedSubject || baseDraft.subject),
-    memo: baseDraft.memo,
-  };
+  if (explicitClockTime) {
+    const parsedTimes = parseTimes(input.text, '');
+    const startTime = parsedTimes.startTime ?? '';
+    let endTime = parsedTimes.endTime ?? '';
 
-  const detectedFieldCount = [
-    detectedDate !== selectedDate,
-    Boolean(detectedTimes.startTime),
-    Boolean(detectedSubject),
-    Boolean(cleanedTitle),
-  ].filter(Boolean).length;
+    if (!endTime && startTime && durationMinutes !== undefined) {
+      endTime = timeFromMinutes(minutesFromTime(startTime) + durationMinutes);
+      assumptions.push('終了時刻は開始時刻と学習時間から補いました。');
+    }
+
+    return {
+      startTime,
+      endTime,
+      assumptions,
+      unresolvedFields: mergeSuggestionFields(
+        !startTime ? ['startTime'] : [],
+        !endTime ? ['endTime'] : [],
+      ),
+    };
+  }
+
+  if (input.mode === 'edit' && baseDraft.startTime && baseDraft.endTime) {
+    assumptions.push('時刻指定が無いため、既存予定の時刻を維持しました。');
+    return {
+      startTime: baseDraft.startTime,
+      endTime: baseDraft.endTime,
+      assumptions,
+      unresolvedFields,
+    };
+  }
+
+  if (durationMinutes !== undefined) {
+    assumptions.push('学習時間は分かりましたが開始時刻が無いため、時刻は未確定です。');
+  }
 
   return {
-    mode,
-    rawText: text,
-    confidence: Math.min(0.55 + detectedFieldCount * 0.1, 0.92),
-    reason: buildReason(mode, matchedPlan),
-    matchedPlanId: matchedPlan?.id,
-    parsedPlan: nextDraft,
+    startTime: '',
+    endTime: '',
+    assumptions,
+    unresolvedFields: ['startTime', 'endTime'],
   };
+}
+
+function buildDeterministicSuggestion(
+  input: SuggestionInput,
+): {
+  matchedPlan?: Plan;
+  suggestion: NaturalLanguageSuggestion;
+  explicitDate: boolean;
+  explicitTime: boolean;
+} {
+  const matchedPlan = input.mode === 'edit' ? matchPlan(input.text, input.plans) : undefined;
+  const baseDraft = buildBaseDraft(input.userId, input.selectedDate, matchedPlan);
+  const explicitDate = hasExplicitDateExpression(input.text);
+  const explicitTime = hasExplicitClockTime(input.text);
+  const detectedType = detectType(input.text);
+  const type =
+    input.mode === 'edit' && matchedPlan && detectedType === 'study'
+      ? matchedPlan.type
+      : detectedType;
+  const subject = detectSubject(input.text) || matchedPlan?.subject || '';
+  const title = deriveDeterministicTitle(
+    input.text,
+    subject,
+    type,
+    input.mode === 'edit' ? matchedPlan?.title ?? '' : '',
+  );
+  const timeValues = deriveDeterministicTimeValues(input, baseDraft);
+  const unresolvedFields = mergeSuggestionFields(
+    timeValues.unresolvedFields,
+    !subject ? ['subject'] : [],
+    !title ? ['title'] : [],
+    input.mode === 'edit' && !matchedPlan ? ['targetPlan'] : [],
+  );
+  const assumptions = [
+    ...timeValues.assumptions,
+    ...(!explicitDate ? ['日付指定が無いため、選択中の日付を使いました。'] : []),
+  ];
+
+  return {
+    matchedPlan,
+    explicitDate,
+    explicitTime,
+    suggestion: {
+      mode: input.mode,
+      rawText: input.text,
+      confidence: 0.78,
+      reason:
+        input.mode === 'edit'
+          ? '入力文の明示情報と既存予定候補から修正案を組み立てました。'
+          : '入力文の明示情報から追加案を組み立てました。',
+      source: 'rules',
+      providerLabel: '入力文ベース',
+      status: unresolvedFields.length > 0 ? 'needs_review' : 'ready',
+      matchedPlanId: matchedPlan?.id,
+      parsedPlan: {
+        userId: input.userId,
+        title,
+        subject,
+        date: explicitDate ? parseDate(input.text, input.selectedDate) : input.selectedDate,
+        startTime: timeValues.startTime,
+        endTime: timeValues.endTime,
+        type,
+        memo: mergeDistinctText(
+          extractMemoHint(input.text),
+          input.mode === 'edit' ? matchedPlan?.memo : undefined,
+        ),
+      },
+      assumptions,
+      unresolvedFields,
+      issues: [],
+    },
+  };
+}
+
+async function requestPlannerExtraction(
+  input: SuggestionInput,
+  extraGuidance?: string,
+  previousExtraction?: PlannerExtraction,
+): Promise<PlannerExtraction> {
+  const config = getAiConfig();
+
+  if (config.provider === 'rules') {
+    throw new Error('AI provider is disabled.');
+  }
+
+  const client = createOpenAiCompatibleClient(config);
+  const heuristicMatchedPlan =
+    input.mode === 'edit' ? matchPlan(input.text, input.plans) : undefined;
+  const systemPrompt = [
+    'あなたは日本語の勉強計画アシスタントです。',
+    '入力文を意味で解釈し、1件の予定に構造化してください。',
+    'JSON以外は返さないでください。',
+    '日付の指定が無ければ selectedDate を使ってください。',
+    '開始時刻と学習時間が明示されていれば、終了時刻を計算してください。',
+    'タイトルに時間・日付・学習時間・章番号を入れないでください。',
+    '章やユニットは memo に入れてください。',
+    '入力文に無い教材名や章名を作らないでください。',
+    '日本語の全角数字や漢数字を普通に解釈してください。',
+    '例: 今日の22時から15分英単語 -> title=英単語, startTime=22:00, endTime=22:15',
+    '例: 大岩の英文法 八章 15時から二時間やる -> title=大岩の英文法, memo=八章, startTime=15:00, endTime=17:00',
+    extraGuidance ?? '',
+  ].join('\n');
+  const userPrompt = [
+    `mode: ${input.mode}`,
+    `selectedDate: ${input.selectedDate}`,
+    `userText: ${input.text}`,
+    `heuristicMatchedPlanId: ${heuristicMatchedPlan?.id ?? 'null'}`,
+    previousExtraction
+      ? `previousExtraction: ${JSON.stringify(previousExtraction)}`
+      : '',
+    'plans:',
+    formatPlansForPrompt(input.plans, input.selectedDate),
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const rawContent = await client.createChatCompletion({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0,
+    responseFormat: EXTRACTION_RESPONSE_FORMAT,
+  });
+  const jsonText = extractFirstJsonObject(rawContent);
+
+  if (!jsonText) {
+    throw new Error('AI response did not include JSON.');
+  }
+
+  return JSON.parse(jsonText) as PlannerExtraction;
+}
+
+async function repairPlannerExtraction(
+  input: SuggestionInput,
+  previousExtraction: PlannerExtraction,
+  issues: string[],
+): Promise<PlannerExtraction> {
+  return requestPlannerExtraction(
+    input,
+    [
+      '前回の抽出には問題がありました。以下の問題を全て解消してください。',
+      issues.map((issue) => `- ${issue}`).join('\n'),
+      '時刻が入力文と矛盾してはいけません。',
+      '入力文に無い内容を title や memo に入れてはいけません。',
+    ].join('\n'),
+    previousExtraction,
+  );
+}
+
+function collectModelIssues(
+  input: SuggestionInput,
+  baseline: {
+    matchedPlan?: Plan;
+    suggestion: NaturalLanguageSuggestion;
+    explicitDate: boolean;
+    explicitTime: boolean;
+  },
+  extraction: PlannerExtraction,
+  validationPolicy: ValidationPolicy,
+): string[] {
+  const issues: string[] = [];
+  const normalizedDate = normalizeDate(extraction.date);
+  const normalizedStartTime = normalizeTime(extraction.startTime);
+  const normalizedEndTime = normalizeTime(extraction.endTime);
+  const normalizedTitle = trimContentPhrase(
+    sanitizeSuggestedTitle(normalizeText(extraction.title) ?? ''),
+  );
+  const normalizedMemo = normalizeText(extraction.memo);
+  const normalizedSubject = normalizeText(extraction.subject);
+
+  if (normalizeText(extraction.date) && !normalizedDate) {
+    issues.push('date_format_invalid');
+  }
+
+  if (!baseline.explicitDate && normalizedDate && normalizedDate !== input.selectedDate) {
+    issues.push('date_hallucinated');
+  }
+
+  if (normalizeText(extraction.startTime) && !normalizedStartTime) {
+    issues.push('start_time_invalid');
+  }
+
+  if (normalizeText(extraction.endTime) && !normalizedEndTime) {
+    issues.push('end_time_invalid');
+  }
+
+  if (normalizedStartTime && normalizedEndTime) {
+    const minutesDiff =
+      minutesFromTime(normalizedEndTime) - minutesFromTime(normalizedStartTime);
+
+    if (minutesDiff <= 0) {
+      issues.push('time_reversed');
+    }
+  }
+
+  if (baseline.explicitTime) {
+    if (
+      normalizedStartTime &&
+      normalizedStartTime !== baseline.suggestion.parsedPlan.startTime
+    ) {
+      issues.push('start_time_conflicts_with_input');
+    }
+
+    if (
+      normalizedEndTime &&
+      normalizedEndTime !== baseline.suggestion.parsedPlan.endTime
+    ) {
+      issues.push('end_time_conflicts_with_input');
+    }
+  }
+
+  if (
+    validationPolicy === 'strict' &&
+    normalizedTitle &&
+    !isGroundedInSources(
+      normalizedTitle,
+      input.text,
+      baseline.suggestion.parsedPlan.title,
+      baseline.matchedPlan?.title,
+    )
+  ) {
+    issues.push('title_not_grounded');
+  }
+
+  if (
+    validationPolicy === 'strict' &&
+    normalizedMemo &&
+    !isGroundedInSources(
+      normalizedMemo,
+      input.text,
+      baseline.suggestion.parsedPlan.memo,
+      baseline.matchedPlan?.memo,
+    )
+  ) {
+    issues.push('memo_not_grounded');
+  }
+
+  if (
+    validationPolicy === 'strict' &&
+    normalizedSubject &&
+    !isGroundedInSources(
+      normalizedSubject,
+      input.text,
+      baseline.suggestion.parsedPlan.subject,
+      baseline.suggestion.parsedPlan.title,
+      baseline.matchedPlan?.subject,
+    )
+  ) {
+    issues.push('subject_not_grounded');
+  }
+
+  return issues;
+}
+
+function isSeverelyInvalid(
+  issues: string[],
+  validationPolicy: ValidationPolicy,
+): boolean {
+  const severeIssues =
+    validationPolicy === 'relaxed'
+      ? [
+          'date_format_invalid',
+          'date_hallucinated',
+          'start_time_invalid',
+          'end_time_invalid',
+          'time_reversed',
+          'start_time_conflicts_with_input',
+          'end_time_conflicts_with_input',
+        ]
+      : [
+          'date_format_invalid',
+          'date_hallucinated',
+          'start_time_invalid',
+          'end_time_invalid',
+          'time_reversed',
+          'start_time_conflicts_with_input',
+          'end_time_conflicts_with_input',
+          'title_not_grounded',
+          'memo_not_grounded',
+        ];
+
+  return issues.some((issue) =>
+    severeIssues.includes(issue),
+  );
+}
+
+function buildFailedModelSuggestion(
+  baseline: {
+    suggestion: NaturalLanguageSuggestion;
+  },
+  issues: string[],
+): NaturalLanguageSuggestion {
+  return {
+    ...baseline.suggestion,
+    providerLabel: `${getAiProviderLabel()} -> 入力文ベース`,
+    status:
+      baseline.suggestion.unresolvedFields.length > 0 ? 'failed' : 'needs_review',
+    assumptions: [
+      ...baseline.suggestion.assumptions,
+      '現在のローカルモデル出力は不安定だったため、入力文から再構成しました。',
+    ],
+    issues: issues.length > 0 ? issues : ['model_output_unusable'],
+  };
+}
+
+function buildLlmSuggestion(
+  input: SuggestionInput,
+  baseline: {
+    matchedPlan?: Plan;
+    suggestion: NaturalLanguageSuggestion;
+    explicitDate: boolean;
+    explicitTime: boolean;
+  },
+  extraction: PlannerExtraction,
+  issues: string[],
+  validationPolicy: ValidationPolicy,
+): NaturalLanguageSuggestion {
+  const heuristicMatchedPlanId =
+    baseline.suggestion.matchedPlanId &&
+    input.plans.some((plan) => plan.id === baseline.suggestion.matchedPlanId)
+      ? baseline.suggestion.matchedPlanId
+      : undefined;
+  const llmMatchedPlanId =
+    extraction.matchedPlanId &&
+    input.plans.some((plan) => plan.id === extraction.matchedPlanId)
+      ? extraction.matchedPlanId
+      : undefined;
+  const matchedPlanId =
+    input.mode === 'edit' ? llmMatchedPlanId ?? heuristicMatchedPlanId : undefined;
+  const matchedPlan = matchedPlanId
+    ? input.plans.find((plan) => plan.id === matchedPlanId)
+    : baseline.matchedPlan;
+  const normalizedDate = normalizeDate(extraction.date);
+  const normalizedStartTime = normalizeTime(extraction.startTime);
+  const normalizedEndTime = normalizeTime(extraction.endTime);
+  const normalizedTitle = trimContentPhrase(
+    sanitizeSuggestedTitle(normalizeText(extraction.title) ?? ''),
+  );
+  const normalizedMemo = normalizeText(extraction.memo);
+  const normalizedSubject = normalizeText(extraction.subject);
+  const normalizedType = normalizeType(extraction.type);
+  const date =
+    baseline.explicitDate || !normalizedDate
+      ? baseline.suggestion.parsedPlan.date
+      : normalizedDate;
+  const startTime =
+    baseline.explicitTime || !normalizedStartTime
+      ? baseline.suggestion.parsedPlan.startTime
+      : normalizedStartTime;
+  const endTime =
+    baseline.explicitTime || !normalizedEndTime
+      ? baseline.suggestion.parsedPlan.endTime
+      : normalizedEndTime;
+  const subject =
+    validationPolicy === 'relaxed'
+      ? normalizedSubject ?? baseline.suggestion.parsedPlan.subject
+      : normalizedSubject &&
+          isGroundedInSources(
+            normalizedSubject,
+            input.text,
+            baseline.suggestion.parsedPlan.subject,
+            baseline.suggestion.parsedPlan.title,
+            matchedPlan?.subject,
+          )
+        ? normalizedSubject
+        : baseline.suggestion.parsedPlan.subject;
+  const type = normalizedType ?? baseline.suggestion.parsedPlan.type;
+  const title =
+    validationPolicy === 'relaxed'
+      ? normalizedTitle ?? baseline.suggestion.parsedPlan.title
+      : normalizedTitle &&
+          isGroundedInSources(
+            normalizedTitle,
+            input.text,
+            baseline.suggestion.parsedPlan.title,
+            matchedPlan?.title,
+          )
+        ? normalizedTitle
+        : baseline.suggestion.parsedPlan.title;
+  const memo =
+    validationPolicy === 'relaxed'
+      ? mergeDistinctText(normalizedMemo, baseline.suggestion.parsedPlan.memo)
+      : normalizedMemo &&
+          isGroundedInSources(
+            normalizedMemo,
+            input.text,
+            baseline.suggestion.parsedPlan.memo,
+            matchedPlan?.memo,
+          )
+        ? mergeDistinctText(normalizedMemo, baseline.suggestion.parsedPlan.memo)
+        : baseline.suggestion.parsedPlan.memo;
+  const llmAssumptions = (extraction.assumptions ?? []).filter(
+    (item): item is string => Boolean(item?.trim()),
+  );
+  const resolvedAssumptions = [
+    ...baseline.suggestion.assumptions,
+    ...llmAssumptions,
+    ...(issues.length > 0
+      ? ['AI出力に矛盾があったため、入力文の明示情報で補正しました。']
+      : []),
+  ];
+
+  const unresolvedFields = mergeSuggestionFields(
+    normalizeFieldList(extraction.unresolvedFields),
+    baseline.suggestion.unresolvedFields.filter((field) =>
+      field === 'targetPlan' || !startTime || !endTime || !title || !subject,
+    ),
+    !startTime ? ['startTime'] : [],
+    !endTime ? ['endTime'] : [],
+    !subject ? ['subject'] : [],
+    !title ? ['title'] : [],
+    input.mode === 'edit' && !matchedPlanId ? ['targetPlan'] : [],
+  );
+  const status =
+    unresolvedFields.length > 0
+      ? 'failed'
+      : issues.length > 0
+        ? 'needs_review'
+        : 'ready';
+
+  return {
+    mode: input.mode,
+    rawText: input.text,
+    confidence: clampConfidence(
+      extraction.confidence,
+      issues.length > 0 ? 0.6 : baseline.suggestion.confidence,
+    ),
+    reason:
+      normalizeText(extraction.reason) ||
+      `${getAiProviderLabel()} が入力文の意味を整理して叩き台を生成しました。`,
+    source: 'llm',
+    providerLabel: getAiProviderLabel(),
+    status,
+    matchedPlanId,
+    parsedPlan: {
+      userId: input.userId,
+      title,
+      subject,
+      date,
+      startTime,
+      endTime,
+      type,
+      memo,
+    },
+    assumptions: Array.from(new Set(resolvedAssumptions)),
+    unresolvedFields,
+    issues,
+  };
+}
+
+export function getPlannerAiRuntimeInfo(
+  config: AiConfig = getAiConfig(),
+): PlannerAiRuntimeInfo {
+  return {
+    providerLabel: getAiProviderLabel(config),
+    fallbackLabel: 'AIが壊れたときは入力文の明示情報から再構成します',
+  };
+}
+
+export async function generateNaturalLanguageSuggestion(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion> {
+  const baseline = buildDeterministicSuggestion(input);
+  const config = getAiConfig();
+  const validationPolicy = getValidationPolicy(config);
+
+  if (config.provider === 'rules') {
+    return baseline.suggestion;
+  }
+
+  try {
+    const firstExtraction = await requestPlannerExtraction(input);
+    const firstIssues = collectModelIssues(
+      input,
+      baseline,
+      firstExtraction,
+      validationPolicy,
+    );
+
+    if (!isSeverelyInvalid(firstIssues, validationPolicy)) {
+      return buildLlmSuggestion(
+        input,
+        baseline,
+        firstExtraction,
+        firstIssues,
+        validationPolicy,
+      );
+    }
+
+    const repairedExtraction = await repairPlannerExtraction(
+      input,
+      firstExtraction,
+      firstIssues,
+    );
+    const repairedIssues = collectModelIssues(
+      input,
+      baseline,
+      repairedExtraction,
+      validationPolicy,
+    );
+
+    if (!isSeverelyInvalid(repairedIssues, validationPolicy)) {
+      return buildLlmSuggestion(
+        input,
+        baseline,
+        repairedExtraction,
+        repairedIssues,
+        validationPolicy,
+      );
+    }
+
+    return buildFailedModelSuggestion(baseline, repairedIssues);
+  } catch {
+    return {
+      ...baseline.suggestion,
+      providerLabel: `${getAiProviderLabel()} -> 入力文ベース`,
+      assumptions: [
+        ...baseline.suggestion.assumptions,
+        `${getAiProviderLabel()} に接続できなかったため、入力文から再構成しました。`,
+      ],
+      issues: ['ai_unavailable'],
+    };
+  }
 }

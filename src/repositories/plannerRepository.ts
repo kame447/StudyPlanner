@@ -1,79 +1,64 @@
-import { localStorageStore } from './localStorageStore';
-import type { Actual, DayNote, Plan } from '../types/domain';
+import type {
+  PlannerRepository,
+  PlannerStorageGateway,
+} from './repositoryContracts';
+import { filterByUserId, replaceById } from './repositoryUtils';
 
-export interface PlannerRepository {
-  getPlans(userId: string): Promise<Plan[]>;
-  getActuals(userId: string): Promise<Actual[]>;
-  getDayNotes(userId: string): Promise<DayNote[]>;
-  upsertPlan(plan: Plan): Promise<Plan>;
-  deletePlan(userId: string, planId: string): Promise<void>;
-  upsertActual(actual: Actual): Promise<Actual>;
-  deleteActual(userId: string, actualId: string): Promise<void>;
-  upsertDayNote(dayNote: DayNote): Promise<DayNote>;
-}
-
-export function createLocalPlannerRepository(): PlannerRepository {
+export function createPlannerRepository(
+  storageGateway: PlannerStorageGateway,
+): PlannerRepository {
   return {
     async getPlans(userId) {
-      return localStorageStore.readPlans().filter(
-        (plan) => plan.userId === userId,
-      );
+      return filterByUserId(await storageGateway.readPlans(), userId);
     },
     async getActuals(userId) {
-      return localStorageStore.readActuals().filter(
-        (actual) => actual.userId === userId,
-      );
+      return filterByUserId(await storageGateway.readActuals(), userId);
     },
     async getDayNotes(userId) {
-      return localStorageStore.readDayNotes().filter(
-        (dayNote) => dayNote.userId === userId,
-      );
+      return filterByUserId(await storageGateway.readDayNotes(), userId);
     },
     async upsertPlan(plan) {
-      const plans = localStorageStore.readPlans();
-      const nextPlans = plans.some((item) => item.id === plan.id)
-        ? plans.map((item) => (item.id === plan.id ? plan : item))
-        : [...plans, plan];
-
-      localStorageStore.writePlans(nextPlans);
+      const nextPlans = replaceById(await storageGateway.readPlans(), plan);
+      await storageGateway.writePlans(nextPlans);
       return plan;
     },
     async deletePlan(userId, planId) {
-      const plans = localStorageStore.readPlans().filter(
+      const plans = (await storageGateway.readPlans()).filter(
         (plan) => !(plan.userId === userId && plan.id === planId),
       );
-      const actuals = localStorageStore.readActuals().filter(
+      const actuals = (await storageGateway.readActuals()).filter(
         (actual) => !(actual.userId === userId && actual.planId === planId),
       );
 
-      localStorageStore.writePlans(plans);
-      localStorageStore.writeActuals(actuals);
+      await Promise.all([
+        storageGateway.writePlans(plans),
+        storageGateway.writeActuals(actuals),
+      ]);
     },
     async upsertActual(actual) {
-      const actuals = localStorageStore.readActuals();
-      const nextActuals = actuals
+      const nextActuals = (await storageGateway.readActuals())
         .filter(
           (item) => !(item.userId === actual.userId && item.planId === actual.planId),
         )
         .concat(actual);
 
-      localStorageStore.writeActuals(nextActuals);
+      await storageGateway.writeActuals(nextActuals);
       return actual;
     },
     async deleteActual(userId, actualId) {
-      const actuals = localStorageStore.readActuals().filter(
+      const actuals = (await storageGateway.readActuals()).filter(
         (actual) => !(actual.userId === userId && actual.id === actualId),
       );
 
-      localStorageStore.writeActuals(actuals);
+      await storageGateway.writeActuals(actuals);
     },
     async upsertDayNote(dayNote) {
-      const dayNotes = localStorageStore.readDayNotes();
-      const nextDayNotes = dayNotes.some((item) => item.id === dayNote.id)
-        ? dayNotes.map((item) => (item.id === dayNote.id ? dayNote : item))
-        : [...dayNotes, dayNote];
+      const nextDayNotes = replaceById(
+        await storageGateway.readDayNotes(),
+        dayNote,
+      );
 
-      localStorageStore.writeDayNotes(nextDayNotes);
+      await storageGateway.writeDayNotes(nextDayNotes);
       return dayNote;
     },
   };

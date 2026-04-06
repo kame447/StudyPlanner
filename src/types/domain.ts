@@ -91,13 +91,31 @@ export interface DayNoteDraft {
 
 export type NaturalLanguageMode = 'add' | 'edit';
 
+export type SuggestionField =
+  | 'targetPlan'
+  | 'date'
+  | 'startTime'
+  | 'endTime'
+  | 'subject'
+  | 'type'
+  | 'title'
+  | 'memo';
+
+export type SuggestionStatus = 'ready' | 'needs_review' | 'failed';
+
 export interface NaturalLanguageSuggestion {
   mode: NaturalLanguageMode;
   rawText: string;
   confidence: number;
   reason: string;
+  source: 'llm' | 'rules';
+  providerLabel: string;
+  status: SuggestionStatus;
   matchedPlanId?: string;
   parsedPlan: PlanDraft;
+  assumptions: string[];
+  unresolvedFields: SuggestionField[];
+  issues: string[];
 }
 
 export interface EvaluationSummary {

@@ -1,0 +1,301 @@
+import { useEffect, useState } from 'react';
+import { startOfMonth, todayIsoDate, isSameMonth, minutesBetween, sortByDateTime } from '../lib/date';
+import { authRepository, plannerRepository } from '../repositories';
+import {
+  createActualFromDraft,
+  createDayNoteFromDraft,
+  createEmptyPlanDraft,
+  createPlanDraftFromPlan,
+  createPlanFromDraft,
+  resolveDayNoteDraft,
+} from '../domain/planner';
+import type {
+  Actual,
+  ActualDraft,
+  DayNote,
+  DayNoteDraft,
+  EmailChallenge,
+  Plan,
+  PlanDraft,
+  User,
+  ViewMode,
+} from '../types/domain';
+
+type NoticeTone = 'info' | 'success' | 'error';
+
+export interface NoticeState {
+  tone: NoticeTone;
+  text: string;
+}
+
+interface PlannerAppState {
+  booting: boolean;
+  user: User | null;
+  plans: Plan[];
+  actuals: Actual[];
+  dayNotes: DayNote[];
+  viewMode: ViewMode;
+  selectedDate: string;
+  monthDate: string;
+  challenge: EmailChallenge | null;
+  notice: NoticeState | null;
+  editorDraft: PlanDraft | null;
+  editingPlanId: string | null;
+  setViewMode: (viewMode: ViewMode) => void;
+  requestCode: (email: string) => Promise<void>;
+  verifyCode: (email: string, code: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  openCreatePlan: () => void;
+  openEditPlan: (plan: Plan) => void;
+  closePlanEditor: () => void;
+  savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  deletePlan: (plan: Plan) => Promise<void>;
+  saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  deleteActual: (actual: Actual) => Promise<void>;
+  saveDayNote: (draft: DayNoteDraft) => Promise<void>;
+  selectDate: (date: string) => void;
+  changeMonth: (date: string) => void;
+  openWeek: (date: string) => void;
+  openDay: (date: string) => void;
+  setEditorDraft: (draft: PlanDraft | null) => void;
+  currentDayNote: DayNote | DayNoteDraft | null;
+}
+
+export function usePlannerAppState(): PlannerAppState {
+  const [booting, setBooting] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [actuals, setActuals] = useState<Actual[]>([]);
+  const [dayNotes, setDayNotes] = useState<DayNote[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [selectedDate, setSelectedDate] = useState(todayIsoDate());
+  const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
+  const [challenge, setChallenge] = useState<EmailChallenge | null>(null);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [editorDraft, setEditorDraft] = useState<PlanDraft | null>(null);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function bootstrap() {
+      const currentUser = await authRepository.getCurrentUser();
+
+      if (currentUser) {
+        setUser(currentUser);
+        await loadPlannerData(currentUser.id);
+      }
+
+      setBooting(false);
+    }
+
+    void bootstrap();
+  }, []);
+
+  async function loadPlannerData(userId: string) {
+    const [nextPlans, nextActuals, nextDayNotes] = await Promise.all([
+      plannerRepository.getPlans(userId),
+      plannerRepository.getActuals(userId),
+      plannerRepository.getDayNotes(userId),
+    ]);
+
+    setPlans(sortByDateTime(nextPlans));
+    setActuals(nextActuals);
+    setDayNotes(nextDayNotes);
+  }
+
+  function showNotice(text: string, tone: NoticeTone = 'info') {
+    setNotice({ text, tone });
+  }
+
+  async function requestCode(email: string) {
+    try {
+      const nextChallenge = await authRepository.requestEmailCode(email);
+      setChallenge(nextChallenge);
+      showNotice('認証コードを発行しました。MVP用メールボックスを確認してください。');
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : '認証コードを発行できませんでした。',
+        'error',
+      );
+    }
+  }
+
+  async function verifyCode(email: string, code: string) {
+    try {
+      const currentUser = await authRepository.verifyEmailCode(email, code);
+      setUser(currentUser);
+      await loadPlannerData(currentUser.id);
+      setChallenge(null);
+      showNotice('ログインしました。', 'success');
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : 'ログインに失敗しました。',
+        'error',
+      );
+    }
+  }
+
+  async function signOut() {
+    await authRepository.signOut();
+    setUser(null);
+    setPlans([]);
+    setActuals([]);
+    setDayNotes([]);
+    setChallenge(null);
+    showNotice('ログアウトしました。');
+  }
+
+  function openCreatePlan() {
+    if (!user) {
+      return;
+    }
+
+    setEditingPlanId(null);
+    setEditorDraft(createEmptyPlanDraft(user.id, selectedDate));
+  }
+
+  function openEditPlan(plan: Plan) {
+    setEditingPlanId(plan.id);
+    setEditorDraft(createPlanDraftFromPlan(plan));
+  }
+
+  function closePlanEditor() {
+    setEditingPlanId(null);
+    setEditorDraft(null);
+  }
+
+  async function savePlanDraft(draft: PlanDraft, targetPlanId?: string) {
+    if (!user) {
+      return;
+    }
+
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
+      return;
+    }
+
+    const currentPlan = plans.find((plan) => plan.id === (targetPlanId ?? editingPlanId));
+    const nextPlan = createPlanFromDraft(draft, currentPlan);
+
+    await plannerRepository.upsertPlan(nextPlan);
+    setPlans((current) =>
+      sortByDateTime(current.filter((plan) => plan.id !== nextPlan.id).concat(nextPlan)),
+    );
+    setSelectedDate(nextPlan.date);
+    setMonthDate(startOfMonth(nextPlan.date));
+    closePlanEditor();
+    showNotice(currentPlan ? '予定を更新しました。' : '予定を追加しました。', 'success');
+  }
+
+  async function deletePlan(plan: Plan) {
+    if (!user) {
+      return;
+    }
+
+    await plannerRepository.deletePlan(user.id, plan.id);
+    setPlans((current) => current.filter((item) => item.id !== plan.id));
+    setActuals((current) => current.filter((item) => item.planId !== plan.id));
+    showNotice('予定を削除しました。');
+  }
+
+  async function saveActual(plan: Plan, draft: ActualDraft) {
+    if (!user) {
+      return;
+    }
+
+    const existingActual = actuals.find((actual) => actual.planId === plan.id);
+    const nextActual = createActualFromDraft(user.id, draft, existingActual);
+
+    await plannerRepository.upsertActual(nextActual);
+    setActuals((current) =>
+      current.filter((item) => item.planId !== plan.id).concat(nextActual),
+    );
+    showNotice('実績を保存しました。', 'success');
+  }
+
+  async function deleteActual(actual: Actual) {
+    if (!user) {
+      return;
+    }
+
+    await plannerRepository.deleteActual(user.id, actual.id);
+    setActuals((current) => current.filter((item) => item.id !== actual.id));
+    showNotice('実績を削除しました。');
+  }
+
+  async function saveDayNote(draft: DayNoteDraft) {
+    if (!user) {
+      return;
+    }
+
+    const currentDayNote = dayNotes.find((dayNote) => dayNote.date === draft.date);
+    const nextDayNote = createDayNoteFromDraft(draft, currentDayNote);
+
+    await plannerRepository.upsertDayNote(nextDayNote);
+    setDayNotes((current) =>
+      current.filter((item) => item.id !== nextDayNote.id).concat(nextDayNote),
+    );
+    showNotice('日次メモを保存しました。', 'success');
+  }
+
+  function selectDate(date: string) {
+    setSelectedDate(date);
+
+    if (!isSameMonth(monthDate, date)) {
+      setMonthDate(startOfMonth(date));
+    }
+  }
+
+  function openWeek(date: string) {
+    selectDate(date);
+    setViewMode('week');
+  }
+
+  function changeMonth(date: string) {
+    const nextMonthDate = startOfMonth(date);
+    setMonthDate(nextMonthDate);
+
+    if (!isSameMonth(selectedDate, date)) {
+      setSelectedDate(nextMonthDate);
+    }
+  }
+
+  function openDay(date: string) {
+    selectDate(date);
+    setViewMode('day');
+  }
+
+  return {
+    booting,
+    user,
+    plans,
+    actuals,
+    dayNotes,
+    viewMode,
+    selectedDate,
+    monthDate,
+    challenge,
+    notice,
+    editorDraft,
+    editingPlanId,
+    setViewMode,
+    requestCode,
+    verifyCode,
+    signOut,
+    openCreatePlan,
+    openEditPlan,
+    closePlanEditor,
+    savePlanDraft,
+    deletePlan,
+    saveActual,
+    deleteActual,
+    saveDayNote,
+    selectDate,
+    changeMonth,
+    openWeek,
+    openDay,
+    setEditorDraft,
+    currentDayNote: user
+      ? resolveDayNoteDraft(dayNotes, user.id, selectedDate)
+      : null,
+  };
+}
