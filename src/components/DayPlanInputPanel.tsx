@@ -47,15 +47,15 @@ export function DayPlanInputPanel({
 
     await onApplyDraft(draft);
     setDraft(createEmptyPlanDraft(userId, selectedDate));
-    setStatus('予定を追加しました。');
+    setStatus('学習予定を追加しました。');
   }
 
   const content = (
     <>
       <div className="section-header">
         <div>
-          <h2>予定入力</h2>
-          <p>手入力とAI入力を切り替えて、その日の予定を追加できます。</p>
+          <h2>学習予定入力</h2>
+          <p>手入力とAI入力を切り替えて、その日の学習予定を1件ずつまたは複数まとめて追加できます。</p>
         </div>
         <button className="ghost-button" onClick={onClose} type="button">
           閉じる
@@ -102,7 +102,7 @@ export function DayPlanInputPanel({
               type="button"
               disabled={hasInvalidTime || !draft.title.trim()}
             >
-              予定を追加
+              学習予定を追加
             </button>
           </div>
         </div>

@@ -102,6 +102,7 @@ function removeSchedulingTerms(text: string): string {
     .replace(/明後日|明日|今日/g, '')
     .replace(/\d{1,2}\/\d{1,2}/g, '')
     .replace(/\d{1,2}月\d{1,2}日/g, '')
+    .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g, '')
     .replace(CLOCK_RANGE_GLOBAL_REGEX, '')
     .replace(CLOCK_TIME_GLOBAL_REGEX, '')
     .replace(
@@ -109,6 +110,10 @@ function removeSchedulingTerms(text: string): string {
       '',
     )
     .replace(new RegExp(`${LOCALIZED_NUMBER_PATTERN}分`, 'g'), '')
+    .replace(
+      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?/g,
+      '',
+    )
     .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定/g, '');
 }
 
@@ -329,6 +334,71 @@ export function matchPlan(text: string, plans: Plan[]): Plan | undefined {
     })
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score)[0]?.plan;
+}
+
+function hasExplicitDateExpression(text: string): boolean {
+  const normalizedText = normalizeParsingText(text);
+  return /明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(normalizedText);
+}
+
+function hasTaskCue(text: string): boolean {
+  return (
+    hasExplicitClockTime(text) ||
+    parseDurationMinutes(text) !== undefined ||
+    Boolean(detectSubject(text)) ||
+    detectType(text) !== 'study' ||
+    /勉強|やる|する|進める|復習|演習|模試|面接|体育祭|英単語|古文単語/.test(
+      normalizeParsingText(text),
+    )
+  );
+}
+
+function prependSharedDate(text: string, sharedDatePhrase: string): string {
+  if (!sharedDatePhrase || hasExplicitDateExpression(text)) {
+    return text.trim();
+  }
+
+  return `${sharedDatePhrase} ${text}`.trim();
+}
+
+export function splitAddTaskTexts(text: string): string[] {
+  const normalizedText = normalizeParsingText(text).replace(/\r\n?/g, '\n').trim();
+
+  if (!normalizedText) {
+    return [];
+  }
+
+  const sharedDatePhrase =
+    normalizedText.match(/明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/)?.[0] ??
+    '';
+  const hardSegments = normalizedText
+    .split(/\n+|[。；;]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const segments = hardSegments.flatMap((segment) => {
+    const softSegments = segment
+      .split(/\s*(?:、|,|，|そのあと|その後|次に|あと)\s*/g)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (softSegments.length <= 1 || !softSegments.every(hasTaskCue)) {
+      return [segment];
+    }
+
+    return softSegments;
+  });
+
+  const normalizedSegments = segments
+    .map((segment) => prependSharedDate(segment, sharedDatePhrase))
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const uniqueSegments = normalizedSegments.filter(
+    (segment, index, array) => array.indexOf(segment) === index,
+  );
+
+  return uniqueSegments.length > 0 ? uniqueSegments : [normalizedText];
 }
 
 function buildReason(mode: NaturalLanguageMode, matchedPlan?: Plan): string {

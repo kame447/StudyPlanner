@@ -21,6 +21,7 @@ import {
   parseDurationMinutes,
   parseTimes,
   sanitizeSuggestedTitle,
+  splitAddTaskTexts,
   type SuggestionInput,
 } from './naturalLanguageRules';
 
@@ -37,6 +38,14 @@ interface PlannerExtraction {
   reason?: string | null;
   assumptions?: string[] | null;
   unresolvedFields?: string[] | null;
+}
+
+interface BatchPlannerExtraction extends PlannerExtraction {
+  rawText?: string | null;
+}
+
+interface BatchPlannerExtractionResponse {
+  tasks: BatchPlannerExtraction[];
 }
 
 interface TimeResolutionResult {
@@ -126,6 +135,76 @@ const EXTRACTION_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
           items: {
             type: 'string',
             enum: ALLOWED_SUGGESTION_FIELDS,
+          },
+        },
+      },
+    },
+  },
+};
+
+const BATCH_EXTRACTION_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'planner_batch_extraction',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['tasks'],
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'rawText',
+              'date',
+              'startTime',
+              'endTime',
+              'subject',
+              'type',
+              'title',
+              'memo',
+              'confidence',
+              'reason',
+              'assumptions',
+              'unresolvedFields',
+            ],
+            properties: {
+              rawText: { type: ['string', 'null'] },
+              date: { type: ['string', 'null'] },
+              startTime: { type: ['string', 'null'] },
+              endTime: { type: ['string', 'null'] },
+              subject: { type: ['string', 'null'] },
+              type: {
+                type: ['string', 'null'],
+                enum: [
+                  'study',
+                  'mock-exam',
+                  'school-event',
+                  'cram-school',
+                  'deadline',
+                  'other',
+                  null,
+                ],
+              },
+              title: { type: ['string', 'null'] },
+              memo: { type: ['string', 'null'] },
+              confidence: { type: ['number', 'null'] },
+              reason: { type: ['string', 'null'] },
+              assumptions: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              unresolvedFields: {
+                type: 'array',
+                items: {
+                  type: 'string',
+                  enum: ALLOWED_SUGGESTION_FIELDS,
+                },
+              },
+            },
           },
         },
       },
@@ -267,6 +346,127 @@ function formatPlansForPrompt(plans: Plan[], selectedDate: string): string {
     .join('\n');
 }
 
+function normalizeTaskTexts(taskTexts: string[], fallbackText: string): string[] {
+  const normalizedTasks = taskTexts
+    .map((taskText) => normalizeParsingText(taskText).replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((taskText, index, array) => array.indexOf(taskText) === index);
+
+  return normalizedTasks.length > 0 ? normalizedTasks : [fallbackText.trim()];
+}
+
+function normalizeBatchExtractionTasks(
+  tasks: BatchPlannerExtraction[] | null | undefined,
+  fallbackText: string,
+): BatchPlannerExtraction[] {
+  const normalizedTasks = (tasks ?? [])
+    .map((task) => ({
+      ...task,
+      rawText: normalizeText(task.rawText) ?? fallbackText.trim(),
+    }))
+    .filter(
+      (task, index, array) =>
+        array.findIndex(
+          (candidate) =>
+            candidate.rawText === task.rawText &&
+            normalizeDate(candidate.date) === normalizeDate(task.date) &&
+            normalizeTime(candidate.startTime) === normalizeTime(task.startTime),
+        ) === index,
+    );
+
+  return normalizedTasks.length > 0
+    ? normalizedTasks
+    : [{ rawText: fallbackText.trim() }];
+}
+
+function sanitizeAssumptionText(value: string): string {
+  return value
+    .replace(/selectedDate/g, '選択中の日付')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function requestBatchPlannerExtraction(
+  input: SuggestionInput,
+): Promise<BatchPlannerExtraction[]> {
+  const config = getAiConfig();
+
+  if (config.provider === 'rules') {
+    throw new Error('AI provider is disabled.');
+  }
+
+  const client = createOpenAiCompatibleClient(config);
+  const systemPrompt = [
+    'あなたは日本語の勉強計画アシスタントです。',
+    '1つの入力文全体を読み、含まれる複数の予定を順番どおりに抽出してください。',
+    '必ず tasks 配列で返してください。1件なら1件だけ入れてください。',
+    '「そのあと」「その後」「続けて」「昼食後」などの相対表現は、前後関係から解釈してください。',
+    '開始時刻が省略されていても、直前の予定の終了直後だと明らかな場合は startTime と endTime を補ってください。',
+    '開始時刻と学習時間があれば endTime を計算してください。',
+    'タイトルに日付、時刻、接続表現、時間帯、説明語を入れないでください。',
+    '教材名や学習内容だけを短く title に入れてください。',
+    '章、問題番号、補足情報は memo に入れてください。',
+    '入力文に無い内容を作らないでください。',
+    '5分を超えて重なる予定は作らないでください。もし確定できなければ unresolvedFields に必要項目を入れてください。',
+    'assumptions はユーザー向けの短い日本語だけにしてください。internal variable 名は出さないでください。',
+    'JSON以外は返さないでください。',
+  ].join('\n');
+  const userPrompt = [
+    `selectedDate: ${input.selectedDate}`,
+    `userText: ${input.text}`,
+  ].join('\n');
+  const rawContent = await client.createChatCompletion({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0,
+    responseFormat: BATCH_EXTRACTION_RESPONSE_FORMAT,
+  });
+  const jsonText = extractFirstJsonObject(rawContent);
+
+  if (!jsonText) {
+    throw new Error('Batch extraction response did not include JSON.');
+  }
+
+  const parsedResponse = JSON.parse(jsonText) as BatchPlannerExtractionResponse;
+  return normalizeBatchExtractionTasks(parsedResponse.tasks, input.text);
+}
+
+async function buildBatchedAddSuggestions(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion[]> {
+  const validationPolicy = getValidationPolicy(getAiConfig());
+  const extractions = await requestBatchPlannerExtraction(input);
+
+  return extractions.map((extraction) => {
+    const taskInput: SuggestionInput = {
+      ...input,
+      text: normalizeText(extraction.rawText) ?? input.text,
+    };
+    const baseline = buildDeterministicSuggestion(taskInput);
+    const issues = collectModelIssues(
+      taskInput,
+      baseline,
+      extraction,
+      validationPolicy,
+    );
+    const suggestion = buildLlmSuggestion(
+      taskInput,
+      baseline,
+      extraction,
+      issues,
+      validationPolicy,
+    );
+
+    return {
+      ...suggestion,
+      rawText: taskInput.text,
+      assumptions: suggestion.assumptions.map(sanitizeAssumptionText),
+    };
+  });
+}
+
 function hasExplicitDateExpression(text: string): boolean {
   const normalizedText = normalizeParsingText(text);
   return /明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(
@@ -313,6 +513,168 @@ function normalizeFieldList(
   return (values ?? [])
     .map((value) => normalizeFieldName(value))
     .filter((value): value is SuggestionField => Boolean(value));
+}
+
+function hasRelativeOrderCue(text: string): boolean {
+  return /そのあと|その後|続けて|次に/.test(normalizeParsingText(text));
+}
+
+function sanitizeDisplayTitle(title: string, date: string): string {
+  return title
+    .replace(new RegExp(date.replace(/-/g, '[-/]'), 'g'), ' ')
+    .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g, ' ')
+    .replace(/^\s*(?:今日|明日|明後日)\s*/g, '')
+    .replace(/^\s*(?:朝|朝の|午前|午後|夜|夕方)\s*/g, '')
+    .replace(/^\s*(?:そのあと|その後|続けて|次に)\s*/g, '')
+    .replace(/^\s*(?:おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?)\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function calculateOverlapMinutes(
+  startTimeA: string,
+  endTimeA: string,
+  startTimeB: string,
+  endTimeB: string,
+): number {
+  const overlapStart = Math.max(
+    minutesFromTime(startTimeA),
+    minutesFromTime(startTimeB),
+  );
+  const overlapEnd = Math.min(
+    minutesFromTime(endTimeA),
+    minutesFromTime(endTimeB),
+  );
+
+  return Math.max(0, overlapEnd - overlapStart);
+}
+
+function finalizeSuggestionStatus(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion {
+  const nextStatus =
+    suggestion.unresolvedFields.length > 0
+      ? 'needs_review'
+      : suggestion.issues.length > 0
+        ? 'needs_review'
+        : 'ready';
+
+  return {
+    ...suggestion,
+    status: suggestion.status === 'failed' ? 'failed' : nextStatus,
+  };
+}
+
+function postProcessAddSuggestions(
+  suggestions: NaturalLanguageSuggestion[],
+): NaturalLanguageSuggestion[] {
+  const processedSuggestions: NaturalLanguageSuggestion[] = [];
+
+  suggestions.forEach((suggestion) => {
+    const previousSuggestion =
+      processedSuggestions[processedSuggestions.length - 1];
+    const nextSuggestion: NaturalLanguageSuggestion = {
+      ...suggestion,
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+      },
+      assumptions: [...suggestion.assumptions],
+      unresolvedFields: [...suggestion.unresolvedFields],
+      issues: suggestion.issues.filter(
+        (issue) =>
+          issue !== 'start_time_conflicts_with_input' &&
+          issue !== 'end_time_conflicts_with_input' &&
+          issue !== 'time_reversed',
+      ),
+    };
+    const explicitStart = hasExplicitClockTime(nextSuggestion.rawText);
+    const durationMinutes = parseDurationMinutes(nextSuggestion.rawText);
+    const rawTitle = sanitizeDisplayTitle(
+      nextSuggestion.parsedPlan.title,
+      nextSuggestion.parsedPlan.date,
+    );
+    const resolvedTitle =
+      nextSuggestion.source === 'llm'
+        ? rawTitle || nextSuggestion.parsedPlan.title
+        : rawTitle || 
+          deriveDeterministicTitle(
+            nextSuggestion.rawText,
+            nextSuggestion.parsedPlan.subject,
+            nextSuggestion.parsedPlan.type,
+            rawTitle,
+          );
+
+    if (resolvedTitle) {
+      nextSuggestion.parsedPlan.title = resolvedTitle;
+    }
+
+    if (
+      !explicitStart &&
+      durationMinutes !== undefined &&
+      hasRelativeOrderCue(nextSuggestion.rawText) &&
+      previousSuggestion?.parsedPlan.endTime
+    ) {
+      nextSuggestion.parsedPlan.startTime = previousSuggestion.parsedPlan.endTime;
+      nextSuggestion.parsedPlan.endTime = timeFromMinutes(
+        minutesFromTime(previousSuggestion.parsedPlan.endTime) + durationMinutes,
+      );
+      nextSuggestion.assumptions = Array.from(
+        new Set([
+          ...nextSuggestion.assumptions,
+          '前の予定の終了時刻から開始時刻を補いました。',
+        ]),
+      );
+      nextSuggestion.unresolvedFields = nextSuggestion.unresolvedFields.filter(
+        (field) => field !== 'startTime' && field !== 'endTime',
+      );
+    }
+
+    if (
+      explicitStart &&
+      durationMinutes !== undefined &&
+      nextSuggestion.parsedPlan.startTime
+    ) {
+      nextSuggestion.parsedPlan.endTime = timeFromMinutes(
+        minutesFromTime(nextSuggestion.parsedPlan.startTime) + durationMinutes,
+      );
+      nextSuggestion.unresolvedFields = nextSuggestion.unresolvedFields.filter(
+        (field) => field !== 'endTime',
+      );
+    }
+
+    if (
+      previousSuggestion &&
+      previousSuggestion.parsedPlan.date === nextSuggestion.parsedPlan.date &&
+      previousSuggestion.parsedPlan.startTime &&
+      previousSuggestion.parsedPlan.endTime &&
+      nextSuggestion.parsedPlan.startTime &&
+      nextSuggestion.parsedPlan.endTime
+    ) {
+      const overlapMinutes = calculateOverlapMinutes(
+        previousSuggestion.parsedPlan.startTime,
+        previousSuggestion.parsedPlan.endTime,
+        nextSuggestion.parsedPlan.startTime,
+        nextSuggestion.parsedPlan.endTime,
+      );
+
+      if (overlapMinutes > 5) {
+        nextSuggestion.status = 'failed';
+        nextSuggestion.issues = Array.from(
+          new Set([...nextSuggestion.issues, 'time_overlap_conflict']),
+        );
+        nextSuggestion.assumptions = Array.from(
+          new Set([
+            ...nextSuggestion.assumptions,
+            '前の予定と5分以上重なるため、自動反映しないようにしました。',
+          ]),
+        );
+      }
+    }
+
+    processedSuggestions.push(finalizeSuggestionStatus(nextSuggestion));
+  });
+
+  return processedSuggestions;
 }
 
 function buildBaseDraft(
@@ -684,8 +1046,6 @@ function isSeverelyInvalid(
           'start_time_invalid',
           'end_time_invalid',
           'time_reversed',
-          'start_time_conflicts_with_input',
-          'end_time_conflicts_with_input',
         ]
       : [
           'date_format_invalid',
@@ -713,11 +1073,11 @@ function buildFailedModelSuggestion(
   return {
     ...baseline.suggestion,
     providerLabel: `${getAiProviderLabel()} -> 入力文ベース`,
-    status:
-      baseline.suggestion.unresolvedFields.length > 0 ? 'failed' : 'needs_review',
+    status: 'needs_review',
     assumptions: [
       ...baseline.suggestion.assumptions,
-      '現在のローカルモデル出力は不安定だったため、入力文から再構成しました。',
+      '現在のAI出力は不安定だったため、入力文から再構成しました。',
+      'この候補は自動確定せず、内容を確認してから反映してください。',
     ],
     issues: issues.length > 0 ? issues : ['model_output_unusable'],
   };
@@ -759,18 +1119,32 @@ function buildLlmSuggestion(
   const normalizedMemo = normalizeText(extraction.memo);
   const normalizedSubject = normalizeText(extraction.subject);
   const normalizedType = normalizeType(extraction.type);
+  const canUseModelDate =
+    Boolean(normalizedDate) &&
+    !issues.includes('date_format_invalid') &&
+    !issues.includes('date_hallucinated');
+  const canUseModelStartTime =
+    Boolean(normalizedStartTime) &&
+    !issues.includes('start_time_invalid') &&
+    !issues.includes('time_reversed') &&
+    !issues.includes('start_time_conflicts_with_input');
+  const canUseModelEndTime =
+    Boolean(normalizedEndTime) &&
+    !issues.includes('end_time_invalid') &&
+    !issues.includes('time_reversed') &&
+    !issues.includes('end_time_conflicts_with_input');
   const date =
-    baseline.explicitDate || !normalizedDate
+    baseline.explicitDate || !canUseModelDate
       ? baseline.suggestion.parsedPlan.date
-      : normalizedDate;
+      : normalizedDate!;
   const startTime =
-    baseline.explicitTime || !normalizedStartTime
+    baseline.explicitTime || !canUseModelStartTime
       ? baseline.suggestion.parsedPlan.startTime
-      : normalizedStartTime;
+      : normalizedStartTime!;
   const endTime =
-    baseline.explicitTime || !normalizedEndTime
+    baseline.explicitTime || !canUseModelEndTime
       ? baseline.suggestion.parsedPlan.endTime
-      : normalizedEndTime;
+      : normalizedEndTime!;
   const subject =
     validationPolicy === 'relaxed'
       ? normalizedSubject ?? baseline.suggestion.parsedPlan.subject
@@ -862,7 +1236,7 @@ function buildLlmSuggestion(
       type,
       memo,
     },
-    assumptions: Array.from(new Set(resolvedAssumptions)),
+    assumptions: Array.from(new Set(resolvedAssumptions.map(sanitizeAssumptionText))),
     unresolvedFields,
     issues,
   };
@@ -877,7 +1251,7 @@ export function getPlannerAiRuntimeInfo(
   };
 }
 
-export async function generateNaturalLanguageSuggestion(
+async function generateSingleNaturalLanguageSuggestion(
   input: SuggestionInput,
 ): Promise<NaturalLanguageSuggestion> {
   const baseline = buildDeterministicSuggestion(input);
@@ -929,6 +1303,16 @@ export async function generateNaturalLanguageSuggestion(
       );
     }
 
+    if (validationPolicy === 'relaxed') {
+      return buildLlmSuggestion(
+        input,
+        baseline,
+        repairedExtraction,
+        repairedIssues,
+        validationPolicy,
+      );
+    }
+
     return buildFailedModelSuggestion(baseline, repairedIssues);
   } catch {
     return {
@@ -941,4 +1325,54 @@ export async function generateNaturalLanguageSuggestion(
       issues: ['ai_unavailable'],
     };
   }
+}
+
+export async function generateNaturalLanguageSuggestions(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion[]> {
+  if (input.mode === 'add') {
+    try {
+      const suggestions =
+        getAiConfig().provider === 'rules'
+          ? await Promise.all(
+              normalizeTaskTexts(splitAddTaskTexts(input.text), input.text).map(
+                (taskText) =>
+                  generateSingleNaturalLanguageSuggestion({
+                    ...input,
+                    text: taskText,
+                  }),
+              ),
+            )
+          : await buildBatchedAddSuggestions(input);
+
+      return suggestions.length > 0
+        ? postProcessAddSuggestions(suggestions)
+        : [await generateSingleNaturalLanguageSuggestion(input)];
+    } catch {
+      const fallbackTaskTexts = normalizeTaskTexts(
+        splitAddTaskTexts(input.text),
+        input.text,
+      );
+      const fallbackSuggestions = await Promise.all(
+        fallbackTaskTexts.map((taskText) =>
+          generateSingleNaturalLanguageSuggestion({
+            ...input,
+            text: taskText,
+          }),
+        ),
+      );
+
+      return postProcessAddSuggestions(fallbackSuggestions);
+    }
+  }
+
+  const suggestion = await generateSingleNaturalLanguageSuggestion(input);
+  return [suggestion];
+}
+
+export async function generateNaturalLanguageSuggestion(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion> {
+  const suggestions = await generateNaturalLanguageSuggestions(input);
+  return suggestions[0];
 }

@@ -131,7 +131,7 @@ export default function App() {
               }}
               type="button"
             >
-              予定を追加
+              学習予定を追加
             </button>
           </div>
         ) : null}
@@ -199,8 +199,8 @@ export default function App() {
 
       <PlanEditorPanel
         draft={editorDraft}
-        submitLabel={editingPlanId ? '予定を更新' : '予定を追加'}
-        heading={editingPlanId ? '予定を編集' : '予定を追加'}
+        submitLabel={editingPlanId ? '学習予定を更新' : '学習予定を追加'}
+        heading={editingPlanId ? '学習予定を編集' : '学習予定を追加'}
         onChange={setEditorDraft}
         onSubmit={() => {
           if (editorDraft) {
@@ -211,10 +211,7 @@ export default function App() {
       />
 
       {isToolbarPlanInputOpen ? (
-        <div
-          className="overlay modal-overlay"
-          onClick={() => setIsToolbarPlanInputOpen(false)}
-        >
+        <div className="overlay modal-overlay">
           <div className="modal-card" onClick={(event) => event.stopPropagation()}>
             <DayPlanInputPanel
               selectedDate={selectedDate}

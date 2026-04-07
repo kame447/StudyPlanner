@@ -66,6 +66,7 @@ export function DayView({
   onDeleteMonthEvent,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
+  const dayRangeLabel = formatDateLabel(selectedDate);
   const dayPlans = useMemo(
     () => sortByDateTime(plans.filter((plan) => plan.date === selectedDate)),
     [plans, selectedDate],
@@ -182,6 +183,7 @@ export function DayView({
                 >
                   前日
                 </button>
+                <span className="week-range-chip">{dayRangeLabel}</span>
                 <button
                   className="ghost-button"
                   onClick={() => onChangeDay(addDays(selectedDate, 1))}
@@ -199,9 +201,6 @@ export function DayView({
               </button>
             </div>
           </div>
-          <p className="print-hide">
-            {formatDateLabel(selectedDate)} の予定、実績、振り返りをまとめて見ます。
-          </p>
         </div>
       </div>
 

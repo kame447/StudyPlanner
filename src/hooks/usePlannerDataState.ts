@@ -143,7 +143,10 @@ export function usePlannerDataState({
     setSelectedDate(nextPlan.date);
     setMonthDate(startOfMonth(nextPlan.date));
     closePlanEditor();
-    showNotice(currentPlan ? '予定を更新しました。' : '予定を追加しました。', 'success');
+    showNotice(
+      currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
+      'success',
+    );
   }
 
   async function deletePlan(plan: Plan) {

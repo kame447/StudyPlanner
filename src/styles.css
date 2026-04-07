@@ -356,6 +356,18 @@ h2 {
     box-shadow 0.18s ease;
 }
 
+.primary-button,
+.ghost-button,
+.mini-button,
+.segment,
+.week-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .primary-button {
   padding: 12px 18px;
   border-radius: 999px;
