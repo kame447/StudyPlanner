@@ -1,4 +1,12 @@
-import { addDays, getWeekDates, minutesBetween, sortByDateTime } from './date';
+import {
+  addDays,
+  addMonths,
+  getWeekDates,
+  minutesBetween,
+  sortByDateTime,
+  startOfMonth,
+  startOfWeek,
+} from './date';
 import type { Actual, Plan } from '../types/domain';
 
 export interface StudyDailyTotal {
@@ -8,6 +16,12 @@ export interface StudyDailyTotal {
 
 export interface StudySubjectTotal {
   subject: string;
+  minutes: number;
+}
+
+export interface StudyPeriodTotal {
+  startDate: string;
+  endDate: string;
   minutes: number;
 }
 
@@ -65,6 +79,211 @@ export function buildWeeklyStudySeries(
     return {
       date,
       minutes: calculateActualStudyMinutes(dayPlans, actualByPlanId),
+    };
+  });
+}
+
+export function buildRecentDailyStudySeries(
+  selectedDate: string,
+  plans: Plan[],
+  actuals: Actual[],
+  dayCount = 7,
+): StudyDailyTotal[] {
+  return buildDailyStudySeriesInRange(
+    addDays(selectedDate, -(dayCount - 1)),
+    selectedDate,
+    plans,
+    actuals,
+  );
+}
+
+export function buildDailyStudySeriesInRange(
+  startDate: string,
+  endDate: string,
+  plans: Plan[],
+  actuals: Actual[],
+): StudyDailyTotal[] {
+  if (startDate.localeCompare(endDate) > 0) {
+    return [];
+  }
+
+  const actualByPlanId = buildActualByPlanId(actuals);
+  const dayCount =
+    Math.floor(
+      (new Date(`${endDate}T00:00:00`).getTime() -
+        new Date(`${startDate}T00:00:00`).getTime()) /
+        (24 * 60 * 60 * 1000),
+    ) + 1;
+
+  return Array.from({ length: dayCount }, (_, index) => {
+    const date = addDays(startDate, index);
+    const dayPlans = plans.filter((plan) => isStudyTimePlan(plan) && plan.date === date);
+
+    return {
+      date,
+      minutes: calculateActualStudyMinutes(dayPlans, actualByPlanId),
+    };
+  });
+}
+
+export function buildWeeklyStudySeriesInRange(
+  startDate: string,
+  endDate: string,
+  plans: Plan[],
+  actuals: Actual[],
+): StudyPeriodTotal[] {
+  if (startDate.localeCompare(endDate) > 0) {
+    return [];
+  }
+
+  const actualByPlanId = buildActualByPlanId(actuals);
+  const totals = new Map<string, number>();
+
+  plans.forEach((plan) => {
+    if (
+      !isStudyTimePlan(plan) ||
+      plan.date.localeCompare(startDate) < 0 ||
+      plan.date.localeCompare(endDate) > 0
+    ) {
+      return;
+    }
+
+    const actual = actualByPlanId.get(plan.id);
+
+    if (!actual) {
+      return;
+    }
+
+    const weekStart = startOfWeek(plan.date);
+    totals.set(weekStart, (totals.get(weekStart) ?? 0) + getActualMinutes(actual));
+  });
+
+  const firstWeekStart = startOfWeek(startDate);
+  const lastWeekStart = startOfWeek(endDate);
+  const weekCount =
+    Math.floor(
+      (new Date(`${lastWeekStart}T00:00:00`).getTime() -
+        new Date(`${firstWeekStart}T00:00:00`).getTime()) /
+        (7 * 24 * 60 * 60 * 1000),
+    ) + 1;
+
+  return Array.from({ length: weekCount }, (_, index) => {
+    const weekStart = addDays(firstWeekStart, index * 7);
+
+    return {
+      startDate: weekStart,
+      endDate: addDays(weekStart, 6),
+      minutes: totals.get(weekStart) ?? 0,
+    };
+  });
+}
+
+export function buildMonthlyStudySeriesInRange(
+  startMonthDate: string,
+  endMonthDate: string,
+  plans: Plan[],
+  actuals: Actual[],
+): StudyPeriodTotal[] {
+  const normalizedStart = startOfMonth(startMonthDate);
+  const normalizedEnd = startOfMonth(endMonthDate);
+
+  if (normalizedStart.localeCompare(normalizedEnd) > 0) {
+    return [];
+  }
+
+  const actualByPlanId = buildActualByPlanId(actuals);
+  const totals = new Map<string, number>();
+
+  plans.forEach((plan) => {
+    if (!isStudyTimePlan(plan)) {
+      return;
+    }
+
+    const monthStart = startOfMonth(plan.date);
+
+    if (monthStart.localeCompare(normalizedStart) < 0 || monthStart.localeCompare(normalizedEnd) > 0) {
+      return;
+    }
+
+    const actual = actualByPlanId.get(plan.id);
+
+    if (!actual) {
+      return;
+    }
+
+    totals.set(monthStart, (totals.get(monthStart) ?? 0) + getActualMinutes(actual));
+  });
+
+  const monthCount =
+    (Number(normalizedEnd.slice(0, 4)) - Number(normalizedStart.slice(0, 4))) * 12 +
+    (Number(normalizedEnd.slice(5, 7)) - Number(normalizedStart.slice(5, 7))) +
+    1;
+
+  return Array.from({ length: monthCount }, (_, index) => {
+    const monthStart = addMonths(normalizedStart, index);
+
+    return {
+      startDate: monthStart,
+      endDate: addDays(addMonths(monthStart, 1), -1),
+      minutes: totals.get(monthStart) ?? 0,
+    };
+  });
+}
+
+function calculateStudyMinutesInRange(
+  startDate: string,
+  endDate: string,
+  plans: Plan[],
+  actualByPlanId: Map<string, Actual>,
+): number {
+  const rangePlans = plans.filter(
+    (plan) =>
+      isStudyTimePlan(plan) &&
+      plan.date.localeCompare(startDate) >= 0 &&
+      plan.date.localeCompare(endDate) <= 0,
+  );
+
+  return calculateActualStudyMinutes(rangePlans, actualByPlanId);
+}
+
+export function buildRollingWeeklyStudySeries(
+  selectedDate: string,
+  plans: Plan[],
+  actuals: Actual[],
+  weekCount = 6,
+): StudyPeriodTotal[] {
+  const currentWeekStart = startOfWeek(selectedDate);
+  const actualByPlanId = buildActualByPlanId(actuals);
+
+  return Array.from({ length: weekCount }, (_, index) => {
+    const weekStart = addDays(currentWeekStart, (index - (weekCount - 1)) * 7);
+    const weekEnd = addDays(weekStart, 6);
+
+    return {
+      startDate: weekStart,
+      endDate: weekEnd,
+      minutes: calculateStudyMinutesInRange(weekStart, weekEnd, plans, actualByPlanId),
+    };
+  });
+}
+
+export function buildRollingMonthlyStudySeries(
+  selectedDate: string,
+  plans: Plan[],
+  actuals: Actual[],
+  monthCount = 6,
+): StudyPeriodTotal[] {
+  const currentMonthStart = startOfMonth(selectedDate);
+  const actualByPlanId = buildActualByPlanId(actuals);
+
+  return Array.from({ length: monthCount }, (_, index) => {
+    const monthStart = addMonths(currentMonthStart, index - (monthCount - 1));
+    const monthEnd = addDays(addMonths(monthStart, 1), -1);
+
+    return {
+      startDate: monthStart,
+      endDate: monthEnd,
+      minutes: calculateStudyMinutesInRange(monthStart, monthEnd, plans, actualByPlanId),
     };
   });
 }

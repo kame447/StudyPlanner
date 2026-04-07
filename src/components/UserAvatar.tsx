@@ -1,3 +1,4 @@
+import { isImageAvatar } from '../lib/avatarImage';
 import { getUserAvatarText, getUserDisplayName } from '../lib/userProfile';
 import type { User } from '../types/domain';
 
@@ -7,13 +8,23 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ user, small = false }: UserAvatarProps) {
+  const displayName = getUserDisplayName(user);
+
   return (
     <div
       className={small ? 'user-avatar user-avatar-small' : 'user-avatar'}
-      aria-label={getUserDisplayName(user)}
-      title={getUserDisplayName(user)}
+      aria-label={displayName}
+      title={displayName}
     >
-      {getUserAvatarText(user)}
+      {isImageAvatar(user.avatar) ? (
+        <img
+          src={user.avatar}
+          alt={`${displayName}のプロフィール画像`}
+          className="user-avatar-image"
+        />
+      ) : (
+        getUserAvatarText(user)
+      )}
     </div>
   );
 }

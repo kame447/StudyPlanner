@@ -1,7 +1,20 @@
-import { formatDateLabel, formatMinutes, getWeekdayLabel } from '../lib/date';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  addDays,
+  addMonths,
+  formatCompactDate,
+  formatDateLabel,
+  formatMinutes,
+  formatMonthLabel,
+  getWeekdayLabel,
+  startOfMonth,
+  startOfWeek,
+} from '../lib/date';
+import {
+  buildDailyStudySeriesInRange,
+  buildMonthlyStudySeriesInRange,
   buildStudyTimelineEntries,
-  buildWeeklyStudySeries,
+  buildWeeklyStudySeriesInRange,
   buildWeeklySubjectTotals,
   calculateCumulativeStudyMinutes,
   calculatePreviousWeeklyStudyMinutes,
@@ -11,12 +24,40 @@ import {
 import { getSubjectTheme } from '../lib/subjectTheme';
 import type { Actual, Plan } from '../types/domain';
 
+type ReportChartMode = 'daily' | 'weekly' | 'monthly';
+
+interface DateRangeDraft {
+  start: string;
+  end: string;
+}
+
+interface ChartEntry {
+  id: string;
+  date: string;
+  minutes: number;
+  label: string;
+  sublabel: string;
+  interactive: boolean;
+}
+
 interface ReportViewProps {
   selectedDate: string;
   plans: Plan[];
   actuals: Actual[];
   onOpenDay: (date: string) => void;
 }
+
+interface SubjectDistributionEntry {
+  subject: string;
+  minutes: number;
+  ratio: number;
+  color: string;
+}
+
+const OTHER_SUBJECT_COLOR = '#8d9aa6';
+const REPORT_BAR_MIN_WIDTH = 88;
+const REPORT_BAR_GAP = 18;
+const REPORT_BAR_HORIZONTAL_PADDING = 18;
 
 function renderTrendMinutes(currentWeekMinutes: number, previousWeekMinutes: number): string {
   const delta = currentWeekMinutes - previousWeekMinutes;
@@ -28,15 +69,95 @@ function renderTrendMinutes(currentWeekMinutes: number, previousWeekMinutes: num
   return `${delta > 0 ? '+' : '-'}${formatMinutes(Math.abs(delta))}`;
 }
 
+function createInitialDailyRange(selectedDate: string): DateRangeDraft {
+  return {
+    start: addDays(selectedDate, -6),
+    end: selectedDate,
+  };
+}
+
+function createInitialWeeklyRange(selectedDate: string): DateRangeDraft {
+  const end = addDays(startOfWeek(selectedDate), 6);
+  return {
+    start: addDays(end, -41),
+    end,
+  };
+}
+
+function createInitialMonthlyRange(selectedDate: string): DateRangeDraft {
+  const end = startOfMonth(selectedDate);
+  return {
+    start: addMonths(end, -5),
+    end,
+  };
+}
+
+function resolveChartAxisStep(maxMinutes: number): number {
+  const intervalCount = 5;
+  const targetStep = Math.max(maxMinutes / intervalCount, 15);
+  const stepCandidates = [15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600];
+
+  return (
+    stepCandidates.find((step) => step >= targetStep) ??
+    stepCandidates[stepCandidates.length - 1]
+  );
+}
+
+function buildChartTickValues(maxMinutes: number): number[] {
+  const intervalCount = 5;
+  const step = resolveChartAxisStep(maxMinutes);
+  const axisMax = Math.max(step * intervalCount, step);
+
+  return Array.from({ length: intervalCount + 1 }, (_, index) => axisMax - step * index);
+}
+
+function formatChartTick(minutes: number): string {
+  if (minutes === 0) {
+    return '0分';
+  }
+
+  return formatMinutes(minutes);
+}
+
+function buildChartGridWidth(entryCount: number): string {
+  const normalizedCount = Math.max(entryCount, 1);
+  const minWidthPx =
+    normalizedCount * REPORT_BAR_MIN_WIDTH +
+    Math.max(normalizedCount - 1, 0) * REPORT_BAR_GAP +
+    REPORT_BAR_HORIZONTAL_PADDING;
+
+  return `max(100%, ${minWidthPx}px)`;
+}
+
 export function ReportView({
   selectedDate,
   plans,
   actuals,
   onOpenDay,
 }: ReportViewProps) {
-  const weeklySeries = buildWeeklyStudySeries(selectedDate, plans, actuals);
-  const weeklySubjectTotals = buildWeeklySubjectTotals(selectedDate, plans, actuals).slice(0, 5);
-  const timelineEntries = buildStudyTimelineEntries(plans, actuals).slice(0, 10);
+  const [chartMode, setChartMode] = useState<ReportChartMode>('daily');
+  const [dailyRange, setDailyRange] = useState<DateRangeDraft>(() =>
+    createInitialDailyRange(selectedDate),
+  );
+  const [dailyDraft, setDailyDraft] = useState<DateRangeDraft>(() =>
+    createInitialDailyRange(selectedDate),
+  );
+  const [weeklyRange, setWeeklyRange] = useState<DateRangeDraft>(() =>
+    createInitialWeeklyRange(selectedDate),
+  );
+  const [weeklyDraft, setWeeklyDraft] = useState<DateRangeDraft>(() =>
+    createInitialWeeklyRange(selectedDate),
+  );
+  const [monthlyRange, setMonthlyRange] = useState<DateRangeDraft>(() =>
+    createInitialMonthlyRange(selectedDate),
+  );
+  const [monthlyDraft, setMonthlyDraft] = useState<DateRangeDraft>(() =>
+    createInitialMonthlyRange(selectedDate),
+  );
+  const [rangeError, setRangeError] = useState('');
+
+  const weeklySubjectTotals = buildWeeklySubjectTotals(selectedDate, plans, actuals);
+  const timelineEntries = buildStudyTimelineEntries(plans, actuals);
   const todayMinutes = calculateTodayStudyMinutes(selectedDate, plans, actuals);
   const weeklyMinutes = calculateWeeklyStudyMinutes(selectedDate, plans, actuals);
   const previousWeekMinutes = calculatePreviousWeeklyStudyMinutes(
@@ -45,11 +166,215 @@ export function ReportView({
     actuals,
   );
   const cumulativeMinutes = calculateCumulativeStudyMinutes(plans, actuals);
-  const weeklyMaxMinutes = Math.max(...weeklySeries.map((entry) => entry.minutes), 60);
-  const subjectMaxMinutes = Math.max(
-    ...weeklySubjectTotals.map((entry) => entry.minutes),
-    60,
+  const subjectDistributionEntries = useMemo<SubjectDistributionEntry[]>(() => {
+    if (weeklySubjectTotals.length === 0) {
+      return [];
+    }
+
+    const totalMinutes = weeklySubjectTotals.reduce((sum, entry) => sum + entry.minutes, 0);
+    const mainEntries = weeklySubjectTotals.slice(0, 5);
+    const otherMinutes = weeklySubjectTotals
+      .slice(5)
+      .reduce((sum, entry) => sum + entry.minutes, 0);
+    const mergedEntries =
+      otherMinutes > 0
+        ? [...mainEntries, { subject: 'その他', minutes: otherMinutes }]
+        : mainEntries;
+
+    return mergedEntries.map((entry) => ({
+      subject: entry.subject,
+      minutes: entry.minutes,
+      ratio: totalMinutes === 0 ? 0 : entry.minutes / totalMinutes,
+      color:
+        entry.subject === 'その他'
+          ? OTHER_SUBJECT_COLOR
+          : getSubjectTheme(entry.subject, 'study').fill,
+    }));
+  }, [weeklySubjectTotals]);
+  const subjectPieBackground = useMemo(() => {
+    if (subjectDistributionEntries.length === 0) {
+      return 'conic-gradient(rgba(31, 43, 43, 0.12) 0% 100%)';
+    }
+
+    let currentPercent = 0;
+    const segments = subjectDistributionEntries.map((entry) => {
+      const startPercent = currentPercent;
+      currentPercent += entry.ratio * 100;
+      return `${entry.color} ${startPercent.toFixed(2)}% ${currentPercent.toFixed(2)}%`;
+    });
+
+    return `conic-gradient(${segments.join(', ')})`;
+  }, [subjectDistributionEntries]);
+
+  useEffect(() => {
+    const nextDaily = createInitialDailyRange(selectedDate);
+    const nextWeekly = createInitialWeeklyRange(selectedDate);
+    const nextMonthly = createInitialMonthlyRange(selectedDate);
+
+    setDailyRange(nextDaily);
+    setDailyDraft(nextDaily);
+    setWeeklyRange(nextWeekly);
+    setWeeklyDraft(nextWeekly);
+    setMonthlyRange(nextMonthly);
+    setMonthlyDraft(nextMonthly);
+    setRangeError('');
+  }, [selectedDate]);
+
+  const chartEntries = useMemo<ChartEntry[]>(() => {
+    switch (chartMode) {
+      case 'weekly':
+        return buildWeeklyStudySeriesInRange(
+          weeklyRange.start,
+          weeklyRange.end,
+          plans,
+          actuals,
+        ).map((entry) => ({
+          id: entry.startDate,
+          date: entry.startDate,
+          minutes: entry.minutes,
+          label: formatCompactDate(entry.startDate),
+          sublabel: `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)}`,
+          interactive: false,
+        }));
+      case 'monthly':
+        return buildMonthlyStudySeriesInRange(
+          monthlyRange.start,
+          monthlyRange.end,
+          plans,
+          actuals,
+        ).map((entry) => ({
+          id: entry.startDate,
+          date: entry.startDate,
+          minutes: entry.minutes,
+          label: formatMonthLabel(entry.startDate).replace(/^\d+年/, ''),
+          sublabel: entry.startDate.slice(0, 4),
+          interactive: false,
+        }));
+      case 'daily':
+      default:
+        return buildDailyStudySeriesInRange(
+          dailyRange.start,
+          dailyRange.end,
+          plans,
+          actuals,
+        ).map((entry) => ({
+          id: entry.date,
+          date: entry.date,
+          minutes: entry.minutes,
+          label: getWeekdayLabel(entry.date),
+          sublabel: formatCompactDate(entry.date),
+          interactive: true,
+        }));
+    }
+  }, [
+    actuals,
+    chartMode,
+    dailyRange.end,
+    dailyRange.start,
+    monthlyRange.end,
+    monthlyRange.start,
+    plans,
+    weeklyRange.end,
+    weeklyRange.start,
+  ]);
+
+  const chartMaxMinutes = Math.max(...chartEntries.map((entry) => entry.minutes), 60);
+  const chartTickValues = useMemo(
+    () => buildChartTickValues(chartMaxMinutes),
+    [chartMaxMinutes],
   );
+  const chartAxisMax = chartTickValues[0] ?? 60;
+  const chartGridWidth = useMemo(
+    () => buildChartGridWidth(chartEntries.length),
+    [chartEntries.length],
+  );
+  const chartHeading =
+    chartMode === 'daily'
+      ? '日別の学習時間'
+      : chartMode === 'weekly'
+        ? '週別の学習時間'
+        : '月別の学習時間';
+  const chartDescription =
+    chartMode === 'daily'
+      ? '直近7日を起点に、何日から何日まででも見られます。'
+      : chartMode === 'weekly'
+        ? '直近6週間を起点に、何日から何日まででも見られます。'
+        : '直近6か月を起点に、何月から何月まででも見られます。';
+
+  const currentRangeLabel =
+    chartMode === 'monthly'
+      ? `${formatMonthLabel(monthlyRange.start)} - ${formatMonthLabel(monthlyRange.end)}`
+      : chartMode === 'daily'
+        ? `${formatCompactDate(dailyRange.start)} - ${formatCompactDate(dailyRange.end)}`
+        : `${formatCompactDate(weeklyRange.start)} - ${formatCompactDate(weeklyRange.end)}`;
+
+  function shiftRange(direction: -1 | 1) {
+    setRangeError('');
+
+    if (chartMode === 'daily') {
+      const nextRange = {
+        start: addDays(dailyRange.start, direction * 7),
+        end: addDays(dailyRange.end, direction * 7),
+      };
+      setDailyRange(nextRange);
+      setDailyDraft(nextRange);
+      return;
+    }
+
+    if (chartMode === 'weekly') {
+      const nextRange = {
+        start: addDays(weeklyRange.start, direction * 7),
+        end: addDays(weeklyRange.end, direction * 7),
+      };
+      setWeeklyRange(nextRange);
+      setWeeklyDraft(nextRange);
+      return;
+    }
+
+    const nextRange = {
+      start: addMonths(monthlyRange.start, direction),
+      end: addMonths(monthlyRange.end, direction),
+    };
+    setMonthlyRange(nextRange);
+    setMonthlyDraft(nextRange);
+  }
+
+  function applyRangeSelection() {
+    setRangeError('');
+
+    if (chartMode === 'daily') {
+      if (dailyDraft.start.localeCompare(dailyDraft.end) > 0) {
+        setRangeError('開始日は終了日以前にしてください。');
+        return;
+      }
+
+      setDailyRange(dailyDraft);
+      return;
+    }
+
+    if (chartMode === 'weekly') {
+      if (weeklyDraft.start.localeCompare(weeklyDraft.end) > 0) {
+        setRangeError('開始日は終了日以前にしてください。');
+        return;
+      }
+
+      setWeeklyRange(weeklyDraft);
+      return;
+    }
+
+    const normalizedRange = {
+      start: startOfMonth(monthlyDraft.start),
+      end: startOfMonth(monthlyDraft.end),
+    };
+
+    if (normalizedRange.start.localeCompare(normalizedRange.end) > 0) {
+      setRangeError('開始月は終了月以前にしてください。');
+      return;
+    }
+
+    setMonthlyRange(normalizedRange);
+    setMonthlyDraft(normalizedRange);
+  }
 
   return (
     <section className="section-stack">
@@ -94,31 +419,185 @@ export function ReportView({
         <section className="panel report-card">
           <div className="section-header">
             <div>
-              <h2>1週間の学習時間</h2>
-              <p>日ごとの勉強時間を棒グラフで見ます。</p>
+              <h2>{chartHeading}</h2>
+              <p>{chartDescription}</p>
+            </div>
+            <div className="segmented-control">
+              <button
+                className={chartMode === 'daily' ? 'segment active' : 'segment'}
+                onClick={() => setChartMode('daily')}
+                type="button"
+              >
+                日別
+              </button>
+              <button
+                className={chartMode === 'weekly' ? 'segment active' : 'segment'}
+                onClick={() => setChartMode('weekly')}
+                type="button"
+              >
+                週別
+              </button>
+              <button
+                className={chartMode === 'monthly' ? 'segment active' : 'segment'}
+                onClick={() => setChartMode('monthly')}
+                type="button"
+              >
+                月別
+              </button>
             </div>
           </div>
 
-          <div className="weekly-bars">
-            {weeklySeries.map((entry) => (
-              <button
-                key={entry.date}
-                className="weekly-bar-item"
-                onClick={() => onOpenDay(entry.date)}
-                type="button"
-              >
-                <span className="weekly-bar-value">{formatMinutes(entry.minutes)}</span>
-                <div className="weekly-bar-track">
-                  <div
-                    className="weekly-bar-fill"
-                    style={{
-                      height: `${Math.max((entry.minutes / weeklyMaxMinutes) * 100, 6)}%`,
-                    }}
-                  />
-                </div>
-                <span className="weekly-bar-label">{getWeekdayLabel(entry.date)}</span>
+          <div className="report-range-toolbar">
+            <div className="row-actions">
+              <button className="ghost-button" onClick={() => shiftRange(-1)} type="button">
+                {chartMode === 'monthly' ? '前の月' : '前の週'}
               </button>
-            ))}
+              <span className="week-range-chip">{currentRangeLabel}</span>
+              <button className="ghost-button" onClick={() => shiftRange(1)} type="button">
+                {chartMode === 'monthly' ? '次の月' : '次の週'}
+              </button>
+            </div>
+
+            <div className="report-range-form">
+              {chartMode === 'monthly' ? (
+                <>
+                  <label className="field">
+                    <span>開始月</span>
+                    <input
+                      type="month"
+                      value={monthlyDraft.start.slice(0, 7)}
+                      onChange={(event) =>
+                        setMonthlyDraft((current) => ({
+                          ...current,
+                          start: `${event.target.value}-01`,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>終了月</span>
+                    <input
+                      type="month"
+                      value={monthlyDraft.end.slice(0, 7)}
+                      onChange={(event) =>
+                        setMonthlyDraft((current) => ({
+                          ...current,
+                          end: `${event.target.value}-01`,
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="field">
+                    <span>開始日</span>
+                    <input
+                      type="date"
+                      value={chartMode === 'daily' ? dailyDraft.start : weeklyDraft.start}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+
+                        if (chartMode === 'daily') {
+                          setDailyDraft((current) => ({ ...current, start: nextValue }));
+                          return;
+                        }
+
+                        setWeeklyDraft((current) => ({ ...current, start: nextValue }));
+                      }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>終了日</span>
+                    <input
+                      type="date"
+                      value={chartMode === 'daily' ? dailyDraft.end : weeklyDraft.end}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+
+                        if (chartMode === 'daily') {
+                          setDailyDraft((current) => ({ ...current, end: nextValue }));
+                          return;
+                        }
+
+                        setWeeklyDraft((current) => ({ ...current, end: nextValue }));
+                      }}
+                    />
+                  </label>
+                </>
+              )}
+              <button className="ghost-button" onClick={applyRangeSelection} type="button">
+                期間を反映
+              </button>
+            </div>
+          </div>
+
+          {rangeError ? <p className="inline-error">{rangeError}</p> : null}
+
+          <div className="report-bar-chart-shell">
+            <div className="report-bar-chart-axis">
+              {chartTickValues.map((tickValue) => (
+                <div key={tickValue} className="report-bar-chart-axis-tick">
+                  <span className="report-bar-chart-axis-label">
+                    {formatChartTick(tickValue)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="report-bar-chart-scroll">
+              <div className="report-bar-chart-grid" style={{ width: chartGridWidth }}>
+                {chartTickValues.map((tickValue) => (
+                  <div key={tickValue} className="report-bar-chart-grid-line" />
+                ))}
+
+                <div
+                  className="report-bar-chart-bars"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.max(chartEntries.length, 1)}, minmax(${REPORT_BAR_MIN_WIDTH}px, 1fr))`,
+                  }}
+                >
+                  {chartEntries.map((entry) => {
+                    const barHeight =
+                      entry.minutes === 0
+                        ? '0%'
+                        : `${(entry.minutes / chartAxisMax) * 100}%`;
+
+                    const barBody = (
+                      <>
+                        <span className="report-bar-value">{formatMinutes(entry.minutes)}</span>
+                        <div className="report-bar-column-track">
+                          <div
+                            className="report-bar-column-fill"
+                            style={{
+                              height: barHeight,
+                              minHeight: entry.minutes > 0 ? '3px' : '0',
+                            }}
+                          />
+                        </div>
+                        <span className="report-bar-label">{entry.label}</span>
+                        <span className="report-bar-sublabel">{entry.sublabel}</span>
+                      </>
+                    );
+
+                    return entry.interactive ? (
+                      <button
+                        key={entry.id}
+                        className="report-bar-item"
+                        onClick={() => onOpenDay(entry.date)}
+                        type="button"
+                      >
+                        {barBody}
+                      </button>
+                    ) : (
+                      <div key={entry.id} className="report-bar-item">
+                        {barBody}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -130,31 +609,44 @@ export function ReportView({
             </div>
           </div>
 
-          {weeklySubjectTotals.length > 0 ? (
-            <div className="subject-breakdown-list">
-              {weeklySubjectTotals.map((entry) => {
-                const theme = getSubjectTheme(entry.subject, 'study');
-                return (
-                  <div key={entry.subject} className="subject-breakdown-item">
-                    <div className="label-row">
+          {subjectDistributionEntries.length > 0 ? (
+            <div className="report-pie-layout">
+              <div className="report-pie-chart-wrap">
+                <div
+                  className="report-pie-chart"
+                  style={{ backgroundImage: subjectPieBackground }}
+                  role="img"
+                  aria-label={subjectDistributionEntries
+                    .map(
+                      (entry) =>
+                        `${entry.subject} ${formatMinutes(entry.minutes)} ${Math.round(
+                          entry.ratio * 100,
+                        )}%`,
+                    )
+                    .join('、')}
+                />
+                <div className="report-pie-total">
+                  <strong>{formatMinutes(weeklyMinutes)}</strong>
+                  <span>週間合計</span>
+                </div>
+              </div>
+
+              <div className="report-pie-legend">
+                {subjectDistributionEntries.map((entry) => (
+                  <div key={entry.subject} className="report-pie-legend-item">
+                    <span
+                      className="report-pie-legend-dot"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <div className="report-pie-legend-body">
                       <strong>{entry.subject}</strong>
-                      <span>{formatMinutes(entry.minutes)}</span>
-                    </div>
-                    <div className="subject-breakdown-track">
-                      <div
-                        className="subject-breakdown-fill"
-                        style={{
-                          width: `${Math.max(
-                            (entry.minutes / subjectMaxMinutes) * 100,
-                            8,
-                          )}%`,
-                          backgroundColor: theme.fill,
-                        }}
-                      />
+                      <span>
+                        {formatMinutes(entry.minutes)} / {Math.round(entry.ratio * 100)}%
+                      </span>
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           ) : (
             <p className="empty-copy">週間の実績がまだありません。</p>
@@ -166,12 +658,12 @@ export function ReportView({
         <div className="section-header">
           <div>
             <h2>学習履歴</h2>
-            <p>最近の学習内容をタイムラインで振り返ります。</p>
+            <p>直近5件を中心に見て、それ以前はスクロールで振り返ります。</p>
           </div>
         </div>
 
         {timelineEntries.length > 0 ? (
-          <div className="report-timeline">
+          <div className="report-timeline report-timeline-scroll">
             {timelineEntries.map((entry) => (
               <button
                 key={entry.id}

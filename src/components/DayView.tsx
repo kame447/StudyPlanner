@@ -180,36 +180,48 @@ export function DayView({
   return (
     <section className="section-stack">
       <div className="panel day-hero-panel">
-        <div className="section-header">
+        <div className="view-header-stack">
           <div>
+          <div className="view-titlebar">
             <h2>日ビュー</h2>
-            <p>{formatDateLabel(selectedDate)} の予定、実績、振り返りをまとめて見ます。</p>
+            <div className="view-title-actions print-hide">
+              <div className="nav-actions view-title-nav">
+                <button
+                  className="ghost-button"
+                  onClick={() => onChangeDay(addDays(selectedDate, -1))}
+                  type="button"
+                >
+                  前日
+                </button>
+                <button
+                  className="primary-button"
+                  onClick={() => openPlanInput('manual')}
+                  type="button"
+                >
+                  予定を追加
+                </button>
+                <button
+                  className="ghost-button"
+                  onClick={() => onChangeDay(addDays(selectedDate, 1))}
+                  type="button"
+                >
+                  翌日
+                </button>
+              </div>
+              <button
+                className="ghost-button view-print-button"
+                onClick={() => window.print()}
+                type="button"
+              >
+                印刷
+              </button>
+            </div>
           </div>
-
-          <div className="nav-actions">
-            <button
-              className="ghost-button"
-              onClick={() => onChangeDay(addDays(selectedDate, -1))}
-              type="button"
-            >
-              前日
-            </button>
-            <button
-              className="primary-button"
-              onClick={() => openPlanInput('manual')}
-              type="button"
-            >
-              予定を追加
-            </button>
-            <button
-              className="ghost-button"
-              onClick={() => onChangeDay(addDays(selectedDate, 1))}
-              type="button"
-            >
-              翌日
-            </button>
-          </div>
+          <p className="print-hide">
+            {formatDateLabel(selectedDate)} の予定、実績、振り返りをまとめて見ます。
+          </p>
         </div>
+      </div>
 
         <div className="day-summary">
           <div className="summary-chip">
@@ -332,7 +344,7 @@ export function DayView({
         }
       />
 
-      <div className="day-review-layout">
+      <div className="day-review-layout day-review-layout-print-hide">
         <DayNotebookPanel
           dayNote={dayNote}
           plannedMinutes={dayPlannedMinutes}

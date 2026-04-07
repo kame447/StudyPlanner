@@ -137,8 +137,8 @@ function buildColumnBlockStyle(
   const laneWidth = columnWidth / Math.max(laneCount, 1);
 
   return {
-    top: `${(topMinutes / 60) * HOUR_HEIGHT}px`,
-    height: `${Math.max((durationMinutes / 60) * HOUR_HEIGHT, MIN_BLOCK_HEIGHT)}px`,
+    top: `calc(${topMinutes} * var(--timeline-hour-height) / 60)`,
+    height: `max(calc(${durationMinutes} * var(--timeline-hour-height) / 60), var(--timeline-min-block-height))`,
     left: `calc(${baseLeft + lane * laneWidth}% + 8px)`,
     width: `calc(${laneWidth}% - 16px)`,
   };
@@ -234,7 +234,7 @@ export function DayTimeline({
       <div className="section-header">
         <div>
           <h2>24時間スケジュール</h2>
-          <p>左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
+          <p className="print-hide">左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
         </div>
         <div className="timeline-legend">
           <span className="timeline-legend-item">
@@ -264,7 +264,7 @@ export function DayTimeline({
               <div
                 key={hour}
                 className="timeline-hour-label"
-                style={{ height: `${HOUR_HEIGHT}px` }}
+                style={{ height: 'var(--timeline-hour-height)' }}
               >
                 {hour.toString().padStart(2, '0')}:00
               </div>
@@ -279,13 +279,13 @@ export function DayTimeline({
 
             <div
               className="timeline-canvas split"
-              style={{ height: `${24 * HOUR_HEIGHT}px` }}
+              style={{ height: 'calc(24 * var(--timeline-hour-height))' }}
             >
               {Array.from({ length: 24 }, (_, index) => (
                 <div
                   key={index}
                   className="timeline-grid-line"
-                  style={{ top: `${index * HOUR_HEIGHT}px` }}
+                  style={{ top: `calc(${index} * var(--timeline-hour-height))` }}
                 />
               ))}
 

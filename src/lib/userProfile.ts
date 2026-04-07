@@ -1,4 +1,5 @@
 import type { User } from '../types/domain';
+import { isImageAvatar } from './avatarImage';
 
 export const AVATAR_OPTIONS = ['📚', '✏️', '🧠', '🌱', '🚀', '☕', '🦉', '🌙'] as const;
 
@@ -9,7 +10,7 @@ export function getUserDisplayName(user: Pick<User, 'username' | 'email'>): stri
 export function getUserAvatarText(user: Pick<User, 'avatar' | 'username' | 'email'>): string {
   const avatar = user.avatar.trim();
 
-  if (avatar) {
+  if (avatar && !isImageAvatar(avatar)) {
     return avatar;
   }
 

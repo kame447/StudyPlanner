@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addMonths,
   formatCompactDate,
   formatMinutes,
   formatMonthLabel,
   getCalendarDayTone,
+  getJapaneseHolidayName,
   getMonthWeeks,
   getWeekdayLabels,
   minutesBetween,
@@ -48,6 +49,8 @@ export function MonthView({
 }: MonthViewProps) {
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
+  const shouldFocusSelectedCell = useRef(false);
   const weeks = getMonthWeeks(monthDate);
   const grid = useMemo(
     () =>
@@ -60,6 +63,10 @@ export function MonthView({
     [monthDate, weeks],
   );
   const selectedWeek = startOfWeek(selectedDate);
+  const gridIndexByDate = useMemo(
+    () => new Map(grid.map((cell, index) => [cell.date, index])),
+    [grid],
+  );
   const plansById = useMemo(
     () => new Map(plans.map((plan) => [plan.id, plan])),
     [plans],
@@ -100,39 +107,149 @@ export function MonthView({
     return totals;
   }, [actuals, plansById]);
 
+  const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
+    if (node) {
+      cellRefs.current.set(date, node);
+      return;
+    }
+
+    cellRefs.current.delete(date);
+  }, []);
+
+  useEffect(() => {
+    if (!shouldFocusSelectedCell.current) {
+      return;
+    }
+
+    cellRefs.current.get(selectedDate)?.focus();
+    shouldFocusSelectedCell.current = false;
+  }, [selectedDate, monthDate]);
+
+  const moveSelectionByKeyboard = useCallback((currentDate: string, offset: number) => {
+    const currentIndex = gridIndexByDate.get(currentDate);
+
+    if (currentIndex === undefined) {
+      return;
+    }
+
+    const nextIndex = currentIndex + offset;
+
+    if (nextIndex < 0 || nextIndex >= grid.length) {
+      return;
+    }
+
+    const nextDate = grid[nextIndex]?.date;
+
+    if (!nextDate) {
+      return;
+    }
+
+    shouldFocusSelectedCell.current = true;
+    onSelectDate(nextDate);
+  }, [grid, gridIndexByDate, onSelectDate]);
+
+  function openMonthEventEditor(date: string) {
+    onSelectDate(date);
+    setEventModalDate(date);
+  }
+
+  useEffect(() => {
+    function handleWindowKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (eventModalDate || isMonthPickerOpen) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (target instanceof HTMLElement) {
+        const tagName = target.tagName.toLowerCase();
+        const isTypingField =
+          tagName === 'input' ||
+          tagName === 'textarea' ||
+          tagName === 'select' ||
+          target.isContentEditable;
+
+        if (isTypingField) {
+          return;
+        }
+      }
+
+      switch (event.key) {
+        case 'ArrowLeft':
+          event.preventDefault();
+          moveSelectionByKeyboard(selectedDate, -1);
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          moveSelectionByKeyboard(selectedDate, 1);
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          moveSelectionByKeyboard(selectedDate, -7);
+          break;
+        case 'ArrowDown':
+          event.preventDefault();
+          moveSelectionByKeyboard(selectedDate, 7);
+          break;
+        default:
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [eventModalDate, isMonthPickerOpen, moveSelectionByKeyboard, selectedDate]);
+
   return (
     <section className="panel">
-      <div className="section-header">
+      <div className="view-header-stack">
         <div>
-          <h2>月ビュー</h2>
-        </div>
-
-        <div className="nav-actions">
-          <button
-            className="ghost-button"
-            onClick={() => onChangeMonth(addMonths(monthDate, -1))}
-            type="button"
-          >
-            前の月
-          </button>
-          <button
-            className="ghost-button month-picker-trigger"
-            onClick={() => setIsMonthPickerOpen(true)}
-            type="button"
-          >
-            {formatMonthLabel(monthDate)}
-          </button>
-          <button
-            className="ghost-button"
-            onClick={() => onChangeMonth(addMonths(monthDate, 1))}
-            type="button"
-          >
-            次の月
-          </button>
+          <div className="view-titlebar">
+            <h2>月ビュー</h2>
+            <div className="view-title-actions print-hide">
+              <div className="nav-actions view-title-nav">
+                <button
+                  className="ghost-button"
+                  onClick={() => onChangeMonth(addMonths(monthDate, -1))}
+                  type="button"
+                >
+                  前の月
+                </button>
+                <button
+                  className="ghost-button month-picker-trigger"
+                  onClick={() => setIsMonthPickerOpen(true)}
+                  type="button"
+                >
+                  {formatMonthLabel(monthDate)}
+                </button>
+                <button
+                  className="ghost-button"
+                  onClick={() => onChangeMonth(addMonths(monthDate, 1))}
+                  type="button"
+                >
+                  次の月
+                </button>
+              </div>
+              <button
+                className="ghost-button view-print-button"
+                onClick={() => window.print()}
+                type="button"
+              >
+                印刷
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="week-chip-row">
+      <div className="week-chip-row month-week-chip-row print-hide">
         {weeks.map((week) => (
           <button
             key={week.startDate}
@@ -170,6 +287,7 @@ export function MonthView({
 
         {grid.map((cell) => {
           const dayTone = getCalendarDayTone(cell.date);
+          const holidayName = getJapaneseHolidayName(cell.date);
           const targetMinutes = studyPlanMinutesByDate.get(cell.date) ?? 0;
           const actualMinutes = actualStudyMinutesByDate.get(cell.date) ?? 0;
           const visibleMonthEvents = sortMonthEvents(
@@ -188,10 +306,41 @@ export function MonthView({
             <button
               key={cell.date}
               className={cellClassName}
+              ref={(node) => registerCellRef(cell.date, node)}
               onClick={() => {
                 onSelectDate(cell.date);
-                setEventModalDate(cell.date);
               }}
+              onDoubleClick={() => {
+                openMonthEventEditor(cell.date);
+              }}
+              onKeyDown={(event) => {
+                switch (event.key) {
+                  case 'Enter':
+                    event.preventDefault();
+                    openMonthEventEditor(cell.date);
+                    break;
+                  case 'ArrowLeft':
+                    event.preventDefault();
+                    moveSelectionByKeyboard(cell.date, -1);
+                    break;
+                  case 'ArrowRight':
+                    event.preventDefault();
+                    moveSelectionByKeyboard(cell.date, 1);
+                    break;
+                  case 'ArrowUp':
+                    event.preventDefault();
+                    moveSelectionByKeyboard(cell.date, -7);
+                    break;
+                  case 'ArrowDown':
+                    event.preventDefault();
+                    moveSelectionByKeyboard(cell.date, 7);
+                    break;
+                  default:
+                    break;
+                }
+              }}
+              tabIndex={cell.date === selectedDate ? 0 : -1}
+              aria-selected={cell.date === selectedDate}
               type="button"
             >
               <div className="month-cell-head">
@@ -206,6 +355,11 @@ export function MonthView({
                 >
                   {formatCompactDate(cell.date)}
                 </strong>
+                {holidayName ? (
+                  <span className="month-holiday-label" title={holidayName}>
+                    {holidayName}
+                  </span>
+                ) : null}
                 {cell.date === selectedDate ? <span className="today-dot" /> : null}
               </div>
 

@@ -69,7 +69,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header hero-card">
+      <header className="app-header hero-card print-hide">
         <StudyPlannerLogo />
 
         <div className="header-actions">
@@ -82,13 +82,10 @@ export default function App() {
             <span>マイページ</span>
           </button>
           <div className="user-badge">{getUserDisplayName(user)}</div>
-          <button className="ghost-button" onClick={() => void signOut()} type="button">
-            ログアウト
-          </button>
         </div>
       </header>
 
-      <div className="toolbar panel">
+      <div className="toolbar panel print-hide">
         <div className="segmented-control">
           <button
             className={viewMode === 'month' ? 'segment active' : 'segment'}
@@ -209,6 +206,7 @@ export default function App() {
         themeMode={themeMode}
         onChangeTheme={setThemeMode}
         onSaveProfile={saveUserProfile}
+        onSignOut={signOut}
         onClose={() => setIsMyPageOpen(false)}
       />
     </div>

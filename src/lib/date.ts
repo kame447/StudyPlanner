@@ -1,5 +1,6 @@
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
 const JAPANESE_HOLIDAY_CACHE = new Map<number, Set<string>>();
+const JAPANESE_HOLIDAY_NAME_CACHE = new Map<number, Map<string, string>>();
 
 function toLocalDate(dateString: string): Date {
   return new Date(`${dateString}T00:00:00`);
@@ -160,97 +161,145 @@ function getAutumnalEquinoxDay(year: number): number {
   return Math.floor(base + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
 }
 
-function buildBaseJapaneseHolidays(year: number): Set<string> {
-  const holidays = new Set<string>();
+function addHolidayName(
+  holidays: Set<string>,
+  holidayNames: Map<string, string>,
+  dateKey: string,
+  name: string,
+) {
+  holidays.add(dateKey);
+  holidayNames.set(dateKey, name);
+}
 
-  holidays.add(toDateKey(year, 1, 1));
+function buildBaseJapaneseHolidays(year: number): {
+  holidays: Set<string>;
+  holidayNames: Map<string, string>;
+} {
+  const holidays = new Set<string>();
+  const holidayNames = new Map<string, string>();
+
+  addHolidayName(holidays, holidayNames, toDateKey(year, 1, 1), '元日');
 
   if (year >= 2000) {
-    holidays.add(getNthWeekdayDateKey(year, 1, 1, 2));
+    addHolidayName(
+      holidays,
+      holidayNames,
+      getNthWeekdayDateKey(year, 1, 1, 2),
+      '成人の日',
+    );
   } else if (year >= 1949) {
-    holidays.add(toDateKey(year, 1, 15));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 1, 15), '成人の日');
   }
 
   if (year >= 1967) {
-    holidays.add(toDateKey(year, 2, 11));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 2, 11), '建国記念の日');
   }
 
   if (year >= 2020) {
-    holidays.add(toDateKey(year, 2, 23));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 2, 23), '天皇誕生日');
   } else if (year >= 1989 && year <= 2018) {
-    holidays.add(toDateKey(year, 12, 23));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 12, 23), '天皇誕生日');
   }
 
   if (year >= 1949) {
-    holidays.add(toDateKey(year, 3, getVernalEquinoxDay(year)));
+    addHolidayName(
+      holidays,
+      holidayNames,
+      toDateKey(year, 3, getVernalEquinoxDay(year)),
+      '春分の日',
+    );
   }
 
   if (year >= 1949) {
-    holidays.add(toDateKey(year, 4, 29));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 4, 29), '昭和の日');
   }
 
-  holidays.add(toDateKey(year, 5, 3));
+  addHolidayName(holidays, holidayNames, toDateKey(year, 5, 3), '憲法記念日');
 
   if (year >= 2007) {
-    holidays.add(toDateKey(year, 5, 4));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 5, 4), 'みどりの日');
   }
 
-  holidays.add(toDateKey(year, 5, 5));
+  addHolidayName(holidays, holidayNames, toDateKey(year, 5, 5), 'こどもの日');
 
   if (year === 2020) {
-    holidays.add(toDateKey(year, 7, 23));
-    holidays.add(toDateKey(year, 7, 24));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 7, 23), '海の日');
+    addHolidayName(holidays, holidayNames, toDateKey(year, 7, 24), 'スポーツの日');
   } else if (year === 2021) {
-    holidays.add(toDateKey(year, 7, 22));
-    holidays.add(toDateKey(year, 7, 23));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 7, 22), '海の日');
+    addHolidayName(holidays, holidayNames, toDateKey(year, 7, 23), 'スポーツの日');
   } else if (year >= 2003) {
-    holidays.add(getNthWeekdayDateKey(year, 7, 1, 3));
+    addHolidayName(
+      holidays,
+      holidayNames,
+      getNthWeekdayDateKey(year, 7, 1, 3),
+      '海の日',
+    );
   } else if (year >= 1996) {
-    holidays.add(toDateKey(year, 7, 20));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 7, 20), '海の日');
   }
 
   if (year === 2020) {
-    holidays.add(toDateKey(year, 8, 10));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 8, 10), '山の日');
   } else if (year === 2021) {
-    holidays.add(toDateKey(year, 8, 8));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 8, 8), '山の日');
   } else if (year >= 2016) {
-    holidays.add(toDateKey(year, 8, 11));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 8, 11), '山の日');
   }
 
   if (year >= 2003) {
-    holidays.add(getNthWeekdayDateKey(year, 9, 1, 3));
+    addHolidayName(
+      holidays,
+      holidayNames,
+      getNthWeekdayDateKey(year, 9, 1, 3),
+      '敬老の日',
+    );
   } else if (year >= 1966) {
-    holidays.add(toDateKey(year, 9, 15));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 9, 15), '敬老の日');
   }
 
   if (year >= 1948) {
-    holidays.add(toDateKey(year, 9, getAutumnalEquinoxDay(year)));
+    addHolidayName(
+      holidays,
+      holidayNames,
+      toDateKey(year, 9, getAutumnalEquinoxDay(year)),
+      '秋分の日',
+    );
   }
 
-  if (year === 2020) {
-    holidays.add(toDateKey(year, 7, 24));
-  } else if (year === 2021) {
-    holidays.add(toDateKey(year, 7, 23));
-  } else if (year >= 2020) {
-    holidays.add(getNthWeekdayDateKey(year, 10, 1, 2));
-  } else if (year >= 2000) {
-    holidays.add(getNthWeekdayDateKey(year, 10, 1, 2));
+  if (year >= 2022) {
+    addHolidayName(
+      holidays,
+      holidayNames,
+      getNthWeekdayDateKey(year, 10, 1, 2),
+      'スポーツの日',
+    );
+  } else if (year >= 2000 && year !== 2020 && year !== 2021) {
+    addHolidayName(
+      holidays,
+      holidayNames,
+      getNthWeekdayDateKey(year, 10, 1, 2),
+      '体育の日',
+    );
   } else if (year >= 1966) {
-    holidays.add(toDateKey(year, 10, 10));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 10, 10), '体育の日');
   }
 
-  holidays.add(toDateKey(year, 11, 3));
-  holidays.add(toDateKey(year, 11, 23));
+  addHolidayName(holidays, holidayNames, toDateKey(year, 11, 3), '文化の日');
+  addHolidayName(holidays, holidayNames, toDateKey(year, 11, 23), '勤労感謝の日');
 
   if (year === 2019) {
-    holidays.add(toDateKey(year, 5, 1));
-    holidays.add(toDateKey(year, 10, 22));
+    addHolidayName(holidays, holidayNames, toDateKey(year, 5, 1), '天皇の即位の日');
+    addHolidayName(holidays, holidayNames, toDateKey(year, 10, 22), '即位礼正殿の儀');
   }
 
-  return holidays;
+  return {
+    holidays,
+    holidayNames,
+  };
 }
 
-function addObservedHolidays(holidays: Set<string>) {
+function addObservedHolidays(holidays: Set<string>, holidayNames: Map<string, string>) {
   const baseHolidayKeys = [...holidays];
 
   baseHolidayKeys.forEach((holidayKey) => {
@@ -266,11 +315,20 @@ function addObservedHolidays(holidays: Set<string>) {
       observedDate.setDate(observedDate.getDate() + 1);
     } while (holidays.has(toIsoDate(observedDate)));
 
-    holidays.add(toIsoDate(observedDate));
+    addHolidayName(
+      holidays,
+      holidayNames,
+      toIsoDate(observedDate),
+      '振替休日',
+    );
   });
 }
 
-function addCitizensHolidays(year: number, holidays: Set<string>) {
+function addCitizensHolidays(
+  year: number,
+  holidays: Set<string>,
+  holidayNames: Map<string, string>,
+) {
   const date = new Date(`${year}-01-02T00:00:00`);
   const endDate = new Date(`${year}-12-30T00:00:00`);
 
@@ -288,7 +346,7 @@ function addCitizensHolidays(year: number, holidays: Set<string>) {
     nextDate.setDate(nextDate.getDate() + 1);
 
     if (holidays.has(toIsoDate(previousDate)) && holidays.has(toIsoDate(nextDate))) {
-      holidays.add(currentKey);
+      addHolidayName(holidays, holidayNames, currentKey, '国民の休日');
     }
 
     date.setDate(date.getDate() + 1);
@@ -296,29 +354,41 @@ function addCitizensHolidays(year: number, holidays: Set<string>) {
 }
 
 function getJapaneseHolidaySet(year: number): Set<string> {
+  const cachedHolidayNames = JAPANESE_HOLIDAY_NAME_CACHE.get(year);
   const cached = JAPANESE_HOLIDAY_CACHE.get(year);
 
-  if (cached) {
+  if (cached && cachedHolidayNames) {
     return cached;
   }
 
-  const holidays = buildBaseJapaneseHolidays(year);
+  const { holidays, holidayNames } = buildBaseJapaneseHolidays(year);
 
   if (year >= 1973) {
-    addObservedHolidays(holidays);
+    addObservedHolidays(holidays, holidayNames);
   }
 
   if (year >= 1986) {
-    addCitizensHolidays(year, holidays);
+    addCitizensHolidays(year, holidays, holidayNames);
   }
 
   JAPANESE_HOLIDAY_CACHE.set(year, holidays);
+  JAPANESE_HOLIDAY_NAME_CACHE.set(year, holidayNames);
   return holidays;
 }
 
 export function isJapaneseHoliday(dateString: string): boolean {
   const year = Number(dateString.slice(0, 4));
   return getJapaneseHolidaySet(year).has(dateString);
+}
+
+export function getJapaneseHolidayName(dateString: string): string | null {
+  const year = Number(dateString.slice(0, 4));
+
+  if (!JAPANESE_HOLIDAY_NAME_CACHE.has(year)) {
+    getJapaneseHolidaySet(year);
+  }
+
+  return JAPANESE_HOLIDAY_NAME_CACHE.get(year)?.get(dateString) ?? null;
 }
 
 export type CalendarDayTone = 'weekday' | 'saturday' | 'holiday';

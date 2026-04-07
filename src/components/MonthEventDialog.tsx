@@ -268,10 +268,7 @@ export function MonthEventDialog({
                 ))}
               </div>
             ) : (
-              <p className="detail-note">
-                この日に表示される主要予定はまだありません。TimeTree のイベント詳細にある
-                ような `繰り返し / 場所 / URL / メモ / To-do` を最小構成で入れられます。
-              </p>
+              <p className="detail-note">この日に表示される主要予定はまだありません。</p>
             )}
           </section>
 

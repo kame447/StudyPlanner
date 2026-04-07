@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
 import { AVATAR_OPTIONS, getUserDisplayName } from '../lib/userProfile';
 import type { ThemeMode } from '../hooks/useThemePreference';
 import type { User, UserProfileDraft } from '../types/domain';
@@ -10,6 +11,7 @@ interface MyPageDialogProps {
   themeMode: ThemeMode;
   onChangeTheme: (nextThemeMode: ThemeMode) => void;
   onSaveProfile: (draft: UserProfileDraft) => Promise<void>;
+  onSignOut: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -19,11 +21,14 @@ export function MyPageDialog({
   themeMode,
   onChangeTheme,
   onSaveProfile,
+  onSignOut,
   onClose,
 }: MyPageDialogProps) {
   const [username, setUsername] = useState(user.username);
   const [avatar, setAvatar] = useState(user.avatar);
   const [status, setStatus] = useState('');
+  const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -33,6 +38,7 @@ export function MyPageDialog({
     setUsername(user.username);
     setAvatar(user.avatar);
     setStatus('');
+    setStatusTone('info');
   }, [open, user.avatar, user.username]);
 
   if (!open) {
@@ -45,6 +51,32 @@ export function MyPageDialog({
       avatar,
     });
     setStatus('保存しました。');
+    setStatusTone('info');
+  }
+
+  async function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setStatus('画像を処理しています...');
+    setStatusTone('info');
+
+    try {
+      const avatarDataUrl = await createAvatarDataUrl(file);
+      setAvatar(avatarDataUrl);
+      setStatus('写真を読み込みました。保存すると反映されます。');
+      setStatusTone('info');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '写真を読み込めませんでした。',
+      );
+      setStatusTone('error');
+    } finally {
+      event.target.value = '';
+    }
   }
 
   return (
@@ -91,6 +123,34 @@ export function MyPageDialog({
 
             <div className="field">
               <span>アイコン</span>
+              <div className="avatar-upload-row">
+                <button
+                  className="ghost-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  type="button"
+                >
+                  写真を選ぶ
+                </button>
+                {isImageAvatar(avatar) ? (
+                  <button
+                    className="ghost-button"
+                    onClick={() => setAvatar('')}
+                    type="button"
+                  >
+                    写真を外す
+                  </button>
+                ) : null}
+                <input
+                  ref={fileInputRef}
+                  className="hidden-file-input"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleAvatarFileChange}
+                  type="file"
+                />
+              </div>
+              <p className="detail-note">
+                写真は自動で正方形に整えて小さめに保存します。
+              </p>
               <div className="avatar-option-grid">
                 <button
                   className={!avatar ? 'avatar-option active' : 'avatar-option'}
@@ -139,7 +199,14 @@ export function MyPageDialog({
             <button className="primary-button" onClick={() => void handleSaveProfile()} type="button">
               プロフィールを保存
             </button>
-            {status ? <span className="inline-note">{status}</span> : null}
+            <button className="ghost-button danger" onClick={() => void onSignOut()} type="button">
+              ログアウト
+            </button>
+            {status ? (
+              <span className={statusTone === 'error' ? 'inline-error' : 'inline-note'}>
+                {status}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
