@@ -45,6 +45,8 @@
   --notice-error-background: rgba(167, 63, 63, 0.09);
   --notice-error-border: rgba(167, 63, 63, 0.12);
   --month-cell-background: rgba(255, 255, 255, 0.72);
+  --calendar-saturday: #2f6fc2;
+  --calendar-holiday: #cc4b4b;
   --day-column-background: rgba(255, 255, 255, 0.62);
   --hero-panel-background: linear-gradient(
     180deg,
@@ -139,6 +141,8 @@
   --notice-error-background: rgba(167, 63, 63, 0.2);
   --notice-error-border: rgba(240, 154, 154, 0.24);
   --month-cell-background: rgba(24, 31, 35, 0.82);
+  --calendar-saturday: #6aa7ff;
+  --calendar-holiday: #ff8c8c;
   --day-column-background: rgba(24, 31, 35, 0.76);
   --hero-panel-background: linear-gradient(
     180deg,
@@ -426,6 +430,51 @@ h2 {
   align-items: center;
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 76px;
+  height: 76px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 12px 24px rgba(23, 109, 102, 0.18));
+}
+
+.brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand-kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.brand-name {
+  font-size: clamp(1.85rem, 4vw, 2.9rem);
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.brand-tagline {
+  color: var(--text-muted);
+  font-size: 0.94rem;
+}
+
 .user-badge,
 .summary-chip,
 .confidence-badge,
@@ -491,6 +540,27 @@ h2 {
   margin: 0;
   padding-left: 18px;
   color: var(--text-muted);
+}
+
+.tracking-tools-card {
+  gap: 16px;
+}
+
+.tracking-display {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.tracking-timer-row {
+  display: grid;
+  gap: 12px;
 }
 
 .type-badge,
@@ -567,6 +637,14 @@ h2 {
   color: var(--text-muted);
 }
 
+.month-weekday.is-saturday {
+  color: var(--calendar-saturday);
+}
+
+.month-weekday.is-holiday {
+  color: var(--calendar-holiday);
+}
+
 .month-cell {
   min-height: 140px;
   padding: 14px;
@@ -577,6 +655,12 @@ h2 {
   display: grid;
   align-content: start;
   gap: 10px;
+}
+
+.month-study-summary,
+.month-major-event-list {
+  display: grid;
+  gap: 6px;
 }
 
 .month-cell.is-muted {
@@ -592,6 +676,27 @@ h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.month-date-number.is-saturday {
+  color: var(--calendar-saturday);
+}
+
+.month-date-number.is-holiday {
+  color: var(--calendar-holiday);
+}
+
+.month-major-event-pill {
+  justify-content: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-event-more {
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 .today-dot {
@@ -1080,6 +1185,167 @@ h2 {
   margin-inline: auto;
 }
 
+.month-event-list-card,
+.month-event-checklist-card {
+  gap: 12px;
+}
+
+.month-picker-trigger {
+  min-width: 136px;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.month-picker-modal {
+  width: min(520px, 100%);
+}
+
+.month-wheel-picker {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.month-wheel-picker::before,
+.month-wheel-picker::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 56px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.month-wheel-picker::before {
+  top: 24px;
+  background: linear-gradient(180deg, var(--surface) 0%, transparent 100%);
+}
+
+.month-wheel-picker::after {
+  bottom: 0;
+  background: linear-gradient(0deg, var(--surface) 0%, transparent 100%);
+}
+
+.month-wheel-column {
+  position: relative;
+  display: grid;
+  gap: 10px;
+}
+
+.month-wheel-column::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: calc(50% + 16px);
+  height: 52px;
+  transform: translateY(-50%);
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-selected);
+  pointer-events: none;
+}
+
+.month-wheel-label {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.month-wheel-list {
+  height: 248px;
+  overflow-y: auto;
+  padding: 96px 0;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+
+.month-wheel-list::-webkit-scrollbar {
+  display: none;
+}
+
+.month-wheel-item {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 600;
+  scroll-snap-align: center;
+}
+
+.month-wheel-item.active {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.month-picker-actions {
+  justify-content: space-between;
+}
+
+.month-event-chip-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.month-event-chip {
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: inherit;
+  text-align: left;
+}
+
+.month-event-chip.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.month-event-chip strong {
+  font-size: 0.9rem;
+}
+
+.month-event-chip span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.month-event-checklist {
+  display: grid;
+  gap: 10px;
+}
+
+.month-event-checklist-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.month-event-checklist-item input[type='text'],
+.month-event-checklist-item input:not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  color: inherit;
+}
+
 @media (max-width: 1100px) {
   .day-layout,
   .day-review-layout,
@@ -1112,6 +1378,15 @@ h2 {
   .form-grid,
   .form-grid.compact {
     grid-template-columns: 1fr;
+  }
+
+  .brand-lockup {
+    width: 100%;
+  }
+
+  .brand-mark {
+    width: 62px;
+    height: 62px;
   }
 
   .timeline-shell {
@@ -1149,5 +1424,14 @@ h2 {
     padding: 18px;
     border-radius: 22px;
     margin-top: 0;
+  }
+
+  .month-wheel-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .month-picker-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

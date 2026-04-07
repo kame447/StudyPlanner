@@ -17,6 +17,9 @@ export function createPlannerRepository(
     async getDayNotes(userId) {
       return filterByUserId(await storageGateway.readDayNotes(), userId);
     },
+    async getMonthEvents(userId) {
+      return filterByUserId(await storageGateway.readMonthEvents(), userId);
+    },
     async upsertPlan(plan) {
       const nextPlans = replaceById(await storageGateway.readPlans(), plan);
       await storageGateway.writePlans(nextPlans);
@@ -60,6 +63,22 @@ export function createPlannerRepository(
 
       await storageGateway.writeDayNotes(nextDayNotes);
       return dayNote;
+    },
+    async upsertMonthEvent(monthEvent) {
+      const nextMonthEvents = replaceById(
+        await storageGateway.readMonthEvents(),
+        monthEvent,
+      );
+
+      await storageGateway.writeMonthEvents(nextMonthEvents);
+      return monthEvent;
+    },
+    async deleteMonthEvent(userId, monthEventId) {
+      const monthEvents = (await storageGateway.readMonthEvents()).filter(
+        (monthEvent) => !(monthEvent.userId === userId && monthEvent.id === monthEventId),
+      );
+
+      await storageGateway.writeMonthEvents(monthEvents);
     },
   };
 }

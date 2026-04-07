@@ -1,18 +1,25 @@
 import type { CSSProperties } from 'react';
 import { formatMinutes, minutesBetween, minutesFromTime } from '../lib/date';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
-import type { Actual, Plan, PlanType } from '../types/domain';
+import type { Actual, MonthEvent, Plan, PlanType } from '../types/domain';
 
 interface DayTimelineProps {
   plans: Plan[];
+  monthEvents: MonthEvent[];
   actuals: Actual[];
-  selectedPlanId?: string;
-  onSelectPlan: (planId: string) => void;
+  selectedEntryId?: string;
+  onSelectEntry: (entry: DayTimelineSelection) => void;
 }
+
+export type DayTimelineSelection =
+  | { kind: 'plan'; id: string }
+  | { kind: 'month-event'; id: string };
 
 interface TimelineEntry {
   id: string;
-  planId: string;
+  targetId: string;
+  selectionId: string;
+  entryKind: DayTimelineSelection['kind'];
   title: string;
   subject: string;
   type: PlanType;
@@ -159,21 +166,37 @@ function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
 
 export function DayTimeline({
   plans,
+  monthEvents,
   actuals,
-  selectedPlanId,
-  onSelectPlan,
+  selectedEntryId,
+  onSelectEntry,
 }: DayTimelineProps) {
   const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
   const planEntries = buildTimelineEntries(
-    plans.map((plan) => ({
-      id: plan.id,
-      planId: plan.id,
-      title: plan.title,
-      subject: plan.subject,
-      type: plan.type,
-      startTime: plan.startTime,
-      endTime: plan.endTime,
-    })),
+    [
+      ...plans.map((plan) => ({
+        id: plan.id,
+        targetId: plan.id,
+        selectionId: `plan:${plan.id}`,
+        entryKind: 'plan' as const,
+        title: plan.title,
+        subject: plan.subject,
+        type: plan.type,
+        startTime: plan.startTime,
+        endTime: plan.endTime,
+      })),
+      ...monthEvents.map((monthEvent) => ({
+        id: monthEvent.id,
+        targetId: monthEvent.id,
+        selectionId: `month-event:${monthEvent.id}`,
+        entryKind: 'month-event' as const,
+        title: monthEvent.title,
+        subject: '主要予定',
+        type: 'other' as const,
+        startTime: monthEvent.startTime,
+        endTime: monthEvent.endTime,
+      })),
+    ],
   );
   const actualEntries = buildTimelineEntries(
     plans.flatMap((plan) => {
@@ -186,7 +209,9 @@ export function DayTimeline({
       return [
         {
           id: actual.id,
-          planId: plan.id,
+          targetId: plan.id,
+          selectionId: `plan:${plan.id}`,
+          entryKind: 'plan' as const,
           title: resolveActualTitle(actual, plan),
           subject: resolveActualSubject(actual, plan),
           type: plan.type,
@@ -274,7 +299,7 @@ export function DayTimeline({
                   <button
                     key={entry.id}
                     className={
-                      selectedPlanId === entry.planId
+                      selectedEntryId === entry.selectionId
                         ? 'timeline-plan-block split is-selected'
                         : 'timeline-plan-block split'
                     }
@@ -285,11 +310,19 @@ export function DayTimeline({
                       entry.laneCount,
                       'plan',
                     )}
-                    onClick={() => onSelectPlan(entry.planId)}
+                    onClick={() =>
+                      onSelectEntry(
+                        entry.entryKind === 'plan'
+                          ? { kind: 'plan', id: entry.targetId }
+                          : { kind: 'month-event', id: entry.targetId },
+                      )
+                    }
                     type="button"
                   >
                     <div className="timeline-entry-row">
-                      <span className="timeline-chip neutral">予定</span>
+                      <span className="timeline-chip neutral">
+                        {entry.entryKind === 'plan' ? '予定' : '主要予定'}
+                      </span>
                       <div className="timeline-entry-line">
                         <strong>{entry.title}</strong>
                         <span className="timeline-inline-separator">/</span>
@@ -317,7 +350,7 @@ export function DayTimeline({
                   <button
                     key={entry.id}
                     className={
-                      selectedPlanId === entry.planId
+                      selectedEntryId === entry.selectionId
                         ? 'timeline-actual-block split is-selected'
                         : 'timeline-actual-block split'
                     }
@@ -334,7 +367,7 @@ export function DayTimeline({
                       color: theme.text,
                       boxShadow: `inset 5px 0 0 ${theme.fill}`,
                     }}
-                    onClick={() => onSelectPlan(entry.planId)}
+                    onClick={() => onSelectEntry({ kind: 'plan', id: entry.targetId })}
                     type="button"
                   >
                     <div className="timeline-entry-row">

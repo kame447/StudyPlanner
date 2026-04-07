@@ -69,6 +69,47 @@ export interface ActualDraft {
   note: string;
 }
 
+export type MonthEventRepeat = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export interface MonthEventChecklistItem {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
+export interface MonthEvent {
+  id: string;
+  userId: string;
+  date: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  repeat: MonthEventRepeat;
+  repeatUntil: string | null;
+  excludedDates: string[];
+  url: string;
+  memo: string;
+  checklist: MonthEventChecklistItem[];
+  locationTags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthEventDraft {
+  userId: string;
+  date: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  repeat: MonthEventRepeat;
+  repeatUntil: string | null;
+  excludedDates: string[];
+  url: string;
+  memo: string;
+  checklist: MonthEventChecklistItem[];
+  locationTags: string[];
+}
+
 export interface DayNote {
   id: string;
   userId: string;

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import { startOfMonth, todayIsoDate, isSameMonth, minutesBetween, sortByDateTime } from '../lib/date';
+import { sortMonthEvents } from '../lib/monthEvents';
 import { authRepository, plannerRepository } from '../repositories';
 import {
   createActualFromDraft,
   createDayNoteFromDraft,
+  createMonthEventFromDraft,
   createEmptyPlanDraft,
   createPlanDraftFromPlan,
   createPlanFromDraft,
@@ -16,6 +18,8 @@ import type {
   DayNote,
   DayNoteDraft,
   EmailChallenge,
+  MonthEvent,
+  MonthEventDraft,
   Plan,
   PlanDraft,
   User,
@@ -35,6 +39,7 @@ interface PlannerAppState {
   plans: Plan[];
   actuals: Actual[];
   dayNotes: DayNote[];
+  monthEvents: MonthEvent[];
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -54,6 +59,8 @@ interface PlannerAppState {
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
+  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   selectDate: (date: string) => void;
   changeMonth: (date: string) => void;
   openWeek: (date: string) => void;
@@ -68,6 +75,7 @@ export function usePlannerAppState(): PlannerAppState {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [actuals, setActuals] = useState<Actual[]>([]);
   const [dayNotes, setDayNotes] = useState<DayNote[]>([]);
+  const [monthEvents, setMonthEvents] = useState<MonthEvent[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
@@ -92,15 +100,17 @@ export function usePlannerAppState(): PlannerAppState {
   }, []);
 
   async function loadPlannerData(userId: string) {
-    const [nextPlans, nextActuals, nextDayNotes] = await Promise.all([
+    const [nextPlans, nextActuals, nextDayNotes, nextMonthEvents] = await Promise.all([
       plannerRepository.getPlans(userId),
       plannerRepository.getActuals(userId),
       plannerRepository.getDayNotes(userId),
+      plannerRepository.getMonthEvents(userId),
     ]);
 
     setPlans(sortByDateTime(nextPlans));
     setActuals(nextActuals);
     setDayNotes(nextDayNotes);
+    setMonthEvents(sortMonthEvents(nextMonthEvents));
   }
 
   function showNotice(text: string, tone: NoticeTone = 'info') {
@@ -141,6 +151,7 @@ export function usePlannerAppState(): PlannerAppState {
     setPlans([]);
     setActuals([]);
     setDayNotes([]);
+    setMonthEvents([]);
     setChallenge(null);
     showNotice('ログアウトしました。');
   }
@@ -238,6 +249,57 @@ export function usePlannerAppState(): PlannerAppState {
     showNotice('日次メモを保存しました。', 'success');
   }
 
+  async function saveMonthEvent(
+    draft: MonthEventDraft,
+    targetMonthEventId?: string,
+  ) {
+    if (!user) {
+      return;
+    }
+
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      showNotice('主要予定の終了時刻は開始時刻より後にしてください。', 'error');
+      return;
+    }
+
+    if (!draft.title.trim()) {
+      showNotice('主要予定のタイトルを入れてください。', 'error');
+      return;
+    }
+
+    const currentMonthEvent = monthEvents.find(
+      (monthEvent) => monthEvent.id === targetMonthEventId,
+    );
+    const nextMonthEvent = createMonthEventFromDraft(draft, currentMonthEvent);
+
+    await plannerRepository.upsertMonthEvent(nextMonthEvent);
+    setMonthEvents((current) =>
+      sortMonthEvents(upsertByKey(current, nextMonthEvent, (item) => item.id)),
+    );
+
+    if (!currentMonthEvent) {
+      setSelectedDate(nextMonthEvent.date);
+    }
+
+    setMonthDate(startOfMonth(nextMonthEvent.date));
+    showNotice(
+      currentMonthEvent ? '月の主要予定を更新しました。' : '月の主要予定を追加しました。',
+      'success',
+    );
+  }
+
+  async function deleteMonthEvent(monthEvent: MonthEvent) {
+    if (!user) {
+      return;
+    }
+
+    await plannerRepository.deleteMonthEvent(user.id, monthEvent.id);
+    setMonthEvents((current) =>
+      sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
+    );
+    showNotice('月の主要予定を削除しました。');
+  }
+
   function selectDate(date: string) {
     setSelectedDate(date);
 
@@ -271,6 +333,7 @@ export function usePlannerAppState(): PlannerAppState {
     plans,
     actuals,
     dayNotes,
+    monthEvents,
     viewMode,
     selectedDate,
     monthDate,
@@ -290,6 +353,8 @@ export function usePlannerAppState(): PlannerAppState {
     saveActual,
     deleteActual,
     saveDayNote,
+    saveMonthEvent,
+    deleteMonthEvent,
     selectDate,
     changeMonth,
     openWeek,

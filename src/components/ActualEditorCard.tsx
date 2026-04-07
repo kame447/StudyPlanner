@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { getPlanTypeLabel } from '../lib/plans';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
+import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
@@ -82,6 +83,15 @@ export function ActualEditorCard({
       title: nextAligned ? plan.title : current.title || plan.title,
       subject: nextAligned ? plan.subject : current.subject || plan.subject,
     }));
+  }
+
+  function applyMeasuredRange(startTime: string, endTime: string) {
+    setDraft((current) => ({
+      ...current,
+      actualStartTime: startTime,
+      actualEndTime: endTime,
+    }));
+    setError('');
   }
 
   async function handleSave() {
@@ -272,6 +282,8 @@ export function ActualEditorCard({
               />
             </label>
           </div>
+
+          <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
 
           {error ? <p className="inline-error">{error}</p> : null}
 

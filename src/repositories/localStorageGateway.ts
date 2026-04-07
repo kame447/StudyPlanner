@@ -1,4 +1,4 @@
-import type { Actual, DayNote, Plan, User } from '../types/domain';
+import type { Actual, DayNote, MonthEvent, Plan, User } from '../types/domain';
 import type {
   AuthCodeRecord,
   AuthStorageGateway,
@@ -12,7 +12,11 @@ const STORAGE_KEYS = {
   plans: 'studyplanner.plans',
   actuals: 'studyplanner.actuals',
   dayNotes: 'studyplanner.dayNotes',
+  monthEvents: 'studyplanner.monthEvents',
 } as const;
+
+type StoredMonthEvent = Omit<MonthEvent, 'repeatUntil' | 'excludedDates'> &
+  Partial<Pick<MonthEvent, 'repeatUntil' | 'excludedDates'>>;
 
 function readJson<T>(storage: Storage, key: string, fallback: T): T {
   const raw = storage.getItem(key);
@@ -30,6 +34,16 @@ function readJson<T>(storage: Storage, key: string, fallback: T): T {
 
 function writeJson<T>(storage: Storage, key: string, value: T): void {
   storage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeMonthEvent(monthEvent: StoredMonthEvent): MonthEvent {
+  return {
+    ...monthEvent,
+    repeatUntil: monthEvent.repeatUntil ?? null,
+    excludedDates: [...new Set(monthEvent.excludedDates ?? [])].filter(
+      (date) => typeof date === 'string' && date.length > 0,
+    ),
+  };
 }
 
 export function createLocalAuthStorageGateway(
@@ -81,6 +95,14 @@ export function createLocalPlannerStorageGateway(
     },
     async writeDayNotes(dayNotes) {
       writeJson(storage, STORAGE_KEYS.dayNotes, dayNotes);
+    },
+    async readMonthEvents() {
+      return readJson<StoredMonthEvent[]>(storage, STORAGE_KEYS.monthEvents, []).map(
+        normalizeMonthEvent,
+      );
+    },
+    async writeMonthEvents(monthEvents) {
+      writeJson(storage, STORAGE_KEYS.monthEvents, monthEvents);
     },
   };
 }

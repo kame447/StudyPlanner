@@ -98,6 +98,12 @@ const SUBJECT_THEME_MAP: Record<string, SubjectTheme> = {
     border: '#92bab5',
     text: '#2f5450',
   },
+  主要予定: {
+    fill: '#4d7a74',
+    soft: '#dfedeb',
+    border: '#92bab5',
+    text: '#2f5450',
+  },
 };
 
 function detectKnownSubject(subject: string, type: PlanType): string {

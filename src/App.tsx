@@ -4,6 +4,7 @@ import { DayView } from './components/DayView';
 import { DisplaySettingsDialog } from './components/DisplaySettingsDialog';
 import { MonthView } from './components/MonthView';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { WeekView } from './components/WeekView';
 import { createEmptyDayNoteDraft } from './domain/planner';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
@@ -17,6 +18,7 @@ export default function App() {
     user,
     plans,
     actuals,
+    monthEvents,
     viewMode,
     selectedDate,
     monthDate,
@@ -36,6 +38,8 @@ export default function App() {
     saveActual,
     deleteActual,
     saveDayNote,
+    saveMonthEvent,
+    deleteMonthEvent,
     selectDate,
     changeMonth,
     openWeek,
@@ -62,13 +66,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header hero-card">
-        <div>
-          <p className="eyebrow">Study Planner MVP</p>
-          <h1>月 → 週 → 日 で追える勉強計画</h1>
-          <p className="hero-copy">
-            予定入力を軽くしつつ、週ビューで計画と実績のズレを見やすくしています。
-          </p>
-        </div>
+        <StudyPlannerLogo />
 
         <div className="header-actions">
           <button
@@ -128,10 +126,15 @@ export default function App() {
           <MonthView
             monthDate={monthDate}
             selectedDate={selectedDate}
+            userId={user.id}
             plans={plans}
+            actuals={actuals}
+            monthEvents={monthEvents}
             onSelectDate={selectDate}
             onChangeMonth={changeMonth}
             onOpenWeek={openWeek}
+            onSaveMonthEvent={saveMonthEvent}
+            onDeleteMonthEvent={deleteMonthEvent}
           />
         ) : null}
 
@@ -151,6 +154,7 @@ export default function App() {
             userId={user.id}
             plans={plans}
             actuals={actuals}
+            monthEvents={monthEvents}
             dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
             onChangeDay={openDay}
             onEditPlan={openEditPlan}
@@ -159,6 +163,8 @@ export default function App() {
             onDeleteActual={deleteActual}
             onSaveDayNote={saveDayNote}
             onApplyDraft={savePlanDraft}
+            onSaveMonthEvent={saveMonthEvent}
+            onDeleteMonthEvent={deleteMonthEvent}
           />
         ) : null}
       </main>

@@ -2,6 +2,7 @@ import type {
   Actual,
   DayNote,
   EmailChallenge,
+  MonthEvent,
   Plan,
   User,
 } from '../types/domain';
@@ -29,6 +30,8 @@ export interface PlannerStorageGateway {
   writeActuals(actuals: Actual[]): Promise<void>;
   readDayNotes(): Promise<DayNote[]>;
   writeDayNotes(dayNotes: DayNote[]): Promise<void>;
+  readMonthEvents(): Promise<MonthEvent[]>;
+  writeMonthEvents(monthEvents: MonthEvent[]): Promise<void>;
 }
 
 export interface AuthRepository {
@@ -42,9 +45,12 @@ export interface PlannerRepository {
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
   getDayNotes(userId: string): Promise<DayNote[]>;
+  getMonthEvents(userId: string): Promise<MonthEvent[]>;
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
   upsertActual(actual: Actual): Promise<Actual>;
   deleteActual(userId: string, actualId: string): Promise<void>;
   upsertDayNote(dayNote: DayNote): Promise<DayNote>;
+  upsertMonthEvent(monthEvent: MonthEvent): Promise<MonthEvent>;
+  deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
 }
