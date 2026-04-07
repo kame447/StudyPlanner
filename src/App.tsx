@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { DayView } from './components/DayView';
+import { DayPlanInputPanel } from './components/DayPlanInputPanel';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
@@ -15,6 +16,10 @@ import { getUserDisplayName } from './lib/userProfile';
 
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
+  const [isToolbarPlanInputOpen, setIsToolbarPlanInputOpen] = useState(false);
+  const [toolbarPlanInputMode, setToolbarPlanInputMode] = useState<'manual' | 'ai'>(
+    'manual',
+  );
   const { themeMode, setThemeMode } = useThemePreference();
   const {
     booting,
@@ -34,7 +39,6 @@ export default function App() {
     verifyCode,
     saveUserProfile,
     signOut,
-    openCreatePlan,
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
@@ -117,9 +121,16 @@ export default function App() {
           </button>
         </div>
 
-        {viewMode !== 'day' && viewMode !== 'report' ? (
+        {viewMode !== 'report' ? (
           <div className="row-actions">
-            <button className="primary-button" onClick={openCreatePlan} type="button">
+            <button
+              className="primary-button"
+              onClick={() => {
+                setToolbarPlanInputMode('manual');
+                setIsToolbarPlanInputOpen(true);
+              }}
+              type="button"
+            >
               予定を追加
             </button>
           </div>
@@ -171,7 +182,6 @@ export default function App() {
             onSaveActual={saveActual}
             onDeleteActual={deleteActual}
             onSaveDayNote={saveDayNote}
-            onApplyDraft={savePlanDraft}
             onSaveMonthEvent={saveMonthEvent}
             onDeleteMonthEvent={deleteMonthEvent}
           />
@@ -199,6 +209,26 @@ export default function App() {
         }}
         onCancel={closePlanEditor}
       />
+
+      {isToolbarPlanInputOpen ? (
+        <div
+          className="overlay modal-overlay"
+          onClick={() => setIsToolbarPlanInputOpen(false)}
+        >
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <DayPlanInputPanel
+              selectedDate={selectedDate}
+              userId={user.id}
+              plans={plans}
+              mode={toolbarPlanInputMode}
+              onModeChange={setToolbarPlanInputMode}
+              onApplyDraft={savePlanDraft}
+              onClose={() => setIsToolbarPlanInputOpen(false)}
+              embedded
+            />
+          </div>
+        </div>
+      ) : null}
 
       <MyPageDialog
         open={isMyPageOpen}

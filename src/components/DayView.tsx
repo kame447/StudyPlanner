@@ -11,7 +11,6 @@ import { isStudyTimePlan } from '../lib/studyAnalytics';
 import { buildEvaluationSummary } from '../services/evaluationService';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayNotebookPanel } from './DayNotebookPanel';
-import { DayPlanInputPanel } from './DayPlanInputPanel';
 import { DayTimeline } from './DayTimeline';
 import { MonthEventDialog } from './MonthEventDialog';
 import { ScorePanel } from './ScorePanel';
@@ -23,7 +22,6 @@ import type {
   MonthEvent,
   MonthEventDraft,
   Plan,
-  PlanDraft,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -39,7 +37,6 @@ interface DayViewProps {
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
   onSaveDayNote: (draft: DayNoteDraft) => Promise<void>;
-  onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveMonthEvent: (
     draft: MonthEventDraft,
     targetMonthEventId?: string,
@@ -47,11 +44,8 @@ interface DayViewProps {
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
 
-type PlanInputMode = 'manual' | 'ai';
-
 type DayViewModalState =
   | { type: 'closed' }
-  | { type: 'plan-input'; mode: PlanInputMode }
   | { type: 'plan-detail'; planId: string }
   | { type: 'month-event-detail'; monthEventId: string };
 
@@ -68,7 +62,6 @@ export function DayView({
   onSaveActual,
   onDeleteActual,
   onSaveDayNote,
-  onApplyDraft,
   onSaveMonthEvent,
   onDeleteMonthEvent,
 }: DayViewProps) {
@@ -169,10 +162,6 @@ export function DayView({
     setModalState({ type: 'closed' });
   }, [selectedDate]);
 
-  function openPlanInput(mode: PlanInputMode = 'manual') {
-    setModalState({ type: 'plan-input', mode });
-  }
-
   function closeModal() {
     setModalState({ type: 'closed' });
   }
@@ -192,13 +181,6 @@ export function DayView({
                   type="button"
                 >
                   前日
-                </button>
-                <button
-                  className="primary-button"
-                  onClick={() => openPlanInput('manual')}
-                  type="button"
-                >
-                  予定を追加
                 </button>
                 <button
                   className="ghost-button"
@@ -252,26 +234,6 @@ export function DayView({
           </div>
         </div>
       </div>
-
-      {modalState.type === 'plan-input' ? (
-        <div className="overlay modal-overlay" onClick={closeModal}>
-          <div
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <DayPlanInputPanel
-              selectedDate={selectedDate}
-              userId={userId}
-              plans={plans}
-              mode={modalState.mode}
-              onModeChange={(mode) => setModalState({ type: 'plan-input', mode })}
-              onApplyDraft={onApplyDraft}
-              onClose={closeModal}
-              embedded
-            />
-          </div>
-        </div>
-      ) : null}
 
       {selectedPlan ? (
         <div className="overlay modal-overlay" onClick={closeModal}>
