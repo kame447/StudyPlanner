@@ -1,4 +1,4 @@
-export type ViewMode = 'month' | 'week' | 'day';
+export type ViewMode = 'month' | 'week' | 'day' | 'report';
 
 export type PlanType =
   | 'study'
@@ -11,13 +11,21 @@ export type PlanType =
 export interface User {
   id: string;
   email: string;
+  username: string;
+  avatar: string;
   createdAt: string;
 }
 
 export interface EmailChallenge {
   email: string;
+  username: string;
   expiresAt: string;
   previewCode: string;
+}
+
+export interface UserProfileDraft {
+  username: string;
+  avatar: string;
 }
 
 export interface Plan {

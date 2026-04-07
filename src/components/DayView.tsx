@@ -7,6 +7,7 @@ import {
   sortByDateTime,
 } from '../lib/date';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import { isStudyTimePlan } from '../lib/studyAnalytics';
 import { buildEvaluationSummary } from '../services/evaluationService';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayNotebookPanel } from './DayNotebookPanel';
@@ -24,10 +25,6 @@ import type {
   Plan,
   PlanDraft,
 } from '../types/domain';
-
-function isStudyTimePlan(plan: Plan): boolean {
-  return plan.type === 'study' || plan.type === 'mock-exam' || plan.type === 'cram-school';
-}
 
 interface DayViewProps {
   selectedDate: string;

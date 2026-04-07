@@ -5,12 +5,14 @@ import type {
   MonthEvent,
   Plan,
   User,
+  UserProfileDraft,
 } from '../types/domain';
 
 export interface AuthCodeRecord {
   email: string;
   code: string;
   expiresAt: string;
+  username: string;
 }
 
 export interface AuthStorageGateway {
@@ -35,9 +37,10 @@ export interface PlannerStorageGateway {
 }
 
 export interface AuthRepository {
-  requestEmailCode(email: string): Promise<EmailChallenge>;
-  verifyEmailCode(email: string, code: string): Promise<User>;
+  requestEmailCode(email: string, username: string): Promise<EmailChallenge>;
+  verifyEmailCode(email: string, code: string, username: string): Promise<User>;
   getCurrentUser(): Promise<User | null>;
+  updateUserProfile(userId: string, draft: UserProfileDraft): Promise<User>;
   signOut(): Promise<void>;
 }
 

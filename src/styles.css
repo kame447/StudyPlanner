@@ -496,6 +496,33 @@ h2 {
   justify-content: space-between;
 }
 
+.my-page-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  box-shadow: 0 10px 22px rgba(23, 109, 102, 0.18);
+}
+
+.user-avatar-small {
+  width: 34px;
+  height: 34px;
+  font-size: 1rem;
+  box-shadow: none;
+}
+
 .assistant-runtime {
   display: flex;
   gap: 8px;
@@ -1190,6 +1217,47 @@ h2 {
   gap: 12px;
 }
 
+.my-page-modal {
+  width: min(640px, 100%);
+}
+
+.profile-hero-card {
+  gap: 16px;
+}
+
+.profile-hero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.profile-name {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.2rem;
+}
+
+.avatar-option-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.avatar-option {
+  min-height: 52px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: inherit;
+  font-size: 1.2rem;
+}
+
+.avatar-option.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--surface-selected);
+}
+
 .month-picker-trigger {
   min-width: 136px;
   justify-content: center;
@@ -1346,6 +1414,132 @@ h2 {
   color: inherit;
 }
 
+.report-grid,
+.report-metrics-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.report-metrics-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.report-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.report-card {
+  padding: 20px;
+}
+
+.report-metric-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.report-metric-label,
+.report-metric-help,
+.weekly-bar-label,
+.weekly-bar-value,
+.report-timeline-date {
+  color: var(--text-muted);
+}
+
+.report-metric-value {
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.weekly-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 220px;
+  align-items: end;
+}
+
+.weekly-bar-item {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.weekly-bar-track {
+  width: 100%;
+  height: 144px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  padding: 8px 0;
+  border-radius: 18px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.weekly-bar-fill {
+  width: min(28px, 60%);
+  min-height: 6%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+}
+
+.subject-breakdown-list,
+.report-timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.subject-breakdown-item,
+.report-timeline-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.subject-breakdown-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--progress-track-background);
+}
+
+.subject-breakdown-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.report-timeline-item {
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  text-align: left;
+  color: inherit;
+}
+
+.report-timeline-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.report-timeline-body strong,
+.report-timeline-body span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1100px) {
   .day-layout,
   .day-review-layout,
@@ -1376,6 +1570,8 @@ h2 {
 
   .score-grid,
   .form-grid,
+  .report-metrics-grid,
+  .report-grid,
   .form-grid.compact {
     grid-template-columns: 1fr;
   }
@@ -1387,6 +1583,10 @@ h2 {
   .brand-mark {
     width: 62px;
     height: 62px;
+  }
+
+  .avatar-option-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .timeline-shell {
@@ -1433,5 +1633,13 @@ h2 {
   .month-picker-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .weekly-bars {
+    grid-template-columns: repeat(7, minmax(36px, 1fr));
+  }
+
+  .report-timeline-item {
+    grid-template-columns: 1fr;
   }
 }

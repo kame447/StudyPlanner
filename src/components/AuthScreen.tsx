@@ -4,8 +4,8 @@ import type { EmailChallenge } from '../types/domain';
 interface AuthScreenProps {
   challenge: EmailChallenge | null;
   notice: string;
-  onRequestCode: (email: string) => Promise<void>;
-  onVerifyCode: (email: string, code: string) => Promise<void>;
+  onRequestCode: (email: string, username: string) => Promise<void>;
+  onVerifyCode: (email: string, code: string, username: string) => Promise<void>;
 }
 
 export function AuthScreen({
@@ -15,11 +15,13 @@ export function AuthScreen({
   onVerifyCode,
 }: AuthScreenProps) {
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [code, setCode] = useState('');
 
   useEffect(() => {
     if (challenge) {
       setEmail(challenge.email);
+      setUsername(challenge.username);
     }
   }, [challenge]);
 
@@ -35,6 +37,15 @@ export function AuthScreen({
 
         <div className="auth-form">
           <label className="field">
+            <span>ユーザーネーム</span>
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="未入力ならメールアドレスを使います"
+            />
+          </label>
+
+          <label className="field">
             <span>メールアドレス</span>
             <input
               type="email"
@@ -46,7 +57,7 @@ export function AuthScreen({
 
           <button
             className="primary-button"
-            onClick={() => void onRequestCode(email)}
+            onClick={() => void onRequestCode(email, username)}
             type="button"
           >
             認証コードを送る
@@ -67,6 +78,8 @@ export function AuthScreen({
         {challenge ? (
           <>
             <div className="mailbox-preview">
+              <p className="mailbox-label">表示名</p>
+              <strong>{challenge.username}</strong>
               <p className="mailbox-label">送信先</p>
               <strong>{challenge.email}</strong>
               <p className="mailbox-label">MVP用コード</p>
@@ -87,7 +100,7 @@ export function AuthScreen({
 
             <button
               className="primary-button"
-              onClick={() => void onVerifyCode(email, code)}
+              onClick={() => void onVerifyCode(email, code, username)}
               type="button"
             >
               ログインする

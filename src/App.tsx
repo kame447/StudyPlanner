@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { DayView } from './components/DayView';
-import { DisplaySettingsDialog } from './components/DisplaySettingsDialog';
 import { MonthView } from './components/MonthView';
+import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { ReportView } from './components/ReportView';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
+import { UserAvatar } from './components/UserAvatar';
 import { WeekView } from './components/WeekView';
 import { createEmptyDayNoteDraft } from './domain/planner';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
+import { getUserDisplayName } from './lib/userProfile';
 
 export default function App() {
-  const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
+  const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const { themeMode, setThemeMode } = useThemePreference();
   const {
     booting,
@@ -29,6 +32,7 @@ export default function App() {
     setViewMode,
     requestCode,
     verifyCode,
+    saveUserProfile,
     signOut,
     openCreatePlan,
     openEditPlan,
@@ -70,13 +74,14 @@ export default function App() {
 
         <div className="header-actions">
           <button
-            className="ghost-button"
-            onClick={() => setIsDisplaySettingsOpen(true)}
+            className="ghost-button my-page-trigger"
+            onClick={() => setIsMyPageOpen(true)}
             type="button"
           >
-            表示設定
+            <UserAvatar user={user} small />
+            <span>マイページ</span>
           </button>
-          <div className="user-badge">{user.email}</div>
+          <div className="user-badge">{getUserDisplayName(user)}</div>
           <button className="ghost-button" onClick={() => void signOut()} type="button">
             ログアウト
           </button>
@@ -106,9 +111,16 @@ export default function App() {
           >
             日
           </button>
+          <button
+            className={viewMode === 'report' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('report')}
+            type="button"
+          >
+            レポート
+          </button>
         </div>
 
-        {viewMode !== 'day' ? (
+        {viewMode !== 'day' && viewMode !== 'report' ? (
           <div className="row-actions">
             <button className="primary-button" onClick={openCreatePlan} type="button">
               予定を追加
@@ -167,6 +179,15 @@ export default function App() {
             onDeleteMonthEvent={deleteMonthEvent}
           />
         ) : null}
+
+        {viewMode === 'report' ? (
+          <ReportView
+            selectedDate={selectedDate}
+            plans={plans}
+            actuals={actuals}
+            onOpenDay={openDay}
+          />
+        ) : null}
       </main>
 
       <PlanEditorPanel
@@ -182,11 +203,13 @@ export default function App() {
         onCancel={closePlanEditor}
       />
 
-      <DisplaySettingsDialog
-        open={isDisplaySettingsOpen}
+      <MyPageDialog
+        open={isMyPageOpen}
+        user={user}
         themeMode={themeMode}
         onChangeTheme={setThemeMode}
-        onClose={() => setIsDisplaySettingsOpen(false)}
+        onSaveProfile={saveUserProfile}
+        onClose={() => setIsMyPageOpen(false)}
       />
     </div>
   );

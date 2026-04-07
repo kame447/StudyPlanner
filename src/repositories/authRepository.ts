@@ -1,20 +1,35 @@
 import { createId } from '../lib/id';
 import type { AuthRepository, AuthStorageGateway } from './repositoryContracts';
+import type { User, UserProfileDraft } from '../types/domain';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function normalizeUsername(username: string, email: string): string {
+  const trimmedUsername = username.trim();
+  return trimmedUsername || email;
 }
 
 function buildCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function applyUserProfile(user: User, draft: UserProfileDraft): User {
+  return {
+    ...user,
+    username: draft.username.trim() || user.email,
+    avatar: draft.avatar.trim(),
+  };
+}
+
 export function createAuthRepository(
   storageGateway: AuthStorageGateway,
 ): AuthRepository {
   return {
-    async requestEmailCode(email) {
+    async requestEmailCode(email, username) {
       const normalizedEmail = normalizeEmail(email);
+      const normalizedUsername = normalizeUsername(username, normalizedEmail);
 
       if (!normalizedEmail.includes('@')) {
         throw new Error('メールアドレスの形式を確認してください。');
@@ -28,6 +43,7 @@ export function createAuthRepository(
 
       pendingCodes.push({
         email: normalizedEmail,
+        username: normalizedUsername,
         code,
         expiresAt,
       });
@@ -36,12 +52,14 @@ export function createAuthRepository(
 
       return {
         email: normalizedEmail,
+        username: normalizedUsername,
         expiresAt,
         previewCode: code,
       };
     },
-    async verifyEmailCode(email, code) {
+    async verifyEmailCode(email, code, username) {
       const normalizedEmail = normalizeEmail(email);
+      const normalizedUsername = normalizeUsername(username, normalizedEmail);
       const trimmedCode = code.trim();
       const pendingCodes = await storageGateway.readPendingCodes();
       const challenge = pendingCodes.find((item) => item.email === normalizedEmail);
@@ -65,6 +83,8 @@ export function createAuthRepository(
         user = {
           id: createId('user'),
           email: normalizedEmail,
+          username: challenge.username || normalizedUsername,
+          avatar: '',
           createdAt: new Date().toISOString(),
         };
         await storageGateway.writeUsers([...users, user]);
@@ -86,6 +106,20 @@ export function createAuthRepository(
 
       const users = await storageGateway.readUsers();
       return users.find((item) => item.id === sessionUserId) ?? null;
+    },
+    async updateUserProfile(userId, draft) {
+      const users = await storageGateway.readUsers();
+      const currentUser = users.find((item) => item.id === userId);
+
+      if (!currentUser) {
+        throw new Error('ユーザー情報が見つかりません。');
+      }
+
+      const nextUser = applyUserProfile(currentUser, draft);
+      await storageGateway.writeUsers(
+        users.map((user) => (user.id === userId ? nextUser : user)),
+      );
+      return nextUser;
     },
     async signOut() {
       await storageGateway.clearSessionUserId();
