@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { removeByKey, upsertByKey } from '../lib/collections';
 import { startOfMonth, todayIsoDate, isSameMonth, minutesBetween, sortByDateTime } from '../lib/date';
 import { authRepository, plannerRepository } from '../repositories';
 import {
@@ -178,7 +179,7 @@ export function usePlannerAppState(): PlannerAppState {
 
     await plannerRepository.upsertPlan(nextPlan);
     setPlans((current) =>
-      sortByDateTime(current.filter((plan) => plan.id !== nextPlan.id).concat(nextPlan)),
+      sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
     );
     setSelectedDate(nextPlan.date);
     setMonthDate(startOfMonth(nextPlan.date));
@@ -192,8 +193,8 @@ export function usePlannerAppState(): PlannerAppState {
     }
 
     await plannerRepository.deletePlan(user.id, plan.id);
-    setPlans((current) => current.filter((item) => item.id !== plan.id));
-    setActuals((current) => current.filter((item) => item.planId !== plan.id));
+    setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
+    setActuals((current) => removeByKey(current, plan.id, (item) => item.planId));
     showNotice('予定を削除しました。');
   }
 
@@ -207,7 +208,7 @@ export function usePlannerAppState(): PlannerAppState {
 
     await plannerRepository.upsertActual(nextActual);
     setActuals((current) =>
-      current.filter((item) => item.planId !== plan.id).concat(nextActual),
+      upsertByKey(current, nextActual, (item) => item.planId),
     );
     showNotice('実績を保存しました。', 'success');
   }
@@ -218,7 +219,7 @@ export function usePlannerAppState(): PlannerAppState {
     }
 
     await plannerRepository.deleteActual(user.id, actual.id);
-    setActuals((current) => current.filter((item) => item.id !== actual.id));
+    setActuals((current) => removeByKey(current, actual.id, (item) => item.id));
     showNotice('実績を削除しました。');
   }
 
@@ -232,7 +233,7 @@ export function usePlannerAppState(): PlannerAppState {
 
     await plannerRepository.upsertDayNote(nextDayNote);
     setDayNotes((current) =>
-      current.filter((item) => item.id !== nextDayNote.id).concat(nextDayNote),
+      upsertByKey(current, nextDayNote, (item) => item.id),
     );
     showNotice('日次メモを保存しました。', 'success');
   }

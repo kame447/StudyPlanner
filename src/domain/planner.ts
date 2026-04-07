@@ -88,7 +88,9 @@ export function createActualFromDraft(
     planId: draft.planId,
     actualStartTime: draft.actualStartTime,
     actualEndTime: draft.actualEndTime,
+    title: draft.title,
     subject: draft.subject,
+    isAlignedToPlan: draft.isAlignedToPlan,
     note: draft.note,
     updatedAt: new Date().toISOString(),
   };

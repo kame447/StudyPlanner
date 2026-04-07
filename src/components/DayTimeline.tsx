@@ -1,58 +1,48 @@
 import type { CSSProperties } from 'react';
 import { formatMinutes, minutesBetween, minutesFromTime } from '../lib/date';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, Plan, PlanType } from '../types/domain';
 
 interface DayTimelineProps {
   plans: Plan[];
   actuals: Actual[];
+  selectedPlanId?: string;
+  onSelectPlan: (planId: string) => void;
 }
 
-interface TimelineItem {
-  plan: Plan;
-  actual?: Actual;
+interface TimelineEntry {
+  id: string;
+  planId: string;
+  title: string;
+  subject: string;
+  type: PlanType;
+  startTime: string;
+  endTime: string;
   lane: number;
   laneCount: number;
+  alignedToPlan?: boolean;
 }
 
 const HOUR_HEIGHT = 54;
+const MIN_BLOCK_HEIGHT = 34;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 
-function groupOverlappingPlans(plans: Plan[]): Plan[][] {
-  const groups: Plan[][] = [];
-  let currentGroup: Plan[] = [];
-  let currentGroupEnd = -1;
+function getDisplayMetrics(startTime: string, endTime: string) {
+  const topPx = (minutesFromTime(startTime) / 60) * HOUR_HEIGHT;
+  const durationMinutes = minutesBetween(startTime, endTime);
+  const heightPx = Math.max((durationMinutes / 60) * HOUR_HEIGHT, MIN_BLOCK_HEIGHT);
 
-  plans.forEach((plan) => {
-    const start = minutesFromTime(plan.startTime);
-    const end = minutesFromTime(plan.endTime);
-
-    if (currentGroup.length === 0) {
-      currentGroup = [plan];
-      currentGroupEnd = end;
-      return;
-    }
-
-    if (start < currentGroupEnd) {
-      currentGroup.push(plan);
-      currentGroupEnd = Math.max(currentGroupEnd, end);
-      return;
-    }
-
-    groups.push(currentGroup);
-    currentGroup = [plan];
-    currentGroupEnd = end;
-  });
-
-  if (currentGroup.length > 0) {
-    groups.push(currentGroup);
-  }
-
-  return groups;
+  return {
+    topPx,
+    heightPx,
+    bottomPx: topPx + heightPx,
+  };
 }
 
-function buildTimelineItems(plans: Plan[], actuals: Actual[]): TimelineItem[] {
-  const sortedPlans = [...plans].sort((left, right) => {
+function buildTimelineEntries<T extends Omit<TimelineEntry, 'lane' | 'laneCount'>>(
+  items: T[],
+): Array<TimelineEntry & T> {
+  const sortedItems = [...items].sort((left, right) => {
     const startDelta =
       minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
 
@@ -62,23 +52,50 @@ function buildTimelineItems(plans: Plan[], actuals: Actual[]): TimelineItem[] {
 
     return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
   });
-  const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
 
-  return groupOverlappingPlans(sortedPlans).flatMap((group) => {
-    const activeLanes: Array<{ lane: number; end: number }> = [];
-    const laneByPlanId = new Map<string, number>();
+  const groups: T[][] = [];
+  let currentGroup: T[] = [];
+  let currentGroupDisplayEndPx = -1;
+
+  sortedItems.forEach((item) => {
+    const { topPx, bottomPx } = getDisplayMetrics(item.startTime, item.endTime);
+
+    if (currentGroup.length === 0) {
+      currentGroup = [item];
+      currentGroupDisplayEndPx = bottomPx;
+      return;
+    }
+
+    if (topPx < currentGroupDisplayEndPx) {
+      currentGroup.push(item);
+      currentGroupDisplayEndPx = Math.max(currentGroupDisplayEndPx, bottomPx);
+      return;
+    }
+
+    groups.push(currentGroup);
+    currentGroup = [item];
+    currentGroupDisplayEndPx = bottomPx;
+  });
+
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+
+  return groups.flatMap((group) => {
+    const activeLanes: Array<{ lane: number; displayEndPx: number }> = [];
+    const laneById = new Map<string, number>();
     let laneCount = 0;
 
-    group.forEach((plan) => {
-      const start = minutesFromTime(plan.startTime);
+    group.forEach((item) => {
+      const { topPx, bottomPx } = getDisplayMetrics(item.startTime, item.endTime);
 
       for (let index = activeLanes.length - 1; index >= 0; index -= 1) {
-        if (activeLanes[index].end <= start) {
+        if (activeLanes[index].displayEndPx <= topPx) {
           activeLanes.splice(index, 1);
         }
       }
 
-      const usedLanes = new Set(activeLanes.map((item) => item.lane));
+      const usedLanes = new Set(activeLanes.map((entry) => entry.lane));
       let lane = 0;
 
       while (usedLanes.has(lane)) {
@@ -86,47 +103,105 @@ function buildTimelineItems(plans: Plan[], actuals: Actual[]): TimelineItem[] {
       }
 
       laneCount = Math.max(laneCount, lane + 1);
-      laneByPlanId.set(plan.id, lane);
+      laneById.set(item.id, lane);
       activeLanes.push({
         lane,
-        end: minutesFromTime(plan.endTime),
+        displayEndPx: bottomPx,
       });
     });
 
-    return group.map((plan) => ({
-      plan,
-      actual: actualByPlanId.get(plan.id),
-      lane: laneByPlanId.get(plan.id) ?? 0,
+    return group.map((item) => ({
+      ...item,
+      lane: laneById.get(item.id) ?? 0,
       laneCount,
     }));
   });
 }
 
-function buildBlockStyle(
+function buildColumnBlockStyle(
   topMinutes: number,
   durationMinutes: number,
   lane: number,
   laneCount: number,
-  inset: number,
-  rightInset: number,
+  column: 'plan' | 'actual',
 ): CSSProperties {
-  const laneWidth = 100 / laneCount;
+  const baseLeft = column === 'plan' ? 0 : 50;
+  const columnWidth = 50;
+  const laneWidth = columnWidth / Math.max(laneCount, 1);
 
   return {
     top: `${(topMinutes / 60) * HOUR_HEIGHT}px`,
-    height: `${Math.max((durationMinutes / 60) * HOUR_HEIGHT, 34)}px`,
-    left: `calc(${lane * laneWidth}% + ${inset}px)`,
-    width: `calc(${laneWidth}% - ${inset + rightInset}px)`,
+    height: `${Math.max((durationMinutes / 60) * HOUR_HEIGHT, MIN_BLOCK_HEIGHT)}px`,
+    left: `calc(${baseLeft + lane * laneWidth}% + 8px)`,
+    width: `calc(${laneWidth}% - 16px)`,
   };
 }
 
-export function DayTimeline({ plans, actuals }: DayTimelineProps) {
-  const timelineItems = buildTimelineItems(plans, actuals);
+function resolveActualTitle(actual: Actual, plan: Plan): string {
+  const actualTitle = actual.title?.trim();
+  return actualTitle || plan.title;
+}
+
+function resolveActualSubject(actual: Actual, plan: Plan): string {
+  return actual.subject.trim() || plan.subject;
+}
+
+function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
+  if (typeof actual.isAlignedToPlan === 'boolean') {
+    return actual.isAlignedToPlan;
+  }
+
+  return (
+    resolveActualTitle(actual, plan) === plan.title &&
+    resolveActualSubject(actual, plan) === plan.subject
+  );
+}
+
+export function DayTimeline({
+  plans,
+  actuals,
+  selectedPlanId,
+  onSelectPlan,
+}: DayTimelineProps) {
+  const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
+  const planEntries = buildTimelineEntries(
+    plans.map((plan) => ({
+      id: plan.id,
+      planId: plan.id,
+      title: plan.title,
+      subject: plan.subject,
+      type: plan.type,
+      startTime: plan.startTime,
+      endTime: plan.endTime,
+    })),
+  );
+  const actualEntries = buildTimelineEntries(
+    plans.flatMap((plan) => {
+      const actual = actualByPlanId.get(plan.id);
+
+      if (!actual) {
+        return [];
+      }
+
+      return [
+        {
+          id: actual.id,
+          planId: plan.id,
+          title: resolveActualTitle(actual, plan),
+          subject: resolveActualSubject(actual, plan),
+          type: plan.type,
+          startTime: actual.actualStartTime,
+          endTime: actual.actualEndTime,
+          alignedToPlan: resolveAlignedToPlan(actual, plan),
+        },
+      ];
+    }),
+  );
   const legendMap = new Map<string, string>();
 
-  timelineItems.forEach((item) => {
-    const label = getSubjectLabel(item.actual?.subject || item.plan.subject, item.plan.type);
-    legendMap.set(label, getSubjectTheme(label, item.plan.type).fill);
+  [...planEntries, ...actualEntries].forEach((entry) => {
+    const label = getSubjectLabel(entry.subject, entry.type);
+    legendMap.set(label, getSubjectTheme(label, entry.type).fill);
   });
 
   return (
@@ -134,16 +209,12 @@ export function DayTimeline({ plans, actuals }: DayTimelineProps) {
       <div className="section-header">
         <div>
           <h2>24時間スケジュール</h2>
-          <p>灰色の予定の上に、科目色の実績を重ねて比較します。</p>
+          <p>左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
         </div>
         <div className="timeline-legend">
           <span className="timeline-legend-item">
             <span className="timeline-legend-plan" />
             予定
-          </span>
-          <span className="timeline-legend-item">
-            <span className="timeline-legend-actual" />
-            実績
           </span>
           {Array.from(legendMap.entries()).map(([label, color]) => (
             <span key={label} className="timeline-legend-item">
@@ -157,12 +228,12 @@ export function DayTimeline({ plans, actuals }: DayTimelineProps) {
         </div>
       </div>
 
-      {timelineItems.length === 0 ? (
+      {planEntries.length === 0 ? (
         <p className="empty-copy">
           この日の予定はありません。追加すると時間軸に並びます。
         </p>
       ) : (
-        <div className="timeline-shell">
+        <div className="timeline-shell split">
           <div className="timeline-hours">
             {DAY_HOURS.map((hour) => (
               <div
@@ -175,73 +246,98 @@ export function DayTimeline({ plans, actuals }: DayTimelineProps) {
             ))}
           </div>
 
-          <div
-            className="timeline-canvas"
-            style={{ height: `${24 * HOUR_HEIGHT}px` }}
-          >
-            {Array.from({ length: 24 }, (_, index) => (
-              <div
-                key={index}
-                className="timeline-grid-line"
-                style={{ top: `${index * HOUR_HEIGHT}px` }}
-              />
-            ))}
+          <div className="timeline-main">
+            <div className="timeline-columns-head">
+              <div className="timeline-column-label">予定</div>
+              <div className="timeline-column-label actual">実績</div>
+            </div>
 
-            {timelineItems.map((item) => {
-              const planDuration = minutesBetween(
-                item.plan.startTime,
-                item.plan.endTime,
-              );
-              const actualDuration = item.actual
-                ? minutesBetween(
-                    item.actual.actualStartTime,
-                    item.actual.actualEndTime,
-                  )
-                : 0;
-              const theme = getSubjectTheme(
-                item.actual?.subject || item.plan.subject,
-                item.plan.type,
-              );
-              const planStyle = buildBlockStyle(
-                minutesFromTime(item.plan.startTime),
-                planDuration,
-                item.lane,
-                item.laneCount,
-                6,
-                10,
-              );
-              const actualStyle = item.actual
-                ? buildBlockStyle(
-                    minutesFromTime(item.actual.actualStartTime),
-                    actualDuration,
-                    item.lane,
-                    item.laneCount,
-                    16,
-                    20,
-                  )
-                : undefined;
+            <div
+              className="timeline-canvas split"
+              style={{ height: `${24 * HOUR_HEIGHT}px` }}
+            >
+              {Array.from({ length: 24 }, (_, index) => (
+                <div
+                  key={index}
+                  className="timeline-grid-line"
+                  style={{ top: `${index * HOUR_HEIGHT}px` }}
+                />
+              ))}
 
-              return (
-                <div key={item.plan.id}>
-                  <article className="timeline-plan-block" style={planStyle}>
-                    <span className="timeline-chip neutral">予定</span>
-                    <strong>{item.plan.title}</strong>
-                    <p>
-                      {item.plan.startTime} - {item.plan.endTime}
-                    </p>
-                  </article>
+              <div className="timeline-divider" />
 
-                  {item.actual && actualStyle ? (
-                    <article
-                      className="timeline-actual-block"
-                      style={{
-                        ...actualStyle,
-                        backgroundColor: theme.soft,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        boxShadow: `inset 5px 0 0 ${theme.fill}`,
-                      }}
-                    >
+              {planEntries.map((entry) => {
+                const duration = minutesBetween(entry.startTime, entry.endTime);
+                const theme = getSubjectTheme(entry.subject, entry.type);
+
+                return (
+                  <button
+                    key={entry.id}
+                    className={
+                      selectedPlanId === entry.planId
+                        ? 'timeline-plan-block split is-selected'
+                        : 'timeline-plan-block split'
+                    }
+                    style={buildColumnBlockStyle(
+                      minutesFromTime(entry.startTime),
+                      duration,
+                      entry.lane,
+                      entry.laneCount,
+                      'plan',
+                    )}
+                    onClick={() => onSelectPlan(entry.planId)}
+                    type="button"
+                  >
+                    <div className="timeline-entry-row">
+                      <span className="timeline-chip neutral">予定</span>
+                      <div className="timeline-entry-line">
+                        <strong>{entry.title}</strong>
+                        <span className="timeline-inline-separator">/</span>
+                        <span>
+                          {entry.startTime} - {entry.endTime}
+                        </span>
+                        <span className="timeline-inline-separator">/</span>
+                        <span
+                          className="timeline-inline-subject"
+                          style={{ color: theme.text }}
+                        >
+                          {getSubjectLabel(entry.subject, entry.type)}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {actualEntries.map((entry) => {
+                const duration = minutesBetween(entry.startTime, entry.endTime);
+                const theme = getSubjectTheme(entry.subject, entry.type);
+
+                return (
+                  <button
+                    key={entry.id}
+                    className={
+                      selectedPlanId === entry.planId
+                        ? 'timeline-actual-block split is-selected'
+                        : 'timeline-actual-block split'
+                    }
+                    style={{
+                      ...buildColumnBlockStyle(
+                        minutesFromTime(entry.startTime),
+                        duration,
+                        entry.lane,
+                        entry.laneCount,
+                        'actual',
+                      ),
+                      backgroundColor: theme.soft,
+                      borderColor: theme.border,
+                      color: theme.text,
+                      boxShadow: `inset 5px 0 0 ${theme.fill}`,
+                    }}
+                    onClick={() => onSelectPlan(entry.planId)}
+                    type="button"
+                  >
+                    <div className="timeline-entry-row">
                       <span
                         className="timeline-chip"
                         style={{
@@ -249,18 +345,24 @@ export function DayTimeline({ plans, actuals }: DayTimelineProps) {
                           color: '#fff',
                         }}
                       >
-                        実績
+                        {entry.alignedToPlan ? '予定通り' : '内容変更'}
                       </span>
-                      <strong>{item.actual.subject || item.plan.subject || item.plan.title}</strong>
-                      <p>
-                        {item.actual.actualStartTime} - {item.actual.actualEndTime} /{' '}
-                        {formatMinutes(actualDuration)}
-                      </p>
-                    </article>
-                  ) : null}
-                </div>
-              );
-            })}
+                      <div className="timeline-entry-line">
+                        <strong>{entry.title}</strong>
+                        <span className="timeline-inline-separator">/</span>
+                        <span>
+                          {entry.startTime} - {entry.endTime}
+                        </span>
+                        <span className="timeline-inline-separator">/</span>
+                        <span>{formatMinutes(duration)}</span>
+                        <span className="timeline-inline-separator">/</span>
+                        <span className="timeline-inline-subject">{entry.subject}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

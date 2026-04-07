@@ -26,6 +26,7 @@ interface NaturalLanguageAssistantProps {
   userId: string;
   plans: Plan[];
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  embedded?: boolean;
 }
 
 const FIELD_LABELS: Record<SuggestionField, string> = {
@@ -65,6 +66,7 @@ export function NaturalLanguageAssistant({
   userId,
   plans,
   onApplyDraft,
+  embedded = false,
 }: NaturalLanguageAssistantProps) {
   const [aiConfig, setAiConfig] = useState<AiConfig>(() => getAiConfig());
   const [mode, setMode] = useState<NaturalLanguageMode>('add');
@@ -166,8 +168,8 @@ export function NaturalLanguageAssistant({
     setSuggestion(null);
   }
 
-  return (
-    <section className="panel section-stack">
+  const content = (
+    <>
       <div className="section-header">
         <div>
           <h2>AI入力補助</h2>
@@ -315,6 +317,12 @@ export function NaturalLanguageAssistant({
           </div>
         </div>
       ) : null}
-    </section>
+    </>
   );
+
+  if (embedded) {
+    return <div className="section-stack">{content}</div>;
+  }
+
+  return <section className="panel section-stack">{content}</section>;
 }

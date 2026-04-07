@@ -1,12 +1,17 @@
+import { useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { DayView } from './components/DayView';
+import { DisplaySettingsDialog } from './components/DisplaySettingsDialog';
 import { MonthView } from './components/MonthView';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
 import { WeekView } from './components/WeekView';
 import { createEmptyDayNoteDraft } from './domain/planner';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
+import { useThemePreference } from './hooks/useThemePreference';
 
 export default function App() {
+  const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
+  const { themeMode, setThemeMode } = useThemePreference();
   const {
     booting,
     user,
@@ -66,6 +71,13 @@ export default function App() {
         </div>
 
         <div className="header-actions">
+          <button
+            className="ghost-button"
+            onClick={() => setIsDisplaySettingsOpen(true)}
+            type="button"
+          >
+            表示設定
+          </button>
           <div className="user-badge">{user.email}</div>
           <button className="ghost-button" onClick={() => void signOut()} type="button">
             ログアウト
@@ -98,11 +110,13 @@ export default function App() {
           </button>
         </div>
 
-        <div className="row-actions">
-          <button className="primary-button" onClick={openCreatePlan} type="button">
-            予定を追加
-          </button>
-        </div>
+        {viewMode !== 'day' ? (
+          <div className="row-actions">
+            <button className="primary-button" onClick={openCreatePlan} type="button">
+              予定を追加
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {notice ? (
@@ -139,7 +153,6 @@ export default function App() {
             actuals={actuals}
             dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
             onChangeDay={openDay}
-            onAddPlan={openCreatePlan}
             onEditPlan={openEditPlan}
             onDeletePlan={deletePlan}
             onSaveActual={saveActual}
@@ -161,6 +174,13 @@ export default function App() {
           }
         }}
         onCancel={closePlanEditor}
+      />
+
+      <DisplaySettingsDialog
+        open={isDisplaySettingsOpen}
+        themeMode={themeMode}
+        onChangeTheme={setThemeMode}
+        onClose={() => setIsDisplaySettingsOpen(false)}
       />
     </div>
   );

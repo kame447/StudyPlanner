@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   formatDateLabel,
@@ -8,8 +9,8 @@ import {
 import { buildEvaluationSummary } from '../services/evaluationService';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayNotebookPanel } from './DayNotebookPanel';
+import { DayPlanInputPanel } from './DayPlanInputPanel';
 import { DayTimeline } from './DayTimeline';
-import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
 import { ScorePanel } from './ScorePanel';
 import type {
   Actual,
@@ -27,7 +28,6 @@ interface DayViewProps {
   actuals: Actual[];
   dayNote: DayNote | DayNoteDraft;
   onChangeDay: (date: string) => void;
-  onAddPlan: () => void;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
@@ -36,6 +36,13 @@ interface DayViewProps {
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
 }
 
+type PlanInputMode = 'manual' | 'ai';
+
+type DayViewModalState =
+  | { type: 'closed' }
+  | { type: 'plan-input'; mode: PlanInputMode }
+  | { type: 'plan-detail'; planId: string };
+
 export function DayView({
   selectedDate,
   userId,
@@ -43,7 +50,6 @@ export function DayView({
   actuals,
   dayNote,
   onChangeDay,
-  onAddPlan,
   onEditPlan,
   onDeletePlan,
   onSaveActual,
@@ -51,24 +57,78 @@ export function DayView({
   onSaveDayNote,
   onApplyDraft,
 }: DayViewProps) {
-  const dayPlans = sortByDateTime(plans.filter((plan) => plan.date === selectedDate));
-  const dayActuals = actuals.filter((actual) =>
-    dayPlans.some((plan) => plan.id === actual.planId),
+  const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
+  const dayPlans = useMemo(
+    () => sortByDateTime(plans.filter((plan) => plan.date === selectedDate)),
+    [plans, selectedDate],
   );
-  const actualByPlanId = new Map(dayActuals.map((actual) => [actual.planId, actual]));
-  const dayPlannedMinutes = dayPlans.reduce(
-    (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
-    0,
+  const dayPlanIds = useMemo(
+    () => new Set(dayPlans.map((plan) => plan.id)),
+    [dayPlans],
   );
-  const dayActualMinutes = dayPlans.reduce((sum, plan) => {
-    const actual = actualByPlanId.get(plan.id);
-    return (
-      sum +
-      (actual ? minutesBetween(actual.actualStartTime, actual.actualEndTime) : 0)
-    );
-  }, 0);
-  const evaluation = buildEvaluationSummary(selectedDate, plans, actuals);
+  const dayPlanMap = useMemo(
+    () => new Map(dayPlans.map((plan) => [plan.id, plan])),
+    [dayPlans],
+  );
+  const dayActuals = useMemo(
+    () => actuals.filter((actual) => dayPlanIds.has(actual.planId)),
+    [actuals, dayPlanIds],
+  );
+  const actualByPlanId = useMemo(
+    () => new Map(dayActuals.map((actual) => [actual.planId, actual])),
+    [dayActuals],
+  );
+  const selectedPlan =
+    modalState.type === 'plan-detail'
+      ? dayPlanMap.get(modalState.planId) ?? null
+      : null;
+  const dayPlannedMinutes = useMemo(
+    () =>
+      dayPlans.reduce(
+        (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
+        0,
+      ),
+    [dayPlans],
+  );
+  const dayActualMinutes = useMemo(
+    () =>
+      dayPlans.reduce((sum, plan) => {
+        const actual = actualByPlanId.get(plan.id);
+        return (
+          sum +
+          (actual ? minutesBetween(actual.actualStartTime, actual.actualEndTime) : 0)
+        );
+      }, 0),
+    [actualByPlanId, dayPlans],
+  );
+  const evaluation = useMemo(
+    () => buildEvaluationSummary(selectedDate, plans, actuals),
+    [selectedDate, plans, actuals],
+  );
   const planDeltaMinutes = dayActualMinutes - dayPlannedMinutes;
+
+  useEffect(() => {
+    if (
+      modalState.type !== 'plan-detail' ||
+      dayPlanMap.has(modalState.planId)
+    ) {
+      return;
+    }
+
+    setModalState({ type: 'closed' });
+  }, [dayPlanMap, modalState]);
+
+  useEffect(() => {
+    setModalState({ type: 'closed' });
+  }, [selectedDate]);
+
+  function openPlanInput(mode: PlanInputMode = 'manual') {
+    setModalState({ type: 'plan-input', mode });
+  }
+
+  function closeModal() {
+    setModalState({ type: 'closed' });
+  }
 
   return (
     <section className="section-stack">
@@ -89,7 +149,7 @@ export function DayView({
             </button>
             <button
               className="primary-button"
-              onClick={onAddPlan}
+              onClick={() => openPlanInput('manual')}
               type="button"
             >
               予定を追加
@@ -134,7 +194,71 @@ export function DayView({
         </div>
       </div>
 
-      <DayTimeline plans={dayPlans} actuals={dayActuals} />
+      {modalState.type === 'plan-input' ? (
+        <div className="overlay modal-overlay" onClick={closeModal}>
+          <div
+            className="modal-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <DayPlanInputPanel
+              selectedDate={selectedDate}
+              userId={userId}
+              plans={plans}
+              mode={modalState.mode}
+              onModeChange={(mode) => setModalState({ type: 'plan-input', mode })}
+              onApplyDraft={onApplyDraft}
+              onClose={closeModal}
+              embedded
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {selectedPlan ? (
+        <div className="overlay modal-overlay" onClick={closeModal}>
+          <div
+            className="modal-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-stack">
+              <div className="section-header">
+                <div>
+                  <h2>詳細入力</h2>
+                  <p>
+                    {selectedPlan.startTime} - {selectedPlan.endTime} / {selectedPlan.title}
+                  </p>
+                </div>
+                <button
+                  className="ghost-button"
+                  onClick={closeModal}
+                  type="button"
+                >
+                  閉じる
+                </button>
+              </div>
+
+              <ActualEditorCard
+                key={selectedPlan.id}
+                plan={selectedPlan}
+                actual={actualByPlanId.get(selectedPlan.id)}
+                onEditPlan={onEditPlan}
+                onDeletePlan={onDeletePlan}
+                onSaveActual={onSaveActual}
+                onDeleteActual={onDeleteActual}
+                forceOpen
+                hideToggleButton
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <DayTimeline
+        plans={dayPlans}
+        actuals={dayActuals}
+        selectedPlanId={selectedPlan?.id}
+        onSelectPlan={(planId) => setModalState({ type: 'plan-detail', planId })}
+      />
 
       <div className="day-review-layout">
         <DayNotebookPanel
@@ -147,44 +271,6 @@ export function DayView({
           onSave={onSaveDayNote}
         />
         <ScorePanel summary={evaluation} />
-      </div>
-
-      <div className="day-layout">
-        <section className="panel section-stack">
-          <div className="section-header">
-            <div>
-              <h2>詳細入力</h2>
-              <p>実績入力と予定の手直しはここで行います。</p>
-            </div>
-          </div>
-
-          {dayPlans.length > 0 ? (
-            dayPlans.map((plan) => (
-              <ActualEditorCard
-                key={plan.id}
-                plan={plan}
-                actual={actualByPlanId.get(plan.id)}
-                onEditPlan={onEditPlan}
-                onDeletePlan={onDeletePlan}
-                onSaveActual={onSaveActual}
-                onDeleteActual={onDeleteActual}
-              />
-            ))
-          ) : (
-            <p className="empty-copy">
-              この日の予定はまだありません。まずは1件追加してください。
-            </p>
-          )}
-        </section>
-
-        <div className="section-stack">
-          <NaturalLanguageAssistant
-            selectedDate={selectedDate}
-            userId={userId}
-            plans={plans}
-            onApplyDraft={onApplyDraft}
-          />
-        </div>
       </div>
     </section>
   );

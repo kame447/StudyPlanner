@@ -10,6 +10,27 @@ interface ActualEditorCardProps {
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
+  forceOpen?: boolean;
+  hideToggleButton?: boolean;
+}
+
+function resolveActualTitle(plan: Plan, actual?: Actual): string {
+  return actual?.title?.trim() || plan.title;
+}
+
+function resolveActualSubject(plan: Plan, actual?: Actual): string {
+  return actual?.subject?.trim() || plan.subject;
+}
+
+function resolveAlignedToPlan(plan: Plan, actual?: Actual): boolean {
+  if (typeof actual?.isAlignedToPlan === 'boolean') {
+    return actual.isAlignedToPlan;
+  }
+
+  return (
+    resolveActualTitle(plan, actual) === plan.title &&
+    resolveActualSubject(plan, actual) === plan.subject
+  );
 }
 
 function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
@@ -18,7 +39,9 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
     planId: plan.id,
     actualStartTime: actual?.actualStartTime ?? plan.startTime,
     actualEndTime: actual?.actualEndTime ?? plan.endTime,
-    subject: actual?.subject ?? plan.subject,
+    title: resolveActualTitle(plan, actual),
+    subject: resolveActualSubject(plan, actual),
+    isAlignedToPlan: resolveAlignedToPlan(plan, actual),
     note: actual?.note ?? '',
   };
 }
@@ -30,25 +53,45 @@ export function ActualEditorCard({
   onDeletePlan,
   onSaveActual,
   onDeleteActual,
+  forceOpen = false,
+  hideToggleButton = false,
 }: ActualEditorCardProps) {
   const [draft, setDraft] = useState<ActualDraft>(buildDraft(plan, actual));
-  const [isOpen, setIsOpen] = useState(!actual);
+  const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setDraft(buildDraft(plan, actual));
     setError('');
-  }, [actual?.id, plan]);
+    setIsOpen(forceOpen || !actual);
+  }, [actual?.id, forceOpen, plan]);
 
   const planMinutes = minutesBetween(plan.startTime, plan.endTime);
   const actualMinutes = actual
     ? minutesBetween(actual.actualStartTime, actual.actualEndTime)
     : 0;
   const deltaMinutes = actual ? actualMinutes - planMinutes : null;
+  const actualTitle = resolveActualTitle(plan, actual);
+  const actualSubject = resolveActualSubject(plan, actual);
+  const alignedToPlan = resolveAlignedToPlan(plan, actual);
+
+  function setAlignedToPlan(nextAligned: boolean) {
+    setDraft((current) => ({
+      ...current,
+      isAlignedToPlan: nextAligned,
+      title: nextAligned ? plan.title : current.title || plan.title,
+      subject: nextAligned ? plan.subject : current.subject || plan.subject,
+    }));
+  }
 
   async function handleSave() {
     if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
       setError('実績の終了時刻は開始時刻より後にしてください。');
+      return;
+    }
+
+    if (!draft.isAlignedToPlan && !draft.title.trim()) {
+      setError('違う内容で記録する場合は、実際にやった内容を入れてください。');
       return;
     }
 
@@ -71,7 +114,11 @@ export function ActualEditorCard({
           </p>
           <p className="comparison-metrics">
             {actual
-              ? `実績 ${actual.actualStartTime} - ${actual.actualEndTime} / 差分 ${
+              ? `実績 ${actual.actualStartTime} - ${actual.actualEndTime} / ${
+                  alignedToPlan
+                    ? '予定通り'
+                    : `実施内容: ${actualTitle}${actualSubject ? ` / ${actualSubject}` : ''}`
+                } / 差分 ${
                   deltaMinutes && deltaMinutes !== 0
                     ? `${deltaMinutes > 0 ? '+' : ''}${formatMinutes(
                         Math.abs(deltaMinutes),
@@ -101,13 +148,15 @@ export function ActualEditorCard({
           >
             削除
           </button>
-          <button
-            className="mini-button"
-            onClick={() => setIsOpen((current) => !current)}
-            type="button"
-          >
-            {isOpen ? '入力を閉じる' : actual ? '実績修正' : '実績入力'}
-          </button>
+          {hideToggleButton ? null : (
+            <button
+              className="mini-button"
+              onClick={() => setIsOpen((current) => !current)}
+              type="button"
+            >
+              {isOpen ? '入力を閉じる' : actual ? '実績修正' : '実績入力'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -144,22 +193,68 @@ export function ActualEditorCard({
               />
             </label>
 
-            <label className="field">
-              <span>実績科目</span>
-              <input
-                value={draft.subject}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    subject: event.target.value,
-                  })
-                }
-                placeholder="省略可"
-              />
+            <label className="field field-full">
+              <span>内容は予定通りですか</span>
+              <div className="segmented-control">
+                <button
+                  className={draft.isAlignedToPlan ? 'segment active' : 'segment'}
+                  onClick={() => setAlignedToPlan(true)}
+                  type="button"
+                >
+                  予定通り
+                </button>
+                <button
+                  className={!draft.isAlignedToPlan ? 'segment active' : 'segment'}
+                  onClick={() => setAlignedToPlan(false)}
+                  type="button"
+                >
+                  違う内容
+                </button>
+              </div>
             </label>
 
+            {draft.isAlignedToPlan ? (
+              <div className="assistant-feedback-card field-full">
+                <strong>予定ベースで記録します</strong>
+                <p className="detail-note">
+                  内容: {plan.title}
+                  {plan.subject ? ` / ${plan.subject}` : ''}
+                </p>
+              </div>
+            ) : (
+              <>
+                <label className="field">
+                  <span>実際にやった内容</span>
+                  <input
+                    value={draft.title}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        title: event.target.value,
+                      })
+                    }
+                    placeholder="例: 重要問題集 力学"
+                  />
+                </label>
+
+                <label className="field">
+                  <span>実際の科目</span>
+                  <input
+                    value={draft.subject}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        subject: event.target.value,
+                      })
+                    }
+                    placeholder="例: 物理"
+                  />
+                </label>
+              </>
+            )}
+
             <label className="field field-full">
-              <span>実績メモ</span>
+              <span>{draft.isAlignedToPlan ? 'メモ・気づき' : 'ズレの理由・メモ'}</span>
               <textarea
                 value={draft.note}
                 onChange={(event) =>
@@ -169,7 +264,11 @@ export function ActualEditorCard({
                   })
                 }
                 rows={2}
-                placeholder="やった内容やズレの理由"
+                placeholder={
+                  draft.isAlignedToPlan
+                    ? 'つまずいた点や気づき'
+                    : '予定との差分や実際にやったことの補足'
+                }
               />
             </label>
           </div>

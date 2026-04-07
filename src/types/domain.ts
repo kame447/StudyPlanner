@@ -40,7 +40,9 @@ export interface Actual {
   planId: string;
   actualStartTime: string;
   actualEndTime: string;
+  title?: string;
   subject: string;
+  isAlignedToPlan?: boolean;
   note: string;
   updatedAt: string;
 }
@@ -61,7 +63,9 @@ export interface ActualDraft {
   planId: string;
   actualStartTime: string;
   actualEndTime: string;
+  title: string;
   subject: string;
+  isAlignedToPlan: boolean;
   note: string;
 }
 
