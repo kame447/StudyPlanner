@@ -1007,7 +1007,7 @@ h2 {
 .month-date-number.is-today {
   border-radius: 999px;
   background: var(--today-fill);
-  color: var(--today-ring);
+  color: #111111;
   border: 2px solid var(--today-ring);
   box-shadow: none;
 }
