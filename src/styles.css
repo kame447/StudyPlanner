@@ -810,6 +810,42 @@ h2 {
   border: 1px solid transparent;
 }
 
+.app-toast-layer {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  width: min(560px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.app-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 18px 44px rgba(22, 29, 33, 0.18);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.app-toast span {
+  min-width: 0;
+}
+
+.app-toast-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  line-height: 1;
+}
+
 .app-notice.info {
   background: var(--notice-info-background);
   border-color: var(--notice-info-border);
@@ -1054,6 +1090,11 @@ h2 {
 .month-date-number {
   display: inline-block;
   font-weight: 800;
+  color: var(--text-primary);
+}
+
+.month-cell.is-muted .month-date-number {
+  color: var(--text-muted);
 }
 
 .month-major-event-pill {
@@ -1655,6 +1696,7 @@ h2 {
   .drawer,
   .modal-overlay,
   .day-review-layout-print-hide,
+  .app-toast-layer,
   .app-notice {
     display: none !important;
   }
@@ -2815,6 +2857,24 @@ h2 {
 }
 
 @media screen and (max-width: 900px) {
+  .app-toast-layer {
+    top: 10px;
+    width: min(480px, calc(100vw - 16px));
+  }
+
+  .app-toast {
+    padding: 11px 13px;
+    border-radius: 14px;
+    gap: 10px;
+    font-size: 0.72rem;
+  }
+
+  .app-toast-close {
+    width: 24px;
+    height: 24px;
+    font-size: 0.8rem;
+  }
+
   .loading-screen,
   .auth-shell,
   .app-shell {
@@ -3473,6 +3533,24 @@ h2 {
 }
 
 @media screen and (max-width: 640px) {
+  .app-toast-layer {
+    top: 8px;
+    width: calc(100vw - 14px);
+  }
+
+  .app-toast {
+    padding: 9px 11px;
+    border-radius: 12px;
+    gap: 8px;
+    font-size: 0.66rem;
+  }
+
+  .app-toast-close {
+    width: 22px;
+    height: 22px;
+    font-size: 0.74rem;
+  }
+
   .loading-screen,
   .auth-shell,
   .app-shell {

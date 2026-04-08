@@ -1,4 +1,5 @@
 import { isSupabaseEnabled } from '../lib/supabaseConfig';
+import { isDevTestLoginEnabled } from '../lib/devAuthShortcut';
 import { createRepositories } from './createRepositories';
 import {
   createLocalAuthStorageGateway,
@@ -11,7 +12,7 @@ const localRepositoryBundle = createRepositories({
   plannerStorageGateway: createLocalPlannerStorageGateway(),
 });
 
-const repositoryBundle = isSupabaseEnabled()
+const repositoryBundle = isSupabaseEnabled() && !isDevTestLoginEnabled()
   ? createSupabaseRepositories()
   : localRepositoryBundle;
 

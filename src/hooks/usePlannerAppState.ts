@@ -32,6 +32,7 @@ interface PlannerAppState {
   editorDraft: PlanDraft | null;
   editingPlanId: string | null;
   setViewMode: (viewMode: ViewMode) => void;
+  dismissNotice: () => void;
   requestCode: (email: string, username: string) => Promise<void>;
   verifyCode: (email: string, code: string, username: string) => Promise<void>;
   resetChallenge: () => void;
@@ -56,13 +57,13 @@ interface PlannerAppState {
 }
 
 export function usePlannerAppState(): PlannerAppState {
-  const { notice, showNotice } = useNoticeState();
+  const { notice, showNotice, dismissNotice } = useNoticeState();
   const {
     booting,
     user,
     challenge,
     bootstrapSession,
-    requestCode,
+    requestCode: requestAuthCode,
     verifyCode: verifyAuthCode,
     resetChallenge,
     saveUserProfile,
@@ -106,6 +107,14 @@ export function usePlannerAppState(): PlannerAppState {
     void bootstrapSession(loadPlannerData);
   }, [bootstrapSession, loadPlannerData]);
 
+  async function requestCode(email: string, username: string) {
+    const currentUser = await requestAuthCode(email, username);
+
+    if (currentUser) {
+      await loadPlannerData(currentUser.id);
+    }
+  }
+
   async function verifyCode(email: string, code: string, username: string) {
     const currentUser = await verifyAuthCode(email, code, username);
 
@@ -134,6 +143,7 @@ export function usePlannerAppState(): PlannerAppState {
     editorDraft,
     editingPlanId,
     setViewMode,
+    dismissNotice,
     requestCode,
     verifyCode,
     resetChallenge,

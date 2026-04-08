@@ -219,6 +219,23 @@ npx supabase functions deploy ai-planner
 - `ai-planner` が未deployのまま使うと AI 解析は失敗する
 - AI補助の既定値は OpenAI (`gpt-5.4-mini`)
 
+### スマホ実機確認で HTTPS 警告を出さない
+`@vitejs/plugin-basic-ssl` だけだと自己署名証明書のため、スマホでは `ERR_CERT_AUTHORITY_INVALID` が出ます。警告を消したい場合は、信頼済みローカル証明書を使います。
+
+1. `mkcert` をインストール
+2. このリポジトリで証明書を生成
+
+```bash
+npm run cert:dev -- 192.168.0.5
+```
+
+補足
+
+- `192.168.0.5` の部分は、スマホから開くときの PC の LAN IP に置き換える
+- 生成された証明書は `.cert/` に保存され、Vite が自動で優先使用する
+- iPhone / Android では、`mkcert` のローカル CA を端末側でも信頼する必要がある
+- 証明書生成後は `npm run dev` を再起動する
+
 ### Supabaseを使う
 1. `supabase/schema.sql` を Supabase の `SQL Editor` で実行
 2. `.env.example` を参考に `.env.local` または `.env` へ以下を設定

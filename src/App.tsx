@@ -33,6 +33,7 @@ export default function App() {
     monthDate,
     challenge,
     notice,
+    dismissNotice,
     editorDraft,
     editingPlanId,
     setViewMode,
@@ -66,7 +67,8 @@ export default function App() {
     return (
       <AuthScreen
         challenge={challenge}
-        notice={notice?.text ?? ''}
+        notice={notice}
+        onDismissNotice={dismissNotice}
         onRequestCode={requestCode}
         onVerifyCode={verifyCode}
         onResetChallenge={resetChallenge}
@@ -143,7 +145,19 @@ export default function App() {
       </div>
 
       {notice ? (
-        <div className={`app-notice ${notice.tone}`}>{notice.text}</div>
+        <div className="app-toast-layer print-hide" aria-live="polite">
+          <div className={`app-notice app-toast ${notice.tone}`}>
+            <span>{notice.text}</span>
+            <button
+              className="app-toast-close"
+              onClick={dismissNotice}
+              type="button"
+              aria-label="通知を閉じる"
+            >
+              ×
+            </button>
+          </div>
+        </div>
       ) : null}
 
       <main className="section-stack">

@@ -1,4 +1,9 @@
 import { useCallback, useState } from 'react';
+import {
+  getDevTestLoginEmail,
+  isDevTestLoginEmail,
+  isDevTestLoginEnabled,
+} from '../lib/devAuthShortcut';
 import { authRepository } from '../repositories';
 import type { EmailChallenge, User, UserProfileDraft } from '../types/domain';
 import type { ShowNotice } from './useNoticeState';
@@ -14,7 +19,7 @@ interface UseAuthSessionStateResult {
   bootstrapSession: (
     loadPlannerData: (userId: string) => Promise<void>,
   ) => Promise<void>;
-  requestCode: (email: string, username: string) => Promise<void>;
+  requestCode: (email: string, username: string) => Promise<User | null>;
   verifyCode: (
     email: string,
     code: string,
@@ -62,6 +67,28 @@ export function useAuthSessionState({
   const requestCode = useCallback(
     async (email: string, username: string) => {
       try {
+        if (isDevTestLoginEnabled() && isDevTestLoginEmail(email)) {
+          const previewChallenge = await authRepository.requestEmailCode(
+            getDevTestLoginEmail(),
+            username || getDevTestLoginEmail(),
+          );
+
+          if (!previewChallenge.previewCode) {
+            throw new Error('開発用テストログインのコードを発行できませんでした。');
+          }
+
+          const currentUser = await authRepository.verifyEmailCode(
+            previewChallenge.email,
+            previewChallenge.previewCode,
+            previewChallenge.username,
+          );
+
+          setUser(currentUser);
+          setChallenge(null);
+          showNotice('開発用テストアカウントでログインしました。', 'success');
+          return currentUser;
+        }
+
         const nextChallenge = await authRepository.requestEmailCode(email, username);
         setChallenge(nextChallenge);
         showNotice(
@@ -69,11 +96,13 @@ export function useAuthSessionState({
             ? '認証コードをメールで送信しました。受信トレイを確認してください。'
             : '認証コードを発行しました。MVP用メールボックスを確認してください。',
         );
+        return null;
       } catch (error) {
         showNotice(
           error instanceof Error ? error.message : '認証コードを発行できませんでした。',
           'error',
         );
+        return null;
       }
     },
     [showNotice],

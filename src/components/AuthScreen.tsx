@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import type { NoticeState } from '../hooks/useNoticeState';
 import type { EmailChallenge } from '../types/domain';
 
 type AuthIntent = 'sign-in' | 'sign-up';
 
 interface AuthScreenProps {
   challenge: EmailChallenge | null;
-  notice: string;
+  notice: NoticeState | null;
+  onDismissNotice: () => void;
   onRequestCode: (email: string, username: string) => Promise<void>;
   onVerifyCode: (email: string, code: string, username: string) => Promise<void>;
   onResetChallenge: () => void;
@@ -14,6 +16,7 @@ interface AuthScreenProps {
 export function AuthScreen({
   challenge,
   notice,
+  onDismissNotice,
   onRequestCode,
   onVerifyCode,
   onResetChallenge,
@@ -42,6 +45,22 @@ export function AuthScreen({
 
   return (
     <main className="auth-shell auth-shell-modern">
+      {notice ? (
+        <div className="app-toast-layer" aria-live="polite">
+          <div className={`app-notice app-toast ${notice.tone}`}>
+            <span>{notice.text}</span>
+            <button
+              className="app-toast-close"
+              onClick={onDismissNotice}
+              type="button"
+              aria-label="通知を閉じる"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <section className="auth-card auth-aside-card">
         <p className="eyebrow">Study Planner</p>
         <h1>学習の流れを崩さずに入れるための認証画面</h1>
@@ -204,8 +223,6 @@ export function AuthScreen({
             </p>
           )}
         </div>
-
-        {notice ? <p className="inline-note">{notice}</p> : null}
       </section>
     </main>
   );
