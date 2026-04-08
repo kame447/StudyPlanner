@@ -1,5 +1,6 @@
+import { isSupabaseEnabled } from './supabaseConfig';
+
 export type AiProvider = 'ollama' | 'openai' | 'rules';
-export type OllamaProfileId = 'speed' | 'balanced' | 'accuracy' | 'custom';
 
 export interface AiConfig {
   provider: AiProvider;
@@ -8,42 +9,11 @@ export interface AiConfig {
   apiKey: string;
 }
 
-export interface OllamaProfile {
-  id: Exclude<OllamaProfileId, 'custom'>;
-  label: string;
-  model: string;
-  summary: string;
-  pullCommand: string;
-}
-
 const AI_RUNTIME_STORAGE_KEY = 'studyplanner.ai.runtime.v1';
 const OLLAMA_DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1';
 const OLLAMA_DEFAULT_MODEL = 'llama3.2:3b';
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const OPENAI_DEFAULT_MODEL = 'gpt-5.4-mini';
-const OLLAMA_PROFILES: readonly OllamaProfile[] = [
-  {
-    id: 'speed',
-    label: '速度重視',
-    model: 'gemma4:e2b',
-    summary: '軽めで速く試したいとき向けです。精度より応答速度を優先します。',
-    pullCommand: 'ollama pull gemma4:e2b',
-  },
-  {
-    id: 'balanced',
-    label: '両立',
-    model: 'gemma4:e4b',
-    summary: '速度と精度のバランスを狙う標準プリセットです。',
-    pullCommand: 'ollama pull gemma4:e4b',
-  },
-  {
-    id: 'accuracy',
-    label: '精度重視',
-    model: 'gemma4:31b',
-    summary: 'かなり重いですが、ローカル精度を優先するときの候補です。',
-    pullCommand: 'ollama pull gemma4:31b',
-  },
-];
 
 function isAiProvider(value: string): value is AiProvider {
   return value === 'ollama' || value === 'openai' || value === 'rules';
@@ -77,6 +47,24 @@ function getProviderDefaults(provider: AiProvider): Omit<AiConfig, 'provider'> {
   };
 }
 
+function normalizeOllamaConfig(config: AiConfig): AiConfig {
+  if (config.provider !== 'ollama') {
+    return config;
+  }
+
+  return {
+    ...config,
+    model: OLLAMA_DEFAULT_MODEL,
+    apiKey: config.apiKey.trim() ? config.apiKey : 'ollama',
+  };
+}
+
+export function usesSupabaseOpenAiProxy(
+  config: Pick<AiConfig, 'provider'> = { provider: getAiConfig().provider },
+): boolean {
+  return config.provider === 'openai' && isSupabaseEnabled();
+}
+
 function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
@@ -86,22 +74,17 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function findOllamaProfileByModel(model: string): OllamaProfile | undefined {
-  const normalizedModel = model.trim();
-  return OLLAMA_PROFILES.find((profile) => profile.model === normalizedModel);
-}
-
 function getEnvConfig(): AiConfig {
   const envProvider = readString(import.meta.env.VITE_AI_PROVIDER);
-  const provider = envProvider && isAiProvider(envProvider) ? envProvider : 'ollama';
+  const provider = envProvider && isAiProvider(envProvider) ? envProvider : 'openai';
   const defaults = getProviderDefaults(provider);
 
-  return {
+  return normalizeOllamaConfig({
     provider,
     baseUrl: readString(import.meta.env.VITE_AI_BASE_URL) ?? defaults.baseUrl,
     model: readString(import.meta.env.VITE_AI_MODEL) ?? defaults.model,
     apiKey: readString(import.meta.env.VITE_AI_API_KEY) ?? defaults.apiKey,
-  };
+  });
 }
 
 function readStoredAiConfig(): Partial<AiConfig> | undefined {
@@ -146,12 +129,12 @@ function normalizeAiConfig(
       : fallback.provider;
   const defaults = getProviderDefaults(provider);
 
-  return {
+  return normalizeOllamaConfig({
     provider,
     baseUrl: candidate?.baseUrl ?? fallback.baseUrl ?? defaults.baseUrl,
     model: candidate?.model ?? fallback.model ?? defaults.model,
     apiKey: candidate?.apiKey ?? fallback.apiKey ?? defaults.apiKey,
-  };
+  });
 }
 
 function writeStoredAiConfig(config: AiConfig): void {
@@ -186,7 +169,7 @@ export function withAiProvider(
 ): AiConfig {
   const nextDefaults = getProviderDefaults(provider);
 
-  return {
+  return normalizeOllamaConfig({
     provider,
     baseUrl: nextDefaults.baseUrl,
     model: nextDefaults.model,
@@ -200,45 +183,11 @@ export function withAiProvider(
             ? currentConfig.apiKey
             : nextDefaults.apiKey
           : '',
-  };
+  });
 }
 
-export function getOllamaProfiles(): readonly OllamaProfile[] {
-  return OLLAMA_PROFILES;
-}
-
-export function getOllamaProfileId(
-  config: Pick<AiConfig, 'provider' | 'model'>,
-): OllamaProfileId {
-  if (config.provider !== 'ollama') {
-    return 'custom';
-  }
-
-  return findOllamaProfileByModel(config.model)?.id ?? 'custom';
-}
-
-export function applyOllamaProfile(
-  currentConfig: AiConfig,
-  profileId: Exclude<OllamaProfileId, 'custom'>,
-): AiConfig {
-  const profile = OLLAMA_PROFILES.find((item) => item.id === profileId);
-
-  if (!profile) {
-    return currentConfig;
-  }
-
-  return {
-    provider: 'ollama',
-    baseUrl:
-      currentConfig.provider === 'ollama'
-        ? currentConfig.baseUrl
-        : OLLAMA_DEFAULT_BASE_URL,
-    model: profile.model,
-    apiKey:
-      currentConfig.provider === 'ollama' && currentConfig.apiKey.trim()
-        ? currentConfig.apiKey
-        : 'ollama',
-  };
+export function getOllamaDefaultModel(): string {
+  return OLLAMA_DEFAULT_MODEL;
 }
 
 export function getAiConfigValidationMessage(
@@ -248,7 +197,7 @@ export function getAiConfigValidationMessage(
     return undefined;
   }
 
-  if (!config.baseUrl.trim()) {
+  if (!usesSupabaseOpenAiProxy(config) && !config.baseUrl.trim()) {
     return 'AI接続先URLを入力してください。';
   }
 
@@ -256,7 +205,11 @@ export function getAiConfigValidationMessage(
     return '利用するモデル名を入力してください。';
   }
 
-  if (config.provider === 'openai' && !config.apiKey.trim()) {
+  if (
+    config.provider === 'openai' &&
+    !usesSupabaseOpenAiProxy(config) &&
+    !config.apiKey.trim()
+  ) {
     return 'OpenAI APIキーを入力してください。';
   }
 
@@ -269,21 +222,19 @@ export function getAiProviderLabel(config: AiConfig = getAiConfig()): string {
   }
 
   if (config.provider === 'openai') {
-    return `OpenAI互換 (${config.model})`;
+    return usesSupabaseOpenAiProxy(config)
+      ? `OpenAI (Supabase経由 / ${config.model})`
+      : `OpenAI互換 (${config.model})`;
   }
 
-  const profile = findOllamaProfileByModel(config.model);
-
-  if (profile) {
-    return `Ollama / ${profile.label} (${config.model})`;
-  }
-
-  return `Ollama / カスタム (${config.model})`;
+  return `Ollama (${OLLAMA_DEFAULT_MODEL})`;
 }
 
 export function getAiStorageNote(config: AiConfig = getAiConfig()): string {
   if (config.provider === 'openai') {
-    return 'OpenAIキーはこのブラウザタブの sessionStorage にだけ保存します。';
+    return usesSupabaseOpenAiProxy(config)
+      ? 'OpenAIキーは Supabase Edge Function Secrets に置き、ブラウザには保存しません。'
+      : 'OpenAIキーはこのブラウザタブの sessionStorage にだけ保存します。';
   }
 
   if (config.provider === 'ollama') {

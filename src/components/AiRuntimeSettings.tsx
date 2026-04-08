@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  applyOllamaProfile,
   getAiConfigValidationMessage,
-  getOllamaProfileId,
-  getOllamaProfiles,
   getAiStorageNote,
+  getOllamaDefaultModel,
+  usesSupabaseOpenAiProxy,
   type AiConfig,
   type AiProvider,
   withAiProvider,
@@ -29,18 +28,13 @@ export function AiRuntimeSettings({
 }: AiRuntimeSettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState<AiConfig>(config);
-  const ollamaProfiles = getOllamaProfiles();
 
   useEffect(() => {
     setDraft(config);
   }, [config]);
 
   const validationMessage = getAiConfigValidationMessage(draft);
-  const activeOllamaProfileId = getOllamaProfileId(draft);
-  const activeOllamaProfile =
-    draft.provider === 'ollama'
-      ? ollamaProfiles.find((profile) => profile.id === activeOllamaProfileId)
-      : undefined;
+  const usesOpenAiProxy = usesSupabaseOpenAiProxy(draft);
 
   return (
     <div className="assistant-settings-card">
@@ -48,7 +42,7 @@ export function AiRuntimeSettings({
         <div>
           <strong>AI接続</strong>
           <p className="detail-note">
-            ローカルOllamaとOpenAI互換APIを切り替えられます。
+            ローカルOllama、Supabase経由のOpenAI、ルールのみを切り替えられます。
           </p>
         </div>
         <button
@@ -84,94 +78,53 @@ export function AiRuntimeSettings({
 
           {draft.provider === 'ollama' ? (
             <>
-              <label className="field field-full">
-                <span>ローカルモデル方針</span>
-                <div className="segmented-control">
-                  {ollamaProfiles.map((profile) => (
-                    <button
-                      key={profile.id}
-                      className={
-                        activeOllamaProfileId === profile.id
-                          ? 'segment active'
-                          : 'segment'
-                      }
-                      onClick={() =>
-                        setDraft((current) => applyOllamaProfile(current, profile.id))
-                      }
-                      type="button"
-                    >
-                      {profile.label}
-                    </button>
-                  ))}
-                  <button
-                    className={
-                      activeOllamaProfileId === 'custom' ? 'segment active' : 'segment'
-                    }
-                    onClick={() =>
-                      setDraft((current) =>
-                        current.provider === 'ollama'
-                          ? current
-                          : withAiProvider(current, 'ollama'),
-                      )
-                    }
-                    type="button"
-                  >
-                    カスタム
-                  </button>
-                </div>
-              </label>
-
               <div className="assistant-feedback-card">
-                <strong>
-                  {activeOllamaProfile?.label ?? 'カスタム'}
-                  {activeOllamaProfile ? `: ${activeOllamaProfile.model}` : ''}
-                </strong>
+                <strong>ローカルモデル: {getOllamaDefaultModel()}</strong>
                 <p className="detail-note">
-                  {activeOllamaProfile?.summary ??
-                    '任意の Ollama モデル名を入れて試せます。'}
+                  現在のOllama利用は `llama3.2:3b` 固定です。追加プリセットやカスタム入力は出しません。
                 </p>
-                <p className="detail-note">
-                  {activeOllamaProfile
-                    ? `未取得なら ${activeOllamaProfile.pullCommand}`
-                    : 'モデル名を直接入力するとカスタム設定として扱います。'}
-                </p>
+                <p className="detail-note">未取得なら `ollama pull llama3.2:3b`</p>
               </div>
             </>
           ) : null}
 
           {draft.provider !== 'rules' ? (
             <>
-              <label className="field field-full">
-                <span>接続先URL</span>
-                <input
-                  value={draft.baseUrl}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      baseUrl: event.target.value,
-                    }))
-                  }
-                  placeholder="http://127.0.0.1:11434/v1"
-                />
-              </label>
+              {!usesOpenAiProxy ? (
+                <label className="field field-full">
+                  <span>接続先URL</span>
+                  <input
+                    value={draft.baseUrl}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        baseUrl: event.target.value,
+                      }))
+                    }
+                    placeholder="http://127.0.0.1:11434/v1"
+                  />
+                </label>
+              ) : null}
 
-              <label className="field field-full">
-                <span>モデル名</span>
-                <input
-                  value={draft.model}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      model: event.target.value,
-                    }))
-                  }
-                  placeholder="gemma4:e4b / gpt-5.4-mini"
-                />
-              </label>
+              {draft.provider === 'openai' ? (
+                <label className="field field-full">
+                  <span>モデル名</span>
+                  <input
+                    value={draft.model}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        model: event.target.value,
+                      }))
+                    }
+                    placeholder="gpt-5.4-mini"
+                  />
+                </label>
+              ) : null}
             </>
           ) : null}
 
-          {draft.provider === 'openai' ? (
+          {draft.provider === 'openai' && !usesOpenAiProxy ? (
             <label className="field field-full">
               <span>APIキー</span>
               <input
@@ -192,7 +145,12 @@ export function AiRuntimeSettings({
           <div className="assistant-feedback-card">
             <strong>保存方法</strong>
             <p className="detail-note">{getAiStorageNote(draft)}</p>
-            {draft.provider === 'openai' ? (
+            {usesOpenAiProxy ? (
+              <p className="detail-note">
+                Edge Function `ai-planner` を deploy 済みなら、そのまま OpenAI を呼びます。
+              </p>
+            ) : null}
+            {draft.provider === 'openai' && !usesOpenAiProxy ? (
               <p className="detail-note">
                 公開Webアプリで使う場合は、後でバックエンド経由へ移してください。
               </p>

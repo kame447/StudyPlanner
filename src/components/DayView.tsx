@@ -9,6 +9,7 @@ import {
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
 import { isStudyTimePlan } from '../lib/studyAnalytics';
 import { buildEvaluationSummary } from '../services/evaluationService';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayNotebookPanel } from './DayNotebookPanel';
 import { DayTimeline } from './DayTimeline';
@@ -67,6 +68,11 @@ export function DayView({
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const dayRangeLabel = formatDateLabel(selectedDate);
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeDay(addDays(selectedDate, -1)),
+    onNext: () => onChangeDay(addDays(selectedDate, 1)),
+    disabled: modalState.type !== 'closed',
+  });
   const dayPlans = useMemo(
     () => sortByDateTime(plans.filter((plan) => plan.date === selectedDate)),
     [plans, selectedDate],
@@ -168,7 +174,7 @@ export function DayView({
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack swipe-view" {...swipeNavigation}>
       <div className="panel day-hero-panel">
         <div className="view-header-stack">
           <div>

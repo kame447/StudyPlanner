@@ -175,12 +175,10 @@ VITE_AI_API_KEY=ollama
 
 4. アプリ起動後、AI入力補助の `AI接続` から `Ollama / OpenAI互換 / ルールのみ` を切り替える
 
-ローカルLLMのプリセット
+補足
 
-- `速度重視`: `gemma4:e2b`
-- `両立`: `gemma4:e4b`
-- `精度重視`: `gemma4:31b`
-- それ以外のモデル名を入れると `カスタム` として扱う
+- 現在の Ollama 利用は `llama3.2:3b` 固定
+- 追加プリセットやカスタムモデル入力は UI に出さない
 
 ### OpenAI互換APIを個人利用で使う
 1. `npm run dev`
@@ -195,6 +193,31 @@ VITE_AI_API_KEY=ollama
 - この入力方法なら、APIキーはこの会話にも repo にも出ない
 - ただしブラウザ実行環境には入るので、公開用途ではそのまま使わない
 - 既に `.env` を git 管理している場合は、秘密情報を入れないこと
+
+### OpenAIをSupabase Edge Function経由で使う
+1. Supabase の `Edge Function Secrets` に `OPENAI_API_KEY` を保存
+2. このリポジトリで Supabase CLI にログイン
+
+```bash
+npx supabase login
+npx supabase link --project-ref your-project-ref
+```
+
+3. `ai-planner` 関数を deploy
+
+```bash
+npx supabase functions deploy ai-planner
+```
+
+4. `.env.local` または `.env` に Supabase 設定を入れた状態で `npm run dev` を再起動
+5. AI入力補助の `AI接続` で `OpenAI互換` を選び、モデル名だけ設定して使う
+
+補足
+
+- Supabase が有効なとき、`OpenAI互換` は `ai-planner` Edge Function 経由で OpenAI を呼ぶ
+- この場合、OpenAI の secret key はブラウザに出ない
+- `ai-planner` が未deployのまま使うと AI 解析は失敗する
+- AI補助の既定値は OpenAI (`gpt-5.4-mini`)
 
 ### Supabaseを使う
 1. `supabase/schema.sql` を Supabase の `SQL Editor` で実行

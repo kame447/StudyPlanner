@@ -6,6 +6,7 @@ import {
   minutesBetween,
   sortByDateTime,
 } from '../lib/date';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { getPlanTypeLabel } from '../lib/plans';
 import type { Actual, Plan } from '../types/domain';
 
@@ -27,9 +28,13 @@ export function WeekView({
   const weekDates = getWeekDates(selectedDate);
   const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
   const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeWeek(addDays(selectedDate, -7)),
+    onNext: () => onChangeWeek(addDays(selectedDate, 7)),
+  });
 
   return (
-    <section className="panel">
+    <section className="panel swipe-view" {...swipeNavigation}>
       <div className="view-header-stack">
         <div>
           <div className="view-titlebar">
@@ -93,9 +98,18 @@ export function WeekView({
                   >
                     {formatDateLabel(date)}
                   </button>
-                  <p>
-                    計画 {formatMinutes(dayPlanMinutes)} / 実績{' '}
-                    {formatMinutes(dayActualMinutes)}
+                  <p className="week-day-summary">
+                    <span className="week-day-summary-item">
+                      <span className="week-day-summary-label-full">計画</span>
+                      <span className="week-day-summary-label-short">計</span>{' '}
+                      <strong>{formatMinutes(dayPlanMinutes)}</strong>
+                    </span>
+                    <span className="week-day-summary-separator">/</span>
+                    <span className="week-day-summary-item">
+                      <span className="week-day-summary-label-full">実績</span>
+                      <span className="week-day-summary-label-short">実</span>{' '}
+                      <strong>{formatMinutes(dayActualMinutes)}</strong>
+                    </span>
                   </p>
                 </div>
               </div>
@@ -123,11 +137,24 @@ export function WeekView({
                           </span>
                         </div>
 
-                        <p className="comparison-subtitle">
-                          計画 {plan.startTime} - {plan.endTime}
-                          {actual
-                            ? ` / 実績 ${actual.actualStartTime} - ${actual.actualEndTime}`
-                            : ' / 実績 未記録'}
+                        <p className="comparison-subtitle week-comparison-subtitle">
+                          <span className="week-subtitle-item">
+                            <span className="week-subtitle-label-full">計画</span>
+                            <span className="week-subtitle-label-short">計</span>{' '}
+                            <span>
+                              {plan.startTime} - {plan.endTime}
+                            </span>
+                          </span>
+                          <span className="week-day-summary-separator">/</span>
+                          <span className="week-subtitle-item">
+                            <span className="week-subtitle-label-full">実績</span>
+                            <span className="week-subtitle-label-short">実</span>{' '}
+                            <span>
+                              {actual
+                                ? `${actual.actualStartTime} - ${actual.actualEndTime}`
+                                : '未記録'}
+                            </span>
+                          </span>
                         </p>
 
                         <div className="comparison-track">
@@ -152,6 +179,10 @@ export function WeekView({
                 ) : (
                   <p className="empty-copy">この週の予定はまだありません。</p>
                 )}
+
+                {dayPlans.length > 2 ? (
+                  <p className="week-hidden-plan-count">+{dayPlans.length - 2}件</p>
+                ) : null}
               </div>
             </article>
           );

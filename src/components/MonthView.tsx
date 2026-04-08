@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addMonths,
-  formatCompactDate,
   formatMinutes,
   formatMonthLabel,
   getCalendarDayTone,
@@ -10,12 +9,14 @@ import {
   getWeekdayLabels,
   minutesBetween,
   startOfWeek,
+  todayIsoDate,
 } from '../lib/date';
 import {
   doesMonthEventOccurOnDate,
   formatMonthEventTimeRange,
   sortMonthEvents,
 } from '../lib/monthEvents';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { MonthPickerDialog } from './MonthPickerDialog';
 import { MonthEventDialog } from './MonthEventDialog';
 import type { Actual, MonthEvent, MonthEventDraft, Plan } from '../types/domain';
@@ -32,6 +33,29 @@ interface MonthViewProps {
   onOpenWeek: (date: string) => void;
   onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
+}
+
+function formatCompactStudyMinutes(minutes: number): string {
+  if (minutes <= 0) {
+    return '0m';
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours > 0 && remainingMinutes > 0) {
+    return `${hours}h${remainingMinutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${remainingMinutes}m`;
+}
+
+function getCalendarDayNumber(dateString: string): string {
+  return Number.parseInt(dateString.slice(-2), 10).toString();
 }
 
 export function MonthView({
@@ -51,6 +75,14 @@ export function MonthView({
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const shouldFocusSelectedCell = useRef(false);
+  const pendingCellClickTimeout = useRef<number | null>(null);
+  const lastCellClick = useRef<{ date: string; at: number } | null>(null);
+  const todayDate = todayIsoDate();
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeMonth(addMonths(monthDate, -1)),
+    onNext: () => onChangeMonth(addMonths(monthDate, 1)),
+    disabled: eventModalDate !== null || isMonthPickerOpen,
+  });
   const weeks = getMonthWeeks(monthDate);
   const grid = useMemo(
     () =>
@@ -153,6 +185,38 @@ export function MonthView({
     setEventModalDate(date);
   }
 
+  function handleCellClick(date: string) {
+    const clickTimestamp = window.performance.now();
+
+    if (
+      lastCellClick.current &&
+      lastCellClick.current.date === date &&
+      clickTimestamp - lastCellClick.current.at <= 320
+    ) {
+      if (pendingCellClickTimeout.current !== null) {
+        window.clearTimeout(pendingCellClickTimeout.current);
+        pendingCellClickTimeout.current = null;
+      }
+
+      lastCellClick.current = null;
+      openMonthEventEditor(date);
+      return;
+    }
+
+    lastCellClick.current = { date, at: clickTimestamp };
+
+    if (pendingCellClickTimeout.current !== null) {
+      window.clearTimeout(pendingCellClickTimeout.current);
+      pendingCellClickTimeout.current = null;
+    }
+
+    pendingCellClickTimeout.current = window.setTimeout(() => {
+      onSelectDate(date);
+      pendingCellClickTimeout.current = null;
+      lastCellClick.current = null;
+    }, 240);
+  }
+
   useEffect(() => {
     function handleWindowKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
@@ -207,14 +271,24 @@ export function MonthView({
     };
   }, [eventModalDate, isMonthPickerOpen, moveSelectionByKeyboard, selectedDate]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingCellClickTimeout.current !== null) {
+        window.clearTimeout(pendingCellClickTimeout.current);
+      }
+
+      lastCellClick.current = null;
+    };
+  }, []);
+
   return (
-    <section className="panel">
+    <section className="panel swipe-view" {...swipeNavigation}>
       <div className="view-header-stack">
         <div>
-          <div className="view-titlebar">
+          <div className="view-titlebar month-view-titlebar">
             <h2>月ビュー</h2>
-            <div className="view-title-actions print-hide">
-              <div className="nav-actions view-title-nav">
+            <div className="view-title-actions print-hide month-view-title-actions">
+              <div className="nav-actions view-title-nav month-view-title-nav">
                 <button
                   className="ghost-button"
                   onClick={() => onChangeMonth(addMonths(monthDate, -1))}
@@ -238,7 +312,7 @@ export function MonthView({
                 </button>
               </div>
               <button
-                className="ghost-button view-print-button"
+                className="ghost-button view-print-button month-view-print-button"
                 onClick={() => window.print()}
                 type="button"
               >
@@ -264,7 +338,8 @@ export function MonthView({
             }}
             type="button"
           >
-            {week.label}
+            <span className="month-week-chip-full">{week.label}</span>
+            <span className="month-week-chip-short">{week.index + 1}週</span>
           </button>
         ))}
       </div>
@@ -298,6 +373,7 @@ export function MonthView({
             'month-cell',
             cell.inCurrentMonth ? '' : 'is-muted',
             cell.date === selectedDate ? 'is-selected' : '',
+            cell.date === todayDate ? 'is-today' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -308,10 +384,7 @@ export function MonthView({
               className={cellClassName}
               ref={(node) => registerCellRef(cell.date, node)}
               onClick={() => {
-                onSelectDate(cell.date);
-              }}
-              onDoubleClick={() => {
-                openMonthEventEditor(cell.date);
+                handleCellClick(cell.date);
               }}
               onKeyDown={(event) => {
                 switch (event.key) {
@@ -349,26 +422,40 @@ export function MonthView({
                     'month-date-number',
                     dayTone === 'saturday' ? 'is-saturday' : '',
                     dayTone === 'holiday' ? 'is-holiday' : '',
+                    cell.date === todayDate ? 'is-today' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
                 >
-                  {formatCompactDate(cell.date)}
+                  {getCalendarDayNumber(cell.date)}
                 </strong>
                 {holidayName ? (
                   <span className="month-holiday-label" title={holidayName}>
                     {holidayName}
                   </span>
                 ) : null}
-                {cell.date === selectedDate ? <span className="today-dot" /> : null}
               </div>
 
               <div className="month-study-summary">
                 <p className="month-target">
-                  目標 {targetMinutes > 0 ? formatMinutes(targetMinutes) : '0分'}
+                  <span className="month-target-label month-target-label-full">目標</span>
+                  <span className="month-target-label month-target-label-short">目</span>{' '}
+                  <span className="month-target-value month-target-value-full">
+                    {targetMinutes > 0 ? formatMinutes(targetMinutes) : '0分'}
+                  </span>
+                  <span className="month-target-value month-target-value-short">
+                    {formatCompactStudyMinutes(targetMinutes)}
+                  </span>
                 </p>
                 <p className="month-target">
-                  実績 {actualMinutes > 0 ? formatMinutes(actualMinutes) : '0分'}
+                  <span className="month-target-label month-target-label-full">実績</span>
+                  <span className="month-target-label month-target-label-short">実</span>{' '}
+                  <span className="month-target-value month-target-value-full">
+                    {actualMinutes > 0 ? formatMinutes(actualMinutes) : '0分'}
+                  </span>
+                  <span className="month-target-value month-target-value-short">
+                    {formatCompactStudyMinutes(actualMinutes)}
+                  </span>
                 </p>
               </div>
 
@@ -377,8 +464,12 @@ export function MonthView({
                   <span
                     key={monthEvent.id}
                     className="event-pill month-major-event-pill"
+                    title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
                   >
-                    {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
+                    <span className="month-major-event-full">
+                      {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
+                    </span>
+                    <span className="month-major-event-short">{monthEvent.title}</span>
                   </span>
                 ))}
 

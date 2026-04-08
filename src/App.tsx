@@ -85,9 +85,11 @@ export default function App() {
             type="button"
           >
             <UserAvatar user={user} small />
-            <span>マイページ</span>
+            <span className="my-page-trigger-label">マイページ</span>
           </button>
-          <div className="user-badge">{getUserDisplayName(user)}</div>
+          <div className="user-badge header-profile-name">
+            {getUserDisplayName(user)}
+          </div>
         </div>
       </header>
 

@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@supabase/functions-js": "jsr:@supabase/functions-js@^2",
+    "jose": "jsr:@panva/jose@^6.0.13"
+  }
+}

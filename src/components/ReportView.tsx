@@ -55,9 +55,9 @@ interface SubjectDistributionEntry {
 }
 
 const OTHER_SUBJECT_COLOR = '#8d9aa6';
-const REPORT_BAR_MIN_WIDTH = 88;
-const REPORT_BAR_GAP = 18;
-const REPORT_BAR_HORIZONTAL_PADDING = 18;
+const REPORT_BAR_MIN_WIDTH = 72;
+const REPORT_BAR_GAP = 14;
+const REPORT_BAR_HORIZONTAL_PADDING = 12;
 
 function renderTrendMinutes(currentWeekMinutes: number, previousWeekMinutes: number): string {
   const delta = currentWeekMinutes - previousWeekMinutes;

@@ -228,7 +228,7 @@ export function MonthEventDialog({
 
   return (
     <div className="overlay modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-card month-event-modal" onClick={(event) => event.stopPropagation()}>
         <div className="section-stack">
           <div className="section-header">
             <div>

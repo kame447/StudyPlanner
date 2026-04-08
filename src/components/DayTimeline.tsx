@@ -164,6 +164,18 @@ function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
   );
 }
 
+function getPlanChipLabel(entryKind: DayTimelineSelection['kind']) {
+  return entryKind === 'plan'
+    ? { short: '予', full: '予定' }
+    : { short: '主', full: '主要予定' };
+}
+
+function getActualChipLabel(alignedToPlan?: boolean) {
+  return alignedToPlan
+    ? { short: '合', full: '予定通り' }
+    : { short: '変', full: '内容変更' };
+}
+
 export function DayTimeline({
   plans,
   monthEvents,
@@ -294,6 +306,8 @@ export function DayTimeline({
               {planEntries.map((entry) => {
                 const duration = minutesBetween(entry.startTime, entry.endTime);
                 const theme = getSubjectTheme(entry.subject, entry.type);
+                const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+                const chipLabel = getPlanChipLabel(entry.entryKind);
 
                 return (
                   <button
@@ -320,22 +334,27 @@ export function DayTimeline({
                     type="button"
                   >
                     <div className="timeline-entry-row">
-                      <span className="timeline-chip neutral">
-                        {entry.entryKind === 'plan' ? '予定' : '主要予定'}
+                      <span className="timeline-chip neutral" title={chipLabel.full}>
+                        <span className="timeline-chip-short">{chipLabel.short}</span>
+                        <span className="timeline-chip-full">{chipLabel.full}</span>
                       </span>
-                      <div className="timeline-entry-line">
-                        <strong>{entry.title}</strong>
-                        <span className="timeline-inline-separator">/</span>
-                        <span>
-                          {entry.startTime} - {entry.endTime}
-                        </span>
-                        <span className="timeline-inline-separator">/</span>
-                        <span
-                          className="timeline-inline-subject"
-                          style={{ color: theme.text }}
-                        >
-                          {getSubjectLabel(entry.subject, entry.type)}
-                        </span>
+                      <div className="timeline-entry-content">
+                        <strong className="timeline-entry-title" title={entry.title}>
+                          {entry.title}
+                        </strong>
+                        <div className="timeline-entry-meta">
+                          <span className="timeline-entry-time">
+                            {entry.startTime} - {entry.endTime}
+                          </span>
+                          <span className="timeline-inline-separator">/</span>
+                          <span
+                            className="timeline-inline-subject"
+                            style={{ color: theme.text }}
+                            title={subjectLabel}
+                          >
+                            {subjectLabel}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </button>
@@ -345,6 +364,7 @@ export function DayTimeline({
               {actualEntries.map((entry) => {
                 const duration = minutesBetween(entry.startTime, entry.endTime);
                 const theme = getSubjectTheme(entry.subject, entry.type);
+                const chipLabel = getActualChipLabel(entry.alignedToPlan);
 
                 return (
                   <button
@@ -373,23 +393,33 @@ export function DayTimeline({
                     <div className="timeline-entry-row">
                       <span
                         className="timeline-chip"
+                        title={chipLabel.full}
                         style={{
                           backgroundColor: theme.fill,
                           color: '#fff',
                         }}
                       >
-                        {entry.alignedToPlan ? '予定通り' : '内容変更'}
+                        <span className="timeline-chip-short">{chipLabel.short}</span>
+                        <span className="timeline-chip-full">{chipLabel.full}</span>
                       </span>
-                      <div className="timeline-entry-line">
-                        <strong>{entry.title}</strong>
-                        <span className="timeline-inline-separator">/</span>
-                        <span>
-                          {entry.startTime} - {entry.endTime}
-                        </span>
-                        <span className="timeline-inline-separator">/</span>
-                        <span>{formatMinutes(duration)}</span>
-                        <span className="timeline-inline-separator">/</span>
-                        <span className="timeline-inline-subject">{entry.subject}</span>
+                      <div className="timeline-entry-content">
+                        <strong className="timeline-entry-title" title={entry.title}>
+                          {entry.title}
+                        </strong>
+                        <div className="timeline-entry-meta">
+                          <span className="timeline-entry-time">
+                            {entry.startTime} - {entry.endTime}
+                          </span>
+                          <span className="timeline-inline-separator">/</span>
+                          <span>{formatMinutes(duration)}</span>
+                          <span className="timeline-inline-separator">/</span>
+                          <span
+                            className="timeline-inline-subject"
+                            title={entry.subject}
+                          >
+                            {entry.subject}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </button>

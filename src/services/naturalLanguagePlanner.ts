@@ -1314,13 +1314,26 @@ async function generateSingleNaturalLanguageSuggestion(
     }
 
     return buildFailedModelSuggestion(baseline, repairedIssues);
-  } catch {
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error && error.message.trim().length > 0
+        ? error.message.trim()
+        : undefined;
+
+    console.error('[AI Planner] suggestion generation failed', {
+      provider: getAiProviderLabel(),
+      mode: input.mode,
+      text: input.text,
+      error,
+    });
+
     return {
       ...baseline.suggestion,
       providerLabel: `${getAiProviderLabel()} -> 入力文ベース`,
       assumptions: [
         ...baseline.suggestion.assumptions,
         `${getAiProviderLabel()} に接続できなかったため、入力文から再構成しました。`,
+        ...(errorMessage ? [`詳細: ${errorMessage}`] : []),
       ],
       issues: ['ai_unavailable'],
     };
