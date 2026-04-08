@@ -47,9 +47,9 @@
   --month-cell-background: rgba(255, 255, 255, 0.72);
   --calendar-saturday: #2f6fc2;
   --calendar-holiday: #cc4b4b;
-  --today-ring: #8eb9ff;
-  --today-fill: rgba(142, 185, 255, 0.18);
-  --month-date-badge-size: 1.75rem;
+  --today-cell-outline: #9aa1a6;
+  --month-selection-outline: rgba(23, 109, 102, 0.42);
+  --month-selection-today-outline: rgba(23, 109, 102, 0.18);
   --day-column-background: rgba(255, 255, 255, 0.62);
   --hero-panel-background: linear-gradient(
     180deg,
@@ -57,6 +57,14 @@
     rgba(247, 243, 235, 0.88)
   );
   --score-comment-background: rgba(23, 109, 102, 0.08);
+  --comparison-track-bg: rgba(23, 109, 102, 0.12);
+  --comparison-plan-start: rgba(23, 109, 102, 0.16);
+  --comparison-plan-end: rgba(23, 109, 102, 0.28);
+  --comparison-actual-start: #2e9e84;
+  --comparison-actual-end: #176d66;
+  --focus-outline: rgba(23, 109, 102, 0.34);
+  --accent-shadow: rgba(23, 109, 102, 0.18);
+  --auth-tab-shadow: rgba(23, 109, 102, 0.08);
   --timeline-label-bg: rgba(54, 61, 64, 0.08);
   --timeline-label-border: rgba(54, 61, 64, 0.12);
   --timeline-label-text: #334245;
@@ -147,9 +155,9 @@
   --month-cell-background: rgba(24, 31, 35, 0.82);
   --calendar-saturday: #6aa7ff;
   --calendar-holiday: #ff8c8c;
-  --today-ring: #9fc6ff;
-  --today-fill: rgba(159, 198, 255, 0.2);
-  --month-date-badge-size: 1.75rem;
+  --today-cell-outline: #d4d9db;
+  --month-selection-outline: rgba(89, 183, 171, 0.46);
+  --month-selection-today-outline: rgba(89, 183, 171, 0.22);
   --day-column-background: rgba(24, 31, 35, 0.76);
   --hero-panel-background: linear-gradient(
     180deg,
@@ -157,6 +165,14 @@
     rgba(17, 22, 25, 0.92)
   );
   --score-comment-background: rgba(89, 183, 171, 0.12);
+  --comparison-track-bg: rgba(89, 183, 171, 0.18);
+  --comparison-plan-start: rgba(89, 183, 171, 0.18);
+  --comparison-plan-end: rgba(47, 143, 132, 0.34);
+  --comparison-actual-start: #7ad7cb;
+  --comparison-actual-end: #2f8f84;
+  --focus-outline: rgba(89, 183, 171, 0.42);
+  --accent-shadow: rgba(89, 183, 171, 0.28);
+  --auth-tab-shadow: rgba(89, 183, 171, 0.16);
   --timeline-label-bg: rgba(255, 255, 255, 0.06);
   --timeline-label-border: rgba(255, 255, 255, 0.08);
   --timeline-label-text: #c5d6d3;
@@ -381,7 +397,7 @@ h2 {
 .auth-mode-tab.active {
   background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
-  box-shadow: 0 10px 20px rgba(23, 109, 102, 0.08);
+  box-shadow: 0 10px 20px var(--auth-tab-shadow);
 }
 
 .auth-stage-card {
@@ -478,7 +494,7 @@ h2 {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: #f6fbfb;
   font-weight: 700;
-  box-shadow: 0 12px 24px rgba(23, 109, 102, 0.18);
+  box-shadow: 0 12px 24px var(--accent-shadow);
 }
 
 .ghost-button,
@@ -561,7 +577,7 @@ h2 {
   width: 76px;
   height: 76px;
   flex: 0 0 auto;
-  filter: drop-shadow(0 12px 24px rgba(23, 109, 102, 0.18));
+  filter: drop-shadow(0 12px 24px var(--accent-shadow));
 }
 
 .brand-mark svg {
@@ -641,7 +657,7 @@ h2 {
   color: #fff;
   font-size: 1.5rem;
   font-weight: 800;
-  box-shadow: 0 10px 22px rgba(23, 109, 102, 0.18);
+  box-shadow: 0 10px 22px var(--accent-shadow);
 }
 
 .user-avatar-image {
@@ -682,6 +698,50 @@ h2 {
 .assistant-settings-grid {
   display: grid;
   gap: 14px;
+}
+
+.collapsible-field {
+  gap: 10px;
+}
+
+.collapsible-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--button-ghost-border);
+  background: var(--surface-strong);
+  color: inherit;
+  text-align: left;
+}
+
+.collapsible-toggle-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.collapsible-toggle-copy > span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.collapsible-toggle-copy > strong {
+  font-size: 0.92rem;
+}
+
+.collapsible-toggle-summary {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.collapsible-panel {
+  display: grid;
+  gap: 10px;
 }
 
 .assistant-feedback-card {
@@ -929,13 +989,23 @@ h2 {
 
 .month-cell.is-selected {
   background: var(--surface-selected);
-  box-shadow: inset 0 0 0 1px rgba(23, 109, 102, 0.42);
+  box-shadow: inset 0 0 0 1px var(--month-selection-outline);
+}
+
+.month-cell.is-today {
+  box-shadow: inset 0 0 0 3px var(--today-cell-outline);
+}
+
+.month-cell.is-selected.is-today {
+  box-shadow:
+    inset 0 0 0 3px var(--today-cell-outline),
+    inset 0 0 0 4px var(--month-selection-today-outline);
 }
 
 .month-cell-head {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: 6px;
 }
 
@@ -959,19 +1029,30 @@ h2 {
   font-weight: 700;
   color: var(--calendar-holiday);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   text-align: left;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.month-holiday-label.is-medium {
+  font-size: 0.66rem !important;
+}
+
+.month-holiday-label.is-long {
+  font-size: 0.56rem !important;
+}
+
+.month-holiday-label.is-very-long {
+  font-size: 0.48rem !important;
+}
+
+.month-holiday-label.is-ultra-long {
+  font-size: 0.42rem !important;
 }
 
 .month-date-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--month-date-badge-size);
-  height: var(--month-date-badge-size);
-  flex: 0 0 var(--month-date-badge-size);
-  aspect-ratio: 1 / 1;
+  display: inline-block;
   font-weight: 800;
 }
 
@@ -1002,14 +1083,6 @@ h2 {
   height: 10px;
   border-radius: 50%;
   background: var(--accent);
-}
-
-.month-date-number.is-today {
-  border-radius: 999px;
-  background: var(--today-fill);
-  color: #111111;
-  border: 2px solid var(--today-ring);
-  box-shadow: none;
 }
 
 .week-grid,
@@ -1141,7 +1214,7 @@ h2 {
   height: 12px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(23, 109, 102, 0.12);
+  background: var(--comparison-track-bg);
 }
 
 .comparison-plan-bar,
@@ -1152,11 +1225,11 @@ h2 {
 }
 
 .comparison-plan-bar {
-  background: linear-gradient(90deg, rgba(23, 109, 102, 0.16), rgba(23, 109, 102, 0.28));
+  background: linear-gradient(90deg, var(--comparison-plan-start), var(--comparison-plan-end));
 }
 
 .comparison-actual-bar {
-  background: linear-gradient(90deg, #2e9e84, #176d66);
+  background: linear-gradient(90deg, var(--comparison-actual-start), var(--comparison-actual-end));
 }
 
 .day-layout {
@@ -1382,7 +1455,7 @@ h2 {
 
 .timeline-plan-block.is-selected,
 .timeline-actual-block.is-selected {
-  outline: 2px solid rgba(23, 109, 102, 0.34);
+  outline: 2px solid var(--focus-outline);
   outline-offset: 1px;
 }
 
@@ -1871,6 +1944,57 @@ h2 {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
   background: var(--surface-selected);
+}
+
+.theme-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.theme-palette-button {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--button-ghost-border);
+  background: var(--surface-strong);
+  color: inherit;
+  text-align: left;
+}
+
+.theme-palette-button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong) 90%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.theme-palette-swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-palette-swatch {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.theme-palette-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.theme-palette-copy strong {
+  font-size: 0.88rem;
+}
+
+.theme-palette-copy span {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted);
 }
 
 .month-picker-trigger {
@@ -2456,6 +2580,23 @@ h2 {
     gap: 8px;
   }
 
+  .modal-card .collapsible-toggle {
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+
+  .modal-card .collapsible-toggle-copy > span {
+    font-size: 0.7rem;
+  }
+
+  .modal-card .collapsible-toggle-copy > strong {
+    font-size: 0.82rem;
+  }
+
+  .modal-card .collapsible-toggle-summary {
+    font-size: 0.68rem;
+  }
+
   .modal-card .field {
     gap: 6px;
   }
@@ -2567,6 +2708,23 @@ h2 {
 
   .modal-card .avatar-option-grid {
     gap: 8px;
+  }
+
+  .modal-card .theme-palette-grid {
+    gap: 8px;
+  }
+
+  .modal-card .theme-palette-button {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .modal-card .theme-palette-copy strong {
+    font-size: 0.8rem;
+  }
+
+  .modal-card .theme-palette-copy span {
+    font-size: 0.66rem;
   }
 
   .modal-card .month-wheel-picker::before,
@@ -2929,16 +3087,28 @@ h2 {
     line-height: 1.1;
   }
 
-  :root {
-    --month-date-badge-size: 1.45rem;
-  }
-
   .month-holiday-label,
   .month-target,
   .month-event-more,
   .month-major-event-pill {
     font-size: 0.58rem;
     line-height: 1.2;
+  }
+
+  .month-holiday-label.is-long {
+    font-size: 0.46rem !important;
+  }
+
+  .month-holiday-label.is-very-long {
+    font-size: 0.4rem !important;
+  }
+
+  .month-holiday-label.is-medium {
+    font-size: 0.54rem !important;
+  }
+
+  .month-holiday-label.is-ultra-long {
+    font-size: 0.34rem !important;
   }
 
   .month-week-chip-full,
@@ -3430,6 +3600,23 @@ h2 {
     gap: 6px;
   }
 
+  .modal-card .collapsible-toggle {
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .modal-card .collapsible-toggle-copy > span {
+    font-size: 0.62rem;
+  }
+
+  .modal-card .collapsible-toggle-copy > strong {
+    font-size: 0.72rem;
+  }
+
+  .modal-card .collapsible-toggle-summary {
+    font-size: 0.6rem;
+  }
+
   .modal-card .field span,
   .modal-card .detail-note,
   .modal-card .inline-note,
@@ -3472,6 +3659,30 @@ h2 {
     min-height: 36px;
     border-radius: 10px;
     font-size: 0.84rem;
+  }
+
+  .modal-card .theme-palette-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .modal-card .theme-palette-button {
+    gap: 6px;
+    padding: 8px;
+    border-radius: 10px;
+  }
+
+  .modal-card .theme-palette-swatch {
+    width: 14px;
+    height: 14px;
+  }
+
+  .modal-card .theme-palette-copy strong {
+    font-size: 0.72rem;
+  }
+
+  .modal-card .theme-palette-copy span {
+    font-size: 0.58rem;
   }
 
   .modal-card .month-event-chip {
@@ -3688,15 +3899,27 @@ h2 {
     font-size: 0.72rem;
   }
 
-  :root {
-    --month-date-badge-size: 1.35rem;
-  }
-
   .month-holiday-label,
   .month-target,
   .month-event-more,
   .month-major-event-pill {
     font-size: 0.52rem;
+  }
+
+  .month-holiday-label.is-medium {
+    font-size: 0.48rem !important;
+  }
+
+  .month-holiday-label.is-long {
+    font-size: 0.4rem !important;
+  }
+
+  .month-holiday-label.is-very-long {
+    font-size: 0.34rem !important;
+  }
+
+  .month-holiday-label.is-ultra-long {
+    font-size: 0.3rem !important;
   }
 
   .month-target {
@@ -3931,16 +4154,28 @@ h2 {
     line-height: 1;
   }
 
-  :root {
-    --month-date-badge-size: 1.1rem;
-  }
-
   .month-holiday-label,
   .month-target,
   .month-event-more,
   .month-major-event-pill {
     font-size: 0.46rem;
     line-height: 1.05;
+  }
+
+  .month-holiday-label.is-medium {
+    font-size: 0.42rem !important;
+  }
+
+  .month-holiday-label.is-long {
+    font-size: 0.36rem !important;
+  }
+
+  .month-holiday-label.is-very-long {
+    font-size: 0.31rem !important;
+  }
+
+  .month-holiday-label.is-ultra-long {
+    font-size: 0.28rem !important;
   }
 
   .month-target {

@@ -58,6 +58,28 @@ function getCalendarDayNumber(dateString: string): string {
   return Number.parseInt(dateString.slice(-2), 10).toString();
 }
 
+function getHolidayLabelLengthClass(holidayName: string): string {
+  const holidayLength = [...holidayName].length;
+
+  if (holidayLength >= 7) {
+    return 'is-ultra-long';
+  }
+
+  if (holidayLength >= 6) {
+    return 'is-very-long';
+  }
+
+  if (holidayLength >= 5) {
+    return 'is-long';
+  }
+
+  if (holidayLength >= 4) {
+    return 'is-medium';
+  }
+
+  return '';
+}
+
 export function MonthView({
   monthDate,
   selectedDate,
@@ -422,7 +444,6 @@ export function MonthView({
                     'month-date-number',
                     dayTone === 'saturday' ? 'is-saturday' : '',
                     dayTone === 'holiday' ? 'is-holiday' : '',
-                    cell.date === todayDate ? 'is-today' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -430,7 +451,15 @@ export function MonthView({
                   {getCalendarDayNumber(cell.date)}
                 </strong>
                 {holidayName ? (
-                  <span className="month-holiday-label" title={holidayName}>
+                  <span
+                    className={[
+                      'month-holiday-label',
+                      getHolidayLabelLengthClass(holidayName),
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    title={holidayName}
+                  >
                     {holidayName}
                   </span>
                 ) : null}

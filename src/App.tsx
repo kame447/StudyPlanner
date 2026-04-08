@@ -20,7 +20,8 @@ export default function App() {
   const [toolbarPlanInputMode, setToolbarPlanInputMode] = useState<'manual' | 'ai'>(
     'manual',
   );
-  const { themeMode, setThemeMode } = useThemePreference();
+  const { themeMode, setThemeMode, themePalette, setThemePalette } =
+    useThemePreference();
   const {
     booting,
     user,
@@ -79,6 +80,9 @@ export default function App() {
         <StudyPlannerLogo />
 
         <div className="header-actions">
+          <div className="user-badge header-profile-name">
+            {getUserDisplayName(user)}
+          </div>
           <button
             className="ghost-button my-page-trigger"
             onClick={() => setIsMyPageOpen(true)}
@@ -87,9 +91,6 @@ export default function App() {
             <UserAvatar user={user} small />
             <span className="my-page-trigger-label">マイページ</span>
           </button>
-          <div className="user-badge header-profile-name">
-            {getUserDisplayName(user)}
-          </div>
         </div>
       </header>
 
@@ -235,7 +236,9 @@ export default function App() {
         open={isMyPageOpen}
         user={user}
         themeMode={themeMode}
+        themePalette={themePalette}
         onChangeTheme={setThemeMode}
+        onChangeThemePalette={setThemePalette}
         onSaveProfile={saveUserProfile}
         onSignOut={signOut}
         onClose={() => setIsMyPageOpen(false)}
