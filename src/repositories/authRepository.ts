@@ -55,6 +55,7 @@ export function createAuthRepository(
         username: normalizedUsername,
         expiresAt,
         previewCode: code,
+        delivery: 'preview',
       };
     },
     async verifyEmailCode(email, code, username) {

@@ -306,6 +306,103 @@ h2 {
   min-height: 100vh;
 }
 
+.auth-shell-modern {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.92fr);
+}
+
+.auth-aside-card {
+  display: grid;
+  gap: 20px;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top right, rgba(55, 122, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 92%, var(--accent) 8%) 100%);
+}
+
+.auth-main-card {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-highlight-list {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-highlight-card {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 86%, var(--surface-strong) 14%);
+}
+
+.auth-highlight-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.98rem;
+}
+
+.auth-highlight-card p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.auth-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-mode-tab {
+  border: 1px solid var(--button-ghost-border);
+  background: var(--button-ghost-bg);
+  color: inherit;
+  padding: 13px 16px;
+  border-radius: 16px;
+  font-weight: 700;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.auth-mode-tab:hover {
+  transform: translateY(-1px);
+}
+
+.auth-mode-tab.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+  box-shadow: 0 10px 20px rgba(23, 109, 102, 0.08);
+}
+
+.auth-stage-card {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--surface-strong) 12%);
+}
+
+.auth-stage-card-secondary {
+  background: var(--surface);
+}
+
+.auth-stage-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.auth-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .auth-form,
 .mailbox-preview,
 .suggestion-card,
@@ -2149,6 +2246,11 @@ h2 {
 
   .view-titlebar {
     align-items: flex-start;
+  }
+
+  .auth-summary-grid,
+  .auth-mode-tabs {
+    grid-template-columns: 1fr;
   }
 
   .score-grid,

@@ -37,6 +37,7 @@ export default function App() {
     setViewMode,
     requestCode,
     verifyCode,
+    resetChallenge,
     saveUserProfile,
     signOut,
     openEditPlan,
@@ -67,6 +68,7 @@ export default function App() {
         notice={notice?.text ?? ''}
         onRequestCode={requestCode}
         onVerifyCode={verifyCode}
+        onResetChallenge={resetChallenge}
       />
     );
   }

@@ -22,6 +22,7 @@ interface UseAuthSessionStateResult {
   ) => Promise<User | null>;
   saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
   signOut: () => Promise<void>;
+  resetChallenge: () => void;
 }
 
 export function useAuthSessionState({
@@ -63,7 +64,11 @@ export function useAuthSessionState({
       try {
         const nextChallenge = await authRepository.requestEmailCode(email, username);
         setChallenge(nextChallenge);
-        showNotice('認証コードを発行しました。MVP用メールボックスを確認してください。');
+        showNotice(
+          nextChallenge.delivery === 'email'
+            ? '認証コードをメールで送信しました。受信トレイを確認してください。'
+            : '認証コードを発行しました。MVP用メールボックスを確認してください。',
+        );
       } catch (error) {
         showNotice(
           error instanceof Error ? error.message : '認証コードを発行できませんでした。',
@@ -122,6 +127,10 @@ export function useAuthSessionState({
     showNotice('ログアウトしました。');
   }, [showNotice]);
 
+  const resetChallenge = useCallback(() => {
+    setChallenge(null);
+  }, []);
+
   return {
     booting,
     user,
@@ -131,5 +140,6 @@ export function useAuthSessionState({
     verifyCode,
     saveUserProfile,
     signOut,
+    resetChallenge,
   };
 }

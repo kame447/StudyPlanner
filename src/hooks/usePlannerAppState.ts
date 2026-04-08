@@ -34,6 +34,7 @@ interface PlannerAppState {
   setViewMode: (viewMode: ViewMode) => void;
   requestCode: (email: string, username: string) => Promise<void>;
   verifyCode: (email: string, code: string, username: string) => Promise<void>;
+  resetChallenge: () => void;
   saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
   signOut: () => Promise<void>;
   openCreatePlan: () => void;
@@ -63,6 +64,7 @@ export function usePlannerAppState(): PlannerAppState {
     bootstrapSession,
     requestCode,
     verifyCode: verifyAuthCode,
+    resetChallenge,
     saveUserProfile,
     signOut: signOutSession,
   } = useAuthSessionState({ showNotice });
@@ -134,6 +136,7 @@ export function usePlannerAppState(): PlannerAppState {
     setViewMode,
     requestCode,
     verifyCode,
+    resetChallenge,
     saveUserProfile,
     signOut,
     openCreatePlan,
