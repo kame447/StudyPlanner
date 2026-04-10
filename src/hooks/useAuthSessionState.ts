@@ -1,11 +1,6 @@
 import { useCallback, useState } from 'react';
-import {
-  getDevTestLoginEmail,
-  isDevTestLoginEmail,
-  isDevTestLoginEnabled,
-} from '../lib/devAuthShortcut';
 import { authRepository } from '../repositories';
-import type { EmailChallenge, User, UserProfileDraft } from '../types/domain';
+import type { User, UserProfileDraft } from '../types/domain';
 import type { ShowNotice } from './useNoticeState';
 
 interface UseAuthSessionStateOptions {
@@ -15,19 +10,19 @@ interface UseAuthSessionStateOptions {
 interface UseAuthSessionStateResult {
   booting: boolean;
   user: User | null;
-  challenge: EmailChallenge | null;
   bootstrapSession: (
     loadPlannerData: (userId: string) => Promise<void>,
   ) => Promise<void>;
-  requestCode: (email: string, username: string) => Promise<User | null>;
-  verifyCode: (
+  signUpWithPassword: (
     email: string,
-    code: string,
+    password: string,
     username: string,
-  ) => Promise<User | null>;
+  ) => Promise<boolean>;
+  signInWithPassword: (email: string, password: string) => Promise<User | null>;
+  signInWithGoogle: () => Promise<User | null>;
+  sendPasswordReset: (email: string) => Promise<void>;
   saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
   signOut: () => Promise<void>;
-  resetChallenge: () => void;
 }
 
 export function useAuthSessionState({
@@ -35,7 +30,6 @@ export function useAuthSessionState({
 }: UseAuthSessionStateOptions): UseAuthSessionStateResult {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  const [challenge, setChallenge] = useState<EmailChallenge | null>(null);
 
   const bootstrapSession = useCallback(
     async (loadPlannerData: (userId: string) => Promise<void>) => {
@@ -64,56 +58,31 @@ export function useAuthSessionState({
     [showNotice],
   );
 
-  const requestCode = useCallback(
-    async (email: string, username: string) => {
+  const signUpWithPassword = useCallback(
+    async (email: string, password: string, username: string) => {
       try {
-        if (isDevTestLoginEnabled() && isDevTestLoginEmail(email)) {
-          const previewChallenge = await authRepository.requestEmailCode(
-            getDevTestLoginEmail(),
-            username || getDevTestLoginEmail(),
-          );
-
-          if (!previewChallenge.previewCode) {
-            throw new Error('開発用テストログインのコードを発行できませんでした。');
-          }
-
-          const currentUser = await authRepository.verifyEmailCode(
-            previewChallenge.email,
-            previewChallenge.previewCode,
-            previewChallenge.username,
-          );
-
-          setUser(currentUser);
-          setChallenge(null);
-          showNotice('開発用テストアカウントでログインしました。', 'success');
-          return currentUser;
-        }
-
-        const nextChallenge = await authRepository.requestEmailCode(email, username);
-        setChallenge(nextChallenge);
+        await authRepository.signUpWithPassword(email, password, username);
         showNotice(
-          nextChallenge.delivery === 'email'
-            ? '認証コードをメールで送信しました。受信トレイを確認してください。'
-            : '認証コードを発行しました。MVP用メールボックスを確認してください。',
+          '確認メールを送信しました。メール内のリンクを開いてからログインしてください。',
+          'success',
         );
-        return null;
+        return true;
       } catch (error) {
         showNotice(
-          error instanceof Error ? error.message : '認証コードを発行できませんでした。',
+          error instanceof Error ? error.message : '新規登録に失敗しました。',
           'error',
         );
-        return null;
+        return false;
       }
     },
     [showNotice],
   );
 
-  const verifyCode = useCallback(
-    async (email: string, code: string, username: string) => {
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
       try {
-        const currentUser = await authRepository.verifyEmailCode(email, code, username);
+        const currentUser = await authRepository.signInWithPassword(email, password);
         setUser(currentUser);
-        setChallenge(null);
         showNotice('ログインしました。', 'success');
         return currentUser;
       } catch (error) {
@@ -122,6 +91,41 @@ export function useAuthSessionState({
           'error',
         );
         return null;
+      }
+    },
+    [showNotice],
+  );
+
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      const currentUser = await authRepository.signInWithGoogle();
+      setUser(currentUser);
+      showNotice('Googleでログインしました。', 'success');
+      return currentUser;
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : 'Googleログインに失敗しました。',
+        'error',
+      );
+      return null;
+    }
+  }, [showNotice]);
+
+  const sendPasswordReset = useCallback(
+    async (email: string) => {
+      try {
+        await authRepository.sendPasswordReset(email);
+        showNotice(
+          'パスワード再設定メールを送信しました。受信トレイを確認してください。',
+          'success',
+        );
+      } catch (error) {
+        showNotice(
+          error instanceof Error
+            ? error.message
+            : 'パスワード再設定メールを送信できませんでした。',
+          'error',
+        );
       }
     },
     [showNotice],
@@ -152,23 +156,18 @@ export function useAuthSessionState({
   const signOut = useCallback(async () => {
     await authRepository.signOut();
     setUser(null);
-    setChallenge(null);
     showNotice('ログアウトしました。');
   }, [showNotice]);
-
-  const resetChallenge = useCallback(() => {
-    setChallenge(null);
-  }, []);
 
   return {
     booting,
     user,
-    challenge,
     bootstrapSession,
-    requestCode,
-    verifyCode,
+    signUpWithPassword,
+    signInWithPassword,
+    signInWithGoogle,
+    sendPasswordReset,
     saveUserProfile,
     signOut,
-    resetChallenge,
   };
 }

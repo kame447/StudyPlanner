@@ -1,5 +1,3 @@
-import { isSupabaseEnabled } from './supabaseConfig';
-
 export type AiProvider = 'ollama' | 'openai' | 'rules';
 
 export interface AiConfig {
@@ -14,6 +12,7 @@ const OLLAMA_DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1';
 const OLLAMA_DEFAULT_MODEL = 'llama3.2:3b';
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const OPENAI_DEFAULT_MODEL = 'gpt-5.4-mini';
+const CLOUDFLARE_PROXY_URL = import.meta.env.VITE_CLOUDFLARE_AI_PROXY_URL?.trim() ?? '';
 
 function isAiProvider(value: string): value is AiProvider {
   return value === 'ollama' || value === 'openai' || value === 'rules';
@@ -59,10 +58,14 @@ function normalizeOllamaConfig(config: AiConfig): AiConfig {
   };
 }
 
-export function usesSupabaseOpenAiProxy(
+export function getCloudflareAiProxyUrl(): string {
+  return CLOUDFLARE_PROXY_URL;
+}
+
+export function usesCloudflareOpenAiProxy(
   config: Pick<AiConfig, 'provider'> = { provider: getAiConfig().provider },
 ): boolean {
-  return config.provider === 'openai' && isSupabaseEnabled();
+  return config.provider === 'openai' && Boolean(getCloudflareAiProxyUrl());
 }
 
 function readString(value: unknown): string | undefined {
@@ -197,7 +200,7 @@ export function getAiConfigValidationMessage(
     return undefined;
   }
 
-  if (!usesSupabaseOpenAiProxy(config) && !config.baseUrl.trim()) {
+  if (!usesCloudflareOpenAiProxy(config) && !config.baseUrl.trim()) {
     return 'AI接続先URLを入力してください。';
   }
 
@@ -207,7 +210,7 @@ export function getAiConfigValidationMessage(
 
   if (
     config.provider === 'openai' &&
-    !usesSupabaseOpenAiProxy(config) &&
+    !usesCloudflareOpenAiProxy(config) &&
     !config.apiKey.trim()
   ) {
     return 'OpenAI APIキーを入力してください。';
@@ -222,8 +225,8 @@ export function getAiProviderLabel(config: AiConfig = getAiConfig()): string {
   }
 
   if (config.provider === 'openai') {
-    return usesSupabaseOpenAiProxy(config)
-      ? `OpenAI (Supabase経由 / ${config.model})`
+    return usesCloudflareOpenAiProxy(config)
+      ? `OpenAI (Cloudflare Workers経由 / ${config.model})`
       : `OpenAI互換 (${config.model})`;
   }
 
@@ -232,8 +235,8 @@ export function getAiProviderLabel(config: AiConfig = getAiConfig()): string {
 
 export function getAiStorageNote(config: AiConfig = getAiConfig()): string {
   if (config.provider === 'openai') {
-    return usesSupabaseOpenAiProxy(config)
-      ? 'OpenAIキーは Supabase Edge Function Secrets に置き、ブラウザには保存しません。'
+    return usesCloudflareOpenAiProxy(config)
+      ? 'OpenAIキーは Cloudflare Workers の secret に置き、ブラウザには保存しません。'
       : 'OpenAIキーはこのブラウザタブの sessionStorage にだけ保存します。';
   }
 

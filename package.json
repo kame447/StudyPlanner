@@ -8,10 +8,12 @@
     "build": "tsc --noEmit && vite build --config vite.config.mjs",
     "preview:vite": "vite preview --config vite.config.mjs --host 0.0.0.0",
     "preview": "node ./scripts/preview-server.mjs",
-    "cert:dev": "node ./scripts/generate-dev-cert.mjs"
+    "cert:dev": "node ./scripts/generate-dev-cert.mjs",
+    "deploy:firestore-rules": "npx firebase-tools deploy --only firestore:rules",
+    "deploy:worker": "npx wrangler deploy --config workers/ai-proxy/wrangler.jsonc"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.102.1",
+    "firebase": "^12.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -20,7 +22,6 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "supabase": "^2.88.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }

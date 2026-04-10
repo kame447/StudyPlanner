@@ -16,14 +16,6 @@ export interface User {
   createdAt: string;
 }
 
-export interface EmailChallenge {
-  email: string;
-  username: string;
-  expiresAt: string;
-  previewCode?: string;
-  delivery: 'preview' | 'email';
-}
-
 export interface UserProfileDraft {
   username: string;
   avatar: string;

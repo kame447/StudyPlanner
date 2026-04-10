@@ -91,10 +91,34 @@ export function detectType(text: string): PlanType {
 }
 
 export function detectSubject(text: string): string {
-  const matchedRule = naturalLanguageCatalog.subjects.find((rule) =>
-    rule.keywords.some((keyword) => includesKeyword(text, keyword)),
-  );
-  return matchedRule?.label ?? '';
+  const normalizedText = normalizeCatalogText(text);
+  let bestMatch:
+    | {
+        label: string;
+        score: number;
+      }
+    | undefined;
+
+  naturalLanguageCatalog.subjects.forEach((rule) => {
+    rule.keywords.forEach((keyword) => {
+      const normalizedKeyword = normalizeCatalogText(keyword);
+
+      if (!normalizedKeyword || !normalizedText.includes(normalizedKeyword)) {
+        return;
+      }
+
+      const score = normalizedKeyword.length;
+
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = {
+          label: rule.label,
+          score,
+        };
+      }
+    });
+  });
+
+  return bestMatch?.label ?? '';
 }
 
 function removeSchedulingTerms(text: string): string {

@@ -1,6 +1,8 @@
-import { getSupabaseClient } from '../../lib/supabaseClient';
-import { getSupabaseConfig } from '../../lib/supabaseConfig';
-import { usesSupabaseOpenAiProxy } from '../../lib/aiConfig';
+import {
+  getCloudflareAiProxyUrl,
+  usesCloudflareOpenAiProxy,
+} from '../../lib/aiConfig';
+import { getFirebaseAuth } from '../../lib/firebaseClient';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -40,7 +42,7 @@ interface ChatCompletionResponse {
   choices?: ChatCompletionChoice[];
 }
 
-interface SupabaseProxyResponse {
+interface AiProxyResponse {
   content?: string;
   error?: string;
 }
@@ -49,55 +51,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-async function extractResponseErrorMessage(
-  response: Response,
-): Promise<string | undefined> {
-  const contentType = response.headers.get('content-type') ?? '';
+function extractUnknownErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
 
-  try {
-    if (contentType.includes('application/json')) {
-      const parsed = (await response.clone().json()) as unknown;
-
-      if (isRecord(parsed)) {
-        if (typeof parsed.error === 'string' && parsed.error.trim()) {
-          return parsed.error.trim();
-        }
-
-        if (typeof parsed.message === 'string' && parsed.message.trim()) {
-          return parsed.message.trim();
-        }
-      }
+  if (isRecord(error)) {
+    if (typeof error.message === 'string' && error.message.trim()) {
+      return error.message.trim();
     }
 
-    const text = (await response.clone().text()).trim();
-    return text || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function parseJwtMeta(token: string): Record<string, string | number | undefined> {
-  try {
-    const payload = token.split('.')[1];
-
-    if (!payload) {
-      return {};
+    if (typeof error.details === 'string' && error.details.trim()) {
+      return error.details.trim();
     }
 
-    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const decodedPayload = atob(normalizedPayload);
-    const parsed = JSON.parse(decodedPayload) as Record<string, unknown>;
-
-    return {
-      iss: typeof parsed.iss === 'string' ? parsed.iss : undefined,
-      aud: typeof parsed.aud === 'string' ? parsed.aud : undefined,
-      sub: typeof parsed.sub === 'string' ? parsed.sub : undefined,
-      exp: typeof parsed.exp === 'number' ? parsed.exp : undefined,
-      role: typeof parsed.role === 'string' ? parsed.role : undefined,
-    };
-  } catch {
-    return {};
+    if (typeof error.error === 'string' && error.error.trim()) {
+      return error.error.trim();
+    }
   }
+
+  return fallbackMessage;
 }
 
 export interface OpenAiCompatibleClient {
@@ -124,74 +100,63 @@ export function createOpenAiCompatibleClient(
         response_format: responseFormat,
       };
 
-      if (usesSupabaseOpenAiProxy({ provider: config.provider ?? 'openai' })) {
-        const supabase = getSupabaseClient();
-        const supabaseConfig = getSupabaseConfig();
+      if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
+        const proxyUrl = getCloudflareAiProxyUrl();
+        const firebaseAuth = getFirebaseAuth();
 
-        if (!supabase) {
-          throw new Error('Supabase client is not available.');
+        if (!proxyUrl) {
+          throw new Error('Cloudflare AI proxy URL is not configured.');
         }
 
-        if (!supabaseConfig.enabled) {
-          throw new Error('Supabase configuration is not available.');
+        if (!firebaseAuth?.currentUser) {
+          throw new Error('ログイン済みユーザーの Firebase セッションが見つかりません。');
         }
 
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const accessToken = session?.access_token?.trim();
+        const idToken = await firebaseAuth.currentUser.getIdToken();
 
-        if (!accessToken) {
-          throw new Error(
-            'Supabase のログインセッションが見つかりません。ログインし直してください。',
+        try {
+          const endpoint = proxyUrl.endsWith('/chat/completions')
+            ? proxyUrl
+            : `${proxyUrl.replace(/\/$/, '')}/chat/completions`;
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          const result = (await response.json()) as AiProxyResponse;
+          const proxiedContent = result.content?.trim();
+
+          if (!proxiedContent) {
+            const responseMessage =
+              result.error || `AI proxy request failed with status ${response.status}.`;
+
+            console.error('[AI Proxy] response content missing', {
+              proxyUrl: endpoint,
+              responseMessage,
+              model: payload.model,
+            });
+
+            throw new Error(responseMessage);
+          }
+
+          return proxiedContent;
+        } catch (error) {
+          const responseMessage = extractUnknownErrorMessage(
+            error,
+            'AI proxy request failed.',
           );
-        }
-
-        const functionUrl = `${supabaseConfig.url.replace(/\/$/, '')}/functions/v1/ai-planner`;
-        const response = await fetch(functionUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: supabaseConfig.anonKey,
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const responseMessage =
-            (await extractResponseErrorMessage(response)) ??
-            `AI proxy request failed with status ${response.status}.`;
 
           console.error('[AI Proxy] request failed', {
-            functionUrl,
-            status: response.status,
-            statusText: response.statusText,
+            proxyUrl,
             responseMessage,
-            tokenMeta: parseJwtMeta(accessToken),
             model: payload.model,
           });
 
           throw new Error(responseMessage);
         }
-
-        const data = (await response.json()) as SupabaseProxyResponse;
-        const proxiedContent = data?.content?.trim();
-
-        if (!proxiedContent) {
-          const responseMessage = data?.error || 'AI proxy response was empty.';
-
-          console.error('[AI Proxy] response content missing', {
-            functionUrl,
-            responseMessage,
-            tokenMeta: parseJwtMeta(accessToken),
-            model: payload.model,
-          });
-
-          throw new Error(responseMessage);
-        }
-
-        return proxiedContent;
       }
 
       const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {

@@ -31,15 +31,15 @@ export default function App() {
     viewMode,
     selectedDate,
     monthDate,
-    challenge,
     notice,
     dismissNotice,
     editorDraft,
     editingPlanId,
     setViewMode,
-    requestCode,
-    verifyCode,
-    resetChallenge,
+    signUpWithPassword,
+    signInWithPassword,
+    signInWithGoogle,
+    sendPasswordReset,
     saveUserProfile,
     signOut,
     openEditPlan,
@@ -66,12 +66,12 @@ export default function App() {
   if (!user) {
     return (
       <AuthScreen
-        challenge={challenge}
         notice={notice}
         onDismissNotice={dismissNotice}
-        onRequestCode={requestCode}
-        onVerifyCode={verifyCode}
-        onResetChallenge={resetChallenge}
+        onSignUpWithPassword={signUpWithPassword}
+        onSignInWithPassword={signInWithPassword}
+        onSignInWithGoogle={signInWithGoogle}
+        onSendPasswordReset={sendPasswordReset}
       />
     );
   }

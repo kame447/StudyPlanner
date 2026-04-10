@@ -20,7 +20,10 @@
 最初のバージョンでは、以下を対象とします。
 
 ### 1. 認証
-- メール認証のみ
+- Firebase Authentication
+- メールアドレス + パスワード
+- 初回のみメール確認
+- Googleログイン
 
 ### 2. 予定管理
 - 予定の作成、編集、削除
@@ -110,9 +113,21 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
 - レスポンシブ対応を前提とし、PCとスマホの両方でUIが崩れにくいことを重視
 
 ### バックエンド
-- 最初は小規模利用を想定した構成
-- 将来的な移行をしやすくするため、特定BaaSへの依存を薄くする
+- 認証は Firebase Authentication
+- データ保存は Firestore
+- OpenAI の API キー保護は Cloudflare Workers
 - データアクセスは抽象化レイヤーを設ける
+
+## 現在の技術スタック
+- フロントエンド: React + TypeScript + Vite
+- 認証: Firebase Authentication
+- データベース: Cloud Firestore
+- AIプロキシ: Cloudflare Workers
+- ローカルAI: Ollama (`llama3.2:3b`)
+- デプロイ想定:
+  - フロント: Cloudflare Pages など静的ホスティング
+  - 認証/DB: Firebase
+  - AIキー保護: Cloudflare Workers Secrets
 
 ## 将来的にやりたいこと
 - 共有機能
@@ -125,16 +140,16 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
 
 ## 実装メモ
 ### このMVPでの認証
-- メールコード認証を実装
-- 現在はローカル保存のMVP版で、コードは画面内メールボックスに表示
-- 認証処理は repository 経由にしてあり、将来は外部メール認証に差し替え可能
+- Firebase Authentication を使う
+- 初回登録時は確認メールを送り、以後はメールアドレス + パスワード、または Google でログインする
+- Firebase 環境変数が無い場合だけ localStorage のフォールバックを使う
 
 ### このMVPでのデータ保存
-- 予定、実績、認証状態は localStorage に保存
+- Firebase 設定がある場合は Firestore に保存する
+- Firestore では `profiles / plans / actuals / day_notes / month_events` を使う
 - データアクセス層は `storage gateway -> repository` の構成に分離してある
-- 現在は `localStorageGateway` を使っているが、将来はこの gateway を外部DB版に差し替えられる
-- repository の生成は `createRepositories` に集約してあり、保存先の切り替え箇所を1か所にしている
-- 現時点では外部データベースは使っていない
+- Firebase 設定が無い場合だけ localStorage のフォールバックで動く
+- repository の生成は `src/repositories/index.ts` に集約してあり、保存先の切り替え箇所を1か所にしている
 
 ### 保守性のための整理
 - 予定・実績・日次メモの生成処理は `src/domain/planner.ts` に集約
@@ -154,7 +169,7 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
 - OpenAI の APIキーは UI から入力すると `sessionStorage` にだけ保存される
 - そのため、キーをこのリポジトリの `.env` や `.env.local` に置かなければ、作業中のコード参照からは見えない
 - ただし、フロントエンドから直接 OpenAI API を呼ぶ方式は個人ローカル利用向け
-- 公開Webアプリとして使う場合は、後でバックエンドやプロキシ経由に移すこと
+- 公開Webアプリとして使う場合は Cloudflare Workers 経由を使う
 
 ### Ollamaで自然言語入力補助を使う
 1. Ollama を起動
@@ -194,29 +209,19 @@ VITE_AI_API_KEY=ollama
 - ただしブラウザ実行環境には入るので、公開用途ではそのまま使わない
 - 既に `.env` を git 管理している場合は、秘密情報を入れないこと
 
-### OpenAIをSupabase Edge Function経由で使う
-1. Supabase の `Edge Function Secrets` に `OPENAI_API_KEY` を保存
-2. このリポジトリで Supabase CLI にログイン
-
-```bash
-npx supabase login
-npx supabase link --project-ref your-project-ref
-```
-
-3. `ai-planner` 関数を deploy
-
-```bash
-npx supabase functions deploy ai-planner
-```
-
-4. `.env.local` または `.env` に Supabase 設定を入れた状態で `npm run dev` を再起動
-5. AI入力補助の `AI接続` で `OpenAI互換` を選び、モデル名だけ設定して使う
+### OpenAIをCloudflare Workers経由で使う
+1. Cloudflare で Worker を作成するか、この repo の `workers/ai-proxy` を deploy する
+2. Worker の secret に `OPENAI_API_KEY` を保存する
+3. Worker の vars に `FIREBASE_WEB_API_KEY` と `ALLOWED_ORIGIN` を設定する
+4. deploy 後の Worker URL を `.env.local` または `.env` の `VITE_CLOUDFLARE_AI_PROXY_URL` に入れる
+5. Firebase 設定を入れた状態で `npm run dev` を再起動する
+6. AI入力補助の `AI接続` で `OpenAI互換` を選び、モデル名だけ設定して使う
 
 補足
 
-- Supabase が有効なとき、`OpenAI互換` は `ai-planner` Edge Function 経由で OpenAI を呼ぶ
+- `VITE_CLOUDFLARE_AI_PROXY_URL` があるとき、`OpenAI互換` は Cloudflare Workers 経由で OpenAI を呼ぶ
 - この場合、OpenAI の secret key はブラウザに出ない
-- `ai-planner` が未deployのまま使うと AI 解析は失敗する
+- Worker では Firebase ID token を Google の `accounts:lookup` で検証してから OpenAI を呼ぶ
 - AI補助の既定値は OpenAI (`gpt-5.4-mini`)
 
 ### スマホ実機確認で HTTPS 警告を出さない
@@ -236,22 +241,46 @@ npm run cert:dev -- 192.168.0.5
 - iPhone / Android では、`mkcert` のローカル CA を端末側でも信頼する必要がある
 - 証明書生成後は `npm run dev` を再起動する
 
-### Supabaseを使う
-1. `supabase/schema.sql` を Supabase の `SQL Editor` で実行
-2. `.env.example` を参考に `.env.local` または `.env` へ以下を設定
+### Firebaseを使う
+1. Firebase プロジェクトを作成
+2. Authentication で `メール / パスワード` と `Google` を有効化
+3. Firestore Database を作成
+4. `firestore.rules` を Firebase に反映する
+4. `.env.example` を参考に `.env.local` または `.env` へ以下を設定
 
 ```bash
-VITE_SUPABASE_URL=your-project-url
-VITE_SUPABASE_ANON_KEY=your-publishable-key
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_APP_ID=your-app-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
+VITE_FIREBASE_MEASUREMENT_ID=
+VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
 ```
 
-3. `npm run dev` を再起動
+5. `npm run dev` を再起動
 
 補足
 
-- 上の2つが設定されている場合は Supabase を使う
-- 未設定の場合は localStorage のMVPモードで動く
-- フロントで使うのは `Publishable key` のみで、`Secret key` は使わない
+- 上の必須4項目が設定されている場合は Firebase を使う
+- 未設定の場合は localStorage のフォールバックで動く
+- Firestore は `profiles / plans / actuals / day_notes / month_events` を使う
+- Firestore rules は `npm run deploy:firestore-rules` でも反映できる
+
+### Cloudflare Workers を使う
+1. Cloudflare にログインして Workers を有効化する
+2. `workers/ai-proxy/wrangler.jsonc` の `FIREBASE_WEB_API_KEY` と `ALLOWED_ORIGIN` を自分の環境に合わせる
+3. `npx wrangler login`
+4. `npx wrangler secret put OPENAI_API_KEY --config workers/ai-proxy/wrangler.jsonc`
+5. `npm run deploy:worker`
+6. deploy 後の URL を `.env` の `VITE_CLOUDFLARE_AI_PROXY_URL` に入れる
+
+補足
+
+- `ALLOWED_ORIGIN` は本番のフロント URL に合わせる
+- ローカル確認だけなら一時的に `http://localhost:5173` や `https://192.168.x.x:4173` にしてよい
+- Worker は Firebase の ID token を検証するので、ログイン済みユーザーだけが AI を使える
 
 ## 起動方法
 ```bash

@@ -3,7 +3,7 @@ import {
   getAiConfigValidationMessage,
   getAiStorageNote,
   getOllamaDefaultModel,
-  usesSupabaseOpenAiProxy,
+  usesCloudflareOpenAiProxy,
   type AiConfig,
   type AiProvider,
   withAiProvider,
@@ -34,7 +34,7 @@ export function AiRuntimeSettings({
   }, [config]);
 
   const validationMessage = getAiConfigValidationMessage(draft);
-  const usesOpenAiProxy = usesSupabaseOpenAiProxy(draft);
+  const usesOpenAiProxy = usesCloudflareOpenAiProxy(draft);
 
   return (
     <div className="assistant-settings-card">
@@ -42,7 +42,7 @@ export function AiRuntimeSettings({
         <div>
           <strong>AI接続</strong>
           <p className="detail-note">
-            ローカルOllama、Supabase経由のOpenAI、ルールのみを切り替えられます。
+            ローカルOllama、Cloudflare Workers経由のOpenAI、ルールのみを切り替えられます。
           </p>
         </div>
         <button
@@ -147,7 +147,7 @@ export function AiRuntimeSettings({
             <p className="detail-note">{getAiStorageNote(draft)}</p>
             {usesOpenAiProxy ? (
               <p className="detail-note">
-                Edge Function `ai-planner` を deploy 済みなら、そのまま OpenAI を呼びます。
+                Cloudflare Worker を deploy 済みなら、そのまま OpenAI を呼びます。
               </p>
             ) : null}
             {draft.provider === 'openai' && !usesOpenAiProxy ? (

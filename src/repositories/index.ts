@@ -1,19 +1,18 @@
-import { isSupabaseEnabled } from '../lib/supabaseConfig';
-import { isDevTestLoginEnabled } from '../lib/devAuthShortcut';
+import { isFirebaseEnabled } from '../lib/firebaseConfig';
 import { createRepositories } from './createRepositories';
 import {
   createLocalAuthStorageGateway,
   createLocalPlannerStorageGateway,
 } from './localStorageGateway';
-import { createSupabaseRepositories } from './supabaseRepositories';
+import { createFirebaseRepositories } from './firebaseRepositories';
 
 const localRepositoryBundle = createRepositories({
   authStorageGateway: createLocalAuthStorageGateway(),
   plannerStorageGateway: createLocalPlannerStorageGateway(),
 });
 
-const repositoryBundle = isSupabaseEnabled() && !isDevTestLoginEnabled()
-  ? createSupabaseRepositories()
+const repositoryBundle = isFirebaseEnabled()
+  ? createFirebaseRepositories()
   : localRepositoryBundle;
 
 export const { authRepository, plannerRepository } = repositoryBundle;

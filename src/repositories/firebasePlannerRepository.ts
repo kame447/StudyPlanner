@@ -1,0 +1,196 @@
+import type { Firestore } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
+import type {
+  Actual,
+  DayNote,
+  MonthEvent,
+  Plan,
+} from '../types/domain';
+import type { PlannerRepository } from './repositoryContracts';
+
+type PlannerDoc = Plan | Actual | DayNote | MonthEvent;
+
+function normalizeErrorMessage(
+  fallbackMessage: string,
+  error: { message?: string | null } | null,
+): string {
+  const message = error?.message?.trim();
+  return message || fallbackMessage;
+}
+
+async function listByUserId<T extends PlannerDoc>(
+  firestoreDb: Firestore,
+  collectionName: string,
+  userId: string,
+): Promise<T[]> {
+  const snapshot = await getDocs(
+    query(collection(firestoreDb, collectionName), where('userId', '==', userId)),
+  );
+
+  return snapshot.docs.map((document) => document.data() as T);
+}
+
+async function upsertDocument<T extends PlannerDoc>(
+  firestoreDb: Firestore,
+  collectionName: string,
+  item: T,
+): Promise<T> {
+  await setDoc(doc(firestoreDb, collectionName, item.id), item, {
+    merge: true,
+  });
+  return item;
+}
+
+export function createFirebasePlannerRepository(
+  firestoreDb: Firestore,
+): PlannerRepository {
+  return {
+    async getPlans(userId) {
+      try {
+        return await listByUserId<Plan>(firestoreDb, 'plans', userId);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を取得できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async getActuals(userId) {
+      try {
+        return await listByUserId<Actual>(firestoreDb, 'actuals', userId);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('実績を取得できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async getDayNotes(userId) {
+      try {
+        return await listByUserId<DayNote>(firestoreDb, 'day_notes', userId);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('日次メモを取得できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async getMonthEvents(userId) {
+      try {
+        return await listByUserId<MonthEvent>(firestoreDb, 'month_events', userId);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '主要予定を取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertPlan(plan) {
+      try {
+        return await upsertDocument(firestoreDb, 'plans', plan);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を保存できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async deletePlan(userId, planId) {
+      try {
+        const batch = writeBatch(firestoreDb);
+        const actuals = await listByUserId<Actual>(firestoreDb, 'actuals', userId);
+
+        batch.delete(doc(firestoreDb, 'plans', planId));
+        actuals
+          .filter((actual) => actual.planId === planId)
+          .forEach((actual) => {
+            batch.delete(doc(firestoreDb, 'actuals', actual.id));
+          });
+
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を削除できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async upsertActual(actual) {
+      try {
+        return await upsertDocument(firestoreDb, 'actuals', actual);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('実績を保存できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async deleteActual(userId, actualId) {
+      try {
+        const actuals = await listByUserId<Actual>(firestoreDb, 'actuals', userId);
+        const targetActual = actuals.find((actual) => actual.id === actualId);
+
+        if (!targetActual) {
+          return;
+        }
+
+        await deleteDoc(doc(firestoreDb, 'actuals', targetActual.id));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('実績を削除できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async upsertDayNote(dayNote) {
+      try {
+        return await upsertDocument(firestoreDb, 'day_notes', dayNote);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('日次メモを保存できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async upsertMonthEvent(monthEvent) {
+      try {
+        return await upsertDocument(firestoreDb, 'month_events', monthEvent);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '主要予定を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async deleteMonthEvent(userId, monthEventId) {
+      try {
+        const monthEvents = await listByUserId<MonthEvent>(
+          firestoreDb,
+          'month_events',
+          userId,
+        );
+        const targetMonthEvent = monthEvents.find(
+          (monthEvent) => monthEvent.id === monthEventId,
+        );
+
+        if (!targetMonthEvent) {
+          return;
+        }
+
+        await deleteDoc(doc(firestoreDb, 'month_events', targetMonthEvent.id));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '主要予定を削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+  };
+}

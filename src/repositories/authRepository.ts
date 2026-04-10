@@ -2,6 +2,14 @@ import { createId } from '../lib/id';
 import type { AuthRepository, AuthStorageGateway } from './repositoryContracts';
 import type { User, UserProfileDraft } from '../types/domain';
 
+interface PasswordRecord {
+  email: string;
+  password: string;
+  userId: string;
+}
+
+const PASSWORD_STORAGE_KEY = 'studyplanner.local.passwords';
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -11,8 +19,28 @@ function normalizeUsername(username: string, email: string): string {
   return trimmedUsername || email;
 }
 
-function buildCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+function readPasswordRecords(): PasswordRecord[] {
+  try {
+    const raw = window.localStorage.getItem(PASSWORD_STORAGE_KEY);
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PasswordRecord>[];
+    return parsed.filter(
+      (record): record is PasswordRecord =>
+        typeof record?.email === 'string' &&
+        typeof record?.password === 'string' &&
+        typeof record?.userId === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writePasswordRecords(records: PasswordRecord[]): void {
+  window.localStorage.setItem(PASSWORD_STORAGE_KEY, JSON.stringify(records));
 }
 
 function applyUserProfile(user: User, draft: UserProfileDraft): User {
@@ -27,7 +55,7 @@ export function createAuthRepository(
   storageGateway: AuthStorageGateway,
 ): AuthRepository {
   return {
-    async requestEmailCode(email, username) {
+    async signUpWithPassword(email, password, username) {
       const normalizedEmail = normalizeEmail(email);
       const normalizedUsername = normalizeUsername(username, normalizedEmail);
 
@@ -35,68 +63,59 @@ export function createAuthRepository(
         throw new Error('メールアドレスの形式を確認してください。');
       }
 
-      const code = buildCode();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-      const pendingCodes = (await storageGateway
-        .readPendingCodes()
-      ).filter((item) => item.email !== normalizedEmail);
-
-      pendingCodes.push({
-        email: normalizedEmail,
-        username: normalizedUsername,
-        code,
-        expiresAt,
-      });
-
-      await storageGateway.writePendingCodes(pendingCodes);
-
-      return {
-        email: normalizedEmail,
-        username: normalizedUsername,
-        expiresAt,
-        previewCode: code,
-        delivery: 'preview',
-      };
-    },
-    async verifyEmailCode(email, code, username) {
-      const normalizedEmail = normalizeEmail(email);
-      const normalizedUsername = normalizeUsername(username, normalizedEmail);
-      const trimmedCode = code.trim();
-      const pendingCodes = await storageGateway.readPendingCodes();
-      const challenge = pendingCodes.find((item) => item.email === normalizedEmail);
-
-      if (!challenge) {
-        throw new Error('認証コードを先に発行してください。');
-      }
-
-      if (new Date(challenge.expiresAt).getTime() < Date.now()) {
-        throw new Error('認証コードの有効期限が切れています。再送してください。');
-      }
-
-      if (challenge.code !== trimmedCode) {
-        throw new Error('認証コードが一致しません。');
+      if (password.trim().length < 6) {
+        throw new Error('パスワードは6文字以上にしてください。');
       }
 
       const users = await storageGateway.readUsers();
-      let user = users.find((item) => item.email === normalizedEmail);
+      const currentUser = users.find((item) => item.email === normalizedEmail);
+
+      if (currentUser) {
+        throw new Error('このメールアドレスはすでに登録されています。');
+      }
+
+      const nextUser: User = {
+        id: createId('user'),
+        email: normalizedEmail,
+        username: normalizedUsername,
+        avatar: '',
+        createdAt: new Date().toISOString(),
+      };
+
+      await storageGateway.writeUsers([...users, nextUser]);
+      writePasswordRecords(
+        readPasswordRecords().concat({
+          email: normalizedEmail,
+          password,
+          userId: nextUser.id,
+        }),
+      );
+    },
+    async signInWithPassword(email, password) {
+      const normalizedEmail = normalizeEmail(email);
+      const passwordRecord = readPasswordRecords().find(
+        (record) => record.email === normalizedEmail,
+      );
+
+      if (!passwordRecord || passwordRecord.password !== password) {
+        throw new Error('メールアドレスまたはパスワードが一致しません。');
+      }
+
+      const users = await storageGateway.readUsers();
+      const user = users.find((item) => item.id === passwordRecord.userId);
 
       if (!user) {
-        user = {
-          id: createId('user'),
-          email: normalizedEmail,
-          username: challenge.username || normalizedUsername,
-          avatar: '',
-          createdAt: new Date().toISOString(),
-        };
-        await storageGateway.writeUsers([...users, user]);
+        throw new Error('ユーザー情報が見つかりません。');
       }
 
       await storageGateway.writeSessionUserId(user.id);
-      await storageGateway.writePendingCodes(
-        pendingCodes.filter((item) => item.email !== normalizedEmail),
-      );
-
       return user;
+    },
+    async signInWithGoogle() {
+      throw new Error('Firebase 設定が無いため Google ログインは使えません。');
+    },
+    async sendPasswordReset() {
+      throw new Error('Firebase 設定が無いためパスワード再設定は使えません。');
     },
     async getCurrentUser() {
       const sessionUserId = await storageGateway.readSessionUserId();

@@ -608,6 +608,17 @@ function postProcessAddSuggestions(
       nextSuggestion.parsedPlan.title = resolvedTitle;
     }
 
+    const normalizedLabels = normalizeStudyLabels({
+      rawText: nextSuggestion.rawText,
+      subject: nextSuggestion.parsedPlan.subject,
+      title: nextSuggestion.parsedPlan.title,
+      type: nextSuggestion.parsedPlan.type,
+      fallbackTitle: nextSuggestion.parsedPlan.title,
+    });
+
+    nextSuggestion.parsedPlan.subject = normalizedLabels.subject;
+    nextSuggestion.parsedPlan.title = normalizedLabels.title;
+
     if (
       !explicitStart &&
       durationMinutes !== undefined &&
@@ -710,6 +721,76 @@ function trimContentPhrase(value: string): string {
     .trim();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripLeadingSubjectFromTitle(title: string, subject: string): string {
+  const normalizedTitle = trimContentPhrase(title);
+  const normalizedSubject = subject.trim();
+
+  if (!normalizedTitle || !normalizedSubject) {
+    return normalizedTitle;
+  }
+
+  const strippedTitle = normalizedTitle.replace(
+    new RegExp(
+      `^${escapeRegExp(normalizedSubject)}(?:の|を|で|は|:|：|/|／|\\s+)`,
+      'i',
+    ),
+    '',
+  );
+
+  return trimContentPhrase(strippedTitle);
+}
+
+function normalizeStudyLabels(params: {
+  rawText: string;
+  subject: string;
+  title: string;
+  type: PlanType;
+  fallbackTitle?: string;
+}): { subject: string; title: string } {
+  const normalizedSubject =
+    detectSubject(
+      [params.subject, params.title, params.rawText].filter(Boolean).join(' '),
+    ) || params.subject.trim();
+  let normalizedTitle = trimContentPhrase(params.title);
+
+  if (params.type === 'study') {
+    const strippedTitle = stripLeadingSubjectFromTitle(
+      normalizedTitle,
+      normalizedSubject,
+    );
+
+    if (strippedTitle) {
+      normalizedTitle = strippedTitle;
+    }
+
+    if (!normalizedTitle || normalizedTitle === normalizedSubject) {
+      const rawCandidate = stripLeadingSubjectFromTitle(
+        trimContentPhrase(sanitizeSuggestedTitle(params.rawText)),
+        normalizedSubject,
+      );
+
+      if (rawCandidate && rawCandidate !== '分' && rawCandidate !== normalizedSubject) {
+        normalizedTitle = rawCandidate;
+      }
+    }
+  }
+
+  if (!normalizedTitle) {
+    normalizedTitle =
+      params.fallbackTitle?.trim() ||
+      buildDefaultPlanTitle(params.type, normalizedSubject);
+  }
+
+  return {
+    subject: normalizedSubject,
+    title: normalizedTitle,
+  };
+}
+
 function deriveDeterministicTitle(
   inputText: string,
   subject: string,
@@ -805,11 +886,18 @@ function buildDeterministicSuggestion(
     type,
     input.mode === 'edit' ? matchedPlan?.title ?? '' : '',
   );
+  const normalizedLabels = normalizeStudyLabels({
+    rawText: input.text,
+    subject,
+    title,
+    type,
+    fallbackTitle: input.mode === 'edit' ? matchedPlan?.title ?? '' : '',
+  });
   const timeValues = deriveDeterministicTimeValues(input, baseDraft);
   const unresolvedFields = mergeSuggestionFields(
     timeValues.unresolvedFields,
-    !subject ? ['subject'] : [],
-    !title ? ['title'] : [],
+    !normalizedLabels.subject ? ['subject'] : [],
+    !normalizedLabels.title ? ['title'] : [],
     input.mode === 'edit' && !matchedPlan ? ['targetPlan'] : [],
   );
   const assumptions = [
@@ -835,8 +923,8 @@ function buildDeterministicSuggestion(
       matchedPlanId: matchedPlan?.id,
       parsedPlan: {
         userId: input.userId,
-        title,
-        subject,
+        title: normalizedLabels.title,
+        subject: normalizedLabels.subject,
         date: explicitDate ? parseDate(input.text, input.selectedDate) : input.selectedDate,
         startTime: timeValues.startTime,
         endTime: timeValues.endTime,
@@ -1183,6 +1271,13 @@ function buildLlmSuggestion(
           )
         ? mergeDistinctText(normalizedMemo, baseline.suggestion.parsedPlan.memo)
         : baseline.suggestion.parsedPlan.memo;
+  const normalizedLabels = normalizeStudyLabels({
+    rawText: input.text,
+    subject,
+    title,
+    type,
+    fallbackTitle: baseline.suggestion.parsedPlan.title,
+  });
   const llmAssumptions = (extraction.assumptions ?? []).filter(
     (item): item is string => Boolean(item?.trim()),
   );
@@ -1197,12 +1292,16 @@ function buildLlmSuggestion(
   const unresolvedFields = mergeSuggestionFields(
     normalizeFieldList(extraction.unresolvedFields),
     baseline.suggestion.unresolvedFields.filter((field) =>
-      field === 'targetPlan' || !startTime || !endTime || !title || !subject,
+      field === 'targetPlan' ||
+      !startTime ||
+      !endTime ||
+      !normalizedLabels.title ||
+      !normalizedLabels.subject,
     ),
     !startTime ? ['startTime'] : [],
     !endTime ? ['endTime'] : [],
-    !subject ? ['subject'] : [],
-    !title ? ['title'] : [],
+    !normalizedLabels.subject ? ['subject'] : [],
+    !normalizedLabels.title ? ['title'] : [],
     input.mode === 'edit' && !matchedPlanId ? ['targetPlan'] : [],
   );
   const status =
@@ -1228,8 +1327,8 @@ function buildLlmSuggestion(
     matchedPlanId,
     parsedPlan: {
       userId: input.userId,
-      title,
-      subject,
+      title: normalizedLabels.title,
+      subject: normalizedLabels.subject,
       date,
       startTime,
       endTime,

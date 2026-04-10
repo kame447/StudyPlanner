@@ -7,7 +7,6 @@ import type {
   ActualDraft,
   DayNote,
   DayNoteDraft,
-  EmailChallenge,
   MonthEvent,
   MonthEventDraft,
   Plan,
@@ -27,15 +26,19 @@ interface PlannerAppState {
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
-  challenge: EmailChallenge | null;
   notice: NoticeState | null;
   editorDraft: PlanDraft | null;
   editingPlanId: string | null;
   setViewMode: (viewMode: ViewMode) => void;
   dismissNotice: () => void;
-  requestCode: (email: string, username: string) => Promise<void>;
-  verifyCode: (email: string, code: string, username: string) => Promise<void>;
-  resetChallenge: () => void;
+  signUpWithPassword: (
+    email: string,
+    password: string,
+    username: string,
+  ) => Promise<boolean>;
+  signInWithPassword: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
   saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
   signOut: () => Promise<void>;
   openCreatePlan: () => void;
@@ -61,11 +64,11 @@ export function usePlannerAppState(): PlannerAppState {
   const {
     booting,
     user,
-    challenge,
     bootstrapSession,
-    requestCode: requestAuthCode,
-    verifyCode: verifyAuthCode,
-    resetChallenge,
+    signUpWithPassword: registerWithPassword,
+    signInWithPassword: loginWithPassword,
+    signInWithGoogle: loginWithGoogle,
+    sendPasswordReset,
     saveUserProfile,
     signOut: signOutSession,
   } = useAuthSessionState({ showNotice });
@@ -107,16 +110,24 @@ export function usePlannerAppState(): PlannerAppState {
     void bootstrapSession(loadPlannerData);
   }, [bootstrapSession, loadPlannerData]);
 
-  async function requestCode(email: string, username: string) {
-    const currentUser = await requestAuthCode(email, username);
+  async function signUpWithPassword(
+    email: string,
+    password: string,
+    username: string,
+  ) {
+    return registerWithPassword(email, password, username);
+  }
+
+  async function signInWithPassword(email: string, password: string) {
+    const currentUser = await loginWithPassword(email, password);
 
     if (currentUser) {
       await loadPlannerData(currentUser.id);
     }
   }
 
-  async function verifyCode(email: string, code: string, username: string) {
-    const currentUser = await verifyAuthCode(email, code, username);
+  async function signInWithGoogle() {
+    const currentUser = await loginWithGoogle();
 
     if (currentUser) {
       await loadPlannerData(currentUser.id);
@@ -138,15 +149,15 @@ export function usePlannerAppState(): PlannerAppState {
     viewMode,
     selectedDate,
     monthDate,
-    challenge,
     notice,
     editorDraft,
     editingPlanId,
     setViewMode,
     dismissNotice,
-    requestCode,
-    verifyCode,
-    resetChallenge,
+    signUpWithPassword,
+    signInWithPassword,
+    signInWithGoogle,
+    sendPasswordReset,
     saveUserProfile,
     signOut,
     openCreatePlan,

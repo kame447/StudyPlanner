@@ -1,13 +1,11 @@
 import type { Actual, DayNote, MonthEvent, Plan, User } from '../types/domain';
 import type {
-  AuthCodeRecord,
   AuthStorageGateway,
   PlannerStorageGateway,
 } from './repositoryContracts';
 
 const STORAGE_KEYS = {
   users: 'studyplanner.users',
-  authCodes: 'studyplanner.authCodes',
   session: 'studyplanner.session',
   plans: 'studyplanner.plans',
   actuals: 'studyplanner.actuals',
@@ -19,8 +17,6 @@ type StoredMonthEvent = Omit<MonthEvent, 'repeatUntil' | 'excludedDates'> &
   Partial<Pick<MonthEvent, 'repeatUntil' | 'excludedDates'>>;
 type StoredUser = Omit<User, 'username' | 'avatar'> &
   Partial<Pick<User, 'username' | 'avatar'>>;
-type StoredAuthCodeRecord = Omit<AuthCodeRecord, 'username'> &
-  Partial<Pick<AuthCodeRecord, 'username'>>;
 
 function readJson<T>(storage: Storage, key: string, fallback: T): T {
   const raw = storage.getItem(key);
@@ -58,13 +54,6 @@ function normalizeUser(user: StoredUser): User {
   };
 }
 
-function normalizeAuthCodeRecord(codeRecord: StoredAuthCodeRecord): AuthCodeRecord {
-  return {
-    ...codeRecord,
-    username: codeRecord.username?.trim() || codeRecord.email,
-  };
-}
-
 export function createLocalAuthStorageGateway(
   storage: Storage = window.localStorage,
 ): AuthStorageGateway {
@@ -74,14 +63,6 @@ export function createLocalAuthStorageGateway(
     },
     async writeUsers(users) {
       writeJson(storage, STORAGE_KEYS.users, users);
-    },
-    async readPendingCodes() {
-      return readJson<StoredAuthCodeRecord[]>(storage, STORAGE_KEYS.authCodes, []).map(
-        normalizeAuthCodeRecord,
-      );
-    },
-    async writePendingCodes(codes) {
-      writeJson(storage, STORAGE_KEYS.authCodes, codes);
     },
     async readSessionUserId() {
       return storage.getItem(STORAGE_KEYS.session);

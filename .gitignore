@@ -5,3 +5,5 @@ dist
 .env.local
 .env.*.local
 .cert
+.wrangler
+workers/ai-proxy/.dev.vars

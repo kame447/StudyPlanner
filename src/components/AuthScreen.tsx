@@ -1,47 +1,72 @@
 import { useEffect, useState } from 'react';
 import type { NoticeState } from '../hooks/useNoticeState';
-import type { EmailChallenge } from '../types/domain';
 
 type AuthIntent = 'sign-in' | 'sign-up';
 
 interface AuthScreenProps {
-  challenge: EmailChallenge | null;
   notice: NoticeState | null;
   onDismissNotice: () => void;
-  onRequestCode: (email: string, username: string) => Promise<void>;
-  onVerifyCode: (email: string, code: string, username: string) => Promise<void>;
-  onResetChallenge: () => void;
+  onSignUpWithPassword: (
+    email: string,
+    password: string,
+    username: string,
+  ) => Promise<boolean>;
+  onSignInWithPassword: (email: string, password: string) => Promise<void>;
+  onSignInWithGoogle: () => Promise<void>;
+  onSendPasswordReset: (email: string) => Promise<void>;
 }
 
 export function AuthScreen({
-  challenge,
   notice,
   onDismissNotice,
-  onRequestCode,
-  onVerifyCode,
-  onResetChallenge,
+  onSignUpWithPassword,
+  onSignInWithPassword,
+  onSignInWithGoogle,
+  onSendPasswordReset,
 }: AuthScreenProps) {
   const [intent, setIntent] = useState<AuthIntent>('sign-up');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
-  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (challenge) {
-      setEmail(challenge.email);
-      setUsername(challenge.username);
-      setCode('');
-    }
-  }, [challenge]);
+    setPassword('');
+    setPasswordConfirm('');
+    setLocalError(null);
+  }, [intent]);
 
-  const requestTitle =
-    intent === 'sign-up' ? '新規会員登録' : 'ログイン';
+  const requestTitle = intent === 'sign-up' ? '新規会員登録' : 'ログイン';
   const requestDescription =
     intent === 'sign-up'
-      ? '最初にユーザーネームとメールアドレスを登録して、認証コードを受け取ります。'
-      : '登録済みのメールアドレスで認証コードを受け取り、そのままログインします。';
+      ? '最初にメールアドレスとパスワードを登録し、確認メールを1回だけ送ります。'
+      : '登録済みのメールアドレスとパスワードでログインします。';
   const requestButtonLabel =
-    intent === 'sign-up' ? '登録用コードを受け取る' : 'ログインコードを受け取る';
+    intent === 'sign-up' ? '登録して確認メールを送る' : 'ログインする';
+
+  async function handlePrimaryAction() {
+    setLocalError(null);
+
+    if (intent === 'sign-up') {
+      if (password !== passwordConfirm) {
+        setLocalError('パスワード確認が一致していません。');
+        return;
+      }
+
+      const didRegister = await onSignUpWithPassword(email, password, username);
+
+      if (didRegister) {
+        setIntent('sign-in');
+        setPassword('');
+        setPasswordConfirm('');
+      }
+
+      return;
+    }
+
+    await onSignInWithPassword(email, password);
+  }
 
   return (
     <main className="auth-shell auth-shell-modern">
@@ -63,24 +88,24 @@ export function AuthScreen({
 
       <section className="auth-card auth-aside-card">
         <p className="eyebrow">Study Planner</p>
-        <h1>学習の流れを崩さずに入れるための認証画面</h1>
+        <h1>学習の流れを止めない、軽い認証フロー</h1>
         <p className="hero-copy">
-          GitHub の「登録時だけ追加情報を求める」流れと、Notion や Slack の
-          「メール起点で短く進める」導線を参考に、ログインと新規登録を分けています。
+          毎回の認証コード送信はやめて、初回だけメール確認、その後は
+          パスワードか Google で短く入れる構成に切り替えます。
         </p>
 
         <div className="auth-highlight-list">
           <article className="auth-highlight-card">
             <strong>1. 用途を選ぶ</strong>
-            <p>ログインと新規会員登録を最初に分けて、入力項目を減らします。</p>
+            <p>ログインと新規登録を分けて、必要な入力だけに絞ります。</p>
           </article>
           <article className="auth-highlight-card">
-            <strong>2. メールで確認</strong>
-            <p>次の段で認証コードだけ入力するので、流れが混ざりません。</p>
+            <strong>2. 最初だけメール確認</strong>
+            <p>登録時にだけ確認メールを送り、以後は毎回のコード送信をなくします。</p>
           </article>
           <article className="auth-highlight-card">
-            <strong>3. そのまま利用開始</strong>
-            <p>ログイン後はユーザーネーム表示で継続しやすくしています。</p>
+            <strong>3. Googleでも入れる</strong>
+            <p>パスワード管理が面倒なら Google ログインへ逃がせます。</p>
           </article>
         </div>
       </section>
@@ -106,7 +131,6 @@ export function AuthScreen({
         <div className="auth-stage-card">
           <div className="auth-stage-header">
             <div>
-              <p className="eyebrow">Step 1</p>
               <h2>{requestTitle}</h2>
               <p>{requestDescription}</p>
             </div>
@@ -134,94 +158,57 @@ export function AuthScreen({
               />
             </label>
 
+            <label className="field">
+              <span>パスワード</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="6文字以上"
+              />
+            </label>
+
+            {intent === 'sign-up' ? (
+              <label className="field">
+                <span>パスワード確認</span>
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(event) => setPasswordConfirm(event.target.value)}
+                  placeholder="もう一度入力"
+                />
+              </label>
+            ) : null}
+
+            {localError ? <p className="inline-error">{localError}</p> : null}
+
             <button
               className="primary-button"
-              onClick={() =>
-                void onRequestCode(email, intent === 'sign-up' ? username : email)
-              }
+              onClick={() => void handlePrimaryAction()}
               type="button"
             >
               {requestButtonLabel}
             </button>
-          </div>
-        </div>
 
-        <div className="auth-stage-card auth-stage-card-secondary">
-          <div className="auth-stage-header">
-            <div>
-              <p className="eyebrow">Step 2</p>
-              <h2>認証コードの入力</h2>
-              <p>
-                {challenge
-                  ? challenge.delivery === 'email'
-                    ? 'メールで届いた認証コードを入力してください。'
-                    : 'MVP用の確認コードを入力してください。'
-                  : '先に上のステップで認証コードを発行してください。'}
-              </p>
-            </div>
-          </div>
-
-          {challenge ? (
-            <div className="section-stack">
-              <div className="mailbox-preview">
-                <div className="auth-summary-grid">
-                  <div>
-                    <p className="mailbox-label">送信先</p>
-                    <strong>{challenge.email}</strong>
-                  </div>
-                  <div>
-                    <p className="mailbox-label">表示名</p>
-                    <strong>{challenge.username}</strong>
-                  </div>
-                </div>
-
-                {challenge.delivery === 'preview' && challenge.previewCode ? (
-                  <>
-                    <p className="mailbox-label">MVP用コード</p>
-                    <div className="mailbox-code">{challenge.previewCode}</div>
-                  </>
-                ) : (
-                  <p className="detail-note">
-                    メール本文に届いた 6 桁コードをこの下へ入力してください。
-                  </p>
-                )}
-
-                <p className="mailbox-expire">
-                  有効期限: {new Date(challenge.expiresAt).toLocaleTimeString('ja-JP')}
-                </p>
-              </div>
-
-              <label className="field">
-                <span>認証コード</span>
-                <input
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                  placeholder="6桁コード"
-                />
-              </label>
-
+            {intent === 'sign-in' ? (
               <div className="row-actions">
                 <button
                   className="ghost-button"
-                  onClick={onResetChallenge}
+                  onClick={() => void onSendPasswordReset(email)}
                   type="button"
                 >
-                  メールを入力し直す
+                  パスワードを再設定
                 </button>
                 <button
-                  className="primary-button"
-                  onClick={() => void onVerifyCode(email, code, username || email)}
+                  className="ghost-button"
+                  onClick={() => void onSignInWithGoogle()}
                   type="button"
                 >
-                  ログインする
+                  Googleでログイン
                 </button>
               </div>
-            </div>
-          ) : (
-            <p className="empty-copy">
-              コード送信後、この欄が有効になります。
-            </p>
-          )}
+            ) : null}
+          </div>
         </div>
       </section>
     </main>
