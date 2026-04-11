@@ -349,6 +349,11 @@ h2 {
   width: min(100%, 560px);
 }
 
+.auth-brand-header {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .auth-highlight-list {
   display: grid;
   gap: 12px;
