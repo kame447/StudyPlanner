@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { loadNaturalLanguageCatalog } from '../data/naturalLanguageCatalog';
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
@@ -109,6 +110,12 @@ export function usePlannerAppState(): PlannerAppState {
   useEffect(() => {
     void bootstrapSession(loadPlannerData);
   }, [bootstrapSession, loadPlannerData]);
+
+  useEffect(() => {
+    void loadNaturalLanguageCatalog({
+      seedWhenMissing: Boolean(user?.id),
+    });
+  }, [user?.id]);
 
   async function signUpWithPassword(
     email: string,

@@ -6,6 +6,9 @@ type AuthIntent = 'sign-in' | 'sign-up';
 interface AuthScreenProps {
   notice: NoticeState | null;
   onDismissNotice: () => void;
+  accessGateEnabled: boolean;
+  accessGateUnlocked: boolean;
+  onUnlockAccessGate: (key: string) => boolean;
   onSignUpWithPassword: (
     email: string,
     password: string,
@@ -19,6 +22,9 @@ interface AuthScreenProps {
 export function AuthScreen({
   notice,
   onDismissNotice,
+  accessGateEnabled,
+  accessGateUnlocked,
+  onUnlockAccessGate,
   onSignUpWithPassword,
   onSignInWithPassword,
   onSignInWithGoogle,
@@ -29,6 +35,7 @@ export function AuthScreen({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [accessKey, setAccessKey] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,6 +75,17 @@ export function AuthScreen({
     await onSignInWithPassword(email, password);
   }
 
+  function handleAccessUnlock() {
+    setLocalError(null);
+
+    if (!onUnlockAccessGate(accessKey)) {
+      setLocalError('閲覧キーが一致しません。');
+      return;
+    }
+
+    setAccessKey('');
+  }
+
   return (
     <main className="auth-shell auth-shell-modern">
       {notice ? (
@@ -86,129 +104,151 @@ export function AuthScreen({
         </div>
       ) : null}
 
-      <section className="auth-card auth-aside-card">
-        <p className="eyebrow">Study Planner</p>
-        <h1>学習の流れを止めない、軽い認証フロー</h1>
-        <p className="hero-copy">
-          毎回の認証コード送信はやめて、初回だけメール確認、その後は
-          パスワードか Google で短く入れる構成に切り替えます。
-        </p>
-
-        <div className="auth-highlight-list">
-          <article className="auth-highlight-card">
-            <strong>1. 用途を選ぶ</strong>
-            <p>ログインと新規登録を分けて、必要な入力だけに絞ります。</p>
-          </article>
-          <article className="auth-highlight-card">
-            <strong>2. 最初だけメール確認</strong>
-            <p>登録時にだけ確認メールを送り、以後は毎回のコード送信をなくします。</p>
-          </article>
-          <article className="auth-highlight-card">
-            <strong>3. Googleでも入れる</strong>
-            <p>パスワード管理が面倒なら Google ログインへ逃がせます。</p>
-          </article>
-        </div>
-      </section>
-
       <section className="auth-card auth-main-card">
-        <div className="auth-mode-tabs" role="tablist" aria-label="認証モード">
-          <button
-            className={intent === 'sign-up' ? 'auth-mode-tab active' : 'auth-mode-tab'}
-            onClick={() => setIntent('sign-up')}
-            type="button"
-          >
-            新規会員登録
-          </button>
-          <button
-            className={intent === 'sign-in' ? 'auth-mode-tab active' : 'auth-mode-tab'}
-            onClick={() => setIntent('sign-in')}
-            type="button"
-          >
-            ログイン
-          </button>
-        </div>
-
         <div className="auth-stage-card">
           <div className="auth-stage-header">
             <div>
-              <h2>{requestTitle}</h2>
-              <p>{requestDescription}</p>
+              <h2>
+                {accessGateEnabled && !accessGateUnlocked ? '限定公開キー' : requestTitle}
+              </h2>
+              <p>
+                {accessGateEnabled && !accessGateUnlocked
+                  ? '共有されたキーを一度だけ入力すると、この端末でログイン画面へ進めます。'
+                  : requestDescription}
+              </p>
             </div>
           </div>
 
-          <div className="auth-form">
-            {intent === 'sign-up' ? (
+          {accessGateEnabled && !accessGateUnlocked ? (
+            <form
+              className="auth-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleAccessUnlock();
+              }}
+            >
               <label className="field">
-                <span>ユーザーネーム</span>
-                <input
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="未入力ならメールアドレスを使います"
-                />
-              </label>
-            ) : null}
-
-            <label className="field">
-              <span>メールアドレス</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-              />
-            </label>
-
-            <label className="field">
-              <span>パスワード</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="6文字以上"
-              />
-            </label>
-
-            {intent === 'sign-up' ? (
-              <label className="field">
-                <span>パスワード確認</span>
+                <span>閲覧キー</span>
                 <input
                   type="password"
-                  value={passwordConfirm}
-                  onChange={(event) => setPasswordConfirm(event.target.value)}
-                  placeholder="もう一度入力"
+                  value={accessKey}
+                  onChange={(event) => setAccessKey(event.target.value)}
+                  placeholder="共有されたキーを入力"
                 />
               </label>
-            ) : null}
 
-            {localError ? <p className="inline-error">{localError}</p> : null}
+              {localError ? <p className="inline-error">{localError}</p> : null}
 
-            <button
-              className="primary-button"
-              onClick={() => void handlePrimaryAction()}
-              type="button"
-            >
-              {requestButtonLabel}
-            </button>
-
-            {intent === 'sign-in' ? (
-              <div className="row-actions">
+              <button
+                className="primary-button"
+                type="submit"
+              >
+                キーを確認して進む
+              </button>
+            </form>
+          ) : (
+            <>
+              <div className="auth-mode-tabs" role="tablist" aria-label="認証モード">
                 <button
-                  className="ghost-button"
-                  onClick={() => void onSendPasswordReset(email)}
+                  className={
+                    intent === 'sign-up' ? 'auth-mode-tab active' : 'auth-mode-tab'
+                  }
+                  onClick={() => setIntent('sign-up')}
                   type="button"
                 >
-                  パスワードを再設定
+                  新規会員登録
                 </button>
                 <button
-                  className="ghost-button"
-                  onClick={() => void onSignInWithGoogle()}
+                  className={
+                    intent === 'sign-in' ? 'auth-mode-tab active' : 'auth-mode-tab'
+                  }
+                  onClick={() => setIntent('sign-in')}
                   type="button"
                 >
-                  Googleでログイン
+                  ログイン
                 </button>
               </div>
-            ) : null}
-          </div>
+
+              <form
+                className="auth-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handlePrimaryAction();
+                }}
+              >
+                {intent === 'sign-up' ? (
+                  <label className="field">
+                    <span>ユーザーネーム</span>
+                    <input
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      placeholder="未入力ならメールアドレスを使います"
+                    />
+                  </label>
+                ) : null}
+
+                <label className="field">
+                  <span>メールアドレス</span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                  />
+                </label>
+
+                <label className="field">
+                  <span>パスワード</span>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="6文字以上"
+                  />
+                </label>
+
+                {intent === 'sign-up' ? (
+                  <label className="field">
+                    <span>パスワード確認</span>
+                    <input
+                      type="password"
+                      value={passwordConfirm}
+                      onChange={(event) => setPasswordConfirm(event.target.value)}
+                      placeholder="もう一度入力"
+                    />
+                  </label>
+                ) : null}
+
+                {localError ? <p className="inline-error">{localError}</p> : null}
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                >
+                  {requestButtonLabel}
+                </button>
+
+                {intent === 'sign-in' ? (
+                  <div className="row-actions">
+                    <button
+                      className="ghost-button"
+                      onClick={() => void onSendPasswordReset(email)}
+                      type="button"
+                    >
+                      パスワードを再設定
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() => void onSignInWithGoogle()}
+                      type="button"
+                    >
+                      Googleでログイン
+                    </button>
+                  </div>
+                ) : null}
+              </form>
+            </>
+          )}
         </div>
       </section>
     </main>

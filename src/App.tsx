@@ -12,6 +12,11 @@ import { WeekView } from './components/WeekView';
 import { createEmptyDayNoteDraft } from './domain/planner';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
+import {
+  hasStoredAppAccessGrant,
+  isAppAccessGateEnabled,
+  verifyAndStoreAppAccessKey,
+} from './lib/appAccessGate';
 import { getUserDisplayName } from './lib/userProfile';
 
 export default function App() {
@@ -19,6 +24,9 @@ export default function App() {
   const [isToolbarPlanInputOpen, setIsToolbarPlanInputOpen] = useState(false);
   const [toolbarPlanInputMode, setToolbarPlanInputMode] = useState<'manual' | 'ai'>(
     'manual',
+  );
+  const [appAccessGranted, setAppAccessGranted] = useState(
+    () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
     useThemePreference();
@@ -63,11 +71,22 @@ export default function App() {
     return <main className="loading-screen">起動しています...</main>;
   }
 
-  if (!user) {
+  if (!user || !appAccessGranted) {
     return (
       <AuthScreen
         notice={notice}
         onDismissNotice={dismissNotice}
+        accessGateEnabled={isAppAccessGateEnabled()}
+        accessGateUnlocked={appAccessGranted}
+        onUnlockAccessGate={(key) => {
+          const didUnlock = verifyAndStoreAppAccessKey(key);
+
+          if (didUnlock) {
+            setAppAccessGranted(true);
+          }
+
+          return didUnlock;
+        }}
         onSignUpWithPassword={signUpWithPassword}
         onSignInWithPassword={signInWithPassword}
         onSignInWithGoogle={signInWithGoogle}

@@ -129,6 +129,33 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
   - 認証/DB: Firebase
   - AIキー保護: Cloudflare Workers Secrets
 
+## 本番移行で必要なもの
+- Firebase プロジェクト
+  - Authentication の `メール / パスワード` と `Google` を有効化
+  - Firestore Database を作成
+  - `Authorized domains` に本番ドメインを追加
+- Firestore rules の反映
+  - `npm run deploy:firestore-rules`
+- Cloudflare Workers
+  - `workers/ai-proxy/wrangler.jsonc` の `FIREBASE_WEB_API_KEY` と `ALLOWED_ORIGIN` を本番値へ更新
+  - `OPENAI_API_KEY` を Worker secret に保存
+  - `npm run deploy:worker`
+- フロントの本番ホスティング
+  - Cloudflare Pages などに `dist` を deploy
+  - `VITE_CLOUDFLARE_AI_PROXY_URL` を本番 Worker URL に設定
+- 環境変数
+  - `VITE_FIREBASE_*`
+  - `VITE_CLOUDFLARE_AI_PROXY_URL`
+  - 必要なら `VITE_APP_ACCESS_KEY`
+
+## 限定公開キー
+- ログイン画面の前に、共有キーを1回だけ入力する軽い制限を入れられます
+- `.env` / `.env.local` / Pages の環境変数に `VITE_APP_ACCESS_KEY` を設定すると有効になります
+- 通過後はブラウザの `localStorage` に保持するので、毎回入力は不要です
+- これはあくまで弱いアクセス制限です
+  - 本格的な秘匿や招待制ではありません
+  - 共有先が少人数で、URL直打ち対策をしたい程度の用途向けです
+
 ## 将来的にやりたいこと
 - 共有機能
 - 繰り返し予定の強化
@@ -147,6 +174,7 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
 ### このMVPでのデータ保存
 - Firebase 設定がある場合は Firestore に保存する
 - Firestore では `profiles / plans / actuals / day_notes / month_events` を使う
+- 自然言語解析の教材辞書は `app_catalogs / natural_language_v1` で管理する
 - データアクセス層は `storage gateway -> repository` の構成に分離してある
 - Firebase 設定が無い場合だけ localStorage のフォールバックで動く
 - repository の生成は `src/repositories/index.ts` に集約してあり、保存先の切り替え箇所を1か所にしている
@@ -154,7 +182,7 @@ MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前�
 ### 保守性のための整理
 - 予定・実績・日次メモの生成処理は `src/domain/planner.ts` に集約
 - 画面全体の状態管理は `src/hooks/usePlannerAppState.ts` にまとめ、`App.tsx` は描画中心にしている
-- 自然言語解析の辞書は JSON で管理し、ロジック本体から分離している
+- 自然言語解析の辞書は Firestore を優先し、repo 内 JSON は fallback と seed 元として管理している
 
 ### このMVPでのAI機能
 - 自然言語入力はUIから分離した service で叩き台を生成
@@ -257,6 +285,7 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
+VITE_APP_ACCESS_KEY=shared-preview-key
 ```
 
 5. `npm run dev` を再起動
@@ -266,7 +295,11 @@ VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
 - 上の必須4項目が設定されている場合は Firebase を使う
 - 未設定の場合は localStorage のフォールバックで動く
 - Firestore は `profiles / plans / actuals / day_notes / month_events` を使う
+- 教材・教科辞書は `app_catalogs / natural_language_v1` を使う
+- 初回サインイン後、自動で fallback JSON を Firestore に seed する
+- repo 側の catalog version が新しい場合は、サインイン時に Firestore catalog を自動更新する
 - Firestore rules は `npm run deploy:firestore-rules` でも反映できる
+- `VITE_APP_ACCESS_KEY` を入れると、ログイン画面の前に共有キー入力が追加される
 
 ### Cloudflare Workers を使う
 1. Cloudflare にログインして Workers を有効化する

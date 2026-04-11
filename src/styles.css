@@ -330,7 +330,8 @@ h2 {
 }
 
 .auth-shell-modern {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.92fr);
+  grid-template-columns: minmax(320px, 560px);
+  justify-content: center;
 }
 
 .auth-aside-card {
@@ -345,6 +346,7 @@ h2 {
 .auth-main-card {
   display: grid;
   gap: 18px;
+  width: min(100%, 560px);
 }
 
 .auth-highlight-list {

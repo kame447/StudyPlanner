@@ -41,5 +41,11 @@ service cloud.firestore {
       allow update: if isOwner(resource.data.userId)
         && isOwner(request.resource.data.userId);
     }
+
+    match /app_catalogs/{catalogId} {
+      allow read: if true;
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
   }
 }

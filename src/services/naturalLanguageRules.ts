@@ -1,6 +1,6 @@
 import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { buildDefaultPlanTitle } from '../lib/plans';
-import { naturalLanguageCatalog } from '../data/naturalLanguageCatalog';
+import { getNaturalLanguageCatalog } from '../data/naturalLanguageCatalog';
 import type {
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
@@ -36,9 +36,11 @@ const CLOCK_RANGE_GLOBAL_REGEX = new RegExp(
   `${CLOCK_TIME_PATTERN}\\s*(?:-|〜|~|から)\\s*${CLOCK_TIME_PATTERN}`,
   'g',
 );
-const ACTION_WORD_PATTERNS = naturalLanguageCatalog.actionWords.map((keyword) =>
-  keyword === 'do' ? /\bdo\b/gi : new RegExp(keyword, 'g'),
-);
+function getActionWordPatterns(): RegExp[] {
+  return getNaturalLanguageCatalog().actionWords.map((keyword) =>
+    keyword === 'do' ? /\bdo\b/gi : new RegExp(keyword, 'g'),
+  );
+}
 
 function normalizeParsingText(text: string): string {
   return text
@@ -79,7 +81,7 @@ export function defaultDraft(userId: string, date: string): PlanDraft {
 }
 
 export function detectType(text: string): PlanType {
-  const matchedRule = naturalLanguageCatalog.planTypes.find((rule) =>
+  const matchedRule = getNaturalLanguageCatalog().planTypes.find((rule) =>
     rule.keywords.some((keyword) => includesKeyword(text, keyword)),
   );
 
@@ -99,7 +101,7 @@ export function detectSubject(text: string): string {
       }
     | undefined;
 
-  naturalLanguageCatalog.subjects.forEach((rule) => {
+  getNaturalLanguageCatalog().subjects.forEach((rule) => {
     rule.keywords.forEach((keyword) => {
       const normalizedKeyword = normalizeCatalogText(keyword);
 
@@ -327,7 +329,7 @@ export function sanitizeSuggestedTitle(text: string): string {
     withoutSchedule,
   );
 
-  const withoutActionWords = ACTION_WORD_PATTERNS.reduce(
+  const withoutActionWords = getActionWordPatterns().reduce(
     (current, pattern) => current.replace(pattern, ' '),
     withoutChapterMarkers,
   );
