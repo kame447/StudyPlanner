@@ -1,6 +1,6 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import rawCatalog from './naturalLanguageCatalog.json';
-import { getFirebaseAuth, getFirestoreDb } from '../lib/firebaseClient';
+import { getFirestoreDb } from '../lib/firebaseClient';
 import type { PlanType } from '../types/domain';
 
 export interface SubjectCatalogEntry {
@@ -18,10 +18,6 @@ export interface NaturalLanguageCatalog {
   subjects: SubjectCatalogEntry[];
   planTypes: PlanTypeCatalogEntry[];
   actionWords: string[];
-}
-
-interface LoadCatalogOptions {
-  seedWhenMissing?: boolean;
 }
 
 const CATALOG_COLLECTION = 'app_catalogs';
@@ -140,7 +136,7 @@ export function getNaturalLanguageCatalog(): NaturalLanguageCatalog {
 }
 
 export async function loadNaturalLanguageCatalog(
-  options: LoadCatalogOptions = {},
+  _options: { seedWhenMissing?: boolean } = {},
 ): Promise<NaturalLanguageCatalog> {
   if (loadPromise) {
     return loadPromise;
@@ -161,27 +157,7 @@ export async function loadNaturalLanguageCatalog(
 
       if (snapshot.exists()) {
         currentCatalog = normalizeCatalog(snapshot.data());
-
-        if (
-          options.seedWhenMissing &&
-          getFirebaseAuth()?.currentUser &&
-          currentCatalog.version < fallbackCatalog.version
-        ) {
-          await setDoc(catalogRef, {
-            ...fallbackCatalog,
-            updatedAt: new Date().toISOString(),
-          });
-          currentCatalog = fallbackCatalog;
-        }
-
         return currentCatalog;
-      }
-
-      if (options.seedWhenMissing && getFirebaseAuth()?.currentUser) {
-        await setDoc(catalogRef, {
-          ...fallbackCatalog,
-          updatedAt: new Date().toISOString(),
-        });
       }
     } catch (error) {
       console.warn('[NaturalLanguageCatalog] failed to load from Firestore', error);

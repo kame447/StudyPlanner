@@ -50,6 +50,17 @@ async function upsertDocument<T extends PlannerDoc>(
   return item;
 }
 
+async function listActualsByPlanId(
+  firestoreDb: Firestore,
+  planId: string,
+): Promise<Actual[]> {
+  const snapshot = await getDocs(
+    query(collection(firestoreDb, 'actuals'), where('planId', '==', planId)),
+  );
+
+  return snapshot.docs.map((document) => document.data() as Actual);
+}
+
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
 ): PlannerRepository {
@@ -105,11 +116,11 @@ export function createFirebasePlannerRepository(
     async deletePlan(userId, planId) {
       try {
         const batch = writeBatch(firestoreDb);
-        const actuals = await listByUserId<Actual>(firestoreDb, 'actuals', userId);
+        const actuals = await listActualsByPlanId(firestoreDb, planId);
 
         batch.delete(doc(firestoreDb, 'plans', planId));
         actuals
-          .filter((actual) => actual.planId === planId)
+          .filter((actual) => actual.userId === userId)
           .forEach((actual) => {
             batch.delete(doc(firestoreDb, 'actuals', actual.id));
           });
@@ -130,16 +141,9 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async deleteActual(userId, actualId) {
+    async deleteActual(_userId, actualId) {
       try {
-        const actuals = await listByUserId<Actual>(firestoreDb, 'actuals', userId);
-        const targetActual = actuals.find((actual) => actual.id === actualId);
-
-        if (!targetActual) {
-          return;
-        }
-
-        await deleteDoc(doc(firestoreDb, 'actuals', targetActual.id));
+        await deleteDoc(doc(firestoreDb, 'actuals', actualId));
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('実績を削除できませんでした。', error as { message?: string | null }),
@@ -167,22 +171,9 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async deleteMonthEvent(userId, monthEventId) {
+    async deleteMonthEvent(_userId, monthEventId) {
       try {
-        const monthEvents = await listByUserId<MonthEvent>(
-          firestoreDb,
-          'month_events',
-          userId,
-        );
-        const targetMonthEvent = monthEvents.find(
-          (monthEvent) => monthEvent.id === monthEventId,
-        );
-
-        if (!targetMonthEvent) {
-          return;
-        }
-
-        await deleteDoc(doc(firestoreDb, 'month_events', targetMonthEvent.id));
+        await deleteDoc(doc(firestoreDb, 'month_events', monthEventId));
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(

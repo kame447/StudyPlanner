@@ -23,6 +23,12 @@ interface FirebaseJwtPayload {
   emailVerified?: boolean;
 }
 
+const MAX_REQUEST_BODY_BYTES = 32 * 1024;
+const MAX_MESSAGE_COUNT = 20;
+const MAX_MESSAGE_CONTENT_LENGTH = 6000;
+const MAX_TOTAL_MESSAGE_CONTENT_LENGTH = 16000;
+const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
+
 function jsonResponse(
   request: Request,
   env: Env,
@@ -33,27 +39,92 @@ function jsonResponse(
     status,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...buildCorsHeaders(request, env),
     },
   });
 }
 
-function buildCorsHeaders(request: Request, env: Env): Record<string, string> {
-  const requestedOrigin = request.headers.get('Origin') ?? '*';
-  const allowedOrigins = (env.ALLOWED_ORIGIN ?? '')
+function getAllowedOrigins(env: Env): string[] {
+  return (env.ALLOWED_ORIGIN ?? '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+function resolveAllowedOrigin(request: Request, env: Env): string {
+  const requestedOrigin = request.headers.get('Origin') ?? '*';
+  const allowedOrigins = getAllowedOrigins(env);
   const allowOrigin =
     requestedOrigin === '*'
       ? allowedOrigins[0] || '*'
       : allowedOrigins.find((origin) => origin === requestedOrigin) || '';
+  return allowOrigin;
+}
+
+function buildCorsHeaders(request: Request, env: Env): Record<string, string> {
+  const allowOrigin = resolveAllowedOrigin(request, env);
 
   return {
     ...(allowOrigin ? { 'Access-Control-Allow-Origin': allowOrigin } : {}),
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
+}
+
+function validateOrigin(request: Request, env: Env): string | null {
+  const requestedOrigin = request.headers.get('Origin');
+
+  if (!requestedOrigin) {
+    return null;
+  }
+
+  if (!getAllowedOrigins(env).length) {
+    return null;
+  }
+
+  return resolveAllowedOrigin(request, env)
+    ? null
+    : 'Origin is not allowed.';
+}
+
+function validateRequestShape(payload: ChatCompletionRequest): string | null {
+  if (!payload.model?.trim()) {
+    return 'Model is required.';
+  }
+
+  if (!Array.isArray(payload.messages) || payload.messages.length === 0) {
+    return 'At least one message is required.';
+  }
+
+  if (payload.messages.length > MAX_MESSAGE_COUNT) {
+    return 'Too many messages were supplied.';
+  }
+
+  let totalContentLength = 0;
+
+  for (const message of payload.messages) {
+    if (
+      !message ||
+      typeof message !== 'object' ||
+      !ALLOWED_MESSAGE_ROLES.has(message.role) ||
+      typeof message.content !== 'string'
+    ) {
+      return 'Invalid chat message payload.';
+    }
+
+    if (message.content.length > MAX_MESSAGE_CONTENT_LENGTH) {
+      return 'A message was too long.';
+    }
+
+    totalContentLength += message.content.length;
+  }
+
+  if (totalContentLength > MAX_TOTAL_MESSAGE_CONTENT_LENGTH) {
+    return 'Combined message content was too large.';
+  }
+
+  return null;
 }
 
 async function verifyFirebaseToken(
@@ -117,7 +188,16 @@ async function handleChatCompletion(
   }
 
   try {
-    await verifyFirebaseToken(bearerToken, env.FIREBASE_WEB_API_KEY.trim());
+    const firebaseUser = await verifyFirebaseToken(
+      bearerToken,
+      env.FIREBASE_WEB_API_KEY.trim(),
+    );
+
+    if (firebaseUser.emailVerified === false) {
+      return jsonResponse(request, env, 403, {
+        error: 'Email verification is required before using AI features.',
+      });
+    }
   } catch (error) {
     return jsonResponse(request, env, 401, {
       error:
@@ -125,11 +205,26 @@ async function handleChatCompletion(
     });
   }
 
-  const payload = (await request.json()) as ChatCompletionRequest;
+  const declaredBodyLength = Number.parseInt(
+    request.headers.get('Content-Length') ?? '',
+    10,
+  );
 
-  if (!payload.model?.trim() || !Array.isArray(payload.messages) || payload.messages.length === 0) {
+  if (
+    Number.isFinite(declaredBodyLength) &&
+    declaredBodyLength > MAX_REQUEST_BODY_BYTES
+  ) {
+    return jsonResponse(request, env, 413, {
+      error: 'Request body was too large.',
+    });
+  }
+
+  const payload = (await request.json()) as ChatCompletionRequest;
+  const payloadValidationError = validateRequestShape(payload);
+
+  if (payloadValidationError) {
     return jsonResponse(request, env, 400, {
-      error: 'Invalid OpenAI chat completion payload.',
+      error: payloadValidationError,
     });
   }
 
@@ -173,6 +268,12 @@ async function handleChatCompletion(
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
+      const originError = validateOrigin(request, env);
+
+      if (originError) {
+        return jsonResponse(request, env, 403, { error: originError });
+      }
+
       return new Response(null, {
         headers: buildCorsHeaders(request, env),
       });
@@ -190,6 +291,12 @@ export default {
       return jsonResponse(request, env, 404, {
         error: 'Not found.',
       });
+    }
+
+    const originError = validateOrigin(request, env);
+
+    if (originError) {
+      return jsonResponse(request, env, 403, { error: originError });
     }
 
     try {
