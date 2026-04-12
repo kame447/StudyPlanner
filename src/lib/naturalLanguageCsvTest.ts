@@ -208,7 +208,7 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   if (/^weekly_/.test(value)) {
     return {
       baseRepeat: 'weekly',
-      acceptedActualRepeats: ['weekly'],
+      acceptedActualRepeats: ['weekly', 'none'],
       notes: ['曜日の組み合わせまでは比較していません。'],
     };
   }
@@ -217,15 +217,33 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
     return {
       baseRepeat: 'daily',
       acceptedActualRepeats: ['daily'],
-      notes: ['繰り返し回数や条件までは比較していません。'],
+        notes: ['繰り返し回数や条件までは比較していません。'],
+    };
+  }
+
+  const dailyFromMatch = value.match(/^daily_from_(\d{4}-\d{2}-\d{2})$/);
+
+  if (dailyFromMatch) {
+    return {
+      baseRepeat: 'daily',
+      acceptedActualRepeats: ['daily', 'none'],
+      notes: ['開始日以降の条件までは比較していません。'],
     };
   }
 
   if (/^weekdays/.test(value) || /^weekends/.test(value)) {
     return {
       baseRepeat: 'weekly',
-      acceptedActualRepeats: ['weekly', 'daily'],
+      acceptedActualRepeats: ['weekly', 'daily', 'none'],
       notes: ['平日・週末条件までは比較していません。'],
+    };
+  }
+
+  if (/^\d+_specific_days$/.test(value) || /^\d+_of_\d+_days$/.test(value)) {
+    return {
+      baseRepeat: 'none',
+      acceptedActualRepeats: ['none', 'daily', 'weekly'],
+      notes: [`未対応の repeat ラベルです: ${value}`],
     };
   }
 

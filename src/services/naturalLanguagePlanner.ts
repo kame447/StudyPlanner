@@ -473,7 +473,10 @@ async function buildBatchedAddSuggestions(
   );
   const taskTextsForSuggestions =
     actionableTaskTexts.length > 0 ? actionableTaskTexts : splitTaskTexts;
-  const suggestionCount = Math.max(taskTextsForSuggestions.length, extractions.length, 1);
+  const suggestionCount =
+    taskTextsForSuggestions.length > 0
+      ? taskTextsForSuggestions.length
+      : Math.max(extractions.length, 1);
 
   const suggestions = Array.from({ length: suggestionCount }, (_, index) => {
     const extraction = extractions[index];
@@ -683,10 +686,24 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
     if (/勉強予定/.test(sourceText)) {
       return '勉強';
     }
+    if (/レポート|課題/.test(sourceText)) {
+      return '課題';
+    }
+    if (/単語/.test(sourceText) && !/古文|漢文/.test(sourceText)) {
+      return '英語';
+    }
     if (/過去問|演習/.test(sourceText)) {
       return '演習';
     }
     return '';
+  }
+
+  if (normalizedSubject === 'レポート' || normalizedSubject === '課題') {
+    return '課題';
+  }
+
+  if (normalizedSubject === '単語') {
+    return '英語';
   }
 
   if (/過去問|演習/.test(normalizedSubject)) {
@@ -711,11 +728,17 @@ function stripTitleNoise(value: string): string {
   return value
     .replace(/^\s*(?:今週|来週|今月中|今月|平日|土日|週末|毎朝|毎日|毎週|\d{1,2}月中は?)\s*/g, '')
     .replace(
-      /^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|他の日は)\s*/g,
+      /^\s*(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|の|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|他の日は)\s*/g,
       '',
     )
+    .replace(/^\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*/g, '')
+    .replace(/^\s*(?:もし[^、。]*なら)\s*/g, '')
+    .replace(/^\s*(?:模試の前日なら|バイトがある)\s*/g, '')
+    .replace(/^\s*(?:これを\s*\d+\s*セット(?:で)?|全部|全て|連続で|どこかで)\s*/g, '')
     .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始)+\s*/g, '')
     .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始)+\s*$/g, '')
+    .replace(/\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*$/g, '')
+    .replace(/\s*(?:もし[^、。]*なら)\s*$/g, '')
     .replace(/^\s*(?:\d+日|\d+セット)\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -778,7 +801,9 @@ function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle
 
   if (
     normalizedTitle &&
-    !/^(?:から|まで|間|半|ま|\d+日|\d+セット|開始)$/.test(normalizedTitle)
+    !/^(?:から|まで|間|半|ま|\d+日|\d+セット|開始|けど|けれど|ただし|その代わり|もし.*なら|模試の前日なら|バイトがある|全部|連続で|どこかで)$/.test(
+      normalizedTitle,
+    )
   ) {
     return normalizedTitle;
   }
@@ -795,7 +820,9 @@ function buildRecurrenceContextText(
 }
 
 function parseSetCount(text: string): number | null {
-  const match = normalizeParsingText(text).match(/これを\s*(\d+)\s*セット/);
+  const match =
+    normalizeParsingText(text).match(/これを\s*(\d+)\s*セット/) ??
+    normalizeParsingText(text).match(/(\d+)\s*セット/);
   return match ? Number(match[1]) : null;
 }
 
@@ -885,13 +912,37 @@ function expandEnumeratedStudyVariants(
     単語: '英単語',
     文法: '英文法',
   };
+  const isSequential = /連続で/.test(normalizedText);
+  const durationMinutes =
+    suggestion.parsedPlan.startTime && suggestion.parsedPlan.endTime
+      ? minutesFromTime(suggestion.parsedPlan.endTime) -
+        minutesFromTime(suggestion.parsedPlan.startTime)
+      : parseDurationMinutes(normalizedText);
+  const baseStartMinutes = suggestion.parsedPlan.startTime
+    ? minutesFromTime(suggestion.parsedPlan.startTime)
+    : null;
 
-  return variantMatches.map((match, index) =>
-    finalizeSuggestionStatus({
+  return variantMatches.map((match, index) => {
+    const sequentialStartMinutes =
+      isSequential && durationMinutes !== undefined && baseStartMinutes !== null
+        ? baseStartMinutes + durationMinutes * index
+        : null;
+
+    return finalizeSuggestionStatus({
       ...suggestion,
       parsedPlan: {
         ...suggestion.parsedPlan,
-        date: addDays(suggestion.parsedPlan.date, index),
+        date: isSequential
+          ? suggestion.parsedPlan.date
+          : addDays(suggestion.parsedPlan.date, index),
+        startTime:
+          sequentialStartMinutes !== null
+            ? timeFromMinutes(sequentialStartMinutes)
+            : suggestion.parsedPlan.startTime,
+        endTime:
+          sequentialStartMinutes !== null && durationMinutes !== undefined
+            ? timeFromMinutes(sequentialStartMinutes + durationMinutes)
+            : suggestion.parsedPlan.endTime,
         title: titleMap[match[1]] ?? suggestion.parsedPlan.title,
         subject: '英語',
         repeat: 'none',
@@ -904,8 +955,8 @@ function expandEnumeratedStudyVariants(
           `${variantMatches.length}回指定から学習内容ごとに展開しました。`,
         ]),
       ),
-    }),
-  );
+    });
+  });
 }
 
 function isRecurrenceMemoOnly(memo: string): boolean {
@@ -949,7 +1000,9 @@ function shouldMergeRecurrenceInstruction(
 }
 
 function hasExceptionCue(text: string): boolean {
-  return /だけは|ただし|その代わり|他の日は/.test(normalizeParsingText(text));
+  return /だけは|ただし|その代わり|他の日は|けど|けれど|もし.+なら/.test(
+    normalizeParsingText(text),
+  );
 }
 
 function hasMeaningfulStudyTitle(title: string): boolean {
@@ -957,26 +1010,158 @@ function hasMeaningfulStudyTitle(title: string): boolean {
 
   return (
     Boolean(normalizedTitle) &&
-    !/^(?:バイトがある|他の日|これを\d+セット|全部|開始)$/.test(normalizedTitle)
+    !/^(?:バイトがある|他の日|これを\d+セット|全部|開始|けど|けれど|ただし|もし.*なら|模試の前日なら)$/.test(
+      normalizedTitle,
+    )
+  );
+}
+
+function isUnsupportedConditionalModifier(
+  suggestion: NaturalLanguageSuggestion,
+): boolean {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+
+  return (
+    /もし.+なら/.test(normalizedText) &&
+    !hasExplicitClockTime(normalizedText) &&
+    detectSubject(normalizedText) === '' &&
+    !/平日|土日|週末|毎日|毎朝|毎晩|毎夜|毎週|[月火水木金土日]曜(?:日)?/.test(
+      normalizedText,
+    )
+  );
+}
+
+function extractWeekdayLabelsFromText(text: string): string[] {
+  const normalizedText = normalizeParsingText(text);
+  const labels = Array.from(normalizedText.matchAll(/([月火水木金土日])曜(?:日)?/g)).map(
+    (match) => match[1],
+  );
+  const compactLabels = Array.from(
+    normalizedText.matchAll(/([月火水木金土日]{2,})(?:の|は|だけ|と|、|,|，)/g),
+  ).flatMap((match) => match[1].split(''));
+
+  return [...labels, ...compactLabels].filter(
+    (label, index, array) => array.indexOf(label) === index,
+  );
+}
+
+function startOfWeekDate(date: string): string {
+  const base = new Date(`${date}T00:00:00`);
+  const offset = (base.getDay() + 6) % 7;
+  return addDays(date, -offset);
+}
+
+function resolveFirstWeeklyOccurrenceDate(text: string, baseDate: string): string | null {
+  const normalizedText = normalizeParsingText(text);
+
+  if (/平日/.test(normalizedText)) {
+    const day = new Date(`${baseDate}T00:00:00`).getDay();
+    return day >= 1 && day <= 5 ? baseDate : addDays(startOfWeekDate(addDays(baseDate, 7)), 0);
+  }
+
+  if (/土日|週末/.test(normalizedText)) {
+    const day = new Date(`${baseDate}T00:00:00`).getDay();
+
+    if (day === 0 || day === 6) {
+      return baseDate;
+    }
+
+    return addDays(startOfWeekDate(baseDate), 5);
+  }
+
+  const weekdayLabels = extractWeekdayLabelsFromText(normalizedText);
+
+  if (weekdayLabels.length === 0) {
+    return null;
+  }
+
+  const weekStart = /来週/.test(normalizedText)
+    ? startOfWeekDate(addDays(baseDate, 7))
+    : startOfWeekDate(baseDate);
+  const order = ['月', '火', '水', '木', '金', '土', '日'];
+  const sortedLabels = weekdayLabels
+    .slice()
+    .sort((left, right) => order.indexOf(left) - order.indexOf(right));
+  const firstLabel = sortedLabels[0];
+  const dayIndex = order.indexOf(firstLabel);
+
+  return dayIndex >= 0 ? addDays(weekStart, dayIndex) : null;
+}
+
+function expandSpecificWeekdayOccurrences(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion[] | null {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+  const weekdayLabels = extractWeekdayLabelsFromText(normalizedText);
+
+  if (
+    suggestion.parsedPlan.repeat !== 'none' ||
+    weekdayLabels.length < 2 ||
+    !/\d+回/.test(normalizedText) ||
+    !/(どこかで|全部)/.test(normalizedText)
+  ) {
+    return null;
+  }
+
+  const startTime = suggestion.parsedPlan.startTime;
+  const endTime = suggestion.parsedPlan.endTime;
+
+  if (!startTime || !endTime) {
+    return null;
+  }
+
+  const weekStart = /来週/.test(normalizedText)
+    ? startOfWeekDate(addDays(suggestion.parsedPlan.date, 7))
+    : startOfWeekDate(suggestion.parsedPlan.date);
+  const order = ['月', '火', '水', '木', '金', '土', '日'];
+  const uniqueSortedLabels = weekdayLabels
+    .filter((label, index, array) => array.indexOf(label) === index)
+    .sort((left, right) => order.indexOf(left) - order.indexOf(right));
+  const requestedCount = Number(normalizedText.match(/(\d+)回/)?.[1] ?? uniqueSortedLabels.length);
+  const dates = uniqueSortedLabels
+    .slice(0, requestedCount)
+    .map((label) => addDays(weekStart, order.indexOf(label)));
+
+  return dates.map((date) =>
+    finalizeSuggestionStatus({
+      ...suggestion,
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+        date,
+        repeat: 'none',
+        repeatUntil: null,
+        excludedDates: [],
+      },
+      assumptions: Array.from(
+        new Set([
+          ...suggestion.assumptions,
+          `${dates.length}回指定と曜日条件から個別の予定に展開しました。`,
+        ]),
+      ),
+    }),
   );
 }
 
 function normalizeRecurringOverrides(
   suggestions: NaturalLanguageSuggestion[],
 ): NaturalLanguageSuggestion[] {
-  return suggestions.map((suggestion, index, array) => {
+  return suggestions.flatMap((suggestion, index, array) => {
+    if (isUnsupportedConditionalModifier(suggestion)) {
+      return [];
+    }
+
     if (!hasExceptionCue(suggestion.rawText)) {
-      return suggestion;
+      return [suggestion];
     }
 
     const baseSuggestion = array.find(
       (candidate, candidateIndex) =>
         candidateIndex !== index &&
-        /毎日|毎朝|毎晩|毎夜|他の日は/.test(normalizeParsingText(candidate.rawText)),
+        /毎日|毎朝|毎晩|毎夜|毎週|他の日は/.test(normalizeParsingText(candidate.rawText)),
     );
 
     if (!baseSuggestion) {
-      return suggestion;
+      return [suggestion];
     }
 
     const nextSuggestion: NaturalLanguageSuggestion = {
@@ -991,35 +1176,47 @@ function normalizeRecurringOverrides(
       nextSuggestion.parsedPlan.title = baseSuggestion.parsedPlan.title;
     }
 
-    if (!nextSuggestion.parsedPlan.subject) {
+    if (
+      !nextSuggestion.parsedPlan.subject ||
+      nextSuggestion.parsedPlan.subject === nextSuggestion.parsedPlan.title
+    ) {
       nextSuggestion.parsedPlan.subject = baseSuggestion.parsedPlan.subject;
+    }
+
+    if (!nextSuggestion.parsedPlan.startTime && baseSuggestion.parsedPlan.startTime) {
+      nextSuggestion.parsedPlan.startTime = baseSuggestion.parsedPlan.startTime;
     }
 
     if (
       nextSuggestion.parsedPlan.startTime &&
       baseSuggestion.parsedPlan.startTime &&
       baseSuggestion.parsedPlan.endTime &&
-      parseDurationMinutes(nextSuggestion.rawText) === undefined
+      nextSuggestion.parsedPlan.endTime &&
+      !hasExplicitClockTime(nextSuggestion.rawText)
     ) {
+      const overrideDuration = parseDurationMinutes(nextSuggestion.rawText);
       const baseDuration =
         minutesFromTime(baseSuggestion.parsedPlan.endTime) -
         minutesFromTime(baseSuggestion.parsedPlan.startTime);
+      const finalDuration = overrideDuration ?? baseDuration;
 
       nextSuggestion.parsedPlan.endTime = timeFromMinutes(
-        minutesFromTime(nextSuggestion.parsedPlan.startTime) + baseDuration,
+        minutesFromTime(nextSuggestion.parsedPlan.startTime) + finalDuration,
       );
     }
 
     const forcedRepeat = detectRepeat(nextSuggestion.rawText);
     if (forcedRepeat !== 'none') {
       nextSuggestion.parsedPlan.repeat = forcedRepeat;
+    } else if (/[月火水木金土日]曜(?:日)?|平日|土日|週末/.test(normalizeParsingText(nextSuggestion.rawText))) {
+      nextSuggestion.parsedPlan.repeat = 'weekly';
     }
 
     if (!nextSuggestion.parsedPlan.repeatUntil && baseSuggestion.parsedPlan.repeatUntil) {
       nextSuggestion.parsedPlan.repeatUntil = baseSuggestion.parsedPlan.repeatUntil;
     }
 
-    return finalizeSuggestionStatus(nextSuggestion);
+    return [finalizeSuggestionStatus(nextSuggestion)];
   });
 }
 
@@ -1031,7 +1228,7 @@ function sanitizeDisplayTitle(title: string, date: string): string {
     .replace(/^\s*(?:今日|明日|明後日)\s*/g, '')
     .replace(/^\s*(?:今週|来週)\s*/g, '')
     .replace(
-      /^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g,
+      /^\s*(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|の|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g,
       '',
     )
     .replace(/^\s*(?:朝|朝の|午前|午後|夜|夕方)\s*/g, '')
@@ -1175,6 +1372,17 @@ function postProcessAddSuggestions(
       }
     }
 
+    if (nextSuggestion.parsedPlan.repeat === 'weekly') {
+      const normalizedWeeklyDate = resolveFirstWeeklyOccurrenceDate(
+        nextSuggestion.rawText,
+        nextSuggestion.parsedPlan.date,
+      );
+
+      if (normalizedWeeklyDate) {
+        nextSuggestion.parsedPlan.date = normalizedWeeklyDate;
+      }
+    }
+
     if (shouldMergeRecurrenceInstruction(nextSuggestion)) {
       const recurrenceTarget = [...processedSuggestions]
         .reverse()
@@ -1264,7 +1472,6 @@ function postProcessAddSuggestions(
 
     if (
       previousSuggestion &&
-      !hasExplicitDateExpression(nextSuggestion.rawText) &&
       explicitStart &&
       previousSuggestion.parsedPlan.startTime &&
       previousSuggestion.parsedPlan.endTime &&
@@ -1331,7 +1538,12 @@ function postProcessAddSuggestions(
   });
 
   return normalizeRecurringOverrides(processedSuggestions)
-    .flatMap((suggestion) => expandEnumeratedStudyVariants(suggestion) ?? [suggestion]);
+    .flatMap(
+      (suggestion) =>
+        expandSpecificWeekdayOccurrences(suggestion) ??
+        expandEnumeratedStudyVariants(suggestion) ??
+        [suggestion],
+    );
 }
 
 function buildBaseDraft(
@@ -1364,7 +1576,8 @@ function trimContentPhrase(value: string): string {
     .replace(/^(今週|来週)(?:の)?/g, '')
     .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
     .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定)$/g, '')
-    .replace(/^(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
+    .replace(/^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
+    .replace(/^(?:けど|けれど|ただし|その代わり|もし[^、。]*なら|模試の前日なら|バイトがある)+/g, '')
     .replace(/^(?:から|まで|間|半|だけ|ずつ|して)+/g, '')
     .replace(/(?:から|まで|間|半|だけ|ずつ|して)+$/g, '')
     .replace(/^(?:に|で|を|は|が|の|へ)+/g, '')

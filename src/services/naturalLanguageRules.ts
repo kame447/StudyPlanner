@@ -49,6 +49,7 @@ const WEEKDAY_INDEX: Record<string, number> = {
   土: 5,
   日: 6,
 };
+const WEEKDAY_TOKEN_REGEX = /([月火水木金土日])曜(?:日)?/g;
 const SHARED_DATE_PHRASE_REGEX =
   /明後日|明日|今日|来週(?:の)?[月火水木金土日]曜(?:日)?|今週(?:の)?[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/;
 const LEADING_SHARED_DATE_PHRASE_REGEX = new RegExp(
@@ -163,15 +164,30 @@ function removeSchedulingTerms(text: string): string {
     )
     .replace(new RegExp(`${LOCALIZED_NUMBER_PATTERN}分`, 'g'), '')
     .replace(
-      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?|ようにしたい|として固定して|固定して|その代わり|他の日は|だけは/g,
+      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?|ようにしたい|として固定して|固定して|その代わり|他の日は|だけは|けど|けれど|もし|なら/g,
       '',
     )
     .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定|進める/g, '')
     .replace(/\b(?:から|まで|だけ|は|を|に|で|が|へ|の|と|間|半)\b/g, ' ');
 }
 
+function extractWeekdayLabels(text: string): string[] {
+  const normalizedText = normalizeParsingText(text);
+  const labels = Array.from(normalizedText.matchAll(WEEKDAY_TOKEN_REGEX)).map(
+    (match) => match[1],
+  );
+  const compactSetMatches = Array.from(
+    normalizedText.matchAll(/([月火水木金土日]{2,})(?:の|は|だけ|と|、|,|，)/g),
+  ).flatMap((match) => match[1].split(''));
+
+  return [...labels, ...compactSetMatches].filter(
+    (label, index, array) => array.indexOf(label) === index,
+  );
+}
+
 export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
+  const weekdayLabels = extractWeekdayLabels(normalizedText);
 
   if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
     return 'daily';
@@ -180,7 +196,8 @@ export function detectRepeat(text: string): MonthEventRepeat {
   if (
     /平日|土日|週末|毎週|毎[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は)/.test(
       normalizedText,
-    )
+    ) ||
+    weekdayLabels.length >= 2
   ) {
     return 'weekly';
   }
@@ -238,6 +255,7 @@ function resolveNearestMatchingWeekday(
 
 export function parseDate(text: string, selectedDate: string): string {
   const normalizedText = normalizeParsingText(text);
+  const weekdayLabels = extractWeekdayLabels(normalizedText);
 
   if (/明後日/.test(normalizedText)) {
     return addDays(selectedDate, 2);
@@ -277,13 +295,8 @@ export function parseDate(text: string, selectedDate: string): string {
     return resolveWeekdayDate(selectedDate, weekdayMatch[1], 'current_or_next');
   }
 
-  const weekdaySetMatch = normalizedText.match(/([月火水木金土日]{2,})(?:の夜|の朝|の昼|は)/);
-
-  if (weekdaySetMatch) {
-    return resolveNearestMatchingWeekday(
-      selectedDate,
-      weekdaySetMatch[1].split(''),
-    );
+  if (weekdayLabels.length >= 2) {
+    return resolveNearestMatchingWeekday(selectedDate, weekdayLabels);
   }
 
   if (/平日/.test(normalizedText)) {
@@ -570,7 +583,7 @@ function prependSharedDate(text: string, sharedDatePhrase: string): string {
 function isContinuationSegment(text: string): boolean {
   const normalizedText = normalizeParsingText(text).trim();
 
-  return /^(?:これを\s*\d+\s*セット|全部|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は)/.test(
+  return /^(?:これを\s*\d+\s*セット|全部|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は|もし)/.test(
     normalizedText,
   );
 }
@@ -659,7 +672,7 @@ export function splitAddTaskTexts(text: string): string[] {
   const segments = hardSegments.flatMap((segment) => {
     const softSegments = mergeSoftSegments(
       segment
-      .split(/\s*(?:、|,|，|そのあと|その後|次に|あと|ただし|その代わり|代わりに)\s*/g)
+      .split(/\s*(?:、|,|，|そのあと|その後|次に|あと|ただし|その代わり|代わりに|けど|けれど)\s*/g)
       .map((part) => part.trim())
       .filter(Boolean),
     );
