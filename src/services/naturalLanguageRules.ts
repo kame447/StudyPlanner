@@ -37,6 +37,9 @@ const CLOCK_RANGE_GLOBAL_REGEX = new RegExp(
   `${CLOCK_TIME_PATTERN}\\s*(?:-|〜|~|から)\\s*${CLOCK_TIME_PATTERN}`,
   'g',
 );
+const CROSS_DAY_CLOCK_RANGE_REGEX = new RegExp(
+  `${CLOCK_TIME_PATTERN}\\s*から\\s*(?:翌日|[月火水木金土日]曜(?:日)?の?)?\\s*${CLOCK_TIME_PATTERN}\\s*まで`,
+);
 const WEEKDAY_INDEX: Record<string, number> = {
   月: 0,
   火: 1,
@@ -61,6 +64,8 @@ function normalizeParsingText(text: string): string {
     )
     .replace(/[：]/g, ':')
     .replace(/[／]/g, '/')
+    .replace(/(\d{1,2})時(\d{1,2})分/g, '$1:$2')
+    .replace(/(\d{1,2})時半/g, '$1:30')
     .replace(/[　]/g, ' ');
 }
 
@@ -166,7 +171,7 @@ export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
 
   if (
-    /平日|土日|週末|毎週|毎[月火水木金土日](?:曜)?|(?:月|火|水|木|金|土|日){2,}は/.test(
+    /平日|土日|週末|毎週|毎(?:月曜?|火曜?|水曜?|木曜?|金曜?|土曜?|日曜?)|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は)/.test(
       normalizedText,
     )
   ) {
@@ -204,6 +209,28 @@ function resolveWeekdayDate(
   const selectedIndex = selected.getDay() === 0 ? 6 : selected.getDay() - 1;
   const diff = (targetIndex - selectedIndex + 7) % 7;
   return addDays(selectedDate, diff);
+}
+
+function resolveNearestMatchingWeekday(
+  selectedDate: string,
+  weekdayLabels: string[],
+): string {
+  const targetIndices = weekdayLabels
+    .map((label) => WEEKDAY_INDEX[label])
+    .filter((value, index, array) => array.indexOf(value) === index)
+    .sort((left, right) => left - right);
+  const selected = new Date(`${selectedDate}T00:00:00`);
+  const selectedIndex = selected.getDay() === 0 ? 6 : selected.getDay() - 1;
+
+  for (const targetIndex of targetIndices) {
+    const diff = (targetIndex - selectedIndex + 7) % 7;
+
+    if (diff >= 0) {
+      return addDays(selectedDate, diff);
+    }
+  }
+
+  return addDays(selectedDate, (targetIndices[0] - selectedIndex + 7) % 7);
 }
 
 export function parseDate(text: string, selectedDate: string): string {
@@ -245,6 +272,23 @@ export function parseDate(text: string, selectedDate: string): string {
 
   if (weekdayMatch) {
     return resolveWeekdayDate(selectedDate, weekdayMatch[1], 'current_or_next');
+  }
+
+  const weekdaySetMatch = normalizedText.match(/([月火水木金土日]{2,})(?:の夜|の朝|の昼|は)/);
+
+  if (weekdaySetMatch) {
+    return resolveNearestMatchingWeekday(
+      selectedDate,
+      weekdaySetMatch[1].split(''),
+    );
+  }
+
+  if (/平日/.test(normalizedText)) {
+    return resolveNearestMatchingWeekday(selectedDate, ['月', '火', '水', '木', '金']);
+  }
+
+  if (/土日|週末/.test(normalizedText)) {
+    return resolveNearestMatchingWeekday(selectedDate, ['土', '日']);
   }
 
   if (/来週/.test(normalizedText)) {
@@ -368,6 +412,25 @@ export function parseTimes(
   fallbackStartTime = '19:00',
 ): { startTime?: string; endTime?: string } {
   const normalizedText = normalizeParsingText(text);
+  const crossDayRangeMatch = normalizedText.match(CROSS_DAY_CLOCK_RANGE_REGEX);
+
+  if (crossDayRangeMatch) {
+    const startTime = normalizeTime(
+      crossDayRangeMatch[1],
+      crossDayRangeMatch[2],
+      Boolean(crossDayRangeMatch[3]),
+    );
+    const endTime = normalizeTime(
+      crossDayRangeMatch[4],
+      crossDayRangeMatch[5],
+      Boolean(crossDayRangeMatch[6]),
+    );
+    return {
+      startTime,
+      endTime,
+    };
+  }
+
   const rangeMatch = normalizedText.match(CLOCK_RANGE_REGEX);
 
   if (rangeMatch) {
@@ -464,7 +527,7 @@ export function isBreakLikeText(text: string): boolean {
   const normalizedText = normalizeParsingText(text).replace(/\s+/g, '');
 
   return (
-    /休憩|休んで|休む|ひと休み|一休み/.test(normalizedText) &&
+    /休憩|休んで|休む|ひと休み|一休み|休み/.test(normalizedText) &&
     !/英語|数学|国語|物理|化学|生物|地学|情報|日本史|世界史|地理|政経|倫理|古文|漢文|現代文|レポート|課題|チャート|良問の風|英単語|古文単語/.test(
       normalizedText,
     )
@@ -508,7 +571,7 @@ export function splitAddTaskTexts(text: string): string[] {
 
   const segments = hardSegments.flatMap((segment) => {
     const softSegments = segment
-      .split(/\s*(?:、|,|，|そのあと|その後|次に|あと)\s*/g)
+      .split(/\s*(?:、|,|，|そのあと|その後|次に|あと|ただし|その代わり|代わりに)\s*/g)
       .map((part) => part.trim())
       .filter(Boolean);
 

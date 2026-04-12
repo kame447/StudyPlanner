@@ -221,6 +221,8 @@ function normalizeParsingText(text: string): string {
     )
     .replace(/[：]/g, ':')
     .replace(/[／]/g, '/')
+    .replace(/(\d{1,2})時(\d{1,2})分/g, '$1:$2')
+    .replace(/(\d{1,2})時半/g, '$1:30')
     .replace(/[〜～]/g, '~')
     .replace(/[　]/g, ' ');
 }
@@ -357,6 +359,28 @@ function normalizeTaskTexts(taskTexts: string[], fallbackText: string): string[]
   return normalizedTasks.length > 0 ? normalizedTasks : [fallbackText.trim()];
 }
 
+function isStandaloneRecurrenceInstructionText(text: string): boolean {
+  const normalizedText = normalizeParsingText(text);
+
+  return (
+    detectRepeat(normalizedText) !== 'none' &&
+    !hasExplicitClockTime(normalizedText) &&
+    parseDurationMinutes(normalizedText) === undefined
+  );
+}
+
+function referencesSplitTask(taskText: string, instructionText: string): boolean {
+  const normalizedInstruction = normalizeParsingText(instructionText);
+  const candidateTitle = sanitizeSuggestedTitle(taskText).trim();
+  const candidateSubject = detectSubject(taskText).trim();
+
+  return (
+    Boolean(candidateTitle) && normalizedInstruction.includes(candidateTitle)
+  ) || (
+    Boolean(candidateSubject) && normalizedInstruction.includes(candidateSubject)
+  );
+}
+
 function normalizeBatchExtractionTasks(
   tasks: BatchPlannerExtraction[] | null | undefined,
   fallbackText: string,
@@ -440,11 +464,35 @@ async function buildBatchedAddSuggestions(
 ): Promise<NaturalLanguageSuggestion[]> {
   const validationPolicy = getValidationPolicy(getAiConfig());
   const extractions = await requestBatchPlannerExtraction(input);
+  const splitTaskTexts = normalizeTaskTexts(splitAddTaskTexts(input.text), input.text);
+  const recurrenceInstructionTexts = splitTaskTexts.filter(
+    isStandaloneRecurrenceInstructionText,
+  );
+  const actionableTaskTexts = splitTaskTexts.filter(
+    (taskText) => !isStandaloneRecurrenceInstructionText(taskText),
+  );
+  const alignedTaskTexts =
+    actionableTaskTexts.length === extractions.length
+      ? actionableTaskTexts
+      : splitTaskTexts.length === extractions.length
+        ? splitTaskTexts
+        : [];
 
-  return extractions.map((extraction) => {
+  return extractions.map((extraction, index) => {
+    const baseTaskText =
+      alignedTaskTexts[index] ??
+      normalizeText(extraction.rawText) ??
+      input.text;
+    const enrichedTaskText = recurrenceInstructionTexts.reduce(
+      (currentText, instructionText) =>
+        referencesSplitTask(currentText, instructionText)
+          ? `${currentText} ${instructionText}`.trim()
+          : currentText,
+      baseTaskText,
+    );
     const taskInput: SuggestionInput = {
       ...input,
-      text: normalizeText(extraction.rawText) ?? input.text,
+      text: enrichedTaskText,
     };
     const baseline = buildDeterministicSuggestion(taskInput);
     const issues = collectModelIssues(
@@ -471,7 +519,7 @@ async function buildBatchedAddSuggestions(
 
 function hasExplicitDateExpression(text: string): boolean {
   const normalizedText = normalizeParsingText(text);
-  return /明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(
+  return /明後日|明日|今日|今週|来週|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(
     normalizedText,
   );
 }
@@ -535,6 +583,39 @@ function crossedMidnight(startTime: string, endTime: string): boolean {
   return minutesFromTime(endTime) <= minutesFromTime(startTime);
 }
 
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function detectRepeatUntil(text: string, baseDate: string): string | null {
+  const normalizedText = normalizeParsingText(text);
+  const baseYear = Number(baseDate.slice(0, 4));
+  const explicitDateMatch = normalizedText.match(/(\d{1,2})月(\d{1,2})日まで/);
+
+  if (explicitDateMatch) {
+    const month = explicitDateMatch[1].padStart(2, '0');
+    const day = explicitDateMatch[2].padStart(2, '0');
+    return `${baseYear}-${month}-${day}`;
+  }
+
+  const slashDateMatch = normalizedText.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})まで/);
+
+  if (slashDateMatch) {
+    return `${slashDateMatch[1]}-${slashDateMatch[2].padStart(2, '0')}-${slashDateMatch[3].padStart(2, '0')}`;
+  }
+
+  const monthOnlyMatch = normalizedText.match(/(\d{1,2})月中/);
+
+  if (monthOnlyMatch) {
+    const month = Number(monthOnlyMatch[1]);
+    return `${baseYear}-${month.toString().padStart(2, '0')}-${daysInMonth(baseYear, month)
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
+  return null;
+}
+
 function isBreakSuggestion(suggestion: NaturalLanguageSuggestion): boolean {
   return isBreakLikeText(
     [
@@ -564,6 +645,9 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
     if (/勉強予定/.test(sourceText)) {
       return '勉強';
     }
+    if (/過去問|演習/.test(sourceText)) {
+      return '演習';
+    }
     return '';
   }
 
@@ -581,9 +665,19 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
   return normalizedSubject;
 }
 
+function stripTitleNoise(value: string): string {
+  return value
+    .replace(/^\s*(?:今週|来週|平日|土日|週末|毎朝|毎日|毎週)\s*/g, '')
+    .replace(/^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|月水金は|火木土は|他の日は)\s*/g, '')
+    .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の)+\s*/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の)+\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle: string): string {
   const normalizedText = normalizeParsingText(rawText);
-  const normalizedTitle = currentTitle.trim();
+  const normalizedTitle = stripTitleNoise(currentTitle.trim());
   const explicitPatterns: Array<[RegExp, string | ((match: RegExpMatchArray) => string)]> = [
     [/(情報の課題)/, '情報の課題'],
     [/(情報のレポート)/, '情報のレポート'],
@@ -733,6 +827,7 @@ function postProcessAddSuggestions(
   suggestions: NaturalLanguageSuggestion[],
 ): NaturalLanguageSuggestion[] {
   const processedSuggestions: NaturalLanguageSuggestion[] = [];
+  let sharedExplicitDate: string | null = null;
 
   suggestions.forEach((suggestion) => {
     const previousSuggestion =
@@ -799,11 +894,14 @@ function postProcessAddSuggestions(
     );
 
     if (
-      previousSuggestion &&
       !hasExplicitDateExpression(nextSuggestion.rawText) &&
-      hasExplicitDateExpression(previousSuggestion.rawText)
+      sharedExplicitDate
     ) {
-      nextSuggestion.parsedPlan.date = previousSuggestion.parsedPlan.date;
+      nextSuggestion.parsedPlan.date = sharedExplicitDate;
+    }
+
+    if (hasExplicitDateExpression(nextSuggestion.rawText)) {
+      sharedExplicitDate = nextSuggestion.parsedPlan.date;
     }
 
     const detectedRepeat = detectRepeat(
@@ -812,7 +910,10 @@ function postProcessAddSuggestions(
 
     if (detectedRepeat !== 'none') {
       nextSuggestion.parsedPlan.repeat = detectedRepeat;
-      nextSuggestion.parsedPlan.repeatUntil = null;
+      nextSuggestion.parsedPlan.repeatUntil = detectRepeatUntil(
+        buildRecurrenceContextText(nextSuggestion),
+        nextSuggestion.parsedPlan.date,
+      );
       nextSuggestion.parsedPlan.excludedDates = [];
 
       if (isRecurrenceMemoOnly(nextSuggestion.parsedPlan.memo)) {
@@ -978,8 +1079,12 @@ function buildBaseDraft(
 function trimContentPhrase(value: string): string {
   return value
     .replace(/^(今日|明日|明後日)(?:の)?/g, '')
+    .replace(/^(今週|来週)(?:の)?/g, '')
     .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
     .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定)$/g, '')
+    .replace(/^(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
+    .replace(/^(?:から|まで|間|半|だけ|ずつ|して)+/g, '')
+    .replace(/(?:から|まで|間|半|だけ|ずつ|して)+$/g, '')
     .replace(/^(?:に|で|を|は|が|の|へ)+/g, '')
     .replace(/(?:に|で|を|は|が|の|へ)+$/g, '')
     .replace(/^(?:ちょっと|少し|ちょい)+/g, '')
