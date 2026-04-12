@@ -3,6 +3,7 @@ import type {
   AuthStorageGateway,
   PlannerStorageGateway,
 } from './repositoryContracts';
+import { normalizeActualRecord, normalizePlanRecord } from './repositoryUtils';
 
 const STORAGE_KEYS = {
   users: 'studyplanner.users',
@@ -81,13 +82,13 @@ export function createLocalPlannerStorageGateway(
 ): PlannerStorageGateway {
   return {
     async readPlans() {
-      return readJson<Plan[]>(storage, STORAGE_KEYS.plans, []);
+      return readJson<Plan[]>(storage, STORAGE_KEYS.plans, []).map(normalizePlanRecord);
     },
     async writePlans(plans) {
       writeJson(storage, STORAGE_KEYS.plans, plans);
     },
     async readActuals() {
-      return readJson<Actual[]>(storage, STORAGE_KEYS.actuals, []);
+      return readJson<Actual[]>(storage, STORAGE_KEYS.actuals, []).map(normalizeActualRecord);
     },
     async writeActuals(actuals) {
       writeJson(storage, STORAGE_KEYS.actuals, actuals);

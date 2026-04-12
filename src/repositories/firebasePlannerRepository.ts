@@ -16,6 +16,7 @@ import type {
   Plan,
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
+import { normalizeActualRecord, normalizePlanRecord } from './repositoryUtils';
 
 type PlannerDoc = Plan | Actual | DayNote | MonthEvent;
 
@@ -67,7 +68,9 @@ export function createFirebasePlannerRepository(
   return {
     async getPlans(userId) {
       try {
-        return await listByUserId<Plan>(firestoreDb, 'plans', userId);
+        return (await listByUserId<Plan>(firestoreDb, 'plans', userId)).map(
+          normalizePlanRecord,
+        );
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('予定を取得できませんでした。', error as { message?: string | null }),
@@ -76,7 +79,9 @@ export function createFirebasePlannerRepository(
     },
     async getActuals(userId) {
       try {
-        return await listByUserId<Actual>(firestoreDb, 'actuals', userId);
+        return (await listByUserId<Actual>(firestoreDb, 'actuals', userId)).map(
+          normalizeActualRecord,
+        );
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('実績を取得できませんでした。', error as { message?: string | null }),
