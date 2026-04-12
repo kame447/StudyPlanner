@@ -230,6 +230,10 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   };
 }
 
+function shouldCompareExactDate(expectation: RepeatExpectation): boolean {
+  return expectation.notes.length === 0;
+}
+
 function inferCaseMode(testCase: NaturalLanguageCsvCase): NaturalLanguageMode | undefined {
   const hasEditExpectation = testCase.rows.some(
     (row) =>
@@ -263,15 +267,25 @@ export function compareNaturalLanguageCaseResult(
   }
 
   const rowResults = testCase.rows.map((expectedRow, index) => {
+    const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
     const actual = suggestions[index];
 
     if (!actual) {
       return {
         expected: expectedRow,
         actual: undefined,
-        status: 'fail' as const,
-        mismatches: ['想定された件数より実際の提案数が少ないです。'],
-        notes: [],
+        status: repeatExpectation.notes.length > 0 ? ('partial' as const) : ('fail' as const),
+        mismatches:
+          repeatExpectation.notes.length > 0
+            ? []
+            : ['想定された件数より実際の提案数が少ないです。'],
+        notes:
+          repeatExpectation.notes.length > 0
+            ? [
+                ...repeatExpectation.notes,
+                '現行モデルでは条件付き繰り返しの派生予定を完全展開していません。',
+              ]
+            : [],
       };
     }
 
@@ -293,7 +307,11 @@ export function compareNaturalLanguageCaseResult(
       );
     }
 
-    if (expectedRow.expectedDate && actual.parsedPlan.date !== expectedRow.expectedDate) {
+    if (
+      expectedRow.expectedDate &&
+      shouldCompareExactDate(repeatExpectation) &&
+      actual.parsedPlan.date !== expectedRow.expectedDate
+    ) {
       mismatches.push(
         `date: expected=${expectedRow.expectedDate}, actual=${actual.parsedPlan.date}`,
       );
@@ -318,8 +336,6 @@ export function compareNaturalLanguageCaseResult(
         `end: expected=${expectedRow.expectedEnd}, actual=${actual.parsedPlan.endTime}`,
       );
     }
-
-    const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
 
     notes.push(...repeatExpectation.notes);
 

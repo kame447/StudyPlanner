@@ -478,7 +478,7 @@ async function buildBatchedAddSuggestions(
         ? splitTaskTexts
         : [];
 
-  return extractions.map((extraction, index) => {
+  const suggestions = extractions.map((extraction, index) => {
     const baseTaskText =
       alignedTaskTexts[index] ??
       normalizeText(extraction.rawText) ??
@@ -515,6 +515,22 @@ async function buildBatchedAddSuggestions(
       assumptions: suggestion.assumptions.map(sanitizeAssumptionText),
     };
   });
+
+  recurrenceInstructionTexts.forEach((instructionText) => {
+    const matchedSuggestion = suggestions.find(
+      (suggestion) =>
+        referencesSplitTask(suggestion.rawText, instructionText) ||
+        referencesSuggestionTarget(instructionText, suggestion),
+    );
+
+    if (!matchedSuggestion) {
+      return;
+    }
+
+    matchedSuggestion.rawText = `${matchedSuggestion.rawText} ${instructionText}`.trim();
+  });
+
+  return suggestions;
 }
 
 function hasExplicitDateExpression(text: string): boolean {
@@ -651,6 +667,10 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
     return '';
   }
 
+  if (/過去問|演習/.test(normalizedSubject)) {
+    return '演習';
+  }
+
   if (['現代文', '古文', '漢文', '古典'].includes(normalizedSubject)) {
     return '国語';
   }
@@ -667,10 +687,14 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
 
 function stripTitleNoise(value: string): string {
   return value
-    .replace(/^\s*(?:今週|来週|平日|土日|週末|毎朝|毎日|毎週)\s*/g, '')
-    .replace(/^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|月水金は|火木土は|他の日は)\s*/g, '')
-    .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の)+\s*/g, '')
-    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の)+\s*$/g, '')
+    .replace(/^\s*(?:今週|来週|今月中|今月|平日|土日|週末|毎朝|毎日|毎週|\d{1,2}月中は?)\s*/g, '')
+    .replace(
+      /^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|他の日は)\s*/g,
+      '',
+    )
+    .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始)+\s*/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始)+\s*$/g, '')
+    .replace(/^\s*(?:\d+日|\d+セット)\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -689,7 +713,6 @@ function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle
     [/(週の振り返り|その週の振り返り)/, '週の振り返り'],
     [/(自習時間)/, '自習時間'],
     [/(勉強予定)/, '勉強予定'],
-    [/(復習)/, '復習'],
   ];
 
   for (const [pattern, value] of explicitPatterns) {
@@ -701,6 +724,13 @@ function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle
   }
 
   if (/英単語/.test(normalizedText) && /復習/.test(normalizedText)) {
+    return '英単語の復習';
+  }
+
+  if (
+    normalizedTitle === '復習' &&
+    /英単語/.test(normalizedText)
+  ) {
     return '英単語の復習';
   }
 
@@ -716,9 +746,17 @@ function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle
     return '英語長文';
   }
 
+  if (/英単語/.test(normalizedText) && normalizedTitle === '復習') {
+    return '英単語の復習';
+  }
+
+  if (/復習/.test(normalizedText)) {
+    return /英単語/.test(normalizedText) ? '英単語の復習' : '復習';
+  }
+
   if (
     normalizedTitle &&
-    !/^(?:から|まで|間|半|ま)$/.test(normalizedTitle)
+    !/^(?:から|まで|間|半|ま|\d+日|\d+セット|開始)$/.test(normalizedTitle)
   ) {
     return normalizedTitle;
   }
@@ -732,6 +770,70 @@ function buildRecurrenceContextText(
   return [suggestion.rawText, suggestion.parsedPlan.memo]
     .filter(Boolean)
     .join(' ');
+}
+
+function parseSetCount(text: string): number | null {
+  const match = normalizeParsingText(text).match(/これを\s*(\d+)\s*セット/);
+  return match ? Number(match[1]) : null;
+}
+
+function parseBreakDurationMinutes(text: string): number {
+  const normalizedText = normalizeParsingText(text);
+  const breakMatch =
+    normalizedText.match(/(\d+)分(?:だけ)?休憩/) ??
+    normalizedText.match(/(\d+)分休んで/) ??
+    normalizedText.match(/(\d+)分休む/);
+
+  return breakMatch ? Number(breakMatch[1]) : 0;
+}
+
+function expandRepeatedStudySet(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion[] | null {
+  const setCount = parseSetCount(suggestion.rawText);
+
+  if (!setCount || setCount <= 1) {
+    return null;
+  }
+
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+  const studyDuration = parseDurationMinutes(normalizedText);
+  const startTime = suggestion.parsedPlan.startTime;
+
+  if (!studyDuration || !startTime) {
+    return null;
+  }
+
+  const breakDuration = parseBreakDurationMinutes(normalizedText);
+  const baseStartMinutes = minutesFromTime(startTime);
+  const title =
+    /数学/.test(normalizedText) && suggestion.parsedPlan.subject === '数学'
+      ? '数学'
+      : suggestion.parsedPlan.title;
+
+  return Array.from({ length: setCount }, (_, index) => {
+    const startMinutes = baseStartMinutes + index * (studyDuration + breakDuration);
+    const endMinutes = startMinutes + studyDuration;
+    return finalizeSuggestionStatus({
+      ...suggestion,
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+        title,
+        startTime: timeFromMinutes(startMinutes),
+        endTime: timeFromMinutes(endMinutes),
+      },
+      assumptions: Array.from(
+        new Set([
+          ...suggestion.assumptions,
+          `${setCount}セット指定から学習ブロックを展開しました。`,
+        ]),
+      ),
+      issues: suggestion.issues.filter((issue) => issue !== 'time_overlap_conflict'),
+      unresolvedFields: suggestion.unresolvedFields.filter(
+        (field) => field !== 'startTime' && field !== 'endTime',
+      ),
+    });
+  });
 }
 
 function isRecurrenceMemoOnly(memo: string): boolean {
@@ -778,14 +880,18 @@ function sanitizeDisplayTitle(title: string, date: string): string {
   return title
     .replace(new RegExp(date.replace(/-/g, '[-/]'), 'g'), ' ')
     .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g, ' ')
+    .replace(/^\s*(?:\d{1,2}月中は?)\s*/g, '')
     .replace(/^\s*(?:今日|明日|明後日)\s*/g, '')
     .replace(/^\s*(?:今週|来週)\s*/g, '')
-    .replace(/^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g, '')
+    .replace(
+      /^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g,
+      '',
+    )
     .replace(/^\s*(?:朝|朝の|午前|午後|夜|夕方)\s*/g, '')
     .replace(/^\s*(?:そのあと|その後|続けて|次に)\s*/g, '')
     .replace(/^\s*(?:おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?)\s*/g, '')
-    .replace(/^\s*(?:から|まで|間|半)+/g, '')
-    .replace(/\s*(?:から|まで|間|半|だけ)+\s*$/g, '')
+    .replace(/^\s*(?:から|まで|間|半|開始)+/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ|開始)+\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1031,23 +1137,27 @@ function postProcessAddSuggestions(
       }
     }
 
-    const finalizedSuggestion = finalizeSuggestionStatus(nextSuggestion);
-    const duplicateIndex = processedSuggestions.findIndex(
-      (candidate) =>
-        candidate.parsedPlan.date === finalizedSuggestion.parsedPlan.date &&
-        candidate.parsedPlan.startTime === finalizedSuggestion.parsedPlan.startTime &&
-        candidate.parsedPlan.endTime === finalizedSuggestion.parsedPlan.endTime &&
-        candidate.parsedPlan.title === finalizedSuggestion.parsedPlan.title &&
-        candidate.parsedPlan.subject === finalizedSuggestion.parsedPlan.subject &&
-        candidate.parsedPlan.repeat === finalizedSuggestion.parsedPlan.repeat,
-    );
+    const expandedSuggestions =
+      expandRepeatedStudySet(nextSuggestion) ?? [finalizeSuggestionStatus(nextSuggestion)];
 
-    if (duplicateIndex >= 0) {
-      processedSuggestions[duplicateIndex] = finalizedSuggestion;
-      return;
-    }
+    expandedSuggestions.forEach((expandedSuggestion) => {
+      const duplicateIndex = processedSuggestions.findIndex(
+        (candidate) =>
+          candidate.parsedPlan.date === expandedSuggestion.parsedPlan.date &&
+          candidate.parsedPlan.startTime === expandedSuggestion.parsedPlan.startTime &&
+          candidate.parsedPlan.endTime === expandedSuggestion.parsedPlan.endTime &&
+          candidate.parsedPlan.title === expandedSuggestion.parsedPlan.title &&
+          candidate.parsedPlan.subject === expandedSuggestion.parsedPlan.subject &&
+          candidate.parsedPlan.repeat === expandedSuggestion.parsedPlan.repeat,
+      );
 
-    processedSuggestions.push(finalizedSuggestion);
+      if (duplicateIndex >= 0) {
+        processedSuggestions[duplicateIndex] = expandedSuggestion;
+        return;
+      }
+
+      processedSuggestions.push(expandedSuggestion);
+    });
   });
 
   return processedSuggestions;

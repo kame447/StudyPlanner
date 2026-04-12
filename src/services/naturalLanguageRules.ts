@@ -51,6 +51,9 @@ const WEEKDAY_INDEX: Record<string, number> = {
 };
 const SHARED_DATE_PHRASE_REGEX =
   /明後日|明日|今日|来週(?:の)?[月火水木金土日]曜(?:日)?|今週(?:の)?[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/;
+const LEADING_SHARED_DATE_PHRASE_REGEX = new RegExp(
+  `^\\s*(${SHARED_DATE_PHRASE_REGEX.source})`,
+);
 function getActionWordPatterns(): RegExp[] {
   return getNaturalLanguageCatalog().actionWords.map((keyword) =>
     keyword === 'do' ? /\bdo\b/gi : new RegExp(keyword, 'g'),
@@ -572,7 +575,7 @@ export function splitAddTaskTexts(text: string): string[] {
   }
 
   const sharedDatePhrase =
-    normalizedText.match(SHARED_DATE_PHRASE_REGEX)?.[0] ??
+    normalizedText.match(LEADING_SHARED_DATE_PHRASE_REGEX)?.[1] ??
     '';
   const hardSegments = normalizedText
     .split(/\n+|[。；;]/)
