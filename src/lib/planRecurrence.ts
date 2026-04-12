@@ -324,6 +324,28 @@ export function summarizeLegacyRepeatUntilFromRecurrenceRules(
   return untils[0] ?? fallbackUntil;
 }
 
+export function getFirstRecurrenceOccurrenceDate(
+  rules: RecurrenceRule[],
+  anchorDate: string,
+  fallbackDate: string,
+): string {
+  if (rules.length === 0) {
+    return fallbackDate;
+  }
+
+  let cursor = anchorDate;
+
+  for (let index = 0; index < 370; index += 1) {
+    if (selectApplicableRecurrenceRule(rules, cursor)) {
+      return cursor;
+    }
+
+    cursor = addDays(cursor, 1);
+  }
+
+  return fallbackDate;
+}
+
 export function buildRecurrenceRulesFromLegacySource(
   source: LegacyRecurrenceSource,
 ): RecurrenceRule[] {

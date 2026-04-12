@@ -1,4 +1,8 @@
 import type { AiProvider } from './aiConfig';
+import {
+  getFirstRecurrenceOccurrenceDate,
+  summarizeLegacyRepeatUntilFromRecurrenceRules,
+} from './planRecurrence';
 import type { NaturalLanguageMode, NaturalLanguageSuggestion } from '../types/domain';
 
 export interface NaturalLanguageCsvRow {
@@ -47,6 +51,12 @@ interface RepeatExpectation {
   repeatUntil?: string;
   notes: string[];
   acceptedActualRepeats?: Array<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>;
+}
+
+export interface ActualRecurrenceView {
+  date: string;
+  repeatKey: string;
+  repeatUntil: string | null;
 }
 
 const EDIT_EXPECTATION_LABELS = new Set([
@@ -280,11 +290,97 @@ function doesRepeatMatch(
   return (expectation.acceptedActualRepeats ?? [expectation.baseRepeat]).includes(actualRepeat);
 }
 
+function toWeekdayKey(weekday: string): string {
+  switch (weekday) {
+    case 'sun':
+    case 'mon':
+    case 'tue':
+    case 'wed':
+    case 'thu':
+    case 'fri':
+    case 'sat':
+      return weekday;
+    default:
+      return '';
+  }
+}
+
+function buildRecurrenceRepeatKey(actual: NaturalLanguageSuggestion): string {
+  const rules = actual.parsedPlan.recurrenceRules ?? [];
+
+  if (rules.length === 0) {
+    return actual.parsedPlan.repeat;
+  }
+
+  const baseRule =
+    rules.find((rule) => !rule.isOverride) ??
+    rules[0];
+
+  if (!baseRule) {
+    return actual.parsedPlan.repeat;
+  }
+
+  if (baseRule.kind === 'daily') {
+    return baseRule.until ? `daily_until_${baseRule.until}` : 'daily';
+  }
+
+  if (baseRule.kind === 'day-type') {
+    if (baseRule.dayType === 'weekday') {
+      return baseRule.until ? `weekdays_until_${baseRule.until}` : 'weekdays';
+    }
+
+    if (baseRule.dayType === 'weekend') {
+      return baseRule.until ? `weekends_until_${baseRule.until}` : 'weekends';
+    }
+  }
+
+  if (baseRule.kind === 'weekday') {
+    const weekdayKeys = baseRule.weekdays.map(toWeekdayKey).filter(Boolean);
+    if (weekdayKeys.length > 0) {
+      return `weekly_${weekdayKeys.join('_')}`;
+    }
+  }
+
+  return actual.parsedPlan.repeat;
+}
+
+export function deriveActualRecurrenceView(
+  actual: NaturalLanguageSuggestion,
+  selectedDate: string,
+): ActualRecurrenceView {
+  const rules = actual.parsedPlan.recurrenceRules ?? [];
+
+  if (rules.length === 0) {
+    return {
+      date: actual.parsedPlan.date,
+      repeatKey: actual.parsedPlan.repeat,
+      repeatUntil: actual.parsedPlan.repeatUntil,
+    };
+  }
+
+  return {
+    date: getFirstRecurrenceOccurrenceDate(
+      rules,
+      selectedDate,
+      actual.parsedPlan.date,
+    ),
+    repeatKey: buildRecurrenceRepeatKey(actual),
+    repeatUntil: summarizeLegacyRepeatUntilFromRecurrenceRules(
+      rules,
+      actual.parsedPlan.repeatUntil,
+    ),
+  };
+}
+
 function compareExpectedRowToActual(
   expectedRow: NaturalLanguageCsvRow,
   actual: NaturalLanguageSuggestion,
 ): NaturalLanguageCsvRowResult {
   const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
+  const actualRecurrence = deriveActualRecurrenceView(
+    actual,
+    expectedRow.selectedDate,
+  );
   const mismatches: string[] = [];
   const notes: string[] = [...repeatExpectation.notes];
 
@@ -306,10 +402,10 @@ function compareExpectedRowToActual(
   if (
     expectedRow.expectedDate &&
     shouldCompareExactDate(repeatExpectation) &&
-    actual.parsedPlan.date !== expectedRow.expectedDate
+    actualRecurrence.date !== expectedRow.expectedDate
   ) {
     mismatches.push(
-      `date: expected=${expectedRow.expectedDate}, actual=${actual.parsedPlan.date}`,
+      `date: expected=${expectedRow.expectedDate}, actual=${actualRecurrence.date}`,
     );
   }
 
@@ -333,18 +429,21 @@ function compareExpectedRowToActual(
     );
   }
 
-  if (!doesRepeatMatch(repeatExpectation, actual.parsedPlan.repeat)) {
+  if (
+    expectedRow.expectedRepeat !== actualRecurrence.repeatKey &&
+    !doesRepeatMatch(repeatExpectation, actual.parsedPlan.repeat)
+  ) {
     mismatches.push(
-      `repeat: expected=${repeatExpectation.baseRepeat}, actual=${actual.parsedPlan.repeat}`,
+      `repeat: expected=${repeatExpectation.baseRepeat}, actual=${actualRecurrence.repeatKey}`,
     );
   }
 
   if (
     repeatExpectation.repeatUntil &&
-    actual.parsedPlan.repeatUntil !== repeatExpectation.repeatUntil
+    actualRecurrence.repeatUntil !== repeatExpectation.repeatUntil
   ) {
     mismatches.push(
-      `repeatUntil: expected=${repeatExpectation.repeatUntil}, actual=${actual.parsedPlan.repeatUntil ?? 'null'}`,
+      `repeatUntil: expected=${repeatExpectation.repeatUntil}, actual=${actualRecurrence.repeatUntil ?? 'null'}`,
     );
   }
 

@@ -1,5 +1,10 @@
 import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { getAiConfig, getAiProviderLabel, type AiConfig } from '../lib/aiConfig';
+import {
+  getFirstRecurrenceOccurrenceDate,
+  summarizeLegacyRepeatFromRecurrenceRules,
+  summarizeLegacyRepeatUntilFromRecurrenceRules,
+} from '../lib/planRecurrence';
 import { buildDefaultPlanTitle } from '../lib/plans';
 import type {
   NaturalLanguageSuggestion,
@@ -1054,20 +1059,28 @@ function startOfWeekDate(date: string): string {
 
 function resolveFirstWeeklyOccurrenceDate(text: string, baseDate: string): string | null {
   const normalizedText = normalizeParsingText(text);
+  const anchorDate = /来週/.test(normalizedText)
+    ? addDays(startOfWeekDate(baseDate), 7)
+    : baseDate;
+  const anchor = new Date(`${anchorDate}T00:00:00`);
+  const anchorWeekdayIndex = anchor.getDay() === 0 ? 6 : anchor.getDay() - 1;
 
   if (/平日/.test(normalizedText)) {
-    const day = new Date(`${baseDate}T00:00:00`).getDay();
-    return day >= 1 && day <= 5 ? baseDate : addDays(startOfWeekDate(addDays(baseDate, 7)), 0);
+    if (anchorWeekdayIndex >= 0 && anchorWeekdayIndex <= 4) {
+      return anchorDate;
+    }
+
+    return addDays(anchorDate, (7 - anchorWeekdayIndex) % 7);
   }
 
   if (/土日|週末/.test(normalizedText)) {
-    const day = new Date(`${baseDate}T00:00:00`).getDay();
+    const day = new Date(`${anchorDate}T00:00:00`).getDay();
 
     if (day === 0 || day === 6) {
-      return baseDate;
+      return anchorDate;
     }
 
-    return addDays(startOfWeekDate(baseDate), 5);
+    return addDays(anchorDate, 6 - day);
   }
 
   const weekdayLabels = extractWeekdayLabelsFromText(normalizedText);
@@ -1076,17 +1089,23 @@ function resolveFirstWeeklyOccurrenceDate(text: string, baseDate: string): strin
     return null;
   }
 
-  const weekStart = /来週/.test(normalizedText)
-    ? startOfWeekDate(addDays(baseDate, 7))
-    : startOfWeekDate(baseDate);
   const order = ['月', '火', '水', '木', '金', '土', '日'];
-  const sortedLabels = weekdayLabels
+  const firstLabel = weekdayLabels
     .slice()
-    .sort((left, right) => order.indexOf(left) - order.indexOf(right));
-  const firstLabel = sortedLabels[0];
+    .sort((left, right) => {
+      const leftIndex = order.indexOf(left);
+      const rightIndex = order.indexOf(right);
+      const leftDiff = (leftIndex - anchorWeekdayIndex + 7) % 7;
+      const rightDiff = (rightIndex - anchorWeekdayIndex + 7) % 7;
+      return leftDiff - rightDiff;
+    })[0];
   const dayIndex = order.indexOf(firstLabel);
 
-  return dayIndex >= 0 ? addDays(weekStart, dayIndex) : null;
+  if (dayIndex < 0) {
+    return null;
+  }
+
+  return addDays(anchorDate, (dayIndex - anchorWeekdayIndex + 7) % 7);
 }
 
 function expandSpecificWeekdayOccurrences(
@@ -1277,6 +1296,7 @@ function finalizeSuggestionStatus(
 
 function postProcessAddSuggestions(
   suggestions: NaturalLanguageSuggestion[],
+  selectedDate: string,
 ): NaturalLanguageSuggestion[] {
   const processedSuggestions: NaturalLanguageSuggestion[] = [];
   let sharedExplicitDate: string | null = null;
@@ -1545,25 +1565,41 @@ function postProcessAddSuggestions(
         expandEnumeratedStudyVariants(suggestion) ??
         [suggestion],
     )
-    .map(synchronizeStructuredRecurrence);
+    .map((suggestion) => synchronizeStructuredRecurrence(suggestion, selectedDate));
 }
 
 function synchronizeStructuredRecurrence(
   suggestion: NaturalLanguageSuggestion,
+  selectedDate: string,
 ): NaturalLanguageSuggestion {
   const recurrenceRules = buildStructuredRecurrenceRules(
     suggestion.rawText,
     suggestion.parsedPlan,
+    selectedDate,
   );
 
   if (recurrenceRules.length === 0) {
     return suggestion;
   }
 
+  const representativeDate = getFirstRecurrenceOccurrenceDate(
+    recurrenceRules,
+    selectedDate,
+    suggestion.parsedPlan.date,
+  );
+
   return {
     ...suggestion,
     parsedPlan: {
       ...suggestion.parsedPlan,
+      date: representativeDate,
+      repeat:
+        summarizeLegacyRepeatFromRecurrenceRules(recurrenceRules) ??
+        suggestion.parsedPlan.repeat,
+      repeatUntil: summarizeLegacyRepeatUntilFromRecurrenceRules(
+        recurrenceRules,
+        suggestion.parsedPlan.repeatUntil,
+      ),
       recurrenceRules,
     },
   };
@@ -2381,7 +2417,7 @@ export async function generateNaturalLanguageSuggestions(
           : await buildBatchedAddSuggestions(input);
 
       return suggestions.length > 0
-        ? postProcessAddSuggestions(suggestions)
+        ? postProcessAddSuggestions(suggestions, input.selectedDate)
         : [await generateSingleNaturalLanguageSuggestion(input)];
     } catch {
       const fallbackTaskTexts = normalizeTaskTexts(
@@ -2397,7 +2433,7 @@ export async function generateNaturalLanguageSuggestions(
         ),
       );
 
-      return postProcessAddSuggestions(fallbackSuggestions);
+      return postProcessAddSuggestions(fallbackSuggestions, input.selectedDate);
     }
   }
 

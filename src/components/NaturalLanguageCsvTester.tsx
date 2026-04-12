@@ -4,6 +4,7 @@ import {
   buildNaturalLanguageCsvCases,
   canRunNaturalLanguageCsvCase,
   compareNaturalLanguageCaseResult,
+  deriveActualRecurrenceView,
   parseNaturalLanguageCsv,
   type NaturalLanguageCsvCaseResult,
 } from '../lib/naturalLanguageCsvTest';
@@ -198,6 +199,16 @@ export function NaturalLanguageCsvTester({
 
                   {result.rowResults.map((rowResult) => (
                     <div key={`${result.testCase.caseId}-${rowResult.expected.expectedIndex}`} className="csv-test-row">
+                      {(() => {
+                        const actualRecurrence = rowResult.actual
+                          ? deriveActualRecurrenceView(
+                              rowResult.actual,
+                              rowResult.expected.selectedDate,
+                            )
+                          : null;
+
+                        return (
+                          <>
                       <div className="label-row">
                         <strong>期待 {rowResult.expected.expectedIndex}</strong>
                         <span className="confidence-badge">{rowResult.status}</span>
@@ -210,10 +221,11 @@ export function NaturalLanguageCsvTester({
                       {rowResult.actual ? (
                         <p className="detail-note">
                           actual: {rowResult.actual.parsedPlan.title} / {rowResult.actual.parsedPlan.subject} /{' '}
-                          {rowResult.actual.parsedPlan.date} / {rowResult.actual.parsedPlan.startTime} -{' '}
-                          {rowResult.actual.parsedPlan.endTime} / {rowResult.actual.parsedPlan.repeat}
-                          {rowResult.actual.parsedPlan.repeatUntil
-                            ? ` until ${rowResult.actual.parsedPlan.repeatUntil}`
+                          {actualRecurrence?.date ?? rowResult.actual.parsedPlan.date} /{' '}
+                          {rowResult.actual.parsedPlan.startTime} - {rowResult.actual.parsedPlan.endTime} /{' '}
+                          {actualRecurrence?.repeatKey ?? rowResult.actual.parsedPlan.repeat}
+                          {actualRecurrence?.repeatUntil
+                            ? ` until ${actualRecurrence.repeatUntil}`
                             : ''}
                         </p>
                       ) : null}
@@ -231,6 +243,9 @@ export function NaturalLanguageCsvTester({
                           ))}
                         </ul>
                       ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </article>

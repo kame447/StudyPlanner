@@ -245,6 +245,7 @@ export function detectRepeat(text: string): MonthEventRepeat {
 export function buildStructuredRecurrenceRules(
   text: string,
   draft: PlanDraft,
+  selectedDate = draft.date,
 ): RecurrenceRule[] {
   if (draft.repeat === 'none') {
     return [];
@@ -252,9 +253,15 @@ export function buildStructuredRecurrenceRules(
 
   const normalizedText = normalizeParsingText(text);
   const weekdayLabels = toRecurrenceWeekdays(extractWeekdayLabels(normalizedText));
+  const recurrenceStartDate = resolveRecurrenceStartDate(
+    normalizedText,
+    selectedDate,
+    draft.date,
+    draft.repeatUntil,
+  );
   const baseRule = {
     id: 'recurrence-base',
-    startDate: draft.date,
+    startDate: recurrenceStartDate,
     until: draft.repeatUntil,
     dates: [],
     weekdays: [] as RecurrenceWeekday[],
@@ -297,6 +304,47 @@ export function buildStructuredRecurrenceRules(
   }
 
   return [];
+}
+
+function resolveRecurrenceStartDate(
+  normalizedText: string,
+  selectedDate: string,
+  fallbackDate: string,
+  repeatUntil: string | null,
+): string {
+  if (/来週から/.test(normalizedText)) {
+    return addDays(startOfWeek(selectedDate), 7);
+  }
+
+  if (/明後日から/.test(normalizedText)) {
+    return addDays(selectedDate, 2);
+  }
+
+  if (/明日から/.test(normalizedText)) {
+    return addDays(selectedDate, 1);
+  }
+
+  if (/今日から/.test(normalizedText)) {
+    return selectedDate;
+  }
+
+  if (
+    /\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:から|より)|\d{1,2}\/\d{1,2}(?:から|より)|\d{1,2}月\d{1,2}日(?:から|より)/.test(
+      normalizedText,
+    )
+  ) {
+    return fallbackDate;
+  }
+
+  if (repeatUntil && /まで/.test(normalizedText) && fallbackDate === repeatUntil) {
+    return selectedDate;
+  }
+
+  if (/毎朝|毎晩|毎夜|毎日|平日|土日|週末|毎週|毎[月火水木金土日]曜(?:日)?/.test(normalizedText)) {
+    return selectedDate;
+  }
+
+  return fallbackDate;
 }
 
 function resolveWeekdayDate(
