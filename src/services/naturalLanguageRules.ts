@@ -1,4 +1,4 @@
-import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
+import { addDays, minutesFromTime, startOfWeek, timeFromMinutes } from '../lib/date';
 import { buildDefaultPlanTitle } from '../lib/plans';
 import { getNaturalLanguageCatalog } from '../data/naturalLanguageCatalog';
 import type {
@@ -37,6 +37,17 @@ const CLOCK_RANGE_GLOBAL_REGEX = new RegExp(
   `${CLOCK_TIME_PATTERN}\\s*(?:-|〜|~|から)\\s*${CLOCK_TIME_PATTERN}`,
   'g',
 );
+const WEEKDAY_INDEX: Record<string, number> = {
+  月: 0,
+  火: 1,
+  水: 2,
+  木: 3,
+  金: 4,
+  土: 5,
+  日: 6,
+};
+const SHARED_DATE_PHRASE_REGEX =
+  /明後日|明日|今日|来週(?:の)?[月火水木金土日]曜(?:日)?|今週(?:の)?[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/;
 function getActionWordPatterns(): RegExp[] {
   return getNaturalLanguageCatalog().actionWords.map((keyword) =>
     keyword === 'do' ? /\bdo\b/gi : new RegExp(keyword, 'g'),
@@ -129,7 +140,10 @@ export function detectSubject(text: string): string {
 
 function removeSchedulingTerms(text: string): string {
   return normalizeParsingText(text)
-    .replace(/明後日|明日|今日/g, '')
+    .replace(
+      /明後日|明日|今日|今週|来週|再来週|平日|土日|週末|月水金|火木土|月火水木金土日|[月火水木金土日]曜(?:日)?/g,
+      '',
+    )
     .replace(/\d{1,2}\/\d{1,2}/g, '')
     .replace(/\d{1,2}月\d{1,2}日/g, '')
     .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g, '')
@@ -141,21 +155,26 @@ function removeSchedulingTerms(text: string): string {
     )
     .replace(new RegExp(`${LOCALIZED_NUMBER_PATTERN}分`, 'g'), '')
     .replace(
-      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?/g,
+      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?|ようにしたい|として固定して|固定して|その代わり|他の日は|だけは/g,
       '',
     )
-    .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定/g, '');
+    .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定|進める/g, '')
+    .replace(/\b(?:から|まで|だけ|は|を|に|で|が|へ|の|と|間|半)\b/g, ' ');
 }
 
 export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
 
-  if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
-    return 'daily';
+  if (
+    /平日|土日|週末|毎週|毎[月火水木金土日](?:曜)?|(?:月|火|水|木|金|土|日){2,}は/.test(
+      normalizedText,
+    )
+  ) {
+    return 'weekly';
   }
 
-  if (/毎週|毎[月火水木金土日](?:曜)?/.test(normalizedText)) {
-    return 'weekly';
+  if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
+    return 'daily';
   }
 
   if (/毎月/.test(normalizedText)) {
@@ -167,6 +186,24 @@ export function detectRepeat(text: string): MonthEventRepeat {
   }
 
   return 'none';
+}
+
+function resolveWeekdayDate(
+  selectedDate: string,
+  weekdayLabel: string,
+  scope: 'current_or_next' | 'next_week',
+): string {
+  const targetIndex = WEEKDAY_INDEX[weekdayLabel];
+
+  if (scope === 'next_week') {
+    const nextWeekStart = startOfWeek(addDays(selectedDate, 7));
+    return addDays(nextWeekStart, targetIndex);
+  }
+
+  const selected = new Date(`${selectedDate}T00:00:00`);
+  const selectedIndex = selected.getDay() === 0 ? 6 : selected.getDay() - 1;
+  const diff = (targetIndex - selectedIndex + 7) % 7;
+  return addDays(selectedDate, diff);
 }
 
 export function parseDate(text: string, selectedDate: string): string {
@@ -182,6 +219,36 @@ export function parseDate(text: string, selectedDate: string): string {
 
   if (/今日/.test(normalizedText)) {
     return selectedDate;
+  }
+
+  const nextWeekWeekdayMatch = normalizedText.match(
+    /来週(?:の)?([月火水木金土日])曜(?:日)?/,
+  );
+
+  if (nextWeekWeekdayMatch) {
+    return resolveWeekdayDate(selectedDate, nextWeekWeekdayMatch[1], 'next_week');
+  }
+
+  const thisWeekWeekdayMatch = normalizedText.match(
+    /今週(?:の)?([月火水木金土日])曜(?:日)?/,
+  );
+
+  if (thisWeekWeekdayMatch) {
+    return resolveWeekdayDate(
+      selectedDate,
+      thisWeekWeekdayMatch[1],
+      'current_or_next',
+    );
+  }
+
+  const weekdayMatch = normalizedText.match(/([月火水木金土日])曜(?:日)?/);
+
+  if (weekdayMatch) {
+    return resolveWeekdayDate(selectedDate, weekdayMatch[1], 'current_or_next');
+  }
+
+  if (/来週/.test(normalizedText)) {
+    return startOfWeek(addDays(selectedDate, 7));
   }
 
   const slashMatch = normalizedText.match(/(\d{1,2})\/(\d{1,2})/);
@@ -390,7 +457,18 @@ export function matchPlan(text: string, plans: Plan[]): Plan | undefined {
 
 function hasExplicitDateExpression(text: string): boolean {
   const normalizedText = normalizeParsingText(text);
-  return /明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(normalizedText);
+  return /明後日|明日|今日|今週|来週|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(normalizedText);
+}
+
+export function isBreakLikeText(text: string): boolean {
+  const normalizedText = normalizeParsingText(text).replace(/\s+/g, '');
+
+  return (
+    /休憩|休んで|休む|ひと休み|一休み/.test(normalizedText) &&
+    !/英語|数学|国語|物理|化学|生物|地学|情報|日本史|世界史|地理|政経|倫理|古文|漢文|現代文|レポート|課題|チャート|良問の風|英単語|古文単語/.test(
+      normalizedText,
+    )
+  );
 }
 
 function hasTaskCue(text: string): boolean {
@@ -421,7 +499,7 @@ export function splitAddTaskTexts(text: string): string[] {
   }
 
   const sharedDatePhrase =
-    normalizedText.match(/明後日|明日|今日|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/)?.[0] ??
+    normalizedText.match(SHARED_DATE_PHRASE_REGEX)?.[0] ??
     '';
   const hardSegments = normalizedText
     .split(/\n+|[。；;]/)
@@ -444,7 +522,8 @@ export function splitAddTaskTexts(text: string): string[] {
   const normalizedSegments = segments
     .map((segment) => prependSharedDate(segment, sharedDatePhrase))
     .map((segment) => segment.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((segment) => !isBreakLikeText(segment));
 
   const uniqueSegments = normalizedSegments.filter(
     (segment, index, array) => array.indexOf(segment) === index,

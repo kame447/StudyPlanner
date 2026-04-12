@@ -1,4 +1,4 @@
-import { minutesFromTime, timeFromMinutes } from '../lib/date';
+import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { getAiConfig, getAiProviderLabel, type AiConfig } from '../lib/aiConfig';
 import { buildDefaultPlanTitle } from '../lib/plans';
 import type {
@@ -17,6 +17,7 @@ import {
   detectType,
   extractMemoHint,
   hasExplicitClockTime,
+  isBreakLikeText,
   matchPlan,
   parseDate,
   parseDurationMinutes,
@@ -520,6 +521,116 @@ function hasRelativeOrderCue(text: string): boolean {
   return /そのあと|その後|続けて|次に/.test(normalizeParsingText(text));
 }
 
+function normalizeCrossMidnightTime(time: string): string {
+  const totalMinutes = minutesFromTime(time);
+
+  if (totalMinutes < 1440) {
+    return time;
+  }
+
+  return timeFromMinutes(totalMinutes - 1440);
+}
+
+function crossedMidnight(startTime: string, endTime: string): boolean {
+  return minutesFromTime(endTime) <= minutesFromTime(startTime);
+}
+
+function isBreakSuggestion(suggestion: NaturalLanguageSuggestion): boolean {
+  return isBreakLikeText(
+    [
+      suggestion.rawText,
+      suggestion.parsedPlan.title,
+      suggestion.parsedPlan.memo,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function normalizeSubjectFamily(subject: string, rawText: string, title: string): string {
+  const normalizedSubject = subject.trim();
+  const sourceText = normalizeParsingText(`${rawText} ${title} ${subject}`);
+
+  if (!normalizedSubject) {
+    if (/振り返り/.test(sourceText)) {
+      return '振り返り';
+    }
+    if (/自習/.test(sourceText)) {
+      return '自習';
+    }
+    if (/復習/.test(sourceText)) {
+      return '復習';
+    }
+    if (/勉強予定/.test(sourceText)) {
+      return '勉強';
+    }
+    return '';
+  }
+
+  if (['現代文', '古文', '漢文', '古典'].includes(normalizedSubject)) {
+    return '国語';
+  }
+
+  if (
+    normalizedSubject === '共通テスト' &&
+    /過去問|演習/.test(sourceText)
+  ) {
+    return '演習';
+  }
+
+  return normalizedSubject;
+}
+
+function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle: string): string {
+  const normalizedText = normalizeParsingText(rawText);
+  const normalizedTitle = currentTitle.trim();
+  const explicitPatterns: Array<[RegExp, string | ((match: RegExpMatchArray) => string)]> = [
+    [/(情報の課題)/, '情報の課題'],
+    [/(情報のレポート)/, '情報のレポート'],
+    [/(英語長文)/, '英語長文'],
+    [/(TOEICの勉強|TOEIC勉強|TOEIC)/i, 'TOEICの勉強'],
+    [/(共通テスト(?:の)?過去問(?:演習)?)/, '共通テスト過去問演習'],
+    [/(過去問演習)/, '過去問演習'],
+    [/(英単語の復習)/, '英単語の復習'],
+    [/(週の振り返り|その週の振り返り)/, '週の振り返り'],
+    [/(自習時間)/, '自習時間'],
+    [/(勉強予定)/, '勉強予定'],
+  ];
+
+  for (const [pattern, value] of explicitPatterns) {
+    const match = normalizedText.match(pattern);
+
+    if (match) {
+      return typeof value === 'function' ? value(match) : value;
+    }
+  }
+
+  if (/英単語/.test(normalizedText) && /復習/.test(normalizedText)) {
+    return '英単語の復習';
+  }
+
+  if (/情報.*課題/.test(normalizedText)) {
+    return '情報の課題';
+  }
+
+  if (/情報.*レポート/.test(normalizedText)) {
+    return '情報のレポート';
+  }
+
+  if (/英語.*長文|長文.*英語/.test(normalizedText)) {
+    return '英語長文';
+  }
+
+  if (
+    normalizedTitle &&
+    !/^(?:から|まで|間|半|ま)$/.test(normalizedTitle)
+  ) {
+    return normalizedTitle;
+  }
+
+  return subject.trim() || normalizedTitle;
+}
+
 function buildRecurrenceContextText(
   suggestion: Pick<NaturalLanguageSuggestion, 'rawText' | 'parsedPlan'>,
 ): string {
@@ -573,9 +684,13 @@ function sanitizeDisplayTitle(title: string, date: string): string {
     .replace(new RegExp(date.replace(/-/g, '[-/]'), 'g'), ' ')
     .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g, ' ')
     .replace(/^\s*(?:今日|明日|明後日)\s*/g, '')
+    .replace(/^\s*(?:今週|来週)\s*/g, '')
+    .replace(/^\s*(?:[月火水木金土日]曜(?:日)?(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g, '')
     .replace(/^\s*(?:朝|朝の|午前|午後|夜|夕方)\s*/g, '')
     .replace(/^\s*(?:そのあと|その後|続けて|次に)\s*/g, '')
     .replace(/^\s*(?:おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?)\s*/g, '')
+    .replace(/^\s*(?:から|まで|間|半)+/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ)+\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -636,6 +751,11 @@ function postProcessAddSuggestions(
           issue !== 'time_reversed',
       ),
     };
+
+    if (isBreakSuggestion(nextSuggestion)) {
+      return;
+    }
+
     const explicitStart = hasExplicitClockTime(nextSuggestion.rawText);
     const durationMinutes = parseDurationMinutes(nextSuggestion.rawText);
     const rawTitle = sanitizeDisplayTitle(
@@ -667,6 +787,24 @@ function postProcessAddSuggestions(
 
     nextSuggestion.parsedPlan.subject = normalizedLabels.subject;
     nextSuggestion.parsedPlan.title = normalizedLabels.title;
+    nextSuggestion.parsedPlan.subject = normalizeSubjectFamily(
+      nextSuggestion.parsedPlan.subject,
+      nextSuggestion.rawText,
+      nextSuggestion.parsedPlan.title,
+    );
+    nextSuggestion.parsedPlan.title = buildPreferredStudyTitle(
+      nextSuggestion.rawText,
+      nextSuggestion.parsedPlan.subject,
+      nextSuggestion.parsedPlan.title,
+    );
+
+    if (
+      previousSuggestion &&
+      !hasExplicitDateExpression(nextSuggestion.rawText) &&
+      hasExplicitDateExpression(previousSuggestion.rawText)
+    ) {
+      nextSuggestion.parsedPlan.date = previousSuggestion.parsedPlan.date;
+    }
 
     const detectedRepeat = detectRepeat(
       buildRecurrenceContextText(nextSuggestion),
@@ -708,7 +846,6 @@ function postProcessAddSuggestions(
     if (
       !explicitStart &&
       durationMinutes !== undefined &&
-      hasRelativeOrderCue(nextSuggestion.rawText) &&
       previousSuggestion?.parsedPlan.endTime
     ) {
       nextSuggestion.parsedPlan.startTime = previousSuggestion.parsedPlan.endTime;
@@ -718,7 +855,9 @@ function postProcessAddSuggestions(
       nextSuggestion.assumptions = Array.from(
         new Set([
           ...nextSuggestion.assumptions,
-          '前の予定の終了時刻から開始時刻を補いました。',
+          hasRelativeOrderCue(nextSuggestion.rawText)
+            ? '前の予定の終了時刻から開始時刻を補いました。'
+            : '開始時刻が省略されていたため、前の予定の終了時刻に続けました。',
         ]),
       );
       nextSuggestion.unresolvedFields = nextSuggestion.unresolvedFields.filter(
@@ -737,6 +876,28 @@ function postProcessAddSuggestions(
       nextSuggestion.unresolvedFields = nextSuggestion.unresolvedFields.filter(
         (field) => field !== 'endTime',
       );
+    }
+
+    if (nextSuggestion.parsedPlan.endTime) {
+      nextSuggestion.parsedPlan.endTime = normalizeCrossMidnightTime(
+        nextSuggestion.parsedPlan.endTime,
+      );
+    }
+
+    if (
+      previousSuggestion &&
+      !hasExplicitDateExpression(nextSuggestion.rawText) &&
+      explicitStart &&
+      previousSuggestion.parsedPlan.startTime &&
+      previousSuggestion.parsedPlan.endTime &&
+      crossedMidnight(
+        previousSuggestion.parsedPlan.startTime,
+        previousSuggestion.parsedPlan.endTime,
+      ) &&
+      minutesFromTime(nextSuggestion.parsedPlan.startTime) <
+        minutesFromTime(previousSuggestion.parsedPlan.startTime)
+    ) {
+      nextSuggestion.parsedPlan.date = addDays(previousSuggestion.parsedPlan.date, 1);
     }
 
     if (
@@ -768,7 +929,23 @@ function postProcessAddSuggestions(
       }
     }
 
-    processedSuggestions.push(finalizeSuggestionStatus(nextSuggestion));
+    const finalizedSuggestion = finalizeSuggestionStatus(nextSuggestion);
+    const duplicateIndex = processedSuggestions.findIndex(
+      (candidate) =>
+        candidate.parsedPlan.date === finalizedSuggestion.parsedPlan.date &&
+        candidate.parsedPlan.startTime === finalizedSuggestion.parsedPlan.startTime &&
+        candidate.parsedPlan.endTime === finalizedSuggestion.parsedPlan.endTime &&
+        candidate.parsedPlan.title === finalizedSuggestion.parsedPlan.title &&
+        candidate.parsedPlan.subject === finalizedSuggestion.parsedPlan.subject &&
+        candidate.parsedPlan.repeat === finalizedSuggestion.parsedPlan.repeat,
+    );
+
+    if (duplicateIndex >= 0) {
+      processedSuggestions[duplicateIndex] = finalizedSuggestion;
+      return;
+    }
+
+    processedSuggestions.push(finalizedSuggestion);
   });
 
   return processedSuggestions;
