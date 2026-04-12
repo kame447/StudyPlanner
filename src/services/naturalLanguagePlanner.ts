@@ -528,6 +528,17 @@ async function buildBatchedAddSuggestions(
     }
 
     matchedSuggestion.rawText = `${matchedSuggestion.rawText} ${instructionText}`.trim();
+
+    const forcedRepeat = detectRepeat(instructionText);
+
+    if (forcedRepeat !== 'none') {
+      matchedSuggestion.parsedPlan.repeat = forcedRepeat;
+      matchedSuggestion.parsedPlan.repeatUntil = detectRepeatUntil(
+        instructionText,
+        matchedSuggestion.parsedPlan.date,
+      );
+      matchedSuggestion.parsedPlan.excludedDates = [];
+    }
   });
 
   return suggestions;
@@ -1052,6 +1063,29 @@ function postProcessAddSuggestions(
     }
 
     if (
+      hasRelativeOrderCue(nextSuggestion.rawText) &&
+      durationMinutes !== undefined &&
+      previousSuggestion?.parsedPlan.endTime
+    ) {
+      nextSuggestion.parsedPlan.startTime = previousSuggestion.parsedPlan.endTime;
+      nextSuggestion.parsedPlan.endTime = timeFromMinutes(
+        minutesFromTime(previousSuggestion.parsedPlan.endTime) + durationMinutes,
+      );
+      nextSuggestion.assumptions = Array.from(
+        new Set([
+          ...nextSuggestion.assumptions,
+          '相対順序の表現があるため、前の予定の終了時刻から開始時刻を強制補正しました。',
+        ]),
+      );
+      nextSuggestion.unresolvedFields = nextSuggestion.unresolvedFields.filter(
+        (field) => field !== 'startTime' && field !== 'endTime',
+      );
+      nextSuggestion.issues = nextSuggestion.issues.filter(
+        (issue) =>
+          issue !== 'start_time_conflicts_with_input' &&
+          issue !== 'end_time_conflicts_with_input',
+      );
+    } else if (
       !explicitStart &&
       durationMinutes !== undefined &&
       previousSuggestion?.parsedPlan.endTime
