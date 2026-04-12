@@ -21,6 +21,36 @@ export interface UserProfileDraft {
   avatar: string;
 }
 
+export type RecurrenceRuleKind = 'daily' | 'day-type' | 'weekday' | 'date';
+
+export type RecurrenceDayType = 'weekday' | 'weekend';
+
+export type RecurrenceWeekday =
+  | 'sun'
+  | 'mon'
+  | 'tue'
+  | 'wed'
+  | 'thu'
+  | 'fri'
+  | 'sat';
+
+export interface RecurrenceRule {
+  id: string;
+  kind: RecurrenceRuleKind;
+  startDate: string;
+  until: string | null;
+  dates: string[];
+  weekdays: RecurrenceWeekday[];
+  dayType: RecurrenceDayType | null;
+  startTime: string;
+  endTime: string;
+  title?: string;
+  subject?: string;
+  type?: PlanType;
+  memo?: string;
+  isOverride: boolean;
+}
+
 export interface Plan {
   id: string;
   userId: string;
@@ -32,6 +62,7 @@ export interface Plan {
   repeat: MonthEventRepeat;
   repeatUntil: string | null;
   excludedDates: string[];
+  recurrenceRules: RecurrenceRule[];
   type: PlanType;
   memo: string;
   createdAt: string;
@@ -65,6 +96,7 @@ export interface PlanDraft {
   repeat: MonthEventRepeat;
   repeatUntil: string | null;
   excludedDates: string[];
+  recurrenceRules: RecurrenceRule[];
   type: PlanType;
   memo: string;
 }

@@ -1,4 +1,9 @@
 import type { Actual, MonthEventRepeat, Plan } from '../types/domain';
+import {
+  normalizeRecurrenceRules,
+  summarizeLegacyRepeatFromRecurrenceRules,
+  summarizeLegacyRepeatUntilFromRecurrenceRules,
+} from '../lib/planRecurrence';
 
 export function replaceById<T extends { id: string }>(
   records: T[],
@@ -26,13 +31,34 @@ function normalizeRepeat(value: unknown): MonthEventRepeat {
 }
 
 export function normalizePlanRecord(plan: Plan): Plan {
+  const recurrenceRules = normalizeRecurrenceRules(plan.recurrenceRules, {
+    date: plan.date,
+    startTime: plan.startTime,
+    endTime: plan.endTime,
+    title: plan.title,
+    subject: plan.subject,
+    type: plan.type,
+    memo: plan.memo,
+    repeatUntil: plan.repeatUntil,
+  });
+  const repeat =
+    summarizeLegacyRepeatFromRecurrenceRules(recurrenceRules) ??
+    normalizeRepeat(plan.repeat);
+
   return {
     ...plan,
-    repeat: normalizeRepeat(plan.repeat),
-    repeatUntil: plan.repeatUntil ?? null,
+    repeat,
+    repeatUntil:
+      recurrenceRules.length > 0
+        ? summarizeLegacyRepeatUntilFromRecurrenceRules(
+            recurrenceRules,
+            plan.repeatUntil ?? null,
+          )
+        : plan.repeatUntil ?? null,
     excludedDates: Array.isArray(plan.excludedDates)
       ? plan.excludedDates.filter((date): date is string => typeof date === 'string' && date.length > 0)
       : [],
+    recurrenceRules,
   };
 }
 

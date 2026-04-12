@@ -1,5 +1,6 @@
 import { addDays, minutesFromTime, startOfWeek, timeFromMinutes } from '../lib/date';
 import { buildDefaultPlanTitle } from '../lib/plans';
+import { getRecurrenceWeekday, normalizeRecurrenceRules } from '../lib/planRecurrence';
 import { getNaturalLanguageCatalog } from '../data/naturalLanguageCatalog';
 import type {
   MonthEventRepeat,
@@ -8,6 +9,8 @@ import type {
   Plan,
   PlanDraft,
   PlanType,
+  RecurrenceRule,
+  RecurrenceWeekday,
 } from '../types/domain';
 
 export interface SuggestionInput {
@@ -55,6 +58,31 @@ const SHARED_DATE_PHRASE_REGEX =
 const LEADING_SHARED_DATE_PHRASE_REGEX = new RegExp(
   `^\\s*(${SHARED_DATE_PHRASE_REGEX.source})`,
 );
+
+function toRecurrenceWeekdays(labels: string[]): RecurrenceWeekday[] {
+  return labels
+    .map((label) => {
+      switch (label) {
+        case '日':
+          return 'sun';
+        case '月':
+          return 'mon';
+        case '火':
+          return 'tue';
+        case '水':
+          return 'wed';
+        case '木':
+          return 'thu';
+        case '金':
+          return 'fri';
+        case '土':
+          return 'sat';
+        default:
+          return null;
+      }
+    })
+    .filter((value): value is RecurrenceWeekday => value !== null);
+}
 function getActionWordPatterns(): RegExp[] {
   return getNaturalLanguageCatalog().actionWords.map((keyword) =>
     keyword === 'do' ? /\bdo\b/gi : new RegExp(keyword, 'g'),
@@ -101,6 +129,7 @@ export function defaultDraft(userId: string, date: string): PlanDraft {
     repeat: 'none',
     repeatUntil: null,
     excludedDates: [],
+    recurrenceRules: [],
   };
 }
 
@@ -211,6 +240,63 @@ export function detectRepeat(text: string): MonthEventRepeat {
   }
 
   return 'none';
+}
+
+export function buildStructuredRecurrenceRules(
+  text: string,
+  draft: PlanDraft,
+): RecurrenceRule[] {
+  if (draft.repeat === 'none') {
+    return [];
+  }
+
+  const normalizedText = normalizeParsingText(text);
+  const weekdayLabels = toRecurrenceWeekdays(extractWeekdayLabels(normalizedText));
+  const baseRule = {
+    id: 'recurrence-base',
+    startDate: draft.date,
+    until: draft.repeatUntil,
+    dates: [],
+    weekdays: [] as RecurrenceWeekday[],
+    dayType: null as 'weekday' | 'weekend' | null,
+    startTime: draft.startTime,
+    endTime: draft.endTime,
+    isOverride: false,
+  };
+
+  if (/平日/.test(normalizedText)) {
+    return normalizeRecurrenceRules(
+      [{ ...baseRule, kind: 'day-type', dayType: 'weekday' }],
+      draft,
+    );
+  }
+
+  if (/土日|週末/.test(normalizedText)) {
+    return normalizeRecurrenceRules(
+      [{ ...baseRule, kind: 'day-type', dayType: 'weekend' }],
+      draft,
+    );
+  }
+
+  if (draft.repeat === 'weekly') {
+    return normalizeRecurrenceRules(
+      [
+        {
+          ...baseRule,
+          kind: 'weekday',
+          weekdays:
+            weekdayLabels.length > 0 ? weekdayLabels : [getRecurrenceWeekday(draft.date)],
+        },
+      ],
+      draft,
+    );
+  }
+
+  if (draft.repeat === 'daily') {
+    return normalizeRecurrenceRules([{ ...baseRule, kind: 'daily' }], draft);
+  }
+
+  return [];
 }
 
 function resolveWeekdayDate(
@@ -735,6 +821,11 @@ export function generateRuleBasedSuggestion({
         repeat: matchedPlan.repeat,
         repeatUntil: matchedPlan.repeatUntil,
         excludedDates: matchedPlan.excludedDates,
+        recurrenceRules: matchedPlan.recurrenceRules.map((rule) => ({
+          ...rule,
+          dates: [...rule.dates],
+          weekdays: [...rule.weekdays],
+        })),
       }
     : defaultDraft(userId, detectedDate);
   const detectedType = detectType(text);

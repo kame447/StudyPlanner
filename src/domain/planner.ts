@@ -1,4 +1,10 @@
 import { createId } from '../lib/id';
+import {
+  buildRecurrenceRulesFromLegacySource,
+  normalizeRecurrenceRules,
+  summarizeLegacyRepeatFromRecurrenceRules,
+  summarizeLegacyRepeatUntilFromRecurrenceRules,
+} from '../lib/planRecurrence';
 import type {
   Actual,
   ActualDraft,
@@ -40,6 +46,7 @@ export function createEmptyPlanDraft(userId: string, date: string): PlanDraft {
     repeat: 'none',
     repeatUntil: null,
     excludedDates: [],
+    recurrenceRules: [],
     type: 'study',
     memo: '',
   };
@@ -91,6 +98,15 @@ export function createMonthEventDraftFromEvent(event: MonthEvent): MonthEventDra
 }
 
 export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
+  const recurrenceRules =
+    plan.recurrenceRules.length > 0
+      ? plan.recurrenceRules.map((rule) => ({
+          ...rule,
+          dates: [...rule.dates],
+          weekdays: [...rule.weekdays],
+        }))
+      : buildRecurrenceRulesFromLegacySource(plan);
+
   return {
     userId: plan.userId,
     title: plan.title,
@@ -101,6 +117,7 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
     repeat: plan.repeat,
     repeatUntil: plan.repeatUntil,
     excludedDates: [...plan.excludedDates],
+    recurrenceRules,
     type: plan.type,
     memo: plan.memo,
   };
@@ -132,10 +149,41 @@ export function resolveDayNoteDraft(
 
 export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan {
   const now = new Date().toISOString();
+  const recurrenceRules = normalizeRecurrenceRules(
+    draft.recurrenceRules.length > 0
+      ? draft.recurrenceRules
+      : buildRecurrenceRulesFromLegacySource({
+          date: draft.date,
+          startTime: draft.startTime,
+          endTime: draft.endTime,
+          repeat: draft.repeat,
+          repeatUntil: draft.repeatUntil,
+          title: draft.title,
+          subject: draft.subject,
+          type: draft.type,
+          memo: draft.memo,
+        }),
+    {
+      date: draft.date,
+      startTime: draft.startTime,
+      endTime: draft.endTime,
+      title: draft.title,
+      subject: draft.subject,
+      type: draft.type,
+      memo: draft.memo,
+      repeatUntil: draft.repeatUntil,
+    },
+  );
+  const repeat =
+    summarizeLegacyRepeatFromRecurrenceRules(recurrenceRules) ?? draft.repeat;
   const repeatUntil =
-    draft.repeat === 'none' || !draft.repeatUntil ? null : draft.repeatUntil;
+    recurrenceRules.length > 0
+      ? summarizeLegacyRepeatUntilFromRecurrenceRules(recurrenceRules, draft.repeatUntil)
+      : draft.repeat === 'none' || !draft.repeatUntil
+        ? null
+        : draft.repeatUntil;
   const excludedDates =
-    draft.repeat === 'none'
+    repeat === 'none' && recurrenceRules.length === 0
       ? []
       : normalizePlanExcludedDates(draft.date, draft.excludedDates);
 
@@ -143,8 +191,10 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
     return {
       ...currentPlan,
       ...draft,
+      repeat,
       repeatUntil,
       excludedDates,
+      recurrenceRules,
       updatedAt: now,
     };
   }
@@ -152,8 +202,10 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
   return {
     id: createId('plan'),
     ...draft,
+    repeat,
     repeatUntil,
     excludedDates,
+    recurrenceRules,
     createdAt: now,
     updatedAt: now,
   };

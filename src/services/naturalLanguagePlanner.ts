@@ -11,6 +11,7 @@ import type {
 import type { JsonSchemaResponseFormat } from './ai/openAiCompatibleClient';
 import { createOpenAiCompatibleClient } from './ai/openAiCompatibleClient';
 import {
+  buildStructuredRecurrenceRules,
   defaultDraft,
   detectRepeat,
   detectSubject,
@@ -1543,7 +1544,29 @@ function postProcessAddSuggestions(
         expandSpecificWeekdayOccurrences(suggestion) ??
         expandEnumeratedStudyVariants(suggestion) ??
         [suggestion],
-    );
+    )
+    .map(synchronizeStructuredRecurrence);
+}
+
+function synchronizeStructuredRecurrence(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion {
+  const recurrenceRules = buildStructuredRecurrenceRules(
+    suggestion.rawText,
+    suggestion.parsedPlan,
+  );
+
+  if (recurrenceRules.length === 0) {
+    return suggestion;
+  }
+
+  return {
+    ...suggestion,
+    parsedPlan: {
+      ...suggestion.parsedPlan,
+      recurrenceRules,
+    },
+  };
 }
 
 function buildBaseDraft(
@@ -1567,6 +1590,11 @@ function buildBaseDraft(
     repeat: matchedPlan.repeat,
     repeatUntil: matchedPlan.repeatUntil,
     excludedDates: matchedPlan.excludedDates,
+    recurrenceRules: matchedPlan.recurrenceRules.map((rule) => ({
+      ...rule,
+      dates: [...rule.dates],
+      weekdays: [...rule.weekdays],
+    })),
   };
 }
 
@@ -1802,6 +1830,14 @@ function buildDeterministicSuggestion(
         repeat: input.mode === 'edit' ? (matchedPlan?.repeat ?? 'none') : 'none',
         repeatUntil: input.mode === 'edit' ? (matchedPlan?.repeatUntil ?? null) : null,
         excludedDates: input.mode === 'edit' ? (matchedPlan?.excludedDates ?? []) : [],
+        recurrenceRules:
+          input.mode === 'edit'
+            ? (matchedPlan?.recurrenceRules ?? []).map((rule) => ({
+                ...rule,
+                dates: [...rule.dates],
+                weekdays: [...rule.weekdays],
+              }))
+            : [],
       },
       assumptions,
       unresolvedFields,
@@ -2212,6 +2248,14 @@ function buildLlmSuggestion(
       excludedDates:
         input.mode === 'edit'
           ? (baseline.suggestion.parsedPlan.excludedDates ?? [])
+          : [],
+      recurrenceRules:
+        input.mode === 'edit'
+          ? (baseline.suggestion.parsedPlan.recurrenceRules ?? []).map((rule) => ({
+              ...rule,
+              dates: [...rule.dates],
+              weekdays: [...rule.weekdays],
+            }))
           : [],
     },
     assumptions: Array.from(new Set(resolvedAssumptions.map(sanitizeAssumptionText))),
