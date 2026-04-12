@@ -46,6 +46,7 @@ interface RepeatExpectation {
   baseRepeat: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   repeatUntil?: string;
   notes: string[];
+  acceptedActualRepeats?: Array<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>;
 }
 
 const EDIT_EXPECTATION_LABELS = new Set([
@@ -178,7 +179,7 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   const value = rawValue.trim();
 
   if (!value || value === 'none') {
-    return { baseRepeat: 'none', notes: [] };
+    return { baseRepeat: 'none', notes: [], acceptedActualRepeats: ['none'] };
   }
 
   if (
@@ -187,7 +188,7 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
     value === 'monthly' ||
     value === 'yearly'
   ) {
-    return { baseRepeat: value, notes: [] };
+    return { baseRepeat: value, notes: [], acceptedActualRepeats: [value] };
   }
 
   const untilMatch = value.match(/^(daily|weekly|monthly|yearly)(?:_[a-z_]+)?_until_(\d{4}-\d{2}-\d{2})$/);
@@ -196,6 +197,7 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
     return {
       baseRepeat: untilMatch[1] as RepeatExpectation['baseRepeat'],
       repeatUntil: untilMatch[2],
+      acceptedActualRepeats: [untilMatch[1] as RepeatExpectation['baseRepeat']],
       notes:
         untilMatch[0] === `${untilMatch[1]}_until_${untilMatch[2]}`
           ? []
@@ -206,6 +208,7 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   if (/^weekly_/.test(value)) {
     return {
       baseRepeat: 'weekly',
+      acceptedActualRepeats: ['weekly'],
       notes: ['曜日の組み合わせまでは比較していません。'],
     };
   }
@@ -213,6 +216,7 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   if (/^daily_/.test(value)) {
     return {
       baseRepeat: 'daily',
+      acceptedActualRepeats: ['daily'],
       notes: ['繰り返し回数や条件までは比較していません。'],
     };
   }
@@ -220,12 +224,14 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   if (/^weekdays/.test(value) || /^weekends/.test(value)) {
     return {
       baseRepeat: 'weekly',
+      acceptedActualRepeats: ['weekly', 'daily'],
       notes: ['平日・週末条件までは比較していません。'],
     };
   }
 
   return {
     baseRepeat: 'none',
+    acceptedActualRepeats: ['none'],
     notes: [`未対応の repeat ラベルです: ${value}`],
   };
 }
@@ -249,6 +255,103 @@ function inferCaseMode(testCase: NaturalLanguageCsvCase): NaturalLanguageMode | 
   return hasEditExpectation ? undefined : 'add';
 }
 
+function doesRepeatMatch(
+  expectation: RepeatExpectation,
+  actualRepeat: NaturalLanguageSuggestion['parsedPlan']['repeat'],
+): boolean {
+  return (expectation.acceptedActualRepeats ?? [expectation.baseRepeat]).includes(actualRepeat);
+}
+
+function compareExpectedRowToActual(
+  expectedRow: NaturalLanguageCsvRow,
+  actual: NaturalLanguageSuggestion,
+): NaturalLanguageCsvRowResult {
+  const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
+  const mismatches: string[] = [];
+  const notes: string[] = [...repeatExpectation.notes];
+
+  if (expectedRow.expectedTitle && actual.parsedPlan.title !== expectedRow.expectedTitle) {
+    mismatches.push(
+      `title: expected=${expectedRow.expectedTitle}, actual=${actual.parsedPlan.title}`,
+    );
+  }
+
+  if (
+    expectedRow.expectedSubject &&
+    actual.parsedPlan.subject !== expectedRow.expectedSubject
+  ) {
+    mismatches.push(
+      `subject: expected=${expectedRow.expectedSubject}, actual=${actual.parsedPlan.subject}`,
+    );
+  }
+
+  if (
+    expectedRow.expectedDate &&
+    shouldCompareExactDate(repeatExpectation) &&
+    actual.parsedPlan.date !== expectedRow.expectedDate
+  ) {
+    mismatches.push(
+      `date: expected=${expectedRow.expectedDate}, actual=${actual.parsedPlan.date}`,
+    );
+  }
+
+  if (
+    expectedRow.expectedStart &&
+    /^[0-2]\d:\d{2}$/.test(expectedRow.expectedStart) &&
+    actual.parsedPlan.startTime !== expectedRow.expectedStart
+  ) {
+    mismatches.push(
+      `start: expected=${expectedRow.expectedStart}, actual=${actual.parsedPlan.startTime}`,
+    );
+  }
+
+  if (
+    expectedRow.expectedEnd &&
+    /^[0-2]\d:\d{2}$/.test(expectedRow.expectedEnd) &&
+    actual.parsedPlan.endTime !== expectedRow.expectedEnd
+  ) {
+    mismatches.push(
+      `end: expected=${expectedRow.expectedEnd}, actual=${actual.parsedPlan.endTime}`,
+    );
+  }
+
+  if (!doesRepeatMatch(repeatExpectation, actual.parsedPlan.repeat)) {
+    mismatches.push(
+      `repeat: expected=${repeatExpectation.baseRepeat}, actual=${actual.parsedPlan.repeat}`,
+    );
+  }
+
+  if (
+    repeatExpectation.repeatUntil &&
+    actual.parsedPlan.repeatUntil !== repeatExpectation.repeatUntil
+  ) {
+    mismatches.push(
+      `repeatUntil: expected=${repeatExpectation.repeatUntil}, actual=${actual.parsedPlan.repeatUntil ?? 'null'}`,
+    );
+  }
+
+  return {
+    expected: expectedRow,
+    actual,
+    status:
+      mismatches.length > 0
+        ? ('fail' as const)
+        : notes.length > 0
+          ? ('partial' as const)
+          : ('pass' as const),
+    mismatches,
+    notes,
+  };
+}
+
+function scoreRowResult(result: NaturalLanguageCsvRowResult): number {
+  const mismatchPenalty = result.mismatches.length * 10;
+  const notePenalty = result.notes.length;
+  const titlePenalty = result.mismatches.some((item) => item.startsWith('title:')) ? 3 : 0;
+  const subjectPenalty = result.mismatches.some((item) => item.startsWith('subject:')) ? 3 : 0;
+  return mismatchPenalty + notePenalty + titlePenalty + subjectPenalty;
+}
+
 export function compareNaturalLanguageCaseResult(
   testCase: NaturalLanguageCsvCase,
   suggestions: NaturalLanguageSuggestion[],
@@ -266,11 +369,12 @@ export function compareNaturalLanguageCaseResult(
     };
   }
 
-  const rowResults = testCase.rows.map((expectedRow, index) => {
-    const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
-    const actual = suggestions[index];
+  const unusedActualIndexes = new Set(suggestions.map((_, index) => index));
 
-    if (!actual) {
+  const rowResults = testCase.rows.map((expectedRow) => {
+    const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
+
+    if (unusedActualIndexes.size === 0) {
       return {
         expected: expectedRow,
         actual: undefined,
@@ -289,81 +393,36 @@ export function compareNaturalLanguageCaseResult(
       };
     }
 
-    const mismatches: string[] = [];
-    const notes: string[] = [];
+    let bestIndex: number | undefined;
+    let bestResult: NaturalLanguageCsvRowResult | undefined;
+    let bestScore = Number.POSITIVE_INFINITY;
 
-    if (expectedRow.expectedTitle && actual.parsedPlan.title !== expectedRow.expectedTitle) {
-      mismatches.push(
-        `title: expected=${expectedRow.expectedTitle}, actual=${actual.parsedPlan.title}`,
-      );
+    unusedActualIndexes.forEach((actualIndex) => {
+      const candidate = compareExpectedRowToActual(expectedRow, suggestions[actualIndex]);
+      const score = scoreRowResult(candidate);
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestIndex = actualIndex;
+        bestResult = candidate;
+      }
+    });
+
+    if (bestIndex === undefined || !bestResult) {
+      return {
+        expected: expectedRow,
+        actual: undefined,
+        status: 'fail' as const,
+        mismatches: ['想定された件数より実際の提案数が少ないです。'],
+        notes: [],
+      };
     }
 
-    if (
-      expectedRow.expectedSubject &&
-      actual.parsedPlan.subject !== expectedRow.expectedSubject
-    ) {
-      mismatches.push(
-        `subject: expected=${expectedRow.expectedSubject}, actual=${actual.parsedPlan.subject}`,
-      );
-    }
-
-    if (
-      expectedRow.expectedDate &&
-      shouldCompareExactDate(repeatExpectation) &&
-      actual.parsedPlan.date !== expectedRow.expectedDate
-    ) {
-      mismatches.push(
-        `date: expected=${expectedRow.expectedDate}, actual=${actual.parsedPlan.date}`,
-      );
-    }
-
-    if (
-      expectedRow.expectedStart &&
-      /^[0-2]\d:\d{2}$/.test(expectedRow.expectedStart) &&
-      actual.parsedPlan.startTime !== expectedRow.expectedStart
-    ) {
-      mismatches.push(
-        `start: expected=${expectedRow.expectedStart}, actual=${actual.parsedPlan.startTime}`,
-      );
-    }
-
-    if (
-      expectedRow.expectedEnd &&
-      /^[0-2]\d:\d{2}$/.test(expectedRow.expectedEnd) &&
-      actual.parsedPlan.endTime !== expectedRow.expectedEnd
-    ) {
-      mismatches.push(
-        `end: expected=${expectedRow.expectedEnd}, actual=${actual.parsedPlan.endTime}`,
-      );
-    }
-
-    notes.push(...repeatExpectation.notes);
-
-    if (actual.parsedPlan.repeat !== repeatExpectation.baseRepeat) {
-      mismatches.push(
-        `repeat: expected=${repeatExpectation.baseRepeat}, actual=${actual.parsedPlan.repeat}`,
-      );
-    }
-
-    if (
-      repeatExpectation.repeatUntil &&
-      actual.parsedPlan.repeatUntil !== repeatExpectation.repeatUntil
-    ) {
-      mismatches.push(
-        `repeatUntil: expected=${repeatExpectation.repeatUntil}, actual=${actual.parsedPlan.repeatUntil ?? 'null'}`,
-      );
-    }
-
-    return {
-      expected: expectedRow,
-      actual,
-      status: mismatches.length > 0 ? ('fail' as const) : notes.length > 0 ? ('partial' as const) : ('pass' as const),
-      mismatches,
-      notes,
-    };
+    unusedActualIndexes.delete(bestIndex);
+    return bestResult;
   });
 
-  const extraActuals = suggestions.slice(testCase.rows.length);
+  const extraActuals = Array.from(unusedActualIndexes).map((index) => suggestions[index]);
 
   if (extraActuals.length > 0) {
     rowResults.push({

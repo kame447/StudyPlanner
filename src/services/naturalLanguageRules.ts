@@ -173,16 +173,16 @@ function removeSchedulingTerms(text: string): string {
 export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
 
+  if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
+    return 'daily';
+  }
+
   if (
     /平日|土日|週末|毎週|毎[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は)/.test(
       normalizedText,
     )
   ) {
     return 'weekly';
-  }
-
-  if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
-    return 'daily';
   }
 
   if (/毎月/.test(normalizedText)) {
@@ -567,6 +567,78 @@ function prependSharedDate(text: string, sharedDatePhrase: string): string {
   return `${sharedDatePhrase} ${text}`.trim();
 }
 
+function isContinuationSegment(text: string): boolean {
+  const normalizedText = normalizeParsingText(text).trim();
+
+  return /^(?:これを\s*\d+\s*セット|全部|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は)/.test(
+    normalizedText,
+  );
+}
+
+function isPersistentPrefixSegment(text: string): boolean {
+  const normalizedText = normalizeParsingText(text).trim();
+
+  return (
+    isStandaloneRecurrenceLike(normalizedText) ||
+    /^(?:毎日の予定に?|来週のどこかで|今週のどこかで)$/.test(normalizedText)
+  );
+}
+
+function mergeHardSegments(segments: string[]): string[] {
+  const merged: string[] = [];
+
+  segments.forEach((segment) => {
+    const previousSegment = merged[merged.length - 1];
+
+    if (
+      previousSegment &&
+      /\d+回(?:入れて|やって|予定に入れて)/.test(normalizeParsingText(previousSegment)) &&
+      /^(?:\d+回(?:目)?は|もう1回は|もう一回は|全部)/.test(normalizeParsingText(segment))
+    ) {
+      merged[merged.length - 1] = `${previousSegment} ${segment}`.trim();
+      return;
+    }
+
+    merged.push(segment);
+  });
+
+  return merged;
+}
+
+function mergeSoftSegments(segments: string[]): string[] {
+  const merged: string[] = [];
+  let persistentPrefix = '';
+
+  segments.forEach((segment) => {
+    const normalizedSegment = normalizeParsingText(segment).trim();
+
+    if (!normalizedSegment) {
+      return;
+    }
+
+    if (isPersistentPrefixSegment(normalizedSegment)) {
+      persistentPrefix = persistentPrefix
+        ? `${persistentPrefix} ${normalizedSegment}`.trim()
+        : normalizedSegment;
+      return;
+    }
+
+    const nextSegment =
+      persistentPrefix && !hasExplicitDateExpression(normalizedSegment)
+        ? `${persistentPrefix} ${normalizedSegment}`.trim()
+        : normalizedSegment;
+
+    if (isContinuationSegment(nextSegment) && merged.length > 0) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]} ${nextSegment}`.trim();
+      return;
+    }
+
+    merged.push(nextSegment);
+  });
+
+  return merged;
+}
+
 export function splitAddTaskTexts(text: string): string[] {
   const normalizedText = normalizeParsingText(text).replace(/\r\n?/g, '\n').trim();
 
@@ -577,16 +649,20 @@ export function splitAddTaskTexts(text: string): string[] {
   const sharedDatePhrase =
     normalizedText.match(LEADING_SHARED_DATE_PHRASE_REGEX)?.[1] ??
     '';
-  const hardSegments = normalizedText
+  const hardSegments = mergeHardSegments(
+    normalizedText
     .split(/\n+|[。；;]/)
     .map((segment) => segment.trim())
-    .filter(Boolean);
+    .filter(Boolean),
+  );
 
   const segments = hardSegments.flatMap((segment) => {
-    const softSegments = segment
+    const softSegments = mergeSoftSegments(
+      segment
       .split(/\s*(?:、|,|，|そのあと|その後|次に|あと|ただし|その代わり|代わりに)\s*/g)
       .map((part) => part.trim())
-      .filter(Boolean);
+      .filter(Boolean),
+    );
 
     const taskLikeSegments = softSegments.filter(
       (part) => hasTaskCue(part) || isStandaloneRecurrenceLike(part),

@@ -471,17 +471,15 @@ async function buildBatchedAddSuggestions(
   const actionableTaskTexts = splitTaskTexts.filter(
     (taskText) => !isStandaloneRecurrenceInstructionText(taskText),
   );
-  const alignedTaskTexts =
-    actionableTaskTexts.length === extractions.length
-      ? actionableTaskTexts
-      : splitTaskTexts.length === extractions.length
-        ? splitTaskTexts
-        : [];
+  const taskTextsForSuggestions =
+    actionableTaskTexts.length > 0 ? actionableTaskTexts : splitTaskTexts;
+  const suggestionCount = Math.max(taskTextsForSuggestions.length, extractions.length, 1);
 
-  const suggestions = extractions.map((extraction, index) => {
+  const suggestions = Array.from({ length: suggestionCount }, (_, index) => {
+    const extraction = extractions[index];
     const baseTaskText =
-      alignedTaskTexts[index] ??
-      normalizeText(extraction.rawText) ??
+      taskTextsForSuggestions[index] ??
+      normalizeText(extraction?.rawText) ??
       input.text;
     const enrichedTaskText = recurrenceInstructionTexts.reduce(
       (currentText, instructionText) =>
@@ -495,6 +493,19 @@ async function buildBatchedAddSuggestions(
       text: enrichedTaskText,
     };
     const baseline = buildDeterministicSuggestion(taskInput);
+
+    if (!extraction) {
+      return finalizeSuggestionStatus({
+        ...baseline.suggestion,
+        providerLabel: `${getAiProviderLabel()} -> 入力文ベース`,
+        assumptions: [
+          ...baseline.suggestion.assumptions,
+          'AIが一部の予定を落としたため、入力文から補いました。',
+        ].map(sanitizeAssumptionText),
+        rawText: taskInput.text,
+      });
+    }
+
     const issues = collectModelIssues(
       taskInput,
       baseline,
@@ -847,6 +858,56 @@ function expandRepeatedStudySet(
   });
 }
 
+function expandEnumeratedStudyVariants(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion[] | null {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+
+  if (
+    !/\d+回/.test(normalizedText) ||
+    !/(?:\d+回(?:目)?は|もう1回は|もう一回は)/.test(normalizedText)
+  ) {
+    return null;
+  }
+
+  const variantMatches = Array.from(
+    normalizedText.matchAll(
+      /(?:\d+回(?:目)?は|もう1回は|もう一回は)\s*(長文|単語|文法)/g,
+    ),
+  );
+
+  if (variantMatches.length < 2) {
+    return null;
+  }
+
+  const titleMap: Record<string, string> = {
+    長文: '英語長文',
+    単語: '英単語',
+    文法: '英文法',
+  };
+
+  return variantMatches.map((match, index) =>
+    finalizeSuggestionStatus({
+      ...suggestion,
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+        date: addDays(suggestion.parsedPlan.date, index),
+        title: titleMap[match[1]] ?? suggestion.parsedPlan.title,
+        subject: '英語',
+        repeat: 'none',
+        repeatUntil: null,
+        excludedDates: [],
+      },
+      assumptions: Array.from(
+        new Set([
+          ...suggestion.assumptions,
+          `${variantMatches.length}回指定から学習内容ごとに展開しました。`,
+        ]),
+      ),
+    }),
+  );
+}
+
 function isRecurrenceMemoOnly(memo: string): boolean {
   const normalizedMemo = normalizeParsingText(memo).trim();
 
@@ -885,6 +946,81 @@ function shouldMergeRecurrenceInstruction(
       normalizedText,
     )
   );
+}
+
+function hasExceptionCue(text: string): boolean {
+  return /だけは|ただし|その代わり|他の日は/.test(normalizeParsingText(text));
+}
+
+function hasMeaningfulStudyTitle(title: string): boolean {
+  const normalizedTitle = stripTitleNoise(title).trim();
+
+  return (
+    Boolean(normalizedTitle) &&
+    !/^(?:バイトがある|他の日|これを\d+セット|全部|開始)$/.test(normalizedTitle)
+  );
+}
+
+function normalizeRecurringOverrides(
+  suggestions: NaturalLanguageSuggestion[],
+): NaturalLanguageSuggestion[] {
+  return suggestions.map((suggestion, index, array) => {
+    if (!hasExceptionCue(suggestion.rawText)) {
+      return suggestion;
+    }
+
+    const baseSuggestion = array.find(
+      (candidate, candidateIndex) =>
+        candidateIndex !== index &&
+        /毎日|毎朝|毎晩|毎夜|他の日は/.test(normalizeParsingText(candidate.rawText)),
+    );
+
+    if (!baseSuggestion) {
+      return suggestion;
+    }
+
+    const nextSuggestion: NaturalLanguageSuggestion = {
+      ...suggestion,
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+      },
+      assumptions: [...suggestion.assumptions],
+    };
+
+    if (!hasMeaningfulStudyTitle(nextSuggestion.parsedPlan.title)) {
+      nextSuggestion.parsedPlan.title = baseSuggestion.parsedPlan.title;
+    }
+
+    if (!nextSuggestion.parsedPlan.subject) {
+      nextSuggestion.parsedPlan.subject = baseSuggestion.parsedPlan.subject;
+    }
+
+    if (
+      nextSuggestion.parsedPlan.startTime &&
+      baseSuggestion.parsedPlan.startTime &&
+      baseSuggestion.parsedPlan.endTime &&
+      parseDurationMinutes(nextSuggestion.rawText) === undefined
+    ) {
+      const baseDuration =
+        minutesFromTime(baseSuggestion.parsedPlan.endTime) -
+        minutesFromTime(baseSuggestion.parsedPlan.startTime);
+
+      nextSuggestion.parsedPlan.endTime = timeFromMinutes(
+        minutesFromTime(nextSuggestion.parsedPlan.startTime) + baseDuration,
+      );
+    }
+
+    const forcedRepeat = detectRepeat(nextSuggestion.rawText);
+    if (forcedRepeat !== 'none') {
+      nextSuggestion.parsedPlan.repeat = forcedRepeat;
+    }
+
+    if (!nextSuggestion.parsedPlan.repeatUntil && baseSuggestion.parsedPlan.repeatUntil) {
+      nextSuggestion.parsedPlan.repeatUntil = baseSuggestion.parsedPlan.repeatUntil;
+    }
+
+    return finalizeSuggestionStatus(nextSuggestion);
+  });
 }
 
 function sanitizeDisplayTitle(title: string, date: string): string {
@@ -1194,7 +1330,8 @@ function postProcessAddSuggestions(
     });
   });
 
-  return processedSuggestions;
+  return normalizeRecurringOverrides(processedSuggestions)
+    .flatMap((suggestion) => expandEnumeratedStudyVariants(suggestion) ?? [suggestion]);
 }
 
 function buildBaseDraft(
