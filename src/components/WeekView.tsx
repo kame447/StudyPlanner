@@ -6,6 +6,11 @@ import {
   minutesBetween,
   sortByDateTime,
 } from '../lib/date';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDate,
+  getActualOccurrenceKey,
+} from '../lib/planRecurrence';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { getPlanTypeLabel } from '../lib/plans';
 import type { Actual, Plan } from '../types/domain';
@@ -27,7 +32,9 @@ export function WeekView({
 }: WeekViewProps) {
   const weekDates = getWeekDates(selectedDate);
   const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
-  const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
+  const actualByOccurrenceKey = new Map(
+    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+  );
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeWeek(addDays(selectedDate, -7)),
     onNext: () => onChangeWeek(addDays(selectedDate, 7)),
@@ -72,13 +79,15 @@ export function WeekView({
 
       <div className="week-grid week-view-grid">
         {weekDates.map((date) => {
-          const dayPlans = sortByDateTime(plans.filter((plan) => plan.date === date));
+          const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
           const dayPlanMinutes = dayPlans.reduce(
             (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
             0,
           );
           const dayActualMinutes = dayPlans.reduce((sum, plan) => {
-            const actual = actualByPlanId.get(plan.id);
+            const actual = actualByOccurrenceKey.get(
+              buildPlanOccurrenceKey(plan.id, plan.date),
+            );
             return (
               sum +
               (actual
@@ -117,7 +126,9 @@ export function WeekView({
               <div className="plan-stack week-plan-stack">
                 {dayPlans.length > 0 ? (
                   dayPlans.map((plan) => {
-                    const actual = actualByPlanId.get(plan.id);
+                    const actual = actualByOccurrenceKey.get(
+                      buildPlanOccurrenceKey(plan.id, plan.date),
+                    );
                     const planMinutes = minutesBetween(plan.startTime, plan.endTime);
                     const actualMinutes = actual
                       ? minutesBetween(actual.actualStartTime, actual.actualEndTime)

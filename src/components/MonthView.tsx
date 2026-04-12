@@ -16,6 +16,11 @@ import {
   formatMonthEventTimeRange,
   sortMonthEvents,
 } from '../lib/monthEvents';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDateRange,
+  getActualOccurrenceKey,
+} from '../lib/planRecurrence';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { MonthPickerDialog } from './MonthPickerDialog';
 import { MonthEventDialog } from './MonthEventDialog';
@@ -121,14 +126,17 @@ export function MonthView({
     () => new Map(grid.map((cell, index) => [cell.date, index])),
     [grid],
   );
-  const plansById = useMemo(
-    () => new Map(plans.map((plan) => [plan.id, plan])),
-    [plans],
-  );
+  const visiblePlanOccurrences = useMemo(() => {
+    if (grid.length === 0) {
+      return [];
+    }
+
+    return expandPlansForDateRange(plans, grid[0].date, grid[grid.length - 1].date);
+  }, [grid, plans]);
   const studyPlanMinutesByDate = useMemo(() => {
     const totals = new Map<string, number>();
 
-    plans.forEach((plan) => {
+    visiblePlanOccurrences.forEach((plan) => {
       if (plan.type !== 'study') {
         return;
       }
@@ -140,26 +148,30 @@ export function MonthView({
     });
 
     return totals;
-  }, [plans]);
+  }, [visiblePlanOccurrences]);
   const actualStudyMinutesByDate = useMemo(() => {
     const totals = new Map<string, number>();
+    const actualByOccurrenceKey = new Map(
+      actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+    );
 
-    actuals.forEach((actual) => {
-      const plan = plansById.get(actual.planId);
+    visiblePlanOccurrences.forEach((plan) => {
+      const actual = actualByOccurrenceKey.get(
+        buildPlanOccurrenceKey(plan.id, plan.date),
+      );
 
-      if (!plan || plan.type !== 'study') {
+      if (!actual || plan.type !== 'study') {
         return;
       }
 
       totals.set(
         plan.date,
-        (totals.get(plan.date) ?? 0) +
-          minutesBetween(actual.actualStartTime, actual.actualEndTime),
+        (totals.get(plan.date) ?? 0) + minutesBetween(actual.actualStartTime, actual.actualEndTime),
       );
     });
 
     return totals;
-  }, [actuals, plansById]);
+  }, [actuals, visiblePlanOccurrences]);
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
     if (node) {

@@ -706,6 +706,9 @@ function buildBaseDraft(
     endTime: matchedPlan.endTime,
     type: matchedPlan.type,
     memo: matchedPlan.memo,
+    repeat: matchedPlan.repeat,
+    repeatUntil: matchedPlan.repeatUntil,
+    excludedDates: matchedPlan.excludedDates,
   };
 }
 
@@ -933,6 +936,9 @@ function buildDeterministicSuggestion(
           extractMemoHint(input.text),
           input.mode === 'edit' ? matchedPlan?.memo : undefined,
         ),
+        repeat: input.mode === 'edit' ? (matchedPlan?.repeat ?? 'none') : 'none',
+        repeatUntil: input.mode === 'edit' ? (matchedPlan?.repeatUntil ?? null) : null,
+        excludedDates: input.mode === 'edit' ? (matchedPlan?.excludedDates ?? []) : [],
       },
       assumptions,
       unresolvedFields,
@@ -1334,6 +1340,16 @@ function buildLlmSuggestion(
       endTime,
       type,
       memo,
+      repeat:
+        input.mode === 'edit' ? (baseline.suggestion.parsedPlan.repeat ?? 'none') : 'none',
+      repeatUntil:
+        input.mode === 'edit'
+          ? (baseline.suggestion.parsedPlan.repeatUntil ?? null)
+          : null,
+      excludedDates:
+        input.mode === 'edit'
+          ? (baseline.suggestion.parsedPlan.excludedDates ?? [])
+          : [],
     },
     assumptions: Array.from(new Set(resolvedAssumptions.map(sanitizeAssumptionText))),
     unresolvedFields,

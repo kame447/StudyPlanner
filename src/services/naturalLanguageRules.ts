@@ -77,6 +77,9 @@ export function defaultDraft(userId: string, date: string): PlanDraft {
     endTime: '20:00',
     type: 'study',
     memo: '',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
   };
 }
 
@@ -458,6 +461,9 @@ export function generateRuleBasedSuggestion({
         endTime: matchedPlan.endTime,
         type: matchedPlan.type,
         memo: matchedPlan.memo,
+        repeat: matchedPlan.repeat,
+        repeatUntil: matchedPlan.repeatUntil,
+        excludedDates: matchedPlan.excludedDates,
       }
     : defaultDraft(userId, detectedDate);
   const detectedType = detectType(text);

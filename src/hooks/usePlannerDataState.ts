@@ -7,6 +7,7 @@ import {
   startOfMonth,
   todayIsoDate,
 } from '../lib/date';
+import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
 import { plannerRepository } from '../repositories';
 import {
@@ -165,11 +166,16 @@ export function usePlannerDataState({
       return;
     }
 
-    const existingActual = actuals.find((actual) => actual.planId === plan.id);
+    const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
+    const existingActual = actuals.find(
+      (actual) => getActualOccurrenceKey(actual) === occurrenceKey,
+    );
     const nextActual = createActualFromDraft(userId, draft, existingActual);
 
     await plannerRepository.upsertActual(nextActual);
-    setActuals((current) => upsertByKey(current, nextActual, (item) => item.planId));
+    setActuals((current) =>
+      upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
+    );
     showNotice('実績を保存しました。', 'success');
   }
 

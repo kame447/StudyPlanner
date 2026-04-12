@@ -7,6 +7,12 @@ import {
   startOfMonth,
   startOfWeek,
 } from './date';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDate,
+  expandPlansForDateRange,
+  getActualOccurrenceKey,
+} from './planRecurrence';
 import type { Actual, Plan } from '../types/domain';
 
 export interface StudyDailyTotal {
@@ -44,8 +50,8 @@ export function resolveStudySubject(plan: Plan, actual?: Actual): string {
   return actual?.subject.trim() || plan.subject.trim() || '未設定';
 }
 
-export function buildActualByPlanId(actuals: Actual[]): Map<string, Actual> {
-  return new Map(actuals.map((actual) => [actual.planId, actual]));
+export function buildActualByOccurrenceKey(actuals: Actual[]): Map<string, Actual> {
+  return new Map(actuals.map((actual) => [getActualOccurrenceKey(actual), actual]));
 }
 
 export function getActualMinutes(actual: Actual): number {
@@ -58,10 +64,10 @@ export function getPlannedMinutes(plan: Plan): number {
 
 export function calculateActualStudyMinutes(
   plans: Plan[],
-  actualByPlanId: Map<string, Actual>,
+  actualByOccurrenceKey: Map<string, Actual>,
 ): number {
   return plans.reduce((sum, plan) => {
-    const actual = actualByPlanId.get(plan.id);
+    const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
     return sum + (actual ? getActualMinutes(actual) : 0);
   }, 0);
 }
@@ -72,13 +78,13 @@ export function buildWeeklyStudySeries(
   actuals: Actual[],
 ): StudyDailyTotal[] {
   const dates = getWeekDates(selectedDate);
-  const actualByPlanId = buildActualByPlanId(actuals);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
 
   return dates.map((date) => {
-    const dayPlans = plans.filter((plan) => isStudyTimePlan(plan) && plan.date === date);
+    const dayPlans = expandPlansForDate(plans, date).filter(isStudyTimePlan);
     return {
       date,
-      minutes: calculateActualStudyMinutes(dayPlans, actualByPlanId),
+      minutes: calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey),
     };
   });
 }
@@ -107,7 +113,7 @@ export function buildDailyStudySeriesInRange(
     return [];
   }
 
-  const actualByPlanId = buildActualByPlanId(actuals);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
   const dayCount =
     Math.floor(
       (new Date(`${endDate}T00:00:00`).getTime() -
@@ -117,11 +123,11 @@ export function buildDailyStudySeriesInRange(
 
   return Array.from({ length: dayCount }, (_, index) => {
     const date = addDays(startDate, index);
-    const dayPlans = plans.filter((plan) => isStudyTimePlan(plan) && plan.date === date);
+    const dayPlans = expandPlansForDate(plans, date).filter(isStudyTimePlan);
 
     return {
       date,
-      minutes: calculateActualStudyMinutes(dayPlans, actualByPlanId),
+      minutes: calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey),
     };
   });
 }
@@ -136,19 +142,12 @@ export function buildWeeklyStudySeriesInRange(
     return [];
   }
 
-  const actualByPlanId = buildActualByPlanId(actuals);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
   const totals = new Map<string, number>();
+  const visiblePlans = expandPlansForDateRange(plans, startDate, endDate).filter(isStudyTimePlan);
 
-  plans.forEach((plan) => {
-    if (
-      !isStudyTimePlan(plan) ||
-      plan.date.localeCompare(startDate) < 0 ||
-      plan.date.localeCompare(endDate) > 0
-    ) {
-      return;
-    }
-
-    const actual = actualByPlanId.get(plan.id);
+  visiblePlans.forEach((plan) => {
+    const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
 
     if (!actual) {
       return;
@@ -191,21 +190,22 @@ export function buildMonthlyStudySeriesInRange(
     return [];
   }
 
-  const actualByPlanId = buildActualByPlanId(actuals);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
   const totals = new Map<string, number>();
+  const visiblePlans = expandPlansForDateRange(
+    plans,
+    normalizedStart,
+    addDays(addMonths(normalizedEnd, 1), -1),
+  ).filter(isStudyTimePlan);
 
-  plans.forEach((plan) => {
-    if (!isStudyTimePlan(plan)) {
-      return;
-    }
-
+  visiblePlans.forEach((plan) => {
     const monthStart = startOfMonth(plan.date);
 
     if (monthStart.localeCompare(normalizedStart) < 0 || monthStart.localeCompare(normalizedEnd) > 0) {
       return;
     }
 
-    const actual = actualByPlanId.get(plan.id);
+    const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
 
     if (!actual) {
       return;
@@ -234,16 +234,11 @@ function calculateStudyMinutesInRange(
   startDate: string,
   endDate: string,
   plans: Plan[],
-  actualByPlanId: Map<string, Actual>,
+  actualByOccurrenceKey: Map<string, Actual>,
 ): number {
-  const rangePlans = plans.filter(
-    (plan) =>
-      isStudyTimePlan(plan) &&
-      plan.date.localeCompare(startDate) >= 0 &&
-      plan.date.localeCompare(endDate) <= 0,
-  );
+  const rangePlans = expandPlansForDateRange(plans, startDate, endDate).filter(isStudyTimePlan);
 
-  return calculateActualStudyMinutes(rangePlans, actualByPlanId);
+  return calculateActualStudyMinutes(rangePlans, actualByOccurrenceKey);
 }
 
 export function buildRollingWeeklyStudySeries(
@@ -253,7 +248,7 @@ export function buildRollingWeeklyStudySeries(
   weekCount = 6,
 ): StudyPeriodTotal[] {
   const currentWeekStart = startOfWeek(selectedDate);
-  const actualByPlanId = buildActualByPlanId(actuals);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
 
   return Array.from({ length: weekCount }, (_, index) => {
     const weekStart = addDays(currentWeekStart, (index - (weekCount - 1)) * 7);
@@ -262,7 +257,7 @@ export function buildRollingWeeklyStudySeries(
     return {
       startDate: weekStart,
       endDate: weekEnd,
-      minutes: calculateStudyMinutesInRange(weekStart, weekEnd, plans, actualByPlanId),
+      minutes: calculateStudyMinutesInRange(weekStart, weekEnd, plans, actualByOccurrenceKey),
     };
   });
 }
@@ -274,7 +269,7 @@ export function buildRollingMonthlyStudySeries(
   monthCount = 6,
 ): StudyPeriodTotal[] {
   const currentMonthStart = startOfMonth(selectedDate);
-  const actualByPlanId = buildActualByPlanId(actuals);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
 
   return Array.from({ length: monthCount }, (_, index) => {
     const monthStart = addMonths(currentMonthStart, index - (monthCount - 1));
@@ -283,7 +278,7 @@ export function buildRollingMonthlyStudySeries(
     return {
       startDate: monthStart,
       endDate: monthEnd,
-      minutes: calculateStudyMinutesInRange(monthStart, monthEnd, plans, actualByPlanId),
+      minutes: calculateStudyMinutesInRange(monthStart, monthEnd, plans, actualByOccurrenceKey),
     };
   });
 }
@@ -312,18 +307,30 @@ export function calculateTodayStudyMinutes(
   plans: Plan[],
   actuals: Actual[],
 ): number {
-  const actualByPlanId = buildActualByPlanId(actuals);
-  const dayPlans = plans.filter((plan) => isStudyTimePlan(plan) && plan.date === selectedDate);
-  return calculateActualStudyMinutes(dayPlans, actualByPlanId);
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
+  const dayPlans = expandPlansForDate(plans, selectedDate).filter(isStudyTimePlan);
+  return calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey);
 }
 
 export function calculateCumulativeStudyMinutes(
   plans: Plan[],
   actuals: Actual[],
 ): number {
-  const actualByPlanId = buildActualByPlanId(actuals);
-  const studyPlans = plans.filter(isStudyTimePlan);
-  return calculateActualStudyMinutes(studyPlans, actualByPlanId);
+  if (plans.length === 0) {
+    return 0;
+  }
+
+  const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
+  const occurrenceDates = actuals.map((actual) => actual.occurrenceDate);
+
+  if (occurrenceDates.length === 0) {
+    return 0;
+  }
+
+  const startDate = occurrenceDates.reduce((min, date) => (date < min ? date : min), occurrenceDates[0]);
+  const endDate = occurrenceDates.reduce((max, date) => (date > max ? date : max), occurrenceDates[0]);
+  const studyPlans = expandPlansForDateRange(plans, startDate, endDate).filter(isStudyTimePlan);
+  return calculateActualStudyMinutes(studyPlans, actualByOccurrenceKey);
 }
 
 export function buildWeeklySubjectTotals(
@@ -332,11 +339,14 @@ export function buildWeeklySubjectTotals(
   actuals: Actual[],
 ): StudySubjectTotal[] {
   const weekDates = new Set(getWeekDates(selectedDate));
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const visiblePlans = expandPlansForDateRange(plans, getWeekDates(selectedDate)[0], getWeekDates(selectedDate)[6]).filter(isStudyTimePlan);
+  const planByOccurrenceKey = new Map(
+    visiblePlans.map((plan) => [buildPlanOccurrenceKey(plan.id, plan.date), plan]),
+  );
   const totals = new Map<string, number>();
 
   actuals.forEach((actual) => {
-    const plan = planById.get(actual.planId);
+    const plan = planByOccurrenceKey.get(getActualOccurrenceKey(actual));
 
     if (!plan || !isStudyTimePlan(plan) || !weekDates.has(plan.date)) {
       return;
@@ -355,11 +365,21 @@ export function buildStudyTimelineEntries(
   plans: Plan[],
   actuals: Actual[],
 ): StudyTimelineEntry[] {
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  if (actuals.length === 0) {
+    return [];
+  }
+
+  const occurrenceDates = actuals.map((actual) => actual.occurrenceDate);
+  const startDate = occurrenceDates.reduce((min, date) => (date < min ? date : min), occurrenceDates[0]);
+  const endDate = occurrenceDates.reduce((max, date) => (date > max ? date : max), occurrenceDates[0]);
+  const visiblePlans = expandPlansForDateRange(plans, startDate, endDate);
+  const planByOccurrenceKey = new Map(
+    visiblePlans.map((plan) => [buildPlanOccurrenceKey(plan.id, plan.date), plan]),
+  );
 
   return sortByDateTime(
     actuals.flatMap((actual) => {
-      const plan = planById.get(actual.planId);
+      const plan = planByOccurrenceKey.get(getActualOccurrenceKey(actual));
 
       if (!plan || !isStudyTimePlan(plan)) {
         return [];

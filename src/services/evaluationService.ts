@@ -1,4 +1,10 @@
 import { addDays, minutesBetween } from '../lib/date';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDate,
+  expandPlansForDateRange,
+  getActualOccurrenceKey,
+} from '../lib/planRecurrence';
 import type { Actual, EvaluationSummary, Plan } from '../types/domain';
 
 function clamp(value: number, min: number, max: number): number {
@@ -13,7 +19,10 @@ function getActualMinutes(actual: Actual): number {
   return minutesBetween(actual.actualStartTime, actual.actualEndTime);
 }
 
-function calculateAchievement(dayPlans: Plan[], actualByPlanId: Map<string, Actual>): number {
+function calculateAchievement(
+  dayPlans: Plan[],
+  actualByOccurrenceKey: Map<string, Actual>,
+): number {
   if (dayPlans.length === 0) {
     return 0;
   }
@@ -25,7 +34,7 @@ function calculateAchievement(dayPlans: Plan[], actualByPlanId: Map<string, Actu
   }
 
   const actualMinutes = dayPlans.reduce((sum, plan) => {
-    const actual = actualByPlanId.get(plan.id);
+    const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
     return sum + (actual ? getActualMinutes(actual) : 0);
   }, 0);
 
@@ -35,7 +44,7 @@ function calculateAchievement(dayPlans: Plan[], actualByPlanId: Map<string, Actu
 function calculateConsistency(
   recentDates: string[],
   plans: Plan[],
-  actualByPlanId: Map<string, Actual>,
+  actualByOccurrenceKey: Map<string, Actual>,
 ): number {
   const activePlanDays = new Set(
     plans
@@ -48,7 +57,11 @@ function calculateConsistency(
   }
 
   const actualRecordDays = recentDates.filter((date) =>
-    plans.some((plan) => plan.date === date && actualByPlanId.has(plan.id)),
+    plans.some(
+      (plan) =>
+        plan.date === date &&
+        actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
+    ),
   ).length;
 
   return clamp(Math.round((actualRecordDays / activePlanDays.size) * 100), 0, 100);
@@ -56,10 +69,10 @@ function calculateConsistency(
 
 function calculateRealism(
   recentPlans: Plan[],
-  actualByPlanId: Map<string, Actual>,
+  actualByOccurrenceKey: Map<string, Actual>,
 ): number {
   const realismSamples = recentPlans.flatMap((plan) => {
-    const actual = actualByPlanId.get(plan.id);
+    const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
 
     if (!actual) {
       return [];
@@ -92,17 +105,21 @@ export function buildEvaluationSummary(
   plans: Plan[],
   actuals: Actual[],
 ): EvaluationSummary {
-  const dayPlans = plans.filter((plan) => plan.date === selectedDate);
   const recentDates = Array.from({ length: 7 }, (_, index) =>
     addDays(selectedDate, index - 6),
   );
-  const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
-  const recentPlans = plans.filter((plan) => recentDates.includes(plan.date));
-  const achievement = calculateAchievement(dayPlans, actualByPlanId);
-  const consistency = calculateConsistency(recentDates, plans, actualByPlanId);
-  const realism = calculateRealism(recentPlans, actualByPlanId);
+  const dayPlans = expandPlansForDate(plans, selectedDate);
+  const actualByOccurrenceKey = new Map(
+    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+  );
+  const recentPlans = expandPlansForDateRange(plans, recentDates[0], recentDates[recentDates.length - 1]);
+  const achievement = calculateAchievement(dayPlans, actualByOccurrenceKey);
+  const consistency = calculateConsistency(recentDates, recentPlans, actualByOccurrenceKey);
+  const realism = calculateRealism(recentPlans, actualByOccurrenceKey);
   const hasRecentPlans = recentPlans.length > 0;
-  const hasRecentActuals = recentPlans.some((plan) => actualByPlanId.has(plan.id));
+  const hasRecentActuals = recentPlans.some((plan) =>
+    actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
+  );
 
   const lowestScore = Math.min(achievement, consistency, realism);
   let comment =

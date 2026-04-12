@@ -29,16 +29,23 @@ export interface Plan {
   date: string;
   startTime: string;
   endTime: string;
+  repeat: MonthEventRepeat;
+  repeatUntil: string | null;
+  excludedDates: string[];
   type: PlanType;
   memo: string;
   createdAt: string;
   updatedAt: string;
+  sourceDate?: string;
+  occurrenceDate?: string;
+  occurrenceKey?: string;
 }
 
 export interface Actual {
   id: string;
   userId: string;
   planId: string;
+  occurrenceDate: string;
   actualStartTime: string;
   actualEndTime: string;
   title?: string;
@@ -55,6 +62,9 @@ export interface PlanDraft {
   date: string;
   startTime: string;
   endTime: string;
+  repeat: MonthEventRepeat;
+  repeatUntil: string | null;
+  excludedDates: string[];
   type: PlanType;
   memo: string;
 }
@@ -62,6 +72,7 @@ export interface PlanDraft {
 export interface ActualDraft {
   userId: string;
   planId: string;
+  occurrenceDate: string;
   actualStartTime: string;
   actualEndTime: string;
   title: string;

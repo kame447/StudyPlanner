@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { getPlanTypeLabel } from '../lib/plans';
+import { getPlanOccurrenceDate } from '../lib/planRecurrence';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 import { ActualTrackingTools } from './ActualTrackingTools';
 
@@ -38,6 +39,7 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
   return {
     userId: plan.userId,
     planId: plan.id,
+    occurrenceDate: getPlanOccurrenceDate(plan),
     actualStartTime: actual?.actualStartTime ?? plan.startTime,
     actualEndTime: actual?.actualEndTime ?? plan.endTime,
     title: resolveActualTitle(plan, actual),
@@ -119,7 +121,7 @@ export function ActualEditorCard({
             <span className="type-badge">{getPlanTypeLabel(plan.type)}</span>
           </div>
           <p className="comparison-subtitle">
-            計画 {plan.startTime} - {plan.endTime}
+            計画 {getPlanOccurrenceDate(plan)} / {plan.startTime} - {plan.endTime}
             {plan.subject ? ` / ${plan.subject}` : ''}
           </p>
           <p className="comparison-metrics">

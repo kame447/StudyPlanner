@@ -41,7 +41,12 @@ export function createPlannerRepository(
     async upsertActual(actual) {
       const nextActuals = (await storageGateway.readActuals())
         .filter(
-          (item) => !(item.userId === actual.userId && item.planId === actual.planId),
+          (item) =>
+            !(
+              item.userId === actual.userId &&
+              item.planId === actual.planId &&
+              item.occurrenceDate === actual.occurrenceDate
+            ),
         )
         .concat(actual);
 

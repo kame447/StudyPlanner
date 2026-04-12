@@ -1,4 +1,5 @@
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
+import { PLAN_REPEAT_OPTIONS } from '../lib/planRecurrence';
 import type { PlanDraft } from '../types/domain';
 
 interface PlanFieldsEditorProps {
@@ -61,6 +62,34 @@ export function PlanFieldsEditor({
           type="time"
           value={draft.endTime}
           onChange={(event) => updateField('endTime', event.target.value)}
+        />
+      </label>
+
+      <label className="field">
+        <span>繰り返し</span>
+        <select
+          value={draft.repeat}
+          onChange={(event) =>
+            updateField('repeat', event.target.value as PlanDraft['repeat'])
+          }
+        >
+          {PLAN_REPEAT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        <span>繰り返し終了</span>
+        <input
+          type="date"
+          value={draft.repeatUntil ?? ''}
+          onChange={(event) =>
+            updateField('repeatUntil', event.target.value || null)
+          }
+          disabled={draft.repeat === 'none'}
         />
       </label>
 

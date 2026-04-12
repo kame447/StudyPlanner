@@ -1,5 +1,9 @@
 import type { CSSProperties } from 'react';
 import { formatMinutes, minutesBetween, minutesFromTime } from '../lib/date';
+import {
+  buildPlanOccurrenceKey,
+  getActualOccurrenceKey,
+} from '../lib/planRecurrence';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
 import type { Actual, MonthEvent, Plan, PlanType } from '../types/domain';
 
@@ -183,11 +187,13 @@ export function DayTimeline({
   selectedEntryId,
   onSelectEntry,
 }: DayTimelineProps) {
-  const actualByPlanId = new Map(actuals.map((actual) => [actual.planId, actual]));
+  const actualByOccurrenceKey = new Map(
+    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+  );
   const planEntries = buildTimelineEntries(
     [
       ...plans.map((plan) => ({
-        id: plan.id,
+        id: buildPlanOccurrenceKey(plan.id, plan.date),
         targetId: plan.id,
         selectionId: `plan:${plan.id}`,
         entryKind: 'plan' as const,
@@ -212,7 +218,7 @@ export function DayTimeline({
   );
   const actualEntries = buildTimelineEntries(
     plans.flatMap((plan) => {
-      const actual = actualByPlanId.get(plan.id);
+      const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
 
       if (!actual) {
         return [];

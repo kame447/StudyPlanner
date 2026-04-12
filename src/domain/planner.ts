@@ -20,6 +20,15 @@ function normalizeMonthEventExcludedDates(
     .sort((left, right) => left.localeCompare(right));
 }
 
+function normalizePlanExcludedDates(
+  date: string,
+  excludedDates: string[],
+): string[] {
+  return [...new Set(excludedDates)]
+    .filter((excludedDate) => excludedDate.localeCompare(date) >= 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
 export function createEmptyPlanDraft(userId: string, date: string): PlanDraft {
   return {
     userId,
@@ -28,6 +37,9 @@ export function createEmptyPlanDraft(userId: string, date: string): PlanDraft {
     date,
     startTime: '19:00',
     endTime: '20:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
     type: 'study',
     memo: '',
   };
@@ -83,9 +95,12 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
     userId: plan.userId,
     title: plan.title,
     subject: plan.subject,
-    date: plan.date,
+    date: plan.sourceDate ?? plan.date,
     startTime: plan.startTime,
     endTime: plan.endTime,
+    repeat: plan.repeat,
+    repeatUntil: plan.repeatUntil,
+    excludedDates: [...plan.excludedDates],
     type: plan.type,
     memo: plan.memo,
   };
@@ -117,11 +132,19 @@ export function resolveDayNoteDraft(
 
 export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan {
   const now = new Date().toISOString();
+  const repeatUntil =
+    draft.repeat === 'none' || !draft.repeatUntil ? null : draft.repeatUntil;
+  const excludedDates =
+    draft.repeat === 'none'
+      ? []
+      : normalizePlanExcludedDates(draft.date, draft.excludedDates);
 
   if (currentPlan) {
     return {
       ...currentPlan,
       ...draft,
+      repeatUntil,
+      excludedDates,
       updatedAt: now,
     };
   }
@@ -129,6 +152,8 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
   return {
     id: createId('plan'),
     ...draft,
+    repeatUntil,
+    excludedDates,
     createdAt: now,
     updatedAt: now,
   };
@@ -143,6 +168,7 @@ export function createActualFromDraft(
     id: existingActual?.id ?? createId('actual'),
     userId,
     planId: draft.planId,
+    occurrenceDate: draft.occurrenceDate,
     actualStartTime: draft.actualStartTime,
     actualEndTime: draft.actualEndTime,
     title: draft.title,

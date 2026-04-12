@@ -6,6 +6,11 @@ import {
   minutesBetween,
   sortByDateTime,
 } from '../lib/date';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDate,
+  getActualOccurrenceKey,
+} from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
 import { isStudyTimePlan } from '../lib/studyAnalytics';
 import { buildEvaluationSummary } from '../services/evaluationService';
@@ -74,19 +79,19 @@ export function DayView({
     disabled: modalState.type !== 'closed',
   });
   const dayPlans = useMemo(
-    () => sortByDateTime(plans.filter((plan) => plan.date === selectedDate)),
+    () => sortByDateTime(expandPlansForDate(plans, selectedDate)),
     [plans, selectedDate],
   );
-  const dayPlanIds = useMemo(
-    () => new Set(dayPlans.map((plan) => plan.id)),
+  const dayOccurrenceKeys = useMemo(
+    () => new Set(dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
     [dayPlans],
   );
   const studyDayPlans = useMemo(
     () => dayPlans.filter(isStudyTimePlan),
     [dayPlans],
   );
-  const studyDayPlanIds = useMemo(
-    () => new Set(studyDayPlans.map((plan) => plan.id)),
+  const studyDayOccurrenceKeys = useMemo(
+    () => new Set(studyDayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
     [studyDayPlans],
   );
   const dayPlanMap = useMemo(
@@ -94,12 +99,13 @@ export function DayView({
     [dayPlans],
   );
   const dayActuals = useMemo(
-    () => actuals.filter((actual) => dayPlanIds.has(actual.planId)),
-    [actuals, dayPlanIds],
+    () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
+    [actuals, dayOccurrenceKeys],
   );
   const studyDayActuals = useMemo(
-    () => dayActuals.filter((actual) => studyDayPlanIds.has(actual.planId)),
-    [dayActuals, studyDayPlanIds],
+    () =>
+      dayActuals.filter((actual) => studyDayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
+    [dayActuals, studyDayOccurrenceKeys],
   );
   const dayMonthEvents = useMemo(
     () =>
@@ -114,8 +120,8 @@ export function DayView({
     () => new Map(dayMonthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
     [dayMonthEvents],
   );
-  const actualByPlanId = useMemo(
-    () => new Map(dayActuals.map((actual) => [actual.planId, actual])),
+  const actualByOccurrenceKey = useMemo(
+    () => new Map(dayActuals.map((actual) => [getActualOccurrenceKey(actual), actual])),
     [dayActuals],
   );
   const selectedPlan =
@@ -137,16 +143,16 @@ export function DayView({
   const dayActualMinutes = useMemo(
     () =>
       studyDayPlans.reduce((sum, plan) => {
-        const actual = actualByPlanId.get(plan.id);
+        const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
         return (
           sum +
           (actual ? minutesBetween(actual.actualStartTime, actual.actualEndTime) : 0)
         );
       }, 0),
-    [actualByPlanId, studyDayPlans],
+    [actualByOccurrenceKey, studyDayPlans],
   );
   const evaluation = useMemo(
-    () => buildEvaluationSummary(selectedDate, plans.filter(isStudyTimePlan), actuals),
+    () => buildEvaluationSummary(selectedDate, plans, actuals),
     [selectedDate, plans, actuals],
   );
   const planDeltaMinutes = dayActualMinutes - dayPlannedMinutes;
@@ -264,9 +270,11 @@ export function DayView({
               </div>
 
               <ActualEditorCard
-                key={selectedPlan.id}
+                key={buildPlanOccurrenceKey(selectedPlan.id, selectedPlan.date)}
                 plan={selectedPlan}
-                actual={actualByPlanId.get(selectedPlan.id)}
+                actual={actualByOccurrenceKey.get(
+                  buildPlanOccurrenceKey(selectedPlan.id, selectedPlan.date),
+                )}
                 onEditPlan={onEditPlan}
                 onDeletePlan={onDeletePlan}
                 onSaveActual={onSaveActual}
