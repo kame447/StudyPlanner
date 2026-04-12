@@ -382,7 +382,8 @@ function compareExpectedRowToActual(
     expectedRow.selectedDate,
   );
   const mismatches: string[] = [];
-  const notes: string[] = [...repeatExpectation.notes];
+  const exactRepeatKeyMatch = expectedRow.expectedRepeat === actualRecurrence.repeatKey;
+  const notes: string[] = exactRepeatKeyMatch ? [] : [...repeatExpectation.notes];
 
   if (expectedRow.expectedTitle && actual.parsedPlan.title !== expectedRow.expectedTitle) {
     mismatches.push(

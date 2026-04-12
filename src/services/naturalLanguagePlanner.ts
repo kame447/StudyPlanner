@@ -1294,6 +1294,62 @@ function finalizeSuggestionStatus(
   };
 }
 
+function normalizeSuggestionRawText(value: string): string {
+  return normalizeParsingText(value).replace(/\s+/g, ' ').trim();
+}
+
+function hasConcreteSchedule(suggestion: NaturalLanguageSuggestion): boolean {
+  return Boolean(suggestion.parsedPlan.startTime && suggestion.parsedPlan.endTime);
+}
+
+function hasStructuredRecurrence(
+  suggestion: NaturalLanguageSuggestion,
+): boolean {
+  return (
+    suggestion.parsedPlan.recurrenceRules.length > 0 ||
+    suggestion.parsedPlan.repeat !== 'none'
+  );
+}
+
+function isSubordinateSuggestion(
+  suggestion: NaturalLanguageSuggestion,
+  index: number,
+  suggestions: NaturalLanguageSuggestion[],
+): boolean {
+  const normalizedRawText = normalizeSuggestionRawText(suggestion.rawText);
+  const hasConcreteTime = hasConcreteSchedule(suggestion);
+  const hasRecurrence = hasStructuredRecurrence(suggestion);
+  const hasMeaningfulTitle = hasMeaningfulStudyTitle(suggestion.parsedPlan.title);
+
+  if (hasConcreteTime || hasRecurrence) {
+    return false;
+  }
+
+  return suggestions.some((candidate, candidateIndex) => {
+    if (candidateIndex === index) {
+      return false;
+    }
+
+    if (normalizeSuggestionRawText(candidate.rawText) !== normalizedRawText) {
+      return false;
+    }
+
+    if (!hasConcreteSchedule(candidate) && !hasStructuredRecurrence(candidate)) {
+      return false;
+    }
+
+    if (!hasMeaningfulTitle) {
+      return true;
+    }
+
+    return (
+      candidate.parsedPlan.title === suggestion.parsedPlan.title ||
+      (Boolean(suggestion.parsedPlan.subject) &&
+        candidate.parsedPlan.subject === suggestion.parsedPlan.subject)
+    );
+  });
+}
+
 function postProcessAddSuggestions(
   suggestions: NaturalLanguageSuggestion[],
   selectedDate: string,
@@ -1565,7 +1621,8 @@ function postProcessAddSuggestions(
         expandEnumeratedStudyVariants(suggestion) ??
         [suggestion],
     )
-    .map((suggestion) => synchronizeStructuredRecurrence(suggestion, selectedDate));
+    .map((suggestion) => synchronizeStructuredRecurrence(suggestion, selectedDate))
+    .filter((suggestion, index, array) => !isSubordinateSuggestion(suggestion, index, array));
 }
 
 function synchronizeStructuredRecurrence(
