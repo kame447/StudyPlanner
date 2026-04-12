@@ -371,7 +371,7 @@ function isStandaloneRecurrenceInstructionText(text: string): boolean {
 
 function referencesSplitTask(taskText: string, instructionText: string): boolean {
   const normalizedInstruction = normalizeParsingText(instructionText);
-  const candidateTitle = sanitizeSuggestedTitle(taskText).trim();
+  const candidateTitle = trimContentPhrase(sanitizeSuggestedTitle(taskText).trim());
   const candidateSubject = detectSubject(taskText).trim();
 
   return (
@@ -689,6 +689,7 @@ function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle
     [/(週の振り返り|その週の振り返り)/, '週の振り返り'],
     [/(自習時間)/, '自習時間'],
     [/(勉強予定)/, '勉強予定'],
+    [/(復習)/, '復習'],
   ];
 
   for (const [pattern, value] of explicitPatterns) {

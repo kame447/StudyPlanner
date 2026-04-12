@@ -27,7 +27,7 @@ const CHAPTER_PATTERNS = [
   /section\s*\d+/gi,
 ];
 const CLOCK_TIME_PATTERN =
-  '(\\d{1,2})(?:(?::(\\d{2}))|時(半)?)';
+  '(\\d{1,2})(?:(?::(\\d{2}))|時(?!間)(半)?)';
 const CLOCK_TIME_REGEX = new RegExp(CLOCK_TIME_PATTERN);
 const CLOCK_TIME_GLOBAL_REGEX = new RegExp(CLOCK_TIME_PATTERN, 'g');
 const CLOCK_RANGE_REGEX = new RegExp(
@@ -171,7 +171,7 @@ export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
 
   if (
-    /平日|土日|週末|毎週|毎(?:月曜?|火曜?|水曜?|木曜?|金曜?|土曜?|日曜?)|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は)/.test(
+    /平日|土日|週末|毎週|毎[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は)/.test(
       normalizedText,
     )
   ) {
@@ -270,7 +270,7 @@ export function parseDate(text: string, selectedDate: string): string {
 
   const weekdayMatch = normalizedText.match(/([月火水木金土日])曜(?:日)?/);
 
-  if (weekdayMatch) {
+  if (weekdayMatch && !/毎週|毎[月火水木金土日]曜(?:日)?/.test(normalizedText)) {
     return resolveWeekdayDate(selectedDate, weekdayMatch[1], 'current_or_next');
   }
 
@@ -546,6 +546,16 @@ function hasTaskCue(text: string): boolean {
   );
 }
 
+function isStandaloneRecurrenceLike(text: string): boolean {
+  const normalizedText = normalizeParsingText(text);
+
+  return (
+    detectRepeat(normalizedText) !== 'none' &&
+    !hasExplicitClockTime(normalizedText) &&
+    parseDurationMinutes(normalizedText) === undefined
+  );
+}
+
 function prependSharedDate(text: string, sharedDatePhrase: string): string {
   if (!sharedDatePhrase || hasExplicitDateExpression(text)) {
     return text.trim();
@@ -575,11 +585,15 @@ export function splitAddTaskTexts(text: string): string[] {
       .map((part) => part.trim())
       .filter(Boolean);
 
-    if (softSegments.length <= 1 || !softSegments.every(hasTaskCue)) {
+    const taskLikeSegments = softSegments.filter(
+      (part) => hasTaskCue(part) || isStandaloneRecurrenceLike(part),
+    );
+
+    if (softSegments.length <= 1 || taskLikeSegments.length < 2) {
       return [segment];
     }
 
-    return softSegments;
+    return taskLikeSegments;
   });
 
   const normalizedSegments = segments
