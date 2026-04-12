@@ -12,6 +12,7 @@ import type { JsonSchemaResponseFormat } from './ai/openAiCompatibleClient';
 import { createOpenAiCompatibleClient } from './ai/openAiCompatibleClient';
 import {
   defaultDraft,
+  detectRepeat,
   detectSubject,
   detectType,
   extractMemoHint,
@@ -519,6 +520,32 @@ function hasRelativeOrderCue(text: string): boolean {
   return /そのあと|その後|続けて|次に/.test(normalizeParsingText(text));
 }
 
+function referencesSuggestionTarget(
+  rawText: string,
+  suggestion: NaturalLanguageSuggestion,
+): boolean {
+  const normalizedText = normalizeParsingText(rawText);
+
+  return [suggestion.parsedPlan.title, suggestion.parsedPlan.subject].some(
+    (value) => Boolean(value) && normalizedText.includes(value),
+  );
+}
+
+function shouldMergeRecurrenceInstruction(
+  suggestion: NaturalLanguageSuggestion,
+): boolean {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+
+  return (
+    detectRepeat(normalizedText) !== 'none' &&
+    !hasExplicitClockTime(suggestion.rawText) &&
+    parseDurationMinutes(suggestion.rawText) === undefined &&
+    /同じ時間帯|同じ時間|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?/.test(
+      normalizedText,
+    )
+  );
+}
+
 function sanitizeDisplayTitle(title: string, date: string): string {
   return title
     .replace(new RegExp(date.replace(/-/g, '[-/]'), 'g'), ' ')
@@ -618,6 +645,37 @@ function postProcessAddSuggestions(
 
     nextSuggestion.parsedPlan.subject = normalizedLabels.subject;
     nextSuggestion.parsedPlan.title = normalizedLabels.title;
+
+    const detectedRepeat = detectRepeat(nextSuggestion.rawText);
+
+    if (detectedRepeat !== 'none') {
+      nextSuggestion.parsedPlan.repeat = detectedRepeat;
+      nextSuggestion.parsedPlan.repeatUntil = null;
+      nextSuggestion.parsedPlan.excludedDates = [];
+    }
+
+    if (shouldMergeRecurrenceInstruction(nextSuggestion)) {
+      const recurrenceTarget = [...processedSuggestions]
+        .reverse()
+        .find((candidate) => referencesSuggestionTarget(nextSuggestion.rawText, candidate));
+
+      if (recurrenceTarget) {
+        recurrenceTarget.parsedPlan.repeat = nextSuggestion.parsedPlan.repeat;
+        recurrenceTarget.parsedPlan.repeatUntil =
+          nextSuggestion.parsedPlan.repeatUntil;
+        recurrenceTarget.parsedPlan.excludedDates = [
+          ...nextSuggestion.parsedPlan.excludedDates,
+        ];
+        recurrenceTarget.assumptions = Array.from(
+          new Set([
+            ...recurrenceTarget.assumptions,
+            '後続の入力から繰り返し設定を補いました。',
+          ]),
+        );
+        recurrenceTarget.status = finalizeSuggestionStatus(recurrenceTarget).status;
+        return;
+      }
+    }
 
     if (
       !explicitStart &&

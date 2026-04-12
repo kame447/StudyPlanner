@@ -2,6 +2,7 @@ import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { buildDefaultPlanTitle } from '../lib/plans';
 import { getNaturalLanguageCatalog } from '../data/naturalLanguageCatalog';
 import type {
+  MonthEventRepeat,
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
   Plan,
@@ -140,10 +141,32 @@ function removeSchedulingTerms(text: string): string {
     )
     .replace(new RegExp(`${LOCALIZED_NUMBER_PATTERN}分`, 'g'), '')
     .replace(
-      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?/g,
+      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?/g,
       '',
     )
     .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定/g, '');
+}
+
+export function detectRepeat(text: string): MonthEventRepeat {
+  const normalizedText = normalizeParsingText(text);
+
+  if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
+    return 'daily';
+  }
+
+  if (/毎週|毎[月火水木金土日](?:曜)?/.test(normalizedText)) {
+    return 'weekly';
+  }
+
+  if (/毎月/.test(normalizedText)) {
+    return 'monthly';
+  }
+
+  if (/毎年/.test(normalizedText)) {
+    return 'yearly';
+  }
+
+  return 'none';
 }
 
 export function parseDate(text: string, selectedDate: string): string {
@@ -469,6 +492,7 @@ export function generateRuleBasedSuggestion({
   const detectedType = detectType(text);
   const detectedSubject = detectSubject(text);
   const detectedTimes = parseTimes(text, baseDraft.startTime);
+  const detectedRepeat = detectRepeat(text);
   const cleanedTitle = sanitizeSuggestedTitle(text);
   const memoHint = extractMemoHint(text);
 
@@ -484,6 +508,9 @@ export function generateRuleBasedSuggestion({
       baseDraft.title ||
       buildDefaultPlanTitle(detectedType, detectedSubject || baseDraft.subject),
     memo: memoHint || baseDraft.memo,
+    repeat: detectedRepeat === 'none' ? baseDraft.repeat : detectedRepeat,
+    repeatUntil: detectedRepeat === 'none' ? baseDraft.repeatUntil : null,
+    excludedDates: detectedRepeat === 'none' ? baseDraft.excludedDates : [],
   };
 
   const detectedFieldCount = [
