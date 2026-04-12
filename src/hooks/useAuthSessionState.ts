@@ -43,7 +43,18 @@ export function useAuthSessionState({
         }
 
         setUser(currentUser);
-        await loadPlannerData(currentUser.id);
+        setBooting(false);
+
+        try {
+          await loadPlannerData(currentUser.id);
+        } catch (error) {
+          showNotice(
+            error instanceof Error
+              ? error.message
+              : '学習データの読み込みに失敗しました。',
+            'error',
+          );
+        }
       } catch (error) {
         showNotice(
           error instanceof Error
