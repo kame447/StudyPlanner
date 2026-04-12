@@ -20,6 +20,7 @@ import type {
   PlanDraft,
   SuggestionField,
 } from '../types/domain';
+import { NaturalLanguageCsvTester } from './NaturalLanguageCsvTester';
 
 interface NaturalLanguageAssistantProps {
   selectedDate: string;
@@ -284,6 +285,12 @@ export function NaturalLanguageAssistant({
         config={aiConfig}
         onSave={handleSaveAiConfig}
         onReset={handleResetAiConfig}
+      />
+
+      <NaturalLanguageCsvTester
+        currentProvider={aiConfig.provider}
+        userId={userId}
+        plans={plans}
       />
 
       <label className="field field-full">
