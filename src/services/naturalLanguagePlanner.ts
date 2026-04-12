@@ -520,6 +520,26 @@ function hasRelativeOrderCue(text: string): boolean {
   return /そのあと|その後|続けて|次に/.test(normalizeParsingText(text));
 }
 
+function buildRecurrenceContextText(
+  suggestion: Pick<NaturalLanguageSuggestion, 'rawText' | 'parsedPlan'>,
+): string {
+  return [suggestion.rawText, suggestion.parsedPlan.memo]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isRecurrenceMemoOnly(memo: string): boolean {
+  const normalizedMemo = normalizeParsingText(memo).trim();
+
+  if (!normalizedMemo || detectRepeat(normalizedMemo) === 'none') {
+    return false;
+  }
+
+  return /同じ時間帯|同じ時間|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?/.test(
+    normalizedMemo,
+  );
+}
+
 function referencesSuggestionTarget(
   rawText: string,
   suggestion: NaturalLanguageSuggestion,
@@ -534,7 +554,9 @@ function referencesSuggestionTarget(
 function shouldMergeRecurrenceInstruction(
   suggestion: NaturalLanguageSuggestion,
 ): boolean {
-  const normalizedText = normalizeParsingText(suggestion.rawText);
+  const normalizedText = normalizeParsingText(
+    buildRecurrenceContextText(suggestion),
+  );
 
   return (
     detectRepeat(normalizedText) !== 'none' &&
@@ -646,12 +668,18 @@ function postProcessAddSuggestions(
     nextSuggestion.parsedPlan.subject = normalizedLabels.subject;
     nextSuggestion.parsedPlan.title = normalizedLabels.title;
 
-    const detectedRepeat = detectRepeat(nextSuggestion.rawText);
+    const detectedRepeat = detectRepeat(
+      buildRecurrenceContextText(nextSuggestion),
+    );
 
     if (detectedRepeat !== 'none') {
       nextSuggestion.parsedPlan.repeat = detectedRepeat;
       nextSuggestion.parsedPlan.repeatUntil = null;
       nextSuggestion.parsedPlan.excludedDates = [];
+
+      if (isRecurrenceMemoOnly(nextSuggestion.parsedPlan.memo)) {
+        nextSuggestion.parsedPlan.memo = '';
+      }
     }
 
     if (shouldMergeRecurrenceInstruction(nextSuggestion)) {
