@@ -28,6 +28,24 @@ function normalizeErrorMessage(
   return message || fallbackMessage;
 }
 
+function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stripUndefinedDeep(item))
+      .filter((item) => item !== undefined) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, stripUndefinedDeep(entryValue)]),
+    ) as T;
+  }
+
+  return value;
+}
+
 async function listByUserId<T extends PlannerDoc>(
   firestoreDb: Firestore,
   collectionName: string,
@@ -45,10 +63,11 @@ async function upsertDocument<T extends PlannerDoc>(
   collectionName: string,
   item: T,
 ): Promise<T> {
-  await setDoc(doc(firestoreDb, collectionName, item.id), item, {
+  const sanitizedItem = stripUndefinedDeep(item);
+  await setDoc(doc(firestoreDb, collectionName, item.id), sanitizedItem, {
     merge: true,
   });
-  return item;
+  return sanitizedItem;
 }
 
 async function listActualsByPlanId(
