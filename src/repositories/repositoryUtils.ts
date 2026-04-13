@@ -47,6 +47,10 @@ export function normalizePlanRecord(plan: Plan): Plan {
 
   return {
     ...plan,
+    seriesId:
+      typeof plan.seriesId === 'string' && plan.seriesId.trim().length > 0
+        ? plan.seriesId.trim()
+        : plan.id,
     repeat,
     repeatUntil:
       recurrenceRules.length > 0

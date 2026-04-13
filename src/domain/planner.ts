@@ -111,7 +111,7 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
     userId: plan.userId,
     title: plan.title,
     subject: plan.subject,
-    date: plan.sourceDate ?? plan.date,
+    date: plan.occurrenceDate ?? plan.date,
     startTime: plan.startTime,
     endTime: plan.endTime,
     repeat: plan.repeat,
@@ -149,6 +149,7 @@ export function resolveDayNoteDraft(
 
 export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan {
   const now = new Date().toISOString();
+  const nextPlanId = currentPlan?.id ?? createId('plan');
   const draftRecurrenceRules = Array.isArray(draft.recurrenceRules)
     ? draft.recurrenceRules
     : [];
@@ -194,6 +195,8 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
     return {
       ...currentPlan,
       ...draft,
+      id: nextPlanId,
+      seriesId: currentPlan.seriesId || currentPlan.id,
       repeat,
       repeatUntil,
       excludedDates,
@@ -203,7 +206,8 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
   }
 
   return {
-    id: createId('plan'),
+    id: nextPlanId,
+    seriesId: nextPlanId,
     ...draft,
     repeat,
     repeatUntil,

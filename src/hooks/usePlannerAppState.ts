@@ -12,6 +12,7 @@ import type {
   MonthEventDraft,
   Plan,
   PlanDraft,
+  RecurringPlanScope,
   User,
   UserProfileDraft,
   ViewMode,
@@ -30,6 +31,9 @@ interface PlannerAppState {
   notice: NoticeState | null;
   editorDraft: PlanDraft | null;
   editingPlanId: string | null;
+  editingPlan: Plan | null;
+  isRecurringPlanEdit: boolean;
+  pendingRecurringPlanAction: { kind: 'edit' | 'delete'; plan: Plan } | null;
   setViewMode: (viewMode: ViewMode) => void;
   dismissNotice: () => void;
   signUpWithPassword: (
@@ -47,6 +51,8 @@ interface PlannerAppState {
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
+  confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
+  cancelRecurringPlanScope: () => void;
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
@@ -83,6 +89,9 @@ export function usePlannerAppState(): PlannerAppState {
     monthDate,
     editorDraft,
     editingPlanId,
+    editingPlan,
+    isRecurringPlanEdit,
+    pendingRecurringPlanAction,
     loadPlannerData,
     resetPlannerData,
     setViewMode,
@@ -91,6 +100,8 @@ export function usePlannerAppState(): PlannerAppState {
     closePlanEditor,
     savePlanDraft,
     deletePlan,
+    confirmRecurringPlanScope,
+    cancelRecurringPlanScope,
     saveActual,
     deleteActual,
     saveDayNote,
@@ -159,6 +170,9 @@ export function usePlannerAppState(): PlannerAppState {
     notice,
     editorDraft,
     editingPlanId,
+    editingPlan,
+    isRecurringPlanEdit,
+    pendingRecurringPlanAction,
     setViewMode,
     dismissNotice,
     signUpWithPassword,
@@ -172,6 +186,8 @@ export function usePlannerAppState(): PlannerAppState {
     closePlanEditor,
     savePlanDraft,
     deletePlan,
+    confirmRecurringPlanScope,
+    cancelRecurringPlanScope,
     saveActual,
     deleteActual,
     saveDayNote,

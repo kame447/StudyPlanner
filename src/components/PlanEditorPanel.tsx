@@ -6,6 +6,7 @@ interface PlanEditorPanelProps {
   draft: PlanDraft | null;
   submitLabel: string;
   heading: string;
+  recurringEditMode?: boolean;
   onChange: (draft: PlanDraft) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -15,6 +16,7 @@ export function PlanEditorPanel({
   draft,
   submitLabel,
   heading,
+  recurringEditMode = false,
   onChange,
   onSubmit,
   onCancel,
@@ -39,7 +41,21 @@ export function PlanEditorPanel({
           </button>
         </div>
 
-        <PlanFieldsEditor draft={draft} onChange={onChange} />
+        {recurringEditMode ? (
+          <div className="assistant-feedback-card">
+            <strong>繰り返し予定を編集中です</strong>
+            <p className="detail-note">
+              保存時に適用範囲を選びます。初期対応では日付と繰り返し条件の直接変更は無効です。
+            </p>
+          </div>
+        ) : null}
+
+        <PlanFieldsEditor
+          draft={draft}
+          onChange={onChange}
+          disableDateField={recurringEditMode}
+          disableRepeatFields={recurringEditMode}
+        />
 
         {hasInvalidTime ? (
           <p className="inline-error">終了時刻は開始時刻より後にしてください。</p>

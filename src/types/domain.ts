@@ -51,8 +51,11 @@ export interface RecurrenceRule {
   isOverride: boolean;
 }
 
+export type RecurringPlanScope = 'single' | 'future' | 'all';
+
 export interface Plan {
   id: string;
+  seriesId: string;
   userId: string;
   title: string;
   subject: string;

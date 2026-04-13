@@ -5,6 +5,7 @@ import { DayPlanInputPanel } from './components/DayPlanInputPanel';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ReportView } from './components/ReportView';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { UserAvatar } from './components/UserAvatar';
@@ -43,6 +44,9 @@ export default function App() {
     dismissNotice,
     editorDraft,
     editingPlanId,
+    editingPlan,
+    isRecurringPlanEdit,
+    pendingRecurringPlanAction,
     setViewMode,
     signUpWithPassword,
     signInWithPassword,
@@ -54,6 +58,8 @@ export default function App() {
     closePlanEditor,
     savePlanDraft,
     deletePlan,
+    confirmRecurringPlanScope,
+    cancelRecurringPlanScope,
     saveActual,
     deleteActual,
     saveDayNote,
@@ -239,6 +245,7 @@ export default function App() {
         draft={editorDraft}
         submitLabel={editingPlanId ? '学習予定を更新' : '学習予定を追加'}
         heading={editingPlanId ? '学習予定を編集' : '学習予定を追加'}
+        recurringEditMode={Boolean(editingPlan && isRecurringPlanEdit)}
         onChange={setEditorDraft}
         onSubmit={() => {
           if (editorDraft) {
@@ -247,6 +254,17 @@ export default function App() {
         }}
         onCancel={closePlanEditor}
       />
+
+      {pendingRecurringPlanAction ? (
+        <RecurringPlanScopeDialog
+          action={pendingRecurringPlanAction.kind}
+          plan={pendingRecurringPlanAction.plan}
+          onSelect={(scope) => {
+            void confirmRecurringPlanScope(scope);
+          }}
+          onClose={cancelRecurringPlanScope}
+        />
+      ) : null}
 
       {isToolbarPlanInputOpen ? (
         <div className="overlay modal-overlay">

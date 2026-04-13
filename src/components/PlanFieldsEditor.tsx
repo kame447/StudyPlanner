@@ -5,11 +5,15 @@ import type { PlanDraft } from '../types/domain';
 interface PlanFieldsEditorProps {
   draft: PlanDraft;
   onChange: (draft: PlanDraft) => void;
+  disableDateField?: boolean;
+  disableRepeatFields?: boolean;
 }
 
 export function PlanFieldsEditor({
   draft,
   onChange,
+  disableDateField = false,
+  disableRepeatFields = false,
 }: PlanFieldsEditorProps) {
   function updateField<K extends keyof PlanDraft>(field: K, value: PlanDraft[K]) {
     onChange({
@@ -44,6 +48,7 @@ export function PlanFieldsEditor({
           type="date"
           value={draft.date}
           onChange={(event) => updateField('date', event.target.value)}
+          disabled={disableDateField}
         />
       </label>
 
@@ -72,6 +77,7 @@ export function PlanFieldsEditor({
           onChange={(event) =>
             updateField('repeat', event.target.value as PlanDraft['repeat'])
           }
+          disabled={disableRepeatFields}
         >
           {PLAN_REPEAT_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -89,7 +95,7 @@ export function PlanFieldsEditor({
           onChange={(event) =>
             updateField('repeatUntil', event.target.value || null)
           }
-          disabled={draft.repeat === 'none'}
+          disabled={disableRepeatFields || draft.repeat === 'none'}
         />
       </label>
 
