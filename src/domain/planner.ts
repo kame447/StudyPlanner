@@ -149,9 +149,12 @@ export function resolveDayNoteDraft(
 
 export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan {
   const now = new Date().toISOString();
+  const draftRecurrenceRules = Array.isArray(draft.recurrenceRules)
+    ? draft.recurrenceRules
+    : [];
   const recurrenceRules = normalizeRecurrenceRules(
-    draft.recurrenceRules.length > 0
-      ? draft.recurrenceRules
+    draftRecurrenceRules.length > 0
+      ? draftRecurrenceRules
       : buildRecurrenceRulesFromLegacySource({
           date: draft.date,
           startTime: draft.startTime,

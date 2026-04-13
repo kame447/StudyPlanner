@@ -192,21 +192,27 @@ export function NaturalLanguageAssistant({
     }
 
     setError('');
-    await onApplyDraft(
-      suggestion.parsedPlan,
-      suggestion.mode === 'edit' ? editTargetPlanId : undefined,
-    );
-    setStatus(
-      suggestion.mode === 'edit'
-        ? '修正案を反映しました。'
-        : '学習予定を1件追加しました。',
-    );
-    removeSuggestionAt(index);
+    try {
+      await onApplyDraft(
+        suggestion.parsedPlan,
+        suggestion.mode === 'edit' ? editTargetPlanId : undefined,
+      );
+      setStatus(
+        suggestion.mode === 'edit'
+          ? '修正案を反映しました。'
+          : '学習予定を1件追加しました。',
+      );
+      removeSuggestionAt(index);
 
-    if (suggestion.mode === 'edit') {
-      setText('');
-      setSuggestions([]);
-      setEditTargetPlanId('');
+      if (suggestion.mode === 'edit') {
+        setText('');
+        setSuggestions([]);
+        setEditTargetPlanId('');
+      }
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : '学習予定の反映に失敗しました。',
+      );
     }
   }
 
@@ -224,22 +230,28 @@ export function NaturalLanguageAssistant({
       return;
     }
 
-    for (const suggestion of validSuggestions) {
-      await onApplyDraft(suggestion.parsedPlan);
-    }
+    try {
+      for (const suggestion of validSuggestions) {
+        await onApplyDraft(suggestion.parsedPlan);
+      }
 
-    const remainingSuggestions = suggestions.filter(
-      (suggestion) => !canApplySuggestion(suggestion),
-    );
-    setSuggestions(remainingSuggestions);
-    setStatus(
-      remainingSuggestions.length === 0
-        ? `${validSuggestions.length}件の学習予定を追加しました。`
-        : `${validSuggestions.length}件の学習予定を追加し、${remainingSuggestions.length}件は未反映のまま残しました。`,
-    );
+      const remainingSuggestions = suggestions.filter(
+        (suggestion) => !canApplySuggestion(suggestion),
+      );
+      setSuggestions(remainingSuggestions);
+      setStatus(
+        remainingSuggestions.length === 0
+          ? `${validSuggestions.length}件の学習予定を追加しました。`
+          : `${validSuggestions.length}件の学習予定を追加し、${remainingSuggestions.length}件は未反映のまま残しました。`,
+      );
 
-    if (remainingSuggestions.length === 0) {
-      setText('');
+      if (remainingSuggestions.length === 0) {
+        setText('');
+      }
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : '学習予定の反映に失敗しました。',
+      );
     }
   }
 
