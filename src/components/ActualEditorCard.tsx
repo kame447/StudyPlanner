@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
+import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
 import { getPlanOccurrenceDate } from '../lib/planRecurrence';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
@@ -74,6 +75,7 @@ export function ActualEditorCard({
     ? minutesBetween(actual.actualStartTime, actual.actualEndTime)
     : 0;
   const deltaMinutes = actual ? actualMinutes - planMinutes : null;
+  const isScopedRecurringPlan = supportsScopedRecurringPlanEdits(plan);
   const actualTitle = resolveActualTitle(plan, actual);
   const actualSubject = resolveActualSubject(plan, actual);
   const alignedToPlan = resolveAlignedToPlan(plan, actual);
@@ -152,8 +154,11 @@ export function ActualEditorCard({
           <button
             className="mini-button danger"
             onClick={() => {
-              if (window.confirm('この予定を削除しますか？')) {
-                onDeletePlan(plan).catch(() => undefined);
+              if (
+                isScopedRecurringPlan ||
+                window.confirm('この予定を削除しますか？')
+              ) {
+                void onDeletePlan(plan);
               }
             }}
             type="button"
