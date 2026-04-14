@@ -573,7 +573,7 @@ async function buildBatchedAddSuggestions(
 
 function hasExplicitDateExpression(text: string): boolean {
   const normalizedText = normalizeParsingText(text);
-  return /明後日|明日|今日|今週|来週|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(
+  return /明後日|明日|今日|今週|来週|[月火水木金土日]曜(?:日)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|は|だけ|だけは)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(
     normalizedText,
   );
 }

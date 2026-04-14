@@ -612,17 +612,15 @@ function buildClauseDraft(
 
 export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
-  const weekdayLabels = extractWeekdayLabels(normalizedText);
 
   if (/毎朝|毎晩|毎夜|毎日/.test(normalizedText)) {
     return 'daily';
   }
 
   if (
-    /平日|土日|週末|毎週|毎[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は)/.test(
+    /平日|土日|週末|毎週|毎[月火水木金土日]曜(?:日)?|[月火水木金土日]曜(?:日)?は|(?:月|火|水|木|金|土|日){2,}(?:の夜|の朝|の昼|は|だけ|だけは)/.test(
       normalizedText,
-    ) ||
-    weekdayLabels.length >= 2
+    )
   ) {
     return 'weekly';
   }
@@ -713,7 +711,7 @@ export function buildStructuredRecurrenceRules(
   )[0];
 
   const overrideRules = overrideClauses
-    .map((clauseText, index) => {
+    .flatMap((clauseText, index) => {
       const overrideDraft = buildClauseDraft(clauseText, baseDraft, baseRule);
       const overrideShape = inferClauseRuleShape(clauseText, overrideDraft, baseRule);
       const until =
@@ -726,35 +724,56 @@ export function buildStructuredRecurrenceRules(
           clauseText,
         )
       ) {
-        return null;
+        return [];
       }
 
-      return normalizeRecurrenceRules(
-        [
-          {
-            id: `recurrence-override-${index + 1}`,
-            startDate: resolveRecurrenceStartDate(
-              clauseText,
-              selectedDate,
-              baseRule.startDate,
-              until,
-            ),
-            until,
-            dates: overrideShape.dates,
-            weekdays: overrideShape.weekdays,
-            dayType: overrideShape.dayType,
-            startTime: overrideDraft.startTime,
-            endTime: overrideDraft.endTime,
-            title: overrideDraft.title,
-            subject: overrideDraft.subject,
-            type: overrideDraft.type,
-            memo: overrideDraft.memo,
-            kind: overrideShape.kind,
-            isOverride: true,
-          },
-        ],
-        overrideDraft,
-      )[0];
+      const baseOverrideRule = {
+        startDate: resolveRecurrenceStartDate(
+          clauseText,
+          selectedDate,
+          baseRule.startDate,
+          until,
+        ),
+        until,
+        dates: overrideShape.dates,
+        weekdays: overrideShape.weekdays,
+        dayType: overrideShape.dayType,
+        startTime: overrideDraft.startTime,
+        endTime: overrideDraft.endTime,
+        title: overrideDraft.title,
+        subject: overrideDraft.subject,
+        type: overrideDraft.type,
+        memo: overrideDraft.memo,
+        kind: overrideShape.kind,
+        isOverride: true,
+      };
+
+      if (overrideShape.kind === 'weekday' && overrideShape.weekdays.length > 1) {
+        return overrideShape.weekdays.map((weekday, weekdayIndex) =>
+          normalizeRecurrenceRules(
+            [
+              {
+                ...baseOverrideRule,
+                id: `recurrence-override-${index + 1}-${weekdayIndex + 1}`,
+                weekdays: [weekday],
+              },
+            ],
+            overrideDraft,
+          )[0],
+        );
+      }
+
+      return [
+        normalizeRecurrenceRules(
+          [
+            {
+              ...baseOverrideRule,
+              id: `recurrence-override-${index + 1}`,
+            },
+          ],
+          overrideDraft,
+        )[0],
+      ];
     })
     .filter((rule): rule is RecurrenceRule => Boolean(rule));
 
@@ -1172,7 +1191,7 @@ export function matchPlan(text: string, plans: Plan[]): Plan | undefined {
 
 function hasExplicitDateExpression(text: string): boolean {
   const normalizedText = normalizeParsingText(text);
-  return /明後日|明日|今日|今週|来週|[月火水木金土日]曜(?:日)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(normalizedText);
+  return /明後日|明日|今日|今週|来週|[月火水木金土日]曜(?:日)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|は|だけ|だけは)?|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日/.test(normalizedText);
 }
 
 export function isBreakLikeText(text: string): boolean {
@@ -1229,8 +1248,56 @@ function isPersistentPrefixSegment(text: string): boolean {
 
   return (
     isStandaloneRecurrenceLike(normalizedText) ||
-    /^(?:毎日の予定に?|来週のどこかで|今週のどこかで)$/.test(normalizedText)
+    /^(?:毎日の予定に?|来週のどこかで|今週のどこかで|(?:来週|今週|今日|明日|明後日)?から?.*まで)$/.test(normalizedText)
   );
+}
+
+function hasMeaningfulTitleCandidate(text: string): boolean {
+  const candidate = trimRuleTitlePhrase(sanitizeSuggestedTitle(text));
+  return Boolean(candidate) && !GENERIC_RULE_TITLE_PATTERN.test(candidate);
+}
+
+function shouldMergeComplementarySegment(
+  previousSegment: string,
+  nextSegment: string,
+): boolean {
+  const previousText = normalizeParsingText(previousSegment);
+  const nextText = normalizeParsingText(nextSegment);
+  const previousHasScheduleBits =
+    hasExplicitClockTime(previousText) ||
+    parseDurationMinutes(previousText) !== undefined ||
+    detectRepeat(previousText) !== 'none' ||
+    hasExplicitDateExpression(previousText) ||
+    /まで/.test(previousText);
+  const previousHasOverrideCue = hasOverrideCue(previousText);
+  const previousHasIdentity =
+    Boolean(detectSubject(previousText)) || hasMeaningfulTitleCandidate(previousText);
+  const nextHasIdentity =
+    Boolean(detectSubject(nextText)) || hasMeaningfulTitleCandidate(nextText);
+  const nextHasScheduleBits =
+    hasExplicitClockTime(nextText) ||
+    parseDurationMinutes(nextText) !== undefined ||
+    detectRepeat(nextText) !== 'none' ||
+    hasExplicitDateExpression(nextText);
+
+  if (
+    previousHasScheduleBits &&
+    !previousHasOverrideCue &&
+    !previousHasIdentity &&
+    nextHasIdentity
+  ) {
+    return true;
+  }
+
+  if (
+    !hasTaskCue(previousText) &&
+    /まで|から|平日|土日|週末|毎日|毎朝|毎晩|毎夜|毎週|[月火水木金土日]曜(?:日)?|[月火水木金土日]{2,}/.test(previousText) &&
+    nextHasScheduleBits
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function mergeHardSegments(segments: string[]): string[] {
@@ -1304,6 +1371,14 @@ function mergeSoftSegments(segments: string[]): string[] {
       !detectSubject(normalizedSegment)
     ) {
       merged[merged.length - 1] = `${previousSegment} ${normalizedSegment}`.trim();
+      return;
+    }
+
+    if (
+      previousSegment &&
+      shouldMergeComplementarySegment(previousSegment, nextSegment)
+    ) {
+      merged[merged.length - 1] = `${previousSegment} ${nextSegment}`.trim();
       return;
     }
 
