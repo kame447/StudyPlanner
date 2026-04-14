@@ -198,7 +198,7 @@ function removeSchedulingTerms(text: string): string {
     )
     .replace(/\d+回/g, '')
     .replace(/全部|全て|連続で/g, '')
-    .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定|進める/g, '')
+    .replace(/追加|入れて|登録|変更|修正|ずらして|にして|変えて|変える|予定|進める/g, '')
     .replace(/\b(?:から|まで|だけ|は|を|に|で|が|へ|の|と|間|半)\b/g, ' ');
 }
 
@@ -561,7 +561,37 @@ export function buildStructuredRecurrenceRules(
     })
     .filter((rule): rule is RecurrenceRule => Boolean(rule));
 
-  return normalizeRecurrenceRules([baseRule, ...overrideRules], draft);
+  return normalizeRecurrenceRules(
+    refineRulesForOverrides([baseRule, ...overrideRules]),
+    draft,
+  );
+}
+
+function refineRulesForOverrides(rules: RecurrenceRule[]): RecurrenceRule[] {
+  const baseRule = rules.find((rule) => !rule.isOverride);
+
+  if (!baseRule) {
+    return rules;
+  }
+
+  if (
+    baseRule.kind === 'daily' &&
+    rules.some(
+      (rule) =>
+        rule.isOverride &&
+        ((rule.kind === 'day-type' && rule.dayType === 'weekend') ||
+          (rule.kind === 'weekday' &&
+            rule.weekdays.includes('sat') &&
+            rule.weekdays.includes('sun'))),
+    )
+  ) {
+    baseRule.kind = 'day-type';
+    baseRule.dayType = 'weekday';
+    baseRule.weekdays = [];
+    baseRule.dates = [];
+  }
+
+  return rules;
 }
 
 function resolveRecurrenceStartDate(
@@ -1004,6 +1034,15 @@ function mergeHardSegments(segments: string[]): string[] {
       return;
     }
 
+    if (
+      previousSegment &&
+      /\d+回(?:入れて|やって|予定に入れて)/.test(normalizeParsingText(previousSegment)) &&
+      /^連続で$/.test(normalizeParsingText(segment))
+    ) {
+      merged[merged.length - 1] = `${previousSegment} ${segment}`.trim();
+      return;
+    }
+
     merged.push(segment);
   });
 
@@ -1083,6 +1122,15 @@ export function splitAddTaskTexts(text: string): string[] {
   );
 
   const segments = hardSegments.flatMap((segment) => {
+    if (
+      /\d+回(?:入れて|やって|予定に入れて)/.test(normalizeParsingText(segment)) &&
+      /(?:\d+回(?:目)?は|もう1回は|もう一回は|全部|連続で|[月火水木金土日]{2,})/.test(
+        normalizeParsingText(segment),
+      )
+    ) {
+      return [segment];
+    }
+
     const softSegments = mergeSoftSegments(
       segment
       .split(/\s*(?:、|,|，|そのあと|その後|次に|あと|ただし|その代わり|代わりに|けど|けれど)\s*/g)

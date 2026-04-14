@@ -29,6 +29,9 @@ export function NaturalLanguageCsvTester({
   const [status, setStatus] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<NaturalLanguageCsvCaseResult[]>([]);
+  const [ignoreProviderMismatch, setIgnoreProviderMismatch] = useState(
+    currentProvider === 'rules',
+  );
 
   const summary = useMemo(() => {
     return results.reduce(
@@ -68,7 +71,9 @@ export function NaturalLanguageCsvTester({
       const nextResults: NaturalLanguageCsvCaseResult[] = [];
 
       for (const testCase of testCases) {
-        const runnable = canRunNaturalLanguageCsvCase(testCase, currentProvider);
+        const runnable = canRunNaturalLanguageCsvCase(testCase, currentProvider, {
+          ignoreProviderMismatch,
+        });
 
         if (!runnable.runnable) {
           nextResults.push({
@@ -164,6 +169,17 @@ export function NaturalLanguageCsvTester({
             </button>
           </div>
 
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={ignoreProviderMismatch}
+              onChange={(event) => setIgnoreProviderMismatch(event.target.checked)}
+            />
+            <span className="detail-note">
+              CSV の provider 列を無視して、現在の provider で実行する
+            </span>
+          </label>
+
           {error ? <p className="inline-error">{error}</p> : null}
           {status ? <p className="inline-note">{status}</p> : null}
 
@@ -185,7 +201,12 @@ export function NaturalLanguageCsvTester({
                   <div className="label-row">
                     <strong>Case {result.testCase.caseId}</strong>
                     <span className="confidence-badge">
-                      {result.status} / {result.testCase.provider || currentProvider}
+                      {result.status} /{' '}
+                      {ignoreProviderMismatch &&
+                      result.testCase.provider &&
+                      result.testCase.provider !== currentProvider
+                        ? `${result.testCase.provider} -> ${currentProvider}`
+                        : result.testCase.provider || currentProvider}
                     </span>
                   </div>
                   <p className="detail-note">{result.testCase.input}</p>

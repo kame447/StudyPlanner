@@ -2,6 +2,7 @@ import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { getAiConfig, getAiProviderLabel, type AiConfig } from '../lib/aiConfig';
 import {
   getFirstRecurrenceOccurrenceDate,
+  selectApplicableRecurrenceRule,
   summarizeLegacyRepeatFromRecurrenceRules,
   summarizeLegacyRepeatUntilFromRecurrenceRules,
 } from '../lib/planRecurrence';
@@ -746,6 +747,7 @@ function stripTitleNoise(value: string): string {
     .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
     .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*/g, '')
     .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*$/g, '')
+    .replace(/\s*(?:に変えて|に変える|変えて|変える)\s*$/g, '')
     .replace(/\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*$/g, '')
     .replace(/\s*(?:もし[^、。]*なら)\s*$/g, '')
     .replace(/^\s*(?:\d+日|\d+セット)\s*$/g, '')
@@ -1527,6 +1529,25 @@ function isSubordinateSuggestion(
   });
 }
 
+function isUnsupportedAllocationSuggestion(
+  suggestion: NaturalLanguageSuggestion,
+): boolean {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+  const allocationMatchCount = Array.from(
+    normalizedText.matchAll(
+      /(英語長文|英単語|英文法|英語|数学|物理|化学|生物|情報|現代文|古文|漢文|国語|過去問|復習|自習|レポート|課題)\s*を\s*\d+日/g,
+    ),
+  ).length;
+
+  if (allocationMatchCount < 2 || !/割り振って/.test(normalizedText)) {
+    return false;
+  }
+
+  return !suggestion.assumptions.some((assumption) =>
+    /科目ごとの日数指定から日別予定へ展開しました/.test(assumption),
+  );
+}
+
 function postProcessAddSuggestions(
   suggestions: NaturalLanguageSuggestion[],
   selectedDate: string,
@@ -1801,13 +1822,28 @@ function postProcessAddSuggestions(
         [suggestion],
     )
     .map((suggestion) => synchronizeStructuredRecurrence(suggestion, selectedDate))
-    .filter((suggestion, index, array) => !isSubordinateSuggestion(suggestion, index, array));
+    .filter((suggestion, index, array) => !isSubordinateSuggestion(suggestion, index, array))
+    .filter((suggestion) => !isUnsupportedAllocationSuggestion(suggestion));
+}
+
+function shouldSkipRecurrenceSynchronization(
+  suggestion: NaturalLanguageSuggestion,
+): boolean {
+  return suggestion.assumptions.some((assumption) =>
+    /個別の予定に展開しました|学習内容ごとに展開しました|日別予定へ展開しました/.test(
+      assumption,
+    ),
+  );
 }
 
 function synchronizeStructuredRecurrence(
   suggestion: NaturalLanguageSuggestion,
   selectedDate: string,
 ): NaturalLanguageSuggestion {
+  if (shouldSkipRecurrenceSynchronization(suggestion)) {
+    return suggestion;
+  }
+
   const recurrenceRules = buildStructuredRecurrenceRules(
     suggestion.rawText,
     suggestion.parsedPlan,
@@ -1823,12 +1859,20 @@ function synchronizeStructuredRecurrence(
     selectedDate,
     suggestion.parsedPlan.date,
   );
+  const selectedRule =
+    selectApplicableRecurrenceRule(recurrenceRules, representativeDate) ??
+    recurrenceRules[0];
 
   return {
     ...suggestion,
     parsedPlan: {
       ...suggestion.parsedPlan,
       date: representativeDate,
+      startTime: selectedRule?.startTime ?? suggestion.parsedPlan.startTime,
+      endTime: selectedRule?.endTime ?? suggestion.parsedPlan.endTime,
+      title: selectedRule?.title ?? suggestion.parsedPlan.title,
+      subject: selectedRule?.subject ?? suggestion.parsedPlan.subject,
+      type: selectedRule?.type ?? suggestion.parsedPlan.type,
       repeat:
         summarizeLegacyRepeatFromRecurrenceRules(recurrenceRules) ??
         suggestion.parsedPlan.repeat,
@@ -1882,6 +1926,7 @@ function trimContentPhrase(value: string): string {
     .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
     .replace(/^(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+/g, '')
     .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+$/g, '')
+    .replace(/(?:に変えて|に変える|変えて|変える)$/g, '')
     .replace(/^(?:に|で|を|は|が|の|へ|と)+/g, '')
     .replace(/(?:に|で|を|は|が|の|へ|と)+$/g, '')
     .replace(/^(?:ちょっと|少し|ちょい)+/g, '')

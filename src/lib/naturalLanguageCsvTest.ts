@@ -581,8 +581,15 @@ export function compareNaturalLanguageCaseResult(
 export function canRunNaturalLanguageCsvCase(
   testCase: NaturalLanguageCsvCase,
   provider: AiProvider,
+  options?: {
+    ignoreProviderMismatch?: boolean;
+  },
 ): { runnable: boolean; reason?: string } {
-  if (testCase.provider && testCase.provider !== provider) {
+  if (
+    !options?.ignoreProviderMismatch &&
+    testCase.provider &&
+    testCase.provider !== provider
+  ) {
     return {
       runnable: false,
       reason: `CSVの provider=${testCase.provider} と現在の provider=${provider} が一致しません。`,
