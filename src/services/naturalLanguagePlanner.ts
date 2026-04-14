@@ -17,6 +17,8 @@ import type {
 import type { JsonSchemaResponseFormat } from './ai/openAiCompatibleClient';
 import { createOpenAiCompatibleClient } from './ai/openAiCompatibleClient';
 import {
+  CLOCK_RANGE_REGEX,
+  CROSS_DAY_CLOCK_RANGE_REGEX,
   buildStructuredRecurrenceRules,
   defaultDraft,
   detectRepeat,
@@ -1251,7 +1253,11 @@ function normalizeRecurringOverrides(
         nextSuggestion.rawText,
         baseSuggestion.parsedPlan.startTime,
       );
+      const normalizedOverrideText = normalizeParsingText(nextSuggestion.rawText);
       const hasExplicitStart = hasExplicitClockTime(nextSuggestion.rawText);
+      const hasExplicitRange =
+        CROSS_DAY_CLOCK_RANGE_REGEX.test(normalizedOverrideText) ||
+        CLOCK_RANGE_REGEX.test(normalizedOverrideText);
       const overrideDuration = parseDurationMinutes(nextSuggestion.rawText);
       const baseDuration =
         minutesFromTime(baseSuggestion.parsedPlan.endTime) -
@@ -1263,11 +1269,12 @@ function normalizeRecurringOverrides(
         : baseSuggestion.parsedPlan.startTime;
 
       nextSuggestion.parsedPlan.startTime = nextStartTime;
-      nextSuggestion.parsedPlan.endTime =
-        parsedTimes.endTime ||
-        timeFromMinutes(
-          minutesFromTime(nextStartTime) + (overrideDuration ?? baseDuration),
-        );
+      const nextEndTime = hasExplicitRange && parsedTimes.endTime
+        ? parsedTimes.endTime
+        : timeFromMinutes(
+            minutesFromTime(nextStartTime) + (overrideDuration ?? baseDuration),
+          );
+      nextSuggestion.parsedPlan.endTime = nextEndTime;
     }
 
     const forcedRepeat = detectRepeat(nextSuggestion.rawText);

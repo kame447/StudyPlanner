@@ -33,14 +33,14 @@ const CLOCK_TIME_PATTERN =
   '(\\d{1,2})(?:(?::(\\d{2}))|時(?!間)(半)?)';
 const CLOCK_TIME_REGEX = new RegExp(CLOCK_TIME_PATTERN);
 const CLOCK_TIME_GLOBAL_REGEX = new RegExp(CLOCK_TIME_PATTERN, 'g');
-const CLOCK_RANGE_REGEX = new RegExp(
+export const CLOCK_RANGE_REGEX = new RegExp(
   `${CLOCK_TIME_PATTERN}\\s*(?:-|〜|~|から)\\s*${CLOCK_TIME_PATTERN}`,
 );
 const CLOCK_RANGE_GLOBAL_REGEX = new RegExp(
   `${CLOCK_TIME_PATTERN}\\s*(?:-|〜|~|から)\\s*${CLOCK_TIME_PATTERN}`,
   'g',
 );
-const CROSS_DAY_CLOCK_RANGE_REGEX = new RegExp(
+export const CROSS_DAY_CLOCK_RANGE_REGEX = new RegExp(
   `${CLOCK_TIME_PATTERN}\\s*から\\s*(?:翌日|[月火水木金土日]曜(?:日)?の?)?\\s*${CLOCK_TIME_PATTERN}\\s*まで`,
 );
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -386,26 +386,188 @@ function resolveClauseTimeRange(
   };
 }
 
+const GENERIC_RULE_TITLE_PATTERN =
+  /^(?:勉強|学習|予定|開始|変更|修正|追加|登録|固定|にして|に変えて|変えて|変える|から|まで|だけ|のみ|除く|けど|けれど|ただし|その代わり|月火木金|月水金|火木土|のから|はから|とのから)$/;
+
+function trimRuleTitlePhrase(value: string): string {
+  let current = normalizeParsingText(value)
+    .replace(/[「」"'、。,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  let previous = '';
+
+  while (current && current !== previous) {
+    previous = current;
+    current = current
+      .replace(/^(今日|明日|明後日)(?:の)?/g, '')
+      .replace(/^(今週|来週|再来週)(?:の|は)?/g, '')
+      .replace(/^\d{1,2}月中(?:は)?/g, '')
+      .replace(/^(?:\d{1,2}月\d{1,2}日(?:まで|から|より)?)(?:は)?/g, '')
+      .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
+      .replace(
+        /^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|月水金は|火木土は|月火木金(?:の\d+回)?(?:は)?|平日は|土日は|週末は|他の日は|毎日|毎朝|毎晩|毎夜|毎週|毎[月火水木金土日]曜(?:日)?)+/g,
+        '',
+      )
+      .replace(
+        /^(?:けど|けれど|ただし|その代わり|代わりに|もし[^、。]*なら|模試の前日なら|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g,
+        '',
+      )
+      .replace(/\s*\d+\s*回\s*/g, ' ')
+      .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
+      .replace(/^(?:から|まで|間|半|だけ|ずつ|して|のみ|除く|にして|に変えて|変えて|変える)+/g, '')
+      .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く|にして|に変えて|変えて|変える)+$/g, '')
+      .replace(/^(?:に|で|を|は|が|の|へ|と)+/g, '')
+      .replace(/(?:に|で|を|は|が|の|へ|と)+$/g, '')
+      .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定|追加|入れて|入れる|登録|固定して)$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  return current;
+}
+
+function stripLeadingSubjectFromRuleTitle(title: string, subject: string): string {
+  const normalizedTitle = trimRuleTitlePhrase(title);
+  const normalizedSubject = subject.trim();
+
+  if (!normalizedTitle || !normalizedSubject) {
+    return normalizedTitle;
+  }
+
+  const strippedTitle = normalizedTitle.replace(
+    new RegExp(
+      `^${normalizedSubject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:の|を|で|は|:|：|/|／|\\s+)`,
+      'i',
+    ),
+    '',
+  );
+
+  return trimRuleTitlePhrase(strippedTitle);
+}
+
+function buildPreferredRuleStudyTitle(
+  rawText: string,
+  subject: string,
+  currentTitle: string,
+): string {
+  const normalizedText = normalizeParsingText(rawText);
+  const normalizedTitle = trimRuleTitlePhrase(currentTitle);
+  const explicitPatterns: Array<[RegExp, string]> = [
+    [/(情報の課題)/, '情報の課題'],
+    [/(情報のレポート)/, '情報のレポート'],
+    [/(英語長文)/, '英語長文'],
+    [/(TOEICの勉強|TOEIC勉強|TOEIC)/i, 'TOEICの勉強'],
+    [/(共通テスト(?:の)?過去問(?:演習)?)/, '共通テスト過去問演習'],
+    [/(過去問演習)/, '過去問演習'],
+    [/(良問の風)/, '良問の風'],
+    [/(青チャート)/, '青チャート'],
+    [/(黄色チャート)/, '黄色チャート'],
+    [/(システム英単語)/, 'システム英単語'],
+    [/(ターゲット1900)/, 'ターゲット1900'],
+    [/(英単語の復習)/, '英単語の復習'],
+    [/(週の振り返り|その週の振り返り)/, '週の振り返り'],
+    [/(自習時間)/, '自習時間'],
+    [/(勉強予定)/, '勉強予定'],
+  ];
+
+  for (const [pattern, value] of explicitPatterns) {
+    if (pattern.test(normalizedText)) {
+      return value;
+    }
+  }
+
+  if (/英単語/.test(normalizedText) && /復習/.test(normalizedText)) {
+    return '英単語の復習';
+  }
+
+  if (
+    normalizedTitle &&
+    !GENERIC_RULE_TITLE_PATTERN.test(normalizedTitle) &&
+    normalizedTitle !== subject.trim()
+  ) {
+    return normalizedTitle;
+  }
+
+  return subject.trim() || normalizedTitle;
+}
+
+function normalizeRuleStudyLabels(params: {
+  rawText: string;
+  subject: string;
+  title: string;
+  type: PlanType;
+  fallbackTitle?: string;
+}): { subject: string; title: string } {
+  const normalizedSubject =
+    detectSubject(
+      [params.subject, params.title, params.rawText].filter(Boolean).join(' '),
+    ) || params.subject.trim();
+  let normalizedTitle = trimRuleTitlePhrase(params.title);
+
+  if (params.type === 'study') {
+    const strippedTitle = stripLeadingSubjectFromRuleTitle(
+      normalizedTitle,
+      normalizedSubject,
+    );
+
+    if (strippedTitle) {
+      normalizedTitle = strippedTitle;
+    }
+
+    if (
+      !normalizedTitle ||
+      normalizedTitle === normalizedSubject ||
+      GENERIC_RULE_TITLE_PATTERN.test(normalizedTitle)
+    ) {
+      const rawCandidate = stripLeadingSubjectFromRuleTitle(
+        trimRuleTitlePhrase(sanitizeSuggestedTitle(params.rawText)),
+        normalizedSubject,
+      );
+
+      if (
+        rawCandidate &&
+        rawCandidate !== normalizedSubject &&
+        !GENERIC_RULE_TITLE_PATTERN.test(rawCandidate)
+      ) {
+        normalizedTitle = rawCandidate;
+      }
+    }
+  }
+
+  if (!normalizedTitle || GENERIC_RULE_TITLE_PATTERN.test(normalizedTitle)) {
+    normalizedTitle =
+      params.fallbackTitle?.trim() ||
+      buildDefaultPlanTitle(params.type, normalizedSubject);
+  }
+
+  return {
+    subject: normalizedSubject,
+    title: normalizedTitle,
+  };
+}
+
 function buildClauseDraft(
   text: string,
   draft: PlanDraft,
   fallbackRule?: RecurrenceRule,
 ): PlanDraft {
-  const detectedSubject = detectSubject(text) || draft.subject;
-  const detectedTitle = sanitizeSuggestedTitle(text).trim();
-  const genericTitlePattern = /^(?:勉強|学習|予定|開始|変更|修正)$/;
-  const normalizedTitle =
-    detectedTitle && detectedTitle !== detectedSubject && !genericTitlePattern.test(detectedTitle)
-      ? detectedTitle
-      : detectedSubject && detectedTitle === detectedSubject
-        ? detectedSubject
-        : draft.title || buildDefaultPlanTitle(draft.type, detectedSubject);
+  const normalizedLabels = normalizeRuleStudyLabels({
+    rawText: text,
+    subject: detectSubject(text) || draft.subject,
+    title: sanitizeSuggestedTitle(text),
+    type: draft.type,
+    fallbackTitle: draft.title,
+  });
   const timeValues = resolveClauseTimeRange(text, draft);
 
   return {
     ...draft,
-    title: normalizedTitle,
-    subject: detectedSubject,
+    title: buildPreferredRuleStudyTitle(
+      text,
+      normalizedLabels.subject,
+      normalizedLabels.title,
+    ),
+    subject: normalizedLabels.subject,
     startTime: timeValues.startTime,
     endTime: timeValues.endTime,
     repeatUntil: detectRepeatUntilText(text, draft.date) ?? draft.repeatUntil,
@@ -591,7 +753,24 @@ function refineRulesForOverrides(rules: RecurrenceRule[]): RecurrenceRule[] {
     baseRule.dates = [];
   }
 
-  return rules;
+  if (baseRule.kind === 'weekday') {
+    const overriddenWeekdays = rules
+      .filter((rule) => rule.isOverride && rule.kind === 'weekday')
+      .flatMap((rule) => rule.weekdays);
+
+    if (overriddenWeekdays.length > 0) {
+      baseRule.weekdays = baseRule.weekdays.filter(
+        (weekday) => !overriddenWeekdays.includes(weekday),
+      );
+    }
+  }
+
+  return rules.filter(
+    (rule) =>
+      rule !== baseRule ||
+      rule.kind !== 'weekday' ||
+      rule.weekdays.length > 0,
+  );
 }
 
 function resolveRecurrenceStartDate(
@@ -1207,7 +1386,18 @@ export function generateRuleBasedSuggestion({
   const detectedSubject = detectSubject(text);
   const detectedTimes = parseTimes(text, baseDraft.startTime);
   const detectedRepeat = detectRepeat(text);
-  const cleanedTitle = sanitizeSuggestedTitle(text);
+  const normalizedLabels = normalizeRuleStudyLabels({
+    rawText: text,
+    subject: detectedSubject || baseDraft.subject,
+    title: sanitizeSuggestedTitle(text),
+    type: detectedType,
+    fallbackTitle: baseDraft.title,
+  });
+  const cleanedTitle = buildPreferredRuleStudyTitle(
+    text,
+    normalizedLabels.subject,
+    normalizedLabels.title,
+  );
   const memoHint = extractMemoHint(text);
 
   const nextDraft: PlanDraft = {
@@ -1216,11 +1406,11 @@ export function generateRuleBasedSuggestion({
     startTime: detectedTimes.startTime ?? baseDraft.startTime,
     endTime: detectedTimes.endTime ?? baseDraft.endTime,
     type: detectedType,
-    subject: detectedSubject || baseDraft.subject,
+    subject: normalizedLabels.subject || baseDraft.subject,
     title:
       cleanedTitle ||
       baseDraft.title ||
-      buildDefaultPlanTitle(detectedType, detectedSubject || baseDraft.subject),
+      buildDefaultPlanTitle(detectedType, normalizedLabels.subject || baseDraft.subject),
     memo: memoHint || baseDraft.memo,
     repeat: detectedRepeat === 'none' ? baseDraft.repeat : detectedRepeat,
     repeatUntil: detectedRepeat === 'none' ? baseDraft.repeatUntil : null,
