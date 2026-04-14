@@ -1,4 +1,4 @@
-import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
+import { addDays, minutesFromTime, startOfWeek, timeFromMinutes } from '../lib/date';
 import { getAiConfig, getAiProviderLabel, type AiConfig } from '../lib/aiConfig';
 import {
   doesRecurrenceRuleApplyToDate,
@@ -13,6 +13,7 @@ import type {
   Plan,
   PlanDraft,
   PlanType,
+  RecurrenceRule,
   SuggestionField,
 } from '../types/domain';
 import type { JsonSchemaResponseFormat } from './ai/openAiCompatibleClient';
@@ -69,6 +70,10 @@ interface TimeResolutionResult {
 
 const BASE_OVERRIDE_MERGED_ASSUMPTION =
   '例外条件をbase ruleへ統合しました。';
+const SPLIT_OVERRIDE_ASSUMPTION =
+  '例外条件を曜日ごとの提案へ分解しました。';
+const EXPANDED_VARIANT_ASSUMPTION_PATTERN =
+  /学習内容ごとに展開しました|個別の予定に展開しました|日別予定へ展開しました|例外条件を曜日ごとの提案へ分解しました/;
 
 export interface PlannerAiRuntimeInfo {
   providerLabel: string;
@@ -764,7 +769,7 @@ function stripTitleNoise(value: string): string {
     .replace(/\s*(?:に変えて|に変える|変えて|変える)\s*$/g, '')
     .replace(/\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*$/g, '')
     .replace(/\s*(?:もし[^、。]*なら)\s*$/g, '')
-    .replace(/^\s*(?:\d+日|\d+回|\d+セット|時|時間|合計|テスト前日)\s*$/g, '')
+    .replace(/^\s*(?:\d+日|\d+回|\d+セット|時|時間|合計|テスト前日|やりたい)\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1035,7 +1040,7 @@ function hasMeaningfulStudyTitle(title: string): boolean {
 
   return (
     Boolean(normalizedTitle) &&
-    !/^(?:勉強|学習|予定|バイトがある|他の日|これを\d+セット|全部|全て|開始|けど|けれど|ただし|もし.*なら|模試の前日なら|時|時間|合計|テスト前日|\d+日|\d+回|\d+セット|[月火水木金土日]{2,})$/.test(
+    !/^(?:勉強|学習|予定|バイトがある|他の日|これを\d+セット|全部|全て|開始|けど|けれど|ただし|もし.*なら|模試の前日なら|時|時間|合計|テスト前日|やりたい|\d+日|\d+回|\d+セット|[月火水木金土日]{2,})$/.test(
       normalizedTitle,
     )
   );
@@ -1083,6 +1088,9 @@ function isRedundantWeakerSuggestion(
   const rawKey = normalizeSuggestionRawText(suggestion.rawText);
   const titleKey = normalizeSuggestionTitleKey(suggestion.parsedPlan.title);
   const subjectKey = suggestion.parsedPlan.subject.trim();
+  const suggestionIsExpandedVariant = suggestion.assumptions.some((assumption) =>
+    EXPANDED_VARIANT_ASSUMPTION_PATTERN.test(assumption),
+  );
   const suggestionStrength =
     Number(hasConcreteSchedule(suggestion)) * 3 +
     Number(hasStructuredRecurrence(suggestion)) * 4 +
@@ -1101,13 +1109,24 @@ function isRedundantWeakerSuggestion(
 
     const candidateTitleKey = normalizeSuggestionTitleKey(candidate.parsedPlan.title);
     const candidateSubjectKey = candidate.parsedPlan.subject.trim();
+    const candidateIsExpandedVariant = candidate.assumptions.some((assumption) =>
+      EXPANDED_VARIANT_ASSUMPTION_PATTERN.test(assumption),
+    );
+    const sameSchedule =
+      candidate.parsedPlan.startTime === suggestion.parsedPlan.startTime &&
+      candidate.parsedPlan.endTime === suggestion.parsedPlan.endTime;
     const sameContent =
       (titleKey &&
         candidateTitleKey &&
         (titleKey === candidateTitleKey ||
           titleKey.includes(candidateTitleKey) ||
           candidateTitleKey.includes(titleKey))) ||
-      (subjectKey && candidateSubjectKey && subjectKey === candidateSubjectKey);
+      (!suggestionIsExpandedVariant &&
+        !candidateIsExpandedVariant &&
+        subjectKey &&
+        candidateSubjectKey &&
+        subjectKey === candidateSubjectKey &&
+        sameSchedule);
 
     if (!sameContent) {
       return false;
@@ -1216,7 +1235,7 @@ function expandSpecificWeekdayOccurrences(
 ): NaturalLanguageSuggestion[] | null {
   const normalizedText = normalizeParsingText(suggestion.rawText);
   const weekdayLabels = extractWeekdayLabelsFromText(normalizedText);
-  const shouldExpandToSpecificDates = /(どこかで|全部|入れて|割り振って|にして|\d+回)/.test(
+  const shouldExpandToSpecificDates = /(どこかで|割り振って|\d+回)/.test(
     normalizedText,
   );
 
@@ -1489,6 +1508,18 @@ function normalizeRecurringOverrides(
 
     if (!nextSuggestion.parsedPlan.repeatUntil && baseSuggestion.parsedPlan.repeatUntil) {
       nextSuggestion.parsedPlan.repeatUntil = baseSuggestion.parsedPlan.repeatUntil;
+    }
+
+    const overrideWeekdayLabels = extractWeekdayLabelsFromText(nextSuggestion.rawText);
+
+    if (overrideWeekdayLabels.length > 0) {
+      return overrideWeekdayLabels.map((weekdayLabel) =>
+        buildSingleWeekdayOverrideSuggestion(
+          baseSuggestion,
+          nextSuggestion,
+          weekdayLabel,
+        ),
+      );
     }
 
     return [finalizeSuggestionStatus(nextSuggestion)];
@@ -1844,11 +1875,49 @@ function postProcessAddSuggestions(
       nextSuggestion.rawText,
       nextSuggestion.parsedPlan.title,
     );
+    if (!nextSuggestion.parsedPlan.subject && nextSuggestion.parsedPlan.title) {
+      nextSuggestion.parsedPlan.subject = normalizeSubjectFamily(
+        detectSubject(nextSuggestion.parsedPlan.title),
+        nextSuggestion.parsedPlan.title,
+        nextSuggestion.parsedPlan.title,
+      );
+    }
     nextSuggestion.parsedPlan.title = buildPreferredStudyTitle(
       nextSuggestion.rawText,
       nextSuggestion.parsedPlan.subject,
       nextSuggestion.parsedPlan.title,
     );
+
+    if (
+      /^時間は?\s*\d{1,2}(?::\d{2})?(?:で|です)?$/.test(
+        normalizeParsingText(nextSuggestion.rawText),
+      ) &&
+      previousSuggestion?.parsedPlan.startTime &&
+      previousSuggestion?.parsedPlan.endTime
+    ) {
+      const parsedTimes = parseTimes(
+        nextSuggestion.rawText,
+        previousSuggestion.parsedPlan.startTime,
+      );
+      const previousDuration =
+        minutesFromTime(previousSuggestion.parsedPlan.endTime) -
+        minutesFromTime(previousSuggestion.parsedPlan.startTime);
+
+      if (parsedTimes.startTime) {
+        previousSuggestion.rawText = `${previousSuggestion.rawText.trim()} ${nextSuggestion.rawText.trim()}`.trim();
+        previousSuggestion.parsedPlan.startTime = parsedTimes.startTime;
+        previousSuggestion.parsedPlan.endTime = timeFromMinutes(
+          minutesFromTime(parsedTimes.startTime) + previousDuration,
+        );
+        previousSuggestion.assumptions = Array.from(
+          new Set([
+            ...previousSuggestion.assumptions,
+            '補足の時刻指定を前の予定に適用しました。',
+          ]),
+        );
+        return;
+      }
+    }
 
     if (
       nextSuggestion.parsedPlan.repeat === 'none' &&
@@ -2074,7 +2143,7 @@ function shouldSkipRecurrenceSynchronization(
   suggestion: NaturalLanguageSuggestion,
 ): boolean {
   return suggestion.assumptions.some((assumption) =>
-    /個別の予定に展開しました|学習内容ごとに展開しました|日別予定へ展開しました/.test(
+    /個別の予定に展開しました|学習内容ごとに展開しました|日別予定へ展開しました|例外条件を曜日ごとの提案へ分解しました/.test(
       assumption,
     ),
   );
@@ -3003,3 +3072,87 @@ export async function generateNaturalLanguageSuggestion(
   const suggestions = await generateNaturalLanguageSuggestions(input);
   return suggestions[0];
 }
+  const weekdayIndexMap: Record<string, number> = {
+    月: 0,
+    火: 1,
+    水: 2,
+    木: 3,
+    金: 4,
+    土: 5,
+    日: 6,
+  };
+
+  const buildSingleWeekdayOverrideSuggestion = (
+    baseSuggestion: NaturalLanguageSuggestion,
+    suggestion: NaturalLanguageSuggestion,
+    weekdayLabel: string,
+  ): NaturalLanguageSuggestion => {
+    const baseDuration =
+      minutesFromTime(baseSuggestion.parsedPlan.endTime) -
+      minutesFromTime(baseSuggestion.parsedPlan.startTime);
+    const overrideDuration =
+      parseDurationMinutes(suggestion.rawText) ?? baseDuration;
+    const startTime =
+      suggestion.parsedPlan.startTime || baseSuggestion.parsedPlan.startTime;
+    const endTime =
+      suggestion.parsedPlan.endTime &&
+      suggestion.parsedPlan.endTime !== baseSuggestion.parsedPlan.endTime
+        ? suggestion.parsedPlan.endTime
+        : timeFromMinutes(minutesFromTime(startTime) + overrideDuration);
+    const weekdayKeyMap: Record<string, RecurrenceRule['weekdays'][number]> = {
+      月: 'mon',
+      火: 'tue',
+      水: 'wed',
+      木: 'thu',
+      金: 'fri',
+      土: 'sat',
+      日: 'sun',
+    };
+    const weekdayKey = weekdayKeyMap[weekdayLabel];
+    const anchorDate = baseSuggestion.parsedPlan.date;
+    const weekStart = startOfWeek(anchorDate);
+    const weekdayDate =
+      resolveFirstWeeklyOccurrenceDate(`${weekdayLabel}曜`, anchorDate) ??
+      addDays(weekStart, weekdayIndexMap[weekdayLabel]);
+
+    return finalizeSuggestionStatus({
+      ...suggestion,
+      rawText: `${weekdayLabel}曜だけ ${startTime}から ${suggestion.parsedPlan.title || baseSuggestion.parsedPlan.title}`.trim(),
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+        title: suggestion.parsedPlan.title || baseSuggestion.parsedPlan.title,
+        subject: suggestion.parsedPlan.subject || baseSuggestion.parsedPlan.subject,
+        type: suggestion.parsedPlan.type || baseSuggestion.parsedPlan.type,
+        date: weekdayDate,
+        startTime,
+        endTime,
+        repeat: 'weekly',
+        repeatUntil:
+          suggestion.parsedPlan.repeatUntil || baseSuggestion.parsedPlan.repeatUntil,
+        excludedDates: [],
+        recurrenceRules: [
+          {
+            id: `manual-override-${weekdayKey}`,
+            kind: 'weekday',
+            startDate: weekdayDate,
+            until:
+              suggestion.parsedPlan.repeatUntil ||
+              baseSuggestion.parsedPlan.repeatUntil,
+            dates: [],
+            weekdays: [weekdayKey],
+            dayType: null,
+            startTime,
+            endTime,
+            title: suggestion.parsedPlan.title || baseSuggestion.parsedPlan.title,
+            subject: suggestion.parsedPlan.subject || baseSuggestion.parsedPlan.subject,
+            type: suggestion.parsedPlan.type || baseSuggestion.parsedPlan.type,
+            memo: suggestion.parsedPlan.memo,
+            isOverride: false,
+          },
+        ],
+      },
+      assumptions: Array.from(
+        new Set([...suggestion.assumptions, SPLIT_OVERRIDE_ASSUMPTION]),
+      ),
+    });
+  };

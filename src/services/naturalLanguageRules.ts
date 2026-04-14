@@ -106,6 +106,7 @@ function normalizeCatalogText(text: string): string {
     .replace(/[０-９]/g, (char) =>
       String.fromCharCode(char.charCodeAt(0) - 0xfee0),
     )
+    .toLowerCase()
     .replace(/\s+/g, '')
     .replace(/[Ⅰ]/g, 'I')
     .replace(/[Ⅱ]/g, 'II')
@@ -134,11 +135,32 @@ export function defaultDraft(userId: string, date: string): PlanDraft {
 }
 
 export function detectType(text: string): PlanType {
+  const normalizedText = normalizeParsingText(text);
+  const looksLikeStudy =
+    /(toeic|過去問|演習|復習|自習|自習時間|振り返り|良問の風|チャート|英単語|単語|長文|文法|レポート|課題|勉強|学習)/i.test(
+      normalizedText,
+    );
+  const explicitNonStudy =
+    /模試|学校行事|行事|塾|締切|提出|面談|面接|体育祭|文化祭/.test(
+      normalizedText,
+    );
+
+  if (looksLikeStudy && !explicitNonStudy) {
+    return 'study';
+  }
+
   const matchedRule = getNaturalLanguageCatalog().planTypes.find((rule) =>
     rule.keywords.some((keyword) => includesKeyword(text, keyword)),
   );
 
   if (matchedRule) {
+    if (
+      matchedRule.type === 'mock-exam' &&
+      looksLikeStudy &&
+      !/模試/.test(normalizedText)
+    ) {
+      return 'study';
+    }
     return matchedRule.type as PlanType;
   }
 
@@ -892,20 +914,21 @@ function resolveNearestMatchingWeekday(
 ): string {
   const targetIndices = weekdayLabels
     .map((label) => WEEKDAY_INDEX[label])
-    .filter((value, index, array) => array.indexOf(value) === index)
-    .sort((left, right) => left - right);
+    .filter((value, index, array) => array.indexOf(value) === index);
   const selected = new Date(`${selectedDate}T00:00:00`);
   const selectedIndex = selected.getDay() === 0 ? 6 : selected.getDay() - 1;
+  const sortedByDistance = targetIndices.sort((left, right) => {
+    const leftDiff = (left - selectedIndex + 7) % 7;
+    const rightDiff = (right - selectedIndex + 7) % 7;
+    return leftDiff - rightDiff;
+  });
 
-  for (const targetIndex of targetIndices) {
+  for (const targetIndex of sortedByDistance) {
     const diff = (targetIndex - selectedIndex + 7) % 7;
-
-    if (diff >= 0) {
-      return addDays(selectedDate, diff);
-    }
+    return addDays(selectedDate, diff);
   }
 
-  return addDays(selectedDate, (targetIndices[0] - selectedIndex + 7) % 7);
+  return addDays(selectedDate, (sortedByDistance[0] - selectedIndex + 7) % 7);
 }
 
 export function parseDate(text: string, selectedDate: string): string {
