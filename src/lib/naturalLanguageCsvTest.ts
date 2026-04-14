@@ -1,9 +1,14 @@
 import type { AiProvider } from './aiConfig';
+import { getPlanTypeLabel } from './plans';
 import {
   getFirstRecurrenceOccurrenceDate,
   summarizeLegacyRepeatUntilFromRecurrenceRules,
 } from './planRecurrence';
-import type { NaturalLanguageMode, NaturalLanguageSuggestion } from '../types/domain';
+import type {
+  NaturalLanguageMode,
+  NaturalLanguageSuggestion,
+  PlanType,
+} from '../types/domain';
 
 export interface NaturalLanguageCsvRow {
   caseId: string;
@@ -13,6 +18,7 @@ export interface NaturalLanguageCsvRow {
   expectedIndex: number;
   expectedTitle: string;
   expectedSubject: string;
+  expectedType: string;
   expectedDate: string;
   expectedStart: string;
   expectedEnd: string;
@@ -66,6 +72,21 @@ const EDIT_EXPECTATION_LABELS = new Set([
   'modify_series',
   'modify_all',
 ]);
+
+const CSV_TYPE_ALIASES: Record<string, PlanType> = {
+  study: 'study',
+  '勉強': 'study',
+  'mock-exam': 'mock-exam',
+  '模試': 'mock-exam',
+  'school-event': 'school-event',
+  '学校行事': 'school-event',
+  'cram-school': 'cram-school',
+  '塾': 'cram-school',
+  deadline: 'deadline',
+  '締切': 'deadline',
+  other: 'other',
+  'その他': 'other',
+};
 
 function parseCsvLine(line: string): string[] {
   const cells: string[] = [];
@@ -149,12 +170,35 @@ export function parseNaturalLanguageCsv(text: string): NaturalLanguageCsvRow[] {
       expectedIndex,
       expectedTitle: row.expected_title,
       expectedSubject: row.expected_subject,
+      expectedType: row.expected_type ?? '',
       expectedDate: row.expected_date,
       expectedStart: row.expected_start,
       expectedEnd: row.expected_end,
       expectedRepeat: row.expected_repeat,
     };
   });
+}
+
+function normalizeCsvExpectedType(value: string): string {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return CSV_TYPE_ALIASES[normalized] ?? normalized;
+}
+
+function deriveActualTypeValues(
+  actual: NaturalLanguageSuggestion,
+): {
+  value: PlanType;
+  label: string;
+} {
+  return {
+    value: actual.parsedPlan.type,
+    label: getPlanTypeLabel(actual.parsedPlan.type),
+  };
 }
 
 export function buildNaturalLanguageCsvCases(
@@ -381,6 +425,8 @@ function compareExpectedRowToActual(
     actual,
     expectedRow.selectedDate,
   );
+  const expectedType = normalizeCsvExpectedType(expectedRow.expectedType);
+  const actualType = deriveActualTypeValues(actual);
   const mismatches: string[] = [];
   const weeklyUntilMatch = expectedRow.expectedRepeat.match(
     /^(weekly_[a-z_]+)_until_(\d{4}-\d{2}-\d{2})$/,
@@ -406,6 +452,16 @@ function compareExpectedRowToActual(
   ) {
     mismatches.push(
       `subject: expected=${expectedRow.expectedSubject}, actual=${actual.parsedPlan.subject}`,
+    );
+  }
+
+  if (
+    expectedType &&
+    expectedType !== actualType.value &&
+    expectedType !== actualType.label
+  ) {
+    mismatches.push(
+      `type: expected=${expectedRow.expectedType}, actual=${actualType.label}`,
     );
   }
 
@@ -543,7 +599,8 @@ function scoreRowResult(result: NaturalLanguageCsvRowResult): number {
   const notePenalty = result.notes.length;
   const titlePenalty = result.mismatches.some((item) => item.startsWith('title:')) ? 3 : 0;
   const subjectPenalty = result.mismatches.some((item) => item.startsWith('subject:')) ? 3 : 0;
-  return mismatchPenalty + notePenalty + titlePenalty + subjectPenalty;
+  const typePenalty = result.mismatches.some((item) => item.startsWith('type:')) ? 2 : 0;
+  return mismatchPenalty + notePenalty + titlePenalty + subjectPenalty + typePenalty;
 }
 
 export function compareNaturalLanguageCaseResult(
@@ -625,6 +682,7 @@ export function compareNaturalLanguageCaseResult(
         expectedIndex: testCase.rows.length + 1,
         expectedTitle: '',
         expectedSubject: '',
+        expectedType: '',
         expectedDate: '',
         expectedStart: '',
         expectedEnd: '',

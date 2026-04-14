@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AiProvider } from '../lib/aiConfig';
+import { getPlanTypeLabel } from '../lib/plans';
 import {
   buildNaturalLanguageCsvCases,
   canRunNaturalLanguageCsvCase,
@@ -235,13 +236,17 @@ export function NaturalLanguageCsvTester({
                         <span className="confidence-badge">{rowResult.status}</span>
                       </div>
                       <p className="detail-note">
-                        expected: {rowResult.expected.expectedTitle} / {rowResult.expected.expectedSubject} /{' '}
-                        {rowResult.expected.expectedDate} / {rowResult.expected.expectedStart} -{' '}
+                        expected: {rowResult.expected.expectedTitle} / {rowResult.expected.expectedSubject}
+                        {rowResult.expected.expectedType
+                          ? ` / ${rowResult.expected.expectedType}`
+                          : ''}{' '}
+                        / {rowResult.expected.expectedDate} / {rowResult.expected.expectedStart} -{' '}
                         {rowResult.expected.expectedEnd} / {rowResult.expected.expectedRepeat}
                       </p>
                       {rowResult.actual ? (
                         <p className="detail-note">
                           actual: {rowResult.actual.parsedPlan.title} / {rowResult.actual.parsedPlan.subject} /{' '}
+                          {getPlanTypeLabel(rowResult.actual.parsedPlan.type)} /{' '}
                           {actualRecurrence?.date ?? rowResult.actual.parsedPlan.date} /{' '}
                           {rowResult.actual.parsedPlan.startTime} - {rowResult.actual.parsedPlan.endTime} /{' '}
                           {actualRecurrence?.repeatKey ?? rowResult.actual.parsedPlan.repeat}
