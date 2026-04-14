@@ -196,6 +196,8 @@ function removeSchedulingTerms(text: string): string {
       /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?|ようにしたい|として固定して|固定して|その代わり|他の日は|だけは|けど|けれど|もし|なら/g,
       '',
     )
+    .replace(/\d+回/g, '')
+    .replace(/全部|全て|連続で/g, '')
     .replace(/追加|入れて|登録|変更|修正|ずらして|にして|予定|進める/g, '')
     .replace(/\b(?:から|まで|だけ|は|を|に|で|が|へ|の|と|間|半)\b/g, ' ');
 }
@@ -391,10 +393,13 @@ function buildClauseDraft(
 ): PlanDraft {
   const detectedSubject = detectSubject(text) || draft.subject;
   const detectedTitle = sanitizeSuggestedTitle(text).trim();
+  const genericTitlePattern = /^(?:勉強|学習|予定|開始|変更|修正)$/;
   const normalizedTitle =
-    detectedTitle && detectedTitle !== detectedSubject
+    detectedTitle && detectedTitle !== detectedSubject && !genericTitlePattern.test(detectedTitle)
       ? detectedTitle
-      : draft.title || buildDefaultPlanTitle(draft.type, detectedSubject);
+      : detectedSubject && detectedTitle === detectedSubject
+        ? detectedSubject
+        : draft.title || buildDefaultPlanTitle(draft.type, detectedSubject);
   const timeValues = resolveClauseTimeRange(text, draft);
 
   return {
@@ -970,7 +975,7 @@ function prependSharedDate(text: string, sharedDatePhrase: string): string {
 function isContinuationSegment(text: string): boolean {
   const normalizedText = normalizeParsingText(text).trim();
 
-  return /^(?:これを\s*\d+\s*セット|全部|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は|もし)/.test(
+  return /^(?:これを\s*\d+\s*セット|全部|連続で|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は|もし)/.test(
     normalizedText,
   );
 }
@@ -1011,6 +1016,8 @@ function mergeSoftSegments(segments: string[]): string[] {
 
   segments.forEach((segment) => {
     const normalizedSegment = normalizeParsingText(segment).trim();
+    const previousSegment = merged[merged.length - 1];
+    const normalizedPreviousSegment = normalizeParsingText(previousSegment ?? '');
 
     if (!normalizedSegment) {
       return;
@@ -1027,6 +1034,25 @@ function mergeSoftSegments(segments: string[]): string[] {
       persistentPrefix && !hasExplicitDateExpression(normalizedSegment)
         ? `${persistentPrefix} ${normalizedSegment}`.trim()
         : normalizedSegment;
+
+    if (
+      previousSegment &&
+      /\d+回(?:入れて|やって|予定に入れて)/.test(normalizedPreviousSegment) &&
+      /^連続で$/.test(normalizedSegment)
+    ) {
+      merged[merged.length - 1] = `${previousSegment} ${normalizedSegment}`.trim();
+      return;
+    }
+
+    if (
+      previousSegment &&
+      /\d+回(?:入れて|やって|予定に入れて)/.test(normalizedPreviousSegment) &&
+      /^[月火水木金土日]{2,}.*(?:開始|から|にして)/.test(normalizedSegment) &&
+      !detectSubject(normalizedSegment)
+    ) {
+      merged[merged.length - 1] = `${previousSegment} ${normalizedSegment}`.trim();
+      return;
+    }
 
     if (isContinuationSegment(nextSegment) && merged.length > 0) {
       merged[merged.length - 1] = `${merged[merged.length - 1]} ${nextSegment}`.trim();

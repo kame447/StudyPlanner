@@ -742,6 +742,8 @@ function stripTitleNoise(value: string): string {
     .replace(/^\s*(?:模試の前日なら|バイトがある)\s*/g, '')
     .replace(/^\s*(?:[^、。]*?(?:のみ|を除く|は除く))\s*/g, '')
     .replace(/^\s*(?:これを\s*\d+\s*セット(?:で)?|全部|全て|連続で|どこかで)\s*/g, '')
+    .replace(/\s*\d+\s*回\s*/g, ' ')
+    .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
     .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*/g, '')
     .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*$/g, '')
     .replace(/\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*$/g, '')
@@ -1017,7 +1019,7 @@ function hasMeaningfulStudyTitle(title: string): boolean {
 
   return (
     Boolean(normalizedTitle) &&
-    !/^(?:バイトがある|他の日|これを\d+セット|全部|開始|けど|けれど|ただし|もし.*なら|模試の前日なら)$/.test(
+    !/^(?:勉強|学習|予定|バイトがある|他の日|これを\d+セット|全部|全て|開始|けど|けれど|ただし|もし.*なら|模試の前日なら)$/.test(
       normalizedTitle,
     )
   );
@@ -1114,11 +1116,13 @@ function expandSpecificWeekdayOccurrences(
 ): NaturalLanguageSuggestion[] | null {
   const normalizedText = normalizeParsingText(suggestion.rawText);
   const weekdayLabels = extractWeekdayLabelsFromText(normalizedText);
+  const shouldExpandToSpecificDates = /(どこかで|全部|入れて|割り振って|にして|\d+回)/.test(
+    normalizedText,
+  );
 
   if (
-    suggestion.parsedPlan.repeat !== 'none' ||
     weekdayLabels.length < 2 ||
-    !/(どこかで|全部|入れて|割り振って|にして|\d+回)/.test(normalizedText)
+    !shouldExpandToSpecificDates
   ) {
     return null;
   }
@@ -1143,6 +1147,18 @@ function expandSpecificWeekdayOccurrences(
   const dates = uniqueSortedLabels
     .slice(0, requestedCount)
     .map((label) => addDays(weekStart, order.indexOf(label)));
+  const normalizedLabels = normalizeStudyLabels({
+    rawText: suggestion.rawText,
+    subject: suggestion.parsedPlan.subject,
+    title: stripTitleNoise(suggestion.parsedPlan.title),
+    type: suggestion.parsedPlan.type,
+    fallbackTitle: suggestion.parsedPlan.subject,
+  });
+  const title = buildPreferredStudyTitle(
+    suggestion.rawText,
+    normalizedLabels.subject,
+    normalizedLabels.title,
+  );
 
   return dates.map((date) =>
     finalizeSuggestionStatus({
@@ -1150,6 +1166,8 @@ function expandSpecificWeekdayOccurrences(
       parsedPlan: {
         ...suggestion.parsedPlan,
         date,
+        title,
+        subject: normalizedLabels.subject,
         repeat: 'none',
         repeatUntil: null,
         excludedDates: [],
@@ -1194,37 +1212,60 @@ function normalizeRecurringOverrides(
       assumptions: [...suggestion.assumptions],
     };
 
-    if (!hasMeaningfulStudyTitle(nextSuggestion.parsedPlan.title)) {
-      nextSuggestion.parsedPlan.title = baseSuggestion.parsedPlan.title;
+    const overrideSubject = detectSubject(nextSuggestion.rawText).trim();
+    const overrideTitleCandidate = trimContentPhrase(
+      sanitizeSuggestedTitle(nextSuggestion.rawText),
+    );
+
+    if (overrideSubject && overrideSubject !== baseSuggestion.parsedPlan.subject) {
+      const normalizedLabels = normalizeStudyLabels({
+        rawText: nextSuggestion.rawText,
+        subject: overrideSubject,
+        title: overrideTitleCandidate || overrideSubject,
+        type: nextSuggestion.parsedPlan.type,
+        fallbackTitle: overrideSubject,
+      });
+      nextSuggestion.parsedPlan.subject = normalizedLabels.subject;
+      nextSuggestion.parsedPlan.title = buildPreferredStudyTitle(
+        nextSuggestion.rawText,
+        normalizedLabels.subject,
+        normalizedLabels.title,
+      );
+    } else {
+      if (!hasMeaningfulStudyTitle(nextSuggestion.parsedPlan.title)) {
+        nextSuggestion.parsedPlan.title = baseSuggestion.parsedPlan.title;
+      }
+
+      if (
+        !nextSuggestion.parsedPlan.subject ||
+        nextSuggestion.parsedPlan.subject === nextSuggestion.parsedPlan.title
+      ) {
+        nextSuggestion.parsedPlan.subject = baseSuggestion.parsedPlan.subject;
+      }
     }
 
-    if (
-      !nextSuggestion.parsedPlan.subject ||
-      nextSuggestion.parsedPlan.subject === nextSuggestion.parsedPlan.title
-    ) {
-      nextSuggestion.parsedPlan.subject = baseSuggestion.parsedPlan.subject;
-    }
-
-    if (!nextSuggestion.parsedPlan.startTime && baseSuggestion.parsedPlan.startTime) {
-      nextSuggestion.parsedPlan.startTime = baseSuggestion.parsedPlan.startTime;
-    }
-
-    if (
-      nextSuggestion.parsedPlan.startTime &&
-      baseSuggestion.parsedPlan.startTime &&
-      baseSuggestion.parsedPlan.endTime &&
-      nextSuggestion.parsedPlan.endTime &&
-      !hasExplicitClockTime(nextSuggestion.rawText)
-    ) {
+    if (baseSuggestion.parsedPlan.startTime && baseSuggestion.parsedPlan.endTime) {
+      const parsedTimes = parseTimes(
+        nextSuggestion.rawText,
+        baseSuggestion.parsedPlan.startTime,
+      );
+      const hasExplicitStart = hasExplicitClockTime(nextSuggestion.rawText);
       const overrideDuration = parseDurationMinutes(nextSuggestion.rawText);
       const baseDuration =
         minutesFromTime(baseSuggestion.parsedPlan.endTime) -
         minutesFromTime(baseSuggestion.parsedPlan.startTime);
-      const finalDuration = overrideDuration ?? baseDuration;
+      const nextStartTime = hasExplicitStart
+        ? parsedTimes.startTime ||
+          nextSuggestion.parsedPlan.startTime ||
+          baseSuggestion.parsedPlan.startTime
+        : baseSuggestion.parsedPlan.startTime;
 
-      nextSuggestion.parsedPlan.endTime = timeFromMinutes(
-        minutesFromTime(nextSuggestion.parsedPlan.startTime) + finalDuration,
-      );
+      nextSuggestion.parsedPlan.startTime = nextStartTime;
+      nextSuggestion.parsedPlan.endTime =
+        parsedTimes.endTime ||
+        timeFromMinutes(
+          minutesFromTime(nextStartTime) + (overrideDuration ?? baseDuration),
+        );
     }
 
     const forcedRepeat = detectRepeat(nextSuggestion.rawText);
@@ -1837,6 +1878,8 @@ function trimContentPhrase(value: string): string {
     .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定)$/g, '')
     .replace(/^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
     .replace(/^(?:けど|けれど|ただし|その代わり|もし[^、。]*なら|模試の前日なら|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g, '')
+    .replace(/\s*\d+\s*回\s*/g, ' ')
+    .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
     .replace(/^(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+/g, '')
     .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+$/g, '')
     .replace(/^(?:に|で|を|は|が|の|へ|と)+/g, '')
