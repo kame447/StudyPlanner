@@ -173,7 +173,40 @@ export function detectSubject(text: string): string {
     });
   });
 
-  return bestMatch?.label ?? '';
+  const detectedLabel = bestMatch?.label ?? '';
+
+  if (/振り返り/.test(normalizedText)) {
+    return '振り返り';
+  }
+
+  if (/自習/.test(normalizedText)) {
+    return '自習';
+  }
+
+  if (/toeic/.test(normalizedText) || detectedLabel === 'TOEIC') {
+    return '英語';
+  }
+
+  if (detectedLabel === '単語') {
+    return /古文|漢文/.test(normalizedText) ? '国語' : '英語';
+  }
+
+  if (detectedLabel === 'レポート' || detectedLabel === '課題') {
+    return /情報/.test(normalizedText) ? '情報' : '課題';
+  }
+
+  if (
+    detectedLabel === '共通テスト' &&
+    /過去問|演習/.test(normalizedText)
+  ) {
+    return '演習';
+  }
+
+  if (['現代文', '古文', '漢文', '古典'].includes(detectedLabel)) {
+    return '国語';
+  }
+
+  return detectedLabel;
 }
 
 function removeSchedulingTerms(text: string): string {
@@ -193,7 +226,7 @@ function removeSchedulingTerms(text: string): string {
     )
     .replace(new RegExp(`${LOCALIZED_NUMBER_PATTERN}分`, 'g'), '')
     .replace(
-      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?|ようにしたい|として固定して|固定して|その代わり|他の日は|だけは|けど|けれど|もし|なら/g,
+      /そのあと|その後|次に|続けて|朝の|朝|午前|午後|夜|夕方|おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?|毎朝|毎晩|毎夜|毎日|毎週|毎月|毎年|毎[月火水木金土日](?:曜)?|同じ時間帯に?|同じ時間に?|ようにしたい|として固定して|固定して|その代わり|他の日は|だけは|けど|けれど|もし|なら|時間は?|合計|テスト前日/g,
       '',
     )
     .replace(/\d+回/g, '')
@@ -387,7 +420,7 @@ function resolveClauseTimeRange(
 }
 
 const GENERIC_RULE_TITLE_PATTERN =
-  /^(?:勉強|学習|予定|開始|変更|修正|追加|登録|固定|にして|に変えて|変えて|変える|から|まで|だけ|のみ|除く|けど|けれど|ただし|その代わり|月火木金|月水金|火木土|のから|はから|とのから)$/;
+  /^(?:勉強|学習|予定|開始|変更|修正|追加|登録|固定|にして|に変えて|変えて|変える|から|まで|だけ|のみ|除く|けど|けれど|ただし|その代わり|月火木金|月水金|火木土|のから|はから|とのから|時|時間|合計|テスト前日|\d+日|\d+回|\d+セット|[月火水木金土日]{2,})$/;
 
 function trimRuleTitlePhrase(value: string): string {
   let current = normalizeParsingText(value)
@@ -405,17 +438,19 @@ function trimRuleTitlePhrase(value: string): string {
       .replace(/^(?:\d{1,2}月\d{1,2}日(?:まで|から|より)?)(?:は)?/g, '')
       .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
       .replace(
-        /^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|月水金は|火木土は|月火木金(?:の\d+回)?(?:は)?|平日は|土日は|週末は|他の日は|毎日|毎朝|毎晩|毎夜|毎週|毎[月火水木金土日]曜(?:日)?)+/g,
+        /^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は|のは|だけ|だけは)?|月水金は|火木土は|月火木金(?:の\d+回)?(?:は)?|平日は|土日は|週末は|他の日は|毎日|毎朝|毎晩|毎夜|毎週|毎[月火水木金土日]曜(?:日)?)+/g,
         '',
       )
       .replace(
-        /^(?:けど|けれど|ただし|その代わり|代わりに|もし[^、。]*なら|模試の前日なら|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g,
+        /^(?:けど|けれど|ただし|その代わり|代わりに|もし[^、。]*なら|模試の前日なら|テスト前日|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g,
         '',
       )
+      .replace(/^(?:時間は?|合計)+/g, '')
       .replace(/\s*\d+\s*回\s*/g, ' ')
+      .replace(/\s*\d+\s*日\s*/g, ' ')
       .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
       .replace(/^(?:から|まで|間|半|だけ|ずつ|して|のみ|除く|にして|に変えて|変えて|変える)+/g, '')
-      .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く|にして|に変えて|変えて|変える)+$/g, '')
+      .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く|にして|に変えて|変えて|変える|時)+$/g, '')
       .replace(/^(?:に|で|を|は|が|の|へ|と)+/g, '')
       .replace(/(?:に|で|を|は|が|の|へ|と)+$/g, '')
       .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定|追加|入れて|入れる|登録|固定して)$/g, '')
@@ -1184,7 +1219,7 @@ function prependSharedDate(text: string, sharedDatePhrase: string): string {
 function isContinuationSegment(text: string): boolean {
   const normalizedText = normalizeParsingText(text).trim();
 
-  return /^(?:これを\s*\d+\s*セット|全部|連続で|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は|もし)/.test(
+  return /^(?:これを\s*\d+\s*セット|全部|連続で|(?:もう)?\d+回(?:目)?は|もう1回は|もう一回は|もし|時間は?\s*\d{1,2}(?::\d{2})?(?:で|です)?)/.test(
     normalizedText,
   );
 }

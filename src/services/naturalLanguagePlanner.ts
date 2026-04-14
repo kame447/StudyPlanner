@@ -708,7 +708,14 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
     if (/過去問|演習/.test(sourceText)) {
       return '演習';
     }
+    if (/toeic/.test(sourceText)) {
+      return '英語';
+    }
     return '';
+  }
+
+  if (normalizedSubject === 'TOEIC') {
+    return '英語';
   }
 
   if (normalizedSubject === 'レポート' || normalizedSubject === '課題') {
@@ -739,9 +746,9 @@ function normalizeSubjectFamily(subject: string, rawText: string, title: string)
 
 function stripTitleNoise(value: string): string {
   return value
-    .replace(/^\s*(?:今週|来週|今月中|今月|平日|土日|週末|毎朝|毎日|毎週|\d{1,2}月中は?)\s*/g, '')
+    .replace(/^\s*(?:今週|来週|今月中|今月|平日|土日|週末|毎朝|毎日|毎週|\d{1,2}月中は?|時間は?|合計|テスト前日)\s*/g, '')
     .replace(
-      /^\s*(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|の|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|他の日は)\s*/g,
+      /^\s*(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|の|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は|のは|だけ|だけは)?|月水金は|火木土は|他の日は)\s*/g,
       '',
     )
     .replace(/^\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*/g, '')
@@ -750,13 +757,14 @@ function stripTitleNoise(value: string): string {
     .replace(/^\s*(?:[^、。]*?(?:のみ|を除く|は除く))\s*/g, '')
     .replace(/^\s*(?:これを\s*\d+\s*セット(?:で)?|全部|全て|連続で|どこかで)\s*/g, '')
     .replace(/\s*\d+\s*回\s*/g, ' ')
+    .replace(/\s*\d+\s*日\s*/g, ' ')
     .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
     .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*/g, '')
-    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*$/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く|時)+\s*$/g, '')
     .replace(/\s*(?:に変えて|に変える|変えて|変える)\s*$/g, '')
     .replace(/\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*$/g, '')
     .replace(/\s*(?:もし[^、。]*なら)\s*$/g, '')
-    .replace(/^\s*(?:\d+日|\d+セット)\s*$/g, '')
+    .replace(/^\s*(?:\d+日|\d+回|\d+セット|時|時間|合計|テスト前日)\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -818,7 +826,7 @@ function buildPreferredStudyTitle(rawText: string, subject: string, currentTitle
 
   if (
     normalizedTitle &&
-    !/^(?:から|まで|間|半|ま|\d+日|\d+セット|開始|けど|けれど|ただし|その代わり|もし.*なら|模試の前日なら|バイトがある|全部|連続で|どこかで)$/.test(
+    !/^(?:から|まで|間|半|ま|\d+日|\d+回|\d+セット|開始|けど|けれど|ただし|その代わり|もし.*なら|模試の前日なら|バイトがある|全部|連続で|どこかで|時|時間|合計|テスト前日|[月火水木金土日]{2,})$/.test(
       normalizedTitle,
     )
   ) {
@@ -1027,10 +1035,93 @@ function hasMeaningfulStudyTitle(title: string): boolean {
 
   return (
     Boolean(normalizedTitle) &&
-    !/^(?:勉強|学習|予定|バイトがある|他の日|これを\d+セット|全部|全て|開始|けど|けれど|ただし|もし.*なら|模試の前日なら)$/.test(
+    !/^(?:勉強|学習|予定|バイトがある|他の日|これを\d+セット|全部|全て|開始|けど|けれど|ただし|もし.*なら|模試の前日なら|時|時間|合計|テスト前日|\d+日|\d+回|\d+セット|[月火水木金土日]{2,})$/.test(
       normalizedTitle,
     )
   );
+}
+
+function normalizeSuggestionTitleKey(title: string): string {
+  return stripTitleNoise(title).replace(/\s+/g, '').trim();
+}
+
+function isExplanationOnlySuggestion(suggestion: NaturalLanguageSuggestion): boolean {
+  const normalizedText = normalizeParsingText(suggestion.rawText).trim();
+  const normalizedTitle = normalizeSuggestionTitleKey(suggestion.parsedPlan.title);
+  const detectedSubject = detectSubject(
+    `${suggestion.rawText} ${suggestion.parsedPlan.title} ${suggestion.parsedPlan.subject}`,
+  );
+
+  if (/^時間は?\s*\d{1,2}(?::\d{2})?(?:で|です)?$/.test(normalizedText)) {
+    return true;
+  }
+
+  if (
+    /^(?:時|時間|合計|テスト前日|\d+日|\d+回|\d+セット|[月火水木金土日]{2,})$/.test(
+      normalizedTitle,
+    ) &&
+    !detectedSubject
+  ) {
+    return true;
+  }
+
+  if (
+    /^テスト前日(?:の?\d{1,2}月\d{1,2}日まで)?$/.test(normalizedText) &&
+    !detectedSubject
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function isRedundantWeakerSuggestion(
+  suggestion: NaturalLanguageSuggestion,
+  index: number,
+  suggestions: NaturalLanguageSuggestion[],
+): boolean {
+  const rawKey = normalizeSuggestionRawText(suggestion.rawText);
+  const titleKey = normalizeSuggestionTitleKey(suggestion.parsedPlan.title);
+  const subjectKey = suggestion.parsedPlan.subject.trim();
+  const suggestionStrength =
+    Number(hasConcreteSchedule(suggestion)) * 3 +
+    Number(hasStructuredRecurrence(suggestion)) * 4 +
+    Number(hasMeaningfulStudyTitle(suggestion.parsedPlan.title)) * 2 +
+    Math.min(titleKey.length, 24) / 12 +
+    suggestion.confidence;
+
+  return suggestions.some((candidate, candidateIndex) => {
+    if (candidateIndex === index) {
+      return false;
+    }
+
+    if (normalizeSuggestionRawText(candidate.rawText) !== rawKey) {
+      return false;
+    }
+
+    const candidateTitleKey = normalizeSuggestionTitleKey(candidate.parsedPlan.title);
+    const candidateSubjectKey = candidate.parsedPlan.subject.trim();
+    const sameContent =
+      (titleKey &&
+        candidateTitleKey &&
+        (titleKey === candidateTitleKey ||
+          titleKey.includes(candidateTitleKey) ||
+          candidateTitleKey.includes(titleKey))) ||
+      (subjectKey && candidateSubjectKey && subjectKey === candidateSubjectKey);
+
+    if (!sameContent) {
+      return false;
+    }
+
+    const candidateStrength =
+      Number(hasConcreteSchedule(candidate)) * 3 +
+      Number(hasStructuredRecurrence(candidate)) * 4 +
+      Number(hasMeaningfulStudyTitle(candidate.parsedPlan.title)) * 2 +
+      Math.min(candidateTitleKey.length, 24) / 12 +
+      candidate.confidence;
+
+    return candidateStrength > suggestionStrength;
+  });
 }
 
 function isUnsupportedConditionalModifier(
@@ -1540,18 +1631,19 @@ function sanitizeDisplayTitle(title: string, date: string): string {
   return title
     .replace(new RegExp(date.replace(/-/g, '[-/]'), 'g'), ' ')
     .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g, ' ')
-    .replace(/^\s*(?:\d{1,2}月中は?)\s*/g, '')
+    .replace(/^\s*(?:\d{1,2}月中は?|時間は?|合計|テスト前日)\s*/g, '')
     .replace(/^\s*(?:今日|明日|明後日)\s*/g, '')
     .replace(/^\s*(?:今週|来週)\s*/g, '')
     .replace(
-      /^\s*(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|の|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g,
+      /^\s*(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|の|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は|のは|だけ|だけは)?|月水金は|火木土は|平日は|土日は|他の日は)\s*/g,
       '',
     )
     .replace(/^\s*(?:朝|朝の|午前|午後|夜|夕方)\s*/g, '')
     .replace(/^\s*(?:そのあと|その後|続けて|次に)\s*/g, '')
     .replace(/^\s*(?:おひるごはん食べた後に|お昼ごはん食べた後に|昼ごはん食べた後に|昼食後に?)\s*/g, '')
+    .replace(/\s*\d+\s*日\s*/g, ' ')
     .replace(/^\s*(?:から|まで|間|半|開始)+/g, '')
-    .replace(/\s*(?:から|まで|間|半|だけ|開始)+\s*$/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ|開始|時)+\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1759,6 +1851,17 @@ function postProcessAddSuggestions(
     );
 
     if (
+      nextSuggestion.parsedPlan.repeat === 'none' &&
+      nextSuggestion.parsedPlan.recurrenceRules.length === 0 &&
+      hasExplicitDateExpression(nextSuggestion.rawText)
+    ) {
+      nextSuggestion.parsedPlan.date = parseDate(
+        nextSuggestion.rawText,
+        selectedDate,
+      );
+    }
+
+    if (
       !hasExplicitDateExpression(nextSuggestion.rawText) &&
       sharedExplicitDate
     ) {
@@ -1961,7 +2064,9 @@ function postProcessAddSuggestions(
         [suggestion],
     )
     .map((suggestion) => synchronizeStructuredRecurrence(suggestion, selectedDate))
+    .filter((suggestion) => !isExplanationOnlySuggestion(suggestion))
     .filter((suggestion, index, array) => !isSubordinateSuggestion(suggestion, index, array))
+    .filter((suggestion, index, array) => !isRedundantWeakerSuggestion(suggestion, index, array))
     .filter((suggestion) => !isUnsupportedAllocationSuggestion(suggestion));
 }
 
@@ -2086,12 +2191,14 @@ function trimContentPhrase(value: string): string {
     .replace(/^(今週|来週)(?:の)?/g, '')
     .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
     .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定)$/g, '')
-    .replace(/^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
-    .replace(/^(?:けど|けれど|ただし|その代わり|もし[^、。]*なら|模試の前日なら|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g, '')
+    .replace(/^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|[月火水木金土日]{2,}(?:の夜|の朝|の昼|の|は|のは|だけ|だけは)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
+    .replace(/^(?:けど|けれど|ただし|その代わり|もし[^、。]*なら|模試の前日なら|テスト前日|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g, '')
+    .replace(/^(?:時間は?|合計)+/g, '')
     .replace(/\s*\d+\s*回\s*/g, ' ')
+    .replace(/\s*\d+\s*日\s*/g, ' ')
     .replace(/\s*(?:全部|全て|連続で|どこかで)\s*/g, ' ')
     .replace(/^(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+/g, '')
-    .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+$/g, '')
+    .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く|時)+$/g, '')
     .replace(/(?:に変えて|に変える|変えて|変える)$/g, '')
     .replace(/^(?:に|で|を|は|が|の|へ|と)+/g, '')
     .replace(/(?:に|で|を|は|が|の|へ|と)+$/g, '')
