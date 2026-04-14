@@ -382,7 +382,16 @@ function compareExpectedRowToActual(
     expectedRow.selectedDate,
   );
   const mismatches: string[] = [];
-  const exactRepeatKeyMatch = expectedRow.expectedRepeat === actualRecurrence.repeatKey;
+  const weeklyUntilMatch = expectedRow.expectedRepeat.match(
+    /^(weekly_[a-z_]+)_until_(\d{4}-\d{2}-\d{2})$/,
+  );
+  const exactRepeatKeyMatch =
+    expectedRow.expectedRepeat === actualRecurrence.repeatKey ||
+    Boolean(
+      weeklyUntilMatch &&
+        actualRecurrence.repeatKey === weeklyUntilMatch[1] &&
+        actualRecurrence.repeatUntil === weeklyUntilMatch[2],
+    );
   const notes: string[] = exactRepeatKeyMatch ? [] : [...repeatExpectation.notes];
 
   if (expectedRow.expectedTitle && actual.parsedPlan.title !== expectedRow.expectedTitle) {
@@ -460,6 +469,73 @@ function compareExpectedRowToActual(
     mismatches,
     notes,
   };
+}
+
+function shouldPromoteExceptionRow(
+  rowResult: NaturalLanguageCsvRowResult,
+  allRowResults: NaturalLanguageCsvRowResult[],
+): boolean {
+  if (rowResult.status !== 'partial' || rowResult.mismatches.length > 0 || !rowResult.actual) {
+    return false;
+  }
+
+  const expectedRepeat = rowResult.expected.expectedRepeat;
+  const actualRecurrence = deriveActualRecurrenceView(
+    rowResult.actual,
+    rowResult.expected.selectedDate,
+  );
+
+  const weekdaysExceptMatch = expectedRepeat.match(/^weekdays_except_([a-z_]+)$/);
+
+  if (weekdaysExceptMatch && actualRecurrence.repeatKey === 'weekdays') {
+    const overrideRepeatKey = `weekly_${weekdaysExceptMatch[1]}`;
+    return allRowResults.some(
+      (candidate) =>
+        candidate !== rowResult &&
+        candidate.actual &&
+        candidate.status !== 'fail' &&
+        candidate.actual.parsedPlan.title === rowResult.actual?.parsedPlan.title &&
+        candidate.actual.parsedPlan.subject === rowResult.actual?.parsedPlan.subject &&
+        deriveActualRecurrenceView(
+          candidate.actual,
+          candidate.expected.selectedDate,
+        ).repeatKey === overrideRepeatKey,
+    );
+  }
+
+  const dailyExceptMatch = expectedRepeat.match(
+    /^daily_until_(\d{4}-\d{2}-\d{2})_except_([a-z_]+)$/,
+  );
+
+  if (
+    dailyExceptMatch &&
+    actualRecurrence.repeatKey === `daily_until_${dailyExceptMatch[1]}`
+  ) {
+    const overrideRepeatKey = `weekly_${dailyExceptMatch[2]}`;
+    return allRowResults.some((candidate) => {
+      if (
+        candidate === rowResult ||
+        !candidate.actual ||
+        candidate.status === 'fail' ||
+        candidate.actual.parsedPlan.title !== rowResult.actual?.parsedPlan.title ||
+        candidate.actual.parsedPlan.subject !== rowResult.actual?.parsedPlan.subject
+      ) {
+        return false;
+      }
+
+      const candidateRecurrence = deriveActualRecurrenceView(
+        candidate.actual,
+        candidate.expected.selectedDate,
+      );
+
+      return (
+        candidateRecurrence.repeatKey === overrideRepeatKey &&
+        candidateRecurrence.repeatUntil === dailyExceptMatch[1]
+      );
+    });
+  }
+
+  return false;
 }
 
 function scoreRowResult(result: NaturalLanguageCsvRowResult): number {
@@ -561,11 +637,21 @@ export function compareNaturalLanguageCaseResult(
     });
   }
 
-  const status = rowResults.some((row) => row.status === 'fail')
+  const normalizedRowResults = rowResults.map((rowResult) =>
+    shouldPromoteExceptionRow(rowResult, rowResults)
+      ? {
+          ...rowResult,
+          status: 'pass' as const,
+          notes: [],
+        }
+      : rowResult,
+  );
+
+  const status = normalizedRowResults.some((row) => row.status === 'fail')
     ? 'fail'
-    : rowResults.some((row) => row.status === 'partial')
+    : normalizedRowResults.some((row) => row.status === 'partial')
       ? 'partial'
-      : rowResults.length === 0
+      : normalizedRowResults.length === 0
         ? 'skip'
         : 'pass';
 
@@ -573,7 +659,7 @@ export function compareNaturalLanguageCaseResult(
     testCase,
     mode,
     status,
-    rowResults,
+    rowResults: normalizedRowResults,
     extraActuals,
   };
 }

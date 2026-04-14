@@ -1488,6 +1488,10 @@ function expandSubjectDayAllocations(
     return null;
   }
 
+  if (/割り振って/.test(normalizedText)) {
+    return [];
+  }
+
   const allocations = allocationMatches.flatMap((match) =>
     Array.from({ length: Number(match[2]) }, () => match[1]),
   );
