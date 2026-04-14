@@ -1,6 +1,7 @@
 import { addDays, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { getAiConfig, getAiProviderLabel, type AiConfig } from '../lib/aiConfig';
 import {
+  doesRecurrenceRuleApplyToDate,
   getFirstRecurrenceOccurrenceDate,
   selectApplicableRecurrenceRule,
   summarizeLegacyRepeatFromRecurrenceRules,
@@ -65,6 +66,9 @@ interface TimeResolutionResult {
   assumptions: string[];
   unresolvedFields: SuggestionField[];
 }
+
+const BASE_OVERRIDE_MERGED_ASSUMPTION =
+  '例外条件をbase ruleへ統合しました。';
 
 export interface PlannerAiRuntimeInfo {
   providerLabel: string;
@@ -922,7 +926,7 @@ function expandEnumeratedStudyVariants(
 
   const titleMap: Record<string, string> = {
     長文: '英語長文',
-    単語: '英単語',
+    単語: '単語',
     文法: '英文法',
   };
   const isSequential = /連続で/.test(normalizedText);
@@ -1117,6 +1121,7 @@ function resolveFirstWeeklyOccurrenceDate(text: string, baseDate: string): strin
 
 function expandSpecificWeekdayOccurrences(
   suggestion: NaturalLanguageSuggestion,
+  selectedDate: string,
 ): NaturalLanguageSuggestion[] | null {
   const normalizedText = normalizeParsingText(suggestion.rawText);
   const weekdayLabels = extractWeekdayLabelsFromText(normalizedText);
@@ -1139,8 +1144,8 @@ function expandSpecificWeekdayOccurrences(
   }
 
   const weekStart = /来週/.test(normalizedText)
-    ? startOfWeekDate(addDays(suggestion.parsedPlan.date, 7))
-    : startOfWeekDate(suggestion.parsedPlan.date);
+    ? startOfWeekDate(addDays(selectedDate, 7))
+    : startOfWeekDate(selectedDate);
   const order = ['月', '火', '水', '木', '金', '土', '日'];
   const uniqueSortedLabels = weekdayLabels
     .filter((label, index, array) => array.indexOf(label) === index)
@@ -1163,6 +1168,9 @@ function expandSpecificWeekdayOccurrences(
     normalizedLabels.subject,
     normalizedLabels.title,
   );
+  const normalizedTitle = /^[月火水木金土日、,，\s]+$/.test(title.trim())
+    ? normalizedLabels.subject || suggestion.parsedPlan.subject
+    : title;
 
   return dates.map((date) =>
     finalizeSuggestionStatus({
@@ -1170,7 +1178,7 @@ function expandSpecificWeekdayOccurrences(
       parsedPlan: {
         ...suggestion.parsedPlan,
         date,
-        title,
+        title: normalizedTitle,
         subject: normalizedLabels.subject,
         repeat: 'none',
         repeatUntil: null,
@@ -1189,9 +1197,113 @@ function expandSpecificWeekdayOccurrences(
 function normalizeRecurringOverrides(
   suggestions: NaturalLanguageSuggestion[],
 ): NaturalLanguageSuggestion[] {
-  return suggestions.flatMap((suggestion, index, array) => {
+  const normalizedSuggestions = suggestions.map((suggestion) => ({
+    ...suggestion,
+    parsedPlan: {
+      ...suggestion.parsedPlan,
+      recurrenceRules: [...suggestion.parsedPlan.recurrenceRules],
+      excludedDates: [...suggestion.parsedPlan.excludedDates],
+    },
+    assumptions: [...suggestion.assumptions],
+    unresolvedFields: [...suggestion.unresolvedFields],
+    issues: [...suggestion.issues],
+  }));
+
+  const findBaseSuggestionIndex = (
+    overrideSuggestion: NaturalLanguageSuggestion,
+    overrideIndex: number,
+  ): number => {
+    const recurringCandidatePattern =
+      /毎日|毎朝|毎晩|毎夜|毎週|平日|土日|週末|(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+|[月火水木金土日]{2,}/;
+    const matchingCandidates = normalizedSuggestions
+      .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+      .filter(
+        ({ candidate, candidateIndex }) =>
+          candidateIndex !== overrideIndex &&
+          recurringCandidatePattern.test(
+            normalizeParsingText(candidate.rawText),
+          ),
+      );
+
+    const referencedCandidate = matchingCandidates.find(({ candidate }) =>
+      referencesSuggestionTarget(overrideSuggestion.rawText, candidate),
+    );
+
+    if (referencedCandidate) {
+      return referencedCandidate.candidateIndex;
+    }
+
+    const sameSubjectCandidate = matchingCandidates.find(
+      ({ candidate }) =>
+        Boolean(overrideSuggestion.parsedPlan.subject) &&
+        candidate.parsedPlan.subject === overrideSuggestion.parsedPlan.subject,
+    );
+
+    if (sameSubjectCandidate) {
+      return sameSubjectCandidate.candidateIndex;
+    }
+
+    const previousCandidate = [...matchingCandidates]
+      .filter(({ candidateIndex }) => candidateIndex < overrideIndex)
+      .sort((left, right) => right.candidateIndex - left.candidateIndex)[0];
+
+    if (previousCandidate) {
+      return previousCandidate.candidateIndex;
+    }
+
+    return matchingCandidates[0]?.candidateIndex ?? -1;
+  };
+
+  const mergeOverrideIntoBaseRawText = (
+    baseRawText: string,
+    overrideRawText: string,
+  ): string => {
+    const normalizedBase = normalizeSuggestionRawText(baseRawText);
+    const normalizedOverride = normalizeSuggestionRawText(overrideRawText)
+      .replace(/^(?:ただし|その代わり|代わりに|けど|けれど)\s*/g, '')
+      .trim();
+
+    if (!normalizedOverride || normalizedBase.includes(normalizedOverride)) {
+      return baseRawText;
+    }
+
+    return `${baseRawText.trim()} ただし ${normalizedOverride}`.trim();
+  };
+
+  normalizedSuggestions.forEach((suggestion, index) => {
+    if (isUnsupportedConditionalModifier(suggestion)) {
+      return;
+    }
+
+    if (!hasExceptionCue(suggestion.rawText)) {
+      return;
+    }
+
+    const baseIndex = findBaseSuggestionIndex(suggestion, index);
+
+    if (baseIndex < 0) {
+      return;
+    }
+
+    const baseSuggestion = normalizedSuggestions[baseIndex];
+    baseSuggestion.rawText = mergeOverrideIntoBaseRawText(
+      baseSuggestion.rawText,
+      suggestion.rawText,
+    );
+    if (
+      !baseSuggestion.assumptions.includes(BASE_OVERRIDE_MERGED_ASSUMPTION)
+    ) {
+      baseSuggestion.assumptions.push(BASE_OVERRIDE_MERGED_ASSUMPTION);
+    }
+  });
+
+  return normalizedSuggestions.flatMap((suggestion, index, array) => {
     if (isUnsupportedConditionalModifier(suggestion)) {
       return [];
+    }
+
+    if (suggestion.assumptions.includes(BASE_OVERRIDE_MERGED_ASSUMPTION)) {
+      return [suggestion];
     }
 
     if (!hasExceptionCue(suggestion.rawText)) {
@@ -1547,7 +1659,17 @@ function isUnsupportedAllocationSuggestion(
   ).length;
 
   if (allocationMatchCount < 2 || !/割り振って/.test(normalizedText)) {
-    return false;
+    return (
+      /割り振って/.test(normalizedText) &&
+      /\d+日/.test(normalizedText) &&
+      !suggestion.assumptions.some((assumption) =>
+        /科目ごとの日数指定から日別予定へ展開しました/.test(assumption),
+      )
+    ) || (
+      /したい/.test(normalizedText) &&
+      /毎日/.test(normalizedText) &&
+      !detectSubject(normalizedText)
+    );
   }
 
   return !suggestion.assumptions.some((assumption) =>
@@ -1822,7 +1944,7 @@ function postProcessAddSuggestions(
   return normalizeRecurringOverrides(processedSuggestions)
     .flatMap(
       (suggestion) =>
-        expandSpecificWeekdayOccurrences(suggestion) ??
+        expandSpecificWeekdayOccurrences(suggestion, selectedDate) ??
         expandEnumeratedStudyVariants(suggestion) ??
         expandSubjectDayAllocations(suggestion) ??
         expandGenericCountOccurrences(suggestion) ??
@@ -1843,6 +1965,24 @@ function shouldSkipRecurrenceSynchronization(
   );
 }
 
+function getFirstRuleOccurrenceDate(
+  rule: PlanDraft['recurrenceRules'][number],
+  anchorDate: string,
+  fallbackDate: string,
+): string {
+  let cursor = anchorDate.localeCompare(rule.startDate) < 0 ? rule.startDate : anchorDate;
+
+  for (let index = 0; index < 370; index += 1) {
+    if (doesRecurrenceRuleApplyToDate(rule, cursor)) {
+      return cursor;
+    }
+
+    cursor = addDays(cursor, 1);
+  }
+
+  return fallbackDate;
+}
+
 function synchronizeStructuredRecurrence(
   suggestion: NaturalLanguageSuggestion,
   selectedDate: string,
@@ -1861,13 +2001,22 @@ function synchronizeStructuredRecurrence(
     return suggestion;
   }
 
-  const representativeDate = getFirstRecurrenceOccurrenceDate(
-    recurrenceRules,
-    selectedDate,
-    suggestion.parsedPlan.date,
+  const baseRule = recurrenceRules.find((rule) => !rule.isOverride) ?? recurrenceRules[0];
+  const shouldPreferBaseRule = suggestion.assumptions.includes(
+    BASE_OVERRIDE_MERGED_ASSUMPTION,
   );
+  const representativeDate =
+    shouldPreferBaseRule && baseRule
+      ? getFirstRuleOccurrenceDate(baseRule, selectedDate, suggestion.parsedPlan.date)
+      : getFirstRecurrenceOccurrenceDate(
+          recurrenceRules,
+          selectedDate,
+          suggestion.parsedPlan.date,
+        );
   const selectedRule =
-    selectApplicableRecurrenceRule(recurrenceRules, representativeDate) ??
+    (shouldPreferBaseRule && baseRule
+      ? selectApplicableRecurrenceRule(recurrenceRules, representativeDate) ?? baseRule
+      : selectApplicableRecurrenceRule(recurrenceRules, representativeDate)) ??
     recurrenceRules[0];
 
   return {
