@@ -302,9 +302,9 @@ export function summarizeLegacyRepeatFromRecurrenceRules(
   const nonDateRules = rules.filter((rule) => rule.kind !== 'date');
 
   if (
-    nonDateRules.length === 1 &&
-    nonDateRules[0].kind === 'daily' &&
-    !nonDateRules[0].isOverride
+    nonDateRules.some(
+      (rule) => rule.kind === 'daily' && !rule.isOverride,
+    )
   ) {
     return 'daily';
   }

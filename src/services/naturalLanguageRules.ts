@@ -214,6 +214,200 @@ function extractWeekdayLabels(text: string): string[] {
   );
 }
 
+function hasOverrideCue(text: string): boolean {
+  return /ただし|その代わり|代わりに|だけ|のみ|除く|他の日は|けど|けれど/.test(
+    normalizeParsingText(text),
+  );
+}
+
+function splitRecurrenceClauses(text: string): {
+  baseClause: string;
+  overrideClauses: string[];
+} {
+  const normalizedText = normalizeParsingText(text).trim();
+
+  if (!normalizedText) {
+    return {
+      baseClause: '',
+      overrideClauses: [],
+    };
+  }
+
+  const clausePool: string[] = [];
+  const overrideClauses: string[] = [];
+  const sentenceParts = normalizedText
+    .split(/\s*(?:。|；|;|\n+)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  sentenceParts.forEach((sentence) => {
+    const clauses = sentence
+      .split(/\s*(?:ただし|その代わり|代わりに|けど|けれど)\s*/g)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    clauses.forEach((clause, index) => {
+      if (index === 0 && !hasOverrideCue(clause)) {
+        clausePool.push(clause);
+      } else {
+        overrideClauses.push(clause);
+      }
+    });
+  });
+
+  const baseClause =
+    clausePool.find((clause) =>
+      /他の日は|毎朝|毎晩|毎夜|毎日|毎週|平日|土日|週末/.test(
+        normalizeParsingText(clause),
+      ),
+    ) ??
+    clausePool[0] ??
+    overrideClauses.find((clause) =>
+      /他の日は|毎朝|毎晩|毎夜|毎日|毎週|平日|土日|週末/.test(
+        normalizeParsingText(clause),
+      ),
+    ) ??
+    overrideClauses[0] ??
+    normalizedText;
+
+  const normalizedOverrides = [
+    ...overrideClauses,
+    ...clausePool.filter((clause) => clause !== baseClause),
+  ].filter((clause, index, array) => array.indexOf(clause) === index);
+
+  return {
+    baseClause,
+    overrideClauses: normalizedOverrides,
+  };
+}
+
+function inferClauseRuleShape(
+  text: string,
+  draft: PlanDraft,
+  fallbackRule?: RecurrenceRule,
+): Pick<RecurrenceRule, 'kind' | 'weekdays' | 'dayType' | 'dates'> {
+  const normalizedText = normalizeParsingText(text);
+  const weekdayLabels = toRecurrenceWeekdays(extractWeekdayLabels(normalizedText));
+
+  if (/平日/.test(normalizedText)) {
+    return {
+      kind: 'day-type',
+      weekdays: [],
+      dayType: 'weekday',
+      dates: [],
+    };
+  }
+
+  if (/土日|週末/.test(normalizedText)) {
+    return {
+      kind: 'day-type',
+      weekdays: [],
+      dayType: 'weekend',
+      dates: [],
+    };
+  }
+
+  if (weekdayLabels.length > 0) {
+    return {
+      kind: 'weekday',
+      weekdays: weekdayLabels,
+      dayType: null,
+      dates: [],
+    };
+  }
+
+  if (fallbackRule) {
+    return {
+      kind: fallbackRule.kind,
+      weekdays: [...fallbackRule.weekdays],
+      dayType: fallbackRule.dayType,
+      dates: [...fallbackRule.dates],
+    };
+  }
+
+  if (draft.repeat === 'weekly') {
+    return {
+      kind: 'weekday',
+      weekdays: [getRecurrenceWeekday(draft.date)],
+      dayType: null,
+      dates: [],
+    };
+  }
+
+  return {
+    kind: 'daily',
+    weekdays: [],
+    dayType: null,
+    dates: [],
+  };
+}
+
+function resolveClauseTimeRange(
+  text: string,
+  draft: PlanDraft,
+): Pick<PlanDraft, 'startTime' | 'endTime'> {
+  const normalizedText = normalizeParsingText(text);
+  const parsedTimes = parseTimes(text, draft.startTime);
+  const explicitDuration = parseDurationMinutes(normalizedText);
+  const hasExplicitRange =
+    CROSS_DAY_CLOCK_RANGE_REGEX.test(normalizedText) ||
+    CLOCK_RANGE_REGEX.test(normalizedText);
+  const hasExplicitStart = CLOCK_TIME_REGEX.test(normalizedText);
+  const baseDuration =
+    minutesFromTime(draft.endTime) - minutesFromTime(draft.startTime);
+  const startTime = parsedTimes.startTime || draft.startTime;
+
+  if (hasExplicitRange) {
+    return {
+      startTime,
+      endTime: parsedTimes.endTime || draft.endTime,
+    };
+  }
+
+  if (hasExplicitStart && explicitDuration === undefined) {
+    return {
+      startTime,
+      endTime: timeFromMinutes(minutesFromTime(startTime) + baseDuration),
+    };
+  }
+
+  if (!hasExplicitStart && explicitDuration !== undefined) {
+    return {
+      startTime: draft.startTime,
+      endTime: timeFromMinutes(minutesFromTime(draft.startTime) + explicitDuration),
+    };
+  }
+
+  return {
+    startTime,
+    endTime: parsedTimes.endTime || draft.endTime,
+  };
+}
+
+function buildClauseDraft(
+  text: string,
+  draft: PlanDraft,
+  fallbackRule?: RecurrenceRule,
+): PlanDraft {
+  const detectedSubject = detectSubject(text) || draft.subject;
+  const detectedTitle = sanitizeSuggestedTitle(text).trim();
+  const normalizedTitle =
+    detectedTitle && detectedTitle !== detectedSubject
+      ? detectedTitle
+      : draft.title || buildDefaultPlanTitle(draft.type, detectedSubject);
+  const timeValues = resolveClauseTimeRange(text, draft);
+
+  return {
+    ...draft,
+    title: normalizedTitle,
+    subject: detectedSubject,
+    startTime: timeValues.startTime,
+    endTime: timeValues.endTime,
+    repeatUntil: detectRepeatUntilText(text, draft.date) ?? draft.repeatUntil,
+    recurrenceRules: fallbackRule ? [fallbackRule] : draft.recurrenceRules,
+  };
+}
+
 export function detectRepeat(text: string): MonthEventRepeat {
   const normalizedText = normalizeParsingText(text);
   const weekdayLabels = extractWeekdayLabels(normalizedText);
@@ -242,68 +436,127 @@ export function detectRepeat(text: string): MonthEventRepeat {
   return 'none';
 }
 
+function detectRepeatUntilText(text: string, baseDate: string): string | null {
+  const normalizedText = normalizeParsingText(text);
+  const baseYear = Number(baseDate.slice(0, 4));
+  const explicitDateMatch = normalizedText.match(/(\d{1,2})月(\d{1,2})日まで/);
+
+  if (explicitDateMatch) {
+    const month = explicitDateMatch[1].padStart(2, '0');
+    const day = explicitDateMatch[2].padStart(2, '0');
+    return `${baseYear}-${month}-${day}`;
+  }
+
+  const slashDateMatch = normalizedText.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})まで/);
+
+  if (slashDateMatch) {
+    return `${slashDateMatch[1]}-${slashDateMatch[2].padStart(2, '0')}-${slashDateMatch[3].padStart(2, '0')}`;
+  }
+
+  const monthOnlyMatch = normalizedText.match(/(\d{1,2})月中/);
+
+  if (monthOnlyMatch) {
+    const month = Number(monthOnlyMatch[1]);
+    return `${baseYear}-${month.toString().padStart(2, '0')}-${daysInMonth(baseYear, month)
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
+  return null;
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
 export function buildStructuredRecurrenceRules(
   text: string,
   draft: PlanDraft,
   selectedDate = draft.date,
 ): RecurrenceRule[] {
-  if (draft.repeat === 'none') {
+  if (draft.repeat === 'none' && detectRepeat(text) === 'none') {
     return [];
   }
 
   const normalizedText = normalizeParsingText(text);
-  const weekdayLabels = toRecurrenceWeekdays(extractWeekdayLabels(normalizedText));
+  const { baseClause, overrideClauses } = splitRecurrenceClauses(normalizedText);
+  const baseDraft = buildClauseDraft(baseClause, draft);
   const recurrenceStartDate = resolveRecurrenceStartDate(
-    normalizedText,
+    baseClause,
     selectedDate,
     draft.date,
-    draft.repeatUntil,
+    baseDraft.repeatUntil,
   );
-  const baseRule = {
-    id: 'recurrence-base',
-    startDate: recurrenceStartDate,
-    until: draft.repeatUntil,
-    dates: [],
-    weekdays: [] as RecurrenceWeekday[],
-    dayType: null as 'weekday' | 'weekend' | null,
-    startTime: draft.startTime,
-    endTime: draft.endTime,
-    isOverride: false,
-  };
+  const baseShape = inferClauseRuleShape(baseClause, draft);
+  const baseRule = normalizeRecurrenceRules(
+    [
+      {
+        id: 'recurrence-base',
+        startDate: recurrenceStartDate,
+        until: baseDraft.repeatUntil,
+        dates: baseShape.dates,
+        weekdays: baseShape.weekdays,
+        dayType: baseShape.dayType,
+        startTime: baseDraft.startTime,
+        endTime: baseDraft.endTime,
+        title: baseDraft.title,
+        subject: baseDraft.subject,
+        type: baseDraft.type,
+        memo: baseDraft.memo,
+        kind: baseShape.kind,
+        isOverride: false,
+      },
+    ],
+    baseDraft,
+  )[0];
 
-  if (/平日/.test(normalizedText)) {
-    return normalizeRecurrenceRules(
-      [{ ...baseRule, kind: 'day-type', dayType: 'weekday' }],
-      draft,
-    );
-  }
+  const overrideRules = overrideClauses
+    .map((clauseText, index) => {
+      const overrideDraft = buildClauseDraft(clauseText, baseDraft, baseRule);
+      const overrideShape = inferClauseRuleShape(clauseText, overrideDraft, baseRule);
+      const until =
+        detectRepeatUntilText(clauseText, baseRule.startDate) ??
+        baseRule.until ??
+        overrideDraft.repeatUntil;
 
-  if (/土日|週末/.test(normalizedText)) {
-    return normalizeRecurrenceRules(
-      [{ ...baseRule, kind: 'day-type', dayType: 'weekend' }],
-      draft,
-    );
-  }
+      if (
+        !/平日|土日|週末|[月火水木金土日]曜(?:日)?|[月火水木金土日]{2,}|だけ|のみ|除く|他の日/.test(
+          clauseText,
+        )
+      ) {
+        return null;
+      }
 
-  if (draft.repeat === 'weekly') {
-    return normalizeRecurrenceRules(
-      [
-        {
-          ...baseRule,
-          kind: 'weekday',
-          weekdays:
-            weekdayLabels.length > 0 ? weekdayLabels : [getRecurrenceWeekday(draft.date)],
-        },
-      ],
-      draft,
-    );
-  }
+      return normalizeRecurrenceRules(
+        [
+          {
+            id: `recurrence-override-${index + 1}`,
+            startDate: resolveRecurrenceStartDate(
+              clauseText,
+              selectedDate,
+              baseRule.startDate,
+              until,
+            ),
+            until,
+            dates: overrideShape.dates,
+            weekdays: overrideShape.weekdays,
+            dayType: overrideShape.dayType,
+            startTime: overrideDraft.startTime,
+            endTime: overrideDraft.endTime,
+            title: overrideDraft.title,
+            subject: overrideDraft.subject,
+            type: overrideDraft.type,
+            memo: overrideDraft.memo,
+            kind: overrideShape.kind,
+            isOverride: true,
+          },
+        ],
+        overrideDraft,
+      )[0];
+    })
+    .filter((rule): rule is RecurrenceRule => Boolean(rule));
 
-  if (draft.repeat === 'daily') {
-    return normalizeRecurrenceRules([{ ...baseRule, kind: 'daily' }], draft);
-  }
-
-  return [];
+  return normalizeRecurrenceRules([baseRule, ...overrideRules], draft);
 }
 
 function resolveRecurrenceStartDate(

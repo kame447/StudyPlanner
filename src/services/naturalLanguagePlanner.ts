@@ -740,9 +740,10 @@ function stripTitleNoise(value: string): string {
     .replace(/^\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*/g, '')
     .replace(/^\s*(?:もし[^、。]*なら)\s*/g, '')
     .replace(/^\s*(?:模試の前日なら|バイトがある)\s*/g, '')
+    .replace(/^\s*(?:[^、。]*?(?:のみ|を除く|は除く))\s*/g, '')
     .replace(/^\s*(?:これを\s*\d+\s*セット(?:で)?|全部|全て|連続で|どこかで)\s*/g, '')
-    .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始)+\s*/g, '')
-    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始)+\s*$/g, '')
+    .replace(/^\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*/g, '')
+    .replace(/\s*(?:から|まで|間|半|だけ|ずつ|して|を|に|は|で|の|開始|のみ|除く)+\s*$/g, '')
     .replace(/\s*(?:けど|けれど|ただし|その代わり|代わりに)\s*$/g, '')
     .replace(/\s*(?:もし[^、。]*なら)\s*$/g, '')
     .replace(/^\s*(?:\d+日|\d+セット)\s*$/g, '')
@@ -1006,7 +1007,7 @@ function shouldMergeRecurrenceInstruction(
 }
 
 function hasExceptionCue(text: string): boolean {
-  return /だけは|ただし|その代わり|他の日は|けど|けれど|もし.+なら/.test(
+  return /だけは|だけ|ただし|その代わり|他の日は|けど|けれど|もし.+なら|のみ|除く/.test(
     normalizeParsingText(text),
   );
 }
@@ -1117,8 +1118,7 @@ function expandSpecificWeekdayOccurrences(
   if (
     suggestion.parsedPlan.repeat !== 'none' ||
     weekdayLabels.length < 2 ||
-    !/\d+回/.test(normalizedText) ||
-    !/(どこかで|全部)/.test(normalizedText)
+    !/(どこかで|全部|入れて|割り振って|にして|\d+回)/.test(normalizedText)
   ) {
     return null;
   }
@@ -1137,7 +1137,9 @@ function expandSpecificWeekdayOccurrences(
   const uniqueSortedLabels = weekdayLabels
     .filter((label, index, array) => array.indexOf(label) === index)
     .sort((left, right) => order.indexOf(left) - order.indexOf(right));
-  const requestedCount = Number(normalizedText.match(/(\d+)回/)?.[1] ?? uniqueSortedLabels.length);
+  const requestedCount = Number(
+    normalizedText.match(/(\d+)回/)?.[1] ?? uniqueSortedLabels.length,
+  );
   const dates = uniqueSortedLabels
     .slice(0, requestedCount)
     .map((label) => addDays(weekStart, order.indexOf(label)));
@@ -1240,6 +1242,134 @@ function normalizeRecurringOverrides(
   });
 }
 
+function expandGenericCountOccurrences(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion[] | null {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+  const count = Number(normalizedText.match(/(\d+)回/)?.[1] ?? '0');
+
+  if (
+    suggestion.parsedPlan.repeat !== 'none' ||
+    count <= 1 ||
+    !suggestion.parsedPlan.startTime ||
+    !suggestion.parsedPlan.endTime
+  ) {
+    return null;
+  }
+
+  const duration =
+    minutesFromTime(suggestion.parsedPlan.endTime) -
+    minutesFromTime(suggestion.parsedPlan.startTime);
+
+  if (duration <= 0) {
+    return null;
+  }
+
+  if (/連続で/.test(normalizedText)) {
+    const startMinutes = minutesFromTime(suggestion.parsedPlan.startTime);
+
+    return Array.from({ length: count }, (_, index) =>
+      finalizeSuggestionStatus({
+        ...suggestion,
+        parsedPlan: {
+          ...suggestion.parsedPlan,
+          startTime: timeFromMinutes(startMinutes + duration * index),
+          endTime: timeFromMinutes(startMinutes + duration * (index + 1)),
+        },
+        assumptions: Array.from(
+          new Set([
+            ...suggestion.assumptions,
+            `${count}回指定を連続ブロックとして展開しました。`,
+          ]),
+        ),
+      }),
+    );
+  }
+
+  if (/(どこかで|入れて|割り振って)/.test(normalizedText)) {
+    return Array.from({ length: count }, (_, index) =>
+      finalizeSuggestionStatus({
+        ...suggestion,
+        parsedPlan: {
+          ...suggestion.parsedPlan,
+          date: addDays(suggestion.parsedPlan.date, index),
+        },
+        assumptions: Array.from(
+          new Set([
+            ...suggestion.assumptions,
+            `${count}回指定を日別予定へ展開しました。`,
+          ]),
+        ),
+      }),
+    );
+  }
+
+  return null;
+}
+
+function expandSubjectDayAllocations(
+  suggestion: NaturalLanguageSuggestion,
+): NaturalLanguageSuggestion[] | null {
+  const normalizedText = normalizeParsingText(suggestion.rawText);
+  const allocationMatches = Array.from(
+    normalizedText.matchAll(
+      /(英語長文|英単語|英文法|英語|数学|物理|化学|生物|情報|現代文|古文|漢文|国語|過去問|復習|自習|レポート|課題|良問の風|青チャート|黄色チャート|システム英単語|ターゲット1900)\s*を\s*(\d+)日/g,
+    ),
+  );
+
+  if (
+    suggestion.parsedPlan.repeat !== 'none' ||
+    allocationMatches.length < 2 ||
+    !suggestion.parsedPlan.startTime ||
+    !suggestion.parsedPlan.endTime
+  ) {
+    return null;
+  }
+
+  const allocations = allocationMatches.flatMap((match) =>
+    Array.from({ length: Number(match[2]) }, () => match[1]),
+  );
+
+  if (allocations.length <= 1) {
+    return null;
+  }
+
+  return allocations.map((label, index) => {
+    const normalizedLabels = normalizeStudyLabels({
+      rawText: label,
+      subject: detectSubject(label) || label,
+      title: label,
+      type: suggestion.parsedPlan.type,
+      fallbackTitle: label,
+    });
+    const preferredTitle = buildPreferredStudyTitle(
+      label,
+      normalizedLabels.subject,
+      normalizedLabels.title,
+    );
+
+    return finalizeSuggestionStatus({
+      ...suggestion,
+      parsedPlan: {
+        ...suggestion.parsedPlan,
+        date: addDays(suggestion.parsedPlan.date, index),
+        title: preferredTitle,
+        subject: normalizeSubjectFamily(
+          normalizedLabels.subject,
+          label,
+          preferredTitle,
+        ),
+      },
+      assumptions: Array.from(
+        new Set([
+          ...suggestion.assumptions,
+          '科目ごとの日数指定から日別予定へ展開しました。',
+        ]),
+      ),
+    });
+  });
+}
+
 function sanitizeDisplayTitle(title: string, date: string): string {
   return title
     .replace(new RegExp(date.replace(/-/g, '[-/]'), 'g'), ' ')
@@ -1330,11 +1460,17 @@ function isSubordinateSuggestion(
       return false;
     }
 
-    if (normalizeSuggestionRawText(candidate.rawText) !== normalizedRawText) {
+    if (!hasConcreteSchedule(candidate) && !hasStructuredRecurrence(candidate)) {
       return false;
     }
 
-    if (!hasConcreteSchedule(candidate) && !hasStructuredRecurrence(candidate)) {
+    const sameRawText =
+      normalizeSuggestionRawText(candidate.rawText) === normalizedRawText;
+    const sameContent =
+      candidate.parsedPlan.title === suggestion.parsedPlan.title &&
+      candidate.parsedPlan.subject === suggestion.parsedPlan.subject;
+
+    if (!sameRawText && !sameContent) {
       return false;
     }
 
@@ -1343,7 +1479,7 @@ function isSubordinateSuggestion(
     }
 
     return (
-      candidate.parsedPlan.title === suggestion.parsedPlan.title ||
+      sameContent ||
       (Boolean(suggestion.parsedPlan.subject) &&
         candidate.parsedPlan.subject === suggestion.parsedPlan.subject)
     );
@@ -1619,6 +1755,8 @@ function postProcessAddSuggestions(
       (suggestion) =>
         expandSpecificWeekdayOccurrences(suggestion) ??
         expandEnumeratedStudyVariants(suggestion) ??
+        expandSubjectDayAllocations(suggestion) ??
+        expandGenericCountOccurrences(suggestion) ??
         [suggestion],
     )
     .map((suggestion) => synchronizeStructuredRecurrence(suggestion, selectedDate))
@@ -1698,11 +1836,11 @@ function trimContentPhrase(value: string): string {
     .replace(/^(?:その日|この日|当日)(?:の)?/g, '')
     .replace(/(?:を)?(?:やる|する|進める|復習|演習|学習|勉強|予定)$/g, '')
     .replace(/^(?:(?:[月火水木金土日]曜(?:日)?(?:と|、|,|，)?)+(?:の夜|の朝|の昼|は)?|月水金は|火木土は|平日は|土日は|他の日は)+/g, '')
-    .replace(/^(?:けど|けれど|ただし|その代わり|もし[^、。]*なら|模試の前日なら|バイトがある)+/g, '')
-    .replace(/^(?:から|まで|間|半|だけ|ずつ|して)+/g, '')
-    .replace(/(?:から|まで|間|半|だけ|ずつ|して)+$/g, '')
-    .replace(/^(?:に|で|を|は|が|の|へ)+/g, '')
-    .replace(/(?:に|で|を|は|が|の|へ)+$/g, '')
+    .replace(/^(?:けど|けれど|ただし|その代わり|もし[^、。]*なら|模試の前日なら|バイトがある|[^、。]*?(?:のみ|を除く|は除く))+/g, '')
+    .replace(/^(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+/g, '')
+    .replace(/(?:から|まで|間|半|だけ|ずつ|して|のみ|除く)+$/g, '')
+    .replace(/^(?:に|で|を|は|が|の|へ|と)+/g, '')
+    .replace(/(?:に|で|を|は|が|の|へ|と)+$/g, '')
     .replace(/^(?:ちょっと|少し|ちょい)+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
