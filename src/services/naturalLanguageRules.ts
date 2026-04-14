@@ -812,6 +812,10 @@ function refineRulesForOverrides(rules: RecurrenceRule[]): RecurrenceRule[] {
     return rules;
   }
 
+  const weekdayOverrides = rules
+    .filter((rule) => rule.isOverride && rule.kind === 'weekday')
+    .flatMap((rule) => rule.weekdays);
+
   if (
     baseRule.kind === 'daily' &&
     rules.some(
@@ -827,6 +831,12 @@ function refineRulesForOverrides(rules: RecurrenceRule[]): RecurrenceRule[] {
     baseRule.dayType = 'weekday';
     baseRule.weekdays = [];
     baseRule.dates = [];
+  } else if (baseRule.kind === 'daily' && weekdayOverrides.length > 0) {
+    baseRule.kind = 'weekday';
+    baseRule.dayType = null;
+    baseRule.dates = [];
+    baseRule.weekdays = (['mon','tue','wed','thu','fri','sat','sun'] as RecurrenceWeekday[])
+      .filter((weekday) => !weekdayOverrides.includes(weekday));
   }
 
   if (baseRule.kind === 'weekday') {
@@ -1228,7 +1238,17 @@ export function isBreakLikeText(text: string): boolean {
   );
 }
 
+function isTimeOnlySupportText(text: string): boolean {
+  const normalizedText = normalizeParsingText(text).trim();
+
+  return /^(?:時間は?)\s*\d{1,2}(?::\d{2})?(?:で|です)?$/.test(normalizedText);
+}
+
 function hasTaskCue(text: string): boolean {
+  if (isTimeOnlySupportText(text)) {
+    return false;
+  }
+
   return (
     hasExplicitClockTime(text) ||
     parseDurationMinutes(text) !== undefined ||
@@ -1328,6 +1348,12 @@ function mergeHardSegments(segments: string[]): string[] {
 
   segments.forEach((segment) => {
     const previousSegment = merged[merged.length - 1];
+    const normalizedSegment = normalizeParsingText(segment).trim();
+
+    if (previousSegment && isTimeOnlySupportText(normalizedSegment)) {
+      merged[merged.length - 1] = `${previousSegment} ${normalizedSegment}`.trim();
+      return;
+    }
 
     if (
       previousSegment &&

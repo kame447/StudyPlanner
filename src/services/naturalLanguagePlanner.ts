@@ -1061,6 +1061,10 @@ function isExplanationOnlySuggestion(suggestion: NaturalLanguageSuggestion): boo
     return true;
   }
 
+  if (/^(?:時間は?|開始は?)\s*\d{1,2}(?::\d{2})?(?:で|です)?$/.test(normalizedText)) {
+    return true;
+  }
+
   if (
     /^(?:時|時間|合計|テスト前日|\d+日|\d+回|\d+セット|[月火水木金土日]{2,})$/.test(
       normalizedTitle,
@@ -1909,11 +1913,18 @@ function postProcessAddSuggestions(
         previousSuggestion.parsedPlan.endTime = timeFromMinutes(
           minutesFromTime(parsedTimes.startTime) + previousDuration,
         );
+        previousSuggestion.parsedPlan.recurrenceRules = [];
         previousSuggestion.assumptions = Array.from(
           new Set([
             ...previousSuggestion.assumptions,
             '補足の時刻指定を前の予定に適用しました。',
           ]),
+        );
+        previousSuggestion.unresolvedFields = previousSuggestion.unresolvedFields.filter(
+          (field) => field !== 'startTime' && field !== 'endTime',
+        );
+        previousSuggestion.issues = previousSuggestion.issues.filter(
+          (issue) => issue !== 'start_time_conflicts_with_input' && issue !== 'end_time_conflicts_with_input',
         );
         return;
       }
@@ -2208,8 +2219,14 @@ function synchronizeStructuredRecurrence(
     parsedPlan: {
       ...suggestion.parsedPlan,
       date: representativeDate,
-      startTime: selectedRule?.startTime ?? suggestion.parsedPlan.startTime,
-      endTime: selectedRule?.endTime ?? suggestion.parsedPlan.endTime,
+      startTime:
+        (selectedRule?.startTime && selectedRule.startTime !== '00:00'
+          ? selectedRule.startTime
+          : suggestion.parsedPlan.startTime),
+      endTime:
+        (selectedRule?.endTime && !(selectedRule.startTime === '00:00' && selectedRule.endTime === '00:00')
+          ? selectedRule.endTime
+          : suggestion.parsedPlan.endTime),
       title: selectedRule?.title ?? suggestion.parsedPlan.title,
       subject: selectedRule?.subject ?? suggestion.parsedPlan.subject,
       type: selectedRule?.type ?? suggestion.parsedPlan.type,
@@ -3090,13 +3107,16 @@ export async function generateNaturalLanguageSuggestion(
     const baseDuration =
       minutesFromTime(baseSuggestion.parsedPlan.endTime) -
       minutesFromTime(baseSuggestion.parsedPlan.startTime);
-    const overrideDuration =
-      parseDurationMinutes(suggestion.rawText) ?? baseDuration;
+    const normalizedOverrideText = normalizeParsingText(suggestion.rawText);
+    const explicitOverrideDuration = parseDurationMinutes(suggestion.rawText);
+    const overrideDuration = explicitOverrideDuration ?? baseDuration;
     const startTime =
       suggestion.parsedPlan.startTime || baseSuggestion.parsedPlan.startTime;
+    const hasExplicitRange =
+      CROSS_DAY_CLOCK_RANGE_REGEX.test(normalizedOverrideText) ||
+      CLOCK_RANGE_REGEX.test(normalizedOverrideText);
     const endTime =
-      suggestion.parsedPlan.endTime &&
-      suggestion.parsedPlan.endTime !== baseSuggestion.parsedPlan.endTime
+      hasExplicitRange && suggestion.parsedPlan.endTime
         ? suggestion.parsedPlan.endTime
         : timeFromMinutes(minutesFromTime(startTime) + overrideDuration);
     const weekdayKeyMap: Record<string, RecurrenceRule['weekdays'][number]> = {
