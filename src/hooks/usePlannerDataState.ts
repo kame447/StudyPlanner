@@ -50,13 +50,76 @@ interface PendingRecurringPlanActionState {
   draft?: PlanDraft;
 }
 
+function getErrorDiagnostics(error: unknown): {
+  code: string | null;
+  message: string | null;
+  customData?: unknown;
+} {
+  if (!error || typeof error !== 'object') {
+    return {
+      code: null,
+      message: null,
+    };
+  }
+
+  const firebaseError = error as {
+    code?: string | null;
+    message?: string | null;
+    customData?: unknown;
+  };
+
+  return {
+    code: firebaseError.code?.trim() || null,
+    message: firebaseError.message?.trim() || null,
+    customData: firebaseError.customData,
+  };
+}
+
 function resolveErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
+    const diagnostics = getErrorDiagnostics(error);
+    if (diagnostics.code && diagnostics.message) {
+      return `${diagnostics.code}: ${diagnostics.message}`;
+    }
+
     const message = error.message.trim();
     return message || fallback;
   }
 
-  return fallback;
+  const diagnostics = getErrorDiagnostics(error);
+  if (diagnostics.code && diagnostics.message) {
+    return `${diagnostics.code}: ${diagnostics.message}`;
+  }
+
+  return diagnostics.message || fallback;
+}
+
+function summarizePlanForLog(plan: Plan) {
+  return {
+    id: plan.id,
+    seriesId: plan.seriesId,
+    userId: plan.userId,
+    date: plan.date,
+    occurrenceDate: plan.occurrenceDate ?? null,
+    title: plan.title,
+    repeat: plan.repeat,
+    repeatUntil: plan.repeatUntil,
+    excludedDates: plan.excludedDates,
+    recurrenceRuleKinds: plan.recurrenceRules.map((rule) => rule.kind),
+    hasOverrides: plan.recurrenceRules.some(
+      (rule) => rule.isOverride || rule.kind === 'date',
+    ),
+  };
+}
+
+function summarizeActualForLog(actual: Actual) {
+  return {
+    id: actual.id,
+    userId: actual.userId,
+    planId: actual.planId,
+    occurrenceDate: actual.occurrenceDate,
+    title: actual.title,
+  };
 }
 
 interface UsePlannerDataStateResult {
@@ -303,12 +366,56 @@ export function usePlannerDataState({
       }
 
       if (scope === 'all') {
-        const seriesPlanIds = plans
-          .filter((plan) => plan.seriesId === sourcePlan.seriesId)
-          .map((plan) => plan.id);
+        const seriesPlans = plans.filter(
+          (plan) =>
+            plan.seriesId === sourcePlan.seriesId && plan.userId === userId,
+        );
+        const skippedPlans = plans.filter(
+          (plan) =>
+            plan.seriesId === sourcePlan.seriesId && plan.userId !== userId,
+        );
+        const seriesPlanIds = seriesPlans.map((plan) => plan.id);
+        const seriesActuals = actuals.filter(
+          (actual) =>
+            actual.userId === userId && seriesPlanIds.includes(actual.planId),
+        );
+
+        console.info('[RecurringPlanScope] delete-all targets', {
+          source:
+            editingPlanId && editingPlanId === sourcePlan.id
+              ? 'plan-editor'
+              : 'plan-card',
+          action: 'delete',
+          scope,
+          userId,
+          sourcePlanId: sourcePlan.id,
+          sourceSeriesId: sourcePlan.seriesId,
+          plans: seriesPlans.map(summarizePlanForLog),
+          actuals: seriesActuals.map(summarizeActualForLog),
+          skippedPlans: skippedPlans.map(summarizePlanForLog),
+        });
 
         await runSequentially(seriesPlanIds, async (planId) => {
-          await plannerRepository.deletePlan(userId, planId);
+          console.info('[RecurringPlanScope] delete-all operation', {
+            collection: 'plans',
+            operation: 'delete-series-plan',
+            planId,
+            scope,
+            seriesId: sourcePlan.seriesId,
+          });
+          try {
+            await plannerRepository.deletePlan(userId, planId);
+          } catch (error) {
+            console.error('[RecurringPlanScope] delete-all operation failed', {
+              collection: 'plans',
+              operation: 'delete-series-plan',
+              planId,
+              scope,
+              seriesId: sourcePlan.seriesId,
+              error: getErrorDiagnostics(error),
+            });
+            throw error;
+          }
         });
         setPlans((current) => removePlansByIds(current, seriesPlanIds));
         setActuals((current) =>
@@ -351,6 +458,17 @@ export function usePlannerDataState({
       closePlanEditor();
       showNotice('繰り返し予定を削除しました。');
     } catch (error) {
+      console.error('[RecurringPlanScope] failed', {
+        action: pendingRecurringPlanAction.kind,
+        scope,
+        source:
+          editingPlanId && editingPlanId === sourcePlan.id
+            ? 'plan-editor'
+            : 'plan-card',
+        userId,
+        sourcePlan: summarizePlanForLog(sourcePlan),
+        error: getErrorDiagnostics(error),
+      });
       await loadPlannerData(userId);
       setPendingRecurringPlanAction(null);
       closePlanEditor();

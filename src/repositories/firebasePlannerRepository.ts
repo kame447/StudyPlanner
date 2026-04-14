@@ -19,12 +19,36 @@ import type { PlannerRepository } from './repositoryContracts';
 import { normalizeActualRecord, normalizePlanRecord } from './repositoryUtils';
 
 type PlannerDoc = Plan | Actual | DayNote | MonthEvent;
+type FirebaseLikeError = {
+  code?: string | null;
+  message?: string | null;
+  customData?: unknown;
+};
+
+function getFirebaseErrorDiagnostics(error: unknown): {
+  code: string | null;
+  message: string | null;
+  customData?: unknown;
+} {
+  const firebaseError = error as FirebaseLikeError | null;
+  return {
+    code: firebaseError?.code?.trim() || null,
+    message: firebaseError?.message?.trim() || null,
+    customData: firebaseError?.customData,
+  };
+}
 
 function normalizeErrorMessage(
   fallbackMessage: string,
-  error: { message?: string | null } | null,
+  error: FirebaseLikeError | null,
 ): string {
+  const code = error?.code?.trim();
   const message = error?.message?.trim();
+
+  if (code && message) {
+    return `${code}: ${message}`;
+  }
+
   return message || fallbackMessage;
 }
 
@@ -72,10 +96,15 @@ async function upsertDocument<T extends PlannerDoc>(
 
 async function listActualsByPlanId(
   firestoreDb: Firestore,
+  userId: string,
   planId: string,
 ): Promise<Actual[]> {
   const snapshot = await getDocs(
-    query(collection(firestoreDb, 'actuals'), where('planId', '==', planId)),
+    query(
+      collection(firestoreDb, 'actuals'),
+      where('userId', '==', userId),
+      where('planId', '==', planId),
+    ),
   );
 
   return snapshot.docs.map((document) => document.data() as Actual);
@@ -139,20 +168,46 @@ export function createFirebasePlannerRepository(
     },
     async deletePlan(userId, planId) {
       try {
+        console.info('[PlannerRepository] deletePlan query', {
+          collection: 'actuals',
+          userId,
+          planId,
+        });
         const batch = writeBatch(firestoreDb);
-        const actuals = await listActualsByPlanId(firestoreDb, planId);
+        const actuals = await listActualsByPlanId(firestoreDb, userId, planId);
+        const actualIds = actuals.map((actual) => actual.id);
+
+        console.info('[PlannerRepository] deletePlan targets', {
+          userId,
+          planId,
+          operations: [
+            ...actualIds.map((actualId) => ({
+              collection: 'actuals',
+              operation: 'delete',
+              id: actualId,
+            })),
+            {
+              collection: 'plans',
+              operation: 'delete',
+              id: planId,
+            },
+          ],
+        });
 
         batch.delete(doc(firestoreDb, 'plans', planId));
-        actuals
-          .filter((actual) => actual.userId === userId)
-          .forEach((actual) => {
-            batch.delete(doc(firestoreDb, 'actuals', actual.id));
-          });
+        actuals.forEach((actual) => {
+          batch.delete(doc(firestoreDb, 'actuals', actual.id));
+        });
 
         await batch.commit();
       } catch (error) {
+        console.error('[PlannerRepository] deletePlan failed', {
+          userId,
+          planId,
+          error: getFirebaseErrorDiagnostics(error),
+        });
         throw new Error(
-          normalizeErrorMessage('予定を削除できませんでした。', error as { message?: string | null }),
+          normalizeErrorMessage('予定を削除できませんでした。', error as FirebaseLikeError),
         );
       }
     },
