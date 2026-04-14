@@ -1661,14 +1661,22 @@ function isUnsupportedAllocationSuggestion(
       /(英語長文|英単語|英文法|英語|数学|物理|化学|生物|情報|現代文|古文|漢文|国語|過去問|復習|自習|レポート|課題)\s*を\s*\d+日/g,
     ),
   ).length;
+  const hasAllocationFragment = /(英語長文|英単語|英文法|英語|数学|物理|化学|生物|情報|現代文|古文|漢文|国語|過去問|復習|自習|レポート|課題)\s*を\s*\d+日/.test(
+    normalizedText,
+  );
+  const hasSupportedAllocationExpansion = suggestion.assumptions.some(
+    (assumption) => /科目ごとの日数指定から日別予定へ展開しました/.test(assumption),
+  );
 
   if (allocationMatchCount < 2 || !/割り振って/.test(normalizedText)) {
+    if (hasAllocationFragment && !hasSupportedAllocationExpansion) {
+      return true;
+    }
+
     return (
       /割り振って/.test(normalizedText) &&
       /\d+日/.test(normalizedText) &&
-      !suggestion.assumptions.some((assumption) =>
-        /科目ごとの日数指定から日別予定へ展開しました/.test(assumption),
-      )
+      !hasSupportedAllocationExpansion
     ) || (
       /したい/.test(normalizedText) &&
       /毎日/.test(normalizedText) &&
@@ -1676,9 +1684,7 @@ function isUnsupportedAllocationSuggestion(
     );
   }
 
-  return !suggestion.assumptions.some((assumption) =>
-    /科目ごとの日数指定から日別予定へ展開しました/.test(assumption),
-  );
+  return !hasSupportedAllocationExpansion;
 }
 
 function postProcessAddSuggestions(
