@@ -3,6 +3,7 @@ import { buildAST } from "./build-ast";
 import { parseClauses } from "./clause-parser";
 import { compileToSuggestions } from "./compile";
 import { lowerToIR } from "./lower-ir";
+import type { Suggestion } from "./shared/types";
 
 describe("compileToSuggestions", () => {
   it("time-only attach を含む daily の suggestion を作れる", () => {
@@ -49,7 +50,8 @@ describe("compileToSuggestions", () => {
     const overrideWeekdays = suggestions
       .slice(1)
       .map(
-        (suggestion) => suggestion.parsedPlan.recurrenceRules?.[0].weekdays?.[0]
+        (suggestion: Suggestion) =>
+          suggestion.parsedPlan.recurrenceRules?.[0].weekdays?.[0]
       )
       .sort();
 
@@ -71,5 +73,49 @@ describe("compileToSuggestions", () => {
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].unresolvedFields).toContain("startTime");
     expect(suggestions[0].unresolvedFields).toContain("endTime");
+  });
+
+  it("そのあと句を follow-up suggestion として compile できる", () => {
+    const clauses = parseClauses(
+      "明日19時から数学を1時間。そのあと英単語を30分"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast);
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(2);
+
+    expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("20:00");
+    expect(suggestions[0].parsedPlan.subject).toBe("数学");
+
+    expect(suggestions[1].parsedPlan.startTime).toBe("20:00");
+    expect(suggestions[1].parsedPlan.endTime).toBe("20:30");
+    expect(suggestions[1].parsedPlan.subject).toBe("英語");
+    expect(suggestions[1].assumptions).toContain(
+      "anchored to previous event endTime"
+    );
+  });
+
+  it("enumeration を 3 件の suggestion に展開できる", () => {
+    const clauses = parseClauses(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast);
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(3);
+    expect(
+      suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.title)
+    ).toEqual(["長文", "単語", "文法"]);
+    expect(
+      suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
+    ).toEqual(["英語", "英語", "英語"]);
+    expect(
+      suggestions.every((suggestion: Suggestion) =>
+        suggestion.assumptions.includes("enumeration expanded from base")
+      )
+    ).toBe(true);
   });
 });

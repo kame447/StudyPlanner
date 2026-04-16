@@ -15,6 +15,19 @@ function hasToken(tokens: Token[], kind: Token["kind"]): boolean {
   return tokens.some((token) => token.kind === kind);
 }
 
+function hasAnyStructuredEventSignal(tokens: Token[]): boolean {
+  return tokens.some(
+    (token) =>
+      token.kind === "TIME" ||
+      token.kind === "TIME_RANGE" ||
+      token.kind === "DURATION" ||
+      token.kind === "REPEAT" ||
+      token.kind === "WEEKDAY" ||
+      token.kind === "DAYTYPE" ||
+      token.kind === "CONNECTIVE"
+  );
+}
+
 function isOverrideClause(tokens: Token[]): boolean {
   return hasToken(tokens, "OVERRIDE");
 }
@@ -22,6 +35,12 @@ function isOverrideClause(tokens: Token[]): boolean {
 function isEnumerationClause(segment: string): boolean {
   return (
     /\d+回/.test(segment) && /(1回は|１回は|もう1回|もう１回)/.test(segment)
+  );
+}
+
+function isEnumerationBaseClause(segment: string): boolean {
+  return (
+    /\d+回/.test(segment) && !/(1回は|１回は|もう1回|もう１回)/.test(segment)
   );
 }
 
@@ -45,19 +64,26 @@ function isTimeOnlyClause(segment: string, tokens: Token[]): boolean {
   );
 }
 
-function isInstructionClause(tokens: Token[]): boolean {
-  const hasStructuredSignal = tokens.some(
-    (token) =>
-      token.kind === "TIME" ||
-      token.kind === "TIME_RANGE" ||
-      token.kind === "DURATION" ||
-      token.kind === "REPEAT" ||
-      token.kind === "WEEKDAY" ||
-      token.kind === "DAYTYPE" ||
-      token.kind === "OVERRIDE"
+function isLikelyStudyEventClause(segment: string): boolean {
+  return /(英語|数学|国語|理科|社会|長文|文法|単語|復習|勉強|学習)/.test(
+    segment
   );
+}
 
-  return !hasStructuredSignal;
+function isInstructionClause(segment: string, tokens: Token[]): boolean {
+  if (hasAnyStructuredEventSignal(tokens)) {
+    return false;
+  }
+
+  if (isEnumerationBaseClause(segment)) {
+    return false;
+  }
+
+  if (isLikelyStudyEventClause(segment)) {
+    return false;
+  }
+
+  return true;
 }
 
 function classifySegment(segment: string): ClauseNode {
@@ -75,7 +101,7 @@ function classifySegment(segment: string): ClauseNode {
     return { kind: "TimeOnlyClause", tokens, spanText: segment };
   }
 
-  if (isInstructionClause(tokens)) {
+  if (isInstructionClause(segment, tokens)) {
     return { kind: "InstructionClause", tokens, spanText: segment };
   }
 

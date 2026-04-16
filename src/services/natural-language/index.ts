@@ -7,26 +7,11 @@ import { compileToSuggestions } from "./compile";
 import { validateAndDedupe } from "./validate";
 
 import type {
-  AttachmentNode,
-  BaseScheduleNode,
   ClauseNode,
-  DayTypeSpec,
-  DurationSpec,
-  NormalizedOverrideIntent,
-  NormalizedPlanIntent,
-  OverrideScheduleNode,
-  PlanDraft,
-  RecurrenceRule,
-  RepeatSpec,
   ScheduleAST,
   ScheduleIR,
   Suggestion,
-  TimeRangeSpec,
-  TimeSpec,
   Token,
-  UnresolvedField,
-  Weekday,
-  WeekdaySpec,
 } from "./shared/types";
 
 export interface NaturalLanguagePipelineResult {
@@ -49,12 +34,15 @@ function createEmptyPipelineResult(
     clauses: [],
     ast: {
       base: null,
+      sequences: [],
       overrides: [],
       attachments: [],
       enumerations: [],
       diagnostics: [],
     },
     ir: {
+      sequencedIntents: [],
+      enumeratedIntents: [],
       overrideIntents: [],
       diagnostics: [],
     },
@@ -104,22 +92,20 @@ export { validateAndDedupe } from "./validate";
 export type {
   AttachmentNode,
   BaseScheduleNode,
-  ClauseNode,
   DayTypeSpec,
   DurationSpec,
+  EnumerationVariantNode,
+  NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
+  NormalizedSequencedIntent,
   OverrideScheduleNode,
   PlanDraft,
   RecurrenceRule,
   RepeatSpec,
-  ScheduleAST,
-  ScheduleIR,
-  Suggestion,
-  TimeRangeSpec,
-  TimeSpec,
-  Token,
+  SequenceRelation,
+  SequencedEventNode,
   UnresolvedField,
   Weekday,
   WeekdaySpec,
-};
+} from "./shared/types";

@@ -1,6 +1,8 @@
 import type {
+  NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
+  NormalizedSequencedIntent,
   PlanDraft,
   RecurrenceRule,
   ScheduleIR,
@@ -15,106 +17,105 @@ function unique<T>(values: T[] | undefined): T[] | undefined {
   return [...new Set(values)];
 }
 
-function inferSubject(contentText?: string): string | undefined {
-  if (!contentText) {
-    return undefined;
-  }
+function inferSubject(
+  contentText?: string,
+  contextText?: string
+): string | undefined {
+  const source = `${contentText ?? ""} ${contextText ?? ""}`;
 
-  if (/英単語|英語|長文|文法/.test(contentText)) {
+  if (/英単語|英語|長文|文法|単語/.test(source)) {
     return "英語";
   }
 
-  if (/数学|チャート|数[ⅠⅡIIIＡAＢBＣC]/.test(contentText)) {
+  if (/数学|チャート|数[ⅠⅡIIIＡAＢBＣC]/.test(source)) {
     return "数学";
   }
 
   return undefined;
 }
 
-function inferTitle(contentText?: string): string | undefined {
-  if (!contentText) {
-    return undefined;
+function inferTitle(
+  contentText?: string,
+  contextText?: string
+): string | undefined {
+  if (contentText) {
+    if (/英単語/.test(contentText)) {
+      return "英単語の復習";
+    }
+
+    if (/長文/.test(contentText)) {
+      return "長文";
+    }
+
+    if (/文法/.test(contentText)) {
+      return "文法";
+    }
+
+    if (/単語/.test(contentText)) {
+      return "単語";
+    }
+
+    if (/数学/.test(contentText)) {
+      return "数学";
+    }
+
+    return contentText;
   }
 
-  if (/英単語/.test(contentText)) {
-    return "英単語の復習";
+  if (contextText) {
+    if (/英単語/.test(contextText)) {
+      return "英単語の復習";
+    }
+
+    if (/数学/.test(contextText)) {
+      return "数学";
+    }
+
+    return contextText;
   }
 
-  if (/長文/.test(contentText)) {
-    return "長文";
-  }
-
-  if (/文法/.test(contentText)) {
-    return "文法";
-  }
-
-  if (/数学/.test(contentText)) {
-    return "数学";
-  }
-
-  return contentText;
+  return undefined;
 }
 
-function baseToRecurrenceRules(
-  base: NormalizedPlanIntent
-): RecurrenceRule[] | undefined {
-  if (base.dayType) {
+function toRecurrenceRules(input: {
+  dayType?: "weekday" | "weekend";
+  weekdays?: string[];
+  excludedWeekdays?: string[];
+  repeatKind?: "daily" | "weekly" | "monthly" | "unknown";
+  startTime?: string;
+  endTime?: string;
+}): RecurrenceRule[] | undefined {
+  if (input.dayType) {
     return [
       {
         kind: "day-type",
-        dayType: base.dayType,
-        excludedWeekdays: unique(base.excludedWeekdays),
-        startTime: base.startTime,
-        endTime: base.endTime,
+        dayType: input.dayType,
+        excludedWeekdays: unique(
+          input.excludedWeekdays as RecurrenceRule["excludedWeekdays"]
+        ),
+        startTime: input.startTime,
+        endTime: input.endTime,
       },
     ];
   }
 
-  if (base.weekdays && base.weekdays.length > 0) {
+  if (input.weekdays && input.weekdays.length > 0) {
     return [
       {
         kind: "weekday",
-        weekdays: unique(base.weekdays),
-        startTime: base.startTime,
-        endTime: base.endTime,
+        weekdays: unique(input.weekdays as RecurrenceRule["weekdays"]),
+        startTime: input.startTime,
+        endTime: input.endTime,
       },
     ];
   }
 
-  if (base.repeatSpec?.kind === "daily") {
+  if (input.repeatKind === "daily") {
     return [
       {
         kind: "daily",
-        startTime: base.startTime,
-        endTime: base.endTime,
-      },
-    ];
-  }
-
-  return undefined;
-}
-
-function overrideToRecurrenceRules(
-  override: NormalizedOverrideIntent
-): RecurrenceRule[] | undefined {
-  if (override.dayType) {
-    return [
-      {
-        kind: "day-type",
-        dayType: override.dayType,
-        startTime: override.startTime,
-        endTime: override.endTime,
-      },
-    ];
-  }
-
-  if (override.weekdays && override.weekdays.length > 0) {
-    return [
-      {
-        kind: "weekday",
-        weekdays: unique(override.weekdays),
-        startTime: override.startTime,
-        endTime: override.endTime,
+        startTime: input.startTime,
+        endTime: input.endTime,
       },
     ];
   }
@@ -151,7 +152,14 @@ function buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {
     startTime: base.startTime,
     endTime: base.endTime,
     durationMinutes: base.durationMinutes,
-    recurrenceRules: baseToRecurrenceRules(base),
+    recurrenceRules: toRecurrenceRules({
+      dayType: base.dayType,
+      weekdays: base.weekdays,
+      excludedWeekdays: base.excludedWeekdays,
+      repeatKind: base.repeatSpec?.kind,
+      startTime: base.startTime,
+      endTime: base.endTime,
+    }),
   };
 }
 
@@ -170,7 +178,50 @@ function buildOverrideDraft(
     startTime: override.startTime,
     endTime: override.endTime,
     durationMinutes: override.durationMinutes,
-    recurrenceRules: overrideToRecurrenceRules(override),
+    recurrenceRules: toRecurrenceRules({
+      dayType: override.dayType,
+      weekdays: override.weekdays,
+      startTime: override.startTime,
+      endTime: override.endTime,
+    }),
+  };
+}
+
+function buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {
+  const subject = inferSubject(sequence.contentText);
+  const title = inferTitle(sequence.contentText);
+
+  return {
+    rawText: sequence.rawText,
+    title,
+    subject,
+    contentText: sequence.contentText,
+    startTime: sequence.startTime,
+    endTime: sequence.endTime,
+    durationMinutes: sequence.durationMinutes,
+  };
+}
+
+function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
+  const subject = inferSubject(item.contentText, item.baseContentText);
+  const title = inferTitle(item.contentText, item.baseContentText);
+
+  return {
+    rawText: item.rawText,
+    title,
+    subject,
+    contentText: item.contentText,
+    startTime: item.startTime,
+    endTime: item.endTime,
+    durationMinutes: item.durationMinutes,
+    recurrenceRules: toRecurrenceRules({
+      dayType: item.dayType,
+      weekdays: item.weekdays,
+      excludedWeekdays: item.excludedWeekdays,
+      repeatKind: item.repeatSpec?.kind,
+      startTime: item.startTime,
+      endTime: item.endTime,
+    }),
   };
 }
 
@@ -182,13 +233,35 @@ export function compileToSuggestions(ir: ScheduleIR): Suggestion[] {
   const base = ir.base;
   const suggestions: Suggestion[] = [];
 
-  suggestions.push({
-    rawText: base.rawText,
-    parsedPlan: buildBaseDraft(base),
-    assumptions: [...base.assumptions],
-    unresolvedFields: [...base.unresolvedFields],
-    confidence: 0.9,
-  });
+  if (ir.enumeratedIntents.length === 0) {
+    suggestions.push({
+      rawText: base.rawText,
+      parsedPlan: buildBaseDraft(base),
+      assumptions: [...base.assumptions],
+      unresolvedFields: [...base.unresolvedFields],
+      confidence: 0.9,
+    });
+  }
+
+  for (const enumeration of ir.enumeratedIntents) {
+    suggestions.push({
+      rawText: enumeration.rawText,
+      parsedPlan: buildEnumerationDraft(enumeration),
+      assumptions: [...enumeration.assumptions],
+      unresolvedFields: [...enumeration.unresolvedFields],
+      confidence: 0.89,
+    });
+  }
+
+  for (const sequence of ir.sequencedIntents) {
+    suggestions.push({
+      rawText: sequence.rawText,
+      parsedPlan: buildSequencedDraft(sequence),
+      assumptions: [...sequence.assumptions],
+      unresolvedFields: [...sequence.unresolvedFields],
+      confidence: 0.88,
+    });
+  }
 
   for (const override of ir.overrideIntents) {
     suggestions.push({

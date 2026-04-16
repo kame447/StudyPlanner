@@ -1,19 +1,22 @@
 import type {
   AttachmentNode,
   BaseScheduleNode,
+  EnumerationVariantNode,
+  NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
+  NormalizedSequencedIntent,
   OverrideScheduleNode,
   ScheduleAST,
   ScheduleIR,
+  SequencedEventNode,
   TimeRangeSpec,
   TimeSpec,
+  UnresolvedField,
   Weekday,
 } from "./shared/types";
 
-function isTimeRangeSpec(
-  value: TimeSpec | TimeRangeSpec
-): value is TimeRangeSpec {
+function isTimeRangeSpec(value: TimeSpec | TimeRangeSpec): value is TimeRangeSpec {
   return "start" in value && "end" in value;
 }
 
@@ -39,7 +42,7 @@ function dedupeWeekdays(values: Weekday[]): Weekday[] {
 
 function buildStartEnd(
   timeSpec: TimeSpec | TimeRangeSpec | undefined,
-  durationMinutes?: number
+  durationMinutes?: number,
 ): { startTime?: string; endTime?: string } {
   if (!timeSpec) {
     return {};
@@ -54,23 +57,21 @@ function buildStartEnd(
 
   return {
     startTime: timeSpec.hm,
-    endTime:
-      durationMinutes != null
-        ? addMinutes(timeSpec.hm, durationMinutes)
-        : undefined,
+    endTime: durationMinutes != null ? addMinutes(timeSpec.hm, durationMinutes) : undefined,
   };
 }
 
-function buildUnresolvedFields(
-  base: NormalizedPlanIntent
-): NormalizedPlanIntent["unresolvedFields"] {
-  const unresolved: NormalizedPlanIntent["unresolvedFields"] = [];
+function buildUnresolvedFieldsFromTimes(
+  startTime?: string,
+  endTime?: string,
+): UnresolvedField[] {
+  const unresolved: UnresolvedField[] = [];
 
-  if (!base.startTime) {
+  if (!startTime) {
     unresolved.push("startTime");
   }
 
-  if (!base.endTime) {
+  if (!endTime) {
     unresolved.push("endTime");
   }
 
@@ -95,10 +96,7 @@ function lowerBase(baseNode: BaseScheduleNode): NormalizedPlanIntent {
   };
 }
 
-function applyAttachments(
-  base: NormalizedPlanIntent,
-  attachments: AttachmentNode[]
-): void {
+function applyAttachments(base: NormalizedPlanIntent, attachments: AttachmentNode[]): void {
   for (const attachment of attachments) {
     if (attachment.kind !== "AttachedTime") {
       continue;
@@ -118,9 +116,7 @@ function applyAttachments(
   }
 }
 
-function splitOverrideByWeekday(
-  override: OverrideScheduleNode
-): OverrideScheduleNode[] {
+function splitOverrideByWeekday(override: OverrideScheduleNode): OverrideScheduleNode[] {
   if (!override.weekdaySpecs || override.weekdaySpecs.length <= 1) {
     return [override];
   }
@@ -133,7 +129,7 @@ function splitOverrideByWeekday(
 
 function lowerOverride(
   override: OverrideScheduleNode,
-  base: NormalizedPlanIntent
+  base: NormalizedPlanIntent,
 ): NormalizedOverrideIntent {
   const durationMinutes =
     override.replaceDurationSpec?.minutes ?? base.durationMinutes;
@@ -154,8 +150,60 @@ function lowerOverride(
   };
 }
 
+function lowerSequence(
+  sequence: SequencedEventNode,
+  previous: { startTime?: string; endTime?: string },
+): NormalizedSequencedIntent {
+  const durationMinutes = sequence.durationSpec?.minutes;
+  const explicitTimeInfo = buildStartEnd(sequence.timeSpec, durationMinutes);
+
+  let startTime = explicitTimeInfo.startTime;
+  let endTime = explicitTimeInfo.endTime;
+  const assumptions: string[] = [];
+
+  if (!startTime && previous.endTime) {
+    startTime = previous.endTime;
+    endTime = durationMinutes != null ? addMinutes(startTime, durationMinutes) : undefined;
+    assumptions.push("anchored to previous event endTime");
+  }
+
+  return {
+    rawText: sequence.rawText,
+    contentText: sequence.contentText,
+    anchor: "previous-event",
+    startTime,
+    endTime,
+    durationMinutes,
+    assumptions,
+    unresolvedFields: buildUnresolvedFieldsFromTimes(startTime, endTime),
+  };
+}
+
+function lowerEnumeration(
+  enumeration: EnumerationVariantNode,
+  base: NormalizedPlanIntent,
+): NormalizedEnumerationIntent {
+  return {
+    rawText: enumeration.rawText,
+    contentText: enumeration.contentText,
+    index: enumeration.index,
+    baseContentText: base.contentText,
+    startTime: base.startTime,
+    endTime: base.endTime,
+    durationMinutes: base.durationMinutes,
+    repeatSpec: base.repeatSpec,
+    dayType: base.dayType,
+    weekdays: base.weekdays,
+    excludedWeekdays: base.excludedWeekdays,
+    assumptions: ["enumeration expanded from base"],
+    unresolvedFields: [...base.unresolvedFields],
+  };
+}
+
 export function lowerToIR(ast: ScheduleAST): ScheduleIR {
   const ir: ScheduleIR = {
+    sequencedIntents: [],
+    enumeratedIntents: [],
     overrideIntents: [],
     diagnostics: [...ast.diagnostics],
   };
@@ -172,20 +220,36 @@ export function lowerToIR(ast: ScheduleAST): ScheduleIR {
     splitOverrides.push(...splitOverrideByWeekday(override));
   }
 
-  const overrideIntents = splitOverrides.map((override) =>
-    lowerOverride(override, base)
-  );
+  const overrideIntents = splitOverrides.map((override) => lowerOverride(override, base));
 
   if (base.dayType === "weekday") {
-    const overriddenWeekdays = overrideIntents.flatMap(
-      (override) => override.weekdays ?? []
-    );
+    const overriddenWeekdays = overrideIntents
+      .flatMap((override) => override.weekdays ?? []);
     if (overriddenWeekdays.length > 0) {
       base.excludedWeekdays = dedupeWeekdays(overriddenWeekdays);
     }
   }
 
-  base.unresolvedFields = buildUnresolvedFields(base);
+  base.unresolvedFields = buildUnresolvedFieldsFromTimes(base.startTime, base.endTime);
+
+  let previousEvent = {
+    startTime: base.startTime,
+    endTime: base.endTime,
+  };
+
+  for (const sequence of ast.sequences) {
+    const lowered = lowerSequence(sequence, previousEvent);
+    ir.sequencedIntents.push(lowered);
+
+    previousEvent = {
+      startTime: lowered.startTime,
+      endTime: lowered.endTime,
+    };
+  }
+
+  for (const enumeration of ast.enumerations) {
+    ir.enumeratedIntents.push(lowerEnumeration(enumeration, base));
+  }
 
   ir.base = base;
   ir.overrideIntents = overrideIntents;

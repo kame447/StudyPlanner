@@ -56,4 +56,42 @@ describe("lowerToIR", () => {
     expect(ir.base?.unresolvedFields).toContain("startTime");
     expect(ir.base?.unresolvedFields).toContain("endTime");
   });
+
+  it("そのあと句を直前イベントの endTime 基準で時刻決定できる", () => {
+    const clauses = parseClauses(
+      "明日19時から数学を1時間。そのあと英単語を30分"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast);
+
+    expect(ir.base?.startTime).toBe("19:00");
+    expect(ir.base?.endTime).toBe("20:00");
+
+    expect(ir.sequencedIntents).toHaveLength(1);
+    expect(ir.sequencedIntents[0].startTime).toBe("20:00");
+    expect(ir.sequencedIntents[0].endTime).toBe("20:30");
+    expect(ir.sequencedIntents[0].assumptions).toContain(
+      "anchored to previous event endTime"
+    );
+  });
+
+  it("enumeration を 3 つの enumeratedIntents に落とせる", () => {
+    const clauses = parseClauses(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast);
+
+    expect(ir.enumeratedIntents).toHaveLength(3);
+    expect(ir.enumeratedIntents.map((item) => item.contentText)).toEqual([
+      "長文",
+      "単語",
+      "文法",
+    ]);
+    expect(
+      ir.enumeratedIntents.every((item) =>
+        item.assumptions.includes("enumeration expanded from base")
+      )
+    ).toBe(true);
+  });
 });

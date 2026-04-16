@@ -79,11 +79,31 @@ export type AttachmentNode = {
   rawText: string;
 };
 
+export interface SequenceRelation {
+  kind: "after-previous-event";
+  rawText: string;
+}
+
+export interface SequencedEventNode {
+  rawText: string;
+  contentText?: string;
+  timeSpec?: TimeSpec | TimeRangeSpec;
+  durationSpec?: DurationSpec;
+  relation: SequenceRelation;
+}
+
+export interface EnumerationVariantNode {
+  rawText: string;
+  contentText: string;
+  index: number;
+}
+
 export interface ScheduleAST {
   base: BaseScheduleNode | null;
+  sequences: SequencedEventNode[];
   overrides: OverrideScheduleNode[];
   attachments: AttachmentNode[];
-  enumerations: never[];
+  enumerations: EnumerationVariantNode[];
   diagnostics: Diagnostic[];
 }
 
@@ -119,8 +139,37 @@ export interface NormalizedOverrideIntent {
   assumptions: string[];
 }
 
+export interface NormalizedSequencedIntent {
+  rawText: string;
+  contentText?: string;
+  anchor: "previous-event";
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  assumptions: string[];
+  unresolvedFields: UnresolvedField[];
+}
+
+export interface NormalizedEnumerationIntent {
+  rawText: string;
+  contentText: string;
+  index: number;
+  baseContentText?: string;
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  repeatSpec?: RepeatSpec;
+  dayType?: "weekday" | "weekend";
+  weekdays?: Weekday[];
+  excludedWeekdays?: Weekday[];
+  assumptions: string[];
+  unresolvedFields: UnresolvedField[];
+}
+
 export interface ScheduleIR {
   base?: NormalizedPlanIntent;
+  sequencedIntents: NormalizedSequencedIntent[];
+  enumeratedIntents: NormalizedEnumerationIntent[];
   overrideIntents: NormalizedOverrideIntent[];
   diagnostics: Diagnostic[];
 }

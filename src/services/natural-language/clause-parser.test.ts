@@ -29,4 +29,29 @@ describe("parseClauses", () => {
 
     expect(clauses.map((clause) => clause.kind)).toEqual(["InstructionClause"]);
   });
+
+  it("そのあと句も EventClause として保持できる", () => {
+    const clauses = parseClauses(
+      "明日19時から数学を1時間。そのあと英単語を30分"
+    );
+
+    expect(clauses.map((clause) => clause.kind)).toEqual([
+      "EventClause",
+      "EventClause",
+    ]);
+    expect(clauses[1].tokens.some((token) => token.kind === "CONNECTIVE")).toBe(
+      true
+    );
+  });
+
+  it("enumeration 句を EventClause + EnumerationClause に分けられる", () => {
+    const clauses = parseClauses(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
+    );
+
+    expect(clauses.map((clause) => clause.kind)).toEqual([
+      "EventClause",
+      "EnumerationClause",
+    ]);
+  });
 });

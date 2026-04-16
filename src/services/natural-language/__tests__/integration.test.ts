@@ -3,11 +3,12 @@ import {
   parseNaturalLanguageSchedule,
   runNaturalLanguagePipeline,
 } from "../index";
+import type { Suggestion } from "../shared/types";
 
 describe("natural-language integration", () => {
   it("全文を最後まで流して nightly review を1件にまとめられる", () => {
     const suggestions = parseNaturalLanguageSchedule(
-      "毎晩寝る前に15分だけ英単語の復習を入れて。時間は23時で。",
+      "毎晩寝る前に15分だけ英単語の復習を入れて。時間は23時で。"
     );
 
     expect(suggestions).toHaveLength(1);
@@ -24,7 +25,7 @@ describe("natural-language integration", () => {
 
   it("base と override を最後まで流して3件にできる", () => {
     const suggestions = parseNaturalLanguageSchedule(
-      "平日は毎朝7時から30分。ただし火曜と金曜は6時半から。",
+      "平日は毎朝7時から30分。ただし火曜と金曜は6時半から。"
     );
 
     expect(suggestions).toHaveLength(3);
@@ -36,17 +37,52 @@ describe("natural-language integration", () => {
       startTime: "07:00",
       endTime: "07:30",
     });
-    expect(base.parsedPlan.recurrenceRules?.[0].excludedWeekdays?.slice().sort()).toEqual([
-      "fri",
-      "tue",
-    ]);
+    expect(
+      base.parsedPlan.recurrenceRules?.[0].excludedWeekdays?.slice().sort()
+    ).toEqual(["fri", "tue"]);
 
     const overrideWeekdays = suggestions
       .slice(1)
-      .map((suggestion) => suggestion.parsedPlan.recurrenceRules?.[0].weekdays?.[0])
+      .map(
+        (suggestion: Suggestion) =>
+          suggestion.parsedPlan.recurrenceRules?.[0].weekdays?.[0]
+      )
       .sort();
 
     expect(overrideWeekdays).toEqual(["fri", "tue"]);
+  });
+
+  it("relative ordering を最後まで流して2件にできる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "明日19時から数学を1時間。そのあと英単語を30分"
+    );
+
+    expect(suggestions).toHaveLength(2);
+
+    expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("20:00");
+    expect(suggestions[0].parsedPlan.subject).toBe("数学");
+
+    expect(suggestions[1].parsedPlan.startTime).toBe("20:00");
+    expect(suggestions[1].parsedPlan.endTime).toBe("20:30");
+    expect(suggestions[1].parsedPlan.subject).toBe("英語");
+    expect(suggestions[1].assumptions).toContain(
+      "anchored to previous event endTime"
+    );
+  });
+
+  it("enumeration を最後まで流して3件にできる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(
+      suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.title)
+    ).toEqual(["長文", "単語", "文法"]);
+    expect(
+      suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
+    ).toEqual(["英語", "英語", "英語"]);
   });
 
   it("デバッグ用に中間結果もまとめて取れる", () => {

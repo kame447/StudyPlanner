@@ -4,8 +4,10 @@ import type {
   BaseScheduleNode,
   ClauseNode,
   DurationSpec,
+  EnumerationVariantNode,
   OverrideScheduleNode,
   ScheduleAST,
+  SequencedEventNode,
   TimeRangeSpec,
   TimeSpec,
   Token,
@@ -13,7 +15,7 @@ import type {
 
 function firstTime(tokens: Token[]): TimeSpec | TimeRangeSpec | undefined {
   const token = tokens.find(
-    (current) => current.kind === "TIME" || current.kind === "TIME_RANGE"
+    (current) => current.kind === "TIME" || current.kind === "TIME_RANGE",
   );
 
   if (!token) {
@@ -28,6 +30,10 @@ function firstDuration(tokens: Token[]): DurationSpec | undefined {
   return token?.kind === "DURATION" ? token.value : undefined;
 }
 
+function firstConnectiveRaw(tokens: Token[]): string | undefined {
+  return tokens.find((token) => token.kind === "CONNECTIVE")?.raw;
+}
+
 function mergedContent(tokens: Token[]): string | undefined {
   const text = tokens
     .filter((token) => token.kind === "CONTENT")
@@ -38,9 +44,7 @@ function mergedContent(tokens: Token[]): string | undefined {
   return text.length > 0 ? text : undefined;
 }
 
-function buildBaseNode(
-  clause: Extract<ClauseNode, { kind: "EventClause" }>
-): BaseScheduleNode {
+function buildBaseNode(clause: Extract<ClauseNode, { kind: "EventClause" }>): BaseScheduleNode {
   const weekdaySpecs = clause.tokens
     .filter((token) => token.kind === "WEEKDAY")
     .map((token) => token.value);
@@ -54,14 +58,29 @@ function buildBaseNode(
     timeSpec: firstTime(clause.tokens),
     durationSpec: firstDuration(clause.tokens),
     repeatSpec: repeatToken?.kind === "REPEAT" ? repeatToken.value : undefined,
-    dayTypeSpec:
-      dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
+    dayTypeSpec: dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
     weekdaySpecs: weekdaySpecs.length > 0 ? weekdaySpecs : undefined,
   };
 }
 
+function buildSequenceNode(
+  clause: Extract<ClauseNode, { kind: "EventClause" }>,
+  connectiveRaw: string,
+): SequencedEventNode {
+  return {
+    rawText: clause.spanText,
+    contentText: mergedContent(clause.tokens),
+    timeSpec: firstTime(clause.tokens),
+    durationSpec: firstDuration(clause.tokens),
+    relation: {
+      kind: "after-previous-event",
+      rawText: connectiveRaw,
+    },
+  };
+}
+
 function buildOverrideNode(
-  clause: Extract<ClauseNode, { kind: "OverrideClause" }>
+  clause: Extract<ClauseNode, { kind: "OverrideClause" }>,
 ): OverrideScheduleNode {
   const weekdaySpecs = clause.tokens
     .filter((token) => token.kind === "WEEKDAY")
@@ -72,15 +91,14 @@ function buildOverrideNode(
   return {
     rawText: clause.spanText,
     weekdaySpecs: weekdaySpecs.length > 0 ? weekdaySpecs : undefined,
-    dayTypeSpec:
-      dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
+    dayTypeSpec: dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
     replaceTimeSpec: firstTime(clause.tokens),
     replaceDurationSpec: firstDuration(clause.tokens),
   };
 }
 
 function buildAttachedTime(
-  clause: Extract<ClauseNode, { kind: "TimeOnlyClause" }>
+  clause: Extract<ClauseNode, { kind: "TimeOnlyClause" }>,
 ): AttachmentNode | null {
   const time = firstTime(clause.tokens);
   if (!time) {
@@ -95,9 +113,35 @@ function buildAttachedTime(
   };
 }
 
+function parseEnumerationVariants(spanText: string): EnumerationVariantNode[] {
+  const parts = spanText
+    .split(/[、,]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  const variants = parts
+    .map((part, index) => {
+      const contentText = part.replace(/^(?:もう)?[0-9０-９一二三四五六七八九十]+回は\s*/, "").trim();
+
+      if (contentText.length === 0) {
+        return null;
+      }
+
+      return {
+        rawText: part,
+        contentText,
+        index,
+      } satisfies EnumerationVariantNode;
+    })
+    .filter((value): value is EnumerationVariantNode => value !== null);
+
+  return variants;
+}
+
 export function buildAST(clauses: ClauseNode[]): ScheduleAST {
   const ast: ScheduleAST = {
     base: null,
+    sequences: [],
     overrides: [],
     attachments: [],
     enumerations: [],
@@ -106,7 +150,36 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
 
   for (const clause of clauses) {
     if (clause.kind === "EventClause") {
-      ast.base = buildBaseNode(clause);
+      const connectiveRaw = firstConnectiveRaw(clause.tokens);
+
+      if (connectiveRaw) {
+        if (!ast.base) {
+          ast.diagnostics.push(
+            diag(
+              "CONNECTIVE_WITHOUT_BASE",
+              "sequence clause has no previous base event",
+              clause.spanText,
+            ),
+          );
+          continue;
+        }
+
+        ast.sequences.push(buildSequenceNode(clause, connectiveRaw));
+        continue;
+      }
+
+      if (!ast.base) {
+        ast.base = buildBaseNode(clause);
+        continue;
+      }
+
+      ast.diagnostics.push(
+        diag(
+          "MULTIPLE_BASE_EVENTS_NOT_IMPLEMENTED",
+          "multiple independent base events are not implemented yet",
+          clause.spanText,
+        ),
+      );
       continue;
     }
 
@@ -118,8 +191,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           diag(
             "TIME_ONLY_WITHOUT_BASE",
             "time-only clause has no base event to attach to",
-            clause.spanText
-          )
+            clause.spanText,
+          ),
         );
         continue;
       }
@@ -134,8 +207,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           diag(
             "OVERRIDE_WITHOUT_BASE",
             "override clause has no base event to attach to",
-            clause.spanText
-          )
+            clause.spanText,
+          ),
         );
         continue;
       }
@@ -145,22 +218,36 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
     }
 
     if (clause.kind === "EnumerationClause") {
-      ast.diagnostics.push(
-        diag(
-          "ENUM_NOT_IMPLEMENTED",
-          "enumeration is not implemented yet",
-          clause.spanText
-        )
-      );
+      if (!ast.base) {
+        ast.diagnostics.push(
+          diag(
+            "ENUM_WITHOUT_BASE",
+            "enumeration clause has no base event to expand from",
+            clause.spanText,
+          ),
+        );
+        continue;
+      }
+
+      const variants = parseEnumerationVariants(clause.spanText);
+
+      if (variants.length === 0) {
+        ast.diagnostics.push(
+          diag(
+            "ENUM_EMPTY",
+            "enumeration clause did not produce any variants",
+            clause.spanText,
+          ),
+        );
+        continue;
+      }
+
+      ast.enumerations.push(...variants);
       continue;
     }
 
     ast.diagnostics.push(
-      diag(
-        "INSTRUCTION_IGNORED",
-        "instruction clause is ignored",
-        clause.spanText
-      )
+      diag("INSTRUCTION_IGNORED", "instruction clause is ignored", clause.spanText),
     );
   }
 

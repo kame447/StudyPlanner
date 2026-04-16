@@ -48,4 +48,35 @@ describe("buildAST", () => {
     expect(ast.attachments).toHaveLength(0);
     expect(ast.diagnostics[0]?.code).toBe("TIME_ONLY_WITHOUT_BASE");
   });
+
+  it("そのあと句を previous-event 依存の sequence として保持できる", () => {
+    const clauses = parseClauses(
+      "明日19時から数学を1時間。そのあと英単語を30分"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.base).not.toBeNull();
+    expect(ast.base?.durationSpec?.minutes).toBe(60);
+
+    expect(ast.sequences).toHaveLength(1);
+    expect(ast.sequences[0].relation.kind).toBe("after-previous-event");
+    expect(ast.sequences[0].relation.rawText).toBe("そのあと");
+    expect(ast.sequences[0].durationSpec?.minutes).toBe(30);
+    expect(ast.sequences[0].contentText).toContain("英単語");
+  });
+
+  it("enumeration 句を 3 つの variant に分解できる", () => {
+    const clauses = parseClauses(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.base).not.toBeNull();
+    expect(ast.enumerations).toHaveLength(3);
+    expect(ast.enumerations.map((variant) => variant.contentText)).toEqual([
+      "長文",
+      "単語",
+      "文法",
+    ]);
+  });
 });
