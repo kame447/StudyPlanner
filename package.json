@@ -10,7 +10,11 @@
     "preview": "node ./scripts/preview-server.mjs",
     "cert:dev": "node ./scripts/generate-dev-cert.mjs",
     "deploy:firestore-rules": "npx firebase-tools deploy --only firestore:rules",
-    "deploy:worker": "npx wrangler deploy --config workers/ai-proxy/wrangler.jsonc"
+    "deploy:worker": "npx wrangler deploy --config workers/ai-proxy/wrangler.jsonc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:nl": "vitest src/services/natural-language",
+    "test:nl:run": "vitest run src/services/natural-language"
   },
   "dependencies": {
     "firebase": "^12.12.0",
@@ -23,6 +27,7 @@
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^3.2.4"
   }
 }
