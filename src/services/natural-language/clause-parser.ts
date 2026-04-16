@@ -18,6 +18,7 @@ function hasToken(tokens: Token[], kind: Token["kind"]): boolean {
 function hasAnyStructuredEventSignal(tokens: Token[]): boolean {
   return tokens.some(
     (token) =>
+      token.kind === "DATE" ||
       token.kind === "TIME" ||
       token.kind === "TIME_RANGE" ||
       token.kind === "DURATION" ||
@@ -47,6 +48,7 @@ function isEnumerationBaseClause(segment: string): boolean {
 function isTimeOnlyClause(segment: string, tokens: Token[]): boolean {
   const hasTime = hasToken(tokens, "TIME") || hasToken(tokens, "TIME_RANGE");
   const hasOtherStructuredSignal =
+    hasToken(tokens, "DATE") ||
     hasToken(tokens, "DURATION") ||
     hasToken(tokens, "REPEAT") ||
     hasToken(tokens, "WEEKDAY") ||

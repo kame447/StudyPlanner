@@ -8,6 +8,7 @@ import { validateAndDedupe } from "./validate";
 
 import type {
   ClauseNode,
+  PipelineOptions,
   ScheduleAST,
   ScheduleIR,
   Suggestion,
@@ -51,7 +52,8 @@ function createEmptyPipelineResult(
 }
 
 export function runNaturalLanguagePipeline(
-  rawText: string
+  rawText: string,
+  options: PipelineOptions = {}
 ): NaturalLanguagePipelineResult {
   const normalizedText = normalizeText(rawText);
 
@@ -62,7 +64,7 @@ export function runNaturalLanguagePipeline(
   const tokens = tokenize(rawText);
   const clauses = parseClauses(rawText);
   const ast = buildAST(clauses);
-  const ir = lowerToIR(ast);
+  const ir = lowerToIR(ast, options);
   const compiled = compileToSuggestions(ir);
   const suggestions = validateAndDedupe(compiled);
 
@@ -77,8 +79,11 @@ export function runNaturalLanguagePipeline(
   };
 }
 
-export function parseNaturalLanguageSchedule(rawText: string): Suggestion[] {
-  return runNaturalLanguagePipeline(rawText).suggestions;
+export function parseNaturalLanguageSchedule(
+  rawText: string,
+  options: PipelineOptions = {}
+): Suggestion[] {
+  return runNaturalLanguagePipeline(rawText, options).suggestions;
 }
 
 export { normalizeText } from "./normalize";
@@ -92,6 +97,7 @@ export { validateAndDedupe } from "./validate";
 export type {
   AttachmentNode,
   BaseScheduleNode,
+  DateSpec,
   DayTypeSpec,
   DurationSpec,
   EnumerationVariantNode,
@@ -100,12 +106,15 @@ export type {
   NormalizedPlanIntent,
   NormalizedSequencedIntent,
   OverrideScheduleNode,
+  PipelineOptions,
   PlanDraft,
   RecurrenceRule,
+  RelativeDaySpec,
   RepeatSpec,
   SequenceRelation,
   SequencedEventNode,
   UnresolvedField,
+  WeekScopeSpec,
   Weekday,
   WeekdaySpec,
 } from "./shared/types";

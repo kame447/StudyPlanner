@@ -1,5 +1,6 @@
 import { normalizeText } from "./normalize";
 import type {
+  DateSpec,
   DayTypeSpec,
   DurationSpec,
   RepeatSpec,
@@ -88,49 +89,47 @@ function parseRepeat(raw: string): RepeatSpec {
   return { raw, kind: "unknown" };
 }
 
-type Rule =
-  | {
-      name: "TIME_RANGE";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "TIME";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "DURATION";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "WEEKDAY";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "DAYTYPE";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "REPEAT";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "OVERRIDE";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    }
-  | {
-      name: "CONNECTIVE";
-      regex: RegExp;
-      build: (match: RegExpExecArray) => Token;
-    };
+function parseDateSpec(raw: string): DateSpec {
+  if (raw === "今日") {
+    return { raw, kind: "relative-day", offsetDays: 0 };
+  }
+  if (raw === "明日") {
+    return { raw, kind: "relative-day", offsetDays: 1 };
+  }
+  if (raw === "明後日") {
+    return { raw, kind: "relative-day", offsetDays: 2 };
+  }
+  if (raw === "今週") {
+    return { raw, kind: "week-scope", scope: "this-week" };
+  }
+  if (raw === "来週") {
+    return { raw, kind: "week-scope", scope: "next-week" };
+  }
+  if (raw === "今週末") {
+    return { raw, kind: "week-scope", scope: "this-weekend" };
+  }
+  if (raw === "来週末") {
+    return { raw, kind: "week-scope", scope: "next-weekend" };
+  }
+  return { raw, kind: "week-scope", scope: "sometime-next-week" };
+}
+
+interface Rule {
+  name: string;
+  regex: RegExp;
+  build: (match: RegExpExecArray) => Token;
+}
 
 const RULES: Rule[] = [
+  {
+    name: "DATE",
+    regex: /^(来週のどこか|今週末|来週末|明後日|明日|今日|来週|今週)/,
+    build: (match) => ({
+      kind: "DATE",
+      raw: match[0],
+      value: parseDateSpec(match[0]),
+    }),
+  },
   {
     name: "TIME_RANGE",
     regex: /^(\d{1,2}:\d{2})\s*(?:-|から)\s*(\d{1,2}:\d{2})/,

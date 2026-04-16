@@ -75,23 +75,28 @@ describe("compileToSuggestions", () => {
     expect(suggestions[0].unresolvedFields).toContain("endTime");
   });
 
-  it("そのあと句を follow-up suggestion として compile できる", () => {
+  it("relative ordering を date ごと compile できる", () => {
     const clauses = parseClauses(
       "明日19時から数学を1時間。そのあと英単語を30分"
     );
     const ast = buildAST(clauses);
-    const ir = lowerToIR(ast);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
     const suggestions = compileToSuggestions(ir);
 
     expect(suggestions).toHaveLength(2);
 
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
     expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
     expect(suggestions[0].parsedPlan.endTime).toBe("20:00");
     expect(suggestions[0].parsedPlan.subject).toBe("数学");
 
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-17");
     expect(suggestions[1].parsedPlan.startTime).toBe("20:00");
     expect(suggestions[1].parsedPlan.endTime).toBe("20:30");
     expect(suggestions[1].parsedPlan.subject).toBe("英語");
+    expect(suggestions[1].assumptions).toContain(
+      "date inherited from previous event"
+    );
     expect(suggestions[1].assumptions).toContain(
       "anchored to previous event endTime"
     );
@@ -102,7 +107,7 @@ describe("compileToSuggestions", () => {
       "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
     );
     const ast = buildAST(clauses);
-    const ir = lowerToIR(ast);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
     const suggestions = compileToSuggestions(ir);
 
     expect(suggestions).toHaveLength(3);
@@ -112,6 +117,7 @@ describe("compileToSuggestions", () => {
     expect(
       suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
     ).toEqual(["英語", "英語", "英語"]);
+    expect(suggestions[0].parsedPlan.dateSpec?.kind).toBe("week-scope");
     expect(
       suggestions.every((suggestion: Suggestion) =>
         suggestion.assumptions.includes("enumeration expanded from base")

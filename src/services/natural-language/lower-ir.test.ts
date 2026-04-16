@@ -57,19 +57,24 @@ describe("lowerToIR", () => {
     expect(ir.base?.unresolvedFields).toContain("endTime");
   });
 
-  it("そのあと句を直前イベントの endTime 基準で時刻決定できる", () => {
+  it("relative day を referenceDate 基準で解決できる", () => {
     const clauses = parseClauses(
       "明日19時から数学を1時間。そのあと英単語を30分"
     );
     const ast = buildAST(clauses);
-    const ir = lowerToIR(ast);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
 
+    expect(ir.base?.date).toBe("2026-04-17");
     expect(ir.base?.startTime).toBe("19:00");
     expect(ir.base?.endTime).toBe("20:00");
 
     expect(ir.sequencedIntents).toHaveLength(1);
+    expect(ir.sequencedIntents[0].date).toBe("2026-04-17");
     expect(ir.sequencedIntents[0].startTime).toBe("20:00");
     expect(ir.sequencedIntents[0].endTime).toBe("20:30");
+    expect(ir.sequencedIntents[0].assumptions).toContain(
+      "date inherited from previous event"
+    );
     expect(ir.sequencedIntents[0].assumptions).toContain(
       "anchored to previous event endTime"
     );
@@ -80,7 +85,7 @@ describe("lowerToIR", () => {
       "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
     );
     const ast = buildAST(clauses);
-    const ir = lowerToIR(ast);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
 
     expect(ir.enumeratedIntents).toHaveLength(3);
     expect(ir.enumeratedIntents.map((item) => item.contentText)).toEqual([
@@ -88,10 +93,7 @@ describe("lowerToIR", () => {
       "単語",
       "文法",
     ]);
-    expect(
-      ir.enumeratedIntents.every((item) =>
-        item.assumptions.includes("enumeration expanded from base")
-      )
-    ).toBe(true);
+    expect(ir.enumeratedIntents[0].dateSpec?.kind).toBe("week-scope");
+    expect(ir.enumeratedIntents[0].unresolvedFields).toContain("date");
   });
 });

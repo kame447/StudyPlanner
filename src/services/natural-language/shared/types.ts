@@ -36,7 +36,27 @@ export interface RepeatSpec {
   anchor?: "morning" | "night";
 }
 
+export interface RelativeDaySpec {
+  raw: string;
+  kind: "relative-day";
+  offsetDays: number;
+}
+
+export interface WeekScopeSpec {
+  raw: string;
+  kind: "week-scope";
+  scope:
+    | "this-week"
+    | "next-week"
+    | "this-weekend"
+    | "next-weekend"
+    | "sometime-next-week";
+}
+
+export type DateSpec = RelativeDaySpec | WeekScopeSpec;
+
 export type Token =
+  | { kind: "DATE"; raw: string; value: DateSpec }
   | { kind: "TIME"; raw: string; value: TimeSpec }
   | { kind: "TIME_RANGE"; raw: string; value: TimeRangeSpec }
   | { kind: "DURATION"; raw: string; value: DurationSpec }
@@ -57,6 +77,7 @@ export type ClauseNode =
 export interface BaseScheduleNode {
   rawText: string;
   contentText?: string;
+  dateSpec?: DateSpec;
   timeSpec?: TimeSpec | TimeRangeSpec;
   durationSpec?: DurationSpec;
   repeatSpec?: RepeatSpec;
@@ -66,6 +87,7 @@ export interface BaseScheduleNode {
 
 export interface OverrideScheduleNode {
   rawText: string;
+  dateSpec?: DateSpec;
   weekdaySpecs?: WeekdaySpec[];
   dayTypeSpec?: DayTypeSpec;
   replaceTimeSpec?: TimeSpec | TimeRangeSpec;
@@ -87,6 +109,7 @@ export interface SequenceRelation {
 export interface SequencedEventNode {
   rawText: string;
   contentText?: string;
+  dateSpec?: DateSpec;
   timeSpec?: TimeSpec | TimeRangeSpec;
   durationSpec?: DurationSpec;
   relation: SequenceRelation;
@@ -118,6 +141,8 @@ export type UnresolvedField =
 export interface NormalizedPlanIntent {
   rawText: string;
   contentText?: string;
+  date?: string;
+  dateSpec?: DateSpec;
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
@@ -131,6 +156,8 @@ export interface NormalizedPlanIntent {
 
 export interface NormalizedOverrideIntent {
   rawText: string;
+  date?: string;
+  dateSpec?: DateSpec;
   dayType?: "weekday" | "weekend";
   weekdays?: Weekday[];
   startTime?: string;
@@ -142,6 +169,8 @@ export interface NormalizedOverrideIntent {
 export interface NormalizedSequencedIntent {
   rawText: string;
   contentText?: string;
+  date?: string;
+  dateSpec?: DateSpec;
   anchor: "previous-event";
   startTime?: string;
   endTime?: string;
@@ -155,6 +184,8 @@ export interface NormalizedEnumerationIntent {
   contentText: string;
   index: number;
   baseContentText?: string;
+  date?: string;
+  dateSpec?: DateSpec;
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
@@ -188,6 +219,8 @@ export interface PlanDraft {
   title?: string;
   subject?: string;
   contentText?: string;
+  date?: string;
+  dateSpec?: DateSpec;
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
@@ -200,4 +233,8 @@ export interface Suggestion {
   assumptions: string[];
   unresolvedFields: UnresolvedField[];
   confidence?: number;
+}
+
+export interface PipelineOptions {
+  referenceDate?: string;
 }

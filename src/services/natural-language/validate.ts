@@ -18,6 +18,8 @@ function coreKey(suggestion: Suggestion): string {
   return JSON.stringify({
     rawText: suggestion.rawText,
     contentText: plan.contentText ?? "",
+    date: plan.date ?? "",
+    dateSpec: plan.dateSpec ?? null,
     startTime: plan.startTime ?? "",
     endTime: plan.endTime ?? "",
     durationMinutes: plan.durationMinutes ?? null,
@@ -74,6 +76,10 @@ function strength(suggestion: Suggestion): number {
 
   if (plan.subject) {
     score += 10;
+  }
+
+  if (plan.date) {
+    score += 8;
   }
 
   if (plan.startTime) {

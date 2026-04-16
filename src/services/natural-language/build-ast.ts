@@ -3,6 +3,7 @@ import type {
   AttachmentNode,
   BaseScheduleNode,
   ClauseNode,
+  DateSpec,
   DurationSpec,
   EnumerationVariantNode,
   OverrideScheduleNode,
@@ -15,7 +16,7 @@ import type {
 
 function firstTime(tokens: Token[]): TimeSpec | TimeRangeSpec | undefined {
   const token = tokens.find(
-    (current) => current.kind === "TIME" || current.kind === "TIME_RANGE",
+    (current) => current.kind === "TIME" || current.kind === "TIME_RANGE"
   );
 
   if (!token) {
@@ -23,6 +24,11 @@ function firstTime(tokens: Token[]): TimeSpec | TimeRangeSpec | undefined {
   }
 
   return token.value;
+}
+
+function firstDate(tokens: Token[]): DateSpec | undefined {
+  const token = tokens.find((current) => current.kind === "DATE");
+  return token?.kind === "DATE" ? token.value : undefined;
 }
 
 function firstDuration(tokens: Token[]): DurationSpec | undefined {
@@ -44,7 +50,9 @@ function mergedContent(tokens: Token[]): string | undefined {
   return text.length > 0 ? text : undefined;
 }
 
-function buildBaseNode(clause: Extract<ClauseNode, { kind: "EventClause" }>): BaseScheduleNode {
+function buildBaseNode(
+  clause: Extract<ClauseNode, { kind: "EventClause" }>
+): BaseScheduleNode {
   const weekdaySpecs = clause.tokens
     .filter((token) => token.kind === "WEEKDAY")
     .map((token) => token.value);
@@ -55,21 +63,24 @@ function buildBaseNode(clause: Extract<ClauseNode, { kind: "EventClause" }>): Ba
   return {
     rawText: clause.spanText,
     contentText: mergedContent(clause.tokens),
+    dateSpec: firstDate(clause.tokens),
     timeSpec: firstTime(clause.tokens),
     durationSpec: firstDuration(clause.tokens),
     repeatSpec: repeatToken?.kind === "REPEAT" ? repeatToken.value : undefined,
-    dayTypeSpec: dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
+    dayTypeSpec:
+      dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
     weekdaySpecs: weekdaySpecs.length > 0 ? weekdaySpecs : undefined,
   };
 }
 
 function buildSequenceNode(
   clause: Extract<ClauseNode, { kind: "EventClause" }>,
-  connectiveRaw: string,
+  connectiveRaw: string
 ): SequencedEventNode {
   return {
     rawText: clause.spanText,
     contentText: mergedContent(clause.tokens),
+    dateSpec: firstDate(clause.tokens),
     timeSpec: firstTime(clause.tokens),
     durationSpec: firstDuration(clause.tokens),
     relation: {
@@ -80,7 +91,7 @@ function buildSequenceNode(
 }
 
 function buildOverrideNode(
-  clause: Extract<ClauseNode, { kind: "OverrideClause" }>,
+  clause: Extract<ClauseNode, { kind: "OverrideClause" }>
 ): OverrideScheduleNode {
   const weekdaySpecs = clause.tokens
     .filter((token) => token.kind === "WEEKDAY")
@@ -90,15 +101,17 @@ function buildOverrideNode(
 
   return {
     rawText: clause.spanText,
+    dateSpec: firstDate(clause.tokens),
     weekdaySpecs: weekdaySpecs.length > 0 ? weekdaySpecs : undefined,
-    dayTypeSpec: dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
+    dayTypeSpec:
+      dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
     replaceTimeSpec: firstTime(clause.tokens),
     replaceDurationSpec: firstDuration(clause.tokens),
   };
 }
 
 function buildAttachedTime(
-  clause: Extract<ClauseNode, { kind: "TimeOnlyClause" }>,
+  clause: Extract<ClauseNode, { kind: "TimeOnlyClause" }>
 ): AttachmentNode | null {
   const time = firstTime(clause.tokens);
   if (!time) {
@@ -121,7 +134,9 @@ function parseEnumerationVariants(spanText: string): EnumerationVariantNode[] {
 
   const variants = parts
     .map((part, index) => {
-      const contentText = part.replace(/^(?:もう)?[0-9０-９一二三四五六七八九十]+回は\s*/, "").trim();
+      const contentText = part
+        .replace(/^(?:もう)?[0-9０-９一二三四五六七八九十]+回は\s*/, "")
+        .trim();
 
       if (contentText.length === 0) {
         return null;
@@ -158,8 +173,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
             diag(
               "CONNECTIVE_WITHOUT_BASE",
               "sequence clause has no previous base event",
-              clause.spanText,
-            ),
+              clause.spanText
+            )
           );
           continue;
         }
@@ -177,8 +192,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
         diag(
           "MULTIPLE_BASE_EVENTS_NOT_IMPLEMENTED",
           "multiple independent base events are not implemented yet",
-          clause.spanText,
-        ),
+          clause.spanText
+        )
       );
       continue;
     }
@@ -191,8 +206,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           diag(
             "TIME_ONLY_WITHOUT_BASE",
             "time-only clause has no base event to attach to",
-            clause.spanText,
-          ),
+            clause.spanText
+          )
         );
         continue;
       }
@@ -207,8 +222,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           diag(
             "OVERRIDE_WITHOUT_BASE",
             "override clause has no base event to attach to",
-            clause.spanText,
-          ),
+            clause.spanText
+          )
         );
         continue;
       }
@@ -223,8 +238,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           diag(
             "ENUM_WITHOUT_BASE",
             "enumeration clause has no base event to expand from",
-            clause.spanText,
-          ),
+            clause.spanText
+          )
         );
         continue;
       }
@@ -236,8 +251,8 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           diag(
             "ENUM_EMPTY",
             "enumeration clause did not produce any variants",
-            clause.spanText,
-          ),
+            clause.spanText
+          )
         );
         continue;
       }
@@ -247,7 +262,11 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
     }
 
     ast.diagnostics.push(
-      diag("INSTRUCTION_IGNORED", "instruction clause is ignored", clause.spanText),
+      diag(
+        "INSTRUCTION_IGNORED",
+        "instruction clause is ignored",
+        clause.spanText
+      )
     );
   }
 

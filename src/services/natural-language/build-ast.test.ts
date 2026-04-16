@@ -56,6 +56,7 @@ describe("buildAST", () => {
     const ast = buildAST(clauses);
 
     expect(ast.base).not.toBeNull();
+    expect(ast.base?.dateSpec?.kind).toBe("relative-day");
     expect(ast.base?.durationSpec?.minutes).toBe(60);
 
     expect(ast.sequences).toHaveLength(1);
@@ -72,6 +73,7 @@ describe("buildAST", () => {
     const ast = buildAST(clauses);
 
     expect(ast.base).not.toBeNull();
+    expect(ast.base?.dateSpec?.kind).toBe("week-scope");
     expect(ast.enumerations).toHaveLength(3);
     expect(ast.enumerations.map((variant) => variant.contentText)).toEqual([
       "長文",

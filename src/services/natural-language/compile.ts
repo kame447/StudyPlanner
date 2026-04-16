@@ -8,6 +8,7 @@ import type {
   ScheduleIR,
   Suggestion,
   UnresolvedField,
+  Weekday,
 } from "./shared/types";
 
 function unique<T>(values: T[] | undefined): T[] | undefined {
@@ -79,8 +80,8 @@ function inferTitle(
 
 function toRecurrenceRules(input: {
   dayType?: "weekday" | "weekend";
-  weekdays?: string[];
-  excludedWeekdays?: string[];
+  weekdays?: Weekday[];
+  excludedWeekdays?: Weekday[];
   repeatKind?: "daily" | "weekly" | "monthly" | "unknown";
   startTime?: string;
   endTime?: string;
@@ -90,9 +91,7 @@ function toRecurrenceRules(input: {
       {
         kind: "day-type",
         dayType: input.dayType,
-        excludedWeekdays: unique(
-          input.excludedWeekdays as RecurrenceRule["excludedWeekdays"]
-        ),
+        excludedWeekdays: unique(input.excludedWeekdays),
         startTime: input.startTime,
         endTime: input.endTime,
       },
@@ -103,7 +102,7 @@ function toRecurrenceRules(input: {
     return [
       {
         kind: "weekday",
-        weekdays: unique(input.weekdays as RecurrenceRule["weekdays"]),
+        weekdays: unique(input.weekdays),
         startTime: input.startTime,
         endTime: input.endTime,
       },
@@ -149,6 +148,8 @@ function buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {
     title,
     subject,
     contentText: base.contentText,
+    date: base.date,
+    dateSpec: base.dateSpec,
     startTime: base.startTime,
     endTime: base.endTime,
     durationMinutes: base.durationMinutes,
@@ -175,6 +176,8 @@ function buildOverrideDraft(
     title,
     subject,
     contentText: base.contentText,
+    date: override.date,
+    dateSpec: override.dateSpec,
     startTime: override.startTime,
     endTime: override.endTime,
     durationMinutes: override.durationMinutes,
@@ -196,6 +199,8 @@ function buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {
     title,
     subject,
     contentText: sequence.contentText,
+    date: sequence.date,
+    dateSpec: sequence.dateSpec,
     startTime: sequence.startTime,
     endTime: sequence.endTime,
     durationMinutes: sequence.durationMinutes,
@@ -211,6 +216,8 @@ function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
     title,
     subject,
     contentText: item.contentText,
+    date: item.date,
+    dateSpec: item.dateSpec,
     startTime: item.startTime,
     endTime: item.endTime,
     durationMinutes: item.durationMinutes,

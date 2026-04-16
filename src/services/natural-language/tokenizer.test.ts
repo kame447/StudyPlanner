@@ -106,4 +106,30 @@ describe("tokenize", () => {
     const kinds = tokens.map((token) => token.kind);
     expect(kinds).toContain("CONNECTIVE");
   });
+
+  it("明日を DATE token として取れる", () => {
+    const tokens = tokenize("明日19時から数学を1時間");
+    expect(tokens[0]).toEqual({
+      kind: "DATE",
+      raw: "明日",
+      value: {
+        raw: "明日",
+        kind: "relative-day",
+        offsetDays: 1,
+      },
+    });
+  });
+
+  it("来週のどこかを DATE token として取れる", () => {
+    const tokens = tokenize("来週のどこかで英語を3回");
+    expect(tokens[0]).toEqual({
+      kind: "DATE",
+      raw: "来週のどこか",
+      value: {
+        raw: "来週のどこか",
+        kind: "week-scope",
+        scope: "sometime-next-week",
+      },
+    });
+  });
 });

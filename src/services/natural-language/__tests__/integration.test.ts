@@ -52,20 +52,26 @@ describe("natural-language integration", () => {
     expect(overrideWeekdays).toEqual(["fri", "tue"]);
   });
 
-  it("relative ordering を最後まで流して2件にできる", () => {
+  it("relative ordering を日付つきで最後まで流して2件にできる", () => {
     const suggestions = parseNaturalLanguageSchedule(
-      "明日19時から数学を1時間。そのあと英単語を30分"
+      "明日19時から数学を1時間。そのあと英単語を30分",
+      { referenceDate: "2026-04-16" }
     );
 
     expect(suggestions).toHaveLength(2);
 
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
     expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
     expect(suggestions[0].parsedPlan.endTime).toBe("20:00");
     expect(suggestions[0].parsedPlan.subject).toBe("数学");
 
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-17");
     expect(suggestions[1].parsedPlan.startTime).toBe("20:00");
     expect(suggestions[1].parsedPlan.endTime).toBe("20:30");
     expect(suggestions[1].parsedPlan.subject).toBe("英語");
+    expect(suggestions[1].assumptions).toContain(
+      "date inherited from previous event"
+    );
     expect(suggestions[1].assumptions).toContain(
       "anchored to previous event endTime"
     );
@@ -73,7 +79,8 @@ describe("natural-language integration", () => {
 
   it("enumeration を最後まで流して3件にできる", () => {
     const suggestions = parseNaturalLanguageSchedule(
-      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法",
+      { referenceDate: "2026-04-16" }
     );
 
     expect(suggestions).toHaveLength(3);
@@ -83,6 +90,8 @@ describe("natural-language integration", () => {
     expect(
       suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
     ).toEqual(["英語", "英語", "英語"]);
+    expect(suggestions[0].parsedPlan.dateSpec?.kind).toBe("week-scope");
+    expect(suggestions[0].unresolvedFields).toContain("date");
   });
 
   it("デバッグ用に中間結果もまとめて取れる", () => {

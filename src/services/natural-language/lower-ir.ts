@@ -1,12 +1,14 @@
 import type {
   AttachmentNode,
   BaseScheduleNode,
+  DateSpec,
   EnumerationVariantNode,
   NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
   NormalizedSequencedIntent,
   OverrideScheduleNode,
+  PipelineOptions,
   ScheduleAST,
   ScheduleIR,
   SequencedEventNode,
@@ -16,7 +18,9 @@ import type {
   Weekday,
 } from "./shared/types";
 
-function isTimeRangeSpec(value: TimeSpec | TimeRangeSpec): value is TimeRangeSpec {
+function isTimeRangeSpec(
+  value: TimeSpec | TimeRangeSpec
+): value is TimeRangeSpec {
   return "start" in value && "end" in value;
 }
 
@@ -42,7 +46,7 @@ function dedupeWeekdays(values: Weekday[]): Weekday[] {
 
 function buildStartEnd(
   timeSpec: TimeSpec | TimeRangeSpec | undefined,
-  durationMinutes?: number,
+  durationMinutes?: number
 ): { startTime?: string; endTime?: string } {
   if (!timeSpec) {
     return {};
@@ -57,15 +61,24 @@ function buildStartEnd(
 
   return {
     startTime: timeSpec.hm,
-    endTime: durationMinutes != null ? addMinutes(timeSpec.hm, durationMinutes) : undefined,
+    endTime:
+      durationMinutes != null
+        ? addMinutes(timeSpec.hm, durationMinutes)
+        : undefined,
   };
 }
 
-function buildUnresolvedFieldsFromTimes(
+function buildUnresolvedFields(
   startTime?: string,
   endTime?: string,
+  date?: string,
+  dateSpec?: DateSpec
 ): UnresolvedField[] {
   const unresolved: UnresolvedField[] = [];
+
+  if (dateSpec && !date) {
+    unresolved.push("date");
+  }
 
   if (!startTime) {
     unresolved.push("startTime");
@@ -78,25 +91,83 @@ function buildUnresolvedFieldsFromTimes(
   return unresolved;
 }
 
-function lowerBase(baseNode: BaseScheduleNode): NormalizedPlanIntent {
+function parseReferenceDate(referenceDate?: string): Date {
+  if (referenceDate) {
+    const [year, month, day] = referenceDate.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function formatDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(base: Date, delta: number): Date {
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + delta);
+  return next;
+}
+
+function resolveDateSpec(
+  dateSpec: DateSpec | undefined,
+  options: PipelineOptions
+): {
+  date?: string;
+  dateSpec?: DateSpec;
+  assumptions: string[];
+} {
+  if (!dateSpec) {
+    return { assumptions: [] };
+  }
+
+  if (dateSpec.kind === "relative-day") {
+    const base = parseReferenceDate(options.referenceDate);
+    return {
+      date: formatDate(addDays(base, dateSpec.offsetDays)),
+      assumptions: [],
+    };
+  }
+
+  return {
+    dateSpec,
+    assumptions: ["date scope retained"],
+  };
+}
+
+function lowerBase(
+  baseNode: BaseScheduleNode,
+  options: PipelineOptions
+): NormalizedPlanIntent {
   const durationMinutes = baseNode.durationSpec?.minutes;
   const timeInfo = buildStartEnd(baseNode.timeSpec, durationMinutes);
+  const dateInfo = resolveDateSpec(baseNode.dateSpec, options);
 
   return {
     rawText: baseNode.rawText,
     contentText: baseNode.contentText,
+    date: dateInfo.date,
+    dateSpec: dateInfo.dateSpec,
     startTime: timeInfo.startTime,
     endTime: timeInfo.endTime,
     durationMinutes,
     repeatSpec: baseNode.repeatSpec,
     dayType: baseNode.dayTypeSpec?.dayType,
     weekdays: baseNode.weekdaySpecs?.map((weekday) => weekday.weekday),
-    assumptions: [],
+    assumptions: [...dateInfo.assumptions],
     unresolvedFields: [],
   };
 }
 
-function applyAttachments(base: NormalizedPlanIntent, attachments: AttachmentNode[]): void {
+function applyAttachments(
+  base: NormalizedPlanIntent,
+  attachments: AttachmentNode[]
+): void {
   for (const attachment of attachments) {
     if (attachment.kind !== "AttachedTime") {
       continue;
@@ -116,7 +187,9 @@ function applyAttachments(base: NormalizedPlanIntent, attachments: AttachmentNod
   }
 }
 
-function splitOverrideByWeekday(override: OverrideScheduleNode): OverrideScheduleNode[] {
+function splitOverrideByWeekday(
+  override: OverrideScheduleNode
+): OverrideScheduleNode[] {
   if (!override.weekdaySpecs || override.weekdaySpecs.length <= 1) {
     return [override];
   }
@@ -130,64 +203,91 @@ function splitOverrideByWeekday(override: OverrideScheduleNode): OverrideSchedul
 function lowerOverride(
   override: OverrideScheduleNode,
   base: NormalizedPlanIntent,
+  options: PipelineOptions
 ): NormalizedOverrideIntent {
   const durationMinutes =
     override.replaceDurationSpec?.minutes ?? base.durationMinutes;
-
   const timeInfo = buildStartEnd(override.replaceTimeSpec, durationMinutes);
+  const dateInfo = resolveDateSpec(override.dateSpec, options);
 
   return {
     rawText: override.rawText,
+    date: dateInfo.date,
+    dateSpec: dateInfo.dateSpec,
     dayType: override.dayTypeSpec?.dayType,
     weekdays: override.weekdaySpecs?.map((weekday) => weekday.weekday),
     startTime: timeInfo.startTime,
     endTime: timeInfo.endTime,
     durationMinutes,
-    assumptions:
-      override.replaceDurationSpec == null && base.durationMinutes != null
+    assumptions: [
+      ...dateInfo.assumptions,
+      ...(override.replaceDurationSpec == null && base.durationMinutes != null
         ? ["duration inherited from base"]
-        : [],
+        : []),
+    ],
   };
 }
 
 function lowerSequence(
   sequence: SequencedEventNode,
-  previous: { startTime?: string; endTime?: string },
+  previous: {
+    date?: string;
+    dateSpec?: DateSpec;
+    startTime?: string;
+    endTime?: string;
+  },
+  options: PipelineOptions
 ): NormalizedSequencedIntent {
   const durationMinutes = sequence.durationSpec?.minutes;
   const explicitTimeInfo = buildStartEnd(sequence.timeSpec, durationMinutes);
+  const explicitDateInfo = resolveDateSpec(sequence.dateSpec, options);
 
+  let date = explicitDateInfo.date;
+  let dateSpec = explicitDateInfo.dateSpec;
   let startTime = explicitTimeInfo.startTime;
   let endTime = explicitTimeInfo.endTime;
-  const assumptions: string[] = [];
+  const assumptions: string[] = [...explicitDateInfo.assumptions];
+
+  if (!date && !dateSpec && (previous.date || previous.dateSpec)) {
+    date = previous.date;
+    dateSpec = previous.dateSpec;
+    assumptions.push("date inherited from previous event");
+  }
 
   if (!startTime && previous.endTime) {
     startTime = previous.endTime;
-    endTime = durationMinutes != null ? addMinutes(startTime, durationMinutes) : undefined;
+    endTime =
+      durationMinutes != null
+        ? addMinutes(startTime, durationMinutes)
+        : undefined;
     assumptions.push("anchored to previous event endTime");
   }
 
   return {
     rawText: sequence.rawText,
     contentText: sequence.contentText,
+    date,
+    dateSpec,
     anchor: "previous-event",
     startTime,
     endTime,
     durationMinutes,
     assumptions,
-    unresolvedFields: buildUnresolvedFieldsFromTimes(startTime, endTime),
+    unresolvedFields: buildUnresolvedFields(startTime, endTime, date, dateSpec),
   };
 }
 
 function lowerEnumeration(
   enumeration: EnumerationVariantNode,
-  base: NormalizedPlanIntent,
+  base: NormalizedPlanIntent
 ): NormalizedEnumerationIntent {
   return {
     rawText: enumeration.rawText,
     contentText: enumeration.contentText,
     index: enumeration.index,
     baseContentText: base.contentText,
+    date: base.date,
+    dateSpec: base.dateSpec,
     startTime: base.startTime,
     endTime: base.endTime,
     durationMinutes: base.durationMinutes,
@@ -200,7 +300,10 @@ function lowerEnumeration(
   };
 }
 
-export function lowerToIR(ast: ScheduleAST): ScheduleIR {
+export function lowerToIR(
+  ast: ScheduleAST,
+  options: PipelineOptions = {}
+): ScheduleIR {
   const ir: ScheduleIR = {
     sequencedIntents: [],
     enumeratedIntents: [],
@@ -212,7 +315,7 @@ export function lowerToIR(ast: ScheduleAST): ScheduleIR {
     return ir;
   }
 
-  const base = lowerBase(ast.base);
+  const base = lowerBase(ast.base, options);
   applyAttachments(base, ast.attachments);
 
   const splitOverrides: OverrideScheduleNode[] = [];
@@ -220,28 +323,40 @@ export function lowerToIR(ast: ScheduleAST): ScheduleIR {
     splitOverrides.push(...splitOverrideByWeekday(override));
   }
 
-  const overrideIntents = splitOverrides.map((override) => lowerOverride(override, base));
+  const overrideIntents = splitOverrides.map((override) =>
+    lowerOverride(override, base, options)
+  );
 
   if (base.dayType === "weekday") {
-    const overriddenWeekdays = overrideIntents
-      .flatMap((override) => override.weekdays ?? []);
+    const overriddenWeekdays = overrideIntents.flatMap(
+      (override) => override.weekdays ?? []
+    );
     if (overriddenWeekdays.length > 0) {
       base.excludedWeekdays = dedupeWeekdays(overriddenWeekdays);
     }
   }
 
-  base.unresolvedFields = buildUnresolvedFieldsFromTimes(base.startTime, base.endTime);
+  base.unresolvedFields = buildUnresolvedFields(
+    base.startTime,
+    base.endTime,
+    base.date,
+    base.dateSpec
+  );
 
   let previousEvent = {
+    date: base.date,
+    dateSpec: base.dateSpec,
     startTime: base.startTime,
     endTime: base.endTime,
   };
 
   for (const sequence of ast.sequences) {
-    const lowered = lowerSequence(sequence, previousEvent);
+    const lowered = lowerSequence(sequence, previousEvent, options);
     ir.sequencedIntents.push(lowered);
 
     previousEvent = {
+      date: lowered.date,
+      dateSpec: lowered.dateSpec,
       startTime: lowered.startTime,
       endTime: lowered.endTime,
     };
