@@ -1,0 +1,337 @@
+*** Begin Patch
+*** Update File: catalog.ts
+@@
+ interface CatalogTitleMatch {
+   label: string;
+   keyword: string;
+   score: number;
+ }
++
++const GENERIC_TITLE_CANDIDATES = new Set([
++  "数学",
++  "英語",
++  "物理",
++  "化学",
++  "情報",
++  "国語",
++  "演習",
++  "復習",
++  "振り返り",
++  "自習",
++  "課題",
++  "勉強",
++  "学習",
++  "予定",
++]);
+@@
+ export function inferCatalogTitle(text: string): string | undefined {
+   const match = findBestTitleMatch(text);
+   if (!match) {
+     return undefined;
+   }
+@@
+ 
+   return match.keyword;
+ }
++
++function normalizeLooseTitleText(text: string): string {
++  return text
++    .replace(/[０-９]/g, (char) =>
++      String.fromCharCode(char.charCodeAt(0) - 0xfee0)
++    )
++    .replace(/[：]/g, ":")
++    .replace(/[／]/g, "/")
++    .replace(/[「」]/g, " ")
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++function trimLooseTitleCandidate(text: string): string {
++  let current = normalizeLooseTitleText(text);
++  let previous = "";
++
++  while (current && current !== previous) {
++    previous = current;
++    current = current
++      .replace(
++        /^(?:(?:今日|明日|明後日|今週|来週)(?:の|は)?|(?:朝|昼|夜)(?:は)?|(?:そのあと|その後|次に|続けて)(?:は)?)+/,
++        ""
++      )
++      .replace(
++        /^(?:(?:寝る前|寝るまえ|起きてすぐ|起床後|朝食後|昼食後|夕食後|食後|授業後|学校後|帰宅後|風呂後|お風呂後)(?:に|で|は)?)+/,
++        ""
++      )
++      .replace(/^(?:軽く|少し|ちょっと|まず|だけ|のみ)+/, "")
++      .replace(/^(?:の|は|を|に|で|と)+/, "")
++      .replace(
++        /(?:を(?:やる|する|進める|入れる|入れて|勉強する)|やる|する|進める|入れる|入れて|勉強する)$/,
++        ""
++      )
++      .replace(/(?:の|は|を|に|で|と)+$/, "")
++      .replace(/\s+/g, " ")
++      .trim();
++  }
++
++  return current;
++}
++
++function isGenericTitleCandidate(text: string): boolean {
++  const normalized = normalizeLooseTitleText(text);
++  if (!normalized) {
++    return true;
++  }
++
++  return GENERIC_TITLE_CANDIDATES.has(normalized);
++}
++
++function maybeStripLeadingSubject(text: string): string {
++  const subject = inferCatalogSubject(text);
++  if (!subject) {
++    return text;
++  }
++
++  const stripped = text.replace(
++    new RegExp(
++      `^${subject.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}(?:の|を|は|:|：|/|／|\\s+)`,
++      "i"
++    ),
++    ""
++  ).trim();
++
++  if (!stripped || isGenericTitleCandidate(stripped)) {
++    return text;
++  }
++
++  return stripped;
++}
++
++function buildLexicalTitleCandidate(text: string): string | undefined {
++  const cleaned = maybeStripLeadingSubject(trimLooseTitleCandidate(text));
++  if (!cleaned || isGenericTitleCandidate(cleaned)) {
++    return undefined;
++  }
++
++  return cleaned;
++}
++
++export function inferEventTitle(
++  contentText?: string,
++  contextText?: string
++): string | undefined {
++  const sources = [contentText, contextText].filter(
++    (value): value is string => typeof value === "string" && value.trim().length > 0
++  );
++
++  for (const source of sources) {
++    const lexicalCandidate = buildLexicalTitleCandidate(source);
++    if (!lexicalCandidate) {
++      continue;
++    }
++
++    const catalogCandidate = inferCatalogTitle(lexicalCandidate);
++    if (catalogCandidate && !isGenericTitleCandidate(catalogCandidate)) {
++      return catalogCandidate;
++    }
++
++    return lexicalCandidate;
++  }
++
++  return undefined;
++}
+*** Update File: compile.ts
+@@
+ import type {
+@@
+ } from "./shared/types";
+-import { inferCatalogSubject, inferCatalogTitle } from "./catalog";
++import { inferCatalogSubject, inferEventTitle } from "./catalog";
+@@
+ function inferTitle(
+   contentText?: string,
+   contextText?: string
+ ): string | undefined {
+-  if (contentText) {
+-    return inferCatalogTitle(contentText) ?? contentText;
+-  }
+-
+-  if (contextText) {
+-    return inferCatalogTitle(contextText) ?? contextText;
+-  }
+-
+-  return undefined;
++  return inferEventTitle(contentText, contextText);
+ }
++
++function enrichUnresolvedFields(
++  unresolvedFields: UnresolvedField[],
++  draft: Pick<PlanDraft, "title" | "subject">
++): UnresolvedField[] {
++  const result = new Set(unresolvedFields);
++
++  if (!draft.title) {
++    result.add("title");
++  }
++
++  if (!draft.subject) {
++    result.add("subject");
++  }
++
++  return [...result];
++}
+@@
+   if (group.enumeratedIntents.length === 0) {
++    const parsedPlan = buildBaseDraft(group.base);
+     suggestions.push({
+       rawText: group.base.rawText,
+-      parsedPlan: buildBaseDraft(group.base),
++      parsedPlan,
+       assumptions: [...group.base.assumptions],
+-      unresolvedFields: [...group.base.unresolvedFields],
++      unresolvedFields: enrichUnresolvedFields(
++        [...group.base.unresolvedFields],
++        parsedPlan
++      ),
+       confidence: 0.9,
+     });
+   }
+ 
+   for (const enumeration of group.enumeratedIntents) {
++    const parsedPlan = buildEnumerationDraft(enumeration);
+     suggestions.push({
+       rawText: enumeration.rawText,
+-      parsedPlan: buildEnumerationDraft(enumeration),
++      parsedPlan,
+       assumptions: [...enumeration.assumptions],
+-      unresolvedFields: [...enumeration.unresolvedFields],
++      unresolvedFields: enrichUnresolvedFields(
++        [...enumeration.unresolvedFields],
++        parsedPlan
++      ),
+       confidence: 0.89,
+     });
+   }
+ 
+   for (const sequence of group.sequencedIntents) {
++    const parsedPlan = buildSequencedDraft(sequence);
+     suggestions.push({
+       rawText: sequence.rawText,
+-      parsedPlan: buildSequencedDraft(sequence),
++      parsedPlan,
+       assumptions: [...sequence.assumptions],
+-      unresolvedFields: [...sequence.unresolvedFields],
++      unresolvedFields: enrichUnresolvedFields(
++        [...sequence.unresolvedFields],
++        parsedPlan
++      ),
+       confidence: 0.88,
+     });
+   }
+ 
+   for (const override of group.overrideIntents) {
++    const parsedPlan = buildOverrideDraft(override, group.base);
+     suggestions.push({
+       rawText: override.rawText,
+-      parsedPlan: buildOverrideDraft(override, group.base),
++      parsedPlan,
+       assumptions: [...group.base.assumptions, ...override.assumptions],
+-      unresolvedFields: unresolvedFromTime(
+-        override.startTime,
+-        override.endTime
++      unresolvedFields: enrichUnresolvedFields(
++        unresolvedFromTime(override.startTime, override.endTime),
++        parsedPlan
+       ),
+       confidence: 0.85,
+     });
+   }
+*** Update File: adapter.ts
+@@
+ import {
+   detectSubject,
+   detectType,
+   generateRuleBasedSuggestion,
+   matchPlan,
+   type SuggestionInput,
+ } from "../naturalLanguageRules";
+ import { runNaturalLanguagePipeline } from "./index";
++import { inferCatalogSubject, inferEventTitle } from "./catalog";
+@@
+ function inferLegacySubject(
+   suggestion: PipelineSuggestion,
+   input: SuggestionInput,
+ ): string {
+   return (
+     suggestion.parsedPlan.subject ||
++    inferCatalogSubject(
++      [
++        suggestion.parsedPlan.title,
++        suggestion.parsedPlan.contentText,
++        suggestion.rawText,
++        input.text,
++      ]
++        .filter(Boolean)
++        .join(" ")
++    ) ||
+     detectSubject(
+       [
+         suggestion.parsedPlan.title,
+@@
+ function inferLegacyTitle(
+   suggestion: PipelineSuggestion,
+   type: PlanType,
+   subject: string,
+ ): string {
+   return (
+     suggestion.parsedPlan.title ||
+-    suggestion.parsedPlan.contentText ||
++    inferEventTitle(suggestion.parsedPlan.contentText, suggestion.rawText) ||
+     buildDefaultPlanTitle(type, subject)
+   );
+ }
+*** Update File: compile.test.ts
+@@
+   it("contentText 由来の title が先頭末尾ノイズを含まない", () => {
+@@
+     expect(suggestions[2].parsedPlan.title).toBe("現代文");
+   });
++
++  it("unknown workbook title でも case-specific hardcode に頼らず title を拾える", () => {
++    const clauses = parseClauses(
++      "明日の7時から30分、英語のDUO3.0"
++    );
++    const ast = buildAST(clauses);
++    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
++    const suggestions = compileToSuggestions(ir);
++
++    expect(suggestions).toHaveLength(1);
++    expect(suggestions[0].parsedPlan.title).toBe("DUO3.0");
++  });
++
++  it("title fallback が文脈ノイズ込み contentText に戻らない", () => {
++    const clauses = parseClauses(
++      "毎晩寝る前に15分だけ英語のDUO3.0をやる。時間は23時で。"
++    );
++    const ast = buildAST(clauses);
++    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
++    const suggestions = compileToSuggestions(ir);
++
++    expect(suggestions).toHaveLength(1);
++    expect(suggestions[0].parsedPlan.title).toBe("DUO3.0");
++    expect(suggestions[0].parsedPlan.title).not.toContain("寝る前");
++  });
++
++  it("generic subject 単体ではなく unknown worksheet title を保持できる", () => {
++    const clauses = parseClauses(
++      "夜は20時から1時間、情報の学校ワークA"
++    );
++    const ast = buildAST(clauses);
++    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
++    const suggestions = compileToSuggestions(ir);
++
++    expect(suggestions).toHaveLength(1);
++    expect(["情報の学校ワークA", "学校ワークA"]).toContain(
++      suggestions[0].parsedPlan.title
++    );
++    expect(suggestions[0].parsedPlan.title).not.toBe("情報");
++  });
+*** End Patch

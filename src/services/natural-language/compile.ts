@@ -11,7 +11,8 @@ import type {
   UnresolvedField,
   Weekday,
 } from "./shared/types";
-import { inferCatalogSubject, inferCatalogTitle } from "./catalog";
+import { inferCatalogSubject } from "./catalog";
+import { inferEventTitle } from "./title";
 
 function unique<T>(values: T[] | undefined): T[] | undefined {
   if (!values || values.length === 0) {
@@ -22,9 +23,10 @@ function unique<T>(values: T[] | undefined): T[] | undefined {
 
 function inferSubject(
   contentText?: string,
-  contextText?: string
+  contextText?: string,
+  titleText?: string
 ): string | undefined {
-  const source = `${contentText ?? ""} ${contextText ?? ""}`;
+  const source = `${titleText ?? ""} ${contentText ?? ""} ${contextText ?? ""}`;
   return inferCatalogSubject(source);
 }
 
@@ -32,15 +34,7 @@ function inferTitle(
   contentText?: string,
   contextText?: string
 ): string | undefined {
-  if (contentText) {
-    return inferCatalogTitle(contentText) ?? contentText;
-  }
-
-  if (contextText) {
-    return inferCatalogTitle(contextText) ?? contextText;
-  }
-
-  return undefined;
+  return inferEventTitle(contentText, contextText);
 }
 
 function toRecurrenceRules(input: {
@@ -105,8 +99,8 @@ function unresolvedFromTime(
 }
 
 function buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {
-  const subject = inferSubject(base.contentText);
   const title = inferTitle(base.contentText);
+  const subject = inferSubject(base.contentText, undefined, title);
 
   return {
     rawText: base.rawText,
@@ -133,8 +127,8 @@ function buildOverrideDraft(
   override: NormalizedOverrideIntent,
   base: NormalizedPlanIntent
 ): PlanDraft {
-  const subject = inferSubject(base.contentText);
   const title = inferTitle(base.contentText);
+  const subject = inferSubject(base.contentText, undefined, title);
 
   return {
     rawText: override.rawText,
@@ -156,8 +150,8 @@ function buildOverrideDraft(
 }
 
 function buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {
-  const subject = inferSubject(sequence.contentText);
   const title = inferTitle(sequence.contentText);
+  const subject = inferSubject(sequence.contentText, undefined, title);
 
   return {
     rawText: sequence.rawText,
@@ -173,8 +167,8 @@ function buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {
 }
 
 function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
-  const subject = inferSubject(item.contentText, item.baseContentText);
   const title = inferTitle(item.contentText, item.baseContentText);
+  const subject = inferSubject(item.contentText, item.baseContentText, title);
 
   return {
     rawText: item.rawText,

@@ -1,0 +1,296 @@
+[1mdiff --git a/src/data/naturalLanguageCatalog.json b/src/data/naturalLanguageCatalog.json[m
+[1mindex 5f2507e..357975e 100644[m
+[1m--- a/src/data/naturalLanguageCatalog.json[m
+[1m+++ b/src/data/naturalLanguageCatalog.json[m
+[36m@@ -156,6 +156,30 @@[m
+         "小論文の完全ネタ本"[m
+       ][m
+     },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "label": "演習",[m
+[32m+[m[32m      "keywords": [[m
+[32m+[m[32m        "演習",[m
+[32m+[m[32m        "過去問演習",[m
+[32m+[m[32m        "共通テスト過去問演習",[m
+[32m+[m[32m        "共通テストの過去問演習",[m
+[32m+[m[32m        "過去問"[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "label": "復習",[m
+[32m+[m[32m      "keywords": [[m
+[32m+[m[32m        "復習",[m
+[32m+[m[32m        "英単語の復習"[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "label": "振り返り",[m
+[32m+[m[32m      "keywords": [[m
+[32m+[m[32m        "振り返り",[m
+[32m+[m[32m        "週の振り返り"[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+     {[m
+       "label": "自習",[m
+       "keywords": [[m
+[1mdiff --git a/src/services/natural-language/__tests__/adapter.test.ts b/src/services/natural-language/__tests__/adapter.test.ts[m
+[1mindex eba32cc..7a46399 100644[m
+[1m--- a/src/services/natural-language/__tests__/adapter.test.ts[m
+[1m+++ b/src/services/natural-language/__tests__/adapter.test.ts[m
+[36m@@ -254,6 +254,25 @@[m [mdescribe('natural-language adapter', () => {[m
+     expect(suggestions[1].parsedPlan.subject).toBe('英語');[m
+   });[m
+ [m
+[32m+[m[32m  it('pipeline title が無い場合でも noisy contentText をそのまま legacy title にしない', () => {[m
+[32m+[m[32m    const suggestion = adaptPipelineSuggestionToLegacySuggestion([m
+[32m+[m[32m      {[m
+[32m+[m[32m        rawText: '授業後に情報の課題をやる',[m
+[32m+[m[32m        parsedPlan: {[m
+[32m+[m[32m          rawText: '授業後に情報の課題をやる',[m
+[32m+[m[32m          contentText: '授業後に情報の課題をやる',[m
+[32m+[m[32m          subject: '情報',[m
+[32m+[m[32m        },[m
+[32m+[m[32m        assumptions: [],[m
+[32m+[m[32m        unresolvedFields: [],[m
+[32m+[m[32m        confidence: 0.9,[m
+[32m+[m[32m      },[m
+[32m+[m[32m      createInput('授業後に情報の課題をやる'),[m
+[32m+[m[32m    );[m
+[32m+[m
+[32m+[m[32m    expect(suggestion.parsedPlan.title).toBe('情報の課題');[m
+[32m+[m[32m  });[m
+[32m+[m
+   it('recurring な既存予定の edit では recurrence を維持したまま title/time だけ変更できる', () => {[m
+     const suggestions = runRulesPipelineEditThroughAdapter([m
+       createEditInput('英語を20時開始にして'),[m
+[1mdiff --git a/src/services/natural-language/__tests__/integration.test.ts b/src/services/natural-language/__tests__/integration.test.ts[m
+[1mindex b8a9fe6..3a6a8e7 100644[m
+[1m--- a/src/services/natural-language/__tests__/integration.test.ts[m
+[1m+++ b/src/services/natural-language/__tests__/integration.test.ts[m
+[36m@@ -237,8 +237,24 @@[m [mdescribe("natural-language integration", () => {[m
+     expect(suggestions).toHaveLength(1);[m
+     expect(suggestions[0].parsedPlan.subject).toBe("演習");[m
+   });[m
+[31m-[m
+[31m-  it("デバッグ用に中間結果もまとめて取れる", () => {[m
+[32m+[m
+[32m+[m[32m  it("catalog 未登録でも教材名・課題名・作業名を自然な title として抽出できる", () => {[m
+[32m+[m[32m    const suggestions = parseNaturalLanguageSchedule([m
+[32m+[m[32m      "寝る前にDUO3.0を30分。19時から学校ワークAを進める。20時から期末レポートの考察を書く。21時からWeb開発課題の修正。22時から統計学小テストの見直し。",[m
+[32m+[m[32m      { referenceDate: "2026-04-16" }[m
+[32m+[m[32m    );[m
+[32m+[m
+[32m+[m[32m    expect(suggestions).toHaveLength(5);[m
+[32m+[m[32m    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([[m
+[32m+[m[32m      "DUO3.0",[m
+[32m+[m[32m      "学校ワークA",[m
+[32m+[m[32m      "期末レポートの考察",[m
+[32m+[m[32m      "Web開発課題の修正",[m
+[32m+[m[32m      "統計学小テストの見直し",[m
+[32m+[m[32m    ]);[m
+[32m+[m[32m  });[m
+[32m+[m
+[32m+[m[32m  it("デバッグ用に中間結果もまとめて取れる", () => {[m
+     const result = runNaturalLanguagePipeline("毎晩英単語を復習");[m
+ [m
+     expect(result.normalizedText).toBe("毎晩英単語を復習");[m
+[1mdiff --git a/src/services/natural-language/adapter.ts b/src/services/natural-language/adapter.ts[m
+[1mindex 6cf924a..ef8420a 100644[m
+[1m--- a/src/services/natural-language/adapter.ts[m
+[1m+++ b/src/services/natural-language/adapter.ts[m
+[36m@@ -23,6 +23,7 @@[m [mimport {[m
+   type SuggestionInput,[m
+ } from "../naturalLanguageRules";[m
+ import { runNaturalLanguagePipeline } from "./index";[m
+[32m+[m[32mimport { inferEventTitle } from "./title";[m
+ import type {[m
+   PipelineOptions,[m
+   Suggestion as PipelineSuggestion,[m
+[36m@@ -490,7 +491,7 @@[m [mfunction inferLegacyTitle([m
+ ): string {[m
+   return ([m
+     suggestion.parsedPlan.title ||[m
+[31m-    suggestion.parsedPlan.contentText ||[m
+[32m+[m[32m    inferEventTitle(suggestion.parsedPlan.contentText, suggestion.rawText) ||[m
+     buildDefaultPlanTitle(type, subject)[m
+   );[m
+ }[m
+[1mdiff --git a/src/services/natural-language/build-ast.test.ts b/src/services/natural-language/build-ast.test.ts[m
+[1mindex 79a550f..e10ae8d 100644[m
+[1m--- a/src/services/natural-language/build-ast.test.ts[m
+[1m+++ b/src/services/natural-language/build-ast.test.ts[m
+[36m@@ -130,4 +130,15 @@[m [mdescribe("buildAST", () => {[m
+     expect(ast.groups[1].base.contentText).toBe("化学");[m
+     expect(ast.groups[2].base.contentText).toBe("現代文");[m
+   });[m
+[31m-});[m
+[32m+[m
+[32m+[m[32m  it("title 抽出前の contentText から文脈ノイズだけを落とせる", () => {[m
+[32m+[m[32m    const clauses = parseClauses([m
+[32m+[m[32m      "寝る前にDUO3.0を30分。19時から学校ワークAを進める。20時から期末レポートの考察を書く。"[m
+[32m+[m[32m    );[m
+[32m+[m[32m    const ast = buildAST(clauses);[m
+[32m+[m
+[32m+[m[32m    expect(ast.groups[0].base.contentText).toBe("DUO3.0");[m
+[32m+[m[32m    expect(ast.groups[1].base.contentText).toBe("学校ワークA");[m
+[32m+[m[32m    expect(ast.groups[2].base.contentText).toBe("期末レポートの考察");[m
+[32m+[m[32m  });[m
+[32m+[m[32m});[m
+[1mdiff --git a/src/services/natural-language/build-ast.ts b/src/services/natural-language/build-ast.ts[m
+[1mindex e3abaad..6accb71 100644[m
+[1m--- a/src/services/natural-language/build-ast.ts[m
+[1m+++ b/src/services/natural-language/build-ast.ts[m
+[36m@@ -44,15 +44,21 @@[m [mfunction firstConnectiveRaw(tokens: Token[]): string | undefined {[m
+ function normalizeContentText(text: string): string | undefined {[m
+   let normalized = text.trim();[m
+ [m
+[32m+[m[32m  normalized = normalized.replace([m
+[32m+[m[32m    /^(?:(?:寝る前|授業後|放課後|帰宅後)(?:に|は)?)+/,[m
+[32m+[m[32m    ""[m
+[32m+[m[32m  );[m
+[32m+[m
+   normalized = normalized.replace([m
+     /^(?:(?:今日|明日|明後日|今週|来週)(?:の|は)?|(?:朝|昼|夜)(?:は)?|の|は|から|まで)+/,[m
+     ""[m
+   );[m
+ [m
+[32m+[m[32m  normalized = normalized.replace(/^(?:(?:軽く|少し|ちょっと)(?:だけ)?|だけ|のみ)+/, "");[m
+   normalized = normalized.replace(/^(?:だけ|のみ)+/, "");[m
+ [m
+   normalized = normalized.replace([m
+[31m-    /(?:を(?:やる|する|入れる|入れて|進める|勉強する)|やる|する|入れる|入れて)$/,[m
+[32m+[m[32m    /(?:を(?:やる|する|入れる|入れて|進める|勉強する|学習する|解く|見直す|確認する|修正する)|(?:を)?書く|やる|する|入れる|入れて)$/,[m
+     ""[m
+   );[m
+ [m
+[1mdiff --git a/src/services/natural-language/compile.test.ts b/src/services/natural-language/compile.test.ts[m
+[1mindex 3992e76..2cad359 100644[m
+[1m--- a/src/services/natural-language/compile.test.ts[m
+[1m+++ b/src/services/natural-language/compile.test.ts[m
+[36m@@ -193,4 +193,21 @@[m [mdescribe("compileToSuggestions", () => {[m
+       "振り返り",[m
+     ]);[m
+   });[m
+[31m-});[m
+[32m+[m
+[32m+[m[32m  it("unknown な教材名や課題名でも全文 fallback ではなく lexical candidate を title にできる", () => {[m
+[32m+[m[32m    const clauses = parseClauses([m
+[32m+[m[32m      "寝る前にDUO3.0を30分。19時から学校ワークAを進める。20時から期末レポートの考察を書く。21時からWeb開発課題の修正。22時から統計学小テストの見直し。"[m
+[32m+[m[32m    );[m
+[32m+[m[32m    const ast = buildAST(clauses);[m
+[32m+[m[32m    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });[m
+[32m+[m[32m    const suggestions = compileToSuggestions(ir);[m
+[32m+[m
+[32m+[m[32m    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([[m
+[32m+[m[32m      "DUO3.0",[m
+[32m+[m[32m      "学校ワークA",[m
+[32m+[m[32m      "期末レポートの考察",[m
+[32m+[m[32m      "Web開発課題の修正",[m
+[32m+[m[32m      "統計学小テストの見直し",[m
+[32m+[m[32m    ]);[m
+[32m+[m[32m  });[m
+[32m+[m[32m});[m
+[1mdiff --git a/src/services/natural-language/compile.ts b/src/services/natural-language/compile.ts[m
+[1mindex d640eb0..39eb3ea 100644[m
+[1m--- a/src/services/natural-language/compile.ts[m
+[1m+++ b/src/services/natural-language/compile.ts[m
+[36m@@ -11,7 +11,8 @@[m [mimport type {[m
+   UnresolvedField,[m
+   Weekday,[m
+ } from "./shared/types";[m
+[31m-import { inferCatalogSubject, inferCatalogTitle } from "./catalog";[m
+[32m+[m[32mimport { inferCatalogSubject } from "./catalog";[m
+[32m+[m[32mimport { inferEventTitle } from "./title";[m
+ [m
+ function unique<T>(values: T[] | undefined): T[] | undefined {[m
+   if (!values || values.length === 0) {[m
+[36m@@ -22,9 +23,10 @@[m [mfunction unique<T>(values: T[] | undefined): T[] | undefined {[m
+ [m
+ function inferSubject([m
+   contentText?: string,[m
+[31m-  contextText?: string[m
+[32m+[m[32m  contextText?: string,[m
+[32m+[m[32m  titleText?: string[m
+ ): string | undefined {[m
+[31m-  const source = `${contentText ?? ""} ${contextText ?? ""}`;[m
+[32m+[m[32m  const source = `${titleText ?? ""} ${contentText ?? ""} ${contextText ?? ""}`;[m
+   return inferCatalogSubject(source);[m
+ }[m
+ [m
+[36m@@ -32,16 +34,8 @@[m [mfunction inferTitle([m
+   contentText?: string,[m
+   contextText?: string[m
+ ): string | undefined {[m
+[31m-  if (contentText) {[m
+[31m-    return inferCatalogTitle(contentText) ?? contentText;[m
+[31m-  }[m
+[31m-[m
+[31m-  if (contextText) {[m
+[31m-    return inferCatalogTitle(contextText) ?? contextText;[m
+[31m-  }[m
+[31m-[m
+[31m-  return undefined;[m
+[31m-}[m
+[32m+[m[32m  return inferEventTitle(contentText, contextText);[m
+[32m+[m[32m}[m
+ [m
+ function toRecurrenceRules(input: {[m
+   dayType?: "weekday" | "weekend";[m
+[36m@@ -104,9 +98,9 @@[m [mfunction unresolvedFromTime([m
+   return result;[m
+ }[m
+ [m
+[31m-function buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {[m
+[31m-  const subject = inferSubject(base.contentText);[m
+[31m-  const title = inferTitle(base.contentText);[m
+[32m+[m[32mfunction buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {[m
+[32m+[m[32m  const title = inferTitle(base.contentText);[m
+[32m+[m[32m  const subject = inferSubject(base.contentText, undefined, title);[m
+ [m
+   return {[m
+     rawText: base.rawText,[m
+[36m@@ -129,12 +123,12 @@[m [mfunction buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {[m
+   };[m
+ }[m
+ [m
+[31m-function buildOverrideDraft([m
+[31m-  override: NormalizedOverrideIntent,[m
+[31m-  base: NormalizedPlanIntent[m
+[31m-): PlanDraft {[m
+[31m-  const subject = inferSubject(base.contentText);[m
+[31m-  const title = inferTitle(base.contentText);[m
+[32m+[m[32mfunction buildOverrideDraft([m
+[32m+[m[32m  override: NormalizedOverrideIntent,[m
+[32m+[m[32m  base: NormalizedPlanIntent[m
+[32m+[m[32m): PlanDraft {[m
+[32m+[m[32m  const title = inferTitle(base.contentText);[m
+[32m+[m[32m  const subject = inferSubject(base.contentText, undefined, title);[m
+ [m
+   return {[m
+     rawText: override.rawText,[m
+[36m@@ -155,9 +149,9 @@[m [mfunction buildOverrideDraft([m
+   };[m
+ }[m
+ [m
+[31m-function buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {[m
+[31m-  const subject = inferSubject(sequence.contentText);[m
+[31m-  const title = inferTitle(sequence.contentText);[m
+[32m+[m[32mfunction buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {[m
+[32m+[m[32m  const title = inferTitle(sequence.contentText);[m
+[32m+[m[32m  const subject = inferSubject(sequence.contentText, undefined, title);[m
+ [m
+   return {[m
+     rawText: sequence.rawText,[m
+[36m@@ -172,9 +166,9 @@[m [mfunction buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {[m
+   };[m
+ }[m
+ [m
+[31m-function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {[m
+[31m-  const subject = inferSubject(item.contentText, item.baseContentText);[m
+[31m-  const title = inferTitle(item.contentText, item.baseContentText);[m
+[32m+[m[32mfunction buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {[m
+[32m+[m[32m  const title = inferTitle(item.contentText, item.baseContentText);[m
+[32m+[m[32m  const subject = inferSubject(item.contentText, item.baseContentText, title);[m
+ [m
+   return {[m
+     rawText: item.rawText,[m

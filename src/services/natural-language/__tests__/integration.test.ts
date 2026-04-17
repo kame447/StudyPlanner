@@ -238,6 +238,22 @@ describe("natural-language integration", () => {
     expect(suggestions[0].parsedPlan.subject).toBe("演習");
   });
 
+  it("catalog 未登録でも教材名・課題名・作業名を自然な title として抽出できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "寝る前にDUO3.0を30分。19時から学校ワークAを進める。20時から期末レポートの考察を書く。21時からWeb開発課題の修正。22時から統計学小テストの見直し。",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(5);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "DUO3.0",
+      "学校ワークA",
+      "期末レポートの考察",
+      "Web開発課題の修正",
+      "統計学小テストの見直し",
+    ]);
+  });
+
   it("デバッグ用に中間結果もまとめて取れる", () => {
     const result = runNaturalLanguagePipeline("毎晩英単語を復習");
 

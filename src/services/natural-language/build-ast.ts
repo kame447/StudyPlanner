@@ -45,14 +45,20 @@ function normalizeContentText(text: string): string | undefined {
   let normalized = text.trim();
 
   normalized = normalized.replace(
+    /^(?:(?:寝る前|授業後|放課後|帰宅後)(?:に|は)?)+/,
+    ""
+  );
+
+  normalized = normalized.replace(
     /^(?:(?:今日|明日|明後日|今週|来週)(?:の|は)?|(?:朝|昼|夜)(?:は)?|の|は|から|まで)+/,
     ""
   );
 
+  normalized = normalized.replace(/^(?:(?:軽く|少し|ちょっと)(?:だけ)?|だけ|のみ)+/, "");
   normalized = normalized.replace(/^(?:だけ|のみ)+/, "");
 
   normalized = normalized.replace(
-    /(?:を(?:やる|する|入れる|入れて|進める|勉強する)|やる|する|入れる|入れて)$/,
+    /(?:を(?:やる|する|入れる|入れて|進める|勉強する|学習する|解く|見直す|確認する|修正する)|(?:を)?書く|やる|する|入れる|入れて)$/,
     ""
   );
 

@@ -193,4 +193,21 @@ describe("compileToSuggestions", () => {
       "振り返り",
     ]);
   });
+
+  it("unknown な教材名や課題名でも全文 fallback ではなく lexical candidate を title にできる", () => {
+    const clauses = parseClauses(
+      "寝る前にDUO3.0を30分。19時から学校ワークAを進める。20時から期末レポートの考察を書く。21時からWeb開発課題の修正。22時から統計学小テストの見直し。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "DUO3.0",
+      "学校ワークA",
+      "期末レポートの考察",
+      "Web開発課題の修正",
+      "統計学小テストの見直し",
+    ]);
+  });
 });

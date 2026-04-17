@@ -23,6 +23,7 @@ import {
   type SuggestionInput,
 } from "../naturalLanguageRules";
 import { runNaturalLanguagePipeline } from "./index";
+import { inferEventTitle } from "./title";
 import type {
   PipelineOptions,
   Suggestion as PipelineSuggestion,
@@ -490,7 +491,7 @@ function inferLegacyTitle(
 ): string {
   return (
     suggestion.parsedPlan.title ||
-    suggestion.parsedPlan.contentText ||
+    inferEventTitle(suggestion.parsedPlan.contentText, suggestion.rawText) ||
     buildDefaultPlanTitle(type, subject)
   );
 }

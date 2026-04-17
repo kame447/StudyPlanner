@@ -254,6 +254,25 @@ describe('natural-language adapter', () => {
     expect(suggestions[1].parsedPlan.subject).toBe('英語');
   });
 
+  it('pipeline title が無い場合でも noisy contentText をそのまま legacy title にしない', () => {
+    const suggestion = adaptPipelineSuggestionToLegacySuggestion(
+      {
+        rawText: '授業後に情報の課題をやる',
+        parsedPlan: {
+          rawText: '授業後に情報の課題をやる',
+          contentText: '授業後に情報の課題をやる',
+          subject: '情報',
+        },
+        assumptions: [],
+        unresolvedFields: [],
+        confidence: 0.9,
+      },
+      createInput('授業後に情報の課題をやる'),
+    );
+
+    expect(suggestion.parsedPlan.title).toBe('情報の課題');
+  });
+
   it('recurring な既存予定の edit では recurrence を維持したまま title/time だけ変更できる', () => {
     const suggestions = runRulesPipelineEditThroughAdapter(
       createEditInput('英語を20時開始にして'),
