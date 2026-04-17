@@ -123,6 +123,17 @@ describe("natural-language integration", () => {
     expect(suggestions[2].parsedPlan.date).toBe("2026-04-16");
     expect(suggestions[2].parsedPlan.startTime).toBe("15:00");
     expect(suggestions[2].parsedPlan.endTime).toBe("16:30");
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "情報の課題",
+      "英語長文",
+      "物理",
+    ]);
+    expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "のまで情報の課題")).toBe(
+      false
+    );
+    expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "まで物理をやる")).toBe(
+      false
+    );
   });
 
   it("1文内の複数明示時間ブロックでも相対順序テストを壊さない", () => {
@@ -148,6 +159,49 @@ describe("natural-language integration", () => {
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
     expect(suggestions[0].parsedPlan.endTime).toBe("21:00");
+  });
+
+  it("複数明示時間ブロックでも title が青チャート / 現代文に汚れず残る", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "明日の7時から30分システム英単語、そのあと8時から9時半まで青チャート。夜は20時から1時間、現代文。",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "システム英単語",
+      "青チャート",
+      "現代文",
+    ]);
+    expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "まで青チャート")).toBe(
+      false
+    );
+    expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "夜はから現代文")).toBe(
+      false
+    );
+  });
+
+  it("relative ordering を壊さず title の前後ノイズを落とせる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "10時から化学を90分、そのあと30分休んで、12時から1時間英語をやる。",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "化学",
+      "英語",
+    ]);
+    expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "から化学を")).toBe(
+      false
+    );
+    expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "から英語をやる")).toBe(
+      false
+    );
+    expect(suggestions[0].parsedPlan.startTime).toBe("10:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("11:30");
+    expect(suggestions[1].parsedPlan.startTime).toBe("12:00");
+    expect(suggestions[1].parsedPlan.endTime).toBe("13:00");
   });
 
   it("デバッグ用に中間結果もまとめて取れる", () => {

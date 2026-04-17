@@ -119,4 +119,15 @@ describe("buildAST", () => {
       true
     );
   });
+
+  it("contentText の先頭末尾ノイズを今回の対象例で落とせる", () => {
+    const clauses = parseClauses(
+      "今日の9時から11時まで情報の課題。10時から化学を90分。夜は20時から1時間、現代文。"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups[0].base.contentText).toBe("情報の課題");
+    expect(ast.groups[1].base.contentText).toBe("化学");
+    expect(ast.groups[2].base.contentText).toBe("現代文");
+  });
 });

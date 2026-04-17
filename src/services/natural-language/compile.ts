@@ -41,6 +41,14 @@ function inferTitle(
   contextText?: string
 ): string | undefined {
   if (contentText) {
+    if (/システム英単語/.test(contentText)) {
+      return "システム英単語";
+    }
+
+    if (/英語長文/.test(contentText)) {
+      return "英語長文";
+    }
+
     if (/英単語/.test(contentText)) {
       return "英単語の復習";
     }

@@ -159,4 +159,17 @@ describe("compileToSuggestions", () => {
     expect(suggestions[2].parsedPlan.startTime).toBe("15:00");
     expect(suggestions[2].parsedPlan.endTime).toBe("16:30");
   });
+
+  it("contentText 由来の title が先頭末尾ノイズを含まない", () => {
+    const clauses = parseClauses(
+      "明日の7時から30分システム英単語、そのあと8時から9時半まで青チャート。夜は20時から1時間、現代文。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions[0].parsedPlan.title).toBe("システム英単語");
+    expect(suggestions[1].parsedPlan.title).toBe("青チャート");
+    expect(suggestions[2].parsedPlan.title).toBe("現代文");
+  });
 });

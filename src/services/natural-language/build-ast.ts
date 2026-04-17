@@ -41,6 +41,28 @@ function firstConnectiveRaw(tokens: Token[]): string | undefined {
   return tokens.find((token) => token.kind === "CONNECTIVE")?.raw;
 }
 
+function normalizeContentText(text: string): string | undefined {
+  let normalized = text.trim();
+
+  normalized = normalized.replace(
+    /^(?:(?:今日|明日|明後日|今週|来週)(?:の|は)?|(?:朝|昼|夜)(?:は)?|の|は|から|まで)+/,
+    ""
+  );
+
+  normalized = normalized.replace(/^(?:だけ|のみ)+/, "");
+
+  normalized = normalized.replace(
+    /(?:を(?:やる|する|入れる|入れて|進める|勉強する)|やる|する|入れる|入れて)$/,
+    ""
+  );
+
+  normalized = normalized.replace(/^(?:の|は|を)+/, "");
+  normalized = normalized.replace(/(?:の|は|を)+$/, "");
+  normalized = normalized.trim();
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function mergedContent(tokens: Token[]): string | undefined {
   const text = tokens
     .filter((token) => token.kind === "CONTENT")
@@ -48,7 +70,7 @@ function mergedContent(tokens: Token[]): string | undefined {
     .filter((textPart) => textPart.length > 0)
     .join("");
 
-  return text.length > 0 ? text : undefined;
+  return text.length > 0 ? normalizeContentText(text) : undefined;
 }
 
 function buildBaseNode(
