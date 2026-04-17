@@ -8,6 +8,7 @@ import {
 } from '../lib/aiConfig';
 import { sortByDateTime } from '../lib/date';
 import { AiRuntimeSettings } from './AiRuntimeSettings';
+import { NaturalLanguageRulesModeControl } from './NaturalLanguageRulesModeControl';
 import { PlanFieldsEditor } from './PlanFieldsEditor';
 import {
   generateNaturalLanguageSuggestions,
@@ -298,6 +299,8 @@ export function NaturalLanguageAssistant({
         onSave={handleSaveAiConfig}
         onReset={handleResetAiConfig}
       />
+
+      <NaturalLanguageRulesModeControl currentProvider={aiConfig.provider} />
 
       <NaturalLanguageCsvTester
         currentProvider={aiConfig.provider}

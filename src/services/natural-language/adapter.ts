@@ -48,8 +48,14 @@ export type NaturalLanguageRulesPipelineMode =
   | "pipeline"
   | "hybrid";
 
+export type NaturalLanguageRulesPipelineModeSource =
+  | "global"
+  | "env"
+  | "localStorage"
+  | "default";
+
 const RULES_PIPELINE_MODE_STORAGE_KEY = "studyplanner.nl.rules.pipeline.mode";
-const RULES_PIPELINE_MODE_VALUES: NaturalLanguageRulesPipelineMode[] = [
+export const NATURAL_LANGUAGE_RULES_PIPELINE_MODE_VALUES: NaturalLanguageRulesPipelineMode[] = [
   "legacy",
   "pipeline",
   "hybrid",
@@ -60,7 +66,7 @@ function isRulesPipelineMode(
 ): value is NaturalLanguageRulesPipelineMode {
   return (
     typeof value === "string" &&
-    RULES_PIPELINE_MODE_VALUES.includes(
+    NATURAL_LANGUAGE_RULES_PIPELINE_MODE_VALUES.includes(
       value as NaturalLanguageRulesPipelineMode,
     )
   );
@@ -94,22 +100,63 @@ function readStoredRulesPipelineMode():
 }
 
 export function getNaturalLanguageRulesPipelineMode(): NaturalLanguageRulesPipelineMode {
+  return resolveNaturalLanguageRulesPipelineMode().mode;
+}
+
+export function getNaturalLanguageRulesPipelineModeSource(): NaturalLanguageRulesPipelineModeSource {
+  return resolveNaturalLanguageRulesPipelineMode().source;
+}
+
+function resolveNaturalLanguageRulesPipelineMode(): {
+  mode: NaturalLanguageRulesPipelineMode;
+  source: NaturalLanguageRulesPipelineModeSource;
+} {
   const globalMode = readGlobalRulesPipelineMode();
   if (globalMode) {
-    return globalMode;
+    return {
+      mode: globalMode,
+      source: "global",
+    };
   }
 
   const envMode = import.meta.env.VITE_NL_RULES_PIPELINE_MODE;
   if (isRulesPipelineMode(envMode)) {
-    return envMode;
+    return {
+      mode: envMode,
+      source: "env",
+    };
   }
 
   const storedMode = readStoredRulesPipelineMode();
   if (storedMode) {
-    return storedMode;
+    return {
+      mode: storedMode,
+      source: "localStorage",
+    };
   }
 
-  return "legacy";
+  return {
+    mode: "legacy",
+    source: "default",
+  };
+}
+
+export function setStoredNaturalLanguageRulesPipelineMode(
+  mode: NaturalLanguageRulesPipelineMode,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(RULES_PIPELINE_MODE_STORAGE_KEY, mode);
+}
+
+export function clearStoredNaturalLanguageRulesPipelineMode(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(RULES_PIPELINE_MODE_STORAGE_KEY);
 }
 
 function mapUnresolvedFields(
