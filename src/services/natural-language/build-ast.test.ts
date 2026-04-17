@@ -107,4 +107,16 @@ describe("buildAST", () => {
     expect(ast.groups[1].base.contentText).toContain("英語長文");
     expect(ast.groups[2].base.contentText).toContain("物理");
   });
+
+  it("補足句 instruction は group を増やさず diagnostic に落とせる", () => {
+    const clauses = parseClauses(
+      "4月15日の19時から21時までTOEICの勉強を入れて。内容は単語とリスニング。"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.diagnostics.some((diagnostic) => diagnostic.code === "INSTRUCTION_IGNORED")).toBe(
+      true
+    );
+  });
 });

@@ -37,4 +37,29 @@ describe("parseClauses", () => {
     expect(clauses[0].kind).toBe("EventClause");
     expect(clauses[0].spanText).toContain("現代文");
   });
+
+  it("内容は〜 の補足句は instruction として扱える", () => {
+    const clauses = parseClauses(
+      "4月15日の19時から21時までTOEICの勉強を入れて。内容は単語とリスニング。"
+    );
+
+    expect(clauses).toHaveLength(2);
+    expect(clauses[0].kind).toBe("EventClause");
+    expect(clauses[1].kind).toBe("InstructionClause");
+    expect(clauses[1].spanText).toBe("内容は単語とリスニング");
+  });
+
+  it("合計時間だけの補足句は instruction として扱える", () => {
+    const clauses = parseClauses("合計10時間");
+
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0].kind).toBe("InstructionClause");
+  });
+
+  it("〜として固定して の補足句は standalone event にしない", () => {
+    const clauses = parseClauses("自習時間として固定して");
+
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0].kind).toBe("InstructionClause");
+  });
 });

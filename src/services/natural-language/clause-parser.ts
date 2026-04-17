@@ -149,8 +149,37 @@ function isLikelyStudyEventClause(segment: string): boolean {
   );
 }
 
+function isSupplementInstructionClause(segment: string, tokens: Token[]): boolean {
+  const compact = segment.replace(/\s+/g, "");
+
+  if (/^(?:内容|補足|メモ)は/.test(compact)) {
+    return true;
+  }
+
+  if (
+    /^合計\d+(?:分|時間)(?:だけ)?(?:やりたい|したい|で)?$/.test(compact)
+  ) {
+    return true;
+  }
+
+  if (
+    /として固定して$/.test(compact) &&
+    !hasToken(tokens, "TIME") &&
+    !hasToken(tokens, "TIME_RANGE") &&
+    !hasToken(tokens, "DATE")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function isInstructionClause(segment: string, tokens: Token[]): boolean {
   if (isBreakLikeInstructionClause(segment, tokens)) {
+    return true;
+  }
+
+  if (isSupplementInstructionClause(segment, tokens)) {
     return true;
   }
 

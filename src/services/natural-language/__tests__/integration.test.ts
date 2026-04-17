@@ -140,6 +140,16 @@ describe("natural-language integration", () => {
     expect(suggestions[2].parsedPlan.endTime).toBe("14:00");
   });
 
+  it("補足句は standalone な suggestion にせず、主イベントだけ残せる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "4月15日の19時から21時までTOEICの勉強を入れて。内容は単語とリスニング。"
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("21:00");
+  });
+
   it("デバッグ用に中間結果もまとめて取れる", () => {
     const result = runNaturalLanguagePipeline("毎晩英単語を復習");
 
