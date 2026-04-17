@@ -11,6 +11,7 @@ import type {
   UnresolvedField,
   Weekday,
 } from "./shared/types";
+import { inferCatalogSubject, inferCatalogTitle } from "./catalog";
 
 function unique<T>(values: T[] | undefined): T[] | undefined {
   if (!values || values.length === 0) {
@@ -24,16 +25,7 @@ function inferSubject(
   contextText?: string
 ): string | undefined {
   const source = `${contentText ?? ""} ${contextText ?? ""}`;
-
-  if (/英単語|英語|長文|文法|単語/.test(source)) {
-    return "英語";
-  }
-
-  if (/数学|チャート|数[ⅠⅡIIIＡAＢBＣC]/.test(source)) {
-    return "数学";
-  }
-
-  return undefined;
+  return inferCatalogSubject(source);
 }
 
 function inferTitle(
@@ -41,47 +33,11 @@ function inferTitle(
   contextText?: string
 ): string | undefined {
   if (contentText) {
-    if (/システム英単語/.test(contentText)) {
-      return "システム英単語";
-    }
-
-    if (/英語長文/.test(contentText)) {
-      return "英語長文";
-    }
-
-    if (/英単語/.test(contentText)) {
-      return "英単語の復習";
-    }
-
-    if (/長文/.test(contentText)) {
-      return "長文";
-    }
-
-    if (/文法/.test(contentText)) {
-      return "文法";
-    }
-
-    if (/単語/.test(contentText)) {
-      return "単語";
-    }
-
-    if (/数学/.test(contentText)) {
-      return "数学";
-    }
-
-    return contentText;
+    return inferCatalogTitle(contentText) ?? contentText;
   }
 
   if (contextText) {
-    if (/英単語/.test(contextText)) {
-      return "英単語の復習";
-    }
-
-    if (/数学/.test(contextText)) {
-      return "数学";
-    }
-
-    return contextText;
+    return inferCatalogTitle(contextText) ?? contextText;
   }
 
   return undefined;

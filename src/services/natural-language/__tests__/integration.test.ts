@@ -128,6 +128,11 @@ describe("natural-language integration", () => {
       "英語長文",
       "物理",
     ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "情報",
+      "英語",
+      "物理",
+    ]);
     expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "のまで情報の課題")).toBe(
       false
     );
@@ -173,6 +178,11 @@ describe("natural-language integration", () => {
       "青チャート",
       "現代文",
     ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "英語",
+      "数学",
+      "国語",
+    ]);
     expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "まで青チャート")).toBe(
       false
     );
@@ -202,6 +212,30 @@ describe("natural-language integration", () => {
     expect(suggestions[0].parsedPlan.endTime).toBe("11:30");
     expect(suggestions[1].parsedPlan.startTime).toBe("12:00");
     expect(suggestions[1].parsedPlan.endTime).toBe("13:00");
+  });
+
+  it("良問の風 と 古文単語315 の subject を局所ルールで自然に推定できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "朝8時から30分システム英単語、9時から11時まで良問の風、夜は22時から20分古文単語315をやる。",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "英語",
+      "物理",
+      "国語",
+    ]);
+  });
+
+  it("共通テストの過去問演習を 演習 subject として推定できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "土日は朝9時から2時間、共通テストの過去問演習を入れて。",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.subject).toBe("演習");
   });
 
   it("デバッグ用に中間結果もまとめて取れる", () => {

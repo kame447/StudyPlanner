@@ -172,4 +172,25 @@ describe("compileToSuggestions", () => {
     expect(suggestions[1].parsedPlan.title).toBe("青チャート");
     expect(suggestions[2].parsedPlan.title).toBe("現代文");
   });
+
+  it("subject 推定の局所ルールが情報/物理/国語/演習を優先しつつ既存の英語/数学を壊さない", () => {
+    const clauses = parseClauses(
+      "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理。朝8時から30分システム英単語、9時から11時まで良問の風、夜は22時から20分古文単語315。土日は朝9時から2時間、共通テストの過去問演習。20時から復習。21時から振り返り。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "情報",
+      "英語",
+      "物理",
+      "英語",
+      "物理",
+      "国語",
+      "演習",
+      "復習",
+      "振り返り",
+    ]);
+  });
 });
