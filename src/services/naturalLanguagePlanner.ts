@@ -39,6 +39,7 @@ import {
 } from './naturalLanguageRules';
 import {
   getNaturalLanguageRulesPipelineMode,
+  runRulesPipelineEditThroughAdapter,
   runRulesPipelineThroughAdapter,
   type NaturalLanguageRulesPipelineMode,
 } from './natural-language/adapter';
@@ -3013,6 +3014,56 @@ async function buildRuleBasedAddSuggestions(
   };
 }
 
+async function buildLegacyRuleBasedEditSuggestions(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion[]> {
+  return [await generateSingleNaturalLanguageSuggestion(input)];
+}
+
+function buildPipelineRuleBasedEditSuggestions(
+  input: SuggestionInput,
+): NaturalLanguageSuggestion[] {
+  return runRulesPipelineEditThroughAdapter(input);
+}
+
+async function buildRuleBasedEditSuggestions(
+  input: SuggestionInput,
+): Promise<{
+  suggestions: NaturalLanguageSuggestion[];
+  sourceMode: NaturalLanguageRulesPipelineMode;
+}> {
+  const mode = getNaturalLanguageRulesPipelineMode();
+
+  if (mode === 'legacy') {
+    return {
+      suggestions: await buildLegacyRuleBasedEditSuggestions(input),
+      sourceMode: mode,
+    };
+  }
+
+  try {
+    const pipelineSuggestions = buildPipelineRuleBasedEditSuggestions(input);
+
+    if (pipelineSuggestions.length > 0) {
+      return {
+        suggestions: pipelineSuggestions,
+        sourceMode: mode,
+      };
+    }
+  } catch (error) {
+    console.warn('[AI Planner] rules pipeline edit adapter failed', {
+      mode,
+      text: input.text,
+      error,
+    });
+  }
+
+  return {
+    suggestions: await buildLegacyRuleBasedEditSuggestions(input),
+    sourceMode: mode,
+  };
+}
+
 async function generateSingleNaturalLanguageSuggestion(
   input: SuggestionInput,
 ): Promise<NaturalLanguageSuggestion> {
@@ -3141,6 +3192,13 @@ export async function generateNaturalLanguageSuggestions(
 
       return postProcessAddSuggestions(fallbackSuggestions, input.selectedDate);
     }
+  }
+
+  if (getAiConfig().provider === 'rules') {
+    const { suggestions } = await buildRuleBasedEditSuggestions(input);
+    return suggestions.length > 0
+      ? suggestions
+      : [await generateSingleNaturalLanguageSuggestion(input)];
   }
 
   const suggestion = await generateSingleNaturalLanguageSuggestion(input);

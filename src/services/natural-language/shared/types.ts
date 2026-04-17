@@ -215,12 +215,21 @@ export interface ScheduleIR {
 }
 
 export interface RecurrenceRule {
-  kind: "daily" | "day-type" | "weekday";
+  id?: string;
+  kind: "daily" | "day-type" | "weekday" | "date";
+  startDate?: string;
+  until?: string | null;
+  dates?: string[];
   dayType?: "weekday" | "weekend";
   weekdays?: Weekday[];
   excludedWeekdays?: Weekday[];
   startTime?: string;
   endTime?: string;
+  title?: string;
+  subject?: string;
+  type?: string;
+  memo?: string;
+  isOverride?: boolean;
 }
 
 export interface PlanDraft {

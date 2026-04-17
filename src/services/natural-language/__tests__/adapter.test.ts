@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { runRulesPipelineThroughAdapter } from '../adapter';
+import {
+  adaptPipelineSuggestionToLegacySuggestion,
+  runRulesPipelineEditThroughAdapter,
+  runRulesPipelineThroughAdapter,
+} from '../adapter';
 import type { SuggestionInput } from '../../naturalLanguageRules';
+import type { Plan } from '../../../types/domain';
+import type { Suggestion as PipelineSuggestion } from '../shared/types';
 
 function createInput(
   text: string,
@@ -12,6 +18,55 @@ function createInput(
     text,
     selectedDate,
     plans: [],
+    userId: 'user-1',
+  };
+}
+
+function createEditInput(
+  text: string,
+  selectedDate = '2026-04-16',
+): SuggestionInput {
+  const recurringPlan: Plan = {
+    id: 'plan-1',
+    seriesId: 'series-1',
+    userId: 'user-1',
+    title: '英語',
+    subject: '英語',
+    date: selectedDate,
+    startTime: '19:00',
+    endTime: '20:00',
+    repeat: 'weekly',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [
+      {
+        id: 'rule-1',
+        kind: 'weekday',
+        startDate: selectedDate,
+        until: null,
+        dates: [],
+        weekdays: ['mon', 'wed', 'fri'],
+        dayType: null,
+        startTime: '19:00',
+        endTime: '20:00',
+        title: '英語',
+        subject: '英語',
+        type: 'study',
+        memo: '',
+        isOverride: false,
+      },
+    ],
+    type: 'study',
+    memo: '',
+    createdAt: `${selectedDate}T00:00:00.000Z`,
+    updatedAt: `${selectedDate}T00:00:00.000Z`,
+  };
+
+  return {
+    mode: 'edit',
+    text,
+    selectedDate,
+    plans: [recurringPlan],
     userId: 'user-1',
   };
 }
@@ -45,8 +100,8 @@ describe('natural-language adapter', () => {
 
     expect(suggestions).toHaveLength(3);
     expect(suggestions[0].parsedPlan.recurrenceRules[0]).toMatchObject({
-      kind: 'day-type',
-      dayType: 'weekday',
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'thu'],
       startTime: '07:00',
       endTime: '07:30',
     });
@@ -57,6 +112,82 @@ describe('natural-language adapter', () => {
       .sort();
 
     expect(overrideWeekdays).toEqual(['fri', 'tue']);
+  });
+
+  it('weekday 例外を legacy recurrence へ分解し、base duration を維持できる', () => {
+    const suggestions = runRulesPipelineThroughAdapter(
+      createInput('平日は毎朝7時から30分。ただし火曜と金曜は6時半から。'),
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0].parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'thu'],
+      startTime: '07:00',
+      endTime: '07:30',
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['tue'],
+      startTime: '06:30',
+      endTime: '07:00',
+    });
+    expect(suggestions[2].parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['fri'],
+      startTime: '06:30',
+      endTime: '07:00',
+    });
+  });
+
+  it('until を rawText から補完して legacy recurrence へ変換できる', () => {
+    const suggestions = runRulesPipelineThroughAdapter(
+      createInput('毎晩23時から15分、来週末まで', '2026-04-16'),
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.repeat).toBe('daily');
+    expect(suggestions[0].parsedPlan.repeatUntil).toBe('2026-04-26');
+    expect(suggestions[0].parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'daily',
+      until: '2026-04-26',
+      startTime: '23:00',
+      endTime: '23:15',
+    });
+    expect(suggestions[0].assumptions).toContain(
+      'pipeline recurrence に until が無かったため、入力文から repeatUntil を補完しました。',
+    );
+  });
+
+  it('複数曜日 recurring を 1 本の legacy weekday rule に変換できる', () => {
+    const pipelineSuggestion: PipelineSuggestion = {
+      rawText: '毎週月水金の英語',
+      parsedPlan: {
+        rawText: '毎週月水金の英語',
+        title: '英語',
+        subject: '英語',
+        recurrenceRules: [
+          {
+            kind: 'weekday',
+            weekdays: ['mon', 'wed', 'fri'],
+          },
+        ],
+      },
+      assumptions: [],
+      unresolvedFields: [],
+      confidence: 0.9,
+    };
+
+    const suggestion = adaptPipelineSuggestionToLegacySuggestion(
+      pipelineSuggestion,
+      createInput('毎週月水金の英語', '2026-04-16'),
+    );
+
+    expect(suggestion.parsedPlan.repeat).toBe('weekly');
+    expect(suggestion.parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'fri'],
+    });
   });
 
   it('relative ordering を legacy suggestion shape へ変換できる', () => {
@@ -101,5 +232,21 @@ describe('natural-language adapter', () => {
     expect(suggestions[0].parsedPlan.subject).toBe('数学');
     expect(suggestions[1].parsedPlan.date).toBe('2026-04-18');
     expect(suggestions[1].parsedPlan.subject).toBe('英語');
+  });
+
+  it('recurring な既存予定の edit では recurrence を維持したまま title/time だけ変更できる', () => {
+    const suggestions = runRulesPipelineEditThroughAdapter(
+      createEditInput('英語を20時開始にして'),
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].matchedPlanId).toBe('plan-1');
+    expect(suggestions[0].parsedPlan.startTime).toBe('20:00');
+    expect(suggestions[0].parsedPlan.endTime).toBe('21:00');
+    expect(suggestions[0].parsedPlan.repeat).toBe('weekly');
+    expect(suggestions[0].parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'fri'],
+    });
   });
 });
