@@ -139,4 +139,24 @@ describe("compileToSuggestions", () => {
     expect(suggestions[1].parsedPlan.date).toBe("2026-04-18");
     expect(suggestions[1].parsedPlan.subject).toBe("英語");
   });
+
+  it("1文内の複数明示時間ブロックを複数 suggestion に compile できる", () => {
+    const clauses = parseClauses(
+      "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理をやる"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-16");
+    expect(suggestions[0].parsedPlan.startTime).toBe("09:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("11:00");
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-16");
+    expect(suggestions[1].parsedPlan.startTime).toBe("13:00");
+    expect(suggestions[1].parsedPlan.endTime).toBe("14:00");
+    expect(suggestions[2].parsedPlan.date).toBe("2026-04-16");
+    expect(suggestions[2].parsedPlan.startTime).toBe("15:00");
+    expect(suggestions[2].parsedPlan.endTime).toBe("16:30");
+  });
 });

@@ -117,4 +117,21 @@ describe("lowerToIR", () => {
     expect(ir.groups[1].base.date).toBe("2026-04-18");
     expect(ir.groups[1].base.startTime).toBe("20:00");
   });
+
+  it("1文内の複数明示時間ブロックを複数 group に落とし、date を継承できる", () => {
+    const clauses = parseClauses(
+      "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理をやる"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+
+    expect(ir.groups).toHaveLength(3);
+    expect(ir.groups[0].base.date).toBe("2026-04-16");
+    expect(ir.groups[1].base.date).toBe("2026-04-16");
+    expect(ir.groups[2].base.date).toBe("2026-04-16");
+    expect(ir.groups[1].base.startTime).toBe("13:00");
+    expect(ir.groups[1].base.endTime).toBe("14:00");
+    expect(ir.groups[2].base.startTime).toBe("15:00");
+    expect(ir.groups[2].base.endTime).toBe("16:30");
+  });
 });

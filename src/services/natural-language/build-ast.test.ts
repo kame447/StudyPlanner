@@ -93,4 +93,18 @@ describe("buildAST", () => {
     expect(ast.groups[0].base.contentText).toContain("数学");
     expect(ast.groups[1].base.contentText).toContain("英語");
   });
+
+  it("1文内の複数明示時間ブロックを別 group に分け、先頭の dateSpec を後続へ引き継げる", () => {
+    const clauses = parseClauses(
+      "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理をやる"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(3);
+    expect(ast.groups[0].base.dateSpec?.kind).toBe("relative-day");
+    expect(ast.groups[1].base.dateSpec?.kind).toBe("relative-day");
+    expect(ast.groups[2].base.dateSpec?.kind).toBe("relative-day");
+    expect(ast.groups[1].base.contentText).toContain("英語長文");
+    expect(ast.groups[2].base.contentText).toContain("物理");
+  });
 });

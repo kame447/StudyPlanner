@@ -68,11 +68,11 @@ export type Token =
   | { kind: "CONTENT"; raw: string };
 
 export type ClauseNode =
-  | { kind: "EventClause"; tokens: Token[]; spanText: string }
-  | { kind: "TimeOnlyClause"; tokens: Token[]; spanText: string }
-  | { kind: "OverrideClause"; tokens: Token[]; spanText: string }
-  | { kind: "EnumerationClause"; tokens: Token[]; spanText: string }
-  | { kind: "InstructionClause"; tokens: Token[]; spanText: string };
+  | { kind: "EventClause"; tokens: Token[]; spanText: string; sentenceIndex: number }
+  | { kind: "TimeOnlyClause"; tokens: Token[]; spanText: string; sentenceIndex: number }
+  | { kind: "OverrideClause"; tokens: Token[]; spanText: string; sentenceIndex: number }
+  | { kind: "EnumerationClause"; tokens: Token[]; spanText: string; sentenceIndex: number }
+  | { kind: "InstructionClause"; tokens: Token[]; spanText: string; sentenceIndex: number };
 
 export interface BaseScheduleNode {
   rawText: string;

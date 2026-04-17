@@ -1,128 +1,40 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseNaturalLanguageSchedule,
-  runNaturalLanguagePipeline,
-} from "./index";
-import type { Suggestion } from "./shared/types";
+import { parseClauses } from "./clause-parser";
 
-describe("natural-language integration", () => {
-  it("全文を最後まで流して nightly review を1件にまとめられる", () => {
-    const suggestions = parseNaturalLanguageSchedule(
-      "毎晩寝る前に15分だけ英単語の復習を入れて。時間は23時で。"
+describe("parseClauses", () => {
+  it("1文内の複数明示時間ブロックを複数 clause に分けられる", () => {
+    const clauses = parseClauses(
+      "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理をやる"
     );
 
-    expect(suggestions).toHaveLength(1);
-    expect(suggestions[0].parsedPlan.title).toBe("英単語の復習");
-    expect(suggestions[0].parsedPlan.subject).toBe("英語");
-    expect(suggestions[0].parsedPlan.startTime).toBe("23:00");
-    expect(suggestions[0].parsedPlan.endTime).toBe("23:15");
-    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
-      kind: "daily",
-      startTime: "23:00",
-      endTime: "23:15",
-    });
+    expect(clauses).toHaveLength(3);
+    expect(clauses.every((clause) => clause.kind === "EventClause")).toBe(true);
+    expect(clauses[0].spanText).toContain("今日の09:00から11:00まで");
+    expect(clauses[1].spanText).toBe("13:00から14:00まで英語長文");
+    expect(clauses[2].spanText).toBe("15:00から16:30まで物理をやる");
+    expect(clauses.map((clause) => clause.sentenceIndex)).toEqual([0, 0, 0]);
   });
 
-  it("base と override を最後まで流して3件にできる", () => {
-    const suggestions = parseNaturalLanguageSchedule(
-      "平日は毎朝7時から30分。ただし火曜と金曜は6時半から。"
+  it("休憩句は standalone instruction として切り出し、後続の明示時間ブロックを潰さない", () => {
+    const clauses = parseClauses(
+      "9時から10時まで英語、10分休憩して、10時10分から11時40分まで数学、13時から14時まで物理"
     );
 
-    expect(suggestions).toHaveLength(3);
-
-    const base = suggestions[0];
-    expect(base.parsedPlan.recurrenceRules?.[0]).toMatchObject({
-      kind: "day-type",
-      dayType: "weekday",
-      startTime: "07:00",
-      endTime: "07:30",
-    });
-    expect(
-      base.parsedPlan.recurrenceRules?.[0].excludedWeekdays?.slice().sort()
-    ).toEqual(["fri", "tue"]);
-
-    const overrideWeekdays = suggestions
-      .slice(1)
-      .map(
-        (suggestion: Suggestion) =>
-          suggestion.parsedPlan.recurrenceRules?.[0].weekdays?.[0]
-      )
-      .sort();
-
-    expect(overrideWeekdays).toEqual(["fri", "tue"]);
+    expect(clauses).toHaveLength(4);
+    expect(clauses[0].kind).toBe("EventClause");
+    expect(clauses[1].kind).toBe("InstructionClause");
+    expect(clauses[1].spanText).toBe("10分休憩して");
+    expect(clauses[2].kind).toBe("EventClause");
+    expect(clauses[3].kind).toBe("EventClause");
   });
 
-  it("relative ordering を日付つきで最後まで流して2件にできる", () => {
-    const suggestions = parseNaturalLanguageSchedule(
-      "明日19時から数学を1時間。そのあと英単語を30分",
-      { referenceDate: "2026-04-16" }
+  it("時刻付き base の後ろにある内容継続句は同一 clause に保てる", () => {
+    const clauses = parseClauses(
+      "夜は20時から1時間、現代文"
     );
 
-    expect(suggestions).toHaveLength(2);
-
-    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
-    expect(suggestions[0].parsedPlan.startTime).toBe("19:00");
-    expect(suggestions[0].parsedPlan.endTime).toBe("20:00");
-    expect(suggestions[0].parsedPlan.subject).toBe("数学");
-
-    expect(suggestions[1].parsedPlan.date).toBe("2026-04-17");
-    expect(suggestions[1].parsedPlan.startTime).toBe("20:00");
-    expect(suggestions[1].parsedPlan.endTime).toBe("20:30");
-    expect(suggestions[1].parsedPlan.subject).toBe("英語");
-    expect(suggestions[1].assumptions).toContain(
-      "date inherited from previous event"
-    );
-    expect(suggestions[1].assumptions).toContain(
-      "anchored to previous event endTime"
-    );
-  });
-
-  it("enumeration を最後まで流して3件にできる", () => {
-    const suggestions = parseNaturalLanguageSchedule(
-      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法",
-      { referenceDate: "2026-04-16" }
-    );
-
-    expect(suggestions).toHaveLength(3);
-    expect(
-      suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.title)
-    ).toEqual(["長文", "単語", "文法"]);
-    expect(
-      suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
-    ).toEqual(["英語", "英語", "英語"]);
-    expect(suggestions[0].parsedPlan.dateSpec?.kind).toBe("week-scope");
-    expect(suggestions[0].unresolvedFields).toContain("date");
-  });
-
-  it("独立したイベントを最後まで流して2件にできる", () => {
-    const suggestions = parseNaturalLanguageSchedule(
-      "明日19時から数学を1時間。明後日20時から英語を30分",
-      { referenceDate: "2026-04-16" }
-    );
-
-    expect(suggestions).toHaveLength(2);
-    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
-    expect(suggestions[0].parsedPlan.subject).toBe("数学");
-    expect(suggestions[1].parsedPlan.date).toBe("2026-04-18");
-    expect(suggestions[1].parsedPlan.subject).toBe("英語");
-  });
-
-  it("デバッグ用に中間結果もまとめて取れる", () => {
-    const result = runNaturalLanguagePipeline("毎晩英単語を復習");
-
-    expect(result.normalizedText).toBe("毎晩英単語を復習");
-    expect(result.tokens.length).toBeGreaterThan(0);
-    expect(result.clauses).toHaveLength(1);
-    expect(result.ast.groups).toHaveLength(1);
-    expect(result.ast.groups[0].base).toBeDefined();
-    expect(result.ir.groups).toHaveLength(1);
-    expect(result.ir.groups[0].base.unresolvedFields).toContain("startTime");
-    expect(result.ir.groups[0].base.unresolvedFields).toContain("endTime");
-    expect(result.suggestions).toHaveLength(1);
-  });
-
-  it("空文字は空配列で返せる", () => {
-    const suggestions = parseNaturalLanguageSchedule("   ");
-    expect(suggestions).toEqual([]);
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0].kind).toBe("EventClause");
+    expect(clauses[0].spanText).toContain("現代文");
   });
 });

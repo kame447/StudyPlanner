@@ -107,6 +107,39 @@ describe("natural-language integration", () => {
     expect(suggestions[1].parsedPlan.subject).toBe("英語");
   });
 
+  it("1文内の複数明示時間ブロックを複数 suggestion として抽出できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理をやる。",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-16");
+    expect(suggestions[0].parsedPlan.startTime).toBe("09:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("11:00");
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-16");
+    expect(suggestions[1].parsedPlan.startTime).toBe("13:00");
+    expect(suggestions[1].parsedPlan.endTime).toBe("14:00");
+    expect(suggestions[2].parsedPlan.date).toBe("2026-04-16");
+    expect(suggestions[2].parsedPlan.startTime).toBe("15:00");
+    expect(suggestions[2].parsedPlan.endTime).toBe("16:30");
+  });
+
+  it("1文内の複数明示時間ブロックでも相対順序テストを壊さない", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "9時から10時まで英語、10分休憩して、10時10分から11時40分まで数学、13時から14時まで物理",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0].parsedPlan.startTime).toBe("09:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("10:00");
+    expect(suggestions[1].parsedPlan.startTime).toBe("10:10");
+    expect(suggestions[1].parsedPlan.endTime).toBe("11:40");
+    expect(suggestions[2].parsedPlan.startTime).toBe("13:00");
+    expect(suggestions[2].parsedPlan.endTime).toBe("14:00");
+  });
+
   it("デバッグ用に中間結果もまとめて取れる", () => {
     const result = runNaturalLanguagePipeline("毎晩英単語を復習");
 

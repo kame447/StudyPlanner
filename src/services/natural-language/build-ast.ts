@@ -171,6 +171,7 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
   };
 
   let currentGroup: EventGroupNode | null = null;
+  let currentSentenceIndex: number | null = null;
 
   for (const clause of clauses) {
     if (clause.kind === "EventClause") {
@@ -192,7 +193,17 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
         continue;
       }
 
-      currentGroup = createGroup(buildBaseNode(clause));
+      const baseNode = buildBaseNode(clause);
+      if (
+        !baseNode.dateSpec &&
+        currentGroup &&
+        currentSentenceIndex === clause.sentenceIndex
+      ) {
+        baseNode.dateSpec = currentGroup.base.dateSpec;
+      }
+
+      currentGroup = createGroup(baseNode);
+      currentSentenceIndex = clause.sentenceIndex;
       ast.groups.push(currentGroup);
       continue;
     }
