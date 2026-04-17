@@ -131,14 +131,14 @@ describe("buildAST", () => {
     expect(ast.groups[2].base.contentText).toBe("現代文");
   });
 
-  it("title 抽出前の contentText から文脈ノイズだけを落とせる", () => {
+  it("title 用の lexical rewrite は持たず、句レベルの content をそのまま残せる", () => {
     const clauses = parseClauses(
       "寝る前にDUO3.0を30分。19時から学校ワークAを進める。20時から期末レポートの考察を書く。"
     );
     const ast = buildAST(clauses);
 
-    expect(ast.groups[0].base.contentText).toBe("DUO3.0");
-    expect(ast.groups[1].base.contentText).toBe("学校ワークA");
-    expect(ast.groups[2].base.contentText).toBe("期末レポートの考察");
+    expect(ast.groups[0].base.contentText).toBe("寝る前にDUO3.0");
+    expect(ast.groups[1].base.contentText).toBe("学校ワークAを進める");
+    expect(ast.groups[2].base.contentText).toBe("期末レポートの考察を書く");
   });
 });

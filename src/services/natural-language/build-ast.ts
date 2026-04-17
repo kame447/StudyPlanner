@@ -44,26 +44,19 @@ function firstConnectiveRaw(tokens: Token[]): string | undefined {
 function normalizeContentText(text: string): string | undefined {
   let normalized = text.trim();
 
+  // build-ast owns only clause/token-level cleanup. Title-specific contextual
+  // stripping and lexical rewrites live in title.ts.
   normalized = normalized.replace(
-    /^(?:(?:寝る前|授業後|放課後|帰宅後)(?:に|は)?)+/,
+    /^(?:(?:今日|明日|明後日|今週|来週)(?:の|は|に)?\s*)+/,
     ""
   );
-
   normalized = normalized.replace(
-    /^(?:(?:今日|明日|明後日|今週|来週)(?:の|は)?|(?:朝|昼|夜)(?:は)?|の|は|から|まで)+/,
+    /^(?:(?:朝|午前|午後|昼|夕方|夜)(?:は|に)?\s*)+/,
     ""
   );
-
-  normalized = normalized.replace(/^(?:(?:軽く|少し|ちょっと)(?:だけ)?|だけ|のみ)+/, "");
-  normalized = normalized.replace(/^(?:だけ|のみ)+/, "");
-
-  normalized = normalized.replace(
-    /(?:を(?:やる|する|入れる|入れて|進める|勉強する|学習する|解く|見直す|確認する|修正する)|(?:を)?書く|やる|する|入れる|入れて)$/,
-    ""
-  );
-
-  normalized = normalized.replace(/^(?:の|は|を)+/, "");
-  normalized = normalized.replace(/(?:の|は|を)+$/, "");
+  normalized = normalized.replace(/^(?:(?:の|は|を|に|で|が)+\s*)+/, "");
+  normalized = normalized.replace(/^(?:(?:から|まで)+\s*)+/, "");
+  normalized = normalized.replace(/(?:\s*(?:の|は|を|に|で|が))+$/, "");
   normalized = normalized.trim();
 
   return normalized.length > 0 ? normalized : undefined;
