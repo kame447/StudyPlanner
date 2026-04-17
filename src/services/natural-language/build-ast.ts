@@ -6,6 +6,7 @@ import type {
   DateSpec,
   DurationSpec,
   EnumerationVariantNode,
+  EventGroupNode,
   OverrideScheduleNode,
   ScheduleAST,
   SequencedEventNode,
@@ -153,22 +154,30 @@ function parseEnumerationVariants(spanText: string): EnumerationVariantNode[] {
   return variants;
 }
 
-export function buildAST(clauses: ClauseNode[]): ScheduleAST {
-  const ast: ScheduleAST = {
-    base: null,
+function createGroup(base: BaseScheduleNode): EventGroupNode {
+  return {
+    base,
     sequences: [],
     overrides: [],
     attachments: [],
     enumerations: [],
+  };
+}
+
+export function buildAST(clauses: ClauseNode[]): ScheduleAST {
+  const ast: ScheduleAST = {
+    groups: [],
     diagnostics: [],
   };
+
+  let currentGroup: EventGroupNode | null = null;
 
   for (const clause of clauses) {
     if (clause.kind === "EventClause") {
       const connectiveRaw = firstConnectiveRaw(clause.tokens);
 
       if (connectiveRaw) {
-        if (!ast.base) {
+        if (!currentGroup) {
           ast.diagnostics.push(
             diag(
               "CONNECTIVE_WITHOUT_BASE",
@@ -179,29 +188,19 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
           continue;
         }
 
-        ast.sequences.push(buildSequenceNode(clause, connectiveRaw));
+        currentGroup.sequences.push(buildSequenceNode(clause, connectiveRaw));
         continue;
       }
 
-      if (!ast.base) {
-        ast.base = buildBaseNode(clause);
-        continue;
-      }
-
-      ast.diagnostics.push(
-        diag(
-          "MULTIPLE_BASE_EVENTS_NOT_IMPLEMENTED",
-          "multiple independent base events are not implemented yet",
-          clause.spanText
-        )
-      );
+      currentGroup = createGroup(buildBaseNode(clause));
+      ast.groups.push(currentGroup);
       continue;
     }
 
     if (clause.kind === "TimeOnlyClause") {
       const attachedTime = buildAttachedTime(clause);
 
-      if (!ast.base || !attachedTime) {
+      if (!currentGroup || !attachedTime) {
         ast.diagnostics.push(
           diag(
             "TIME_ONLY_WITHOUT_BASE",
@@ -212,12 +211,12 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
         continue;
       }
 
-      ast.attachments.push(attachedTime);
+      currentGroup.attachments.push(attachedTime);
       continue;
     }
 
     if (clause.kind === "OverrideClause") {
-      if (!ast.base) {
+      if (!currentGroup) {
         ast.diagnostics.push(
           diag(
             "OVERRIDE_WITHOUT_BASE",
@@ -228,12 +227,12 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
         continue;
       }
 
-      ast.overrides.push(buildOverrideNode(clause));
+      currentGroup.overrides.push(buildOverrideNode(clause));
       continue;
     }
 
     if (clause.kind === "EnumerationClause") {
-      if (!ast.base) {
+      if (!currentGroup) {
         ast.diagnostics.push(
           diag(
             "ENUM_WITHOUT_BASE",
@@ -257,7 +256,7 @@ export function buildAST(clauses: ClauseNode[]): ScheduleAST {
         continue;
       }
 
-      ast.enumerations.push(...variants);
+      currentGroup.enumerations.push(...variants);
       continue;
     }
 

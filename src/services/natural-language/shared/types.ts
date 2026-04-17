@@ -121,12 +121,16 @@ export interface EnumerationVariantNode {
   index: number;
 }
 
-export interface ScheduleAST {
-  base: BaseScheduleNode | null;
+export interface EventGroupNode {
+  base: BaseScheduleNode;
   sequences: SequencedEventNode[];
   overrides: OverrideScheduleNode[];
   attachments: AttachmentNode[];
   enumerations: EnumerationVariantNode[];
+}
+
+export interface ScheduleAST {
+  groups: EventGroupNode[];
   diagnostics: Diagnostic[];
 }
 
@@ -197,11 +201,16 @@ export interface NormalizedEnumerationIntent {
   unresolvedFields: UnresolvedField[];
 }
 
-export interface ScheduleIR {
-  base?: NormalizedPlanIntent;
+export interface EventGroupIR {
+  base: NormalizedPlanIntent;
   sequencedIntents: NormalizedSequencedIntent[];
   enumeratedIntents: NormalizedEnumerationIntent[];
   overrideIntents: NormalizedOverrideIntent[];
+  diagnostics: Diagnostic[];
+}
+
+export interface ScheduleIR {
+  groups: EventGroupIR[];
   diagnostics: Diagnostic[];
 }
 

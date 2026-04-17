@@ -9,18 +9,20 @@ describe("buildAST", () => {
     );
     const ast = buildAST(clauses);
 
-    expect(ast.base).not.toBeNull();
-    expect(ast.base?.durationSpec?.minutes).toBe(15);
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.durationSpec?.minutes).toBe(15);
 
-    expect(ast.attachments).toHaveLength(1);
-    expect(ast.attachments[0]).toMatchObject({
+    expect(ast.groups[0].attachments).toHaveLength(1);
+    expect(ast.groups[0].attachments[0]).toMatchObject({
       kind: "AttachedTime",
       target: "nearest-event",
       rawText: "時間は23:00で",
     });
 
     expect(
-      "hm" in ast.attachments[0].time ? ast.attachments[0].time.hm : null
+      "hm" in ast.groups[0].attachments[0].time
+        ? ast.groups[0].attachments[0].time.hm
+        : null
     ).toBe("23:00");
   });
 
@@ -30,11 +32,11 @@ describe("buildAST", () => {
     );
     const ast = buildAST(clauses);
 
-    expect(ast.base).not.toBeNull();
-    expect(ast.overrides).toHaveLength(1);
-    expect(ast.overrides[0].weekdaySpecs?.[0]?.weekday).toBe("tue");
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].overrides).toHaveLength(1);
+    expect(ast.groups[0].overrides[0].weekdaySpecs?.[0]?.weekday).toBe("tue");
 
-    const replaceTime = ast.overrides[0].replaceTimeSpec;
+    const replaceTime = ast.groups[0].overrides[0].replaceTimeSpec;
     expect(replaceTime && "hm" in replaceTime ? replaceTime.hm : null).toBe(
       "06:30"
     );
@@ -44,8 +46,7 @@ describe("buildAST", () => {
     const clauses = parseClauses("時間は23時で。");
     const ast = buildAST(clauses);
 
-    expect(ast.base).toBeNull();
-    expect(ast.attachments).toHaveLength(0);
+    expect(ast.groups).toHaveLength(0);
     expect(ast.diagnostics[0]?.code).toBe("TIME_ONLY_WITHOUT_BASE");
   });
 
@@ -55,15 +56,17 @@ describe("buildAST", () => {
     );
     const ast = buildAST(clauses);
 
-    expect(ast.base).not.toBeNull();
-    expect(ast.base?.dateSpec?.kind).toBe("relative-day");
-    expect(ast.base?.durationSpec?.minutes).toBe(60);
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.dateSpec?.kind).toBe("relative-day");
+    expect(ast.groups[0].base.durationSpec?.minutes).toBe(60);
 
-    expect(ast.sequences).toHaveLength(1);
-    expect(ast.sequences[0].relation.kind).toBe("after-previous-event");
-    expect(ast.sequences[0].relation.rawText).toBe("そのあと");
-    expect(ast.sequences[0].durationSpec?.minutes).toBe(30);
-    expect(ast.sequences[0].contentText).toContain("英単語");
+    expect(ast.groups[0].sequences).toHaveLength(1);
+    expect(ast.groups[0].sequences[0].relation.kind).toBe(
+      "after-previous-event"
+    );
+    expect(ast.groups[0].sequences[0].relation.rawText).toBe("そのあと");
+    expect(ast.groups[0].sequences[0].durationSpec?.minutes).toBe(30);
+    expect(ast.groups[0].sequences[0].contentText).toContain("英単語");
   });
 
   it("enumeration 句を 3 つの variant に分解できる", () => {
@@ -72,13 +75,22 @@ describe("buildAST", () => {
     );
     const ast = buildAST(clauses);
 
-    expect(ast.base).not.toBeNull();
-    expect(ast.base?.dateSpec?.kind).toBe("week-scope");
-    expect(ast.enumerations).toHaveLength(3);
-    expect(ast.enumerations.map((variant) => variant.contentText)).toEqual([
-      "長文",
-      "単語",
-      "文法",
-    ]);
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.dateSpec?.kind).toBe("week-scope");
+    expect(ast.groups[0].enumerations).toHaveLength(3);
+    expect(
+      ast.groups[0].enumerations.map((variant) => variant.contentText)
+    ).toEqual(["長文", "単語", "文法"]);
+  });
+
+  it("独立したイベントを別 group に分けられる", () => {
+    const clauses = parseClauses(
+      "明日19時から数学を1時間。明後日20時から英語を30分"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(2);
+    expect(ast.groups[0].base.contentText).toContain("数学");
+    expect(ast.groups[1].base.contentText).toContain("英語");
   });
 });

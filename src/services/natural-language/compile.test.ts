@@ -124,4 +124,19 @@ describe("compileToSuggestions", () => {
       )
     ).toBe(true);
   });
+
+  it("独立イベントを 2 件の suggestion に compile できる", () => {
+    const clauses = parseClauses(
+      "明日19時から数学を1時間。明後日20時から英語を30分"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
+    expect(suggestions[0].parsedPlan.subject).toBe("数学");
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-18");
+    expect(suggestions[1].parsedPlan.subject).toBe("英語");
+  });
 });

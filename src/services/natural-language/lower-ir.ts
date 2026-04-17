@@ -3,6 +3,8 @@ import type {
   BaseScheduleNode,
   DateSpec,
   EnumerationVariantNode,
+  EventGroupIR,
+  EventGroupNode,
   NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
@@ -300,26 +302,15 @@ function lowerEnumeration(
   };
 }
 
-export function lowerToIR(
-  ast: ScheduleAST,
-  options: PipelineOptions = {}
-): ScheduleIR {
-  const ir: ScheduleIR = {
-    sequencedIntents: [],
-    enumeratedIntents: [],
-    overrideIntents: [],
-    diagnostics: [...ast.diagnostics],
-  };
-
-  if (!ast.base) {
-    return ir;
-  }
-
-  const base = lowerBase(ast.base, options);
-  applyAttachments(base, ast.attachments);
+function lowerGroup(
+  group: EventGroupNode,
+  options: PipelineOptions
+): EventGroupIR {
+  const base = lowerBase(group.base, options);
+  applyAttachments(base, group.attachments);
 
   const splitOverrides: OverrideScheduleNode[] = [];
-  for (const override of ast.overrides) {
+  for (const override of group.overrides) {
     splitOverrides.push(...splitOverrideByWeekday(override));
   }
 
@@ -350,9 +341,10 @@ export function lowerToIR(
     endTime: base.endTime,
   };
 
-  for (const sequence of ast.sequences) {
+  const sequencedIntents: NormalizedSequencedIntent[] = [];
+  for (const sequence of group.sequences) {
     const lowered = lowerSequence(sequence, previousEvent, options);
-    ir.sequencedIntents.push(lowered);
+    sequencedIntents.push(lowered);
 
     previousEvent = {
       date: lowered.date,
@@ -362,12 +354,25 @@ export function lowerToIR(
     };
   }
 
-  for (const enumeration of ast.enumerations) {
-    ir.enumeratedIntents.push(lowerEnumeration(enumeration, base));
-  }
+  const enumeratedIntents = group.enumerations.map((enumeration) =>
+    lowerEnumeration(enumeration, base)
+  );
 
-  ir.base = base;
-  ir.overrideIntents = overrideIntents;
+  return {
+    base,
+    sequencedIntents,
+    enumeratedIntents,
+    overrideIntents,
+    diagnostics: [],
+  };
+}
 
-  return ir;
+export function lowerToIR(
+  ast: ScheduleAST,
+  options: PipelineOptions = {}
+): ScheduleIR {
+  return {
+    groups: ast.groups.map((group) => lowerGroup(group, options)),
+    diagnostics: [...ast.diagnostics],
+  };
 }

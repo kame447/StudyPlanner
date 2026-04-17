@@ -1,4 +1,5 @@
 import type {
+  EventGroupIR,
   NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
@@ -232,25 +233,20 @@ function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
   };
 }
 
-export function compileToSuggestions(ir: ScheduleIR): Suggestion[] {
-  if (!ir.base) {
-    return [];
-  }
-
-  const base = ir.base;
+function compileGroup(group: EventGroupIR): Suggestion[] {
   const suggestions: Suggestion[] = [];
 
-  if (ir.enumeratedIntents.length === 0) {
+  if (group.enumeratedIntents.length === 0) {
     suggestions.push({
-      rawText: base.rawText,
-      parsedPlan: buildBaseDraft(base),
-      assumptions: [...base.assumptions],
-      unresolvedFields: [...base.unresolvedFields],
+      rawText: group.base.rawText,
+      parsedPlan: buildBaseDraft(group.base),
+      assumptions: [...group.base.assumptions],
+      unresolvedFields: [...group.base.unresolvedFields],
       confidence: 0.9,
     });
   }
 
-  for (const enumeration of ir.enumeratedIntents) {
+  for (const enumeration of group.enumeratedIntents) {
     suggestions.push({
       rawText: enumeration.rawText,
       parsedPlan: buildEnumerationDraft(enumeration),
@@ -260,7 +256,7 @@ export function compileToSuggestions(ir: ScheduleIR): Suggestion[] {
     });
   }
 
-  for (const sequence of ir.sequencedIntents) {
+  for (const sequence of group.sequencedIntents) {
     suggestions.push({
       rawText: sequence.rawText,
       parsedPlan: buildSequencedDraft(sequence),
@@ -270,11 +266,11 @@ export function compileToSuggestions(ir: ScheduleIR): Suggestion[] {
     });
   }
 
-  for (const override of ir.overrideIntents) {
+  for (const override of group.overrideIntents) {
     suggestions.push({
       rawText: override.rawText,
-      parsedPlan: buildOverrideDraft(override, base),
-      assumptions: [...base.assumptions, ...override.assumptions],
+      parsedPlan: buildOverrideDraft(override, group.base),
+      assumptions: [...group.base.assumptions, ...override.assumptions],
       unresolvedFields: unresolvedFromTime(
         override.startTime,
         override.endTime
@@ -284,4 +280,8 @@ export function compileToSuggestions(ir: ScheduleIR): Suggestion[] {
   }
 
   return suggestions;
+}
+
+export function compileToSuggestions(ir: ScheduleIR): Suggestion[] {
+  return ir.groups.flatMap((group) => compileGroup(group));
 }

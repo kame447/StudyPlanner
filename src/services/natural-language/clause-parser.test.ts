@@ -94,15 +94,30 @@ describe("natural-language integration", () => {
     expect(suggestions[0].unresolvedFields).toContain("date");
   });
 
+  it("独立したイベントを最後まで流して2件にできる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "明日19時から数学を1時間。明後日20時から英語を30分",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
+    expect(suggestions[0].parsedPlan.subject).toBe("数学");
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-18");
+    expect(suggestions[1].parsedPlan.subject).toBe("英語");
+  });
+
   it("デバッグ用に中間結果もまとめて取れる", () => {
     const result = runNaturalLanguagePipeline("毎晩英単語を復習");
 
     expect(result.normalizedText).toBe("毎晩英単語を復習");
     expect(result.tokens.length).toBeGreaterThan(0);
     expect(result.clauses).toHaveLength(1);
-    expect(result.ast.base).not.toBeNull();
-    expect(result.ir.base?.unresolvedFields).toContain("startTime");
-    expect(result.ir.base?.unresolvedFields).toContain("endTime");
+    expect(result.ast.groups).toHaveLength(1);
+    expect(result.ast.groups[0].base).toBeDefined();
+    expect(result.ir.groups).toHaveLength(1);
+    expect(result.ir.groups[0].base.unresolvedFields).toContain("startTime");
+    expect(result.ir.groups[0].base.unresolvedFields).toContain("endTime");
     expect(result.suggestions).toHaveLength(1);
   });
 
