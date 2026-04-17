@@ -131,6 +131,22 @@ Rules:
 - Create a repository/service abstraction for auth and data access
 - Keep AI-related logic separate from UI rendering logic
 - Prefer predictable, maintainable code over clever shortcuts
+## Natural language scheduling rules
+
+- Keep natural language schedule parsing in a staged pipeline
+- Preserve the separation:
+  - normalize
+  - tokenize
+  - clause parsing
+  - AST building
+  - IR lowering
+  - compile
+  - validate
+- Do not collapse multiple stages into ad-hoc postprocessing
+- Keep old planner / fallback paths until the new pipeline is safely integrated
+- Prefer incremental extension over large rewrites
+- Keep parser outputs reviewable and debuggable through assumptions, diagnostics, and unresolved fields
+- Do not expose advanced recurrence UI/behavior beyond MVP unless explicitly requested
 
 ## Responsive design rules
 

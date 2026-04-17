@@ -11,10 +11,10 @@
     "cert:dev": "node ./scripts/generate-dev-cert.mjs",
     "deploy:firestore-rules": "npx firebase-tools deploy --only firestore:rules",
     "deploy:worker": "npx wrangler deploy --config workers/ai-proxy/wrangler.jsonc",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:nl": "vitest src/services/natural-language",
-    "test:nl:run": "vitest run src/services/natural-language"
+    "test": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs",
+    "test:run": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run",
+    "test:nl": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs src/services/natural-language",
+    "test:nl:run": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/services/natural-language"
   },
   "dependencies": {
     "firebase": "^12.12.0",

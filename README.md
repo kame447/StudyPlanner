@@ -41,6 +41,26 @@
 - 自然言語から予定を追加できる
 - 自然言語で既存予定を修正できる
 - AIが入力内容を推定して、ユーザーが確認・修正して反映する
+### 自然言語予定解析パイプラインの現状
+- 自然言語予定解析は `src/services/natural-language/` に段階分割したパイプラインとして整理している
+- 処理は以下の責務に分かれている
+  - normalize
+  - tokenizer
+  - clause-parser
+  - build-ast
+  - lower-ir
+  - compile
+  - validate
+- 解析結果は途中段階ごとに確認できるようにし、`assumptions / diagnostics / unresolvedFields` を保持する
+- 現在のパイプラインで対応済みの主な内容
+  - time-only attach
+  - override
+  - relative ordering
+  - enumeration
+  - relative date
+  - 複数独立イベント
+- 既存 planner との接続は段階的に進める前提で、旧実装の fallback を急に削除しない
+- なお、内部パーサの対応範囲が広がっていても、MVPとしての複雑な繰り返し予定 UI を実装済みという意味ではない
 
 ### 5. AI評価
 - 達成度

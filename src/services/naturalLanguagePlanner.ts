@@ -37,6 +37,11 @@ import {
   splitAddTaskTexts,
   type SuggestionInput,
 } from './naturalLanguageRules';
+import {
+  getNaturalLanguageRulesPipelineMode,
+  runRulesPipelineThroughAdapter,
+  type NaturalLanguageRulesPipelineMode,
+} from './natural-language/adapter';
 
 interface PlannerExtraction {
   matchedPlanId?: string | null;
@@ -2951,6 +2956,63 @@ export function getPlannerAiRuntimeInfo(
   };
 }
 
+async function buildLegacyRuleBasedAddSuggestions(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion[]> {
+  return Promise.all(
+    normalizeTaskTexts(splitAddTaskTexts(input.text), input.text).map((taskText) =>
+      generateSingleNaturalLanguageSuggestion({
+        ...input,
+        text: taskText,
+      }),
+    ),
+  );
+}
+
+function buildPipelineRuleBasedAddSuggestions(
+  input: SuggestionInput,
+): NaturalLanguageSuggestion[] {
+  return runRulesPipelineThroughAdapter(input);
+}
+
+async function buildRuleBasedAddSuggestions(
+  input: SuggestionInput,
+): Promise<{
+  suggestions: NaturalLanguageSuggestion[];
+  sourceMode: NaturalLanguageRulesPipelineMode;
+}> {
+  const mode = getNaturalLanguageRulesPipelineMode();
+
+  if (mode === 'legacy') {
+    return {
+      suggestions: await buildLegacyRuleBasedAddSuggestions(input),
+      sourceMode: mode,
+    };
+  }
+
+  try {
+    const pipelineSuggestions = buildPipelineRuleBasedAddSuggestions(input);
+
+    if (pipelineSuggestions.length > 0) {
+      return {
+        suggestions: pipelineSuggestions,
+        sourceMode: mode,
+      };
+    }
+  } catch (error) {
+    console.warn('[AI Planner] rules pipeline adapter failed', {
+      mode,
+      text: input.text,
+      error,
+    });
+  }
+
+  return {
+    suggestions: await buildLegacyRuleBasedAddSuggestions(input),
+    sourceMode: mode,
+  };
+}
+
 async function generateSingleNaturalLanguageSuggestion(
   input: SuggestionInput,
 ): Promise<NaturalLanguageSuggestion> {
@@ -3045,18 +3107,20 @@ export async function generateNaturalLanguageSuggestions(
 ): Promise<NaturalLanguageSuggestion[]> {
   if (input.mode === 'add') {
     try {
-      const suggestions =
-        getAiConfig().provider === 'rules'
-          ? await Promise.all(
-              normalizeTaskTexts(splitAddTaskTexts(input.text), input.text).map(
-                (taskText) =>
-                  generateSingleNaturalLanguageSuggestion({
-                    ...input,
-                    text: taskText,
-                  }),
-              ),
-            )
-          : await buildBatchedAddSuggestions(input);
+      if (getAiConfig().provider === 'rules') {
+        const { suggestions, sourceMode } = await buildRuleBasedAddSuggestions(input);
+
+        if (suggestions.length > 0) {
+          return sourceMode === 'legacy'
+            ? postProcessAddSuggestions(suggestions, input.selectedDate)
+            : suggestions;
+        }
+
+        const fallbackSuggestions = await buildLegacyRuleBasedAddSuggestions(input);
+        return postProcessAddSuggestions(fallbackSuggestions, input.selectedDate);
+      }
+
+      const suggestions = await buildBatchedAddSuggestions(input);
 
       return suggestions.length > 0
         ? postProcessAddSuggestions(suggestions, input.selectedDate)
