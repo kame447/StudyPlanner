@@ -597,6 +597,79 @@ function cloneLegacyDraft(draft: LegacyPlanDraft): LegacyPlanDraft {
   };
 }
 
+function hasRecurringLegacyDraft(draft: LegacyPlanDraft): boolean {
+  return draft.repeat !== "none" || draft.recurrenceRules.length > 0;
+}
+
+function synchronizeRecurringRulesWithEditedDraft(
+  draft: LegacyPlanDraft,
+  recurrenceSource: Pick<
+    LegacyPlanDraft,
+    "title" | "subject" | "type" | "startTime" | "endTime" | "memo"
+  >,
+): LegacyPlanDraft {
+  if (draft.recurrenceRules.length === 0) {
+    return draft;
+  }
+
+  const nextRules = draft.recurrenceRules.map((rule) => {
+    const nextRule = {
+      ...rule,
+      dates: [...rule.dates],
+      weekdays: [...rule.weekdays],
+    };
+
+    if (
+      (rule.title === recurrenceSource.title || !rule.title) &&
+      draft.title !== recurrenceSource.title
+    ) {
+      nextRule.title = draft.title;
+    }
+
+    if (
+      (rule.subject === recurrenceSource.subject || !rule.subject) &&
+      draft.subject !== recurrenceSource.subject
+    ) {
+      nextRule.subject = draft.subject;
+    }
+
+    if (
+      (rule.type === recurrenceSource.type || !rule.type) &&
+      draft.type !== recurrenceSource.type
+    ) {
+      nextRule.type = draft.type;
+    }
+
+    if (
+      rule.startTime === recurrenceSource.startTime &&
+      draft.startTime !== recurrenceSource.startTime
+    ) {
+      nextRule.startTime = draft.startTime;
+    }
+
+    if (
+      rule.endTime === recurrenceSource.endTime &&
+      draft.endTime !== recurrenceSource.endTime
+    ) {
+      nextRule.endTime = draft.endTime;
+    }
+
+    if (
+      (rule.memo === recurrenceSource.memo || !rule.memo) &&
+      draft.memo !== recurrenceSource.memo
+    ) {
+      nextRule.memo = draft.memo;
+    }
+
+    return nextRule;
+  });
+
+  return {
+    ...draft,
+    recurrenceRules: nextRules,
+  };
+}
+
 function inferEditLegacyType(
   suggestion: PipelineSuggestion,
   input: SuggestionInput,
@@ -609,7 +682,7 @@ function inferEditLegacyType(
   return matchedPlan?.type ?? "study";
 }
 
-function adaptPipelineSuggestionToLegacyEditSuggestion(
+export function adaptPipelineSuggestionToLegacyEditSuggestion(
   suggestion: PipelineSuggestion,
   input: SuggestionInput,
 ): NaturalLanguageSuggestion {
@@ -658,6 +731,21 @@ function adaptPipelineSuggestionToLegacyEditSuggestion(
       ) ?? parsedPlan.repeat) as MonthEventRepeat;
     parsedPlan.repeatUntil = recurrencePayload.repeatUntil;
   }
+  const preservedRecurringBaseline =
+    hasRecurringLegacyDraft(baseline.parsedPlan) && !recurrencePayload;
+  const recurrenceSource = matchedPlan
+    ? {
+        title: matchedPlan.title,
+        subject: matchedPlan.subject,
+        type: matchedPlan.type,
+        startTime: matchedPlan.startTime,
+        endTime: matchedPlan.endTime,
+        memo: matchedPlan.memo,
+      }
+    : baseline.parsedPlan;
+  const normalizedParsedPlan = preservedRecurringBaseline
+    ? synchronizeRecurringRulesWithEditedDraft(parsedPlan, recurrenceSource)
+    : parsedPlan;
 
   return {
     ...baseline,
@@ -668,11 +756,16 @@ function adaptPipelineSuggestionToLegacyEditSuggestion(
       unresolvedFields.length > 0 || !baseline.matchedPlanId
         ? "needs_review"
         : baseline.status,
-    parsedPlan,
+    parsedPlan: normalizedParsedPlan,
     assumptions: [
       ...baseline.assumptions,
       ...suggestion.assumptions,
       ...(recurrencePayload?.assumptions ?? []),
+      ...(preservedRecurringBaseline
+        ? [
+            "recurrence 情報の変更が無かったため、既存の recurring baseline を維持したまま差分だけ適用しました。",
+          ]
+        : []),
       "new pipeline adapter を経由して既存 planner 形式へ変換しました。",
     ],
     unresolvedFields,

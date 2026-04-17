@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   adaptPipelineSuggestionToLegacySuggestion,
+  adaptPipelineSuggestionToLegacyEditSuggestion,
   runRulesPipelineEditThroughAdapter,
   runRulesPipelineThroughAdapter,
 } from '../adapter';
@@ -68,6 +69,25 @@ function createEditInput(
     selectedDate,
     plans: [recurringPlan],
     userId: 'user-1',
+  };
+}
+
+function createRecurringEditPipelineSuggestion(
+  overrides: Partial<PipelineSuggestion['parsedPlan']> = {},
+): PipelineSuggestion {
+  return {
+    rawText: '英語を変更して',
+    parsedPlan: {
+      rawText: '英語を変更して',
+      title: '英語',
+      subject: '英語',
+      startTime: '19:00',
+      endTime: '20:00',
+      ...overrides,
+    },
+    assumptions: [],
+    unresolvedFields: [],
+    confidence: 0.9,
   };
 }
 
@@ -248,5 +268,83 @@ describe('natural-language adapter', () => {
       kind: 'weekday',
       weekdays: ['mon', 'wed', 'fri'],
     });
+  });
+
+  it('recurring な既存予定に対して title だけ変えても baseline recurrence を維持する', () => {
+    const suggestion = adaptPipelineSuggestionToLegacyEditSuggestion(
+      createRecurringEditPipelineSuggestion({
+        title: '英語長文',
+        subject: '英語',
+      }),
+      createEditInput('英語を英語長文に変更して'),
+    );
+
+    expect(suggestion.matchedPlanId).toBe('plan-1');
+    expect(suggestion.parsedPlan.title).toBe('英語長文');
+    expect(suggestion.parsedPlan.repeat).toBe('weekly');
+    expect(suggestion.parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'fri'],
+      title: '英語長文',
+      startTime: '19:00',
+      endTime: '20:00',
+    });
+  });
+
+  it('recurring な既存予定に対して start/end time だけ変えても baseline recurrence を維持する', () => {
+    const suggestion = adaptPipelineSuggestionToLegacyEditSuggestion(
+      createRecurringEditPipelineSuggestion({
+        startTime: '20:00',
+        endTime: '21:00',
+      }),
+      createEditInput('英語を20時開始に変更して'),
+    );
+
+    expect(suggestion.parsedPlan.startTime).toBe('20:00');
+    expect(suggestion.parsedPlan.endTime).toBe('21:00');
+    expect(suggestion.parsedPlan.repeat).toBe('weekly');
+    expect(suggestion.parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'fri'],
+      startTime: '20:00',
+      endTime: '21:00',
+    });
+  });
+
+  it('recurring な既存予定に対して subject だけ変えても baseline recurrence を維持する', () => {
+    const suggestion = adaptPipelineSuggestionToLegacyEditSuggestion(
+      createRecurringEditPipelineSuggestion({
+        title: '化学',
+        subject: '化学',
+      }),
+      createEditInput('英語を化学に変更して'),
+    );
+
+    expect(suggestion.parsedPlan.subject).toBe('化学');
+    expect(suggestion.parsedPlan.repeat).toBe('weekly');
+    expect(suggestion.parsedPlan.recurrenceRules[0]).toMatchObject({
+      kind: 'weekday',
+      weekdays: ['mon', 'wed', 'fri'],
+      subject: '化学',
+      title: '化学',
+    });
+  });
+
+  it('recurrence 情報が入力に無い edit では baseline recurrence を維持する', () => {
+    const suggestion = adaptPipelineSuggestionToLegacyEditSuggestion(
+      createRecurringEditPipelineSuggestion({
+        title: '英語',
+        subject: '英語',
+        startTime: '19:00',
+        endTime: '20:00',
+      }),
+      createEditInput('英語のままメモだけ見直して'),
+    );
+
+    expect(suggestion.parsedPlan.repeat).toBe('weekly');
+    expect(suggestion.parsedPlan.recurrenceRules).toHaveLength(1);
+    expect(suggestion.assumptions).toContain(
+      'recurrence 情報の変更が無かったため、既存の recurring baseline を維持したまま差分だけ適用しました。',
+    );
   });
 });
