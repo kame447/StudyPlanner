@@ -188,19 +188,6 @@ function chooseRepresentativeDateInRange(
   return compareDates(nextDay, rangeEnd) <= 0 ? nextDay : referenceDate;
 }
 
-function resolveExplicitDate(
-  dateSpec: Extract<DateSpec, { kind: "explicit-date" }>,
-  referenceDate: Date,
-): Date {
-  return new Date(
-    Date.UTC(
-      dateSpec.year ?? referenceDate.getUTCFullYear(),
-      dateSpec.month - 1,
-      dateSpec.day,
-    ),
-  );
-}
-
 function weekdayIndex(weekday: Weekday): number {
   const map: Record<Weekday, number> = {
     mon: 1,
