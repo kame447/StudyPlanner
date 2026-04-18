@@ -23,8 +23,20 @@ describe("tokenize", () => {
         value: { raw: "15分", minutes: 15 },
       },
       {
+        kind: "CONTROL",
+        raw: "だけ",
+      },
+      {
         kind: "CONTENT",
-        raw: "だけ英単語の復習を入れて時間は",
+        raw: "英単語の復習",
+      },
+      {
+        kind: "INSTRUCTION_TAIL",
+        raw: "を入れて",
+      },
+      {
+        kind: "CONTENT_INTRODUCER",
+        raw: "時間は",
       },
       {
         kind: "TIME",
@@ -142,5 +154,29 @@ describe("tokenize", () => {
       raw: "10分休憩",
       value: { raw: "10分休憩", minutes: 10 },
     });
+  });
+
+  it("instruction tail と loop cue を CONTENT から分離できる", () => {
+    const tokens = tokenize("これを3セットで数学にして");
+
+    expect(tokens).toEqual([
+      { kind: "LOOP_CUE", raw: "これを" },
+      {
+        kind: "SET_COUNT",
+        raw: "3セット",
+        value: { raw: "3セット", count: 3 },
+      },
+      { kind: "CONTENT", raw: "で数学" },
+      { kind: "INSTRUCTION_TAIL", raw: "にして" },
+    ]);
+  });
+
+  it("本文 + instruction tail は本文核を残しつつ tail を role 分離できる", () => {
+    const tokens = tokenize("共通テストの過去問演習を入れて");
+
+    expect(tokens).toEqual([
+      { kind: "CONTENT", raw: "共通テストの過去問演習" },
+      { kind: "INSTRUCTION_TAIL", raw: "を入れて" },
+    ]);
   });
 });

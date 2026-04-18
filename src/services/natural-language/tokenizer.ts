@@ -31,7 +31,7 @@ function parseTime(raw: string): TimeSpec {
 function parseTimeRange(
   raw: string,
   startRaw: string,
-  endRaw: string,
+  endRaw: string
 ): TimeRangeSpec {
   return {
     raw,
@@ -45,7 +45,7 @@ function parseDuration(
   amountText: string,
   unit: string,
   hasHalf = false,
-  minuteText?: string,
+  minuteText?: string
 ): DurationSpec {
   const amount = Number(amountText);
   const minutes =
@@ -188,6 +188,43 @@ interface Rule {
   build: (match: RegExpExecArray) => Token;
 }
 
+const CONTROL_TERMS = ["全部", "ずつ", "だけ", "のみ"] as const;
+const CONTENT_INTRODUCER_TERMS = [
+  "内容は",
+  "補足は",
+  "メモは",
+  "時間は",
+  "時刻は",
+  "開始は",
+  "開始時刻は",
+] as const;
+const INSTRUCTION_TAIL_TERMS = [
+  "やるようにしたい",
+  "ようにしたい",
+  "として固定して",
+  "固定して",
+  "休みにして",
+  "に変更して",
+  "にして",
+  "やりたい",
+  "したい",
+  "入れて",
+  "進める",
+  "勉強する",
+  "学習する",
+  "復習する",
+  "見直す",
+  "修正する",
+  "確認する",
+  "やる",
+  "する",
+  "解く",
+] as const;
+
+function buildAlternationRegex(terms: readonly string[]): string {
+  return terms.join("|");
+}
+
 const RULES: Rule[] = [
   {
     name: "DATE",
@@ -236,8 +273,8 @@ const RULES: Rule[] = [
         match[1] != null
           ? parseDuration(match[0], match[1], "時間", true)
           : match[2] != null
-            ? parseDuration(match[0], match[2], "時間", false, match[3])
-            : parseDuration(match[0], match[4], match[5]),
+          ? parseDuration(match[0], match[2], "時間", false, match[3])
+          : parseDuration(match[0], match[4], match[5]),
     }),
   },
   {
@@ -285,6 +322,14 @@ const RULES: Rule[] = [
     }),
   },
   {
+    name: "LOOP_CUE",
+    regex: /^これを/,
+    build: (match) => ({
+      kind: "LOOP_CUE",
+      raw: match[0],
+    }),
+  },
+  {
     name: "SET_COUNT",
     regex: /^(\d+)\s*セット/,
     build: (match) => ({
@@ -295,10 +340,31 @@ const RULES: Rule[] = [
   },
   {
     name: "CONTROL",
-    regex:
-      /^(?:やるようにしたい|ようにしたい|として固定して|固定して|休みにして|に変更して|にして|やりたい|したい|全部|ずつ)/,
+    regex: new RegExp(`^(?:${buildAlternationRegex(CONTROL_TERMS)})`),
     build: (match) => ({
       kind: "CONTROL",
+      raw: match[0],
+    }),
+  },
+  {
+    name: "CONTENT_INTRODUCER",
+    regex: new RegExp(
+      `^(?:${buildAlternationRegex(CONTENT_INTRODUCER_TERMS)})`
+    ),
+    build: (match) => ({
+      kind: "CONTENT_INTRODUCER",
+      raw: match[0],
+    }),
+  },
+  {
+    name: "INSTRUCTION_TAIL",
+    regex: new RegExp(
+      `^(?:(?:を)?(?:${buildAlternationRegex(
+        INSTRUCTION_TAIL_TERMS
+      )})|(?:を)?書(?:いて|く))`
+    ),
+    build: (match) => ({
+      kind: "INSTRUCTION_TAIL",
       raw: match[0],
     }),
   },

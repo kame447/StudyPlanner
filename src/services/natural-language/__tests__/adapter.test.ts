@@ -360,6 +360,31 @@ describe('natural-language adapter', () => {
     expect(suggestion.parsedPlan.type).toBe('study');
   });
 
+  it('suggestion-local subject inference で specific title と broad subject を分離し、multi-event 汚染を避けられる', () => {
+    const suggestion = adaptPipelineSuggestionToLegacySuggestion(
+      {
+        rawText: '22:00からTOEICの勉強',
+        parsedPlan: {
+          rawText: '22:00からTOEICの勉強',
+          title: 'TOEICの勉強',
+          contentText: 'TOEICの勉強',
+          startTime: '22:00',
+          endTime: '23:00',
+        },
+        assumptions: [],
+        unresolvedFields: [],
+        confidence: 0.9,
+      },
+      createInput(
+        '19:00から黄色チャート。20:00から良問の風。22:00からTOEICの勉強。',
+        '2026-04-18',
+      ),
+    );
+
+    expect(suggestion.parsedPlan.title).toBe('TOEICの勉強');
+    expect(suggestion.parsedPlan.subject).toBe('英語');
+  });
+
   it('recurring な既存予定の edit では recurrence を維持したまま title/time だけ変更できる', () => {
     const suggestions = runRulesPipelineEditThroughAdapter(
       createEditInput('英語を20時開始にして'),

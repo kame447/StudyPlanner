@@ -23,6 +23,7 @@ import {
   type SuggestionInput,
 } from "../naturalLanguageRules";
 import { runNaturalLanguagePipeline } from "./index";
+import { inferEventSubject } from "./catalog";
 import { inferEventTitle } from "./title";
 import type {
   PipelineOptions,
@@ -525,7 +526,11 @@ function inferLegacySubject(
     return suggestion.parsedPlan.subject;
   }
 
-  const localSubject = detectSubject(collectSuggestionLocalTexts(suggestion).join(" "));
+  const localSubject = inferEventSubject({
+    titleText: suggestion.parsedPlan.title,
+    contentText: suggestion.parsedPlan.contentText,
+    rawText: suggestion.rawText,
+  });
 
   if (localSubject) {
     return localSubject;

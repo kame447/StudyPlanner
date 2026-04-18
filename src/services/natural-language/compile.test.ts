@@ -173,6 +173,54 @@ describe("compileToSuggestions", () => {
     expect(suggestions[2].parsedPlan.title).toBe("現代文");
   });
 
+  it("generic subject prefix は落とし、task noun phrase は全体保持できる", () => {
+    const clauses = parseClauses(
+      "19時から数学の黄色チャートを進める。20時から物理の良問の風を進める。21時から情報のレポートを書いて。22時からTOEICの勉強。23時から英単語の復習。0時から週の振り返り。1時から自習の勉強。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "黄色チャート",
+      "良問の風",
+      "情報のレポート",
+      "TOEICの勉強",
+      "英単語の復習",
+      "週の振り返り",
+      "自習時間",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "物理",
+      "情報",
+      "英語",
+      "英語",
+      "振り返り",
+      "自習",
+    ]);
+  });
+
+  it("instruction tail を安全に落としつつ、具体的な lexical candidate を broad title より優先できる", () => {
+    const clauses = parseClauses(
+      "19時から数学をやるようにしたい。20時から数学の黄色チャートをやる。21時から物理の良問の風をやる。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "数学",
+      "黄色チャート",
+      "良問の風",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "数学",
+      "物理",
+    ]);
+  });
+
   it("subject 推定の局所ルールが情報/物理/国語/演習を優先しつつ既存の英語/数学を壊さない", () => {
     const clauses = parseClauses(
       "今日の9時から11時まで情報の課題、13時から14時まで英語長文、15時から16時半まで物理。朝8時から30分システム英単語、9時から11時まで良問の風、夜は22時から20分古文単語315。土日は朝9時から2時間、共通テストの過去問演習。20時から復習。21時から振り返り。"
@@ -191,6 +239,34 @@ describe("compileToSuggestions", () => {
       "演習",
       "復習",
       "振り返り",
+    ]);
+  });
+
+  it("specific title を保ったまま broad subject family へ補正できる", () => {
+    const clauses = parseClauses(
+      "19時から黄色チャート。20時から良問の風。21時から共通テスト過去問演習。22時からTOEICの勉強。23時から週の振り返り。0時から自習時間。1時から情報の課題。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "黄色チャート",
+      "良問の風",
+      "共通テスト過去問演習",
+      "TOEICの勉強",
+      "週の振り返り",
+      "自習時間",
+      "情報の課題",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "物理",
+      "演習",
+      "英語",
+      "振り返り",
+      "自習",
+      "情報",
     ]);
   });
 

@@ -12,7 +12,7 @@ import type {
   UnresolvedField,
   Weekday,
 } from "./shared/types";
-import { inferCatalogSubject } from "./catalog";
+import { inferEventSubject } from "./catalog";
 import { inferEventTitle } from "./title";
 
 function hmToMinutes(hm: string): number {
@@ -48,11 +48,12 @@ function inferSubject(
   titleText?: string,
   contextText?: string,
 ): string | undefined {
-  const localSource = [titleText, contentText, rawText, contextText]
-    .filter(Boolean)
-    .join(" ");
-  const source = localSource.trim();
-  return inferCatalogSubject(source);
+  return inferEventSubject({
+    titleText,
+    contentText,
+    rawText,
+    contextText,
+  });
 }
 
 function inferTitle(
@@ -78,9 +79,14 @@ function formatIsoDate(date: Date): string {
 }
 
 function deriveRecurrenceUntil(
+  untilDate?: string,
   dateSpec?: DateSpec,
   startDate?: string,
 ): string | null | undefined {
+  if (untilDate) {
+    return untilDate;
+  }
+
   if (!dateSpec) {
     return undefined;
   }
@@ -125,10 +131,15 @@ function toRecurrenceRules(input: {
   startTime?: string;
   endTime?: string;
   startDate?: string;
+  untilDate?: string;
   dateSpec?: DateSpec;
   isOverride?: boolean;
 }): RecurrenceRule[] | undefined {
-  const until = deriveRecurrenceUntil(input.dateSpec, input.startDate);
+  const until = deriveRecurrenceUntil(
+    input.untilDate,
+    input.dateSpec,
+    input.startDate,
+  );
 
   if (input.dayType) {
     return [
@@ -214,6 +225,7 @@ function buildBaseDraft(base: NormalizedPlanIntent): PlanDraft {
       excludedWeekdays: base.excludedWeekdays,
       repeatKind: base.repeatSpec?.kind,
       startDate: base.date,
+      untilDate: base.untilDate,
       dateSpec: base.dateSpec,
       startTime: base.startTime,
       endTime: base.endTime,
@@ -247,6 +259,7 @@ function buildOverrideDraft(
       dayType: override.dayType,
       weekdays: override.weekdays,
       startDate: override.date,
+      untilDate: override.untilDate ?? base.untilDate,
       dateSpec: override.dateSpec,
       startTime: override.startTime,
       endTime: override.endTime,
@@ -297,6 +310,7 @@ function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
       excludedWeekdays: item.excludedWeekdays,
       repeatKind: item.repeatSpec?.kind,
       startDate: item.date,
+      untilDate: item.untilDate,
       dateSpec: item.dateSpec,
       startTime: item.startTime,
       endTime: item.endTime,

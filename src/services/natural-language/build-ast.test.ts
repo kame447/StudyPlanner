@@ -111,6 +111,37 @@ describe("buildAST", () => {
     expect(ast.groups[2].base.contentText).toContain("物理");
   });
 
+  it("shared week-scope head を後続 explicit time block にも引き継げる", () => {
+    const clauses = parseClauses(
+      "今週の土曜日、9時から11時まで数学、13時から16時まで英語、20時から21時まで復習"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(3);
+    expect(ast.groups.every((group) => group.base.dateSpec?.kind === "week-scope")).toBe(
+      true
+    );
+  });
+
+  it("explicit date head を後続 explicit time block にも引き継げる", () => {
+    const clauses = parseClauses(
+      "4月15日の19時から21時までTOEICの勉強、22時から30分復習"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(2);
+    expect(ast.groups[0].base.dateSpec).toMatchObject({
+      kind: "explicit-date",
+      month: 4,
+      day: 15,
+    });
+    expect(ast.groups[1].base.dateSpec).toMatchObject({
+      kind: "explicit-date",
+      month: 4,
+      day: 15,
+    });
+  });
+
   it("補足句 instruction は group を増やさず diagnostic に落とせる", () => {
     const clauses = parseClauses(
       "4月15日の19時から21時までTOEICの勉強を入れて。内容は単語とリスニング。"
@@ -120,6 +151,22 @@ describe("buildAST", () => {
     expect(ast.groups).toHaveLength(1);
     expect(ast.diagnostics.some((diagnostic) => diagnostic.code === "INSTRUCTION_IGNORED")).toBe(
       true
+    );
+  });
+
+  it("本文 + instruction tail は event 側に残し、内容導入句は別 attachment へ寄せられる", () => {
+    const clauses = parseClauses(
+      "土日は朝9時から2時間、共通テストの過去問演習を入れて。時間は23時で。"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.contentText).toBe("共通テストの過去問演習");
+    expect(ast.groups[0].attachments).toContainEqual(
+      expect.objectContaining({
+        kind: "AttachedTime",
+        rawText: "時間は23:00で",
+      })
     );
   });
 
@@ -142,7 +189,7 @@ describe("buildAST", () => {
 
     expect(ast.groups[0].base.contentText).toBe("DUO3.0");
     expect(ast.groups[1].base.contentText).toBe("学校ワークA");
-    expect(ast.groups[2].base.contentText).toBe("期末レポートの考察を書く");
+    expect(ast.groups[2].base.contentText).toBe("期末レポートの考察");
   });
 
   it("set-count を含む control instruction を直前イベントへ attach できる", () => {
@@ -160,6 +207,23 @@ describe("buildAST", () => {
       setCount: 3,
       contentText: "数学",
     });
+  });
+
+  it("loop cue を持つ control clause は standalone control として切れ、base event を汚さない", () => {
+    const clauses = parseClauses(
+      "19時から学校ワークAを進める。これを3セットで数学にして"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.contentText).toBe("学校ワークA");
+    expect(ast.groups[0].attachments).toContainEqual(
+      expect.objectContaining({
+        kind: "AttachedControl",
+        setCount: 3,
+        contentText: "数学",
+      })
+    );
   });
 
   it("content span extraction で control phrase や recurrence cue を本文へ漏らさない", () => {

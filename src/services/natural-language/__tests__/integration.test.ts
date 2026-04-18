@@ -144,6 +144,34 @@ describe("natural-language integration", () => {
     );
   });
 
+  it("shared week scope head を後続 explicit time block に継承できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "今週の土曜日、9時から11時まで数学、13時から16時まで英語、20時から21時まで復習",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.date)).toEqual([
+      "2026-04-18",
+      "2026-04-18",
+      "2026-04-18",
+    ]);
+  });
+
+  it("mixed connective sentence でも shared date head を後続 block に継承できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "明日の7時から30分システム英単語、そのあと8時から9時半まで青チャート、夜は20時から1時間、現代文",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.date)).toEqual([
+      "2026-04-13",
+      "2026-04-13",
+      "2026-04-13",
+    ]);
+  });
+
   it("1文内の複数明示時間ブロックでも相対順序テストを壊さない", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "9時から10時まで英語、10分休憩して、10時10分から11時40分まで数学、13時から14時まで物理",
@@ -231,6 +259,50 @@ describe("natural-language integration", () => {
     ]);
   });
 
+  it("generic subject prefix は落とし、task noun phrase は全体保持した title を end-to-end で作れる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "19時から数学の黄色チャートを進める。20時から物理の良問の風を進める。21時から情報のレポートを書いて。22時からTOEICの勉強。23時から英単語の復習。0時から週の振り返り。1時から自習の勉強。",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "黄色チャート",
+      "良問の風",
+      "情報のレポート",
+      "TOEICの勉強",
+      "英単語の復習",
+      "週の振り返り",
+      "自習時間",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "物理",
+      "情報",
+      "英語",
+      "英語",
+      "振り返り",
+      "自習",
+    ]);
+  });
+
+  it("title は specific を保ち、subject は broad なまま end-to-end で分離できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "19時から数学をやるようにしたい。20時から数学の黄色チャートをやる。21時から物理の良問の風をやる。",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "数学",
+      "黄色チャート",
+      "良問の風",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "数学",
+      "物理",
+    ]);
+  });
+
   it("共通テストの過去問演習を 演習 subject として推定できる", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "土日は朝9時から2時間、共通テストの過去問演習を入れて。",
@@ -239,6 +311,32 @@ describe("natural-language integration", () => {
 
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].parsedPlan.subject).toBe("演習");
+  });
+
+  it("specific title を保ったまま broad subject family へ end-to-end 補正できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "19時から黄色チャート。20時から良問の風。21時から共通テスト過去問演習。22時からTOEICの勉強。23時から週の振り返り。0時から自習時間。1時から情報のレポート。",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "黄色チャート",
+      "良問の風",
+      "共通テスト過去問演習",
+      "TOEICの勉強",
+      "週の振り返り",
+      "自習時間",
+      "情報のレポート",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "物理",
+      "演習",
+      "英語",
+      "振り返り",
+      "自習",
+      "情報",
+    ]);
   });
 
   it("referenceDate normalization と explicit / scoped date resolution を end-to-end で扱える", () => {
@@ -262,6 +360,43 @@ describe("natural-language integration", () => {
     );
     expect(scopedSuggestions).toHaveLength(1);
     expect(scopedSuggestions[0].parsedPlan.date).toBe("2026-04-18");
+  });
+
+  it("month-scope recurrence を representative date と until の整合つきで end-to-end で扱える", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "4月中の平日7時から30分英語",
+      { referenceDate: "2026-04-18" }
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-20");
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "day-type",
+      dayType: "weekday",
+      startDate: "2026-04-20",
+      until: "2026-04-30",
+      startTime: "07:00",
+      endTime: "07:30",
+    });
+  });
+
+  it("explicit until recurring を representative date / startDate / until 整合つきで end-to-end で扱える", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "4月19日まで毎日18時から20時英語",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-17");
+    expect(suggestions[0].parsedPlan.startTime).toBe("18:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("20:00");
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "daily",
+      startDate: "2026-04-17",
+      until: "2026-04-19",
+      startTime: "18:00",
+      endTime: "20:00",
+    });
   });
 
   it("cross-midnight sequence を開始日基準のまま翌日に rollover できる", () => {

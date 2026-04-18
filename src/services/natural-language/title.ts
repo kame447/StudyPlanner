@@ -8,6 +8,12 @@ const LEADING_TITLE_CONTEXT_PATTERNS = [
 ];
 
 const TRAILING_EDGE_PATTERN = /(?:\s|　)*(?:を|は|に|で|が)+$/;
+const GENERIC_SUBJECT_PREFIX_PATTERN =
+  /^(数学|英語|物理|化学|情報|国語|現代文|古文|漢文|日本史|世界史|地理|政経|倫理|生物|地学)の(.+)$/;
+const TASK_NOUN_PATTERN =
+  /(?:課題|レポート|勉強|復習|振り返り|見直し|確認|修正|考察|小テスト|テスト|自習(?:時間)?|予定|演習|過去問(?:演習)?|ノート)$/;
+const BROAD_TITLE_PATTERN =
+  /^(?:勉強|学習|予定|課題|レポート|演習|復習|振り返り|自習(?:時間)?|確認|見直し|修正|考察|テスト)$/;
 
 const REWRITE_PATTERNS: Array<{
   regex: RegExp;
@@ -30,11 +36,11 @@ const REWRITE_PATTERNS: Array<{
     project: (match) => `${match[1]}の修正`,
   },
   {
-    regex: /^(.+?)を書く$/,
+    regex: /^(.+?)(?:を書(?:いて|く))$/,
     project: (match) => match[1],
   },
   {
-    regex: /^(.+?)を(?:やる|する|進める|勉強する|学習する|解く)$/,
+    regex: /^(.+?)を(?:やる|する|進める|勉強する|学習する|解く)(?:ようにしたい)?$/,
     project: (match) => match[1],
   },
 ];
@@ -70,6 +76,72 @@ function cleanupCandidate(candidate: string): string {
   return stripTrailingEdges(normalizeWhitespace(candidate));
 }
 
+function isTaskNounPhrase(candidate: string): boolean {
+  if (!candidate) {
+    return false;
+  }
+
+  return TASK_NOUN_PATTERN.test(candidate);
+}
+
+function canonicalizeTaskNounPhrase(candidate: string): string {
+  if (candidate === "自習") {
+    return "自習時間";
+  }
+
+  return candidate;
+}
+
+function collapseRedundantTaskTitle(candidate: string): string {
+  const match = /^(.+?)の勉強$/.exec(candidate);
+  if (!match) {
+    return candidate;
+  }
+
+  const head = cleanupCandidate(match[1]);
+  if (!head || !isTaskNounPhrase(head)) {
+    return candidate;
+  }
+
+  return canonicalizeTaskNounPhrase(head);
+}
+
+function maybeStripGenericSubjectPrefix(candidate: string): string {
+  const match = GENERIC_SUBJECT_PREFIX_PATTERN.exec(candidate);
+  if (!match) {
+    return collapseRedundantTaskTitle(candidate);
+  }
+
+  const stripped = cleanupCandidate(match[2]);
+  if (!stripped || isTaskNounPhrase(stripped)) {
+    return collapseRedundantTaskTitle(candidate);
+  }
+
+  return collapseRedundantTaskTitle(stripped);
+}
+
+function isBroadTitleCandidate(candidate: string): boolean {
+  return BROAD_TITLE_PATTERN.test(candidate);
+}
+
+function scoreTitleSpecificity(candidate: string): number {
+  let score = candidate.length;
+
+  if (isTaskNounPhrase(candidate)) {
+    score += 8;
+  }
+
+  if (GENERIC_SUBJECT_PREFIX_PATTERN.test(candidate)) {
+    score -= 4;
+  }
+
+  if (isBroadTitleCandidate(candidate)) {
+    score -= 6;
+  }
+
+  return score;
+}
+
 function buildLexicalTitleCandidate(text: string): string | undefined {
   const normalized = stripLeadingTitleContext(text);
   if (!normalized) {
@@ -82,13 +154,15 @@ function buildLexicalTitleCandidate(text: string): string | undefined {
       continue;
     }
 
-    const candidate = cleanupCandidate(pattern.project(match));
+    const candidate = maybeStripGenericSubjectPrefix(
+      cleanupCandidate(pattern.project(match))
+    );
     if (candidate) {
       return candidate;
     }
   }
 
-  const candidate = cleanupCandidate(normalized);
+  const candidate = maybeStripGenericSubjectPrefix(cleanupCandidate(normalized));
   return candidate || undefined;
 }
 
@@ -135,19 +209,21 @@ export function inferEventTitle(
     if (
       isReasonableTitleCandidate(lexicalCandidate) &&
       catalogTitle &&
-      lexicalCandidate !== catalogTitle &&
-      lexicalCandidate.includes(catalogTitle) &&
-      lexicalCandidate.length > catalogTitle.length + 2
+      lexicalCandidate !== catalogTitle
     ) {
-      return lexicalCandidate;
-    }
+      if (scoreTitleSpecificity(lexicalCandidate) >= scoreTitleSpecificity(catalogTitle)) {
+        return lexicalCandidate;
+      }
 
-    if (catalogTitle) {
       return catalogTitle;
     }
 
     if (isReasonableTitleCandidate(lexicalCandidate)) {
       return lexicalCandidate;
+    }
+
+    if (catalogTitle) {
+      return catalogTitle;
     }
   }
 

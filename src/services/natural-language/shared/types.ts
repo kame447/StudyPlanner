@@ -69,6 +69,14 @@ export interface WeekScopeSpec {
     | "sometime-next-week";
 }
 
+export interface ExplicitUntilSpec {
+  raw: string;
+  kind: "explicit-until";
+  year?: number;
+  month: number;
+  day: number;
+}
+
 export type DateSpec =
   | RelativeDaySpec
   | ExplicitDateSpec
@@ -85,6 +93,16 @@ export interface SetCountSpec {
   count: number;
 }
 
+export type StructuralTokenKind =
+  | "LOOP_CUE"
+  | "CONTROL"
+  | "CONTENT_INTRODUCER"
+  | "INSTRUCTION_TAIL"
+  | "REST"
+  | "OVERRIDE"
+  | "CONNECTIVE"
+  | "SET_COUNT";
+
 export type Token =
   | { kind: "DATE"; raw: string; value: DateSpec }
   | { kind: "TIME"; raw: string; value: TimeSpec }
@@ -95,7 +113,10 @@ export type Token =
   | { kind: "DAYTYPE"; raw: string; value: DayTypeSpec }
   | { kind: "REPEAT"; raw: string; value: RepeatSpec }
   | { kind: "SET_COUNT"; raw: string; value: SetCountSpec }
+  | { kind: "LOOP_CUE"; raw: string }
   | { kind: "CONTROL"; raw: string }
+  | { kind: "CONTENT_INTRODUCER"; raw: string }
+  | { kind: "INSTRUCTION_TAIL"; raw: string }
   | { kind: "REST"; raw: string; value: DurationSpec }
   | { kind: "OVERRIDE"; raw: string }
   | { kind: "CONNECTIVE"; raw: string }
@@ -190,6 +211,8 @@ export interface NormalizedPlanIntent {
   contentText?: string;
   date?: string;
   dateSpec?: DateSpec;
+  untilDate?: string;
+  untilSpec?: ExplicitUntilSpec;
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
@@ -207,6 +230,8 @@ export interface NormalizedOverrideIntent {
   rawText: string;
   date?: string;
   dateSpec?: DateSpec;
+  untilDate?: string;
+  untilSpec?: ExplicitUntilSpec;
   dayType?: "weekday" | "weekend";
   weekdays?: Weekday[];
   startTime?: string;
@@ -235,6 +260,8 @@ export interface NormalizedEnumerationIntent {
   baseContentText?: string;
   date?: string;
   dateSpec?: DateSpec;
+  untilDate?: string;
+  untilSpec?: ExplicitUntilSpec;
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;

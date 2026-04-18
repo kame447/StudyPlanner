@@ -10,8 +10,8 @@ describe("parseClauses", () => {
     expect(clauses).toHaveLength(3);
     expect(clauses.every((clause) => clause.kind === "EventClause")).toBe(true);
     expect(clauses[0].spanText).toContain("今日の09:00から11:00まで");
-    expect(clauses[1].spanText).toBe("13:00から14:00まで英語長文");
-    expect(clauses[2].spanText).toBe("15:00から16:30まで物理をやる");
+    expect(clauses[1].spanText).toBe("今日の13:00から14:00まで英語長文");
+    expect(clauses[2].spanText).toBe("今日の15:00から16:30まで物理をやる");
     expect(clauses.map((clause) => clause.sentenceIndex)).toEqual([0, 0, 0]);
   });
 
@@ -45,6 +45,32 @@ describe("parseClauses", () => {
     expect(clauses[0].kind).toBe("EventClause");
     expect(clauses[0].spanText).toContain("今週の土曜日");
     expect(clauses[0].spanText).toContain("09:00から11:00まで数学");
+  });
+
+  it("shared scope head は後続 explicit time block に継承される", () => {
+    const clauses = parseClauses(
+      "今週の土曜日、9時から11時まで数学、13時から16時まで英語、20時から21時まで復習"
+    );
+
+    expect(clauses).toHaveLength(3);
+    expect(clauses.map((clause) => clause.kind)).toEqual([
+      "EventClause",
+      "EventClause",
+      "EventClause",
+    ]);
+    expect(clauses[1].spanText).toContain("今週の土曜日");
+    expect(clauses[2].spanText).toContain("今週の土曜日");
+  });
+
+  it("shared date head は mixed connective sentence の後続 block に継承される", () => {
+    const clauses = parseClauses(
+      "明日の7時から30分英単語、そのあと8時から9時半まで青チャート、夜は20時から1時間、現代文"
+    );
+
+    expect(clauses).toHaveLength(3);
+    expect(clauses[0].spanText).toContain("明日");
+    expect(clauses[1].spanText).toContain("明日");
+    expect(clauses[2].spanText).toContain("明日");
   });
 
   it("enumeration の後ろにある time-only scope は別 clause に分けて attach 可能にする", () => {

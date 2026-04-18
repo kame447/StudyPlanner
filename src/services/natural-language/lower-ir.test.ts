@@ -96,6 +96,21 @@ describe("lowerToIR", () => {
     expect(ir.groups[0].base.date).toBe("2026-04-17");
   });
 
+  it("今日 / 明日 / 明後日 を concrete date に解決できる", () => {
+    const clauses = parseClauses(
+      "今日19時から数学を1時間。明日20時から英語を30分。明後日21時から物理を45分"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+
+    expect(ir.groups).toHaveLength(3);
+    expect(ir.groups.map((group) => group.base.date)).toEqual([
+      "2026-04-16",
+      "2026-04-17",
+      "2026-04-18",
+    ]);
+  });
+
   it("explicit date と week-scope + weekday を concrete date に解決できる", () => {
     const explicitClauses = parseClauses("4月15日19時から自習を2時間");
     const explicitAst = buildAST(explicitClauses);
@@ -110,6 +125,55 @@ describe("lowerToIR", () => {
     expect(scopedIr.groups[0].base.date).toBe("2026-04-18");
     expect(scopedIr.groups[0].base.assumptions).toContain(
       "representative date derived from scoped weekday"
+    );
+  });
+
+  it("week-scope representative date を会話当日に潰さずに解決できる", () => {
+    const thisWeekClauses = parseClauses("今週のどこかで英語を1時間");
+    const thisWeekAst = buildAST(thisWeekClauses);
+    const thisWeekIr = lowerToIR(thisWeekAst, { referenceDate: "2026-04-16" });
+
+    expect(thisWeekIr.groups).toHaveLength(1);
+    expect(thisWeekIr.groups[0].base.date).toBe("2026-04-17");
+    expect(thisWeekIr.groups[0].base.assumptions).toContain(
+      "representative date derived from date scope"
+    );
+
+    const nextWeekClauses = parseClauses("来週のどこかで数学を1時間");
+    const nextWeekAst = buildAST(nextWeekClauses);
+    const nextWeekIr = lowerToIR(nextWeekAst, { referenceDate: "2026-04-16" });
+
+    expect(nextWeekIr.groups).toHaveLength(1);
+    expect(nextWeekIr.groups[0].base.date).toBe("2026-04-20");
+  });
+
+  it("month-scope を in-scope first occurrence の representative date に解決できる", () => {
+    const clauses = parseClauses("4月中の平日7時から30分英語");
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-18" });
+
+    expect(ir.groups).toHaveLength(1);
+    expect(ir.groups[0].base.date).toBe("2026-04-20");
+    expect(ir.groups[0].base.assumptions).toContain(
+      "representative date derived from month scope"
+    );
+  });
+
+  it("explicit until recurring を lower-ir で representative date と until に分離できる", () => {
+    const clauses = parseClauses("4月19日まで毎日18時から20時英語");
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+
+    expect(ir.groups).toHaveLength(1);
+    expect(ir.groups[0].base.date).toBe("2026-04-17");
+    expect(ir.groups[0].base.dateSpec).toBeUndefined();
+    expect(ir.groups[0].base.untilDate).toBe("2026-04-19");
+    expect(ir.groups[0].base.untilSpec?.kind).toBe("explicit-until");
+    expect(ir.groups[0].base.repeatSpec?.kind).toBe("daily");
+    expect(ir.groups[0].base.startTime).toBe("18:00");
+    expect(ir.groups[0].base.endTime).toBe("20:00");
+    expect(ir.groups[0].base.assumptions).toContain(
+      "representative date derived from explicit until"
     );
   });
 
@@ -183,6 +247,45 @@ describe("lowerToIR", () => {
     expect(ir.groups[0].sequencedIntents[0].assumptions).toContain(
       "rolled over to next day after cross-midnight previous event"
     );
+  });
+
+  it("previous event 自体が日跨ぎでなくても sequence start が巻き戻る場合は翌日に rollover できる", () => {
+    const clauses = parseClauses(
+      "今日22時から1時間情報のレポート。そのあと0時15分から30分英単語"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-12" });
+
+    expect(ir.groups).toHaveLength(1);
+    expect(ir.groups[0].base.date).toBe("2026-04-12");
+    expect(ir.groups[0].base.startTime).toBe("22:00");
+    expect(ir.groups[0].base.endTime).toBe("23:00");
+    expect(ir.groups[0].sequencedIntents).toHaveLength(1);
+    expect(ir.groups[0].sequencedIntents[0].date).toBe("2026-04-13");
+    expect(ir.groups[0].sequencedIntents[0].startTime).toBe("00:15");
+    expect(ir.groups[0].sequencedIntents[0].endTime).toBe("00:45");
+    expect(ir.groups[0].sequencedIntents[0].assumptions).toContain(
+      "rolled over to next day after cross-midnight previous event"
+    );
+  });
+
+  it("mixed connective sentence の shared date head を後続 block まで concrete 化できる", () => {
+    const clauses = parseClauses(
+      "明日の7時から30分システム英単語、そのあと8時から9時半まで青チャート、夜は20時から1時間、現代文"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-12" });
+
+    expect(ir.groups).toHaveLength(2);
+    expect([
+      ir.groups[0].base.date,
+      ir.groups[0].sequencedIntents[0]?.date,
+      ir.groups[1].base.date,
+    ]).toEqual([
+      "2026-04-13",
+      "2026-04-13",
+      "2026-04-13",
+    ]);
   });
 
   it("reverse-order override を daily_except_wed + weekly_wed として正規化できる", () => {

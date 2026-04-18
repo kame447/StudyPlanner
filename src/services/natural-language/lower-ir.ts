@@ -5,6 +5,7 @@ import type {
   EnumerationVariantNode,
   EventGroupIR,
   EventGroupNode,
+  ExplicitUntilSpec,
   NormalizedEnumerationIntent,
   NormalizedOverrideIntent,
   NormalizedPlanIntent,
@@ -19,6 +20,10 @@ import type {
   UnresolvedField,
   Weekday,
 } from "./shared/types";
+
+interface LoweringContext {
+  referenceDate: Date;
+}
 
 function isTimeRangeSpec(
   value: TimeSpec | TimeRangeSpec,
@@ -146,6 +151,56 @@ function startOfWeek(base: Date): Date {
   return addDays(base, mondayOffset);
 }
 
+function endOfWeek(base: Date): Date {
+  return addDays(startOfWeek(base), 6);
+}
+
+function endOfMonth(year: number, month: number): Date {
+  return new Date(Date.UTC(year, month, 0));
+}
+
+function compareDates(left: Date, right: Date): number {
+  return left.getTime() - right.getTime();
+}
+
+function maxDate(left: Date, right: Date): Date {
+  return compareDates(left, right) >= 0 ? left : right;
+}
+
+function isWithinRange(date: Date, rangeStart: Date, rangeEnd: Date): boolean {
+  return compareDates(date, rangeStart) >= 0 && compareDates(date, rangeEnd) <= 0;
+}
+
+function chooseRepresentativeDateInRange(
+  rangeStart: Date,
+  rangeEnd: Date,
+  referenceDate: Date,
+): Date {
+  if (compareDates(referenceDate, rangeStart) < 0) {
+    return rangeStart;
+  }
+
+  if (compareDates(referenceDate, rangeEnd) > 0) {
+    return rangeEnd;
+  }
+
+  const nextDay = addDays(referenceDate, 1);
+  return compareDates(nextDay, rangeEnd) <= 0 ? nextDay : referenceDate;
+}
+
+function resolveExplicitDate(
+  dateSpec: Extract<DateSpec, { kind: "explicit-date" }>,
+  referenceDate: Date,
+): Date {
+  return new Date(
+    Date.UTC(
+      dateSpec.year ?? referenceDate.getUTCFullYear(),
+      dateSpec.month - 1,
+      dateSpec.day,
+    ),
+  );
+}
+
 function weekdayIndex(weekday: Weekday): number {
   const map: Record<Weekday, number> = {
     mon: 1,
@@ -194,6 +249,27 @@ function firstMatchingWeekdayInWeek(weekStart: Date, weekdays: Weekday[]): Date 
   return addDays(weekStart, weekdayIndex(weekday) === 0 ? 6 : weekdayIndex(weekday) - 1);
 }
 
+function firstMatchingWeekdayInRange(
+  rangeStart: Date,
+  rangeEnd: Date,
+  weekdays: Weekday[],
+): Date | undefined {
+  const deduped = dedupeWeekdays(weekdays);
+
+  for (let delta = 0; delta < 366; delta += 1) {
+    const candidate = addDays(rangeStart, delta);
+    if (compareDates(candidate, rangeEnd) > 0) {
+      return undefined;
+    }
+
+    if (deduped.some((weekday) => weekdayIndex(weekday) === candidate.getUTCDay())) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
 function normalizeScopedWeekStart(scope: DateSpec["kind"] extends never ? never : DateSpec, reference: Date): Date | undefined {
   if (scope.kind !== "week-scope") {
     return undefined;
@@ -213,19 +289,141 @@ function normalizeScopedWeekStart(scope: DateSpec["kind"] extends never ? never 
   }
 }
 
+function resolveScopedDateRange(
+  dateSpec: Extract<DateSpec, { kind: "week-scope" }>,
+  referenceDate: Date,
+): {
+  rangeStart: Date;
+  rangeEnd: Date;
+} | undefined {
+  const weekStart = normalizeScopedWeekStart(dateSpec, referenceDate);
+  if (!weekStart) {
+    return undefined;
+  }
+
+  if (dateSpec.scope === "this-weekend" || dateSpec.scope === "next-weekend") {
+    const weekendStart = addDays(weekStart, 5);
+    return {
+      rangeStart: weekendStart,
+      rangeEnd: addDays(weekendStart, 1),
+    };
+  }
+
+  return {
+    rangeStart: weekStart,
+    rangeEnd: endOfWeek(weekStart),
+  };
+}
+
+function hasRecurringDateContext(input: {
+  repeatKind?: string;
+  weekdays?: Weekday[];
+  dayType?: "weekday" | "weekend";
+}): boolean {
+  return Boolean(
+    input.repeatKind ||
+      input.dayType ||
+      (input.weekdays && input.weekdays.length > 0),
+  );
+}
+
+function extractExplicitUntilSpec(
+  rawText: string,
+  referenceDate: Date,
+): ExplicitUntilSpec | undefined {
+  const isoMatch = rawText.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})まで/);
+  if (isoMatch) {
+    return {
+      raw: isoMatch[0],
+      kind: "explicit-until",
+      year: Number(isoMatch[1]),
+      month: Number(isoMatch[2]),
+      day: Number(isoMatch[3]),
+    };
+  }
+
+  const monthDayMatch = rawText.match(/(\d{1,2})月(\d{1,2})日まで/);
+  if (monthDayMatch) {
+    return {
+      raw: monthDayMatch[0],
+      kind: "explicit-until",
+      year: referenceDate.getUTCFullYear(),
+      month: Number(monthDayMatch[1]),
+      day: Number(monthDayMatch[2]),
+    };
+  }
+
+  return undefined;
+}
+
+function resolveExplicitUntilDate(
+  untilSpec: ExplicitUntilSpec,
+  referenceDate: Date,
+): Date {
+  return new Date(
+    Date.UTC(
+      untilSpec.year ?? referenceDate.getUTCFullYear(),
+      untilSpec.month - 1,
+      untilSpec.day,
+    ),
+  );
+}
+
+function resolveRepresentativeDateWithinUntil(
+  untilSpec: ExplicitUntilSpec,
+  context: {
+    weekdays?: Weekday[];
+    dayType?: "weekday" | "weekend";
+  },
+  lowering: LoweringContext,
+): {
+  date: string;
+  untilDate: string;
+  untilSpec: ExplicitUntilSpec;
+  assumptions: string[];
+} {
+  const referenceDate = lowering.referenceDate;
+  const untilDateValue = resolveExplicitUntilDate(untilSpec, referenceDate);
+  const untilDate = formatDate(untilDateValue);
+  const rangeStart = referenceDate;
+  const rangeEnd = untilDateValue;
+  const targetWeekdays =
+    context.weekdays && context.weekdays.length > 0
+      ? dedupeWeekdays(context.weekdays)
+      : weekdaysFromDayType(context.dayType);
+  const defaultRepresentative = chooseRepresentativeDateInRange(
+    rangeStart,
+    rangeEnd,
+    referenceDate,
+  );
+  const representativeDate =
+    targetWeekdays && targetWeekdays.length > 0
+      ? firstMatchingWeekdayInRange(defaultRepresentative, rangeEnd, targetWeekdays) ??
+        firstMatchingWeekdayInRange(rangeStart, rangeEnd, targetWeekdays) ??
+        rangeEnd
+      : defaultRepresentative;
+
+  return {
+    date: formatDate(representativeDate),
+    untilDate,
+    untilSpec,
+    assumptions: ["representative date derived from explicit until"],
+  };
+}
+
 function resolveRepresentativeDate(
   dateSpec: DateSpec | undefined,
   context: {
     weekdays?: Weekday[];
     dayType?: "weekday" | "weekend";
   },
-  options: PipelineOptions,
+  lowering: LoweringContext,
 ): {
   date?: string;
   dateSpec?: DateSpec;
   assumptions: string[];
 } {
-  const referenceDate = parseReferenceDate(options.referenceDate);
+  const referenceDate = lowering.referenceDate;
   const assumptions: string[] = [];
   const targetWeekdays =
     context.weekdays && context.weekdays.length > 0
@@ -267,39 +465,45 @@ function resolveRepresentativeDate(
 
   if (dateSpec.kind === "month-scope") {
     const year = dateSpec.year ?? referenceDate.getUTCFullYear();
-    const inSameMonth =
-      referenceDate.getUTCFullYear() === year &&
-      referenceDate.getUTCMonth() + 1 === dateSpec.month;
+    const monthStart = new Date(Date.UTC(year, dateSpec.month - 1, 1));
+    const monthEnd = endOfMonth(year, dateSpec.month);
+    const searchStart = isWithinRange(referenceDate, monthStart, monthEnd)
+      ? referenceDate
+      : monthStart;
+    const representativeDate =
+      targetWeekdays && targetWeekdays.length > 0
+        ? firstMatchingWeekdayInRange(searchStart, monthEnd, targetWeekdays) ??
+          firstMatchingWeekdayInRange(monthStart, monthEnd, targetWeekdays) ??
+          monthStart
+        : chooseRepresentativeDateInRange(monthStart, monthEnd, referenceDate);
 
     return {
-      date: formatDate(
-        inSameMonth
-          ? referenceDate
-          : new Date(Date.UTC(year, dateSpec.month - 1, 1)),
-      ),
+      date: formatDate(representativeDate),
       dateSpec,
-      assumptions: ["month scope retained"],
+      assumptions: ["representative date derived from month scope"],
     };
   }
 
-  const weekStart = normalizeScopedWeekStart(dateSpec, referenceDate);
-  if (!weekStart) {
+  const scopedRange = resolveScopedDateRange(dateSpec, referenceDate);
+  if (!scopedRange) {
     return { dateSpec, assumptions: ["date scope retained"] };
   }
 
-  if (dateSpec.scope === "this-weekend" || dateSpec.scope === "next-weekend") {
-    return {
-      date: formatDate(addDays(weekStart, 5)),
-      dateSpec,
-      assumptions: ["weekend representative date derived from scope"],
-    };
-  }
-
   if (targetWeekdays && targetWeekdays.length > 0) {
+    const searchStart =
+      dateSpec.scope === "this-week" ||
+      dateSpec.scope === "sometime-this-week" ||
+      dateSpec.scope === "this-weekend"
+        ? maxDate(referenceDate, scopedRange.rangeStart)
+        : scopedRange.rangeStart;
     const representativeDate =
-      dateSpec.scope === "this-week"
-        ? firstMatchingWeekdayOnOrAfter(referenceDate, targetWeekdays)
-        : firstMatchingWeekdayInWeek(weekStart, targetWeekdays);
+      firstMatchingWeekdayInRange(searchStart, scopedRange.rangeEnd, targetWeekdays) ??
+      firstMatchingWeekdayInRange(
+        scopedRange.rangeStart,
+        scopedRange.rangeEnd,
+        targetWeekdays,
+      ) ??
+      firstMatchingWeekdayInWeek(startOfWeek(scopedRange.rangeStart), targetWeekdays);
 
     return {
       date: formatDate(representativeDate),
@@ -310,28 +514,101 @@ function resolveRepresentativeDate(
 
   return {
     date: formatDate(
-      dateSpec.scope === "this-week" ? referenceDate : weekStart,
+      chooseRepresentativeDateInRange(
+        scopedRange.rangeStart,
+        scopedRange.rangeEnd,
+        referenceDate,
+      ),
     ),
     dateSpec,
     assumptions: ["representative date derived from date scope"],
   };
 }
 
+function resolveDateWindow(
+  input: {
+    rawText: string;
+    dateSpec?: DateSpec;
+    repeatKind?: string;
+    weekdays?: Weekday[];
+    dayType?: "weekday" | "weekend";
+  },
+  lowering: LoweringContext,
+): {
+  date?: string;
+  dateSpec?: DateSpec;
+  untilDate?: string;
+  untilSpec?: ExplicitUntilSpec;
+  assumptions: string[];
+} {
+  const explicitUntilSpec = extractExplicitUntilSpec(
+    input.rawText,
+    lowering.referenceDate,
+  );
+  const recurringContext = hasRecurringDateContext({
+    repeatKind: input.repeatKind,
+    weekdays: input.weekdays,
+    dayType: input.dayType,
+  });
+  const dateSpecConsumedByUntil =
+    recurringContext &&
+    explicitUntilSpec &&
+    input.dateSpec?.kind === "explicit-date" &&
+    input.rawText.includes(`${input.dateSpec.raw}まで`);
+  const effectiveDateSpec = dateSpecConsumedByUntil ? undefined : input.dateSpec;
+
+  if (recurringContext && explicitUntilSpec) {
+    const dateInfo = resolveRepresentativeDateWithinUntil(
+      explicitUntilSpec,
+      {
+        weekdays: input.weekdays,
+        dayType: input.dayType,
+      },
+      lowering,
+    );
+
+    return {
+      date: dateInfo.date,
+      dateSpec: effectiveDateSpec,
+      untilDate: dateInfo.untilDate,
+      untilSpec: dateInfo.untilSpec,
+      assumptions: dateInfo.assumptions,
+    };
+  }
+
+  const dateInfo = resolveRepresentativeDate(
+    effectiveDateSpec,
+    {
+      weekdays: input.weekdays,
+      dayType: input.dayType,
+    },
+    lowering,
+  );
+
+  return {
+    date: dateInfo.date,
+    dateSpec: dateInfo.dateSpec,
+    assumptions: dateInfo.assumptions,
+  };
+}
+
 function lowerBase(
   baseNode: BaseScheduleNode,
-  options: PipelineOptions,
+  lowering: LoweringContext,
 ): NormalizedPlanIntent {
   const durationMinutes =
     baseNode.durationSpec?.minutes ?? deriveDurationMinutes(baseNode.timeSpec);
   const timeInfo = buildStartEnd(baseNode.timeSpec, durationMinutes);
   const weekdays = baseNode.weekdaySpecs?.map((weekday) => weekday.weekday);
-  const dateInfo = resolveRepresentativeDate(
-    baseNode.dateSpec,
+  const dateInfo = resolveDateWindow(
     {
+      rawText: baseNode.rawText,
+      dateSpec: baseNode.dateSpec,
+      repeatKind: baseNode.repeatSpec?.kind,
       weekdays,
       dayType: baseNode.dayTypeSpec?.dayType,
     },
-    options,
+    lowering,
   );
 
   return {
@@ -339,6 +616,8 @@ function lowerBase(
     contentText: baseNode.contentText,
     date: dateInfo.date,
     dateSpec: dateInfo.dateSpec,
+    untilDate: dateInfo.untilDate,
+    untilSpec: dateInfo.untilSpec,
     startTime: timeInfo.startTime,
     endTime: timeInfo.endTime,
     durationMinutes,
@@ -403,7 +682,7 @@ function splitOverrideByWeekday(
 function lowerOverride(
   override: OverrideScheduleNode,
   base: NormalizedPlanIntent,
-  options: PipelineOptions,
+  lowering: LoweringContext,
 ): NormalizedOverrideIntent {
   const durationMinutes =
     override.replaceDurationSpec?.minutes ??
@@ -411,19 +690,22 @@ function lowerOverride(
     deriveDurationMinutes(override.replaceTimeSpec);
   const timeInfo = buildStartEnd(override.replaceTimeSpec, durationMinutes);
   const weekdays = override.weekdaySpecs?.map((weekday) => weekday.weekday);
-  const dateInfo = resolveRepresentativeDate(
-    override.dateSpec,
+  const dateInfo = resolveDateWindow(
     {
+      rawText: override.rawText,
+      dateSpec: override.dateSpec,
       weekdays,
       dayType: override.dayTypeSpec?.dayType,
     },
-    options,
+    lowering,
   );
 
   return {
     rawText: override.rawText,
     date: dateInfo.date,
     dateSpec: dateInfo.dateSpec,
+    untilDate: dateInfo.untilDate,
+    untilSpec: dateInfo.untilSpec,
     dayType: override.dayTypeSpec?.dayType,
     weekdays,
     startTime: timeInfo.startTime,
@@ -461,12 +743,12 @@ function lowerSequence(
     startTime?: string;
     endTime?: string;
   },
-  options: PipelineOptions,
+  lowering: LoweringContext,
 ): NormalizedSequencedIntent {
   const durationMinutes =
     sequence.durationSpec?.minutes ?? deriveDurationMinutes(sequence.timeSpec);
   const explicitTimeInfo = buildStartEnd(sequence.timeSpec, durationMinutes);
-  const explicitDateInfo = resolveRepresentativeDate(sequence.dateSpec, {}, options);
+  const explicitDateInfo = resolveRepresentativeDate(sequence.dateSpec, {}, lowering);
 
   let date = explicitDateInfo.date;
   let dateSpec = explicitDateInfo.dateSpec;
@@ -491,7 +773,12 @@ function lowerSequence(
   if (
     inheritedDate &&
     previous.date &&
-    eventCrossesMidnight(previous.startTime, previous.endTime)
+    (
+      eventCrossesMidnight(previous.startTime, previous.endTime) ||
+      (startTime != null &&
+        previous.endTime != null &&
+        hmToMinutes(startTime) < hmToMinutes(previous.endTime))
+    )
   ) {
     date = rolloverDate(previous.date, 1);
     assumptions.push("rolled over to next day after cross-midnight previous event");
@@ -534,6 +821,8 @@ function lowerEnumeration(
     baseContentText: base.contentText,
     date: baseDate,
     dateSpec: base.dateSpec,
+    untilDate: base.untilDate,
+    untilSpec: base.untilSpec,
     startTime: base.startTime,
     endTime: base.endTime,
     durationMinutes: base.durationMinutes,
@@ -557,8 +846,8 @@ function subtractWeekdays(source: Weekday[] | undefined, excluded: Weekday[]): W
   return filtered.length > 0 ? filtered : undefined;
 }
 
-function lowerGroup(group: EventGroupNode, options: PipelineOptions): EventGroupIR {
-  const base = lowerBase(group.base, options);
+function lowerGroup(group: EventGroupNode, lowering: LoweringContext): EventGroupIR {
+  const base = lowerBase(group.base, lowering);
   applyAttachments(base, group.attachments);
 
   const splitOverrides: OverrideScheduleNode[] = [];
@@ -567,7 +856,7 @@ function lowerGroup(group: EventGroupNode, options: PipelineOptions): EventGroup
   }
 
   const overrideIntents = splitOverrides.map((override) =>
-    lowerOverride(override, base, options),
+    lowerOverride(override, base, lowering),
   );
   const overriddenWeekdays = dedupeWeekdays(
     overrideIntents.flatMap((override) => override.weekdays ?? []),
@@ -597,7 +886,7 @@ function lowerGroup(group: EventGroupNode, options: PipelineOptions): EventGroup
 
   const sequencedIntents: NormalizedSequencedIntent[] = [];
   for (const sequence of group.sequences) {
-    const lowered = lowerSequence(sequence, previousEvent, options);
+    const lowered = lowerSequence(sequence, previousEvent, lowering);
     sequencedIntents.push(lowered);
 
     previousEvent = {
@@ -625,8 +914,12 @@ export function lowerToIR(
   ast: ScheduleAST,
   options: PipelineOptions = {},
 ): ScheduleIR {
+  const lowering: LoweringContext = {
+    referenceDate: parseReferenceDate(options.referenceDate),
+  };
+
   return {
-    groups: ast.groups.map((group) => lowerGroup(group, options)),
+    groups: ast.groups.map((group) => lowerGroup(group, lowering)),
     diagnostics: [...ast.diagnostics],
   };
 }

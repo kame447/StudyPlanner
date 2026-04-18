@@ -1,0 +1,1 @@
+import { parseNaturalLanguageSchedule } from './src/services/natural-language/index.ts'; const suggestions = parseNaturalLanguageSchedule('土日は朝9時から2時間、共通テストの過去問演習を入れて。', { referenceDate: '2026-04-12' }); console.log(JSON.stringify(suggestions, null, 2));
