@@ -3,11 +3,15 @@ import type {
   DateSpec,
   DayTypeSpec,
   DurationSpec,
+  ExplicitDateSpec,
+  MonthScopeSpec,
   RepeatSpec,
+  SetCountSpec,
   TimeRangeSpec,
   TimeSpec,
   Token,
   Weekday,
+  WeekdayGroupSpec,
   WeekdaySpec,
 } from "./shared/types";
 
@@ -27,7 +31,7 @@ function parseTime(raw: string): TimeSpec {
 function parseTimeRange(
   raw: string,
   startRaw: string,
-  endRaw: string
+  endRaw: string,
 ): TimeRangeSpec {
   return {
     raw,
@@ -39,10 +43,16 @@ function parseTimeRange(
 function parseDuration(
   raw: string,
   amountText: string,
-  unit: string
+  unit: string,
+  hasHalf = false,
+  minuteText?: string,
 ): DurationSpec {
   const amount = Number(amountText);
-  const minutes = unit === "時間" ? amount * 60 : amount;
+  const minutes =
+    unit === "時間"
+      ? amount * 60 + (hasHalf ? 30 : Number(minuteText ?? "0"))
+      : amount;
+
   return { raw, minutes };
 }
 
@@ -63,11 +73,35 @@ function parseWeekday(raw: string, jp: string): WeekdaySpec {
   };
 }
 
+function parseWeekdayGroup(raw: string): WeekdayGroupSpec {
+  const map: Record<string, Weekday> = {
+    月: "mon",
+    火: "tue",
+    水: "wed",
+    木: "thu",
+    金: "fri",
+    土: "sat",
+    日: "sun",
+  };
+
+  return {
+    raw,
+    weekdays: [...new Set(raw.split("").map((char) => map[char]))],
+  };
+}
+
 function parseDayType(raw: string): DayTypeSpec {
   if (raw === "平日") {
     return { raw, dayType: "weekday" };
   }
   return { raw, dayType: "weekend" };
+}
+
+function parseSetCount(raw: string, countText: string): SetCountSpec {
+  return {
+    raw,
+    count: Number(countText),
+  };
 }
 
 function parseRepeat(raw: string): RepeatSpec {
@@ -90,6 +124,36 @@ function parseRepeat(raw: string): RepeatSpec {
 }
 
 function parseDateSpec(raw: string): DateSpec {
+  const explicitIsoMatch = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (explicitIsoMatch) {
+    return {
+      raw,
+      kind: "explicit-date",
+      year: Number(explicitIsoMatch[1]),
+      month: Number(explicitIsoMatch[2]),
+      day: Number(explicitIsoMatch[3]),
+    } satisfies ExplicitDateSpec;
+  }
+
+  const explicitDateMatch = raw.match(/^(\d{1,2})月(\d{1,2})日$/);
+  if (explicitDateMatch) {
+    return {
+      raw,
+      kind: "explicit-date",
+      month: Number(explicitDateMatch[1]),
+      day: Number(explicitDateMatch[2]),
+    } satisfies ExplicitDateSpec;
+  }
+
+  const monthScopeMatch = raw.match(/^(\d{1,2})月中$/);
+  if (monthScopeMatch) {
+    return {
+      raw,
+      kind: "month-scope",
+      month: Number(monthScopeMatch[1]),
+    } satisfies MonthScopeSpec;
+  }
+
   if (raw === "今日") {
     return { raw, kind: "relative-day", offsetDays: 0 };
   }
@@ -111,6 +175,10 @@ function parseDateSpec(raw: string): DateSpec {
   if (raw === "来週末") {
     return { raw, kind: "week-scope", scope: "next-weekend" };
   }
+  if (raw === "今週のどこか") {
+    return { raw, kind: "week-scope", scope: "sometime-this-week" };
+  }
+
   return { raw, kind: "week-scope", scope: "sometime-next-week" };
 }
 
@@ -123,7 +191,8 @@ interface Rule {
 const RULES: Rule[] = [
   {
     name: "DATE",
-    regex: /^(来週のどこか|今週末|来週末|明後日|明日|今日|来週|今週)/,
+    regex:
+      /^(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}日|\d{1,2}月中|来週のどこか|今週のどこか|今週末|来週末|明後日|明日|今日|来週|今週)/,
     build: (match) => ({
       kind: "DATE",
       raw: match[0],
@@ -149,12 +218,26 @@ const RULES: Rule[] = [
     }),
   },
   {
+    name: "REST",
+    regex: /^(\d+)\s*分(?:休憩(?:して)?|休んで|休み)/,
+    build: (match) => ({
+      kind: "REST",
+      raw: match[0],
+      value: parseDuration(match[0], match[1], "分"),
+    }),
+  },
+  {
     name: "DURATION",
-    regex: /^(\d+)\s*(分|時間)/,
+    regex: /^(?:(\d+)\s*時間半|(\d+)\s*時間(\d+)\s*分|(\d+)\s*(分|時間))/,
     build: (match) => ({
       kind: "DURATION",
       raw: match[0],
-      value: parseDuration(match[0], match[1], match[2]),
+      value:
+        match[1] != null
+          ? parseDuration(match[0], match[1], "時間", true)
+          : match[2] != null
+            ? parseDuration(match[0], match[2], "時間", false, match[3])
+            : parseDuration(match[0], match[4], match[5]),
     }),
   },
   {
@@ -164,6 +247,15 @@ const RULES: Rule[] = [
       kind: "WEEKDAY",
       raw: match[0],
       value: parseWeekday(match[0], match[1]),
+    }),
+  },
+  {
+    name: "WEEKDAY_GROUP",
+    regex: /^([月火水木金土日]{2,7})(?=(?:は|の|だけ|のみ|で|に|$))/,
+    build: (match) => ({
+      kind: "WEEKDAY_GROUP",
+      raw: match[1],
+      value: parseWeekdayGroup(match[1]),
     }),
   },
   {
@@ -186,9 +278,27 @@ const RULES: Rule[] = [
   },
   {
     name: "OVERRIDE",
-    regex: /^(ただし|除く|以外)/,
+    regex: /^(ただし|除く|以外|その代わり|他の日は|他は|だけは)/,
     build: (match) => ({
       kind: "OVERRIDE",
+      raw: match[0],
+    }),
+  },
+  {
+    name: "SET_COUNT",
+    regex: /^(\d+)\s*セット/,
+    build: (match) => ({
+      kind: "SET_COUNT",
+      raw: match[0],
+      value: parseSetCount(match[0], match[1]),
+    }),
+  },
+  {
+    name: "CONTROL",
+    regex:
+      /^(?:やるようにしたい|ようにしたい|として固定して|固定して|休みにして|に変更して|にして|やりたい|したい|全部|ずつ)/,
+    build: (match) => ({
+      kind: "CONTROL",
       raw: match[0],
     }),
   },

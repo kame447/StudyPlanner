@@ -174,9 +174,6 @@ describe('natural-language adapter', () => {
       startTime: '23:00',
       endTime: '23:15',
     });
-    expect(suggestions[0].assumptions).toContain(
-      'pipeline recurrence に until が無かったため、入力文から repeatUntil を補完しました。',
-    );
   });
 
   it('複数曜日 recurring を 1 本の legacy weekday rule に変換できる', () => {
@@ -208,6 +205,72 @@ describe('natural-language adapter', () => {
       kind: 'weekday',
       weekdays: ['mon', 'wed', 'fri'],
     });
+  });
+
+  it('recurrence legacy fidelity として startDate / until / isOverride / excluded weekday をできるだけ保持できる', () => {
+    const suggestion = adaptPipelineSuggestionToLegacySuggestion(
+      {
+        rawText: '水曜だけ22時、他の日は毎日20時から21時',
+        parsedPlan: {
+          rawText: '水曜だけ22時、他の日は毎日20時から21時',
+          title: '勉強予定',
+          subject: '勉強',
+          startTime: '20:00',
+          endTime: '21:00',
+          recurrenceRules: [
+            {
+              id: 'base-rule',
+              kind: 'daily',
+              startDate: '2026-04-18',
+              until: '2026-04-30',
+              excludedWeekdays: ['wed'],
+              startTime: '20:00',
+              endTime: '21:00',
+            },
+            {
+              id: 'override-rule',
+              kind: 'weekday',
+              startDate: '2026-04-18',
+              until: '2026-04-30',
+              weekdays: ['wed'],
+              startTime: '22:00',
+              endTime: '23:00',
+              isOverride: true,
+            },
+          ],
+        },
+        assumptions: [],
+        unresolvedFields: [],
+        confidence: 0.9,
+      },
+      createInput('水曜だけ22時、他の日は毎日20時から21時', '2026-04-18'),
+    );
+
+    expect(suggestion.parsedPlan.recurrenceRules).toHaveLength(2);
+    expect(suggestion.parsedPlan.recurrenceRules[0]).toMatchObject({
+      startDate: '2026-04-18',
+      until: '2026-04-30',
+    });
+    expect(suggestion.parsedPlan.recurrenceRules[1]).toMatchObject({
+      startDate: '2026-04-18',
+      until: '2026-04-30',
+      isOverride: true,
+      weekdays: ['wed'],
+      startTime: '22:00',
+      endTime: '23:00',
+    });
+    expect(
+      suggestion.parsedPlan.recurrenceRules.some(
+        (rule) =>
+          rule.kind === 'weekday' &&
+          rule.weekdays.includes('sat') &&
+          rule.weekdays.includes('sun') &&
+          !rule.isOverride,
+      ),
+    ).toBe(true);
+    expect(suggestion.assumptions).toContain(
+      'pipeline recurrence の毎日例外を曜日列に展開して legacy 形式へ変換しました。',
+    );
   });
 
   it('relative ordering を legacy suggestion shape へ変換できる', () => {
@@ -271,6 +334,30 @@ describe('natural-language adapter', () => {
     );
 
     expect(suggestion.parsedPlan.title).toBe('情報の課題');
+  });
+
+  it('multi-event input でも local subject/type 推定を優先し、全文 fallback で他イベントへ汚染しない', () => {
+    const suggestion = adaptPipelineSuggestionToLegacySuggestion(
+      {
+        rawText: '15:00から16:00まで情報の課題',
+        parsedPlan: {
+          rawText: '15:00から16:00まで情報の課題',
+          contentText: '情報の課題',
+          startTime: '15:00',
+          endTime: '16:00',
+        },
+        assumptions: [],
+        unresolvedFields: [],
+        confidence: 0.9,
+      },
+      createInput(
+        '土日は朝9時から2時間、共通テストの過去問演習。15時から16時まで情報の課題。',
+        '2026-04-18',
+      ),
+    );
+
+    expect(suggestion.parsedPlan.subject).toBe('情報');
+    expect(suggestion.parsedPlan.type).toBe('study');
   });
 
   it('recurring な既存予定の edit では recurrence を維持したまま title/time だけ変更できる', () => {
@@ -365,5 +452,67 @@ describe('natural-language adapter', () => {
     expect(suggestion.assumptions).toContain(
       'recurrence 情報の変更が無かったため、既存の recurring baseline を維持したまま差分だけ適用しました。',
     );
+  });
+
+  it('recurrence fidelity として startDate / until / override を representative date と矛盾なく保持できる', () => {
+    const suggestion = adaptPipelineSuggestionToLegacySuggestion(
+      {
+        rawText: '火曜だけ6時半から30分、金曜だけ6時半から30分、他は4月中の平日7時から30分',
+        parsedPlan: {
+          rawText: '火曜だけ6時半から30分、金曜だけ6時半から30分、他は4月中の平日7時から30分',
+          title: '英語',
+          subject: '英語',
+          date: '2026-04-18',
+          recurrenceRules: [
+            {
+              id: 'base-rule',
+              kind: 'day-type',
+              startDate: '2026-04-18',
+              until: '2026-04-30',
+              dayType: 'weekday',
+              excludedWeekdays: ['tue', 'fri'],
+              startTime: '07:00',
+              endTime: '07:30',
+            },
+            {
+              id: 'override-tue',
+              kind: 'weekday',
+              startDate: '2026-04-18',
+              until: '2026-04-30',
+              weekdays: ['tue'],
+              startTime: '06:30',
+              endTime: '07:00',
+              isOverride: true,
+            },
+            {
+              id: 'override-fri',
+              kind: 'weekday',
+              startDate: '2026-04-18',
+              until: '2026-04-30',
+              weekdays: ['fri'],
+              startTime: '06:30',
+              endTime: '07:00',
+              isOverride: true,
+            },
+          ],
+        },
+        assumptions: [],
+        unresolvedFields: [],
+        confidence: 0.9,
+      },
+      createInput(
+        '火曜だけ6時半から30分、金曜だけ6時半から30分、他は4月中の平日7時から30分',
+        '2026-04-18',
+      ),
+    );
+
+    expect(suggestion.parsedPlan.date).toBe('2026-04-20');
+    expect(suggestion.parsedPlan.recurrenceRules).toHaveLength(3);
+    expect(
+      suggestion.parsedPlan.recurrenceRules.filter((rule) => rule.isOverride).map((rule) => rule.weekdays[0]).sort(),
+    ).toEqual(['fri', 'tue']);
+    expect(
+      suggestion.parsedPlan.recurrenceRules.every((rule) => rule.until === '2026-04-30'),
+    ).toBe(true);
   });
 });

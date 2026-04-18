@@ -22,11 +22,36 @@ function hasAnyStructuredEventSignal(tokens: Token[]): boolean {
       token.kind === "TIME" ||
       token.kind === "TIME_RANGE" ||
       token.kind === "DURATION" ||
+      token.kind === "SET_COUNT" ||
       token.kind === "REPEAT" ||
       token.kind === "WEEKDAY" ||
+      token.kind === "WEEKDAY_GROUP" ||
       token.kind === "DAYTYPE" ||
       token.kind === "CONNECTIVE"
   );
+}
+
+function contentParts(tokens: Token[]): string[] {
+  return tokens
+    .filter((token) => token.kind === "CONTENT")
+    .map((token) => token.raw.trim())
+    .filter((value) => value.length > 0);
+}
+
+function isScaffoldContent(text: string): boolean {
+  return /^(?:は|を|に|で|が|の|と|から|まで|だけ|のみ|へ|より|日|曜日)+$/.test(
+    text.replace(/\s+/g, ""),
+  );
+}
+
+function hasMeaningfulContent(tokens: Token[]): boolean {
+  const parts = contentParts(tokens);
+
+  if (parts.length === 0) {
+    return false;
+  }
+
+  return parts.some((part) => !isScaffoldContent(part));
 }
 
 function isBreakLikeInstructionClause(segment: string, tokens: Token[]): boolean {
@@ -36,18 +61,65 @@ function isBreakLikeInstructionClause(segment: string, tokens: Token[]): boolean
     hasToken(tokens, "TIME_RANGE") ||
     hasToken(tokens, "REPEAT") ||
     hasToken(tokens, "WEEKDAY") ||
+    hasToken(tokens, "WEEKDAY_GROUP") ||
     hasToken(tokens, "DAYTYPE") ||
     hasToken(tokens, "OVERRIDE");
 
-  if (hasBlockingStructuredSignal || !hasToken(tokens, "DURATION")) {
+  if (
+    hasBlockingStructuredSignal ||
+    !(hasToken(tokens, "DURATION") || hasToken(tokens, "REST"))
+  ) {
     return false;
   }
 
   return /休憩|休ん|休み|休息|ブレイク/.test(segment);
 }
 
-function isOverrideClause(tokens: Token[]): boolean {
-  return hasToken(tokens, "OVERRIDE");
+function hasOtherDaysCue(tokens: Token[]): boolean {
+  return tokens.some(
+    (token) => token.kind === "OVERRIDE" && /^(?:他の日は|他は)$/.test(token.raw),
+  );
+}
+
+function isImplicitOverrideClause(segment: string, tokens: Token[]): boolean {
+  if (hasToken(tokens, "OVERRIDE")) {
+    return false;
+  }
+
+  if (hasToken(tokens, "REPEAT") || hasToken(tokens, "DAYTYPE")) {
+    return false;
+  }
+
+  if (
+    !(hasToken(tokens, "WEEKDAY") || hasToken(tokens, "WEEKDAY_GROUP")) ||
+    !(hasToken(tokens, "TIME") || hasToken(tokens, "TIME_RANGE") || hasToken(tokens, "DURATION"))
+  ) {
+    return false;
+  }
+
+  return /(?:だけ|のみ)/.test(segment.replace(/\s+/g, ""));
+}
+
+function isReverseOrderBaseClause(tokens: Token[]): boolean {
+  if (!hasOtherDaysCue(tokens)) {
+    return false;
+  }
+
+  return (
+    hasToken(tokens, "REPEAT") ||
+    hasToken(tokens, "DAYTYPE") ||
+    hasToken(tokens, "TIME") ||
+    hasToken(tokens, "TIME_RANGE") ||
+    hasToken(tokens, "DURATION")
+  );
+}
+
+function isOverrideClause(segment: string, tokens: Token[]): boolean {
+  if (isReverseOrderBaseClause(tokens)) {
+    return false;
+  }
+
+  return hasToken(tokens, "OVERRIDE") || isImplicitOverrideClause(segment, tokens);
 }
 
 function isEnumerationClause(segment: string): boolean {
@@ -63,20 +135,38 @@ function isEnumerationBaseClause(segment: string): boolean {
 }
 
 function isTimeOnlyClause(segment: string, tokens: Token[]): boolean {
-  const hasTime = hasToken(tokens, "TIME") || hasToken(tokens, "TIME_RANGE");
+  const hasTimeOrDuration =
+    hasToken(tokens, "TIME") ||
+    hasToken(tokens, "TIME_RANGE") ||
+    hasToken(tokens, "DURATION");
   const hasOtherStructuredSignal =
     hasToken(tokens, "DATE") ||
-    hasToken(tokens, "DURATION") ||
     hasToken(tokens, "REPEAT") ||
     hasToken(tokens, "WEEKDAY") ||
+    hasToken(tokens, "WEEKDAY_GROUP") ||
     hasToken(tokens, "DAYTYPE") ||
     hasToken(tokens, "OVERRIDE");
 
-  if (!hasTime || hasOtherStructuredSignal) {
+  if (!hasTimeOrDuration || hasOtherStructuredSignal) {
     return false;
   }
 
   const compact = segment.replace(/\s+/g, "");
+
+  if (
+    /^(?:時間は?|時刻は?|開始は?|開始時刻は?)?\d{1,2}:\d{2}(?:(?:-|から)\d{1,2}:\d{2})?(?:で)?$/.test(
+      compact
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    !hasMeaningfulContent(tokens) &&
+    /(?:\d{1,2}:\d{2}|\d+\s*(?:分|時間|時間半))/.test(compact)
+  ) {
+    return true;
+  }
 
   return /^(?:時間は?|時刻は?|開始は?|開始時刻は?)?\d{1,2}:\d{2}(?:(?:-|から)\d{1,2}:\d{2})?(?:で)?$/.test(
     compact
@@ -100,8 +190,26 @@ function startsNewExplicitTimedClause(segment: string): boolean {
     firstStructuredToken?.kind === "DATE" ||
     firstStructuredToken?.kind === "TIME" ||
     firstStructuredToken?.kind === "TIME_RANGE" ||
-    firstStructuredToken?.kind === "CONNECTIVE"
+    firstStructuredToken?.kind === "CONNECTIVE" ||
+    (firstStructuredToken?.kind === "OVERRIDE" && isReverseOrderBaseClause(tokens))
   );
+}
+
+function isScopeOnlySegment(segment: string): boolean {
+  const tokens = tokenize(segment);
+  const hasScopeSignal =
+    hasToken(tokens, "DATE") ||
+    hasToken(tokens, "WEEKDAY") ||
+    hasToken(tokens, "WEEKDAY_GROUP") ||
+    hasToken(tokens, "DAYTYPE") ||
+    hasToken(tokens, "REPEAT");
+  const hasTimeSignal =
+    hasToken(tokens, "TIME") ||
+    hasToken(tokens, "TIME_RANGE") ||
+    hasToken(tokens, "DURATION") ||
+    hasToken(tokens, "REST");
+
+  return hasScopeSignal && !hasTimeSignal && !hasMeaningfulContent(tokens);
 }
 
 function splitSentenceIntoSegments(sentence: string): string[] {
@@ -124,9 +232,16 @@ function splitSentenceIntoSegments(sentence: string): string[] {
     }
 
     const tokens = tokenize(part);
+    if (isScopeOnlySegment(current) && startsNewExplicitTimedClause(part)) {
+      current = `${current}、${part}`;
+      continue;
+    }
+
     if (
       startsNewExplicitTimedClause(part) ||
-      isBreakLikeInstructionClause(part, tokens)
+      isBreakLikeInstructionClause(part, tokens) ||
+      isTimeOnlyClause(part, tokens) ||
+      isScheduleControlClause(part, tokens)
     ) {
       segments.push(current);
       current = part;
@@ -171,7 +286,61 @@ function isSupplementInstructionClause(segment: string, tokens: Token[]): boolea
     return true;
   }
 
+  if (
+    /(合計\d+(?:分|時間)|やりたい|したい|割り振って)/.test(compact) &&
+    !hasToken(tokens, "TIME") &&
+    !hasToken(tokens, "TIME_RANGE")
+  ) {
+    return true;
+  }
+
   return false;
+}
+
+function isScheduleControlClause(segment: string, tokens: Token[]): boolean {
+  const compact = segment.replace(/\s+/g, "");
+  const hasDateOrRecurrenceSignal =
+    hasToken(tokens, "DATE") ||
+    hasToken(tokens, "REPEAT") ||
+    hasToken(tokens, "WEEKDAY") ||
+    hasToken(tokens, "WEEKDAY_GROUP") ||
+    hasToken(tokens, "DAYTYPE") ||
+    hasToken(tokens, "OVERRIDE");
+  const hasTimeSignal =
+    hasToken(tokens, "TIME") ||
+    hasToken(tokens, "TIME_RANGE") ||
+    hasToken(tokens, "DURATION") ||
+    hasToken(tokens, "REST");
+
+  if (
+    !hasToken(tokens, "CONTROL") &&
+    !hasToken(tokens, "SET_COUNT") &&
+    !hasOtherDaysCue(tokens)
+  ) {
+    return false;
+  }
+
+  if (
+    !hasMeaningfulContent(tokens) &&
+    (hasToken(tokens, "TIME") ||
+      hasToken(tokens, "TIME_RANGE") ||
+      hasToken(tokens, "DURATION") ||
+      hasToken(tokens, "REST"))
+  ) {
+    return true;
+  }
+
+  if (hasToken(tokens, "SET_COUNT") && !hasDateOrRecurrenceSignal && !hasTimeSignal) {
+    return true;
+  }
+
+  if (hasToken(tokens, "CONTROL") && !hasDateOrRecurrenceSignal && !hasTimeSignal) {
+    return true;
+  }
+
+  return /^(?:全部|ずつ|ようにしたい|やるようにしたい|にして|固定して|休みにして|やりたい|したい)+$/.test(
+    compact,
+  );
 }
 
 function isInstructionClause(segment: string, tokens: Token[]): boolean {
@@ -180,6 +349,10 @@ function isInstructionClause(segment: string, tokens: Token[]): boolean {
   }
 
   if (isSupplementInstructionClause(segment, tokens)) {
+    return true;
+  }
+
+  if (isScheduleControlClause(segment, tokens)) {
     return true;
   }
 
@@ -201,7 +374,7 @@ function isInstructionClause(segment: string, tokens: Token[]): boolean {
 function classifySegment(segment: string, sentenceIndex: number): ClauseNode {
   const tokens = tokenize(segment);
 
-  if (isOverrideClause(tokens)) {
+  if (isOverrideClause(segment, tokens)) {
     return { kind: "OverrideClause", tokens, spanText: segment, sentenceIndex };
   }
 

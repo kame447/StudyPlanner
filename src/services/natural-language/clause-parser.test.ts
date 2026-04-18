@@ -38,6 +38,25 @@ describe("parseClauses", () => {
     expect(clauses[0].spanText).toContain("現代文");
   });
 
+  it("scope-only な日付句は後続の明示時間ブロックへ結合し、standalone event にしない", () => {
+    const clauses = parseClauses("今週の土曜日、9時から11時まで数学");
+
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0].kind).toBe("EventClause");
+    expect(clauses[0].spanText).toContain("今週の土曜日");
+    expect(clauses[0].spanText).toContain("09:00から11:00まで数学");
+  });
+
+  it("enumeration の後ろにある time-only scope は別 clause に分けて attach 可能にする", () => {
+    const clauses = parseClauses(
+      "1回は長文、1回は単語、もう1回は文法で、全部20時から1時間"
+    );
+
+    expect(clauses).toHaveLength(2);
+    expect(clauses[0].kind).toBe("EnumerationClause");
+    expect(clauses[1].kind).toBe("TimeOnlyClause");
+  });
+
   it("内容は〜 の補足句は instruction として扱える", () => {
     const clauses = parseClauses(
       "4月15日の19時から21時までTOEICの勉強を入れて。内容は単語とリスニング。"
@@ -61,5 +80,24 @@ describe("parseClauses", () => {
 
     expect(clauses).toHaveLength(1);
     expect(clauses[0].kind).toBe("InstructionClause");
+  });
+
+  it("set-count を含む control 句は直前イベントと分離して instruction にできる", () => {
+    const clauses = parseClauses(
+      "14時から50分勉強して10分休憩、これを3セットで数学にして"
+    );
+
+    expect(clauses).toHaveLength(2);
+    expect(clauses[0].kind).toBe("EventClause");
+    expect(clauses[0].spanText).toBe("14:00から50分勉強して10分休憩");
+    expect(clauses[1].kind).toBe("InstructionClause");
+    expect(clauses[1].spanText).toBe("これを3セットで数学にして");
+  });
+
+  it("意味のある内容を含む time + control 句は time-only に落とさない", () => {
+    const clauses = parseClauses("英語を20時開始にして");
+
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0].kind).toBe("EventClause");
   });
 });

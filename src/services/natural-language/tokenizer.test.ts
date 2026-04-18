@@ -132,4 +132,15 @@ describe("tokenize", () => {
       },
     });
   });
+
+  it("休憩トークンは DURATION より先に REST として取れる", () => {
+    const tokens = tokenize("14時から50分勉強して10分休憩");
+
+    expect(tokens.some((token) => token.kind === "REST")).toBe(true);
+    expect(tokens.find((token) => token.kind === "REST")).toMatchObject({
+      kind: "REST",
+      raw: "10分休憩",
+      value: { raw: "10分休憩", minutes: 10 },
+    });
+  });
 });

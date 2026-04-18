@@ -13,15 +13,18 @@ describe("buildAST", () => {
     expect(ast.groups[0].base.durationSpec?.minutes).toBe(15);
 
     expect(ast.groups[0].attachments).toHaveLength(1);
-    expect(ast.groups[0].attachments[0]).toMatchObject({
+    const attachment = ast.groups[0].attachments[0];
+    expect(attachment).toMatchObject({
       kind: "AttachedTime",
       target: "nearest-event",
       rawText: "時間は23:00で",
     });
 
+    expect(attachment.kind).toBe("AttachedTime");
+    const attachedTime = attachment.kind === "AttachedTime" ? attachment.time : undefined;
     expect(
-      "hm" in ast.groups[0].attachments[0].time
-        ? ast.groups[0].attachments[0].time.hm
+      attachedTime && "hm" in attachedTime
+        ? attachedTime.hm
         : null
     ).toBe("23:00");
   });
@@ -137,8 +140,93 @@ describe("buildAST", () => {
     );
     const ast = buildAST(clauses);
 
-    expect(ast.groups[0].base.contentText).toBe("寝る前にDUO3.0");
-    expect(ast.groups[1].base.contentText).toBe("学校ワークAを進める");
+    expect(ast.groups[0].base.contentText).toBe("DUO3.0");
+    expect(ast.groups[1].base.contentText).toBe("学校ワークA");
     expect(ast.groups[2].base.contentText).toBe("期末レポートの考察を書く");
+  });
+
+  it("set-count を含む control instruction を直前イベントへ attach できる", () => {
+    const clauses = parseClauses(
+      "14時から50分勉強して10分休憩、これを3セットで数学にして"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.durationSpec?.minutes).toBe(50);
+    expect(ast.groups[0].base.restDurationSpec?.minutes).toBe(10);
+    expect(ast.groups[0].attachments).toHaveLength(1);
+    expect(ast.groups[0].attachments[0]).toMatchObject({
+      kind: "AttachedControl",
+      setCount: 3,
+      contentText: "数学",
+    });
+  });
+
+  it("content span extraction で control phrase や recurrence cue を本文へ漏らさない", () => {
+    const clauses = parseClauses(
+      "平日7時から30分、これを3セットで学校ワークAにして"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.contentText).toBeUndefined();
+    expect(ast.groups[0].attachments).toContainEqual(
+      expect.objectContaining({
+        kind: "AttachedControl",
+        contentText: "学校ワークA",
+        setCount: 3,
+      }),
+    );
+  });
+
+  it("control cue を content span へ漏らさず、本文候補だけを残せる", () => {
+    const clauses = parseClauses(
+      "14時から50分勉強して10分休憩。全部学校ワークAにして"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.contentText).toBe("勉強");
+    expect(ast.groups[0].attachments).toContainEqual(
+      expect.objectContaining({
+        kind: "AttachedControl",
+        contentText: "学校ワークA",
+      }),
+    );
+  });
+
+  it("recurrence cue や override cue を含む reverse-order base でも本文だけを残せる", () => {
+    const clauses = parseClauses(
+      "水曜だけ22時、他の日は毎日20時から21時で勉強予定を入れて"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.contentText).toBe("勉強予定");
+    expect(ast.groups[0].base.contentText).not.toContain("他の日は");
+    expect(ast.groups[0].base.contentText).not.toContain("毎日");
+  });
+
+  it("clean に取れない control-only span は unsafe content として採用しない", () => {
+    const clauses = parseClauses("毎日20時から30分、全部ずつにして");
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.contentText).toBeUndefined();
+    expect(ast.groups[0].attachments).toHaveLength(0);
+  });
+
+  it("reverse-order override は pending override として保持し、後続 base へぶら下げられる", () => {
+    const clauses = parseClauses(
+      "水曜だけ22時、他の日は毎日20時から21時で勉強予定を入れて"
+    );
+    const ast = buildAST(clauses);
+
+    expect(ast.groups).toHaveLength(1);
+    expect(ast.groups[0].base.rawText).toContain("他の日は");
+    expect(ast.groups[0].overrides).toHaveLength(1);
+    expect(ast.groups[0].overrides[0].weekdaySpecs?.map((weekday) => weekday.weekday)).toEqual([
+      "wed",
+    ]);
   });
 });

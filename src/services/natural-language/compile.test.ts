@@ -210,4 +210,81 @@ describe("compileToSuggestions", () => {
       "統計学小テストの見直し",
     ]);
   });
+
+  it("set-count を generic loop expansion として concrete suggestions に展開できる", () => {
+    const clauses = parseClauses(
+      "14時から50分勉強して10分休憩、これを3セットで数学にして"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-18" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "数学",
+      "数学",
+      "数学",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.startTime)).toEqual([
+      "14:00",
+      "15:00",
+      "16:00",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.endTime)).toEqual([
+      "14:50",
+      "15:50",
+      "16:50",
+    ]);
+    expect(
+      suggestions.every((suggestion) =>
+        suggestion.assumptions.includes("loop expanded from set count"),
+      ),
+    ).toBe(true);
+  });
+
+  it("reverse-order override を base recurrence と override recurrence に compile できる", () => {
+    const clauses = parseClauses(
+      "水曜だけ22時、他の日は毎日20時から21時で勉強予定を入れて"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-18" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "daily",
+      excludedWeekdays: ["wed"],
+      startTime: "20:00",
+      endTime: "21:00",
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["wed"],
+      startTime: "22:00",
+      endTime: "23:00",
+    });
+  });
+
+  it("set-count と enumeration / recurrence が共存する場合は未展開のまま assumptions に残せる", () => {
+    const clauses = parseClauses(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法で、これを2セット"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+    const suggestions = compileToSuggestions(ir);
+
+    expect(suggestions).toHaveLength(3);
+    expect(
+      suggestions.every((suggestion) =>
+        suggestion.assumptions.includes(
+          "set-count は recurrence / override / enumeration と競合するため未展開のまま保持しました",
+        ),
+      ),
+    ).toBe(true);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "長文",
+      "単語",
+      "文法",
+    ]);
+  });
 });

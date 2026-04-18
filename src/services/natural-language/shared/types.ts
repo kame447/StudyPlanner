@@ -42,6 +42,21 @@ export interface RelativeDaySpec {
   offsetDays: number;
 }
 
+export interface ExplicitDateSpec {
+  raw: string;
+  kind: "explicit-date";
+  year?: number;
+  month: number;
+  day: number;
+}
+
+export interface MonthScopeSpec {
+  raw: string;
+  kind: "month-scope";
+  year?: number;
+  month: number;
+}
+
 export interface WeekScopeSpec {
   raw: string;
   kind: "week-scope";
@@ -50,10 +65,25 @@ export interface WeekScopeSpec {
     | "next-week"
     | "this-weekend"
     | "next-weekend"
+    | "sometime-this-week"
     | "sometime-next-week";
 }
 
-export type DateSpec = RelativeDaySpec | WeekScopeSpec;
+export type DateSpec =
+  | RelativeDaySpec
+  | ExplicitDateSpec
+  | MonthScopeSpec
+  | WeekScopeSpec;
+
+export interface WeekdayGroupSpec {
+  raw: string;
+  weekdays: Weekday[];
+}
+
+export interface SetCountSpec {
+  raw: string;
+  count: number;
+}
 
 export type Token =
   | { kind: "DATE"; raw: string; value: DateSpec }
@@ -61,8 +91,12 @@ export type Token =
   | { kind: "TIME_RANGE"; raw: string; value: TimeRangeSpec }
   | { kind: "DURATION"; raw: string; value: DurationSpec }
   | { kind: "WEEKDAY"; raw: string; value: WeekdaySpec }
+  | { kind: "WEEKDAY_GROUP"; raw: string; value: WeekdayGroupSpec }
   | { kind: "DAYTYPE"; raw: string; value: DayTypeSpec }
   | { kind: "REPEAT"; raw: string; value: RepeatSpec }
+  | { kind: "SET_COUNT"; raw: string; value: SetCountSpec }
+  | { kind: "CONTROL"; raw: string }
+  | { kind: "REST"; raw: string; value: DurationSpec }
   | { kind: "OVERRIDE"; raw: string }
   | { kind: "CONNECTIVE"; raw: string }
   | { kind: "CONTENT"; raw: string };
@@ -80,6 +114,8 @@ export interface BaseScheduleNode {
   dateSpec?: DateSpec;
   timeSpec?: TimeSpec | TimeRangeSpec;
   durationSpec?: DurationSpec;
+  restDurationSpec?: DurationSpec;
+  setCount?: number;
   repeatSpec?: RepeatSpec;
   dayTypeSpec?: DayTypeSpec;
   weekdaySpecs?: WeekdaySpec[];
@@ -97,7 +133,14 @@ export interface OverrideScheduleNode {
 export type AttachmentNode = {
   kind: "AttachedTime";
   target: "nearest-event";
-  time: TimeSpec | TimeRangeSpec;
+  time?: TimeSpec | TimeRangeSpec;
+  durationSpec?: DurationSpec;
+  rawText: string;
+} | {
+  kind: "AttachedControl";
+  target: "nearest-event";
+  setCount?: number;
+  contentText?: string;
   rawText: string;
 };
 
@@ -150,6 +193,8 @@ export interface NormalizedPlanIntent {
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
+  restDurationMinutes?: number;
+  setCount?: number;
   repeatSpec?: RepeatSpec;
   dayType?: "weekday" | "weekend";
   weekdays?: Weekday[];
@@ -193,6 +238,8 @@ export interface NormalizedEnumerationIntent {
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
+  restDurationMinutes?: number;
+  setCount?: number;
   repeatSpec?: RepeatSpec;
   dayType?: "weekday" | "weekend";
   weekdays?: Weekday[];

@@ -254,6 +254,21 @@ function convertPipelineRuleToLegacyShape(
   }
 
   if (rule.kind === "weekday") {
+    if (rule.excludedWeekdays?.length) {
+      assumptions.push(
+        "pipeline recurrence の曜日例外を曜日列から差し引いて legacy 形式へ変換しました。",
+      );
+      return {
+        kind: "weekday",
+        dayType: null,
+        weekdays: toLegacyWeekdays(
+          subtractWeekdays(rule.weekdays ?? [], rule.excludedWeekdays),
+        ),
+        dates: [],
+        assumptions,
+      };
+    }
+
     return {
       kind: "weekday",
       dayType: null,
@@ -345,7 +360,7 @@ function buildLegacyRecurrencePayload(
   assumptions: string[];
 } {
   const parsedRules = suggestion.parsedPlan.recurrenceRules ?? [];
-  const anchorDate = suggestion.parsedPlan.date ?? fallbackDate;
+  const anchorDate = input.selectedDate || suggestion.parsedPlan.date || fallbackDate;
   const startTime = suggestion.parsedPlan.startTime ?? "";
   const endTime = suggestion.parsedPlan.endTime ?? "";
   const inferredUntil = parseRepeatUntilFromText(suggestion.rawText, anchorDate);
@@ -447,41 +462,80 @@ function isPlanType(value: unknown): value is PlanType {
   );
 }
 
+function normalizeInferenceText(value: string): string {
+  return value.replace(/\s+/g, "");
+}
+
+function collectSuggestionLocalTexts(
+  suggestion: PipelineSuggestion,
+): string[] {
+  return [
+    suggestion.parsedPlan.title,
+    suggestion.parsedPlan.subject,
+    suggestion.parsedPlan.contentText,
+    suggestion.rawText,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function shouldUseInputWideFallback(
+  suggestion: PipelineSuggestion,
+  input: SuggestionInput,
+): boolean {
+  const normalizedInput = normalizeInferenceText(input.text);
+  const normalizedRaw = normalizeInferenceText(suggestion.rawText);
+
+  if (normalizedInput.length === 0 || normalizedRaw.length === 0) {
+    return false;
+  }
+
+  if (normalizedInput === normalizedRaw) {
+    return true;
+  }
+
+  const hasMultiEventCue =
+    /[。;\n]/.test(input.text) ||
+    (input.text.match(/\d{1,2}(?::\d{2}|時)/g)?.length ?? 0) > 1;
+
+  return !hasMultiEventCue;
+}
+
 function inferLegacyType(
   suggestion: PipelineSuggestion,
   input: SuggestionInput,
 ): PlanType {
-  return detectType(
-    [
-      suggestion.parsedPlan.title,
-      suggestion.parsedPlan.subject,
-      suggestion.parsedPlan.contentText,
-      suggestion.rawText,
-      input.text,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
+  const localSource = collectSuggestionLocalTexts(suggestion).join(" ");
+  const localType = detectType(localSource);
+
+  if (localType !== "study" || localSource.trim().length > 0) {
+    return localType;
+  }
+
+  if (shouldUseInputWideFallback(suggestion, input)) {
+    return detectType(input.text);
+  }
+
+  return "study";
 }
 
 function inferLegacySubject(
   suggestion: PipelineSuggestion,
   input: SuggestionInput,
 ): string {
-  return (
-    suggestion.parsedPlan.subject ||
-    detectSubject(
-      [
-        suggestion.parsedPlan.title,
-        suggestion.parsedPlan.contentText,
-        suggestion.rawText,
-        input.text,
-      ]
-        .filter(Boolean)
-        .join(" "),
-    ) ||
-    ""
-  );
+  if (suggestion.parsedPlan.subject) {
+    return suggestion.parsedPlan.subject;
+  }
+
+  const localSubject = detectSubject(collectSuggestionLocalTexts(suggestion).join(" "));
+
+  if (localSubject) {
+    return localSubject;
+  }
+
+  if (shouldUseInputWideFallback(suggestion, input)) {
+    return detectSubject(input.text) || "";
+  }
+
+  return "";
 }
 
 function inferLegacyTitle(
