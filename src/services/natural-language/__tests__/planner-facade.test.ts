@@ -260,6 +260,12 @@ describe('naturalLanguagePlanner facade', () => {
     ).toBe(true);
 
     expect(
+      planner.shouldUseAiAssist(createAddInput('来週英語を3回入れて'), {
+        suggestions: [createMockSuggestion('pipeline')],
+      }),
+    ).toBe(true);
+
+    expect(
       planner.shouldUseAiAssist(createAddInput('明日19時から数学を1時間'), {
         suggestions: [
           createMockSuggestion('pipeline', {

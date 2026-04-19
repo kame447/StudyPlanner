@@ -226,6 +226,39 @@ export interface NormalizedPlanIntent {
   unresolvedFields: UnresolvedField[];
 }
 
+export type PlanningIntentKind =
+  | "grouped-allocation"
+  | "count-limited-recurrence"
+  | "non-overlap";
+
+export interface PlanningIntentTask {
+  title?: string;
+  subject?: string;
+  type?: string;
+  totalMinutes?: number;
+  sessionCount?: number;
+  sessionMinutes?: number;
+  preferredStartTime?: string;
+  preferredEndTime?: string;
+}
+
+export interface PlanningIntentWindow {
+  startDate?: string;
+  endDate?: string;
+  weekdays?: Weekday[];
+  excludedWeekdays?: Weekday[];
+}
+
+export interface PlanningIntent {
+  kind: PlanningIntentKind;
+  rawText: string;
+  tasks: PlanningIntentTask[];
+  window: PlanningIntentWindow;
+  nonOverlap: boolean;
+  assumptions: string[];
+  unresolvedFields: UnresolvedField[];
+}
+
 export interface NormalizedOverrideIntent {
   rawText: string;
   date?: string;

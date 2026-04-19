@@ -87,6 +87,7 @@ export { buildAST } from "./build-ast";
 export { lowerToIR } from "./lower-ir";
 export { compileToSuggestions } from "./compile";
 export { validateAndDedupe } from "./validate";
+export { allocatePlanningIntent } from "./plan-allocation";
 
 export type {
   AttachmentNode,
@@ -103,6 +104,10 @@ export type {
   NormalizedSequencedIntent,
   OverrideScheduleNode,
   PipelineOptions,
+  PlanningIntent,
+  PlanningIntentKind,
+  PlanningIntentTask,
+  PlanningIntentWindow,
   PlanDraft,
   RecurrenceRule,
   RelativeDaySpec,

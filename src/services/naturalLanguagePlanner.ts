@@ -44,6 +44,15 @@ import {
   runRulesPipelineWithAdapter,
   type AdaptedRulesPipelineResult,
 } from './natural-language/adapter';
+import { allocatePlanningIntent } from './natural-language/plan-allocation';
+import type {
+  PlanningIntent,
+  PlanningIntentKind,
+  PlanningIntentTask,
+  PlanningIntentWindow,
+  UnresolvedField,
+  Weekday,
+} from './natural-language/shared/types';
 
 interface PlannerExtraction {
   matchedPlanId?: string | null;
@@ -66,6 +75,33 @@ interface BatchPlannerExtraction extends PlannerExtraction {
 
 interface BatchPlannerExtractionResponse {
   tasks: BatchPlannerExtraction[];
+}
+
+interface PlanningIntentTaskExtraction {
+  title?: string | null;
+  subject?: string | null;
+  type?: PlanType | null;
+  totalMinutes?: number | null;
+  sessionCount?: number | null;
+  sessionMinutes?: number | null;
+  preferredStartTime?: string | null;
+  preferredEndTime?: string | null;
+}
+
+interface PlanningIntentWindowExtraction {
+  startDate?: string | null;
+  endDate?: string | null;
+  weekdays?: Weekday[] | null;
+  excludedWeekdays?: Weekday[] | null;
+}
+
+interface PlanningIntentExtractionResponse {
+  kind?: PlanningIntentKind | null;
+  tasks?: PlanningIntentTaskExtraction[] | null;
+  window?: PlanningIntentWindowExtraction | null;
+  nonOverlap?: boolean | null;
+  assumptions?: string[] | null;
+  unresolvedFields?: string[] | null;
 }
 
 interface TimeResolutionResult {
@@ -232,6 +268,115 @@ const BATCH_EXTRACTION_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
                 },
               },
             },
+          },
+        },
+      },
+    },
+  },
+};
+
+const PLANNING_INTENT_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'planning_intent_extraction',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'kind',
+        'tasks',
+        'window',
+        'nonOverlap',
+        'assumptions',
+        'unresolvedFields',
+      ],
+      properties: {
+        kind: {
+          type: ['string', 'null'],
+          enum: [
+            'grouped-allocation',
+            'count-limited-recurrence',
+            'non-overlap',
+            null,
+          ],
+        },
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'title',
+              'subject',
+              'type',
+              'totalMinutes',
+              'sessionCount',
+              'sessionMinutes',
+              'preferredStartTime',
+              'preferredEndTime',
+            ],
+            properties: {
+              title: { type: ['string', 'null'] },
+              subject: { type: ['string', 'null'] },
+              type: {
+                type: ['string', 'null'],
+                enum: [
+                  'study',
+                  'mock-exam',
+                  'school-event',
+                  'cram-school',
+                  'deadline',
+                  'other',
+                  null,
+                ],
+              },
+              totalMinutes: { type: ['number', 'null'] },
+              sessionCount: { type: ['number', 'null'] },
+              sessionMinutes: { type: ['number', 'null'] },
+              preferredStartTime: { type: ['string', 'null'] },
+              preferredEndTime: { type: ['string', 'null'] },
+            },
+          },
+        },
+        window: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'startDate',
+            'endDate',
+            'weekdays',
+            'excludedWeekdays',
+          ],
+          properties: {
+            startDate: { type: ['string', 'null'] },
+            endDate: { type: ['string', 'null'] },
+            weekdays: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+              },
+            },
+            excludedWeekdays: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+              },
+            },
+          },
+        },
+        nonOverlap: { type: ['boolean', 'null'] },
+        assumptions: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        unresolvedFields: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['date', 'startTime', 'endTime', 'subject', 'title', 'type'],
           },
         },
       },
@@ -482,6 +627,154 @@ async function requestBatchPlannerExtraction(
 
   const parsedResponse = JSON.parse(jsonText) as BatchPlannerExtractionResponse;
   return normalizeBatchExtractionTasks(parsedResponse.tasks, input.text);
+}
+
+const ALLOWED_PLANNING_KINDS: PlanningIntentKind[] = [
+  'grouped-allocation',
+  'count-limited-recurrence',
+  'non-overlap',
+];
+const ALLOWED_WEEKDAYS: Weekday[] = [
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+  'sun',
+];
+const ALLOWED_PLANNING_UNRESOLVED_FIELDS: UnresolvedField[] = [
+  'date',
+  'startTime',
+  'endTime',
+  'subject',
+  'title',
+  'type',
+];
+
+function normalizePositiveNumber(value: number | null | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function normalizePlanningKind(
+  value: PlanningIntentKind | null | undefined,
+): PlanningIntentKind {
+  return value && ALLOWED_PLANNING_KINDS.includes(value)
+    ? value
+    : 'grouped-allocation';
+}
+
+function normalizeWeekdayList(values: Weekday[] | null | undefined): Weekday[] {
+  return (values ?? []).filter(
+    (value, index, array) =>
+      ALLOWED_WEEKDAYS.includes(value) && array.indexOf(value) === index,
+  );
+}
+
+function normalizePlanningTask(
+  task: PlanningIntentTaskExtraction,
+): PlanningIntentTask {
+  return {
+    title: normalizeText(task.title),
+    subject: normalizeText(task.subject),
+    type: normalizeType(task.type),
+    totalMinutes: normalizePositiveNumber(task.totalMinutes),
+    sessionCount: normalizePositiveNumber(task.sessionCount),
+    sessionMinutes: normalizePositiveNumber(task.sessionMinutes),
+    preferredStartTime: normalizeTime(task.preferredStartTime),
+    preferredEndTime: normalizeTime(task.preferredEndTime),
+  };
+}
+
+function normalizePlanningWindow(
+  window: PlanningIntentWindowExtraction | null | undefined,
+  selectedDate: string,
+): PlanningIntentWindow {
+  return {
+    startDate: normalizeDate(window?.startDate) ?? selectedDate,
+    endDate: normalizeDate(window?.endDate),
+    weekdays: normalizeWeekdayList(window?.weekdays),
+    excludedWeekdays: normalizeWeekdayList(window?.excludedWeekdays),
+  };
+}
+
+function normalizePlanningUnresolvedFields(
+  values: string[] | null | undefined,
+): UnresolvedField[] {
+  return (values ?? []).filter(
+    (value, index, array): value is UnresolvedField =>
+      ALLOWED_PLANNING_UNRESOLVED_FIELDS.includes(value as UnresolvedField) &&
+      array.indexOf(value) === index,
+  );
+}
+
+function normalizePlanningIntentResponse(
+  response: PlanningIntentExtractionResponse,
+  input: SuggestionInput,
+): PlanningIntent {
+  const tasks = (response.tasks ?? []).map(normalizePlanningTask);
+
+  return {
+    kind: normalizePlanningKind(response.kind),
+    rawText: input.text,
+    tasks,
+    window: normalizePlanningWindow(response.window, input.selectedDate),
+    nonOverlap: response.nonOverlap ?? true,
+    assumptions: (response.assumptions ?? [])
+      .map(sanitizeAssumptionText)
+      .filter(Boolean),
+    unresolvedFields: normalizePlanningUnresolvedFields(response.unresolvedFields),
+  };
+}
+
+async function requestPlanningIntentExtraction(
+  input: SuggestionInput,
+): Promise<PlanningIntent> {
+  const config = getAiConfig();
+
+  if (config.provider === 'rules') {
+    throw new Error('AI provider is disabled.');
+  }
+
+  const client = createOpenAiCompatibleClient(config);
+  const systemPrompt = [
+    'あなたは日本語の予定入力から計画意図だけを抽出する補助モジュールです。',
+    '通常の予定 suggestion は作らず、PlanningIntent JSON だけを返してください。',
+    '実際の日付選択、空き枠探索、non-overlap の割当は deterministic planner が行います。',
+    'tasks には学習対象ごとの title / subject / totalMinutes / sessionCount / sessionMinutes / preferredStartTime を入れてください。',
+    '「数学を合計10時間」は totalMinutes=600、「英語を3回」は sessionCount=3 のように数値化してください。',
+    'window は selectedDate を基準に、明示された期間だけ YYYY-MM-DD で入れてください。不明なら null ではなく selectedDate 起点で構いません。',
+    '時間は HH:mm、日付は YYYY-MM-DD だけを使ってください。',
+    '既存予定と重ならない配置が必要な場合や「毎日の予定に入れて」の場合は nonOverlap=true にしてください。',
+    'JSON以外は返さないでください。',
+  ].join('\n');
+  const userPrompt = [
+    `selectedDate: ${input.selectedDate}`,
+    `userText: ${input.text}`,
+    `existingPlansWithin14Days:\n${formatPlansForPrompt(input.plans, input.selectedDate)}`,
+  ].join('\n');
+  const rawContent = await client.createChatCompletion({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0,
+    responseFormat: PLANNING_INTENT_RESPONSE_FORMAT,
+  });
+  const jsonText = extractFirstJsonObject(rawContent);
+
+  if (!jsonText) {
+    throw new Error('Planning intent response did not include JSON.');
+  }
+
+  return normalizePlanningIntentResponse(
+    JSON.parse(jsonText) as PlanningIntentExtractionResponse,
+    input,
+  );
 }
 
 async function buildBatchedAddSuggestions(
@@ -2975,8 +3268,14 @@ const AI_ASSIST_DIAGNOSTIC_CODES = new Set([
 function hasUnsupportedPlanningFamily(text: string): boolean {
   const normalizedText = normalizeParsingText(text);
 
-  return /合計\s*\d+時間|毎日の予定|割り振|割り当て|配分|allocation|来週のどこか|今週のどこか|どこかで/.test(
-    normalizedText,
+  const allocationPattern =
+    /合計\s*\d+時間|毎日の予定|割り振|割り当て|配分|allocation|来週のどこか|今週のどこか|どこかで|重ならない|空き枠|空いているところ/;
+  const countLimitedPattern =
+    /(?:今週|来週|今月|来月).*(?:\d+|[一二三四五六七八九十]+)回|(?:\d+|[一二三四五六七八九十]+)回.*(?:今週|来週|今月|来月|どこか|予定|入れて|割り振|割り当て|配分)/;
+
+  return (
+    allocationPattern.test(normalizedText) ||
+    countLimitedPattern.test(normalizedText)
   );
 }
 
@@ -3074,6 +3373,17 @@ export async function runAiAssist(
   }
 
   try {
+    if (input.mode === 'add' && hasUnsupportedPlanningFamily(input.text)) {
+      const intent = await requestPlanningIntentExtraction(input);
+
+      return allocatePlanningIntent({
+        intent,
+        existingPlans: input.plans,
+        selectedDate: input.selectedDate,
+        userId: input.userId,
+      });
+    }
+
     const assistSuggestions =
       input.mode === 'add'
         ? postProcessAddSuggestions(
@@ -3346,6 +3656,10 @@ export async function generateNaturalLanguageSuggestions(
     }
 
     const assistSuggestions = await runAiAssist(input);
+    if (hasUnsupportedPlanningFamily(input.text) && assistSuggestions.length > 0) {
+      return assistSuggestions;
+    }
+
     return mergeAssistIntoPipelineResult(
       pipelineRun.suggestions,
       assistSuggestions,
