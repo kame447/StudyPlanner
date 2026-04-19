@@ -177,6 +177,27 @@ describe("lowerToIR", () => {
     );
   });
 
+  it("month-scope base の weekday override が base recurrence の date window を継承できる", () => {
+    const clauses = parseClauses(
+      "4月中は毎朝6時半から30分英語、その代わり土曜だけ8時から30分"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+
+    expect(ir.groups).toHaveLength(1);
+    expect(ir.groups[0].base.date).toBe("2026-04-17");
+    expect(ir.groups[0].base.untilDate).toBe("2026-04-30");
+    expect(ir.groups[0].base.excludedWeekdays).toEqual(["sat"]);
+    expect(ir.groups[0].overrideIntents).toHaveLength(1);
+    expect(ir.groups[0].overrideIntents[0].date).toBe("2026-04-18");
+    expect(ir.groups[0].overrideIntents[0].dateSpec?.kind).toBe("month-scope");
+    expect(ir.groups[0].overrideIntents[0].untilDate).toBe("2026-04-30");
+    expect(ir.groups[0].overrideIntents[0].weekdays).toEqual(["sat"]);
+    expect(ir.groups[0].overrideIntents[0].assumptions).toContain(
+      "date window inherited from base recurrence"
+    );
+  });
+
   it("enumeration を 3 つの enumeratedIntents に落とせる", () => {
     const clauses = parseClauses(
       "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法"

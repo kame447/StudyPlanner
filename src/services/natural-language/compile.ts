@@ -63,6 +63,46 @@ function inferTitle(
   return inferEventTitle(contentText, contextText);
 }
 
+function isScheduleCueHeavyTitle(title?: string): boolean {
+  if (!title) {
+    return false;
+  }
+
+  return /(?:ただし|その代わり|他の日は|他は|だけ|\d{1,2}:\d{2}|[月火水木金土日]曜)/.test(
+    title,
+  );
+}
+
+function inferOverrideTitle(
+  override: NormalizedOverrideIntent,
+  base: NormalizedPlanIntent,
+): string | undefined {
+  const title = inferTitle(override.rawText, base.contentText);
+  if (!isScheduleCueHeavyTitle(title)) {
+    return title;
+  }
+
+  return inferTitle(base.contentText) ?? title;
+}
+
+function isRestDirectiveText(text?: string): boolean {
+  if (!text) {
+    return false;
+  }
+
+  const compact = text.replace(/\s+/g, "");
+  return /(?:^|[はに])休み(?:$|にして|にする|で|。)/.test(compact);
+}
+
+function shouldSkipRestDirective(base: NormalizedPlanIntent): boolean {
+  return (
+    !base.startTime &&
+    !base.endTime &&
+    base.durationMinutes == null &&
+    (isRestDirectiveText(base.contentText) || isRestDirectiveText(base.rawText))
+  );
+}
+
 function parseIsoDate(date?: string): Date | null {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return null;
@@ -237,7 +277,7 @@ function buildOverrideDraft(
   override: NormalizedOverrideIntent,
   base: NormalizedPlanIntent
 ): PlanDraft {
-  const title = inferTitle(override.rawText, base.contentText);
+  const title = inferOverrideTitle(override, base);
   const subject = inferSubject(
     override.rawText,
     override.rawText,
@@ -379,6 +419,10 @@ function shouldRetainSetCountWithoutExpansion(group: EventGroupIR): boolean {
 }
 
 function compileGroup(group: EventGroupIR): Suggestion[] {
+  if (shouldSkipRestDirective(group.base)) {
+    return [];
+  }
+
   const suggestions: Suggestion[] = [];
   const loopedBaseSuggestions = shouldRetainSetCountWithoutExpansion(group)
     ? null

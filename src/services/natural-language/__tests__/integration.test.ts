@@ -380,6 +380,34 @@ describe("natural-language integration", () => {
     });
   });
 
+  it("daily + saturday override を month-scope date window つきで end-to-end で扱える", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "4月中は毎朝6時半から30分英語、その代わり土曜だけ8時から30分",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0].parsedPlan.title).toBe("英語");
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "daily",
+      startDate: "2026-04-17",
+      until: "2026-04-30",
+      excludedWeekdays: ["sat"],
+      startTime: "06:30",
+      endTime: "07:00",
+    });
+    expect(suggestions[1].parsedPlan.title).toBe("英語");
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["sat"],
+      startDate: "2026-04-18",
+      until: "2026-04-30",
+      startTime: "08:00",
+      endTime: "08:30",
+      isOverride: true,
+    });
+  });
+
   it("explicit until recurring を representative date / startDate / until 整合つきで end-to-end で扱える", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "4月19日まで毎日18時から20時英語",
@@ -396,6 +424,76 @@ describe("natural-language integration", () => {
       until: "2026-04-19",
       startTime: "18:00",
       endTime: "20:00",
+    });
+  });
+
+  it("曜日 family を分離しつつ sunday rest directive を event として出さない", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "月水金は数学、火木土は英語、日曜は休み",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "数学",
+      "英語",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "数学",
+      "英語",
+    ]);
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["mon", "wed", "fri"],
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["tue", "thu", "sat"],
+    });
+  });
+
+  it("複合 recurring family を混ぜずに分離できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "平日は毎朝6時半から30分英語、月水金の夜は数学、火木の夜は物理、土曜は過去問、日曜は振り返り",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(5);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "英語",
+      "数学",
+      "物理",
+      "過去問",
+      "振り返り",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "英語",
+      "数学",
+      "物理",
+      "演習",
+      "振り返り",
+    ]);
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "day-type",
+      dayType: "weekday",
+      startTime: "06:30",
+      endTime: "07:00",
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["mon", "wed", "fri"],
+    });
+    expect(suggestions[2].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["tue", "thu"],
+    });
+    expect(suggestions[3].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["sat"],
+    });
+    expect(suggestions[4].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["sun"],
     });
   });
 

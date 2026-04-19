@@ -221,6 +221,26 @@ function startsNewExplicitTimedClause(segment: string): boolean {
   );
 }
 
+function startsNewScopedEventClause(segment: string, tokens = tokenize(segment)): boolean {
+  if (
+    tokens.length === 0 ||
+    isScopeOnlySegment(segment) ||
+    isTimeOnlyClause(segment, tokens) ||
+    !hasMeaningfulContent(tokens)
+  ) {
+    return false;
+  }
+
+  const firstStructuredToken = tokens.find((token) => token.kind !== "CONTENT");
+  return (
+    firstStructuredToken?.kind === "DATE" ||
+    firstStructuredToken?.kind === "WEEKDAY" ||
+    firstStructuredToken?.kind === "WEEKDAY_GROUP" ||
+    firstStructuredToken?.kind === "DAYTYPE" ||
+    firstStructuredToken?.kind === "REPEAT"
+  );
+}
+
 function isScopeOnlySegment(segment: string): boolean {
   const tokens = tokenize(segment);
   const hasScopeSignal =
@@ -325,6 +345,7 @@ function splitSentenceIntoSegments(sentence: string): string[] {
 
     if (
       startsNewExplicitTimedClause(part) ||
+      startsNewScopedEventClause(part, tokens) ||
       isBreakLikeInstructionClause(part, tokens) ||
       isTimeOnlyClause(part, tokens) ||
       shouldSplitAsStandaloneControlSegment(part, tokens)

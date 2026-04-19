@@ -302,6 +302,23 @@ function resolveScopedDateRange(
   };
 }
 
+function deriveUntilDateFromDateSpec(
+  dateSpec: DateSpec | undefined,
+  referenceDate: Date,
+): string | undefined {
+  if (dateSpec?.kind === "month-scope") {
+    const year = dateSpec.year ?? referenceDate.getUTCFullYear();
+    return formatDate(endOfMonth(year, dateSpec.month));
+  }
+
+  if (dateSpec?.kind === "week-scope") {
+    const scopedRange = resolveScopedDateRange(dateSpec, referenceDate);
+    return scopedRange ? formatDate(scopedRange.rangeEnd) : undefined;
+  }
+
+  return undefined;
+}
+
 function hasRecurringDateContext(input: {
   repeatKind?: string;
   weekdays?: Weekday[];
@@ -575,6 +592,10 @@ function resolveDateWindow(
   return {
     date: dateInfo.date,
     dateSpec: dateInfo.dateSpec,
+    untilDate: deriveUntilDateFromDateSpec(
+      dateInfo.dateSpec,
+      lowering.referenceDate,
+    ),
     assumptions: dateInfo.assumptions,
   };
 }
@@ -666,6 +687,19 @@ function splitOverrideByWeekday(
   }));
 }
 
+function inheritedScopedDateSpec(
+  baseDateSpec?: DateSpec,
+): DateSpec | undefined {
+  if (
+    baseDateSpec?.kind === "week-scope" ||
+    baseDateSpec?.kind === "month-scope"
+  ) {
+    return baseDateSpec;
+  }
+
+  return undefined;
+}
+
 function lowerOverride(
   override: OverrideScheduleNode,
   base: NormalizedPlanIntent,
@@ -686,13 +720,23 @@ function lowerOverride(
     },
     lowering,
   );
+  const inheritedDateSpec =
+    dateInfo.dateSpec ?? inheritedScopedDateSpec(base.dateSpec);
+  const inheritedUntilDate = dateInfo.untilDate ?? base.untilDate;
+  const inheritedUntilSpec = dateInfo.untilSpec ?? base.untilSpec;
+  const inheritedAssumptions =
+    !dateInfo.untilDate &&
+    !dateInfo.dateSpec &&
+    (inheritedDateSpec || inheritedUntilDate)
+      ? ["date window inherited from base recurrence"]
+      : [];
 
   return {
     rawText: override.rawText,
     date: dateInfo.date,
-    dateSpec: dateInfo.dateSpec,
-    untilDate: dateInfo.untilDate,
-    untilSpec: dateInfo.untilSpec,
+    dateSpec: inheritedDateSpec,
+    untilDate: inheritedUntilDate,
+    untilSpec: inheritedUntilSpec,
     dayType: override.dayTypeSpec?.dayType,
     weekdays,
     startTime: timeInfo.startTime,
@@ -700,6 +744,7 @@ function lowerOverride(
     durationMinutes,
     assumptions: [
       ...dateInfo.assumptions,
+      ...inheritedAssumptions,
       ...(override.replaceDurationSpec == null && base.durationMinutes != null
         ? ["duration inherited from base"]
         : []),
