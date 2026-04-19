@@ -86,7 +86,7 @@ describe("natural-language integration", () => {
     expect(suggestions).toHaveLength(3);
     expect(
       suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.title)
-    ).toEqual(["長文", "単語", "文法"]);
+    ).toEqual(["英語長文", "単語", "英文法"]);
     expect(
       suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
     ).toEqual(["英語", "英語", "英語"]);
@@ -156,6 +156,9 @@ describe("natural-language integration", () => {
       "2026-04-18",
       "2026-04-18",
     ]);
+    expect(
+      suggestions.every((suggestion) => !suggestion.parsedPlan.recurrenceRules)
+    ).toBe(true);
   });
 
   it("mixed connective sentence でも shared date head を後続 block に継承できる", () => {
@@ -213,6 +216,11 @@ describe("natural-language integration", () => {
       "英語",
       "数学",
       "国語",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.date)).toEqual([
+      "2026-04-13",
+      "2026-04-13",
+      "2026-04-13",
     ]);
     expect(suggestions.some((suggestion) => suggestion.parsedPlan.title === "まで青チャート")).toBe(
       false
@@ -452,6 +460,40 @@ describe("natural-language integration", () => {
     });
   });
 
+  it("weekday overnight range を単発 event として扱い weekly_sat_sun にしない", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "土曜の夜22時から日曜の0時まで過去問演習",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.title).toBe("過去問演習");
+    expect(suggestions[0].parsedPlan.subject).toBe("演習");
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-18");
+    expect(suggestions[0].parsedPlan.startTime).toBe("22:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("00:00");
+    expect(suggestions[0].parsedPlan.recurrenceRules).toBeUndefined();
+  });
+
+  it("英語 enumeration の短い variant title を base context で補正できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "英語長文",
+      "単語",
+      "英文法",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "英語",
+      "英語",
+      "英語",
+    ]);
+  });
+
   it("複合 recurring family を混ぜずに分離できる", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "平日は毎朝6時半から30分英語、月水金の夜は数学、火木の夜は物理、土曜は過去問、日曜は振り返り",
@@ -520,9 +562,9 @@ describe("natural-language integration", () => {
 
     expect(suggestions).toHaveLength(3);
     expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
-      "長文",
+      "英語長文",
       "単語",
-      "文法",
+      "英文法",
     ]);
     expect(suggestions.map((suggestion) => suggestion.parsedPlan.startTime)).toEqual([
       "20:00",
@@ -568,9 +610,9 @@ describe("natural-language integration", () => {
 
     expect(suggestions).toHaveLength(3);
     expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
-      "長文",
+      "英語長文",
       "単語",
-      "文法",
+      "英文法",
     ]);
     expect(
       suggestions.every((suggestion) =>

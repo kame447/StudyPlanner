@@ -181,6 +181,10 @@ function toRecurrenceRules(input: {
     input.startDate,
   );
 
+  if (input.dateSpec?.kind === "week-scope" && !input.repeatKind) {
+    return undefined;
+  }
+
   if (input.dayType) {
     return [
       {
@@ -326,7 +330,11 @@ function buildSequencedDraft(sequence: NormalizedSequencedIntent): PlanDraft {
 }
 
 function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
-  const title = inferTitle(item.contentText, item.baseContentText);
+  const baseSubject = inferSubject(item.baseContentText, item.rawText);
+  const title = promoteShortEnumerationTitle(
+    inferTitle(item.contentText, item.baseContentText),
+    baseSubject,
+  );
   const subject = inferSubject(
     item.contentText,
     item.rawText,
@@ -356,6 +364,25 @@ function buildEnumerationDraft(item: NormalizedEnumerationIntent): PlanDraft {
       endTime: item.endTime,
     }),
   };
+}
+
+function promoteShortEnumerationTitle(
+  title: string | undefined,
+  baseSubject: string | undefined,
+): string | undefined {
+  if (baseSubject !== "英語" || !title) {
+    return title;
+  }
+
+  const normalized = title.replace(/\s+/g, "");
+  if (normalized === "長文") {
+    return "英語長文";
+  }
+  if (normalized === "文法") {
+    return "英文法";
+  }
+
+  return title;
 }
 
 function expandLoopedBaseSuggestions(

@@ -92,16 +92,34 @@ const SEMANTIC_TRAILING_RULES: Array<{
   },
 ];
 
-function firstTime(tokens: Token[]): TimeSpec | TimeRangeSpec | undefined {
+function firstTime(tokens: Token[], spanText?: string): TimeSpec | TimeRangeSpec | undefined {
   const token = tokens.find(
-    (current) => current.kind === "TIME" || current.kind === "TIME_RANGE"
+    (current) => current.kind === "TIME_RANGE"
   );
 
-  if (!token) {
-    return undefined;
+  if (token) {
+    return token.value;
   }
 
-  return token.value;
+  const timeTokens = tokens.filter(
+    (current): current is Extract<Token, { kind: "TIME" }> =>
+      current.kind === "TIME",
+  );
+
+  if (
+    spanText &&
+    timeTokens.length >= 2 &&
+    /から/.test(spanText) &&
+    /まで/.test(spanText)
+  ) {
+    return {
+      raw: `${timeTokens[0].raw}から${timeTokens[1].raw}`,
+      start: timeTokens[0].value,
+      end: timeTokens[1].value,
+    };
+  }
+
+  return timeTokens[0]?.value;
 }
 
 function firstDate(tokens: Token[]): DateSpec | undefined {
@@ -340,7 +358,7 @@ function buildBaseNode(
     rawText: clause.spanText,
     contentText: mergedContent(clause.tokens),
     dateSpec: firstDate(clause.tokens),
-    timeSpec: firstTime(clause.tokens),
+    timeSpec: firstTime(clause.tokens, clause.spanText),
     durationSpec: firstDuration(clause.tokens),
     restDurationSpec: firstRest(clause.tokens),
     setCount: firstSetCount(clause.tokens),
@@ -359,7 +377,7 @@ function buildSequenceNode(
     rawText: clause.spanText,
     contentText: mergedContent(clause.tokens),
     dateSpec: firstDate(clause.tokens),
-    timeSpec: firstTime(clause.tokens),
+    timeSpec: firstTime(clause.tokens, clause.spanText),
     durationSpec: firstDuration(clause.tokens),
     relation: {
       kind: "after-previous-event",
@@ -394,7 +412,7 @@ function buildOverrideNode(
     weekdaySpecs: weekdaySpecs.length > 0 ? weekdaySpecs : undefined,
     dayTypeSpec:
       dayTypeToken?.kind === "DAYTYPE" ? dayTypeToken.value : undefined,
-    replaceTimeSpec: firstTime(clause.tokens),
+    replaceTimeSpec: firstTime(clause.tokens, clause.spanText),
     replaceDurationSpec: firstDuration(clause.tokens),
   };
 }

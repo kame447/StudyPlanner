@@ -25,6 +25,11 @@ interface LoweringContext {
   referenceDate: Date;
 }
 
+interface PreviousDateContext {
+  date?: string;
+  dateSpec?: DateSpec;
+}
+
 function isTimeRangeSpec(
   value: TimeSpec | TimeRangeSpec,
 ): value is TimeRangeSpec {
@@ -108,6 +113,14 @@ function buildUnresolvedFields(
   }
 
   return unresolved;
+}
+
+function shouldInheritDateFromPreviousGroup(baseNode: BaseScheduleNode): boolean {
+  if (baseNode.dateSpec) {
+    return false;
+  }
+
+  return /^(?:朝|午前|午後|昼|夕方|夜)(?:は|に)?/.test(baseNode.rawText.trim());
 }
 
 function parseReferenceDate(referenceDate?: string): Date {
@@ -600,6 +613,19 @@ function resolveDateWindow(
   };
 }
 
+function isOvernightWeekdaySingleEvent(
+  baseNode: BaseScheduleNode,
+  weekdays: Weekday[] | undefined,
+): boolean {
+  return Boolean(
+    weekdays &&
+      weekdays.length >= 2 &&
+      baseNode.timeSpec &&
+      isTimeRangeSpec(baseNode.timeSpec) &&
+      eventCrossesMidnight(baseNode.timeSpec.start.hm, baseNode.timeSpec.end.hm),
+  );
+}
+
 function lowerBase(
   baseNode: BaseScheduleNode,
   lowering: LoweringContext,
@@ -608,12 +634,14 @@ function lowerBase(
     baseNode.durationSpec?.minutes ?? deriveDurationMinutes(baseNode.timeSpec);
   const timeInfo = buildStartEnd(baseNode.timeSpec, durationMinutes);
   const weekdays = baseNode.weekdaySpecs?.map((weekday) => weekday.weekday);
+  const isSingleOvernightEvent = isOvernightWeekdaySingleEvent(baseNode, weekdays);
+  const dateWeekdays = isSingleOvernightEvent ? weekdays?.slice(0, 1) : weekdays;
   const dateInfo = resolveDateWindow(
     {
       rawText: baseNode.rawText,
       dateSpec: baseNode.dateSpec,
       repeatKind: baseNode.repeatSpec?.kind,
-      weekdays,
+      weekdays: dateWeekdays,
       dayType: baseNode.dayTypeSpec?.dayType,
     },
     lowering,
@@ -633,8 +661,13 @@ function lowerBase(
     setCount: baseNode.setCount,
     repeatSpec: baseNode.repeatSpec,
     dayType: baseNode.dayTypeSpec?.dayType,
-    weekdays,
-    assumptions: [...dateInfo.assumptions],
+    weekdays: isSingleOvernightEvent ? undefined : weekdays,
+    assumptions: [
+      ...dateInfo.assumptions,
+      ...(isSingleOvernightEvent
+        ? ["overnight weekday range treated as single event"]
+        : []),
+    ],
     unresolvedFields: [],
   };
 }
@@ -878,8 +911,24 @@ function subtractWeekdays(source: Weekday[] | undefined, excluded: Weekday[]): W
   return filtered.length > 0 ? filtered : undefined;
 }
 
-function lowerGroup(group: EventGroupNode, lowering: LoweringContext): EventGroupIR {
+function lowerGroup(
+  group: EventGroupNode,
+  lowering: LoweringContext,
+  previousDateContext?: PreviousDateContext,
+): EventGroupIR {
   const base = lowerBase(group.base, lowering);
+
+  if (
+    shouldInheritDateFromPreviousGroup(group.base) &&
+    previousDateContext &&
+    !base.date &&
+    !base.dateSpec
+  ) {
+    base.date = previousDateContext.date;
+    base.dateSpec = previousDateContext.dateSpec;
+    base.assumptions.push("date inherited from previous scoped group");
+  }
+
   applyAttachments(base, group.attachments);
 
   const splitOverrides: OverrideScheduleNode[] = [];
@@ -949,9 +998,20 @@ export function lowerToIR(
   const lowering: LoweringContext = {
     referenceDate: parseReferenceDate(options.referenceDate),
   };
+  const groups: EventGroupIR[] = [];
+  let previousDateContext: PreviousDateContext | undefined;
+
+  for (const group of ast.groups) {
+    const lowered = lowerGroup(group, lowering, previousDateContext);
+    groups.push(lowered);
+    previousDateContext = {
+      date: lowered.base.date,
+      dateSpec: lowered.base.dateSpec,
+    };
+  }
 
   return {
-    groups: ast.groups.map((group) => lowerGroup(group, lowering)),
+    groups,
     diagnostics: [...ast.diagnostics],
   };
 }

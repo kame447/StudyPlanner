@@ -309,6 +309,40 @@ describe("lowerToIR", () => {
     ]);
   });
 
+  it("文をまたいだ時間帯 block でも前の scoped date を継承できる", () => {
+    const clauses = parseClauses(
+      "明日の7時から30分システム英単語、そのあと8時から9時半まで青チャート。夜は20時から1時間、現代文。"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-12" });
+
+    expect(ir.groups).toHaveLength(2);
+    expect([
+      ir.groups[0].base.date,
+      ir.groups[0].sequencedIntents[0]?.date,
+      ir.groups[1].base.date,
+    ]).toEqual([
+      "2026-04-13",
+      "2026-04-13",
+      "2026-04-13",
+    ]);
+  });
+
+  it("weekday をまたぐ overnight range を単発 event として concrete date にできる", () => {
+    const clauses = parseClauses("土曜の夜22時から日曜の0時まで過去問演習");
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
+
+    expect(ir.groups).toHaveLength(1);
+    expect(ir.groups[0].base.date).toBe("2026-04-18");
+    expect(ir.groups[0].base.weekdays).toBeUndefined();
+    expect(ir.groups[0].base.startTime).toBe("22:00");
+    expect(ir.groups[0].base.endTime).toBe("00:00");
+    expect(ir.groups[0].base.assumptions).toContain(
+      "overnight weekday range treated as single event"
+    );
+  });
+
   it("reverse-order override を daily_except_wed + weekly_wed として正規化できる", () => {
     const clauses = parseClauses(
       "水曜だけ22時、他の日は毎日20時から21時で勉強予定を入れて"

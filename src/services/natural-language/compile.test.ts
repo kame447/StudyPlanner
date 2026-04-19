@@ -113,7 +113,7 @@ describe("compileToSuggestions", () => {
     expect(suggestions).toHaveLength(3);
     expect(
       suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.title)
-    ).toEqual(["長文", "単語", "文法"]);
+    ).toEqual(["英語長文", "単語", "英文法"]);
     expect(
       suggestions.map((suggestion: Suggestion) => suggestion.parsedPlan.subject)
     ).toEqual(["英語", "英語", "英語"]);
@@ -358,9 +358,9 @@ describe("compileToSuggestions", () => {
       ),
     ).toBe(true);
     expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
-      "長文",
+      "英語長文",
       "単語",
-      "文法",
+      "英文法",
     ]);
   });
 });

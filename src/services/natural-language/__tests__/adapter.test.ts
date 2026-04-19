@@ -296,9 +296,9 @@ describe('natural-language adapter', () => {
 
     expect(suggestions).toHaveLength(3);
     expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
-      '長文',
+      '英語長文',
       '単語',
-      '文法',
+      '英文法',
     ]);
     expect(suggestions.every((suggestion) => suggestion.parsedPlan.subject === '英語')).toBe(
       true,
