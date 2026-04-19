@@ -1,20 +1,10 @@
 import { useState } from 'react';
-import {
-  getAiConfig,
-  getAiConfigValidationMessage,
-  resetAiConfig,
-  saveAiConfig,
-  type AiConfig,
-} from '../lib/aiConfig';
 import { sortByDateTime } from '../lib/date';
-import { AiRuntimeSettings } from './AiRuntimeSettings';
-import { NaturalLanguageRulesModeControl } from './NaturalLanguageRulesModeControl';
 import { PlanFieldsEditor } from './PlanFieldsEditor';
 import {
   generateNaturalLanguageSuggestions,
   getPlannerAiRuntimeInfo,
 } from '../services/naturalLanguagePlanner';
-import { isNaturalLanguageLegacyDebugEnabled } from '../services/natural-language/adapter';
 import type {
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
@@ -22,7 +12,6 @@ import type {
   PlanDraft,
   SuggestionField,
 } from '../types/domain';
-import { NaturalLanguageCsvTester } from './NaturalLanguageCsvTester';
 
 interface NaturalLanguageAssistantProps {
   selectedDate: string;
@@ -86,7 +75,6 @@ export function NaturalLanguageAssistant({
   onApplyDraft,
   embedded = false,
 }: NaturalLanguageAssistantProps) {
-  const [aiConfig, setAiConfig] = useState<AiConfig>(() => getAiConfig());
   const [mode, setMode] = useState<NaturalLanguageMode>('add');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -94,8 +82,7 @@ export function NaturalLanguageAssistant({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [suggestions, setSuggestions] = useState<NaturalLanguageSuggestion[]>([]);
   const [editTargetPlanId, setEditTargetPlanId] = useState('');
-  const runtimeInfo = getPlannerAiRuntimeInfo(aiConfig);
-  const configError = getAiConfigValidationMessage(aiConfig);
+  const runtimeInfo = getPlannerAiRuntimeInfo();
 
   const nearbyPlans = plans.filter((plan) => {
     const deltaDays =
@@ -115,11 +102,6 @@ export function NaturalLanguageAssistant({
   async function handleAnalyze() {
     if (!text.trim()) {
       setError('自然言語の入力内容を入れてください。');
-      return;
-    }
-
-    if (configError) {
-      setError(configError);
       return;
     }
 
@@ -147,24 +129,6 @@ export function NaturalLanguageAssistant({
     } finally {
       setIsAnalyzing(false);
     }
-  }
-
-  function handleSaveAiConfig(nextConfig: AiConfig) {
-    const savedConfig = saveAiConfig(nextConfig);
-    setAiConfig(savedConfig);
-    setSuggestions([]);
-    setEditTargetPlanId('');
-    setError('');
-    setStatus('AI接続設定を反映しました。');
-  }
-
-  function handleResetAiConfig() {
-    const resetConfig = resetAiConfig();
-    setAiConfig(resetConfig);
-    setSuggestions([]);
-    setEditTargetPlanId('');
-    setError('');
-    setStatus('AI接続設定を初期値へ戻しました。');
   }
 
   function updateSuggestionAt(index: number, nextSuggestion: NaturalLanguageSuggestion) {
@@ -262,10 +226,13 @@ export function NaturalLanguageAssistant({
       <div className="section-header">
         <div>
           <h2>AI入力補助</h2>
-          <p>自然言語から追加案または修正案を作り、確認して反映します。</p>
+          <p>
+            まず current pipeline で解析し、不足がある場合だけ OpenAI assist で補助します。
+            十分に解析できる入力では API は呼びません。
+          </p>
         </div>
         <div className="assistant-runtime">
-          <span className="confidence-badge">{runtimeInfo.providerLabel}</span>
+          <span className="confidence-badge">current pipeline first</span>
           <span className="assistant-runtime-help">{runtimeInfo.fallbackLabel}</span>
         </div>
       </div>
@@ -294,22 +261,6 @@ export function NaturalLanguageAssistant({
           修正案
         </button>
       </div>
-
-      <AiRuntimeSettings
-        config={aiConfig}
-        onSave={handleSaveAiConfig}
-        onReset={handleResetAiConfig}
-      />
-
-      {isNaturalLanguageLegacyDebugEnabled() ? (
-        <NaturalLanguageRulesModeControl currentProvider={aiConfig.provider} />
-      ) : null}
-
-      <NaturalLanguageCsvTester
-        currentProvider={aiConfig.provider}
-        userId={userId}
-        plans={plans}
-      />
 
       <label className="field field-full">
         <span>自然言語入力</span>
@@ -344,7 +295,8 @@ export function NaturalLanguageAssistant({
               <div className="label-row">
                 <strong>{mode === 'add' ? `AI提案 ${index + 1}` : 'AI提案'}</strong>
                 <span className="confidence-badge">
-                  {suggestion.providerLabel} / {STATUS_LABELS[suggestion.status]} / 推定{' '}
+                  {suggestion.source === 'llm' ? 'AI補助' : 'ルール解析'} /{' '}
+                  {STATUS_LABELS[suggestion.status]} / 推定{' '}
                   {Math.round(suggestion.confidence * 100)}%
                 </span>
               </div>
@@ -363,7 +315,7 @@ export function NaturalLanguageAssistant({
 
               {suggestion.assumptions.length > 0 ? (
                 <div className="assistant-feedback-card">
-                  <strong>AIの補足</strong>
+                  <strong>解析の補足</strong>
                   <ul className="assistant-feedback-list">
                     {suggestion.assumptions.map((assumption) => (
                       <li key={assumption}>{assumption}</li>

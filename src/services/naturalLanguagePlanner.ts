@@ -38,8 +38,7 @@ import {
   type SuggestionInput,
 } from './naturalLanguageRules';
 import {
-  getNaturalLanguageRulesPipelineMode,
-  isNaturalLanguageLegacyDebugEnabled,
+  isNaturalLanguageCurrentPipelineOnlyDebugEnabled,
   runRulesPipelineEditWithAdapter,
   runRulesPipelineWithAdapter,
   type AdaptedRulesPipelineResult,
@@ -3246,8 +3245,12 @@ export function getPlannerAiRuntimeInfo(
   config: AiConfig = getAiConfig(),
 ): PlannerAiRuntimeInfo {
   return {
-    providerLabel: getAiProviderLabel(config),
-    fallbackLabel: 'current pipeline を本線にし、必要時だけAIで補助します',
+    providerLabel: isNaturalLanguageCurrentPipelineOnlyDebugEnabled()
+      ? 'current pipeline only'
+      : getAiProviderLabel(config),
+    fallbackLabel: isNaturalLanguageCurrentPipelineOnlyDebugEnabled()
+      ? 'debug: AI assist を使わず current pipeline だけで解析します'
+      : 'current pipeline を本線にし、不足時だけAIで補助します',
   };
 }
 
@@ -3308,6 +3311,10 @@ export function shouldUseAiAssist(
   input: SuggestionInput,
   pipelineRun: CurrentPipelineRun,
 ): boolean {
+  if (isNaturalLanguageCurrentPipelineOnlyDebugEnabled()) {
+    return false;
+  }
+
   if (getAiConfig().provider === 'rules') {
     return false;
   }
@@ -3481,73 +3488,6 @@ function runCurrentEditPipeline(input: SuggestionInput): CurrentPipelineRun {
   }
 }
 
-async function buildLegacyRuleBasedAddSuggestions(
-  input: SuggestionInput,
-): Promise<NaturalLanguageSuggestion[]> {
-  return Promise.all(
-    normalizeTaskTexts(splitAddTaskTexts(input.text), input.text).map((taskText) =>
-      generateSingleNaturalLanguageSuggestion({
-        ...input,
-        text: taskText,
-      }),
-    ),
-  );
-}
-
-async function buildLegacyDebugAddSuggestions(
-  input: SuggestionInput,
-  pipelineRun: CurrentPipelineRun,
-): Promise<NaturalLanguageSuggestion[] | null> {
-  if (!isNaturalLanguageLegacyDebugEnabled()) {
-    return null;
-  }
-
-  const mode = getNaturalLanguageRulesPipelineMode();
-
-  if (mode === 'legacy') {
-    return postProcessAddSuggestions(
-      await buildLegacyRuleBasedAddSuggestions(input),
-      input.selectedDate,
-    );
-  }
-
-  if (mode === 'hybrid' && pipelineRun.suggestions.length === 0) {
-    return postProcessAddSuggestions(
-      await buildLegacyRuleBasedAddSuggestions(input),
-      input.selectedDate,
-    );
-  }
-
-  return null;
-}
-
-async function buildLegacyRuleBasedEditSuggestions(
-  input: SuggestionInput,
-): Promise<NaturalLanguageSuggestion[]> {
-  return [await generateSingleNaturalLanguageSuggestion(input)];
-}
-
-async function buildLegacyDebugEditSuggestions(
-  input: SuggestionInput,
-  pipelineRun: CurrentPipelineRun,
-): Promise<NaturalLanguageSuggestion[] | null> {
-  if (!isNaturalLanguageLegacyDebugEnabled()) {
-    return null;
-  }
-
-  const mode = getNaturalLanguageRulesPipelineMode();
-
-  if (mode === 'legacy') {
-    return buildLegacyRuleBasedEditSuggestions(input);
-  }
-
-  if (mode === 'hybrid' && pipelineRun.suggestions.length === 0) {
-    return buildLegacyRuleBasedEditSuggestions(input);
-  }
-
-  return null;
-}
-
 async function generateSingleNaturalLanguageSuggestion(
   input: SuggestionInput,
 ): Promise<NaturalLanguageSuggestion> {
@@ -3642,14 +3582,6 @@ export async function generateNaturalLanguageSuggestions(
 ): Promise<NaturalLanguageSuggestion[]> {
   if (input.mode === 'add') {
     const pipelineRun = runCurrentAddPipeline(input);
-    const legacyDebugSuggestions = await buildLegacyDebugAddSuggestions(
-      input,
-      pipelineRun,
-    );
-
-    if (legacyDebugSuggestions) {
-      return legacyDebugSuggestions;
-    }
 
     if (!shouldUseAiAssist(input, pipelineRun)) {
       return pipelineRun.suggestions;
@@ -3667,14 +3599,6 @@ export async function generateNaturalLanguageSuggestions(
   }
 
   const pipelineRun = runCurrentEditPipeline(input);
-  const legacyDebugSuggestions = await buildLegacyDebugEditSuggestions(
-    input,
-    pipelineRun,
-  );
-
-  if (legacyDebugSuggestions) {
-    return legacyDebugSuggestions;
-  }
 
   if (!shouldUseAiAssist(input, pipelineRun)) {
     return pipelineRun.suggestions;

@@ -48,149 +48,61 @@ const ALL_WEEKDAYS: Weekday[] = [
 const BUSINESS_WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
 const WEEKEND_WEEKDAYS: Weekday[] = ["sat", "sun"];
 
-export type NaturalLanguageRulesPipelineMode =
-  | "legacy"
-  | "pipeline"
-  | "hybrid";
-
-export type NaturalLanguageRulesPipelineModeSource =
-  | "global"
-  | "env"
-  | "localStorage"
-  | "default";
-
-const RULES_PIPELINE_MODE_STORAGE_KEY = "studyplanner.nl.rules.pipeline.mode";
-export const NATURAL_LANGUAGE_RULES_PIPELINE_MODE_VALUES: NaturalLanguageRulesPipelineMode[] = [
-  "legacy",
-  "pipeline",
-  "hybrid",
-];
+const CURRENT_PIPELINE_ONLY_STORAGE_KEY =
+  "studyplanner.nl.current-pipeline-only";
 
 export interface AdaptedRulesPipelineResult {
   pipelineResult: NaturalLanguagePipelineResult;
   suggestions: NaturalLanguageSuggestion[];
 }
 
-function readGlobalLegacyDebugEnabled(): boolean {
+function readGlobalCurrentPipelineOnlyEnabled(): boolean {
   const maybeGlobal = (
     globalThis as typeof globalThis & {
-      __STUDYPLANNER_NL_LEGACY_PARSER_ENABLED__?: boolean | string;
+      __STUDYPLANNER_NL_CURRENT_PIPELINE_ONLY__?: boolean | string;
     }
-  ).__STUDYPLANNER_NL_LEGACY_PARSER_ENABLED__;
+  ).__STUDYPLANNER_NL_CURRENT_PIPELINE_ONLY__;
 
   return maybeGlobal === true || maybeGlobal === "true";
 }
 
-export function isNaturalLanguageLegacyDebugEnabled(): boolean {
-  return (
-    readGlobalLegacyDebugEnabled() ||
-    import.meta.env.VITE_NL_LEGACY_PARSER_ENABLED === "true"
-  );
-}
-
-function isRulesPipelineMode(
-  value: string | undefined | null,
-): value is NaturalLanguageRulesPipelineMode {
-  return (
-    typeof value === "string" &&
-    NATURAL_LANGUAGE_RULES_PIPELINE_MODE_VALUES.includes(
-      value as NaturalLanguageRulesPipelineMode,
-    )
-  );
-}
-
-function readGlobalRulesPipelineMode():
-  | NaturalLanguageRulesPipelineMode
-  | undefined {
-  const maybeGlobal = (
-    globalThis as typeof globalThis & {
-      __STUDYPLANNER_NL_RULES_PIPELINE_MODE__?: string;
-    }
-  ).__STUDYPLANNER_NL_RULES_PIPELINE_MODE__;
-
-  return isRulesPipelineMode(maybeGlobal) ? maybeGlobal : undefined;
-}
-
-function readStoredRulesPipelineMode():
-  | NaturalLanguageRulesPipelineMode
-  | undefined {
+function readStoredCurrentPipelineOnlyEnabled(): boolean {
   if (typeof window === "undefined") {
-    return undefined;
+    return false;
   }
 
   try {
-    const stored = window.localStorage.getItem(RULES_PIPELINE_MODE_STORAGE_KEY);
-    return isRulesPipelineMode(stored) ? stored : undefined;
+    return window.localStorage.getItem(CURRENT_PIPELINE_ONLY_STORAGE_KEY) === "true";
   } catch {
-    return undefined;
+    return false;
   }
 }
 
-export function getNaturalLanguageRulesPipelineMode(): NaturalLanguageRulesPipelineMode {
-  return resolveNaturalLanguageRulesPipelineMode().mode;
+export function isNaturalLanguageCurrentPipelineOnlyDebugEnabled(): boolean {
+  return (
+    readGlobalCurrentPipelineOnlyEnabled() ||
+    import.meta.env.VITE_NL_CURRENT_PIPELINE_ONLY === "true" ||
+    readStoredCurrentPipelineOnlyEnabled()
+  );
 }
 
-export function getNaturalLanguageRulesPipelineModeSource(): NaturalLanguageRulesPipelineModeSource {
-  return resolveNaturalLanguageRulesPipelineMode().source;
-}
-
-function resolveNaturalLanguageRulesPipelineMode(): {
-  mode: NaturalLanguageRulesPipelineMode;
-  source: NaturalLanguageRulesPipelineModeSource;
-} {
-  if (!isNaturalLanguageLegacyDebugEnabled()) {
-    return {
-      mode: "pipeline",
-      source: "default",
-    };
-  }
-
-  const globalMode = readGlobalRulesPipelineMode();
-  if (globalMode) {
-    return {
-      mode: globalMode,
-      source: "global",
-    };
-  }
-
-  const envMode = import.meta.env.VITE_NL_RULES_PIPELINE_MODE;
-  if (isRulesPipelineMode(envMode)) {
-    return {
-      mode: envMode,
-      source: "env",
-    };
-  }
-
-  const storedMode = readStoredRulesPipelineMode();
-  if (storedMode) {
-    return {
-      mode: storedMode,
-      source: "localStorage",
-    };
-  }
-
-  return {
-    mode: "pipeline",
-    source: "default",
-  };
-}
-
-export function setStoredNaturalLanguageRulesPipelineMode(
-  mode: NaturalLanguageRulesPipelineMode,
-): void {
+export function setStoredNaturalLanguageCurrentPipelineOnly(enabled: boolean): void {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(RULES_PIPELINE_MODE_STORAGE_KEY, mode);
+  window.localStorage.setItem(
+    CURRENT_PIPELINE_ONLY_STORAGE_KEY,
+    enabled ? "true" : "false",
+  );
 }
 
-export function clearStoredNaturalLanguageRulesPipelineMode(): void {
+export function clearStoredNaturalLanguageCurrentPipelineOnly(): void {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.removeItem(RULES_PIPELINE_MODE_STORAGE_KEY);
+  window.localStorage.removeItem(CURRENT_PIPELINE_ONLY_STORAGE_KEY);
 }
 
 function mapUnresolvedFields(

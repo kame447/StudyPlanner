@@ -10,7 +10,7 @@ export interface ChatMessage {
 }
 
 export interface OpenAiCompatibleClientConfig {
-  provider?: 'ollama' | 'openai' | 'rules';
+  provider?: 'openai' | 'rules';
   baseUrl: string;
   model: string;
   apiKey: string;

@@ -2,11 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   getAiConfigValidationMessage,
   getAiStorageNote,
-  getOllamaDefaultModel,
   usesCloudflareOpenAiProxy,
   type AiConfig,
-  type AiProvider,
-  withAiProvider,
 } from '../lib/aiConfig';
 
 interface AiRuntimeSettingsProps {
@@ -14,12 +11,6 @@ interface AiRuntimeSettingsProps {
   onSave: (config: AiConfig) => void;
   onReset: () => void;
 }
-
-const PROVIDER_OPTIONS: Array<{ value: AiProvider; label: string }> = [
-  { value: 'ollama', label: 'Ollama' },
-  { value: 'openai', label: 'OpenAI互換' },
-  { value: 'rules', label: 'ルールのみ' },
-];
 
 export function AiRuntimeSettings({
   config,
@@ -42,7 +33,7 @@ export function AiRuntimeSettings({
         <div>
           <strong>AI接続</strong>
           <p className="detail-note">
-            ローカルOllama、Cloudflare Workers経由のOpenAI、ルールのみを切り替えられます。
+            OpenAI assist の接続情報です。通常の予定抽出は先に current pipeline で処理します。
           </p>
         </div>
         <button
@@ -56,38 +47,6 @@ export function AiRuntimeSettings({
 
       {isOpen ? (
         <div className="assistant-settings-grid">
-          <label className="field field-full">
-            <span>プロバイダ</span>
-            <div className="segmented-control">
-              {PROVIDER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  className={
-                    draft.provider === option.value ? 'segment active' : 'segment'
-                  }
-                  onClick={() =>
-                    setDraft((current) => withAiProvider(current, option.value))
-                  }
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </label>
-
-          {draft.provider === 'ollama' ? (
-            <>
-              <div className="assistant-feedback-card">
-                <strong>ローカルモデル: {getOllamaDefaultModel()}</strong>
-                <p className="detail-note">
-                  現在のOllama利用は `llama3.2:3b` 固定です。追加プリセットやカスタム入力は出しません。
-                </p>
-                <p className="detail-note">未取得なら `ollama pull llama3.2:3b`</p>
-              </div>
-            </>
-          ) : null}
-
           {draft.provider !== 'rules' ? (
             <>
               {!usesOpenAiProxy ? (
@@ -101,7 +60,7 @@ export function AiRuntimeSettings({
                         baseUrl: event.target.value,
                       }))
                     }
-                    placeholder="http://127.0.0.1:11434/v1"
+                    placeholder="https://api.openai.com/v1"
                   />
                 </label>
               ) : null}
