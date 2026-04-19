@@ -201,6 +201,22 @@ function chooseRepresentativeDateInRange(
   return compareDates(nextDay, rangeEnd) <= 0 ? nextDay : referenceDate;
 }
 
+function chooseRecurringStartDateInRange(
+  rangeStart: Date,
+  rangeEnd: Date,
+  referenceDate: Date,
+): Date {
+  if (compareDates(referenceDate, rangeStart) < 0) {
+    return rangeStart;
+  }
+
+  if (compareDates(referenceDate, rangeEnd) > 0) {
+    return rangeEnd;
+  }
+
+  return referenceDate;
+}
+
 function weekdayIndex(weekday: Weekday): number {
   const map: Record<Weekday, number> = {
     mon: 1,
@@ -433,6 +449,7 @@ function resolveRepresentativeDate(
   context: {
     weekdays?: Weekday[];
     dayType?: "weekday" | "weekend";
+    recurring?: boolean;
   },
   lowering: LoweringContext,
 ): {
@@ -452,6 +469,13 @@ function resolveRepresentativeDate(
       return {
         date: formatDate(firstMatchingWeekdayOnOrAfter(referenceDate, targetWeekdays)),
         assumptions: ["representative date derived from weekday scope"],
+      };
+    }
+
+    if (context.recurring) {
+      return {
+        date: formatDate(referenceDate),
+        assumptions: ["representative date derived from recurrence anchor"],
       };
     }
 
@@ -492,6 +516,8 @@ function resolveRepresentativeDate(
         ? firstMatchingWeekdayInRange(searchStart, monthEnd, targetWeekdays) ??
           firstMatchingWeekdayInRange(monthStart, monthEnd, targetWeekdays) ??
           monthStart
+        : context.recurring
+          ? chooseRecurringStartDateInRange(monthStart, monthEnd, referenceDate)
         : chooseRepresentativeDateInRange(monthStart, monthEnd, referenceDate);
 
     return {
@@ -609,6 +635,7 @@ function resolveDateWindow(
     {
       weekdays: input.weekdays,
       dayType: input.dayType,
+      recurring: recurringContext,
     },
     lowering,
   );

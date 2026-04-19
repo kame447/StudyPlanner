@@ -415,7 +415,7 @@ describe("natural-language integration", () => {
     expect(suggestions[0].parsedPlan.title).toBe("英語");
     expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
       kind: "daily",
-      startDate: "2026-04-17",
+      startDate: "2026-04-16",
       until: "2026-04-30",
       excludedWeekdays: ["sat"],
       startTime: "06:30",
@@ -436,7 +436,7 @@ describe("natural-language integration", () => {
   it("month-scope + saturday override で schedule cue を title にせず until と duration を維持できる", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "4月中は毎朝6時半から英語を30分、その代わり土曜だけは8時開始にして",
-      { referenceDate: "2026-04-16" }
+      { referenceDate: "2026-04-12" }
     );
 
     expect(suggestions).toHaveLength(2);
@@ -448,9 +448,13 @@ describe("natural-language integration", () => {
       "英語",
       "英語",
     ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.date)).toEqual([
+      "2026-04-12",
+      "2026-04-18",
+    ]);
     expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
       kind: "daily",
-      startDate: "2026-04-17",
+      startDate: "2026-04-12",
       until: "2026-04-30",
       excludedWeekdays: ["sat"],
       startTime: "06:30",
@@ -543,8 +547,13 @@ describe("natural-language integration", () => {
       "勉強",
       "勉強",
     ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.date)).toEqual([
+      "2026-04-12",
+      "2026-04-15",
+    ]);
     expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
       kind: "daily",
+      startDate: "2026-04-12",
       excludedWeekdays: ["wed"],
       startTime: "20:00",
       endTime: "21:00",
@@ -552,6 +561,7 @@ describe("natural-language integration", () => {
     expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
       kind: "weekday",
       weekdays: ["wed"],
+      startDate: "2026-04-15",
       startTime: "22:00",
       endTime: "23:00",
       isOverride: true,

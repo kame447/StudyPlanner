@@ -198,8 +198,9 @@ describe("lowerToIR", () => {
     const ir = lowerToIR(ast, { referenceDate: "2026-04-16" });
 
     expect(ir.groups).toHaveLength(1);
-    expect(ir.groups[0].base.date).toBe("2026-04-17");
+    expect(ir.groups[0].base.date).toBe("2026-04-16");
     expect(ir.groups[0].base.untilDate).toBe("2026-04-30");
+    expect(ir.groups[0].base.repeatSpec?.kind).toBe("daily");
     expect(ir.groups[0].base.excludedWeekdays).toEqual(["sat"]);
     expect(ir.groups[0].overrideIntents).toHaveLength(1);
     expect(ir.groups[0].overrideIntents[0].date).toBe("2026-04-18");
@@ -209,6 +210,20 @@ describe("lowerToIR", () => {
     expect(ir.groups[0].overrideIntents[0].assumptions).toContain(
       "date window inherited from base recurrence"
     );
+  });
+
+  it("month-scope recurring base の representative date を月内 referenceDate に固定できる", () => {
+    const clauses = parseClauses(
+      "4月中は毎朝6時半から英語を30分、その代わり土曜だけは8時開始にして"
+    );
+    const ast = buildAST(clauses);
+    const ir = lowerToIR(ast, { referenceDate: "2026-04-12" });
+
+    expect(ir.groups).toHaveLength(1);
+    expect(ir.groups[0].base.date).toBe("2026-04-12");
+    expect(ir.groups[0].base.repeatSpec?.kind).toBe("daily");
+    expect(ir.groups[0].base.excludedWeekdays).toEqual(["sat"]);
+    expect(ir.groups[0].overrideIntents[0].date).toBe("2026-04-18");
   });
 
   it("enumeration を 3 つの enumeratedIntents に落とせる", () => {

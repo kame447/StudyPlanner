@@ -197,6 +197,20 @@ function toRecurrenceRules(input: {
     return undefined;
   }
 
+  if (input.repeatKind === "daily" && !input.dayType) {
+    return [
+      {
+        kind: "daily",
+        excludedWeekdays: unique(input.excludedWeekdays),
+        startDate: input.startDate,
+        until,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        isOverride: input.isOverride,
+      },
+    ];
+  }
+
   if (input.dayType) {
     return [
       {
