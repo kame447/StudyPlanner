@@ -485,6 +485,7 @@ h2 {
 .field select,
 .field textarea {
   width: 100%;
+  min-width: 0;
   padding: 12px 14px;
   border: 1px solid var(--input-border);
   border-radius: 14px;
@@ -1962,6 +1963,7 @@ h2 {
   width: min(760px, 100%);
   max-height: min(88vh, 920px);
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-gutter: stable;
   padding: 24px;
   border-radius: 28px;
@@ -1970,6 +1972,31 @@ h2 {
   box-shadow: var(--shadow);
   margin-top: 12px;
   margin-inline: auto;
+}
+
+.modal-card .section-header > div,
+.modal-card .label-row > *,
+.modal-card .field,
+.modal-card .form-grid,
+.modal-card .row-actions > * {
+  min-width: 0;
+}
+
+.modal-card .confidence-badge,
+.modal-card .type-badge,
+.month-event-chip strong,
+.month-event-chip span {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-card .section-header h2,
+.modal-card .label-row strong {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .plan-input-modal {
@@ -2678,8 +2705,8 @@ h2 {
   .modal-card {
     width: 100%;
     max-height: 92vh;
-    padding: 18px;
-    border-radius: 22px;
+    padding: 14px;
+    border-radius: 20px;
     margin-top: 0;
   }
 
@@ -2702,13 +2729,13 @@ h2 {
   .modal-card .assistant-settings-card,
   .modal-card .actual-form,
   .modal-card .suggestion-card {
-    gap: 12px;
+    gap: 10px;
   }
 
   .modal-card .assistant-settings-card,
   .modal-card .auth-stage-card,
   .modal-card .detail-selection-card {
-    padding: 12px 14px;
+    padding: 10px 12px;
     border-radius: 16px;
   }
 
@@ -2751,9 +2778,10 @@ h2 {
   .modal-card .field textarea,
   .modal-card .month-event-checklist-item input[type='text'],
   .modal-card .month-event-checklist-item input:not([type='checkbox']) {
-    padding: 10px 12px;
+    min-height: 38px;
+    padding: 9px 11px;
     border-radius: 12px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
   }
 
   .modal-card .ghost-button,
@@ -2761,8 +2789,9 @@ h2 {
   .modal-card .mini-button,
   .modal-card .segment,
   .modal-card .week-chip {
-    padding: 8px 11px;
-    font-size: 0.76rem;
+    min-height: 38px;
+    padding: 7px 11px;
+    font-size: 0.74rem;
   }
 
   .month-event-modal {
@@ -3747,7 +3776,7 @@ h2 {
 
   .modal-card {
     max-height: 90vh;
-    padding: 12px;
+    padding: 10px;
     border-radius: 16px;
   }
 
@@ -3769,14 +3798,14 @@ h2 {
   .modal-card .assistant-settings-card,
   .modal-card .actual-form,
   .modal-card .suggestion-card {
-    gap: 10px;
+    gap: 8px;
   }
 
   .modal-card .assistant-settings-card,
   .modal-card .auth-stage-card,
   .modal-card .detail-selection-card,
   .modal-card .mailbox-preview {
-    padding: 10px 11px;
+    padding: 9px 10px;
     border-radius: 14px;
   }
 
@@ -3816,9 +3845,10 @@ h2 {
   .modal-card .field textarea,
   .modal-card .month-event-checklist-item input[type='text'],
   .modal-card .month-event-checklist-item input:not([type='checkbox']) {
-    padding: 8px 10px;
+    min-height: 36px;
+    padding: 7px 9px;
     border-radius: 10px;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
   }
 
   .modal-card .ghost-button,
@@ -3826,8 +3856,9 @@ h2 {
   .modal-card .mini-button,
   .modal-card .segment,
   .modal-card .week-chip {
-    padding: 6px 9px;
-    font-size: 0.66rem;
+    min-height: 36px;
+    padding: 6px 10px;
+    font-size: 0.68rem;
   }
 
   .modal-card .profile-hero {
@@ -3879,11 +3910,11 @@ h2 {
 
   .month-event-modal {
     max-height: 84vh;
-    padding: 10px;
+    padding: 8px;
   }
 
   .month-event-modal .section-stack {
-    gap: 8px;
+    gap: 7px;
   }
 
   .month-event-modal .section-header p {
@@ -3899,7 +3930,7 @@ h2 {
   }
 
   .month-event-modal .form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 6px;
   }
 
@@ -3915,9 +3946,10 @@ h2 {
   .month-event-modal .field textarea,
   .month-event-modal .month-event-checklist-item input[type='text'],
   .month-event-modal .month-event-checklist-item input:not([type='checkbox']) {
-    padding: 7px 8px;
+    min-height: 36px;
+    padding: 7px 9px;
     border-radius: 9px;
-    font-size: 0.64rem;
+    font-size: 0.66rem;
   }
 
   .month-event-modal .field textarea {
@@ -3927,8 +3959,9 @@ h2 {
   .month-event-modal .ghost-button,
   .month-event-modal .primary-button,
   .month-event-modal .mini-button {
-    padding: 5px 8px;
-    font-size: 0.62rem;
+    min-height: 36px;
+    padding: 6px 9px;
+    font-size: 0.66rem;
   }
 
   .month-event-modal .month-event-chip-list {
