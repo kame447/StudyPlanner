@@ -39,9 +39,10 @@ import {
 } from './naturalLanguageRules';
 import {
   getNaturalLanguageRulesPipelineMode,
-  runRulesPipelineEditThroughAdapter,
-  runRulesPipelineThroughAdapter,
-  type NaturalLanguageRulesPipelineMode,
+  isNaturalLanguageLegacyDebugEnabled,
+  runRulesPipelineEditWithAdapter,
+  runRulesPipelineWithAdapter,
+  type AdaptedRulesPipelineResult,
 } from './natural-language/adapter';
 
 interface PlannerExtraction {
@@ -2953,8 +2954,221 @@ export function getPlannerAiRuntimeInfo(
 ): PlannerAiRuntimeInfo {
   return {
     providerLabel: getAiProviderLabel(config),
-    fallbackLabel: 'AIが壊れたときは入力文の明示情報から再構成します',
+    fallbackLabel: 'current pipeline を本線にし、必要時だけAIで補助します',
   };
+}
+
+interface CurrentPipelineRun {
+  pipelineResult?: AdaptedRulesPipelineResult['pipelineResult'];
+  suggestions: NaturalLanguageSuggestion[];
+  error?: unknown;
+}
+
+const AI_ASSIST_DIAGNOSTIC_CODES = new Set([
+  'CONNECTIVE_WITHOUT_BASE',
+  'TIME_ONLY_WITHOUT_BASE',
+  'ENUM_WITHOUT_BASE',
+  'ENUM_EMPTY',
+  'OVERRIDE_WITHOUT_BASE',
+]);
+
+function hasUnsupportedPlanningFamily(text: string): boolean {
+  const normalizedText = normalizeParsingText(text);
+
+  return /合計\s*\d+時間|毎日の予定|割り振|割り当て|配分|allocation|来週のどこか|今週のどこか|どこかで/.test(
+    normalizedText,
+  );
+}
+
+function hasStrongPipelineDiagnostics(
+  pipelineRun: CurrentPipelineRun,
+): boolean {
+  const diagnostics = [
+    ...(pipelineRun.pipelineResult?.ast.diagnostics ?? []),
+    ...(pipelineRun.pipelineResult?.ir.diagnostics ?? []),
+  ];
+
+  return diagnostics.some((diagnostic) =>
+    AI_ASSIST_DIAGNOSTIC_CODES.has(diagnostic.code),
+  );
+}
+
+function hasUnresolvedPipelineSuggestion(
+  suggestions: NaturalLanguageSuggestion[],
+): boolean {
+  return suggestions.some(
+    (suggestion) =>
+      suggestion.status === 'failed' ||
+      suggestion.unresolvedFields.length > 0 ||
+      suggestion.issues.length > 0 ||
+      suggestion.confidence < 0.68,
+  );
+}
+
+export function shouldUseAiAssist(
+  input: SuggestionInput,
+  pipelineRun: CurrentPipelineRun,
+): boolean {
+  if (getAiConfig().provider === 'rules') {
+    return false;
+  }
+
+  return (
+    Boolean(pipelineRun.error) ||
+    pipelineRun.suggestions.length === 0 ||
+    hasUnsupportedPlanningFamily(input.text) ||
+    hasStrongPipelineDiagnostics(pipelineRun) ||
+    hasUnresolvedPipelineSuggestion(pipelineRun.suggestions)
+  );
+}
+
+function cloneSuggestionRecurrenceRules(
+  suggestion: NaturalLanguageSuggestion,
+): RecurrenceRule[] {
+  return suggestion.parsedPlan.recurrenceRules.map((rule) => ({
+    ...rule,
+    dates: [...rule.dates],
+    weekdays: [...rule.weekdays],
+  }));
+}
+
+function normalizeAiAssistSuggestion(
+  suggestion: NaturalLanguageSuggestion,
+  input: SuggestionInput,
+): NaturalLanguageSuggestion {
+  return finalizeSuggestionStatus({
+    ...suggestion,
+    mode: input.mode,
+    source: 'llm',
+    providerLabel: `${getAiProviderLabel()} assist`,
+    reason: `current pipeline の補助としてAI結果を正規化しました。${suggestion.reason}`,
+    parsedPlan: {
+      ...suggestion.parsedPlan,
+      userId: input.userId,
+      title: suggestion.parsedPlan.title.trim(),
+      subject: suggestion.parsedPlan.subject.trim(),
+      date: suggestion.parsedPlan.date || input.selectedDate,
+      startTime: suggestion.parsedPlan.startTime,
+      endTime: suggestion.parsedPlan.endTime,
+      repeat: suggestion.parsedPlan.repeat ?? 'none',
+      repeatUntil: suggestion.parsedPlan.repeatUntil ?? null,
+      excludedDates: [...suggestion.parsedPlan.excludedDates],
+      recurrenceRules: cloneSuggestionRecurrenceRules(suggestion),
+      type: suggestion.parsedPlan.type,
+      memo: suggestion.parsedPlan.memo,
+    },
+    assumptions: Array.from(
+      new Set([
+        ...suggestion.assumptions,
+        'AI assist の結果を UI 用 suggestion schema に正規化しました。',
+      ]),
+    ),
+  });
+}
+
+export async function runAiAssist(
+  input: SuggestionInput,
+): Promise<NaturalLanguageSuggestion[]> {
+  if (getAiConfig().provider === 'rules') {
+    return [];
+  }
+
+  try {
+    const assistSuggestions =
+      input.mode === 'add'
+        ? postProcessAddSuggestions(
+            await buildBatchedAddSuggestions(input),
+            input.selectedDate,
+          )
+        : [await generateSingleNaturalLanguageSuggestion(input)];
+
+    return assistSuggestions
+      .filter((suggestion) => suggestion.source === 'llm')
+      .map((suggestion) => normalizeAiAssistSuggestion(suggestion, input));
+  } catch (error) {
+    console.warn('[AI Planner] assist failed', {
+      provider: getAiProviderLabel(),
+      mode: input.mode,
+      text: input.text,
+      error,
+    });
+
+    return [];
+  }
+}
+
+function getSuggestionIdentity(suggestion: NaturalLanguageSuggestion): string {
+  return [
+    suggestion.mode,
+    suggestion.parsedPlan.title,
+    suggestion.parsedPlan.subject,
+    suggestion.parsedPlan.date,
+    suggestion.parsedPlan.startTime,
+    suggestion.parsedPlan.endTime,
+  ].join('|');
+}
+
+export function mergeAssistIntoPipelineResult(
+  pipelineSuggestions: NaturalLanguageSuggestion[],
+  assistSuggestions: NaturalLanguageSuggestion[],
+): NaturalLanguageSuggestion[] {
+  if (assistSuggestions.length === 0) {
+    return pipelineSuggestions;
+  }
+
+  if (pipelineSuggestions.length === 0) {
+    return assistSuggestions;
+  }
+
+  const existingIdentities = new Set(
+    pipelineSuggestions.map(getSuggestionIdentity),
+  );
+  const uniqueAssistSuggestions = assistSuggestions.filter((suggestion) => {
+    const identity = getSuggestionIdentity(suggestion);
+
+    if (existingIdentities.has(identity)) {
+      return false;
+    }
+
+    existingIdentities.add(identity);
+    return true;
+  });
+
+  return [...pipelineSuggestions, ...uniqueAssistSuggestions];
+}
+
+function runCurrentAddPipeline(input: SuggestionInput): CurrentPipelineRun {
+  try {
+    return runRulesPipelineWithAdapter(input);
+  } catch (error) {
+    console.warn('[AI Planner] current pipeline adapter failed', {
+      mode: input.mode,
+      text: input.text,
+      error,
+    });
+
+    return {
+      suggestions: [],
+      error,
+    };
+  }
+}
+
+function runCurrentEditPipeline(input: SuggestionInput): CurrentPipelineRun {
+  try {
+    return runRulesPipelineEditWithAdapter(input);
+  } catch (error) {
+    console.warn('[AI Planner] current pipeline edit adapter failed', {
+      mode: input.mode,
+      text: input.text,
+      error,
+    });
+
+    return {
+      suggestions: [],
+      error,
+    };
+  }
 }
 
 async function buildLegacyRuleBasedAddSuggestions(
@@ -2970,48 +3184,31 @@ async function buildLegacyRuleBasedAddSuggestions(
   );
 }
 
-function buildPipelineRuleBasedAddSuggestions(
+async function buildLegacyDebugAddSuggestions(
   input: SuggestionInput,
-): NaturalLanguageSuggestion[] {
-  return runRulesPipelineThroughAdapter(input);
-}
+  pipelineRun: CurrentPipelineRun,
+): Promise<NaturalLanguageSuggestion[] | null> {
+  if (!isNaturalLanguageLegacyDebugEnabled()) {
+    return null;
+  }
 
-async function buildRuleBasedAddSuggestions(
-  input: SuggestionInput,
-): Promise<{
-  suggestions: NaturalLanguageSuggestion[];
-  sourceMode: NaturalLanguageRulesPipelineMode;
-}> {
   const mode = getNaturalLanguageRulesPipelineMode();
 
   if (mode === 'legacy') {
-    return {
-      suggestions: await buildLegacyRuleBasedAddSuggestions(input),
-      sourceMode: mode,
-    };
+    return postProcessAddSuggestions(
+      await buildLegacyRuleBasedAddSuggestions(input),
+      input.selectedDate,
+    );
   }
 
-  try {
-    const pipelineSuggestions = buildPipelineRuleBasedAddSuggestions(input);
-
-    if (pipelineSuggestions.length > 0) {
-      return {
-        suggestions: pipelineSuggestions,
-        sourceMode: mode,
-      };
-    }
-  } catch (error) {
-    console.warn('[AI Planner] rules pipeline adapter failed', {
-      mode,
-      text: input.text,
-      error,
-    });
+  if (mode === 'hybrid' && pipelineRun.suggestions.length === 0) {
+    return postProcessAddSuggestions(
+      await buildLegacyRuleBasedAddSuggestions(input),
+      input.selectedDate,
+    );
   }
 
-  return {
-    suggestions: await buildLegacyRuleBasedAddSuggestions(input),
-    sourceMode: mode,
-  };
+  return null;
 }
 
 async function buildLegacyRuleBasedEditSuggestions(
@@ -3020,48 +3217,25 @@ async function buildLegacyRuleBasedEditSuggestions(
   return [await generateSingleNaturalLanguageSuggestion(input)];
 }
 
-function buildPipelineRuleBasedEditSuggestions(
+async function buildLegacyDebugEditSuggestions(
   input: SuggestionInput,
-): NaturalLanguageSuggestion[] {
-  return runRulesPipelineEditThroughAdapter(input);
-}
+  pipelineRun: CurrentPipelineRun,
+): Promise<NaturalLanguageSuggestion[] | null> {
+  if (!isNaturalLanguageLegacyDebugEnabled()) {
+    return null;
+  }
 
-async function buildRuleBasedEditSuggestions(
-  input: SuggestionInput,
-): Promise<{
-  suggestions: NaturalLanguageSuggestion[];
-  sourceMode: NaturalLanguageRulesPipelineMode;
-}> {
   const mode = getNaturalLanguageRulesPipelineMode();
 
   if (mode === 'legacy') {
-    return {
-      suggestions: await buildLegacyRuleBasedEditSuggestions(input),
-      sourceMode: mode,
-    };
+    return buildLegacyRuleBasedEditSuggestions(input);
   }
 
-  try {
-    const pipelineSuggestions = buildPipelineRuleBasedEditSuggestions(input);
-
-    if (pipelineSuggestions.length > 0) {
-      return {
-        suggestions: pipelineSuggestions,
-        sourceMode: mode,
-      };
-    }
-  } catch (error) {
-    console.warn('[AI Planner] rules pipeline edit adapter failed', {
-      mode,
-      text: input.text,
-      error,
-    });
+  if (mode === 'hybrid' && pipelineRun.suggestions.length === 0) {
+    return buildLegacyRuleBasedEditSuggestions(input);
   }
 
-  return {
-    suggestions: await buildLegacyRuleBasedEditSuggestions(input),
-    sourceMode: mode,
-  };
+  return null;
 }
 
 async function generateSingleNaturalLanguageSuggestion(
@@ -3157,52 +3331,46 @@ export async function generateNaturalLanguageSuggestions(
   input: SuggestionInput,
 ): Promise<NaturalLanguageSuggestion[]> {
   if (input.mode === 'add') {
-    try {
-      if (getAiConfig().provider === 'rules') {
-        const { suggestions, sourceMode } = await buildRuleBasedAddSuggestions(input);
+    const pipelineRun = runCurrentAddPipeline(input);
+    const legacyDebugSuggestions = await buildLegacyDebugAddSuggestions(
+      input,
+      pipelineRun,
+    );
 
-        if (suggestions.length > 0) {
-          return sourceMode === 'legacy'
-            ? postProcessAddSuggestions(suggestions, input.selectedDate)
-            : suggestions;
-        }
-
-        const fallbackSuggestions = await buildLegacyRuleBasedAddSuggestions(input);
-        return postProcessAddSuggestions(fallbackSuggestions, input.selectedDate);
-      }
-
-      const suggestions = await buildBatchedAddSuggestions(input);
-
-      return suggestions.length > 0
-        ? postProcessAddSuggestions(suggestions, input.selectedDate)
-        : [await generateSingleNaturalLanguageSuggestion(input)];
-    } catch {
-      const fallbackTaskTexts = normalizeTaskTexts(
-        splitAddTaskTexts(input.text),
-        input.text,
-      );
-      const fallbackSuggestions = await Promise.all(
-        fallbackTaskTexts.map((taskText) =>
-          generateSingleNaturalLanguageSuggestion({
-            ...input,
-            text: taskText,
-          }),
-        ),
-      );
-
-      return postProcessAddSuggestions(fallbackSuggestions, input.selectedDate);
+    if (legacyDebugSuggestions) {
+      return legacyDebugSuggestions;
     }
+
+    if (!shouldUseAiAssist(input, pipelineRun)) {
+      return pipelineRun.suggestions;
+    }
+
+    const assistSuggestions = await runAiAssist(input);
+    return mergeAssistIntoPipelineResult(
+      pipelineRun.suggestions,
+      assistSuggestions,
+    );
   }
 
-  if (getAiConfig().provider === 'rules') {
-    const { suggestions } = await buildRuleBasedEditSuggestions(input);
-    return suggestions.length > 0
-      ? suggestions
-      : [await generateSingleNaturalLanguageSuggestion(input)];
+  const pipelineRun = runCurrentEditPipeline(input);
+  const legacyDebugSuggestions = await buildLegacyDebugEditSuggestions(
+    input,
+    pipelineRun,
+  );
+
+  if (legacyDebugSuggestions) {
+    return legacyDebugSuggestions;
   }
 
-  const suggestion = await generateSingleNaturalLanguageSuggestion(input);
-  return [suggestion];
+  if (!shouldUseAiAssist(input, pipelineRun)) {
+    return pipelineRun.suggestions;
+  }
+
+  const assistSuggestions = await runAiAssist(input);
+  return mergeAssistIntoPipelineResult(
+    pipelineRun.suggestions,
+    assistSuggestions,
+  );
 }
 
 export async function generateNaturalLanguageSuggestion(

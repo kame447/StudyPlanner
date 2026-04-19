@@ -22,7 +22,10 @@ import {
   matchPlan,
   type SuggestionInput,
 } from "../naturalLanguageRules";
-import { runNaturalLanguagePipeline } from "./index";
+import {
+  runNaturalLanguagePipeline,
+  type NaturalLanguagePipelineResult,
+} from "./index";
 import { inferEventSubject } from "./catalog";
 import { inferEventTitle } from "./title";
 import type {
@@ -62,6 +65,28 @@ export const NATURAL_LANGUAGE_RULES_PIPELINE_MODE_VALUES: NaturalLanguageRulesPi
   "pipeline",
   "hybrid",
 ];
+
+export interface AdaptedRulesPipelineResult {
+  pipelineResult: NaturalLanguagePipelineResult;
+  suggestions: NaturalLanguageSuggestion[];
+}
+
+function readGlobalLegacyDebugEnabled(): boolean {
+  const maybeGlobal = (
+    globalThis as typeof globalThis & {
+      __STUDYPLANNER_NL_LEGACY_PARSER_ENABLED__?: boolean | string;
+    }
+  ).__STUDYPLANNER_NL_LEGACY_PARSER_ENABLED__;
+
+  return maybeGlobal === true || maybeGlobal === "true";
+}
+
+export function isNaturalLanguageLegacyDebugEnabled(): boolean {
+  return (
+    readGlobalLegacyDebugEnabled() ||
+    import.meta.env.VITE_NL_LEGACY_PARSER_ENABLED === "true"
+  );
+}
 
 function isRulesPipelineMode(
   value: string | undefined | null,
@@ -113,6 +138,13 @@ function resolveNaturalLanguageRulesPipelineMode(): {
   mode: NaturalLanguageRulesPipelineMode;
   source: NaturalLanguageRulesPipelineModeSource;
 } {
+  if (!isNaturalLanguageLegacyDebugEnabled()) {
+    return {
+      mode: "pipeline",
+      source: "default",
+    };
+  }
+
   const globalMode = readGlobalRulesPipelineMode();
   if (globalMode) {
     return {
@@ -138,7 +170,7 @@ function resolveNaturalLanguageRulesPipelineMode(): {
   }
 
   return {
-    mode: "legacy",
+    mode: "pipeline",
     source: "default",
   };
 }
@@ -637,12 +669,25 @@ export function runRulesPipelineThroughAdapter(
   input: SuggestionInput,
   options: PipelineOptions = {},
 ): NaturalLanguageSuggestion[] {
-  const result = runNaturalLanguagePipeline(input.text, {
+  return runRulesPipelineWithAdapter(input, options).suggestions;
+}
+
+export function runRulesPipelineWithAdapter(
+  input: SuggestionInput,
+  options: PipelineOptions = {},
+): AdaptedRulesPipelineResult {
+  const pipelineResult = runNaturalLanguagePipeline(input.text, {
     referenceDate: input.selectedDate,
     ...options,
   });
 
-  return adaptPipelineSuggestionsToLegacySuggestions(result.suggestions, input);
+  return {
+    pipelineResult,
+    suggestions: adaptPipelineSuggestionsToLegacySuggestions(
+      pipelineResult.suggestions,
+      input,
+    ),
+  };
 }
 
 function cloneLegacyDraft(draft: LegacyPlanDraft): LegacyPlanDraft {
@@ -836,14 +881,32 @@ export function runRulesPipelineEditThroughAdapter(
   input: SuggestionInput,
   options: PipelineOptions = {},
 ): NaturalLanguageSuggestion[] {
-  const result = runNaturalLanguagePipeline(input.text, {
+  return runRulesPipelineEditWithAdapter(input, options).suggestions;
+}
+
+export function runRulesPipelineEditWithAdapter(
+  input: SuggestionInput,
+  options: PipelineOptions = {},
+): AdaptedRulesPipelineResult {
+  const pipelineResult = runNaturalLanguagePipeline(input.text, {
     referenceDate: input.selectedDate,
     ...options,
   });
 
-  if (result.suggestions.length !== 1) {
-    return [];
+  if (pipelineResult.suggestions.length !== 1) {
+    return {
+      pipelineResult,
+      suggestions: [],
+    };
   }
 
-  return [adaptPipelineSuggestionToLegacyEditSuggestion(result.suggestions[0], input)];
+  return {
+    pipelineResult,
+    suggestions: [
+      adaptPipelineSuggestionToLegacyEditSuggestion(
+        pipelineResult.suggestions[0],
+        input,
+      ),
+    ],
+  };
 }

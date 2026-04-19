@@ -14,6 +14,7 @@ import {
   generateNaturalLanguageSuggestions,
   getPlannerAiRuntimeInfo,
 } from '../services/naturalLanguagePlanner';
+import { isNaturalLanguageLegacyDebugEnabled } from '../services/natural-language/adapter';
 import type {
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
@@ -300,7 +301,9 @@ export function NaturalLanguageAssistant({
         onReset={handleResetAiConfig}
       />
 
-      <NaturalLanguageRulesModeControl currentProvider={aiConfig.provider} />
+      {isNaturalLanguageLegacyDebugEnabled() ? (
+        <NaturalLanguageRulesModeControl currentProvider={aiConfig.provider} />
+      ) : null}
 
       <NaturalLanguageCsvTester
         currentProvider={aiConfig.provider}

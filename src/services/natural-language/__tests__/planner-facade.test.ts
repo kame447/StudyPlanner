@@ -5,23 +5,33 @@ import type { SuggestionInput } from '../../naturalLanguageRules';
 import * as planner from '../../naturalLanguagePlanner';
 
 const facadeState = vi.hoisted(() => ({
-  mode: 'legacy' as 'legacy' | 'pipeline' | 'hybrid',
-  addSuggestions: [] as NaturalLanguageSuggestion[],
-  editSuggestions: [] as NaturalLanguageSuggestion[],
+  provider: 'rules' as 'rules' | 'openai',
+  legacyDebugEnabled: false,
+  mode: 'pipeline' as 'legacy' | 'pipeline' | 'hybrid',
+  addPipelineRun: {
+    pipelineResult: undefined,
+    suggestions: [] as NaturalLanguageSuggestion[],
+  },
+  editPipelineRun: {
+    pipelineResult: undefined,
+    suggestions: [] as NaturalLanguageSuggestion[],
+  },
 }));
 
-const addAdapterSpy = vi.hoisted(() => vi.fn(() => facadeState.addSuggestions));
-const editAdapterSpy = vi.hoisted(() => vi.fn(() => facadeState.editSuggestions));
+const addAdapterSpy = vi.hoisted(() => vi.fn(() => facadeState.addPipelineRun));
+const editAdapterSpy = vi.hoisted(() => vi.fn(() => facadeState.editPipelineRun));
 
 vi.mock('../../../lib/aiConfig', () => ({
-  getAiConfig: () => ({ provider: 'rules' }),
-  getAiProviderLabel: () => 'ルールベース',
+  getAiConfig: () => ({ provider: facadeState.provider }),
+  getAiProviderLabel: () =>
+    facadeState.provider === 'rules' ? 'ルールベース' : 'OpenAI互換',
 }));
 
 vi.mock('../adapter', () => ({
   getNaturalLanguageRulesPipelineMode: () => facadeState.mode,
-  runRulesPipelineThroughAdapter: addAdapterSpy,
-  runRulesPipelineEditThroughAdapter: editAdapterSpy,
+  isNaturalLanguageLegacyDebugEnabled: () => facadeState.legacyDebugEnabled,
+  runRulesPipelineWithAdapter: addAdapterSpy,
+  runRulesPipelineEditWithAdapter: editAdapterSpy,
 }));
 
 function createAddInput(text: string): SuggestionInput {
@@ -99,31 +109,29 @@ function createMockSuggestion(
 }
 
 afterEach(() => {
-  facadeState.mode = 'legacy';
-  facadeState.addSuggestions = [];
-  facadeState.editSuggestions = [];
+  facadeState.provider = 'rules';
+  facadeState.legacyDebugEnabled = false;
+  facadeState.mode = 'pipeline';
+  facadeState.addPipelineRun = {
+    pipelineResult: undefined,
+    suggestions: [],
+  };
+  facadeState.editPipelineRun = {
+    pipelineResult: undefined,
+    suggestions: [],
+  };
   addAdapterSpy.mockClear();
   editAdapterSpy.mockClear();
 });
 
 describe('naturalLanguagePlanner facade', () => {
-  it('legacy mode では既存 add rules 経路を使う', async () => {
-    facadeState.mode = 'legacy';
-    facadeState.addSuggestions = [createMockSuggestion('unused')];
-
-    const suggestions = await planner.generateNaturalLanguageSuggestions(
-      createAddInput('明日19時から数学を1時間'),
-    );
-
-    expect(addAdapterSpy).not.toHaveBeenCalled();
-    expect(suggestions).toHaveLength(1);
-    expect(suggestions[0].assumptions).not.toContain('mock adapter suggestion');
-  });
-
-  it('pipeline mode では add adapter 経路を優先する', async () => {
+  it('legacy mode 設定があっても debug flag なしでは add は current pipeline を使う', async () => {
     const adapterSuggestion = createMockSuggestion('明日19時から数学を1時間');
-    facadeState.mode = 'pipeline';
-    facadeState.addSuggestions = [adapterSuggestion];
+    facadeState.mode = 'legacy';
+    facadeState.addPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [adapterSuggestion],
+    };
 
     const suggestions = await planner.generateNaturalLanguageSuggestions(
       createAddInput('明日19時から数学を1時間'),
@@ -133,32 +141,54 @@ describe('naturalLanguagePlanner facade', () => {
     expect(suggestions).toEqual([adapterSuggestion]);
   });
 
-  it('pipeline mode でも add が 0 件なら既存 rules 経路へ fallback する', async () => {
+  it('pipeline mode では add adapter 経路を優先する', async () => {
+    const adapterSuggestion = createMockSuggestion('明日19時から数学を1時間');
     facadeState.mode = 'pipeline';
-    facadeState.addSuggestions = [];
+    facadeState.addPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [adapterSuggestion],
+    };
 
     const suggestions = await planner.generateNaturalLanguageSuggestions(
       createAddInput('明日19時から数学を1時間'),
     );
 
     expect(addAdapterSpy).toHaveBeenCalledTimes(1);
-    expect(suggestions).toHaveLength(1);
-    expect(suggestions[0].parsedPlan.title).toBe('数学');
-    expect(suggestions[0].assumptions).not.toContain('mock adapter suggestion');
+    expect(suggestions).toEqual([adapterSuggestion]);
   });
 
-  it('legacy mode では既存 edit rules 経路を使う', async () => {
+  it('pipeline mode で add が 0 件でも legacy fallback しない', async () => {
+    facadeState.mode = 'pipeline';
+    facadeState.addPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [],
+    };
+
+    const suggestions = await planner.generateNaturalLanguageSuggestions(
+      createAddInput('明日19時から数学を1時間'),
+    );
+
+    expect(addAdapterSpy).toHaveBeenCalledTimes(1);
+    expect(suggestions).toEqual([]);
+  });
+
+  it('legacy mode 設定があっても debug flag なしでは edit は current pipeline を使う', async () => {
+    const adapterSuggestion = createMockSuggestion('数学を20時に変更', {
+      mode: 'edit',
+      matchedPlanId: 'plan-1',
+    });
     facadeState.mode = 'legacy';
-    facadeState.editSuggestions = [createMockSuggestion('unused')];
+    facadeState.editPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [adapterSuggestion],
+    };
 
     const suggestions = await planner.generateNaturalLanguageSuggestions(
       createEditInput('数学を20時に変更'),
     );
 
-    expect(editAdapterSpy).not.toHaveBeenCalled();
-    expect(suggestions).toHaveLength(1);
-    expect(suggestions[0].matchedPlanId).toBe('plan-1');
-    expect(suggestions[0].assumptions).not.toContain('mock adapter suggestion');
+    expect(editAdapterSpy).toHaveBeenCalledTimes(1);
+    expect(suggestions).toEqual([adapterSuggestion]);
   });
 
   it('pipeline mode では new pipeline + edit adapter を優先する', async () => {
@@ -167,7 +197,10 @@ describe('naturalLanguagePlanner facade', () => {
       matchedPlanId: 'plan-1',
     });
     facadeState.mode = 'pipeline';
-    facadeState.editSuggestions = [adapterSuggestion];
+    facadeState.editPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [adapterSuggestion],
+    };
 
     const suggestions = await planner.generateNaturalLanguageSuggestions(
       createEditInput('数学を20時に変更'),
@@ -177,33 +210,64 @@ describe('naturalLanguagePlanner facade', () => {
     expect(suggestions).toEqual([adapterSuggestion]);
   });
 
-  it('pipeline mode でも edit が 0 件なら既存 rules 経路へ fallback する', async () => {
+  it('pipeline mode で edit が 0 件でも legacy fallback しない', async () => {
     facadeState.mode = 'pipeline';
-    facadeState.editSuggestions = [];
+    facadeState.editPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [],
+    };
 
     const suggestions = await planner.generateNaturalLanguageSuggestions(
       createEditInput('数学を20時に変更'),
     );
 
     expect(editAdapterSpy).toHaveBeenCalledTimes(1);
+    expect(suggestions).toEqual([]);
+  });
+
+  it('debug flag が有効な legacy mode だけ既存 rules 経路へ退避できる', async () => {
+    facadeState.legacyDebugEnabled = true;
+    facadeState.mode = 'legacy';
+    facadeState.addPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [createMockSuggestion('unused')],
+    };
+
+    const suggestions = await planner.generateNaturalLanguageSuggestions(
+      createAddInput('明日19時から数学を1時間'),
+    );
+
+    expect(addAdapterSpy).toHaveBeenCalledTimes(1);
     expect(suggestions).toHaveLength(1);
-    expect(suggestions[0].matchedPlanId).toBe('plan-1');
     expect(suggestions[0].assumptions).not.toContain('mock adapter suggestion');
   });
 
-  it('hybrid mode の edit は pipeline 優先だが fallback 条件は add と同じ', async () => {
-    const adapterSuggestion = createMockSuggestion('数学を20時に変更', {
-      mode: 'edit',
-      matchedPlanId: 'plan-1',
-    });
-    facadeState.mode = 'hybrid';
-    facadeState.editSuggestions = [adapterSuggestion];
+  it('AI assist は rules provider では使わず、unsupported / unresolved でだけ使う', () => {
+    const input = createAddInput('今週は数学を合計10時間やりたい');
 
-    const suggestions = await planner.generateNaturalLanguageSuggestions(
-      createEditInput('数学を20時に変更'),
-    );
+    expect(
+      planner.shouldUseAiAssist(input, {
+        suggestions: [],
+      }),
+    ).toBe(false);
 
-    expect(editAdapterSpy).toHaveBeenCalledTimes(1);
-    expect(suggestions).toEqual([adapterSuggestion]);
+    facadeState.provider = 'openai';
+
+    expect(
+      planner.shouldUseAiAssist(input, {
+        suggestions: [createMockSuggestion('pipeline')],
+      }),
+    ).toBe(true);
+
+    expect(
+      planner.shouldUseAiAssist(createAddInput('明日19時から数学を1時間'), {
+        suggestions: [
+          createMockSuggestion('pipeline', {
+            unresolvedFields: ['startTime'],
+            status: 'needs_review',
+          }),
+        ],
+      }),
+    ).toBe(true);
   });
 });
