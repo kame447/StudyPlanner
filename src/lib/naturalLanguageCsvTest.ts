@@ -5,9 +5,12 @@ import {
   summarizeLegacyRepeatUntilFromRecurrenceRules,
 } from './planRecurrence';
 import type {
+  MonthEventRepeat,
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
   PlanType,
+  RecurrenceRule,
+  RecurrenceWeekday,
 } from '../types/domain';
 
 export interface NaturalLanguageCsvRow {
@@ -23,6 +26,10 @@ export interface NaturalLanguageCsvRow {
   expectedStart: string;
   expectedEnd: string;
   expectedRepeat: string;
+  expectedRepeatKind: string;
+  expectedRepeatDays: string;
+  expectedExcludedDays: string;
+  expectedRepeatUntil: string;
 }
 
 export interface NaturalLanguageCsvCase {
@@ -53,16 +60,25 @@ export interface NaturalLanguageCsvCaseResult {
 }
 
 interface RepeatExpectation {
-  baseRepeat: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+  baseRepeat: MonthEventRepeat;
   repeatUntil?: string;
   notes: string[];
-  acceptedActualRepeats?: Array<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>;
+  acceptedActualRepeats?: MonthEventRepeat[];
+  semantic?: RepeatSemantic;
 }
 
 export interface ActualRecurrenceView {
   date: string;
   repeatKey: string;
   repeatUntil: string | null;
+  semantic: RepeatSemantic;
+}
+
+interface RepeatSemantic {
+  kind: MonthEventRepeat;
+  days: RecurrenceWeekday[];
+  excludedDays: RecurrenceWeekday[];
+  until?: string;
 }
 
 const EDIT_EXPECTATION_LABELS = new Set([
@@ -86,6 +102,65 @@ const CSV_TYPE_ALIASES: Record<string, PlanType> = {
   '締切': 'deadline',
   other: 'other',
   'その他': 'other',
+};
+
+const DAY_ORDER: RecurrenceWeekday[] = [
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+  'sun',
+];
+
+const WEEKDAYS: RecurrenceWeekday[] = ['mon', 'tue', 'wed', 'thu', 'fri'];
+
+const WEEKENDS: RecurrenceWeekday[] = ['sat', 'sun'];
+
+const ALL_DAYS: RecurrenceWeekday[] = [...WEEKDAYS, ...WEEKENDS];
+
+const FUTURE_SCOPE_CASE_IDS = new Set(['524']);
+
+const DAY_ALIASES: Record<string, RecurrenceWeekday> = {
+  monday: 'mon',
+  mon: 'mon',
+  月: 'mon',
+  月曜: 'mon',
+  月曜日: 'mon',
+  tuesday: 'tue',
+  tue: 'tue',
+  tues: 'tue',
+  火: 'tue',
+  火曜: 'tue',
+  火曜日: 'tue',
+  wednesday: 'wed',
+  wed: 'wed',
+  水: 'wed',
+  水曜: 'wed',
+  水曜日: 'wed',
+  thursday: 'thu',
+  thu: 'thu',
+  thur: 'thu',
+  thurs: 'thu',
+  木: 'thu',
+  木曜: 'thu',
+  木曜日: 'thu',
+  friday: 'fri',
+  fri: 'fri',
+  金: 'fri',
+  金曜: 'fri',
+  金曜日: 'fri',
+  saturday: 'sat',
+  sat: 'sat',
+  土: 'sat',
+  土曜: 'sat',
+  土曜日: 'sat',
+  sunday: 'sun',
+  sun: 'sun',
+  日: 'sun',
+  日曜: 'sun',
+  日曜日: 'sun',
 };
 
 function parseCsvLine(line: string): string[] {
@@ -175,6 +250,10 @@ export function parseNaturalLanguageCsv(text: string): NaturalLanguageCsvRow[] {
       expectedStart: row.expected_start,
       expectedEnd: row.expected_end,
       expectedRepeat: row.expected_repeat,
+      expectedRepeatKind: row.expected_repeat_kind ?? '',
+      expectedRepeatDays: row.expected_repeat_days ?? '',
+      expectedExcludedDays: row.expected_excluded_days ?? '',
+      expectedRepeatUntil: row.expected_repeat_until ?? '',
     };
   });
 }
@@ -229,11 +308,163 @@ export function buildNaturalLanguageCsvCases(
   }));
 }
 
-function parseExpectedRepeat(rawValue: string): RepeatExpectation {
+function sortUniqueDays(days: RecurrenceWeekday[]): RecurrenceWeekday[] {
+  return DAY_ORDER.filter((day) => days.includes(day));
+}
+
+function parseDayList(rawValue: string): RecurrenceWeekday[] {
+  const normalized = rawValue
+    .trim()
+    .toLowerCase()
+    .replace(/[、，]/g, ',')
+    .replace(/\s+/g, ',');
+
+  if (!normalized) {
+    return [];
+  }
+
+  return sortUniqueDays(
+    normalized
+      .split(/[,/_-]+/)
+      .map((part) => DAY_ALIASES[part])
+      .filter((day): day is RecurrenceWeekday => Boolean(day)),
+  );
+}
+
+function withoutDays(
+  baseDays: RecurrenceWeekday[],
+  excludedDays: RecurrenceWeekday[],
+): RecurrenceWeekday[] {
+  return baseDays.filter((day) => !excludedDays.includes(day));
+}
+
+function normalizeRepeatKind(rawValue: string): MonthEventRepeat | 'weekdays' | 'weekends' | '' {
+  const value = rawValue.trim().toLowerCase();
+
+  if (
+    value === 'none' ||
+    value === 'daily' ||
+    value === 'weekly' ||
+    value === 'monthly' ||
+    value === 'yearly' ||
+    value === 'weekdays' ||
+    value === 'weekends'
+  ) {
+    return value;
+  }
+
+  if (value === 'weekday') {
+    return 'weekdays';
+  }
+
+  if (value === 'weekend') {
+    return 'weekends';
+  }
+
+  return '';
+}
+
+function normalizeSemanticDays(semantic: RepeatSemantic): RecurrenceWeekday[] {
+  if (semantic.kind === 'daily') {
+    return withoutDays(ALL_DAYS, semantic.excludedDays);
+  }
+
+  if (semantic.kind === 'weekly') {
+    return sortUniqueDays(semantic.days);
+  }
+
+  return [];
+}
+
+function areDaySetsEqual(
+  left: RecurrenceWeekday[],
+  right: RecurrenceWeekday[],
+): boolean {
+  const normalizedLeft = sortUniqueDays(left);
+  const normalizedRight = sortUniqueDays(right);
+
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((day, index) => day === normalizedRight[index])
+  );
+}
+
+function areRepeatSemanticallyEqual(
+  expected: RepeatSemantic | undefined,
+  actual: RepeatSemantic,
+): boolean {
+  if (!expected) {
+    return false;
+  }
+
+  if (expected.until && expected.until !== actual.until) {
+    return false;
+  }
+
+  if (expected.kind === actual.kind && expected.kind !== 'daily' && expected.kind !== 'weekly') {
+    return true;
+  }
+
+  if (
+    (expected.kind === 'daily' || expected.kind === 'weekly') &&
+    (actual.kind === 'daily' || actual.kind === 'weekly')
+  ) {
+    return areDaySetsEqual(
+      normalizeSemanticDays(expected),
+      normalizeSemanticDays(actual),
+    );
+  }
+
+  return false;
+}
+
+function parseStructuredRepeat(row: NaturalLanguageCsvRow): RepeatSemantic | undefined {
+  const kind = normalizeRepeatKind(row.expectedRepeatKind);
+
+  if (!kind) {
+    return undefined;
+  }
+
+  const excludedDays = parseDayList(row.expectedExcludedDays);
+  const explicitDays = parseDayList(row.expectedRepeatDays);
+  const until = row.expectedRepeatUntil.trim() || undefined;
+
+  if (kind === 'weekdays') {
+    return {
+      kind: 'weekly',
+      days: explicitDays.length > 0 ? explicitDays : withoutDays(WEEKDAYS, excludedDays),
+      excludedDays,
+      until,
+    };
+  }
+
+  if (kind === 'weekends') {
+    return {
+      kind: 'weekly',
+      days: explicitDays.length > 0 ? explicitDays : withoutDays(WEEKENDS, excludedDays),
+      excludedDays,
+      until,
+    };
+  }
+
+  return {
+    kind,
+    days: explicitDays,
+    excludedDays,
+    until,
+  };
+}
+
+function parseLegacyRepeatValue(rawValue: string): RepeatExpectation {
   const value = rawValue.trim();
 
   if (!value || value === 'none') {
-    return { baseRepeat: 'none', notes: [], acceptedActualRepeats: ['none'] };
+    return {
+      baseRepeat: 'none',
+      notes: [],
+      acceptedActualRepeats: ['none'],
+      semantic: { kind: 'none', days: [], excludedDays: [] },
+    };
   }
 
   if (
@@ -242,28 +473,81 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
     value === 'monthly' ||
     value === 'yearly'
   ) {
-    return { baseRepeat: value, notes: [], acceptedActualRepeats: [value] };
+    return {
+      baseRepeat: value,
+      notes: [],
+      acceptedActualRepeats: [value],
+      semantic: { kind: value, days: [], excludedDays: [] },
+    };
+  }
+
+  const dailyUntilExceptMatch = value.match(
+    /^daily_until_(\d{4}-\d{2}-\d{2})_except_([a-z_]+)$/,
+  );
+
+  if (dailyUntilExceptMatch) {
+    const excludedDays = parseDayList(dailyUntilExceptMatch[2]);
+
+    return {
+      baseRepeat: 'daily',
+      repeatUntil: dailyUntilExceptMatch[1],
+      acceptedActualRepeats: ['daily', 'weekly'],
+      notes: [],
+      semantic: {
+        kind: 'daily',
+        days: [],
+        excludedDays,
+        until: dailyUntilExceptMatch[1],
+      },
+    };
   }
 
   const untilMatch = value.match(/^(daily|weekly|monthly|yearly)(?:_[a-z_]+)?_until_(\d{4}-\d{2}-\d{2})$/);
 
   if (untilMatch) {
+    const prefix = value.slice(0, value.length - `_until_${untilMatch[2]}`.length);
+    const excludedDays = prefix.startsWith('daily_except_')
+      ? parseDayList(prefix.replace(/^daily_except_/, ''))
+      : [];
+    const weeklyDays = prefix.startsWith('weekly_')
+      ? parseDayList(prefix.replace(/^weekly_/, ''))
+      : [];
+
     return {
-      baseRepeat: untilMatch[1] as RepeatExpectation['baseRepeat'],
+      baseRepeat: untilMatch[1] as MonthEventRepeat,
       repeatUntil: untilMatch[2],
-      acceptedActualRepeats: [untilMatch[1] as RepeatExpectation['baseRepeat']],
-      notes:
-        untilMatch[0] === `${untilMatch[1]}_until_${untilMatch[2]}`
-          ? []
-          : ['曜日や条件の細分までは比較していません。'],
+      acceptedActualRepeats: [untilMatch[1] as MonthEventRepeat, 'weekly'],
+      notes: [],
+      semantic: {
+        kind: untilMatch[1] as MonthEventRepeat,
+        days: weeklyDays,
+        excludedDays,
+        until: untilMatch[2],
+      },
+    };
+  }
+
+  if (/^daily_except_/.test(value)) {
+    return {
+      baseRepeat: 'daily',
+      acceptedActualRepeats: ['daily', 'weekly'],
+      notes: [],
+      semantic: {
+        kind: 'daily',
+        days: [],
+        excludedDays: parseDayList(value.replace(/^daily_except_/, '')),
+      },
     };
   }
 
   if (/^weekly_/.test(value)) {
+    const days = parseDayList(value.replace(/^weekly_/, ''));
+
     return {
       baseRepeat: 'weekly',
       acceptedActualRepeats: ['weekly', 'none'],
-      notes: ['曜日の組み合わせまでは比較していません。'],
+      notes: days.length > 0 ? [] : ['曜日の組み合わせまでは比較していません。'],
+      semantic: { kind: 'weekly', days, excludedDays: [] },
     };
   }
 
@@ -286,10 +570,19 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
   }
 
   if (/^weekdays/.test(value) || /^weekends/.test(value)) {
+    const isWeekdays = /^weekdays/.test(value);
+    const excludedMatch = value.match(/^(weekdays|weekends)_except_([a-z_]+)$/);
+    const excludedDays = excludedMatch ? parseDayList(excludedMatch[2]) : [];
+
     return {
       baseRepeat: 'weekly',
       acceptedActualRepeats: ['weekly', 'daily', 'none'],
-      notes: ['平日・週末条件までは比較していません。'],
+      notes: [],
+      semantic: {
+        kind: 'weekly',
+        days: withoutDays(isWeekdays ? WEEKDAYS : WEEKENDS, excludedDays),
+        excludedDays,
+      },
     };
   }
 
@@ -305,6 +598,24 @@ function parseExpectedRepeat(rawValue: string): RepeatExpectation {
     baseRepeat: 'none',
     acceptedActualRepeats: ['none'],
     notes: [`未対応の repeat ラベルです: ${value}`],
+  };
+}
+
+function parseExpectedRepeat(row: NaturalLanguageCsvRow): RepeatExpectation {
+  const structuredRepeat = parseStructuredRepeat(row);
+  const legacyRepeat = parseLegacyRepeatValue(row.expectedRepeat);
+
+  if (!structuredRepeat) {
+    return legacyRepeat;
+  }
+
+  return {
+    ...legacyRepeat,
+    baseRepeat: structuredRepeat.kind,
+    repeatUntil: structuredRepeat.until ?? legacyRepeat.repeatUntil,
+    notes: [],
+    acceptedActualRepeats: [structuredRepeat.kind, 'weekly', 'daily'],
+    semantic: structuredRepeat,
   };
 }
 
@@ -332,6 +643,59 @@ function doesRepeatMatch(
   actualRepeat: NaturalLanguageSuggestion['parsedPlan']['repeat'],
 ): boolean {
   return (expectation.acceptedActualRepeats ?? [expectation.baseRepeat]).includes(actualRepeat);
+}
+
+function buildRepeatSemanticFromRule(rule: RecurrenceRule): RepeatSemantic {
+  if (rule.kind === 'daily') {
+    return {
+      kind: 'daily',
+      days: [],
+      excludedDays: [],
+      until: rule.until ?? undefined,
+    };
+  }
+
+  if (rule.kind === 'day-type') {
+    return {
+      kind: 'weekly',
+      days:
+        rule.dayType === 'weekday'
+          ? WEEKDAYS
+          : rule.dayType === 'weekend'
+            ? WEEKENDS
+            : [],
+      excludedDays: [],
+      until: rule.until ?? undefined,
+    };
+  }
+
+  if (rule.kind === 'weekday') {
+    return {
+      kind: 'weekly',
+      days: sortUniqueDays(rule.weekdays),
+      excludedDays: [],
+      until: rule.until ?? undefined,
+    };
+  }
+
+  return {
+    kind: 'none',
+    days: [],
+    excludedDays: [],
+    until: rule.until ?? undefined,
+  };
+}
+
+function buildLegacyRepeatSemantic(
+  repeat: MonthEventRepeat,
+  repeatUntil: string | null,
+): RepeatSemantic {
+  return {
+    kind: repeat,
+    days: [],
+    excludedDays: [],
+    until: repeatUntil ?? undefined,
+  };
 }
 
 function toWeekdayKey(weekday: string): string {
@@ -399,6 +763,10 @@ export function deriveActualRecurrenceView(
       date: actual.parsedPlan.date,
       repeatKey: actual.parsedPlan.repeat,
       repeatUntil: actual.parsedPlan.repeatUntil,
+      semantic: buildLegacyRepeatSemantic(
+        actual.parsedPlan.repeat,
+        actual.parsedPlan.repeatUntil,
+      ),
     };
   }
 
@@ -413,6 +781,9 @@ export function deriveActualRecurrenceView(
       rules,
       actual.parsedPlan.repeatUntil,
     ),
+    semantic: buildRepeatSemanticFromRule(
+      rules.find((rule) => !rule.isOverride) ?? rules[0],
+    ),
   };
 }
 
@@ -420,7 +791,7 @@ function compareExpectedRowToActual(
   expectedRow: NaturalLanguageCsvRow,
   actual: NaturalLanguageSuggestion,
 ): NaturalLanguageCsvRowResult {
-  const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
+  const repeatExpectation = parseExpectedRepeat(expectedRow);
   const actualRecurrence = deriveActualRecurrenceView(
     actual,
     expectedRow.selectedDate,
@@ -438,7 +809,16 @@ function compareExpectedRowToActual(
         actualRecurrence.repeatKey === weeklyUntilMatch[1] &&
         actualRecurrence.repeatUntil === weeklyUntilMatch[2],
     );
-  const notes: string[] = exactRepeatKeyMatch ? [] : [...repeatExpectation.notes];
+  const semanticRepeatMatch = areRepeatSemanticallyEqual(
+    repeatExpectation.semantic,
+    actualRecurrence.semantic,
+  );
+  const repeatMatches =
+    exactRepeatKeyMatch ||
+    semanticRepeatMatch ||
+    (!repeatExpectation.semantic &&
+      doesRepeatMatch(repeatExpectation, actual.parsedPlan.repeat));
+  const notes: string[] = repeatMatches ? [] : [...repeatExpectation.notes];
 
   if (expectedRow.expectedTitle && actual.parsedPlan.title !== expectedRow.expectedTitle) {
     mismatches.push(
@@ -496,8 +876,7 @@ function compareExpectedRowToActual(
   }
 
   if (
-    expectedRow.expectedRepeat !== actualRecurrence.repeatKey &&
-    !doesRepeatMatch(repeatExpectation, actual.parsedPlan.repeat)
+    !repeatMatches
   ) {
     mismatches.push(
       `repeat: expected=${repeatExpectation.baseRepeat}, actual=${actualRecurrence.repeatKey}`,
@@ -506,6 +885,7 @@ function compareExpectedRowToActual(
 
   if (
     repeatExpectation.repeatUntil &&
+    !semanticRepeatMatch &&
     actualRecurrence.repeatUntil !== repeatExpectation.repeatUntil
   ) {
     mismatches.push(
@@ -607,6 +987,17 @@ export function compareNaturalLanguageCaseResult(
   testCase: NaturalLanguageCsvCase,
   suggestions: NaturalLanguageSuggestion[],
 ): NaturalLanguageCsvCaseResult {
+  if (FUTURE_SCOPE_CASE_IDS.has(testCase.caseId)) {
+    return {
+      testCase,
+      mode: 'add',
+      status: 'skip',
+      reason: 'future_scope: grouped planning / allocation family はCSV main gate対象外です。',
+      rowResults: [],
+      extraActuals: [],
+    };
+  }
+
   const mode = inferCaseMode(testCase);
 
   if (!mode) {
@@ -623,7 +1014,7 @@ export function compareNaturalLanguageCaseResult(
   const unusedActualIndexes = new Set(suggestions.map((_, index) => index));
 
   const rowResults = testCase.rows.map((expectedRow) => {
-    const repeatExpectation = parseExpectedRepeat(expectedRow.expectedRepeat);
+    const repeatExpectation = parseExpectedRepeat(expectedRow);
 
     if (unusedActualIndexes.size === 0) {
       return {
@@ -687,6 +1078,10 @@ export function compareNaturalLanguageCaseResult(
         expectedStart: '',
         expectedEnd: '',
         expectedRepeat: '',
+        expectedRepeatKind: '',
+        expectedRepeatDays: '',
+        expectedExcludedDays: '',
+        expectedRepeatUntil: '',
       },
       actual: extraActuals[0],
       status: 'fail',
@@ -729,6 +1124,13 @@ export function canRunNaturalLanguageCsvCase(
     ignoreProviderMismatch?: boolean;
   },
 ): { runnable: boolean; reason?: string } {
+  if (FUTURE_SCOPE_CASE_IDS.has(testCase.caseId)) {
+    return {
+      runnable: false,
+      reason: 'future_scope: grouped planning / allocation family はCSV main gate対象外です。',
+    };
+  }
+
   if (
     !options?.ignoreProviderMismatch &&
     testCase.provider &&
