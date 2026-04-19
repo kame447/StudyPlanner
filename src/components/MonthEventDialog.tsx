@@ -320,33 +320,35 @@ export function MonthEventDialog({
               />
             </label>
 
-            <label className="field">
-              <span>開始時刻</span>
-              <input
-                type="time"
-                value={draft.startTime}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    startTime: event.target.value,
-                  })
-                }
-              />
-            </label>
+            <div className="field-pair field-full">
+              <label className="field">
+                <span>開始時刻</span>
+                <input
+                  type="time"
+                  value={draft.startTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      startTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
 
-            <label className="field">
-              <span>終了時刻</span>
-              <input
-                type="time"
-                value={draft.endTime}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    endTime: event.target.value,
-                  })
-                }
-              />
-            </label>
+              <label className="field">
+                <span>終了時刻</span>
+                <input
+                  type="time"
+                  value={draft.endTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      endTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
+            </div>
 
             <label className="field">
               <span>繰り返し</span>

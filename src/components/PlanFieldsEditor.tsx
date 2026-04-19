@@ -52,23 +52,25 @@ export function PlanFieldsEditor({
         />
       </label>
 
-      <label className="field">
-        <span>開始</span>
-        <input
-          type="time"
-          value={draft.startTime}
-          onChange={(event) => updateField('startTime', event.target.value)}
-        />
-      </label>
+      <div className="field-pair field-full">
+        <label className="field">
+          <span>開始</span>
+          <input
+            type="time"
+            value={draft.startTime}
+            onChange={(event) => updateField('startTime', event.target.value)}
+          />
+        </label>
 
-      <label className="field">
-        <span>終了</span>
-        <input
-          type="time"
-          value={draft.endTime}
-          onChange={(event) => updateField('endTime', event.target.value)}
-        />
-      </label>
+        <label className="field">
+          <span>終了</span>
+          <input
+            type="time"
+            value={draft.endTime}
+            onChange={(event) => updateField('endTime', event.target.value)}
+          />
+        </label>
+      </div>
 
       <label className="field">
         <span>繰り返し</span>
