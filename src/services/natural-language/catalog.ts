@@ -87,6 +87,10 @@ function inferCorrectedSubjectFromText(text: string): string | undefined {
     return "自習";
   }
 
+  if (/勉強(?:予定)?|学習/.test(text)) {
+    return "勉強";
+  }
+
   if (/復習/.test(text)) {
     return "復習";
   }

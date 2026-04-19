@@ -161,6 +161,23 @@ describe("natural-language integration", () => {
     ).toBe(true);
   });
 
+  it("予定入力では this-week scoped day を過去日にせず single occurrence として扱える", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "今週の土曜日、9時から11時まで数学、13時から16時まで英語、20時から21時まで復習",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.date)).toEqual([
+      "2026-04-18",
+      "2026-04-18",
+      "2026-04-18",
+    ]);
+    expect(
+      suggestions.every((suggestion) => !suggestion.parsedPlan.recurrenceRules)
+    ).toBe(true);
+  });
+
   it("mixed connective sentence でも shared date head を後続 block に継承できる", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "明日の7時から30分システム英単語、そのあと8時から9時半まで青チャート、夜は20時から1時間、現代文",
@@ -416,6 +433,40 @@ describe("natural-language integration", () => {
     });
   });
 
+  it("month-scope + saturday override で schedule cue を title にせず until と duration を維持できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "4月中は毎朝6時半から英語を30分、その代わり土曜だけは8時開始にして",
+      { referenceDate: "2026-04-16" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "英語",
+      "英語",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "英語",
+      "英語",
+    ]);
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "daily",
+      startDate: "2026-04-17",
+      until: "2026-04-30",
+      excludedWeekdays: ["sat"],
+      startTime: "06:30",
+      endTime: "07:00",
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["sat"],
+      startDate: "2026-04-18",
+      until: "2026-04-30",
+      startTime: "08:00",
+      endTime: "08:30",
+      isOverride: true,
+    });
+  });
+
   it("explicit until recurring を representative date / startDate / until 整合つきで end-to-end で扱える", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "4月19日まで毎日18時から20時英語",
@@ -432,6 +483,78 @@ describe("natural-language integration", () => {
       until: "2026-04-19",
       startTime: "18:00",
       endTime: "20:00",
+    });
+  });
+
+  it("explicit-until metadata を standalone suggestion として emit しない", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "来週からテスト前日の4月19日まで、毎日18時から20時は自習時間として固定して",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].parsedPlan.title).toBe("自習時間");
+    expect(suggestions[0].parsedPlan.subject).toBe("自習");
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "daily",
+      until: "2026-04-19",
+      startTime: "18:00",
+      endTime: "20:00",
+    });
+  });
+
+  it("weekday family split で後続の duration を前 family にも継承し sunday rest を混ぜない", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "月水金は19時から数学、火木土は19時から英語を1時間ずつ入れて、日曜は休みにして",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "数学",
+      "英語",
+    ]);
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["mon", "wed", "fri"],
+      startTime: "19:00",
+      endTime: "20:00",
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["tue", "thu", "sat"],
+      startTime: "19:00",
+      endTime: "20:00",
+    });
+  });
+
+  it("reverse-order override で broad task title の subject と daily exclusion を維持できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "バイトがある水曜だけは22時から1時間、他の日は毎日20時から21時で勉強予定を入れて",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "勉強予定",
+      "勉強予定",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "勉強",
+      "勉強",
+    ]);
+    expect(suggestions[0].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "daily",
+      excludedWeekdays: ["wed"],
+      startTime: "20:00",
+      endTime: "21:00",
+    });
+    expect(suggestions[1].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["wed"],
+      startTime: "22:00",
+      endTime: "23:00",
+      isOverride: true,
     });
   });
 
@@ -554,6 +677,21 @@ describe("natural-language integration", () => {
     expect(suggestions[1].parsedPlan.endTime).toBe("00:45");
   });
 
+  it("date 明示なしの cross-midnight sequence でも referenceDate から翌日に rollover できる", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "23時から1時間情報のレポートを書いて、そのあと0時15分から30分だけ英単語をやる",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0].parsedPlan.date).toBe("2026-04-12");
+    expect(suggestions[0].parsedPlan.startTime).toBe("23:00");
+    expect(suggestions[0].parsedPlan.endTime).toBe("00:00");
+    expect(suggestions[1].parsedPlan.date).toBe("2026-04-13");
+    expect(suggestions[1].parsedPlan.startTime).toBe("00:15");
+    expect(suggestions[1].parsedPlan.endTime).toBe("00:45");
+  });
+
   it("scope-only control clause を standalone event として emit しない", () => {
     const suggestions = parseNaturalLanguageSchedule(
       "来週のどこかで英語を3回。1回は長文、1回は単語、もう1回は文法で、全部20時から1時間。",
@@ -641,6 +779,41 @@ describe("natural-language integration", () => {
       weekdays: ["wed"],
       startTime: "22:00",
       endTime: "23:00",
+    });
+  });
+
+  it("multi-family recurring sentence の最後の clause が前件 title に汚染されない", () => {
+    const suggestions = parseNaturalLanguageSchedule(
+      "平日は毎朝6時半から英単語を30分ずつ。月水金の夜は19時から21時まで数学、火木の夜は19時から20時半まで物理。土曜は14時から17時まで過去問、日曜は21時から1時間だけ振り返り",
+      { referenceDate: "2026-04-12" }
+    );
+
+    expect(suggestions).toHaveLength(5);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.title)).toEqual([
+      "英単語",
+      "数学",
+      "物理",
+      "過去問",
+      "振り返り",
+    ]);
+    expect(suggestions.map((suggestion) => suggestion.parsedPlan.subject)).toEqual([
+      "英語",
+      "数学",
+      "物理",
+      "演習",
+      "振り返り",
+    ]);
+    expect(suggestions[3].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["sat"],
+      startTime: "14:00",
+      endTime: "17:00",
+    });
+    expect(suggestions[4].parsedPlan.recurrenceRules?.[0]).toMatchObject({
+      kind: "weekday",
+      weekdays: ["sun"],
+      startTime: "21:00",
+      endTime: "22:00",
     });
   });
 

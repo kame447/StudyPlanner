@@ -70,7 +70,7 @@ function isScheduleCueHeavyTitle(title?: string): boolean {
 
   return /(?:ただし|その代わり|他の日は|他は|だけ|\d{1,2}:\d{2}|[月火水木金土日]曜)/.test(
     title,
-  );
+  ) || /^(?:開始|開始時刻)$/.test(title) || /がある/.test(title);
 }
 
 function inferOverrideTitle(
@@ -100,6 +100,18 @@ function shouldSkipRestDirective(base: NormalizedPlanIntent): boolean {
     !base.endTime &&
     base.durationMinutes == null &&
     (isRestDirectiveText(base.contentText) || isRestDirectiveText(base.rawText))
+  );
+}
+
+function shouldSkipExplicitUntilBoundaryMetadata(base: NormalizedPlanIntent): boolean {
+  return Boolean(
+    !base.startTime &&
+      !base.endTime &&
+      base.durationMinutes == null &&
+      !base.repeatSpec &&
+      !base.dayType &&
+      !base.weekdays?.length &&
+      /まで/.test(base.rawText),
   );
 }
 
@@ -446,7 +458,10 @@ function shouldRetainSetCountWithoutExpansion(group: EventGroupIR): boolean {
 }
 
 function compileGroup(group: EventGroupIR): Suggestion[] {
-  if (shouldSkipRestDirective(group.base)) {
+  if (
+    shouldSkipRestDirective(group.base) ||
+    shouldSkipExplicitUntilBoundaryMetadata(group.base)
+  ) {
     return [];
   }
 

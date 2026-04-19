@@ -513,14 +513,25 @@ function resolveRepresentativeDate(
       dateSpec.scope === "this-weekend"
         ? maxDate(referenceDate, scopedRange.rangeStart)
         : scopedRange.rangeStart;
+    const futureInScope = firstMatchingWeekdayInRange(
+      searchStart,
+      scopedRange.rangeEnd,
+      targetWeekdays,
+    );
+    const isCurrentWeekScope =
+      dateSpec.scope === "this-week" ||
+      dateSpec.scope === "sometime-this-week" ||
+      dateSpec.scope === "this-weekend";
     const representativeDate =
-      firstMatchingWeekdayInRange(searchStart, scopedRange.rangeEnd, targetWeekdays) ??
-      firstMatchingWeekdayInRange(
-        scopedRange.rangeStart,
-        scopedRange.rangeEnd,
-        targetWeekdays,
-      ) ??
-      firstMatchingWeekdayInWeek(startOfWeek(scopedRange.rangeStart), targetWeekdays);
+      futureInScope ??
+      (isCurrentWeekScope
+        ? firstMatchingWeekdayOnOrAfter(searchStart, targetWeekdays)
+        : firstMatchingWeekdayInRange(
+            scopedRange.rangeStart,
+            scopedRange.rangeEnd,
+            targetWeekdays,
+          ) ??
+          firstMatchingWeekdayInWeek(startOfWeek(scopedRange.rangeStart), targetWeekdays));
 
     return {
       date: formatDate(representativeDate),
@@ -911,6 +922,53 @@ function subtractWeekdays(source: Weekday[] | undefined, excluded: Weekday[]): W
   return filtered.length > 0 ? filtered : undefined;
 }
 
+function isRecurringFamily(base: NormalizedPlanIntent): boolean {
+  return Boolean(
+    base.repeatSpec ||
+      base.dayType ||
+      (base.weekdays && base.weekdays.length > 0) ||
+      (base.excludedWeekdays && base.excludedWeekdays.length > 0),
+  );
+}
+
+function canInheritDurationFromFollowingFamily(
+  previous: EventGroupIR,
+  current: EventGroupIR,
+): boolean {
+  return Boolean(
+    isRecurringFamily(previous.base) &&
+      isRecurringFamily(current.base) &&
+      previous.base.startTime &&
+      !previous.base.endTime &&
+      current.base.durationMinutes != null &&
+      previous.base.startTime === current.base.startTime,
+  );
+}
+
+function inheritDurationFromFollowingFamily(
+  previous: EventGroupIR,
+  current: EventGroupIR,
+): void {
+  if (!canInheritDurationFromFollowingFamily(previous, current)) {
+    return;
+  }
+
+  previous.base.durationMinutes = current.base.durationMinutes;
+  previous.base.endTime = addMinutes(
+    previous.base.startTime as string,
+    current.base.durationMinutes as number,
+  );
+  previous.base.unresolvedFields = buildUnresolvedFields(
+    previous.base.startTime,
+    previous.base.endTime,
+    previous.base.date,
+    previous.base.dateSpec,
+  );
+  previous.base.assumptions.push(
+    "duration inherited from adjacent recurring family",
+  );
+}
+
 function lowerGroup(
   group: EventGroupNode,
   lowering: LoweringContext,
@@ -930,6 +988,17 @@ function lowerGroup(
   }
 
   applyAttachments(base, group.attachments);
+
+  if (
+    group.sequences.length > 0 &&
+    !base.date &&
+    !base.dateSpec &&
+    base.startTime &&
+    base.endTime
+  ) {
+    base.date = formatDate(lowering.referenceDate);
+    base.assumptions.push("reference date used as sequence anchor");
+  }
 
   const splitOverrides: OverrideScheduleNode[] = [];
   for (const override of group.overrides) {
@@ -1003,6 +1072,10 @@ export function lowerToIR(
 
   for (const group of ast.groups) {
     const lowered = lowerGroup(group, lowering, previousDateContext);
+    const previousGroup = groups[groups.length - 1];
+    if (previousGroup) {
+      inheritDurationFromFollowingFamily(previousGroup, lowered);
+    }
     groups.push(lowered);
     previousDateContext = {
       date: lowered.base.date,

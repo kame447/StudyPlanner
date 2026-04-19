@@ -293,6 +293,9 @@ function scoreContentSpan(span: ContentSpanCandidate): number {
       if (kind === "WEEKDAY" || kind === "WEEKDAY_GROUP" || kind === "DAYTYPE") {
         return penalty + 4;
       }
+      if (kind === "DATE") {
+        return penalty + 14;
+      }
       return penalty;
     },
     0,

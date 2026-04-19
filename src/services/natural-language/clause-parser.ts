@@ -93,6 +93,21 @@ function isBreakLikeInstructionClause(
   return /休憩|休ん|休み|休息|ブレイク/.test(segment);
 }
 
+function isRestDirectiveSegment(segment: string, tokens: Token[]): boolean {
+  const compact = segment.replace(/\s+/g, "");
+  const hasScopeSignal =
+    hasToken(tokens, "WEEKDAY") ||
+    hasToken(tokens, "WEEKDAY_GROUP") ||
+    hasToken(tokens, "DAYTYPE");
+  const hasTimedEventSignal =
+    hasToken(tokens, "TIME") ||
+    hasToken(tokens, "TIME_RANGE") ||
+    hasToken(tokens, "DURATION") ||
+    hasToken(tokens, "REST");
+
+  return hasScopeSignal && !hasTimedEventSignal && /休み(?:にして|にする)?/.test(compact);
+}
+
 function hasOtherDaysCue(tokens: Token[]): boolean {
   return tokens.some(
     (token) =>
@@ -120,7 +135,13 @@ function isImplicitOverrideClause(segment: string, tokens: Token[]): boolean {
     return false;
   }
 
-  return /(?:だけ|のみ)/.test(segment.replace(/\s+/g, ""));
+  const compact = segment.replace(/\s+/g, "");
+  const firstTimeIndex = compact.search(/\d{1,2}:\d{2}/);
+  const scopedOnlyIndex = compact.search(
+    /(?:[月火水木金土日]曜(?:日)?|[月火水木金土日]{2,7})(?:だけ|のみ)/,
+  );
+
+  return scopedOnlyIndex >= 0 && (firstTimeIndex < 0 || scopedOnlyIndex < firstTimeIndex);
 }
 
 function isReverseOrderBaseClause(tokens: Token[]): boolean {
@@ -258,6 +279,21 @@ function isScopeOnlySegment(segment: string): boolean {
   return hasScopeSignal && !hasTimeSignal && !hasMeaningfulContent(tokens);
 }
 
+function isDateBoundaryOnlySegment(segment: string, tokens = tokenize(segment)): boolean {
+  const hasDateSignal = hasToken(tokens, "DATE");
+  const hasEventTimeSignal =
+    hasToken(tokens, "TIME") ||
+    hasToken(tokens, "TIME_RANGE") ||
+    hasToken(tokens, "DURATION") ||
+    hasToken(tokens, "REST") ||
+    hasToken(tokens, "REPEAT") ||
+    hasToken(tokens, "WEEKDAY") ||
+    hasToken(tokens, "WEEKDAY_GROUP") ||
+    hasToken(tokens, "DAYTYPE");
+
+  return hasDateSignal && !hasEventTimeSignal && /まで$/.test(segment.trim());
+}
+
 function hasSharedContextSignal(tokens: Token[]): boolean {
   return (
     hasToken(tokens, "DATE") ||
@@ -335,7 +371,10 @@ function splitSentenceIntoSegments(sentence: string): string[] {
     }
 
     const tokens = tokenize(part);
-    if (isScopeOnlySegment(current) && startsNewExplicitTimedClause(part)) {
+    if (
+      (isScopeOnlySegment(current) || isDateBoundaryOnlySegment(current)) &&
+      (startsNewExplicitTimedClause(part) || startsNewScopedEventClause(part, tokens))
+    ) {
       activeSharedContext =
         extractLeadingSharedContext(tokenize(current)) ??
         activeSharedContext;
@@ -344,6 +383,8 @@ function splitSentenceIntoSegments(sentence: string): string[] {
     }
 
     if (
+      isOverrideClause(part, tokens) ||
+      isRestDirectiveSegment(part, tokens) ||
       startsNewExplicitTimedClause(part) ||
       startsNewScopedEventClause(part, tokens) ||
       isBreakLikeInstructionClause(part, tokens) ||
