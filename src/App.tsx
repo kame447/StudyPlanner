@@ -268,7 +268,10 @@ export default function App() {
 
       {isToolbarPlanInputOpen ? (
         <div className="overlay modal-overlay">
-          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="modal-card plan-input-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
             <DayPlanInputPanel
               selectedDate={selectedDate}
               userId={user.id}

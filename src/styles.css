@@ -1972,6 +1972,47 @@ h2 {
   margin-inline: auto;
 }
 
+.plan-input-modal {
+  width: min(760px, calc(100vw - 40px));
+  max-width: 760px;
+  overflow: hidden;
+}
+
+.plan-input-shell {
+  width: 100%;
+  min-width: 0;
+  max-height: calc(min(88vh, 920px) - 48px);
+  display: grid;
+  gap: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.plan-input-tab-content {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+}
+
+.plan-input-tab-content > *,
+.plan-input-modal .section-stack,
+.plan-input-modal .form-grid,
+.plan-input-modal .field,
+.plan-input-modal .row-actions,
+.plan-input-modal .segmented-control,
+.plan-input-modal .primary-button {
+  min-width: 0;
+}
+
+.plan-input-modal .field input,
+.plan-input-modal .field select,
+.plan-input-modal .field textarea,
+.plan-input-tab-content > .section-stack > .primary-button {
+  width: 100%;
+}
+
 .month-event-list-card,
 .month-event-checklist-card {
   gap: 12px;
@@ -2640,6 +2681,20 @@ h2 {
     padding: 18px;
     border-radius: 22px;
     margin-top: 0;
+  }
+
+  .plan-input-modal {
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
+
+  .plan-input-shell {
+    max-height: calc(92vh - 36px);
+    gap: 12px;
+  }
+
+  .plan-input-tab-content {
+    gap: 12px;
   }
 
   .modal-card .section-stack,
@@ -3694,6 +3749,19 @@ h2 {
     max-height: 90vh;
     padding: 12px;
     border-radius: 16px;
+  }
+
+  .plan-input-modal {
+    width: calc(100vw - 16px);
+  }
+
+  .plan-input-shell {
+    max-height: calc(90vh - 24px);
+    gap: 10px;
+  }
+
+  .plan-input-tab-content {
+    gap: 10px;
   }
 
   .modal-card .section-stack,

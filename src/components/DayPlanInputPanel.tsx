@@ -51,7 +51,7 @@ export function DayPlanInputPanel({
   }
 
   const content = (
-    <>
+    <div className="plan-input-shell">
       <div className="section-header">
         <div>
           <h2>学習予定入力</h2>
@@ -80,46 +80,50 @@ export function DayPlanInputPanel({
       </div>
 
       {mode === 'manual' ? (
-        <div className="section-stack">
-          <PlanFieldsEditor draft={draft} onChange={setDraft} />
+        <div className="plan-input-tab-content">
+          <div className="section-stack">
+            <PlanFieldsEditor draft={draft} onChange={setDraft} />
 
-          {hasInvalidTime ? (
-            <p className="inline-error">終了時刻は開始時刻より後にしてください。</p>
-          ) : null}
-          {status ? <p className="inline-note">{status}</p> : null}
+            {hasInvalidTime ? (
+              <p className="inline-error">終了時刻は開始時刻より後にしてください。</p>
+            ) : null}
+            {status ? <p className="inline-note">{status}</p> : null}
 
-          <div className="row-actions">
-            <button
-              className="ghost-button"
-              onClick={() => setDraft(createEmptyPlanDraft(userId, selectedDate))}
-              type="button"
-            >
-              リセット
-            </button>
-            <button
-              className="primary-button"
-              onClick={() => void handleManualSubmit()}
-              type="button"
-              disabled={hasInvalidTime || !draft.title.trim()}
-            >
-              学習予定を追加
-            </button>
+            <div className="row-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setDraft(createEmptyPlanDraft(userId, selectedDate))}
+                type="button"
+              >
+                リセット
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => void handleManualSubmit()}
+                type="button"
+                disabled={hasInvalidTime || !draft.title.trim()}
+              >
+                学習予定を追加
+              </button>
+            </div>
           </div>
         </div>
       ) : (
-        <NaturalLanguageAssistant
-          selectedDate={selectedDate}
-          userId={userId}
-          plans={plans}
-          onApplyDraft={onApplyDraft}
-          embedded
-        />
+        <div className="plan-input-tab-content">
+          <NaturalLanguageAssistant
+            selectedDate={selectedDate}
+            userId={userId}
+            plans={plans}
+            onApplyDraft={onApplyDraft}
+            embedded
+          />
+        </div>
       )}
-    </>
+    </div>
   );
 
   if (embedded) {
-    return <div className="section-stack">{content}</div>;
+    return content;
   }
 
   return <section className="panel section-stack">{content}</section>;
