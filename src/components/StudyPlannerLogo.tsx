@@ -1,4 +1,4 @@
-import logoImage from '../assets/studyplanner-logo.jpg';
+import logoImage from '../assets/studyplanner-logo.png';
 
 export function StudyPlannerLogo() {
   return (
