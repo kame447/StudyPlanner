@@ -76,6 +76,7 @@ export function MonthEventDialog({
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [showDeleteScopePrompt, setShowDeleteScopePrompt] = useState(false);
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
 
   const visibleEvents = useMemo(() => {
     if (!openDate) {
@@ -111,6 +112,7 @@ export function MonthEventDialog({
     setStatus('');
     setError('');
     setShowDeleteScopePrompt(false);
+    setShowOptionalFields(false);
   }, [initialEventId, monthEvents, openDate, userId]);
 
   if (!openDate) {
@@ -118,6 +120,13 @@ export function MonthEventDialog({
   }
 
   const activeDate = openDate;
+  const optionalFieldCount = [
+    draft.url.trim(),
+    draft.locationTags.some((tag) => tag.trim().length > 0) ? 'location' : '',
+    draft.memo.trim(),
+  ].filter(Boolean).length;
+  const optionalSummary =
+    optionalFieldCount > 0 ? `${optionalFieldCount}件入力済み` : '未入力';
 
   function resetEditor(nextStatus = '') {
     setEditingEventId(null);
@@ -125,6 +134,7 @@ export function MonthEventDialog({
     setError('');
     setStatus(nextStatus);
     setShowDeleteScopePrompt(false);
+    setShowOptionalFields(false);
   }
 
   function handleNewEvent() {
@@ -137,6 +147,7 @@ export function MonthEventDialog({
     setStatus('');
     setError('');
     setShowDeleteScopePrompt(false);
+    setShowOptionalFields(false);
   }
 
   async function handleSave() {
@@ -320,34 +331,62 @@ export function MonthEventDialog({
               />
             </label>
 
-            <div className="field-pair field-full">
-              <label className="field">
-                <span>開始時刻</span>
-                <input
-                  type="time"
-                  value={draft.startTime}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      startTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
+            <div className="datetime-stack field-full">
+              <div className="datetime-row">
+                <span className="datetime-row__label">開始</span>
+                <label className="field datetime-row__date">
+                  <span>日付</span>
+                  <input
+                    type="date"
+                    value={draft.date}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        date: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="field datetime-row__time">
+                  <span>時刻</span>
+                  <input
+                    type="time"
+                    value={draft.startTime}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        startTime: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+              </div>
 
-              <label className="field">
-                <span>終了時刻</span>
-                <input
-                  type="time"
-                  value={draft.endTime}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      endTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
+              <div className="datetime-row">
+                <span className="datetime-row__label">終了</span>
+                <label className="field datetime-row__date">
+                  <span>日付</span>
+                  <input
+                    type="date"
+                    value={draft.date}
+                    disabled
+                    aria-label="終了日付"
+                  />
+                </label>
+                <label className="field datetime-row__time">
+                  <span>時刻</span>
+                  <input
+                    type="time"
+                    value={draft.endTime}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        endTime: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+              </div>
             </div>
 
             <label className="field field-full">
@@ -368,50 +407,71 @@ export function MonthEventDialog({
                 ))}
               </select>
             </label>
-
-            <label className="field field-full">
-              <span>URL</span>
-              <input
-                value={draft.url}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    url: event.target.value,
-                  })
-                }
-                placeholder="https://..."
-              />
-            </label>
-
-            <label className="field field-full">
-              <span>場所タグ</span>
-              <input
-                value={draft.locationTags.join(', ')}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    locationTags: event.target.value.split(','),
-                  })
-                }
-                placeholder="例: 学校, 体育館, 渋谷"
-              />
-            </label>
-
-            <label className="field field-full">
-              <span>メモ</span>
-              <textarea
-                rows={3}
-                value={draft.memo}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    memo: event.target.value,
-                  })
-                }
-                placeholder="持ち物や補足を書けます"
-              />
-            </label>
           </div>
+
+          <section className="assistant-settings-card month-event-optional-card">
+            <button
+              className="collapsible-toggle"
+              onClick={() => setShowOptionalFields((current) => !current)}
+              type="button"
+              aria-expanded={showOptionalFields}
+            >
+              <span className="collapsible-toggle-copy">
+                <span>追加情報</span>
+                <strong>URL・場所タグ・メモ</strong>
+              </span>
+              <span className="collapsible-toggle-summary" aria-hidden="true">
+                {showOptionalFields ? '閉じる' : optionalSummary}
+              </span>
+            </button>
+
+            {showOptionalFields ? (
+              <div className="collapsible-panel">
+                <label className="field">
+                  <span>URL</span>
+                  <input
+                    value={draft.url}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        url: event.target.value,
+                      })
+                    }
+                    placeholder="https://..."
+                  />
+                </label>
+
+                <label className="field">
+                  <span>場所タグ</span>
+                  <input
+                    value={draft.locationTags.join(', ')}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        locationTags: event.target.value.split(','),
+                      })
+                    }
+                    placeholder="例: 学校, 体育館, 渋谷"
+                  />
+                </label>
+
+                <label className="field">
+                  <span>メモ</span>
+                  <textarea
+                    rows={3}
+                    value={draft.memo}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        memo: event.target.value,
+                      })
+                    }
+                    placeholder="持ち物や補足を書けます"
+                  />
+                </label>
+              </div>
+            ) : null}
+          </section>
 
           <section className="assistant-settings-card month-event-checklist-card">
             <div className="label-row">

@@ -24,23 +24,25 @@ export function PlanFieldsEditor({
 
   return (
     <div className="form-grid">
-      <label className="field field-full">
-        <span>予定名</span>
-        <input
-          value={draft.title}
-          onChange={(event) => updateField('title', event.target.value)}
-          placeholder="例: 数学の勉強"
-        />
-      </label>
+      <div className="field-pair field-full">
+        <label className="field">
+          <span>予定名</span>
+          <input
+            value={draft.title}
+            onChange={(event) => updateField('title', event.target.value)}
+            placeholder="例: 数学の勉強"
+          />
+        </label>
 
-      <label className="field field-full">
-        <span>科目</span>
-        <input
-          value={draft.subject}
-          onChange={(event) => updateField('subject', event.target.value)}
-          placeholder="例: 数学"
-        />
-      </label>
+        <label className="field">
+          <span>科目</span>
+          <input
+            value={draft.subject}
+            onChange={(event) => updateField('subject', event.target.value)}
+            placeholder="例: 数学"
+          />
+        </label>
+      </div>
 
       <div className="field-pair field-full">
         <label className="field">
