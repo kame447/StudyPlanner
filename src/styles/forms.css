@@ -1,0 +1,197 @@
+﻿.auth-form,
+.mailbox-preview,
+.suggestion-card,
+.actual-form {
+  display: grid;
+  gap: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  color: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+/* DO NOT REMOVE: form-two-column-layout
+   日付/開始/終了の2カラムは意図的に維持している。
+   崩れ対策は1カラム化ではなく input 側の幅計算で行う。 */
+.field-pair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(136px, 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+
+.field-pair .field,
+.field-pair input,
+.field-pair select,
+.field-pair textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* DO NOT REMOVE: ios-safari-time-input-overlap-fix
+   開始/終了セルの重なり再発防止。
+   Safari の date/time input は通常 input と幅計算がずれるため、
+   inline-size / min-inline-size / box-sizing を意図的に指定している。
+   見た目整理のために簡略化しないこと。 */
+.field input[type='date'],
+.field input[type='time'] {
+  width: 100%;
+  inline-size: 100%;
+  display: block;
+  min-width: 0;
+  min-inline-size: 0;
+  max-width: 100%;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+  line-height: 1.25;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field input[type='date']::-webkit-date-and-time-value,
+.field input[type='time']::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+.datetime-stack {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.datetime-row {
+  display: grid;
+  grid-template-columns: max-content minmax(150px, 1.15fr) minmax(92px, 0.72fr);
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+
+.datetime-row__label {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.datetime-row__date,
+.datetime-row__time {
+  min-width: 0;
+}
+
+.datetime-row input {
+  width: 100%;
+  max-width: 100%;
+}
+
+.datetime-row input:disabled {
+  opacity: 1;
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+}
+
+.primary-button,
+.ghost-button,
+.mini-button,
+.segment,
+.week-chip,
+.month-cell {
+  border: 0;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.primary-button,
+.ghost-button,
+.mini-button,
+.segment,
+.week-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.primary-button {
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #f6fbfb;
+  font-weight: 700;
+  box-shadow: 0 12px 24px var(--accent-shadow);
+}
+
+.ghost-button,
+.mini-button,
+.segment,
+.week-chip {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: var(--button-ghost-bg);
+  color: inherit;
+  border: 1px solid var(--button-ghost-border);
+}
+
+.ghost-button:hover,
+.mini-button:hover,
+.primary-button:hover,
+.segment:hover,
+.week-chip:hover,
+.month-cell:hover {
+  transform: translateY(-1px);
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.mailbox-preview {
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--mailbox-background);
+}
+
+.mailbox-label {
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.mailbox-code {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+

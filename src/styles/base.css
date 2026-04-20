@@ -1,0 +1,397 @@
+﻿:root {
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  color: var(--text-primary);
+  background: var(--app-background);
+  --text-primary: #1f2b2b;
+  --app-background:
+    radial-gradient(circle at top left, rgba(53, 154, 142, 0.14), transparent 32%),
+    linear-gradient(180deg, #f4efe4 0%, #edf4f1 100%);
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --surface-soft: rgba(255, 255, 255, 0.72);
+  --surface-muted: rgba(255, 255, 255, 0.78);
+  --surface-selected: rgba(220, 238, 234, 0.9);
+  --border: rgba(31, 43, 43, 0.1);
+  --border-strong: rgba(23, 109, 102, 0.18);
+  --text-muted: #5d6c69;
+  --accent: #176d66;
+  --accent-strong: #114c47;
+  --shadow: 0 18px 48px rgba(36, 49, 48, 0.08);
+  --danger: #a73f3f;
+  --input-border: rgba(23, 109, 102, 0.14);
+  --button-ghost-bg: rgba(255, 255, 255, 0.72);
+  --button-ghost-border: rgba(23, 109, 102, 0.12);
+  --chip-bg: rgba(23, 109, 102, 0.08);
+  --chip-text: var(--accent-strong);
+  --mailbox-background: linear-gradient(
+    160deg,
+    rgba(23, 109, 102, 0.08),
+    rgba(255, 255, 255, 0.8)
+  );
+  --assistant-settings-background: rgba(255, 255, 255, 0.72);
+  --assistant-feedback-background: rgba(23, 109, 102, 0.08);
+  --assistant-feedback-border: rgba(23, 109, 102, 0.12);
+  --assistant-warning-background: rgba(169, 131, 47, 0.08);
+  --assistant-warning-border: rgba(169, 131, 47, 0.16);
+  --notice-info-background: rgba(23, 109, 102, 0.1);
+  --notice-info-border: rgba(23, 109, 102, 0.16);
+  --notice-success-background: rgba(23, 109, 102, 0.14);
+  --notice-success-border: rgba(23, 109, 102, 0.2);
+  --notice-error-background: rgba(167, 63, 63, 0.09);
+  --notice-error-border: rgba(167, 63, 63, 0.12);
+  --month-cell-background: rgba(255, 255, 255, 0.72);
+  --calendar-saturday: #2f6fc2;
+  --calendar-holiday: #cc4b4b;
+  --today-cell-outline: #9aa1a6;
+  --month-selection-outline: rgba(23, 109, 102, 0.42);
+  --month-selection-today-outline: rgba(23, 109, 102, 0.18);
+  --day-column-background: rgba(255, 255, 255, 0.62);
+  --hero-panel-background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(247, 243, 235, 0.88)
+  );
+  --score-comment-background: rgba(23, 109, 102, 0.08);
+  --comparison-track-bg: rgba(23, 109, 102, 0.12);
+  --comparison-plan-start: rgba(23, 109, 102, 0.16);
+  --comparison-plan-end: rgba(23, 109, 102, 0.28);
+  --comparison-actual-start: #2e9e84;
+  --comparison-actual-end: #176d66;
+  --focus-outline: rgba(23, 109, 102, 0.34);
+  --accent-shadow: rgba(23, 109, 102, 0.18);
+  --auth-tab-shadow: rgba(23, 109, 102, 0.08);
+  --timeline-label-bg: rgba(54, 61, 64, 0.08);
+  --timeline-label-border: rgba(54, 61, 64, 0.12);
+  --timeline-label-text: #334245;
+  --timeline-label-actual-bg: rgba(23, 109, 102, 0.08);
+  --timeline-label-actual-border: rgba(23, 109, 102, 0.12);
+  --timeline-canvas-background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(244, 240, 231, 0.92)
+  );
+  --timeline-canvas-split-overlay: linear-gradient(
+    90deg,
+    rgba(54, 61, 64, 0.04) 0%,
+    rgba(54, 61, 64, 0.04) 50%,
+    rgba(23, 109, 102, 0.04) 50%,
+    rgba(23, 109, 102, 0.04) 100%
+  );
+  --timeline-grid-line: rgba(31, 43, 43, 0.08);
+  --timeline-divider: rgba(31, 43, 43, 0.14);
+  --timeline-legend-bg: rgba(255, 255, 255, 0.72);
+  --timeline-legend-border: rgba(23, 109, 102, 0.08);
+  --timeline-plan-bg: rgba(54, 61, 64, 0.08);
+  --timeline-plan-bg-split: rgba(54, 61, 64, 0.11);
+  --timeline-plan-border: rgba(54, 61, 64, 0.14);
+  --timeline-plan-text: #223033;
+  --timeline-neutral-chip-bg: rgba(31, 43, 43, 0.12);
+  --timeline-neutral-chip-text: #3a4648;
+  --detail-card-background: rgba(255, 255, 255, 0.74);
+  --detail-card-border: rgba(23, 109, 102, 0.18);
+  --notebook-background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(250, 247, 239, 0.95)),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 31px,
+      rgba(109, 139, 133, 0.08) 31px,
+      rgba(109, 139, 133, 0.08) 32px
+    );
+  --notebook-chip-bg: rgba(255, 255, 255, 0.82);
+  --progress-card-background: rgba(255, 255, 255, 0.78);
+  --progress-track-background: rgba(31, 43, 43, 0.08);
+  --check-card-background: rgba(255, 255, 255, 0.78);
+  --textarea-background: rgba(255, 255, 255, 0.82);
+  --overlay-background: rgba(31, 43, 43, 0.24);
+  --mobile-ad-reserve: 0px;
+  line-height: 1.5;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --text-primary: #e8f2ef;
+  --app-background:
+    radial-gradient(circle at top left, rgba(88, 183, 171, 0.16), transparent 28%),
+    linear-gradient(180deg, #12181b 0%, #0c1113 100%);
+  --surface: rgba(18, 24, 28, 0.9);
+  --surface-strong: rgba(24, 31, 35, 0.96);
+  --surface-soft: rgba(24, 31, 35, 0.82);
+  --surface-muted: rgba(22, 29, 33, 0.88);
+  --surface-selected: rgba(20, 58, 55, 0.94);
+  --border: rgba(225, 240, 236, 0.12);
+  --border-strong: rgba(129, 214, 204, 0.24);
+  --text-muted: #93a7a4;
+  --accent: #59b7ab;
+  --accent-strong: #2f8f84;
+  --shadow: 0 20px 56px rgba(0, 0, 0, 0.34);
+  --danger: #f09a9a;
+  --input-border: rgba(129, 214, 204, 0.22);
+  --button-ghost-bg: rgba(255, 255, 255, 0.06);
+  --button-ghost-border: rgba(255, 255, 255, 0.1);
+  --chip-bg: rgba(89, 183, 171, 0.16);
+  --chip-text: #cff5ef;
+  --mailbox-background: linear-gradient(
+    160deg,
+    rgba(89, 183, 171, 0.18),
+    rgba(13, 17, 19, 0.92)
+  );
+  --assistant-settings-background: rgba(255, 255, 255, 0.04);
+  --assistant-feedback-background: rgba(89, 183, 171, 0.12);
+  --assistant-feedback-border: rgba(129, 214, 204, 0.16);
+  --assistant-warning-background: rgba(169, 131, 47, 0.18);
+  --assistant-warning-border: rgba(216, 176, 84, 0.24);
+  --notice-info-background: rgba(89, 183, 171, 0.14);
+  --notice-info-border: rgba(129, 214, 204, 0.2);
+  --notice-success-background: rgba(89, 183, 171, 0.18);
+  --notice-success-border: rgba(129, 214, 204, 0.24);
+  --notice-error-background: rgba(167, 63, 63, 0.2);
+  --notice-error-border: rgba(240, 154, 154, 0.24);
+  --month-cell-background: rgba(24, 31, 35, 0.82);
+  --calendar-saturday: #6aa7ff;
+  --calendar-holiday: #ff8c8c;
+  --today-cell-outline: #d4d9db;
+  --month-selection-outline: rgba(89, 183, 171, 0.46);
+  --month-selection-today-outline: rgba(89, 183, 171, 0.22);
+  --day-column-background: rgba(24, 31, 35, 0.76);
+  --hero-panel-background: linear-gradient(
+    180deg,
+    rgba(24, 31, 35, 0.96),
+    rgba(17, 22, 25, 0.92)
+  );
+  --score-comment-background: rgba(89, 183, 171, 0.12);
+  --comparison-track-bg: rgba(89, 183, 171, 0.18);
+  --comparison-plan-start: rgba(89, 183, 171, 0.18);
+  --comparison-plan-end: rgba(47, 143, 132, 0.34);
+  --comparison-actual-start: #7ad7cb;
+  --comparison-actual-end: #2f8f84;
+  --focus-outline: rgba(89, 183, 171, 0.42);
+  --accent-shadow: rgba(89, 183, 171, 0.28);
+  --auth-tab-shadow: rgba(89, 183, 171, 0.16);
+  --timeline-label-bg: rgba(255, 255, 255, 0.06);
+  --timeline-label-border: rgba(255, 255, 255, 0.08);
+  --timeline-label-text: #c5d6d3;
+  --timeline-label-actual-bg: rgba(89, 183, 171, 0.14);
+  --timeline-label-actual-border: rgba(129, 214, 204, 0.18);
+  --timeline-canvas-background: linear-gradient(
+    180deg,
+    rgba(24, 31, 35, 0.96),
+    rgba(16, 22, 25, 0.94)
+  );
+  --timeline-canvas-split-overlay: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02) 0%,
+    rgba(255, 255, 255, 0.02) 50%,
+    rgba(89, 183, 171, 0.05) 50%,
+    rgba(89, 183, 171, 0.05) 100%
+  );
+  --timeline-grid-line: rgba(225, 240, 236, 0.08);
+  --timeline-divider: rgba(225, 240, 236, 0.12);
+  --timeline-legend-bg: rgba(255, 255, 255, 0.05);
+  --timeline-legend-border: rgba(255, 255, 255, 0.08);
+  --timeline-plan-bg: rgba(255, 255, 255, 0.07);
+  --timeline-plan-bg-split: rgba(255, 255, 255, 0.1);
+  --timeline-plan-border: rgba(255, 255, 255, 0.12);
+  --timeline-plan-text: #d8e5e2;
+  --timeline-neutral-chip-bg: rgba(255, 255, 255, 0.09);
+  --timeline-neutral-chip-text: #d1dfdc;
+  --detail-card-background: rgba(24, 31, 35, 0.84);
+  --detail-card-border: rgba(129, 214, 204, 0.22);
+  --notebook-background:
+    linear-gradient(180deg, rgba(24, 31, 35, 0.94), rgba(17, 22, 25, 0.96)),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 31px,
+      rgba(147, 167, 164, 0.08) 31px,
+      rgba(147, 167, 164, 0.08) 32px
+    );
+  --notebook-chip-bg: rgba(255, 255, 255, 0.06);
+  --progress-card-background: rgba(24, 31, 35, 0.84);
+  --progress-track-background: rgba(255, 255, 255, 0.08);
+  --check-card-background: rgba(24, 31, 35, 0.84);
+  --textarea-background: rgba(255, 255, 255, 0.04);
+  --overlay-background: rgba(6, 9, 11, 0.66);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--app-background);
+  color: var(--text-primary);
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.csv-test-card {
+  gap: 12px;
+}
+
+.csv-test-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.csv-test-result-card.pass {
+  border-color: rgba(23, 109, 102, 0.18);
+}
+
+.csv-test-result-card.fail {
+  border-color: rgba(167, 63, 63, 0.22);
+}
+
+.csv-test-result-card.partial,
+.csv-test-result-card.skip {
+  border-color: rgba(169, 131, 47, 0.22);
+}
+
+.csv-test-row {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.print-hide {
+  display: initial;
+}
+
+.loading-screen,
+.auth-shell,
+.app-shell {
+  padding: 24px;
+}
+
+.splash-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #fff;
+}
+
+.splash-screen__inner {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: min(960px, 100%);
+}
+
+.splash-screen__logo {
+  width: min(920px, 92vw);
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 20px 44px rgba(31, 43, 43, 0.08));
+  animation: splash-fade-in 0.55s ease;
+}
+
+.splash-screen__message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+@keyframes splash-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.section-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.panel,
+.hero-card,
+.auth-card,
+.drawer,
+.comparison-card,
+.plan-detail-card,
+.score-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.hero-card,
+.panel,
+.auth-card {
+  padding: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 12px;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.1;
+}
+
+h2 {
+  margin-bottom: 6px;
+  font-size: 1.3rem;
+}
+
+.hero-copy,
+.section-header p,
+.comparison-subtitle,
+.detail-note,
+.score-help,
+.empty-copy,
+.inline-note,
+.mailbox-expire,
+.month-target,
+.comparison-metrics {
+  color: var(--text-muted);
+}
+

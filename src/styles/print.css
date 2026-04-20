@@ -1,0 +1,222 @@
+﻿@media print {
+  @page {
+    size: A4 landscape;
+    margin: 5mm;
+  }
+
+  :root,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-hide,
+  .overlay,
+  .drawer,
+  .modal-overlay,
+  .day-review-layout-print-hide,
+  .app-toast-layer,
+  .app-notice {
+    display: none !important;
+  }
+
+  .app-shell,
+  .section-stack {
+    max-width: none;
+    gap: 12px;
+  }
+
+  .loading-screen,
+  .auth-shell,
+  .app-shell {
+    padding: 0;
+  }
+
+  .panel,
+  .hero-card,
+  .comparison-card,
+  .score-card,
+  .plan-detail-card {
+    box-shadow: none;
+    border: 1px solid #cfcfcf;
+    background: #fff !important;
+  }
+
+  .hero-card,
+  .panel,
+  .comparison-card,
+  .score-card,
+  .plan-detail-card,
+  .day-column,
+  .week-comparison-card,
+  .month-cell {
+    padding: 10px !important;
+    border-radius: 12px !important;
+  }
+
+  h2 {
+    font-size: 1rem;
+    margin-bottom: 2px;
+  }
+
+  .view-titlebar h2 {
+    font-size: 0.92rem;
+  }
+
+  p,
+  .summary-chip,
+  .week-day-link,
+  .comparison-subtitle,
+  .comparison-metrics,
+  .timeline-entry-line,
+  .timeline-legend-item,
+  .month-target,
+  .month-holiday-label,
+  .event-pill,
+  .type-badge {
+    font-size: 0.68rem !important;
+    line-height: 1.25;
+  }
+
+  .month-grid,
+  .week-grid,
+  .week-view-grid,
+  .timeline-shell,
+  .timeline-main,
+  .timeline-canvas,
+  .timeline-canvas.split,
+  .report-bar-chart-scroll {
+    overflow: visible !important;
+    min-width: 0 !important;
+  }
+
+  .month-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .week-view-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .timeline-shell {
+    --timeline-head-height: 30px;
+    --timeline-row-gap: 6px;
+    --timeline-hour-height: 22px;
+    --timeline-min-block-height: 20px;
+    --timeline-hour-label-offset: -6px;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .timeline-main {
+    gap: 4px;
+  }
+
+  .timeline-canvas.split {
+    min-width: 0 !important;
+  }
+
+  .section-stack,
+  .view-header-stack,
+  .section-header {
+    gap: 6px;
+  }
+
+  .timeline-column-label {
+    min-height: var(--timeline-head-height);
+    padding: 4px 6px;
+    font-size: 0.72rem;
+    border-radius: 10px;
+  }
+
+  .timeline-hour-label {
+    font-size: 0.62rem;
+  }
+
+  .timeline-plan-block,
+  .timeline-actual-block {
+    padding: 2px 5px;
+    border-radius: 10px;
+  }
+
+  .timeline-chip {
+    padding: 1px 5px;
+    font-size: 0.58rem;
+  }
+
+  .day-summary {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .summary-chip {
+    min-width: 0;
+    padding: 4px 6px;
+  }
+
+  .timeline-legend {
+    display: none !important;
+  }
+
+  .day-summary,
+  .timeline-legend,
+  .month-week-chip-row {
+    gap: 6px;
+  }
+
+  .week-day-column {
+    padding: 6px !important;
+    gap: 4px;
+  }
+
+  .week-comparison-card {
+    padding: 6px !important;
+    gap: 4px;
+  }
+
+  .week-plan-stack {
+    gap: 4px;
+  }
+
+  .comparison-track {
+    height: 8px;
+  }
+
+  .month-cell {
+    min-height: 72px;
+    gap: 4px;
+  }
+
+  .month-major-event-list,
+  .month-study-summary {
+    gap: 2px;
+  }
+
+  .month-cell-head {
+    gap: 4px;
+  }
+
+  .month-holiday-label {
+    font-size: 0.62rem !important;
+  }
+
+  .timeline-plan-block,
+  .timeline-actual-block,
+  .month-cell,
+  .week-day-link,
+  .report-bar-item,
+  .report-timeline-item {
+    break-inside: avoid;
+  }
+
+  .month-cell,
+  .week-day-column,
+  .week-comparison-card {
+    transform: none !important;
+  }
+}
+
