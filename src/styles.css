@@ -504,18 +504,24 @@ h2 {
 .field-pair {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(136px, 1fr));
   gap: 14px;
   min-width: 0;
 }
 
-.field-pair .field {
+.field-pair .field,
+.field-pair input,
+.field-pair select,
+.field-pair textarea {
   min-width: 0;
+  max-width: 100%;
 }
 
 .field input[type='date'],
 .field input[type='time'] {
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   line-height: 1.2;
 }
 
@@ -527,8 +533,8 @@ h2 {
 
 .datetime-row {
   display: grid;
-  grid-template-columns: minmax(44px, 0.42fr) minmax(132px, 1.15fr) minmax(82px, 0.72fr);
-  gap: 8px;
+  grid-template-columns: max-content minmax(150px, 1.15fr) minmax(92px, 0.72fr);
+  gap: 10px;
   align-items: end;
   min-width: 0;
 }
@@ -2833,7 +2839,9 @@ h2 {
   }
 
   .modal-card .field-pair {
-    gap: 8px;
+    grid-template-columns: repeat(2, minmax(132px, 1fr));
+    column-gap: 10px;
+    row-gap: 8px;
   }
 
   .modal-card .datetime-stack {
@@ -2841,8 +2849,8 @@ h2 {
   }
 
   .modal-card .datetime-row {
-    grid-template-columns: minmax(42px, 0.4fr) minmax(126px, 1.15fr) minmax(78px, 0.7fr);
-    gap: 7px;
+    grid-template-columns: max-content minmax(146px, 1.15fr) minmax(88px, 0.7fr);
+    gap: 10px;
   }
 
   .modal-card .datetime-row__label {
@@ -3864,7 +3872,7 @@ h2 {
   .modal-card {
     width: calc(100vw - 16px);
     max-height: 86vh;
-    padding: 12px;
+    padding: 10px;
     border-radius: 16px;
   }
 
@@ -3906,8 +3914,9 @@ h2 {
   }
 
   .modal-card .field-pair {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(2, minmax(128px, 1fr));
+    column-gap: 10px;
+    row-gap: 8px;
   }
 
   .modal-card .datetime-stack {
@@ -3915,8 +3924,8 @@ h2 {
   }
 
   .modal-card .datetime-row {
-    grid-template-columns: minmax(40px, 0.38fr) minmax(116px, 1.12fr) minmax(74px, 0.68fr);
-    gap: 6px;
+    grid-template-columns: max-content minmax(138px, 1.12fr) minmax(86px, 0.68fr);
+    gap: 10px;
   }
 
   .modal-card .datetime-row__label {
@@ -4017,7 +4026,6 @@ h2 {
 
   .month-event-modal {
     max-height: 86vh;
-    padding: 12px;
   }
 
   .month-event-modal .section-stack {
@@ -4559,6 +4567,7 @@ h2 {
   .modal-card .field-pair,
   .modal-card .datetime-row {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .modal-card .datetime-row__label {
