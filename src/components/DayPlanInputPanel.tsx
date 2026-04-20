@@ -50,9 +50,13 @@ export function DayPlanInputPanel({
       return;
     }
 
-    await applyDraftAndClose(draft);
-    setDraft(createEmptyPlanDraft(userId, selectedDate));
-    setStatus('学習予定を追加しました。');
+    try {
+      await applyDraftAndClose(draft);
+      setDraft(createEmptyPlanDraft(userId, selectedDate));
+      setStatus('学習予定を追加しました。');
+    } catch {
+      setStatus('');
+    }
   }
 
   const content = (

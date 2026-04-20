@@ -110,8 +110,34 @@ export function ActualEditorCard({
     }
 
     setError('');
-    await onSaveActual(plan, draft);
-    setIsOpen(false);
+    try {
+      await onSaveActual(plan, draft);
+      setIsOpen(false);
+    } catch {
+      setError('実績の保存に失敗しました。');
+    }
+  }
+
+  async function handleDeletePlan() {
+    try {
+      await onDeletePlan(plan);
+      setIsOpen(false);
+    } catch {
+      setError('予定の削除に失敗しました。');
+    }
+  }
+
+  async function handleDeleteActual() {
+    if (!actual) {
+      return;
+    }
+
+    try {
+      await onDeleteActual(actual);
+      setIsOpen(false);
+    } catch {
+      setError('実績の削除に失敗しました。');
+    }
   }
 
   return (
@@ -158,7 +184,7 @@ export function ActualEditorCard({
                 isScopedRecurringPlan ||
                 window.confirm('この予定を削除しますか？')
               ) {
-                void onDeletePlan(plan);
+                void handleDeletePlan();
               }
             }}
             type="button"
@@ -300,7 +326,7 @@ export function ActualEditorCard({
                 className="ghost-button danger"
                 onClick={() => {
                   if (window.confirm('この実績を削除しますか？')) {
-                    void onDeleteActual(actual);
+                    void handleDeleteActual();
                   }
                 }}
                 type="button"

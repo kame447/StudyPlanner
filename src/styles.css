@@ -288,6 +288,49 @@ button {
   padding: 24px;
 }
 
+.splash-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.splash-screen__inner {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: min(960px, 100%);
+}
+
+.splash-screen__logo {
+  width: min(920px, 92vw);
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 20px 44px rgba(31, 43, 43, 0.08));
+  animation: splash-fade-in 0.55s ease;
+}
+
+.splash-screen__message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+@keyframes splash-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .section-stack {
   display: grid;
   gap: 20px;
@@ -520,22 +563,9 @@ h2 {
 .field input[type='date'],
 .field input[type='time'] {
   width: 100%;
-  inline-size: 100%;
-  display: block;
   min-width: 0;
-  min-inline-size: 0;
   max-width: 100%;
-  max-inline-size: 100%;
-  box-sizing: border-box;
-  line-height: 1.25;
-  overflow: hidden;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.field input[type='date']::-webkit-date-and-time-value,
-.field input[type='time']::-webkit-date-and-time-value {
-  text-align: left;
+  line-height: 1.2;
 }
 
 .datetime-stack {
@@ -2717,6 +2747,18 @@ h2 {
     padding: 16px;
   }
 
+  .splash-screen__inner {
+    gap: 14px;
+  }
+
+  .splash-screen__logo {
+    width: min(780px, 94vw);
+  }
+
+  .splash-screen__message {
+    font-size: 0.86rem;
+  }
+
   .app-header,
   .toolbar,
   .section-header,
@@ -3790,6 +3832,22 @@ h2 {
     padding: 12px;
   }
 
+  .splash-screen {
+    padding: 16px;
+  }
+
+  .splash-screen__inner {
+    gap: 12px;
+  }
+
+  .splash-screen__logo {
+    width: min(700px, 96vw);
+  }
+
+  .splash-screen__message {
+    font-size: 0.78rem;
+  }
+
   .panel,
   .hero-card {
     padding: 12px;
@@ -4421,6 +4479,19 @@ h2 {
   .app-shell {
     padding: 10px;
     padding-bottom: calc(10px + var(--mobile-ad-reserve) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .splash-screen {
+    padding: 12px;
+    padding-bottom: calc(12px + var(--mobile-ad-reserve) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .splash-screen__logo {
+    width: min(620px, 97vw);
+  }
+
+  .splash-screen__message {
+    font-size: 0.72rem;
   }
 
   .app-shell {

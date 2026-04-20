@@ -470,8 +470,6 @@ export function usePlannerDataState({
         error: getErrorDiagnostics(error),
       });
       await loadPlannerData(userId);
-      setPendingRecurringPlanAction(null);
-      closePlanEditor();
       showNotice(
         resolveErrorMessage(
           error,
@@ -486,12 +484,12 @@ export function usePlannerDataState({
 
   async function savePlanDraft(draft: PlanDraft, targetPlanId?: string) {
     if (!userId) {
-      return;
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
     if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
       showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      return;
+      throw new Error('終了時刻は開始時刻より後にしてください。');
     }
 
     if (editingPlan && isScopedRecurringEditCandidate(editingPlan)) {
@@ -523,12 +521,13 @@ export function usePlannerDataState({
         resolveErrorMessage(error, '学習予定を保存できませんでした。'),
         'error',
       );
+      throw error;
     }
   }
 
   async function deletePlan(plan: Plan) {
     if (!userId) {
-      return;
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
     if (isScopedRecurringEditCandidate(plan)) {
@@ -550,12 +549,13 @@ export function usePlannerDataState({
         resolveErrorMessage(error, '予定を削除できませんでした。'),
         'error',
       );
+      throw error;
     }
   }
 
   async function saveActual(plan: Plan, draft: ActualDraft) {
     if (!userId) {
-      return;
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
@@ -564,21 +564,37 @@ export function usePlannerDataState({
     );
     const nextActual = createActualFromDraft(userId, draft, existingActual);
 
-    await plannerRepository.upsertActual(nextActual);
-    setActuals((current) =>
-      upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
-    );
-    showNotice('実績を保存しました。', 'success');
+    try {
+      await plannerRepository.upsertActual(nextActual);
+      setActuals((current) =>
+        upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
+      );
+      showNotice('実績を保存しました。', 'success');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '実績を保存できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
   }
 
   async function deleteActual(actual: Actual) {
     if (!userId) {
-      return;
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    await plannerRepository.deleteActual(userId, actual.id);
-    setActuals((current) => removeByKey(current, actual.id, (item) => item.id));
-    showNotice('実績を削除しました。');
+    try {
+      await plannerRepository.deleteActual(userId, actual.id);
+      setActuals((current) => removeByKey(current, actual.id, (item) => item.id));
+      showNotice('実績を削除しました。');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '実績を削除できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
   }
 
   async function saveDayNote(draft: DayNoteDraft) {
@@ -599,17 +615,17 @@ export function usePlannerDataState({
     targetMonthEventId?: string,
   ) {
     if (!userId) {
-      return;
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
     if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
       showNotice('主要予定の終了時刻は開始時刻より後にしてください。', 'error');
-      return;
+      throw new Error('主要予定の終了時刻は開始時刻より後にしてください。');
     }
 
     if (!draft.title.trim()) {
       showNotice('主要予定のタイトルを入れてください。', 'error');
-      return;
+      throw new Error('主要予定のタイトルを入れてください。');
     }
 
     const currentMonthEvent = monthEvents.find(
@@ -617,32 +633,48 @@ export function usePlannerDataState({
     );
     const nextMonthEvent = createMonthEventFromDraft(draft, currentMonthEvent);
 
-    await plannerRepository.upsertMonthEvent(nextMonthEvent);
-    setMonthEvents((current) =>
-      sortMonthEvents(upsertByKey(current, nextMonthEvent, (item) => item.id)),
-    );
+    try {
+      await plannerRepository.upsertMonthEvent(nextMonthEvent);
+      setMonthEvents((current) =>
+        sortMonthEvents(upsertByKey(current, nextMonthEvent, (item) => item.id)),
+      );
 
-    if (!currentMonthEvent) {
-      setSelectedDate(nextMonthEvent.date);
+      if (!currentMonthEvent) {
+        setSelectedDate(nextMonthEvent.date);
+      }
+
+      setMonthDate(startOfMonth(nextMonthEvent.date));
+      showNotice(
+        currentMonthEvent ? '月の主要予定を更新しました。' : '月の主要予定を追加しました。',
+        'success',
+      );
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '月の主要予定を保存できませんでした。'),
+        'error',
+      );
+      throw error;
     }
-
-    setMonthDate(startOfMonth(nextMonthEvent.date));
-    showNotice(
-      currentMonthEvent ? '月の主要予定を更新しました。' : '月の主要予定を追加しました。',
-      'success',
-    );
   }
 
   async function deleteMonthEvent(monthEvent: MonthEvent) {
     if (!userId) {
-      return;
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
-    setMonthEvents((current) =>
-      sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
-    );
-    showNotice('月の主要予定を削除しました。');
+    try {
+      await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
+      setMonthEvents((current) =>
+        sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
+      );
+      showNotice('月の主要予定を削除しました。');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '月の主要予定を削除できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
   }
 
   function selectDate(date: string) {

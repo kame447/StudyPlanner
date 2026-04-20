@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
+import { SplashScreen } from './components/SplashScreen';
 import { DayView } from './components/DayView';
 import { DayPlanInputPanel } from './components/DayPlanInputPanel';
 import { MonthView } from './components/MonthView';
@@ -74,7 +75,7 @@ export default function App() {
   } = usePlannerAppState();
 
   if (booting) {
-    return <main className="loading-screen">起動しています...</main>;
+    return <SplashScreen />;
   }
 
   if (!user || !appAccessGranted) {
@@ -249,8 +250,9 @@ export default function App() {
         onChange={setEditorDraft}
         onSubmit={() => {
           if (editorDraft) {
-            void savePlanDraft(editorDraft);
+            return savePlanDraft(editorDraft);
           }
+          return Promise.resolve();
         }}
         onCancel={closePlanEditor}
       />

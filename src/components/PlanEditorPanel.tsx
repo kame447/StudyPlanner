@@ -35,8 +35,12 @@ export function PlanEditorPanel({
       return;
     }
 
-    await onSubmit();
-    onCancel();
+    try {
+      await onSubmit();
+      onCancel();
+    } catch {
+      // Keep the editor open; the data layer already reports the failure.
+    }
   }
 
   return (

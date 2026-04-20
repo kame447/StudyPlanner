@@ -165,7 +165,12 @@ export function MonthEventDialog({
 
     setError('');
     setShowDeleteScopePrompt(false);
-    await onSave(nextDraft, editingEventId ?? undefined);
+    try {
+      await onSave(nextDraft, editingEventId ?? undefined);
+    } catch {
+      setError('月の主要予定を保存できませんでした。');
+      return;
+    }
 
     if (!editingEvent) {
       resetEditor('月の主要予定を追加しました。');
@@ -173,6 +178,7 @@ export function MonthEventDialog({
       setStatus('月の主要予定を更新しました。');
       setDraft(nextDraft);
     }
+    onClose();
   }
 
   async function handleDelete() {
@@ -192,8 +198,14 @@ export function MonthEventDialog({
       return;
     }
 
-    await onDelete(editingEvent);
+    try {
+      await onDelete(editingEvent);
+    } catch {
+      setError('月の主要予定を削除できませんでした。');
+      return;
+    }
     resetEditor('月の主要予定を削除しました。');
+    onClose();
   }
 
   async function handleDeleteScope(scope: 'single' | 'future') {
@@ -209,8 +221,14 @@ export function MonthEventDialog({
         excludedDates: [...baseDraft.excludedDates, activeDate],
       });
 
-      await onSave(nextDraft, editingEvent.id);
+      try {
+        await onSave(nextDraft, editingEvent.id);
+      } catch {
+        setError('月の主要予定を削除できませんでした。');
+        return;
+      }
       resetEditor('この予定だけ削除しました。');
+      onClose();
       return;
     }
 
@@ -220,8 +238,14 @@ export function MonthEventDialog({
     );
 
     if (!previousOccurrenceDate) {
-      await onDelete(editingEvent);
+      try {
+        await onDelete(editingEvent);
+      } catch {
+        setError('月の主要予定を削除できませんでした。');
+        return;
+      }
       resetEditor('この日以降の繰り返し予定を削除しました。');
+      onClose();
       return;
     }
 
@@ -233,8 +257,14 @@ export function MonthEventDialog({
       ),
     });
 
-    await onSave(nextDraft, editingEvent.id);
+    try {
+      await onSave(nextDraft, editingEvent.id);
+    } catch {
+      setError('月の主要予定を削除できませんでした。');
+      return;
+    }
     resetEditor('この日以降の繰り返し予定を削除しました。');
+    onClose();
   }
 
   return (
