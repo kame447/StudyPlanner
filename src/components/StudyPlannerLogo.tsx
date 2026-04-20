@@ -1,10 +1,8 @@
-import logoImage from '../assets/studyplanner-logo.png';
-
 export function StudyPlannerLogo() {
   return (
     <div className="brand-lockup" aria-label="Study Planner">
       <img
-        src={logoImage}
+        src="/studyplanner-logo.jpg"
         alt="Study Planner"
         className="brand-logo-image"
       />

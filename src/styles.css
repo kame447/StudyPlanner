@@ -715,14 +715,16 @@ h2 {
   justify-content: center;
   gap: 16px;
   min-width: 0;
+  width: 100%;
 }
 
 .brand-logo-image {
   display: block;
-  height: 200px;
+  height: 152px;
   width: auto;
-  max-width: min(380px, 100%);
+  max-width: min(820px, 100%);
   object-fit: contain;
+  flex-shrink: 0;
 }
 
 .brand-mark {
@@ -3138,7 +3140,7 @@ h2 {
   gap: 6px;
   flex-wrap: wrap;
   align-items: baseline;
-  }
+}
 
 @media screen and (max-width: 900px) {
   .app-toast-layer {
@@ -3215,6 +3217,12 @@ h2 {
     flex: 1 1 auto;
     min-width: 0;
     gap: 8px;
+    justify-content: center;
+  }
+
+  .brand-logo-image {
+    height: 92px;
+    max-width: min(560px, 100%);
   }
 
   .brand-copy {
@@ -3224,11 +3232,6 @@ h2 {
   .brand-mark {
     width: 46px;
     height: 46px;
-  }
-
-  .brand-logo-image {
-  height: 46px;
-  max-width: min(240px, 100%);
   }
 
   .brand-name {
@@ -3897,6 +3900,13 @@ h2 {
 
   .brand-lockup {
     gap: 6px;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .brand-logo-image {
+    height: 76px;
+    max-width: min(440px, 100%);
   }
 
   .brand-mark {
@@ -4510,6 +4520,11 @@ h2 {
 
   .app-shell {
     gap: 10px;
+  }
+
+  .brand-logo-image {
+    height: 68px;
+    max-width: min(320px, 100%);
   }
 
   .panel,
