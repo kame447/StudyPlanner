@@ -1,9 +1,11 @@
+import { useState, type CSSProperties } from 'react';
 import {
   addDays,
   formatDateLabel,
   formatMinutes,
   getWeekDates,
   minutesBetween,
+  minutesFromTime,
   sortByDateTime,
 } from '../lib/date';
 import {
@@ -13,6 +15,7 @@ import {
 } from '../lib/planRecurrence';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { getPlanTypeLabel } from '../lib/plans';
+import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
 import type { Actual, Plan } from '../types/domain';
 
 interface WeekViewProps {
@@ -23,6 +26,98 @@ interface WeekViewProps {
   onOpenDay: (date: string) => void;
 }
 
+type WeekTimelineMode = 'plan' | 'actual' | 'compare';
+
+interface WeekTimelineBaseBlock {
+  id: string;
+  title: string;
+  subject: string;
+  type: Plan['type'];
+  startTime: string;
+  endTime: string;
+}
+
+interface WeekTimelineBlock extends WeekTimelineBaseBlock {
+  lane: number;
+  laneCount: number;
+}
+
+const WEEK_TIMELINE_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
+
+function buildWeekTimelineLanes<T extends WeekTimelineBaseBlock>(
+  items: T[],
+): Array<T & WeekTimelineBlock> {
+  const sortedItems = [...items].sort((left, right) => {
+    const startDelta =
+      minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
+
+    if (startDelta !== 0) {
+      return startDelta;
+    }
+
+    return minutesFromTime(left.endTime) - minutesFromTime(right.endTime);
+  });
+
+  const activeLanes: Array<{ lane: number; endMinutes: number }> = [];
+  const laneById = new Map<string, number>();
+  let laneCount = 0;
+
+  sortedItems.forEach((item) => {
+    const startMinutes = minutesFromTime(item.startTime);
+    const endMinutes = Math.max(
+      startMinutes + minutesBetween(item.startTime, item.endTime),
+      startMinutes + 1,
+    );
+
+    for (let index = activeLanes.length - 1; index >= 0; index -= 1) {
+      if (activeLanes[index].endMinutes <= startMinutes) {
+        activeLanes.splice(index, 1);
+      }
+    }
+
+    const usedLanes = new Set(activeLanes.map((entry) => entry.lane));
+    let lane = 0;
+
+    while (usedLanes.has(lane)) {
+      lane += 1;
+    }
+
+    laneCount = Math.max(laneCount, lane + 1);
+    laneById.set(item.id, lane);
+    activeLanes.push({ lane, endMinutes });
+  });
+
+  return sortedItems.map((item) => ({
+    ...item,
+    lane: laneById.get(item.id) ?? 0,
+    laneCount,
+  }));
+}
+
+function buildWeekTimelineBlockStyle(
+  entry: WeekTimelineBlock,
+  inset: 'normal' | 'actual-inset' = 'normal',
+): CSSProperties {
+  const laneWidth = 100 / Math.max(entry.laneCount, 1);
+  const sidePadding = inset === 'actual-inset' ? 12 : 6;
+  const durationMinutes = minutesBetween(entry.startTime, entry.endTime);
+
+  return {
+    top: `calc(${minutesFromTime(entry.startTime)} * var(--week-timeline-hour-height) / 60)`,
+    height: `max(calc(${durationMinutes} * var(--week-timeline-hour-height) / 60), var(--week-timeline-min-block-height))`,
+    left: `calc(${entry.lane * laneWidth}% + ${sidePadding}px)`,
+    width: `calc(${laneWidth}% - ${sidePadding * 2}px)`,
+  };
+}
+
+function resolveActualTitle(actual: Actual, plan?: Plan): string {
+  return actual.title?.trim() || plan?.title || '実績';
+}
+
+function resolveActualSubject(actual: Actual, plan?: Plan): string {
+  return actual.subject.trim() || plan?.subject || '実績';
+}
+
 export function WeekView({
   selectedDate,
   plans,
@@ -30,8 +125,10 @@ export function WeekView({
   onChangeWeek,
   onOpenDay,
 }: WeekViewProps) {
+  const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
   const weekDates = getWeekDates(selectedDate);
   const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
@@ -73,33 +170,119 @@ export function WeekView({
               </button>
             </div>
           </div>
-          <p className="print-hide">計画を土台にし、実績との差分を1週間で比較します。</p>
+          <p className="print-hide">7日分を同じ24時間軸で並べ、予定・実績・差分を切り替えて確認します。</p>
         </div>
       </div>
 
-      <div className="week-grid week-view-grid">
+      <div className="week-timeline-toolbar print-hide">
+        <div className="segmented-control week-timeline-mode-control">
+          {(
+            [
+              ['plan', '予定'],
+              ['actual', '実績'],
+              ['compare', '比較'],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              className={timelineMode === mode ? 'segment active' : 'segment'}
+              onClick={() => setTimelineMode(mode)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="week-timeline-legend">
+          <span className="week-timeline-legend-item">
+            <span className="week-timeline-legend-plan" />
+            予定
+          </span>
+          <span className="week-timeline-legend-item">
+            <span className="week-timeline-legend-actual" />
+            実績
+          </span>
+        </div>
+      </div>
+
+      <div className="week-timeline-shell">
+        <div className="week-timeline-hours" aria-hidden="true">
+          <div className="week-timeline-corner" />
+          {WEEK_TIMELINE_HOURS.map((hour) => (
+            <div
+              key={hour}
+              className="week-timeline-hour-label"
+              style={{ height: 'var(--week-timeline-hour-height)' }}
+            >
+              {hour.toString().padStart(2, '0')}:00
+            </div>
+          ))}
+        </div>
+
+        <div className="week-timeline-days">
         {weekDates.map((date) => {
           const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
+          const dayPlanKeys = new Set(
+            dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
+          );
+          const linkedActuals = dayPlans.flatMap((plan) => {
+            const actual = actualByOccurrenceKey.get(
+              buildPlanOccurrenceKey(plan.id, plan.date),
+            );
+
+            return actual ? [{ actual, plan }] : [];
+          });
+          const standaloneActuals = actuals
+            .filter(
+              (actual) =>
+                actual.occurrenceDate === date &&
+                !dayPlanKeys.has(getActualOccurrenceKey(actual)),
+            )
+            .map((actual) => ({ actual, plan: planById.get(actual.planId) }));
+          const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
+            (left, right) =>
+              minutesFromTime(left.actual.actualStartTime) -
+              minutesFromTime(right.actual.actualStartTime),
+          );
           const dayPlanMinutes = dayPlans.reduce(
             (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
             0,
           );
-          const dayActualMinutes = dayPlans.reduce((sum, plan) => {
-            const actual = actualByOccurrenceKey.get(
-              buildPlanOccurrenceKey(plan.id, plan.date),
-            );
-            return (
-              sum +
-              (actual
-                ? minutesBetween(actual.actualStartTime, actual.actualEndTime)
-                : 0)
-            );
-          }, 0);
+          const dayActualMinutes = dayActuals.reduce(
+            (sum, { actual }) =>
+              sum + minutesBetween(actual.actualStartTime, actual.actualEndTime),
+            0,
+          );
+          const planBlocks = buildWeekTimelineLanes(
+            dayPlans.map((plan) => ({
+              id: buildPlanOccurrenceKey(plan.id, plan.date),
+              title: plan.title,
+              subject: plan.subject,
+              type: plan.type,
+              startTime: plan.startTime,
+              endTime: plan.endTime,
+            })),
+          );
+          const actualBlocks = buildWeekTimelineLanes(
+            dayActuals.map(({ actual, plan }) => ({
+              id: actual.id,
+              title: resolveActualTitle(actual, plan),
+              subject: resolveActualSubject(actual, plan),
+              type: plan?.type ?? 'other',
+              startTime: actual.actualStartTime,
+              endTime: actual.actualEndTime,
+            })),
+          );
+          const hasVisibleBlocks =
+            timelineMode === 'plan'
+              ? planBlocks.length > 0
+              : timelineMode === 'actual'
+                ? actualBlocks.length > 0
+                : planBlocks.length > 0 || actualBlocks.length > 0;
 
           return (
-            <article key={date} className="day-column week-day-column">
-              <div className="day-column-head week-day-column-head">
-                <div>
+            <article key={date} className="week-timeline-day">
+              <div className="week-timeline-day-head">
                   <button
                     className="week-day-link"
                     onClick={() => onOpenDay(date)}
@@ -120,84 +303,87 @@ export function WeekView({
                       <strong>{formatMinutes(dayActualMinutes)}</strong>
                     </span>
                   </p>
-                </div>
               </div>
 
-              <div className="plan-stack week-plan-stack">
-                {dayPlans.length > 0 ? (
-                  dayPlans.map((plan) => {
-                    const actual = actualByOccurrenceKey.get(
-                      buildPlanOccurrenceKey(plan.id, plan.date),
-                    );
-                    const planMinutes = minutesBetween(plan.startTime, plan.endTime);
-                    const actualMinutes = actual
-                      ? minutesBetween(actual.actualStartTime, actual.actualEndTime)
-                      : 0;
-                    const widthPercent =
-                      planMinutes === 0
-                        ? 0
-                        : Math.min((actualMinutes / planMinutes) * 100, 100);
-                    const deltaMinutes = actualMinutes - planMinutes;
+              <div
+                className={`week-timeline-canvas mode-${timelineMode}`}
+                style={{ height: 'calc(24 * var(--week-timeline-hour-height))' }}
+                onDoubleClick={() => onOpenDay(date)}
+              >
+                {Array.from({ length: 24 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="week-timeline-grid-line"
+                    style={{ top: `calc(${index} * var(--week-timeline-hour-height))` }}
+                  />
+                ))}
+
+                {(timelineMode === 'plan' || timelineMode === 'compare') &&
+                  planBlocks.map((entry) => {
+                    const subjectLabel = getSubjectLabel(entry.subject, entry.type);
 
                     return (
-                      <div key={plan.id} className="comparison-card week-comparison-card">
-                        <div className="comparison-head week-comparison-head">
-                          <strong>{plan.title}</strong>
-                          <span className="type-badge">
-                            {getPlanTypeLabel(plan.type)}
-                          </span>
-                        </div>
-
-                        <p className="comparison-subtitle week-comparison-subtitle">
-                          <span className="week-subtitle-item">
-                            <span className="week-subtitle-label-full">計画</span>
-                            <span className="week-subtitle-label-short">計</span>{' '}
-                            <span>
-                              {plan.startTime} - {plan.endTime}
-                            </span>
-                          </span>
-                          <span className="week-day-summary-separator">/</span>
-                          <span className="week-subtitle-item">
-                            <span className="week-subtitle-label-full">実績</span>
-                            <span className="week-subtitle-label-short">実</span>{' '}
-                            <span>
-                              {actual
-                                ? `${actual.actualStartTime} - ${actual.actualEndTime}`
-                                : '未記録'}
-                            </span>
-                          </span>
-                        </p>
-
-                        <div className="comparison-track">
-                          <div className="comparison-plan-bar" />
-                          <div
-                            className="comparison-actual-bar"
-                            style={{ width: `${widthPercent}%` }}
-                          />
-                        </div>
-
-                        <p className="comparison-metrics">
-                          差分{' '}
-                          {actual
-                            ? `${deltaMinutes > 0 ? '+' : ''}${formatMinutes(
-                                Math.abs(deltaMinutes),
-                              )}`
-                            : '未記録'}
-                        </p>
-                      </div>
+                      <button
+                        key={`plan-${entry.id}`}
+                        className="week-timeline-block week-timeline-plan-block"
+                        style={buildWeekTimelineBlockStyle(entry)}
+                        onClick={() => onOpenDay(date)}
+                        title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        type="button"
+                      >
+                        <strong>{entry.title}</strong>
+                        <span>{entry.startTime} - {entry.endTime}</span>
+                        <span>{subjectLabel}</span>
+                        <span className="week-timeline-type">
+                          {getPlanTypeLabel(entry.type)}
+                        </span>
+                      </button>
                     );
-                  })
-                ) : (
-                  <p className="empty-copy">この週の予定はまだありません。</p>
-                )}
+                  })}
 
-                {dayPlans.length > 2 ? (
-                  <p className="week-hidden-plan-count">+{dayPlans.length - 2}件</p>
+                {(timelineMode === 'actual' || timelineMode === 'compare') &&
+                  actualBlocks.map((entry) => {
+                    const theme = getSubjectTheme(entry.subject, entry.type);
+                    const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+
+                    return (
+                      <button
+                        key={`actual-${entry.id}`}
+                        className="week-timeline-block week-timeline-actual-block"
+                        style={{
+                          ...buildWeekTimelineBlockStyle(
+                            entry,
+                            timelineMode === 'compare' ? 'actual-inset' : 'normal',
+                          ),
+                          backgroundColor: theme.soft,
+                          borderColor: theme.border,
+                          color: theme.text,
+                          boxShadow:
+                            timelineMode === 'compare'
+                              ? `inset 5px 0 0 ${theme.fill}, 0 10px 18px rgba(24, 42, 39, 0.1)`
+                              : `inset 4px 0 0 ${theme.fill}`,
+                        }}
+                        onClick={() => onOpenDay(date)}
+                        title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        type="button"
+                      >
+                        <strong>{entry.title}</strong>
+                        <span>{entry.startTime} - {entry.endTime}</span>
+                        <span>{subjectLabel}</span>
+                      </button>
+                    );
+                  })}
+
+                {!hasVisibleBlocks ? (
+                  <p className="week-timeline-empty">
+                    {timelineMode === 'actual' ? '実績なし' : '予定なし'}
+                  </p>
                 ) : null}
               </div>
             </article>
           );
         })}
+        </div>
       </div>
     </section>
   );
