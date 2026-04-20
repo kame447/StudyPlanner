@@ -719,7 +719,7 @@ h2 {
 
 .brand-logo-image {
   display: block;
-  height: 88px;
+  height: 100px;
   width: auto;
   max-width: min(380px, 100%);
   object-fit: contain;
