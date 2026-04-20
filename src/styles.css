@@ -545,6 +545,9 @@ h2 {
   grid-column: 1 / -1;
 }
 
+/* DO NOT REMOVE: form-two-column-layout
+   日付/開始/終了の2カラムは意図的に維持している。
+   崩れ対策は1カラム化ではなく input 側の幅計算で行う。 */
 .field-pair {
   grid-column: 1 / -1;
   display: grid;
@@ -561,12 +564,30 @@ h2 {
   max-width: 100%;
 }
 
+/* DO NOT REMOVE: ios-safari-time-input-overlap-fix
+   開始/終了セルの重なり再発防止。
+   Safari の date/time input は通常 input と幅計算がずれるため、
+   inline-size / min-inline-size / box-sizing を意図的に指定している。
+   見た目整理のために簡略化しないこと。 */
 .field input[type='date'],
 .field input[type='time'] {
   width: 100%;
+  inline-size: 100%;
+  display: block;
   min-width: 0;
+  min-inline-size: 0;
   max-width: 100%;
-  line-height: 1.2;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+  line-height: 1.25;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field input[type='date']::-webkit-date-and-time-value,
+.field input[type='time']::-webkit-date-and-time-value {
+  text-align: left;
 }
 
 .datetime-stack {
