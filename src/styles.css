@@ -1606,6 +1606,24 @@ h2 {
   line-height: 1.15;
 }
 
+.week-timeline-block::after {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.week-timeline-plan-block::after {
+  content: attr(data-subject) " / " attr(data-type);
+}
+
+.week-timeline-actual-block::after {
+  content: attr(data-subject);
+}
+
 .week-timeline-plan-block {
   background: var(--timeline-plan-bg-split);
   border-color: var(--timeline-plan-border);
@@ -1624,7 +1642,7 @@ h2 {
   border-width: 1px;
 }
 
-.week-timeline-type {
+.week-timeline-time {
   color: var(--text-muted);
 }
 
@@ -3809,7 +3827,7 @@ h2 {
   .week-timeline-shell {
     --week-timeline-head-height: 62px;
     --week-timeline-hour-height: 28px;
-    --week-timeline-min-block-height: 30px;
+    --week-timeline-min-block-height: 34px;
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 8px;
   }
@@ -3829,23 +3847,22 @@ h2 {
   }
 
   .week-timeline-block {
-    gap: 3px;
+    gap: 2px;
     padding: 5px 6px;
     border-radius: 9px;
   }
 
   .week-timeline-block strong {
-    font-size: 0.64rem;
-    line-height: 1.12;
+    font-size: 0.62rem;
+    line-height: 1.08;
   }
 
   .week-timeline-block span {
-    font-size: 0.56rem;
-    line-height: 1.1;
+    font-size: 0.54rem;
+    line-height: 1.06;
   }
 
-  .week-timeline-subject,
-  .week-timeline-type {
+  .week-timeline-block::after {
     display: none;
   }
 
@@ -4675,7 +4692,7 @@ h2 {
   .week-timeline-shell {
     --week-timeline-head-height: 56px;
     --week-timeline-hour-height: 24px;
-    --week-timeline-min-block-height: 30px;
+    --week-timeline-min-block-height: 34px;
     grid-template-columns: 34px minmax(0, 1fr);
     gap: 6px;
   }
@@ -4701,23 +4718,22 @@ h2 {
   }
 
   .week-timeline-block {
-    gap: 3px;
+    gap: 2px;
     padding: 5px;
     border-radius: 8px;
   }
 
   .week-timeline-block strong {
-    font-size: 0.62rem;
-    line-height: 1.12;
+    font-size: 0.6rem;
+    line-height: 1.08;
   }
 
   .week-timeline-block span {
-    font-size: 0.54rem;
-    line-height: 1.1;
+    font-size: 0.52rem;
+    line-height: 1.06;
   }
 
-  .week-timeline-subject,
-  .week-timeline-type {
+  .week-timeline-block::after {
     display: none;
   }
 

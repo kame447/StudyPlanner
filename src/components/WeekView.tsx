@@ -329,15 +329,15 @@ export function WeekView({
                         style={buildWeekTimelineBlockStyle(entry)}
                         onClick={() => onOpenDay(date)}
                         title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        data-subject={subjectLabel}
+                        data-type={getPlanTypeLabel(entry.type)}
                         type="button"
                       >
-                        <strong>{entry.title}</strong>
+                        <strong className="week-timeline-block__title">
+                          {entry.title}
+                        </strong>
                         <span className="week-timeline-time">
                           {entry.startTime} - {entry.endTime}
-                        </span>
-                        <span className="week-timeline-subject">{subjectLabel}</span>
-                        <span className="week-timeline-type">
-                          {getPlanTypeLabel(entry.type)}
                         </span>
                       </button>
                     );
@@ -367,13 +367,15 @@ export function WeekView({
                         }}
                         onClick={() => onOpenDay(date)}
                         title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        data-subject={subjectLabel}
                         type="button"
                       >
-                        <strong>{entry.title}</strong>
+                        <strong className="week-timeline-block__title">
+                          {entry.title}
+                        </strong>
                         <span className="week-timeline-time">
                           {entry.startTime} - {entry.endTime}
                         </span>
-                        <span className="week-timeline-subject">{subjectLabel}</span>
                       </button>
                     );
                   })}
