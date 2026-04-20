@@ -44,7 +44,7 @@ export function PlanFieldsEditor({
         </label>
       </div>
 
-      <div className="field-pair field-full field-pair--temporal">
+      <div className="field-pair field-full">
         <label className="field">
           <span>日付</span>
           <input
@@ -72,7 +72,7 @@ export function PlanFieldsEditor({
         </label>
       </div>
 
-      <div className="field-pair field-full field-pair--time">
+      <div className="field-pair field-full">
         <label className="field">
           <span>開始</span>
           <input
@@ -92,7 +92,7 @@ export function PlanFieldsEditor({
         </label>
       </div>
 
-      <div className="field-pair field-full field-pair--temporal">
+      <div className="field-pair field-full">
         <label className="field">
           <span>繰り返し</span>
           <select

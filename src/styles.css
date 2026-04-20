@@ -521,32 +521,21 @@ h2 {
 .field input[type='time'] {
   width: 100%;
   inline-size: 100%;
+  display: block;
   min-width: 0;
   min-inline-size: 0;
   max-width: 100%;
   max-inline-size: 100%;
   box-sizing: border-box;
-  line-height: 1.2;
+  line-height: 1.25;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .field input[type='date']::-webkit-date-and-time-value,
 .field input[type='time']::-webkit-date-and-time-value {
   text-align: left;
-}
-
-.field-pair--temporal,
-.field-pair--time {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.field-pair--temporal .field,
-.field-pair--time .field,
-.field-pair--temporal input,
-.field-pair--time input,
-.field-pair--temporal select,
-.field-pair--time select {
-  min-width: 0;
-  max-width: 100%;
 }
 
 .datetime-stack {
@@ -4419,22 +4408,6 @@ h2 {
 
   .report-timeline-scroll {
     max-height: 300px;
-  }
-}
-
-@media screen and (max-width: 640px) {
-  .modal-card .field-pair--temporal,
-  .modal-card .field-pair--time {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 10px;
-    row-gap: 8px;
-  }
-}
-
-@media screen and (max-width: 460px) {
-  .modal-card .field-pair--temporal,
-  .modal-card .field-pair--time {
-    grid-template-columns: 1fr;
   }
 }
 
