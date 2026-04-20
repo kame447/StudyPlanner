@@ -712,15 +712,16 @@ h2 {
 .brand-lockup {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px;
   min-width: 0;
 }
 
 .brand-logo-image {
   display: block;
-  height: 76px;
+  height: 88px;
   width: auto;
-  max-width: min(320px, 100%);
+  max-width: min(380px, 100%);
   object-fit: contain;
 }
 
