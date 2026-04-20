@@ -1718,7 +1718,7 @@ h2 {
   --timeline-head-height: 44px;
   --timeline-row-gap: 10px;
   --timeline-hour-height: 54px;
-  --timeline-min-block-height: 26px;
+  --timeline-min-block-height: 24px;
   --timeline-hour-label-offset: -6px;
   --timeline-title-size: clamp(0.94rem, 0.88rem + 0.18vw, 1.06rem);
   --timeline-meta-size: clamp(0.7rem, 0.67rem + 0.08vw, 0.78rem);
@@ -1845,7 +1845,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 12px;
   overflow: hidden;
   appearance: none;
@@ -1903,28 +1903,9 @@ h2 {
   text-overflow: ellipsis;
 }
 
-.timeline-entry-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-
-.timeline-entry-row .timeline-chip {
-  flex: 0 0 auto;
-}
-
-.timeline-entry-content {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .timeline-entry-title,
 .timeline-entry-time,
-.timeline-inline-subject {
+.timeline-entry-subject {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1939,28 +1920,13 @@ h2 {
 }
 
 .timeline-entry-time,
-.timeline-inline-subject {
+.timeline-entry-subject {
   flex: 0 2 auto;
   font-size: var(--timeline-meta-size);
   line-height: 1;
 }
 
-.timeline-entry-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: var(--timeline-meta-size);
-  line-height: 1.2;
-}
-
-.timeline-inline-separator {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-}
-
-.timeline-inline-subject {
+.timeline-entry-subject {
   font-weight: 600;
 }
 
@@ -3888,7 +3854,7 @@ h2 {
     --timeline-head-height: 32px;
     --timeline-row-gap: 6px;
     --timeline-hour-height: 20px;
-    --timeline-min-block-height: 22px;
+    --timeline-min-block-height: 20px;
     --timeline-hour-label-offset: -6px;
     --timeline-title-size: 0.58rem;
     --timeline-meta-size: 0.48rem;
@@ -3952,12 +3918,8 @@ h2 {
   }
 
   .timeline-entry-time,
-  .timeline-inline-subject {
+  .timeline-entry-subject {
     font-size: var(--timeline-meta-size);
-  }
-
-  .timeline-inline-separator {
-    display: none;
   }
 
   .day-review-layout {
@@ -4738,7 +4700,7 @@ h2 {
     --timeline-head-height: 28px;
     --timeline-row-gap: 5px;
     --timeline-hour-height: 18px;
-    --timeline-min-block-height: 21px;
+    --timeline-min-block-height: 20px;
     --timeline-title-size: 0.54rem;
     --timeline-meta-size: 0.46rem;
     --timeline-chip-size: 0.32rem;
@@ -4769,7 +4731,7 @@ h2 {
   }
 
   .timeline-entry-time,
-  .timeline-inline-subject {
+  .timeline-entry-subject {
     font-size: var(--timeline-meta-size);
   }
 

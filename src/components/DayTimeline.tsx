@@ -334,7 +334,7 @@ export function DayTimeline({
                         {entry.startTime}-{entry.endTime}
                       </span>
                       <span
-                        className="timeline-inline-subject"
+                        className="timeline-entry-subject"
                         style={{ color: theme.text }}
                         title={subjectLabel}
                       >
@@ -381,7 +381,7 @@ export function DayTimeline({
                       <span className="timeline-entry-time">
                         {entry.startTime}-{entry.endTime}
                       </span>
-                      <span className="timeline-inline-subject" title={subjectLabel}>
+                      <span className="timeline-entry-subject" title={subjectLabel}>
                         {subjectLabel}
                       </span>
                     </div>
