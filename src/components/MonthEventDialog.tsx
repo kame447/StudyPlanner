@@ -350,7 +350,7 @@ export function MonthEventDialog({
               </label>
             </div>
 
-            <label className="field">
+            <label className="field field-full">
               <span>繰り返し</span>
               <select
                 value={draft.repeat}
@@ -369,7 +369,7 @@ export function MonthEventDialog({
               </select>
             </label>
 
-            <label className="field">
+            <label className="field field-full">
               <span>URL</span>
               <input
                 value={draft.url}

@@ -24,7 +24,7 @@ export function PlanFieldsEditor({
 
   return (
     <div className="form-grid">
-      <label className="field">
+      <label className="field field-full">
         <span>予定名</span>
         <input
           value={draft.title}
@@ -33,7 +33,7 @@ export function PlanFieldsEditor({
         />
       </label>
 
-      <label className="field">
+      <label className="field field-full">
         <span>科目</span>
         <input
           value={draft.subject}
@@ -42,15 +42,33 @@ export function PlanFieldsEditor({
         />
       </label>
 
-      <label className="field">
-        <span>日付</span>
-        <input
-          type="date"
-          value={draft.date}
-          onChange={(event) => updateField('date', event.target.value)}
-          disabled={disableDateField}
-        />
-      </label>
+      <div className="field-pair field-full">
+        <label className="field">
+          <span>日付</span>
+          <input
+            type="date"
+            value={draft.date}
+            onChange={(event) => updateField('date', event.target.value)}
+            disabled={disableDateField}
+          />
+        </label>
+
+        <label className="field">
+          <span>種別</span>
+          <select
+            value={draft.type}
+            onChange={(event) =>
+              updateField('type', event.target.value as PlanDraft['type'])
+            }
+          >
+            {PLAN_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <div className="field-pair field-full">
         <label className="field">
@@ -72,50 +90,36 @@ export function PlanFieldsEditor({
         </label>
       </div>
 
-      <label className="field">
-        <span>繰り返し</span>
-        <select
-          value={draft.repeat}
-          onChange={(event) =>
-            updateField('repeat', event.target.value as PlanDraft['repeat'])
-          }
-          disabled={disableRepeatFields}
-        >
-          {PLAN_REPEAT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="field-pair field-full">
+        <label className="field">
+          <span>繰り返し</span>
+          <select
+            value={draft.repeat}
+            onChange={(event) =>
+              updateField('repeat', event.target.value as PlanDraft['repeat'])
+            }
+            disabled={disableRepeatFields}
+          >
+            {PLAN_REPEAT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      <label className="field">
-        <span>繰り返し終了</span>
-        <input
-          type="date"
-          value={draft.repeatUntil ?? ''}
-          onChange={(event) =>
-            updateField('repeatUntil', event.target.value || null)
-          }
-          disabled={disableRepeatFields || draft.repeat === 'none'}
-        />
-      </label>
-
-      <label className="field">
-        <span>種別</span>
-        <select
-          value={draft.type}
-          onChange={(event) =>
-            updateField('type', event.target.value as PlanDraft['type'])
-          }
-        >
-          {PLAN_TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+        <label className="field">
+          <span>繰り返し終了</span>
+          <input
+            type="date"
+            value={draft.repeatUntil ?? ''}
+            onChange={(event) =>
+              updateField('repeatUntil', event.target.value || null)
+            }
+            disabled={disableRepeatFields || draft.repeat === 'none'}
+          />
+        </label>
+      </div>
 
       <label className="field field-full">
         <span>メモ</span>

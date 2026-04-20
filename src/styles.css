@@ -2059,6 +2059,14 @@ h2 {
   width: 100%;
 }
 
+.plan-editor-modal {
+  width: min(680px, calc(100vw - 40px));
+}
+
+.plan-editor-modal .section-stack {
+  gap: 16px;
+}
+
 .month-event-list-card,
 .month-event-checklist-card {
   gap: 12px;
@@ -2718,29 +2726,30 @@ h2 {
   }
 
   .modal-overlay {
-    padding: 12px;
+    padding: 10px;
   }
 
   .modal-card {
-    width: 100%;
-    max-height: 92vh;
+    width: min(100%, calc(100vw - 20px));
+    max-height: 86vh;
     padding: 14px;
     border-radius: 20px;
     margin-top: 0;
   }
 
-  .plan-input-modal {
-    width: calc(100vw - 24px);
+  .plan-input-modal,
+  .plan-editor-modal {
+    width: calc(100vw - 20px);
     max-width: none;
   }
 
   .plan-input-shell {
-    max-height: calc(92vh - 36px);
-    gap: 10px;
+    max-height: calc(86vh - 28px);
+    gap: 12px;
   }
 
   .plan-input-tab-content {
-    gap: 10px;
+    gap: 12px;
   }
 
   .modal-card .section-stack,
@@ -2748,7 +2757,7 @@ h2 {
   .modal-card .assistant-settings-card,
   .modal-card .actual-form,
   .modal-card .suggestion-card {
-    gap: 10px;
+    gap: 12px;
   }
 
   .modal-card .assistant-settings-card,
@@ -2793,7 +2802,7 @@ h2 {
   .modal-card .detail-note,
   .modal-card .inline-note,
   .modal-card .inline-error {
-    font-size: 0.74rem;
+    font-size: 0.78rem;
   }
 
   .modal-card .field input,
@@ -2801,10 +2810,10 @@ h2 {
   .modal-card .field textarea,
   .modal-card .month-event-checklist-item input[type='text'],
   .modal-card .month-event-checklist-item input:not([type='checkbox']) {
-    min-height: 38px;
-    padding: 9px 11px;
+    min-height: 42px;
+    padding: 9px 12px;
     border-radius: 12px;
-    font-size: 0.76rem;
+    font-size: 0.82rem;
   }
 
   .modal-card .ghost-button,
@@ -2812,9 +2821,9 @@ h2 {
   .modal-card .mini-button,
   .modal-card .segment,
   .modal-card .week-chip {
-    min-height: 38px;
-    padding: 7px 11px;
-    font-size: 0.74rem;
+    min-height: 42px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
   }
 
   .month-event-modal {
@@ -2830,7 +2839,7 @@ h2 {
   }
 
   .month-event-modal .form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 
@@ -2843,8 +2852,8 @@ h2 {
   .month-event-modal .field textarea,
   .month-event-modal .month-event-checklist-item input[type='text'],
   .month-event-modal .month-event-checklist-item input:not([type='checkbox']) {
-    padding: 8px 10px;
-    font-size: 0.72rem;
+    padding: 9px 10px;
+    font-size: 0.8rem;
   }
 
   .month-event-modal .field textarea {
@@ -3798,22 +3807,24 @@ h2 {
   }
 
   .modal-card {
-    max-height: 90vh;
-    padding: 10px;
+    width: calc(100vw - 16px);
+    max-height: 86vh;
+    padding: 12px;
     border-radius: 16px;
   }
 
-  .plan-input-modal {
+  .plan-input-modal,
+  .plan-editor-modal {
     width: calc(100vw - 16px);
   }
 
   .plan-input-shell {
-    max-height: calc(90vh - 24px);
-    gap: 8px;
+    max-height: calc(86vh - 24px);
+    gap: 10px;
   }
 
   .plan-input-tab-content {
-    gap: 8px;
+    gap: 10px;
   }
 
   .modal-card .section-stack,
@@ -3821,7 +3832,7 @@ h2 {
   .modal-card .assistant-settings-card,
   .modal-card .actual-form,
   .modal-card .suggestion-card {
-    gap: 8px;
+    gap: 10px;
   }
 
   .modal-card .assistant-settings-card,
@@ -3865,7 +3876,7 @@ h2 {
   .modal-card .detail-note,
   .modal-card .inline-note,
   .modal-card .inline-error {
-    font-size: 0.64rem;
+    font-size: 0.74rem;
   }
 
   .modal-card .field input,
@@ -3873,10 +3884,10 @@ h2 {
   .modal-card .field textarea,
   .modal-card .month-event-checklist-item input[type='text'],
   .modal-card .month-event-checklist-item input:not([type='checkbox']) {
-    min-height: 36px;
-    padding: 7px 9px;
+    min-height: 40px;
+    padding: 8px 10px;
     border-radius: 10px;
-    font-size: 0.68rem;
+    font-size: 0.8rem;
   }
 
   .modal-card .ghost-button,
@@ -3884,9 +3895,9 @@ h2 {
   .modal-card .mini-button,
   .modal-card .segment,
   .modal-card .week-chip {
-    min-height: 36px;
-    padding: 6px 10px;
-    font-size: 0.68rem;
+    min-height: 40px;
+    padding: 7px 11px;
+    font-size: 0.78rem;
   }
 
   .modal-card .profile-hero {
@@ -3937,12 +3948,12 @@ h2 {
   }
 
   .month-event-modal {
-    max-height: 84vh;
-    padding: 8px;
+    max-height: 86vh;
+    padding: 12px;
   }
 
   .month-event-modal .section-stack {
-    gap: 7px;
+    gap: 10px;
   }
 
   .month-event-modal .section-header p {
@@ -3950,23 +3961,23 @@ h2 {
   }
 
   .month-event-modal .section-header h2 {
-    font-size: 0.82rem;
+    font-size: 0.9rem;
   }
 
   .month-event-modal .assistant-settings-card {
-    padding: 8px 9px;
+    padding: 9px 10px;
   }
 
   .month-event-modal .form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .month-event-modal .field span,
   .month-event-modal .detail-note,
   .month-event-modal .inline-note,
   .month-event-modal .inline-error {
-    font-size: 0.58rem;
+    font-size: 0.72rem;
   }
 
   .month-event-modal .field input,
@@ -3974,10 +3985,10 @@ h2 {
   .month-event-modal .field textarea,
   .month-event-modal .month-event-checklist-item input[type='text'],
   .month-event-modal .month-event-checklist-item input:not([type='checkbox']) {
-    min-height: 36px;
-    padding: 7px 9px;
+    min-height: 40px;
+    padding: 8px 10px;
     border-radius: 9px;
-    font-size: 0.66rem;
+    font-size: 0.78rem;
   }
 
   .month-event-modal .field textarea {
@@ -3987,9 +3998,9 @@ h2 {
   .month-event-modal .ghost-button,
   .month-event-modal .primary-button,
   .month-event-modal .mini-button {
-    min-height: 36px;
-    padding: 6px 9px;
-    font-size: 0.66rem;
+    min-height: 40px;
+    padding: 7px 10px;
+    font-size: 0.78rem;
   }
 
   .month-event-modal .month-event-chip-list {
@@ -4002,11 +4013,11 @@ h2 {
   }
 
   .month-event-modal .month-event-chip strong {
-    font-size: 0.64rem;
+    font-size: 0.72rem;
   }
 
   .month-event-modal .month-event-chip span {
-    font-size: 0.54rem;
+    font-size: 0.64rem;
   }
 
   .month-event-modal .month-event-checklist {
