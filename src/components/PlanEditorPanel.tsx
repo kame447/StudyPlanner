@@ -8,7 +8,7 @@ interface PlanEditorPanelProps {
   heading: string;
   recurringEditMode?: boolean;
   onChange: (draft: PlanDraft) => void;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -25,8 +25,19 @@ export function PlanEditorPanel({
     return null;
   }
 
+  const currentDraft = draft;
+
   const hasInvalidTime =
-    minutesBetween(draft.startTime, draft.endTime) <= 0;
+    minutesBetween(currentDraft.startTime, currentDraft.endTime) <= 0;
+
+  async function handleSubmit() {
+    if (hasInvalidTime || !currentDraft.title.trim()) {
+      return;
+    }
+
+    await onSubmit();
+    onCancel();
+  }
 
   return (
     <div className="overlay modal-overlay">
@@ -52,7 +63,7 @@ export function PlanEditorPanel({
           ) : null}
 
           <PlanFieldsEditor
-            draft={draft}
+            draft={currentDraft}
             onChange={onChange}
             disableDateField={recurringEditMode}
             disableRepeatFields={recurringEditMode}
@@ -68,9 +79,9 @@ export function PlanEditorPanel({
             </button>
             <button
               className="primary-button"
-              onClick={onSubmit}
+              onClick={handleSubmit}
               type="button"
-              disabled={hasInvalidTime || !draft.title.trim()}
+              disabled={hasInvalidTime || !currentDraft.title.trim()}
             >
               {submitLabel}
             </button>

@@ -40,12 +40,17 @@ export function DayPlanInputPanel({
 
   const hasInvalidTime = minutesBetween(draft.startTime, draft.endTime) <= 0;
 
+  async function applyDraftAndClose(nextDraft: PlanDraft, targetPlanId?: string) {
+    await onApplyDraft(nextDraft, targetPlanId);
+    onClose();
+  }
+
   async function handleManualSubmit() {
     if (hasInvalidTime || !draft.title.trim()) {
       return;
     }
 
-    await onApplyDraft(draft);
+    await applyDraftAndClose(draft);
     setDraft(createEmptyPlanDraft(userId, selectedDate));
     setStatus('学習予定を追加しました。');
   }
@@ -114,7 +119,7 @@ export function DayPlanInputPanel({
             selectedDate={selectedDate}
             userId={userId}
             plans={plans}
-            onApplyDraft={onApplyDraft}
+            onApplyDraft={applyDraftAndClose}
             embedded
           />
         </div>
