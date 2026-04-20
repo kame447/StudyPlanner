@@ -1842,11 +1842,11 @@ h2 {
 .timeline-plan-block,
 .timeline-actual-block {
   position: absolute;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 10px;
+  border-radius: 14px;
   overflow: hidden;
   appearance: none;
   font: inherit;
@@ -1894,9 +1894,10 @@ h2 {
   display: flex;
   gap: 6px;
   align-items: center;
+  width: 100%;
   min-width: 0;
-  font-size: 0.76rem;
-  line-height: 1.25;
+  font-size: var(--timeline-meta-size);
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1923,7 +1924,7 @@ h2 {
 
 .timeline-entry-title,
 .timeline-entry-time,
-.timeline-entry-meta span {
+.timeline-inline-subject {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1931,10 +1932,17 @@ h2 {
 }
 
 .timeline-entry-title {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   font-size: var(--timeline-title-size);
-  line-height: 1.12;
+  line-height: 1.1;
   font-weight: 700;
+}
+
+.timeline-entry-time,
+.timeline-inline-subject {
+  flex: 0 2 auto;
+  font-size: var(--timeline-meta-size);
+  line-height: 1.1;
 }
 
 .timeline-entry-meta {
