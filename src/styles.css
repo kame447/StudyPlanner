@@ -3809,7 +3809,7 @@ h2 {
   .week-timeline-shell {
     --week-timeline-head-height: 62px;
     --week-timeline-hour-height: 28px;
-    --week-timeline-min-block-height: 20px;
+    --week-timeline-min-block-height: 30px;
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 8px;
   }
@@ -3829,16 +3829,24 @@ h2 {
   }
 
   .week-timeline-block {
-    padding: 4px 5px;
+    gap: 3px;
+    padding: 5px 6px;
     border-radius: 9px;
   }
 
   .week-timeline-block strong {
-    font-size: 0.58rem;
+    font-size: 0.64rem;
+    line-height: 1.12;
   }
 
   .week-timeline-block span {
-    font-size: 0.5rem;
+    font-size: 0.56rem;
+    line-height: 1.1;
+  }
+
+  .week-timeline-subject,
+  .week-timeline-type {
+    display: none;
   }
 
   .day-summary {
@@ -4667,7 +4675,7 @@ h2 {
   .week-timeline-shell {
     --week-timeline-head-height: 56px;
     --week-timeline-hour-height: 24px;
-    --week-timeline-min-block-height: 18px;
+    --week-timeline-min-block-height: 30px;
     grid-template-columns: 34px minmax(0, 1fr);
     gap: 6px;
   }
@@ -4693,16 +4701,24 @@ h2 {
   }
 
   .week-timeline-block {
-    padding: 3px 4px;
+    gap: 3px;
+    padding: 5px;
     border-radius: 8px;
   }
 
   .week-timeline-block strong {
-    font-size: 0.5rem;
+    font-size: 0.62rem;
+    line-height: 1.12;
   }
 
   .week-timeline-block span {
-    font-size: 0.44rem;
+    font-size: 0.54rem;
+    line-height: 1.1;
+  }
+
+  .week-timeline-subject,
+  .week-timeline-type {
+    display: none;
   }
 
   .day-summary {

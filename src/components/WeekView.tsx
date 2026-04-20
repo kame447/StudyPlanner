@@ -332,8 +332,10 @@ export function WeekView({
                         type="button"
                       >
                         <strong>{entry.title}</strong>
-                        <span>{entry.startTime} - {entry.endTime}</span>
-                        <span>{subjectLabel}</span>
+                        <span className="week-timeline-time">
+                          {entry.startTime} - {entry.endTime}
+                        </span>
+                        <span className="week-timeline-subject">{subjectLabel}</span>
                         <span className="week-timeline-type">
                           {getPlanTypeLabel(entry.type)}
                         </span>
@@ -368,8 +370,10 @@ export function WeekView({
                         type="button"
                       >
                         <strong>{entry.title}</strong>
-                        <span>{entry.startTime} - {entry.endTime}</span>
-                        <span>{subjectLabel}</span>
+                        <span className="week-timeline-time">
+                          {entry.startTime} - {entry.endTime}
+                        </span>
+                        <span className="week-timeline-subject">{subjectLabel}</span>
                       </button>
                     );
                   })}
