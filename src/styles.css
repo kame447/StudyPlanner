@@ -716,6 +716,14 @@ h2 {
   min-width: 0;
 }
 
+.brand-logo-image {
+  display: block;
+  height: 76px;
+  width: auto;
+  max-width: min(320px, 100%);
+  object-fit: contain;
+}
+
 .brand-mark {
   width: 76px;
   height: 76px;
@@ -3129,7 +3137,7 @@ h2 {
   gap: 6px;
   flex-wrap: wrap;
   align-items: baseline;
-}
+  }
 
 @media screen and (max-width: 900px) {
   .app-toast-layer {
@@ -3215,6 +3223,11 @@ h2 {
   .brand-mark {
     width: 46px;
     height: 46px;
+  }
+
+  .brand-logo-image {
+  height: 46px;
+  max-width: min(240px, 100%);
   }
 
   .brand-name {
