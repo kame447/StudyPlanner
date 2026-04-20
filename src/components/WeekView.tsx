@@ -14,7 +14,6 @@ import {
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
-import { getPlanTypeLabel } from '../lib/plans';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
 import type { Actual, Plan } from '../types/domain';
 
@@ -329,15 +328,16 @@ export function WeekView({
                         style={buildWeekTimelineBlockStyle(entry)}
                         onClick={() => onOpenDay(date)}
                         title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
-                        data-subject={subjectLabel}
-                        data-type={getPlanTypeLabel(entry.type)}
                         type="button"
                       >
-                        <strong className="week-timeline-block__title">
-                          {entry.title}
-                        </strong>
-                        <span className="week-timeline-time">
-                          {entry.startTime} - {entry.endTime}
+                        <span className="week-timeline-entry-line">
+                          <strong className="week-timeline-block__title">
+                            {entry.title}
+                          </strong>
+                          <span className="week-timeline-time">
+                            {entry.startTime}-{entry.endTime}
+                          </span>
+                          <span className="week-timeline-subject">{subjectLabel}</span>
                         </span>
                       </button>
                     );
@@ -367,14 +367,16 @@ export function WeekView({
                         }}
                         onClick={() => onOpenDay(date)}
                         title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
-                        data-subject={subjectLabel}
                         type="button"
                       >
-                        <strong className="week-timeline-block__title">
-                          {entry.title}
-                        </strong>
-                        <span className="week-timeline-time">
-                          {entry.startTime} - {entry.endTime}
+                        <span className="week-timeline-entry-line">
+                          <strong className="week-timeline-block__title">
+                            {entry.title}
+                          </strong>
+                          <span className="week-timeline-time">
+                            {entry.startTime}-{entry.endTime}
+                          </span>
+                          <span className="week-timeline-subject">{subjectLabel}</span>
                         </span>
                       </button>
                     );
