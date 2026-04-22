@@ -284,14 +284,15 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  container-type: inline-size;
 }
 
-.week-timeline-block--dense {
+.week-timeline-block--compact {
   padding-inline: 6px;
   border-radius: 10px;
 }
 
-.week-timeline-block--very-dense {
+.week-timeline-block--narrow {
   padding-inline: 5px;
   border-radius: 9px;
 }
@@ -302,6 +303,7 @@
 
 .week-timeline-entry-line,
 .week-timeline-block__title,
+.week-timeline-meta,
 .week-timeline-time,
 .week-timeline-subject {
   min-width: 0;
@@ -311,17 +313,22 @@
 }
 
 .week-timeline-entry-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  display: grid;
+  gap: 2px;
   width: 100%;
   font-size: 0.68rem;
-  line-height: 1;
+  line-height: 1.05;
 }
 
 .week-timeline-block__title {
   flex: 1 1 auto;
   font-weight: 700;
+}
+
+.week-timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .week-timeline-time {
@@ -340,17 +347,56 @@
   opacity: 0.78;
 }
 
-.week-timeline-block--dense .week-timeline-entry-line {
+/* Display modes: wide = title + meta row, compact = title + subject, narrow = title only. */
+.week-timeline-block--compact .week-timeline-entry-line {
+  display: flex;
+  align-items: center;
   gap: 3px;
 }
 
-.week-timeline-block--very-dense .week-timeline-entry-line {
+.week-timeline-block--compact .week-timeline-meta {
+  flex: 0 1 auto;
+}
+
+.week-timeline-block--compact .week-timeline-time {
+  display: none;
+}
+
+.week-timeline-block--narrow .week-timeline-entry-line {
+  display: flex;
+  align-items: center;
   gap: 2px;
 }
 
-.week-timeline-block--very-dense .week-timeline-time {
-  font-size: 0.56rem;
-  letter-spacing: -0.04em;
+.week-timeline-block--narrow .week-timeline-meta {
+  display: none;
+}
+
+@container (max-width: 86px) {
+  .week-timeline-entry-line {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    line-height: 1;
+  }
+
+  .week-timeline-meta {
+    flex: 0 1 auto;
+  }
+
+  .week-timeline-time {
+    display: none;
+  }
+}
+
+@container (max-width: 58px) {
+  .week-timeline-entry-line {
+    gap: 2px;
+  }
+
+  .week-timeline-meta {
+    display: none;
+  }
 }
 
 .week-timeline-plan-block {

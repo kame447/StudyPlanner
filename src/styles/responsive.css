@@ -889,22 +889,20 @@
     border-radius: 9px;
   }
 
-  .week-timeline-block--dense {
+  .week-timeline-block--compact {
     padding-inline: 5px;
   }
 
-  .week-timeline-block--very-dense {
+  .week-timeline-block--narrow {
     padding-inline: 4px;
   }
 
   .week-timeline-entry-line {
     gap: 3px;
     font-size: 0.6rem;
-    line-height: 1;
   }
 
   .week-timeline-time {
-    flex: 0 0 auto;
     font-size: 0.52rem;
   }
 
@@ -913,7 +911,7 @@
     font-size: 0.48rem;
   }
 
-  .week-timeline-block--very-dense .week-timeline-entry-line {
+  .week-timeline-block--narrow .week-timeline-entry-line {
     gap: 2px;
   }
 
@@ -1754,22 +1752,20 @@
     border-radius: 8px;
   }
 
-  .week-timeline-block--dense {
+  .week-timeline-block--compact {
     padding-inline: 4px;
   }
 
-  .week-timeline-block--very-dense {
+  .week-timeline-block--narrow {
     padding-inline: 3px;
   }
 
   .week-timeline-entry-line {
     gap: 3px;
     font-size: 0.56rem;
-    line-height: 1;
   }
 
   .week-timeline-time {
-    flex: 0 0 auto;
     font-size: 0.48rem;
   }
 
@@ -1778,11 +1774,8 @@
     font-size: 0.44rem;
   }
 
-  .week-timeline-block--dense .week-timeline-entry-line {
-    gap: 2px;
-  }
-
-  .week-timeline-block--very-dense .week-timeline-entry-line {
+  .week-timeline-block--compact .week-timeline-entry-line,
+  .week-timeline-block--narrow .week-timeline-entry-line {
     gap: 2px;
   }
 
