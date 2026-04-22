@@ -286,6 +286,16 @@
   cursor: pointer;
 }
 
+.week-timeline-block--dense {
+  padding-inline: 6px;
+  border-radius: 10px;
+}
+
+.week-timeline-block--very-dense {
+  padding-inline: 5px;
+  border-radius: 9px;
+}
+
 .week-timeline-block:hover {
   transform: translateY(-1px);
 }
@@ -306,7 +316,7 @@
   gap: 5px;
   width: 100%;
   font-size: 0.68rem;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .week-timeline-block__title {
@@ -315,15 +325,32 @@
 }
 
 .week-timeline-time {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   color: var(--text-muted);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .week-timeline-subject {
-  flex: 0 2 auto;
+  flex: 0 1 auto;
+  max-width: 7ch;
   color: var(--text-muted);
-  font-size: 0.62rem;
+  font-size: 0.56rem;
+  opacity: 0.78;
+}
+
+.week-timeline-block--dense .week-timeline-entry-line {
+  gap: 3px;
+}
+
+.week-timeline-block--very-dense .week-timeline-entry-line {
+  gap: 2px;
+}
+
+.week-timeline-block--very-dense .week-timeline-time {
+  font-size: 0.56rem;
+  letter-spacing: -0.04em;
 }
 
 .week-timeline-plan-block {

@@ -889,15 +889,32 @@
     border-radius: 9px;
   }
 
+  .week-timeline-block--dense {
+    padding-inline: 5px;
+  }
+
+  .week-timeline-block--very-dense {
+    padding-inline: 4px;
+  }
+
   .week-timeline-entry-line {
-    gap: 4px;
+    gap: 3px;
     font-size: 0.6rem;
     line-height: 1;
   }
 
-  .week-timeline-time,
-  .week-timeline-subject {
+  .week-timeline-time {
+    flex: 0 0 auto;
     font-size: 0.52rem;
+  }
+
+  .week-timeline-subject {
+    max-width: 6ch;
+    font-size: 0.48rem;
+  }
+
+  .week-timeline-block--very-dense .week-timeline-entry-line {
+    gap: 2px;
   }
 
   .day-summary {
@@ -1737,15 +1754,36 @@
     border-radius: 8px;
   }
 
+  .week-timeline-block--dense {
+    padding-inline: 4px;
+  }
+
+  .week-timeline-block--very-dense {
+    padding-inline: 3px;
+  }
+
   .week-timeline-entry-line {
     gap: 3px;
     font-size: 0.56rem;
     line-height: 1;
   }
 
-  .week-timeline-time,
-  .week-timeline-subject {
+  .week-timeline-time {
+    flex: 0 0 auto;
     font-size: 0.48rem;
+  }
+
+  .week-timeline-subject {
+    max-width: 5ch;
+    font-size: 0.44rem;
+  }
+
+  .week-timeline-block--dense .week-timeline-entry-line {
+    gap: 2px;
+  }
+
+  .week-timeline-block--very-dense .week-timeline-entry-line {
+    gap: 2px;
   }
 
   .day-summary {

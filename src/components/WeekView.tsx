@@ -98,7 +98,13 @@ function buildWeekTimelineBlockStyle(
   inset: 'normal' | 'actual-inset' = 'normal',
 ): CSSProperties {
   const laneWidth = 100 / Math.max(entry.laneCount, 1);
-  const sidePadding = inset === 'actual-inset' ? 12 : 6;
+  const baseSidePadding = inset === 'actual-inset' ? 12 : 6;
+  const sidePadding =
+    entry.laneCount >= 3
+      ? Math.max(3, Math.round(baseSidePadding * 0.5))
+      : entry.laneCount >= 2
+        ? Math.max(4, Math.round(baseSidePadding * 0.75))
+        : baseSidePadding;
   const durationMinutes = minutesBetween(entry.startTime, entry.endTime);
 
   return {
@@ -107,6 +113,22 @@ function buildWeekTimelineBlockStyle(
     left: `calc(${entry.lane * laneWidth}% + ${sidePadding}px)`,
     width: `calc(${laneWidth}% - ${sidePadding * 2}px)`,
   };
+}
+
+function getWeekTimelineDensityClass(laneCount: number): string {
+  if (laneCount >= 3) {
+    return 'week-timeline-block--very-dense';
+  }
+
+  if (laneCount >= 2) {
+    return 'week-timeline-block--dense';
+  }
+
+  return 'week-timeline-block--single';
+}
+
+function shouldShowWeekTimelineSubject(laneCount: number): boolean {
+  return laneCount <= 1;
 }
 
 function resolveActualTitle(actual: Actual, plan?: Plan): string {
@@ -324,7 +346,7 @@ export function WeekView({
                     return (
                       <button
                         key={`plan-${entry.id}`}
-                        className="week-timeline-block week-timeline-plan-block"
+                        className={`week-timeline-block week-timeline-plan-block ${getWeekTimelineDensityClass(entry.laneCount)}`}
                         style={buildWeekTimelineBlockStyle(entry)}
                         onClick={() => onOpenDay(date)}
                         title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
@@ -337,7 +359,9 @@ export function WeekView({
                           <span className="week-timeline-time">
                             {entry.startTime}-{entry.endTime}
                           </span>
-                          <span className="week-timeline-subject">{subjectLabel}</span>
+                          {shouldShowWeekTimelineSubject(entry.laneCount) ? (
+                            <span className="week-timeline-subject">{subjectLabel}</span>
+                          ) : null}
                         </span>
                       </button>
                     );
@@ -351,7 +375,7 @@ export function WeekView({
                     return (
                       <button
                         key={`actual-${entry.id}`}
-                        className="week-timeline-block week-timeline-actual-block"
+                        className={`week-timeline-block week-timeline-actual-block ${getWeekTimelineDensityClass(entry.laneCount)}`}
                         style={{
                           ...buildWeekTimelineBlockStyle(
                             entry,
@@ -376,7 +400,9 @@ export function WeekView({
                           <span className="week-timeline-time">
                             {entry.startTime}-{entry.endTime}
                           </span>
-                          <span className="week-timeline-subject">{subjectLabel}</span>
+                          {shouldShowWeekTimelineSubject(entry.laneCount) ? (
+                            <span className="week-timeline-subject">{subjectLabel}</span>
+                          ) : null}
                         </span>
                       </button>
                     );
