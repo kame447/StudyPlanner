@@ -122,7 +122,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className="toolbar panel print-hide">
+      <div className="toolbar panel app-view-switcher print-hide">
         <div className="segmented-control">
           <button
             className={viewMode === 'month' ? 'segment active' : 'segment'}
@@ -153,8 +153,10 @@ export default function App() {
             レポート
           </button>
         </div>
+      </div>
 
-        {viewMode !== 'report' ? (
+      {viewMode !== 'report' ? (
+        <div className="toolbar panel app-action-toolbar print-hide">
           <div className="row-actions">
             <button
               className="primary-button"
@@ -167,8 +169,8 @@ export default function App() {
               学習予定を追加
             </button>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {notice ? (
         <div className="app-toast-layer print-hide" aria-live="polite">
