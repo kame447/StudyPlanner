@@ -155,7 +155,7 @@ export default function App() {
         </div>
       </div>
 
-      {viewMode !== 'report' ? (
+      {viewMode === 'day' ? (
         <div className="toolbar panel app-action-toolbar print-hide">
           <div className="row-actions">
             <button
