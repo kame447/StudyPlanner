@@ -320,7 +320,7 @@ export function MonthView({
       <div className="view-header-stack">
         <div>
           <div className="view-titlebar month-view-titlebar">
-            <h2>月ビュー</h2>
+            <h2>Monthly View</h2>
             <div className="view-title-actions print-hide month-view-title-actions">
               <div className="nav-actions view-title-nav month-view-title-nav">
                 <button

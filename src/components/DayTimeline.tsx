@@ -248,8 +248,7 @@ export function DayTimeline({
       <div className="section-header day-timeline-header">
         <div className="day-timeline-header-main">
           <div>
-            <h2>24時間スケジュール</h2>
-            <p className="print-hide">左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
+            <h2>Daily View</h2>
           </div>
           <div className="view-title-actions print-hide">
             <div className="nav-actions view-title-nav">

@@ -154,7 +154,7 @@ export function WeekView({
       <div className="view-header-stack">
         <div>
           <div className="view-titlebar">
-            <h2>週ビュー</h2>
+            <h2>Weekly View</h2>
             <div className="view-title-actions print-hide">
               <div className="nav-actions view-title-nav">
                 <button
