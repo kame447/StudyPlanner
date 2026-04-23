@@ -248,7 +248,7 @@ export function DayTimeline({
       <div className="section-header day-timeline-header">
         <div className="day-timeline-header-main">
           <div>
-            <h2>Daily View</h2>
+            <h2>Daily</h2>
           </div>
           <div className="view-title-actions print-hide">
             <div className="nav-actions view-title-nav">
