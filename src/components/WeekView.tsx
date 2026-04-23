@@ -13,7 +13,6 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
-import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
 import type { Actual, Plan } from '../types/domain';
 
@@ -149,13 +148,9 @@ export function WeekView({
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
-  const swipeNavigation = useSwipeNavigation({
-    onPrevious: () => onChangeWeek(addDays(selectedDate, -7)),
-    onNext: () => onChangeWeek(addDays(selectedDate, 7)),
-  });
 
   return (
-    <section className="panel swipe-view" {...swipeNavigation}>
+    <section className="panel">
       <div className="view-header-stack">
         <div>
           <div className="view-titlebar">
