@@ -248,6 +248,23 @@ export function DayTimeline({
     const label = getSubjectLabel(entry.subject, entry.type);
     legendMap.set(label, getSubjectTheme(label, entry.type).fill);
   });
+  const timelineLegend = (
+    <div className="timeline-legend">
+      <span className="timeline-legend-item">
+        <span className="timeline-legend-plan" />
+        予定
+      </span>
+      {Array.from(legendMap.entries()).map(([label, color]) => (
+        <span key={label} className="timeline-legend-item">
+          <span
+            className="timeline-legend-subject"
+            style={{ backgroundColor: color }}
+          />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
 
   return (
     <section className="panel section-stack">
@@ -283,168 +300,159 @@ export function DayTimeline({
             印刷
           </button>
         </div>
-        <div className="timeline-legend">
-          <span className="timeline-legend-item">
-            <span className="timeline-legend-plan" />
-            予定
-          </span>
-          {Array.from(legendMap.entries()).map(([label, color]) => (
-            <span key={label} className="timeline-legend-item">
-              <span
-                className="timeline-legend-subject"
-                style={{ backgroundColor: color }}
-              />
-              {label}
-            </span>
-          ))}
-        </div>
       </header>
 
       {planEntries.length === 0 ? (
-        <p className="empty-copy">
-          この日の予定はありません。追加すると時間軸に並びます。
-        </p>
+        <>
+          <p className="empty-copy">
+            この日の予定はありません。追加すると時間軸に並びます。
+          </p>
+          {timelineLegend}
+        </>
       ) : (
-        <div className="timeline-shell split">
-          <div className="timeline-hours">
-            {DAY_HOURS.map((hour) => (
-              <div
-                key={hour}
-                className="timeline-hour-label"
-                style={{ height: "var(--timeline-hour-height)" }}
-              >
-                {hour.toString().padStart(2, "0")}:00
-              </div>
-            ))}
-          </div>
-
-          <div className="timeline-main">
-            <div className="timeline-columns-head">
-              <div className="timeline-column-label">予定</div>
-              <div className="timeline-column-label actual">実績</div>
+        <>
+          <div className="timeline-shell split">
+            <div className="timeline-hours">
+              {DAY_HOURS.map((hour) => (
+                <div
+                  key={hour}
+                  className="timeline-hour-label"
+                  style={{ height: "var(--timeline-hour-height)" }}
+                >
+                  {hour.toString().padStart(2, "0")}:00
+                </div>
+              ))}
             </div>
 
-            <div
-              className="timeline-canvas split"
-              style={{ height: "calc(24 * var(--timeline-hour-height))" }}
-            >
-              {Array.from({ length: 24 }, (_, index) => (
-                <div
-                  key={index}
-                  className="timeline-grid-line"
-                  style={{
-                    top: `calc(${index} * var(--timeline-hour-height))`,
-                  }}
-                />
-              ))}
+            <div className="timeline-main">
+              <div className="timeline-columns-head">
+                <div className="timeline-column-label">予定</div>
+                <div className="timeline-column-label actual">実績</div>
+              </div>
 
-              <div className="timeline-divider" />
-
-              {planEntries.map((entry) => {
-                const duration = minutesBetween(entry.startTime, entry.endTime);
-                const theme = getSubjectTheme(entry.subject, entry.type);
-                const subjectLabel = getSubjectLabel(entry.subject, entry.type);
-
-                return (
-                  <button
-                    key={entry.id}
-                    className={
-                      selectedEntryId === entry.selectionId
-                        ? "timeline-plan-block split is-selected"
-                        : "timeline-plan-block split"
-                    }
-                    style={buildColumnBlockStyle(
-                      minutesFromTime(entry.startTime),
-                      duration,
-                      entry.lane,
-                      entry.laneCount,
-                      "plan"
-                    )}
-                    onClick={() =>
-                      onSelectEntry(
-                        entry.entryKind === "plan"
-                          ? { kind: "plan", id: entry.targetId }
-                          : { kind: "month-event", id: entry.targetId }
-                      )
-                    }
-                    type="button"
-                  >
-                    <div className="timeline-entry-line">
-                      <strong
-                        className="timeline-entry-title"
-                        title={entry.title}
-                      >
-                        {entry.title}
-                      </strong>
-                      <span className="timeline-entry-time">
-                        {entry.startTime}-{entry.endTime}
-                      </span>
-                      <span
-                        className="timeline-entry-subject"
-                        style={{ color: theme.text }}
-                        title={subjectLabel}
-                      >
-                        {subjectLabel}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-
-              {actualEntries.map((entry) => {
-                const duration = minutesBetween(entry.startTime, entry.endTime);
-                const theme = getSubjectTheme(entry.subject, entry.type);
-                const subjectLabel = getSubjectLabel(entry.subject, entry.type);
-
-                return (
-                  <button
-                    key={entry.id}
-                    className={
-                      selectedEntryId === entry.selectionId
-                        ? "timeline-actual-block split is-selected"
-                        : "timeline-actual-block split"
-                    }
+              <div
+                className="timeline-canvas split"
+                style={{ height: "calc(24 * var(--timeline-hour-height))" }}
+              >
+                {Array.from({ length: 24 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="timeline-grid-line"
                     style={{
-                      ...buildColumnBlockStyle(
+                      top: `calc(${index} * var(--timeline-hour-height))`,
+                    }}
+                  />
+                ))}
+
+                <div className="timeline-divider" />
+
+                {planEntries.map((entry) => {
+                  const duration = minutesBetween(entry.startTime, entry.endTime);
+                  const theme = getSubjectTheme(entry.subject, entry.type);
+                  const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+
+                  return (
+                    <button
+                      key={entry.id}
+                      className={
+                        selectedEntryId === entry.selectionId
+                          ? "timeline-plan-block split is-selected"
+                          : "timeline-plan-block split"
+                      }
+                      style={buildColumnBlockStyle(
                         minutesFromTime(entry.startTime),
                         duration,
                         entry.lane,
                         entry.laneCount,
-                        "actual"
-                      ),
-                      backgroundColor: theme.soft,
-                      borderColor: theme.border,
-                      color: theme.text,
-                      boxShadow: `inset 5px 0 0 ${theme.fill}`,
-                    }}
-                    onClick={() =>
-                      onSelectEntry({ kind: "plan", id: entry.targetId })
-                    }
-                    type="button"
-                  >
-                    <div className="timeline-entry-line">
-                      <strong
-                        className="timeline-entry-title"
-                        title={entry.title}
-                      >
-                        {entry.title}
-                      </strong>
-                      <span className="timeline-entry-time">
-                        {entry.startTime}-{entry.endTime}
-                      </span>
-                      <span
-                        className="timeline-entry-subject"
-                        title={subjectLabel}
-                      >
-                        {subjectLabel}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
+                        "plan"
+                      )}
+                      onClick={() =>
+                        onSelectEntry(
+                          entry.entryKind === "plan"
+                            ? { kind: "plan", id: entry.targetId }
+                            : { kind: "month-event", id: entry.targetId }
+                        )
+                      }
+                      type="button"
+                    >
+                      <div className="timeline-entry-line">
+                        <strong
+                          className="timeline-entry-title"
+                          title={entry.title}
+                        >
+                          {entry.title}
+                        </strong>
+                        <span className="timeline-entry-time">
+                          {entry.startTime}-{entry.endTime}
+                        </span>
+                        <span
+                          className="timeline-entry-subject"
+                          style={{ color: theme.text }}
+                          title={subjectLabel}
+                        >
+                          {subjectLabel}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {actualEntries.map((entry) => {
+                  const duration = minutesBetween(entry.startTime, entry.endTime);
+                  const theme = getSubjectTheme(entry.subject, entry.type);
+                  const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+
+                  return (
+                    <button
+                      key={entry.id}
+                      className={
+                        selectedEntryId === entry.selectionId
+                          ? "timeline-actual-block split is-selected"
+                          : "timeline-actual-block split"
+                      }
+                      style={{
+                        ...buildColumnBlockStyle(
+                          minutesFromTime(entry.startTime),
+                          duration,
+                          entry.lane,
+                          entry.laneCount,
+                          "actual"
+                        ),
+                        backgroundColor: theme.soft,
+                        borderColor: theme.border,
+                        color: theme.text,
+                        boxShadow: `inset 5px 0 0 ${theme.fill}`,
+                      }}
+                      onClick={() =>
+                        onSelectEntry({ kind: "plan", id: entry.targetId })
+                      }
+                      type="button"
+                    >
+                      <div className="timeline-entry-line">
+                        <strong
+                          className="timeline-entry-title"
+                          title={entry.title}
+                        >
+                          {entry.title}
+                        </strong>
+                        <span className="timeline-entry-time">
+                          {entry.startTime}-{entry.endTime}
+                        </span>
+                        <span
+                          className="timeline-entry-subject"
+                          title={subjectLabel}
+                        >
+                          {subjectLabel}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+          {timelineLegend}
+        </>
       )}
     </section>
   );
