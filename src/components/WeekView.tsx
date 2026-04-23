@@ -162,7 +162,7 @@ export function WeekView({
                   onClick={() => onChangeWeek(addDays(selectedDate, -7))}
                   type="button"
                 >
-                  前の週
+                  前週
                 </button>
                 <span className="week-range-chip">{weekRangeLabel}</span>
                 <button
@@ -170,7 +170,7 @@ export function WeekView({
                   onClick={() => onChangeWeek(addDays(selectedDate, 7))}
                   type="button"
                 >
-                  次の週
+                  翌週
                 </button>
               </div>
               <button

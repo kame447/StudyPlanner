@@ -56,13 +56,37 @@
 }
 
 .day-timeline-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: flex-start;
 }
 
 .day-timeline-header-main {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   min-width: 0;
+  width: 100%;
+}
+
+.day-timeline-title-copy {
+  min-width: 0;
+}
+
+.day-timeline-title-copy h2 {
+  margin-bottom: 4px;
+}
+
+.day-timeline-title-actions {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.day-timeline-title-actions .view-title-nav {
+  margin-right: 0;
 }
 
 .timeline-shell {

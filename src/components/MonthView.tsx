@@ -328,7 +328,7 @@ export function MonthView({
                   onClick={() => onChangeMonth(addMonths(monthDate, -1))}
                   type="button"
                 >
-                  前の月
+                  前月
                 </button>
                 <button
                   className="ghost-button month-picker-trigger"
@@ -342,7 +342,7 @@ export function MonthView({
                   onClick={() => onChangeMonth(addMonths(monthDate, 1))}
                   type="button"
                 >
-                  次の月
+                  翌月
                 </button>
               </div>
               <button
