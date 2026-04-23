@@ -1734,7 +1734,15 @@
   }
 
   .week-timeline-mode-control {
-    width: 100%;
+    width: fit-content;
+    max-width: 100%;
+    gap: 5px;
+  }
+
+  .week-timeline-mode-control .segment {
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
   }
 
   .week-timeline-shell {

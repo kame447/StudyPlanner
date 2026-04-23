@@ -182,7 +182,6 @@ export function WeekView({
               </button>
             </div>
           </div>
-          <p className="print-hide">7日分を同じ24時間軸で並べ、予定・実績・差分を切り替えて確認します。</p>
         </div>
       </div>
 

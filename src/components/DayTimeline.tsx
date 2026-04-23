@@ -1,11 +1,11 @@
-import type { CSSProperties } from 'react';
-import { minutesBetween, minutesFromTime } from '../lib/date';
+import type { CSSProperties } from "react";
+import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
   buildPlanOccurrenceKey,
   getActualOccurrenceKey,
-} from '../lib/planRecurrence';
-import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
-import type { Actual, MonthEvent, Plan, PlanType } from '../types/domain';
+} from "../lib/planRecurrence";
+import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
+import type { Actual, MonthEvent, Plan, PlanType } from "../types/domain";
 
 interface DayTimelineProps {
   dateLabel: string;
@@ -20,14 +20,14 @@ interface DayTimelineProps {
 }
 
 export type DayTimelineSelection =
-  | { kind: 'plan'; id: string }
-  | { kind: 'month-event'; id: string };
+  | { kind: "plan"; id: string }
+  | { kind: "month-event"; id: string };
 
 interface TimelineEntry {
   id: string;
   targetId: string;
   selectionId: string;
-  entryKind: DayTimelineSelection['kind'];
+  entryKind: DayTimelineSelection["kind"];
   title: string;
   subject: string;
   type: PlanType;
@@ -45,7 +45,10 @@ const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 function getDisplayMetrics(startTime: string, endTime: string) {
   const topPx = (minutesFromTime(startTime) / 60) * HOUR_HEIGHT;
   const durationMinutes = minutesBetween(startTime, endTime);
-  const heightPx = Math.max((durationMinutes / 60) * HOUR_HEIGHT, MIN_BLOCK_HEIGHT);
+  const heightPx = Math.max(
+    (durationMinutes / 60) * HOUR_HEIGHT,
+    MIN_BLOCK_HEIGHT
+  );
 
   return {
     topPx,
@@ -54,9 +57,9 @@ function getDisplayMetrics(startTime: string, endTime: string) {
   };
 }
 
-function buildTimelineEntries<T extends Omit<TimelineEntry, 'lane' | 'laneCount'>>(
-  items: T[],
-): Array<TimelineEntry & T> {
+function buildTimelineEntries<
+  T extends Omit<TimelineEntry, "lane" | "laneCount">
+>(items: T[]): Array<TimelineEntry & T> {
   const sortedItems = [...items].sort((left, right) => {
     const startDelta =
       minutesFromTime(left.startTime) - minutesFromTime(right.startTime);
@@ -102,7 +105,10 @@ function buildTimelineEntries<T extends Omit<TimelineEntry, 'lane' | 'laneCount'
     let laneCount = 0;
 
     group.forEach((item) => {
-      const { topPx, bottomPx } = getDisplayMetrics(item.startTime, item.endTime);
+      const { topPx, bottomPx } = getDisplayMetrics(
+        item.startTime,
+        item.endTime
+      );
 
       for (let index = activeLanes.length - 1; index >= 0; index -= 1) {
         if (activeLanes[index].displayEndPx <= topPx) {
@@ -138,9 +144,9 @@ function buildColumnBlockStyle(
   durationMinutes: number,
   lane: number,
   laneCount: number,
-  column: 'plan' | 'actual',
+  column: "plan" | "actual"
 ): CSSProperties {
-  const baseLeft = column === 'plan' ? 0 : 50;
+  const baseLeft = column === "plan" ? 0 : 50;
   const columnWidth = 50;
   const laneWidth = columnWidth / Math.max(laneCount, 1);
 
@@ -162,7 +168,7 @@ function resolveActualSubject(actual: Actual, plan: Plan): string {
 }
 
 function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
-  if (typeof actual.isAlignedToPlan === 'boolean') {
+  if (typeof actual.isAlignedToPlan === "boolean") {
     return actual.isAlignedToPlan;
   }
 
@@ -184,37 +190,37 @@ export function DayTimeline({
   onPrint,
 }: DayTimelineProps) {
   const actualByOccurrenceKey = new Map(
-    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+    actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
   );
-  const planEntries = buildTimelineEntries(
-    [
-      ...plans.map((plan) => ({
-        id: buildPlanOccurrenceKey(plan.id, plan.date),
-        targetId: plan.id,
-        selectionId: `plan:${plan.id}`,
-        entryKind: 'plan' as const,
-        title: plan.title,
-        subject: plan.subject,
-        type: plan.type,
-        startTime: plan.startTime,
-        endTime: plan.endTime,
-      })),
-      ...monthEvents.map((monthEvent) => ({
-        id: monthEvent.id,
-        targetId: monthEvent.id,
-        selectionId: `month-event:${monthEvent.id}`,
-        entryKind: 'month-event' as const,
-        title: monthEvent.title,
-        subject: '主要予定',
-        type: 'other' as const,
-        startTime: monthEvent.startTime,
-        endTime: monthEvent.endTime,
-      })),
-    ],
-  );
+  const planEntries = buildTimelineEntries([
+    ...plans.map((plan) => ({
+      id: buildPlanOccurrenceKey(plan.id, plan.date),
+      targetId: plan.id,
+      selectionId: `plan:${plan.id}`,
+      entryKind: "plan" as const,
+      title: plan.title,
+      subject: plan.subject,
+      type: plan.type,
+      startTime: plan.startTime,
+      endTime: plan.endTime,
+    })),
+    ...monthEvents.map((monthEvent) => ({
+      id: monthEvent.id,
+      targetId: monthEvent.id,
+      selectionId: `month-event:${monthEvent.id}`,
+      entryKind: "month-event" as const,
+      title: monthEvent.title,
+      subject: "主要予定",
+      type: "other" as const,
+      startTime: monthEvent.startTime,
+      endTime: monthEvent.endTime,
+    })),
+  ]);
   const actualEntries = buildTimelineEntries(
     plans.flatMap((plan) => {
-      const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
+      const actual = actualByOccurrenceKey.get(
+        buildPlanOccurrenceKey(plan.id, plan.date)
+      );
 
       if (!actual) {
         return [];
@@ -225,7 +231,7 @@ export function DayTimeline({
           id: actual.id,
           targetId: plan.id,
           selectionId: `plan:${plan.id}`,
-          entryKind: 'plan' as const,
+          entryKind: "plan" as const,
           title: resolveActualTitle(actual, plan),
           subject: resolveActualSubject(actual, plan),
           type: plan.type,
@@ -234,7 +240,7 @@ export function DayTimeline({
           alignedToPlan: resolveAlignedToPlan(actual, plan),
         },
       ];
-    }),
+    })
   );
   const legendMap = new Map<string, string>();
 
@@ -245,29 +251,41 @@ export function DayTimeline({
 
   return (
     <section className="panel section-stack">
-      <div className="section-header day-timeline-header">
+      <header className="section-header day-timeline-header">
         <div className="day-timeline-header-main">
           <div className="day-timeline-title-copy">
-            <h2>Daily</h2>
-            <p className="print-hide">左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
-          </div>
-          <div className="view-title-actions day-timeline-title-actions print-hide">
-            <div className="nav-actions view-title-nav">
-              <button className="ghost-button" onClick={onPreviousDay} type="button">
-                前日
+            <h2>Daily</h2>　
+            <div className="view-title-actions day-timeline-title-actions print-hide">
+              　
+              <div className="nav-actions view-title-nav">
+                　
+                <button
+                  className="ghost-button"
+                  onClick={onPreviousDay}
+                  type="button"
+                >
+                  　 前日 　
+                </button>
+                　<span className="week-range-chip">{dateLabel}</span>　
+                <button
+                  className="ghost-button"
+                  onClick={onNextDay}
+                  type="button"
+                >
+                  　 翌日 　
+                </button>
+                　
+              </div>
+              　
+              <button
+                className="ghost-button view-print-button"
+                onClick={onPrint}
+                type="button"
+              >
+                　印刷 　
               </button>
-              <span className="week-range-chip">{dateLabel}</span>
-              <button className="ghost-button" onClick={onNextDay} type="button">
-                翌日
-              </button>
+              　
             </div>
-            <button
-              className="ghost-button view-print-button"
-              onClick={onPrint}
-              type="button"
-            >
-              印刷
-            </button>
           </div>
         </div>
         <div className="timeline-legend">
@@ -285,7 +303,7 @@ export function DayTimeline({
             </span>
           ))}
         </div>
-      </div>
+      </header>
 
       {planEntries.length === 0 ? (
         <p className="empty-copy">
@@ -298,9 +316,9 @@ export function DayTimeline({
               <div
                 key={hour}
                 className="timeline-hour-label"
-                style={{ height: 'var(--timeline-hour-height)' }}
+                style={{ height: "var(--timeline-hour-height)" }}
               >
-                {hour.toString().padStart(2, '0')}:00
+                {hour.toString().padStart(2, "0")}:00
               </div>
             ))}
           </div>
@@ -313,13 +331,15 @@ export function DayTimeline({
 
             <div
               className="timeline-canvas split"
-              style={{ height: 'calc(24 * var(--timeline-hour-height))' }}
+              style={{ height: "calc(24 * var(--timeline-hour-height))" }}
             >
               {Array.from({ length: 24 }, (_, index) => (
                 <div
                   key={index}
                   className="timeline-grid-line"
-                  style={{ top: `calc(${index} * var(--timeline-hour-height))` }}
+                  style={{
+                    top: `calc(${index} * var(--timeline-hour-height))`,
+                  }}
                 />
               ))}
 
@@ -335,27 +355,30 @@ export function DayTimeline({
                     key={entry.id}
                     className={
                       selectedEntryId === entry.selectionId
-                        ? 'timeline-plan-block split is-selected'
-                        : 'timeline-plan-block split'
+                        ? "timeline-plan-block split is-selected"
+                        : "timeline-plan-block split"
                     }
                     style={buildColumnBlockStyle(
                       minutesFromTime(entry.startTime),
                       duration,
                       entry.lane,
                       entry.laneCount,
-                      'plan',
+                      "plan"
                     )}
                     onClick={() =>
                       onSelectEntry(
-                        entry.entryKind === 'plan'
-                          ? { kind: 'plan', id: entry.targetId }
-                          : { kind: 'month-event', id: entry.targetId },
+                        entry.entryKind === "plan"
+                          ? { kind: "plan", id: entry.targetId }
+                          : { kind: "month-event", id: entry.targetId }
                       )
                     }
                     type="button"
                   >
                     <div className="timeline-entry-line">
-                      <strong className="timeline-entry-title" title={entry.title}>
+                      <strong
+                        className="timeline-entry-title"
+                        title={entry.title}
+                      >
                         {entry.title}
                       </strong>
                       <span className="timeline-entry-time">
@@ -383,8 +406,8 @@ export function DayTimeline({
                     key={entry.id}
                     className={
                       selectedEntryId === entry.selectionId
-                        ? 'timeline-actual-block split is-selected'
-                        : 'timeline-actual-block split'
+                        ? "timeline-actual-block split is-selected"
+                        : "timeline-actual-block split"
                     }
                     style={{
                       ...buildColumnBlockStyle(
@@ -392,24 +415,32 @@ export function DayTimeline({
                         duration,
                         entry.lane,
                         entry.laneCount,
-                        'actual',
+                        "actual"
                       ),
                       backgroundColor: theme.soft,
                       borderColor: theme.border,
                       color: theme.text,
                       boxShadow: `inset 5px 0 0 ${theme.fill}`,
                     }}
-                    onClick={() => onSelectEntry({ kind: 'plan', id: entry.targetId })}
+                    onClick={() =>
+                      onSelectEntry({ kind: "plan", id: entry.targetId })
+                    }
                     type="button"
                   >
                     <div className="timeline-entry-line">
-                      <strong className="timeline-entry-title" title={entry.title}>
+                      <strong
+                        className="timeline-entry-title"
+                        title={entry.title}
+                      >
                         {entry.title}
                       </strong>
                       <span className="timeline-entry-time">
                         {entry.startTime}-{entry.endTime}
                       </span>
-                      <span className="timeline-entry-subject" title={subjectLabel}>
+                      <span
+                        className="timeline-entry-subject"
+                        title={subjectLabel}
+                      >
                         {subjectLabel}
                       </span>
                     </div>
