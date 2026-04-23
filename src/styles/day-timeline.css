@@ -58,35 +58,50 @@
 .day-timeline-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  align-items: flex-start;
+  gap: 10px;
+  align-items: start;
 }
 
 .day-timeline-header-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
   width: 100%;
+  flex-wrap: nowrap;
 }
 
 .day-timeline-title-copy {
+  flex: 0 1 auto;
   min-width: 0;
 }
 
 .day-timeline-title-copy h2 {
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 
 .day-timeline-title-actions {
-  flex: 0 1 auto;
-  justify-content: flex-end;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .day-timeline-title-actions .view-title-nav {
+  display: inline-grid;
+  grid-template-columns: repeat(3, auto);
+  align-items: center;
+  gap: 6px;
+  width: auto;
   margin-right: 0;
+}
+
+.day-timeline-title-actions .view-print-button {
+  flex: 0 0 auto;
 }
 
 .timeline-shell {

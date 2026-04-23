@@ -254,38 +254,33 @@ export function DayTimeline({
       <header className="section-header day-timeline-header">
         <div className="day-timeline-header-main">
           <div className="day-timeline-title-copy">
-            <h2>Daily</h2>　
-            <div className="view-title-actions day-timeline-title-actions print-hide">
-              　
-              <div className="nav-actions view-title-nav">
-                　
-                <button
-                  className="ghost-button"
-                  onClick={onPreviousDay}
-                  type="button"
-                >
-                  　 前日 　
-                </button>
-                　<span className="week-range-chip">{dateLabel}</span>　
-                <button
-                  className="ghost-button"
-                  onClick={onNextDay}
-                  type="button"
-                >
-                  　 翌日 　
-                </button>
-                　
-              </div>
-              　
+            <h2>Daily</h2>
+          </div>
+          <div className="view-title-actions day-timeline-title-actions print-hide">
+            <div className="nav-actions view-title-nav">
               <button
-                className="ghost-button view-print-button"
-                onClick={onPrint}
+                className="ghost-button"
+                onClick={onPreviousDay}
                 type="button"
               >
-                　印刷 　
+                前日
               </button>
-              　
+              <span className="week-range-chip">{dateLabel}</span>
+              <button
+                className="ghost-button"
+                onClick={onNextDay}
+                type="button"
+              >
+                翌日
+              </button>
             </div>
+            <button
+              className="ghost-button view-print-button"
+              onClick={onPrint}
+              type="button"
+            >
+              印刷
+            </button>
           </div>
         </div>
         <div className="timeline-legend">

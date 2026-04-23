@@ -655,12 +655,17 @@
   }
 
   .day-timeline-header-main {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: nowrap;
   }
 
   .day-timeline-title-actions {
+    flex: 0 0 auto;
     width: auto;
-    flex: 0 1 auto;
+    min-width: 0;
   }
 
   .week-range-chip {
@@ -1600,14 +1605,32 @@
   }
 
   .day-timeline-header-main {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: nowrap;
   }
 
   .day-timeline-title-actions {
-    width: 100%;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .day-timeline-title-actions .view-title-nav {
+    gap: 3px;
+  }
+
+  .day-timeline-title-actions .view-title-nav .ghost-button,
+  .day-timeline-title-actions .view-print-button {
+    padding: 4px 6px;
+    font-size: 0.58rem;
+  }
+
+  .day-timeline-title-actions .week-range-chip {
+    padding: 4px 8px;
+    font-size: 0.62rem;
   }
 
   .week-range-chip {
