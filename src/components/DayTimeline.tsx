@@ -274,14 +274,14 @@ export function DayTimeline({
                 翌日
               </button>
             </div>
-            <button
-              className="ghost-button view-print-button"
-              onClick={onPrint}
-              type="button"
-            >
-              印刷
-            </button>
           </div>
+          <button
+            className="ghost-button view-print-button day-timeline-print-button print-hide"
+            onClick={onPrint}
+            type="button"
+          >
+            印刷
+          </button>
         </div>
         <div className="timeline-legend">
           <span className="timeline-legend-item">
