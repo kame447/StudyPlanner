@@ -148,7 +148,7 @@
     font-size: 0.58rem;
   }
 
-  .day-summary {
+  .notebook-summary-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -162,7 +162,7 @@
     display: none !important;
   }
 
-  .day-summary,
+  .notebook-summary-grid,
   .timeline-legend,
   .month-week-chip-row {
     gap: 6px;

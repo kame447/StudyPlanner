@@ -16,10 +16,6 @@
   align-items: start;
 }
 
-.day-hero-panel {
-  background: var(--hero-panel-background);
-}
-
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -57,6 +53,16 @@
 
 .empty-copy {
   margin-bottom: 0;
+}
+
+.day-timeline-header {
+  align-items: flex-start;
+}
+
+.day-timeline-header-main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .timeline-shell {
@@ -311,6 +317,14 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.notebook-summary-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 0;
 }
 
 .notebook-chip {

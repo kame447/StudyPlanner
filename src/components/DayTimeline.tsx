@@ -8,11 +8,15 @@ import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
 import type { Actual, MonthEvent, Plan, PlanType } from '../types/domain';
 
 interface DayTimelineProps {
+  dateLabel: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
   actuals: Actual[];
   selectedEntryId?: string;
   onSelectEntry: (entry: DayTimelineSelection) => void;
+  onPreviousDay: () => void;
+  onNextDay: () => void;
+  onPrint: () => void;
 }
 
 export type DayTimelineSelection =
@@ -169,11 +173,15 @@ function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
 }
 
 export function DayTimeline({
+  dateLabel,
   plans,
   monthEvents,
   actuals,
   selectedEntryId,
   onSelectEntry,
+  onPreviousDay,
+  onNextDay,
+  onPrint,
 }: DayTimelineProps) {
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
@@ -237,10 +245,30 @@ export function DayTimeline({
 
   return (
     <section className="panel section-stack">
-      <div className="section-header">
-        <div>
-          <h2>24時間スケジュール</h2>
-          <p className="print-hide">左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
+      <div className="section-header day-timeline-header">
+        <div className="day-timeline-header-main">
+          <div>
+            <h2>24時間スケジュール</h2>
+            <p className="print-hide">左に予定、右に実績を並べて、同じ時間軸で比較します。</p>
+          </div>
+          <div className="view-title-actions print-hide">
+            <div className="nav-actions view-title-nav">
+              <button className="ghost-button" onClick={onPreviousDay} type="button">
+                前日
+              </button>
+              <span className="week-range-chip">{dateLabel}</span>
+              <button className="ghost-button" onClick={onNextDay} type="button">
+                翌日
+              </button>
+            </div>
+            <button
+              className="ghost-button view-print-button"
+              onClick={onPrint}
+              type="button"
+            >
+              印刷
+            </button>
+          </div>
         </div>
         <div className="timeline-legend">
           <span className="timeline-legend-item">

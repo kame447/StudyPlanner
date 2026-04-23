@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   formatDateLabel,
-  formatMinutes,
   minutesBetween,
   sortByDateTime,
 } from '../lib/date';
@@ -181,71 +180,6 @@ export function DayView({
 
   return (
     <section className="section-stack swipe-view" {...swipeNavigation}>
-      <div className="panel day-hero-panel">
-        <div className="view-header-stack">
-          <div>
-          <div className="view-titlebar">
-            <h2>日ビュー</h2>
-            <div className="view-title-actions print-hide">
-              <div className="nav-actions view-title-nav">
-                <button
-                  className="ghost-button"
-                  onClick={() => onChangeDay(addDays(selectedDate, -1))}
-                  type="button"
-                >
-                  前日
-                </button>
-                <span className="week-range-chip">{dayRangeLabel}</span>
-                <button
-                  className="ghost-button"
-                  onClick={() => onChangeDay(addDays(selectedDate, 1))}
-                  type="button"
-                >
-                  翌日
-                </button>
-              </div>
-              <button
-                className="ghost-button view-print-button"
-                onClick={() => window.print()}
-                type="button"
-              >
-                印刷
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-        <div className="day-summary">
-          <div className="summary-chip">
-            <span>予定</span>
-            <strong>{formatMinutes(dayPlannedMinutes)}</strong>
-          </div>
-          <div className="summary-chip">
-            <span>実績</span>
-            <strong>{formatMinutes(dayActualMinutes)}</strong>
-          </div>
-          <div className="summary-chip">
-            <span>達成度</span>
-            <strong>{evaluation.achievement}%</strong>
-          </div>
-          <div className="summary-chip">
-            <span>差分</span>
-            <strong>
-              {planDeltaMinutes === 0
-                ? '±0'
-                : `${planDeltaMinutes > 0 ? '+' : '-'}${formatMinutes(
-                    Math.abs(planDeltaMinutes),
-                  )}`}
-            </strong>
-          </div>
-          <div className="summary-chip">
-            <span>予定件数</span>
-            <strong>{displayedScheduleCount}件</strong>
-          </div>
-        </div>
-      </div>
-
       {selectedPlan ? (
         <div className="overlay modal-overlay" onClick={closeModal}>
           <div
@@ -300,6 +234,7 @@ export function DayView({
       ) : null}
 
       <DayTimeline
+        dateLabel={dayRangeLabel}
         plans={dayPlans}
         monthEvents={dayMonthEvents}
         actuals={dayActuals}
@@ -317,6 +252,9 @@ export function DayView({
               : { type: 'month-event-detail', monthEventId: entry.id },
           )
         }
+        onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
+        onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
+        onPrint={() => window.print()}
       />
 
       <div className="day-review-layout day-review-layout-print-hide">
@@ -327,6 +265,8 @@ export function DayView({
           actualCount={studyDayActuals.length}
           planCount={studyDayPlans.length}
           evaluation={evaluation}
+          planDeltaMinutes={planDeltaMinutes}
+          displayedScheduleCount={displayedScheduleCount}
           onSave={onSaveDayNote}
         />
         <ScorePanel summary={evaluation} />

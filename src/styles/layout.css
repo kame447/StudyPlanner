@@ -17,8 +17,7 @@
 .row-actions,
 .nav-actions,
 .label-row,
-.drawer-actions,
-.day-summary {
+.drawer-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;

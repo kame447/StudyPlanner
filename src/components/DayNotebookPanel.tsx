@@ -9,6 +9,8 @@ interface DayNotebookPanelProps {
   actualCount: number;
   planCount: number;
   evaluation: EvaluationSummary;
+  planDeltaMinutes: number;
+  displayedScheduleCount: number;
   onSave: (draft: DayNoteDraft) => Promise<void>;
 }
 
@@ -32,6 +34,8 @@ export function DayNotebookPanel({
   actualCount,
   planCount,
   evaluation,
+  planDeltaMinutes,
+  displayedScheduleCount,
   onSave,
 }: DayNotebookPanelProps) {
   const [draft, setDraft] = useState<DayNoteDraft>(toDayNoteDraft(dayNote));
@@ -79,6 +83,35 @@ export function DayNotebookPanel({
         <div>
           <h2>今日の記録</h2>
           <p>手帳の余白のように、進み具合と振り返りを1か所に残します。</p>
+        </div>
+      </div>
+
+      <div className="notebook-summary-grid">
+        <div className="summary-chip">
+          <span>予定</span>
+          <strong>{formatMinutes(plannedMinutes)}</strong>
+        </div>
+        <div className="summary-chip">
+          <span>実績</span>
+          <strong>{formatMinutes(actualMinutes)}</strong>
+        </div>
+        <div className="summary-chip">
+          <span>達成度</span>
+          <strong>{evaluation.achievement}%</strong>
+        </div>
+        <div className="summary-chip">
+          <span>差分</span>
+          <strong>
+            {planDeltaMinutes === 0
+              ? '±0'
+              : `${planDeltaMinutes > 0 ? '+' : '-'}${formatMinutes(
+                  Math.abs(planDeltaMinutes),
+                )}`}
+          </strong>
+        </div>
+        <div className="summary-chip">
+          <span>予定件数</span>
+          <strong>{displayedScheduleCount}件</strong>
         </div>
       </div>
 
