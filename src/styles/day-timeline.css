@@ -431,6 +431,6 @@
   background: var(--overlay-background);
   display: grid;
   justify-content: end;
-  z-index: 10;
+  z-index: var(--z-modal-overlay);
 }
 

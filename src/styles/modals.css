@@ -5,9 +5,12 @@
   padding: 20px;
   overflow-y: scroll;
   scrollbar-gutter: stable both-edges;
+  z-index: var(--z-modal-overlay);
 }
 
 .drawer {
+  position: relative;
+  z-index: var(--z-modal-content);
   width: min(460px, 100vw);
   height: 100vh;
   padding: 24px;
@@ -16,6 +19,8 @@
 }
 
 .modal-card {
+  position: relative;
+  z-index: var(--z-modal-content);
   width: min(760px, 100%);
   max-height: min(88vh, 920px);
   overflow-y: auto;
