@@ -74,6 +74,48 @@
   border-color: var(--border-strong);
 }
 
+.quick-entry-input-method-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.quick-entry-input-method-tabs .segment {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+}
+
+.quick-entry-manual-panel,
+.quick-entry-ai-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.quick-entry-ai-panel {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.quick-entry-ai-panel .section-header {
+  margin: 0;
+}
+
+.quick-entry-ai-panel .section-header p {
+  display: none;
+}
+
+.quick-entry-ai-panel .assistant-runtime {
+  align-items: flex-end;
+}
+
 .quick-entry-mode-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -238,10 +280,16 @@
     font-size: 1.04rem;
   }
 
+  .quick-entry-input-method-tabs .segment,
   .quick-entry-mode-tabs .segment {
     min-height: 34px;
     padding-inline: 5px;
     font-size: 0.78rem;
+  }
+
+  .quick-entry-ai-panel {
+    padding: 10px;
+    border-radius: 14px;
   }
 
   .quick-entry-card {

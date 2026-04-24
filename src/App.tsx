@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { DayView } from './components/DayView';
-import { DayPlanInputPanel } from './components/DayPlanInputPanel';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
@@ -24,11 +23,7 @@ import { getUserDisplayName } from './lib/userProfile';
 
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
-  const [isToolbarPlanInputOpen, setIsToolbarPlanInputOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
-  const [toolbarPlanInputMode, setToolbarPlanInputMode] = useState<'manual' | 'ai'>(
-    'manual',
-  );
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
@@ -165,20 +160,10 @@ export default function App() {
           <div className="row-actions">
             <button
               className="primary-button"
-              onClick={() => {
-                setToolbarPlanInputMode('manual');
-                setIsToolbarPlanInputOpen(true);
-              }}
-              type="button"
-            >
-              学習予定を追加
-            </button>
-            <button
-              className="primary-button"
               onClick={() => setIsQuickEntryOpen(true)}
               type="button"
             >
-              Todo
+              追加
             </button>
           </div>
         </div>
@@ -285,30 +270,11 @@ export default function App() {
         />
       ) : null}
 
-      {isToolbarPlanInputOpen ? (
-        <div className="overlay modal-overlay">
-          <div
-            className="modal-card plan-input-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <DayPlanInputPanel
-              selectedDate={selectedDate}
-              userId={user.id}
-              plans={plans}
-              mode={toolbarPlanInputMode}
-              onModeChange={setToolbarPlanInputMode}
-              onApplyDraft={savePlanDraft}
-              onClose={() => setIsToolbarPlanInputOpen(false)}
-              embedded
-            />
-          </div>
-        </div>
-      ) : null}
-
       {isQuickEntryOpen ? (
         <QuickEntryModal
           userId={user.id}
           selectedDate={selectedDate}
+          plans={plans}
           onClose={() => setIsQuickEntryOpen(false)}
           onSaveTodo={saveTodo}
           onSavePlan={savePlanDraft}
