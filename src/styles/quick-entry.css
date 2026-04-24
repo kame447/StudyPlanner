@@ -1,57 +1,182 @@
 .quick-entry-modal {
   display: grid;
-  gap: 16px;
+  gap: 12px;
+  width: min(680px, 100%);
+  padding: 18px;
 }
 
 .quick-entry-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
-.quick-entry-title-field input {
-  min-height: 52px;
-  font-size: 1.05rem;
+.quick-entry-close-button,
+.quick-entry-save-button {
+  min-height: 38px;
+  padding: 8px 14px;
+}
+
+.quick-entry-title-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0 2px;
+}
+
+.quick-entry-title-icon,
+.quick-entry-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 16px;
+  background: var(--chip-bg);
+  color: var(--accent);
   font-weight: 700;
 }
 
+.quick-entry-title-icon {
+  width: 54px;
+  height: 54px;
+  font-size: 1.42rem;
+}
+
+.quick-entry-title-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.quick-entry-title-field span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.quick-entry-title-field input {
+  min-height: 42px;
+  padding: 4px 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.22rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.quick-entry-title-field input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
 .quick-entry-mode-tabs {
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.quick-entry-mode-tabs .segment {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  font-size: 0.86rem;
 }
 
 .quick-entry-body {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
-.quick-entry-duration-group {
+.quick-entry-card {
   display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.quick-entry-memo-card {
+  padding: 11px 12px;
+}
+
+.quick-entry-card-head {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.quick-entry-duration-group > span {
-  font-size: 0.9rem;
-  font-weight: 600;
+.quick-entry-card-head h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.2;
 }
 
-.quick-entry-duration-options {
+.quick-entry-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.quick-entry-compact-grid {
+  gap: 10px;
+}
+
+.quick-entry-card .field {
+  gap: 5px;
+}
+
+.quick-entry-card .field span,
+.quick-entry-weekdays > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.quick-entry-card .field input,
+.quick-entry-card .field select,
+.quick-entry-card .field textarea {
+  min-height: 40px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.quick-entry-card .field textarea {
+  min-height: 76px;
+}
+
+.quick-entry-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
-.quick-entry-duration-chip {
+.quick-entry-chip,
+.quick-entry-weekday-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 7px 11px;
   border: 1px solid var(--button-ghost-border);
   border-radius: 999px;
   background: var(--button-ghost-bg);
   color: inherit;
   font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1;
   white-space: nowrap;
   transition:
     transform 0.18s ease,
@@ -59,16 +184,33 @@
     box-shadow 0.18s ease;
 }
 
-.quick-entry-duration-chip:hover {
+.quick-entry-weekday-chip {
+  width: 36px;
+  padding-inline: 0;
+}
+
+.quick-entry-chip:hover,
+.quick-entry-weekday-chip:hover {
   transform: translateY(-1px);
 }
 
-.quick-entry-duration-chip.active {
+.quick-entry-chip.active,
+.quick-entry-weekday-chip.active {
   background: var(--accent);
   color: #fff;
 }
 
+.quick-entry-weekdays {
+  display: grid;
+  gap: 7px;
+}
+
 @media screen and (max-width: 640px) {
+  .quick-entry-modal {
+    padding: 14px;
+    gap: 10px;
+  }
+
   .quick-entry-header {
     align-items: stretch;
   }
@@ -78,14 +220,46 @@
     flex: 1 1 0;
   }
 
-  .quick-entry-mode-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+  .quick-entry-title-card {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+    padding-top: 4px;
+  }
+
+  .quick-entry-title-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 1.2rem;
+  }
+
+  .quick-entry-title-field input {
+    min-height: 38px;
+    font-size: 1.04rem;
   }
 
   .quick-entry-mode-tabs .segment {
-    min-width: 0;
-    padding-inline: 6px;
+    min-height: 34px;
+    padding-inline: 5px;
+    font-size: 0.78rem;
+  }
+
+  .quick-entry-card {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .quick-entry-card .field input,
+  .quick-entry-card .field select,
+  .quick-entry-card .field textarea {
+    min-height: 38px;
+    padding: 8px 10px;
+    font-size: 0.84rem;
+  }
+
+  .quick-entry-chip,
+  .quick-entry-weekday-chip {
+    min-height: 32px;
+    font-size: 0.78rem;
   }
 }
