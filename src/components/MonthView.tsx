@@ -702,11 +702,12 @@ export function MonthView({
             <div className="view-title-actions print-hide month-view-title-actions">
               <div className="nav-actions view-title-nav month-view-title-nav">
                 <button
-                  className="ghost-button"
+                  className="ghost-button nav-icon-button"
                   onClick={() => animateMonthChange(-1)}
                   type="button"
+                  aria-label="前月"
                 >
-                  前月
+                  <span aria-hidden="true">＜</span>
                 </button>
                 <button
                   className="ghost-button month-picker-trigger"
@@ -716,11 +717,12 @@ export function MonthView({
                   {formatMonthLabel(monthDate)}
                 </button>
                 <button
-                  className="ghost-button"
+                  className="ghost-button nav-icon-button"
                   onClick={() => animateMonthChange(1)}
                   type="button"
+                  aria-label="翌月"
                 >
-                  翌月
+                  <span aria-hidden="true">＞</span>
                 </button>
               </div>
               <button

@@ -276,19 +276,21 @@ export function DayTimeline({
           <div className="view-title-actions day-timeline-title-actions print-hide">
             <div className="nav-actions view-title-nav">
               <button
-                className="ghost-button"
+                className="ghost-button nav-icon-button"
                 onClick={onPreviousDay}
                 type="button"
+                aria-label="前日"
               >
-                前日
+                <span aria-hidden="true">＜</span>
               </button>
               <span className="week-range-chip">{dateLabel}</span>
               <button
-                className="ghost-button"
+                className="ghost-button nav-icon-button"
                 onClick={onNextDay}
                 type="button"
+                aria-label="翌日"
               >
-                翌日
+                <span aria-hidden="true">＞</span>
               </button>
             </div>
           </div>
