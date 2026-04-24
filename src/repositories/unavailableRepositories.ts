@@ -47,6 +47,12 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async getMonthEvents() {
       return [];
     },
+    async getTodos() {
+      return [];
+    },
+    async getScheduleTemplates() {
+      return [];
+    },
     async upsertPlan() {
       throw createConfigurationError();
     },
@@ -66,6 +72,18 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
       throw createConfigurationError();
     },
     async deleteMonthEvent() {
+      throw createConfigurationError();
+    },
+    async upsertTodo() {
+      throw createConfigurationError();
+    },
+    async deleteTodo() {
+      throw createConfigurationError();
+    },
+    async upsertScheduleTemplate() {
+      throw createConfigurationError();
+    },
+    async deleteScheduleTemplate() {
       throw createConfigurationError();
     },
   };

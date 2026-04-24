@@ -7,6 +7,7 @@ import {
   startOfMonth,
   todayIsoDate,
 } from '../lib/date';
+import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
 import { plannerRepository } from '../repositories';
@@ -35,6 +36,10 @@ import type {
   Plan,
   PlanDraft,
   RecurringPlanScope,
+  ScheduleTemplate,
+  ScheduleTemplateDraft,
+  TodoTask,
+  TodoTaskDraft,
   ViewMode,
 } from '../types/domain';
 import type { ShowNotice } from './useNoticeState';
@@ -127,6 +132,8 @@ interface UsePlannerDataStateResult {
   actuals: Actual[];
   dayNotes: DayNote[];
   monthEvents: MonthEvent[];
+  todos: TodoTask[];
+  scheduleTemplates: ScheduleTemplate[];
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -150,6 +157,13 @@ interface UsePlannerDataStateResult {
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
+  saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
+  deleteTodo: (todo: TodoTask) => Promise<void>;
+  saveScheduleTemplate: (
+    draft: ScheduleTemplateDraft,
+    targetTemplateId?: string,
+  ) => Promise<void>;
+  deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
   selectDate: (date: string) => void;
   changeMonth: (date: string) => void;
   openWeek: (date: string) => void;
@@ -166,6 +180,8 @@ export function usePlannerDataState({
   const [actuals, setActuals] = useState<Actual[]>([]);
   const [dayNotes, setDayNotes] = useState<DayNote[]>([]);
   const [monthEvents, setMonthEvents] = useState<MonthEvent[]>([]);
+  const [todos, setTodos] = useState<TodoTask[]>([]);
+  const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
@@ -220,17 +236,28 @@ export function usePlannerDataState({
   const isRecurringPlanEdit = isScopedRecurringEditCandidate(editingPlan);
 
   const loadPlannerData = useCallback(async (nextUserId: string) => {
-    const [nextPlans, nextActuals, nextDayNotes, nextMonthEvents] = await Promise.all([
+    const [
+      nextPlans,
+      nextActuals,
+      nextDayNotes,
+      nextMonthEvents,
+      nextTodos,
+      nextScheduleTemplates,
+    ] = await Promise.all([
       plannerRepository.getPlans(nextUserId),
       plannerRepository.getActuals(nextUserId),
       plannerRepository.getDayNotes(nextUserId),
       plannerRepository.getMonthEvents(nextUserId),
+      plannerRepository.getTodos(nextUserId),
+      plannerRepository.getScheduleTemplates(nextUserId),
     ]);
 
     setPlans(sortByDateTime(nextPlans));
     setActuals(nextActuals);
     setDayNotes(nextDayNotes);
     setMonthEvents(sortMonthEvents(nextMonthEvents));
+    setTodos(nextTodos);
+    setScheduleTemplates(nextScheduleTemplates);
   }, []);
 
   const resetPlannerData = useCallback(() => {
@@ -238,6 +265,8 @@ export function usePlannerDataState({
     setActuals([]);
     setDayNotes([]);
     setMonthEvents([]);
+    setTodos([]);
+    setScheduleTemplates([]);
     setEditorDraft(null);
     setEditingPlanId(null);
     setEditingPlan(null);
@@ -677,6 +706,124 @@ export function usePlannerDataState({
     }
   }
 
+  async function saveTodo(draft: TodoTaskDraft, targetTodoId?: string) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (!draft.title.trim()) {
+      showNotice('Todoのタイトルを入れてください。', 'error');
+      throw new Error('Todoのタイトルを入れてください。');
+    }
+
+    const currentTodo = todos.find((todo) => todo.id === targetTodoId);
+    const now = new Date().toISOString();
+    const nextTodo: TodoTask = {
+      id: currentTodo?.id ?? createId('todo'),
+      ...draft,
+      title: draft.title.trim(),
+      subject: draft.subject.trim(),
+      estimatedMinutes:
+        typeof draft.estimatedMinutes === 'number'
+          ? Math.max(0, Math.round(draft.estimatedMinutes))
+          : null,
+      dueDate: draft.dueDate || null,
+      memo: draft.memo.trim(),
+      status: currentTodo?.status ?? 'open',
+      scheduledPlanId: currentTodo?.scheduledPlanId ?? null,
+      createdAt: currentTodo?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    try {
+      await plannerRepository.upsertTodo(nextTodo);
+      setTodos((current) => upsertByKey(current, nextTodo, (todo) => todo.id));
+      showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function deleteTodo(todo: TodoTask) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    try {
+      await plannerRepository.deleteTodo(userId, todo.id);
+      setTodos((current) => removeByKey(current, todo.id, (item) => item.id));
+      showNotice('Todoを削除しました。');
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function saveScheduleTemplate(
+    draft: ScheduleTemplateDraft,
+    targetTemplateId?: string,
+  ) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      showNotice('時間割の終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('時間割の終了時刻は開始時刻より後にしてください。');
+    }
+
+    if (!draft.title.trim()) {
+      showNotice('時間割のタイトルを入れてください。', 'error');
+      throw new Error('時間割のタイトルを入れてください。');
+    }
+
+    const currentTemplate = scheduleTemplates.find(
+      (template) => template.id === targetTemplateId,
+    );
+    const now = new Date().toISOString();
+    const nextTemplate: ScheduleTemplate = {
+      id: currentTemplate?.id ?? createId('schedule-template'),
+      ...draft,
+      title: draft.title.trim(),
+      subject: draft.subject.trim(),
+      memo: draft.memo.trim(),
+      createdAt: currentTemplate?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    try {
+      await plannerRepository.upsertScheduleTemplate(nextTemplate);
+      setScheduleTemplates((current) =>
+        upsertByKey(current, nextTemplate, (template) => template.id),
+      );
+      showNotice(
+        currentTemplate ? '時間割を更新しました。' : '時間割を追加しました。',
+        'success',
+      );
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '時間割を保存できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function deleteScheduleTemplate(template: ScheduleTemplate) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    try {
+      await plannerRepository.deleteScheduleTemplate(userId, template.id);
+      setScheduleTemplates((current) =>
+        removeByKey(current, template.id, (item) => item.id),
+      );
+      showNotice('時間割を削除しました。');
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '時間割を削除できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
   function selectDate(date: string) {
     setSelectedDate(date);
 
@@ -709,6 +856,8 @@ export function usePlannerDataState({
     actuals,
     dayNotes,
     monthEvents,
+    todos,
+    scheduleTemplates,
     viewMode,
     selectedDate,
     monthDate,
@@ -738,6 +887,10 @@ export function usePlannerDataState({
     saveDayNote,
     saveMonthEvent,
     deleteMonthEvent,
+    saveTodo,
+    deleteTodo,
+    saveScheduleTemplate,
+    deleteScheduleTemplate,
     selectDate,
     changeMonth,
     openWeek,

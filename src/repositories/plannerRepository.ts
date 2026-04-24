@@ -20,6 +20,12 @@ export function createPlannerRepository(
     async getMonthEvents(userId) {
       return filterByUserId(await storageGateway.readMonthEvents(), userId);
     },
+    async getTodos(userId) {
+      return filterByUserId(await storageGateway.readTodos(), userId);
+    },
+    async getScheduleTemplates(userId) {
+      return filterByUserId(await storageGateway.readScheduleTemplates(), userId);
+    },
     async upsertPlan(plan) {
       const nextPlans = replaceById(await storageGateway.readPlans(), plan);
       await storageGateway.writePlans(nextPlans);
@@ -84,6 +90,35 @@ export function createPlannerRepository(
       );
 
       await storageGateway.writeMonthEvents(monthEvents);
+    },
+    async upsertTodo(todo) {
+      const nextTodos = replaceById(await storageGateway.readTodos(), todo);
+
+      await storageGateway.writeTodos(nextTodos);
+      return todo;
+    },
+    async deleteTodo(userId, todoId) {
+      const todos = (await storageGateway.readTodos()).filter(
+        (todo) => !(todo.userId === userId && todo.id === todoId),
+      );
+
+      await storageGateway.writeTodos(todos);
+    },
+    async upsertScheduleTemplate(item) {
+      const nextItems = replaceById(
+        await storageGateway.readScheduleTemplates(),
+        item,
+      );
+
+      await storageGateway.writeScheduleTemplates(nextItems);
+      return item;
+    },
+    async deleteScheduleTemplate(userId, templateId) {
+      const items = (await storageGateway.readScheduleTemplates()).filter(
+        (item) => !(item.userId === userId && item.id === templateId),
+      );
+
+      await storageGateway.writeScheduleTemplates(items);
     },
   };
 }

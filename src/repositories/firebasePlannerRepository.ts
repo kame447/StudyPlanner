@@ -14,11 +14,18 @@ import type {
   DayNote,
   MonthEvent,
   Plan,
+  ScheduleTemplate,
+  TodoTask,
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
-import { normalizeActualRecord, normalizePlanRecord } from './repositoryUtils';
+import {
+  normalizeActualRecord,
+  normalizePlanRecord,
+  normalizeScheduleTemplateRecord,
+  normalizeTodoRecord,
+} from './repositoryUtils';
 
-type PlannerDoc = Plan | Actual | DayNote | MonthEvent;
+type PlannerDoc = Plan | Actual | DayNote | MonthEvent | TodoTask | ScheduleTemplate;
 type FirebaseLikeError = {
   code?: string | null;
   message?: string | null;
@@ -157,6 +164,38 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async getTodos(userId) {
+      try {
+        return (await listByUserId<TodoTask>(firestoreDb, 'todos', userId)).map(
+          normalizeTodoRecord,
+        );
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            'Todoを取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async getScheduleTemplates(userId) {
+      try {
+        return (
+          await listByUserId<ScheduleTemplate>(
+            firestoreDb,
+            'schedule_templates',
+            userId,
+          )
+        ).map(normalizeScheduleTemplateRecord);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割を取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
     async upsertPlan(plan) {
       try {
         return await upsertDocument(firestoreDb, 'plans', plan);
@@ -257,6 +296,54 @@ export function createFirebasePlannerRepository(
         throw new Error(
           normalizeErrorMessage(
             '主要予定を削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertTodo(todo) {
+      try {
+        return await upsertDocument(firestoreDb, 'todos', todo);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            'Todoを保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async deleteTodo(_userId, todoId) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'todos', todoId));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            'Todoを削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertScheduleTemplate(item) {
+      try {
+        return await upsertDocument(firestoreDb, 'schedule_templates', item);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async deleteScheduleTemplate(_userId, templateId) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'schedule_templates', templateId));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割を削除できませんでした。',
             error as { message?: string | null },
           ),
         );

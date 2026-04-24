@@ -19,6 +19,7 @@ import { DayNotebookPanel } from './DayNotebookPanel';
 import { DayTimeline } from './DayTimeline';
 import { MonthEventDialog } from './MonthEventDialog';
 import { ScorePanel } from './ScorePanel';
+import { TodoListPanel } from './TodoListPanel';
 import type {
   Actual,
   ActualDraft,
@@ -27,6 +28,8 @@ import type {
   MonthEvent,
   MonthEventDraft,
   Plan,
+  TodoTask,
+  TodoTaskDraft,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -35,6 +38,7 @@ interface DayViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  todos: TodoTask[];
   dayNote: DayNote | DayNoteDraft;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
@@ -47,6 +51,8 @@ interface DayViewProps {
     targetMonthEventId?: string,
   ) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
+  onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
+  onDeleteTodo: (todo: TodoTask) => Promise<void>;
 }
 
 type DayViewModalState =
@@ -60,6 +66,7 @@ export function DayView({
   plans,
   actuals,
   monthEvents,
+  todos,
   dayNote,
   onChangeDay,
   onEditPlan,
@@ -69,6 +76,8 @@ export function DayView({
   onSaveDayNote,
   onSaveMonthEvent,
   onDeleteMonthEvent,
+  onSaveTodo,
+  onDeleteTodo,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const dayRangeLabel = formatDateLabel(selectedDate);
@@ -271,6 +280,13 @@ export function DayView({
         />
         <ScorePanel summary={evaluation} />
       </div>
+
+      <TodoListPanel
+        userId={userId}
+        todos={todos}
+        onSaveTodo={onSaveTodo}
+        onDeleteTodo={onDeleteTodo}
+      />
     </section>
   );
 }

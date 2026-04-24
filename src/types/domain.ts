@@ -8,6 +8,8 @@ export type PlanType =
   | 'deadline'
   | 'other';
 
+export type PlanSourceType = 'manual' | 'todo';
+
 export interface User {
   id: string;
   email: string;
@@ -70,6 +72,8 @@ export interface Plan {
   memo: string;
   createdAt: string;
   updatedAt: string;
+  sourceType?: PlanSourceType;
+  sourceId?: string | null;
   sourceDate?: string;
   occurrenceDate?: string;
   occurrenceKey?: string;
@@ -102,6 +106,8 @@ export interface PlanDraft {
   recurrenceRules: RecurrenceRule[];
   type: PlanType;
   memo: string;
+  sourceType?: PlanSourceType;
+  sourceId?: string | null;
 }
 
 export interface ActualDraft {
@@ -179,6 +185,60 @@ export interface DayNoteDraft {
   checkedPlan: boolean;
   checkedRecord: boolean;
   checkedReady: boolean;
+}
+
+export type TodoStatus = 'open' | 'scheduled' | 'done' | 'archived';
+
+export interface TodoTask {
+  id: string;
+  userId: string;
+  title: string;
+  subject: string;
+  type: PlanType;
+  estimatedMinutes: number | null;
+  dueDate: string | null;
+  memo: string;
+  status: TodoStatus;
+  scheduledPlanId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TodoTaskDraft {
+  userId: string;
+  title: string;
+  subject: string;
+  type: PlanType;
+  estimatedMinutes: number | null;
+  dueDate: string | null;
+  memo: string;
+}
+
+export interface ScheduleTemplate {
+  id: string;
+  userId: string;
+  title: string;
+  subject: string;
+  type: PlanType;
+  weekday: RecurrenceWeekday;
+  startTime: string;
+  endTime: string;
+  memo: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleTemplateDraft {
+  userId: string;
+  title: string;
+  subject: string;
+  type: PlanType;
+  weekday: RecurrenceWeekday;
+  startTime: string;
+  endTime: string;
+  memo: string;
+  active: boolean;
 }
 
 export type NaturalLanguageMode = 'add' | 'edit';

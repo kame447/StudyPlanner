@@ -3,6 +3,8 @@ import type {
   DayNote,
   MonthEvent,
   Plan,
+  ScheduleTemplate,
+  TodoTask,
   User,
   UserProfileDraft,
 } from '../types/domain';
@@ -24,6 +26,12 @@ export interface PlannerStorageGateway {
   writeDayNotes(dayNotes: DayNote[]): Promise<void>;
   readMonthEvents(): Promise<MonthEvent[]>;
   writeMonthEvents(monthEvents: MonthEvent[]): Promise<void>;
+  readTodos(): Promise<TodoTask[]>;
+  writeTodos(todos: PromiseLike<TodoTask[]> | TodoTask[]): Promise<void>;
+  readScheduleTemplates(): Promise<ScheduleTemplate[]>;
+  writeScheduleTemplates(
+    items: PromiseLike<ScheduleTemplate[]> | ScheduleTemplate[],
+  ): Promise<void>;
 }
 
 export interface AuthRepository {
@@ -41,6 +49,8 @@ export interface PlannerRepository {
   getActuals(userId: string): Promise<Actual[]>;
   getDayNotes(userId: string): Promise<DayNote[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
+  getTodos(userId: string): Promise<TodoTask[]>;
+  getScheduleTemplates(userId: string): Promise<ScheduleTemplate[]>;
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
   upsertActual(actual: Actual): Promise<Actual>;
@@ -48,4 +58,8 @@ export interface PlannerRepository {
   upsertDayNote(dayNote: DayNote): Promise<DayNote>;
   upsertMonthEvent(monthEvent: MonthEvent): Promise<MonthEvent>;
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
+  upsertTodo(todo: TodoTask): Promise<TodoTask>;
+  deleteTodo(userId: string, todoId: string): Promise<void>;
+  upsertScheduleTemplate(item: ScheduleTemplate): Promise<ScheduleTemplate>;
+  deleteScheduleTemplate(userId: string, templateId: string): Promise<void>;
 }

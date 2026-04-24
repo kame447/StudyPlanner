@@ -1,0 +1,92 @@
+.todo-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.todo-panel-header {
+  align-items: center;
+}
+
+.todo-form {
+  display: grid;
+  gap: 12px;
+}
+
+.todo-form-grid {
+  gap: 12px;
+}
+
+.todo-form-actions {
+  justify-content: flex-end;
+}
+
+.todo-list {
+  display: grid;
+  gap: 10px;
+}
+
+.todo-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.todo-item-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.todo-item-main strong {
+  overflow-wrap: anywhere;
+}
+
+.todo-item-main p {
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.todo-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.todo-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+}
+
+.todo-delete-button {
+  padding: 7px 10px;
+  font-size: 0.8rem;
+}
+
+.todo-empty {
+  color: var(--text-muted);
+}
+
+@media screen and (max-width: 640px) {
+  .todo-item {
+    grid-template-columns: 1fr;
+  }
+
+  .todo-delete-button {
+    justify-self: end;
+  }
+}

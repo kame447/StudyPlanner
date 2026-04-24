@@ -1,9 +1,11 @@
 import type { Auth, User as FirebaseAuthUser } from 'firebase/auth';
 import {
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
+  setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -21,6 +23,21 @@ interface ProfileDoc {
   username: string;
   avatar: string;
   createdAt: string;
+}
+
+let localPersistencePromise: Promise<void> | null = null;
+
+async function ensureLocalAuthPersistence(auth: Auth): Promise<void> {
+  if (!localPersistencePromise) {
+    localPersistencePromise = setPersistence(auth, browserLocalPersistence).catch(
+      (error) => {
+        localPersistencePromise = null;
+        throw error;
+      },
+    );
+  }
+
+  await localPersistencePromise;
 }
 
 function normalizeEmail(email: string): string {
@@ -60,11 +77,6 @@ async function waitForAuthUser(auth: Auth): Promise<FirebaseAuthUser | null> {
       unsubscribe();
       resolve(user);
     });
-
-    window.setTimeout(() => {
-      unsubscribe();
-      resolve(auth.currentUser);
-    }, 1500);
   });
 }
 
@@ -130,6 +142,8 @@ export function createFirebaseAuthRepository(
 ): AuthRepository {
   return {
     async signUpWithPassword(email, password, username) {
+      await ensureLocalAuthPersistence(firebaseAuth);
+
       const normalizedEmail = normalizeEmail(email);
       const normalizedUsername = normalizeUsername(username, normalizedEmail);
 
@@ -161,6 +175,8 @@ export function createFirebaseAuthRepository(
       }
     },
     async signInWithPassword(email, password) {
+      await ensureLocalAuthPersistence(firebaseAuth);
+
       const normalizedEmail = normalizeEmail(email);
 
       try {
@@ -189,6 +205,8 @@ export function createFirebaseAuthRepository(
       }
     },
     async signInWithGoogle() {
+      await ensureLocalAuthPersistence(firebaseAuth);
+
       try {
         const credential = await signInWithPopup(
           firebaseAuth,
@@ -210,6 +228,8 @@ export function createFirebaseAuthRepository(
       }
     },
     async sendPasswordReset(email) {
+      await ensureLocalAuthPersistence(firebaseAuth);
+
       const normalizedEmail = normalizeEmail(email);
 
       if (!normalizedEmail.includes('@')) {
@@ -228,6 +248,8 @@ export function createFirebaseAuthRepository(
       }
     },
     async getCurrentUser() {
+      await ensureLocalAuthPersistence(firebaseAuth);
+
       const authUser = await waitForAuthUser(firebaseAuth);
 
       if (!authUser) {
@@ -246,6 +268,8 @@ export function createFirebaseAuthRepository(
       );
     },
     async updateUserProfile(userId, draft) {
+      await ensureLocalAuthPersistence(firebaseAuth);
+
       const authUser = await waitForAuthUser(firebaseAuth);
 
       if (!authUser || authUser.uid !== userId) {
@@ -279,6 +303,7 @@ export function createFirebaseAuthRepository(
       return mapProfileDocToUser(nextProfile);
     },
     async signOut() {
+      await ensureLocalAuthPersistence(firebaseAuth);
       await firebaseSignOut(firebaseAuth);
     },
   };

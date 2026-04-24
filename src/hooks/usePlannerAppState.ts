@@ -13,6 +13,10 @@ import type {
   Plan,
   PlanDraft,
   RecurringPlanScope,
+  ScheduleTemplate,
+  ScheduleTemplateDraft,
+  TodoTask,
+  TodoTaskDraft,
   User,
   UserProfileDraft,
   ViewMode,
@@ -25,6 +29,8 @@ interface PlannerAppState {
   actuals: Actual[];
   dayNotes: DayNote[];
   monthEvents: MonthEvent[];
+  todos: TodoTask[];
+  scheduleTemplates: ScheduleTemplate[];
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -58,6 +64,13 @@ interface PlannerAppState {
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
+  saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
+  deleteTodo: (todo: TodoTask) => Promise<void>;
+  saveScheduleTemplate: (
+    draft: ScheduleTemplateDraft,
+    targetTemplateId?: string,
+  ) => Promise<void>;
+  deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
   selectDate: (date: string) => void;
   changeMonth: (date: string) => void;
   openWeek: (date: string) => void;
@@ -84,6 +97,8 @@ export function usePlannerAppState(): PlannerAppState {
     actuals,
     dayNotes,
     monthEvents,
+    todos,
+    scheduleTemplates,
     viewMode,
     selectedDate,
     monthDate,
@@ -107,6 +122,10 @@ export function usePlannerAppState(): PlannerAppState {
     saveDayNote,
     saveMonthEvent,
     deleteMonthEvent,
+    saveTodo,
+    deleteTodo,
+    saveScheduleTemplate,
+    deleteScheduleTemplate,
     selectDate,
     changeMonth,
     openWeek,
@@ -164,6 +183,8 @@ export function usePlannerAppState(): PlannerAppState {
     actuals,
     dayNotes,
     monthEvents,
+    todos,
+    scheduleTemplates,
     viewMode,
     selectedDate,
     monthDate,
@@ -193,6 +214,10 @@ export function usePlannerAppState(): PlannerAppState {
     saveDayNote,
     saveMonthEvent,
     deleteMonthEvent,
+    saveTodo,
+    deleteTodo,
+    saveScheduleTemplate,
+    deleteScheduleTemplate,
     selectDate,
     changeMonth,
     openWeek,

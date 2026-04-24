@@ -1,4 +1,14 @@
-import type { Actual, MonthEventRepeat, Plan } from '../types/domain';
+import type {
+  Actual,
+  MonthEventRepeat,
+  Plan,
+  PlanSourceType,
+  PlanType,
+  RecurrenceWeekday,
+  ScheduleTemplate,
+  TodoStatus,
+  TodoTask,
+} from '../types/domain';
 import {
   normalizeRecurrenceRules,
   summarizeLegacyRepeatFromRecurrenceRules,
@@ -28,6 +38,39 @@ function normalizeRepeat(value: unknown): MonthEventRepeat {
     value === 'yearly'
     ? value
     : 'none';
+}
+
+function normalizePlanType(value: unknown): PlanType {
+  return value === 'study' ||
+    value === 'mock-exam' ||
+    value === 'school-event' ||
+    value === 'cram-school' ||
+    value === 'deadline' ||
+    value === 'other'
+    ? value
+    : 'study';
+}
+
+function normalizePlanSourceType(value: unknown): PlanSourceType | undefined {
+  return value === 'manual' || value === 'todo' ? value : undefined;
+}
+
+function normalizeTodoStatus(value: unknown): TodoStatus {
+  return value === 'scheduled' || value === 'done' || value === 'archived'
+    ? value
+    : 'open';
+}
+
+function normalizeWeekday(value: unknown): RecurrenceWeekday {
+  return value === 'sun' ||
+    value === 'mon' ||
+    value === 'tue' ||
+    value === 'wed' ||
+    value === 'thu' ||
+    value === 'fri' ||
+    value === 'sat'
+    ? value
+    : 'mon';
 }
 
 export function normalizePlanRecord(plan: Plan): Plan {
@@ -63,6 +106,10 @@ export function normalizePlanRecord(plan: Plan): Plan {
       ? plan.excludedDates.filter((date): date is string => typeof date === 'string' && date.length > 0)
       : [],
     recurrenceRules,
+    sourceType: normalizePlanSourceType(plan.sourceType),
+    sourceId: typeof plan.sourceId === 'string' && plan.sourceId.length > 0
+      ? plan.sourceId
+      : null,
   };
 }
 
@@ -74,5 +121,43 @@ export function normalizeActualRecord(
   return {
     ...actual,
     occurrenceDate: actual.occurrenceDate ?? actual.date ?? '',
+  };
+}
+
+export function normalizeTodoRecord(todo: TodoTask): TodoTask {
+  return {
+    ...todo,
+    title: todo.title?.trim() ?? '',
+    subject: todo.subject?.trim() ?? '',
+    type: normalizePlanType(todo.type),
+    estimatedMinutes:
+      typeof todo.estimatedMinutes === 'number' && Number.isFinite(todo.estimatedMinutes)
+        ? Math.max(0, Math.round(todo.estimatedMinutes))
+        : null,
+    dueDate: typeof todo.dueDate === 'string' && todo.dueDate.length > 0
+      ? todo.dueDate
+      : null,
+    memo: todo.memo ?? '',
+    status: normalizeTodoStatus(todo.status),
+    scheduledPlanId:
+      typeof todo.scheduledPlanId === 'string' && todo.scheduledPlanId.length > 0
+        ? todo.scheduledPlanId
+        : null,
+  };
+}
+
+export function normalizeScheduleTemplateRecord(
+  template: ScheduleTemplate,
+): ScheduleTemplate {
+  return {
+    ...template,
+    title: template.title?.trim() ?? '',
+    subject: template.subject?.trim() ?? '',
+    type: normalizePlanType(template.type),
+    weekday: normalizeWeekday(template.weekday),
+    startTime: template.startTime || '09:00',
+    endTime: template.endTime || '10:00',
+    memo: template.memo ?? '',
+    active: template.active !== false,
   };
 }

@@ -1,9 +1,22 @@
-import type { Actual, DayNote, MonthEvent, Plan, User } from '../types/domain';
+import type {
+  Actual,
+  DayNote,
+  MonthEvent,
+  Plan,
+  ScheduleTemplate,
+  TodoTask,
+  User,
+} from '../types/domain';
 import type {
   AuthStorageGateway,
   PlannerStorageGateway,
 } from './repositoryContracts';
-import { normalizeActualRecord, normalizePlanRecord } from './repositoryUtils';
+import {
+  normalizeActualRecord,
+  normalizePlanRecord,
+  normalizeScheduleTemplateRecord,
+  normalizeTodoRecord,
+} from './repositoryUtils';
 
 const STORAGE_KEYS = {
   users: 'studyplanner.users',
@@ -12,12 +25,16 @@ const STORAGE_KEYS = {
   actuals: 'studyplanner.actuals',
   dayNotes: 'studyplanner.dayNotes',
   monthEvents: 'studyplanner.monthEvents',
+  todos: 'studyplanner.todos.v1',
+  scheduleTemplates: 'studyplanner.scheduleTemplates.v1',
 } as const;
 
 type StoredMonthEvent = Omit<MonthEvent, 'repeatUntil' | 'excludedDates'> &
   Partial<Pick<MonthEvent, 'repeatUntil' | 'excludedDates'>>;
 type StoredUser = Omit<User, 'username' | 'avatar'> &
   Partial<Pick<User, 'username' | 'avatar'>>;
+type StoredTodoTask = TodoTask;
+type StoredScheduleTemplate = ScheduleTemplate;
 
 function readJson<T>(storage: Storage, key: string, fallback: T): T {
   const raw = storage.getItem(key);
@@ -106,6 +123,24 @@ export function createLocalPlannerStorageGateway(
     },
     async writeMonthEvents(monthEvents) {
       writeJson(storage, STORAGE_KEYS.monthEvents, monthEvents);
+    },
+    async readTodos() {
+      return readJson<StoredTodoTask[]>(storage, STORAGE_KEYS.todos, []).map(
+        normalizeTodoRecord,
+      );
+    },
+    async writeTodos(todos) {
+      writeJson(storage, STORAGE_KEYS.todos, await todos);
+    },
+    async readScheduleTemplates() {
+      return readJson<StoredScheduleTemplate[]>(
+        storage,
+        STORAGE_KEYS.scheduleTemplates,
+        [],
+      ).map(normalizeScheduleTemplateRecord);
+    },
+    async writeScheduleTemplates(items) {
+      writeJson(storage, STORAGE_KEYS.scheduleTemplates, await items);
     },
   };
 }
