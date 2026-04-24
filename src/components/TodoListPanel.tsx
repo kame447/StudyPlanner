@@ -16,6 +16,10 @@ const TODO_STATUS_LABELS: Record<TodoTask['status'], string> = {
   archived: 'アーカイブ',
 };
 
+function getTodoStatusClass(status: TodoTask['status']): string {
+  return `todo-lozenge todo-status-${status}`;
+}
+
 function createEmptyTodoDraft(userId: string): TodoTaskDraft {
   return {
     userId,
@@ -169,15 +173,27 @@ export function TodoListPanel({
           visibleTodos.map((todo) => (
             <article className="todo-item" key={todo.id}>
               <div className="todo-item-main">
-                <strong>{todo.title}</strong>
-                <div className="todo-meta">
-                  <span>{todo.subject || getPlanTypeLabel(todo.type)}</span>
-                  <span>{getPlanTypeLabel(todo.type)}</span>
+                <div className="todo-item-title-row">
+                  <strong>{todo.title}</strong>
+                  <span className={getTodoStatusClass(todo.status)}>
+                    {TODO_STATUS_LABELS[todo.status]}
+                  </span>
+                </div>
+                <div className="todo-meta" aria-label="Todoの補足情報">
+                  <span className="todo-tag todo-subject-tag">
+                    {todo.subject || getPlanTypeLabel(todo.type)}
+                  </span>
+                  <span className="todo-tag todo-type-tag">
+                    {getPlanTypeLabel(todo.type)}
+                  </span>
                   {todo.estimatedMinutes !== null ? (
-                    <span>{todo.estimatedMinutes}分</span>
+                    <span className="todo-tag todo-duration-tag">
+                      {todo.estimatedMinutes}分
+                    </span>
                   ) : null}
-                  {todo.dueDate ? <span>{todo.dueDate}</span> : null}
-                  <span>{TODO_STATUS_LABELS[todo.status]}</span>
+                  {todo.dueDate ? (
+                    <span className="todo-tag todo-date-tag">{todo.dueDate}</span>
+                  ) : null}
                 </div>
                 {todo.memo ? <p>{todo.memo}</p> : null}
               </div>

@@ -1,8 +1,8 @@
 .quick-entry-modal {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   width: min(680px, 100%);
-  padding: 18px;
+  padding: 16px;
 }
 
 .quick-entry-header {
@@ -14,16 +14,16 @@
 
 .quick-entry-close-button,
 .quick-entry-save-button {
-  min-height: 38px;
-  padding: 8px 14px;
+  min-height: 36px;
+  padding: 7px 13px;
 }
 
 .quick-entry-title-card {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
-  padding: 8px 0 2px;
+  padding: 4px 0 0;
 }
 
 .quick-entry-title-icon,
@@ -39,9 +39,9 @@
 }
 
 .quick-entry-title-icon {
-  width: 54px;
-  height: 54px;
-  font-size: 1.42rem;
+  width: 50px;
+  height: 50px;
+  font-size: 1.28rem;
 }
 
 .quick-entry-title-field {
@@ -57,14 +57,14 @@
 }
 
 .quick-entry-title-field input {
-  min-height: 42px;
+  min-height: 40px;
   padding: 4px 0 8px;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
   color: inherit;
-  font-size: 1.22rem;
+  font-size: 1.16rem;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -77,31 +77,33 @@
 .quick-entry-input-method-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border-radius: 16px;
-  background: var(--surface-soft);
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
 }
 
 .quick-entry-input-method-tabs .segment {
   min-width: 0;
   min-height: 38px;
   padding: 7px 8px;
-  border-radius: 12px;
+  border-radius: 10px;
   font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .quick-entry-manual-panel,
 .quick-entry-ai-panel {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .quick-entry-ai-panel {
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-soft);
+  border-radius: 14px;
+  background: var(--surface);
 }
 
 .quick-entry-ai-panel .section-header {
@@ -119,36 +121,38 @@
 .quick-entry-mode-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border-radius: 16px;
-  background: var(--surface-soft);
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
 }
 
 .quick-entry-mode-tabs .segment {
   min-width: 0;
-  min-height: 38px;
-  padding: 7px 8px;
-  border-radius: 12px;
-  font-size: 0.86rem;
+  min-height: 34px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .quick-entry-body {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .quick-entry-card {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px 11px;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-soft);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
 }
 
 .quick-entry-memo-card {
-  padding: 11px 12px;
+  padding: 10px 11px;
 }
 
 .quick-entry-card-head {
@@ -159,15 +163,15 @@
 
 .quick-entry-card-head h3 {
   margin: 0;
-  font-size: 0.96rem;
+  font-size: 0.9rem;
   line-height: 1.2;
 }
 
 .quick-entry-card-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  font-size: 0.9rem;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  font-size: 0.82rem;
 }
 
 .quick-entry-compact-grid {
@@ -188,20 +192,20 @@
 .quick-entry-card .field input,
 .quick-entry-card .field select,
 .quick-entry-card .field textarea {
-  min-height: 40px;
-  padding: 9px 11px;
-  border-radius: 12px;
-  font-size: 0.9rem;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.88rem;
 }
 
 .quick-entry-card .field textarea {
-  min-height: 76px;
+  min-height: 68px;
 }
 
 .quick-entry-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 6px;
 }
 
 .quick-entry-chip,
@@ -209,14 +213,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 7px 11px;
+  min-height: 32px;
+  padding: 6px 10px;
   border: 1px solid var(--button-ghost-border);
-  border-radius: 999px;
-  background: var(--button-ghost-bg);
-  color: inherit;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-muted);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
@@ -227,7 +231,7 @@
 }
 
 .quick-entry-weekday-chip {
-  width: 36px;
+  width: 34px;
   padding-inline: 0;
 }
 
@@ -238,6 +242,7 @@
 
 .quick-entry-chip.active,
 .quick-entry-weekday-chip.active {
+  border-color: var(--accent);
   background: var(--accent);
   color: #fff;
 }
@@ -249,8 +254,8 @@
 
 @media screen and (max-width: 640px) {
   .quick-entry-modal {
-    padding: 14px;
-    gap: 10px;
+    padding: 13px;
+    gap: 9px;
   }
 
   .quick-entry-header {
@@ -263,16 +268,16 @@
   }
 
   .quick-entry-title-card {
-    grid-template-columns: 46px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 9px;
     padding-top: 4px;
   }
 
   .quick-entry-title-icon {
-    width: 46px;
-    height: 46px;
-    border-radius: 14px;
-    font-size: 1.2rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    font-size: 1.12rem;
   }
 
   .quick-entry-title-field input {
@@ -288,13 +293,13 @@
   }
 
   .quick-entry-ai-panel {
-    padding: 10px;
-    border-radius: 14px;
+    padding: 9px;
+    border-radius: 12px;
   }
 
   .quick-entry-card {
-    padding: 10px;
-    border-radius: 14px;
+    padding: 9px;
+    border-radius: 12px;
   }
 
   .quick-entry-card .field input,
@@ -307,7 +312,7 @@
 
   .quick-entry-chip,
   .quick-entry-weekday-chip {
-    min-height: 32px;
+    min-height: 31px;
     font-size: 0.78rem;
   }
 }
