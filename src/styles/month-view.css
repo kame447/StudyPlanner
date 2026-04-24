@@ -64,12 +64,12 @@
 }
 
 .month-pager-viewport {
-  --month-pager-peek: 28px;
+  --month-pager-peek: 32px;
   --month-pager-gap: 12px;
   --month-pager-panel-width: calc(100% - (var(--month-pager-peek) * 2));
   overflow: hidden;
-  margin-inline: calc(var(--month-pager-peek) * -1);
-  padding-inline: 0;
+  width: 100%;
+  min-width: 0;
   touch-action: pan-y;
 }
 
@@ -93,6 +93,8 @@
 .month-pager-panel {
   flex: 0 0 var(--month-pager-panel-width);
   min-width: 0;
+  max-width: var(--month-pager-panel-width);
+  overflow: hidden;
   opacity: 0.72;
   transform: scale(0.985);
   transition:
@@ -110,8 +112,17 @@
 }
 
 .month-pager-panel .month-grid {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  overflow: visible;
+  overflow: hidden;
+}
+
+.month-pager-panel .month-cell,
+.month-pager-panel .month-weekday {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .month-grid {
@@ -270,17 +281,15 @@
 
 @media screen and (max-width: 640px) {
   .month-pager-viewport {
-    --month-pager-peek: 22px;
+    --month-pager-peek: 26px;
     --month-pager-gap: 10px;
-    margin-inline: -14px;
   }
 }
 
 @media screen and (max-width: 420px) {
   .month-pager-viewport {
-    --month-pager-peek: 18px;
+    --month-pager-peek: 22px;
     --month-pager-gap: 8px;
-    margin-inline: -10px;
   }
 }
 
