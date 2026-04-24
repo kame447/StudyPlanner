@@ -1,5 +1,4 @@
 import type { Firestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -60,23 +59,6 @@ function normalizeErrorMessage(
   return message || fallbackMessage;
 }
 
-function getFirestoreDebugContext(
-  firestoreDb: Firestore,
-  userId?: string,
-  itemUserId?: string,
-) {
-  const authUid = getAuth(firestoreDb.app).currentUser?.uid ?? null;
-
-  return {
-    projectId: firestoreDb.app.options.projectId ?? null,
-    authUid,
-    userId: userId ?? null,
-    itemUserId: itemUserId ?? null,
-    userMatchesAuth: userId ? userId === authUid : null,
-    itemUserMatchesAuth: itemUserId ? itemUserId === authUid : null,
-  };
-}
-
 function stripUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
     return value
@@ -100,35 +82,11 @@ async function listByUserId<T extends PlannerDoc>(
   collectionName: string,
   userId: string,
 ): Promise<T[]> {
-  console.info('[PlannerRepository] Firestore list request', {
-    collection: collectionName,
-    operation: 'read:list',
-    hasUserIdFilter: true,
-    ...getFirestoreDebugContext(firestoreDb, userId),
-  });
+  const snapshot = await getDocs(
+    query(collection(firestoreDb, collectionName), where('userId', '==', userId)),
+  );
 
-  try {
-    const snapshot = await getDocs(
-      query(collection(firestoreDb, collectionName), where('userId', '==', userId)),
-    );
-
-    console.info('[PlannerRepository] Firestore list success', {
-      collection: collectionName,
-      operation: 'read:list',
-      size: snapshot.size,
-      ...getFirestoreDebugContext(firestoreDb, userId),
-    });
-
-    return snapshot.docs.map((document) => document.data() as T);
-  } catch (error) {
-    console.error('[PlannerRepository] Firestore list failed', {
-      collection: collectionName,
-      operation: 'read:list',
-      error: getFirebaseErrorDiagnostics(error),
-      ...getFirestoreDebugContext(firestoreDb, userId),
-    });
-    throw error;
-  }
+  return snapshot.docs.map((document) => document.data() as T);
 }
 
 async function upsertDocument<T extends PlannerDoc>(
@@ -137,36 +95,10 @@ async function upsertDocument<T extends PlannerDoc>(
   item: T,
 ): Promise<T> {
   const sanitizedItem = stripUndefinedDeep(item);
-  console.info('[PlannerRepository] Firestore upsert request', {
-    collection: collectionName,
-    operation: 'write:upsert',
-    id: item.id,
-    ...getFirestoreDebugContext(firestoreDb, item.userId, item.userId),
+  await setDoc(doc(firestoreDb, collectionName, item.id), sanitizedItem, {
+    merge: true,
   });
-
-  try {
-    await setDoc(doc(firestoreDb, collectionName, item.id), sanitizedItem, {
-      merge: true,
-    });
-
-    console.info('[PlannerRepository] Firestore upsert success', {
-      collection: collectionName,
-      operation: 'write:upsert',
-      id: item.id,
-      ...getFirestoreDebugContext(firestoreDb, item.userId, item.userId),
-    });
-
-    return sanitizedItem;
-  } catch (error) {
-    console.error('[PlannerRepository] Firestore upsert failed', {
-      collection: collectionName,
-      operation: 'write:upsert',
-      id: item.id,
-      error: getFirebaseErrorDiagnostics(error),
-      ...getFirestoreDebugContext(firestoreDb, item.userId, item.userId),
-    });
-    throw error;
-  }
+  return sanitizedItem;
 }
 
 async function listActualsByPlanId(
@@ -381,30 +313,10 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async deleteTodo(userId, todoId) {
-      console.info('[PlannerRepository] Firestore delete request', {
-        collection: 'todos',
-        operation: 'write:delete',
-        id: todoId,
-        ...getFirestoreDebugContext(firestoreDb, userId),
-      });
-
+    async deleteTodo(_userId, todoId) {
       try {
         await deleteDoc(doc(firestoreDb, 'todos', todoId));
-        console.info('[PlannerRepository] Firestore delete success', {
-          collection: 'todos',
-          operation: 'write:delete',
-          id: todoId,
-          ...getFirestoreDebugContext(firestoreDb, userId),
-        });
       } catch (error) {
-        console.error('[PlannerRepository] Firestore delete failed', {
-          collection: 'todos',
-          operation: 'write:delete',
-          id: todoId,
-          error: getFirebaseErrorDiagnostics(error),
-          ...getFirestoreDebugContext(firestoreDb, userId),
-        });
         throw new Error(
           normalizeErrorMessage(
             'Todoを削除できませんでした。',
@@ -425,30 +337,10 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async deleteScheduleTemplate(userId, templateId) {
-      console.info('[PlannerRepository] Firestore delete request', {
-        collection: 'schedule_templates',
-        operation: 'write:delete',
-        id: templateId,
-        ...getFirestoreDebugContext(firestoreDb, userId),
-      });
-
+    async deleteScheduleTemplate(_userId, templateId) {
       try {
         await deleteDoc(doc(firestoreDb, 'schedule_templates', templateId));
-        console.info('[PlannerRepository] Firestore delete success', {
-          collection: 'schedule_templates',
-          operation: 'write:delete',
-          id: templateId,
-          ...getFirestoreDebugContext(firestoreDb, userId),
-        });
       } catch (error) {
-        console.error('[PlannerRepository] Firestore delete failed', {
-          collection: 'schedule_templates',
-          operation: 'write:delete',
-          id: templateId,
-          error: getFirebaseErrorDiagnostics(error),
-          ...getFirestoreDebugContext(firestoreDb, userId),
-        });
         throw new Error(
           normalizeErrorMessage(
             '時間割を削除できませんでした。',

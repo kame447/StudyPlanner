@@ -1,0 +1,68 @@
+.quick-entry-modal {
+  display: grid;
+  gap: 16px;
+}
+
+.quick-entry-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.quick-entry-title-field input {
+  min-height: 52px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.quick-entry-mode-tabs {
+  justify-content: center;
+}
+
+.quick-entry-body {
+  display: grid;
+  gap: 14px;
+}
+
+.quick-entry-duration-group {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-entry-duration-group > span {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.quick-entry-duration-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-entry-button {
+  min-width: 92px;
+}
+
+@media screen and (max-width: 640px) {
+  .quick-entry-header {
+    align-items: stretch;
+  }
+
+  .quick-entry-header .ghost-button,
+  .quick-entry-header .primary-button {
+    flex: 1 1 0;
+  }
+
+  .quick-entry-mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .quick-entry-mode-tabs .segment {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+}

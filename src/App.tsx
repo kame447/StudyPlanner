@@ -6,6 +6,7 @@ import { DayPlanInputPanel } from './components/DayPlanInputPanel';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
+import { QuickEntryModal } from './components/QuickEntryModal';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ReportView } from './components/ReportView';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
@@ -24,6 +25,7 @@ import { getUserDisplayName } from './lib/userProfile';
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isToolbarPlanInputOpen, setIsToolbarPlanInputOpen] = useState(false);
+  const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [toolbarPlanInputMode, setToolbarPlanInputMode] = useState<'manual' | 'ai'>(
     'manual',
   );
@@ -171,6 +173,13 @@ export default function App() {
             >
               学習予定を追加
             </button>
+            <button
+              className="ghost-button quick-entry-button"
+              onClick={() => setIsQuickEntryOpen(true)}
+              type="button"
+            >
+              Todo
+            </button>
           </div>
         </div>
       ) : null}
@@ -294,6 +303,15 @@ export default function App() {
             />
           </div>
         </div>
+      ) : null}
+
+      {isQuickEntryOpen ? (
+        <QuickEntryModal
+          userId={user.id}
+          selectedDate={selectedDate}
+          onClose={() => setIsQuickEntryOpen(false)}
+          onSaveTodo={saveTodo}
+        />
       ) : null}
 
       <MyPageDialog
