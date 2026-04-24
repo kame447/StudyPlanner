@@ -38,6 +38,51 @@
   justify-content: flex-end;
 }
 
+.daily-add-fab {
+  position: fixed;
+  right: max(18px, calc((100vw - 1440px) / 2 + 24px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 80;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+  border-radius: 50%;
+  background: var(--surface-strong);
+  color: var(--accent-strong);
+  box-shadow: 0 12px 28px rgba(22, 29, 33, 0.14);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.daily-add-fab span {
+  display: block;
+  transform: translateY(-1px);
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.daily-add-fab:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface-strong) 88%, var(--accent) 12%);
+  box-shadow: 0 14px 30px rgba(22, 29, 33, 0.16);
+}
+
+.daily-add-fab:focus-visible {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: 3px;
+}
+
 .header-actions,
 .row-actions,
 .nav-actions,

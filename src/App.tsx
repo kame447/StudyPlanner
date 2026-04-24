@@ -244,6 +244,17 @@ export default function App() {
         ) : null}
       </main>
 
+      {viewMode === 'day' ? (
+        <button
+          className="daily-add-fab print-hide"
+          onClick={() => setIsQuickEntryOpen(true)}
+          type="button"
+          aria-label="新規追加"
+        >
+          <span aria-hidden="true">＋</span>
+        </button>
+      ) : null}
+
       <PlanEditorPanel
         draft={editorDraft}
         submitLabel={editingPlanId ? '学習予定を更新' : '学習予定を追加'}
