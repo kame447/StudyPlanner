@@ -1,7 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
+import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
-import type { PlanDraft, PlanType, TodoTaskDraft } from '../types/domain';
+import type {
+  PlanDraft,
+  PlanType,
+  RecurrenceRule,
+  RecurrenceWeekday,
+  TodoTaskDraft,
+} from '../types/domain';
 
 type QuickEntryMode = 'later' | 'scheduled' | 'repeat';
 
@@ -28,6 +35,16 @@ const DURATION_OPTIONS = [
   { value: 90, label: '90分' },
 ] as const;
 
+const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
+  { value: 'mon', label: '月' },
+  { value: 'tue', label: '火' },
+  { value: 'wed', label: '水' },
+  { value: 'thu', label: '木' },
+  { value: 'fri', label: '金' },
+  { value: 'sat', label: '土' },
+  { value: 'sun', label: '日' },
+];
+
 export function QuickEntryModal({
   userId,
   selectedDate,
@@ -47,17 +64,42 @@ export function QuickEntryModal({
   const [repeatKind, setRepeatKind] = useState<'daily' | 'weekly' | 'monthly'>(
     'daily',
   );
-  const [weekday, setWeekday] = useState('mon');
+  const [weekday, setWeekday] = useState<RecurrenceWeekday>(() =>
+    getRecurrenceWeekday(selectedDate),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const canSave =
     title.trim().length > 0 &&
     !isSubmitting &&
-    (mode === 'later' || (mode === 'scheduled' && estimatedMinutes !== null));
+    (mode === 'later' ||
+      (mode === 'scheduled' && estimatedMinutes !== null) ||
+      (mode === 'repeat' &&
+        estimatedMinutes !== null &&
+        (repeatKind === 'daily' || repeatKind === 'weekly')));
 
   function resolveEndTime(): string {
     const startMinutes = minutesFromTime(startTime);
     const endMinutes = Math.min(startMinutes + (estimatedMinutes ?? 60), 23 * 60 + 59);
     return timeFromMinutes(endMinutes);
+  }
+
+  function buildRepeatRule(endTime: string): RecurrenceRule {
+    return {
+      id: 'recurrence-base',
+      kind: repeatKind === 'weekly' ? 'weekday' : 'daily',
+      startDate: date,
+      until: null,
+      dates: [],
+      weekdays: repeatKind === 'weekly' ? [weekday] : [],
+      dayType: null,
+      startTime,
+      endTime,
+      title: title.trim(),
+      subject: subject.trim() || undefined,
+      type,
+      memo: memo.trim() || undefined,
+      isOverride: false,
+    };
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -69,18 +111,27 @@ export function QuickEntryModal({
 
     setIsSubmitting(true);
     try {
-      if (mode === 'scheduled') {
+      if (mode === 'scheduled' || mode === 'repeat') {
+        const endTime = resolveEndTime();
+        const recurrenceRules =
+          mode === 'repeat' ? [buildRepeatRule(endTime)] : [];
+
         await onSavePlan({
           userId,
           title: title.trim(),
           subject: subject.trim(),
           date,
           startTime,
-          endTime: resolveEndTime(),
-          repeat: 'none',
+          endTime,
+          repeat:
+            mode === 'repeat'
+              ? repeatKind === 'weekly'
+                ? 'weekly'
+                : 'daily'
+              : 'none',
           repeatUntil: null,
           excludedDates: [],
-          recurrenceRules: [],
+          recurrenceRules,
           type,
           memo: memo.trim(),
           sourceType: 'manual',
@@ -240,15 +291,15 @@ export function QuickEntryModal({
                   <span>曜日</span>
                   <select
                     value={weekday}
-                    onChange={(event) => setWeekday(event.target.value)}
+                    onChange={(event) =>
+                      setWeekday(event.target.value as RecurrenceWeekday)
+                    }
                   >
-                    <option value="mon">月</option>
-                    <option value="tue">火</option>
-                    <option value="wed">水</option>
-                    <option value="thu">木</option>
-                    <option value="fri">金</option>
-                    <option value="sat">土</option>
-                    <option value="sun">日</option>
+                    {WEEKDAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
               ) : null}
