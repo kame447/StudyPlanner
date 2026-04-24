@@ -155,20 +155,6 @@ export default function App() {
         </div>
       </div>
 
-      {viewMode === 'day' ? (
-        <div className="toolbar panel app-action-toolbar print-hide">
-          <div className="row-actions">
-            <button
-              className="primary-button"
-              onClick={() => setIsQuickEntryOpen(true)}
-              type="button"
-            >
-              追加
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {notice ? (
         <div className="app-toast-layer print-hide" aria-live="polite">
           <div className={`app-notice app-toast ${notice.tone}`}>
