@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
+import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
-import type { PlanType, TodoTaskDraft } from '../types/domain';
+import type { PlanDraft, PlanType, TodoTaskDraft } from '../types/domain';
 
 type QuickEntryMode = 'later' | 'scheduled' | 'repeat';
 
@@ -9,6 +10,7 @@ interface QuickEntryModalProps {
   selectedDate: string;
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
+  onSavePlan: (draft: PlanDraft) => Promise<void>;
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
@@ -31,6 +33,7 @@ export function QuickEntryModal({
   selectedDate,
   onClose,
   onSaveTodo,
+  onSavePlan,
 }: QuickEntryModalProps) {
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
@@ -46,7 +49,16 @@ export function QuickEntryModal({
   );
   const [weekday, setWeekday] = useState('mon');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const canSave = title.trim().length > 0 && mode === 'later' && !isSubmitting;
+  const canSave =
+    title.trim().length > 0 &&
+    !isSubmitting &&
+    (mode === 'later' || (mode === 'scheduled' && estimatedMinutes !== null));
+
+  function resolveEndTime(): string {
+    const startMinutes = minutesFromTime(startTime);
+    const endMinutes = Math.min(startMinutes + (estimatedMinutes ?? 60), 23 * 60 + 59);
+    return timeFromMinutes(endMinutes);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,15 +69,34 @@ export function QuickEntryModal({
 
     setIsSubmitting(true);
     try {
-      await onSaveTodo({
-        userId,
-        title: title.trim(),
-        subject: subject.trim(),
-        type,
-        estimatedMinutes,
-        dueDate: dueDate || null,
-        memo: memo.trim(),
-      });
+      if (mode === 'scheduled') {
+        await onSavePlan({
+          userId,
+          title: title.trim(),
+          subject: subject.trim(),
+          date,
+          startTime,
+          endTime: resolveEndTime(),
+          repeat: 'none',
+          repeatUntil: null,
+          excludedDates: [],
+          recurrenceRules: [],
+          type,
+          memo: memo.trim(),
+          sourceType: 'manual',
+          sourceId: null,
+        });
+      } else {
+        await onSaveTodo({
+          userId,
+          title: title.trim(),
+          subject: subject.trim(),
+          type,
+          estimatedMinutes,
+          dueDate: dueDate || null,
+          memo: memo.trim(),
+        });
+      }
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -73,7 +104,7 @@ export function QuickEntryModal({
   }
 
   return (
-    <div className="overlay modal-overlay">
+    <div className="overlay modal-overlay" onClick={onClose}>
       <form
         className="modal-card quick-entry-modal"
         onClick={(event) => event.stopPropagation()}
@@ -143,7 +174,9 @@ export function QuickEntryModal({
               {DURATION_OPTIONS.map((option) => (
                 <button
                   className={
-                    estimatedMinutes === option.value ? 'week-chip active' : 'week-chip'
+                    estimatedMinutes === option.value
+                      ? 'quick-entry-duration-chip active'
+                      : 'quick-entry-duration-chip'
                   }
                   key={option.label}
                   onClick={() => setEstimatedMinutes(option.value)}

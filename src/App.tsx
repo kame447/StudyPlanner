@@ -311,6 +311,7 @@ export default function App() {
           selectedDate={selectedDate}
           onClose={() => setIsQuickEntryOpen(false)}
           onSaveTodo={saveTodo}
+          onSavePlan={savePlanDraft}
         />
       ) : null}
 
