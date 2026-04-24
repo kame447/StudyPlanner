@@ -174,7 +174,7 @@ export default function App() {
               学習予定を追加
             </button>
             <button
-              className="ghost-button quick-entry-button"
+              className="primary-button"
               onClick={() => setIsQuickEntryOpen(true)}
               type="button"
             >
