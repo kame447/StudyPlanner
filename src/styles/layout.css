@@ -15,11 +15,19 @@
 
 .app-view-switcher {
   position: sticky;
-  top: 12px;
+  top: 0;
   z-index: var(--z-sticky-nav);
   justify-content: center;
-  background: var(--surface-strong);
-  backdrop-filter: blur(14px);
+  background: var(--surface-muted);
+  backdrop-filter: blur(12px);
+}
+
+.app-view-switcher.panel {
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .app-view-switcher .segmented-control {
