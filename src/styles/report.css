@@ -26,6 +26,18 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
 }
 
+.report-daily-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 14px;
+}
+
+@media screen and (max-width: 900px) {
+  .report-daily-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .report-card {
   padding: 20px;
 }

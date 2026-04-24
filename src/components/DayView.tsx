@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   formatDateLabel,
-  minutesBetween,
   sortByDateTime,
 } from '../lib/date';
 import {
@@ -11,14 +10,11 @@ import {
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
-import { isStudyTimePlan } from '../lib/studyAnalytics';
-import { buildEvaluationSummary } from '../services/evaluationService';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayNotebookPanel } from './DayNotebookPanel';
 import { DayTimeline } from './DayTimeline';
 import { MonthEventDialog } from './MonthEventDialog';
-import { ScorePanel } from './ScorePanel';
 import { TodoListPanel } from './TodoListPanel';
 import type {
   Actual,
@@ -94,14 +90,6 @@ export function DayView({
     () => new Set(dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
     [dayPlans],
   );
-  const studyDayPlans = useMemo(
-    () => dayPlans.filter(isStudyTimePlan),
-    [dayPlans],
-  );
-  const studyDayOccurrenceKeys = useMemo(
-    () => new Set(studyDayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
-    [studyDayPlans],
-  );
   const dayPlanMap = useMemo(
     () => new Map(dayPlans.map((plan) => [plan.id, plan])),
     [dayPlans],
@@ -109,11 +97,6 @@ export function DayView({
   const dayActuals = useMemo(
     () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
     [actuals, dayOccurrenceKeys],
-  );
-  const studyDayActuals = useMemo(
-    () =>
-      dayActuals.filter((actual) => studyDayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
-    [dayActuals, studyDayOccurrenceKeys],
   );
   const dayMonthEvents = useMemo(
     () =>
@@ -140,32 +123,6 @@ export function DayView({
     modalState.type === 'month-event-detail'
       ? dayMonthEventMap.get(modalState.monthEventId) ?? null
       : null;
-  const dayPlannedMinutes = useMemo(
-    () =>
-      studyDayPlans.reduce(
-        (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
-        0,
-      ),
-    [studyDayPlans],
-  );
-  const dayActualMinutes = useMemo(
-    () =>
-      studyDayPlans.reduce((sum, plan) => {
-        const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
-        return (
-          sum +
-          (actual ? minutesBetween(actual.actualStartTime, actual.actualEndTime) : 0)
-        );
-      }, 0),
-    [actualByOccurrenceKey, studyDayPlans],
-  );
-  const evaluation = useMemo(
-    () => buildEvaluationSummary(selectedDate, plans, actuals),
-    [selectedDate, plans, actuals],
-  );
-  const planDeltaMinutes = dayActualMinutes - dayPlannedMinutes;
-  const displayedScheduleCount = dayPlans.length + dayMonthEvents.length;
-
   useEffect(() => {
     if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId)) {
       setModalState({ type: 'closed' });
@@ -266,20 +223,7 @@ export function DayView({
         onPrint={() => window.print()}
       />
 
-      <div className="day-review-layout day-review-layout-print-hide">
-        <DayNotebookPanel
-          dayNote={dayNote}
-          plannedMinutes={dayPlannedMinutes}
-          actualMinutes={dayActualMinutes}
-          actualCount={studyDayActuals.length}
-          planCount={studyDayPlans.length}
-          evaluation={evaluation}
-          planDeltaMinutes={planDeltaMinutes}
-          displayedScheduleCount={displayedScheduleCount}
-          onSave={onSaveDayNote}
-        />
-        <ScorePanel summary={evaluation} />
-      </div>
+      <DayNotebookPanel dayNote={dayNote} onSave={onSaveDayNote} compact />
 
       <TodoListPanel
         userId={userId}

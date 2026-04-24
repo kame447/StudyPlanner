@@ -7,9 +7,16 @@ import {
   formatMinutes,
   formatMonthLabel,
   getWeekdayLabel,
+  minutesBetween,
   startOfMonth,
   startOfWeek,
 } from '../lib/date';
+import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import {
+  buildPlanOccurrenceKey,
+  expandPlansForDate,
+  getActualOccurrenceKey,
+} from '../lib/planRecurrence';
 import {
   buildDailyStudySeriesInRange,
   buildMonthlyStudySeriesInRange,
@@ -20,9 +27,19 @@ import {
   calculatePreviousWeeklyStudyMinutes,
   calculateTodayStudyMinutes,
   calculateWeeklyStudyMinutes,
+  isStudyTimePlan,
 } from '../lib/studyAnalytics';
 import { getSubjectTheme } from '../lib/subjectTheme';
-import type { Actual, Plan } from '../types/domain';
+import { buildEvaluationSummary } from '../services/evaluationService';
+import { DayNotebookPanel } from './DayNotebookPanel';
+import { ScorePanel } from './ScorePanel';
+import type {
+  Actual,
+  DayNote,
+  DayNoteDraft,
+  MonthEvent,
+  Plan,
+} from '../types/domain';
 
 type ReportChartMode = 'daily' | 'weekly' | 'monthly';
 
@@ -42,9 +59,12 @@ interface ChartEntry {
 
 interface ReportViewProps {
   selectedDate: string;
+  dayNote: DayNote | DayNoteDraft;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents: MonthEvent[];
   onOpenDay: (date: string) => void;
+  onSaveDayNote: (draft: DayNoteDraft) => Promise<void>;
 }
 
 interface SubjectDistributionEntry {
@@ -131,9 +151,12 @@ function buildChartGridWidth(entryCount: number): string {
 
 export function ReportView({
   selectedDate,
+  dayNote,
   plans,
   actuals,
+  monthEvents,
   onOpenDay,
+  onSaveDayNote,
 }: ReportViewProps) {
   const [chartMode, setChartMode] = useState<ReportChartMode>('daily');
   const [dailyRange, setDailyRange] = useState<DateRangeDraft>(() =>
@@ -158,6 +181,72 @@ export function ReportView({
 
   const weeklySubjectTotals = buildWeeklySubjectTotals(selectedDate, plans, actuals);
   const timelineEntries = buildStudyTimelineEntries(plans, actuals);
+  const dayPlans = useMemo(
+    () => expandPlansForDate(plans, selectedDate),
+    [plans, selectedDate],
+  );
+  const studyDayPlans = useMemo(
+    () => dayPlans.filter(isStudyTimePlan),
+    [dayPlans],
+  );
+  const dayMonthEvents = useMemo(
+    () =>
+      sortMonthEvents(
+        monthEvents.filter((monthEvent) =>
+          doesMonthEventOccurOnDate(monthEvent, selectedDate),
+        ),
+      ),
+    [monthEvents, selectedDate],
+  );
+  const dayOccurrenceKeys = useMemo(
+    () => new Set(dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
+    [dayPlans],
+  );
+  const studyDayOccurrenceKeys = useMemo(
+    () =>
+      new Set(studyDayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
+    [studyDayPlans],
+  );
+  const dayActuals = useMemo(
+    () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
+    [actuals, dayOccurrenceKeys],
+  );
+  const studyDayActuals = useMemo(
+    () =>
+      dayActuals.filter((actual) =>
+        studyDayOccurrenceKeys.has(getActualOccurrenceKey(actual)),
+      ),
+    [dayActuals, studyDayOccurrenceKeys],
+  );
+  const actualByOccurrenceKey = useMemo(
+    () => new Map(dayActuals.map((actual) => [getActualOccurrenceKey(actual), actual])),
+    [dayActuals],
+  );
+  const dayPlannedMinutes = useMemo(
+    () =>
+      studyDayPlans.reduce(
+        (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
+        0,
+      ),
+    [studyDayPlans],
+  );
+  const dayActualMinutes = useMemo(
+    () =>
+      studyDayPlans.reduce((sum, plan) => {
+        const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
+        return (
+          sum +
+          (actual ? minutesBetween(actual.actualStartTime, actual.actualEndTime) : 0)
+        );
+      }, 0),
+    [actualByOccurrenceKey, studyDayPlans],
+  );
+  const evaluation = useMemo(
+    () => buildEvaluationSummary(selectedDate, plans, actuals),
+    [actuals, plans, selectedDate],
+  );
+  const planDeltaMinutes = dayActualMinutes - dayPlannedMinutes;
+  const displayedScheduleCount = dayPlans.length + dayMonthEvents.length;
   const todayMinutes = calculateTodayStudyMinutes(selectedDate, plans, actuals);
   const weeklyMinutes = calculateWeeklyStudyMinutes(selectedDate, plans, actuals);
   const previousWeekMinutes = calculatePreviousWeeklyStudyMinutes(
@@ -413,6 +502,21 @@ export function ReportView({
             <span className="report-metric-help">実績累計</span>
           </article>
         </div>
+      </div>
+
+      <div className="report-daily-review-layout">
+        <DayNotebookPanel
+          dayNote={dayNote}
+          plannedMinutes={dayPlannedMinutes}
+          actualMinutes={dayActualMinutes}
+          actualCount={studyDayActuals.length}
+          planCount={studyDayPlans.length}
+          evaluation={evaluation}
+          planDeltaMinutes={planDeltaMinutes}
+          displayedScheduleCount={displayedScheduleCount}
+          onSave={onSaveDayNote}
+        />
+        <ScorePanel summary={evaluation} />
       </div>
 
       <div className="report-grid">

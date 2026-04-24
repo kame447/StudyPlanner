@@ -223,9 +223,12 @@ export default function App() {
         {viewMode === 'report' ? (
           <ReportView
             selectedDate={selectedDate}
+            dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
             plans={plans}
             actuals={actuals}
+            monthEvents={monthEvents}
             onOpenDay={openDay}
+            onSaveDayNote={saveDayNote}
           />
         ) : null}
       </main>

@@ -4,14 +4,15 @@ import type { DayNote, DayNoteDraft, EvaluationSummary } from '../types/domain';
 
 interface DayNotebookPanelProps {
   dayNote: DayNote | DayNoteDraft;
-  plannedMinutes: number;
-  actualMinutes: number;
-  actualCount: number;
-  planCount: number;
-  evaluation: EvaluationSummary;
-  planDeltaMinutes: number;
-  displayedScheduleCount: number;
+  plannedMinutes?: number;
+  actualMinutes?: number;
+  actualCount?: number;
+  planCount?: number;
+  evaluation?: EvaluationSummary;
+  planDeltaMinutes?: number;
+  displayedScheduleCount?: number;
   onSave: (draft: DayNoteDraft) => Promise<void>;
+  compact?: boolean;
 }
 
 function toDayNoteDraft(dayNote: DayNote | DayNoteDraft): DayNoteDraft {
@@ -34,9 +35,10 @@ export function DayNotebookPanel({
   actualCount,
   planCount,
   evaluation,
-  planDeltaMinutes,
-  displayedScheduleCount,
+  planDeltaMinutes = 0,
+  displayedScheduleCount = 0,
   onSave,
+  compact = false,
 }: DayNotebookPanelProps) {
   const [draft, setDraft] = useState<DayNoteDraft>(toDayNoteDraft(dayNote));
   const [status, setStatus] = useState('');
@@ -56,11 +58,14 @@ export function DayNotebookPanel({
   ]);
 
   const completionRate =
-    plannedMinutes === 0
-      ? actualMinutes > 0
+    (plannedMinutes ?? 0) === 0
+      ? (actualMinutes ?? 0) > 0
         ? 100
         : 0
-      : Math.min(Math.round((actualMinutes / plannedMinutes) * 100), 100);
+      : Math.min(
+          Math.round(((actualMinutes ?? 0) / (plannedMinutes ?? 0)) * 100),
+          100,
+        );
 
   let progressLabel = 'これから';
 
@@ -68,13 +73,47 @@ export function DayNotebookPanel({
     progressLabel = 'よく進んだ日';
   } else if (completionRate >= 60) {
     progressLabel = 'おおむね順調';
-  } else if (planCount > 0) {
+  } else if ((planCount ?? 0) > 0) {
     progressLabel = '少し立て直し';
   }
 
   async function handleSave() {
     await onSave(draft);
     setStatus('保存しました。');
+  }
+
+  if (compact) {
+    return (
+      <section className="panel notebook-panel notebook-panel-compact">
+        <div className="section-header">
+          <div>
+            <h2>メモ</h2>
+          </div>
+        </div>
+
+        <label className="field field-full">
+          <span>今日のメモ</span>
+          <textarea
+            value={draft.quickMemo}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                quickMemo: event.target.value,
+              })
+            }
+            rows={3}
+            placeholder="今日の予定や気づきを短く残す"
+          />
+        </label>
+
+        <div className="row-actions">
+          <button className="ghost-button" onClick={() => void handleSave()} type="button">
+            メモを保存
+          </button>
+          {status ? <span className="inline-note">{status}</span> : null}
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -89,15 +128,15 @@ export function DayNotebookPanel({
       <div className="notebook-summary-grid">
         <div className="summary-chip">
           <span>予定</span>
-          <strong>{formatMinutes(plannedMinutes)}</strong>
+          <strong>{formatMinutes(plannedMinutes ?? 0)}</strong>
         </div>
         <div className="summary-chip">
           <span>実績</span>
-          <strong>{formatMinutes(actualMinutes)}</strong>
+          <strong>{formatMinutes(actualMinutes ?? 0)}</strong>
         </div>
         <div className="summary-chip">
           <span>達成度</span>
-          <strong>{evaluation.achievement}%</strong>
+          <strong>{evaluation?.achievement ?? 0}%</strong>
         </div>
         <div className="summary-chip">
           <span>差分</span>
@@ -118,7 +157,7 @@ export function DayNotebookPanel({
       <div className="notebook-topline">
         <div className="summary-chip notebook-chip">
           <span>合計勉強時間</span>
-          <strong>{formatMinutes(actualMinutes)}</strong>
+          <strong>{formatMinutes(actualMinutes ?? 0)}</strong>
         </div>
         <div className="summary-chip notebook-chip">
           <span>達成状況</span>
@@ -127,7 +166,7 @@ export function DayNotebookPanel({
         <div className="summary-chip notebook-chip">
           <span>記録済み</span>
           <strong>
-            {actualCount}/{planCount}
+            {actualCount ?? 0}/{planCount ?? 0}
           </strong>
         </div>
       </div>
@@ -143,7 +182,7 @@ export function DayNotebookPanel({
             style={{ width: `${completionRate}%` }}
           />
         </div>
-        <p className="detail-note">{evaluation.comment}</p>
+        <p className="detail-note">{evaluation?.comment ?? ''}</p>
       </div>
 
       <div className="check-grid">
