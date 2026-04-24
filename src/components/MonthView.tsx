@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type TransitionEvent,
+} from 'react';
 import {
   addMonths,
   formatMinutes,
@@ -21,7 +29,6 @@ import {
   expandPlansForDateRange,
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
-import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { MonthPickerDialog } from './MonthPickerDialog';
 import { MonthEventDialog } from './MonthEventDialog';
 import type { Actual, MonthEvent, MonthEventDraft, Plan } from '../types/domain';
@@ -39,6 +46,14 @@ interface MonthViewProps {
   onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
+
+const MONTH_PAGER_DEFAULT_GAP = 12;
+const MONTH_PAGER_DEFAULT_PEEK = 28;
+const MONTH_PAGER_DRAG_LIMIT_RATIO = 0.92;
+const MONTH_PAGER_DRAG_THRESHOLD_RATIO = 0.22;
+const MONTH_PAGER_MAX_DRAG_THRESHOLD = 96;
+const MONTH_PAGER_MIN_CLICK_SUPPRESS_DELTA = 8;
+const MONTH_PAGER_DIRECTION_RATIO = 1.15;
 
 function formatCompactStudyMinutes(minutes: number): string {
   if (minutes <= 0) {
@@ -100,16 +115,25 @@ export function MonthView({
 }: MonthViewProps) {
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [pagerOffset, setPagerOffset] = useState(0);
+  const [pagerTransitionEnabled, setPagerTransitionEnabled] = useState(true);
+  const [pendingPagerDirection, setPendingPagerDirection] = useState<-1 | 1 | null>(
+    null,
+  );
+  const pagerViewportRef = useRef<HTMLDivElement | null>(null);
+  const pagerPointerRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    didDrag: boolean;
+  } | null>(null);
+  const pagerStepRef = useRef(0);
+  const suppressNextCellClick = useRef(false);
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
   const todayDate = todayIsoDate();
-  const swipeNavigation = useSwipeNavigation({
-    onPrevious: () => onChangeMonth(addMonths(monthDate, -1)),
-    onNext: () => onChangeMonth(addMonths(monthDate, 1)),
-    disabled: eventModalDate !== null || isMonthPickerOpen,
-  });
   const weeks = getMonthWeeks(monthDate);
   const grid = useMemo(
     () =>
@@ -126,52 +150,6 @@ export function MonthView({
     () => new Map(grid.map((cell, index) => [cell.date, index])),
     [grid],
   );
-  const visiblePlanOccurrences = useMemo(() => {
-    if (grid.length === 0) {
-      return [];
-    }
-
-    return expandPlansForDateRange(plans, grid[0].date, grid[grid.length - 1].date);
-  }, [grid, plans]);
-  const studyPlanMinutesByDate = useMemo(() => {
-    const totals = new Map<string, number>();
-
-    visiblePlanOccurrences.forEach((plan) => {
-      if (plan.type !== 'study') {
-        return;
-      }
-
-      totals.set(
-        plan.date,
-        (totals.get(plan.date) ?? 0) + minutesBetween(plan.startTime, plan.endTime),
-      );
-    });
-
-    return totals;
-  }, [visiblePlanOccurrences]);
-  const actualStudyMinutesByDate = useMemo(() => {
-    const totals = new Map<string, number>();
-    const actualByOccurrenceKey = new Map(
-      actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
-    );
-
-    visiblePlanOccurrences.forEach((plan) => {
-      const actual = actualByOccurrenceKey.get(
-        buildPlanOccurrenceKey(plan.id, plan.date),
-      );
-
-      if (!actual || plan.type !== 'study') {
-        return;
-      }
-
-      totals.set(
-        plan.date,
-        (totals.get(plan.date) ?? 0) + minutesBetween(actual.actualStartTime, actual.actualEndTime),
-      );
-    });
-
-    return totals;
-  }, [actuals, visiblePlanOccurrences]);
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
     if (node) {
@@ -190,6 +168,166 @@ export function MonthView({
     cellRefs.current.get(selectedDate)?.focus();
     shouldFocusSelectedCell.current = false;
   }, [selectedDate, monthDate]);
+
+  const measurePagerStep = useCallback(() => {
+    const viewport = pagerViewportRef.current;
+
+    if (!viewport) {
+      return pagerStepRef.current;
+    }
+
+    const computedStyle = window.getComputedStyle(viewport);
+    const gap =
+      Number.parseFloat(computedStyle.getPropertyValue('--month-pager-gap')) ||
+      MONTH_PAGER_DEFAULT_GAP;
+    const peek =
+      Number.parseFloat(computedStyle.getPropertyValue('--month-pager-peek')) ||
+      MONTH_PAGER_DEFAULT_PEEK;
+    const panelWidth = Math.max(viewport.clientWidth - peek * 2, 0);
+    const nextStep = panelWidth + gap;
+
+    pagerStepRef.current = nextStep;
+    return nextStep;
+  }, []);
+
+  useEffect(() => {
+    measurePagerStep();
+
+    const viewport = pagerViewportRef.current;
+
+    if (!viewport || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      measurePagerStep();
+    });
+
+    observer.observe(viewport);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [measurePagerStep]);
+
+  useEffect(() => {
+    setPagerOffset(0);
+    setPendingPagerDirection(null);
+    setPagerTransitionEnabled(true);
+  }, [monthDate]);
+
+  function animateMonthChange(direction: -1 | 1) {
+    if (pendingPagerDirection !== null || eventModalDate || isMonthPickerOpen) {
+      return;
+    }
+
+    const step = measurePagerStep();
+
+    setPagerTransitionEnabled(true);
+    setPendingPagerDirection(direction);
+    setPagerOffset(direction === 1 ? -step : step);
+  }
+
+  function handlePagerTransitionEnd(event: TransitionEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget || event.propertyName !== 'transform') {
+      return;
+    }
+
+    if (pendingPagerDirection === null) {
+      return;
+    }
+
+    const nextMonthDate = addMonths(monthDate, pendingPagerDirection);
+
+    setPagerTransitionEnabled(false);
+    setPagerOffset(0);
+    setPendingPagerDirection(null);
+    onChangeMonth(nextMonthDate);
+
+    window.requestAnimationFrame(() => {
+      setPagerTransitionEnabled(true);
+    });
+  }
+
+  function handlePagerPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (pendingPagerDirection !== null || eventModalDate || isMonthPickerOpen) {
+      return;
+    }
+
+    measurePagerStep();
+    pagerPointerRef.current = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      didDrag: false,
+    };
+    setPagerTransitionEnabled(false);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePagerPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const pointer = pagerPointerRef.current;
+
+    if (!pointer || pointer.id !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - pointer.startX;
+    const deltaY = event.clientY - pointer.startY;
+    const step = pagerStepRef.current || measurePagerStep();
+    const clampedOffset = Math.max(
+      -step * MONTH_PAGER_DRAG_LIMIT_RATIO,
+      Math.min(step * MONTH_PAGER_DRAG_LIMIT_RATIO, deltaX),
+    );
+
+    if (Math.abs(deltaX) > MONTH_PAGER_MIN_CLICK_SUPPRESS_DELTA) {
+      pointer.didDrag = true;
+      suppressNextCellClick.current = true;
+    }
+
+    if (Math.abs(deltaX) > Math.abs(deltaY) * MONTH_PAGER_DIRECTION_RATIO) {
+      event.preventDefault();
+    }
+
+    setPagerOffset(clampedOffset);
+  }
+
+  function finishPagerDrag(event: PointerEvent<HTMLDivElement>) {
+    const pointer = pagerPointerRef.current;
+
+    if (!pointer || pointer.id !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - pointer.startX;
+    const deltaY = event.clientY - pointer.startY;
+    const step = pagerStepRef.current || measurePagerStep();
+    const threshold = Math.min(
+      MONTH_PAGER_MAX_DRAG_THRESHOLD,
+      step * MONTH_PAGER_DRAG_THRESHOLD_RATIO,
+    );
+    const isHorizontalSwipe =
+      Math.abs(deltaX) > Math.abs(deltaY) * MONTH_PAGER_DIRECTION_RATIO;
+
+    pagerPointerRef.current = null;
+    setPagerTransitionEnabled(true);
+
+    if (pointer.didDrag) {
+      window.setTimeout(() => {
+        suppressNextCellClick.current = false;
+      }, 0);
+    }
+
+    if (Math.abs(deltaX) >= threshold && isHorizontalSwipe) {
+      const direction = deltaX < 0 ? 1 : -1;
+
+      setPendingPagerDirection(direction);
+      setPagerOffset(direction === 1 ? -step : step);
+      return;
+    }
+
+    setPagerOffset(0);
+  }
 
   const moveSelectionByKeyboard = useCallback((currentDate: string, offset: number) => {
     const currentIndex = gridIndexByDate.get(currentDate);
@@ -220,6 +358,11 @@ export function MonthView({
   }
 
   function handleCellClick(date: string) {
+    if (suppressNextCellClick.current) {
+      suppressNextCellClick.current = false;
+      return;
+    }
+
     const clickTimestamp = window.performance.now();
 
     if (
@@ -315,8 +458,243 @@ export function MonthView({
     };
   }, []);
 
+  function renderMonthPanel(panelMonthDate: string, panelRole: 'previous' | 'current' | 'next') {
+    const isCurrentPanel = panelRole === 'current';
+    const panelWeeks = getMonthWeeks(panelMonthDate);
+    const panelGrid = panelWeeks.flatMap((week) =>
+      week.dates.map((date) => ({
+        date,
+        inCurrentMonth: date.startsWith(panelMonthDate.slice(0, 7)),
+      })),
+    );
+    const panelPlanOccurrences =
+      panelGrid.length > 0
+        ? expandPlansForDateRange(
+            plans,
+            panelGrid[0].date,
+            panelGrid[panelGrid.length - 1].date,
+          )
+        : [];
+    const panelStudyPlanMinutesByDate = new Map<string, number>();
+
+    panelPlanOccurrences.forEach((plan) => {
+      if (plan.type !== 'study') {
+        return;
+      }
+
+      panelStudyPlanMinutesByDate.set(
+        plan.date,
+        (panelStudyPlanMinutesByDate.get(plan.date) ?? 0) +
+          minutesBetween(plan.startTime, plan.endTime),
+      );
+    });
+
+    const actualByOccurrenceKey = new Map(
+      actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+    );
+    const panelActualStudyMinutesByDate = new Map<string, number>();
+
+    panelPlanOccurrences.forEach((plan) => {
+      const actual = actualByOccurrenceKey.get(
+        buildPlanOccurrenceKey(plan.id, plan.date),
+      );
+
+      if (!actual || plan.type !== 'study') {
+        return;
+      }
+
+      panelActualStudyMinutesByDate.set(
+        plan.date,
+        (panelActualStudyMinutesByDate.get(plan.date) ?? 0) +
+          minutesBetween(actual.actualStartTime, actual.actualEndTime),
+      );
+    });
+
+    return (
+      <article
+        className={`month-pager-panel is-${panelRole}`}
+        key={panelRole}
+        aria-hidden={!isCurrentPanel}
+      >
+        <div className="month-grid">
+          {getWeekdayLabels().map((label, index) => (
+            <div
+              key={label}
+              className={[
+                'month-weekday',
+                index === 5 ? 'is-saturday' : '',
+                index === 6 ? 'is-holiday' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {label}
+            </div>
+          ))}
+
+          {panelGrid.map((cell) => {
+            const dayTone = getCalendarDayTone(cell.date);
+            const holidayName = getJapaneseHolidayName(cell.date);
+            const targetMinutes = panelStudyPlanMinutesByDate.get(cell.date) ?? 0;
+            const actualMinutes = panelActualStudyMinutesByDate.get(cell.date) ?? 0;
+            const visibleMonthEvents = sortMonthEvents(
+              monthEvents.filter((monthEvent) =>
+                doesMonthEventOccurOnDate(monthEvent, cell.date),
+              ),
+            );
+            const limitedMonthEvents = visibleMonthEvents.slice(0, 2);
+            const cellClassName = [
+              'month-cell',
+              cell.inCurrentMonth ? '' : 'is-muted',
+              isCurrentPanel && cell.date === selectedDate ? 'is-selected' : '',
+              cell.date === todayDate ? 'is-today' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+            return (
+              <button
+                key={cell.date}
+                className={cellClassName}
+                ref={
+                  isCurrentPanel
+                    ? (node) => registerCellRef(cell.date, node)
+                    : undefined
+                }
+                onClick={
+                  isCurrentPanel
+                    ? () => {
+                        handleCellClick(cell.date);
+                      }
+                    : undefined
+                }
+                onKeyDown={
+                  isCurrentPanel
+                    ? (event) => {
+                        switch (event.key) {
+                          case 'Enter':
+                            event.preventDefault();
+                            openMonthEventEditor(cell.date);
+                            break;
+                          case 'ArrowLeft':
+                            event.preventDefault();
+                            moveSelectionByKeyboard(cell.date, -1);
+                            break;
+                          case 'ArrowRight':
+                            event.preventDefault();
+                            moveSelectionByKeyboard(cell.date, 1);
+                            break;
+                          case 'ArrowUp':
+                            event.preventDefault();
+                            moveSelectionByKeyboard(cell.date, -7);
+                            break;
+                          case 'ArrowDown':
+                            event.preventDefault();
+                            moveSelectionByKeyboard(cell.date, 7);
+                            break;
+                          default:
+                            break;
+                        }
+                      }
+                    : undefined
+                }
+                tabIndex={isCurrentPanel && cell.date === selectedDate ? 0 : -1}
+                aria-selected={isCurrentPanel && cell.date === selectedDate}
+                type="button"
+              >
+                <div className="month-cell-head">
+                  <strong
+                    className={[
+                      'month-date-number',
+                      dayTone === 'saturday' ? 'is-saturday' : '',
+                      dayTone === 'holiday' ? 'is-holiday' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    {getCalendarDayNumber(cell.date)}
+                  </strong>
+                  {holidayName ? (
+                    <span
+                      className={[
+                        'month-holiday-label',
+                        getHolidayLabelLengthClass(holidayName),
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      title={holidayName}
+                    >
+                      {holidayName}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="month-study-summary">
+                  <p className="month-target">
+                    <span className="month-target-label month-target-label-full">
+                      目標
+                    </span>
+                    <span className="month-target-label month-target-label-short">
+                      目
+                    </span>{' '}
+                    <span className="month-target-value month-target-value-full">
+                      {targetMinutes > 0 ? formatMinutes(targetMinutes) : '0分'}
+                    </span>
+                    <span className="month-target-value month-target-value-short">
+                      {formatCompactStudyMinutes(targetMinutes)}
+                    </span>
+                  </p>
+                  <p className="month-target">
+                    <span className="month-target-label month-target-label-full">
+                      実績
+                    </span>
+                    <span className="month-target-label month-target-label-short">
+                      実
+                    </span>{' '}
+                    <span className="month-target-value month-target-value-full">
+                      {actualMinutes > 0 ? formatMinutes(actualMinutes) : '0分'}
+                    </span>
+                    <span className="month-target-value month-target-value-short">
+                      {formatCompactStudyMinutes(actualMinutes)}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="month-major-event-list">
+                  {limitedMonthEvents.map((monthEvent) => (
+                    <span
+                      key={monthEvent.id}
+                      className="event-pill month-major-event-pill"
+                      title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
+                    >
+                      <span className="month-major-event-full">
+                        {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
+                      </span>
+                      <span className="month-major-event-short">
+                        {monthEvent.title}
+                      </span>
+                    </span>
+                  ))}
+
+                  {visibleMonthEvents.length > limitedMonthEvents.length ? (
+                    <span className="month-event-more">
+                      +{visibleMonthEvents.length - limitedMonthEvents.length}件
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </article>
+    );
+  }
+
+  const pagerOffsetTerm =
+    pagerOffset >= 0 ? `+ ${pagerOffset}px` : `- ${Math.abs(pagerOffset)}px`;
+
   return (
-    <section className="panel swipe-view" {...swipeNavigation}>
+    <section className="panel swipe-view">
       <div className="view-header-stack">
         <div>
           <div className="view-titlebar month-view-titlebar">
@@ -325,7 +703,7 @@ export function MonthView({
               <div className="nav-actions view-title-nav month-view-title-nav">
                 <button
                   className="ghost-button"
-                  onClick={() => onChangeMonth(addMonths(monthDate, -1))}
+                  onClick={() => animateMonthChange(-1)}
                   type="button"
                 >
                   前月
@@ -339,7 +717,7 @@ export function MonthView({
                 </button>
                 <button
                   className="ghost-button"
-                  onClick={() => onChangeMonth(addMonths(monthDate, 1))}
+                  onClick={() => animateMonthChange(1)}
                   type="button"
                 >
                   翌月
@@ -378,151 +756,30 @@ export function MonthView({
         ))}
       </div>
 
-      <div className="month-grid">
-        {getWeekdayLabels().map((label, index) => (
-          <div
-            key={label}
-            className={[
-              'month-weekday',
-              index === 5 ? 'is-saturday' : '',
-              index === 6 ? 'is-holiday' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            {label}
-          </div>
-        ))}
-
-        {grid.map((cell) => {
-          const dayTone = getCalendarDayTone(cell.date);
-          const holidayName = getJapaneseHolidayName(cell.date);
-          const targetMinutes = studyPlanMinutesByDate.get(cell.date) ?? 0;
-          const actualMinutes = actualStudyMinutesByDate.get(cell.date) ?? 0;
-          const visibleMonthEvents = sortMonthEvents(
-            monthEvents.filter((monthEvent) => doesMonthEventOccurOnDate(monthEvent, cell.date)),
-          );
-          const limitedMonthEvents = visibleMonthEvents.slice(0, 2);
-          const cellClassName = [
-            'month-cell',
-            cell.inCurrentMonth ? '' : 'is-muted',
-            cell.date === selectedDate ? 'is-selected' : '',
-            cell.date === todayDate ? 'is-today' : '',
+      <div
+        className="month-pager-viewport"
+        ref={pagerViewportRef}
+        onPointerDown={handlePagerPointerDown}
+        onPointerMove={handlePagerPointerMove}
+        onPointerUp={finishPagerDrag}
+        onPointerCancel={finishPagerDrag}
+      >
+        <div
+          className={[
+            'month-pager-track',
+            pagerTransitionEnabled ? 'is-animated' : 'is-dragging',
           ]
             .filter(Boolean)
-            .join(' ');
-
-          return (
-            <button
-              key={cell.date}
-              className={cellClassName}
-              ref={(node) => registerCellRef(cell.date, node)}
-              onClick={() => {
-                handleCellClick(cell.date);
-              }}
-              onKeyDown={(event) => {
-                switch (event.key) {
-                  case 'Enter':
-                    event.preventDefault();
-                    openMonthEventEditor(cell.date);
-                    break;
-                  case 'ArrowLeft':
-                    event.preventDefault();
-                    moveSelectionByKeyboard(cell.date, -1);
-                    break;
-                  case 'ArrowRight':
-                    event.preventDefault();
-                    moveSelectionByKeyboard(cell.date, 1);
-                    break;
-                  case 'ArrowUp':
-                    event.preventDefault();
-                    moveSelectionByKeyboard(cell.date, -7);
-                    break;
-                  case 'ArrowDown':
-                    event.preventDefault();
-                    moveSelectionByKeyboard(cell.date, 7);
-                    break;
-                  default:
-                    break;
-                }
-              }}
-              tabIndex={cell.date === selectedDate ? 0 : -1}
-              aria-selected={cell.date === selectedDate}
-              type="button"
-            >
-              <div className="month-cell-head">
-                <strong
-                  className={[
-                    'month-date-number',
-                    dayTone === 'saturday' ? 'is-saturday' : '',
-                    dayTone === 'holiday' ? 'is-holiday' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                >
-                  {getCalendarDayNumber(cell.date)}
-                </strong>
-                {holidayName ? (
-                  <span
-                    className={[
-                      'month-holiday-label',
-                      getHolidayLabelLengthClass(holidayName),
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    title={holidayName}
-                  >
-                    {holidayName}
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="month-study-summary">
-                <p className="month-target">
-                  <span className="month-target-label month-target-label-full">目標</span>
-                  <span className="month-target-label month-target-label-short">目</span>{' '}
-                  <span className="month-target-value month-target-value-full">
-                    {targetMinutes > 0 ? formatMinutes(targetMinutes) : '0分'}
-                  </span>
-                  <span className="month-target-value month-target-value-short">
-                    {formatCompactStudyMinutes(targetMinutes)}
-                  </span>
-                </p>
-                <p className="month-target">
-                  <span className="month-target-label month-target-label-full">実績</span>
-                  <span className="month-target-label month-target-label-short">実</span>{' '}
-                  <span className="month-target-value month-target-value-full">
-                    {actualMinutes > 0 ? formatMinutes(actualMinutes) : '0分'}
-                  </span>
-                  <span className="month-target-value month-target-value-short">
-                    {formatCompactStudyMinutes(actualMinutes)}
-                  </span>
-                </p>
-              </div>
-
-              <div className="month-major-event-list">
-                {limitedMonthEvents.map((monthEvent) => (
-                  <span
-                    key={monthEvent.id}
-                    className="event-pill month-major-event-pill"
-                    title={`${formatMonthEventTimeRange(monthEvent)} ${monthEvent.title}`}
-                  >
-                    <span className="month-major-event-full">
-                      {formatMonthEventTimeRange(monthEvent)} {monthEvent.title}
-                    </span>
-                    <span className="month-major-event-short">{monthEvent.title}</span>
-                  </span>
-                ))}
-
-                {visibleMonthEvents.length > limitedMonthEvents.length ? (
-                  <span className="month-event-more">
-                    +{visibleMonthEvents.length - limitedMonthEvents.length}件
-                  </span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
+            .join(' ')}
+          onTransitionEnd={handlePagerTransitionEnd}
+          style={{
+            transform: `translate3d(calc(-1 * (var(--month-pager-panel-width) + var(--month-pager-gap)) + var(--month-pager-peek) ${pagerOffsetTerm}), 0, 0)`,
+          }}
+        >
+          {renderMonthPanel(addMonths(monthDate, -1), 'previous')}
+          {renderMonthPanel(monthDate, 'current')}
+          {renderMonthPanel(addMonths(monthDate, 1), 'next')}
+        </div>
       </div>
 
       <MonthEventDialog
