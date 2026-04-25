@@ -33,9 +33,13 @@
 .app-view-switcher .segmented-control {
   justify-content: center;
   max-width: 100%;
+  gap: 8px;
 }
 
 .app-view-switcher .segment {
+  min-height: 38px;
+  padding: 8px 13px;
+  font-size: 0.84rem;
   white-space: nowrap;
   word-break: keep-all;
 }

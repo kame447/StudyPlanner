@@ -577,6 +577,7 @@
 
   .app-view-switcher .segmented-control {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .toolbar .segment {
@@ -587,6 +588,13 @@
     font-size: 0.68rem;
     white-space: nowrap;
     word-break: keep-all;
+  }
+
+  .app-view-switcher .segment {
+    min-height: 38px;
+    padding-block: 8px;
+    padding-inline: 7px;
+    font-size: 0.7rem;
   }
 
   .toolbar .row-actions {
@@ -697,15 +705,16 @@
     padding-top: 0;
     flex-wrap: nowrap;
     overflow-x: auto;
-    gap: 6px;
+    gap: 8px;
   }
 
   .month-week-chip-row .week-chip {
     flex: 0 0 auto;
     min-width: auto;
     justify-content: center;
-    padding: 6px 10px;
-    font-size: 0.68rem;
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 0.72rem;
     border-radius: 10px;
   }
 
@@ -1672,6 +1681,13 @@
     font-size: 0.56rem;
   }
 
+  .app-view-switcher .segment {
+    min-height: 36px;
+    padding-block: 7px;
+    padding-inline: 5px;
+    font-size: 0.62rem;
+  }
+
   .toolbar .primary-button {
     padding: 6px 8px;
     font-size: 0.56rem;
@@ -1686,13 +1702,18 @@
     gap: 4px;
   }
 
+  .app-view-switcher .segmented-control {
+    gap: 5px;
+  }
+
   .month-grid {
     gap: 0;
   }
 
   .month-week-chip-row .week-chip {
-    padding: 5px 8px;
-    font-size: 0.62rem;
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 0.66rem;
   }
 
   .month-weekday {
@@ -2034,12 +2055,13 @@
   }
 
   .month-week-chip-row {
-    gap: 4px;
+    gap: 5px;
   }
 
   .month-week-chip-row .week-chip {
-    padding: 4px 6px;
-    font-size: 0.56rem;
+    min-height: 32px;
+    padding: 6px 8px;
+    font-size: 0.6rem;
     border-radius: 8px;
   }
 

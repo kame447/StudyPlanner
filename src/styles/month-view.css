@@ -55,12 +55,16 @@
   padding-top: 2px;
   flex-wrap: nowrap;
   overflow-x: auto;
+  gap: 8px;
 }
 
 .month-week-chip-row .week-chip {
   flex: 0 0 auto;
   border-radius: 12px;
-  padding-inline: 16px;
+  min-height: 38px;
+  padding: 9px 16px;
+  font-size: 0.84rem;
+  white-space: nowrap;
 }
 
 .month-pager-viewport {
