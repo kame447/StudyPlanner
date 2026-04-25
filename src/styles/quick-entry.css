@@ -1,7 +1,22 @@
+.quick-entry-overlay {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
 .quick-entry-modal {
   display: grid;
   gap: 10px;
   width: min(680px, 100%);
+  max-height: calc(
+    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 16px;
 }
 
@@ -281,6 +296,9 @@
 
 @media screen and (max-width: 640px) {
   .quick-entry-modal {
+    max-height: calc(
+      100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
     padding: 13px;
     gap: 9px;
   }

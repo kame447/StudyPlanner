@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import {
   buildQuickEntryPlanDraft,
@@ -106,6 +106,19 @@ export function QuickEntryModal({
       (mode === 'repeat' &&
         estimatedMinutes !== null &&
         isSupportedRepeatKind));
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'contain';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+    };
+  }, []);
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -229,10 +242,12 @@ export function QuickEntryModal({
   }
 
   return (
-    <div className="overlay modal-overlay" onClick={onClose}>
+    <div className="overlay modal-overlay quick-entry-overlay" onClick={onClose}>
       <form
         className="modal-card quick-entry-modal"
         onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onTouchStart={(event) => event.stopPropagation()}
         onSubmit={handleSubmit}
       >
         <div className="quick-entry-header">
