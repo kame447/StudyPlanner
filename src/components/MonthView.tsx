@@ -52,6 +52,27 @@ const MONTH_PAGER_DRAG_THRESHOLD_RATIO = 0.22;
 const MONTH_PAGER_MAX_DRAG_THRESHOLD = 96;
 const MONTH_PAGER_MIN_CLICK_SUPPRESS_DELTA = 8;
 const MONTH_PAGER_DIRECTION_RATIO = 1.15;
+const MONTH_PAGER_CENTER_INDEX = 2;
+const MONTH_PAGER_EXTENSION_COUNT = 2;
+const MONTH_PAGER_EDGE_BUFFER = 1;
+
+function createPagerMonths(centerMonthDate: string): string[] {
+  return Array.from({ length: 5 }, (_, index) =>
+    addMonths(centerMonthDate, index - MONTH_PAGER_CENTER_INDEX),
+  );
+}
+
+function createMonthsBefore(firstMonthDate: string, count: number): string[] {
+  return Array.from({ length: count }, (_, index) =>
+    addMonths(firstMonthDate, index - count),
+  );
+}
+
+function createMonthsAfter(lastMonthDate: string, count: number): string[] {
+  return Array.from({ length: count }, (_, index) =>
+    addMonths(lastMonthDate, index + 1),
+  );
+}
 
 function formatCompactStudyMinutes(minutes: number): string {
   if (minutes <= 0) {
@@ -113,6 +134,12 @@ export function MonthView({
 }: MonthViewProps) {
   const [eventModalDate, setEventModalDate] = useState<string | null>(null);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [visibleMonths, setVisibleMonths] = useState(() =>
+    createPagerMonths(monthDate),
+  );
+  const [activeMonthIndex, setActiveMonthIndex] = useState(
+    MONTH_PAGER_CENTER_INDEX,
+  );
   const [pagerOffset, setPagerOffset] = useState(0);
   const [pagerTransitionEnabled, setPagerTransitionEnabled] = useState(true);
   const [pendingPagerDirection, setPendingPagerDirection] = useState<-1 | 1 | null>(
@@ -131,17 +158,18 @@ export function MonthView({
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
+  const activeMonthDate = visibleMonths[activeMonthIndex] ?? monthDate;
   const todayDate = todayIsoDate();
-  const weeks = getMonthWeeks(monthDate);
+  const weeks = getMonthWeeks(activeMonthDate);
   const grid = useMemo(
     () =>
       weeks.flatMap((week) =>
         week.dates.map((date) => ({
           date,
-          inCurrentMonth: date.startsWith(monthDate.slice(0, 7)),
+          inCurrentMonth: date.startsWith(activeMonthDate.slice(0, 7)),
         })),
       ),
-    [monthDate, weeks],
+    [activeMonthDate, weeks],
   );
   const selectedWeek = startOfWeek(selectedDate);
   const gridIndexByDate = useMemo(
@@ -165,7 +193,7 @@ export function MonthView({
 
     cellRefs.current.get(selectedDate)?.focus();
     shouldFocusSelectedCell.current = false;
-  }, [selectedDate, monthDate]);
+  }, [selectedDate, activeMonthDate]);
 
   const measurePagerStep = useCallback(() => {
     const viewport = pagerViewportRef.current;
@@ -201,9 +229,22 @@ export function MonthView({
   }, [measurePagerStep]);
 
   useEffect(() => {
+    const currentVisibleMonth = visibleMonths[activeMonthIndex];
+
+    if (currentVisibleMonth === monthDate) {
+      return;
+    }
+
+    setPagerTransitionEnabled(false);
     setPagerOffset(0);
     setPendingPagerDirection(null);
-    setPagerTransitionEnabled(true);
+    pagerPointerRef.current = null;
+    setVisibleMonths(createPagerMonths(monthDate));
+    setActiveMonthIndex(MONTH_PAGER_CENTER_INDEX);
+
+    window.requestAnimationFrame(() => {
+      setPagerTransitionEnabled(true);
+    });
   }, [monthDate]);
 
   function animateMonthChange(direction: -1 | 1) {
@@ -211,11 +252,12 @@ export function MonthView({
       return;
     }
 
-    const step = measurePagerStep();
+    measurePagerStep();
 
     setPagerTransitionEnabled(true);
     setPendingPagerDirection(direction);
-    setPagerOffset(direction === 1 ? -step : step);
+    setPagerOffset(0);
+    setActiveMonthIndex((currentIndex) => currentIndex + direction);
   }
 
   function handlePagerTransitionEnd(event: TransitionEvent<HTMLDivElement>) {
@@ -227,16 +269,42 @@ export function MonthView({
       return;
     }
 
-    const nextMonthDate = addMonths(monthDate, pendingPagerDirection);
+    const settledMonthDate = visibleMonths[activeMonthIndex] ?? activeMonthDate;
+    const settledIndex = activeMonthIndex;
 
-    setPagerTransitionEnabled(false);
     setPagerOffset(0);
     setPendingPagerDirection(null);
-    onChangeMonth(nextMonthDate);
+    onChangeMonth(settledMonthDate);
 
-    window.requestAnimationFrame(() => {
-      setPagerTransitionEnabled(true);
-    });
+    if (settledIndex <= MONTH_PAGER_EDGE_BUFFER) {
+      const firstMonthDate = visibleMonths[0] ?? settledMonthDate;
+      const prependedMonths = createMonthsBefore(
+        firstMonthDate,
+        MONTH_PAGER_EXTENSION_COUNT,
+      );
+
+      setPagerTransitionEnabled(false);
+      setVisibleMonths((currentMonths) => [...prependedMonths, ...currentMonths]);
+      setActiveMonthIndex(settledIndex + MONTH_PAGER_EXTENSION_COUNT);
+
+      window.requestAnimationFrame(() => {
+        setPagerTransitionEnabled(true);
+      });
+      return;
+    }
+
+    if (settledIndex >= visibleMonths.length - 1 - MONTH_PAGER_EDGE_BUFFER) {
+      const lastMonthDate =
+        visibleMonths[visibleMonths.length - 1] ?? settledMonthDate;
+      const appendedMonths = createMonthsAfter(
+        lastMonthDate,
+        MONTH_PAGER_EXTENSION_COUNT,
+      );
+
+      setVisibleMonths((currentMonths) => [...currentMonths, ...appendedMonths]);
+    }
+
+    setPagerTransitionEnabled(true);
   }
 
   function handlePagerPointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -312,7 +380,8 @@ export function MonthView({
       const direction = deltaX < 0 ? 1 : -1;
 
       setPendingPagerDirection(direction);
-      setPagerOffset(direction === 1 ? -step : step);
+      setPagerOffset(0);
+      setActiveMonthIndex((currentIndex) => currentIndex + direction);
       return;
     }
 
@@ -448,8 +517,8 @@ export function MonthView({
     };
   }, []);
 
-  function renderMonthPanel(panelMonthDate: string, panelRole: 'previous' | 'current' | 'next') {
-    const isCurrentPanel = panelRole === 'current';
+  function renderMonthPanel(panelMonthDate: string, panelIndex: number) {
+    const isCurrentPanel = panelIndex === activeMonthIndex;
     const panelWeeks = getMonthWeeks(panelMonthDate);
     const panelGrid = panelWeeks.flatMap((week) =>
       week.dates.map((date) => ({
@@ -502,8 +571,8 @@ export function MonthView({
 
     return (
       <article
-        className={`month-pager-panel is-${panelRole}`}
-        key={panelRole}
+        className={isCurrentPanel ? 'month-pager-panel is-current' : 'month-pager-panel'}
+        key={panelMonthDate}
         aria-hidden={!isCurrentPanel}
       >
         <div className="month-grid">
@@ -682,10 +751,11 @@ export function MonthView({
 
   const pagerOffsetTerm =
     pagerOffset >= 0 ? `+ ${pagerOffset}px` : `- ${Math.abs(pagerOffset)}px`;
+  const pagerBaseOffset = `-${activeMonthIndex * 100}%`;
   const pagerTransform =
     pagerOffset === 0
-      ? 'translate3d(-100%, 0, 0)'
-      : `translate3d(calc(-100% ${pagerOffsetTerm}), 0, 0)`;
+      ? `translate3d(${pagerBaseOffset}, 0, 0)`
+      : `translate3d(calc(${pagerBaseOffset} ${pagerOffsetTerm}), 0, 0)`;
 
   return (
     <section className="panel swipe-view">
@@ -708,7 +778,7 @@ export function MonthView({
                   onClick={() => setIsMonthPickerOpen(true)}
                   type="button"
                 >
-                  {formatMonthLabel(monthDate)}
+                  {formatMonthLabel(activeMonthDate)}
                 </button>
                 <button
                   className="ghost-button nav-icon-button"
@@ -740,7 +810,9 @@ export function MonthView({
             }
             onClick={() => {
               const focusDate =
-                week.dates.find((date) => date.startsWith(monthDate.slice(0, 7))) ??
+                week.dates.find((date) =>
+                  date.startsWith(activeMonthDate.slice(0, 7)),
+                ) ??
                 week.startDate;
               onOpenWeek(focusDate);
             }}
@@ -772,9 +844,9 @@ export function MonthView({
             transform: pagerTransform,
           }}
         >
-          {renderMonthPanel(addMonths(monthDate, -1), 'previous')}
-          {renderMonthPanel(monthDate, 'current')}
-          {renderMonthPanel(addMonths(monthDate, 1), 'next')}
+          {visibleMonths.map((visibleMonthDate, panelIndex) =>
+            renderMonthPanel(visibleMonthDate, panelIndex),
+          )}
         </div>
       </div>
 
@@ -789,7 +861,7 @@ export function MonthView({
 
       <MonthPickerDialog
         open={isMonthPickerOpen}
-        activeMonthDate={monthDate}
+        activeMonthDate={activeMonthDate}
         onSelectMonth={onChangeMonth}
         onClose={() => setIsMonthPickerOpen(false)}
       />
