@@ -64,9 +64,6 @@
 }
 
 .month-pager-viewport {
-  --month-pager-peek: 32px;
-  --month-pager-gap: 12px;
-  --month-pager-panel-width: calc(100% - (var(--month-pager-peek) * 2));
   overflow: hidden;
   width: 100%;
   min-width: 0;
@@ -76,7 +73,7 @@
 .month-pager-track {
   display: flex;
   align-items: stretch;
-  gap: var(--month-pager-gap);
+  width: 100%;
   will-change: transform;
 }
 
@@ -91,20 +88,15 @@
 }
 
 .month-pager-panel {
-  flex: 0 0 var(--month-pager-panel-width);
-  min-width: 0;
-  max-width: var(--month-pager-panel-width);
+  flex: 0 0 100%;
+  min-width: 100%;
+  max-width: 100%;
   overflow: hidden;
-  opacity: 0.72;
-  transform: scale(0.985);
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
+  opacity: 1;
 }
 
 .month-pager-panel.is-current {
   opacity: 1;
-  transform: scale(1);
 }
 
 .month-pager-panel:not(.is-current) {
@@ -279,17 +271,4 @@
   background: var(--accent);
 }
 
-@media screen and (max-width: 640px) {
-  .month-pager-viewport {
-    --month-pager-peek: 26px;
-    --month-pager-gap: 10px;
-  }
-}
-
-@media screen and (max-width: 420px) {
-  .month-pager-viewport {
-    --month-pager-peek: 22px;
-    --month-pager-gap: 8px;
-  }
-}
 

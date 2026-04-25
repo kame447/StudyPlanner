@@ -47,8 +47,6 @@ interface MonthViewProps {
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
 
-const MONTH_PAGER_DEFAULT_GAP = 12;
-const MONTH_PAGER_DEFAULT_PEEK = 28;
 const MONTH_PAGER_DRAG_LIMIT_RATIO = 0.92;
 const MONTH_PAGER_DRAG_THRESHOLD_RATIO = 0.22;
 const MONTH_PAGER_MAX_DRAG_THRESHOLD = 96;
@@ -176,15 +174,7 @@ export function MonthView({
       return pagerStepRef.current;
     }
 
-    const computedStyle = window.getComputedStyle(viewport);
-    const gap =
-      Number.parseFloat(computedStyle.getPropertyValue('--month-pager-gap')) ||
-      MONTH_PAGER_DEFAULT_GAP;
-    const peek =
-      Number.parseFloat(computedStyle.getPropertyValue('--month-pager-peek')) ||
-      MONTH_PAGER_DEFAULT_PEEK;
-    const panelWidth = Math.max(viewport.clientWidth - peek * 2, 0);
-    const nextStep = panelWidth + gap;
+    const nextStep = viewport.clientWidth;
 
     pagerStepRef.current = nextStep;
     return nextStep;
@@ -692,6 +682,10 @@ export function MonthView({
 
   const pagerOffsetTerm =
     pagerOffset >= 0 ? `+ ${pagerOffset}px` : `- ${Math.abs(pagerOffset)}px`;
+  const pagerTransform =
+    pagerOffset === 0
+      ? 'translate3d(-100%, 0, 0)'
+      : `translate3d(calc(-100% ${pagerOffsetTerm}), 0, 0)`;
 
   return (
     <section className="panel swipe-view">
@@ -775,7 +769,7 @@ export function MonthView({
             .join(' ')}
           onTransitionEnd={handlePagerTransitionEnd}
           style={{
-            transform: `translate3d(calc(-1 * (var(--month-pager-panel-width) + var(--month-pager-gap)) + var(--month-pager-peek) ${pagerOffsetTerm}), 0, 0)`,
+            transform: pagerTransform,
           }}
         >
           {renderMonthPanel(addMonths(monthDate, -1), 'previous')}
