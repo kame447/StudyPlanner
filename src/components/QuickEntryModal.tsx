@@ -218,7 +218,7 @@ export function QuickEntryModal({
           type,
           estimatedMinutes,
           dueDate: dueDate || null,
-          dueTime: dueTime || null,
+          dueTime: dueDate ? dueTime || null : null,
           memo: memo.trim(),
         });
       }
@@ -373,7 +373,13 @@ export function QuickEntryModal({
                         <input
                           type="date"
                           value={dueDate}
-                          onChange={(event) => setDueDate(event.target.value)}
+                          onChange={(event) => {
+                            setDueDate(event.target.value);
+
+                            if (!event.target.value) {
+                              setDueTime('');
+                            }
+                          }}
                         />
                       </label>
                       <label className="field">
@@ -381,6 +387,7 @@ export function QuickEntryModal({
                         <input
                           type="time"
                           value={dueTime}
+                          disabled={!dueDate}
                           onChange={(event) => setDueTime(event.target.value)}
                         />
                       </label>

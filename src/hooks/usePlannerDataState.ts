@@ -718,6 +718,7 @@ export function usePlannerDataState({
 
     const currentTodo = todos.find((todo) => todo.id === targetTodoId);
     const now = new Date().toISOString();
+    const dueDate = draft.dueDate || null;
     const nextTodo: TodoTask = {
       id: currentTodo?.id ?? createId('todo'),
       ...draft,
@@ -727,10 +728,10 @@ export function usePlannerDataState({
         typeof draft.estimatedMinutes === 'number'
           ? Math.max(0, Math.round(draft.estimatedMinutes))
           : null,
-      dueDate: draft.dueDate || null,
-      dueTime: draft.dueTime || null,
+      dueDate,
+      dueTime: dueDate ? draft.dueTime || null : null,
       memo: draft.memo.trim(),
-      status: currentTodo?.status ?? 'open',
+      status: draft.status ?? currentTodo?.status ?? 'open',
       scheduledPlanId: currentTodo?.scheduledPlanId ?? null,
       createdAt: currentTodo?.createdAt ?? now,
       updatedAt: now,

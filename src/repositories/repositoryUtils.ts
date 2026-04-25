@@ -125,6 +125,11 @@ export function normalizeActualRecord(
 }
 
 export function normalizeTodoRecord(todo: TodoTask): TodoTask {
+  const dueDate =
+    typeof todo.dueDate === 'string' && todo.dueDate.length > 0
+      ? todo.dueDate
+      : null;
+
   return {
     ...todo,
     title: todo.title?.trim() ?? '',
@@ -134,11 +139,9 @@ export function normalizeTodoRecord(todo: TodoTask): TodoTask {
       typeof todo.estimatedMinutes === 'number' && Number.isFinite(todo.estimatedMinutes)
         ? Math.max(0, Math.round(todo.estimatedMinutes))
         : null,
-    dueDate: typeof todo.dueDate === 'string' && todo.dueDate.length > 0
-      ? todo.dueDate
-      : null,
+    dueDate,
     dueTime:
-      typeof todo.dueTime === 'string' && /^\d{2}:\d{2}$/.test(todo.dueTime)
+      dueDate && typeof todo.dueTime === 'string' && /^\d{2}:\d{2}$/.test(todo.dueTime)
         ? todo.dueTime
         : null,
     memo: todo.memo ?? '',

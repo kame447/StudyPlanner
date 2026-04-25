@@ -225,7 +225,9 @@ export default function App() {
 
         {viewMode === 'todo' ? (
           <TodoView
+            userId={user.id}
             todos={todos}
+            onSaveTodo={saveTodo}
             onDeleteTodo={deleteTodo}
           />
         ) : null}
