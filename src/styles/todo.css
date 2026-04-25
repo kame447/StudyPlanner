@@ -3,6 +3,15 @@
   gap: 14px;
 }
 
+.todo-view {
+  display: grid;
+  gap: 18px;
+}
+
+.todo-view-header {
+  align-items: center;
+}
+
 .todo-panel-header {
   align-items: center;
 }
@@ -10,6 +19,17 @@
 .todo-form {
   display: grid;
   gap: 12px;
+}
+
+.todo-view-form {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.todo-title-field {
+  max-width: 720px;
 }
 
 .todo-form-grid {
@@ -25,6 +45,46 @@
   gap: 8px;
 }
 
+.todo-section-list {
+  display: grid;
+  gap: 14px;
+}
+
+.todo-status-section {
+  display: grid;
+  gap: 8px;
+}
+
+.todo-status-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.todo-status-section-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.todo-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.todo-view-list {
+  gap: 7px;
+}
+
 .todo-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -34,6 +94,10 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+
+.todo-view-item {
+  padding: 9px 11px;
 }
 
 .todo-item-main {
@@ -111,6 +175,12 @@
 .todo-status-done {
   background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
   color: var(--accent-strong);
+}
+
+.todo-status-archived {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-muted);
 }
 
 .todo-type-tag {

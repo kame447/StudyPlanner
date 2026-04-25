@@ -9,6 +9,7 @@ import { QuickEntryModal } from './components/QuickEntryModal';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ReportView } from './components/ReportView';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
+import { TodoView } from './components/TodoView';
 import { UserAvatar } from './components/UserAvatar';
 import { WeekView } from './components/WeekView';
 import { createEmptyDayNoteDraft } from './domain/planner';
@@ -35,6 +36,7 @@ export default function App() {
     plans,
     actuals,
     monthEvents,
+    todos,
     viewMode,
     selectedDate,
     monthDate,
@@ -64,6 +66,7 @@ export default function App() {
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
+    deleteTodo,
     selectDate,
     changeMonth,
     openWeek,
@@ -144,6 +147,13 @@ export default function App() {
             日
           </button>
           <button
+            className={viewMode === 'todo' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('todo')}
+            type="button"
+          >
+            Todo
+          </button>
+          <button
             className={viewMode === 'report' ? 'segment active' : 'segment'}
             onClick={() => setViewMode('report')}
             type="button"
@@ -210,6 +220,15 @@ export default function App() {
             onDeleteActual={deleteActual}
             onSaveMonthEvent={saveMonthEvent}
             onDeleteMonthEvent={deleteMonthEvent}
+          />
+        ) : null}
+
+        {viewMode === 'todo' ? (
+          <TodoView
+            userId={user.id}
+            todos={todos}
+            onSaveTodo={saveTodo}
+            onDeleteTodo={deleteTodo}
           />
         ) : null}
 
