@@ -158,6 +158,7 @@ interface UsePlannerDataStateResult {
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
+  scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
   deleteTodo: (todo: TodoTask) => Promise<void>;
   saveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
@@ -569,8 +570,39 @@ export function usePlannerDataState({
 
     try {
       await plannerRepository.deletePlan(userId, plan.id);
+      const linkedTodo =
+        plan.sourceType === 'todo' && plan.sourceId
+          ? todos.find(
+              (todo) =>
+                todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
+            )
+          : null;
+
+      if (linkedTodo) {
+        await plannerRepository.upsertTodo({
+          ...linkedTodo,
+          status: 'open',
+          scheduledPlanId: null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
       setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
       setActuals((current) => removeByKey(current, plan.id, (item) => item.planId));
+      if (linkedTodo) {
+        setTodos((current) =>
+          upsertByKey(
+            current,
+            {
+              ...linkedTodo,
+              status: 'open',
+              scheduledPlanId: null,
+              updatedAt: new Date().toISOString(),
+            },
+            (todo) => todo.id,
+          ),
+        );
+      }
       closePlanEditor();
       showNotice('予定を削除しました。');
     } catch (error) {
@@ -732,7 +764,10 @@ export function usePlannerDataState({
       dueTime: dueDate ? draft.dueTime || null : null,
       memo: draft.memo.trim(),
       status: draft.status ?? currentTodo?.status ?? 'open',
-      scheduledPlanId: currentTodo?.scheduledPlanId ?? null,
+      scheduledPlanId:
+        draft.scheduledPlanId !== undefined
+          ? draft.scheduledPlanId
+          : currentTodo?.scheduledPlanId ?? null,
       createdAt: currentTodo?.createdAt ?? now,
       updatedAt: now,
     };
@@ -743,6 +778,65 @@ export function usePlannerDataState({
       showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
     } catch (error) {
       showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function scheduleTodoAsPlan(todo: TodoTask, draft: PlanDraft): Promise<Plan> {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+
+    const nextPlan = createPlanFromDraft(
+      {
+        ...draft,
+        sourceType: 'todo',
+        sourceId: todo.id,
+      },
+    );
+
+    const dueDate = todo.dueDate || null;
+    const nextTodo: TodoTask = {
+      ...todo,
+      status: 'scheduled',
+      scheduledPlanId: nextPlan.id,
+      dueDate,
+      dueTime: dueDate ? todo.dueTime ?? null : null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    let didCreatePlan = false;
+
+    try {
+      await plannerRepository.upsertPlan(nextPlan);
+      didCreatePlan = true;
+      await plannerRepository.upsertTodo(nextTodo);
+      setPlans((current) =>
+        sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
+      );
+      setTodos((current) => upsertByKey(current, nextTodo, (item) => item.id));
+      setSelectedDate(nextPlan.date);
+      setMonthDate(startOfMonth(nextPlan.date));
+      showNotice('Todoを予定化しました。', 'success');
+      return nextPlan;
+    } catch (error) {
+      if (didCreatePlan) {
+        try {
+          await plannerRepository.deletePlan(userId, nextPlan.id);
+        } catch (rollbackError) {
+          console.error('[TodoSchedule] failed to rollback created plan', {
+            planId: nextPlan.id,
+            error: getErrorDiagnostics(rollbackError),
+          });
+        }
+      }
+
+      showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
       throw error;
     }
   }
@@ -890,6 +984,7 @@ export function usePlannerDataState({
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
+    scheduleTodoAsPlan,
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,

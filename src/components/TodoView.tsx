@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { resolveQuickEntryEndTime } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS, getPlanTypeLabel } from '../lib/plans';
 import type {
+  PlanDraft,
   PlanType,
   TodoStatus,
   TodoTask,
@@ -9,15 +11,34 @@ import type {
 
 type TodoSortDirection = 'asc' | 'desc';
 type TodoSectionKey = 'due' | 'unset' | 'done';
+type DurationOptionValue = number | null | 'custom';
 
 interface TodoViewProps {
   userId: string;
+  selectedDate: string;
   todos: TodoTask[];
   onSaveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
+  onScheduleTodo: (todo: TodoTask, draft: PlanDraft) => Promise<unknown>;
   onDeleteTodo: (todo: TodoTask) => Promise<void>;
 }
 
 const TODO_INITIAL_VISIBLE_COUNT = 5;
+
+const SCHEDULE_DURATION_OPTIONS: Array<{
+  value: DurationOptionValue;
+  label: string;
+}> = [
+  { value: null, label: 'なし' },
+  { value: 15, label: '15分' },
+  { value: 30, label: '30分' },
+  { value: 45, label: '45分' },
+  { value: 60, label: '60分' },
+  { value: 90, label: '90分' },
+  { value: 120, label: '120分' },
+  { value: 150, label: '150分' },
+  { value: 180, label: '180分' },
+  { value: 'custom', label: '自由' },
+];
 
 const TODO_STATUS_LABELS: Record<TodoStatus, string> = {
   open: '未完了',
@@ -43,7 +64,16 @@ function createTodoDraftFromTask(todo: TodoTask): TodoTaskDraft {
     dueTime: todo.dueDate ? todo.dueTime ?? null : null,
     memo: todo.memo,
     status: todo.status,
+    scheduledPlanId: todo.scheduledPlanId,
   };
+}
+
+function todayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = `${now.getMonth() + 1}`.padStart(2, '0');
+  const day = `${now.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function getDueSortValue(todo: TodoTask): string {
@@ -95,8 +125,10 @@ function formatTodoDue(todo: TodoTask): string {
 
 export function TodoView({
   userId,
+  selectedDate,
   todos,
   onSaveTodo,
+  onScheduleTodo,
   onDeleteTodo,
 }: TodoViewProps) {
   const [sortDirection, setSortDirection] = useState<TodoSortDirection>('asc');
@@ -109,6 +141,14 @@ export function TodoView({
   });
   const [editingTodo, setEditingTodo] = useState<TodoTask | null>(null);
   const [editDraft, setEditDraft] = useState<TodoTaskDraft | null>(null);
+  const [schedulingTodo, setSchedulingTodo] = useState<TodoTask | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(selectedDate || todayIsoDate());
+  const [scheduleStartTime, setScheduleStartTime] = useState('19:00');
+  const [scheduleMinutes, setScheduleMinutes] = useState<number | null>(null);
+  const [isCustomScheduleDuration, setIsCustomScheduleDuration] =
+    useState(false);
+  const [customScheduleDurationInput, setCustomScheduleDurationInput] =
+    useState('');
   const [savingTodoId, setSavingTodoId] = useState<string | null>(null);
 
   const groupedTodos = useMemo(() => {
@@ -162,6 +202,36 @@ export function TodoView({
     setEditDraft(null);
   }
 
+  function openScheduleModal(todo: TodoTask) {
+    setSchedulingTodo(todo);
+    setScheduleDate(todo.dueDate ?? selectedDate ?? todayIsoDate());
+    setScheduleStartTime('19:00');
+    setScheduleMinutes(todo.estimatedMinutes);
+    setIsCustomScheduleDuration(
+      typeof todo.estimatedMinutes === 'number' &&
+        !SCHEDULE_DURATION_OPTIONS.some(
+          (option) => option.value === todo.estimatedMinutes,
+        ),
+    );
+    setCustomScheduleDurationInput(
+      typeof todo.estimatedMinutes === 'number' &&
+        !SCHEDULE_DURATION_OPTIONS.some(
+          (option) => option.value === todo.estimatedMinutes,
+        )
+        ? String(todo.estimatedMinutes)
+        : '',
+    );
+  }
+
+  function closeScheduleModal() {
+    setSchedulingTodo(null);
+    setScheduleDate(selectedDate || todayIsoDate());
+    setScheduleStartTime('19:00');
+    setScheduleMinutes(null);
+    setIsCustomScheduleDuration(false);
+    setCustomScheduleDurationInput('');
+  }
+
   async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -198,9 +268,72 @@ export function TodoView({
           ...createTodoDraftFromTask(todo),
           userId,
           status,
+          scheduledPlanId: status === 'open' ? null : todo.scheduledPlanId,
         },
         todo.id,
       );
+    } finally {
+      setSavingTodoId(null);
+    }
+  }
+
+  function applyScheduleDuration(value: DurationOptionValue) {
+    if (value === 'custom') {
+      setIsCustomScheduleDuration(true);
+
+      const nextMinutes = Number(customScheduleDurationInput);
+      setScheduleMinutes(
+        Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
+      );
+      return;
+    }
+
+    setIsCustomScheduleDuration(false);
+    setCustomScheduleDurationInput('');
+    setScheduleMinutes(value);
+  }
+
+  function updateCustomScheduleDuration(value: string) {
+    setCustomScheduleDurationInput(value);
+
+    const nextMinutes = Number(value);
+    setScheduleMinutes(
+      Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
+    );
+  }
+
+  async function handleScheduleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (
+      !schedulingTodo ||
+      !schedulingTodo.title.trim() ||
+      !scheduleDate ||
+      !scheduleStartTime ||
+      scheduleMinutes === null
+    ) {
+      return;
+    }
+
+    setSavingTodoId(schedulingTodo.id);
+    try {
+      await onScheduleTodo(schedulingTodo, {
+        userId,
+        title: schedulingTodo.title.trim(),
+        subject: schedulingTodo.subject.trim(),
+        date: scheduleDate,
+        startTime: scheduleStartTime,
+        endTime: resolveQuickEntryEndTime(scheduleStartTime, scheduleMinutes),
+        repeat: 'none',
+        repeatUntil: null,
+        excludedDates: [],
+        recurrenceRules: [],
+        type: schedulingTodo.type,
+        memo: schedulingTodo.memo.trim(),
+        sourceType: 'todo',
+        sourceId: schedulingTodo.id,
+      });
+      closeScheduleModal();
     } finally {
       setSavingTodoId(null);
     }
@@ -231,6 +364,9 @@ export function TodoView({
               </span>
             ) : null}
             <span className="todo-tag todo-date-tag">{formatTodoDue(todo)}</span>
+            {todo.status === 'scheduled' && todo.scheduledPlanId ? (
+              <span className="todo-tag todo-scheduled-tag">予定化済み</span>
+            ) : null}
           </div>
           {todo.memo ? <p>{todo.memo}</p> : null}
         </div>
@@ -246,6 +382,16 @@ export function TodoView({
             <button
               className="ghost-button todo-action-button"
               disabled={isBusy}
+              onClick={() => openScheduleModal(todo)}
+              type="button"
+            >
+              予定にする
+            </button>
+          ) : null}
+          {todo.status === 'open' || todo.status === 'scheduled' ? (
+            <button
+              className="ghost-button todo-action-button"
+              disabled={isBusy}
               onClick={() => {
                 void updateTodoStatus(todo, 'done');
               }}
@@ -254,7 +400,7 @@ export function TodoView({
               完了
             </button>
           ) : null}
-          {todo.status === 'done' ? (
+          {todo.status === 'done' || todo.status === 'scheduled' ? (
             <button
               className="ghost-button todo-action-button"
               disabled={isBusy}
@@ -461,6 +607,108 @@ export function TodoView({
               <button
                 className="primary-button"
                 disabled={savingTodoId === editingTodo.id || !editDraft.title.trim()}
+                type="submit"
+              >
+                保存
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {schedulingTodo ? (
+        <div className="overlay modal-overlay" onClick={closeScheduleModal}>
+          <form
+            className="modal-card todo-edit-modal todo-schedule-modal"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={handleScheduleSubmit}
+          >
+            <div className="section-header todo-edit-header">
+              <div>
+                <h2>予定にする</h2>
+                <p>{schedulingTodo.title}</p>
+              </div>
+            </div>
+
+            <div className="form-grid compact todo-form-grid">
+              <label className="field">
+                <span>日付</span>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(event) => setScheduleDate(event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>開始時刻</span>
+                <input
+                  type="time"
+                  value={scheduleStartTime}
+                  onChange={(event) => setScheduleStartTime(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <section className="todo-schedule-duration">
+              <div className="todo-schedule-duration-head">
+                <h3>所要時間</h3>
+              </div>
+              <div className="quick-entry-chip-row quick-entry-duration-grid">
+                {SCHEDULE_DURATION_OPTIONS.map((option) => {
+                  const isActive =
+                    option.value === 'custom'
+                      ? isCustomScheduleDuration
+                      : !isCustomScheduleDuration && scheduleMinutes === option.value;
+
+                  return (
+                    <button
+                      className={
+                        isActive ? 'quick-entry-chip active' : 'quick-entry-chip'
+                      }
+                      key={option.label}
+                      onClick={() => applyScheduleDuration(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {isCustomScheduleDuration ? (
+                <label className="field quick-entry-custom-duration">
+                  <span>自由入力（分）</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={customScheduleDurationInput}
+                    onChange={(event) =>
+                      updateCustomScheduleDuration(event.target.value)
+                    }
+                    placeholder="75"
+                  />
+                </label>
+              ) : null}
+            </section>
+
+            <div className="row-actions todo-edit-actions">
+              <button
+                className="ghost-button"
+                onClick={closeScheduleModal}
+                type="button"
+              >
+                キャンセル
+              </button>
+              <button
+                className="primary-button"
+                disabled={
+                  savingTodoId === schedulingTodo.id ||
+                  !schedulingTodo.title.trim() ||
+                  !scheduleDate ||
+                  !scheduleStartTime ||
+                  scheduleMinutes === null
+                }
                 type="submit"
               >
                 保存

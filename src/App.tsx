@@ -66,6 +66,7 @@ export default function App() {
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
+    scheduleTodoAsPlan,
     deleteTodo,
     selectDate,
     changeMonth,
@@ -226,8 +227,10 @@ export default function App() {
         {viewMode === 'todo' ? (
           <TodoView
             userId={user.id}
+            selectedDate={selectedDate}
             todos={todos}
             onSaveTodo={saveTodo}
+            onScheduleTodo={scheduleTodoAsPlan}
             onDeleteTodo={deleteTodo}
           />
         ) : null}

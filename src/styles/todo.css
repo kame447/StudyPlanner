@@ -196,6 +196,12 @@
   border-color: var(--border);
 }
 
+.todo-scheduled-tag {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border) 74%);
+  color: var(--accent-strong);
+}
+
 .todo-item-actions {
   display: flex;
   align-items: center;
@@ -226,12 +232,34 @@
   gap: 14px;
 }
 
+.todo-schedule-modal {
+  width: min(520px, 100%);
+}
+
 .todo-edit-header {
   align-items: center;
 }
 
+.todo-edit-header p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .todo-edit-actions {
   justify-content: flex-end;
+}
+
+.todo-schedule-duration {
+  display: grid;
+  gap: 8px;
+}
+
+.todo-schedule-duration-head h3 {
+  margin: 0;
+  font-size: 0.9rem;
 }
 
 .todo-empty {

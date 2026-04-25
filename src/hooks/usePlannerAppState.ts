@@ -65,6 +65,7 @@ interface PlannerAppState {
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
+  scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
   deleteTodo: (todo: TodoTask) => Promise<void>;
   saveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
@@ -123,6 +124,7 @@ export function usePlannerAppState(): PlannerAppState {
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
+    scheduleTodoAsPlan,
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,
@@ -215,6 +217,7 @@ export function usePlannerAppState(): PlannerAppState {
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
+    scheduleTodoAsPlan,
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,

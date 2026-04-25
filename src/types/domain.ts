@@ -215,6 +215,7 @@ export interface TodoTaskDraft {
   dueTime?: string | null;
   memo: string;
   status?: TodoStatus;
+  scheduledPlanId?: string | null;
 }
 
 export interface ScheduleTemplate {
