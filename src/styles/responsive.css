@@ -412,6 +412,11 @@
     width: min(480px, calc(100vw - 16px));
   }
 
+  .app-toast-layer.bottom {
+    top: auto;
+    bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+
   .app-toast {
     padding: 11px 13px;
     border-radius: 14px;
@@ -423,6 +428,12 @@
     width: 24px;
     height: 24px;
     font-size: 0.8rem;
+  }
+
+  .app-toast-action {
+    min-height: 28px;
+    padding: 5px 9px;
+    font-size: 0.72rem;
   }
 
   .loading-screen,
@@ -1152,6 +1163,11 @@
     width: calc(100vw - 14px);
   }
 
+  .app-toast-layer.bottom {
+    top: auto;
+    bottom: calc(106px + env(safe-area-inset-bottom, 0px));
+  }
+
   .app-toast {
     padding: 9px 11px;
     border-radius: 12px;
@@ -1163,6 +1179,12 @@
     width: 22px;
     height: 22px;
     font-size: 0.74rem;
+  }
+
+  .app-toast-action {
+    min-height: 26px;
+    padding: 4px 8px;
+    font-size: 0.66rem;
   }
 
   .loading-screen,

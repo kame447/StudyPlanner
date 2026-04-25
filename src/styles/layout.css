@@ -442,6 +442,11 @@
   pointer-events: none;
 }
 
+.app-toast-layer.bottom {
+  top: auto;
+  bottom: calc(118px + env(safe-area-inset-bottom, 0px));
+}
+
 .app-toast {
   display: flex;
   align-items: center;
@@ -454,6 +459,25 @@
 
 .app-toast span {
   min-width: 0;
+}
+
+.app-toast-action {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--button-ghost-border);
+  border-radius: 999px;
+  background: var(--button-ghost-bg);
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.app-toast-action:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
 }
 
 .app-toast-close {

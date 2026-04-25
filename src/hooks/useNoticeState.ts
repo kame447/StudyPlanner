@@ -5,9 +5,23 @@ export type NoticeTone = 'info' | 'success' | 'error';
 export interface NoticeState {
   tone: NoticeTone;
   text: string;
+  actionLabel?: string;
+  onAction?: () => void | Promise<void>;
+  placement?: 'top' | 'bottom';
 }
 
-export type ShowNotice = (text: string, tone?: NoticeTone) => void;
+export interface ShowNoticeOptions {
+  actionLabel?: string;
+  onAction?: () => void | Promise<void>;
+  durationMs?: number;
+  placement?: 'top' | 'bottom';
+}
+
+export type ShowNotice = (
+  text: string,
+  tone?: NoticeTone,
+  options?: ShowNoticeOptions,
+) => void;
 
 interface UseNoticeStateResult {
   notice: NoticeState | null;
@@ -28,17 +42,23 @@ export function useNoticeState(): UseNoticeStateResult {
     setNotice(null);
   }, []);
 
-  const showNotice = useCallback<ShowNotice>((text, tone = 'info') => {
+  const showNotice = useCallback<ShowNotice>((text, tone = 'info', options) => {
     if (dismissTimerRef.current !== null) {
       window.clearTimeout(dismissTimerRef.current);
     }
 
-    setNotice({ text, tone });
+    setNotice({
+      text,
+      tone,
+      actionLabel: options?.actionLabel,
+      onAction: options?.onAction,
+      placement: options?.placement,
+    });
 
     dismissTimerRef.current = window.setTimeout(() => {
       setNotice(null);
       dismissTimerRef.current = null;
-    }, 3600);
+    }, options?.durationMs ?? 3600);
   }, []);
 
   useEffect(

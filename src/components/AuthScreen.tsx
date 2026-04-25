@@ -90,9 +90,20 @@ export function AuthScreen({
   return (
     <main className="auth-shell auth-shell-modern">
       {notice ? (
-        <div className="app-toast-layer" aria-live="polite">
+        <div className={`app-toast-layer ${notice.placement ?? 'top'}`} aria-live="polite">
           <div className={`app-notice app-toast ${notice.tone}`}>
             <span>{notice.text}</span>
+            {notice.actionLabel && notice.onAction ? (
+              <button
+                className="app-toast-action"
+                onClick={() => {
+                  void notice.onAction?.();
+                }}
+                type="button"
+              >
+                {notice.actionLabel}
+              </button>
+            ) : null}
             <button
               className="app-toast-close"
               onClick={onDismissNotice}

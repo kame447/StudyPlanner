@@ -555,6 +555,22 @@ export function usePlannerDataState({
     }
   }
 
+  function showDeleteUndoNotice(onUndo: () => Promise<void>) {
+    showNotice('削除しました', 'info', {
+      actionLabel: '元に戻す',
+      durationMs: 8000,
+      placement: 'bottom',
+      onAction: async () => {
+        try {
+          await onUndo();
+          showNotice('元に戻しました。', 'success');
+        } catch (error) {
+          showNotice(resolveErrorMessage(error, '復元できませんでした。'), 'error');
+        }
+      },
+    });
+  }
+
   async function deletePlan(plan: Plan) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
@@ -568,16 +584,17 @@ export function usePlannerDataState({
       return;
     }
 
+    const linkedTodo =
+      plan.sourceType === 'todo' && plan.sourceId
+        ? todos.find(
+            (todo) =>
+              todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
+          )
+        : null;
+    const linkedActuals = actuals.filter((actual) => actual.planId === plan.id);
+
     try {
       await plannerRepository.deletePlan(userId, plan.id);
-      const linkedTodo =
-        plan.sourceType === 'todo' && plan.sourceId
-          ? todos.find(
-              (todo) =>
-                todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
-            )
-          : null;
-
       if (linkedTodo) {
         await plannerRepository.upsertTodo({
           ...linkedTodo,
@@ -604,7 +621,21 @@ export function usePlannerDataState({
         );
       }
       closePlanEditor();
-      showNotice('予定を削除しました。');
+      showDeleteUndoNotice(async () => {
+        await plannerRepository.upsertPlan(plan);
+
+        if (linkedTodo) {
+          await plannerRepository.upsertTodo(linkedTodo);
+        }
+
+        setPlans((current) => sortAndUpsertPlans(current, [plan]));
+        if (linkedActuals.length > 0) {
+          setActuals((current) => upsertActualsById(current, linkedActuals));
+        }
+        if (linkedTodo) {
+          setTodos((current) => upsertByKey(current, linkedTodo, (todo) => todo.id));
+        }
+      });
     } catch (error) {
       showNotice(
         resolveErrorMessage(error, '予定を削除できませんでした。'),
@@ -728,7 +759,14 @@ export function usePlannerDataState({
       setMonthEvents((current) =>
         sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
       );
-      showNotice('月の主要予定を削除しました。');
+      showDeleteUndoNotice(async () => {
+        await plannerRepository.upsertMonthEvent(monthEvent);
+        setMonthEvents((current) =>
+          sortMonthEvents(
+            upsertByKey(current, monthEvent, (item) => item.id),
+          ),
+        );
+      });
     } catch (error) {
       showNotice(
         resolveErrorMessage(error, '月の主要予定を削除できませんでした。'),
@@ -849,7 +887,10 @@ export function usePlannerDataState({
     try {
       await plannerRepository.deleteTodo(userId, todo.id);
       setTodos((current) => removeByKey(current, todo.id, (item) => item.id));
-      showNotice('Todoを削除しました。');
+      showDeleteUndoNotice(async () => {
+        await plannerRepository.upsertTodo(todo);
+        setTodos((current) => upsertByKey(current, todo, (item) => item.id));
+      });
     } catch (error) {
       showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
       throw error;

@@ -165,9 +165,23 @@ export default function App() {
       </div>
 
       {notice ? (
-        <div className="app-toast-layer print-hide" aria-live="polite">
+        <div
+          className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
+          aria-live="polite"
+        >
           <div className={`app-notice app-toast ${notice.tone}`}>
             <span>{notice.text}</span>
+            {notice.actionLabel && notice.onAction ? (
+              <button
+                className="app-toast-action"
+                onClick={() => {
+                  void notice.onAction?.();
+                }}
+                type="button"
+              >
+                {notice.actionLabel}
+              </button>
+            ) : null}
             <button
               className="app-toast-close"
               onClick={dismissNotice}
