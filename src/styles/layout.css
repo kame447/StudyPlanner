@@ -32,6 +32,12 @@
 
 .app-view-switcher .segmented-control {
   justify-content: center;
+  max-width: 100%;
+}
+
+.app-view-switcher .segment {
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .app-action-toolbar {

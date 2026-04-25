@@ -564,12 +564,18 @@
     gap: 6px;
   }
 
+  .app-view-switcher .segmented-control {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
   .toolbar .segment {
     justify-content: center;
     min-width: 0;
     padding-inline: 6px;
     padding-block: 8px;
     font-size: 0.68rem;
+    white-space: nowrap;
+    word-break: keep-all;
   }
 
   .toolbar .row-actions {

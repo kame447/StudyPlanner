@@ -197,6 +197,7 @@ export interface TodoTask {
   type: PlanType;
   estimatedMinutes: number | null;
   dueDate: string | null;
+  dueTime?: string | null;
   memo: string;
   status: TodoStatus;
   scheduledPlanId: string | null;
@@ -211,6 +212,7 @@ export interface TodoTaskDraft {
   type: PlanType;
   estimatedMinutes: number | null;
   dueDate: string | null;
+  dueTime?: string | null;
   memo: string;
 }
 

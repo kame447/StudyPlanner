@@ -1,11 +1,9 @@
-import { useMemo, useState, type FormEvent } from 'react';
-import { PLAN_TYPE_OPTIONS, getPlanTypeLabel } from '../lib/plans';
-import type { PlanType, TodoStatus, TodoTask, TodoTaskDraft } from '../types/domain';
+import { useMemo } from 'react';
+import { getPlanTypeLabel } from '../lib/plans';
+import type { TodoStatus, TodoTask } from '../types/domain';
 
 interface TodoViewProps {
-  userId: string;
   todos: TodoTask[];
-  onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onDeleteTodo: (todo: TodoTask) => Promise<void>;
 }
 
@@ -23,18 +21,6 @@ const TODO_STATUS_LABELS: Record<TodoStatus, string> = {
   archived: 'アーカイブ',
 };
 
-function createEmptyTodoDraft(userId: string): TodoTaskDraft {
-  return {
-    userId,
-    title: '',
-    subject: '',
-    type: 'study',
-    estimatedMinutes: null,
-    dueDate: null,
-    memo: '',
-  };
-}
-
 function compareTodos(left: TodoTask, right: TodoTask): number {
   const leftDueDate = left.dueDate ?? '9999-12-31';
   const rightDueDate = right.dueDate ?? '9999-12-31';
@@ -44,6 +30,14 @@ function compareTodos(left: TodoTask, right: TodoTask): number {
     return dueDateDelta;
   }
 
+  const leftDueTime = left.dueTime ?? '23:59';
+  const rightDueTime = right.dueTime ?? '23:59';
+  const dueTimeDelta = leftDueTime.localeCompare(rightDueTime);
+
+  if (dueTimeDelta !== 0) {
+    return dueTimeDelta;
+  }
+
   return right.updatedAt.localeCompare(left.updatedAt);
 }
 
@@ -51,16 +45,23 @@ function getTodoStatusClass(status: TodoStatus): string {
   return `todo-lozenge todo-status-${status}`;
 }
 
-export function TodoView({
-  userId,
-  todos,
-  onSaveTodo,
-  onDeleteTodo,
-}: TodoViewProps) {
-  const [draft, setDraft] = useState<TodoTaskDraft>(() =>
-    createEmptyTodoDraft(userId),
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
+function formatTodoDue(todo: TodoTask): string | null {
+  if (todo.dueDate && todo.dueTime) {
+    return `期限 ${todo.dueDate} ${todo.dueTime}`;
+  }
+
+  if (todo.dueDate) {
+    return `期限 ${todo.dueDate}`;
+  }
+
+  if (todo.dueTime) {
+    return `締切 ${todo.dueTime}`;
+  }
+
+  return null;
+}
+
+export function TodoView({ todos, onDeleteTodo }: TodoViewProps) {
   const todosByStatus = useMemo(() => {
     return TODO_STATUS_SECTIONS.reduce(
       (groups, section) => {
@@ -73,39 +74,9 @@ export function TodoView({
     );
   }, [todos]);
 
-  function updateDraft<K extends keyof TodoTaskDraft>(
-    key: K,
-    value: TodoTaskDraft[K],
-  ) {
-    setDraft((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!draft.title.trim()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await onSaveTodo({
-        ...draft,
-        userId,
-        title: draft.title.trim(),
-        subject: draft.subject.trim(),
-        memo: draft.memo.trim(),
-      });
-      setDraft(createEmptyTodoDraft(userId));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   function renderTodo(todo: TodoTask) {
+    const dueLabel = formatTodoDue(todo);
+
     return (
       <article className="todo-item todo-view-item" key={todo.id}>
         <div className="todo-item-main">
@@ -127,8 +98,8 @@ export function TodoView({
                 {todo.estimatedMinutes}分
               </span>
             ) : null}
-            {todo.dueDate ? (
-              <span className="todo-tag todo-date-tag">期限 {todo.dueDate}</span>
+            {dueLabel ? (
+              <span className="todo-tag todo-date-tag">{dueLabel}</span>
             ) : null}
           </div>
           {todo.memo ? <p>{todo.memo}</p> : null}
@@ -153,90 +124,6 @@ export function TodoView({
           <h2>Todo</h2>
         </div>
       </div>
-
-      <form className="todo-form todo-view-form" onSubmit={handleSubmit}>
-        <label className="field todo-title-field">
-          <span>タイトル</span>
-          <input
-            value={draft.title}
-            onChange={(event) => updateDraft('title', event.target.value)}
-            placeholder="未配置タスク"
-          />
-        </label>
-
-        <div className="form-grid compact todo-form-grid">
-          <label className="field">
-            <span>教科</span>
-            <input
-              value={draft.subject}
-              onChange={(event) => updateDraft('subject', event.target.value)}
-              placeholder="数学"
-            />
-          </label>
-
-          <label className="field">
-            <span>種別</span>
-            <select
-              value={draft.type}
-              onChange={(event) =>
-                updateDraft('type', event.target.value as PlanType)
-              }
-            >
-              {PLAN_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>所要時間</span>
-            <input
-              type="number"
-              min="0"
-              step="5"
-              value={draft.estimatedMinutes ?? ''}
-              onChange={(event) =>
-                updateDraft(
-                  'estimatedMinutes',
-                  event.target.value ? Number(event.target.value) : null,
-                )
-              }
-            />
-          </label>
-
-          <label className="field">
-            <span>締切</span>
-            <input
-              type="date"
-              value={draft.dueDate ?? ''}
-              onChange={(event) =>
-                updateDraft('dueDate', event.target.value || null)
-              }
-            />
-          </label>
-        </div>
-
-        <label className="field">
-          <span>メモ</span>
-          <textarea
-            value={draft.memo}
-            onChange={(event) => updateDraft('memo', event.target.value)}
-            rows={2}
-          />
-        </label>
-
-        <div className="row-actions todo-form-actions">
-          <button
-            className="primary-button"
-            disabled={isSubmitting || !draft.title.trim()}
-            type="submit"
-          >
-            Todoを追加
-          </button>
-        </div>
-      </form>
 
       <div className="todo-section-list">
         {TODO_STATUS_SECTIONS.map((section) => {

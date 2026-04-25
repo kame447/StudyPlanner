@@ -18,6 +18,7 @@ import type {
 
 type QuickEntryMode = 'later' | 'scheduled' | 'repeat';
 type QuickEntryInputMethod = 'ai' | 'manual';
+type DurationOptionValue = number | null | 'custom';
 
 interface QuickEntryModalProps {
   userId: string;
@@ -29,19 +30,23 @@ interface QuickEntryModalProps {
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
-  { value: 'later', label: 'あとで' },
+  { value: 'later', label: 'Todo' },
   { value: 'scheduled', label: '時間指定' },
   { value: 'repeat', label: '繰り返し' },
 ];
 
-const DURATION_OPTIONS = [
+const DURATION_OPTIONS: Array<{ value: DurationOptionValue; label: string }> = [
   { value: null, label: 'なし' },
   { value: 15, label: '15分' },
   { value: 30, label: '30分' },
   { value: 45, label: '45分' },
   { value: 60, label: '60分' },
   { value: 90, label: '90分' },
-] as const;
+  { value: 120, label: '120分' },
+  { value: 150, label: '150分' },
+  { value: 180, label: '180分' },
+  { value: 'custom', label: '自由' },
+];
 
 const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'mon', label: '月' },
@@ -80,6 +85,9 @@ export function QuickEntryModal({
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
+  const [dueTime, setDueTime] = useState<string>('');
+  const [isCustomDuration, setIsCustomDuration] = useState(false);
+  const [customDurationInput, setCustomDurationInput] = useState('');
   const [memo, setMemo] = useState('');
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
@@ -99,6 +107,35 @@ export function QuickEntryModal({
         estimatedMinutes !== null &&
         isSupportedRepeatKind));
 
+  function applyDurationOption(value: DurationOptionValue) {
+    if (value === 'custom') {
+      setIsCustomDuration(true);
+
+      const nextMinutes = Number(customDurationInput);
+      setEstimatedMinutes(
+        Number.isInteger(nextMinutes) && nextMinutes > 0
+          ? nextMinutes
+          : null,
+      );
+      return;
+    }
+
+    setIsCustomDuration(false);
+    setCustomDurationInput('');
+    setEstimatedMinutes(value);
+  }
+
+  function updateCustomDuration(value: string) {
+    setCustomDurationInput(value);
+
+    const nextMinutes = Number(value);
+    setEstimatedMinutes(
+      Number.isInteger(nextMinutes) && nextMinutes > 0
+        ? nextMinutes
+        : null,
+    );
+  }
+
   function renderDurationCard() {
     return (
       <section className="quick-entry-card">
@@ -108,22 +145,38 @@ export function QuickEntryModal({
           </span>
           <h3>所要時間</h3>
         </div>
-        <div className="quick-entry-chip-row">
-          {DURATION_OPTIONS.map((option) => (
-            <button
-              className={
-                estimatedMinutes === option.value
-                  ? 'quick-entry-chip active'
-                  : 'quick-entry-chip'
-              }
-              key={option.label}
-              onClick={() => setEstimatedMinutes(option.value)}
-              type="button"
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="quick-entry-chip-row quick-entry-duration-grid">
+          {DURATION_OPTIONS.map((option) => {
+            const isActive =
+              option.value === 'custom'
+                ? isCustomDuration
+                : !isCustomDuration && estimatedMinutes === option.value;
+
+            return (
+              <button
+                className={isActive ? 'quick-entry-chip active' : 'quick-entry-chip'}
+                key={option.label}
+                onClick={() => applyDurationOption(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            );
+          })}
         </div>
+        {isCustomDuration ? (
+          <label className="field quick-entry-custom-duration">
+            <span>自由入力（分）</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={customDurationInput}
+              onChange={(event) => updateCustomDuration(event.target.value)}
+              placeholder="75"
+            />
+          </label>
+        ) : null}
       </section>
     );
   }
@@ -165,6 +218,7 @@ export function QuickEntryModal({
           type,
           estimatedMinutes,
           dueDate: dueDate || null,
+          dueTime: dueTime || null,
           memo: memo.trim(),
         });
       }
@@ -313,14 +367,24 @@ export function QuickEntryModal({
                       </span>
                       <h3>締切</h3>
                     </div>
-                    <label className="field">
-                      <span>日付</span>
-                      <input
-                        type="date"
-                        value={dueDate}
-                        onChange={(event) => setDueDate(event.target.value)}
-                      />
-                    </label>
+                    <div className="form-grid compact quick-entry-compact-grid">
+                      <label className="field">
+                        <span>締切日</span>
+                        <input
+                          type="date"
+                          value={dueDate}
+                          onChange={(event) => setDueDate(event.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>締切時刻</span>
+                        <input
+                          type="time"
+                          value={dueTime}
+                          onChange={(event) => setDueTime(event.target.value)}
+                        />
+                      </label>
+                    </div>
                   </section>
                   {renderDurationCard()}
                 </>

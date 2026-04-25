@@ -208,6 +208,11 @@
   gap: 6px;
 }
 
+.quick-entry-duration-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .quick-entry-chip,
 .quick-entry-weekday-chip {
   display: inline-flex;
@@ -228,6 +233,16 @@
     transform 0.18s ease,
     background-color 0.18s ease,
     box-shadow 0.18s ease;
+}
+
+.quick-entry-duration-grid .quick-entry-chip {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.quick-entry-custom-duration {
+  max-width: 220px;
 }
 
 .quick-entry-weekday-chip {
@@ -326,5 +341,14 @@
   .quick-entry-weekday-chip {
     min-height: 31px;
     font-size: 0.78rem;
+  }
+
+  .quick-entry-duration-grid {
+    gap: 5px;
+  }
+
+  .quick-entry-duration-grid .quick-entry-chip {
+    padding-inline: 3px;
+    font-size: 0.72rem;
   }
 }

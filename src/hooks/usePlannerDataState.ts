@@ -728,6 +728,7 @@ export function usePlannerDataState({
           ? Math.max(0, Math.round(draft.estimatedMinutes))
           : null,
       dueDate: draft.dueDate || null,
+      dueTime: draft.dueTime || null,
       memo: draft.memo.trim(),
       status: currentTodo?.status ?? 'open',
       scheduledPlanId: currentTodo?.scheduledPlanId ?? null,

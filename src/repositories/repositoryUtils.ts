@@ -137,6 +137,10 @@ export function normalizeTodoRecord(todo: TodoTask): TodoTask {
     dueDate: typeof todo.dueDate === 'string' && todo.dueDate.length > 0
       ? todo.dueDate
       : null,
+    dueTime:
+      typeof todo.dueTime === 'string' && /^\d{2}:\d{2}$/.test(todo.dueTime)
+        ? todo.dueTime
+        : null,
     memo: todo.memo ?? '',
     status: normalizeTodoStatus(todo.status),
     scheduledPlanId:

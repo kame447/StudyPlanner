@@ -28,8 +28,17 @@ function createEmptyTodoDraft(userId: string): TodoTaskDraft {
     type: 'study',
     estimatedMinutes: null,
     dueDate: null,
+    dueTime: null,
     memo: '',
   };
+}
+
+function formatTodoDue(todo: TodoTask): string | null {
+  if (todo.dueDate && todo.dueTime) {
+    return `${todo.dueDate} ${todo.dueTime}`;
+  }
+
+  return todo.dueDate ?? todo.dueTime ?? null;
 }
 
 export function TodoListPanel({
@@ -146,6 +155,17 @@ export function TodoListPanel({
               }
             />
           </label>
+
+          <label className="field">
+            <span>期限時刻</span>
+            <input
+              type="time"
+              value={draft.dueTime ?? ''}
+              onChange={(event) =>
+                updateDraft('dueTime', event.target.value || null)
+              }
+            />
+          </label>
         </div>
 
         <label className="field">
@@ -170,44 +190,48 @@ export function TodoListPanel({
 
       <div className="todo-list">
         {visibleTodos.length > 0 ? (
-          visibleTodos.map((todo) => (
-            <article className="todo-item" key={todo.id}>
-              <div className="todo-item-main">
-                <div className="todo-item-title-row">
-                  <strong>{todo.title}</strong>
-                  <span className={getTodoStatusClass(todo.status)}>
-                    {TODO_STATUS_LABELS[todo.status]}
-                  </span>
-                </div>
-                <div className="todo-meta" aria-label="Todoの補足情報">
-                  <span className="todo-tag todo-subject-tag">
-                    {todo.subject || getPlanTypeLabel(todo.type)}
-                  </span>
-                  <span className="todo-tag todo-type-tag">
-                    {getPlanTypeLabel(todo.type)}
-                  </span>
-                  {todo.estimatedMinutes !== null ? (
-                    <span className="todo-tag todo-duration-tag">
-                      {todo.estimatedMinutes}分
+          visibleTodos.map((todo) => {
+            const dueLabel = formatTodoDue(todo);
+
+            return (
+              <article className="todo-item" key={todo.id}>
+                <div className="todo-item-main">
+                  <div className="todo-item-title-row">
+                    <strong>{todo.title}</strong>
+                    <span className={getTodoStatusClass(todo.status)}>
+                      {TODO_STATUS_LABELS[todo.status]}
                     </span>
-                  ) : null}
-                  {todo.dueDate ? (
-                    <span className="todo-tag todo-date-tag">{todo.dueDate}</span>
-                  ) : null}
+                  </div>
+                  <div className="todo-meta" aria-label="Todoの補足情報">
+                    <span className="todo-tag todo-subject-tag">
+                      {todo.subject || getPlanTypeLabel(todo.type)}
+                    </span>
+                    <span className="todo-tag todo-type-tag">
+                      {getPlanTypeLabel(todo.type)}
+                    </span>
+                    {todo.estimatedMinutes !== null ? (
+                      <span className="todo-tag todo-duration-tag">
+                        {todo.estimatedMinutes}分
+                      </span>
+                    ) : null}
+                    {dueLabel ? (
+                      <span className="todo-tag todo-date-tag">{dueLabel}</span>
+                    ) : null}
+                  </div>
+                  {todo.memo ? <p>{todo.memo}</p> : null}
                 </div>
-                {todo.memo ? <p>{todo.memo}</p> : null}
-              </div>
-              <button
-                className="ghost-button todo-delete-button"
-                onClick={() => {
-                  void onDeleteTodo(todo);
-                }}
-                type="button"
-              >
-                削除
-              </button>
-            </article>
-          ))
+                <button
+                  className="ghost-button todo-delete-button"
+                  onClick={() => {
+                    void onDeleteTodo(todo);
+                  }}
+                  type="button"
+                >
+                  削除
+                </button>
+              </article>
+            );
+          })
         ) : (
           <p className="empty-copy todo-empty">Todoはありません。</p>
         )}

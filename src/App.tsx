@@ -225,9 +225,7 @@ export default function App() {
 
         {viewMode === 'todo' ? (
           <TodoView
-            userId={user.id}
             todos={todos}
-            onSaveTodo={saveTodo}
             onDeleteTodo={deleteTodo}
           />
         ) : null}
@@ -245,7 +243,7 @@ export default function App() {
         ) : null}
       </main>
 
-      {viewMode === 'day' ? (
+      {viewMode === 'day' || viewMode === 'todo' ? (
         <button
           className="daily-add-fab print-hide"
           onClick={() => setIsQuickEntryOpen(true)}
