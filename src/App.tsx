@@ -35,7 +35,6 @@ export default function App() {
     plans,
     actuals,
     monthEvents,
-    todos,
     viewMode,
     selectedDate,
     monthDate,
@@ -65,7 +64,6 @@ export default function App() {
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
-    deleteTodo,
     selectDate,
     changeMonth,
     openWeek,
@@ -205,18 +203,13 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
-            todos={todos}
-            dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
             onChangeDay={openDay}
             onEditPlan={openEditPlan}
             onDeletePlan={deletePlan}
             onSaveActual={saveActual}
             onDeleteActual={deleteActual}
-            onSaveDayNote={saveDayNote}
             onSaveMonthEvent={saveMonthEvent}
             onDeleteMonthEvent={deleteMonthEvent}
-            onSaveTodo={saveTodo}
-            onDeleteTodo={deleteTodo}
           />
         ) : null}
 

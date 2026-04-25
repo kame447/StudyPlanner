@@ -12,20 +12,14 @@ import {
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
-import { DayNotebookPanel } from './DayNotebookPanel';
 import { DayTimeline } from './DayTimeline';
 import { MonthEventDialog } from './MonthEventDialog';
-import { TodoListPanel } from './TodoListPanel';
 import type {
   Actual,
   ActualDraft,
-  DayNote,
-  DayNoteDraft,
   MonthEvent,
   MonthEventDraft,
   Plan,
-  TodoTask,
-  TodoTaskDraft,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -34,21 +28,16 @@ interface DayViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
-  todos: TodoTask[];
-  dayNote: DayNote | DayNoteDraft;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
-  onSaveDayNote: (draft: DayNoteDraft) => Promise<void>;
   onSaveMonthEvent: (
     draft: MonthEventDraft,
     targetMonthEventId?: string,
   ) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
-  onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
-  onDeleteTodo: (todo: TodoTask) => Promise<void>;
 }
 
 type DayViewModalState =
@@ -62,18 +51,13 @@ export function DayView({
   plans,
   actuals,
   monthEvents,
-  todos,
-  dayNote,
   onChangeDay,
   onEditPlan,
   onDeletePlan,
   onSaveActual,
   onDeleteActual,
-  onSaveDayNote,
   onSaveMonthEvent,
   onDeleteMonthEvent,
-  onSaveTodo,
-  onDeleteTodo,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const dayRangeLabel = formatDateLabel(selectedDate);
@@ -221,15 +205,6 @@ export function DayView({
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
         onPrint={() => window.print()}
-      />
-
-      <DayNotebookPanel dayNote={dayNote} onSave={onSaveDayNote} compact />
-
-      <TodoListPanel
-        userId={userId}
-        todos={todos}
-        onSaveTodo={onSaveTodo}
-        onDeleteTodo={onDeleteTodo}
       />
     </section>
   );
