@@ -702,6 +702,7 @@
 
   .month-week-chip-row {
     margin-top: 12px;
+    margin-bottom: 6px;
     padding-top: 0;
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1803,6 +1804,7 @@
 
   .week-timeline-toolbar {
     align-items: stretch;
+    margin-top: 6px;
   }
 
   .week-timeline-mode-control {
@@ -2056,6 +2058,7 @@
 
   .month-week-chip-row {
     gap: 5px;
+    margin-bottom: 5px;
   }
 
   .month-week-chip-row .week-chip {
