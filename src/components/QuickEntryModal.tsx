@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from 'react';
-import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
+import {
+  buildQuickEntryPlanDraft,
+  isSupportedQuickEntryRepeatKind,
+  SUPPORTED_QUICK_ENTRY_REPEAT_KINDS,
+  type QuickEntryRepeatKind,
+} from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
 import type {
   Plan,
   PlanDraft,
   PlanType,
-  RecurrenceRule,
   RecurrenceWeekday,
   TodoTaskDraft,
 } from '../types/domain';
@@ -79,13 +83,12 @@ export function QuickEntryModal({
   const [memo, setMemo] = useState('');
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
-  const [repeatKind, setRepeatKind] = useState<'daily' | 'weekly' | 'monthly'>(
-    'daily',
-  );
+  const [repeatKind, setRepeatKind] = useState<QuickEntryRepeatKind>('daily');
   const [weekday, setWeekday] = useState<RecurrenceWeekday>(() =>
     getRecurrenceWeekday(selectedDate),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const canSave =
     inputMethod === 'manual' &&
     title.trim().length > 0 &&
@@ -94,32 +97,7 @@ export function QuickEntryModal({
       (mode === 'scheduled' && estimatedMinutes !== null) ||
       (mode === 'repeat' &&
         estimatedMinutes !== null &&
-        (repeatKind === 'daily' || repeatKind === 'weekly')));
-
-  function resolveEndTime(): string {
-    const startMinutes = minutesFromTime(startTime);
-    const endMinutes = Math.min(startMinutes + (estimatedMinutes ?? 60), 23 * 60 + 59);
-    return timeFromMinutes(endMinutes);
-  }
-
-  function buildRepeatRule(endTime: string): RecurrenceRule {
-    return {
-      id: 'recurrence-base',
-      kind: repeatKind === 'weekly' ? 'weekday' : 'daily',
-      startDate: date,
-      until: null,
-      dates: [],
-      weekdays: repeatKind === 'weekly' ? [weekday] : [],
-      dayType: null,
-      startTime,
-      endTime,
-      title: title.trim(),
-      subject: subject.trim() || undefined,
-      type,
-      memo: memo.trim() || undefined,
-      isOverride: false,
-    };
-  }
+        isSupportedRepeatKind));
 
   function renderDurationCard() {
     return (
@@ -160,31 +138,25 @@ export function QuickEntryModal({
     setIsSubmitting(true);
     try {
       if (mode === 'scheduled' || mode === 'repeat') {
-        const endTime = resolveEndTime();
-        const recurrenceRules =
-          mode === 'repeat' ? [buildRepeatRule(endTime)] : [];
-
-        await onSavePlan({
+        const planDraft = buildQuickEntryPlanDraft({
+          mode,
           userId,
-          title: title.trim(),
-          subject: subject.trim(),
+          title,
+          subject,
+          type,
+          memo,
           date,
           startTime,
-          endTime,
-          repeat:
-            mode === 'repeat'
-              ? repeatKind === 'weekly'
-                ? 'weekly'
-                : 'daily'
-              : 'none',
-          repeatUntil: null,
-          excludedDates: [],
-          recurrenceRules,
-          type,
-          memo: memo.trim(),
-          sourceType: 'manual',
-          sourceId: null,
+          estimatedMinutes,
+          repeatKind,
+          weekday,
         });
+
+        if (!planDraft) {
+          return;
+        }
+
+        await onSavePlan(planDraft);
       } else {
         await onSaveTodo({
           userId,
@@ -412,11 +384,20 @@ export function QuickEntryModal({
                           key={value}
                           onClick={() => setRepeatKind(value)}
                           type="button"
+                          disabled={!SUPPORTED_QUICK_ENTRY_REPEAT_KINDS.has(value)}
+                          title={
+                            value === 'monthly' ? '毎月は未対応です' : undefined
+                          }
                         >
                           {label}
                         </button>
                       ))}
                     </div>
+                    {repeatKind === 'monthly' ? (
+                      <p className="inline-note quick-entry-repeat-note">
+                        毎月は未対応です
+                      </p>
+                    ) : null}
                     {repeatKind === 'weekly' ? (
                       <div className="quick-entry-weekdays">
                         <span>曜日</span>

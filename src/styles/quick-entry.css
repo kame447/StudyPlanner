@@ -240,11 +240,23 @@
   transform: translateY(-1px);
 }
 
+.quick-entry-chip:disabled,
+.quick-entry-weekday-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
 .quick-entry-chip.active,
 .quick-entry-weekday-chip.active {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.quick-entry-repeat-note {
+  margin: 2px 0 0;
+  font-size: 0.76rem;
 }
 
 .quick-entry-weekdays {
