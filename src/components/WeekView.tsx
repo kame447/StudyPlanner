@@ -158,19 +158,23 @@ export function WeekView({
             <div className="view-title-actions print-hide">
               <div className="nav-actions view-title-nav">
                 <button
-                  className="ghost-button"
+                  className="ghost-button nav-icon-button"
                   onClick={() => onChangeWeek(addDays(selectedDate, -7))}
                   type="button"
+                  aria-label="前週"
+                  title="前週"
                 >
-                  前週
+                  <span aria-hidden="true">＜</span>
                 </button>
                 <span className="week-range-chip">{weekRangeLabel}</span>
                 <button
-                  className="ghost-button"
+                  className="ghost-button nav-icon-button"
                   onClick={() => onChangeWeek(addDays(selectedDate, 7))}
                   type="button"
+                  aria-label="翌週"
+                  title="翌週"
                 >
-                  翌週
+                  <span aria-hidden="true">＞</span>
                 </button>
               </div>
               <button
