@@ -1,51 +1,57 @@
 .timetable-view {
-  --timetable-period-column-width: 86px;
-  --timetable-grid-gap: 7px;
-  --timetable-cell-height: clamp(78px, 10.5vh, 108px);
+  --timetable-period-column-width: 72px;
+  --timetable-grid-gap: 8px;
+  --timetable-cell-height: clamp(96px, 13vh, 126px);
   display: grid;
   gap: 12px;
+  overflow: hidden;
   background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
 }
 
 .timetable-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  gap: 12px;
+}
+
+.timetable-title-block {
+  min-width: 0;
+  text-align: center;
+}
+
+.timetable-title-block h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.12rem, 4.2vw, 1.48rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .timetable-term-control {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.timetable-term-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 6px 10px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--chip-bg);
-  color: var(--chip-text);
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
 }
 
 .timetable-term-switch {
-  min-height: 34px;
-  padding: 6px 12px;
+  min-height: 38px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 900;
   white-space: nowrap;
 }
 
 .timetable-grid-shell {
-  overflow: visible;
-  padding: 7px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-muted) 84%, var(--surface) 16%);
+  overflow: hidden;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, #eaf4ff 74%, var(--surface) 26%);
 }
 
 .timetable-grid {
@@ -63,54 +69,70 @@
 .timetable-weekday-cell,
 .timetable-period-cell,
 .timetable-grid-cell {
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  border-radius: 14px;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .timetable-corner-cell,
 .timetable-weekday-cell {
-  min-height: 34px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   font-weight: 900;
 }
 
 .timetable-period-cell {
-  min-height: var(--timetable-cell-height);
+  height: var(--timetable-cell-height);
   display: grid;
-  place-items: center;
-  gap: 3px;
-  padding: 8px 6px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  grid-template-rows: auto auto auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  padding: 9px 6px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
   color: var(--text-muted);
   text-align: center;
 }
 
 .timetable-period-cell.needs-time {
-  background: color-mix(in srgb, var(--surface) 76%, var(--warning, #f59e0b) 8%);
+  background: color-mix(in srgb, var(--surface) 76%, #f59e0b 8%);
 }
 
 .timetable-period-cell strong {
   color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.1;
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.timetable-period-cell label {
+  display: block;
+  width: 100%;
+  min-width: 0;
 }
 
 .timetable-period-cell input {
-  width: 74px;
-  min-height: 24px;
-  padding: 2px 4px;
+  width: 100%;
+  min-height: 18px;
+  padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
+  font-weight: 800;
   text-align: center;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .timetable-period-cell input:focus {
@@ -119,17 +141,20 @@
 }
 
 .timetable-period-status {
+  max-width: 100%;
   color: var(--text-muted);
-  font-size: 0.58rem;
-  font-weight: 800;
+  font-size: 0.62rem;
+  font-weight: 900;
   line-height: 1.05;
+  white-space: normal;
 }
 
 .timetable-grid-cell {
-  min-height: var(--timetable-cell-height);
-  display: block;
+  height: var(--timetable-cell-height);
+  display: grid;
   width: 100%;
-  padding: 7px;
+  min-width: 0;
+  padding: 5px;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   color: inherit;
   font: inherit;
@@ -137,18 +162,17 @@
   cursor: pointer;
   transition:
     border-color 0.16s ease,
-    background-color 0.16s ease,
-    transform 0.16s ease;
+    background-color 0.16s ease;
 }
 
 .timetable-grid-cell:hover {
-  transform: translateY(-1px);
   border-color: var(--border-strong);
   background: var(--surface);
 }
 
 .timetable-grid-cell.has-class {
-  background: #fff;
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
+  background: color-mix(in srgb, #bdddff 72%, var(--surface) 28%);
 }
 
 .timetable-grid-cell.needs-time {
@@ -156,14 +180,12 @@
 }
 
 .timetable-empty-cell-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   width: 100%;
   height: 100%;
-  min-height: calc(var(--timetable-cell-height) - 18px);
   color: transparent;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 800;
 }
 
@@ -174,30 +196,65 @@
 
 .timetable-cell-stack {
   display: grid;
-  gap: 6px;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .timetable-class-card {
   display: grid;
-  gap: 3px;
-  min-height: calc(var(--timetable-cell-height) - 18px);
-  padding: 9px;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
-  box-shadow: inset 4px 0 0 color-mix(in srgb, var(--accent) 56%, transparent);
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 9px 7px 7px;
+  border: 0;
+  border-radius: 13px;
+  overflow: hidden;
+  background: transparent;
 }
 
 .timetable-class-card strong {
-  font-size: 0.88rem;
-  line-height: 1.24;
+  min-width: 0;
+  align-self: center;
+  color: var(--text);
+  font-size: clamp(0.68rem, 2.45vw, 0.9rem);
+  font-weight: 900;
+  line-height: 1.28;
+  text-align: center;
+  word-break: keep-all;
   overflow-wrap: anywhere;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
-.timetable-class-card span {
+.timetable-class-subject {
+  display: none;
+}
+
+.timetable-class-meta {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--text-muted);
-  font-size: 0.7rem;
-  line-height: 1.18;
+  font-size: clamp(0.56rem, 1.9vw, 0.7rem);
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timetable-grid-actions {
@@ -356,137 +413,106 @@
 
 @media screen and (max-width: 900px) {
   .timetable-view {
-    --timetable-period-column-width: 70px;
-    --timetable-grid-gap: 6px;
-    --timetable-cell-height: clamp(68px, 9.2vh, 92px);
-  }
-
-  .timetable-header {
-    align-items: stretch;
-  }
-
-  .timetable-term-control {
-    justify-content: space-between;
+    --timetable-period-column-width: 62px;
+    --timetable-grid-gap: 7px;
+    --timetable-cell-height: clamp(92px, 12.2vh, 116px);
   }
 
   .timetable-grid-shell {
-    padding: 6px;
-  }
-
-  .timetable-weekday-cell {
-    min-height: 30px;
-    font-size: 0.76rem;
+    padding: 8px;
   }
 }
 
 @media screen and (max-width: 640px) {
   .timetable-view {
-    --timetable-period-column-width: 44px;
+    --timetable-period-column-width: 48px;
     --timetable-grid-gap: 4px;
-    --timetable-cell-height: clamp(58px, 8.2vh, 76px);
-    gap: 8px;
+    --timetable-cell-height: clamp(84px, 11.2vh, 104px);
+    gap: 9px;
     padding: 8px;
     border-radius: 14px;
   }
 
   .timetable-header {
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
   }
 
-  .timetable-header h2 {
-    font-size: 0.9rem;
-  }
-
-  .timetable-term-control {
-    gap: 6px;
-  }
-
-  .timetable-term-pill {
-    min-height: 28px;
-    padding: 4px 8px;
-    font-size: 0.72rem;
+  .timetable-title-block h2 {
+    font-size: clamp(1rem, 4.4vw, 1.18rem);
   }
 
   .timetable-term-switch {
-    min-height: 30px;
-    padding: 4px 8px;
-    border-radius: 9px;
-    font-size: 0.72rem;
+    min-height: 34px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 0.76rem;
   }
 
   .timetable-grid-shell {
-    padding: 4px;
-    border-radius: 12px;
+    padding: 5px;
+    border-radius: 14px;
   }
 
   .timetable-corner-cell,
   .timetable-weekday-cell,
   .timetable-period-cell,
   .timetable-grid-cell {
-    border-radius: 9px;
+    border-radius: 11px;
   }
 
   .timetable-corner-cell,
   .timetable-weekday-cell {
-    min-height: 24px;
-    font-size: 0.68rem;
-  }
-
-  .timetable-period-cell,
-  .timetable-grid-cell {
-    padding: 4px 3px;
+    min-height: 26px;
+    font-size: 0.72rem;
   }
 
   .timetable-period-cell {
-    gap: 1px;
+    gap: 3px;
+    padding: 7px 3px;
   }
 
   .timetable-period-cell strong {
-    font-size: 0.78rem;
+    font-size: 0.86rem;
   }
 
   .timetable-period-cell input {
-    width: 38px;
-    min-height: 18px;
-    padding: 0;
+    font-size: 0.58rem;
+  }
+
+  .timetable-period-status {
     font-size: 0.5rem;
   }
 
-  .timetable-empty-cell-label {
-    min-height: calc(var(--timetable-cell-height) - 10px);
-    font-size: 0;
-  }
-
-  .timetable-cell-stack {
-    gap: 3px;
+  .timetable-grid-cell {
+    padding: 3px;
   }
 
   .timetable-class-card {
-    min-height: calc(var(--timetable-cell-height) - 10px);
-    padding: 5px 4px;
-    border-radius: 8px;
-    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 56%, transparent);
+    padding: 7px 4px 5px;
+    border-radius: 10px;
   }
 
   .timetable-class-card strong {
-    font-size: 0.62rem;
-    line-height: 1.15;
+    font-size: clamp(0.6rem, 2.25vw, 0.72rem);
+    line-height: 1.24;
+    -webkit-line-clamp: 4;
   }
 
-  .timetable-class-card span {
-    font-size: 0.5rem;
-    line-height: 1.1;
+  .timetable-class-meta {
+    padding: 2px 4px;
+    font-size: clamp(0.48rem, 1.75vw, 0.58rem);
   }
 
-  .timetable-class-card span:nth-of-type(n + 3) {
-    display: none;
+  .timetable-grid-actions {
+    gap: 8px;
   }
 
   .timetable-grid-actions .ghost-button {
-    min-height: 32px;
-    padding: 5px 9px;
-    border-radius: 9px;
-    font-size: 0.72rem;
+    min-height: 34px;
+    padding: 6px 10px;
+    border-radius: 11px;
+    font-size: 0.74rem;
   }
 
   .timetable-term-sheet-overlay {
@@ -511,30 +537,30 @@
 
 @media screen and (max-width: 380px) {
   .timetable-view {
-    --timetable-period-column-width: 40px;
+    --timetable-period-column-width: 44px;
     --timetable-grid-gap: 3px;
-    --timetable-cell-height: clamp(52px, 7.6vh, 68px);
+    --timetable-cell-height: clamp(76px, 10.6vh, 94px);
     padding: 6px;
   }
 
-  .timetable-period-cell strong {
-    font-size: 0.72rem;
+  .timetable-grid-shell {
+    padding: 4px;
   }
 
   .timetable-period-cell input {
-    width: 34px;
-    font-size: 0.46rem;
+    font-size: 0.52rem;
   }
 
   .timetable-class-card {
-    padding: 4px 3px;
+    padding: 6px 3px 4px;
   }
 
   .timetable-class-card strong {
-    font-size: 0.56rem;
+    font-size: 0.54rem;
+    line-height: 1.2;
   }
 
-  .timetable-class-card span {
-    font-size: 0.46rem;
+  .timetable-class-meta {
+    font-size: 0.44rem;
   }
 }

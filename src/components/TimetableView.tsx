@@ -483,25 +483,17 @@ export function TimetableView({
   return (
     <section className="panel timetable-view">
       <div className="section-header timetable-header">
-        <div>
-          <h2>時間割</h2>
-          <p>空きコマも含めた週間テンプレートです。Dailyには手動で反映します。</p>
+        <div className="timetable-title-block">
+          <h2>{selectedTermLabel}</h2>
         </div>
         <div className="timetable-term-control">
           <button
-            className="timetable-term-pill"
+            className="ghost-button timetable-term-switch"
             onClick={() => {
               setTermYear(activeTerm?.year ?? termYear);
               setTermKind(activeTerm?.kind ?? termKind);
               setIsTermSheetOpen(true);
             }}
-            type="button"
-          >
-            {selectedTermLabel}
-          </button>
-          <button
-            className="ghost-button timetable-term-switch"
-            onClick={() => setIsTermSheetOpen(true)}
             type="button"
           >
             学期切替
@@ -588,10 +580,13 @@ export function TimetableView({
                         {templates.map((template) => (
                           <span className="timetable-class-card" key={template.id}>
                             <strong>{template.title}</strong>
-                            {template.subject ? <span>{template.subject}</span> : null}
-                            {template.classroom ? <span>{template.classroom}</span> : null}
-                            <span>
-                              {template.startTime}-{template.endTime}
+                            {template.subject ? (
+                              <span className="timetable-class-subject">
+                                {template.subject}
+                              </span>
+                            ) : null}
+                            <span className="timetable-class-meta">
+                              {template.classroom || `${template.startTime}-${template.endTime}`}
                             </span>
                           </span>
                         ))}
