@@ -1127,7 +1127,11 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+    if (
+      draft.startTime &&
+      draft.endTime &&
+      minutesBetween(draft.startTime, draft.endTime) <= 0
+    ) {
       showNotice('時限の終了時刻は開始時刻より後にしてください。', 'error');
       throw new Error('時限の終了時刻は開始時刻より後にしてください。');
     }
@@ -1141,8 +1145,8 @@ export function usePlannerDataState({
       termId: draft.termId.trim() || 'default',
       periodNumber,
       label: draft.label.trim() || String(periodNumber),
-      startTime: draft.startTime,
-      endTime: draft.endTime,
+      startTime: draft.startTime || null,
+      endTime: draft.endTime || null,
       createdAt: currentPeriod?.createdAt ?? now,
       updatedAt: now,
     };

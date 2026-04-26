@@ -288,8 +288,8 @@ export interface TimetablePeriod {
   termId: string;
   periodNumber: number;
   label: string;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -299,8 +299,8 @@ export interface TimetablePeriodDraft {
   termId: string;
   periodNumber: number;
   label: string;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export type NaturalLanguageMode = 'add' | 'edit';

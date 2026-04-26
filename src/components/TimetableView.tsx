@@ -67,7 +67,11 @@ function getTemplateTermId(template: ScheduleTemplate): string {
   return template.termId || 'default';
 }
 
-function getTimeKey(startTime: string, endTime: string): string {
+function getTimeKey(startTime: string | null, endTime: string | null): string | null {
+  if (!startTime || !endTime) {
+    return null;
+  }
+
   return `${startTime}-${endTime}`;
 }
 
@@ -84,11 +88,37 @@ function toMinutes(time: string): number {
   return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : 0;
 }
 
+function hasCompletePeriodTime(period: DisplayPeriod): period is DisplayPeriod & {
+  startTime: string;
+  endTime: string;
+} {
+  return Boolean(period.startTime && period.endTime);
+}
+
+function hasValidPeriodTime(period: DisplayPeriod): period is DisplayPeriod & {
+  startTime: string;
+  endTime: string;
+} {
+  return hasCompletePeriodTime(period) && toMinutes(period.endTime) > toMinutes(period.startTime);
+}
+
+function getPeriodTimeStatus(period: DisplayPeriod): 'valid' | 'partial' | 'invalid' {
+  if (!period.startTime && !period.endTime) {
+    return 'partial';
+  }
+
+  if (!hasCompletePeriodTime(period)) {
+    return 'partial';
+  }
+
+  return hasValidPeriodTime(period) ? 'valid' : 'invalid';
+}
+
 function createTemplateDraft(
   userId: string,
   termId: string,
   weekday: RecurrenceWeekday,
-  period: DisplayPeriod,
+  period: DisplayPeriod & { startTime: string; endTime: string },
 ): ScheduleTemplateDraft {
   return {
     userId,
@@ -149,8 +179,14 @@ function findPeriodNumberForTemplate(
     return null;
   }
 
+  const validPeriods = periods.filter(hasValidPeriodTime);
+
+  if (validPeriods.length === 0) {
+    return null;
+  }
+
   const templateStartMinutes = toMinutes(template.startTime);
-  return periods
+  return validPeriods
     .slice()
     .sort(
       (left, right) =>
@@ -285,6 +321,11 @@ export function TimetableView({
   }
 
   function openCreateEditor(weekday: RecurrenceWeekday, period: DisplayPeriod) {
+    if (!hasValidPeriodTime(period)) {
+      setPeriodActionError('先にこの時限の開始時刻と終了時刻を設定してください。');
+      return;
+    }
+
     setEditingTemplate(null);
     setDraft(createTemplateDraft(userId, activeTermId, weekday, period));
   }
@@ -305,9 +346,16 @@ export function TimetableView({
     key: 'startTime' | 'endTime',
     value: string,
   ) {
+    const nextValue = value || null;
     const nextPeriods = displayPeriods.map((period) =>
-      period.periodNumber === periodNumber ? { ...period, [key]: value } : period,
+      period.periodNumber === periodNumber ? { ...period, [key]: nextValue } : period,
     );
+    const nextPeriod = nextPeriods.find((period) => period.periodNumber === periodNumber);
+
+    if (nextPeriod && getPeriodTimeStatus(nextPeriod) === 'invalid') {
+      setPeriodActionError('時限の終了時刻は開始時刻より後にしてください。');
+      return;
+    }
 
     setSavingPeriods(true);
     try {
@@ -326,8 +374,8 @@ export function TimetableView({
       termId: activeTermId,
       periodNumber,
       label: String(periodNumber),
-      startTime: lastPeriod.endTime,
-      endTime: lastPeriod.endTime,
+      startTime: null,
+      endTime: null,
     };
 
     setSavingPeriods(true);
@@ -477,12 +525,18 @@ export function TimetableView({
 
           {displayPeriods.map((period) => (
             <div className="timetable-row-contents" key={period.periodNumber}>
-              <div className="timetable-period-cell">
+              <div
+                className={
+                  getPeriodTimeStatus(period) === 'valid'
+                    ? 'timetable-period-cell'
+                    : 'timetable-period-cell needs-time'
+                }
+              >
                 <strong>{period.label}限</strong>
                 <label>
                   <input
                     type="time"
-                    value={period.startTime}
+                    value={period.startTime ?? ''}
                     disabled={savingPeriods}
                     onChange={(event) => {
                       void updatePeriod(period.periodNumber, 'startTime', event.target.value);
@@ -493,13 +547,18 @@ export function TimetableView({
                 <label>
                   <input
                     type="time"
-                    value={period.endTime}
+                    value={period.endTime ?? ''}
                     disabled={savingPeriods}
                     onChange={(event) => {
                       void updatePeriod(period.periodNumber, 'endTime', event.target.value);
                     }}
                   />
                 </label>
+                {getPeriodTimeStatus(period) === 'valid' ? null : (
+                  <span className="timetable-period-status">
+                    {getPeriodTimeStatus(period) === 'invalid' ? '要修正' : '時刻未設定'}
+                  </span>
+                )}
               </div>
               {WEEKDAY_OPTIONS.map((weekday) => {
                 const cellKey = `${weekday.value}:${period.periodNumber}`;
@@ -508,9 +567,13 @@ export function TimetableView({
                 return (
                   <button
                     className={
-                      templates.length > 0
-                        ? 'timetable-grid-cell has-class'
-                        : 'timetable-grid-cell'
+                      [
+                        'timetable-grid-cell',
+                        templates.length > 0 ? 'has-class' : '',
+                        hasValidPeriodTime(period) ? '' : 'needs-time',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
                     }
                     key={cellKey}
                     onClick={() =>
@@ -708,6 +771,11 @@ export function TimetableView({
                       return;
                     }
 
+                    if (!hasValidPeriodTime(nextPeriod)) {
+                      setPeriodActionError('先にこの時限の開始時刻と終了時刻を設定してください。');
+                      return;
+                    }
+
                     setDraft((current) =>
                       current
                         ? {
@@ -723,6 +791,9 @@ export function TimetableView({
                   {displayPeriods.map((period) => (
                     <option key={period.periodNumber} value={period.periodNumber}>
                       {period.label}限
+                      {hasValidPeriodTime(period)
+                        ? ''
+                        : '（時刻未設定）'}
                     </option>
                   ))}
                 </select>

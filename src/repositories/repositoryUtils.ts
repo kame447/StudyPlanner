@@ -91,10 +91,10 @@ function normalizeTimetableTermKind(value: unknown): TimetableTermKind {
     : 'fullYear';
 }
 
-function normalizeTime(value: unknown, fallback: string): string {
+function normalizeTimetablePeriodTime(value: unknown): string | null {
   return typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)
     ? value
-    : fallback;
+    : null;
 }
 
 export function normalizePlanRecord(plan: Plan): Plan {
@@ -236,7 +236,7 @@ export function normalizeTimetablePeriodRecord(
         : 'default',
     periodNumber,
     label: period.label?.trim() || String(periodNumber),
-    startTime: normalizeTime(period.startTime, '09:00'),
-    endTime: normalizeTime(period.endTime, '10:00'),
+    startTime: normalizeTimetablePeriodTime(period.startTime),
+    endTime: normalizeTimetablePeriodTime(period.endTime),
   };
 }

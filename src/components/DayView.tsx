@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   formatDateLabel,
+  minutesBetween,
   sortByDateTime,
 } from '../lib/date';
 import {
@@ -120,6 +121,7 @@ export function DayView({
         .filter(
           (template) => (template.termId || 'default') === timetableTermId,
         )
+        .filter((template) => minutesBetween(template.startTime, template.endTime) > 0)
         .sort((left, right) => {
           const startDelta = left.startTime.localeCompare(right.startTime);
 
