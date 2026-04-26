@@ -340,14 +340,6 @@ export function usePlannerDataState({
         }))
       : [fallbackActiveTerm];
 
-    if (!nextActiveTerm) {
-      await plannerRepository.upsertTimetableTerm({
-        ...fallbackActiveTerm,
-        isActive: true,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
     setPlans(sortByDateTime(nextPlans));
     setActuals(nextActuals);
     setDayNotes(nextDayNotes);
@@ -1082,11 +1074,11 @@ export function usePlannerDataState({
       : new Date().getFullYear();
     const label = createTimetableTermLabel(year, draft.kind, draft.label);
     const existingTerm = timetableTerms.find(
-      (term) => term.year === year && term.kind === draft.kind,
+      (term) => term.id !== 'default' && term.year === year && term.kind === draft.kind,
     );
     const now = new Date().toISOString();
     const nextActiveTerm: TimetableTerm = {
-      id: existingTerm?.id ?? (draft.kind === 'fullYear' && timetableTerms.length === 0 ? 'default' : createId('timetable-term')),
+      id: existingTerm?.id ?? createId('timetable-term'),
       userId,
       year,
       kind: draft.kind,
@@ -1096,7 +1088,7 @@ export function usePlannerDataState({
       updatedAt: now,
     };
     const inactiveTerms = timetableTerms
-      .filter((term) => term.id !== nextActiveTerm.id)
+      .filter((term) => term.id !== nextActiveTerm.id && term.id !== 'default')
       .map((term) => ({
         ...term,
         isActive: false,
