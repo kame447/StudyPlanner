@@ -201,6 +201,7 @@ export interface TodoTask {
   memo: string;
   status: TodoStatus;
   scheduledPlanId: string | null;
+  pinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -216,6 +217,7 @@ export interface TodoTaskDraft {
   memo: string;
   status?: TodoStatus;
   scheduledPlanId?: string | null;
+  pinned?: boolean;
 }
 
 export interface ScheduleTemplate {

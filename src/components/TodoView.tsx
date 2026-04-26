@@ -65,6 +65,7 @@ function createTodoDraftFromTask(todo: TodoTask): TodoTaskDraft {
     memo: todo.memo,
     status: todo.status,
     scheduledPlanId: todo.scheduledPlanId,
+    pinned: Boolean(todo.pinned),
   };
 }
 
@@ -96,6 +97,21 @@ function compareDueTodos(
 
 function compareUnsetTodos(left: TodoTask, right: TodoTask): number {
   return right.updatedAt.localeCompare(left.updatedAt);
+}
+
+function comparePinnedTodos(
+  left: TodoTask,
+  right: TodoTask,
+  compareRest: (leftTodo: TodoTask, rightTodo: TodoTask) => number,
+): number {
+  const leftPinned = left.pinned === true;
+  const rightPinned = right.pinned === true;
+
+  if (leftPinned !== rightPinned) {
+    return leftPinned ? -1 : 1;
+  }
+
+  return compareRest(left, right);
 }
 
 function getTodoStatusClass(status: TodoStatus): string {
@@ -158,10 +174,16 @@ export function TodoView({
     return {
       due: activeTodos
         .filter((todo) => Boolean(todo.dueDate))
-        .sort((left, right) => compareDueTodos(left, right, sortDirection)),
+        .sort((left, right) =>
+          comparePinnedTodos(left, right, (leftTodo, rightTodo) =>
+            compareDueTodos(leftTodo, rightTodo, sortDirection),
+          ),
+        ),
       unset: activeTodos
         .filter((todo) => !todo.dueDate)
-        .sort(compareUnsetTodos),
+        .sort((left, right) =>
+          comparePinnedTodos(left, right, compareUnsetTodos),
+        ),
       done: visibleTodos
         .filter((todo) => todo.status === 'done')
         .sort((left, right) => compareDueTodos(left, right, sortDirection)),
@@ -269,6 +291,26 @@ export function TodoView({
           userId,
           status,
           scheduledPlanId: status === 'open' ? null : todo.scheduledPlanId,
+          pinned:
+            status === 'done' || status === 'open'
+              ? false
+              : Boolean(todo.pinned),
+        },
+        todo.id,
+      );
+    } finally {
+      setSavingTodoId(null);
+    }
+  }
+
+  async function toggleTodoPinned(todo: TodoTask) {
+    setSavingTodoId(todo.id);
+    try {
+      await onSaveTodo(
+        {
+          ...createTodoDraftFromTask(todo),
+          userId,
+          pinned: !Boolean(todo.pinned),
         },
         todo.id,
       );
@@ -367,6 +409,9 @@ export function TodoView({
             {todo.status === 'scheduled' && todo.scheduledPlanId ? (
               <span className="todo-tag todo-scheduled-tag">予定化済み</span>
             ) : null}
+            {todo.pinned && todo.status !== 'done' ? (
+              <span className="todo-tag todo-pinned-tag">ピン留め</span>
+            ) : null}
           </div>
           {todo.memo ? <p>{todo.memo}</p> : null}
         </div>
@@ -378,6 +423,22 @@ export function TodoView({
           >
             編集
           </button>
+          {todo.status === 'open' || todo.status === 'scheduled' ? (
+            <button
+              className={
+                todo.pinned
+                  ? 'ghost-button todo-action-button todo-pin-button active'
+                  : 'ghost-button todo-action-button todo-pin-button'
+              }
+              disabled={isBusy}
+              onClick={() => {
+                void toggleTodoPinned(todo);
+              }}
+              type="button"
+            >
+              {todo.pinned ? 'ピン解除' : 'ピン留め'}
+            </button>
+          ) : null}
           {todo.status === 'open' ? (
             <button
               className="ghost-button todo-action-button"
@@ -430,10 +491,28 @@ export function TodoView({
   function renderTodoSection(sectionKey: TodoSectionKey) {
     const sectionTodos = groupedTodos[sectionKey];
     const isExpanded = expandedSections[sectionKey];
-    const visibleTodos = isExpanded
-      ? sectionTodos
-      : sectionTodos.slice(0, TODO_INITIAL_VISIBLE_COUNT);
-    const hasOverflow = sectionTodos.length > TODO_INITIAL_VISIBLE_COUNT;
+    const pinnedTodos =
+      sectionKey === 'done'
+        ? []
+        : sectionTodos.filter((todo) => todo.pinned === true);
+    const regularTodos =
+      sectionKey === 'done'
+        ? sectionTodos
+        : sectionTodos.filter((todo) => todo.pinned !== true);
+    const visibleTodos =
+      isExpanded || sectionKey === 'done'
+        ? sectionTodos
+        : [
+            ...pinnedTodos,
+            ...regularTodos.slice(0, TODO_INITIAL_VISIBLE_COUNT),
+          ];
+    const collapsedDoneTodos = sectionTodos.slice(0, TODO_INITIAL_VISIBLE_COUNT);
+    const renderedTodos =
+      !isExpanded && sectionKey === 'done' ? collapsedDoneTodos : visibleTodos;
+    const hasOverflow =
+      sectionKey === 'done'
+        ? sectionTodos.length > TODO_INITIAL_VISIBLE_COUNT
+        : regularTodos.length > TODO_INITIAL_VISIBLE_COUNT;
 
     return (
       <section className="todo-status-section" key={sectionKey}>
@@ -441,9 +520,9 @@ export function TodoView({
           <h3>{TODO_SECTION_LABELS[sectionKey]}</h3>
           <span className="todo-section-count">{sectionTodos.length}</span>
         </div>
-        {visibleTodos.length > 0 ? (
+        {renderedTodos.length > 0 ? (
           <div className="todo-list todo-view-list">
-            {visibleTodos.map(renderTodo)}
+            {renderedTodos.map(renderTodo)}
           </div>
         ) : (
           <p className="empty-copy todo-empty">Todoはありません。</p>

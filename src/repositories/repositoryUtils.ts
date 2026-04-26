@@ -150,6 +150,7 @@ export function normalizeTodoRecord(todo: TodoTask): TodoTask {
       typeof todo.scheduledPlanId === 'string' && todo.scheduledPlanId.length > 0
         ? todo.scheduledPlanId
         : null,
+    pinned: todo.pinned === true,
   };
 }
 

@@ -789,6 +789,9 @@ export function usePlannerDataState({
     const currentTodo = todos.find((todo) => todo.id === targetTodoId);
     const now = new Date().toISOString();
     const dueDate = draft.dueDate || null;
+    const status = draft.status ?? currentTodo?.status ?? 'open';
+    const pinned =
+      status === 'done' ? false : draft.pinned ?? currentTodo?.pinned ?? false;
     const nextTodo: TodoTask = {
       id: currentTodo?.id ?? createId('todo'),
       ...draft,
@@ -801,11 +804,12 @@ export function usePlannerDataState({
       dueDate,
       dueTime: dueDate ? draft.dueTime || null : null,
       memo: draft.memo.trim(),
-      status: draft.status ?? currentTodo?.status ?? 'open',
+      status,
       scheduledPlanId:
         draft.scheduledPlanId !== undefined
           ? draft.scheduledPlanId
           : currentTodo?.scheduledPlanId ?? null,
+      pinned,
       createdAt: currentTodo?.createdAt ?? now,
       updatedAt: now,
     };

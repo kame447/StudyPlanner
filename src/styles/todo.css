@@ -202,6 +202,12 @@
   color: var(--accent-strong);
 }
 
+.todo-pinned-tag {
+  background: color-mix(in srgb, #f6c343 18%, var(--surface) 82%);
+  border-color: color-mix(in srgb, #f6c343 38%, var(--border) 62%);
+  color: color-mix(in srgb, #7a5200 84%, var(--text) 16%);
+}
+
 .todo-item-actions {
   display: flex;
   align-items: center;
@@ -216,6 +222,12 @@
   padding: 6px 9px;
   border-radius: 9px;
   font-size: 0.76rem;
+}
+
+.todo-pin-button.active {
+  background: color-mix(in srgb, #f6c343 16%, var(--surface) 84%);
+  border-color: color-mix(in srgb, #f6c343 42%, var(--border) 58%);
+  color: color-mix(in srgb, #7a5200 86%, var(--text) 14%);
 }
 
 .todo-section-toggle {
