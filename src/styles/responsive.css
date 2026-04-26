@@ -575,8 +575,19 @@
     gap: 6px;
   }
 
+  .app-view-switcher.toolbar {
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+  }
+
   .app-view-switcher .segmented-control {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: none;
+    min-width: max-content;
     gap: 6px;
   }
 
@@ -591,10 +602,12 @@
   }
 
   .app-view-switcher .segment {
+    flex: 0 0 auto;
     min-height: 38px;
+    min-width: max-content;
     padding-block: 8px;
-    padding-inline: 7px;
-    font-size: 0.7rem;
+    padding-inline: 12px;
+    font-size: 0.78rem;
   }
 
   .toolbar .row-actions {
@@ -1684,9 +1697,10 @@
 
   .app-view-switcher .segment {
     min-height: 36px;
+    min-width: max-content;
     padding-block: 7px;
-    padding-inline: 5px;
-    font-size: 0.62rem;
+    padding-inline: 11px;
+    font-size: 0.74rem;
   }
 
   .toolbar .primary-button {
@@ -1704,7 +1718,12 @@
   }
 
   .app-view-switcher .segmented-control {
-    gap: 5px;
+    display: inline-flex;
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: none;
+    min-width: max-content;
+    gap: 6px;
   }
 
   .month-grid {

@@ -17,27 +17,52 @@
   position: sticky;
   top: 0;
   z-index: var(--z-sticky-nav);
-  justify-content: center;
+  justify-content: flex-start;
   background: var(--surface-muted);
   backdrop-filter: blur(12px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 32%, transparent) transparent;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .app-view-switcher.panel {
-  padding: 10px 0;
+  padding: 10px 12px;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   box-shadow: none;
 }
 
+.app-view-switcher::-webkit-scrollbar {
+  height: 6px;
+}
+
+.app-view-switcher::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-view-switcher::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
 .app-view-switcher .segmented-control {
-  justify-content: center;
-  max-width: 100%;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  width: max-content;
+  max-width: none;
+  min-width: max-content;
   gap: 8px;
 }
 
 .app-view-switcher .segment {
+  flex: 0 0 auto;
   min-height: 38px;
+  min-width: max-content;
   padding: 8px 13px;
   font-size: 0.84rem;
   white-space: nowrap;
