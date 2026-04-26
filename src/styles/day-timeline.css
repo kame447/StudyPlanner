@@ -64,7 +64,7 @@
 
 .day-timeline-header-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -103,6 +103,13 @@
 }
 
 .day-timeline-print-button {
+  grid-column: 4;
+  flex: 0 0 auto;
+  justify-self: end;
+  margin-left: 0;
+}
+
+.day-timetable-import-button {
   grid-column: 3;
   flex: 0 0 auto;
   justify-self: end;

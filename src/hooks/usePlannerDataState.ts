@@ -928,6 +928,7 @@ export function usePlannerDataState({
       ...draft,
       title: draft.title.trim(),
       subject: draft.subject.trim(),
+      classroom: draft.classroom?.trim() ?? '',
       memo: draft.memo.trim(),
       createdAt: currentTemplate?.createdAt ?? now,
       updatedAt: now,

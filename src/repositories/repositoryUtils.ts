@@ -52,7 +52,9 @@ function normalizePlanType(value: unknown): PlanType {
 }
 
 function normalizePlanSourceType(value: unknown): PlanSourceType | undefined {
-  return value === 'manual' || value === 'todo' ? value : undefined;
+  return value === 'manual' || value === 'todo' || value === 'timetable'
+    ? value
+    : undefined;
 }
 
 function normalizeTodoStatus(value: unknown): TodoStatus {
@@ -165,6 +167,7 @@ export function normalizeScheduleTemplateRecord(
     weekday: normalizeWeekday(template.weekday),
     startTime: template.startTime || '09:00',
     endTime: template.endTime || '10:00',
+    classroom: template.classroom?.trim() ?? '',
     memo: template.memo ?? '',
     active: template.active !== false,
   };

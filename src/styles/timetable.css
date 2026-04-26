@@ -1,0 +1,224 @@
+.timetable-view {
+  display: grid;
+  gap: 16px;
+}
+
+.timetable-header {
+  align-items: center;
+}
+
+.timetable-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+
+.timetable-form-grid {
+  gap: 12px;
+}
+
+.timetable-form-actions {
+  justify-content: flex-end;
+}
+
+.timetable-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.timetable-day-column {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 150px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.timetable-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timetable-day-head h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.timetable-day-head span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.timetable-template-list {
+  display: grid;
+  gap: 8px;
+}
+
+.timetable-template-card {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+}
+
+.timetable-template-main {
+  display: grid;
+  gap: 3px;
+}
+
+.timetable-template-main strong {
+  font-size: 0.86rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.timetable-template-main span,
+.timetable-template-card p {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.timetable-template-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.timetable-template-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.timetable-template-meta span {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.timetable-template-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.timetable-template-actions .ghost-button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+}
+
+.timetable-delete-button {
+  color: var(--danger);
+}
+
+.timetable-empty {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.timetable-import-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+
+.timetable-import-card h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.timetable-import-list {
+  display: grid;
+  gap: 7px;
+  max-height: min(340px, 48vh);
+  overflow-y: auto;
+}
+
+.timetable-import-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+
+.timetable-import-item input {
+  margin-top: 3px;
+}
+
+.timetable-import-item strong {
+  display: block;
+  font-size: 0.84rem;
+}
+
+.timetable-import-item span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.timetable-import-actions {
+  justify-content: flex-end;
+}
+
+@media screen and (max-width: 900px) {
+  .timetable-week-grid {
+    grid-template-columns: repeat(7, minmax(142px, 1fr));
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .timetable-form {
+    padding: 11px;
+    border-radius: 14px;
+  }
+
+  .timetable-week-grid {
+    gap: 8px;
+  }
+
+  .timetable-day-column {
+    min-width: 136px;
+    padding: 8px;
+    border-radius: 14px;
+  }
+}

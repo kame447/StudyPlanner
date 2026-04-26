@@ -17,6 +17,8 @@ interface DayTimelineProps {
   onPreviousDay: () => void;
   onNextDay: () => void;
   onPrint: () => void;
+  onImportTimetable?: () => void;
+  timetableImportCount?: number;
 }
 
 export type DayTimelineSelection =
@@ -188,6 +190,8 @@ export function DayTimeline({
   onPreviousDay,
   onNextDay,
   onPrint,
+  onImportTimetable,
+  timetableImportCount = 0,
 }: DayTimelineProps) {
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
@@ -294,6 +298,17 @@ export function DayTimeline({
               </button>
             </div>
           </div>
+          {onImportTimetable ? (
+            <button
+              className="ghost-button view-print-button day-timetable-import-button print-hide"
+              onClick={onImportTimetable}
+              type="button"
+              title="今日の時間割を反映"
+            >
+              時間割反映
+              {timetableImportCount > 0 ? `（${timetableImportCount}）` : ''}
+            </button>
+          ) : null}
           <button
             className="ghost-button view-print-button day-timeline-print-button print-hide"
             onClick={onPrint}

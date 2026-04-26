@@ -9,6 +9,7 @@ import { QuickEntryModal } from './components/QuickEntryModal';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { ReportView } from './components/ReportView';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
+import { TimetableView } from './components/TimetableView';
 import { TodoView } from './components/TodoView';
 import { UserAvatar } from './components/UserAvatar';
 import { WeekView } from './components/WeekView';
@@ -37,6 +38,7 @@ export default function App() {
     actuals,
     monthEvents,
     todos,
+    scheduleTemplates,
     viewMode,
     selectedDate,
     monthDate,
@@ -68,6 +70,8 @@ export default function App() {
     saveTodo,
     scheduleTodoAsPlan,
     deleteTodo,
+    saveScheduleTemplate,
+    deleteScheduleTemplate,
     selectDate,
     changeMonth,
     openWeek,
@@ -155,6 +159,13 @@ export default function App() {
             Todo
           </button>
           <button
+            className={viewMode === 'timetable' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('timetable')}
+            type="button"
+          >
+            時間割
+          </button>
+          <button
             className={viewMode === 'report' ? 'segment active' : 'segment'}
             onClick={() => setViewMode('report')}
             type="button"
@@ -228,9 +239,11 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
+            scheduleTemplates={scheduleTemplates}
             onChangeDay={openDay}
             onEditPlan={openEditPlan}
             onDeletePlan={deletePlan}
+            onSavePlan={savePlanDraft}
             onSaveActual={saveActual}
             onDeleteActual={deleteActual}
             onSaveMonthEvent={saveMonthEvent}
@@ -246,6 +259,15 @@ export default function App() {
             onSaveTodo={saveTodo}
             onScheduleTodo={scheduleTodoAsPlan}
             onDeleteTodo={deleteTodo}
+          />
+        ) : null}
+
+        {viewMode === 'timetable' ? (
+          <TimetableView
+            userId={user.id}
+            scheduleTemplates={scheduleTemplates}
+            onSaveScheduleTemplate={saveScheduleTemplate}
+            onDeleteScheduleTemplate={deleteScheduleTemplate}
           />
         ) : null}
 

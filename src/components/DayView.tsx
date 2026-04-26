@@ -8,6 +8,7 @@ import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
   getActualOccurrenceKey,
+  getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
@@ -20,6 +21,8 @@ import type {
   MonthEvent,
   MonthEventDraft,
   Plan,
+  PlanDraft,
+  ScheduleTemplate,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -28,9 +31,11 @@ interface DayViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  scheduleTemplates: ScheduleTemplate[];
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
+  onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
   onSaveMonthEvent: (
@@ -51,15 +56,22 @@ export function DayView({
   plans,
   actuals,
   monthEvents,
+  scheduleTemplates,
   onChangeDay,
   onEditPlan,
   onDeletePlan,
+  onSavePlan,
   onSaveActual,
   onDeleteActual,
   onSaveMonthEvent,
   onDeleteMonthEvent,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
+  const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [isImportingTimetable, setIsImportingTimetable] = useState(false);
   const dayRangeLabel = formatDateLabel(selectedDate);
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeDay(addDays(selectedDate, -1)),
@@ -95,6 +107,39 @@ export function DayView({
     () => new Map(dayMonthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
     [dayMonthEvents],
   );
+  const selectedWeekday = getRecurrenceWeekday(selectedDate);
+  const dayScheduleTemplates = useMemo(
+    () =>
+      scheduleTemplates
+        .filter(
+          (template) =>
+            template.weekday === selectedWeekday && template.active !== false,
+        )
+        .sort((left, right) => {
+          const startDelta = left.startTime.localeCompare(right.startTime);
+
+          if (startDelta !== 0) {
+            return startDelta;
+          }
+
+          return left.endTime.localeCompare(right.endTime);
+        }),
+    [scheduleTemplates, selectedWeekday],
+  );
+  const importedTemplateIds = useMemo(
+    () =>
+      new Set(
+        plans
+          .filter(
+            (plan) =>
+              plan.date === selectedDate &&
+              plan.sourceType === 'timetable' &&
+              typeof plan.sourceId === 'string',
+          )
+          .map((plan) => plan.sourceId as string),
+      ),
+    [plans, selectedDate],
+  );
   const actualByOccurrenceKey = useMemo(
     () => new Map(dayActuals.map((actual) => [getActualOccurrenceKey(actual), actual])),
     [dayActuals],
@@ -126,6 +171,84 @@ export function DayView({
 
   function closeModal() {
     setModalState({ type: 'closed' });
+  }
+
+  function openTimetableImport() {
+    setSelectedTemplateIds(
+      new Set(
+        dayScheduleTemplates
+          .filter((template) => !importedTemplateIds.has(template.id))
+          .map((template) => template.id),
+      ),
+    );
+    setIsTimetableImportOpen(true);
+  }
+
+  function closeTimetableImport() {
+    setIsTimetableImportOpen(false);
+    setSelectedTemplateIds(new Set());
+  }
+
+  function toggleSelectedTemplate(templateId: string) {
+    setSelectedTemplateIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(templateId)) {
+        next.delete(templateId);
+      } else {
+        next.add(templateId);
+      }
+
+      return next;
+    });
+  }
+
+  function createPlanDraftFromScheduleTemplate(
+    template: ScheduleTemplate,
+  ): PlanDraft {
+    const memoParts = [
+      template.classroom ? `教室: ${template.classroom}` : '',
+      template.memo.trim(),
+    ].filter(Boolean);
+
+    return {
+      userId,
+      title: template.title,
+      subject: template.subject,
+      date: selectedDate,
+      startTime: template.startTime,
+      endTime: template.endTime,
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      recurrenceRules: [],
+      type: template.type,
+      memo: memoParts.join('\n'),
+      sourceType: 'timetable',
+      sourceId: template.id,
+    };
+  }
+
+  async function importSelectedTimetable() {
+    const templatesToImport = dayScheduleTemplates.filter(
+      (template) =>
+        selectedTemplateIds.has(template.id) && !importedTemplateIds.has(template.id),
+    );
+
+    if (templatesToImport.length === 0) {
+      closeTimetableImport();
+      return;
+    }
+
+    setIsImportingTimetable(true);
+    try {
+      for (const template of templatesToImport) {
+        await onSavePlan(createPlanDraftFromScheduleTemplate(template));
+      }
+      closeTimetableImport();
+    } finally {
+      setIsImportingTimetable(false);
+    }
   }
 
   return (
@@ -183,6 +306,89 @@ export function DayView({
         />
       ) : null}
 
+      {isTimetableImportOpen ? (
+        <div className="overlay modal-overlay" onClick={closeTimetableImport}>
+          <div
+            className="modal-card timetable-import-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-stack">
+              <div className="section-header">
+                <div>
+                  <h2>今日の時間割を反映</h2>
+                  <p>{dayRangeLabel}</p>
+                </div>
+                <button
+                  className="ghost-button"
+                  onClick={closeTimetableImport}
+                  type="button"
+                >
+                  閉じる
+                </button>
+              </div>
+
+              <section className="timetable-import-card">
+                <h3>反映する授業</h3>
+                {dayScheduleTemplates.length > 0 ? (
+                  <div className="timetable-import-list">
+                    {dayScheduleTemplates.map((template) => {
+                      const isImported = importedTemplateIds.has(template.id);
+
+                      return (
+                        <label
+                          className="timetable-import-item"
+                          key={template.id}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTemplateIds.has(template.id)}
+                            disabled={isImported || isImportingTimetable}
+                            onChange={() => toggleSelectedTemplate(template.id)}
+                          />
+                          <span>
+                            <strong>{template.title}</strong>
+                            <span>
+                              {template.startTime}-{template.endTime}
+                              {template.subject ? ` / ${template.subject}` : ''}
+                              {template.classroom ? ` / ${template.classroom}` : ''}
+                              {isImported ? ' / 反映済み' : ''}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="empty-copy">この曜日の時間割はありません。</p>
+                )}
+              </section>
+
+              <div className="row-actions timetable-import-actions">
+                <button
+                  className="ghost-button"
+                  onClick={closeTimetableImport}
+                  type="button"
+                >
+                  キャンセル
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={
+                    isImportingTimetable || selectedTemplateIds.size === 0
+                  }
+                  onClick={() => {
+                    void importSelectedTimetable();
+                  }}
+                  type="button"
+                >
+                  反映
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <DayTimeline
         dateLabel={dayRangeLabel}
         plans={dayPlans}
@@ -205,6 +411,8 @@ export function DayView({
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
         onPrint={() => window.print()}
+        onImportTimetable={openTimetableImport}
+        timetableImportCount={dayScheduleTemplates.length}
       />
     </section>
   );

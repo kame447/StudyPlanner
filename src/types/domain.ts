@@ -1,4 +1,4 @@
-export type ViewMode = 'month' | 'week' | 'day' | 'todo' | 'report';
+export type ViewMode = 'month' | 'week' | 'day' | 'todo' | 'timetable' | 'report';
 
 export type PlanType =
   | 'study'
@@ -8,7 +8,7 @@ export type PlanType =
   | 'deadline'
   | 'other';
 
-export type PlanSourceType = 'manual' | 'todo';
+export type PlanSourceType = 'manual' | 'todo' | 'timetable';
 
 export interface User {
   id: string;
@@ -229,6 +229,7 @@ export interface ScheduleTemplate {
   weekday: RecurrenceWeekday;
   startTime: string;
   endTime: string;
+  classroom?: string;
   memo: string;
   active: boolean;
   createdAt: string;
@@ -243,6 +244,7 @@ export interface ScheduleTemplateDraft {
   weekday: RecurrenceWeekday;
   startTime: string;
   endTime: string;
+  classroom?: string;
   memo: string;
   active: boolean;
 }
