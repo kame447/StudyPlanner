@@ -535,7 +535,7 @@ export function TimetableView({
                     }}
                   />
                 </label>
-                <span aria-hidden="true">|</span>
+                <span className="timetable-period-separator" aria-hidden="true" />
                 <label>
                   <input
                     type="time"
