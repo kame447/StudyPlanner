@@ -319,7 +319,7 @@ export function TimetableView({
         <div
           className="timetable-grid"
           style={{
-            gridTemplateColumns: `96px repeat(${WEEKDAY_OPTIONS.length}, minmax(142px, 1fr))`,
+            gridTemplateColumns: `var(--timetable-period-column-width) repeat(${WEEKDAY_OPTIONS.length}, minmax(0, 1fr))`,
           }}
         >
           <div className="timetable-corner-cell" />
