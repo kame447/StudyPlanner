@@ -102,6 +102,11 @@
   padding: 9px 11px;
 }
 
+.todo-item-pinned {
+  border-color: color-mix(in srgb, #f6c343 34%, var(--border) 66%);
+  background: color-mix(in srgb, #f6c343 8%, var(--surface-soft) 92%);
+}
+
 .todo-item-main {
   display: grid;
   gap: 5px;
@@ -224,10 +229,41 @@
   font-size: 0.76rem;
 }
 
+.todo-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.todo-icon-button span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .todo-pin-button.active {
   background: color-mix(in srgb, #f6c343 16%, var(--surface) 84%);
   border-color: color-mix(in srgb, #f6c343 42%, var(--border) 58%);
   color: color-mix(in srgb, #7a5200 86%, var(--text) 14%);
+}
+
+.todo-icon-button.todo-delete-button {
+  color: var(--danger);
+}
+
+.todo-icon-button.todo-delete-button:hover {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border) 60%);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface) 92%);
 }
 
 .todo-section-toggle {

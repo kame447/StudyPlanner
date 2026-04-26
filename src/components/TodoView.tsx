@@ -383,9 +383,17 @@ export function TodoView({
 
   function renderTodo(todo: TodoTask) {
     const isBusy = savingTodoId === todo.id;
+    const isPinned = todo.pinned === true && todo.status !== 'done';
 
     return (
-      <article className="todo-item todo-view-item" key={todo.id}>
+      <article
+        className={
+          isPinned
+            ? 'todo-item todo-view-item todo-item-pinned'
+            : 'todo-item todo-view-item'
+        }
+        key={todo.id}
+      >
         <div className="todo-item-main">
           <div className="todo-item-title-row">
             <strong>{todo.title}</strong>
@@ -417,71 +425,83 @@ export function TodoView({
         </div>
         <div className="todo-item-actions">
           <button
-            className="ghost-button todo-action-button"
+            className="ghost-button todo-icon-button"
             onClick={() => openEditModal(todo)}
+            aria-label="編集"
+            title="編集"
             type="button"
           >
-            編集
+            <span aria-hidden="true">✎</span>
           </button>
           {todo.status === 'open' || todo.status === 'scheduled' ? (
             <button
               className={
                 todo.pinned
-                  ? 'ghost-button todo-action-button todo-pin-button active'
-                  : 'ghost-button todo-action-button todo-pin-button'
+                  ? 'ghost-button todo-icon-button todo-pin-button active'
+                  : 'ghost-button todo-icon-button todo-pin-button'
               }
               disabled={isBusy}
               onClick={() => {
                 void toggleTodoPinned(todo);
               }}
+              aria-label={todo.pinned ? 'ピン解除' : 'ピン留め'}
+              title={todo.pinned ? 'ピン解除' : 'ピン留め'}
               type="button"
             >
-              {todo.pinned ? 'ピン解除' : 'ピン留め'}
+              <span aria-hidden="true">📌</span>
             </button>
           ) : null}
           {todo.status === 'open' ? (
             <button
-              className="ghost-button todo-action-button"
+              className="ghost-button todo-icon-button"
               disabled={isBusy}
               onClick={() => openScheduleModal(todo)}
+              aria-label="予定にする"
+              title="予定にする"
               type="button"
             >
-              予定にする
+              <span aria-hidden="true">◷</span>
             </button>
           ) : null}
           {todo.status === 'open' || todo.status === 'scheduled' ? (
             <button
-              className="ghost-button todo-action-button"
+              className="ghost-button todo-icon-button"
               disabled={isBusy}
               onClick={() => {
                 void updateTodoStatus(todo, 'done');
               }}
+              aria-label="完了"
+              title="完了"
               type="button"
             >
-              完了
+              <span aria-hidden="true">✓</span>
             </button>
           ) : null}
           {todo.status === 'done' || todo.status === 'scheduled' ? (
             <button
-              className="ghost-button todo-action-button"
+              className="ghost-button todo-icon-button"
               disabled={isBusy}
               onClick={() => {
                 void updateTodoStatus(todo, 'open');
               }}
+              aria-label="未完了に戻す"
+              title="未完了に戻す"
               type="button"
             >
-              未完了に戻す
+              <span aria-hidden="true">↺</span>
             </button>
           ) : null}
           <button
-            className="ghost-button todo-delete-button"
+            className="ghost-button todo-icon-button todo-delete-button"
             disabled={isBusy}
             onClick={() => {
               void onDeleteTodo(todo);
             }}
+            aria-label="削除"
+            title="削除"
             type="button"
           >
-            削除
+            <span aria-hidden="true">×</span>
           </button>
         </div>
       </article>

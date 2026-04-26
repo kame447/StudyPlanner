@@ -289,6 +289,44 @@
   font-size: 0.76rem;
 }
 
+.quick-entry-pin-card {
+  padding: 8px 10px;
+}
+
+.quick-entry-pin-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--button-ghost-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: left;
+}
+
+.quick-entry-pin-toggle.active {
+  border-color: color-mix(in srgb, #f6c343 48%, var(--border) 52%);
+  background: color-mix(in srgb, #f6c343 16%, var(--surface) 84%);
+  color: color-mix(in srgb, #7a5200 86%, var(--text) 14%);
+}
+
+.quick-entry-pin-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+}
+
 .quick-entry-weekdays {
   display: grid;
   gap: 7px;

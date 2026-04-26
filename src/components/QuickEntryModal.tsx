@@ -86,6 +86,7 @@ export function QuickEntryModal({
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
   const [dueTime, setDueTime] = useState<string>('');
+  const [todoPinned, setTodoPinned] = useState(false);
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [customDurationInput, setCustomDurationInput] = useState('');
   const [memo, setMemo] = useState('');
@@ -233,6 +234,7 @@ export function QuickEntryModal({
           dueDate: dueDate || null,
           dueTime: dueDate ? dueTime || null : null,
           memo: memo.trim(),
+          pinned: todoPinned,
         });
       }
       onClose();
@@ -407,6 +409,23 @@ export function QuickEntryModal({
                         />
                       </label>
                     </div>
+                  </section>
+                  <section className="quick-entry-card quick-entry-pin-card">
+                    <button
+                      className={
+                        todoPinned
+                          ? 'quick-entry-pin-toggle active'
+                          : 'quick-entry-pin-toggle'
+                      }
+                      type="button"
+                      aria-pressed={todoPinned}
+                      onClick={() => setTodoPinned((current) => !current)}
+                    >
+                      <span className="quick-entry-pin-icon" aria-hidden="true">
+                        📌
+                      </span>
+                      <span>ピン留め</span>
+                    </button>
                   </section>
                   {renderDurationCard()}
                 </>
