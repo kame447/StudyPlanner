@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { DayView } from './components/DayView';
@@ -26,7 +26,6 @@ import { getUserDisplayName } from './lib/userProfile';
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
-  const [selectedTimetableTermId, setSelectedTimetableTermId] = useState('default');
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
@@ -40,6 +39,8 @@ export default function App() {
     monthEvents,
     todos,
     scheduleTemplates,
+    timetableTerms,
+    timetablePeriods,
     viewMode,
     selectedDate,
     monthDate,
@@ -73,6 +74,9 @@ export default function App() {
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,
+    activateTimetableTerm,
+    saveTimetablePeriod,
+    deleteTimetablePeriod,
     selectDate,
     changeMonth,
     openWeek,
@@ -80,6 +84,14 @@ export default function App() {
     setEditorDraft,
     currentDayNote,
   } = usePlannerAppState();
+  const activeTimetableTerm = useMemo(
+    () =>
+      timetableTerms.find((term) => term.isActive) ??
+      timetableTerms[0] ??
+      null,
+    [timetableTerms],
+  );
+  const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
 
   if (booting) {
     return <SplashScreen />;
@@ -241,7 +253,7 @@ export default function App() {
             actuals={actuals}
             monthEvents={monthEvents}
             scheduleTemplates={scheduleTemplates}
-            timetableTermId={selectedTimetableTermId}
+            timetableTermId={activeTimetableTermId}
             onChangeDay={openDay}
             onEditPlan={openEditPlan}
             onDeletePlan={deletePlan}
@@ -267,9 +279,13 @@ export default function App() {
         {viewMode === 'timetable' ? (
           <TimetableView
             userId={user.id}
-            selectedTermId={selectedTimetableTermId}
-            onChangeTerm={setSelectedTimetableTermId}
+            activeTerm={activeTimetableTerm}
+            timetableTerms={timetableTerms}
+            timetablePeriods={timetablePeriods}
             scheduleTemplates={scheduleTemplates}
+            onActivateTerm={activateTimetableTerm}
+            onSaveTimetablePeriod={saveTimetablePeriod}
+            onDeleteTimetablePeriod={deleteTimetablePeriod}
             onSaveScheduleTemplate={saveScheduleTemplate}
             onDeleteScheduleTemplate={deleteScheduleTemplate}
           />

@@ -3,13 +3,25 @@ import type {
   RecurrenceWeekday,
   ScheduleTemplate,
   ScheduleTemplateDraft,
+  TimetablePeriod,
+  TimetablePeriodDraft,
+  TimetableTerm,
+  TimetableTermDraft,
+  TimetableTermKind,
 } from '../types/domain';
 
 interface TimetableViewProps {
   userId: string;
-  selectedTermId: string;
-  onChangeTerm: (termId: string) => void;
+  activeTerm: TimetableTerm | null;
+  timetableTerms: TimetableTerm[];
+  timetablePeriods: TimetablePeriod[];
   scheduleTemplates: ScheduleTemplate[];
+  onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  onSaveTimetablePeriod: (
+    draft: TimetablePeriodDraft,
+    targetPeriodId?: string,
+  ) => Promise<TimetablePeriod>;
+  onDeleteTimetablePeriod: (period: TimetablePeriod) => Promise<void>;
   onSaveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
     targetTemplateId?: string,
@@ -17,18 +29,9 @@ interface TimetableViewProps {
   onDeleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
 }
 
-interface TimetablePeriod {
-  periodNumber: number;
-  label: string;
-  startTime: string;
-  endTime: string;
-}
-
-const TIMETABLE_TERMS = [
-  { id: 'default', label: '現在の学期' },
-  { id: '2026-spring', label: '2026年 春学期' },
-  { id: '2026-fall', label: '2026年 秋学期' },
-];
+type DisplayPeriod = TimetablePeriodDraft & {
+  id?: string;
+};
 
 const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'mon', label: '月' },
@@ -39,13 +42,25 @@ const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'sat', label: '土' },
 ];
 
-const DEFAULT_PERIODS: TimetablePeriod[] = [
-  { periodNumber: 1, label: '1', startTime: '09:00', endTime: '10:30' },
-  { periodNumber: 2, label: '2', startTime: '10:40', endTime: '12:10' },
-  { periodNumber: 3, label: '3', startTime: '13:00', endTime: '14:30' },
-  { periodNumber: 4, label: '4', startTime: '14:40', endTime: '16:10' },
-  { periodNumber: 5, label: '5', startTime: '16:20', endTime: '17:50' },
-  { periodNumber: 6, label: '6', startTime: '18:00', endTime: '19:30' },
+const TERM_KIND_OPTIONS: Array<{ value: TimetableTermKind; label: string }> = [
+  { value: 'firstHalf', label: '前期' },
+  { value: 'secondHalf', label: '後期' },
+  { value: 'term1', label: '1学期' },
+  { value: 'term2', label: '2学期' },
+  { value: 'term3', label: '3学期' },
+  { value: 'term4', label: '4学期' },
+  { value: 'fullYear', label: '通年' },
+];
+
+const TERM_YEARS = [2024, 2025, 2026, 2027];
+
+const DEFAULT_PERIODS: DisplayPeriod[] = [
+  { userId: '', termId: 'default', periodNumber: 1, label: '1', startTime: '08:40', endTime: '10:10' },
+  { userId: '', termId: 'default', periodNumber: 2, label: '2', startTime: '10:20', endTime: '11:50' },
+  { userId: '', termId: 'default', periodNumber: 3, label: '3', startTime: '12:45', endTime: '14:15' },
+  { userId: '', termId: 'default', periodNumber: 4, label: '4', startTime: '14:25', endTime: '15:55' },
+  { userId: '', termId: 'default', periodNumber: 5, label: '5', startTime: '16:05', endTime: '17:35' },
+  { userId: '', termId: 'default', periodNumber: 6, label: '6', startTime: '18:00', endTime: '19:30' },
 ];
 
 function getTemplateTermId(template: ScheduleTemplate): string {
@@ -56,11 +71,24 @@ function getTimeKey(startTime: string, endTime: string): string {
   return `${startTime}-${endTime}`;
 }
 
+function getTermKindLabel(kind: TimetableTermKind): string {
+  return TERM_KIND_OPTIONS.find((option) => option.value === kind)?.label ?? '通年';
+}
+
+function createTermLabel(year: number, kind: TimetableTermKind): string {
+  return `${year}年 ${getTermKindLabel(kind)}`;
+}
+
+function toMinutes(time: string): number {
+  const [hour, minute] = time.split(':').map(Number);
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : 0;
+}
+
 function createTemplateDraft(
   userId: string,
   termId: string,
   weekday: RecurrenceWeekday,
-  period: TimetablePeriod,
+  period: DisplayPeriod,
 ): ScheduleTemplateDraft {
   return {
     userId,
@@ -97,78 +125,127 @@ function createTemplateDraftFromTemplate(
   };
 }
 
-function comparePeriods(left: TimetablePeriod, right: TimetablePeriod): number {
+function comparePeriods(left: DisplayPeriod, right: DisplayPeriod): number {
   return left.periodNumber - right.periodNumber;
+}
+
+function findPeriodNumberForTemplate(
+  template: ScheduleTemplate,
+  periods: DisplayPeriod[],
+): number | null {
+  if (template.periodNumber && periods.some((period) => period.periodNumber === template.periodNumber)) {
+    return template.periodNumber;
+  }
+
+  const timeMatch = periods.find(
+    (period) => getTimeKey(period.startTime, period.endTime) === getTimeKey(template.startTime, template.endTime),
+  );
+
+  if (timeMatch) {
+    return timeMatch.periodNumber;
+  }
+
+  if (periods.length === 0) {
+    return null;
+  }
+
+  const templateStartMinutes = toMinutes(template.startTime);
+  return periods
+    .slice()
+    .sort(
+      (left, right) =>
+        Math.abs(toMinutes(left.startTime) - templateStartMinutes) -
+        Math.abs(toMinutes(right.startTime) - templateStartMinutes),
+    )[0].periodNumber;
+}
+
+function makePeriodDraft(
+  userId: string,
+  termId: string,
+  period: DisplayPeriod,
+): TimetablePeriodDraft {
+  return {
+    userId,
+    termId,
+    periodNumber: period.periodNumber,
+    label: period.label,
+    startTime: period.startTime,
+    endTime: period.endTime,
+  };
 }
 
 export function TimetableView({
   userId,
-  selectedTermId,
-  onChangeTerm,
+  activeTerm,
+  timetableTerms,
+  timetablePeriods,
   scheduleTemplates,
+  onActivateTerm,
+  onSaveTimetablePeriod,
+  onDeleteTimetablePeriod,
   onSaveScheduleTemplate,
   onDeleteScheduleTemplate,
 }: TimetableViewProps) {
-  const [periodRows, setPeriodRows] = useState<TimetablePeriod[]>(DEFAULT_PERIODS);
+  const activeTermId = activeTerm?.id ?? 'default';
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
-  const selectedTerm =
-    TIMETABLE_TERMS.find((term) => term.id === selectedTermId) ?? TIMETABLE_TERMS[0];
+  const [savingPeriods, setSavingPeriods] = useState(false);
+  const [periodActionError, setPeriodActionError] = useState<string | null>(null);
+  const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);
+  const [termYear, setTermYear] = useState(activeTerm?.year ?? new Date().getFullYear());
+  const [termKind, setTermKind] = useState<TimetableTermKind>(activeTerm?.kind ?? 'fullYear');
+  const selectedTermLabel = activeTerm?.label ?? createTermLabel(termYear, termKind);
+  const savedPeriodsForTerm = useMemo(
+    () =>
+      timetablePeriods
+        .filter((period) => period.termId === activeTermId)
+        .map((period) => ({ ...period }))
+        .sort(comparePeriods),
+    [activeTermId, timetablePeriods],
+  );
   const termTemplates = useMemo(
     () =>
       scheduleTemplates.filter(
-        (template) => getTemplateTermId(template) === selectedTermId,
+        (template) => getTemplateTermId(template) === activeTermId,
       ),
-    [scheduleTemplates, selectedTermId],
+    [activeTermId, scheduleTemplates],
   );
   const displayPeriods = useMemo(() => {
-    const periods = new Map<number, TimetablePeriod>();
-    const timeKeys = new Set(periodRows.map((period) => getTimeKey(period.startTime, period.endTime)));
+    const basePeriods =
+      savedPeriodsForTerm.length > 0
+        ? savedPeriodsForTerm
+        : DEFAULT_PERIODS.map((period) => ({
+            ...period,
+            userId,
+            termId: activeTermId,
+          }));
+    const periods = new Map<number, DisplayPeriod>();
 
-    periodRows.forEach((period) => {
+    basePeriods.forEach((period) => {
       periods.set(period.periodNumber, period);
     });
 
-    const templatesWithoutKnownPeriod = termTemplates
-      .filter((template) => {
-        if (template.periodNumber && periods.has(template.periodNumber)) {
-          return false;
-        }
-
-        return !timeKeys.has(getTimeKey(template.startTime, template.endTime));
-      })
-      .sort((left, right) => left.startTime.localeCompare(right.startTime));
-
-    let nextPeriodNumber =
-      Math.max(...Array.from(periods.keys()), DEFAULT_PERIODS.length) + 1;
-
-    templatesWithoutKnownPeriod.forEach((template) => {
-      const periodNumber = template.periodNumber ?? nextPeriodNumber;
-      periods.set(periodNumber, {
-        periodNumber,
-        label: String(periodNumber),
-        startTime: template.startTime,
-        endTime: template.endTime,
-      });
-      nextPeriodNumber = Math.max(nextPeriodNumber, periodNumber + 1);
+    termTemplates.forEach((template) => {
+      if (template.periodNumber && !periods.has(template.periodNumber)) {
+        periods.set(template.periodNumber, {
+          userId,
+          termId: activeTermId,
+          periodNumber: template.periodNumber,
+          label: String(template.periodNumber),
+          startTime: template.startTime,
+          endTime: template.endTime,
+        });
+      }
     });
 
     return Array.from(periods.values()).sort(comparePeriods);
-  }, [periodRows, termTemplates]);
+  }, [activeTermId, savedPeriodsForTerm, termTemplates, userId]);
   const templateByCell = useMemo(() => {
     const map = new Map<string, ScheduleTemplate[]>();
-    const periodByTime = new Map(
-      displayPeriods.map((period) => [
-        getTimeKey(period.startTime, period.endTime),
-        period.periodNumber,
-      ]),
-    );
 
     termTemplates.forEach((template) => {
-      const periodNumber =
-        template.periodNumber ??
-        periodByTime.get(getTimeKey(template.startTime, template.endTime));
+      const periodNumber = findPeriodNumberForTemplate(template, displayPeriods);
 
       if (!periodNumber) {
         return;
@@ -207,9 +284,9 @@ export function TimetableView({
     setEditingTemplate(null);
   }
 
-  function openCreateEditor(weekday: RecurrenceWeekday, period: TimetablePeriod) {
+  function openCreateEditor(weekday: RecurrenceWeekday, period: DisplayPeriod) {
     setEditingTemplate(null);
-    setDraft(createTemplateDraft(userId, selectedTermId, weekday, period));
+    setDraft(createTemplateDraft(userId, activeTermId, weekday, period));
   }
 
   function openEditEditor(template: ScheduleTemplate) {
@@ -217,35 +294,100 @@ export function TimetableView({
     setDraft(createTemplateDraftFromTemplate(template));
   }
 
-  function updatePeriod(
+  async function persistPeriods(periods: DisplayPeriod[]) {
+    for (const period of periods) {
+      await onSaveTimetablePeriod(makePeriodDraft(userId, activeTermId, period), period.id);
+    }
+  }
+
+  async function updatePeriod(
     periodNumber: number,
     key: 'startTime' | 'endTime',
     value: string,
   ) {
-    setPeriodRows((current) =>
-      current.map((period) =>
-        period.periodNumber === periodNumber
-          ? { ...period, [key]: value }
-          : period,
-      ),
+    const nextPeriods = displayPeriods.map((period) =>
+      period.periodNumber === periodNumber ? { ...period, [key]: value } : period,
     );
+
+    setSavingPeriods(true);
+    try {
+      setPeriodActionError(null);
+      await persistPeriods(nextPeriods);
+    } finally {
+      setSavingPeriods(false);
+    }
   }
 
-  function addPeriod() {
-    setPeriodRows((current) => {
-      const lastPeriod = current[current.length - 1] ?? DEFAULT_PERIODS[0];
-      const periodNumber = lastPeriod.periodNumber + 1;
+  async function addPeriod() {
+    const lastPeriod = displayPeriods[displayPeriods.length - 1] ?? DEFAULT_PERIODS[0];
+    const periodNumber = lastPeriod.periodNumber + 1;
+    const nextPeriod: DisplayPeriod = {
+      userId,
+      termId: activeTermId,
+      periodNumber,
+      label: String(periodNumber),
+      startTime: lastPeriod.endTime,
+      endTime: lastPeriod.endTime,
+    };
 
-      return [
-        ...current,
-        {
-          periodNumber,
-          label: String(periodNumber),
-          startTime: lastPeriod.endTime,
-          endTime: lastPeriod.endTime,
-        },
-      ];
+    setSavingPeriods(true);
+    try {
+      setPeriodActionError(null);
+      await persistPeriods([...displayPeriods, nextPeriod]);
+    } finally {
+      setSavingPeriods(false);
+    }
+  }
+
+  async function deleteLastPeriod() {
+    if (displayPeriods.length <= 1) {
+      return;
+    }
+
+    const lastPeriod = displayPeriods[displayPeriods.length - 1];
+    const lastPeriodHasClass = termTemplates.some(
+      (template) =>
+        findPeriodNumberForTemplate(template, displayPeriods) === lastPeriod.periodNumber,
+    );
+
+    if (lastPeriodHasClass || !lastPeriod.id) {
+      const remainingPeriods = displayPeriods.slice(0, -1);
+
+      if (lastPeriodHasClass) {
+        setPeriodActionError('授業が入っている時限は削除できません。');
+        return;
+      }
+
+      setSavingPeriods(true);
+      try {
+        setPeriodActionError(null);
+        await persistPeriods(remainingPeriods);
+      } finally {
+        setSavingPeriods(false);
+      }
+      return;
+    }
+
+    setSavingPeriods(true);
+    try {
+      setPeriodActionError(null);
+      await onDeleteTimetablePeriod(lastPeriod as TimetablePeriod);
+    } finally {
+      setSavingPeriods(false);
+    }
+  }
+
+  async function applyTermSelection() {
+    const nextLabel = createTermLabel(termYear, termKind);
+
+    await onActivateTerm({
+      userId,
+      year: termYear,
+      kind: termKind,
+      label: nextLabel,
+      isActive: true,
     });
+    setIsTermSheetOpen(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -263,7 +405,7 @@ export function TimetableView({
           userId,
           title: draft.title.trim(),
           subject: draft.subject.trim(),
-          termId: draft.termId || selectedTermId,
+          termId: draft.termId || activeTermId,
           classroom: draft.classroom?.trim() ?? '',
           memo: draft.memo.trim(),
           active: true,
@@ -298,20 +440,24 @@ export function TimetableView({
           <p>空きコマも含めた週間テンプレートです。Dailyには手動で反映します。</p>
         </div>
         <div className="timetable-term-control">
-          <span>{selectedTerm.label}</span>
-          <label>
-            <span>学期切替</span>
-            <select
-              value={selectedTermId}
-              onChange={(event) => onChangeTerm(event.target.value)}
-            >
-              {TIMETABLE_TERMS.map((term) => (
-                <option key={term.id} value={term.id}>
-                  {term.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <button
+            className="timetable-term-pill"
+            onClick={() => {
+              setTermYear(activeTerm?.year ?? termYear);
+              setTermKind(activeTerm?.kind ?? termKind);
+              setIsTermSheetOpen(true);
+            }}
+            type="button"
+          >
+            {selectedTermLabel}
+          </button>
+          <button
+            className="ghost-button timetable-term-switch"
+            onClick={() => setIsTermSheetOpen(true)}
+            type="button"
+          >
+            学期切替
+          </button>
         </div>
       </div>
 
@@ -337,9 +483,10 @@ export function TimetableView({
                   <input
                     type="time"
                     value={period.startTime}
-                    onChange={(event) =>
-                      updatePeriod(period.periodNumber, 'startTime', event.target.value)
-                    }
+                    disabled={savingPeriods}
+                    onChange={(event) => {
+                      void updatePeriod(period.periodNumber, 'startTime', event.target.value);
+                    }}
                   />
                 </label>
                 <span aria-hidden="true">|</span>
@@ -347,9 +494,10 @@ export function TimetableView({
                   <input
                     type="time"
                     value={period.endTime}
-                    onChange={(event) =>
-                      updatePeriod(period.periodNumber, 'endTime', event.target.value)
-                    }
+                    disabled={savingPeriods}
+                    onChange={(event) => {
+                      void updatePeriod(period.periodNumber, 'endTime', event.target.value);
+                    }}
                   />
                 </label>
               </div>
@@ -378,9 +526,7 @@ export function TimetableView({
                           <span className="timetable-class-card" key={template.id}>
                             <strong>{template.title}</strong>
                             {template.subject ? <span>{template.subject}</span> : null}
-                            {template.classroom ? (
-                              <span>{template.classroom}</span>
-                            ) : null}
+                            {template.classroom ? <span>{template.classroom}</span> : null}
                             <span>
                               {template.startTime}-{template.endTime}
                             </span>
@@ -399,10 +545,118 @@ export function TimetableView({
       </div>
 
       <div className="row-actions timetable-grid-actions">
-        <button className="ghost-button" onClick={addPeriod} type="button">
+        <button
+          className="ghost-button"
+          disabled={savingPeriods || displayPeriods.length <= 1}
+          onClick={() => {
+            void deleteLastPeriod();
+          }}
+          type="button"
+        >
+          － 時限削除
+        </button>
+        <button
+          className="ghost-button"
+          disabled={savingPeriods}
+          onClick={() => {
+            void addPeriod();
+          }}
+          type="button"
+        >
           ＋ 時限追加
         </button>
       </div>
+      {periodActionError ? (
+        <p className="timetable-period-error">{periodActionError}</p>
+      ) : null}
+
+      {isTermSheetOpen ? (
+        <div className="overlay timetable-term-sheet-overlay" onClick={() => setIsTermSheetOpen(false)}>
+          <div
+            className="timetable-term-sheet"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="timetable-term-sheet-handle" aria-hidden="true" />
+            <div className="section-header">
+              <div>
+                <h2>学期切替</h2>
+                <p>年度と学期を選択します。</p>
+              </div>
+              <button className="ghost-button" onClick={() => setIsTermSheetOpen(false)} type="button">
+                閉じる
+              </button>
+            </div>
+            <div className="timetable-term-sheet-body">
+              <label className="field">
+                <span>年度</span>
+                <select
+                  value={termYear}
+                  onChange={(event) => setTermYear(Number(event.target.value))}
+                >
+                  {TERM_YEARS.map((year) => (
+                    <option key={year} value={year}>
+                      {year}年
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="field">
+                <span>学期</span>
+                <div className="timetable-term-kind-grid">
+                  {TERM_KIND_OPTIONS.map((option) => (
+                    <button
+                      className={
+                        option.value === termKind
+                          ? 'segment active timetable-term-kind'
+                          : 'segment timetable-term-kind'
+                      }
+                      key={option.value}
+                      onClick={() => setTermKind(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {timetableTerms.length > 0 ? (
+                <div className="timetable-existing-terms">
+                  <span>保存済み</span>
+                  <div>
+                    {timetableTerms.map((term) => (
+                      <button
+                        className={term.id === activeTermId ? 'chip active' : 'chip'}
+                        key={term.id}
+                        onClick={() => {
+                          setTermYear(term.year);
+                          setTermKind(term.kind);
+                        }}
+                        type="button"
+                      >
+                        {term.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="row-actions timetable-import-actions">
+              <button className="ghost-button" onClick={() => setIsTermSheetOpen(false)} type="button">
+                キャンセル
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => {
+                  void applyTermSelection();
+                }}
+                type="button"
+              >
+                切り替える
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {draft ? (
         <div className="overlay modal-overlay" onClick={closeEditor}>

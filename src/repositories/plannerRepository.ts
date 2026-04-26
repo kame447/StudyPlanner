@@ -26,6 +26,12 @@ export function createPlannerRepository(
     async getScheduleTemplates(userId) {
       return filterByUserId(await storageGateway.readScheduleTemplates(), userId);
     },
+    async getTimetableTerms(userId) {
+      return filterByUserId(await storageGateway.readTimetableTerms(), userId);
+    },
+    async getTimetablePeriods(userId) {
+      return filterByUserId(await storageGateway.readTimetablePeriods(), userId);
+    },
     async upsertPlan(plan) {
       const nextPlans = replaceById(await storageGateway.readPlans(), plan);
       await storageGateway.writePlans(nextPlans);
@@ -119,6 +125,25 @@ export function createPlannerRepository(
       );
 
       await storageGateway.writeScheduleTemplates(items);
+    },
+    async upsertTimetableTerm(item) {
+      const nextItems = replaceById(await storageGateway.readTimetableTerms(), item);
+
+      await storageGateway.writeTimetableTerms(nextItems);
+      return item;
+    },
+    async upsertTimetablePeriod(item) {
+      const nextItems = replaceById(await storageGateway.readTimetablePeriods(), item);
+
+      await storageGateway.writeTimetablePeriods(nextItems);
+      return item;
+    },
+    async deleteTimetablePeriod(userId, periodId) {
+      const items = (await storageGateway.readTimetablePeriods()).filter(
+        (item) => !(item.userId === userId && item.id === periodId),
+      );
+
+      await storageGateway.writeTimetablePeriods(items);
     },
   };
 }

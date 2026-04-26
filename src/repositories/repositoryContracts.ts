@@ -4,6 +4,8 @@ import type {
   MonthEvent,
   Plan,
   ScheduleTemplate,
+  TimetablePeriod,
+  TimetableTerm,
   TodoTask,
   User,
   UserProfileDraft,
@@ -32,6 +34,14 @@ export interface PlannerStorageGateway {
   writeScheduleTemplates(
     items: PromiseLike<ScheduleTemplate[]> | ScheduleTemplate[],
   ): Promise<void>;
+  readTimetableTerms(): Promise<TimetableTerm[]>;
+  writeTimetableTerms(
+    items: PromiseLike<TimetableTerm[]> | TimetableTerm[],
+  ): Promise<void>;
+  readTimetablePeriods(): Promise<TimetablePeriod[]>;
+  writeTimetablePeriods(
+    items: PromiseLike<TimetablePeriod[]> | TimetablePeriod[],
+  ): Promise<void>;
 }
 
 export interface AuthRepository {
@@ -51,6 +61,8 @@ export interface PlannerRepository {
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   getTodos(userId: string): Promise<TodoTask[]>;
   getScheduleTemplates(userId: string): Promise<ScheduleTemplate[]>;
+  getTimetableTerms(userId: string): Promise<TimetableTerm[]>;
+  getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
   upsertActual(actual: Actual): Promise<Actual>;
@@ -62,4 +74,7 @@ export interface PlannerRepository {
   deleteTodo(userId: string, todoId: string): Promise<void>;
   upsertScheduleTemplate(item: ScheduleTemplate): Promise<ScheduleTemplate>;
   deleteScheduleTemplate(userId: string, templateId: string): Promise<void>;
+  upsertTimetableTerm(item: TimetableTerm): Promise<TimetableTerm>;
+  upsertTimetablePeriod(item: TimetablePeriod): Promise<TimetablePeriod>;
+  deleteTimetablePeriod(userId: string, periodId: string): Promise<void>;
 }

@@ -253,6 +253,56 @@ export interface ScheduleTemplateDraft {
   active: boolean;
 }
 
+export type TimetableTermKind =
+  | 'firstHalf'
+  | 'secondHalf'
+  | 'term1'
+  | 'term2'
+  | 'term3'
+  | 'term4'
+  | 'fullYear'
+  | 'custom';
+
+export interface TimetableTerm {
+  id: string;
+  userId: string;
+  year: number;
+  kind: TimetableTermKind;
+  label: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TimetableTermDraft {
+  userId: string;
+  year: number;
+  kind: TimetableTermKind;
+  label: string;
+  isActive?: boolean;
+}
+
+export interface TimetablePeriod {
+  id: string;
+  userId: string;
+  termId: string;
+  periodNumber: number;
+  label: string;
+  startTime: string;
+  endTime: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TimetablePeriodDraft {
+  userId: string;
+  termId: string;
+  periodNumber: number;
+  label: string;
+  startTime: string;
+  endTime: string;
+}
+
 export type NaturalLanguageMode = 'add' | 'edit';
 
 export type SuggestionField =

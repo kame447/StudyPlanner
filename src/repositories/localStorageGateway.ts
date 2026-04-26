@@ -4,6 +4,8 @@ import type {
   MonthEvent,
   Plan,
   ScheduleTemplate,
+  TimetablePeriod,
+  TimetableTerm,
   TodoTask,
   User,
 } from '../types/domain';
@@ -15,6 +17,8 @@ import {
   normalizeActualRecord,
   normalizePlanRecord,
   normalizeScheduleTemplateRecord,
+  normalizeTimetablePeriodRecord,
+  normalizeTimetableTermRecord,
   normalizeTodoRecord,
 } from './repositoryUtils';
 
@@ -27,6 +31,8 @@ const STORAGE_KEYS = {
   monthEvents: 'studyplanner.monthEvents',
   todos: 'studyplanner.todos.v1',
   scheduleTemplates: 'studyplanner.scheduleTemplates.v1',
+  timetableTerms: 'studyplanner.timetableTerms.v1',
+  timetablePeriods: 'studyplanner.timetablePeriods.v1',
 } as const;
 
 type StoredMonthEvent = Omit<MonthEvent, 'repeatUntil' | 'excludedDates'> &
@@ -35,6 +41,8 @@ type StoredUser = Omit<User, 'username' | 'avatar'> &
   Partial<Pick<User, 'username' | 'avatar'>>;
 type StoredTodoTask = TodoTask;
 type StoredScheduleTemplate = ScheduleTemplate;
+type StoredTimetableTerm = TimetableTerm;
+type StoredTimetablePeriod = TimetablePeriod;
 
 function readJson<T>(storage: Storage, key: string, fallback: T): T {
   const raw = storage.getItem(key);
@@ -141,6 +149,26 @@ export function createLocalPlannerStorageGateway(
     },
     async writeScheduleTemplates(items) {
       writeJson(storage, STORAGE_KEYS.scheduleTemplates, await items);
+    },
+    async readTimetableTerms() {
+      return readJson<StoredTimetableTerm[]>(
+        storage,
+        STORAGE_KEYS.timetableTerms,
+        [],
+      ).map(normalizeTimetableTermRecord);
+    },
+    async writeTimetableTerms(items) {
+      writeJson(storage, STORAGE_KEYS.timetableTerms, await items);
+    },
+    async readTimetablePeriods() {
+      return readJson<StoredTimetablePeriod[]>(
+        storage,
+        STORAGE_KEYS.timetablePeriods,
+        [],
+      ).map(normalizeTimetablePeriodRecord);
+    },
+    async writeTimetablePeriods(items) {
+      writeJson(storage, STORAGE_KEYS.timetablePeriods, await items);
     },
   };
 }

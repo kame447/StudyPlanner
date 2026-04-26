@@ -15,6 +15,10 @@ import type {
   RecurringPlanScope,
   ScheduleTemplate,
   ScheduleTemplateDraft,
+  TimetablePeriod,
+  TimetablePeriodDraft,
+  TimetableTerm,
+  TimetableTermDraft,
   TodoTask,
   TodoTaskDraft,
   User,
@@ -31,6 +35,8 @@ interface PlannerAppState {
   monthEvents: MonthEvent[];
   todos: TodoTask[];
   scheduleTemplates: ScheduleTemplate[];
+  timetableTerms: TimetableTerm[];
+  timetablePeriods: TimetablePeriod[];
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -72,6 +78,12 @@ interface PlannerAppState {
     targetTemplateId?: string,
   ) => Promise<void>;
   deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
+  activateTimetableTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  saveTimetablePeriod: (
+    draft: TimetablePeriodDraft,
+    targetPeriodId?: string,
+  ) => Promise<TimetablePeriod>;
+  deleteTimetablePeriod: (period: TimetablePeriod) => Promise<void>;
   selectDate: (date: string) => void;
   changeMonth: (date: string) => void;
   openWeek: (date: string) => void;
@@ -100,6 +112,8 @@ export function usePlannerAppState(): PlannerAppState {
     monthEvents,
     todos,
     scheduleTemplates,
+    timetableTerms,
+    timetablePeriods,
     viewMode,
     selectedDate,
     monthDate,
@@ -128,6 +142,9 @@ export function usePlannerAppState(): PlannerAppState {
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,
+    activateTimetableTerm,
+    saveTimetablePeriod,
+    deleteTimetablePeriod,
     selectDate,
     changeMonth,
     openWeek,
@@ -187,6 +204,8 @@ export function usePlannerAppState(): PlannerAppState {
     monthEvents,
     todos,
     scheduleTemplates,
+    timetableTerms,
+    timetablePeriods,
     viewMode,
     selectedDate,
     monthDate,
@@ -221,6 +240,9 @@ export function usePlannerAppState(): PlannerAppState {
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,
+    activateTimetableTerm,
+    saveTimetablePeriod,
+    deleteTimetablePeriod,
     selectDate,
     changeMonth,
     openWeek,

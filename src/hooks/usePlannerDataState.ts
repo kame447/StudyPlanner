@@ -38,6 +38,11 @@ import type {
   RecurringPlanScope,
   ScheduleTemplate,
   ScheduleTemplateDraft,
+  TimetablePeriod,
+  TimetablePeriodDraft,
+  TimetableTerm,
+  TimetableTermDraft,
+  TimetableTermKind,
   TodoTask,
   TodoTaskDraft,
   ViewMode,
@@ -127,6 +132,60 @@ function summarizeActualForLog(actual: Actual) {
   };
 }
 
+function getTimetableTermKindLabel(kind: TimetableTermKind): string {
+  switch (kind) {
+    case 'firstHalf':
+      return '前期';
+    case 'secondHalf':
+      return '後期';
+    case 'term1':
+      return '1学期';
+    case 'term2':
+      return '2学期';
+    case 'term3':
+      return '3学期';
+    case 'term4':
+      return '4学期';
+    case 'fullYear':
+      return '通年';
+    case 'custom':
+      return 'カスタム';
+    default:
+      return '通年';
+  }
+}
+
+function createTimetableTermLabel(
+  year: number,
+  kind: TimetableTermKind,
+  fallbackLabel?: string,
+): string {
+  const normalizedYear = Number.isFinite(year) ? Math.round(year) : new Date().getFullYear();
+  const customLabel = fallbackLabel?.trim();
+
+  if (kind === 'custom' && customLabel) {
+    return customLabel;
+  }
+
+  return `${normalizedYear}年 ${getTimetableTermKindLabel(kind)}`;
+}
+
+function createDefaultTimetableTerm(userId: string): TimetableTerm {
+  const now = new Date().toISOString();
+  const year = new Date().getFullYear();
+
+  return {
+    id: 'default',
+    userId,
+    year,
+    kind: 'fullYear',
+    label: `${year}年 通年`,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 interface UsePlannerDataStateResult {
   plans: Plan[];
   actuals: Actual[];
@@ -134,6 +193,8 @@ interface UsePlannerDataStateResult {
   monthEvents: MonthEvent[];
   todos: TodoTask[];
   scheduleTemplates: ScheduleTemplate[];
+  timetableTerms: TimetableTerm[];
+  timetablePeriods: TimetablePeriod[];
   viewMode: ViewMode;
   selectedDate: string;
   monthDate: string;
@@ -165,6 +226,12 @@ interface UsePlannerDataStateResult {
     targetTemplateId?: string,
   ) => Promise<void>;
   deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
+  activateTimetableTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  saveTimetablePeriod: (
+    draft: TimetablePeriodDraft,
+    targetPeriodId?: string,
+  ) => Promise<TimetablePeriod>;
+  deleteTimetablePeriod: (period: TimetablePeriod) => Promise<void>;
   selectDate: (date: string) => void;
   changeMonth: (date: string) => void;
   openWeek: (date: string) => void;
@@ -183,6 +250,8 @@ export function usePlannerDataState({
   const [monthEvents, setMonthEvents] = useState<MonthEvent[]>([]);
   const [todos, setTodos] = useState<TodoTask[]>([]);
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>([]);
+  const [timetableTerms, setTimetableTerms] = useState<TimetableTerm[]>([]);
+  const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [monthDate, setMonthDate] = useState(startOfMonth(todayIsoDate()));
@@ -244,6 +313,8 @@ export function usePlannerDataState({
       nextMonthEvents,
       nextTodos,
       nextScheduleTemplates,
+      nextTimetableTerms,
+      nextTimetablePeriods,
     ] = await Promise.all([
       plannerRepository.getPlans(nextUserId),
       plannerRepository.getActuals(nextUserId),
@@ -251,7 +322,31 @@ export function usePlannerDataState({
       plannerRepository.getMonthEvents(nextUserId),
       plannerRepository.getTodos(nextUserId),
       plannerRepository.getScheduleTemplates(nextUserId),
+      plannerRepository.getTimetableTerms(nextUserId),
+      plannerRepository.getTimetablePeriods(nextUserId),
     ]);
+    const nextActiveTerm = nextTimetableTerms.find((term) => term.isActive);
+    const fallbackActiveTerm =
+      nextActiveTerm ??
+      nextTimetableTerms.find((term) => term.id === 'default') ??
+      nextTimetableTerms[0] ??
+      createDefaultTimetableTerm(nextUserId);
+    const resolvedTimetableTerms = nextTimetableTerms.some(
+      (term) => term.id === fallbackActiveTerm.id,
+    )
+      ? nextTimetableTerms.map((term) => ({
+          ...term,
+          isActive: term.id === fallbackActiveTerm.id,
+        }))
+      : [fallbackActiveTerm];
+
+    if (!nextActiveTerm) {
+      await plannerRepository.upsertTimetableTerm({
+        ...fallbackActiveTerm,
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     setPlans(sortByDateTime(nextPlans));
     setActuals(nextActuals);
@@ -259,6 +354,10 @@ export function usePlannerDataState({
     setMonthEvents(sortMonthEvents(nextMonthEvents));
     setTodos(nextTodos);
     setScheduleTemplates(nextScheduleTemplates);
+    setTimetableTerms(resolvedTimetableTerms);
+    setTimetablePeriods(
+      nextTimetablePeriods.sort((left, right) => left.periodNumber - right.periodNumber),
+    );
   }, []);
 
   const resetPlannerData = useCallback(() => {
@@ -268,6 +367,8 @@ export function usePlannerDataState({
     setMonthEvents([]);
     setTodos([]);
     setScheduleTemplates([]);
+    setTimetableTerms([]);
+    setTimetablePeriods([]);
     setEditorDraft(null);
     setEditingPlanId(null);
     setEditingPlan(null);
@@ -971,6 +1072,139 @@ export function usePlannerDataState({
     }
   }
 
+  async function activateTimetableTerm(draft: TimetableTermDraft): Promise<TimetableTerm> {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    const year = Number.isFinite(draft.year)
+      ? Math.round(draft.year)
+      : new Date().getFullYear();
+    const label = createTimetableTermLabel(year, draft.kind, draft.label);
+    const existingTerm = timetableTerms.find(
+      (term) => term.year === year && term.kind === draft.kind,
+    );
+    const now = new Date().toISOString();
+    const nextActiveTerm: TimetableTerm = {
+      id: existingTerm?.id ?? (draft.kind === 'fullYear' && timetableTerms.length === 0 ? 'default' : createId('timetable-term')),
+      userId,
+      year,
+      kind: draft.kind,
+      label,
+      isActive: true,
+      createdAt: existingTerm?.createdAt ?? now,
+      updatedAt: now,
+    };
+    const inactiveTerms = timetableTerms
+      .filter((term) => term.id !== nextActiveTerm.id)
+      .map((term) => ({
+        ...term,
+        isActive: false,
+        updatedAt: now,
+      }));
+
+    try {
+      for (const term of inactiveTerms) {
+        await plannerRepository.upsertTimetableTerm(term);
+      }
+      await plannerRepository.upsertTimetableTerm(nextActiveTerm);
+      setTimetableTerms((current) => {
+        const withInactive = current
+          .filter((term) => term.id !== nextActiveTerm.id)
+          .map((term) => ({ ...term, isActive: false, updatedAt: now }));
+        return [...withInactive, nextActiveTerm].sort(
+          (left, right) => left.year - right.year || left.label.localeCompare(right.label),
+        );
+      });
+      showNotice('学期を切り替えました。', 'success');
+      return nextActiveTerm;
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '学期を切り替えられませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
+  async function saveTimetablePeriod(
+    draft: TimetablePeriodDraft,
+    targetPeriodId?: string,
+  ): Promise<TimetablePeriod> {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      showNotice('時限の終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('時限の終了時刻は開始時刻より後にしてください。');
+    }
+
+    const currentPeriod = timetablePeriods.find((period) => period.id === targetPeriodId);
+    const periodNumber = Math.max(1, Math.round(draft.periodNumber));
+    const now = new Date().toISOString();
+    const nextPeriod: TimetablePeriod = {
+      id: currentPeriod?.id ?? createId('timetable-period'),
+      userId,
+      termId: draft.termId.trim() || 'default',
+      periodNumber,
+      label: draft.label.trim() || String(periodNumber),
+      startTime: draft.startTime,
+      endTime: draft.endTime,
+      createdAt: currentPeriod?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    try {
+      await plannerRepository.upsertTimetablePeriod(nextPeriod);
+      setTimetablePeriods((current) =>
+        upsertByKey(current, nextPeriod, (period) => period.id).sort(
+          (left, right) =>
+            left.termId.localeCompare(right.termId) ||
+            left.periodNumber - right.periodNumber,
+        ),
+      );
+      return nextPeriod;
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '時限設定を保存できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
+  async function deleteTimetablePeriod(period: TimetablePeriod) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    const periodTemplates = scheduleTemplates.filter(
+      (template) =>
+        (template.termId || 'default') === period.termId &&
+        template.periodNumber === period.periodNumber,
+    );
+
+    if (periodTemplates.length > 0) {
+      showNotice('授業が入っている時限は削除できません。', 'error');
+      throw new Error('授業が入っている時限は削除できません。');
+    }
+
+    try {
+      await plannerRepository.deleteTimetablePeriod(userId, period.id);
+      setTimetablePeriods((current) =>
+        current.filter((item) => item.id !== period.id),
+      );
+      showNotice('時限を削除しました。');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '時限を削除できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
   function selectDate(date: string) {
     setSelectedDate(date);
 
@@ -1005,6 +1239,8 @@ export function usePlannerDataState({
     monthEvents,
     todos,
     scheduleTemplates,
+    timetableTerms,
+    timetablePeriods,
     viewMode,
     selectedDate,
     monthDate,
@@ -1039,6 +1275,9 @@ export function usePlannerDataState({
     deleteTodo,
     saveScheduleTemplate,
     deleteScheduleTemplate,
+    activateTimetableTerm,
+    saveTimetablePeriod,
+    deleteTimetablePeriod,
     selectDate,
     changeMonth,
     openWeek,

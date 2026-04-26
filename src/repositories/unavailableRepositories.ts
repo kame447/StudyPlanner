@@ -53,6 +53,12 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async getScheduleTemplates() {
       return [];
     },
+    async getTimetableTerms() {
+      return [];
+    },
+    async getTimetablePeriods() {
+      return [];
+    },
     async upsertPlan() {
       throw createConfigurationError();
     },
@@ -84,6 +90,15 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
       throw createConfigurationError();
     },
     async deleteScheduleTemplate() {
+      throw createConfigurationError();
+    },
+    async upsertTimetableTerm() {
+      throw createConfigurationError();
+    },
+    async upsertTimetablePeriod() {
+      throw createConfigurationError();
+    },
+    async deleteTimetablePeriod() {
       throw createConfigurationError();
     },
   };

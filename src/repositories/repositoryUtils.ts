@@ -6,6 +6,9 @@ import type {
   PlanType,
   RecurrenceWeekday,
   ScheduleTemplate,
+  TimetablePeriod,
+  TimetableTerm,
+  TimetableTermKind,
   TodoStatus,
   TodoTask,
 } from '../types/domain';
@@ -73,6 +76,25 @@ function normalizeWeekday(value: unknown): RecurrenceWeekday {
     value === 'sat'
     ? value
     : 'mon';
+}
+
+function normalizeTimetableTermKind(value: unknown): TimetableTermKind {
+  return value === 'firstHalf' ||
+    value === 'secondHalf' ||
+    value === 'term1' ||
+    value === 'term2' ||
+    value === 'term3' ||
+    value === 'term4' ||
+    value === 'fullYear' ||
+    value === 'custom'
+    ? value
+    : 'fullYear';
+}
+
+function normalizeTime(value: unknown, fallback: string): string {
+  return typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)
+    ? value
+    : fallback;
 }
 
 export function normalizePlanRecord(plan: Plan): Plan {
@@ -178,5 +200,43 @@ export function normalizeScheduleTemplateRecord(
     classroom: template.classroom?.trim() ?? '',
     memo: template.memo ?? '',
     active: template.active !== false,
+  };
+}
+
+export function normalizeTimetableTermRecord(term: TimetableTerm): TimetableTerm {
+  const year =
+    typeof term.year === 'number' && Number.isFinite(term.year)
+      ? Math.round(term.year)
+      : new Date().getFullYear();
+  const kind = normalizeTimetableTermKind(term.kind);
+  const label = term.label?.trim() || `${year}年 通年`;
+
+  return {
+    ...term,
+    year,
+    kind,
+    label,
+    isActive: term.isActive === true,
+  };
+}
+
+export function normalizeTimetablePeriodRecord(
+  period: TimetablePeriod,
+): TimetablePeriod {
+  const periodNumber =
+    typeof period.periodNumber === 'number' && Number.isFinite(period.periodNumber)
+      ? Math.max(1, Math.round(period.periodNumber))
+      : 1;
+
+  return {
+    ...period,
+    termId:
+      typeof period.termId === 'string' && period.termId.trim().length > 0
+        ? period.termId.trim()
+        : 'default',
+    periodNumber,
+    label: period.label?.trim() || String(periodNumber),
+    startTime: normalizeTime(period.startTime, '09:00'),
+    endTime: normalizeTime(period.endTime, '10:00'),
   };
 }

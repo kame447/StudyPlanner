@@ -15,6 +15,8 @@ import type {
   MonthEvent,
   Plan,
   ScheduleTemplate,
+  TimetablePeriod,
+  TimetableTerm,
   TodoTask,
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
@@ -22,10 +24,20 @@ import {
   normalizeActualRecord,
   normalizePlanRecord,
   normalizeScheduleTemplateRecord,
+  normalizeTimetablePeriodRecord,
+  normalizeTimetableTermRecord,
   normalizeTodoRecord,
 } from './repositoryUtils';
 
-type PlannerDoc = Plan | Actual | DayNote | MonthEvent | TodoTask | ScheduleTemplate;
+type PlannerDoc =
+  | Plan
+  | Actual
+  | DayNote
+  | MonthEvent
+  | TodoTask
+  | ScheduleTemplate
+  | TimetableTerm
+  | TimetablePeriod;
 type FirebaseLikeError = {
   code?: string | null;
   message?: string | null;
@@ -196,6 +208,38 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async getTimetableTerms(userId) {
+      try {
+        return (await listByUserId<TimetableTerm>(
+          firestoreDb,
+          'timetable_terms',
+          userId,
+        )).map(normalizeTimetableTermRecord);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割の学期を取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async getTimetablePeriods(userId) {
+      try {
+        return (await listByUserId<TimetablePeriod>(
+          firestoreDb,
+          'timetable_periods',
+          userId,
+        )).map(normalizeTimetablePeriodRecord);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割の時限設定を取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
     async upsertPlan(plan) {
       try {
         return await upsertDocument(firestoreDb, 'plans', plan);
@@ -344,6 +388,42 @@ export function createFirebasePlannerRepository(
         throw new Error(
           normalizeErrorMessage(
             '時間割を削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertTimetableTerm(item) {
+      try {
+        return await upsertDocument(firestoreDb, 'timetable_terms', item);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割の学期を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertTimetablePeriod(item) {
+      try {
+        return await upsertDocument(firestoreDb, 'timetable_periods', item);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割の時限設定を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async deleteTimetablePeriod(_userId, periodId) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'timetable_periods', periodId));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割の時限設定を削除できませんでした。',
             error as { message?: string | null },
           ),
         );

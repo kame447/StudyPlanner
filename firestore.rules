@@ -56,6 +56,20 @@ service cloud.firestore {
         && isOwner(request.resource.data.userId);
     }
 
+    match /timetable_terms/{termId} {
+      allow read, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        && isOwner(request.resource.data.userId);
+    }
+
+    match /timetable_periods/{periodId} {
+      allow read, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        && isOwner(request.resource.data.userId);
+    }
+
     match /app_catalogs/{catalogId} {
       allow read: if true;
       allow create, update: if false;
