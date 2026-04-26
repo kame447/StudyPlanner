@@ -167,6 +167,14 @@ export function normalizeScheduleTemplateRecord(
     weekday: normalizeWeekday(template.weekday),
     startTime: template.startTime || '09:00',
     endTime: template.endTime || '10:00',
+    termId:
+      typeof template.termId === 'string' && template.termId.trim().length > 0
+        ? template.termId.trim()
+        : 'default',
+    periodNumber:
+      typeof template.periodNumber === 'number' && Number.isFinite(template.periodNumber)
+        ? Math.max(1, Math.round(template.periodNumber))
+        : undefined,
     classroom: template.classroom?.trim() ?? '',
     memo: template.memo ?? '',
     active: template.active !== false,

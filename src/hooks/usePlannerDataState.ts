@@ -928,6 +928,11 @@ export function usePlannerDataState({
       ...draft,
       title: draft.title.trim(),
       subject: draft.subject.trim(),
+      termId: draft.termId?.trim() || 'default',
+      periodNumber:
+        typeof draft.periodNumber === 'number' && Number.isFinite(draft.periodNumber)
+          ? Math.max(1, Math.round(draft.periodNumber))
+          : undefined,
       classroom: draft.classroom?.trim() ?? '',
       memo: draft.memo.trim(),
       createdAt: currentTemplate?.createdAt ?? now,

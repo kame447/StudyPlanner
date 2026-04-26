@@ -229,6 +229,8 @@ export interface ScheduleTemplate {
   weekday: RecurrenceWeekday;
   startTime: string;
   endTime: string;
+  termId?: string;
+  periodNumber?: number;
   classroom?: string;
   memo: string;
   active: boolean;
@@ -244,6 +246,8 @@ export interface ScheduleTemplateDraft {
   weekday: RecurrenceWeekday;
   startTime: string;
   endTime: string;
+  termId?: string;
+  periodNumber?: number;
   classroom?: string;
   memo: string;
   active: boolean;

@@ -32,6 +32,7 @@ interface DayViewProps {
   actuals: Actual[];
   monthEvents: MonthEvent[];
   scheduleTemplates: ScheduleTemplate[];
+  timetableTermId: string;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
@@ -57,6 +58,7 @@ export function DayView({
   actuals,
   monthEvents,
   scheduleTemplates,
+  timetableTermId,
   onChangeDay,
   onEditPlan,
   onDeletePlan,
@@ -115,6 +117,9 @@ export function DayView({
           (template) =>
             template.weekday === selectedWeekday && template.active !== false,
         )
+        .filter(
+          (template) => (template.termId || 'default') === timetableTermId,
+        )
         .sort((left, right) => {
           const startDelta = left.startTime.localeCompare(right.startTime);
 
@@ -124,7 +129,7 @@ export function DayView({
 
           return left.endTime.localeCompare(right.endTime);
         }),
-    [scheduleTemplates, selectedWeekday],
+    [scheduleTemplates, selectedWeekday, timetableTermId],
   );
   const importedTemplateIds = useMemo(
     () =>

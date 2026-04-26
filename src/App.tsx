@@ -26,6 +26,7 @@ import { getUserDisplayName } from './lib/userProfile';
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [selectedTimetableTermId, setSelectedTimetableTermId] = useState('default');
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
@@ -240,6 +241,7 @@ export default function App() {
             actuals={actuals}
             monthEvents={monthEvents}
             scheduleTemplates={scheduleTemplates}
+            timetableTermId={selectedTimetableTermId}
             onChangeDay={openDay}
             onEditPlan={openEditPlan}
             onDeletePlan={deletePlan}
@@ -265,6 +267,8 @@ export default function App() {
         {viewMode === 'timetable' ? (
           <TimetableView
             userId={user.id}
+            selectedTermId={selectedTimetableTermId}
+            onChangeTerm={setSelectedTimetableTermId}
             scheduleTemplates={scheduleTemplates}
             onSaveScheduleTemplate={saveScheduleTemplate}
             onDeleteScheduleTemplate={deleteScheduleTemplate}
