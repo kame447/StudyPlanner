@@ -405,6 +405,18 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async deleteTimetableTerm(_userId, termId) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'timetable_terms', termId));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '時間割の学期を削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
     async upsertTimetablePeriod(item) {
       try {
         return await upsertDocument(firestoreDb, 'timetable_periods', item);

@@ -75,6 +75,7 @@ export interface PlannerRepository {
   upsertScheduleTemplate(item: ScheduleTemplate): Promise<ScheduleTemplate>;
   deleteScheduleTemplate(userId: string, templateId: string): Promise<void>;
   upsertTimetableTerm(item: TimetableTerm): Promise<TimetableTerm>;
+  deleteTimetableTerm(userId: string, termId: string): Promise<void>;
   upsertTimetablePeriod(item: TimetablePeriod): Promise<TimetablePeriod>;
   deleteTimetablePeriod(userId: string, periodId: string): Promise<void>;
 }

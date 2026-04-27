@@ -79,6 +79,7 @@ interface PlannerAppState {
   ) => Promise<void>;
   deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
   activateTimetableTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  deleteTimetableTerm: (term: TimetableTerm) => Promise<void>;
   saveTimetablePeriod: (
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -143,6 +144,7 @@ export function usePlannerAppState(): PlannerAppState {
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
+    deleteTimetableTerm,
     saveTimetablePeriod,
     deleteTimetablePeriod,
     selectDate,
@@ -241,6 +243,7 @@ export function usePlannerAppState(): PlannerAppState {
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
+    deleteTimetableTerm,
     saveTimetablePeriod,
     deleteTimetablePeriod,
     selectDate,

@@ -227,6 +227,7 @@ interface UsePlannerDataStateResult {
   ) => Promise<void>;
   deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
   activateTimetableTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  deleteTimetableTerm: (term: TimetableTerm) => Promise<void>;
   saveTimetablePeriod: (
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -1119,6 +1120,39 @@ export function usePlannerDataState({
     }
   }
 
+  async function deleteTimetableTerm(term: TimetableTerm) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (term.isActive || term.id === 'default') {
+      showNotice('現在選択中の学期は削除できません。', 'error');
+      throw new Error('現在選択中の学期は削除できません。');
+    }
+
+    const hasTemplates = scheduleTemplates.some(
+      (template) => (template.termId || 'default') === term.id,
+    );
+    const hasPeriods = timetablePeriods.some((period) => period.termId === term.id);
+
+    if (hasTemplates || hasPeriods) {
+      showNotice('時間割データが入っている学期は削除できません。', 'error');
+      throw new Error('時間割データが入っている学期は削除できません。');
+    }
+
+    try {
+      await plannerRepository.deleteTimetableTerm(userId, term.id);
+      setTimetableTerms((current) => current.filter((item) => item.id !== term.id));
+      showNotice('学期を削除しました。');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '学期を削除できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
   async function saveTimetablePeriod(
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -1272,6 +1306,7 @@ export function usePlannerDataState({
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
+    deleteTimetableTerm,
     saveTimetablePeriod,
     deleteTimetablePeriod,
     selectDate,

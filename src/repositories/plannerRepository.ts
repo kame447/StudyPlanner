@@ -132,6 +132,13 @@ export function createPlannerRepository(
       await storageGateway.writeTimetableTerms(nextItems);
       return item;
     },
+    async deleteTimetableTerm(userId, termId) {
+      const items = (await storageGateway.readTimetableTerms()).filter(
+        (item) => !(item.userId === userId && item.id === termId),
+      );
+
+      await storageGateway.writeTimetableTerms(items);
+    },
     async upsertTimetablePeriod(item) {
       const nextItems = replaceById(await storageGateway.readTimetablePeriods(), item);
 

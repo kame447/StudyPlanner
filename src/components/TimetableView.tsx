@@ -17,6 +17,7 @@ interface TimetableViewProps {
   timetablePeriods: TimetablePeriod[];
   scheduleTemplates: ScheduleTemplate[];
   onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
+  onDeleteTerm: (term: TimetableTerm) => Promise<void>;
   onSaveTimetablePeriod: (
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -217,6 +218,7 @@ export function TimetableView({
   timetablePeriods,
   scheduleTemplates,
   onActivateTerm,
+  onDeleteTerm,
   onSaveTimetablePeriod,
   onDeleteTimetablePeriod,
   onSaveScheduleTemplate,
@@ -229,9 +231,29 @@ export function TimetableView({
   const [savingPeriods, setSavingPeriods] = useState(false);
   const [periodActionError, setPeriodActionError] = useState<string | null>(null);
   const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);
+  const [isSavingTerm, setIsSavingTerm] = useState(false);
+  const [deletingTermId, setDeletingTermId] = useState<string | null>(null);
   const [termYear, setTermYear] = useState(activeTerm?.year ?? new Date().getFullYear());
   const [termKind, setTermKind] = useState<TimetableTermKind>(activeTerm?.kind ?? 'fullYear');
   const selectedTermLabel = activeTerm?.label ?? createTermLabel(termYear, termKind);
+  const visibleTimetableTerms = useMemo(
+    () =>
+      timetableTerms
+        .slice()
+        .sort((left, right) => {
+          if (left.id === activeTermId) {
+            return -1;
+          }
+
+          if (right.id === activeTermId) {
+            return 1;
+          }
+
+          return right.updatedAt.localeCompare(left.updatedAt);
+        })
+        .slice(0, 4),
+    [activeTermId, timetableTerms],
+  );
   const savedPeriodsForTerm = useMemo(
     () =>
       timetablePeriods
@@ -426,16 +448,38 @@ export function TimetableView({
   }
 
   async function applyTermSelection() {
+    if (isSavingTerm) {
+      return;
+    }
+
     const nextLabel = createTermLabel(termYear, termKind);
 
-    await onActivateTerm({
-      userId,
-      year: termYear,
-      kind: termKind,
-      label: nextLabel,
-      isActive: true,
-    });
-    setIsTermSheetOpen(false);
+    setIsSavingTerm(true);
+    try {
+      await onActivateTerm({
+        userId,
+        year: termYear,
+        kind: termKind,
+        label: nextLabel,
+        isActive: true,
+      });
+      setIsTermSheetOpen(false);
+    } finally {
+      setIsSavingTerm(false);
+    }
+  }
+
+  async function deleteTerm(term: TimetableTerm) {
+    if (deletingTermId || isSavingTerm) {
+      return;
+    }
+
+    setDeletingTermId(term.id);
+    try {
+      await onDeleteTerm(term);
+    } finally {
+      setDeletingTermId(null);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -629,7 +673,14 @@ export function TimetableView({
       ) : null}
 
       {isTermSheetOpen ? (
-        <div className="overlay timetable-term-sheet-overlay" onClick={() => setIsTermSheetOpen(false)}>
+        <div
+          className="overlay timetable-term-sheet-overlay"
+          onClick={() => {
+            if (!isSavingTerm) {
+              setIsTermSheetOpen(false);
+            }
+          }}
+        >
           <div
             className="timetable-term-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -640,7 +691,12 @@ export function TimetableView({
                 <h2>学期切替</h2>
                 <p>年度と学期を選択します。</p>
               </div>
-              <button className="ghost-button" onClick={() => setIsTermSheetOpen(false)} type="button">
+              <button
+                className="ghost-button"
+                disabled={isSavingTerm}
+                onClick={() => setIsTermSheetOpen(false)}
+                type="button"
+              >
                 閉じる
               </button>
             </div>
@@ -649,6 +705,7 @@ export function TimetableView({
                 <span>年度</span>
                 <select
                   value={termYear}
+                  disabled={isSavingTerm}
                   onChange={(event) => setTermYear(Number(event.target.value))}
                 >
                   {TERM_YEARS.map((year) => (
@@ -668,6 +725,7 @@ export function TimetableView({
                           ? 'segment active timetable-term-kind'
                           : 'segment timetable-term-kind'
                       }
+                      disabled={isSavingTerm}
                       key={option.value}
                       onClick={() => setTermKind(option.value)}
                       type="button"
@@ -677,39 +735,68 @@ export function TimetableView({
                   ))}
                 </div>
               </div>
-              {timetableTerms.length > 0 ? (
+              {visibleTimetableTerms.length > 0 ? (
                 <div className="timetable-existing-terms">
                   <span>保存済み</span>
                   <div>
-                    {timetableTerms.map((term) => (
-                      <button
-                        className={term.id === activeTermId ? 'chip active' : 'chip'}
+                    {visibleTimetableTerms.map((term) => (
+                      <span
+                        className={
+                          term.id === activeTermId
+                            ? 'timetable-existing-term active'
+                            : 'timetable-existing-term'
+                        }
                         key={term.id}
-                        onClick={() => {
-                          setTermYear(term.year);
-                          setTermKind(term.kind);
-                        }}
-                        type="button"
                       >
-                        {term.label}
-                      </button>
+                        <button
+                          className="timetable-existing-term-select"
+                          disabled={isSavingTerm || deletingTermId !== null}
+                          onClick={() => {
+                            setTermYear(term.year);
+                            setTermKind(term.kind);
+                          }}
+                          type="button"
+                        >
+                          {term.label}
+                        </button>
+                        {term.id === activeTermId ? null : (
+                          <button
+                            className="timetable-existing-term-delete"
+                            disabled={isSavingTerm || deletingTermId === term.id}
+                            onClick={() => {
+                              void deleteTerm(term);
+                            }}
+                            type="button"
+                            aria-label="学期を削除"
+                            title="学期を削除"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
                     ))}
                   </div>
                 </div>
               ) : null}
             </div>
             <div className="row-actions timetable-import-actions">
-              <button className="ghost-button" onClick={() => setIsTermSheetOpen(false)} type="button">
+              <button
+                className="ghost-button"
+                disabled={isSavingTerm}
+                onClick={() => setIsTermSheetOpen(false)}
+                type="button"
+              >
                 キャンセル
               </button>
               <button
                 className="primary-button"
+                disabled={isSavingTerm || deletingTermId !== null}
                 onClick={() => {
                   void applyTermSelection();
                 }}
                 type="button"
               >
-                切り替える
+                {isSavingTerm ? '切替中...' : '切り替える'}
               </button>
             </div>
           </div>

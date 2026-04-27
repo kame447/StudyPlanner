@@ -360,9 +360,52 @@
   gap: 8px;
 }
 
-.timetable-existing-terms .chip {
+.timetable-existing-term {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.timetable-existing-term.active {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border) 60%);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface) 90%);
+}
+
+.timetable-existing-term-select,
+.timetable-existing-term-delete {
   min-height: 32px;
-  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.timetable-existing-term-select {
+  min-width: 0;
+  max-width: 170px;
+  padding: 5px 9px 5px 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-existing-term-delete {
+  width: 34px;
+  padding: 0;
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.timetable-existing-term-select:disabled,
+.timetable-existing-term-delete:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 
 .timetable-editor-modal {

@@ -95,6 +95,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async upsertTimetableTerm() {
       throw createConfigurationError();
     },
+    async deleteTimetableTerm() {
+      throw createConfigurationError();
+    },
     async upsertTimetablePeriod() {
       throw createConfigurationError();
     },
