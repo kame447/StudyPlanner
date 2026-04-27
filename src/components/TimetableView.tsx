@@ -804,140 +804,163 @@ export function TimetableView({
       ) : null}
 
       {draft ? (
-        <div className="overlay modal-overlay" onClick={closeEditor}>
+        <div className="overlay modal-overlay timetable-modal-overlay" onClick={closeEditor}>
           <form
             className="modal-card timetable-editor-modal"
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleSubmit}
           >
-            <div className="section-header">
-              <div>
+            <div className="timetable-editor-header">
+              <button className="ghost-button" onClick={closeEditor} type="button">
+                閉じる
+              </button>
+              <div className="timetable-editor-heading">
                 <h2>{editingTemplate ? '授業を編集' : '授業を追加'}</h2>
                 <p>
                   {WEEKDAY_OPTIONS.find((weekday) => weekday.value === draft.weekday)?.label}
                   曜 / {draft.periodNumber ?? '-'}限
                 </p>
               </div>
-              <button className="ghost-button" onClick={closeEditor} type="button">
-                閉じる
+              <button
+                className="primary-button timetable-editor-save"
+                disabled={savingTemplateId !== null || !draft.title.trim()}
+                type="submit"
+              >
+                保存
               </button>
             </div>
 
-            <div className="form-grid compact timetable-form-grid">
-              <label className="field">
-                <span>曜日</span>
-                <select
-                  value={draft.weekday}
-                  onChange={(event) =>
-                    updateDraft('weekday', event.target.value as RecurrenceWeekday)
-                  }
-                >
-                  {WEEKDAY_OPTIONS.map((weekday) => (
-                    <option key={weekday.value} value={weekday.value}>
-                      {weekday.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="timetable-editor-body">
+              <section className="timetable-editor-card timetable-title-card">
+                <label className="field timetable-title-field">
+                  <span>授業名</span>
+                  <input
+                    value={draft.title}
+                    onChange={(event) => updateDraft('title', event.target.value)}
+                    placeholder="例: 英語演習 / 情報科学概論"
+                  />
+                </label>
+              </section>
 
-              <label className="field">
-                <span>時限</span>
-                <select
-                  value={draft.periodNumber ?? ''}
-                  onChange={(event) => {
-                    const nextPeriod = displayPeriods.find(
-                      (period) => period.periodNumber === Number(event.target.value),
-                    );
+              <section className="timetable-editor-card">
+                <div className="timetable-card-title">
+                  <strong>曜日・時限</strong>
+                </div>
+                <div className="timetable-schedule-grid">
+                  <label className="field">
+                    <span>曜日</span>
+                    <select
+                      value={draft.weekday}
+                      onChange={(event) =>
+                        updateDraft('weekday', event.target.value as RecurrenceWeekday)
+                      }
+                    >
+                      {WEEKDAY_OPTIONS.map((weekday) => (
+                        <option key={weekday.value} value={weekday.value}>
+                          {weekday.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-                    if (!nextPeriod) {
-                      return;
-                    }
+                  <label className="field">
+                    <span>時限</span>
+                    <select
+                      value={draft.periodNumber ?? ''}
+                      onChange={(event) => {
+                        const nextPeriod = displayPeriods.find(
+                          (period) => period.periodNumber === Number(event.target.value),
+                        );
 
-                    if (!hasValidPeriodTime(nextPeriod)) {
-                      setPeriodActionError('先にこの時限の開始時刻と終了時刻を設定してください。');
-                      return;
-                    }
+                        if (!nextPeriod) {
+                          return;
+                        }
 
-                    setDraft((current) =>
-                      current
-                        ? {
-                            ...current,
-                            periodNumber: nextPeriod.periodNumber,
-                            startTime: nextPeriod.startTime,
-                            endTime: nextPeriod.endTime,
-                          }
-                        : current,
-                    );
-                  }}
-                >
-                  {displayPeriods.map((period) => (
-                    <option key={period.periodNumber} value={period.periodNumber}>
-                      {period.label}限
-                      {hasValidPeriodTime(period)
-                        ? ''
-                        : '（時刻未設定）'}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                        if (!hasValidPeriodTime(nextPeriod)) {
+                          setPeriodActionError('先にこの時限の開始時刻と終了時刻を設定してください。');
+                          return;
+                        }
 
-              <label className="field">
-                <span>開始時刻</span>
-                <input
-                  type="time"
-                  value={draft.startTime}
-                  onChange={(event) => updateDraft('startTime', event.target.value)}
-                />
-              </label>
+                        setDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                periodNumber: nextPeriod.periodNumber,
+                                startTime: nextPeriod.startTime,
+                                endTime: nextPeriod.endTime,
+                              }
+                            : current,
+                        );
+                      }}
+                    >
+                      {displayPeriods.map((period) => (
+                        <option key={period.periodNumber} value={period.periodNumber}>
+                          {period.label}限
+                          {hasValidPeriodTime(period)
+                            ? ''
+                            : '（時刻未設定）'}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className="field">
-                <span>終了時刻</span>
-                <input
-                  type="time"
-                  value={draft.endTime}
-                  onChange={(event) => updateDraft('endTime', event.target.value)}
-                />
-              </label>
+                  <label className="field">
+                    <span>開始</span>
+                    <input
+                      type="time"
+                      value={draft.startTime}
+                      onChange={(event) => updateDraft('startTime', event.target.value)}
+                    />
+                  </label>
 
-              <label className="field">
-                <span>授業名</span>
-                <input
-                  value={draft.title}
-                  onChange={(event) => updateDraft('title', event.target.value)}
-                  placeholder="英語演習"
-                />
-              </label>
+                  <label className="field">
+                    <span>終了</span>
+                    <input
+                      type="time"
+                      value={draft.endTime}
+                      onChange={(event) => updateDraft('endTime', event.target.value)}
+                    />
+                  </label>
+                </div>
+              </section>
 
-              <label className="field">
-                <span>教科</span>
-                <input
-                  value={draft.subject}
-                  onChange={(event) => updateDraft('subject', event.target.value)}
-                  placeholder="英語"
-                />
-              </label>
+              <section className="timetable-editor-card">
+                <div className="timetable-card-title">
+                  <strong>詳細</strong>
+                </div>
+                <div className="timetable-detail-grid">
+                  <label className="field">
+                    <span>教科</span>
+                    <input
+                      value={draft.subject}
+                      onChange={(event) => updateDraft('subject', event.target.value)}
+                      placeholder="英語"
+                    />
+                  </label>
 
-              <label className="field">
-                <span>教室</span>
-                <input
-                  value={draft.classroom ?? ''}
-                  onChange={(event) => updateDraft('classroom', event.target.value)}
-                  placeholder="A101"
-                />
-              </label>
+                  <label className="field">
+                    <span>教室</span>
+                    <input
+                      value={draft.classroom ?? ''}
+                      onChange={(event) => updateDraft('classroom', event.target.value)}
+                      placeholder="A101"
+                    />
+                  </label>
+
+                  <label className="field timetable-memo-field">
+                    <span>メモ</span>
+                    <textarea
+                      value={draft.memo}
+                      onChange={(event) => updateDraft('memo', event.target.value)}
+                      rows={2}
+                    />
+                  </label>
+                </div>
+              </section>
             </div>
 
-            <label className="field">
-              <span>メモ</span>
-              <textarea
-                value={draft.memo}
-                onChange={(event) => updateDraft('memo', event.target.value)}
-                rows={3}
-              />
-            </label>
-
-            <div className="row-actions timetable-editor-actions">
-              {editingTemplate ? (
+            {editingTemplate ? (
+              <div className="row-actions timetable-editor-actions">
                 <button
                   className="ghost-button timetable-delete-button"
                   disabled={savingTemplateId === editingTemplate.id}
@@ -948,18 +971,8 @@ export function TimetableView({
                 >
                   削除
                 </button>
-              ) : null}
-              <button className="ghost-button" onClick={closeEditor} type="button">
-                キャンセル
-              </button>
-              <button
-                className="primary-button"
-                disabled={savingTemplateId !== null || !draft.title.trim()}
-                type="submit"
-              >
-                保存
-              </button>
-            </div>
+              </div>
+            ) : null}
           </form>
         </div>
       ) : null}
