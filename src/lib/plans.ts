@@ -1,4 +1,4 @@
-import type { PlanType } from '../types/domain';
+import type { PlanSourceType, PlanType } from '../types/domain';
 
 export const PLAN_TYPE_OPTIONS: Array<{ value: PlanType; label: string }> = [
   { value: 'study', label: '勉強' },
@@ -18,7 +18,11 @@ export const PLAN_TYPE_LABELS: Record<PlanType, string> = {
   other: 'その他',
 };
 
-export function getPlanTypeLabel(type: PlanType): string {
+export function getPlanTypeLabel(type: PlanType, sourceType?: PlanSourceType): string {
+  if (sourceType === 'timetable') {
+    return '授業';
+  }
+
   return PLAN_TYPE_LABELS[type];
 }
 

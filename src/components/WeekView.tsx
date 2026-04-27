@@ -14,7 +14,7 @@ import {
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, Plan, PlanSourceType } from '../types/domain';
 
 interface WeekViewProps {
   selectedDate: string;
@@ -31,6 +31,7 @@ interface WeekTimelineBaseBlock {
   title: string;
   subject: string;
   type: Plan['type'];
+  sourceType?: PlanSourceType;
   startTime: string;
   endTime: string;
 }
@@ -274,6 +275,7 @@ export function WeekView({
               title: plan.title,
               subject: plan.subject,
               type: plan.type,
+              sourceType: plan.sourceType,
               startTime: plan.startTime,
               endTime: plan.endTime,
             })),
@@ -284,6 +286,7 @@ export function WeekView({
               title: resolveActualTitle(actual, plan),
               subject: resolveActualSubject(actual, plan),
               type: plan?.type ?? 'other',
+              sourceType: plan?.sourceType,
               startTime: actual.actualStartTime,
               endTime: actual.actualEndTime,
             })),
@@ -335,7 +338,11 @@ export function WeekView({
 
                 {(timelineMode === 'plan' || timelineMode === 'compare') &&
                   planBlocks.map((entry) => {
-                    const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType,
+                    );
 
                     return (
                       <button
@@ -363,8 +370,16 @@ export function WeekView({
 
                 {(timelineMode === 'actual' || timelineMode === 'compare') &&
                   actualBlocks.map((entry) => {
-                    const theme = getSubjectTheme(entry.subject, entry.type);
-                    const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+                    const theme = getSubjectTheme(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType,
+                    );
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType,
+                    );
 
                     return (
                       <button

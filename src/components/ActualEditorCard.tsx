@@ -15,6 +15,7 @@ interface ActualEditorCardProps {
   onDeleteActual: (actual: Actual) => Promise<void>;
   forceOpen?: boolean;
   hideToggleButton?: boolean;
+  hidePlanActions?: boolean;
 }
 
 function resolveActualTitle(plan: Plan, actual?: Actual): string {
@@ -59,6 +60,7 @@ export function ActualEditorCard({
   onDeleteActual,
   forceOpen = false,
   hideToggleButton = false,
+  hidePlanActions = false,
 }: ActualEditorCardProps) {
   const [draft, setDraft] = useState<ActualDraft>(buildDraft(plan, actual));
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
@@ -141,12 +143,12 @@ export function ActualEditorCard({
   }
 
   return (
-    <article className="plan-detail-card">
-      <div className="plan-detail-head">
+    <article className="plan-detail-card actual-editor-card">
+      <div className="plan-detail-head actual-editor-head">
         <div>
           <div className="label-row">
             <strong>{plan.title}</strong>
-            <span className="type-badge">{getPlanTypeLabel(plan.type)}</span>
+            <span className="type-badge">{getPlanTypeLabel(plan.type, plan.sourceType)}</span>
           </div>
           <p className="comparison-subtitle">
             計画 {getPlanOccurrenceDate(plan)} / {plan.startTime} - {plan.endTime}
@@ -169,28 +171,41 @@ export function ActualEditorCard({
           </p>
         </div>
 
-        <div className="row-actions">
-          <button
-            className="mini-button"
-            onClick={() => onEditPlan(plan)}
-            type="button"
-          >
-            予定編集
-          </button>
-          <button
-            className="mini-button danger"
-            onClick={() => {
-              if (
-                isScopedRecurringPlan ||
-                window.confirm('この予定を削除しますか？')
-              ) {
-                void handleDeletePlan();
-              }
-            }}
-            type="button"
-          >
-            削除
-          </button>
+        <div className="row-actions actual-editor-head-actions">
+          {isOpen ? (
+            <button
+              className="primary-button"
+              onClick={() => void handleSave()}
+              type="button"
+            >
+              実績保存
+            </button>
+          ) : null}
+          {hidePlanActions ? null : (
+            <>
+              <button
+                className="mini-button"
+                onClick={() => onEditPlan(plan)}
+                type="button"
+              >
+                予定編集
+              </button>
+              <button
+                className="mini-button danger"
+                onClick={() => {
+                  if (
+                    isScopedRecurringPlan ||
+                    window.confirm('この予定を削除しますか？')
+                  ) {
+                    void handleDeletePlan();
+                  }
+                }}
+                type="button"
+              >
+                削除
+              </button>
+            </>
+          )}
           {hideToggleButton ? null : (
             <button
               className="mini-button"
@@ -206,38 +221,51 @@ export function ActualEditorCard({
       {plan.memo ? <p className="detail-note">{plan.memo}</p> : null}
 
       {isOpen ? (
-        <div className="actual-form">
-          <div className="form-grid compact">
-            <label className="field">
-              <span>実績開始</span>
-              <input
-                type="time"
-                value={draft.actualStartTime}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    actualStartTime: event.target.value,
-                  })
-                }
-              />
-            </label>
+        <div className="actual-form actual-form-compact">
+          <section className="actual-editor-section">
+            <div className="actual-editor-section-title">
+              <strong>実績時刻</strong>
+            </div>
+            <div className="actual-time-grid">
+              <label className="field">
+                <span>日付</span>
+                <input type="date" value={draft.occurrenceDate} disabled />
+              </label>
+              <label className="field">
+                <span>開始</span>
+                <input
+                  type="time"
+                  value={draft.actualStartTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      actualStartTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>終了</span>
+                <input
+                  type="time"
+                  value={draft.actualEndTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      actualEndTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
+            </div>
+          </section>
 
+          <section className="actual-editor-section">
+            <div className="actual-editor-section-title">
+              <strong>内容</strong>
+            </div>
             <label className="field">
-              <span>実績終了</span>
-              <input
-                type="time"
-                value={draft.actualEndTime}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    actualEndTime: event.target.value,
-                  })
-                }
-              />
-            </label>
-
-            <label className="field field-full">
-              <span>内容は予定通りですか</span>
+              <span>予定との対応</span>
               <div className="segmented-control">
                 <button
                   className={draft.isAlignedToPlan ? 'segment active' : 'segment'}
@@ -257,7 +285,7 @@ export function ActualEditorCard({
             </label>
 
             {draft.isAlignedToPlan ? (
-              <div className="assistant-feedback-card field-full">
+              <div className="assistant-feedback-card actual-editor-summary-card">
                 <strong>予定ベースで記録します</strong>
                 <p className="detail-note">
                   内容: {plan.title}
@@ -265,7 +293,7 @@ export function ActualEditorCard({
                 </p>
               </div>
             ) : (
-              <>
+              <div className="actual-content-grid">
                 <label className="field">
                   <span>実際にやった内容</span>
                   <input
@@ -293,10 +321,10 @@ export function ActualEditorCard({
                     placeholder="例: 物理"
                   />
                 </label>
-              </>
+              </div>
             )}
 
-            <label className="field field-full">
+            <label className="field">
               <span>{draft.isAlignedToPlan ? 'メモ・気づき' : 'ズレの理由・メモ'}</span>
               <textarea
                 value={draft.note}
@@ -314,14 +342,17 @@ export function ActualEditorCard({
                 }
               />
             </label>
-          </div>
+          </section>
 
-          <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
+          <details className="actual-tracking-details">
+            <summary>計測補助</summary>
+            <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
+          </details>
 
           {error ? <p className="inline-error">{error}</p> : null}
 
-          <div className="row-actions">
-            {actual ? (
+          {actual ? (
+            <div className="row-actions actual-editor-actions">
               <button
                 className="ghost-button danger"
                 onClick={() => {
@@ -333,15 +364,8 @@ export function ActualEditorCard({
               >
                 実績削除
               </button>
-            ) : null}
-            <button
-              className="primary-button"
-              onClick={() => void handleSave()}
-              type="button"
-            >
-              実績を保存
-            </button>
-          </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>

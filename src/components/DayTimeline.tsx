@@ -5,7 +5,13 @@ import {
   getActualOccurrenceKey,
 } from "../lib/planRecurrence";
 import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
-import type { Actual, MonthEvent, Plan, PlanType } from "../types/domain";
+import type {
+  Actual,
+  MonthEvent,
+  Plan,
+  PlanSourceType,
+  PlanType,
+} from "../types/domain";
 
 interface DayTimelineProps {
   dateLabel: string;
@@ -33,6 +39,7 @@ interface TimelineEntry {
   title: string;
   subject: string;
   type: PlanType;
+  sourceType?: PlanSourceType;
   startTime: string;
   endTime: string;
   lane: number;
@@ -205,6 +212,7 @@ export function DayTimeline({
       title: plan.title,
       subject: plan.subject,
       type: plan.type,
+      sourceType: plan.sourceType,
       startTime: plan.startTime,
       endTime: plan.endTime,
     })),
@@ -216,41 +224,68 @@ export function DayTimeline({
       title: monthEvent.title,
       subject: "主要予定",
       type: "other" as const,
+      sourceType: "manual" as const,
       startTime: monthEvent.startTime,
       endTime: monthEvent.endTime,
     })),
   ]);
   const actualEntries = buildTimelineEntries(
-    plans.flatMap((plan) => {
-      const actual = actualByOccurrenceKey.get(
-        buildPlanOccurrenceKey(plan.id, plan.date)
-      );
+    [
+      ...plans.flatMap((plan) => {
+        const actual = actualByOccurrenceKey.get(
+          buildPlanOccurrenceKey(plan.id, plan.date)
+        );
 
-      if (!actual) {
-        return [];
-      }
+        if (!actual) {
+          return [];
+        }
 
-      return [
-        {
-          id: actual.id,
-          targetId: plan.id,
-          selectionId: `plan:${plan.id}`,
-          entryKind: "plan" as const,
-          title: resolveActualTitle(actual, plan),
-          subject: resolveActualSubject(actual, plan),
-          type: plan.type,
-          startTime: actual.actualStartTime,
-          endTime: actual.actualEndTime,
-          alignedToPlan: resolveAlignedToPlan(actual, plan),
-        },
-      ];
-    })
+        return [
+          {
+            id: actual.id,
+            targetId: plan.id,
+            selectionId: `plan:${plan.id}`,
+            entryKind: "plan" as const,
+            title: resolveActualTitle(actual, plan),
+            subject: resolveActualSubject(actual, plan),
+            type: plan.type,
+            sourceType: plan.sourceType,
+            startTime: actual.actualStartTime,
+            endTime: actual.actualEndTime,
+            alignedToPlan: resolveAlignedToPlan(actual, plan),
+          },
+        ];
+      }),
+      ...monthEvents.flatMap((monthEvent) => {
+        const actual = actuals.find((candidate) => candidate.planId === monthEvent.id);
+
+        if (!actual) {
+          return [];
+        }
+
+        return [
+          {
+            id: actual.id,
+            targetId: monthEvent.id,
+            selectionId: `month-event:${monthEvent.id}`,
+            entryKind: "month-event" as const,
+            title: actual.title?.trim() || monthEvent.title,
+            subject: actual.subject.trim() || "主要予定",
+            type: "other" as const,
+            sourceType: "manual" as const,
+            startTime: actual.actualStartTime,
+            endTime: actual.actualEndTime,
+            alignedToPlan: false,
+          },
+        ];
+      }),
+    ]
   );
   const legendMap = new Map<string, string>();
 
   [...planEntries, ...actualEntries].forEach((entry) => {
-    const label = getSubjectLabel(entry.subject, entry.type);
-    legendMap.set(label, getSubjectTheme(label, entry.type).fill);
+    const label = getSubjectLabel(entry.subject, entry.type, entry.sourceType);
+    legendMap.set(label, getSubjectTheme(label, entry.type, entry.sourceType).fill);
   });
   const timelineLegend = (
     <div className="timeline-legend">
@@ -365,8 +400,16 @@ export function DayTimeline({
 
                 {planEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const theme = getSubjectTheme(entry.subject, entry.type);
-                  const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+                  const theme = getSubjectTheme(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
+                  const subjectLabel = getSubjectLabel(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
 
                   return (
                     <button
@@ -416,8 +459,16 @@ export function DayTimeline({
 
                 {actualEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const theme = getSubjectTheme(entry.subject, entry.type);
-                  const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+                  const theme = getSubjectTheme(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
+                  const subjectLabel = getSubjectLabel(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
 
                   return (
                     <button
@@ -441,7 +492,11 @@ export function DayTimeline({
                         boxShadow: `inset 5px 0 0 ${theme.fill}`,
                       }}
                       onClick={() =>
-                        onSelectEntry({ kind: "plan", id: entry.targetId })
+                        onSelectEntry(
+                          entry.entryKind === "plan"
+                            ? { kind: "plan", id: entry.targetId }
+                            : { kind: "month-event", id: entry.targetId }
+                        )
                       }
                       type="button"
                     >

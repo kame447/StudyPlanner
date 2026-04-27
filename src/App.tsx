@@ -261,8 +261,6 @@ export default function App() {
             onSavePlan={savePlanDraft}
             onSaveActual={saveActual}
             onDeleteActual={deleteActual}
-            onSaveMonthEvent={saveMonthEvent}
-            onDeleteMonthEvent={deleteMonthEvent}
           />
         ) : null}
 

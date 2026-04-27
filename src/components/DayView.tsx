@@ -18,12 +18,10 @@ import {
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayTimeline } from './DayTimeline';
-import { MonthEventDialog } from './MonthEventDialog';
 import type {
   Actual,
   ActualDraft,
   MonthEvent,
-  MonthEventDraft,
   Plan,
   PlanDraft,
   ScheduleTemplate,
@@ -43,17 +41,48 @@ interface DayViewProps {
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
-  onSaveMonthEvent: (
-    draft: MonthEventDraft,
-    targetMonthEventId?: string,
-  ) => Promise<void>;
-  onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
 
 type DayViewModalState =
   | { type: 'closed' }
   | { type: 'plan-detail'; planId: string }
   | { type: 'month-event-detail'; monthEventId: string };
+
+function createMonthEventActualPlan(
+  monthEvent: MonthEvent,
+  userId: string,
+  occurrenceDate: string,
+): Plan {
+  const memoParts = [
+    monthEvent.memo.trim(),
+    monthEvent.locationTags.length > 0
+      ? `場所タグ: ${monthEvent.locationTags.join(', ')}`
+      : '',
+    monthEvent.url.trim() ? `URL: ${monthEvent.url.trim()}` : '',
+  ].filter(Boolean);
+
+  return {
+    id: monthEvent.id,
+    seriesId: monthEvent.id,
+    userId,
+    title: monthEvent.title,
+    subject: '主要予定',
+    date: occurrenceDate,
+    startTime: monthEvent.startTime,
+    endTime: monthEvent.endTime,
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [],
+    type: 'other',
+    memo: memoParts.join('\n'),
+    createdAt: monthEvent.createdAt,
+    updatedAt: monthEvent.updatedAt,
+    sourceType: 'manual',
+    sourceId: monthEvent.id,
+    occurrenceDate,
+  };
+}
 
 export function DayView({
   selectedDate,
@@ -69,8 +98,6 @@ export function DayView({
   onSavePlan,
   onSaveActual,
   onDeleteActual,
-  onSaveMonthEvent,
-  onDeleteMonthEvent,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
@@ -88,18 +115,6 @@ export function DayView({
     () => sortByDateTime(expandPlansForDate(plans, selectedDate)),
     [plans, selectedDate],
   );
-  const dayOccurrenceKeys = useMemo(
-    () => new Set(dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date))),
-    [dayPlans],
-  );
-  const dayPlanMap = useMemo(
-    () => new Map(dayPlans.map((plan) => [plan.id, plan])),
-    [dayPlans],
-  );
-  const dayActuals = useMemo(
-    () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
-    [actuals, dayOccurrenceKeys],
-  );
   const dayMonthEvents = useMemo(
     () =>
       sortMonthEvents(
@@ -108,6 +123,34 @@ export function DayView({
         ),
       ),
     [monthEvents, selectedDate],
+  );
+  const dayMonthEventPlans = useMemo(
+    () =>
+      dayMonthEvents.map((monthEvent) =>
+        createMonthEventActualPlan(monthEvent, userId, selectedDate),
+      ),
+    [dayMonthEvents, selectedDate, userId],
+  );
+  const dayOccurrenceKeys = useMemo(
+    () =>
+      new Set(
+        [...dayPlans, ...dayMonthEventPlans].map((plan) =>
+          buildPlanOccurrenceKey(plan.id, plan.date),
+        ),
+      ),
+    [dayMonthEventPlans, dayPlans],
+  );
+  const dayPlanMap = useMemo(
+    () => new Map(dayPlans.map((plan) => [plan.id, plan])),
+    [dayPlans],
+  );
+  const dayMonthEventPlanMap = useMemo(
+    () => new Map(dayMonthEventPlans.map((plan) => [plan.id, plan])),
+    [dayMonthEventPlans],
+  );
+  const dayActuals = useMemo(
+    () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
+    [actuals, dayOccurrenceKeys],
   );
   const dayMonthEventMap = useMemo(
     () => new Map(dayMonthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
@@ -150,6 +193,12 @@ export function DayView({
     modalState.type === 'month-event-detail'
       ? dayMonthEventMap.get(modalState.monthEventId) ?? null
       : null;
+  const selectedMonthEventPlan =
+    selectedMonthEvent ? dayMonthEventPlanMap.get(selectedMonthEvent.id) ?? null : null;
+  const selectedDetailPlan = selectedPlan ?? selectedMonthEventPlan;
+  const selectedDetailActual = selectedDetailPlan
+    ? actualByOccurrenceKey.get(buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date))
+    : undefined;
   useEffect(() => {
     if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId)) {
       setModalState({ type: 'closed' });
@@ -228,57 +277,44 @@ export function DayView({
 
   return (
     <section className="section-stack swipe-view" {...swipeNavigation}>
-      {selectedPlan ? (
-        <div className="overlay modal-overlay" onClick={closeModal}>
+      {selectedDetailPlan ? (
+        <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={closeModal}>
           <div
-            className="modal-card"
+            className="modal-card daily-detail-modal"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="section-stack">
-              <div className="section-header">
-                <div>
-                  <h2>詳細入力</h2>
-                  <p>
-                    {selectedPlan.startTime} - {selectedPlan.endTime} / {selectedPlan.title}
-                  </p>
-                </div>
-                <button
-                  className="ghost-button"
-                  onClick={closeModal}
-                  type="button"
-                >
-                  閉じる
-                </button>
+            <div className="daily-detail-modal-header">
+              <button
+                className="ghost-button"
+                onClick={closeModal}
+                type="button"
+              >
+                閉じる
+              </button>
+              <div className="daily-detail-modal-heading">
+                <h2>{selectedMonthEvent ? '主要予定を実績登録' : '詳細入力'}</h2>
+                <p>
+                  {selectedDetailPlan.startTime} - {selectedDetailPlan.endTime} / {selectedDetailPlan.title}
+                </p>
               </div>
+            </div>
 
+            <div className="daily-detail-modal-body">
               <ActualEditorCard
-                key={buildPlanOccurrenceKey(selectedPlan.id, selectedPlan.date)}
-                plan={selectedPlan}
-                actual={actualByOccurrenceKey.get(
-                  buildPlanOccurrenceKey(selectedPlan.id, selectedPlan.date),
-                )}
+                key={buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date)}
+                plan={selectedDetailPlan}
+                actual={selectedDetailActual}
                 onEditPlan={onEditPlan}
                 onDeletePlan={onDeletePlan}
                 onSaveActual={onSaveActual}
                 onDeleteActual={onDeleteActual}
                 forceOpen
                 hideToggleButton
+                hidePlanActions={Boolean(selectedMonthEvent)}
               />
             </div>
           </div>
         </div>
-      ) : null}
-
-      {selectedMonthEvent ? (
-        <MonthEventDialog
-          openDate={selectedDate}
-          userId={userId}
-          monthEvents={monthEvents}
-          initialEventId={selectedMonthEvent.id}
-          onSave={onSaveMonthEvent}
-          onDelete={onDeleteMonthEvent}
-          onClose={closeModal}
-        />
       ) : null}
 
       {isTimetableImportOpen ? (

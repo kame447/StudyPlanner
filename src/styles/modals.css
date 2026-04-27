@@ -110,6 +110,250 @@
   gap: 16px;
 }
 
+.daily-detail-modal-overlay {
+  align-items: center;
+  padding: 16px;
+  overflow: hidden;
+  background: rgb(15 23 42 / 0.42);
+  overscroll-behavior: contain;
+  backdrop-filter: blur(2px);
+}
+
+.modal-card.daily-detail-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  width: min(660px, calc(100vw - 32px));
+  max-height: calc(
+    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  overflow: hidden;
+  padding: 12px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-strong) 6%);
+  box-shadow: 0 22px 60px rgb(15 23 42 / 0.28);
+}
+
+.daily-detail-modal-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.daily-detail-modal-heading {
+  min-width: 0;
+  text-align: center;
+}
+
+.daily-detail-modal-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.daily-detail-modal-heading p {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-detail-modal-header .ghost-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+
+.daily-detail-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  padding: 2px 2px 4px;
+}
+
+.daily-detail-modal .actual-editor-card {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.daily-detail-modal .actual-editor-head,
+.actual-editor-section {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 82%, var(--surface-soft) 18%);
+}
+
+.daily-detail-modal .actual-editor-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.daily-detail-modal .actual-editor-head .label-row {
+  gap: 7px;
+}
+
+.daily-detail-modal .actual-editor-head strong {
+  font-size: 0.96rem;
+  line-height: 1.25;
+}
+
+.daily-detail-modal .comparison-subtitle,
+.daily-detail-modal .comparison-metrics,
+.daily-detail-modal .detail-note {
+  margin: 3px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.actual-editor-head-actions {
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.actual-editor-head-actions .primary-button,
+.actual-editor-head-actions .mini-button,
+.daily-detail-modal .ghost-button,
+.daily-detail-modal .segment {
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 11px;
+  font-size: 0.78rem;
+}
+
+.actual-form-compact {
+  gap: 10px;
+}
+
+.actual-editor-section-title strong {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.actual-time-grid,
+.actual-content-grid {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.actual-time-grid {
+  grid-template-columns: minmax(128px, 1.1fr) repeat(2, minmax(86px, 0.75fr));
+}
+
+.actual-content-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.daily-detail-modal .field {
+  gap: 4px;
+}
+
+.daily-detail-modal .field span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.modal-card.daily-detail-modal .field input,
+.modal-card.daily-detail-modal .field select,
+.modal-card.daily-detail-modal .field textarea {
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--surface-strong);
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.modal-card.daily-detail-modal .field input[type='date'],
+.modal-card.daily-detail-modal .field input[type='time'] {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+}
+
+.modal-card.daily-detail-modal .field textarea {
+  min-height: 58px;
+  max-height: 120px;
+  resize: vertical;
+}
+
+.actual-editor-summary-card {
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.actual-tracking-details {
+  display: grid;
+  gap: 8px;
+}
+
+.actual-tracking-details summary {
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-strong) 82%, var(--surface-soft) 18%);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.actual-tracking-details .tracking-tools-card {
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.actual-tracking-details .tracking-tools-card > .section-header {
+  display: none;
+}
+
+.actual-tracking-details .section-stack {
+  gap: 8px;
+}
+
+.actual-tracking-details .tracking-display {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 1.25rem;
+}
+
+.actual-tracking-details .detail-note {
+  display: none;
+}
+
+.actual-editor-actions {
+  justify-content: flex-start;
+}
+
 .month-event-modal-overlay {
   align-items: center;
   padding: 16px;
@@ -565,6 +809,60 @@
 }
 
 @media screen and (max-width: 640px) {
+  .daily-detail-modal-overlay {
+    padding: 8px;
+  }
+
+  .modal-card.daily-detail-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(
+      100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .daily-detail-modal-header {
+    gap: 7px;
+    padding-bottom: 8px;
+  }
+
+  .daily-detail-modal-heading h2 {
+    font-size: 0.92rem;
+  }
+
+  .daily-detail-modal-heading p {
+    font-size: 0.68rem;
+  }
+
+  .daily-detail-modal .actual-editor-head,
+  .actual-editor-section {
+    gap: 7px;
+    padding: 9px;
+    border-radius: 13px;
+  }
+
+  .daily-detail-modal .actual-editor-head {
+    grid-template-columns: 1fr;
+  }
+
+  .actual-editor-head-actions {
+    justify-content: flex-start;
+  }
+
+  .actual-time-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .modal-card.daily-detail-modal .field input,
+  .modal-card.daily-detail-modal .field select,
+  .modal-card.daily-detail-modal .field textarea {
+    min-height: 40px;
+    padding: 8px 9px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+  }
+
   .month-event-modal-overlay {
     padding: 8px;
   }
@@ -641,6 +939,22 @@
 }
 
 @media screen and (max-width: 380px) {
+  .daily-detail-modal-heading p {
+    display: none;
+  }
+
+  .daily-detail-modal-header .ghost-button,
+  .actual-editor-head-actions .primary-button,
+  .actual-editor-head-actions .mini-button {
+    padding: 7px 8px;
+    font-size: 0.72rem;
+  }
+
+  .actual-time-grid,
+  .actual-content-grid {
+    grid-template-columns: 1fr;
+  }
+
   .month-event-editor-header {
     gap: 5px;
   }

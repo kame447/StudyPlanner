@@ -1,4 +1,4 @@
-import type { PlanType } from '../types/domain';
+import type { PlanSourceType, PlanType } from '../types/domain';
 
 export interface SubjectTheme {
   fill: string;
@@ -104,9 +104,23 @@ const SUBJECT_THEME_MAP: Record<string, SubjectTheme> = {
     border: '#92bab5',
     text: '#2f5450',
   },
+  授業: {
+    fill: '#2f78e3',
+    soft: '#dce8fb',
+    border: '#7ca8ec',
+    text: '#184b92',
+  },
 };
 
-function detectKnownSubject(subject: string, type: PlanType): string {
+function detectKnownSubject(
+  subject: string,
+  type: PlanType,
+  sourceType?: PlanSourceType,
+): string {
+  if (sourceType === 'timetable') {
+    return '授業';
+  }
+
   const normalized = subject.trim();
 
   if (normalized) {
@@ -138,10 +152,18 @@ function detectKnownSubject(subject: string, type: PlanType): string {
   return '予定';
 }
 
-export function getSubjectTheme(subject: string, type: PlanType): SubjectTheme {
-  return SUBJECT_THEME_MAP[detectKnownSubject(subject, type)] ?? SUBJECT_THEME_MAP['予定'];
+export function getSubjectTheme(
+  subject: string,
+  type: PlanType,
+  sourceType?: PlanSourceType,
+): SubjectTheme {
+  return SUBJECT_THEME_MAP[detectKnownSubject(subject, type, sourceType)] ?? SUBJECT_THEME_MAP['予定'];
 }
 
-export function getSubjectLabel(subject: string, type: PlanType): string {
-  return detectKnownSubject(subject, type);
+export function getSubjectLabel(
+  subject: string,
+  type: PlanType,
+  sourceType?: PlanSourceType,
+): string {
+  return detectKnownSubject(subject, type, sourceType);
 }
