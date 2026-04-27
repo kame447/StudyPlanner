@@ -327,7 +327,7 @@ export function QuickEntryModal({
                   <div className="quick-entry-card-head">
                     <h3>分類</h3>
                   </div>
-                  <div className="form-grid compact quick-entry-compact-grid">
+                  <div className="quick-entry-two-column-grid">
                     <label className="field">
                       <span>教科</span>
                       <input
@@ -359,7 +359,7 @@ export function QuickEntryModal({
                       <div className="quick-entry-card-head">
                         <h3>締切</h3>
                       </div>
-                      <div className="form-grid compact quick-entry-compact-grid quick-entry-deadline-grid">
+                      <div className="quick-entry-two-column-grid quick-entry-deadline-grid">
                         <label className="field">
                           <span>締切日</span>
                           <input
@@ -407,7 +407,7 @@ export function QuickEntryModal({
                       <div className="quick-entry-card-head">
                         <h3>日付と開始時刻</h3>
                       </div>
-                      <div className="form-grid compact quick-entry-compact-grid">
+                      <div className="quick-entry-two-column-grid">
                         <label className="field">
                           <span>日付</span>
                           <input
@@ -494,7 +494,7 @@ export function QuickEntryModal({
                       <div className="quick-entry-card-head">
                         <h3>開始</h3>
                       </div>
-                      <div className="form-grid compact quick-entry-compact-grid">
+                      <div className="quick-entry-two-column-grid">
                         <label className="field">
                           <span>開始日</span>
                           <input
