@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   formatDateLabel,
-  minutesBetween,
   sortByDateTime,
 } from '../lib/date';
 import {
@@ -12,6 +11,10 @@ import {
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import {
+  buildTimetableImportCandidates,
+  createPlanDraftFromTimetableImportCandidate,
+} from '../lib/timetableImport';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayTimeline } from './DayTimeline';
@@ -71,7 +74,7 @@ export function DayView({
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
-  const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(
+  const [selectedTimetableSourceIds, setSelectedTimetableSourceIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [isImportingTimetable, setIsImportingTimetable] = useState(false);
@@ -111,29 +114,17 @@ export function DayView({
     [dayMonthEvents],
   );
   const selectedWeekday = getRecurrenceWeekday(selectedDate);
-  const dayScheduleTemplates = useMemo(
+  const timetableImportCandidates = useMemo(
     () =>
-      scheduleTemplates
-        .filter(
-          (template) =>
-            template.weekday === selectedWeekday && template.active !== false,
-        )
-        .filter(
-          (template) => (template.termId || 'default') === timetableTermId,
-        )
-        .filter((template) => minutesBetween(template.startTime, template.endTime) > 0)
-        .sort((left, right) => {
-          const startDelta = left.startTime.localeCompare(right.startTime);
-
-          if (startDelta !== 0) {
-            return startDelta;
-          }
-
-          return left.endTime.localeCompare(right.endTime);
-        }),
-    [scheduleTemplates, selectedWeekday, timetableTermId],
+      buildTimetableImportCandidates({
+        templates: scheduleTemplates,
+        date: selectedDate,
+        weekday: selectedWeekday,
+        termId: timetableTermId,
+      }),
+    [scheduleTemplates, selectedDate, selectedWeekday, timetableTermId],
   );
-  const importedTemplateIds = useMemo(
+  const importedTimetableSourceIds = useMemo(
     () =>
       new Set(
         plans
@@ -181,11 +172,11 @@ export function DayView({
   }
 
   function openTimetableImport() {
-    setSelectedTemplateIds(
+    setSelectedTimetableSourceIds(
       new Set(
-        dayScheduleTemplates
-          .filter((template) => !importedTemplateIds.has(template.id))
-          .map((template) => template.id),
+        timetableImportCandidates
+          .filter((candidate) => !importedTimetableSourceIds.has(candidate.sourceId))
+          .map((candidate) => candidate.sourceId),
       ),
     );
     setIsTimetableImportOpen(true);
@@ -193,64 +184,41 @@ export function DayView({
 
   function closeTimetableImport() {
     setIsTimetableImportOpen(false);
-    setSelectedTemplateIds(new Set());
+    setSelectedTimetableSourceIds(new Set());
   }
 
-  function toggleSelectedTemplate(templateId: string) {
-    setSelectedTemplateIds((current) => {
+  function toggleSelectedTimetableCandidate(sourceId: string) {
+    setSelectedTimetableSourceIds((current) => {
       const next = new Set(current);
 
-      if (next.has(templateId)) {
-        next.delete(templateId);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
       } else {
-        next.add(templateId);
+        next.add(sourceId);
       }
 
       return next;
     });
   }
 
-  function createPlanDraftFromScheduleTemplate(
-    template: ScheduleTemplate,
-  ): PlanDraft {
-    const memoParts = [
-      template.classroom ? `教室: ${template.classroom}` : '',
-      template.memo.trim(),
-    ].filter(Boolean);
-
-    return {
-      userId,
-      title: template.title,
-      subject: template.subject,
-      date: selectedDate,
-      startTime: template.startTime,
-      endTime: template.endTime,
-      repeat: 'none',
-      repeatUntil: null,
-      excludedDates: [],
-      recurrenceRules: [],
-      type: template.type,
-      memo: memoParts.join('\n'),
-      sourceType: 'timetable',
-      sourceId: template.id,
-    };
-  }
-
   async function importSelectedTimetable() {
-    const templatesToImport = dayScheduleTemplates.filter(
-      (template) =>
-        selectedTemplateIds.has(template.id) && !importedTemplateIds.has(template.id),
+    const candidatesToImport = timetableImportCandidates.filter(
+      (candidate) =>
+        selectedTimetableSourceIds.has(candidate.sourceId) &&
+        !importedTimetableSourceIds.has(candidate.sourceId),
     );
 
-    if (templatesToImport.length === 0) {
+    if (candidatesToImport.length === 0) {
       closeTimetableImport();
       return;
     }
 
     setIsImportingTimetable(true);
     try {
-      for (const template of templatesToImport) {
-        await onSavePlan(createPlanDraftFromScheduleTemplate(template));
+      for (const candidate of candidatesToImport) {
+        await onSavePlan(
+          createPlanDraftFromTimetableImportCandidate(candidate, userId, selectedDate),
+        );
       }
       closeTimetableImport();
     } finally {
@@ -336,28 +304,29 @@ export function DayView({
 
               <section className="timetable-import-card">
                 <h3>反映する授業</h3>
-                {dayScheduleTemplates.length > 0 ? (
+                {timetableImportCandidates.length > 0 ? (
                   <div className="timetable-import-list">
-                    {dayScheduleTemplates.map((template) => {
-                      const isImported = importedTemplateIds.has(template.id);
+                    {timetableImportCandidates.map((candidate) => {
+                      const isImported = importedTimetableSourceIds.has(candidate.sourceId);
 
                       return (
                         <label
                           className="timetable-import-item"
-                          key={template.id}
+                          key={candidate.id}
                         >
                           <input
                             type="checkbox"
-                            checked={selectedTemplateIds.has(template.id)}
+                            checked={selectedTimetableSourceIds.has(candidate.sourceId)}
                             disabled={isImported || isImportingTimetable}
-                            onChange={() => toggleSelectedTemplate(template.id)}
+                            onChange={() => toggleSelectedTimetableCandidate(candidate.sourceId)}
                           />
                           <span>
-                            <strong>{template.title}</strong>
+                            <strong>{candidate.title}</strong>
                             <span>
-                              {template.startTime}-{template.endTime}
-                              {template.subject ? ` / ${template.subject}` : ''}
-                              {template.classroom ? ` / ${template.classroom}` : ''}
+                              {candidate.startTime}-{candidate.endTime}
+                              {candidate.periodLabel ? ` / ${candidate.periodLabel}` : ''}
+                              {candidate.subject ? ` / ${candidate.subject}` : ''}
+                              {candidate.classroom ? ` / ${candidate.classroom}` : ''}
                               {isImported ? ' / 反映済み' : ''}
                             </span>
                           </span>
@@ -381,7 +350,7 @@ export function DayView({
                 <button
                   className="primary-button"
                   disabled={
-                    isImportingTimetable || selectedTemplateIds.size === 0
+                    isImportingTimetable || selectedTimetableSourceIds.size === 0
                   }
                   onClick={() => {
                     void importSelectedTimetable();
@@ -419,7 +388,7 @@ export function DayView({
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
         onPrint={() => window.print()}
         onImportTimetable={openTimetableImport}
-        timetableImportCount={dayScheduleTemplates.length}
+        timetableImportCount={timetableImportCandidates.length}
       />
     </section>
   );
