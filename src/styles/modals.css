@@ -110,9 +110,185 @@
   gap: 16px;
 }
 
+.month-event-modal-overlay {
+  align-items: center;
+  padding: 16px;
+  overflow: hidden;
+  background: rgb(15 23 42 / 0.42);
+  overscroll-behavior: contain;
+  backdrop-filter: blur(2px);
+}
+
+.modal-card.month-event-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(
+    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  overflow: hidden;
+  padding: 12px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-strong) 6%);
+  box-shadow: 0 22px 60px rgb(15 23 42 / 0.28);
+}
+
+.month-event-editor-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.month-event-editor-heading {
+  min-width: 0;
+  text-align: center;
+}
+
+.month-event-editor-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.month-event-editor-heading p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.month-event-editor-header .ghost-button,
+.month-event-save-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+
+.month-event-editor-body {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  padding: 2px 2px 4px;
+}
+
+.month-event-editor-card,
 .month-event-list-card,
 .month-event-checklist-card {
-  gap: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 82%, var(--surface-soft) 18%);
+}
+
+.month-event-title-card {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+  background: color-mix(in srgb, var(--surface-strong) 88%, var(--accent) 12%);
+}
+
+.month-event-card-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.month-event-card-title strong,
+.month-event-modal .label-row strong {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.month-event-datetime-grid {
+  display: grid;
+  grid-template-columns: minmax(128px, 1.1fr) minmax(92px, 0.75fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.month-event-repeat-card {
+  grid-template-columns: minmax(0, 0.44fr) minmax(0, 1fr);
+  align-items: end;
+}
+
+.month-event-optional-card .collapsible-toggle {
+  min-height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.month-event-optional-card .collapsible-panel {
+  gap: 8px;
+}
+
+.month-event-modal .field {
+  gap: 4px;
+  min-width: 0;
+}
+
+.month-event-modal .field span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.modal-card.month-event-modal .field input,
+.modal-card.month-event-modal .field select,
+.modal-card.month-event-modal .field textarea,
+.modal-card.month-event-modal .month-event-checklist-item input[type='text'],
+.modal-card.month-event-modal .month-event-checklist-item input:not([type='checkbox']) {
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--surface-strong);
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.modal-card.month-event-modal .month-event-title-field input {
+  min-height: 44px;
+  padding: 9px 12px;
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--input-border) 68%);
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.modal-card.month-event-modal .field input[type='date'],
+.modal-card.month-event-modal .field input[type='time'] {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+}
+
+.modal-card.month-event-modal .field textarea {
+  min-height: 60px;
+  max-height: 130px;
+  resize: vertical;
+}
+
+.month-event-editor-actions {
+  justify-content: flex-start;
+  padding: 0 2px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .my-page-modal {
@@ -386,5 +562,106 @@
 
 .month-event-modal .month-event-chip {
   min-width: max-content;
+}
+
+@media screen and (max-width: 640px) {
+  .month-event-modal-overlay {
+    padding: 8px;
+  }
+
+  .modal-card.month-event-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(
+      100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .month-event-editor-header {
+    gap: 7px;
+    padding-bottom: 8px;
+  }
+
+  .month-event-editor-heading h2 {
+    font-size: 0.92rem;
+  }
+
+  .month-event-editor-heading p {
+    font-size: 0.68rem;
+  }
+
+  .month-event-editor-header .ghost-button,
+  .month-event-save-button {
+    min-height: 38px;
+    padding: 7px 10px;
+    border-radius: 11px;
+    font-size: 0.76rem;
+  }
+
+  .month-event-editor-body {
+    gap: 8px;
+  }
+
+  .month-event-editor-card,
+  .month-event-list-card,
+  .month-event-checklist-card {
+    gap: 7px;
+    padding: 9px;
+    border-radius: 13px;
+  }
+
+  .month-event-datetime-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .month-event-repeat-card {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-card.month-event-modal .field input,
+  .modal-card.month-event-modal .field select,
+  .modal-card.month-event-modal .field textarea,
+  .modal-card.month-event-modal .month-event-checklist-item input[type='text'],
+  .modal-card.month-event-modal .month-event-checklist-item input:not([type='checkbox']) {
+    min-height: 40px;
+    padding: 8px 9px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+  }
+
+  .modal-card.month-event-modal .month-event-title-field input {
+    min-height: 42px;
+    font-size: 0.92rem;
+  }
+
+  .month-event-checklist-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}
+
+@media screen and (max-width: 380px) {
+  .month-event-editor-header {
+    gap: 5px;
+  }
+
+  .month-event-editor-heading p {
+    display: none;
+  }
+
+  .month-event-editor-header .ghost-button,
+  .month-event-save-button {
+    padding: 7px 8px;
+    font-size: 0.72rem;
+  }
+
+  .month-event-checklist-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .month-event-checklist-item .mini-button {
+    grid-column: 2;
+    justify-self: end;
+  }
 }
 

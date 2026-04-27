@@ -77,6 +77,7 @@ export function MonthEventDialog({
   const [error, setError] = useState('');
   const [showDeleteScopePrompt, setShowDeleteScopePrompt] = useState(false);
   const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [isSavingMonthEvent, setIsSavingMonthEvent] = useState(false);
 
   const visibleEvents = useMemo(() => {
     if (!openDate) {
@@ -113,6 +114,7 @@ export function MonthEventDialog({
     setError('');
     setShowDeleteScopePrompt(false);
     setShowOptionalFields(false);
+    setIsSavingMonthEvent(false);
   }, [initialEventId, monthEvents, openDate, userId]);
 
   if (!openDate) {
@@ -135,6 +137,7 @@ export function MonthEventDialog({
     setStatus(nextStatus);
     setShowDeleteScopePrompt(false);
     setShowOptionalFields(false);
+    setIsSavingMonthEvent(false);
   }
 
   function handleNewEvent() {
@@ -165,11 +168,14 @@ export function MonthEventDialog({
 
     setError('');
     setShowDeleteScopePrompt(false);
+    setIsSavingMonthEvent(true);
     try {
       await onSave(nextDraft, editingEventId ?? undefined);
     } catch {
       setError('月の主要予定を保存できませんでした。');
       return;
+    } finally {
+      setIsSavingMonthEvent(false);
     }
 
     if (!editingEvent) {
@@ -268,18 +274,122 @@ export function MonthEventDialog({
   }
 
   return (
-    <div className="overlay modal-overlay" onClick={onClose}>
+    <div className="overlay modal-overlay month-event-modal-overlay" onClick={onClose}>
       <div className="modal-card month-event-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="section-stack">
-          <div className="section-header">
-            <div>
-              <h2>月の主要予定</h2>
-              <p>{formatDateLabel(activeDate)} の主な用事を管理します。</p>
-            </div>
-            <button className="ghost-button" onClick={onClose} type="button">
-              閉じる
-            </button>
+        <div className="month-event-editor-header">
+          <button className="ghost-button" onClick={onClose} type="button">
+            閉じる
+          </button>
+          <div className="month-event-editor-heading">
+            <h2>{editingEvent ? '主要予定を編集' : '主要予定を追加'}</h2>
+            <p>{formatDateLabel(activeDate)}</p>
           </div>
+          <button
+            className="primary-button month-event-save-button"
+            disabled={isSavingMonthEvent}
+            onClick={() => void handleSave()}
+            type="button"
+          >
+            保存
+          </button>
+        </div>
+
+        <div className="month-event-editor-body">
+          <section className="month-event-editor-card month-event-title-card">
+            <label className="field month-event-title-field">
+              <span>タイトル</span>
+              <input
+                value={draft.title}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    title: event.target.value,
+                  })
+                }
+                placeholder="例: 体育祭 / バイト / 面接"
+              />
+            </label>
+          </section>
+
+          <section className="month-event-editor-card">
+            <div className="month-event-card-title">
+              <strong>日付・時刻</strong>
+            </div>
+            <div className="month-event-datetime-grid">
+              <label className="field">
+                <span>開始日</span>
+                <input
+                  type="date"
+                  value={draft.date}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      date: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>開始時刻</span>
+                <input
+                  type="time"
+                  value={draft.startTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      startTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>終了日</span>
+                <input
+                  type="date"
+                  value={draft.date}
+                  disabled
+                  aria-label="終了日"
+                />
+              </label>
+              <label className="field">
+                <span>終了時刻</span>
+                <input
+                  type="time"
+                  value={draft.endTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      endTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="month-event-editor-card month-event-repeat-card">
+            <div className="month-event-card-title">
+              <strong>繰り返し</strong>
+            </div>
+            <label className="field">
+              <span>設定</span>
+              <select
+                value={draft.repeat}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    repeat: event.target.value as MonthEventDraft['repeat'],
+                  })
+                }
+              >
+                {MONTH_EVENT_REPEAT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
 
           <section className="assistant-settings-card month-event-list-card">
             <div className="label-row">
@@ -346,100 +456,7 @@ export function MonthEventDialog({
             </section>
           ) : null}
 
-          <div className="form-grid">
-            <label className="field field-full">
-              <span>タイトル</span>
-              <input
-                value={draft.title}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    title: event.target.value,
-                  })
-                }
-                placeholder="例: 体育祭 / バイト / 面接"
-              />
-            </label>
-
-            <div className="datetime-stack field-full">
-              <div className="datetime-row">
-                <span className="datetime-row__label">開始</span>
-                <label className="field datetime-row__date">
-                  <span>日付</span>
-                  <input
-                    type="date"
-                    value={draft.date}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        date: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label className="field datetime-row__time">
-                  <span>時刻</span>
-                  <input
-                    type="time"
-                    value={draft.startTime}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        startTime: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-              </div>
-
-              <div className="datetime-row">
-                <span className="datetime-row__label">終了</span>
-                <label className="field datetime-row__date">
-                  <span>日付</span>
-                  <input
-                    type="date"
-                    value={draft.date}
-                    disabled
-                    aria-label="終了日付"
-                  />
-                </label>
-                <label className="field datetime-row__time">
-                  <span>時刻</span>
-                  <input
-                    type="time"
-                    value={draft.endTime}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        endTime: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-              </div>
-            </div>
-
-            <label className="field field-full">
-              <span>繰り返し</span>
-              <select
-                value={draft.repeat}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    repeat: event.target.value as MonthEventDraft['repeat'],
-                  })
-                }
-              >
-                {MONTH_EVENT_REPEAT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <section className="assistant-settings-card month-event-optional-card">
+          <section className="month-event-editor-card month-event-optional-card">
             <button
               className="collapsible-toggle"
               onClick={() => setShowOptionalFields((current) => !current)}
@@ -503,7 +520,7 @@ export function MonthEventDialog({
             ) : null}
           </section>
 
-          <section className="assistant-settings-card month-event-checklist-card">
+          <section className="month-event-editor-card month-event-checklist-card">
             <div className="label-row">
               <strong>チェックリスト</strong>
               <button
@@ -574,18 +591,20 @@ export function MonthEventDialog({
 
           {error ? <p className="inline-error">{error}</p> : null}
           {status ? <p className="inline-note">{status}</p> : null}
+        </div>
 
-          <div className="row-actions">
-            {editingEvent ? (
-              <button className="ghost-button danger" onClick={() => void handleDelete()} type="button">
-                削除
-              </button>
-            ) : null}
-            <button className="primary-button" onClick={() => void handleSave()} type="button">
-              {editingEvent ? '主要予定を更新' : '主要予定を追加'}
+        {editingEvent ? (
+          <div className="row-actions month-event-editor-actions">
+            <button
+              className="ghost-button danger"
+              disabled={isSavingMonthEvent}
+              onClick={() => void handleDelete()}
+              type="button"
+            >
+              削除
             </button>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );
