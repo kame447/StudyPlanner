@@ -437,7 +437,7 @@
 
   .quick-entry-title-field input {
     min-height: 42px;
-    font-size: 0.92rem;
+    font-size: 16px;
   }
 
   .quick-entry-input-method-tabs .segment,
@@ -462,7 +462,7 @@
   .quick-entry-card .field textarea {
     min-height: 40px;
     padding: 8px 9px;
-    font-size: 0.8rem;
+    font-size: 16px;
   }
 
   .quick-entry-chip,

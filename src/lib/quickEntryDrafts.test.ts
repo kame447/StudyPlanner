@@ -15,7 +15,7 @@ const baseInput = {
   date: '2026-04-20',
   startTime: '19:00',
   estimatedMinutes: 30,
-  weekday: 'wed' as const,
+  weekdays: ['wed'] as const,
 };
 
 describe('buildQuickEntryPlanDraft', () => {
@@ -57,12 +57,12 @@ describe('buildQuickEntryPlanDraft', () => {
     expect(expandPlansForDate([plan], '2026-04-21')).toHaveLength(1);
   });
 
-  it('builds a weekly recurrence plan draft with the selected weekday', () => {
+  it('builds a weekly recurrence plan draft with the selected weekdays', () => {
     const draft = buildQuickEntryPlanDraft({
       ...baseInput,
       mode: 'repeat',
       repeatKind: 'weekly',
-      weekday: 'wed',
+      weekdays: ['mon', 'wed'],
     });
 
     expect(draft).toMatchObject({
@@ -75,7 +75,7 @@ describe('buildQuickEntryPlanDraft', () => {
       expect.objectContaining({
         kind: 'weekday',
         startDate: '2026-04-20',
-        weekdays: ['wed'],
+        weekdays: ['mon', 'wed'],
         startTime: '19:00',
         endTime: '19:30',
         isOverride: false,
@@ -85,12 +85,46 @@ describe('buildQuickEntryPlanDraft', () => {
     const plan = createPlanFromDraft(draft!);
 
     expect([plan]).toHaveLength(1);
+    expect(doesPlanOccurOnDate(plan, '2026-04-20')).toBe(true);
     expect(doesPlanOccurOnDate(plan, '2026-04-21')).toBe(false);
     expect(doesPlanOccurOnDate(plan, '2026-04-22')).toBe(true);
     expect(expandPlansForDate([plan], '2026-04-22')).toHaveLength(1);
   });
 
-  it('does not build repeat drafts without duration or for unsupported monthly repeat', () => {
+  it('builds a monthly recurrence plan draft using the start date day', () => {
+    const draft = buildQuickEntryPlanDraft({
+      ...baseInput,
+      mode: 'repeat',
+      repeatKind: 'monthly',
+      date: '2026-04-15',
+    });
+
+    expect(draft).toMatchObject({
+      repeat: 'monthly',
+      repeatUntil: null,
+      excludedDates: [],
+      endTime: '19:30',
+    });
+    expect(draft?.recurrenceRules).toEqual([
+      expect.objectContaining({
+        kind: 'monthly',
+        startDate: '2026-04-15',
+        weekdays: [],
+        startTime: '19:00',
+        endTime: '19:30',
+        isOverride: false,
+      }),
+    ]);
+
+    const plan = createPlanFromDraft(draft!);
+
+    expect([plan]).toHaveLength(1);
+    expect(doesPlanOccurOnDate(plan, '2026-05-15')).toBe(true);
+    expect(doesPlanOccurOnDate(plan, '2026-05-16')).toBe(false);
+    expect(expandPlansForDate([plan], '2026-05-15')).toHaveLength(1);
+  });
+
+  it('does not build repeat drafts without duration or without weekly weekdays', () => {
     expect(
       buildQuickEntryPlanDraft({
         ...baseInput,
@@ -104,7 +138,8 @@ describe('buildQuickEntryPlanDraft', () => {
       buildQuickEntryPlanDraft({
         ...baseInput,
         mode: 'repeat',
-        repeatKind: 'monthly',
+        repeatKind: 'weekly',
+        weekdays: [],
       }),
     ).toBeNull();
   });

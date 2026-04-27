@@ -81,9 +81,9 @@ export function QuickEntryModal({
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
   const [repeatKind, setRepeatKind] = useState<QuickEntryRepeatKind>('daily');
-  const [weekday, setWeekday] = useState<RecurrenceWeekday>(() =>
+  const [weekdays, setWeekdays] = useState<RecurrenceWeekday[]>(() => [
     getRecurrenceWeekday(selectedDate),
-  );
+  ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const canSave =
@@ -94,7 +94,8 @@ export function QuickEntryModal({
       (mode === 'scheduled' && estimatedMinutes !== null) ||
       (mode === 'repeat' &&
         estimatedMinutes !== null &&
-        isSupportedRepeatKind));
+        isSupportedRepeatKind &&
+        (repeatKind !== 'weekly' || weekdays.length > 0)));
 
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
@@ -135,6 +136,14 @@ export function QuickEntryModal({
       Number.isInteger(nextMinutes) && nextMinutes > 0
         ? nextMinutes
         : null,
+    );
+  }
+
+  function toggleWeekday(value: RecurrenceWeekday) {
+    setWeekdays((current) =>
+      current.includes(value)
+        ? current.filter((weekday) => weekday !== value)
+        : [...current, value],
     );
   }
 
@@ -201,7 +210,7 @@ export function QuickEntryModal({
           startTime,
           estimatedMinutes,
           repeatKind,
-          weekday,
+          weekdays,
         });
 
         if (!planDraft) {
@@ -301,7 +310,6 @@ export function QuickEntryModal({
                     {MODE_OPTIONS.find((option) => option.value === mode)?.label}
                   </span>
                   <input
-                    autoFocus
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder="例: 英語課題 / 面接準備"
@@ -454,19 +462,11 @@ export function QuickEntryModal({
                             onClick={() => setRepeatKind(value)}
                             type="button"
                             disabled={!SUPPORTED_QUICK_ENTRY_REPEAT_KINDS.has(value)}
-                            title={
-                              value === 'monthly' ? '毎月は未対応です' : undefined
-                            }
                           >
                             {label}
                           </button>
                         ))}
                       </div>
-                      {repeatKind === 'monthly' ? (
-                        <p className="inline-note quick-entry-repeat-note">
-                          毎月は未対応です
-                        </p>
-                      ) : null}
                       {repeatKind === 'weekly' ? (
                         <div className="quick-entry-weekdays">
                           <span>曜日</span>
@@ -474,18 +474,24 @@ export function QuickEntryModal({
                             {WEEKDAY_OPTIONS.map((option) => (
                               <button
                                 className={
-                                  weekday === option.value
+                                  weekdays.includes(option.value)
                                     ? 'quick-entry-weekday-chip active'
                                     : 'quick-entry-weekday-chip'
                                 }
+                                aria-pressed={weekdays.includes(option.value)}
                                 key={option.value}
-                                onClick={() => setWeekday(option.value)}
+                                onClick={() => toggleWeekday(option.value)}
                                 type="button"
                               >
                                 {option.label}
                               </button>
                             ))}
                           </div>
+                          {weekdays.length === 0 ? (
+                            <p className="inline-note quick-entry-repeat-note">
+                              1つ以上選択してください
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
                     </section>

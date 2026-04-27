@@ -273,6 +273,7 @@ export function supportsScopedRecurringPlanEdits(plan: Plan): boolean {
     rules.length > 0 &&
     rules.every((rule) =>
       rule.kind === 'daily' ||
+      rule.kind === 'monthly' ||
       rule.kind === 'day-type' ||
       rule.kind === 'weekday' ||
       rule.kind === 'date',

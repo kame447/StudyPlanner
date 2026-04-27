@@ -11,6 +11,7 @@ export type QuickEntryRepeatKind = 'daily' | 'weekly' | 'monthly';
 export const SUPPORTED_QUICK_ENTRY_REPEAT_KINDS = new Set<QuickEntryRepeatKind>([
   'daily',
   'weekly',
+  'monthly',
 ]);
 
 export interface QuickEntryPlanDraftInput {
@@ -24,7 +25,7 @@ export interface QuickEntryPlanDraftInput {
   startTime: string;
   estimatedMinutes: number | null;
   repeatKind: QuickEntryRepeatKind;
-  weekday: RecurrenceWeekday;
+  weekdays: readonly RecurrenceWeekday[];
 }
 
 export function isSupportedQuickEntryRepeatKind(
@@ -54,7 +55,8 @@ export function buildQuickEntryPlanDraft(
 
   if (
     input.mode === 'repeat' &&
-    !isSupportedQuickEntryRepeatKind(input.repeatKind)
+    (!isSupportedQuickEntryRepeatKind(input.repeatKind) ||
+      (input.repeatKind === 'weekly' && input.weekdays.length === 0))
   ) {
     return null;
   }
@@ -71,11 +73,14 @@ export function buildQuickEntryPlanDraft(
           [
             {
               id: 'recurrence-base',
-              kind: input.repeatKind === 'weekly' ? 'weekday' : 'daily',
+              kind:
+                input.repeatKind === 'weekly'
+                  ? 'weekday'
+                  : input.repeatKind,
               startDate: input.date,
               until: null,
               dates: [],
-              weekdays: input.repeatKind === 'weekly' ? [input.weekday] : [],
+              weekdays: input.repeatKind === 'weekly' ? input.weekdays : [],
               dayType: null,
               startTime: input.startTime,
               endTime,
@@ -108,9 +113,7 @@ export function buildQuickEntryPlanDraft(
     endTime,
     repeat:
       input.mode === 'repeat'
-        ? input.repeatKind === 'weekly'
-          ? 'weekly'
-          : 'daily'
+        ? input.repeatKind
         : 'none',
     repeatUntil: null,
     excludedDates: [],

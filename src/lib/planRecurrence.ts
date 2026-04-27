@@ -32,9 +32,10 @@ const RECURRENCE_WEEKDAY_BY_INDEX: RecurrenceWeekday[] = [
 ];
 
 const RECURRENCE_RULE_PRIORITY: Record<RecurrenceRuleKind, number> = {
-  date: 4,
-  weekday: 3,
-  'day-type': 2,
+  date: 5,
+  weekday: 4,
+  'day-type': 3,
+  monthly: 2,
   daily: 1,
 };
 
@@ -117,6 +118,7 @@ function inferRuleKind(
 ): RecurrenceRuleKind {
   if (
     kind === 'daily' ||
+    kind === 'monthly' ||
     kind === 'day-type' ||
     kind === 'weekday' ||
     kind === 'date'
@@ -266,6 +268,10 @@ export function doesRecurrenceRuleApplyToDate(
     return rule.weekdays.includes(getRecurrenceWeekday(targetDate));
   }
 
+  if (rule.kind === 'monthly') {
+    return toDate(rule.startDate).getDate() === toDate(targetDate).getDate();
+  }
+
   if (rule.kind === 'day-type') {
     return rule.dayType === 'weekday'
       ? isWeekdayDate(targetDate)
@@ -307,6 +313,14 @@ export function summarizeLegacyRepeatFromRecurrenceRules(
     )
   ) {
     return 'daily';
+  }
+
+  if (
+    nonDateRules.some(
+      (rule) => rule.kind === 'monthly' && !rule.isOverride,
+    )
+  ) {
+    return 'monthly';
   }
 
   return 'weekly';
@@ -380,6 +394,10 @@ export function buildRecurrenceRulesFromLegacySource(
       ],
       source,
     );
+  }
+
+  if (source.repeat === 'monthly') {
+    return normalizeRecurrenceRules([{ ...baseRule, kind: 'monthly' }], source);
   }
 
   return [];
