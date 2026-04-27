@@ -58,18 +58,6 @@ const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'sun', label: '日' },
 ];
 
-function getModeIcon(mode: QuickEntryMode): string {
-  if (mode === 'scheduled') {
-    return '○';
-  }
-
-  if (mode === 'repeat') {
-    return '↻';
-  }
-
-  return '✓';
-}
-
 export function QuickEntryModal({
   userId,
   selectedDate,
@@ -152,11 +140,8 @@ export function QuickEntryModal({
 
   function renderDurationCard() {
     return (
-      <section className="quick-entry-card">
+      <section className="quick-entry-card quick-entry-duration-card">
         <div className="quick-entry-card-head">
-          <span className="quick-entry-card-icon" aria-hidden="true">
-            ○
-          </span>
           <h3>所要時間</h3>
         </div>
         <div className="quick-entry-chip-row quick-entry-duration-grid">
@@ -260,6 +245,14 @@ export function QuickEntryModal({
           >
             閉じる
           </button>
+          <div className="quick-entry-heading">
+            <h2>クイック入力</h2>
+            <p>
+              {inputMethod === 'ai'
+                ? 'AI入力'
+                : MODE_OPTIONS.find((option) => option.value === mode)?.label}
+            </p>
+          </div>
           <button
             className="primary-button quick-entry-save-button"
             disabled={!canSave}
@@ -269,295 +262,276 @@ export function QuickEntryModal({
           </button>
         </div>
 
-        <div className="segmented-control quick-entry-input-method-tabs">
-          {(
-            [
-              ['ai', 'AI入力'],
-              ['manual', '手動入力'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              className={inputMethod === value ? 'segment active' : 'segment'}
-              key={value}
-              onClick={() => setInputMethod(value)}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {inputMethod === 'ai' ? (
-          <section className="quick-entry-ai-panel">
-            <NaturalLanguageAssistant
-              selectedDate={selectedDate}
-              userId={userId}
-              plans={plans}
-              onApplyDraft={onSavePlan}
-              embedded
-            />
-          </section>
-        ) : (
-          <div className="quick-entry-manual-panel">
-            <section className="quick-entry-title-card">
-              <span className="quick-entry-title-icon" aria-hidden="true">
-                {getModeIcon(mode)}
-              </span>
-              <label className="quick-entry-title-field">
-                <span>
-                  {MODE_OPTIONS.find((option) => option.value === mode)?.label}
-                </span>
-                <input
-                  autoFocus
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="タスク名を入力"
-                />
-              </label>
-            </section>
-
-            <div className="segmented-control quick-entry-mode-tabs">
-              {MODE_OPTIONS.map((option) => (
+        <div className="quick-entry-modal-body">
+          <section className="quick-entry-card quick-entry-switch-card">
+            <div className="segmented-control quick-entry-input-method-tabs">
+              {(
+                [
+                  ['manual', '手動入力'],
+                  ['ai', 'AI入力'],
+                ] as const
+              ).map(([value, label]) => (
                 <button
-                  className={mode === option.value ? 'segment active' : 'segment'}
-                  key={option.value}
-                  onClick={() => setMode(option.value)}
+                  className={inputMethod === value ? 'segment active' : 'segment'}
+                  key={value}
+                  onClick={() => setInputMethod(value)}
                   type="button"
                 >
-                  {option.label}
+                  {label}
                 </button>
               ))}
             </div>
+          </section>
 
-            <div className="quick-entry-body">
-              <section className="quick-entry-card quick-entry-memo-card">
-                <label className="field">
-                  <span>メモ</span>
-                  <textarea
-                    rows={2}
-                    value={memo}
-                    onChange={(event) => setMemo(event.target.value)}
-                    placeholder="メモを追加"
+          {inputMethod === 'ai' ? (
+            <section className="quick-entry-ai-panel">
+              <NaturalLanguageAssistant
+                selectedDate={selectedDate}
+                userId={userId}
+                plans={plans}
+                onApplyDraft={onSavePlan}
+                embedded
+              />
+            </section>
+          ) : (
+            <div className="quick-entry-manual-panel">
+              <section className="quick-entry-card quick-entry-title-card">
+                <label className="quick-entry-title-field">
+                  <span>
+                    {MODE_OPTIONS.find((option) => option.value === mode)?.label}
+                  </span>
+                  <input
+                    autoFocus
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="例: 英語課題 / 面接準備"
                   />
                 </label>
               </section>
 
-              <section className="quick-entry-card">
-                <div className="quick-entry-card-head">
-                  <span className="quick-entry-card-icon" aria-hidden="true">
-                    #
-                  </span>
-                  <h3>分類</h3>
-                </div>
-                <div className="form-grid compact quick-entry-compact-grid">
-                  <label className="field">
-                    <span>教科</span>
-                    <input
-                      value={subject}
-                      onChange={(event) => setSubject(event.target.value)}
-                      placeholder="数学"
-                    />
-                  </label>
+              <div className="segmented-control quick-entry-mode-tabs">
+                {MODE_OPTIONS.map((option) => (
+                  <button
+                    className={mode === option.value ? 'segment active' : 'segment'}
+                    key={option.value}
+                    onClick={() => setMode(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
 
-                  <label className="field">
-                    <span>種別</span>
-                    <select
-                      value={type}
-                      onChange={(event) => setType(event.target.value as PlanType)}
-                    >
-                      {PLAN_TYPE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              </section>
+              <div className="quick-entry-body">
+                <section className="quick-entry-card">
+                  <div className="quick-entry-card-head">
+                    <h3>分類</h3>
+                  </div>
+                  <div className="form-grid compact quick-entry-compact-grid">
+                    <label className="field">
+                      <span>教科</span>
+                      <input
+                        value={subject}
+                        onChange={(event) => setSubject(event.target.value)}
+                        placeholder="数学"
+                      />
+                    </label>
 
-              {mode === 'later' ? (
-                <>
-                  <section className="quick-entry-card">
-                    <div className="quick-entry-card-head">
-                      <span className="quick-entry-card-icon" aria-hidden="true">
-                        !
-                      </span>
-                      <h3>締切</h3>
-                    </div>
-                    <div className="form-grid compact quick-entry-compact-grid">
-                      <label className="field">
-                        <span>締切日</span>
-                        <input
-                          type="date"
-                          value={dueDate}
-                          onChange={(event) => {
-                            setDueDate(event.target.value);
+                    <label className="field">
+                      <span>種別</span>
+                      <select
+                        value={type}
+                        onChange={(event) => setType(event.target.value as PlanType)}
+                      >
+                        {PLAN_TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </section>
 
-                            if (!event.target.value) {
-                              setDueTime('');
-                            }
-                          }}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>締切時刻</span>
-                        <input
-                          type="time"
-                          value={dueTime}
-                          disabled={!dueDate}
-                          onChange={(event) => setDueTime(event.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </section>
-                  <section className="quick-entry-card quick-entry-pin-card">
-                    <button
-                      className={
-                        todoPinned
-                          ? 'quick-entry-pin-toggle active'
-                          : 'quick-entry-pin-toggle'
-                      }
-                      type="button"
-                      aria-pressed={todoPinned}
-                      onClick={() => setTodoPinned((current) => !current)}
-                    >
-                      <span className="quick-entry-pin-icon" aria-hidden="true">
-                        📌
-                      </span>
-                      <span>ピン留め</span>
-                    </button>
-                  </section>
-                  {renderDurationCard()}
-                </>
-              ) : null}
+                {mode === 'later' ? (
+                  <>
+                    <section className="quick-entry-card">
+                      <div className="quick-entry-card-head">
+                        <h3>締切</h3>
+                      </div>
+                      <div className="form-grid compact quick-entry-compact-grid quick-entry-deadline-grid">
+                        <label className="field">
+                          <span>締切日</span>
+                          <input
+                            type="date"
+                            value={dueDate}
+                            onChange={(event) => {
+                              setDueDate(event.target.value);
 
-              {mode === 'scheduled' ? (
-                <>
-                  <section className="quick-entry-card">
-                    <div className="quick-entry-card-head">
-                      <span className="quick-entry-card-icon" aria-hidden="true">
-                        D
-                      </span>
-                      <h3>日付と開始時刻</h3>
-                    </div>
-                    <div className="form-grid compact quick-entry-compact-grid">
-                      <label className="field">
-                        <span>日付</span>
-                        <input
-                          type="date"
-                          value={date}
-                          onChange={(event) => setDate(event.target.value)}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>開始時刻</span>
-                        <input
-                          type="time"
-                          value={startTime}
-                          onChange={(event) => setStartTime(event.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </section>
-                  {renderDurationCard()}
-                </>
-              ) : null}
-
-              {mode === 'repeat' ? (
-                <>
-                  <section className="quick-entry-card">
-                    <div className="quick-entry-card-head">
-                      <span className="quick-entry-card-icon" aria-hidden="true">
-                        ↻
-                      </span>
-                      <h3>繰り返し</h3>
-                    </div>
-                    <div className="quick-entry-chip-row">
-                      {(
-                        [
-                          ['daily', '毎日'],
-                          ['weekly', '毎週'],
-                          ['monthly', '毎月'],
-                        ] as const
-                      ).map(([value, label]) => (
+                              if (!event.target.value) {
+                                setDueTime('');
+                              }
+                            }}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>締切時刻</span>
+                          <input
+                            type="time"
+                            value={dueTime}
+                            disabled={!dueDate}
+                            onChange={(event) => setDueTime(event.target.value)}
+                          />
+                        </label>
                         <button
                           className={
-                            repeatKind === value
-                              ? 'quick-entry-chip active'
-                              : 'quick-entry-chip'
+                            todoPinned
+                              ? 'quick-entry-pin-toggle active'
+                              : 'quick-entry-pin-toggle'
                           }
-                          key={value}
-                          onClick={() => setRepeatKind(value)}
                           type="button"
-                          disabled={!SUPPORTED_QUICK_ENTRY_REPEAT_KINDS.has(value)}
-                          title={
-                            value === 'monthly' ? '毎月は未対応です' : undefined
-                          }
+                          aria-pressed={todoPinned}
+                          onClick={() => setTodoPinned((current) => !current)}
                         >
-                          {label}
+                          <span>ピン留め</span>
                         </button>
-                      ))}
-                    </div>
-                    {repeatKind === 'monthly' ? (
-                      <p className="inline-note quick-entry-repeat-note">
-                        毎月は未対応です
-                      </p>
-                    ) : null}
-                    {repeatKind === 'weekly' ? (
-                      <div className="quick-entry-weekdays">
-                        <span>曜日</span>
-                        <div className="quick-entry-chip-row">
-                          {WEEKDAY_OPTIONS.map((option) => (
-                            <button
-                              className={
-                                weekday === option.value
-                                  ? 'quick-entry-weekday-chip active'
-                                  : 'quick-entry-weekday-chip'
-                              }
-                              key={option.value}
-                              onClick={() => setWeekday(option.value)}
-                              type="button"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
                       </div>
-                    ) : null}
-                  </section>
+                    </section>
+                    {renderDurationCard()}
+                  </>
+                ) : null}
 
-                  <section className="quick-entry-card">
-                    <div className="quick-entry-card-head">
-                      <span className="quick-entry-card-icon" aria-hidden="true">
-                        D
-                      </span>
-                      <h3>開始</h3>
-                    </div>
-                    <div className="form-grid compact quick-entry-compact-grid">
-                      <label className="field">
-                        <span>開始日</span>
-                        <input
-                          type="date"
-                          value={date}
-                          onChange={(event) => setDate(event.target.value)}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>開始時刻</span>
-                        <input
-                          type="time"
-                          value={startTime}
-                          onChange={(event) => setStartTime(event.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </section>
-                  {renderDurationCard()}
-                </>
-              ) : null}
+                {mode === 'scheduled' ? (
+                  <>
+                    <section className="quick-entry-card">
+                      <div className="quick-entry-card-head">
+                        <h3>日付と開始時刻</h3>
+                      </div>
+                      <div className="form-grid compact quick-entry-compact-grid">
+                        <label className="field">
+                          <span>日付</span>
+                          <input
+                            type="date"
+                            value={date}
+                            onChange={(event) => setDate(event.target.value)}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>開始時刻</span>
+                          <input
+                            type="time"
+                            value={startTime}
+                            onChange={(event) => setStartTime(event.target.value)}
+                          />
+                        </label>
+                      </div>
+                    </section>
+                    {renderDurationCard()}
+                  </>
+                ) : null}
+
+                {mode === 'repeat' ? (
+                  <>
+                    <section className="quick-entry-card">
+                      <div className="quick-entry-card-head">
+                        <h3>繰り返し</h3>
+                      </div>
+                      <div className="quick-entry-chip-row">
+                        {(
+                          [
+                            ['daily', '毎日'],
+                            ['weekly', '毎週'],
+                            ['monthly', '毎月'],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <button
+                            className={
+                              repeatKind === value
+                                ? 'quick-entry-chip active'
+                                : 'quick-entry-chip'
+                            }
+                            key={value}
+                            onClick={() => setRepeatKind(value)}
+                            type="button"
+                            disabled={!SUPPORTED_QUICK_ENTRY_REPEAT_KINDS.has(value)}
+                            title={
+                              value === 'monthly' ? '毎月は未対応です' : undefined
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {repeatKind === 'monthly' ? (
+                        <p className="inline-note quick-entry-repeat-note">
+                          毎月は未対応です
+                        </p>
+                      ) : null}
+                      {repeatKind === 'weekly' ? (
+                        <div className="quick-entry-weekdays">
+                          <span>曜日</span>
+                          <div className="quick-entry-chip-row">
+                            {WEEKDAY_OPTIONS.map((option) => (
+                              <button
+                                className={
+                                  weekday === option.value
+                                    ? 'quick-entry-weekday-chip active'
+                                    : 'quick-entry-weekday-chip'
+                                }
+                                key={option.value}
+                                onClick={() => setWeekday(option.value)}
+                                type="button"
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <section className="quick-entry-card">
+                      <div className="quick-entry-card-head">
+                        <h3>開始</h3>
+                      </div>
+                      <div className="form-grid compact quick-entry-compact-grid">
+                        <label className="field">
+                          <span>開始日</span>
+                          <input
+                            type="date"
+                            value={date}
+                            onChange={(event) => setDate(event.target.value)}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>開始時刻</span>
+                          <input
+                            type="time"
+                            value={startTime}
+                            onChange={(event) => setStartTime(event.target.value)}
+                          />
+                        </label>
+                      </div>
+                    </section>
+                    {renderDurationCard()}
+                  </>
+                ) : null}
+
+                <section className="quick-entry-card quick-entry-memo-card">
+                  <label className="field">
+                    <span>メモ</span>
+                    <textarea
+                      rows={2}
+                      value={memo}
+                      onChange={(event) => setMemo(event.target.value)}
+                      placeholder="メモを追加"
+                    />
+                  </label>
+                </section>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </form>
     </div>
   );
