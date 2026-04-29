@@ -141,6 +141,15 @@ function extractBase64FromDataUrl(dataUrl: string): string {
   return dataUrl.slice(markerIndex + marker.length);
 }
 
+function buildTimetableOcrEndpoint(proxyUrl: string): string {
+  const baseUrl = proxyUrl
+    .replace(/\/$/, '')
+    .replace(/\/chat\/completions$/, '')
+    .replace(/\/timetable-ocr$/, '');
+
+  return `${baseUrl}/timetable-ocr`;
+}
+
 async function resizeImageDataUrl(
   file: File,
   mimeType: 'image/png' | 'image/jpeg',
@@ -315,9 +324,10 @@ export async function requestTimetableOcr(
   }
 
   const idToken = await firebaseAuth.currentUser.getIdToken();
-  const endpoint = proxyUrl.endsWith('/timetable-ocr')
-    ? proxyUrl
-    : `${proxyUrl.replace(/\/$/, '')}/timetable-ocr`;
+  const endpoint = buildTimetableOcrEndpoint(proxyUrl);
+
+  console.info('[Timetable OCR] request endpoint', endpoint);
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
