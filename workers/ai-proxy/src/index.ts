@@ -37,6 +37,8 @@ const MAX_MESSAGE_COUNT = 20;
 const MAX_MESSAGE_CONTENT_LENGTH = 6000;
 const MAX_TOTAL_MESSAGE_CONTENT_LENGTH = 16000;
 const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
+const SERVICE_NAME = 'studyplanner-ai-proxy';
+const WORKER_DEBUG_VERSION = 'timetable-ocr-debug-20260429-001';
 const SUPPORTED_TIMETABLE_OCR_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -65,6 +67,7 @@ function jsonResponse(
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
+      'X-StudyPlanner-Proxy-Version': WORKER_DEBUG_VERSION,
       ...buildCorsHeaders(request, env),
     },
   });
@@ -93,7 +96,8 @@ function buildCorsHeaders(request: Request, env: Env): Record<string, string> {
   return {
     ...(allowOrigin ? { 'Access-Control-Allow-Origin': allowOrigin } : {}),
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'X-StudyPlanner-Proxy-Version': WORKER_DEBUG_VERSION,
   };
 }
 
@@ -272,6 +276,53 @@ function normalizeGeminiModel(model: string | undefined): string {
   const trimmed = model?.trim() || DEFAULT_GEMINI_MODEL;
 
   return trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed;
+}
+
+function buildDebugBody(
+  request: Request,
+  pathname: string,
+): Record<string, unknown> {
+  return {
+    ok: true,
+    service: SERVICE_NAME,
+    hasTimetableOcr: true,
+    version: WORKER_DEBUG_VERSION,
+    method: request.method,
+    pathname,
+  };
+}
+
+function methodNotAllowedResponse(
+  request: Request,
+  env: Env,
+  pathname: string,
+  allowedMethods: string[],
+): Response {
+  return jsonResponse(request, env, 405, {
+    ok: false,
+    service: SERVICE_NAME,
+    version: WORKER_DEBUG_VERSION,
+    method: request.method,
+    pathname,
+    allowedMethods,
+    error: 'Method not allowed.',
+  });
+}
+
+function notFoundResponse(
+  request: Request,
+  env: Env,
+  pathname: string,
+): Response {
+  return jsonResponse(request, env, 404, {
+    ok: false,
+    service: SERVICE_NAME,
+    version: WORKER_DEBUG_VERSION,
+    method: request.method,
+    pathname,
+    knownPaths: ['/', '/chat/completions', '/timetable-ocr', '/__debug'],
+    error: 'Not found on studyplanner-ai-proxy worker.',
+  });
 }
 
 async function verifyFirebaseToken(
@@ -493,6 +544,14 @@ async function handleTimetableOcr(
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(request.url);
+
+    console.info('[AI Proxy] request', {
+      method: request.method,
+      pathname,
+      version: WORKER_DEBUG_VERSION,
+    });
+
     if (request.method === 'OPTIONS') {
       const originError = validateOrigin(request, env);
 
@@ -501,16 +560,25 @@ export default {
       }
 
       return new Response(null, {
+        status: 204,
         headers: buildCorsHeaders(request, env),
       });
     }
 
-    const { pathname } = new URL(request.url);
+    if (pathname === '/__debug') {
+      if (request.method !== 'GET') {
+        return methodNotAllowedResponse(request, env, pathname, ['GET', 'OPTIONS']);
+      }
+
+      return jsonResponse(request, env, 200, buildDebugBody(request, pathname));
+    }
+
+    if (pathname === '/timetable-ocr' && request.method !== 'POST') {
+      return methodNotAllowedResponse(request, env, pathname, ['POST', 'OPTIONS']);
+    }
 
     if (request.method !== 'POST') {
-      return jsonResponse(request, env, 405, {
-        error: 'Method not allowed.',
-      });
+      return methodNotAllowedResponse(request, env, pathname, ['POST', 'OPTIONS']);
     }
 
     if (
@@ -518,9 +586,7 @@ export default {
       pathname !== '/chat/completions' &&
       pathname !== '/timetable-ocr'
     ) {
-      return jsonResponse(request, env, 404, {
-        error: 'Not found.',
-      });
+      return notFoundResponse(request, env, pathname);
     }
 
     const originError = validateOrigin(request, env);
