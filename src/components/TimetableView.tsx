@@ -1,4 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { TimetableOcrImportDialog } from './TimetableOcrImportDialog';
+import {
+  createTimetableOcrFilePayload,
+  requestTimetableOcr,
+  type TimetableOcrResult,
+} from '../lib/timetableOcrImport';
 import type {
   RecurrenceWeekday,
   ScheduleTemplate,
@@ -63,6 +69,8 @@ const DEFAULT_PERIODS: DisplayPeriod[] = [
   { userId: '', termId: 'default', periodNumber: 5, label: '5', startTime: '16:05', endTime: '17:35' },
   { userId: '', termId: 'default', periodNumber: 6, label: '6', startTime: '18:00', endTime: '19:30' },
 ];
+
+const TIMETABLE_IMPORT_FILE_ACCEPT = 'image/png,image/jpeg,.png,.jpg,.jpeg,.pdf,application/pdf';
 
 function getTemplateTermId(template: ScheduleTemplate): string {
   return template.termId || 'default';
@@ -225,11 +233,16 @@ export function TimetableView({
   onDeleteScheduleTemplate,
 }: TimetableViewProps) {
   const activeTermId = activeTerm?.id ?? 'default';
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
   const [savingPeriods, setSavingPeriods] = useState(false);
   const [periodActionError, setPeriodActionError] = useState<string | null>(null);
+  const [isReadingTimetableFile, setIsReadingTimetableFile] = useState(false);
+  const [timetableOcrResult, setTimetableOcrResult] = useState<TimetableOcrResult | null>(null);
+  const [timetableOcrFileName, setTimetableOcrFileName] = useState('');
+  const [timetableOcrNotice, setTimetableOcrNotice] = useState<string | null>(null);
   const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);
   const [isSavingTerm, setIsSavingTerm] = useState(false);
   const [deletingTermId, setDeletingTermId] = useState<string | null>(null);
@@ -524,6 +537,37 @@ export function TimetableView({
     }
   }
 
+  async function handleTimetableImportFileChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    setIsReadingTimetableFile(true);
+    setTimetableOcrNotice(null);
+
+    try {
+      const payload = await createTimetableOcrFilePayload(file);
+      const result = await requestTimetableOcr(payload);
+
+      setTimetableOcrFileName(file.name);
+      setTimetableOcrResult(result);
+      setTimetableOcrNotice(null);
+    } catch (error) {
+      setTimetableOcrNotice(
+        error instanceof Error
+          ? error.message
+          : '読み取りに失敗しました。画像を明るく撮り直してください。',
+      );
+    } finally {
+      setIsReadingTimetableFile(false);
+    }
+  }
+
   return (
     <section className="panel timetable-view">
       <div className="section-header timetable-header">
@@ -531,6 +575,23 @@ export function TimetableView({
           <h2>{selectedTermLabel}</h2>
         </div>
         <div className="timetable-term-control">
+          <input
+            ref={importFileInputRef}
+            accept={TIMETABLE_IMPORT_FILE_ACCEPT}
+            className="timetable-import-file-input"
+            onChange={(event) => {
+              void handleTimetableImportFileChange(event);
+            }}
+            type="file"
+          />
+          <button
+            className="ghost-button timetable-ocr-button"
+            disabled={isReadingTimetableFile}
+            onClick={() => importFileInputRef.current?.click()}
+            type="button"
+          >
+            {isReadingTimetableFile ? '読み取り中...' : '画像/PDFから読み取り'}
+          </button>
           <button
             className="ghost-button timetable-term-switch"
             onClick={() => {
@@ -544,6 +605,9 @@ export function TimetableView({
           </button>
         </div>
       </div>
+      {timetableOcrNotice ? (
+        <p className="timetable-ocr-notice">{timetableOcrNotice}</p>
+      ) : null}
 
       <div className="timetable-grid-shell">
         <div
@@ -975,6 +1039,20 @@ export function TimetableView({
             ) : null}
           </form>
         </div>
+      ) : null}
+
+      {timetableOcrResult ? (
+        <TimetableOcrImportDialog
+          userId={userId}
+          termId={activeTermId}
+          fileName={timetableOcrFileName}
+          result={timetableOcrResult}
+          existingPeriods={savedPeriodsForTerm}
+          existingTemplates={termTemplates}
+          onClose={() => setTimetableOcrResult(null)}
+          onSaveTimetablePeriod={onSaveTimetablePeriod}
+          onSaveScheduleTemplate={onSaveScheduleTemplate}
+        />
       ) : null}
     </section>
   );

@@ -1,5 +1,7 @@
 interface Env {
   OPENAI_API_KEY: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
   FIREBASE_WEB_API_KEY: string;
   OPENAI_BASE_URL?: string;
   ALLOWED_ORIGIN?: string;
@@ -17,6 +19,11 @@ interface ChatCompletionRequest {
   response_format?: Record<string, unknown>;
 }
 
+interface TimetableOcrRequest {
+  mimeType?: string;
+  base64?: string;
+}
+
 interface FirebaseJwtPayload {
   localId?: string;
   email?: string;
@@ -24,10 +31,28 @@ interface FirebaseJwtPayload {
 }
 
 const MAX_REQUEST_BODY_BYTES = 32 * 1024;
+const MAX_TIMETABLE_OCR_BODY_BYTES = 5 * 1024 * 1024;
+const MAX_TIMETABLE_OCR_BASE64_LENGTH = 4_500_000;
 const MAX_MESSAGE_COUNT = 20;
 const MAX_MESSAGE_CONTENT_LENGTH = 6000;
 const MAX_TOTAL_MESSAGE_CONTENT_LENGTH = 16000;
 const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
+const SUPPORTED_TIMETABLE_OCR_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+]);
+const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
+const TIMETABLE_OCR_PROMPT = [
+  'あなたは日本語の学校時間割表を読み取るOCRアシスタントです。',
+  '画像内の表構造を理解し、曜日列、時限行、左端の時刻、各セルの授業名、教室番号、記号を対応付けてください。',
+  '返答はJSONのみです。Markdown、コードフェンス、説明文は絶対に含めないでください。',
+  '出力形式は {"periods":[{"periodNumber":1,"startTime":"09:10","endTime":"10:40"}],"items":[{"weekday":"mon","periodNumber":1,"startTime":"09:10","endTime":"10:40","title":"数学②（理系）","subject":"数学","classroom":"402","memo":"＊"}]} です。',
+  'weekday は mon, tue, wed, thu, fri, sat, sun のいずれかにしてください。',
+  'periodNumber は数値にしてください。時刻は読める場合 HH:mm にし、読めない場合は null にしてください。',
+  '空白セルは items に含めないでください。教室番号だけのセルは授業として扱わないでください。',
+  '授業名から分かる教科は subject に入れてください。不明なら空文字にしてください。',
+  '＊、V、その他の授業名・教室以外の記号は memo に入れてください。',
+].join('\n');
 
 function jsonResponse(
   request: Request,
@@ -127,6 +152,128 @@ function validateRequestShape(payload: ChatCompletionRequest): string | null {
   return null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getBearerToken(request: Request): string {
+  const authorization = request.headers.get('Authorization') ?? '';
+  return authorization.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length).trim()
+    : '';
+}
+
+function getDeclaredBodyLength(request: Request): number {
+  return Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
+}
+
+async function requireVerifiedFirebaseSession(
+  request: Request,
+  env: Env,
+): Promise<Response | null> {
+  if (!env.FIREBASE_WEB_API_KEY?.trim()) {
+    return jsonResponse(request, env, 500, {
+      error: 'FIREBASE_WEB_API_KEY is not configured.',
+    });
+  }
+
+  const bearerToken = getBearerToken(request);
+
+  if (!bearerToken) {
+    return jsonResponse(request, env, 401, {
+      error: 'Missing Firebase ID token.',
+    });
+  }
+
+  try {
+    const firebaseUser = await verifyFirebaseToken(
+      bearerToken,
+      env.FIREBASE_WEB_API_KEY.trim(),
+    );
+
+    if (firebaseUser.emailVerified === false) {
+      return jsonResponse(request, env, 403, {
+        error: 'Email verification is required before using AI features.',
+      });
+    }
+  } catch (error) {
+    return jsonResponse(request, env, 401, {
+      error:
+        error instanceof Error ? error.message : 'Firebase authentication failed.',
+    });
+  }
+
+  return null;
+}
+
+function validateTimetableOcrPayload(
+  payload: TimetableOcrRequest,
+): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return 'Invalid timetable OCR payload.';
+  }
+
+  if (
+    typeof payload.mimeType !== 'string' ||
+    !SUPPORTED_TIMETABLE_OCR_MIME_TYPES.has(payload.mimeType)
+  ) {
+    return 'Only PNG and JPEG images are supported.';
+  }
+
+  if (typeof payload.base64 !== 'string' || !payload.base64.trim()) {
+    return 'Image data is required.';
+  }
+
+  if (payload.base64.length > MAX_TIMETABLE_OCR_BASE64_LENGTH) {
+    return 'Image data was too large.';
+  }
+
+  if (!/^[A-Za-z0-9+/=]+$/.test(payload.base64)) {
+    return 'Image data was not valid base64.';
+  }
+
+  return null;
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    return trimmed;
+  }
+
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+
+  if (start === -1 || end === -1 || end <= start) {
+    return null;
+  }
+
+  return trimmed.slice(start, end + 1);
+}
+
+function parseGeminiTimetableJson(text: string): unknown {
+  const jsonText = extractFirstJsonObject(text);
+
+  if (!jsonText) {
+    throw new Error('Gemini response did not contain JSON.');
+  }
+
+  const parsed = JSON.parse(jsonText) as unknown;
+
+  if (!isRecord(parsed) || !Array.isArray(parsed.periods) || !Array.isArray(parsed.items)) {
+    throw new Error('Gemini response JSON did not match timetable OCR format.');
+  }
+
+  return parsed;
+}
+
+function normalizeGeminiModel(model: string | undefined): string {
+  const trimmed = model?.trim() || DEFAULT_GEMINI_MODEL;
+
+  return trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed;
+}
+
 async function verifyFirebaseToken(
   token: string,
   webApiKey: string,
@@ -170,45 +317,13 @@ async function handleChatCompletion(
     });
   }
 
-  if (!env.FIREBASE_WEB_API_KEY?.trim()) {
-    return jsonResponse(request, env, 500, {
-      error: 'FIREBASE_WEB_API_KEY is not configured.',
-    });
+  const sessionError = await requireVerifiedFirebaseSession(request, env);
+
+  if (sessionError) {
+    return sessionError;
   }
 
-  const authorization = request.headers.get('Authorization') ?? '';
-  const bearerToken = authorization.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length).trim()
-    : '';
-
-  if (!bearerToken) {
-    return jsonResponse(request, env, 401, {
-      error: 'Missing Firebase ID token.',
-    });
-  }
-
-  try {
-    const firebaseUser = await verifyFirebaseToken(
-      bearerToken,
-      env.FIREBASE_WEB_API_KEY.trim(),
-    );
-
-    if (firebaseUser.emailVerified === false) {
-      return jsonResponse(request, env, 403, {
-        error: 'Email verification is required before using AI features.',
-      });
-    }
-  } catch (error) {
-    return jsonResponse(request, env, 401, {
-      error:
-        error instanceof Error ? error.message : 'Firebase authentication failed.',
-    });
-  }
-
-  const declaredBodyLength = Number.parseInt(
-    request.headers.get('Content-Length') ?? '',
-    10,
-  );
+  const declaredBodyLength = getDeclaredBodyLength(request);
 
   if (
     Number.isFinite(declaredBodyLength) &&
@@ -265,6 +380,117 @@ async function handleChatCompletion(
   return jsonResponse(request, env, 200, { content });
 }
 
+async function handleTimetableOcr(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!env.GEMINI_API_KEY?.trim()) {
+    return jsonResponse(request, env, 500, {
+      error: 'GEMINI_API_KEY is not configured.',
+    });
+  }
+
+  const sessionError = await requireVerifiedFirebaseSession(request, env);
+
+  if (sessionError) {
+    return sessionError;
+  }
+
+  const declaredBodyLength = getDeclaredBodyLength(request);
+
+  if (
+    Number.isFinite(declaredBodyLength) &&
+    declaredBodyLength > MAX_TIMETABLE_OCR_BODY_BYTES
+  ) {
+    return jsonResponse(request, env, 413, {
+      error: 'Image request body was too large.',
+    });
+  }
+
+  const requestText = await request.text();
+
+  if (requestText.length > MAX_TIMETABLE_OCR_BODY_BYTES) {
+    return jsonResponse(request, env, 413, {
+      error: 'Image request body was too large.',
+    });
+  }
+
+  const payload = JSON.parse(requestText) as TimetableOcrRequest;
+  const payloadError = validateTimetableOcrPayload(payload);
+
+  if (payloadError) {
+    return jsonResponse(request, env, 400, { error: payloadError });
+  }
+
+  const model = normalizeGeminiModel(env.GEMINI_MODEL);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY.trim())}`;
+  const upstreamResponse = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: TIMETABLE_OCR_PROMPT },
+            {
+              inline_data: {
+                mime_type: payload.mimeType,
+                data: payload.base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  const upstreamText = await upstreamResponse.text();
+
+  if (!upstreamResponse.ok) {
+    return jsonResponse(request, env, upstreamResponse.status, {
+      error: 'Gemini timetable OCR request failed.',
+    });
+  }
+
+  try {
+    const upstreamJson = JSON.parse(upstreamText) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+    };
+    const content = upstreamJson.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? '')
+      .join('')
+      .trim();
+
+    if (!content) {
+      return jsonResponse(request, env, 502, {
+        error: 'Gemini timetable OCR response was empty.',
+      });
+    }
+
+    return jsonResponse(request, env, 200, {
+      result: parseGeminiTimetableJson(content),
+    });
+  } catch (error) {
+    return jsonResponse(request, env, 502, {
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Gemini timetable OCR response could not be parsed.',
+    });
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
@@ -287,7 +513,11 @@ export default {
       });
     }
 
-    if (pathname !== '/' && pathname !== '/chat/completions') {
+    if (
+      pathname !== '/' &&
+      pathname !== '/chat/completions' &&
+      pathname !== '/timetable-ocr'
+    ) {
       return jsonResponse(request, env, 404, {
         error: 'Not found.',
       });
@@ -300,6 +530,10 @@ export default {
     }
 
     try {
+      if (pathname === '/timetable-ocr') {
+        return await handleTimetableOcr(request, env);
+      }
+
       return await handleChatCompletion(request, env);
     } catch (error) {
       return jsonResponse(request, env, 500, {
