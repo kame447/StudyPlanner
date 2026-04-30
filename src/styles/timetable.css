@@ -356,6 +356,37 @@
   white-space: nowrap;
 }
 
+.timetable-current-term-card,
+.timetable-term-danger-zone {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--surface-muted) 12%);
+}
+
+.timetable-current-term-card > span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.timetable-current-term-card > strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.timetable-term-danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border) 72%);
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface) 95%);
+}
+
+.timetable-clear-term-button {
+  justify-self: start;
+  color: var(--danger);
+}
+
 .timetable-existing-terms {
   display: grid;
   gap: 8px;

@@ -19,11 +19,10 @@ import type {
 interface TimetableViewProps {
   userId: string;
   activeTerm: TimetableTerm | null;
-  timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
   scheduleTemplates: ScheduleTemplate[];
   onActivateTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
-  onDeleteTerm: (term: TimetableTerm) => Promise<void>;
+  onClearTermData: (term: TimetableTerm) => Promise<void>;
   onSaveTimetablePeriod: (
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -222,11 +221,10 @@ function makePeriodDraft(
 export function TimetableView({
   userId,
   activeTerm,
-  timetableTerms,
   timetablePeriods,
   scheduleTemplates,
   onActivateTerm,
-  onDeleteTerm,
+  onClearTermData,
   onSaveTimetablePeriod,
   onDeleteTimetablePeriod,
   onSaveScheduleTemplate,
@@ -245,27 +243,10 @@ export function TimetableView({
   const [timetableOcrNotice, setTimetableOcrNotice] = useState<string | null>(null);
   const [isTermSheetOpen, setIsTermSheetOpen] = useState(false);
   const [isSavingTerm, setIsSavingTerm] = useState(false);
-  const [deletingTermId, setDeletingTermId] = useState<string | null>(null);
+  const [isClearingTermData, setIsClearingTermData] = useState(false);
   const [termYear, setTermYear] = useState(activeTerm?.year ?? new Date().getFullYear());
   const [termKind, setTermKind] = useState<TimetableTermKind>(activeTerm?.kind ?? 'fullYear');
   const selectedTermLabel = activeTerm?.label ?? createTermLabel(termYear, termKind);
-  const visibleTimetableTerms = useMemo(
-    () =>
-      timetableTerms
-        .slice()
-        .sort((left, right) => {
-          if (left.id === activeTermId) {
-            return -1;
-          }
-
-          if (right.id === activeTermId) {
-            return 1;
-          }
-
-          return right.year - left.year || left.label.localeCompare(right.label);
-        }),
-    [activeTermId, timetableTerms],
-  );
   const savedPeriodsForTerm = useMemo(
     () =>
       timetablePeriods
@@ -481,16 +462,24 @@ export function TimetableView({
     }
   }
 
-  async function deleteTerm(term: TimetableTerm) {
-    if (deletingTermId || isSavingTerm) {
+  async function clearCurrentTermData() {
+    if (!activeTerm || isClearingTermData || isSavingTerm) {
       return;
     }
 
-    setDeletingTermId(term.id);
+    const confirmed = window.confirm(
+      `${selectedTermLabel}の授業をすべて削除します。この操作は元に戻せません。よろしいですか？`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsClearingTermData(true);
     try {
-      await onDeleteTerm(term);
+      await onClearTermData(activeTerm);
     } finally {
-      setDeletingTermId(null);
+      setIsClearingTermData(false);
     }
   }
 
@@ -739,7 +728,7 @@ export function TimetableView({
         <div
           className="overlay timetable-term-sheet-overlay"
           onClick={() => {
-            if (!isSavingTerm) {
+            if (!isSavingTerm && !isClearingTermData) {
               setIsTermSheetOpen(false);
             }
           }}
@@ -756,7 +745,7 @@ export function TimetableView({
               </div>
               <button
                 className="ghost-button"
-                disabled={isSavingTerm}
+                disabled={isSavingTerm || isClearingTermData}
                 onClick={() => setIsTermSheetOpen(false)}
                 type="button"
               >
@@ -764,11 +753,15 @@ export function TimetableView({
               </button>
             </div>
             <div className="timetable-term-sheet-body">
+              <div className="timetable-current-term-card">
+                <span>現在の学期</span>
+                <strong>{selectedTermLabel}</strong>
+              </div>
               <label className="field">
                 <span>年度</span>
                 <select
                   value={termYear}
-                  disabled={isSavingTerm}
+                  disabled={isSavingTerm || isClearingTermData}
                   onChange={(event) => setTermYear(Number(event.target.value))}
                 >
                   {TERM_YEARS.map((year) => (
@@ -788,7 +781,7 @@ export function TimetableView({
                           ? 'segment active timetable-term-kind'
                           : 'segment timetable-term-kind'
                       }
-                      disabled={isSavingTerm}
+                      disabled={isSavingTerm || isClearingTermData}
                       key={option.value}
                       onClick={() => setTermKind(option.value)}
                       type="button"
@@ -798,54 +791,28 @@ export function TimetableView({
                   ))}
                 </div>
               </div>
-              {visibleTimetableTerms.length > 0 ? (
-                <div className="timetable-existing-terms">
-                  <span>学期一覧</span>
-                  <div>
-                    {visibleTimetableTerms.map((term) => (
-                      <span
-                        className={
-                          term.id === activeTermId
-                            ? 'timetable-existing-term active'
-                            : 'timetable-existing-term'
-                        }
-                        key={term.id}
-                      >
-                        <button
-                          className="timetable-existing-term-select"
-                          disabled={isSavingTerm || deletingTermId !== null}
-                          onClick={() => {
-                            setTermYear(term.year);
-                            setTermKind(term.kind);
-                          }}
-                          type="button"
-                        >
-                          {term.label}
-                        </button>
-                        {term.id === activeTermId ? null : (
-                          <button
-                            className="timetable-existing-term-delete"
-                            disabled={isSavingTerm || deletingTermId === term.id}
-                            onClick={() => {
-                              void deleteTerm(term);
-                            }}
-                            type="button"
-                            aria-label="学期を削除"
-                            title="学期を削除"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <div className="timetable-term-danger-zone">
+                <button
+                  className="ghost-button timetable-clear-term-button"
+                  disabled={
+                    !activeTerm ||
+                    isSavingTerm ||
+                    isClearingTermData ||
+                    (termTemplates.length === 0 && savedPeriodsForTerm.length === 0)
+                  }
+                  onClick={() => {
+                    void clearCurrentTermData();
+                  }}
+                  type="button"
+                >
+                  {isClearingTermData ? '削除中...' : 'この学期の授業をすべて削除'}
+                </button>
+              </div>
             </div>
             <div className="row-actions timetable-import-actions">
               <button
                 className="ghost-button"
-                disabled={isSavingTerm}
+                disabled={isSavingTerm || isClearingTermData}
                 onClick={() => setIsTermSheetOpen(false)}
                 type="button"
               >
@@ -853,7 +820,7 @@ export function TimetableView({
               </button>
               <button
                 className="primary-button"
-                disabled={isSavingTerm || deletingTermId !== null}
+                disabled={isSavingTerm || isClearingTermData}
                 onClick={() => {
                   void applyTermSelection();
                 }}

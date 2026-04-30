@@ -386,6 +386,7 @@ interface UsePlannerDataStateResult {
   deleteScheduleTemplate: (template: ScheduleTemplate) => Promise<void>;
   activateTimetableTerm: (draft: TimetableTermDraft) => Promise<TimetableTerm>;
   deleteTimetableTerm: (term: TimetableTerm) => Promise<void>;
+  clearTimetableTermData: (term: TimetableTerm) => Promise<void>;
   saveTimetablePeriod: (
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -1372,6 +1373,54 @@ export function usePlannerDataState({
     }
   }
 
+  async function clearTimetableTermData(term: TimetableTerm) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    const targetTermId = term.id;
+    const targetTemplates = scheduleTemplates.filter(
+      (template) => (template.termId || 'default') === targetTermId,
+    );
+    const targetPeriods = timetablePeriods.filter(
+      (period) => period.termId === targetTermId,
+    );
+    const now = new Date().toISOString();
+    const nextTerm: TimetableTerm = {
+      ...term,
+      updatedAt: now,
+    };
+
+    try {
+      await runSequentially(targetTemplates, async (template) => {
+        await plannerRepository.deleteScheduleTemplate(userId, template.id);
+      });
+      await runSequentially(targetPeriods, async (period) => {
+        await plannerRepository.deleteTimetablePeriod(userId, period.id);
+      });
+      await plannerRepository.upsertTimetableTerm(nextTerm);
+
+      setScheduleTemplates((current) =>
+        current.filter((template) => (template.termId || 'default') !== targetTermId),
+      );
+      setTimetablePeriods((current) =>
+        current.filter((period) => period.termId !== targetTermId),
+      );
+      setTimetableTerms((current) =>
+        sortTimetableTerms(
+          current.map((item) => (item.id === targetTermId ? nextTerm : item)),
+        ),
+      );
+      showNotice('この学期の授業をすべて削除しました。', 'success');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, 'この学期の授業を削除できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
   async function saveTimetablePeriod(
     draft: TimetablePeriodDraft,
     targetPeriodId?: string,
@@ -1526,6 +1575,7 @@ export function usePlannerDataState({
     deleteScheduleTemplate,
     activateTimetableTerm,
     deleteTimetableTerm,
+    clearTimetableTermData,
     saveTimetablePeriod,
     deleteTimetablePeriod,
     selectDate,

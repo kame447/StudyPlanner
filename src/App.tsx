@@ -75,7 +75,7 @@ export default function App() {
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
-    deleteTimetableTerm,
+    clearTimetableTermData,
     saveTimetablePeriod,
     deleteTimetablePeriod,
     selectDate,
@@ -279,11 +279,10 @@ export default function App() {
           <TimetableView
             userId={user.id}
             activeTerm={activeTimetableTerm}
-            timetableTerms={timetableTerms}
             timetablePeriods={timetablePeriods}
             scheduleTemplates={scheduleTemplates}
             onActivateTerm={activateTimetableTerm}
-            onDeleteTerm={deleteTimetableTerm}
+            onClearTermData={clearTimetableTermData}
             onSaveTimetablePeriod={saveTimetablePeriod}
             onDeleteTimetablePeriod={deleteTimetablePeriod}
             onSaveScheduleTemplate={saveScheduleTemplate}
