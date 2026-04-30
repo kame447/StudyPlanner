@@ -262,9 +262,8 @@ export function TimetableView({
             return 1;
           }
 
-          return right.updatedAt.localeCompare(left.updatedAt);
-        })
-        .slice(0, 4),
+          return right.year - left.year || left.label.localeCompare(right.label);
+        }),
     [activeTermId, timetableTerms],
   );
   const savedPeriodsForTerm = useMemo(
@@ -801,7 +800,7 @@ export function TimetableView({
               </div>
               {visibleTimetableTerms.length > 0 ? (
                 <div className="timetable-existing-terms">
-                  <span>保存済み</span>
+                  <span>学期一覧</span>
                   <div>
                     {visibleTimetableTerms.map((term) => (
                       <span

@@ -170,12 +170,42 @@ function createTimetableTermLabel(
   return `${normalizedYear}年 ${getTimetableTermKindLabel(kind)}`;
 }
 
+function getTimetableTermKindKey(kind: TimetableTermKind): string {
+  switch (kind) {
+    case 'firstHalf':
+      return 'first';
+    case 'secondHalf':
+      return 'second';
+    case 'term1':
+      return 'term1';
+    case 'term2':
+      return 'term2';
+    case 'term3':
+      return 'term3';
+    case 'term4':
+      return 'term4';
+    case 'custom':
+      return 'custom';
+    case 'fullYear':
+    default:
+      return 'full-year';
+  }
+}
+
+function createTimetableTermId(year: number, kind: TimetableTermKind): string {
+  const normalizedYear = Number.isFinite(year)
+    ? Math.round(year)
+    : new Date().getFullYear();
+
+  return `${normalizedYear}-${getTimetableTermKindKey(kind)}`;
+}
+
 function createDefaultTimetableTerm(userId: string): TimetableTerm {
   const now = new Date().toISOString();
   const year = new Date().getFullYear();
 
   return {
-    id: 'default',
+    id: createTimetableTermId(year, 'fullYear'),
     userId,
     year,
     kind: 'fullYear',
@@ -183,6 +213,134 @@ function createDefaultTimetableTerm(userId: string): TimetableTerm {
     isActive: true,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function pickLatestTimetableTerm(terms: TimetableTerm[]): TimetableTerm {
+  return terms
+    .slice()
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+}
+
+function sortTimetableTerms(terms: TimetableTerm[]): TimetableTerm[] {
+  return terms.slice().sort((left, right) => {
+    if (left.isActive) {
+      return -1;
+    }
+
+    if (right.isActive) {
+      return 1;
+    }
+
+    return (
+      right.year - left.year ||
+      getTimetableTermKindKey(left.kind).localeCompare(getTimetableTermKindKey(right.kind))
+    );
+  });
+}
+
+function normalizeTimetableTermsByYearAndKind(
+  userId: string,
+  terms: TimetableTerm[],
+): {
+  terms: TimetableTerm[];
+  termIdMap: Map<string, string>;
+  obsoleteTermIds: string[];
+} {
+  const now = new Date().toISOString();
+  const sourceTerms = terms.length > 0 ? terms : [createDefaultTimetableTerm(userId)];
+  const groupedTerms = new Map<string, TimetableTerm[]>();
+  const termIdMap = new Map<string, string>();
+
+  sourceTerms.forEach((term) => {
+    const stableId = createTimetableTermId(term.year, term.kind);
+    const group = groupedTerms.get(stableId) ?? [];
+
+    group.push(term);
+    groupedTerms.set(stableId, group);
+    termIdMap.set(term.id, stableId);
+  });
+
+  const activeSourceTerm =
+    sourceTerms.find((term) => term.isActive) ??
+    sourceTerms.find((term) => term.id === 'default') ??
+    pickLatestTimetableTerm(sourceTerms);
+  const activeStableId = termIdMap.get(activeSourceTerm.id) ?? createTimetableTermId(
+    activeSourceTerm.year,
+    activeSourceTerm.kind,
+  );
+
+  if (!termIdMap.has('default')) {
+    termIdMap.set('default', activeStableId);
+  }
+
+  const obsoleteTermIds: string[] = [];
+  const normalizedTerms = Array.from(groupedTerms.entries()).map(([stableId, group]) => {
+    const latest = pickLatestTimetableTerm(group);
+
+    group.forEach((term) => {
+      if (term.id !== stableId) {
+        obsoleteTermIds.push(term.id);
+      }
+    });
+
+    return {
+      ...latest,
+      id: stableId,
+      userId,
+      label: createTimetableTermLabel(latest.year, latest.kind, latest.label),
+      isActive: stableId === activeStableId,
+      updatedAt: latest.id === stableId ? latest.updatedAt : now,
+    };
+  });
+
+  return {
+    terms: sortTimetableTerms(normalizedTerms),
+    termIdMap,
+    obsoleteTermIds,
+  };
+}
+
+function remapTimetableTermId(
+  termId: string | undefined,
+  termIdMap: Map<string, string>,
+): string {
+  const normalizedTermId = termId?.trim() || 'default';
+
+  return termIdMap.get(normalizedTermId) ?? normalizedTermId;
+}
+
+function mergeTimetablePeriodsByTermAndNumber(
+  periods: TimetablePeriod[],
+): {
+  periods: TimetablePeriod[];
+  obsoletePeriodIds: string[];
+} {
+  const periodByKey = new Map<string, TimetablePeriod>();
+  const obsoletePeriodIds: string[] = [];
+
+  periods.forEach((period) => {
+    const key = `${period.termId}:${period.periodNumber}`;
+    const current = periodByKey.get(key);
+
+    if (!current || period.updatedAt.localeCompare(current.updatedAt) > 0) {
+      if (current) {
+        obsoletePeriodIds.push(current.id);
+      }
+      periodByKey.set(key, period);
+      return;
+    }
+
+    obsoletePeriodIds.push(period.id);
+  });
+
+  return {
+    periods: Array.from(periodByKey.values()).sort(
+      (left, right) =>
+        left.termId.localeCompare(right.termId) ||
+        left.periodNumber - right.periodNumber,
+    ),
+    obsoletePeriodIds,
   };
 }
 
@@ -326,31 +484,91 @@ export function usePlannerDataState({
       plannerRepository.getTimetableTerms(nextUserId),
       plannerRepository.getTimetablePeriods(nextUserId),
     ]);
-    const nextActiveTerm = nextTimetableTerms.find((term) => term.isActive);
-    const fallbackActiveTerm =
-      nextActiveTerm ??
-      nextTimetableTerms.find((term) => term.id === 'default') ??
-      nextTimetableTerms[0] ??
-      createDefaultTimetableTerm(nextUserId);
-    const resolvedTimetableTerms = nextTimetableTerms.some(
-      (term) => term.id === fallbackActiveTerm.id,
-    )
-      ? nextTimetableTerms.map((term) => ({
-          ...term,
-          isActive: term.id === fallbackActiveTerm.id,
-        }))
-      : [fallbackActiveTerm];
+    const {
+      terms: resolvedTimetableTerms,
+      termIdMap,
+      obsoleteTermIds,
+    } = normalizeTimetableTermsByYearAndKind(nextUserId, nextTimetableTerms);
+    const remappedScheduleTemplates = nextScheduleTemplates.map((template) => {
+      const nextTermId = remapTimetableTermId(template.termId, termIdMap);
+
+      return nextTermId === (template.termId || 'default')
+        ? template
+        : {
+            ...template,
+            termId: nextTermId,
+            updatedAt: new Date().toISOString(),
+          };
+    });
+    const {
+      periods: resolvedTimetablePeriods,
+      obsoletePeriodIds,
+    } = mergeTimetablePeriodsByTermAndNumber(
+      nextTimetablePeriods.map((period) => {
+        const nextTermId = remapTimetableTermId(period.termId, termIdMap);
+
+        return nextTermId === period.termId
+          ? period
+          : {
+              ...period,
+              termId: nextTermId,
+              updatedAt: new Date().toISOString(),
+            };
+      }),
+    );
+
+    try {
+      await runSequentially(resolvedTimetableTerms, async (term) => {
+        const previousTerm = nextTimetableTerms.find((item) => item.id === term.id);
+
+        if (
+          previousTerm &&
+          previousTerm.year === term.year &&
+          previousTerm.kind === term.kind &&
+          previousTerm.label === term.label &&
+          previousTerm.isActive === term.isActive
+        ) {
+          return;
+        }
+
+        await plannerRepository.upsertTimetableTerm(term);
+      });
+      await runSequentially(remappedScheduleTemplates, async (template) => {
+        const previousTemplate = nextScheduleTemplates.find((item) => item.id === template.id);
+
+        if (previousTemplate?.termId === template.termId) {
+          return;
+        }
+
+        await plannerRepository.upsertScheduleTemplate(template);
+      });
+      await runSequentially(resolvedTimetablePeriods, async (period) => {
+        const previousPeriod = nextTimetablePeriods.find((item) => item.id === period.id);
+
+        if (previousPeriod?.termId === period.termId) {
+          return;
+        }
+
+        await plannerRepository.upsertTimetablePeriod(period);
+      });
+      await runSequentially(obsoletePeriodIds, async (periodId) => {
+        await plannerRepository.deleteTimetablePeriod(nextUserId, periodId);
+      });
+      await runSequentially(obsoleteTermIds, async (termId) => {
+        await plannerRepository.deleteTimetableTerm(nextUserId, termId);
+      });
+    } catch (error) {
+      console.warn('[Timetable] term canonicalization failed', error);
+    }
 
     setPlans(sortByDateTime(nextPlans));
     setActuals(nextActuals);
     setDayNotes(nextDayNotes);
     setMonthEvents(sortMonthEvents(nextMonthEvents));
     setTodos(nextTodos);
-    setScheduleTemplates(nextScheduleTemplates);
+    setScheduleTemplates(remappedScheduleTemplates);
     setTimetableTerms(resolvedTimetableTerms);
-    setTimetablePeriods(
-      nextTimetablePeriods.sort((left, right) => left.periodNumber - right.periodNumber),
-    );
+    setTimetablePeriods(resolvedTimetablePeriods);
   }, []);
 
   const resetPlannerData = useCallback(() => {
@@ -1073,13 +1291,16 @@ export function usePlannerDataState({
     const year = Number.isFinite(draft.year)
       ? Math.round(draft.year)
       : new Date().getFullYear();
+    const stableTermId = createTimetableTermId(year, draft.kind);
     const label = createTimetableTermLabel(year, draft.kind, draft.label);
     const existingTerm = timetableTerms.find(
-      (term) => term.id !== 'default' && term.year === year && term.kind === draft.kind,
+      (term) =>
+        term.id === stableTermId ||
+        (term.year === year && term.kind === draft.kind),
     );
     const now = new Date().toISOString();
     const nextActiveTerm: TimetableTerm = {
-      id: existingTerm?.id ?? createId('timetable-term'),
+      id: stableTermId,
       userId,
       year,
       kind: draft.kind,
@@ -1089,7 +1310,7 @@ export function usePlannerDataState({
       updatedAt: now,
     };
     const inactiveTerms = timetableTerms
-      .filter((term) => term.id !== nextActiveTerm.id && term.id !== 'default')
+      .filter((term) => term.id !== nextActiveTerm.id)
       .map((term) => ({
         ...term,
         isActive: false,
@@ -1105,9 +1326,7 @@ export function usePlannerDataState({
         const withInactive = current
           .filter((term) => term.id !== nextActiveTerm.id)
           .map((term) => ({ ...term, isActive: false, updatedAt: now }));
-        return [...withInactive, nextActiveTerm].sort(
-          (left, right) => left.year - right.year || left.label.localeCompare(right.label),
-        );
+        return sortTimetableTerms([...withInactive, nextActiveTerm]);
       });
       showNotice('学期を切り替えました。', 'success');
       return nextActiveTerm;
