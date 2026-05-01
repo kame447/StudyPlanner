@@ -291,6 +291,26 @@
   gap: 10px;
 }
 
+.header-settings-button {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 999px;
+  line-height: 1;
+}
+
+.header-settings-button span {
+  display: block;
+  transform: translateY(-1px);
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
 .user-avatar {
   width: 56px;
   height: 56px;

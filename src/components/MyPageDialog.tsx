@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
-import type { ThemeMode, ThemePalette } from '../lib/themePalette';
 import { AVATAR_OPTIONS, getUserDisplayName } from '../lib/userProfile';
 import type { User, UserProfileDraft } from '../types/domain';
-import { AppSettingsDialog } from './AppSettingsDialog';
 import { UserAvatar } from './UserAvatar';
 
 interface MyPageDialogProps {
   open: boolean;
   user: User;
-  themeMode: ThemeMode;
-  themePalette: ThemePalette;
-  onChangeTheme: (nextThemeMode: ThemeMode) => void;
-  onChangeThemePalette: (nextThemePalette: ThemePalette) => void;
   onSaveProfile: (draft: UserProfileDraft) => Promise<void>;
   onSignOut: () => Promise<void>;
   onClose: () => void;
@@ -21,10 +15,6 @@ interface MyPageDialogProps {
 export function MyPageDialog({
   open,
   user,
-  themeMode,
-  themePalette,
-  onChangeTheme,
-  onChangeThemePalette,
   onSaveProfile,
   onSignOut,
   onClose,
@@ -32,7 +22,6 @@ export function MyPageDialog({
   const [username, setUsername] = useState(user.username);
   const [avatar, setAvatar] = useState(user.avatar);
   const [isAvatarSectionOpen, setIsAvatarSectionOpen] = useState(false);
-  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -45,7 +34,6 @@ export function MyPageDialog({
     setUsername(user.username);
     setAvatar(user.avatar);
     setIsAvatarSectionOpen(false);
-    setIsAppSettingsOpen(false);
     setStatus('');
     setStatusTone('info');
   }, [open, user.avatar, user.username]);
@@ -101,15 +89,6 @@ export function MyPageDialog({
       <div className="modal-card my-page-modal" onClick={(event) => event.stopPropagation()}>
         <div className="section-stack">
           <div className="section-header">
-            <button
-              className="ghost-button icon-button profile-settings-button"
-              onClick={() => setIsAppSettingsOpen(true)}
-              type="button"
-              aria-label="アプリ設定を開く"
-              title="アプリ設定"
-            >
-              <span aria-hidden="true">⚙</span>
-            </button>
             <div>
               <h2>マイページ</h2>
               <p>表示名とアイコンを編集できます。</p>
@@ -230,15 +209,6 @@ export function MyPageDialog({
             ) : null}
           </div>
         </div>
-
-        <AppSettingsDialog
-          open={isAppSettingsOpen}
-          themeMode={themeMode}
-          themePalette={themePalette}
-          onChangeTheme={onChangeTheme}
-          onChangeThemePalette={onChangeThemePalette}
-          onClose={() => setIsAppSettingsOpen(false)}
-        />
       </div>
     </div>
   );

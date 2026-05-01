@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
+import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -26,6 +27,7 @@ import { getUserDisplayName } from './lib/userProfile';
 
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
+  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
@@ -149,9 +151,19 @@ export default function App() {
             className="ghost-button my-page-trigger"
             onClick={() => setIsMyPageOpen(true)}
             type="button"
+            aria-label="マイページを開く"
           >
             <UserAvatar user={user} small />
             <span className="my-page-trigger-label">マイページ</span>
+          </button>
+          <button
+            className="ghost-button header-settings-button"
+            onClick={() => setIsAppSettingsOpen(true)}
+            type="button"
+            aria-label="アプリ設定を開く"
+            title="アプリ設定"
+          >
+            <span aria-hidden="true">⚙️</span>
           </button>
         </div>
       </header>
@@ -368,13 +380,18 @@ export default function App() {
       <MyPageDialog
         open={isMyPageOpen}
         user={user}
+        onSaveProfile={saveUserProfile}
+        onSignOut={signOut}
+        onClose={() => setIsMyPageOpen(false)}
+      />
+
+      <AppSettingsDialog
+        open={isAppSettingsOpen}
         themeMode={themeMode}
         themePalette={themePalette}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
-        onSaveProfile={saveUserProfile}
-        onSignOut={signOut}
-        onClose={() => setIsMyPageOpen(false)}
+        onClose={() => setIsAppSettingsOpen(false)}
       />
     </div>
   );

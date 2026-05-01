@@ -539,32 +539,6 @@
   width: min(640px, 100%);
 }
 
-.my-page-modal > .section-stack > .section-header {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-.icon-button {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  border-radius: 999px;
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.icon-button span {
-  display: block;
-  transform: translateY(-1px);
-}
-
-.profile-settings-button {
-  align-self: start;
-}
-
 .app-settings-modal {
   width: min(620px, 100%);
 }

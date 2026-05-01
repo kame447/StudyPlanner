@@ -528,6 +528,17 @@
     font-size: 0.72rem;
   }
 
+  .header-settings-button {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  .header-settings-button span {
+    font-size: 1rem;
+  }
+
   .my-page-trigger-label {
     display: none;
   }
@@ -1300,6 +1311,13 @@
     padding: 3px;
     font-size: 0.68rem;
     gap: 0;
+  }
+
+  .header-settings-button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
   }
 
   .user-avatar-small {
