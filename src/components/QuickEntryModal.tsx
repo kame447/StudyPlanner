@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Pin } from 'lucide-react';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import {
   buildQuickEntryPlanDraft,
@@ -401,6 +402,7 @@ export function QuickEntryModal({
                           aria-pressed={todoPinned}
                           onClick={() => setTodoPinned((current) => !current)}
                         >
+                          <Pin aria-hidden="true" size={18} strokeWidth={1.9} />
                           <span>ピン留め</span>
                         </button>
                       </div>

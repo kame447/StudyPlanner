@@ -354,6 +354,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   width: 100%;
   min-height: 38px;
   padding: 7px 10px;
@@ -369,19 +370,15 @@
   white-space: nowrap;
 }
 
-.quick-entry-pin-toggle.active {
-  border-color: color-mix(in srgb, #f6c343 48%, var(--border) 52%);
-  background: color-mix(in srgb, #f6c343 16%, var(--surface) 84%);
-  color: color-mix(in srgb, #7a5200 86%, var(--text) 14%);
+.quick-entry-pin-toggle svg {
+  flex: 0 0 auto;
+  color: currentColor;
 }
 
-.quick-entry-pin-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  line-height: 1;
+.quick-entry-pin-toggle.active {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border) 68%);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  color: var(--accent);
 }
 
 .quick-entry-deadline-grid {

@@ -1,4 +1,17 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  Clock,
+  NotebookText,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+} from 'lucide-react';
 import { resolveQuickEntryEndTime } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS, getPlanTypeLabel } from '../lib/plans';
 import type {
@@ -410,18 +423,30 @@ export function TodoView({
             </span>
             {todo.estimatedMinutes !== null ? (
               <span className="todo-tag todo-duration-tag">
+                <Clock aria-hidden="true" size={16} strokeWidth={1.9} />
                 {todo.estimatedMinutes}分
               </span>
             ) : null}
-            <span className="todo-tag todo-date-tag">{formatTodoDue(todo)}</span>
+            <span className="todo-tag todo-date-tag">
+              <CalendarDays aria-hidden="true" size={16} strokeWidth={1.9} />
+              {formatTodoDue(todo)}
+            </span>
             {todo.status === 'scheduled' && todo.scheduledPlanId ? (
               <span className="todo-tag todo-scheduled-tag">予定化済み</span>
             ) : null}
             {todo.pinned && todo.status !== 'done' ? (
-              <span className="todo-tag todo-pinned-tag">ピン留め</span>
+              <span className="todo-tag todo-pinned-tag">
+                <Pin aria-hidden="true" size={16} strokeWidth={1.9} />
+                ピン留め
+              </span>
             ) : null}
           </div>
-          {todo.memo ? <p>{todo.memo}</p> : null}
+          {todo.memo ? (
+            <p className="todo-memo">
+              <NotebookText aria-hidden="true" size={16} strokeWidth={1.9} />
+              <span>{todo.memo}</span>
+            </p>
+          ) : null}
         </div>
         <div className="todo-item-actions">
           <button
@@ -431,7 +456,7 @@ export function TodoView({
             title="編集"
             type="button"
           >
-            <span aria-hidden="true">✎</span>
+            <Pencil aria-hidden="true" size={19} strokeWidth={1.9} />
           </button>
           {todo.status === 'open' || todo.status === 'scheduled' ? (
             <button
@@ -448,7 +473,11 @@ export function TodoView({
               title={todo.pinned ? 'ピン解除' : 'ピン留め'}
               type="button"
             >
-              <span aria-hidden="true">📌</span>
+              {todo.pinned ? (
+                <PinOff aria-hidden="true" size={19} strokeWidth={1.9} />
+              ) : (
+                <Pin aria-hidden="true" size={19} strokeWidth={1.9} />
+              )}
             </button>
           ) : null}
           {todo.status === 'open' ? (
@@ -460,7 +489,7 @@ export function TodoView({
               title="予定にする"
               type="button"
             >
-              <span aria-hidden="true">◷</span>
+              <CalendarDays aria-hidden="true" size={19} strokeWidth={1.9} />
             </button>
           ) : null}
           {todo.status === 'open' || todo.status === 'scheduled' ? (
@@ -474,7 +503,7 @@ export function TodoView({
               title="完了"
               type="button"
             >
-              <span aria-hidden="true">✓</span>
+              <CheckCircle2 aria-hidden="true" size={19} strokeWidth={1.9} />
             </button>
           ) : null}
           {todo.status === 'done' || todo.status === 'scheduled' ? (
@@ -488,7 +517,7 @@ export function TodoView({
               title="未完了に戻す"
               type="button"
             >
-              <span aria-hidden="true">↺</span>
+              <Circle aria-hidden="true" size={19} strokeWidth={1.9} />
             </button>
           ) : null}
           <button
@@ -501,7 +530,7 @@ export function TodoView({
             title="削除"
             type="button"
           >
-            <span aria-hidden="true">×</span>
+            <Trash2 aria-hidden="true" size={19} strokeWidth={1.9} />
           </button>
         </div>
       </article>
@@ -558,7 +587,17 @@ export function TodoView({
             }
             type="button"
           >
-            {isExpanded ? '折りたたむ' : `すべて表示（${sectionTodos.length}件）`}
+            {isExpanded ? (
+              <>
+                <ChevronUp aria-hidden="true" size={18} strokeWidth={1.9} />
+                折りたたむ
+              </>
+            ) : (
+              <>
+                <ChevronDown aria-hidden="true" size={18} strokeWidth={1.9} />
+                すべて表示（{sectionTodos.length}件）
+              </>
+            )}
           </button>
         ) : null}
       </section>

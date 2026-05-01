@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import { PLAN_TYPE_OPTIONS, getPlanTypeLabel } from '../lib/plans';
 import type { PlanType, TodoTask, TodoTaskDraft } from '../types/domain';
 
@@ -183,6 +184,7 @@ export function TodoListPanel({
             disabled={isSubmitting || !draft.title.trim()}
             type="submit"
           >
+            <Plus aria-hidden="true" size={20} strokeWidth={1.9} />
             追加
           </button>
         </div>
@@ -225,8 +227,10 @@ export function TodoListPanel({
                   onClick={() => {
                     void onDeleteTodo(todo);
                   }}
+                  aria-label={`${todo.title}を削除`}
                   type="button"
                 >
+                  <Trash2 aria-hidden="true" size={18} strokeWidth={1.9} />
                   削除
                 </button>
               </article>
