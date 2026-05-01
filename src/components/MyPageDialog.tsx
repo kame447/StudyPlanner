@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
-import {
-  THEME_PALETTE_OPTIONS,
-  type ThemeMode,
-  type ThemePalette,
-} from '../lib/themePalette';
+import type { ThemeMode, ThemePalette } from '../lib/themePalette';
 import { AVATAR_OPTIONS, getUserDisplayName } from '../lib/userProfile';
 import type { User, UserProfileDraft } from '../types/domain';
+import { AppSettingsDialog } from './AppSettingsDialog';
 import { UserAvatar } from './UserAvatar';
 
 interface MyPageDialogProps {
@@ -35,13 +32,10 @@ export function MyPageDialog({
   const [username, setUsername] = useState(user.username);
   const [avatar, setAvatar] = useState(user.avatar);
   const [isAvatarSectionOpen, setIsAvatarSectionOpen] = useState(false);
-  const [isThemePaletteSectionOpen, setIsThemePaletteSectionOpen] = useState(false);
+  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const selectedThemePalette =
-    THEME_PALETTE_OPTIONS.find((palette) => palette.id === themePalette) ??
-    THEME_PALETTE_OPTIONS[0];
 
   useEffect(() => {
     if (!open) {
@@ -51,7 +45,7 @@ export function MyPageDialog({
     setUsername(user.username);
     setAvatar(user.avatar);
     setIsAvatarSectionOpen(false);
-    setIsThemePaletteSectionOpen(false);
+    setIsAppSettingsOpen(false);
     setStatus('');
     setStatusTone('info');
   }, [open, user.avatar, user.username]);
@@ -107,9 +101,18 @@ export function MyPageDialog({
       <div className="modal-card my-page-modal" onClick={(event) => event.stopPropagation()}>
         <div className="section-stack">
           <div className="section-header">
+            <button
+              className="ghost-button icon-button profile-settings-button"
+              onClick={() => setIsAppSettingsOpen(true)}
+              type="button"
+              aria-label="アプリ設定を開く"
+              title="アプリ設定"
+            >
+              <span aria-hidden="true">⚙</span>
+            </button>
             <div>
               <h2>マイページ</h2>
-              <p>表示名、アイコン、表示モード、配色をまとめて調整できます。</p>
+              <p>表示名とアイコンを編集できます。</p>
             </div>
             <button className="ghost-button" onClick={onClose} type="button">
               閉じる
@@ -213,80 +216,6 @@ export function MyPageDialog({
             </div>
           </section>
 
-          <section className="assistant-settings-card">
-            <div className="field">
-              <span>表示モード</span>
-              <div className="segmented-control">
-                <button
-                  className={themeMode === 'light' ? 'segment active' : 'segment'}
-                  onClick={() => onChangeTheme('light')}
-                  type="button"
-                >
-                  ライト
-                </button>
-                <button
-                  className={themeMode === 'dark' ? 'segment active' : 'segment'}
-                  onClick={() => onChangeTheme('dark')}
-                  type="button"
-                >
-                  ダーク
-                </button>
-              </div>
-            </div>
-
-            <div className="field collapsible-field">
-              <button
-                className="collapsible-toggle"
-                onClick={() => setIsThemePaletteSectionOpen((current) => !current)}
-                type="button"
-              >
-                <span className="collapsible-toggle-copy">
-                  <span>配色</span>
-                  <strong>{selectedThemePalette.label}</strong>
-                </span>
-                <span className="collapsible-toggle-summary" aria-hidden="true">
-                  {isThemePaletteSectionOpen ? '閉じる' : '変更'}
-                </span>
-              </button>
-
-              {isThemePaletteSectionOpen ? (
-                <div className="collapsible-panel">
-                  <div className="theme-palette-grid">
-                    {THEME_PALETTE_OPTIONS.map((palette) => (
-                      <button
-                        key={palette.id}
-                        className={
-                          themePalette === palette.id
-                            ? 'theme-palette-button active'
-                            : 'theme-palette-button'
-                        }
-                        onClick={() => onChangeThemePalette(palette.id)}
-                        type="button"
-                      >
-                        <span className="theme-palette-swatches" aria-hidden="true">
-                          {palette.swatches.map((swatchColor) => (
-                            <span
-                              key={swatchColor}
-                              className="theme-palette-swatch"
-                              style={{ backgroundColor: swatchColor }}
-                            />
-                          ))}
-                        </span>
-                        <span className="theme-palette-copy">
-                          <strong>{palette.label}</strong>
-                          <span>{palette.description}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="detail-note">
-                    配色はこの端末ですぐ反映されます。
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
           <div className="row-actions">
             <button className="primary-button" onClick={() => void handleSaveProfile()} type="button">
               プロフィールを保存
@@ -301,6 +230,15 @@ export function MyPageDialog({
             ) : null}
           </div>
         </div>
+
+        <AppSettingsDialog
+          open={isAppSettingsOpen}
+          themeMode={themeMode}
+          themePalette={themePalette}
+          onChangeTheme={onChangeTheme}
+          onChangeThemePalette={onChangeThemePalette}
+          onClose={() => setIsAppSettingsOpen(false)}
+        />
       </div>
     </div>
   );

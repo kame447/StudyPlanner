@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
+import { LegalPage } from './components/LegalPage';
 import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -93,6 +94,19 @@ export default function App() {
     [timetableTerms],
   );
   const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
+  const currentPath = window.location.pathname;
+
+  if (currentPath === '/terms') {
+    return <LegalPage kind="terms" />;
+  }
+
+  if (currentPath === '/privacy') {
+    return <LegalPage kind="privacy" />;
+  }
+
+  if (currentPath === '/contact') {
+    return <LegalPage kind="contact" />;
+  }
 
   if (booting) {
     return <SplashScreen />;

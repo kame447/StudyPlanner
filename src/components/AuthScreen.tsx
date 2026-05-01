@@ -244,6 +244,13 @@ export function AuthScreen({
                   {requestButtonLabel}
                 </button>
 
+                <p className="auth-legal-note">
+                  ログインまたは新規登録を行うことで、
+                  <br />
+                  <a href="/terms">利用規約</a>および
+                  <a href="/privacy">プライバシーポリシー</a>に同意したものとみなします。
+                </p>
+
                 {intent === 'sign-in' ? (
                   <div className="row-actions">
                     <button

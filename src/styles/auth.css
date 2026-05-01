@@ -97,6 +97,24 @@
   background: var(--surface);
 }
 
+.auth-legal-note {
+  margin: -4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.auth-legal-note a {
+  color: var(--accent-strong);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.auth-legal-note a:hover {
+  text-decoration: underline;
+}
+
 .auth-stage-header {
   display: flex;
   align-items: start;
