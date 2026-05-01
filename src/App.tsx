@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Settings } from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
@@ -163,7 +164,7 @@ export default function App() {
             aria-label="アプリ設定を開く"
             title="アプリ設定"
           >
-            <span aria-hidden="true">⚙️</span>
+            <Settings aria-hidden="true" size={22} strokeWidth={1.9} />
           </button>
         </div>
       </header>

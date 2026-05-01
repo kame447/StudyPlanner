@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
 import {
+  ChevronRight,
+  FileText,
+  Info,
+  Mail,
+  Palette,
+  ShieldCheck,
+  SunMoon,
+} from 'lucide-react';
+import {
   THEME_PALETTE_OPTIONS,
   type ThemeMode,
   type ThemePalette,
@@ -85,7 +94,10 @@ export function AppSettingsDialog({
             <div className="section-stack" role="tabpanel">
               <section className="assistant-settings-card">
                 <div className="field">
-                  <span>表示モード</span>
+                  <span className="settings-field-label">
+                    <SunMoon aria-hidden="true" size={20} strokeWidth={1.9} />
+                    表示モード
+                  </span>
                   <div className="segmented-control">
                     <button
                       className={themeMode === 'light' ? 'segment active' : 'segment'}
@@ -111,7 +123,10 @@ export function AppSettingsDialog({
                     type="button"
                   >
                     <span className="collapsible-toggle-copy">
-                      <span>配色</span>
+                      <span className="settings-field-label">
+                        <Palette aria-hidden="true" size={20} strokeWidth={1.9} />
+                        配色
+                      </span>
                       <strong>{selectedThemePalette.label}</strong>
                     </span>
                     <span className="collapsible-toggle-summary" aria-hidden="true">
@@ -169,23 +184,35 @@ export function AppSettingsDialog({
               <section className="assistant-settings-card support-section">
                 <strong>ヘルプ</strong>
                 <a className="support-link-row" href="/contact">
-                  <span>お問い合わせ</span>
-                  <span aria-hidden="true">›</span>
+                  <span className="support-link-main">
+                    <Mail aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>お問い合わせ</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
                 </a>
               </section>
 
               <section className="assistant-settings-card support-section">
                 <strong>サービスについて</strong>
                 <a className="support-link-row" href="/terms">
-                  <span>利用規約</span>
-                  <span aria-hidden="true">›</span>
+                  <span className="support-link-main">
+                    <FileText aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>利用規約</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
                 </a>
                 <a className="support-link-row" href="/privacy">
-                  <span>プライバシーポリシー</span>
-                  <span aria-hidden="true">›</span>
+                  <span className="support-link-main">
+                    <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>プライバシーポリシー</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
                 </a>
                 <div className="support-link-row support-link-row-static">
-                  <span>バージョン情報</span>
+                  <span className="support-link-main">
+                    <Info aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>バージョン情報</span>
+                  </span>
                   <strong>StudyPlanner 0.1.0</strong>
                 </div>
                 <p className="support-copyright">© 2026 StudyPlanner</p>

@@ -311,6 +311,15 @@
   line-height: 1;
 }
 
+.header-settings-button svg {
+  color: var(--text-muted);
+}
+
+.header-settings-button:hover svg,
+.header-settings-button:focus-visible svg {
+  color: var(--accent);
+}
+
 .user-avatar {
   width: 56px;
   height: 56px;

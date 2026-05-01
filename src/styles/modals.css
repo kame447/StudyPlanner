@@ -559,6 +559,18 @@
   font-size: 0.94rem;
 }
 
+.settings-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-field-label svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
 .support-section {
   gap: 8px;
 }
@@ -580,15 +592,27 @@
   background: var(--surface-selected);
 }
 
-.support-link-row > span:first-child {
+.support-link-row svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.support-link-row:hover svg {
+  color: var(--accent);
+}
+
+.support-link-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
+  color: inherit;
   font-weight: 800;
 }
 
-.support-link-row > span:last-child {
-  color: var(--text-muted);
-  font-size: 1.1rem;
-  line-height: 1;
+.support-link-main span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .support-link-row-static {

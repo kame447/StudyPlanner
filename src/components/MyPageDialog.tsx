@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { Image, LogOut, User as UserIcon } from 'lucide-react';
 import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
 import { AVATAR_OPTIONS, getUserDisplayName } from '../lib/userProfile';
 import type { User, UserProfileDraft } from '../types/domain';
@@ -99,6 +100,10 @@ export function MyPageDialog({
           </div>
 
           <section className="assistant-settings-card profile-hero-card">
+            <strong className="settings-field-label">
+              <UserIcon aria-hidden="true" size={20} strokeWidth={1.9} />
+              ユーザー情報
+            </strong>
             <div className="profile-hero">
               <UserAvatar
                 user={{
@@ -133,7 +138,10 @@ export function MyPageDialog({
                 type="button"
               >
                 <span className="collapsible-toggle-copy">
-                  <span>アイコン</span>
+                  <span className="settings-field-label">
+                    <Image aria-hidden="true" size={20} strokeWidth={1.9} />
+                    アイコン
+                  </span>
                   <strong>{getAvatarSummary()}</strong>
                 </span>
                 <span className="collapsible-toggle-summary" aria-hidden="true">
@@ -200,6 +208,7 @@ export function MyPageDialog({
               プロフィールを保存
             </button>
             <button className="ghost-button danger" onClick={() => void onSignOut()} type="button">
+              <LogOut aria-hidden="true" size={20} strokeWidth={1.9} />
               ログアウト
             </button>
             {status ? (
