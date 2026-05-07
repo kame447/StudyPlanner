@@ -1,4 +1,4 @@
-export type ViewMode = 'month' | 'week' | 'day' | 'todo' | 'report' | 'timetable' | 'faq';
+export type ViewMode = 'month' | 'week' | 'day' | 'todo' | 'report' | 'timetable';
 
 export type PlanType =
   | 'study'

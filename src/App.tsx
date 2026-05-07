@@ -5,7 +5,6 @@ import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { DayView } from './components/DayView';
-import { FaqView } from './components/FaqView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
@@ -214,13 +213,6 @@ export default function App() {
           >
             時間割
           </button>
-          <button
-            className={viewMode === 'faq' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('faq')}
-            type="button"
-          >
-            FAQ
-          </button>
         </div>
       </div>
 
@@ -337,7 +329,6 @@ export default function App() {
           />
         ) : null}
 
-        {viewMode === 'faq' ? <FaqView /> : null}
       </main>
 
       {viewMode === 'day' || viewMode === 'todo' ? (

@@ -13,6 +13,7 @@ import {
   type ThemeMode,
   type ThemePalette,
 } from '../lib/themePalette';
+import { FaqView } from './FaqView';
 
 type AppSettingsTab = 'settings' | 'support';
 
@@ -181,6 +182,8 @@ export function AppSettingsDialog({
             </div>
           ) : (
             <div className="section-stack" role="tabpanel">
+              <FaqView />
+
               <section className="assistant-settings-card support-section">
                 <strong>ヘルプ</strong>
                 <a className="support-link-row" href="/contact">

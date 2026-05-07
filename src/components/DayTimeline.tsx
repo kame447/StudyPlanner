@@ -289,10 +289,6 @@ export function DayTimeline({
   });
   const timelineLegend = (
     <div className="timeline-legend">
-      <span className="timeline-legend-item">
-        <span className="timeline-legend-plan" />
-        予定
-      </span>
       {Array.from(legendMap.entries()).map(([label, color]) => (
         <span key={label} className="timeline-legend-item">
           <span
