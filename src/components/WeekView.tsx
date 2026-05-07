@@ -128,11 +128,11 @@ function getWeekTimelineDisplayClass(laneCount: number): string {
 }
 
 function resolveActualTitle(actual: Actual, plan?: Plan): string {
-  return actual.title?.trim() || plan?.title || '実績';
+  return actual.title?.trim() || plan?.title || '記録';
 }
 
 function resolveActualSubject(actual: Actual, plan?: Plan): string {
-  return actual.subject.trim() || plan?.subject || '実績';
+  return actual.subject.trim() || plan?.subject || '記録';
 }
 
 export function WeekView({
@@ -195,7 +195,7 @@ export function WeekView({
           {(
             [
               ['plan', '予定'],
-              ['actual', '実績'],
+              ['actual', '記録'],
               ['compare', '比較'],
             ] as const
           ).map(([mode, label]) => (
@@ -216,7 +216,7 @@ export function WeekView({
           </span>
           <span className="week-timeline-legend-item">
             <span className="week-timeline-legend-actual" />
-            実績
+            記録
           </span>
         </div>
       </div>
@@ -316,7 +316,7 @@ export function WeekView({
                     </span>
                     <span className="week-day-summary-separator">/</span>
                     <span className="week-day-summary-item">
-                      <span className="week-day-summary-label-full">実績</span>
+                      <span className="week-day-summary-label-full">記録</span>
                       <span className="week-day-summary-label-short">実</span>{' '}
                       <strong>{formatMinutes(dayActualMinutes)}</strong>
                     </span>
@@ -419,7 +419,7 @@ export function WeekView({
 
                 {!hasVisibleBlocks ? (
                   <p className="week-timeline-empty">
-                    {timelineMode === 'actual' ? '実績なし' : '予定なし'}
+                    {timelineMode === 'actual' ? '記録なし' : '予定なし'}
                   </p>
                 ) : null}
               </div>

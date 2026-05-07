@@ -33,10 +33,8 @@ export function DayNotebookPanel({
   plannedMinutes,
   actualMinutes,
   actualCount,
-  planCount,
   evaluation,
   planDeltaMinutes = 0,
-  displayedScheduleCount = 0,
   onSave,
   compact = false,
 }: DayNotebookPanelProps) {
@@ -66,16 +64,6 @@ export function DayNotebookPanel({
           Math.round(((actualMinutes ?? 0) / (plannedMinutes ?? 0)) * 100),
           100,
         );
-
-  let progressLabel = 'これから';
-
-  if (completionRate >= 90) {
-    progressLabel = 'よく進んだ日';
-  } else if (completionRate >= 60) {
-    progressLabel = 'おおむね順調';
-  } else if ((planCount ?? 0) > 0) {
-    progressLabel = '少し立て直し';
-  }
 
   async function handleSave() {
     await onSave(draft);
@@ -121,7 +109,6 @@ export function DayNotebookPanel({
       <div className="section-header">
         <div>
           <h2>今日の記録</h2>
-          <p>手帳の余白のように、進み具合と振り返りを1か所に残します。</p>
         </div>
       </div>
 
@@ -131,7 +118,7 @@ export function DayNotebookPanel({
           <strong>{formatMinutes(plannedMinutes ?? 0)}</strong>
         </div>
         <div className="summary-chip">
-          <span>実績</span>
+          <span>学習時間</span>
           <strong>{formatMinutes(actualMinutes ?? 0)}</strong>
         </div>
         <div className="summary-chip">
@@ -149,25 +136,8 @@ export function DayNotebookPanel({
           </strong>
         </div>
         <div className="summary-chip">
-          <span>予定件数</span>
-          <strong>{displayedScheduleCount}件</strong>
-        </div>
-      </div>
-
-      <div className="notebook-topline">
-        <div className="summary-chip notebook-chip">
-          <span>合計勉強時間</span>
-          <strong>{formatMinutes(actualMinutes ?? 0)}</strong>
-        </div>
-        <div className="summary-chip notebook-chip">
-          <span>達成状況</span>
-          <strong>{progressLabel}</strong>
-        </div>
-        <div className="summary-chip notebook-chip">
-          <span>記録済み</span>
-          <strong>
-            {actualCount ?? 0}/{planCount ?? 0}
-          </strong>
+          <span>記録件数</span>
+          <strong>{actualCount ?? 0}件</strong>
         </div>
       </div>
 
@@ -183,48 +153,6 @@ export function DayNotebookPanel({
           />
         </div>
         <p className="detail-note">{evaluation?.comment ?? ''}</p>
-      </div>
-
-      <div className="check-grid">
-        <label className="check-card">
-          <input
-            type="checkbox"
-            checked={draft.checkedPlan}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                checkedPlan: event.target.checked,
-              })
-            }
-          />
-          <span>計画どおり進める意識ができた</span>
-        </label>
-        <label className="check-card">
-          <input
-            type="checkbox"
-            checked={draft.checkedRecord}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                checkedRecord: event.target.checked,
-              })
-            }
-          />
-          <span>実績をその日のうちに記録した</span>
-        </label>
-        <label className="check-card">
-          <input
-            type="checkbox"
-            checked={draft.checkedReady}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                checkedReady: event.target.checked,
-              })
-            }
-          />
-          <span>明日の準備や見直しをした</span>
-        </label>
       </div>
 
       <div className="form-grid day-note-grid">

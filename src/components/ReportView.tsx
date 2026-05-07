@@ -499,7 +499,7 @@ export function ReportView({
           <article className="report-metric-card">
             <span className="report-metric-label">累計の勉強時間</span>
             <strong className="report-metric-value">{formatMinutes(cumulativeMinutes)}</strong>
-            <span className="report-metric-help">実績累計</span>
+            <span className="report-metric-help">記録累計</span>
           </article>
         </div>
       </div>
@@ -753,7 +753,7 @@ export function ReportView({
               </div>
             </div>
           ) : (
-            <p className="empty-copy">週間の実績がまだありません。</p>
+            <p className="empty-copy">週間の記録がまだありません。</p>
           )}
         </section>
       </div>
@@ -787,7 +787,7 @@ export function ReportView({
             ))}
           </div>
         ) : (
-          <p className="empty-copy">実績を記録するとここに履歴が並びます。</p>
+          <p className="empty-copy">記録するとここに履歴が並びます。</p>
         )}
       </section>
     </section>

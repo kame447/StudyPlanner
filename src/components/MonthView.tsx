@@ -705,7 +705,7 @@ export function MonthView({
                   </p>
                   <p className="month-target">
                     <span className="month-target-label month-target-label-full">
-                      実績
+                      記録
                     </span>
                     <span className="month-target-label month-target-label-short">
                       実

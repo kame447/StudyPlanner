@@ -12,7 +12,7 @@ const SCORE_ITEMS: Array<{
   {
     key: 'achievement',
     title: '達成度',
-    description: '計画時間に対して実績がどこまで届いたか',
+    description: '計画時間に対して記録がどこまで届いたか',
   },
   {
     key: 'consistency',
@@ -22,7 +22,7 @@ const SCORE_ITEMS: Array<{
   {
     key: 'realism',
     title: '現実性',
-    description: '計画時間が実績に近いか',
+    description: '計画時間が記録に近いか',
   },
 ];
 

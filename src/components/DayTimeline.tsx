@@ -379,7 +379,7 @@ export function DayTimeline({
             <div className="timeline-main">
               <div className="timeline-columns-head">
                 <div className="timeline-column-label">予定</div>
-                <div className="timeline-column-label actual">実績</div>
+                <div className="timeline-column-label actual">記録</div>
               </div>
 
               <div

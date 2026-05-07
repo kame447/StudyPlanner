@@ -5,6 +5,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { DayView } from './components/DayView';
+import { FaqView } from './components/FaqView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
@@ -200,6 +201,13 @@ export default function App() {
             Todo
           </button>
           <button
+            className={viewMode === 'report' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('report')}
+            type="button"
+          >
+            レポート
+          </button>
+          <button
             className={viewMode === 'timetable' ? 'segment active' : 'segment'}
             onClick={() => setViewMode('timetable')}
             type="button"
@@ -207,11 +215,11 @@ export default function App() {
             時間割
           </button>
           <button
-            className={viewMode === 'report' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('report')}
+            className={viewMode === 'faq' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('faq')}
             type="button"
           >
-            レポート
+            FAQ
           </button>
         </div>
       </div>
@@ -302,6 +310,18 @@ export default function App() {
           />
         ) : null}
 
+        {viewMode === 'report' ? (
+          <ReportView
+            selectedDate={selectedDate}
+            dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
+            plans={plans}
+            actuals={actuals}
+            monthEvents={monthEvents}
+            onOpenDay={openDay}
+            onSaveDayNote={saveDayNote}
+          />
+        ) : null}
+
         {viewMode === 'timetable' ? (
           <TimetableView
             userId={user.id}
@@ -317,17 +337,7 @@ export default function App() {
           />
         ) : null}
 
-        {viewMode === 'report' ? (
-          <ReportView
-            selectedDate={selectedDate}
-            dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
-            plans={plans}
-            actuals={actuals}
-            monthEvents={monthEvents}
-            onOpenDay={openDay}
-            onSaveDayNote={saveDayNote}
-          />
-        ) : null}
+        {viewMode === 'faq' ? <FaqView /> : null}
       </main>
 
       {viewMode === 'day' || viewMode === 'todo' ? (

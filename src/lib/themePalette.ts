@@ -27,7 +27,7 @@ export interface ThemePaletteOption {
 const THEME_PALETTE_DEFINITIONS: Record<ThemePalette, ThemePaletteDefinition> = {
   forest: {
     label: 'フォレスト',
-    description: '今の落ち着いた緑系です。',
+    description: '落ち着いた印象のフォレストカラーです。',
     swatches: ['#176d66', '#2f8f84', '#dceeea'],
     light: {
       accent: '#176d66',

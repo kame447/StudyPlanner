@@ -237,8 +237,7 @@
 }
 
 .timeline-legend-plan {
-  background: rgba(31, 43, 43, 0.2);
-  border: 1px solid rgba(31, 43, 43, 0.16);
+  display: none;
 }
 
 .timeline-plan-block,
@@ -430,6 +429,50 @@
 
 .day-note-grid textarea {
   background: var(--textarea-background);
+}
+
+.daily-detail-modal img,
+.daily-detail-modal iframe,
+.daily-detail-modal object,
+.daily-detail-modal embed {
+  display: block;
+  max-width: min(360px, 100%);
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.faq-view {
+  display: grid;
+  gap: 16px;
+}
+
+.faq-list {
+  display: grid;
+  gap: 10px;
+}
+
+.faq-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+}
+
+.faq-item h3,
+.faq-item p {
+  margin: 0;
+}
+
+.faq-item h3 {
+  font-size: 0.96rem;
+}
+
+.faq-item p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
 .overlay {

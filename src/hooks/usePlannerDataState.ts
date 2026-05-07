@@ -974,10 +974,10 @@ export function usePlannerDataState({
       setActuals((current) =>
         upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
       );
-      showNotice('実績を保存しました。', 'success');
+      showNotice('記録を保存しました。', 'success');
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, '実績を保存できませんでした。'),
+        resolveErrorMessage(error, '記録を保存できませんでした。'),
         'error',
       );
       throw error;
@@ -992,10 +992,10 @@ export function usePlannerDataState({
     try {
       await plannerRepository.deleteActual(userId, actual.id);
       setActuals((current) => removeByKey(current, actual.id, (item) => item.id));
-      showNotice('実績を削除しました。');
+      showNotice('記録を削除しました。');
     } catch (error) {
       showNotice(
-        resolveErrorMessage(error, '実績を削除できませんでした。'),
+        resolveErrorMessage(error, '記録を削除できませんでした。'),
         'error',
       );
       throw error;

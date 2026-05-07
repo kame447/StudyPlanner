@@ -752,6 +752,16 @@
   padding: 2px 2px 4px;
 }
 
+.timetable-ocr-modal img,
+.timetable-ocr-modal iframe,
+.timetable-ocr-modal object,
+.timetable-ocr-modal embed {
+  display: block;
+  max-width: min(360px, 100%);
+  max-height: 240px;
+  object-fit: contain;
+}
+
 .timetable-ocr-card,
 .timetable-ocr-item {
   display: grid;
@@ -1128,6 +1138,13 @@
     min-height: 40px;
     padding: 8px 9px;
     font-size: 16px;
+  }
+
+  .timetable-ocr-modal img,
+  .timetable-ocr-modal iframe,
+  .timetable-ocr-modal object,
+  .timetable-ocr-modal embed {
+    max-height: 180px;
   }
 }
 

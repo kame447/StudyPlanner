@@ -292,7 +292,7 @@ export function DayView({
                 閉じる
               </button>
               <div className="daily-detail-modal-heading">
-                <h2>{selectedMonthEvent ? '主要予定を実績登録' : '詳細入力'}</h2>
+                <h2>{selectedMonthEvent ? '主要予定を記録登録' : '詳細入力'}</h2>
                 <p>
                   {selectedDetailPlan.startTime} - {selectedDetailPlan.endTime} / {selectedDetailPlan.title}
                 </p>

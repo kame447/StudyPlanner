@@ -211,7 +211,7 @@ export function ActualTrackingTools({
       <div className="section-header">
         <div>
           <h2>計測補助</h2>
-          <p>学習中にストップウォッチやタイマーを使って、そのまま実績時刻へ反映できます。</p>
+          <p>学習中にストップウォッチやタイマーを使って、そのまま記録時刻へ反映できます。</p>
         </div>
       </div>
 
@@ -236,7 +236,7 @@ export function ActualTrackingTools({
         <div className="section-stack">
           <div className="tracking-display">{formatDurationDisplay(stopwatchElapsedMs)}</div>
           <p className="detail-note">
-            開始からの経過時間を測ります。反映すると、開始時刻と終了時刻を実績入力へセットします。
+            開始からの経過時間を測ります。反映すると、開始時刻と終了時刻を記録入力へセットします。
           </p>
           <div className="row-actions">
             <button
@@ -255,7 +255,7 @@ export function ActualTrackingTools({
               type="button"
               disabled={!stopwatch.anchorMs || stopwatchElapsedMs <= 0}
             >
-              実績時刻へ反映
+              記録時刻へ反映
             </button>
           </div>
         </div>
@@ -282,7 +282,7 @@ export function ActualTrackingTools({
 
           <div className="tracking-display">{formatDurationDisplay(timerRemainingMs)}</div>
           <p className="detail-note">
-            カウントダウンします。反映すると、開始から実際に進んだ分だけを実績時刻へ入れます。
+            カウントダウンします。反映すると、開始から実際に進んだ分だけを記録時刻へ入れます。
           </p>
 
           <div className="row-actions">
@@ -307,7 +307,7 @@ export function ActualTrackingTools({
               type="button"
               disabled={!timer.anchorMs || timerElapsedMs <= 0}
             >
-              実績時刻へ反映
+              記録時刻へ反映
             </button>
           </div>
         </div>

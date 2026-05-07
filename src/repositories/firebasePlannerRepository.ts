@@ -151,7 +151,7 @@ export function createFirebasePlannerRepository(
         );
       } catch (error) {
         throw new Error(
-          normalizeErrorMessage('実績を取得できませんでした。', error as { message?: string | null }),
+          normalizeErrorMessage('記録を取得できませんでした。', error as { message?: string | null }),
         );
       }
     },
@@ -299,7 +299,7 @@ export function createFirebasePlannerRepository(
         return await upsertDocument(firestoreDb, 'actuals', actual);
       } catch (error) {
         throw new Error(
-          normalizeErrorMessage('実績を保存できませんでした。', error as { message?: string | null }),
+          normalizeErrorMessage('記録を保存できませんでした。', error as { message?: string | null }),
         );
       }
     },
@@ -308,7 +308,7 @@ export function createFirebasePlannerRepository(
         await deleteDoc(doc(firestoreDb, 'actuals', actualId));
       } catch (error) {
         throw new Error(
-          normalizeErrorMessage('実績を削除できませんでした。', error as { message?: string | null }),
+          normalizeErrorMessage('記録を削除できませんでした。', error as { message?: string | null }),
         );
       }
     },

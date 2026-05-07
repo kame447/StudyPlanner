@@ -102,7 +102,7 @@ export function ActualEditorCard({
 
   async function handleSave() {
     if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      setError('実績の終了時刻は開始時刻より後にしてください。');
+      setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
     }
 
@@ -116,7 +116,7 @@ export function ActualEditorCard({
       await onSaveActual(plan, draft);
       setIsOpen(false);
     } catch {
-      setError('実績の保存に失敗しました。');
+      setError('記録の保存に失敗しました。');
     }
   }
 
@@ -138,7 +138,7 @@ export function ActualEditorCard({
       await onDeleteActual(actual);
       setIsOpen(false);
     } catch {
-      setError('実績の削除に失敗しました。');
+      setError('記録の削除に失敗しました。');
     }
   }
 
@@ -156,7 +156,7 @@ export function ActualEditorCard({
           </p>
           <p className="comparison-metrics">
             {actual
-              ? `実績 ${actual.actualStartTime} - ${actual.actualEndTime} / ${
+              ? `記録 ${actual.actualStartTime} - ${actual.actualEndTime} / ${
                   alignedToPlan
                     ? '予定通り'
                     : `実施内容: ${actualTitle}${actualSubject ? ` / ${actualSubject}` : ''}`
@@ -167,7 +167,7 @@ export function ActualEditorCard({
                       )}`
                     : 'ぴったり'
                 }`
-              : '実績未入力'}
+              : '記録未入力'}
           </p>
         </div>
 
@@ -178,7 +178,7 @@ export function ActualEditorCard({
               onClick={() => void handleSave()}
               type="button"
             >
-              実績保存
+              記録保存
             </button>
           ) : null}
           {hidePlanActions ? null : (
@@ -212,7 +212,7 @@ export function ActualEditorCard({
               onClick={() => setIsOpen((current) => !current)}
               type="button"
             >
-              {isOpen ? '入力を閉じる' : actual ? '実績修正' : '実績入力'}
+              {isOpen ? '入力を閉じる' : actual ? '記録修正' : '記録入力'}
             </button>
           )}
         </div>
@@ -224,7 +224,7 @@ export function ActualEditorCard({
         <div className="actual-form actual-form-compact">
           <section className="actual-editor-section">
             <div className="actual-editor-section-title">
-              <strong>実績時刻</strong>
+              <strong>記録時刻</strong>
             </div>
             <div className="actual-time-grid">
               <label className="field">
@@ -356,13 +356,13 @@ export function ActualEditorCard({
               <button
                 className="ghost-button danger"
                 onClick={() => {
-                  if (window.confirm('この実績を削除しますか？')) {
+                  if (window.confirm('この記録を削除しますか？')) {
                     void handleDeleteActual();
                   }
                 }}
                 type="button"
               >
-                実績削除
+                記録削除
               </button>
             </div>
           ) : null}
