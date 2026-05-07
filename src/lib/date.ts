@@ -420,8 +420,16 @@ export function timeFromMinutes(totalMinutes: number): string {
 }
 
 export function minutesBetween(startTime: string, endTime: string): number {
-  const result = minutesFromTime(endTime) - minutesFromTime(startTime);
-  return result > 0 ? result : 0;
+  const startMinutes = minutesFromTime(startTime);
+  const endMinutes = minutesFromTime(endTime);
+
+  if (endMinutes === startMinutes) {
+    return 0;
+  }
+
+  return endMinutes > startMinutes
+    ? endMinutes - startMinutes
+    : endMinutes + 24 * 60 - startMinutes;
 }
 
 export function formatMinutes(minutes: number): string {

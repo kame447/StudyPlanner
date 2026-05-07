@@ -64,15 +64,11 @@ const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
 ];
 
 function calculateEndTime(startTime: string, durationMinutes: number | null): string | null {
-  if (durationMinutes === null || durationMinutes <= 0) {
+  if (durationMinutes === null || durationMinutes <= 0 || durationMinutes >= 24 * 60) {
     return null;
   }
 
-  const endMinutes = minutesFromTime(startTime) + durationMinutes;
-
-  if (endMinutes >= 24 * 60) {
-    return null;
-  }
+  const endMinutes = (minutesFromTime(startTime) + durationMinutes) % (24 * 60);
 
   return timeFromMinutes(endMinutes);
 }
@@ -660,7 +656,7 @@ export function QuickEntryModal({
                       ? `終了時刻: ${actualEndTime}`
                       : estimatedMinutes === null
                         ? '所要時間を選択してください。'
-                        : '終了時刻が翌日になるため保存できません。'}
+                        : '所要時間は24時間未満にしてください。'}
                   </p>
                 </section>
                 {renderDurationCard()}

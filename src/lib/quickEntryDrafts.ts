@@ -39,7 +39,10 @@ export function resolveQuickEntryEndTime(
   estimatedMinutes: number,
 ): string {
   const startMinutes = minutesFromTime(startTime);
-  const endMinutes = Math.min(startMinutes + estimatedMinutes, 23 * 60 + 59);
+  const endMinutes =
+    estimatedMinutes > 0 && estimatedMinutes < 24 * 60
+      ? (startMinutes + estimatedMinutes) % (24 * 60)
+      : startMinutes;
 
   return timeFromMinutes(endMinutes);
 }
