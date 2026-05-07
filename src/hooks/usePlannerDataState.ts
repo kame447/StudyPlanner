@@ -372,6 +372,7 @@ interface UsePlannerDataStateResult {
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  saveStandaloneActual: (draft: ActualDraft) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
@@ -720,7 +721,9 @@ export function usePlannerDataState({
         const seriesPlanIds = seriesPlans.map((plan) => plan.id);
         const seriesActuals = actuals.filter(
           (actual) =>
-            actual.userId === userId && seriesPlanIds.includes(actual.planId),
+            actual.userId === userId &&
+            typeof actual.planId === 'string' &&
+            seriesPlanIds.includes(actual.planId),
         );
 
         console.info('[RecurringPlanScope] delete-all targets', {
@@ -762,7 +765,9 @@ export function usePlannerDataState({
         });
         setPlans((current) => removePlansByIds(current, seriesPlanIds));
         setActuals((current) =>
-          current.filter((actual) => !seriesPlanIds.includes(actual.planId)),
+          current.filter(
+            (actual) => !actual.planId || !seriesPlanIds.includes(actual.planId),
+          ),
         );
         setPendingRecurringPlanAction(null);
         closePlanEditor();
@@ -918,7 +923,7 @@ export function usePlannerDataState({
       }
 
       setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
-      setActuals((current) => removeByKey(current, plan.id, (item) => item.planId));
+      setActuals((current) => current.filter((actual) => actual.planId !== plan.id));
       if (linkedTodo) {
         setTodos((current) =>
           upsertByKey(
@@ -968,6 +973,45 @@ export function usePlannerDataState({
       (actual) => getActualOccurrenceKey(actual) === occurrenceKey,
     );
     const nextActual = createActualFromDraft(userId, draft, existingActual);
+
+    try {
+      await plannerRepository.upsertActual(nextActual);
+      setActuals((current) =>
+        upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
+      );
+      showNotice('記録を保存しました。', 'success');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '記録を保存できませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
+  async function saveStandaloneActual(draft: ActualDraft) {
+    if (!userId) {
+      throw new Error('繝ｭ繧ｰ繧､繝ｳ迥ｶ諷九ｒ遒ｺ隱阪〒縺阪∪縺帙ｓ縺ｧ縺励◆縲・);
+    }
+
+    if (!draft.title.trim()) {
+      showNotice('記録のタイトルを入力してください。', 'error');
+      throw new Error('記録のタイトルを入力してください。');
+    }
+
+    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+
+    const nextActual = createActualFromDraft(userId, {
+      ...draft,
+      planId: null,
+      title: draft.title.trim(),
+      subject: draft.subject.trim(),
+      isAlignedToPlan: false,
+      note: draft.note.trim(),
+    });
 
     try {
       await plannerRepository.upsertActual(nextActual);
@@ -1564,6 +1608,7 @@ export function usePlannerDataState({
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
     saveActual,
+    saveStandaloneActual,
     deleteActual,
     saveDayNote,
     saveMonthEvent,

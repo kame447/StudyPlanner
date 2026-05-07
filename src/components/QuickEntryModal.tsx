@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
+import { minutesBetween } from '../lib/date';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import {
   buildQuickEntryPlanDraft,
@@ -10,6 +11,7 @@ import {
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
 import type {
+  ActualDraft,
   Plan,
   PlanDraft,
   PlanType,
@@ -19,6 +21,7 @@ import type {
 
 type QuickEntryMode = 'later' | 'scheduled' | 'repeat';
 type QuickEntryInputMethod = 'ai' | 'manual';
+type QuickEntryKind = 'plan' | 'actual';
 type DurationOptionValue = number | null | 'custom';
 
 interface QuickEntryModalProps {
@@ -28,6 +31,7 @@ interface QuickEntryModalProps {
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  onSaveStandaloneActual: (draft: ActualDraft) => Promise<void>;
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
@@ -66,7 +70,9 @@ export function QuickEntryModal({
   onClose,
   onSaveTodo,
   onSavePlan,
+  onSaveStandaloneActual,
 }: QuickEntryModalProps) {
+  const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
   const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>('manual');
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
@@ -81,6 +87,8 @@ export function QuickEntryModal({
   const [memo, setMemo] = useState('');
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
+  const [actualStartTime, setActualStartTime] = useState('19:00');
+  const [actualEndTime, setActualEndTime] = useState('20:00');
   const [repeatKind, setRepeatKind] = useState<QuickEntryRepeatKind>('daily');
   const [weekdays, setWeekdays] = useState<RecurrenceWeekday[]>(() => [
     getRecurrenceWeekday(selectedDate),
@@ -88,15 +96,17 @@ export function QuickEntryModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const canSave =
-    inputMethod === 'manual' &&
     title.trim().length > 0 &&
     !isSubmitting &&
-    (mode === 'later' ||
-      (mode === 'scheduled' && estimatedMinutes !== null) ||
-      (mode === 'repeat' &&
-        estimatedMinutes !== null &&
-        isSupportedRepeatKind &&
-        (repeatKind !== 'weekly' || weekdays.length > 0)));
+    (entryKind === 'actual'
+      ? minutesBetween(actualStartTime, actualEndTime) > 0
+      : inputMethod === 'manual' &&
+        (mode === 'later' ||
+          (mode === 'scheduled' && estimatedMinutes !== null) ||
+          (mode === 'repeat' &&
+            estimatedMinutes !== null &&
+            isSupportedRepeatKind &&
+            (repeatKind !== 'weekly' || weekdays.length > 0))));
 
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
@@ -199,7 +209,19 @@ export function QuickEntryModal({
 
     setIsSubmitting(true);
     try {
-      if (mode === 'scheduled' || mode === 'repeat') {
+      if (entryKind === 'actual') {
+        await onSaveStandaloneActual({
+          userId,
+          planId: null,
+          occurrenceDate: selectedDate,
+          actualStartTime,
+          actualEndTime,
+          title: title.trim(),
+          subject: subject.trim(),
+          isAlignedToPlan: false,
+          note: memo.trim(),
+        });
+      } else if (mode === 'scheduled' || mode === 'repeat') {
         const planDraft = buildQuickEntryPlanDraft({
           mode,
           userId,
@@ -256,9 +278,52 @@ export function QuickEntryModal({
             閉じる
           </button>
           <div className="quick-entry-heading">
-            <h2>クイック入力</h2>
+            <div
+              className={
+                entryKind === 'actual'
+                  ? 'quick-entry-kind-switch is-actual'
+                  : 'quick-entry-kind-switch'
+              }
+              role="tablist"
+              aria-label="入力種別"
+            >
+              <span className="quick-entry-kind-slider" aria-hidden="true" />
+              <button
+                className={
+                  entryKind === 'plan'
+                    ? 'quick-entry-kind-option active'
+                    : 'quick-entry-kind-option'
+                }
+                type="button"
+                role="tab"
+                aria-selected={entryKind === 'plan'}
+                aria-pressed={entryKind === 'plan'}
+                onClick={() => setEntryKind('plan')}
+              >
+                予定
+              </button>
+              <button
+                className={
+                  entryKind === 'actual'
+                    ? 'quick-entry-kind-option active'
+                    : 'quick-entry-kind-option'
+                }
+                type="button"
+                role="tab"
+                aria-selected={entryKind === 'actual'}
+                aria-pressed={entryKind === 'actual'}
+                onClick={() => {
+                  setEntryKind('actual');
+                  setInputMethod('manual');
+                }}
+              >
+                記録
+              </button>
+            </div>
             <p>
-              {inputMethod === 'ai'
+              {entryKind === 'actual'
+                ? 'あとから記録'
+                : inputMethod === 'ai'
                 ? 'AI入力'
                 : MODE_OPTIONS.find((option) => option.value === mode)?.label}
             </p>
@@ -273,6 +338,8 @@ export function QuickEntryModal({
         </div>
 
         <div className="quick-entry-modal-body">
+          {entryKind === 'plan' ? (
+            <>
           <section className="quick-entry-card quick-entry-switch-card">
             <div className="segmented-control quick-entry-input-method-tabs">
               {(
@@ -524,6 +591,79 @@ export function QuickEntryModal({
                     {renderDurationCard()}
                   </>
                 ) : null}
+
+                <section className="quick-entry-card quick-entry-memo-card">
+                  <label className="field">
+                    <span>メモ</span>
+                    <textarea
+                      rows={2}
+                      value={memo}
+                      onChange={(event) => setMemo(event.target.value)}
+                      placeholder="メモを追加"
+                    />
+                  </label>
+                </section>
+              </div>
+            </div>
+              )}
+            </>
+          ) : (
+            <div className="quick-entry-manual-panel">
+              <section className="quick-entry-card quick-entry-title-card">
+                <label className="quick-entry-title-field">
+                  <span>タイトル</span>
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="例: 英語の復習"
+                  />
+                </label>
+              </section>
+
+              <div className="quick-entry-body">
+                <section className="quick-entry-card">
+                  <div className="quick-entry-card-head">
+                    <h3>時間</h3>
+                  </div>
+                  <div className="quick-entry-two-column-grid">
+                    <label className="field">
+                      <span>開始時刻</span>
+                      <input
+                        type="time"
+                        value={actualStartTime}
+                        onChange={(event) => setActualStartTime(event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>終了時刻</span>
+                      <input
+                        type="time"
+                        value={actualEndTime}
+                        onChange={(event) => setActualEndTime(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="quick-entry-card">
+                  <div className="quick-entry-card-head">
+                    <h3>内容</h3>
+                  </div>
+                  <div className="quick-entry-two-column-grid">
+                    <label className="field">
+                      <span>科目</span>
+                      <input
+                        value={subject}
+                        onChange={(event) => setSubject(event.target.value)}
+                        placeholder="英語"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>日付</span>
+                      <input type="date" value={selectedDate} disabled />
+                    </label>
+                  </div>
+                </section>
 
                 <section className="quick-entry-card quick-entry-memo-card">
                   <label className="field">

@@ -208,8 +208,13 @@ export function ReportView({
     [studyDayPlans],
   );
   const dayActuals = useMemo(
-    () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
-    [actuals, dayOccurrenceKeys],
+    () =>
+      actuals.filter(
+        (actual) =>
+          dayOccurrenceKeys.has(getActualOccurrenceKey(actual)) ||
+          (!actual.planId && actual.occurrenceDate === selectedDate),
+      ),
+    [actuals, dayOccurrenceKeys, selectedDate],
   );
   const studyDayActuals = useMemo(
     () =>
@@ -231,15 +236,25 @@ export function ReportView({
     [studyDayPlans],
   );
   const dayActualMinutes = useMemo(
-    () =>
-      studyDayPlans.reduce((sum, plan) => {
+    () => {
+      const linkedMinutes = studyDayPlans.reduce((sum, plan) => {
         const actual = actualByOccurrenceKey.get(buildPlanOccurrenceKey(plan.id, plan.date));
         return (
           sum +
           (actual ? minutesBetween(actual.actualStartTime, actual.actualEndTime) : 0)
         );
-      }, 0),
-    [actualByOccurrenceKey, studyDayPlans],
+      }, 0);
+      const standaloneMinutes = dayActuals
+        .filter((actual) => !actual.planId)
+        .reduce(
+          (sum, actual) =>
+            sum + minutesBetween(actual.actualStartTime, actual.actualEndTime),
+          0,
+        );
+
+      return linkedMinutes + standaloneMinutes;
+    },
+    [actualByOccurrenceKey, dayActuals, studyDayPlans],
   );
   const evaluation = useMemo(
     () => buildEvaluationSummary(selectedDate, plans, actuals),

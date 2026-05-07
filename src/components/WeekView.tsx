@@ -254,7 +254,10 @@ export function WeekView({
                 actual.occurrenceDate === date &&
                 !dayPlanKeys.has(getActualOccurrenceKey(actual)),
             )
-            .map((actual) => ({ actual, plan: planById.get(actual.planId) }));
+            .map((actual) => ({
+              actual,
+              plan: actual.planId ? planById.get(actual.planId) : undefined,
+            }));
           const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
             (left, right) =>
               minutesFromTime(left.actual.actualStartTime) -

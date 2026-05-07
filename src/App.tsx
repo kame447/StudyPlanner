@@ -69,6 +69,7 @@ export default function App() {
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
     saveActual,
+    saveStandaloneActual,
     deleteActual,
     saveDayNote,
     saveMonthEvent,
@@ -376,6 +377,7 @@ export default function App() {
           onClose={() => setIsQuickEntryOpen(false)}
           onSaveTodo={saveTodo}
           onSavePlan={savePlanDraft}
+          onSaveStandaloneActual={saveStandaloneActual}
         />
       ) : null}
 

@@ -144,6 +144,10 @@ export function normalizeActualRecord(
 ): Actual {
   return {
     ...actual,
+    planId:
+      typeof actual.planId === 'string' && actual.planId.trim().length > 0
+        ? actual.planId
+        : null,
     occurrenceDate: actual.occurrenceDate ?? actual.date ?? '',
   };
 }

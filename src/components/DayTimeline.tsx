@@ -29,7 +29,8 @@ interface DayTimelineProps {
 
 export type DayTimelineSelection =
   | { kind: "plan"; id: string }
-  | { kind: "month-event"; id: string };
+  | { kind: "month-event"; id: string }
+  | { kind: "standalone-actual"; id: string };
 
 interface TimelineEntry {
   id: string;
@@ -45,6 +46,7 @@ interface TimelineEntry {
   lane: number;
   laneCount: number;
   alignedToPlan?: boolean;
+  standalone?: boolean;
 }
 
 const HOUR_HEIGHT = 54;
@@ -279,6 +281,22 @@ export function DayTimeline({
           },
         ];
       }),
+      ...actuals
+        .filter((actual) => !actual.planId)
+        .map((actual) => ({
+          id: actual.id,
+          targetId: actual.id,
+          selectionId: `standalone-actual:${actual.id}`,
+          entryKind: "standalone-actual" as const,
+          title: actual.title?.trim() || "記録",
+          subject: actual.subject.trim() || "記録",
+          type: "study" as const,
+          sourceType: "manual" as const,
+          startTime: actual.actualStartTime,
+          endTime: actual.actualEndTime,
+          alignedToPlan: false,
+          standalone: true,
+        })),
     ]
   );
   const legendMap = new Map<string, string>();
@@ -350,7 +368,7 @@ export function DayTimeline({
         </div>
       </header>
 
-      {planEntries.length === 0 ? (
+      {planEntries.length === 0 && actualEntries.length === 0 ? (
         <>
           <p className="empty-copy">
             この日の予定はありません。追加すると時間軸に並びます。
@@ -491,7 +509,9 @@ export function DayTimeline({
                         onSelectEntry(
                           entry.entryKind === "plan"
                             ? { kind: "plan", id: entry.targetId }
-                            : { kind: "month-event", id: entry.targetId }
+                            : entry.entryKind === "month-event"
+                              ? { kind: "month-event", id: entry.targetId }
+                              : { kind: "standalone-actual", id: entry.targetId }
                         )
                       }
                       type="button"
@@ -512,6 +532,9 @@ export function DayTimeline({
                         >
                           {subjectLabel}
                         </span>
+                        {entry.standalone ? (
+                          <span className="timeline-entry-badge">予定なし</span>
+                        ) : null}
                       </div>
                     </button>
                   );

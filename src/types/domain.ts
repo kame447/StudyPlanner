@@ -82,7 +82,7 @@ export interface Plan {
 export interface Actual {
   id: string;
   userId: string;
-  planId: string;
+  planId: string | null;
   occurrenceDate: string;
   actualStartTime: string;
   actualEndTime: string;
@@ -112,7 +112,7 @@ export interface PlanDraft {
 
 export interface ActualDraft {
   userId: string;
-  planId: string;
+  planId: string | null;
   occurrenceDate: string;
   actualStartTime: string;
   actualEndTime: string;

@@ -149,8 +149,13 @@ export function DayView({
     [dayMonthEventPlans],
   );
   const dayActuals = useMemo(
-    () => actuals.filter((actual) => dayOccurrenceKeys.has(getActualOccurrenceKey(actual))),
-    [actuals, dayOccurrenceKeys],
+    () =>
+      actuals.filter(
+        (actual) =>
+          dayOccurrenceKeys.has(getActualOccurrenceKey(actual)) ||
+          (!actual.planId && actual.occurrenceDate === selectedDate),
+      ),
+    [actuals, dayOccurrenceKeys, selectedDate],
   );
   const dayMonthEventMap = useMemo(
     () => new Map(dayMonthEvents.map((monthEvent) => [monthEvent.id, monthEvent])),
@@ -414,11 +419,13 @@ export function DayView({
               : undefined
         }
         onSelectEntry={(entry) =>
-          setModalState(
-            entry.kind === 'plan'
-              ? { type: 'plan-detail', planId: entry.id }
-              : { type: 'month-event-detail', monthEventId: entry.id },
-          )
+          entry.kind === 'standalone-actual'
+            ? setModalState({ type: 'closed' })
+            : setModalState(
+                entry.kind === 'plan'
+                  ? { type: 'plan-detail', planId: entry.id }
+                  : { type: 'month-event-detail', monthEventId: entry.id },
+              )
         }
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}

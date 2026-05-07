@@ -58,6 +58,28 @@ export function getActualMinutes(actual: Actual): number {
   return minutesBetween(actual.actualStartTime, actual.actualEndTime);
 }
 
+function isStandaloneActual(actual: Actual): boolean {
+  return !actual.planId;
+}
+
+function isDateInRange(date: string, startDate: string, endDate: string): boolean {
+  return date.localeCompare(startDate) >= 0 && date.localeCompare(endDate) <= 0;
+}
+
+function calculateStandaloneActualMinutesInRange(
+  actuals: Actual[],
+  startDate: string,
+  endDate: string,
+): number {
+  return actuals
+    .filter(
+      (actual) =>
+        isStandaloneActual(actual) &&
+        isDateInRange(actual.occurrenceDate, startDate, endDate),
+    )
+    .reduce((sum, actual) => sum + getActualMinutes(actual), 0);
+}
+
 export function getPlannedMinutes(plan: Plan): number {
   return minutesBetween(plan.startTime, plan.endTime);
 }
@@ -84,7 +106,9 @@ export function buildWeeklyStudySeries(
     const dayPlans = expandPlansForDate(plans, date).filter(isStudyTimePlan);
     return {
       date,
-      minutes: calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey),
+      minutes:
+        calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey) +
+        calculateStandaloneActualMinutesInRange(actuals, date, date),
     };
   });
 }
@@ -127,7 +151,9 @@ export function buildDailyStudySeriesInRange(
 
     return {
       date,
-      minutes: calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey),
+      minutes:
+        calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey) +
+        calculateStandaloneActualMinutesInRange(actuals, date, date),
     };
   });
 }
@@ -156,6 +182,17 @@ export function buildWeeklyStudySeriesInRange(
     const weekStart = startOfWeek(plan.date);
     totals.set(weekStart, (totals.get(weekStart) ?? 0) + getActualMinutes(actual));
   });
+
+  actuals
+    .filter(
+      (actual) =>
+        isStandaloneActual(actual) &&
+        isDateInRange(actual.occurrenceDate, startDate, endDate),
+    )
+    .forEach((actual) => {
+      const weekStart = startOfWeek(actual.occurrenceDate);
+      totals.set(weekStart, (totals.get(weekStart) ?? 0) + getActualMinutes(actual));
+    });
 
   const firstWeekStart = startOfWeek(startDate);
   const lastWeekStart = startOfWeek(endDate);
@@ -214,6 +251,17 @@ export function buildMonthlyStudySeriesInRange(
     totals.set(monthStart, (totals.get(monthStart) ?? 0) + getActualMinutes(actual));
   });
 
+  actuals
+    .filter(
+      (actual) =>
+        isStandaloneActual(actual) &&
+        isDateInRange(actual.occurrenceDate, normalizedStart, addDays(addMonths(normalizedEnd, 1), -1)),
+    )
+    .forEach((actual) => {
+      const monthStart = startOfMonth(actual.occurrenceDate);
+      totals.set(monthStart, (totals.get(monthStart) ?? 0) + getActualMinutes(actual));
+    });
+
   const monthCount =
     (Number(normalizedEnd.slice(0, 4)) - Number(normalizedStart.slice(0, 4))) * 12 +
     (Number(normalizedEnd.slice(5, 7)) - Number(normalizedStart.slice(5, 7))) +
@@ -234,11 +282,15 @@ function calculateStudyMinutesInRange(
   startDate: string,
   endDate: string,
   plans: Plan[],
+  actuals: Actual[],
   actualByOccurrenceKey: Map<string, Actual>,
 ): number {
   const rangePlans = expandPlansForDateRange(plans, startDate, endDate).filter(isStudyTimePlan);
 
-  return calculateActualStudyMinutes(rangePlans, actualByOccurrenceKey);
+  return (
+    calculateActualStudyMinutes(rangePlans, actualByOccurrenceKey) +
+    calculateStandaloneActualMinutesInRange(actuals, startDate, endDate)
+  );
 }
 
 export function buildRollingWeeklyStudySeries(
@@ -257,7 +309,7 @@ export function buildRollingWeeklyStudySeries(
     return {
       startDate: weekStart,
       endDate: weekEnd,
-      minutes: calculateStudyMinutesInRange(weekStart, weekEnd, plans, actualByOccurrenceKey),
+      minutes: calculateStudyMinutesInRange(weekStart, weekEnd, plans, actuals, actualByOccurrenceKey),
     };
   });
 }
@@ -278,7 +330,7 @@ export function buildRollingMonthlyStudySeries(
     return {
       startDate: monthStart,
       endDate: monthEnd,
-      minutes: calculateStudyMinutesInRange(monthStart, monthEnd, plans, actualByOccurrenceKey),
+      minutes: calculateStudyMinutesInRange(monthStart, monthEnd, plans, actuals, actualByOccurrenceKey),
     };
   });
 }
@@ -309,14 +361,17 @@ export function calculateTodayStudyMinutes(
 ): number {
   const actualByOccurrenceKey = buildActualByOccurrenceKey(actuals);
   const dayPlans = expandPlansForDate(plans, selectedDate).filter(isStudyTimePlan);
-  return calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey);
+  return (
+    calculateActualStudyMinutes(dayPlans, actualByOccurrenceKey) +
+    calculateStandaloneActualMinutesInRange(actuals, selectedDate, selectedDate)
+  );
 }
 
 export function calculateCumulativeStudyMinutes(
   plans: Plan[],
   actuals: Actual[],
 ): number {
-  if (plans.length === 0) {
+  if (plans.length === 0 && actuals.length === 0) {
     return 0;
   }
 
@@ -330,7 +385,10 @@ export function calculateCumulativeStudyMinutes(
   const startDate = occurrenceDates.reduce((min, date) => (date < min ? date : min), occurrenceDates[0]);
   const endDate = occurrenceDates.reduce((max, date) => (date > max ? date : max), occurrenceDates[0]);
   const studyPlans = expandPlansForDateRange(plans, startDate, endDate).filter(isStudyTimePlan);
-  return calculateActualStudyMinutes(studyPlans, actualByOccurrenceKey);
+  return (
+    calculateActualStudyMinutes(studyPlans, actualByOccurrenceKey) +
+    calculateStandaloneActualMinutesInRange(actuals, startDate, endDate)
+  );
 }
 
 export function buildWeeklySubjectTotals(
@@ -346,6 +404,16 @@ export function buildWeeklySubjectTotals(
   const totals = new Map<string, number>();
 
   actuals.forEach((actual) => {
+    if (isStandaloneActual(actual)) {
+      if (!weekDates.has(actual.occurrenceDate)) {
+        return;
+      }
+
+      const subject = actual.subject.trim() || '未設定';
+      totals.set(subject, (totals.get(subject) ?? 0) + getActualMinutes(actual));
+      return;
+    }
+
     const plan = planByOccurrenceKey.get(getActualOccurrenceKey(actual));
 
     if (!plan || !isStudyTimePlan(plan) || !weekDates.has(plan.date)) {
@@ -379,6 +447,21 @@ export function buildStudyTimelineEntries(
 
   return sortByDateTime(
     actuals.flatMap((actual) => {
+      if (isStandaloneActual(actual)) {
+        return [
+          {
+            id: actual.id,
+            planId: '',
+            date: actual.occurrenceDate,
+            startTime: actual.actualStartTime,
+            endTime: actual.actualEndTime,
+            title: actual.title?.trim() || '記録',
+            subject: actual.subject.trim() || '未設定',
+            minutes: getActualMinutes(actual),
+          },
+        ];
+      }
+
       const plan = planByOccurrenceKey.get(getActualOccurrenceKey(actual));
 
       if (!plan || !isStudyTimePlan(plan)) {

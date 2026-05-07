@@ -453,6 +453,10 @@ export function getPlanOccurrenceDate(plan: Plan): string {
 }
 
 export function getActualOccurrenceKey(actual: Actual): string {
+  if (!actual.planId) {
+    return `standalone-actual::${actual.id}`;
+  }
+
   return buildPlanOccurrenceKey(actual.planId, actual.occurrenceDate);
 }
 
