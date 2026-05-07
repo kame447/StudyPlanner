@@ -372,7 +372,7 @@ interface UsePlannerDataStateResult {
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
-  saveStandaloneActual: (draft: ActualDraft) => Promise<void>;
+  saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
@@ -989,7 +989,7 @@ export function usePlannerDataState({
     }
   }
 
-  async function saveStandaloneActual(draft: ActualDraft) {
+  async function saveStandaloneActual(draft: ActualDraft, targetActualId?: string) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
@@ -1004,6 +1004,15 @@ export function usePlannerDataState({
       throw new Error('終了時刻は開始時刻より後にしてください。');
     }
 
+    const existingActual = targetActualId
+      ? actuals.find((actual) => actual.id === targetActualId && !actual.planId)
+      : undefined;
+
+    if (targetActualId && !existingActual) {
+      showNotice('記録が見つかりませんでした。', 'error');
+      throw new Error('記録が見つかりませんでした。');
+    }
+
     const nextActual = createActualFromDraft(userId, {
       ...draft,
       planId: null,
@@ -1011,7 +1020,7 @@ export function usePlannerDataState({
       subject: draft.subject.trim(),
       isAlignedToPlan: false,
       note: draft.note.trim(),
-    });
+    }, existingActual);
 
     try {
       await plannerRepository.upsertActual(nextActual);

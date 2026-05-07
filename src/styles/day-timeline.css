@@ -342,6 +342,14 @@
   line-height: 1;
 }
 
+.standalone-actual-editor-card .standalone-actual-duration-grid {
+  margin-top: 10px;
+}
+
+.standalone-actual-editor-card .quick-entry-custom-duration {
+  margin-top: 8px;
+}
+
 .timeline-chip {
   display: inline-flex;
   align-items: center;

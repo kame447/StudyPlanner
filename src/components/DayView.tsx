@@ -18,6 +18,7 @@ import {
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
 import { DayTimeline } from './DayTimeline';
+import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
 import type {
   Actual,
   ActualDraft,
@@ -40,13 +41,15 @@ interface DayViewProps {
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
 }
 
 type DayViewModalState =
   | { type: 'closed' }
   | { type: 'plan-detail'; planId: string }
-  | { type: 'month-event-detail'; monthEventId: string };
+  | { type: 'month-event-detail'; monthEventId: string }
+  | { type: 'standalone-actual-detail'; actualId: string };
 
 function createMonthEventActualPlan(
   monthEvent: MonthEvent,
@@ -97,6 +100,7 @@ export function DayView({
   onDeletePlan,
   onSavePlan,
   onSaveActual,
+  onSaveStandaloneActual,
   onDeleteActual,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
@@ -204,6 +208,12 @@ export function DayView({
   const selectedDetailActual = selectedDetailPlan
     ? actualByOccurrenceKey.get(buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date))
     : undefined;
+  const selectedStandaloneActual =
+    modalState.type === 'standalone-actual-detail'
+      ? dayActuals.find(
+          (actual) => actual.id === modalState.actualId && !actual.planId,
+        ) ?? null
+      : null;
   useEffect(() => {
     if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId)) {
       setModalState({ type: 'closed' });
@@ -215,7 +225,16 @@ export function DayView({
     ) {
       setModalState({ type: 'closed' });
     }
-  }, [dayMonthEventMap, dayPlanMap, modalState]);
+
+    if (
+      modalState.type === 'standalone-actual-detail' &&
+      !dayActuals.some(
+        (actual) => actual.id === modalState.actualId && !actual.planId,
+      )
+    ) {
+      setModalState({ type: 'closed' });
+    }
+  }, [dayActuals, dayMonthEventMap, dayPlanMap, modalState]);
 
   useEffect(() => {
     setModalState({ type: 'closed' });
@@ -322,6 +341,41 @@ export function DayView({
         </div>
       ) : null}
 
+      {selectedStandaloneActual ? (
+        <div className="overlay modal-overlay daily-detail-modal-overlay" onClick={closeModal}>
+          <div
+            className="modal-card daily-detail-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="daily-detail-modal-header">
+              <button
+                className="ghost-button"
+                onClick={closeModal}
+                type="button"
+              >
+                閉じる
+              </button>
+              <div className="daily-detail-modal-heading">
+                <h2>記録を編集</h2>
+                <p>
+                  {selectedStandaloneActual.actualStartTime} - {selectedStandaloneActual.actualEndTime} / {selectedStandaloneActual.title || '記録'}
+                </p>
+              </div>
+            </div>
+
+            <div className="daily-detail-modal-body">
+              <StandaloneActualEditorCard
+                key={selectedStandaloneActual.id}
+                actual={selectedStandaloneActual}
+                onSaveStandaloneActual={onSaveStandaloneActual}
+                onDeleteActual={onDeleteActual}
+                onClose={closeModal}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {isTimetableImportOpen ? (
         <div className="overlay modal-overlay" onClick={closeTimetableImport}>
           <div
@@ -416,11 +470,13 @@ export function DayView({
             ? `plan:${selectedPlan.id}`
             : selectedMonthEvent
               ? `month-event:${selectedMonthEvent.id}`
-              : undefined
+              : selectedStandaloneActual
+                ? `standalone-actual:${selectedStandaloneActual.id}`
+                : undefined
         }
         onSelectEntry={(entry) =>
           entry.kind === 'standalone-actual'
-            ? setModalState({ type: 'closed' })
+            ? setModalState({ type: 'standalone-actual-detail', actualId: entry.id })
             : setModalState(
                 entry.kind === 'plan'
                   ? { type: 'plan-detail', planId: entry.id }

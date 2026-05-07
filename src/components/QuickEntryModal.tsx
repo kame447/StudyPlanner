@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
-import { minutesBetween } from '../lib/date';
+import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { getRecurrenceWeekday } from '../lib/planRecurrence';
 import {
   buildQuickEntryPlanDraft,
@@ -31,7 +31,7 @@ interface QuickEntryModalProps {
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
-  onSaveStandaloneActual: (draft: ActualDraft) => Promise<void>;
+  onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
@@ -63,6 +63,20 @@ const WEEKDAY_OPTIONS: Array<{ value: RecurrenceWeekday; label: string }> = [
   { value: 'sun', label: '日' },
 ];
 
+function calculateEndTime(startTime: string, durationMinutes: number | null): string | null {
+  if (durationMinutes === null || durationMinutes <= 0) {
+    return null;
+  }
+
+  const endMinutes = minutesFromTime(startTime) + durationMinutes;
+
+  if (endMinutes >= 24 * 60) {
+    return null;
+  }
+
+  return timeFromMinutes(endMinutes);
+}
+
 export function QuickEntryModal({
   userId,
   selectedDate,
@@ -88,18 +102,18 @@ export function QuickEntryModal({
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
   const [actualStartTime, setActualStartTime] = useState('19:00');
-  const [actualEndTime, setActualEndTime] = useState('20:00');
   const [repeatKind, setRepeatKind] = useState<QuickEntryRepeatKind>('daily');
   const [weekdays, setWeekdays] = useState<RecurrenceWeekday[]>(() => [
     getRecurrenceWeekday(selectedDate),
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
+  const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
   const canSave =
     title.trim().length > 0 &&
     !isSubmitting &&
     (entryKind === 'actual'
-      ? minutesBetween(actualStartTime, actualEndTime) > 0
+      ? estimatedMinutes !== null && actualEndTime !== null
       : inputMethod === 'manual' &&
         (mode === 'later' ||
           (mode === 'scheduled' && estimatedMinutes !== null) ||
@@ -165,7 +179,9 @@ export function QuickEntryModal({
           <h3>所要時間</h3>
         </div>
         <div className="quick-entry-chip-row quick-entry-duration-grid">
-          {DURATION_OPTIONS.map((option) => {
+          {DURATION_OPTIONS.filter((option) =>
+            entryKind === 'actual' ? option.value !== null : true,
+          ).map((option) => {
             const isActive =
               option.value === 'custom'
                 ? isCustomDuration
@@ -210,6 +226,10 @@ export function QuickEntryModal({
     setIsSubmitting(true);
     try {
       if (entryKind === 'actual') {
+        if (!actualEndTime) {
+          return;
+        }
+
         await onSaveStandaloneActual({
           userId,
           planId: null,
@@ -634,16 +654,16 @@ export function QuickEntryModal({
                         onChange={(event) => setActualStartTime(event.target.value)}
                       />
                     </label>
-                    <label className="field">
-                      <span>終了時刻</span>
-                      <input
-                        type="time"
-                        value={actualEndTime}
-                        onChange={(event) => setActualEndTime(event.target.value)}
-                      />
-                    </label>
                   </div>
+                  <p className={actualEndTime ? 'inline-note' : 'inline-error'}>
+                    {actualEndTime
+                      ? `終了時刻: ${actualEndTime}`
+                      : estimatedMinutes === null
+                        ? '所要時間を選択してください。'
+                        : '終了時刻が翌日になるため保存できません。'}
+                  </p>
                 </section>
+                {renderDurationCard()}
 
                 <section className="quick-entry-card">
                   <div className="quick-entry-card-head">

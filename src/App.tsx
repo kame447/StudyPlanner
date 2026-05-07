@@ -288,6 +288,7 @@ export default function App() {
             onDeletePlan={deletePlan}
             onSavePlan={savePlanDraft}
             onSaveActual={saveActual}
+            onSaveStandaloneActual={saveStandaloneActual}
             onDeleteActual={deleteActual}
           />
         ) : null}

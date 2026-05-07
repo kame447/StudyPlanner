@@ -66,7 +66,7 @@ interface PlannerAppState {
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
-  saveStandaloneActual: (draft: ActualDraft) => Promise<void>;
+  saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
