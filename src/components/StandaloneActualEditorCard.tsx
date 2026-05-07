@@ -56,6 +56,7 @@ export function StandaloneActualEditorCard({
   const initialDuration = getInitialDuration(actual);
   const [title, setTitle] = useState(actual.title?.trim() || '');
   const [subject, setSubject] = useState(actual.subject.trim());
+  const [occurrenceDate, setOccurrenceDate] = useState(actual.occurrenceDate);
   const [startTime, setStartTime] = useState(actual.actualStartTime);
   const [durationMinutes, setDurationMinutes] = useState<number | null>(initialDuration);
   const [isCustomDuration, setIsCustomDuration] = useState(
@@ -72,6 +73,7 @@ export function StandaloneActualEditorCard({
   const endTime = calculateEndTime(startTime, durationMinutes);
   const candidateActual: Actual = {
     ...actual,
+    occurrenceDate,
     title,
     subject,
     actualStartTime: startTime,
@@ -88,6 +90,7 @@ export function StandaloneActualEditorCard({
 
     setTitle(actual.title?.trim() || '');
     setSubject(actual.subject.trim());
+    setOccurrenceDate(actual.occurrenceDate);
     setStartTime(actual.actualStartTime);
     setDurationMinutes(nextDuration);
     setIsCustomDuration(nextIsCustomDuration);
@@ -143,7 +146,7 @@ export function StandaloneActualEditorCard({
         {
           userId: actual.userId,
           planId: null,
-          occurrenceDate: actual.occurrenceDate,
+          occurrenceDate,
           actualStartTime: startTime,
           actualEndTime: endTime,
           title: title.trim(),
@@ -209,7 +212,7 @@ export function StandaloneActualEditorCard({
             <span className="type-badge">予定なし</span>
           </div>
           <p className="comparison-subtitle">
-            記録 {actual.occurrenceDate} / {actual.actualStartTime} - {actual.actualEndTime}
+            記録 {occurrenceDate} / {actual.actualStartTime} - {actual.actualEndTime}
             {actual.subject ? ` / ${actual.subject}` : ''}
           </p>
         </div>
@@ -258,7 +261,11 @@ export function StandaloneActualEditorCard({
           <div className="actual-time-grid">
             <label className="field">
               <span>日付</span>
-              <input type="date" value={actual.occurrenceDate} disabled />
+              <input
+                type="date"
+                value={occurrenceDate}
+                onChange={(event) => setOccurrenceDate(event.target.value)}
+              />
             </label>
             <label className="field">
               <span>開始時刻</span>

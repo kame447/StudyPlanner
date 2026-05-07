@@ -40,7 +40,7 @@ interface DayViewProps {
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
-  onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
@@ -334,6 +334,7 @@ export function DayView({
                 onDeletePlan={onDeletePlan}
                 onSaveActual={onSaveActual}
                 onDeleteActual={onDeleteActual}
+                onClose={closeModal}
                 forceOpen
                 hideToggleButton
                 hidePlanActions={Boolean(selectedMonthEvent)}

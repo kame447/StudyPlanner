@@ -371,7 +371,7 @@ interface UsePlannerDataStateResult {
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
-  saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  saveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
@@ -964,21 +964,27 @@ export function usePlannerDataState({
     }
   }
 
-  async function saveActual(plan: Plan, draft: ActualDraft) {
+  async function saveActual(plan: Plan, draft: ActualDraft, targetActualId?: string) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, draft.occurrenceDate);
-    const existingActual = actuals.find(
-      (actual) => getActualOccurrenceKey(actual) === occurrenceKey,
-    );
+    const existingActual = targetActualId
+      ? actuals.find((actual) => actual.id === targetActualId)
+      : actuals.find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
     const nextActual = createActualFromDraft(userId, draft, existingActual);
 
     try {
       await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
-        upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
+        upsertByKey(
+          targetActualId
+            ? current.filter((actual) => actual.id !== targetActualId)
+            : current,
+          nextActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
       );
       showNotice('記録を保存しました。', 'success');
     } catch (error) {

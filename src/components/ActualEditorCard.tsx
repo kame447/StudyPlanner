@@ -11,8 +11,9 @@ interface ActualEditorCardProps {
   actual?: Actual;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
-  onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
+  onClose?: () => void;
   forceOpen?: boolean;
   hideToggleButton?: boolean;
   hidePlanActions?: boolean;
@@ -41,7 +42,7 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
   return {
     userId: plan.userId,
     planId: plan.id,
-    occurrenceDate: getPlanOccurrenceDate(plan),
+    occurrenceDate: actual?.occurrenceDate ?? getPlanOccurrenceDate(plan),
     actualStartTime: actual?.actualStartTime ?? plan.startTime,
     actualEndTime: actual?.actualEndTime ?? plan.endTime,
     title: resolveActualTitle(plan, actual),
@@ -58,6 +59,7 @@ export function ActualEditorCard({
   onDeletePlan,
   onSaveActual,
   onDeleteActual,
+  onClose,
   forceOpen = false,
   hideToggleButton = false,
   hidePlanActions = false,
@@ -113,7 +115,7 @@ export function ActualEditorCard({
 
     setError('');
     try {
-      await onSaveActual(plan, draft);
+      await onSaveActual(plan, draft, actual?.id);
       setIsOpen(false);
     } catch {
       setError('記録の保存に失敗しました。');
@@ -124,6 +126,9 @@ export function ActualEditorCard({
     try {
       await onDeletePlan(plan);
       setIsOpen(false);
+      if (!isScopedRecurringPlan) {
+        onClose?.();
+      }
     } catch {
       setError('予定の削除に失敗しました。');
     }
@@ -137,6 +142,7 @@ export function ActualEditorCard({
     try {
       await onDeleteActual(actual);
       setIsOpen(false);
+      onClose?.();
     } catch {
       setError('記録の削除に失敗しました。');
     }
@@ -229,7 +235,16 @@ export function ActualEditorCard({
             <div className="actual-time-grid">
               <label className="field">
                 <span>日付</span>
-                <input type="date" value={draft.occurrenceDate} disabled />
+                <input
+                  type="date"
+                  value={draft.occurrenceDate}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      occurrenceDate: event.target.value,
+                    })
+                  }
+                />
               </label>
               <label className="field">
                 <span>開始</span>
