@@ -350,6 +350,40 @@
   margin-top: 8px;
 }
 
+.standalone-link-section {
+  gap: 10px;
+}
+
+.standalone-link-candidates {
+  display: grid;
+  gap: 8px;
+}
+
+.standalone-link-candidate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-strong);
+}
+
+.standalone-link-candidate .comparison-subtitle {
+  margin-bottom: 0;
+}
+
+@media screen and (max-width: 560px) {
+  .standalone-link-candidate {
+    grid-template-columns: 1fr;
+  }
+
+  .standalone-link-candidate .mini-button {
+    width: 100%;
+  }
+}
+
 .timeline-chip {
   display: inline-flex;
   align-items: center;

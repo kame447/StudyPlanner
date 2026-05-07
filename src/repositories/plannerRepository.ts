@@ -56,10 +56,11 @@ export function createPlannerRepository(
           (item) =>
             !(
               item.userId === actual.userId &&
-              (actual.planId
-                ? item.planId === actual.planId &&
-                  item.occurrenceDate === actual.occurrenceDate
-                : item.id === actual.id)
+              (item.id === actual.id ||
+                (actual.planId
+                  ? item.planId === actual.planId &&
+                    item.occurrenceDate === actual.occurrenceDate
+                  : false))
             ),
         )
         .concat(actual);

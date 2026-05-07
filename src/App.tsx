@@ -70,6 +70,7 @@ export default function App() {
     cancelRecurringPlanScope,
     saveActual,
     saveStandaloneActual,
+    linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
     saveMonthEvent,
@@ -289,6 +290,7 @@ export default function App() {
             onSavePlan={savePlanDraft}
             onSaveActual={saveActual}
             onSaveStandaloneActual={saveStandaloneActual}
+            onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
             onDeleteActual={deleteActual}
           />
         ) : null}

@@ -373,6 +373,7 @@ interface UsePlannerDataStateResult {
   cancelRecurringPlanScope: () => void;
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
@@ -1037,6 +1038,54 @@ export function usePlannerDataState({
     }
   }
 
+  async function linkStandaloneActualToPlan(actual: Actual, plan: Plan) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (actual.planId) {
+      showNotice('この記録はすでに予定に紐づいています。', 'error');
+      throw new Error('この記録はすでに予定に紐づいています。');
+    }
+
+    const occurrenceDate = actual.occurrenceDate;
+    const existingLinkedActual = actuals.find(
+      (item) =>
+        item.id !== actual.id &&
+        item.planId === plan.id &&
+        item.occurrenceDate === occurrenceDate,
+    );
+
+    if (existingLinkedActual) {
+      showNotice('この予定にはすでに記録があります。', 'error');
+      throw new Error('この予定にはすでに記録があります。');
+    }
+
+    const nextActual: Actual = {
+      ...actual,
+      planId: plan.id,
+      title: actual.title?.trim() || plan.title,
+      subject: actual.subject.trim() || plan.subject,
+      isAlignedToPlan: false,
+      note: actual.note.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await plannerRepository.upsertActual(nextActual);
+      setActuals((current) =>
+        current.filter((item) => item.id !== actual.id).concat(nextActual),
+      );
+      showNotice('予定に紐づけました。', 'success');
+    } catch (error) {
+      showNotice(
+        resolveErrorMessage(error, '予定に紐づけできませんでした。'),
+        'error',
+      );
+      throw error;
+    }
+  }
+
   async function deleteActual(actual: Actual) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
@@ -1618,6 +1667,7 @@ export function usePlannerDataState({
     cancelRecurringPlanScope,
     saveActual,
     saveStandaloneActual,
+    linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
     saveMonthEvent,

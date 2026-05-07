@@ -42,6 +42,7 @@ interface DayViewProps {
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
 }
 
@@ -101,6 +102,7 @@ export function DayView({
   onSavePlan,
   onSaveActual,
   onSaveStandaloneActual,
+  onLinkStandaloneActualToPlan,
   onDeleteActual,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
@@ -367,7 +369,10 @@ export function DayView({
               <StandaloneActualEditorCard
                 key={selectedStandaloneActual.id}
                 actual={selectedStandaloneActual}
+                plans={dayPlans}
+                actuals={dayActuals}
                 onSaveStandaloneActual={onSaveStandaloneActual}
+                onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
                 onDeleteActual={onDeleteActual}
                 onClose={closeModal}
               />

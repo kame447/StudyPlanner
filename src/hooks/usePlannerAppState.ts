@@ -67,6 +67,7 @@ interface PlannerAppState {
   cancelRecurringPlanScope: () => void;
   saveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   saveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
@@ -137,6 +138,7 @@ export function usePlannerAppState(): PlannerAppState {
     cancelRecurringPlanScope,
     saveActual,
     saveStandaloneActual,
+    linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
     saveMonthEvent,
@@ -238,6 +240,7 @@ export function usePlannerAppState(): PlannerAppState {
     cancelRecurringPlanScope,
     saveActual,
     saveStandaloneActual,
+    linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
     saveMonthEvent,
