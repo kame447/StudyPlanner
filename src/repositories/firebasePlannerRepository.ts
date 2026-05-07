@@ -98,7 +98,10 @@ async function listByUserId<T extends PlannerDoc>(
     query(collection(firestoreDb, collectionName), where('userId', '==', userId)),
   );
 
-  return snapshot.docs.map((document) => document.data() as T);
+  return snapshot.docs.map((document) => ({
+    ...document.data(),
+    id: document.id,
+  }) as T);
 }
 
 async function upsertDocument<T extends PlannerDoc>(

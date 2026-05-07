@@ -377,10 +377,12 @@ export default function App() {
           userId={user.id}
           selectedDate={selectedDate}
           plans={plans}
+          actuals={actuals}
           onClose={() => setIsQuickEntryOpen(false)}
           onSaveTodo={saveTodo}
           onSavePlan={savePlanDraft}
           onSaveStandaloneActual={saveStandaloneActual}
+          onSaveLinkedActual={saveActual}
         />
       ) : null}
 

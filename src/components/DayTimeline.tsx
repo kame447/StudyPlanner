@@ -532,9 +532,6 @@ export function DayTimeline({
                         >
                           {subjectLabel}
                         </span>
-                        {entry.standalone ? (
-                          <span className="timeline-entry-badge">予定なし</span>
-                        ) : null}
                       </div>
                     </button>
                   );

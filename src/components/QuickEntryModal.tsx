@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
-import { getRecurrenceWeekday } from '../lib/planRecurrence';
+import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
+import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
@@ -11,6 +12,7 @@ import {
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
 import type {
+  Actual,
   ActualDraft,
   Plan,
   PlanDraft,
@@ -28,10 +30,12 @@ interface QuickEntryModalProps {
   userId: string;
   selectedDate: string;
   plans: Plan[];
+  actuals: Actual[];
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  onSaveLinkedActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
@@ -77,10 +81,12 @@ export function QuickEntryModal({
   userId,
   selectedDate,
   plans,
+  actuals,
   onClose,
   onSaveTodo,
   onSavePlan,
   onSaveStandaloneActual,
+  onSaveLinkedActual,
 }: QuickEntryModalProps) {
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
   const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>('manual');
@@ -105,6 +111,23 @@ export function QuickEntryModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
+  const dayPlans = useMemo(
+    () => expandPlansForDate(plans, selectedDate),
+    [plans, selectedDate],
+  );
+  const candidateActual =
+    actualEndTime && title.trim()
+      ? {
+          occurrenceDate: selectedDate,
+          actualStartTime,
+          actualEndTime,
+          title: title.trim(),
+          subject: subject.trim(),
+        }
+      : null;
+  const linkCandidates = candidateActual
+    ? buildActualPlanLinkCandidates(candidateActual, dayPlans, actuals)
+    : [];
   const canSave =
     title.trim().length > 0 &&
     !isSubmitting &&
@@ -210,6 +233,30 @@ export function QuickEntryModal({
         ) : null}
       </section>
     );
+  }
+
+  async function handleSaveLinkedActual(plan: Plan) {
+    if (!actualEndTime || !title.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSaveLinkedActual(plan, {
+        userId,
+        planId: plan.id,
+        occurrenceDate: selectedDate,
+        actualStartTime,
+        actualEndTime,
+        title: title.trim(),
+        subject: subject.trim() || plan.subject,
+        isAlignedToPlan: false,
+        note: memo.trim(),
+      });
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -680,6 +727,52 @@ export function QuickEntryModal({
                     </label>
                   </div>
                 </section>
+
+                {linkCandidates.length > 0 ? (
+                  <section className="quick-entry-card standalone-link-section">
+                    <div className="quick-entry-card-head">
+                      <h3>近い予定候補</h3>
+                    </div>
+                    <div className="standalone-link-candidates">
+                      {linkCandidates.map((candidate, index) => (
+                        <article
+                          className="standalone-link-candidate"
+                          key={candidate.occurrenceKey}
+                        >
+                          <div>
+                            <div className="label-row">
+                              <strong>
+                                {candidate.plan.startTime}-{candidate.plan.endTime} {candidate.plan.title}
+                              </strong>
+                              {index === 0 && candidate.score >= 70 ? (
+                                <span className="type-badge">おすすめ</span>
+                              ) : null}
+                              {candidate.isRecorded ? (
+                                <span className="type-badge">記録済み</span>
+                              ) : null}
+                            </div>
+                            <p className="comparison-subtitle">
+                              {candidate.plan.subject || '科目未設定'}
+                              {candidate.reasons.length > 0
+                                ? ` / ${candidate.reasons.join('・')}`
+                                : ''}
+                            </p>
+                          </div>
+                          <button
+                            className="mini-button"
+                            disabled={candidate.isRecorded || isSubmitting}
+                            onClick={() => void handleSaveLinkedActual(candidate.plan)}
+                            type="button"
+                          >
+                            この予定に紐づけて保存
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : candidateActual ? (
+                  <p className="inline-note">近い予定はありません。</p>
+                ) : null}
 
                 <section className="quick-entry-card quick-entry-memo-card">
                   <label className="field">
