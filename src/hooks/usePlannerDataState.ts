@@ -991,7 +991,7 @@ export function usePlannerDataState({
 
   async function saveStandaloneActual(draft: ActualDraft) {
     if (!userId) {
-      throw new Error('繝ｭ繧ｰ繧､繝ｳ迥ｶ諷九ｒ遒ｺ隱阪〒縺阪∪縺帙ｓ縺ｧ縺励◆縲・);
+      throw new Error('ログイン状態を確認できませんでした。');
     }
 
     if (!draft.title.trim()) {
