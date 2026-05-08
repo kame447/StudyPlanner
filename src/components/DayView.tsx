@@ -296,22 +296,44 @@ function MaterialQuickCreateModal({
             </div>
           </div>
 
-          <div className="segmented-control">
-            {(
-              [
-                ['actual', '記録'],
-                ['plan', '予定'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                className={kind === value ? 'segment active' : 'segment'}
-                key={value}
-                onClick={() => setKind(value)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
+          <div
+            className={
+              kind === 'actual'
+                ? 'quick-entry-kind-switch material-quick-kind-switch is-actual'
+                : 'quick-entry-kind-switch material-quick-kind-switch'
+            }
+            role="tablist"
+            aria-label="登録種別"
+          >
+            <span className="quick-entry-kind-slider" aria-hidden="true" />
+            <button
+              className={
+                kind === 'plan'
+                  ? 'quick-entry-kind-option active'
+                  : 'quick-entry-kind-option'
+              }
+              type="button"
+              role="tab"
+              aria-selected={kind === 'plan'}
+              aria-pressed={kind === 'plan'}
+              onClick={() => setKind('plan')}
+            >
+              予定
+            </button>
+            <button
+              className={
+                kind === 'actual'
+                  ? 'quick-entry-kind-option active'
+                  : 'quick-entry-kind-option'
+              }
+              type="button"
+              role="tab"
+              aria-selected={kind === 'actual'}
+              aria-pressed={kind === 'actual'}
+              onClick={() => setKind('actual')}
+            >
+              記録
+            </button>
           </div>
 
           <div className="material-quick-form">
@@ -377,7 +399,7 @@ function MaterialQuickCreateModal({
 
           <div className="row-actions">
             <button className="primary-button" disabled={!canSave} type="submit">
-              {kind === 'plan' ? '予定にする' : '記録する'}
+              登録する
             </button>
             <button className="ghost-button" onClick={onClose} type="button">
               キャンセル

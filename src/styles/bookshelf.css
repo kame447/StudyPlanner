@@ -273,6 +273,10 @@
   width: min(460px, calc(100vw - 32px));
 }
 
+.material-quick-kind-switch {
+  width: min(260px, 100%);
+}
+
 .material-quick-summary {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
