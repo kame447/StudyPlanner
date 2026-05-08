@@ -4,6 +4,10 @@ import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
+import {
+  BookshelfView,
+  type BookshelfInitialAction,
+} from './components/BookshelfView';
 import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -30,6 +34,8 @@ export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [bookshelfInitialAction, setBookshelfInitialAction] =
+    useState<BookshelfInitialAction>(null);
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
@@ -42,6 +48,8 @@ export default function App() {
     actuals,
     monthEvents,
     todos,
+    studySubjects,
+    studyMaterials,
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
@@ -78,6 +86,10 @@ export default function App() {
     saveTodo,
     scheduleTodoAsPlan,
     deleteTodo,
+    saveStudySubject,
+    deleteStudySubject,
+    saveStudyMaterial,
+    deleteStudyMaterial,
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
@@ -215,6 +227,13 @@ export default function App() {
           >
             時間割
           </button>
+          <button
+            className={viewMode === 'bookshelf' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('bookshelf')}
+            type="button"
+          >
+            本棚
+          </button>
         </div>
       </div>
 
@@ -292,6 +311,11 @@ export default function App() {
             onSaveStandaloneActual={saveStandaloneActual}
             onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
             onDeleteActual={deleteActual}
+            onOpenBookshelf={() => setViewMode('bookshelf')}
+            onOpenAddMaterial={() => {
+              setBookshelfInitialAction('add-material');
+              setViewMode('bookshelf');
+            }}
           />
         ) : null}
 
@@ -330,6 +354,20 @@ export default function App() {
             onDeleteTimetablePeriod={deleteTimetablePeriod}
             onSaveScheduleTemplate={saveScheduleTemplate}
             onDeleteScheduleTemplate={deleteScheduleTemplate}
+          />
+        ) : null}
+
+        {viewMode === 'bookshelf' ? (
+          <BookshelfView
+            userId={user.id}
+            subjects={studySubjects}
+            materials={studyMaterials}
+            initialAction={bookshelfInitialAction}
+            onInitialActionHandled={() => setBookshelfInitialAction(null)}
+            onSaveSubject={saveStudySubject}
+            onDeleteSubject={deleteStudySubject}
+            onSaveMaterial={saveStudyMaterial}
+            onDeleteMaterial={deleteStudyMaterial}
           />
         ) : null}
 

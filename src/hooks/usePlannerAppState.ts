@@ -15,6 +15,10 @@ import type {
   RecurringPlanScope,
   ScheduleTemplate,
   ScheduleTemplateDraft,
+  StudyMaterial,
+  StudyMaterialDraft,
+  StudySubject,
+  StudySubjectDraft,
   TimetablePeriod,
   TimetablePeriodDraft,
   TimetableTerm,
@@ -34,6 +38,8 @@ interface PlannerAppState {
   dayNotes: DayNote[];
   monthEvents: MonthEvent[];
   todos: TodoTask[];
+  studySubjects: StudySubject[];
+  studyMaterials: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
@@ -75,6 +81,16 @@ interface PlannerAppState {
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
   scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
   deleteTodo: (todo: TodoTask) => Promise<void>;
+  saveStudySubject: (
+    draft: StudySubjectDraft,
+    targetSubjectId?: string,
+  ) => Promise<StudySubject>;
+  deleteStudySubject: (subject: StudySubject) => Promise<void>;
+  saveStudyMaterial: (
+    draft: StudyMaterialDraft,
+    targetMaterialId?: string,
+  ) => Promise<StudyMaterial>;
+  deleteStudyMaterial: (material: StudyMaterial) => Promise<void>;
   saveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
     targetTemplateId?: string,
@@ -115,6 +131,8 @@ export function usePlannerAppState(): PlannerAppState {
     dayNotes,
     monthEvents,
     todos,
+    studySubjects,
+    studyMaterials,
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
@@ -146,6 +164,10 @@ export function usePlannerAppState(): PlannerAppState {
     saveTodo,
     scheduleTodoAsPlan,
     deleteTodo,
+    saveStudySubject,
+    deleteStudySubject,
+    saveStudyMaterial,
+    deleteStudyMaterial,
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,
@@ -211,6 +233,8 @@ export function usePlannerAppState(): PlannerAppState {
     dayNotes,
     monthEvents,
     todos,
+    studySubjects,
+    studyMaterials,
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
@@ -248,6 +272,10 @@ export function usePlannerAppState(): PlannerAppState {
     saveTodo,
     scheduleTodoAsPlan,
     deleteTodo,
+    saveStudySubject,
+    deleteStudySubject,
+    saveStudyMaterial,
+    deleteStudyMaterial,
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,

@@ -49,6 +49,20 @@ service cloud.firestore {
         && isOwner(request.resource.data.userId);
     }
 
+    match /study_subjects/{subjectId} {
+      allow read, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        && isOwner(request.resource.data.userId);
+    }
+
+    match /study_materials/{materialId} {
+      allow read, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        && isOwner(request.resource.data.userId);
+    }
+
     match /schedule_templates/{scheduleTemplateId} {
       allow read, delete: if isOwner(resource.data.userId);
       allow create: if isOwner(request.resource.data.userId);

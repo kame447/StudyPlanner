@@ -50,6 +50,12 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async getTodos() {
       return [];
     },
+    async getStudySubjects() {
+      return [];
+    },
+    async getStudyMaterials() {
+      return [];
+    },
     async getScheduleTemplates() {
       return [];
     },
@@ -84,6 +90,18 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
       throw createConfigurationError();
     },
     async deleteTodo() {
+      throw createConfigurationError();
+    },
+    async upsertStudySubject() {
+      throw createConfigurationError();
+    },
+    async deleteStudySubject() {
+      throw createConfigurationError();
+    },
+    async upsertStudyMaterial() {
+      throw createConfigurationError();
+    },
+    async deleteStudyMaterial() {
       throw createConfigurationError();
     },
     async upsertScheduleTemplate() {

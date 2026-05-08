@@ -23,6 +23,12 @@ export function createPlannerRepository(
     async getTodos(userId) {
       return filterByUserId(await storageGateway.readTodos(), userId);
     },
+    async getStudySubjects(userId) {
+      return filterByUserId(await storageGateway.readStudySubjects(), userId);
+    },
+    async getStudyMaterials(userId) {
+      return filterByUserId(await storageGateway.readStudyMaterials(), userId);
+    },
     async getScheduleTemplates(userId) {
       return filterByUserId(await storageGateway.readScheduleTemplates(), userId);
     },
@@ -112,6 +118,38 @@ export function createPlannerRepository(
       );
 
       await storageGateway.writeTodos(todos);
+    },
+    async upsertStudySubject(item) {
+      const nextItems = replaceById(
+        await storageGateway.readStudySubjects(),
+        item,
+      );
+
+      await storageGateway.writeStudySubjects(nextItems);
+      return item;
+    },
+    async deleteStudySubject(userId, subjectId) {
+      const items = (await storageGateway.readStudySubjects()).filter(
+        (item) => !(item.userId === userId && item.id === subjectId),
+      );
+
+      await storageGateway.writeStudySubjects(items);
+    },
+    async upsertStudyMaterial(item) {
+      const nextItems = replaceById(
+        await storageGateway.readStudyMaterials(),
+        item,
+      );
+
+      await storageGateway.writeStudyMaterials(nextItems);
+      return item;
+    },
+    async deleteStudyMaterial(userId, materialId) {
+      const items = (await storageGateway.readStudyMaterials()).filter(
+        (item) => !(item.userId === userId && item.id === materialId),
+      );
+
+      await storageGateway.writeStudyMaterials(items);
     },
     async upsertScheduleTemplate(item) {
       const nextItems = replaceById(

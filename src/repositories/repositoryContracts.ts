@@ -4,6 +4,8 @@ import type {
   MonthEvent,
   Plan,
   ScheduleTemplate,
+  StudyMaterial,
+  StudySubject,
   TimetablePeriod,
   TimetableTerm,
   TodoTask,
@@ -30,6 +32,14 @@ export interface PlannerStorageGateway {
   writeMonthEvents(monthEvents: MonthEvent[]): Promise<void>;
   readTodos(): Promise<TodoTask[]>;
   writeTodos(todos: PromiseLike<TodoTask[]> | TodoTask[]): Promise<void>;
+  readStudySubjects(): Promise<StudySubject[]>;
+  writeStudySubjects(
+    items: PromiseLike<StudySubject[]> | StudySubject[],
+  ): Promise<void>;
+  readStudyMaterials(): Promise<StudyMaterial[]>;
+  writeStudyMaterials(
+    items: PromiseLike<StudyMaterial[]> | StudyMaterial[],
+  ): Promise<void>;
   readScheduleTemplates(): Promise<ScheduleTemplate[]>;
   writeScheduleTemplates(
     items: PromiseLike<ScheduleTemplate[]> | ScheduleTemplate[],
@@ -60,6 +70,8 @@ export interface PlannerRepository {
   getDayNotes(userId: string): Promise<DayNote[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   getTodos(userId: string): Promise<TodoTask[]>;
+  getStudySubjects(userId: string): Promise<StudySubject[]>;
+  getStudyMaterials(userId: string): Promise<StudyMaterial[]>;
   getScheduleTemplates(userId: string): Promise<ScheduleTemplate[]>;
   getTimetableTerms(userId: string): Promise<TimetableTerm[]>;
   getTimetablePeriods(userId: string): Promise<TimetablePeriod[]>;
@@ -72,6 +84,10 @@ export interface PlannerRepository {
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
   upsertTodo(todo: TodoTask): Promise<TodoTask>;
   deleteTodo(userId: string, todoId: string): Promise<void>;
+  upsertStudySubject(item: StudySubject): Promise<StudySubject>;
+  deleteStudySubject(userId: string, subjectId: string): Promise<void>;
+  upsertStudyMaterial(item: StudyMaterial): Promise<StudyMaterial>;
+  deleteStudyMaterial(userId: string, materialId: string): Promise<void>;
   upsertScheduleTemplate(item: ScheduleTemplate): Promise<ScheduleTemplate>;
   deleteScheduleTemplate(userId: string, templateId: string): Promise<void>;
   upsertTimetableTerm(item: TimetableTerm): Promise<TimetableTerm>;

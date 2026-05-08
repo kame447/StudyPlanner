@@ -15,6 +15,8 @@ import type {
   MonthEvent,
   Plan,
   ScheduleTemplate,
+  StudyMaterial,
+  StudySubject,
   TimetablePeriod,
   TimetableTerm,
   TodoTask,
@@ -35,6 +37,8 @@ type PlannerDoc =
   | DayNote
   | MonthEvent
   | TodoTask
+  | StudySubject
+  | StudyMaterial
   | ScheduleTemplate
   | TimetableTerm
   | TimetablePeriod;
@@ -191,6 +195,38 @@ export function createFirebasePlannerRepository(
         throw new Error(
           normalizeErrorMessage(
             'Todoを取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async getStudySubjects(userId) {
+      try {
+        return await listByUserId<StudySubject>(
+          firestoreDb,
+          'study_subjects',
+          userId,
+        );
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教科を取得できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async getStudyMaterials(userId) {
+      try {
+        return await listByUserId<StudyMaterial>(
+          firestoreDb,
+          'study_materials',
+          userId,
+        );
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教材を取得できませんでした。',
             error as { message?: string | null },
           ),
         );
@@ -370,6 +406,54 @@ export function createFirebasePlannerRepository(
         throw new Error(
           normalizeErrorMessage(
             'Todoを削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertStudySubject(item) {
+      try {
+        return await upsertDocument(firestoreDb, 'study_subjects', item);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教科を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async deleteStudySubject(_userId, subjectId) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'study_subjects', subjectId));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教科を削除できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async upsertStudyMaterial(item) {
+      try {
+        return await upsertDocument(firestoreDb, 'study_materials', item);
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教材を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
+    async deleteStudyMaterial(_userId, materialId) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'study_materials', materialId));
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教材を削除できませんでした。',
             error as { message?: string | null },
           ),
         );

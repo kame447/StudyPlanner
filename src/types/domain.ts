@@ -1,4 +1,11 @@
-export type ViewMode = 'month' | 'week' | 'day' | 'todo' | 'report' | 'timetable';
+export type ViewMode =
+  | 'month'
+  | 'week'
+  | 'day'
+  | 'todo'
+  | 'report'
+  | 'timetable'
+  | 'bookshelf';
 
 export type PlanType =
   | 'study'
@@ -120,6 +127,49 @@ export interface ActualDraft {
   subject: string;
   isAlignedToPlan: boolean;
   note: string;
+}
+
+export interface StudySubject {
+  id: string;
+  userId: string;
+  name: string;
+  color: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudySubjectDraft {
+  userId: string;
+  name: string;
+  color: string;
+}
+
+export type StudyMaterialStatus = 'active' | 'archived';
+
+export interface StudyMaterial {
+  id: string;
+  userId: string;
+  name: string;
+  subjectId: string;
+  subjectName: string;
+  color?: string;
+  coverImageUrl?: string;
+  coverImageDataUrl?: string;
+  aliases?: string[];
+  status?: StudyMaterialStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudyMaterialDraft {
+  userId: string;
+  name: string;
+  subjectId: string;
+  subjectName: string;
+  color?: string;
+  coverImageDataUrl?: string;
+  aliases?: string[];
+  status?: StudyMaterialStatus;
 }
 
 export type MonthEventRepeat = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';

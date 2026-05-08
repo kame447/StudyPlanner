@@ -4,6 +4,8 @@ import type {
   MonthEvent,
   Plan,
   ScheduleTemplate,
+  StudyMaterial,
+  StudySubject,
   TimetablePeriod,
   TimetableTerm,
   TodoTask,
@@ -30,6 +32,8 @@ const STORAGE_KEYS = {
   dayNotes: 'studyplanner.dayNotes',
   monthEvents: 'studyplanner.monthEvents',
   todos: 'studyplanner.todos.v1',
+  studySubjects: 'studyplanner.studySubjects.v1',
+  studyMaterials: 'studyplanner.studyMaterials.v1',
   scheduleTemplates: 'studyplanner.scheduleTemplates.v1',
   timetableTerms: 'studyplanner.timetableTerms.v1',
   timetablePeriods: 'studyplanner.timetablePeriods.v1',
@@ -40,6 +44,8 @@ type StoredMonthEvent = Omit<MonthEvent, 'repeatUntil' | 'excludedDates'> &
 type StoredUser = Omit<User, 'username' | 'avatar'> &
   Partial<Pick<User, 'username' | 'avatar'>>;
 type StoredTodoTask = TodoTask;
+type StoredStudySubject = StudySubject;
+type StoredStudyMaterial = StudyMaterial;
 type StoredScheduleTemplate = ScheduleTemplate;
 type StoredTimetableTerm = TimetableTerm;
 type StoredTimetablePeriod = TimetablePeriod;
@@ -139,6 +145,26 @@ export function createLocalPlannerStorageGateway(
     },
     async writeTodos(todos) {
       writeJson(storage, STORAGE_KEYS.todos, await todos);
+    },
+    async readStudySubjects() {
+      return readJson<StoredStudySubject[]>(
+        storage,
+        STORAGE_KEYS.studySubjects,
+        [],
+      );
+    },
+    async writeStudySubjects(items) {
+      writeJson(storage, STORAGE_KEYS.studySubjects, await items);
+    },
+    async readStudyMaterials() {
+      return readJson<StoredStudyMaterial[]>(
+        storage,
+        STORAGE_KEYS.studyMaterials,
+        [],
+      );
+    },
+    async writeStudyMaterials(items) {
+      writeJson(storage, STORAGE_KEYS.studyMaterials, await items);
     },
     async readScheduleTemplates() {
       return readJson<StoredScheduleTemplate[]>(

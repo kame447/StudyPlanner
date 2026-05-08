@@ -38,6 +38,10 @@ import type {
   RecurringPlanScope,
   ScheduleTemplate,
   ScheduleTemplateDraft,
+  StudyMaterial,
+  StudyMaterialDraft,
+  StudySubject,
+  StudySubjectDraft,
   TimetablePeriod,
   TimetablePeriodDraft,
   TimetableTerm,
@@ -239,6 +243,27 @@ function sortTimetableTerms(terms: TimetableTerm[]): TimetableTerm[] {
   });
 }
 
+function sortStudySubjects(subjects: StudySubject[]): StudySubject[] {
+  return subjects
+    .slice()
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name, 'ja') ||
+        left.createdAt.localeCompare(right.createdAt),
+    );
+}
+
+function sortStudyMaterials(materials: StudyMaterial[]): StudyMaterial[] {
+  return materials
+    .slice()
+    .sort(
+      (left, right) =>
+        left.subjectName.localeCompare(right.subjectName, 'ja') ||
+        left.name.localeCompare(right.name, 'ja') ||
+        left.createdAt.localeCompare(right.createdAt),
+    );
+}
+
 function normalizeTimetableTermsByYearAndKind(
   userId: string,
   terms: TimetableTerm[],
@@ -350,6 +375,8 @@ interface UsePlannerDataStateResult {
   dayNotes: DayNote[];
   monthEvents: MonthEvent[];
   todos: TodoTask[];
+  studySubjects: StudySubject[];
+  studyMaterials: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTerms: TimetableTerm[];
   timetablePeriods: TimetablePeriod[];
@@ -381,6 +408,16 @@ interface UsePlannerDataStateResult {
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
   scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
   deleteTodo: (todo: TodoTask) => Promise<void>;
+  saveStudySubject: (
+    draft: StudySubjectDraft,
+    targetSubjectId?: string,
+  ) => Promise<StudySubject>;
+  deleteStudySubject: (subject: StudySubject) => Promise<void>;
+  saveStudyMaterial: (
+    draft: StudyMaterialDraft,
+    targetMaterialId?: string,
+  ) => Promise<StudyMaterial>;
+  deleteStudyMaterial: (material: StudyMaterial) => Promise<void>;
   saveScheduleTemplate: (
     draft: ScheduleTemplateDraft,
     targetTemplateId?: string,
@@ -411,6 +448,8 @@ export function usePlannerDataState({
   const [dayNotes, setDayNotes] = useState<DayNote[]>([]);
   const [monthEvents, setMonthEvents] = useState<MonthEvent[]>([]);
   const [todos, setTodos] = useState<TodoTask[]>([]);
+  const [studySubjects, setStudySubjects] = useState<StudySubject[]>([]);
+  const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>([]);
   const [timetableTerms, setTimetableTerms] = useState<TimetableTerm[]>([]);
   const [timetablePeriods, setTimetablePeriods] = useState<TimetablePeriod[]>([]);
@@ -474,6 +513,8 @@ export function usePlannerDataState({
       nextDayNotes,
       nextMonthEvents,
       nextTodos,
+      nextStudySubjects,
+      nextStudyMaterials,
       nextScheduleTemplates,
       nextTimetableTerms,
       nextTimetablePeriods,
@@ -483,6 +524,8 @@ export function usePlannerDataState({
       plannerRepository.getDayNotes(nextUserId),
       plannerRepository.getMonthEvents(nextUserId),
       plannerRepository.getTodos(nextUserId),
+      plannerRepository.getStudySubjects(nextUserId),
+      plannerRepository.getStudyMaterials(nextUserId),
       plannerRepository.getScheduleTemplates(nextUserId),
       plannerRepository.getTimetableTerms(nextUserId),
       plannerRepository.getTimetablePeriods(nextUserId),
@@ -569,6 +612,8 @@ export function usePlannerDataState({
     setDayNotes(nextDayNotes);
     setMonthEvents(sortMonthEvents(nextMonthEvents));
     setTodos(nextTodos);
+    setStudySubjects(sortStudySubjects(nextStudySubjects));
+    setStudyMaterials(sortStudyMaterials(nextStudyMaterials));
     setScheduleTemplates(remappedScheduleTemplates);
     setTimetableTerms(resolvedTimetableTerms);
     setTimetablePeriods(resolvedTimetablePeriods);
@@ -580,6 +625,8 @@ export function usePlannerDataState({
     setDayNotes([]);
     setMonthEvents([]);
     setTodos([]);
+    setStudySubjects([]);
+    setStudyMaterials([]);
     setScheduleTemplates([]);
     setTimetableTerms([]);
     setTimetablePeriods([]);
@@ -1322,6 +1369,183 @@ export function usePlannerDataState({
     }
   }
 
+  async function saveStudySubject(
+    draft: StudySubjectDraft,
+    targetSubjectId?: string,
+  ): Promise<StudySubject> {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    const name = draft.name.trim();
+    if (!name) {
+      showNotice('教科名を入れてください。', 'error');
+      throw new Error('教科名を入れてください。');
+    }
+
+    const currentSubject = studySubjects.find(
+      (subject) => subject.id === targetSubjectId,
+    );
+    const now = new Date().toISOString();
+    const nextSubject: StudySubject = {
+      id: currentSubject?.id ?? createId('study-subject'),
+      userId,
+      name,
+      color: draft.color.trim() || currentSubject?.color || '#2f6fc2',
+      createdAt: currentSubject?.createdAt ?? now,
+      updatedAt: now,
+    };
+    const updatedMaterials = currentSubject
+      ? studyMaterials
+          .filter((material) => material.subjectId === currentSubject.id)
+          .map((material) => ({
+            ...material,
+            subjectName: nextSubject.name,
+            color: nextSubject.color,
+            updatedAt: now,
+          }))
+      : [];
+
+    try {
+      await plannerRepository.upsertStudySubject(nextSubject);
+      for (const material of updatedMaterials) {
+        await plannerRepository.upsertStudyMaterial(material);
+      }
+      setStudySubjects((current) =>
+        sortStudySubjects(upsertByKey(current, nextSubject, (subject) => subject.id)),
+      );
+      if (updatedMaterials.length > 0) {
+        setStudyMaterials((current) =>
+          sortStudyMaterials(
+            updatedMaterials.reduce(
+              (records, material) =>
+                upsertByKey(records, material, (item) => item.id),
+              current,
+            ),
+          ),
+        );
+      }
+      showNotice(
+        currentSubject ? '教科を更新しました。' : '教科を追加しました。',
+        'success',
+      );
+      return nextSubject;
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '教科を保存できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function deleteStudySubject(subject: StudySubject) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    const hasMaterials = studyMaterials.some(
+      (material) =>
+        material.userId === userId &&
+        material.subjectId === subject.id,
+    );
+
+    if (hasMaterials) {
+      showNotice('教材がある教科は削除できません。先に教材を削除してください。', 'error');
+      throw new Error('教材がある教科は削除できません。');
+    }
+
+    try {
+      await plannerRepository.deleteStudySubject(userId, subject.id);
+      setStudySubjects((current) =>
+        current.filter((item) => item.id !== subject.id),
+      );
+      showDeleteUndoNotice(async () => {
+        await plannerRepository.upsertStudySubject(subject);
+        setStudySubjects((current) =>
+          sortStudySubjects(upsertByKey(current, subject, (item) => item.id)),
+        );
+      });
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '教科を削除できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function saveStudyMaterial(
+    draft: StudyMaterialDraft,
+    targetMaterialId?: string,
+  ): Promise<StudyMaterial> {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    const name = draft.name.trim();
+    const subject = studySubjects.find((item) => item.id === draft.subjectId);
+
+    if (!name) {
+      showNotice('教材名を入れてください。', 'error');
+      throw new Error('教材名を入れてください。');
+    }
+
+    if (!subject) {
+      showNotice('教科を選択してください。', 'error');
+      throw new Error('教科を選択してください。');
+    }
+
+    const currentMaterial = studyMaterials.find(
+      (material) => material.id === targetMaterialId,
+    );
+    const now = new Date().toISOString();
+    const nextMaterial: StudyMaterial = {
+      id: currentMaterial?.id ?? createId('study-material'),
+      userId,
+      name,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      color: draft.color ?? subject.color,
+      coverImageDataUrl: draft.coverImageDataUrl || undefined,
+      aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
+      status: draft.status ?? currentMaterial?.status ?? 'active',
+      createdAt: currentMaterial?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    try {
+      await plannerRepository.upsertStudyMaterial(nextMaterial);
+      setStudyMaterials((current) =>
+        sortStudyMaterials(upsertByKey(current, nextMaterial, (item) => item.id)),
+      );
+      showNotice(
+        currentMaterial ? '教材を更新しました。' : '教材を追加しました。',
+        'success',
+      );
+      return nextMaterial;
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '教材を保存できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
+  async function deleteStudyMaterial(material: StudyMaterial) {
+    if (!userId) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    try {
+      await plannerRepository.deleteStudyMaterial(userId, material.id);
+      setStudyMaterials((current) =>
+        current.filter((item) => item.id !== material.id),
+      );
+      showDeleteUndoNotice(async () => {
+        await plannerRepository.upsertStudyMaterial(material);
+        setStudyMaterials((current) =>
+          sortStudyMaterials(upsertByKey(current, material, (item) => item.id)),
+        );
+      });
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '教材を削除できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
   async function saveScheduleTemplate(
     draft: ScheduleTemplateDraft,
     targetTemplateId?: string,
@@ -1644,6 +1868,8 @@ export function usePlannerDataState({
     dayNotes,
     monthEvents,
     todos,
+    studySubjects,
+    studyMaterials,
     scheduleTemplates,
     timetableTerms,
     timetablePeriods,
@@ -1681,6 +1907,10 @@ export function usePlannerDataState({
     saveTodo,
     scheduleTodoAsPlan,
     deleteTodo,
+    saveStudySubject,
+    deleteStudySubject,
+    saveStudyMaterial,
+    deleteStudyMaterial,
     saveScheduleTemplate,
     deleteScheduleTemplate,
     activateTimetableTerm,

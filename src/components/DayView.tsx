@@ -44,6 +44,8 @@ interface DayViewProps {
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
+  onOpenBookshelf: () => void;
+  onOpenAddMaterial: () => void;
 }
 
 type DayViewModalState =
@@ -104,6 +106,8 @@ export function DayView({
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
   onDeleteActual,
+  onOpenBookshelf,
+  onOpenAddMaterial,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
@@ -497,6 +501,21 @@ export function DayView({
         onImportTimetable={openTimetableImport}
         timetableImportCount={timetableImportCandidates.length}
       />
+
+      <section className="panel daily-bookshelf-link-card print-hide">
+        <div>
+          <strong>教材</strong>
+          <p className="empty-copy">教材管理は本棚にまとめています。</p>
+        </div>
+        <div className="row-actions">
+          <button className="ghost-button" onClick={onOpenBookshelf} type="button">
+            本棚を開く
+          </button>
+          <button className="primary-button" onClick={onOpenAddMaterial} type="button">
+            教材を追加
+          </button>
+        </div>
+      </section>
     </section>
   );
 }
