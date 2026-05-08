@@ -129,7 +129,10 @@ async function listActualsByPlanId(
     ),
   );
 
-  return snapshot.docs.map((document) => document.data() as Actual);
+  return snapshot.docs.map((document) => ({
+    ...document.data(),
+    id: document.id,
+  }) as Actual);
 }
 
 export function createFirebasePlannerRepository(

@@ -372,8 +372,8 @@ export function DayView({
               <StandaloneActualEditorCard
                 key={selectedStandaloneActual.id}
                 actual={selectedStandaloneActual}
-                plans={dayPlans}
-                actuals={dayActuals}
+                plans={plans}
+                actuals={actuals}
                 onSaveStandaloneActual={onSaveStandaloneActual}
                 onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
                 onDeleteActual={onDeleteActual}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { minutesBetween, minutesFromTime, timeFromMinutes } from '../lib/date';
+import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 
@@ -81,7 +82,8 @@ export function StandaloneActualEditorCard({
     isAlignedToPlan: false,
     note,
   };
-  const linkCandidates = buildActualPlanLinkCandidates(candidateActual, plans, actuals);
+  const candidatePlans = expandPlansForDate(plans, occurrenceDate);
+  const linkCandidates = buildActualPlanLinkCandidates(candidateActual, candidatePlans, actuals);
 
   useEffect(() => {
     const nextDuration = getInitialDuration(actual);
