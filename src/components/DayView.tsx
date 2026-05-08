@@ -329,6 +329,8 @@ export function DayView({
               <ActualEditorCard
                 key={buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date)}
                 plan={selectedDetailPlan}
+                plans={plans}
+                actuals={actuals}
                 actual={selectedDetailActual}
                 onEditPlan={onEditPlan}
                 onDeletePlan={onDeletePlan}

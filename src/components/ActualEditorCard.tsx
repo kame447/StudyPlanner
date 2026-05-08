@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
-import { getPlanOccurrenceDate } from '../lib/planRecurrence';
+import { expandPlansForDate, getPlanOccurrenceDate } from '../lib/planRecurrence';
+import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
+  plans: Plan[];
+  actuals: Actual[];
   actual?: Actual;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
@@ -54,6 +57,8 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
 
 export function ActualEditorCard({
   plan,
+  plans,
+  actuals,
   actual,
   onEditPlan,
   onDeletePlan,
@@ -67,11 +72,13 @@ export function ActualEditorCard({
   const [draft, setDraft] = useState<ActualDraft>(buildDraft(plan, actual));
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');
+  const [selectedCandidatePlanId, setSelectedCandidatePlanId] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(buildDraft(plan, actual));
     setError('');
     setIsOpen(forceOpen || !actual);
+    setSelectedCandidatePlanId(null);
   }, [actual?.id, forceOpen, plan]);
 
   const planMinutes = minutesBetween(plan.startTime, plan.endTime);
@@ -83,6 +90,30 @@ export function ActualEditorCard({
   const actualTitle = resolveActualTitle(plan, actual);
   const actualSubject = resolveActualSubject(plan, actual);
   const alignedToPlan = resolveAlignedToPlan(plan, actual);
+  const isActualDateChanged = Boolean(actual && draft.occurrenceDate !== actual.occurrenceDate);
+  const candidateActual =
+    actual && isActualDateChanged
+      ? {
+          ...actual,
+          occurrenceDate: draft.occurrenceDate,
+          actualStartTime: draft.actualStartTime,
+          actualEndTime: draft.actualEndTime,
+          title: draft.title,
+          subject: draft.subject,
+          isAlignedToPlan: false,
+          note: draft.note,
+        }
+      : null;
+  const candidatePlans = useMemo(
+    () => expandPlansForDate(plans, draft.occurrenceDate),
+    [draft.occurrenceDate, plans],
+  );
+  const linkCandidates = candidateActual
+    ? buildActualPlanLinkCandidates(candidateActual, candidatePlans, actuals)
+    : [];
+  const selectedCandidate = linkCandidates.find(
+    (candidate) => candidate.plan.id === selectedCandidatePlanId,
+  );
 
   function setAlignedToPlan(nextAligned: boolean) {
     setDraft((current) => ({
@@ -115,7 +146,16 @@ export function ActualEditorCard({
 
     setError('');
     try {
-      await onSaveActual(plan, draft, actual?.id);
+      const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
+      const nextDraft: ActualDraft = isActualDateChanged
+        ? {
+            ...draft,
+            planId: selectedCandidate?.plan.id ?? null,
+            isAlignedToPlan: false,
+          }
+        : draft;
+
+      await onSaveActual(nextPlan, nextDraft, actual?.id);
       setIsOpen(false);
     } catch {
       setError('記録の保存に失敗しました。');
@@ -238,12 +278,13 @@ export function ActualEditorCard({
                 <input
                   type="date"
                   value={draft.occurrenceDate}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setSelectedCandidatePlanId(null);
                     setDraft({
                       ...draft,
                       occurrenceDate: event.target.value,
-                    })
-                  }
+                    });
+                  }}
                 />
               </label>
               <label className="field">
@@ -358,6 +399,70 @@ export function ActualEditorCard({
               />
             </label>
           </section>
+
+          {isActualDateChanged ? (
+            <section className="actual-editor-section standalone-link-section">
+              <div className="actual-editor-section-title">
+                <strong>変更後の日付の紐づけ候補</strong>
+              </div>
+              {linkCandidates.length > 0 ? (
+                <>
+                  <div className="standalone-link-candidates">
+                    {linkCandidates.map((candidate, index) => {
+                      const isSelected = selectedCandidatePlanId === candidate.plan.id;
+
+                      return (
+                        <article
+                          className={
+                            isSelected
+                              ? 'standalone-link-candidate selected'
+                              : 'standalone-link-candidate'
+                          }
+                          key={candidate.occurrenceKey}
+                        >
+                          <div>
+                            <div className="label-row">
+                              <strong>
+                                {candidate.plan.startTime}-{candidate.plan.endTime} {candidate.plan.title}
+                              </strong>
+                              {index === 0 && candidate.score >= 70 ? (
+                                <span className="type-badge">おすすめ</span>
+                              ) : null}
+                              {candidate.isRecorded ? (
+                                <span className="type-badge">記録済み</span>
+                              ) : null}
+                              {isSelected ? <span className="type-badge">選択中</span> : null}
+                            </div>
+                            <p className="comparison-subtitle">
+                              {candidate.plan.subject || '科目未設定'}
+                              {candidate.reasons.length > 0
+                                ? ` / ${candidate.reasons.join('・')}`
+                                : ''}
+                            </p>
+                          </div>
+                          <button
+                            className="mini-button"
+                            disabled={candidate.isRecorded}
+                            onClick={() => setSelectedCandidatePlanId(candidate.plan.id)}
+                            type="button"
+                          >
+                            {isSelected ? '選択中' : 'この予定に紐づける'}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <p className="inline-note">
+                    候補を選ばず保存すると、予定なし記録として保存されます。
+                  </p>
+                </>
+              ) : (
+                <p className="inline-note">
+                  候補を選ばず保存すると、予定なし記録として保存されます。
+                </p>
+              )}
+            </section>
+          ) : null}
 
           <details className="actual-tracking-details">
             <summary>計測補助</summary>
