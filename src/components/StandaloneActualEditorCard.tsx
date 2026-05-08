@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { minutesBetween, minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
+import { inferSubjectFromTitle } from '../lib/subjectInference';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 
 type DurationOptionValue = number | 'custom';
@@ -57,6 +58,7 @@ export function StandaloneActualEditorCard({
   const initialDuration = getInitialDuration(actual);
   const [title, setTitle] = useState(actual.title?.trim() || '');
   const [subject, setSubject] = useState(actual.subject.trim());
+  const [subjectWasEdited, setSubjectWasEdited] = useState(false);
   const [occurrenceDate, setOccurrenceDate] = useState(actual.occurrenceDate);
   const [startTime, setStartTime] = useState(actual.actualStartTime);
   const [durationMinutes, setDurationMinutes] = useState<number | null>(initialDuration);
@@ -92,6 +94,7 @@ export function StandaloneActualEditorCard({
 
     setTitle(actual.title?.trim() || '');
     setSubject(actual.subject.trim());
+    setSubjectWasEdited(false);
     setOccurrenceDate(actual.occurrenceDate);
     setStartTime(actual.actualStartTime);
     setDurationMinutes(nextDuration);
@@ -124,6 +127,23 @@ export function StandaloneActualEditorCard({
     setDurationMinutes(
       Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
     );
+  }
+
+  function updateTitle(nextTitle: string) {
+    setTitle(nextTitle);
+
+    if (!subjectWasEdited && !subject.trim()) {
+      const inferredSubject = inferSubjectFromTitle(nextTitle);
+
+      if (inferredSubject) {
+        setSubject(inferredSubject);
+      }
+    }
+  }
+
+  function updateSubject(nextSubject: string) {
+    setSubjectWasEdited(true);
+    setSubject(nextSubject);
   }
 
   async function handleSave() {
@@ -241,7 +261,7 @@ export function StandaloneActualEditorCard({
               <span>タイトル</span>
               <input
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
+                onChange={(event) => updateTitle(event.target.value)}
                 placeholder="例: 英語の復習"
               />
             </label>
@@ -249,7 +269,7 @@ export function StandaloneActualEditorCard({
               <span>科目</span>
               <input
                 value={subject}
-                onChange={(event) => setSubject(event.target.value)}
+                onChange={(event) => updateSubject(event.target.value)}
                 placeholder="英語"
               />
             </label>

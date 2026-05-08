@@ -3,6 +3,7 @@ import { Pin } from 'lucide-react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
+import { inferSubjectFromTitle } from '../lib/subjectInference';
 import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
@@ -93,6 +94,7 @@ export function QuickEntryModal({
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
+  const [subjectWasEdited, setSubjectWasEdited] = useState(false);
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
@@ -233,6 +235,23 @@ export function QuickEntryModal({
         ) : null}
       </section>
     );
+  }
+
+  function updateTitle(nextTitle: string) {
+    setTitle(nextTitle);
+
+    if (!subjectWasEdited && !subject.trim()) {
+      const inferredSubject = inferSubjectFromTitle(nextTitle);
+
+      if (inferredSubject) {
+        setSubject(inferredSubject);
+      }
+    }
+  }
+
+  function updateSubject(nextSubject: string) {
+    setSubjectWasEdited(true);
+    setSubject(nextSubject);
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
@@ -440,11 +459,11 @@ export function QuickEntryModal({
                   <span>
                     {MODE_OPTIONS.find((option) => option.value === mode)?.label}
                   </span>
-                  <input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="例: 英語課題 / 面接準備"
-                  />
+                    <input
+                      value={title}
+                      onChange={(event) => updateTitle(event.target.value)}
+                      placeholder="例: 英語課題 / 面接準備"
+                    />
                 </label>
               </section>
 
@@ -471,7 +490,7 @@ export function QuickEntryModal({
                       <span>教科</span>
                       <input
                         value={subject}
-                        onChange={(event) => setSubject(event.target.value)}
+                        onChange={(event) => updateSubject(event.target.value)}
                         placeholder="数学"
                       />
                     </label>
@@ -675,11 +694,11 @@ export function QuickEntryModal({
               <section className="quick-entry-card quick-entry-title-card">
                 <label className="quick-entry-title-field">
                   <span>タイトル</span>
-                  <input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="例: 英語の復習"
-                  />
+                    <input
+                      value={title}
+                      onChange={(event) => updateTitle(event.target.value)}
+                      placeholder="例: 英語の復習"
+                    />
                 </label>
               </section>
 
@@ -717,7 +736,7 @@ export function QuickEntryModal({
                       <span>科目</span>
                       <input
                         value={subject}
-                        onChange={(event) => setSubject(event.target.value)}
+                        onChange={(event) => updateSubject(event.target.value)}
                         placeholder="英語"
                       />
                     </label>
