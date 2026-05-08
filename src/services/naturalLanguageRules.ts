@@ -11,6 +11,8 @@ import type {
   PlanType,
   RecurrenceRule,
   RecurrenceWeekday,
+  StudyMaterial,
+  StudySubject,
 } from '../types/domain';
 
 export interface SuggestionInput {
@@ -19,6 +21,8 @@ export interface SuggestionInput {
   selectedDate: string;
   plans: Plan[];
   userId: string;
+  userMaterials?: StudyMaterial[];
+  userSubjects?: StudySubject[];
 }
 
 const LOCALIZED_NUMBER_PATTERN = '(?:\\d+(?:\\.\\d+)?|[〇零一二三四五六七八九十百]+)';

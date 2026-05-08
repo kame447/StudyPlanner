@@ -11,12 +11,16 @@ import type {
   Plan,
   PlanDraft,
   SuggestionField,
+  StudyMaterial,
+  StudySubject,
 } from '../types/domain';
 
 interface NaturalLanguageAssistantProps {
   selectedDate: string;
   userId: string;
   plans: Plan[];
+  materials?: StudyMaterial[];
+  subjects?: StudySubject[];
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   embedded?: boolean;
 }
@@ -72,6 +76,8 @@ export function NaturalLanguageAssistant({
   selectedDate,
   userId,
   plans,
+  materials = [],
+  subjects = [],
   onApplyDraft,
   embedded = false,
 }: NaturalLanguageAssistantProps) {
@@ -114,6 +120,8 @@ export function NaturalLanguageAssistant({
         selectedDate,
         plans,
         userId,
+        userMaterials: materials,
+        userSubjects: subjects,
       });
 
       setError('');

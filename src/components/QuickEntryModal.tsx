@@ -3,7 +3,10 @@ import { Pin } from 'lucide-react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
-import { inferSubjectFromTitle } from '../lib/subjectInference';
+import {
+  inferSubjectFromTitle,
+  inferSubjectFromTitleWithUserCatalog,
+} from '../lib/subjectInference';
 import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
@@ -20,6 +23,7 @@ import type {
   PlanType,
   RecurrenceWeekday,
   StudyMaterial,
+  StudySubject,
   TodoTaskDraft,
 } from '../types/domain';
 
@@ -28,6 +32,7 @@ type QuickEntryInputMethod = 'ai' | 'manual';
 type QuickEntryKind = 'plan' | 'actual';
 type DurationOptionValue = number | null | 'custom';
 type SubjectSource = 'none' | 'title' | 'material' | 'user';
+type MaterialSource = 'none' | 'title' | 'user';
 
 interface QuickEntryModalProps {
   userId: string;
@@ -35,6 +40,7 @@ interface QuickEntryModalProps {
   plans: Plan[];
   actuals: Actual[];
   materials: StudyMaterial[];
+  subjects: StudySubject[];
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -87,6 +93,7 @@ export function QuickEntryModal({
   plans,
   actuals,
   materials,
+  subjects,
   onClose,
   onSaveTodo,
   onSavePlan,
@@ -100,6 +107,7 @@ export function QuickEntryModal({
   const [subject, setSubject] = useState('');
   const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
   const [selectedMaterialId, setSelectedMaterialId] = useState('');
+  const [materialSource, setMaterialSource] = useState<MaterialSource>('none');
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
@@ -129,6 +137,10 @@ export function QuickEntryModal({
           material.userId === userId && material.status !== 'archived',
       ),
     [materials, userId],
+  );
+  const availableSubjects = useMemo(
+    () => subjects.filter((subjectItem) => subjectItem.userId === userId),
+    [subjects, userId],
   );
   const selectedMaterial =
     availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
@@ -255,11 +267,41 @@ export function QuickEntryModal({
   function updateTitle(nextTitle: string) {
     setTitle(nextTitle);
 
-    if (subjectSource !== 'user' && subjectSource !== 'material' && !subject.trim()) {
-      const inferredSubject = inferSubjectFromTitle(nextTitle);
+    if (materialSource !== 'user') {
+      const inference = inferSubjectFromTitleWithUserCatalog(nextTitle, {
+        userMaterials: availableMaterials,
+        userSubjects: availableSubjects,
+      });
 
-      if (inferredSubject) {
-        setSubject(inferredSubject);
+      if (inference.source === 'material' && inference.materialId) {
+        setSelectedMaterialId(inference.materialId);
+        setMaterialSource('title');
+
+        if (subjectSource !== 'user' && inference.subject) {
+          setSubject(inference.subject);
+          setSubjectSource('material');
+        }
+        return;
+      }
+
+      const didClearTitleMaterial = materialSource === 'title';
+
+      if (didClearTitleMaterial) {
+        setSelectedMaterialId('');
+        setMaterialSource('none');
+
+        if (subjectSource === 'material') {
+          setSubject('');
+          setSubjectSource('none');
+        }
+      }
+
+      if (
+        subjectSource !== 'user' &&
+        (subjectSource !== 'material' || didClearTitleMaterial) &&
+        inference.subject
+      ) {
+        setSubject(inference.subject);
         setSubjectSource('title');
       }
     }
@@ -272,6 +314,7 @@ export function QuickEntryModal({
 
   function selectMaterial(materialId: string) {
     setSelectedMaterialId(materialId);
+    setMaterialSource(materialId ? 'user' : 'none');
 
     const material =
       availableMaterials.find((item) => item.id === materialId) ?? null;
@@ -530,6 +573,8 @@ export function QuickEntryModal({
                 selectedDate={selectedDate}
                 userId={userId}
                 plans={plans}
+                materials={availableMaterials}
+                subjects={availableSubjects}
                 onApplyDraft={onSavePlan}
                 embedded
               />

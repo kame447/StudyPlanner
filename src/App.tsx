@@ -419,6 +419,7 @@ export default function App() {
           plans={plans}
           actuals={actuals}
           materials={studyMaterials}
+          subjects={studySubjects}
           onClose={() => setIsQuickEntryOpen(false)}
           onSaveTodo={saveTodo}
           onSavePlan={savePlanDraft}

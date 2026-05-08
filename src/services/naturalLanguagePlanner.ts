@@ -8,6 +8,7 @@ import {
   summarizeLegacyRepeatUntilFromRecurrenceRules,
 } from '../lib/planRecurrence';
 import { buildDefaultPlanTitle } from '../lib/plans';
+import { inferSubjectFromTitleWithUserCatalog } from '../lib/subjectInference';
 import type {
   NaturalLanguageSuggestion,
   Plan,
@@ -3260,6 +3261,66 @@ interface CurrentPipelineRun {
   error?: unknown;
 }
 
+function applyUserCatalogInferenceToDraft(
+  draft: PlanDraft,
+  rawText: string,
+  input: SuggestionInput,
+): PlanDraft {
+  if (!input.userMaterials?.length && !input.userSubjects?.length) {
+    return draft;
+  }
+
+  const inference = inferSubjectFromTitleWithUserCatalog(
+    [rawText, draft.title, draft.memo].filter(Boolean).join(' '),
+    {
+      userMaterials: input.userMaterials,
+      userSubjects: input.userSubjects,
+    },
+  );
+
+  if (inference.source === 'none') {
+    return draft;
+  }
+
+  const nextTitle =
+    inference.source === 'material' && inference.materialName
+      ? inference.materialName
+      : draft.title;
+  const nextSubject = inference.subject ?? draft.subject;
+  const shouldAttachMaterial = inference.source === 'material';
+
+  return {
+    ...draft,
+    title: nextTitle,
+    subject: nextSubject,
+    materialId: shouldAttachMaterial
+      ? inference.materialId ?? null
+      : draft.materialId,
+    materialName: shouldAttachMaterial
+      ? inference.materialName ?? ''
+      : draft.materialName,
+    recurrenceRules: draft.recurrenceRules.map((rule) => ({
+      ...rule,
+      title: !rule.title || rule.title === draft.title ? nextTitle : rule.title,
+      subject: !rule.subject || rule.subject === draft.subject ? nextSubject : rule.subject,
+    })),
+  };
+}
+
+function applyUserCatalogInferenceToSuggestions(
+  suggestions: NaturalLanguageSuggestion[],
+  input: SuggestionInput,
+): NaturalLanguageSuggestion[] {
+  return suggestions.map((suggestion) => ({
+    ...suggestion,
+    parsedPlan: applyUserCatalogInferenceToDraft(
+      suggestion.parsedPlan,
+      suggestion.rawText,
+      input,
+    ),
+  }));
+}
+
 const AI_ASSIST_DIAGNOSTIC_CODES = new Set([
   'CONNECTIVE_WITHOUT_BASE',
   'TIME_ONLY_WITHOUT_BASE',
@@ -3584,30 +3645,36 @@ export async function generateNaturalLanguageSuggestions(
     const pipelineRun = runCurrentAddPipeline(input);
 
     if (!shouldUseAiAssist(input, pipelineRun)) {
-      return pipelineRun.suggestions;
+      return applyUserCatalogInferenceToSuggestions(pipelineRun.suggestions, input);
     }
 
     const assistSuggestions = await runAiAssist(input);
     if (hasUnsupportedPlanningFamily(input.text) && assistSuggestions.length > 0) {
-      return assistSuggestions;
+      return applyUserCatalogInferenceToSuggestions(assistSuggestions, input);
     }
 
-    return mergeAssistIntoPipelineResult(
-      pipelineRun.suggestions,
-      assistSuggestions,
+    return applyUserCatalogInferenceToSuggestions(
+      mergeAssistIntoPipelineResult(
+        pipelineRun.suggestions,
+        assistSuggestions,
+      ),
+      input,
     );
   }
 
   const pipelineRun = runCurrentEditPipeline(input);
 
   if (!shouldUseAiAssist(input, pipelineRun)) {
-    return pipelineRun.suggestions;
+    return applyUserCatalogInferenceToSuggestions(pipelineRun.suggestions, input);
   }
 
   const assistSuggestions = await runAiAssist(input);
-  return mergeAssistIntoPipelineResult(
-    pipelineRun.suggestions,
-    assistSuggestions,
+  return applyUserCatalogInferenceToSuggestions(
+    mergeAssistIntoPipelineResult(
+      pipelineRun.suggestions,
+      assistSuggestions,
+    ),
+    input,
   );
 }
 

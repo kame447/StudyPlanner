@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { NaturalLanguageSuggestion, Plan } from '../../../types/domain';
+import type {
+  NaturalLanguageSuggestion,
+  Plan,
+  StudyMaterial,
+} from '../../../types/domain';
 import type { SuggestionInput } from '../../naturalLanguageRules';
 import * as planner from '../../naturalLanguagePlanner';
 
@@ -107,6 +111,21 @@ function createMockSuggestion(
   };
 }
 
+function createStudyMaterial(
+  overrides: Pick<StudyMaterial, 'id' | 'name' | 'subjectName'> &
+    Partial<StudyMaterial>,
+): StudyMaterial {
+  return {
+    userId: 'user-1',
+    subjectId: 'subject-1',
+    color: '#2f6fc2',
+    status: 'active',
+    createdAt: '2026-04-16T00:00:00.000Z',
+    updatedAt: '2026-04-16T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 afterEach(() => {
   facadeState.provider = 'rules';
   facadeState.currentPipelineOnly = false;
@@ -123,6 +142,39 @@ afterEach(() => {
 });
 
 describe('naturalLanguagePlanner facade', () => {
+  it('prefers user bookshelf material over adapter labels', async () => {
+    const adapterSuggestion = createMockSuggestion('今日21時からAtCoderを2時間', {
+      parsedPlan: {
+        ...createMockSuggestion('base').parsedPlan,
+        title: 'AtCoderを2時間',
+        subject: '数学',
+      },
+    });
+    facadeState.addPipelineRun = {
+      pipelineResult: undefined,
+      suggestions: [adapterSuggestion],
+    };
+
+    const suggestions = await planner.generateNaturalLanguageSuggestions({
+      ...createAddInput('今日21時からAtCoderを2時間'),
+      userMaterials: [
+        createStudyMaterial({
+          id: 'material-atcoder',
+          name: 'AtCoder',
+          subjectName: '情報',
+        }),
+      ],
+      userSubjects: [],
+    });
+
+    expect(suggestions[0].parsedPlan).toMatchObject({
+      title: 'AtCoder',
+      subject: '情報',
+      materialId: 'material-atcoder',
+      materialName: 'AtCoder',
+    });
+  });
+
   it('add は current pipeline adapter 経路を優先する', async () => {
     const adapterSuggestion = createMockSuggestion('明日19時から数学を1時間');
     facadeState.addPipelineRun = {
