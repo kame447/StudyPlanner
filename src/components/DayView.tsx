@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
+import { BookOpen } from 'lucide-react';
 import {
   addDays,
   formatDateLabel,
+  minutesFromTime,
   sortByDateTime,
+  timeFromMinutes,
 } from '../lib/date';
 import {
   buildPlanOccurrenceKey,
@@ -26,6 +35,8 @@ import type {
   Plan,
   PlanDraft,
   ScheduleTemplate,
+  StudyMaterial,
+  StudySubject,
 } from '../types/domain';
 
 interface DayViewProps {
@@ -34,6 +45,8 @@ interface DayViewProps {
   plans: Plan[];
   actuals: Actual[];
   monthEvents: MonthEvent[];
+  studySubjects: StudySubject[];
+  studyMaterials: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId: string;
   onChangeDay: (date: string) => void;
@@ -53,6 +66,59 @@ type DayViewModalState =
   | { type: 'plan-detail'; planId: string }
   | { type: 'month-event-detail'; monthEventId: string }
   | { type: 'standalone-actual-detail'; actualId: string };
+
+type MaterialQuickCreateKind = 'plan' | 'actual';
+type DurationOptionValue = number | 'custom';
+
+const MATERIAL_DURATION_OPTIONS: Array<{ value: DurationOptionValue; label: string }> = [
+  { value: 15, label: '15分' },
+  { value: 30, label: '30分' },
+  { value: 45, label: '45分' },
+  { value: 60, label: '60分' },
+  { value: 90, label: '90分' },
+  { value: 120, label: '120分' },
+  { value: 'custom', label: '自由' },
+];
+
+const FALLBACK_SUBJECT_COLOR = '#6b7280';
+
+function getSubjectStyle(color: string): CSSProperties {
+  return {
+    '--subject-color': color,
+  } as CSSProperties;
+}
+
+function calculateEndTime(startTime: string, durationMinutes: number | null): string | null {
+  if (durationMinutes === null || durationMinutes <= 0 || durationMinutes >= 24 * 60) {
+    return null;
+  }
+
+  return timeFromMinutes((minutesFromTime(startTime) + durationMinutes) % (24 * 60));
+}
+
+function MaterialShelfCover({
+  material,
+  color,
+}: {
+  material: StudyMaterial;
+  color: string;
+}) {
+  if (material.coverImageDataUrl || material.coverImageUrl) {
+    return (
+      <img
+        className="bookshelf-material-image"
+        src={material.coverImageDataUrl || material.coverImageUrl}
+        alt={material.name}
+      />
+    );
+  }
+
+  return (
+    <div className="bookshelf-material-placeholder" style={getSubjectStyle(color)}>
+      <BookOpen aria-hidden="true" size={22} strokeWidth={1.8} />
+    </div>
+  );
+}
 
 function createMonthEventActualPlan(
   monthEvent: MonthEvent,
@@ -90,12 +156,362 @@ function createMonthEventActualPlan(
   };
 }
 
+function MaterialQuickCreateModal({
+  userId,
+  selectedDate,
+  material,
+  subjectColor,
+  onClose,
+  onSavePlan,
+  onSaveStandaloneActual,
+}: {
+  userId: string;
+  selectedDate: string;
+  material: StudyMaterial;
+  subjectColor: string;
+  onClose: () => void;
+  onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+}) {
+  const [kind, setKind] = useState<MaterialQuickCreateKind>('actual');
+  const [date, setDate] = useState(selectedDate);
+  const [startTime, setStartTime] = useState('19:00');
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(30);
+  const [customDurationInput, setCustomDurationInput] = useState('');
+  const [isCustomDuration, setIsCustomDuration] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const endTime = calculateEndTime(startTime, durationMinutes);
+  const canSave = Boolean(endTime) && !isSubmitting;
+
+  function applyDurationOption(value: DurationOptionValue) {
+    if (value === 'custom') {
+      setIsCustomDuration(true);
+
+      const nextMinutes = Number(customDurationInput);
+      setDurationMinutes(
+        Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
+      );
+      return;
+    }
+
+    setIsCustomDuration(false);
+    setCustomDurationInput('');
+    setDurationMinutes(value);
+  }
+
+  function updateCustomDuration(value: string) {
+    setCustomDurationInput(value);
+
+    const nextMinutes = Number(value);
+    setDurationMinutes(
+      Number.isInteger(nextMinutes) && nextMinutes > 0 ? nextMinutes : null,
+    );
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!endTime) {
+      setError(
+        durationMinutes === null
+          ? '所要時間を選択してください。'
+          : '所要時間は24時間未満にしてください。',
+      );
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const baseFields = {
+        userId,
+        title: material.name,
+        subject: material.subjectName,
+        materialId: material.id,
+        materialName: material.name,
+      };
+
+      if (kind === 'plan') {
+        await onSavePlan({
+          ...baseFields,
+          date,
+          startTime,
+          endTime,
+          repeat: 'none',
+          repeatUntil: null,
+          excludedDates: [],
+          recurrenceRules: [],
+          type: 'study',
+          memo: '',
+          sourceType: 'manual',
+          sourceId: null,
+        });
+      } else {
+        await onSaveStandaloneActual({
+          ...baseFields,
+          planId: null,
+          occurrenceDate: date,
+          actualStartTime: startTime,
+          actualEndTime: endTime,
+          isAlignedToPlan: false,
+          note: '',
+        });
+      }
+
+      onClose();
+    } catch {
+      setError(kind === 'plan' ? '予定を保存できませんでした。' : '記録を保存できませんでした。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="overlay modal-overlay" onClick={onClose}>
+      <form
+        className="modal-card material-quick-modal"
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={handleSubmit}
+      >
+        <div className="section-stack">
+          <div className="section-header">
+            <div>
+              <h2>教材から追加</h2>
+              <p>{selectedDate}</p>
+            </div>
+            <button className="ghost-button" onClick={onClose} type="button">
+              閉じる
+            </button>
+          </div>
+
+          <div
+            className="material-quick-summary"
+            style={getSubjectStyle(subjectColor)}
+          >
+            <MaterialShelfCover material={material} color={subjectColor} />
+            <div>
+              <h3>{material.name}</h3>
+              <p>{material.subjectName}</p>
+            </div>
+          </div>
+
+          <div className="segmented-control">
+            {(
+              [
+                ['actual', '記録'],
+                ['plan', '予定'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                className={kind === value ? 'segment active' : 'segment'}
+                key={value}
+                onClick={() => setKind(value)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="material-quick-form">
+            <div className="quick-entry-two-column-grid">
+              <label className="field">
+                <span>日付</span>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>開始時間</span>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="material-quick-duration-grid">
+              {MATERIAL_DURATION_OPTIONS.map((option) => {
+                const isActive =
+                  option.value === 'custom'
+                    ? isCustomDuration
+                    : !isCustomDuration && durationMinutes === option.value;
+
+                return (
+                  <button
+                    className={isActive ? 'quick-entry-chip active' : 'quick-entry-chip'}
+                    key={option.label}
+                    onClick={() => applyDurationOption(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {isCustomDuration ? (
+              <label className="field quick-entry-custom-duration">
+                <span>自由入力（分）</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={customDurationInput}
+                  onChange={(event) => updateCustomDuration(event.target.value)}
+                  placeholder="75"
+                />
+              </label>
+            ) : null}
+
+            <p className={endTime ? 'inline-note' : 'inline-error'}>
+              {endTime ? `終了時刻: ${endTime}` : '所要時間を確認してください。'}
+            </p>
+          </div>
+
+          {error ? <p className="inline-error">{error}</p> : null}
+
+          <div className="row-actions">
+            <button className="primary-button" disabled={!canSave} type="submit">
+              {kind === 'plan' ? '予定にする' : '記録する'}
+            </button>
+            <button className="ghost-button" onClick={onClose} type="button">
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DailyMaterialShelf({
+  userId,
+  subjects,
+  materials,
+  onOpenBookshelf,
+  onOpenAddMaterial,
+  onSelectMaterial,
+}: {
+  userId: string;
+  subjects: StudySubject[];
+  materials: StudyMaterial[];
+  onOpenBookshelf: () => void;
+  onOpenAddMaterial: () => void;
+  onSelectMaterial: (material: StudyMaterial) => void;
+}) {
+  const activeMaterials = useMemo(
+    () =>
+      materials.filter(
+        (material) => material.userId === userId && material.status !== 'archived',
+      ),
+    [materials, userId],
+  );
+  const sections = useMemo(() => {
+    const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+    const grouped = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        color: string;
+        materials: StudyMaterial[];
+      }
+    >();
+
+    activeMaterials.forEach((material) => {
+      const subject = subjectById.get(material.subjectId);
+      const section = grouped.get(material.subjectId) ?? {
+        id: material.subjectId,
+        name: subject?.name || material.subjectName || '未分類',
+        color: subject?.color || material.color || FALLBACK_SUBJECT_COLOR,
+        materials: [],
+      };
+
+      section.materials.push(material);
+      grouped.set(material.subjectId, section);
+    });
+
+    return Array.from(grouped.values())
+      .map((section) => ({
+        ...section,
+        materials: section.materials.sort(
+          (left, right) =>
+            left.name.localeCompare(right.name, 'ja') ||
+            left.createdAt.localeCompare(right.createdAt),
+        ),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'ja'));
+  }, [activeMaterials, subjects]);
+
+  return (
+    <section className="panel daily-bookshelf-link-card print-hide">
+      <div className="daily-material-head">
+        <div>
+          <strong>教材から追加</strong>
+          <p className="empty-copy">教材を選んで、タイトル入力なしで予定・記録にできます。</p>
+        </div>
+        <div className="row-actions">
+          <button className="ghost-button" onClick={onOpenBookshelf} type="button">
+            本棚を開く
+          </button>
+          {activeMaterials.length === 0 ? (
+            <button className="primary-button" onClick={onOpenAddMaterial} type="button">
+              教材を追加
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {sections.length > 0 ? (
+        <div className="daily-material-section">
+          {sections.map((section) => (
+            <div className="daily-material-subject" key={section.id}>
+              <h3
+                className="daily-material-subject-title"
+                style={getSubjectStyle(section.color)}
+              >
+                {section.name}
+              </h3>
+              <div className="daily-material-row">
+                {section.materials.map((material) => (
+                  <button
+                    className="bookshelf-material-card daily-material-card"
+                    key={material.id}
+                    onClick={() => onSelectMaterial(material)}
+                    style={getSubjectStyle(material.color || section.color)}
+                    type="button"
+                  >
+                    <MaterialShelfCover
+                      material={material}
+                      color={material.color || section.color}
+                    />
+                    <span>{material.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-copy">本棚で教材を追加してください。</p>
+      )}
+    </section>
+  );
+}
+
 export function DayView({
   selectedDate,
   userId,
   plans,
   actuals,
   monthEvents,
+  studySubjects,
+  studyMaterials,
   scheduleTemplates,
   timetableTermId,
   onChangeDay,
@@ -110,6 +526,7 @@ export function DayView({
   onOpenAddMaterial,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
+  const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
   const [selectedTimetableSourceIds, setSelectedTimetableSourceIds] = useState<Set<string>>(
     () => new Set(),
@@ -220,6 +637,12 @@ export function DayView({
           (actual) => actual.id === modalState.actualId && !actual.planId,
         ) ?? null
       : null;
+  const quickMaterialSubjectColor =
+    quickMaterial
+      ? studySubjects.find((subject) => subject.id === quickMaterial.subjectId)?.color ||
+        quickMaterial.color ||
+        FALLBACK_SUBJECT_COLOR
+      : FALLBACK_SUBJECT_COLOR;
   useEffect(() => {
     if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId)) {
       setModalState({ type: 'closed' });
@@ -244,6 +667,7 @@ export function DayView({
 
   useEffect(() => {
     setModalState({ type: 'closed' });
+    setQuickMaterial(null);
   }, [selectedDate]);
 
   function closeModal() {
@@ -388,6 +812,18 @@ export function DayView({
         </div>
       ) : null}
 
+      {quickMaterial ? (
+        <MaterialQuickCreateModal
+          userId={userId}
+          selectedDate={selectedDate}
+          material={quickMaterial}
+          subjectColor={quickMaterialSubjectColor}
+          onClose={() => setQuickMaterial(null)}
+          onSavePlan={onSavePlan}
+          onSaveStandaloneActual={onSaveStandaloneActual}
+        />
+      ) : null}
+
       {isTimetableImportOpen ? (
         <div className="overlay modal-overlay" onClick={closeTimetableImport}>
           <div
@@ -502,20 +938,14 @@ export function DayView({
         timetableImportCount={timetableImportCandidates.length}
       />
 
-      <section className="panel daily-bookshelf-link-card print-hide">
-        <div>
-          <strong>教材</strong>
-          <p className="empty-copy">教材管理は本棚にまとめています。</p>
-        </div>
-        <div className="row-actions">
-          <button className="ghost-button" onClick={onOpenBookshelf} type="button">
-            本棚を開く
-          </button>
-          <button className="primary-button" onClick={onOpenAddMaterial} type="button">
-            教材を追加
-          </button>
-        </div>
-      </section>
+      <DailyMaterialShelf
+        userId={userId}
+        subjects={studySubjects}
+        materials={studyMaterials}
+        onOpenBookshelf={onOpenBookshelf}
+        onOpenAddMaterial={onOpenAddMaterial}
+        onSelectMaterial={setQuickMaterial}
+      />
     </section>
   );
 }

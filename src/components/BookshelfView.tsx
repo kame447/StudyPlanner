@@ -476,8 +476,11 @@ export function BookshelfView({
     undefined,
   );
   const activeMaterials = useMemo(
-    () => materials.filter((material) => material.status !== 'archived'),
-    [materials],
+    () =>
+      materials.filter(
+        (material) => material.userId === userId && material.status !== 'archived',
+      ),
+    [materials, userId],
   );
   const subjectsWithFallback = useMemo(() => {
     const subjectIds = new Set(subjects.map((subject) => subject.id));
