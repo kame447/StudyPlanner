@@ -160,7 +160,6 @@ function MaterialQuickCreateModal({
   userId,
   selectedDate,
   material,
-  subjectColor,
   onClose,
   onSavePlan,
   onSaveStandaloneActual,
@@ -168,7 +167,6 @@ function MaterialQuickCreateModal({
   userId: string;
   selectedDate: string;
   material: StudyMaterial;
-  subjectColor: string;
   onClose: () => void;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -278,22 +276,10 @@ function MaterialQuickCreateModal({
           <div className="section-header">
             <div>
               <h2>教材から追加</h2>
-              <p>{selectedDate}</p>
             </div>
             <button className="ghost-button" onClick={onClose} type="button">
               閉じる
             </button>
-          </div>
-
-          <div
-            className="material-quick-summary"
-            style={getSubjectStyle(subjectColor)}
-          >
-            <MaterialShelfCover material={material} color={subjectColor} />
-            <div>
-              <h3>{material.name}</h3>
-              <p>{material.subjectName}</p>
-            </div>
           </div>
 
           <div
@@ -390,9 +376,6 @@ function MaterialQuickCreateModal({
               </label>
             ) : null}
 
-            <p className={endTime ? 'inline-note' : 'inline-error'}>
-              {endTime ? `終了時刻: ${endTime}` : '所要時間を確認してください。'}
-            </p>
           </div>
 
           {error ? <p className="inline-error">{error}</p> : null}
@@ -400,9 +383,6 @@ function MaterialQuickCreateModal({
           <div className="row-actions">
             <button className="primary-button" disabled={!canSave} type="submit">
               登録する
-            </button>
-            <button className="ghost-button" onClick={onClose} type="button">
-              キャンセル
             </button>
           </div>
         </div>
@@ -659,12 +639,6 @@ export function DayView({
           (actual) => actual.id === modalState.actualId && !actual.planId,
         ) ?? null
       : null;
-  const quickMaterialSubjectColor =
-    quickMaterial
-      ? studySubjects.find((subject) => subject.id === quickMaterial.subjectId)?.color ||
-        quickMaterial.color ||
-        FALLBACK_SUBJECT_COLOR
-      : FALLBACK_SUBJECT_COLOR;
   useEffect(() => {
     if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId)) {
       setModalState({ type: 'closed' });
@@ -839,7 +813,6 @@ export function DayView({
           userId={userId}
           selectedDate={selectedDate}
           material={quickMaterial}
-          subjectColor={quickMaterialSubjectColor}
           onClose={() => setQuickMaterial(null)}
           onSavePlan={onSavePlan}
           onSaveStandaloneActual={onSaveStandaloneActual}
