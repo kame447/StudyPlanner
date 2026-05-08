@@ -41,6 +41,8 @@ function createStoredPlanDraft(plan: Plan): PlanDraft {
     recurrenceRules: resolveWorkingRules(plan).map(cloneRule),
     type: plan.type,
     memo: plan.memo,
+    materialId: plan.materialId ?? null,
+    materialName: plan.materialName ?? '',
   };
 }
 

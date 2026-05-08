@@ -175,6 +175,8 @@ export function StandaloneActualEditorCard({
           subject: subject.trim(),
           isAlignedToPlan: false,
           note: note.trim(),
+          materialId: actual.materialId ?? null,
+          materialName: actual.materialName ?? '',
         },
         actual.id,
       );

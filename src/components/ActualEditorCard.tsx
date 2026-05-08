@@ -52,6 +52,8 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
     subject: resolveActualSubject(plan, actual),
     isAlignedToPlan: resolveAlignedToPlan(plan, actual),
     note: actual?.note ?? '',
+    materialId: actual?.materialId ?? plan.materialId ?? null,
+    materialName: actual?.materialName ?? plan.materialName ?? '',
   };
 }
 
@@ -121,6 +123,8 @@ export function ActualEditorCard({
       isAlignedToPlan: nextAligned,
       title: nextAligned ? plan.title : current.title || plan.title,
       subject: nextAligned ? plan.subject : current.subject || plan.subject,
+      materialId: nextAligned ? plan.materialId ?? null : current.materialId,
+      materialName: nextAligned ? plan.materialName ?? '' : current.materialName,
     }));
   }
 

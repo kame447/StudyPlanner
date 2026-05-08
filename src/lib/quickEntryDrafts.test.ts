@@ -157,4 +157,19 @@ describe('buildQuickEntryPlanDraft', () => {
       endTime: '19:30',
     });
   });
+
+  it('keeps selected material fields on scheduled plan drafts', () => {
+    const draft = buildQuickEntryPlanDraft({
+      ...baseInput,
+      mode: 'scheduled',
+      repeatKind: 'daily',
+      materialId: 'material-1',
+      materialName: '黄色チャート',
+    });
+
+    expect(draft).toMatchObject({
+      materialId: 'material-1',
+      materialName: '黄色チャート',
+    });
+  });
 });

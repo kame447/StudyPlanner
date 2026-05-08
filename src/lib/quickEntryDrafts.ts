@@ -26,6 +26,8 @@ export interface QuickEntryPlanDraftInput {
   estimatedMinutes: number | null;
   repeatKind: QuickEntryRepeatKind;
   weekdays: readonly RecurrenceWeekday[];
+  materialId?: string | null;
+  materialName?: string;
 }
 
 export function isSupportedQuickEntryRepeatKind(
@@ -66,6 +68,8 @@ export function buildQuickEntryPlanDraft(
 
   const subject = input.subject.trim();
   const memo = input.memo.trim();
+  const materialId = input.materialId?.trim() || null;
+  const materialName = input.materialName?.trim() ?? '';
   const endTime = resolveQuickEntryEndTime(
     input.startTime,
     input.estimatedMinutes,
@@ -125,5 +129,7 @@ export function buildQuickEntryPlanDraft(
     memo,
     sourceType: 'manual',
     sourceId: null,
+    materialId,
+    materialName,
   };
 }

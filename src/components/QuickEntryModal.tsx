@@ -19,6 +19,7 @@ import type {
   PlanDraft,
   PlanType,
   RecurrenceWeekday,
+  StudyMaterial,
   TodoTaskDraft,
 } from '../types/domain';
 
@@ -26,12 +27,14 @@ type QuickEntryMode = 'later' | 'scheduled' | 'repeat';
 type QuickEntryInputMethod = 'ai' | 'manual';
 type QuickEntryKind = 'plan' | 'actual';
 type DurationOptionValue = number | null | 'custom';
+type SubjectSource = 'none' | 'title' | 'material' | 'user';
 
 interface QuickEntryModalProps {
   userId: string;
   selectedDate: string;
   plans: Plan[];
   actuals: Actual[];
+  materials: StudyMaterial[];
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -83,6 +86,7 @@ export function QuickEntryModal({
   selectedDate,
   plans,
   actuals,
+  materials,
   onClose,
   onSaveTodo,
   onSavePlan,
@@ -94,7 +98,8 @@ export function QuickEntryModal({
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
-  const [subjectWasEdited, setSubjectWasEdited] = useState(false);
+  const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
+  const [selectedMaterialId, setSelectedMaterialId] = useState('');
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
@@ -117,6 +122,16 @@ export function QuickEntryModal({
     () => expandPlansForDate(plans, selectedDate),
     [plans, selectedDate],
   );
+  const availableMaterials = useMemo(
+    () =>
+      materials.filter(
+        (material) =>
+          material.userId === userId && material.status !== 'archived',
+      ),
+    [materials, userId],
+  );
+  const selectedMaterial =
+    availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
   const candidateActual =
     actualEndTime && title.trim()
       ? {
@@ -124,7 +139,7 @@ export function QuickEntryModal({
           actualStartTime,
           actualEndTime,
           title: title.trim(),
-          subject: subject.trim(),
+          subject: resolveSubject(),
         }
       : null;
   const linkCandidates = candidateActual
@@ -240,18 +255,82 @@ export function QuickEntryModal({
   function updateTitle(nextTitle: string) {
     setTitle(nextTitle);
 
-    if (!subjectWasEdited && !subject.trim()) {
+    if (subjectSource !== 'user' && subjectSource !== 'material' && !subject.trim()) {
       const inferredSubject = inferSubjectFromTitle(nextTitle);
 
       if (inferredSubject) {
         setSubject(inferredSubject);
+        setSubjectSource('title');
       }
     }
   }
 
   function updateSubject(nextSubject: string) {
-    setSubjectWasEdited(true);
+    setSubjectSource('user');
     setSubject(nextSubject);
+  }
+
+  function selectMaterial(materialId: string) {
+    setSelectedMaterialId(materialId);
+
+    const material =
+      availableMaterials.find((item) => item.id === materialId) ?? null;
+
+    if (!material) {
+      if (subjectSource === 'material') {
+        const inferredSubject = inferSubjectFromTitle(title);
+
+        setSubject(inferredSubject ?? '');
+        setSubjectSource(inferredSubject ? 'title' : 'none');
+      }
+      return;
+    }
+
+    if (subjectSource !== 'user') {
+      setSubject(material.subjectName);
+      setSubjectSource('material');
+    }
+  }
+
+  function getSelectedMaterialFields(): {
+    materialId: string | null;
+    materialName: string;
+  } {
+    return {
+      materialId: selectedMaterial?.id ?? null,
+      materialName: selectedMaterial?.name ?? '',
+    };
+  }
+
+  function resolveSubject(fallbackSubject = ''): string {
+    return (
+      subject.trim() ||
+      selectedMaterial?.subjectName.trim() ||
+      fallbackSubject.trim()
+    );
+  }
+
+  function renderMaterialSelect() {
+    if (availableMaterials.length === 0) {
+      return null;
+    }
+
+    return (
+      <label className="field">
+        <span>教材</span>
+        <select
+          value={selectedMaterialId}
+          onChange={(event) => selectMaterial(event.target.value)}
+        >
+          <option value="">教材なし</option>
+          {availableMaterials.map((material) => (
+            <option key={material.id} value={material.id}>
+              {material.name}（{material.subjectName || '科目未設定'}）
+            </option>
+          ))}
+        </select>
+      </label>
+    );
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
@@ -268,9 +347,10 @@ export function QuickEntryModal({
         actualStartTime,
         actualEndTime,
         title: title.trim(),
-        subject: subject.trim() || plan.subject,
+        subject: resolveSubject(plan.subject),
         isAlignedToPlan: false,
         note: memo.trim(),
+        ...getSelectedMaterialFields(),
       });
       onClose();
     } finally {
@@ -299,16 +379,17 @@ export function QuickEntryModal({
           actualStartTime,
           actualEndTime,
           title: title.trim(),
-          subject: subject.trim(),
+          subject: resolveSubject(),
           isAlignedToPlan: false,
           note: memo.trim(),
+          ...getSelectedMaterialFields(),
         });
       } else if (mode === 'scheduled' || mode === 'repeat') {
         const planDraft = buildQuickEntryPlanDraft({
           mode,
           userId,
           title,
-          subject,
+          subject: resolveSubject(),
           type,
           memo,
           date,
@@ -316,6 +397,7 @@ export function QuickEntryModal({
           estimatedMinutes,
           repeatKind,
           weekdays,
+          ...getSelectedMaterialFields(),
         });
 
         if (!planDraft) {
@@ -486,6 +568,8 @@ export function QuickEntryModal({
                     <h3>分類</h3>
                   </div>
                   <div className="quick-entry-two-column-grid">
+                    {mode !== 'later' ? renderMaterialSelect() : null}
+
                     <label className="field">
                       <span>教科</span>
                       <input
@@ -732,6 +816,8 @@ export function QuickEntryModal({
                     <h3>内容</h3>
                   </div>
                   <div className="quick-entry-two-column-grid">
+                    {renderMaterialSelect()}
+
                     <label className="field">
                       <span>科目</span>
                       <input

@@ -416,6 +416,7 @@ export default function App() {
           selectedDate={selectedDate}
           plans={plans}
           actuals={actuals}
+          materials={studyMaterials}
           onClose={() => setIsQuickEntryOpen(false)}
           onSaveTodo={saveTodo}
           onSavePlan={savePlanDraft}

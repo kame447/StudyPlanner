@@ -120,6 +120,8 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
     recurrenceRules,
     type: plan.type,
     memo: plan.memo,
+    materialId: plan.materialId ?? null,
+    materialName: plan.materialName ?? '',
   };
 }
 
@@ -202,6 +204,8 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
       excludedDates,
       recurrenceRules,
       updatedAt: now,
+      materialId: draft.materialId ?? null,
+      materialName: draft.materialName?.trim() ?? '',
     };
   }
 
@@ -215,6 +219,8 @@ export function createPlanFromDraft(draft: PlanDraft, currentPlan?: Plan): Plan 
     recurrenceRules,
     createdAt: now,
     updatedAt: now,
+    materialId: draft.materialId ?? null,
+    materialName: draft.materialName?.trim() ?? '',
   };
 }
 
@@ -234,6 +240,8 @@ export function createActualFromDraft(
     subject: draft.subject,
     isAlignedToPlan: draft.isAlignedToPlan,
     note: draft.note,
+    materialId: draft.materialId ?? null,
+    materialName: draft.materialName?.trim() ?? '',
     updatedAt: new Date().toISOString(),
   };
 }

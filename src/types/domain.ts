@@ -84,6 +84,8 @@ export interface Plan {
   sourceDate?: string;
   occurrenceDate?: string;
   occurrenceKey?: string;
+  materialId?: string | null;
+  materialName?: string;
 }
 
 export interface Actual {
@@ -98,6 +100,8 @@ export interface Actual {
   isAlignedToPlan?: boolean;
   note: string;
   updatedAt: string;
+  materialId?: string | null;
+  materialName?: string;
 }
 
 export interface PlanDraft {
@@ -115,6 +119,8 @@ export interface PlanDraft {
   memo: string;
   sourceType?: PlanSourceType;
   sourceId?: string | null;
+  materialId?: string | null;
+  materialName?: string;
 }
 
 export interface ActualDraft {
@@ -127,6 +133,8 @@ export interface ActualDraft {
   subject: string;
   isAlignedToPlan: boolean;
   note: string;
+  materialId?: string | null;
+  materialName?: string;
 }
 
 export interface StudySubject {
