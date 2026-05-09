@@ -18,7 +18,7 @@
 }
 
 .report-metrics-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin-top: 18px;
 }
 
@@ -299,5 +299,141 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.report-view .section-header {
+  gap: 14px;
+}
+
+.report-scope-tabs {
+  min-width: min(360px, 100%);
+}
+
+.report-ranking-list,
+.report-comparison-list,
+.report-compact-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.report-ranking-item,
+.report-comparison-item,
+.report-compact-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.report-ranking-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.report-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.report-ranking-subject,
+.report-ranking-ratio,
+.report-compact-item span,
+.report-comparison-label span,
+.report-summary-line,
+.report-feature-material span {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.report-comparison-item {
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  text-align: left;
+  color: inherit;
+}
+
+.report-comparison-item.interactive {
+  cursor: pointer;
+}
+
+.report-comparison-item.interactive:hover {
+  border-color: var(--accent);
+}
+
+.report-comparison-label {
+  display: grid;
+  gap: 2px;
+}
+
+.report-comparison-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.report-comparison-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.report-comparison-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--progress-track-background);
+}
+
+.report-comparison-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.report-comparison-fill.planned {
+  background: #9aa8b6;
+}
+
+.report-comparison-fill.actual {
+  background: #567fb6;
+}
+
+.report-feature-material {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  margin-top: 14px;
+}
+
+.report-feature-material b {
+  font-size: 1.1rem;
+}
+
+.report-summary-line {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+@media screen and (max-width: 720px) {
+  .report-comparison-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .report-comparison-row {
+    grid-template-columns: 38px minmax(0, 1fr) 64px;
+  }
 }
 

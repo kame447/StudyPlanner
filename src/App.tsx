@@ -339,6 +339,8 @@ export default function App() {
             plans={plans}
             actuals={actuals}
             monthEvents={monthEvents}
+            studySubjects={studySubjects}
+            studyMaterials={studyMaterials}
             onOpenDay={openDay}
             onSaveDayNote={saveDayNote}
           />
