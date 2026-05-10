@@ -90,6 +90,17 @@ const REPORT_SCOPES: Array<{ value: ReportScope; label: string }> = [
 const DEFAULT_SUBJECT_COLOR = '#8d9aa6';
 const UNSET_SUBJECT_LABEL = '未設定';
 const UNSET_MATERIAL_LABEL = '教材未設定';
+const OTHER_MATERIAL_LABEL = 'その他';
+const MATERIAL_CHART_COLORS = [
+  '#567fb6',
+  '#d9824f',
+  '#5f9f6e',
+  '#c95f75',
+  '#8a70b8',
+  '#b99b3e',
+  '#4f9f9a',
+  '#8d9aa6',
+];
 
 function endOfMonth(date: string): string {
   return addDays(addMonths(startOfMonth(date), 1), -1);
@@ -125,8 +136,65 @@ function getActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject.trim() || UNSET_SUBJECT_LABEL;
 }
 
-function getTopEntries(entries: TotalEntry[], limit = 5): TotalEntry[] {
-  return entries.slice(0, limit);
+function getMaterialChartEntries(entries: TotalEntry[], limit = 6): TotalEntry[] {
+  const positiveEntries = entries.filter((entry) => entry.minutes > 0);
+
+  if (positiveEntries.length <= limit) {
+    return positiveEntries;
+  }
+
+  const visibleEntries = positiveEntries.slice(0, limit - 1);
+  const hiddenEntries = positiveEntries.slice(limit - 1);
+  const visibleTotalMinutes = positiveEntries.reduce(
+    (sum, entry) => sum + entry.minutes,
+    0,
+  );
+  const otherMinutes = hiddenEntries.reduce((sum, entry) => sum + entry.minutes, 0);
+
+  return [
+    ...visibleEntries,
+    {
+      key: '__other_materials__',
+      label: OTHER_MATERIAL_LABEL,
+      minutes: otherMinutes,
+      ratio: visibleTotalMinutes === 0 ? 0 : otherMinutes / visibleTotalMinutes,
+      color: DEFAULT_SUBJECT_COLOR,
+    },
+  ];
+}
+
+function getMaterialChartColor(entry: TotalEntry, index: number): string {
+  if (entry.key === '__unset__' || entry.key === '__other_materials__') {
+    return DEFAULT_SUBJECT_COLOR;
+  }
+
+  return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
+}
+
+function buildMaterialPieGradient(entries: TotalEntry[]): string {
+  const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
+  let cursor = 0;
+
+  const stops = entries.map((entry, index) => {
+    const start = cursor;
+    const share = totalMinutes === 0 ? 0 : (entry.minutes / totalMinutes) * 100;
+    const end = index === entries.length - 1 ? 100 : cursor + share;
+    cursor = end;
+
+    return `${getMaterialChartColor(entry, index)} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  });
+
+  return `conic-gradient(${stops.join(', ')})`;
+}
+
+function formatShare(minutes: number, totalMinutes: number): string {
+  if (totalMinutes <= 0) {
+    return '0%';
+  }
+
+  const percent = (minutes / totalMinutes) * 100;
+
+  return percent > 0 && percent < 1 ? '<1%' : `${Math.round(percent)}%`;
 }
 
 function buildReportSummary({
@@ -187,14 +255,14 @@ function buildReportSummary({
     const plan = actual.planId ? planByOccurrenceKey.get(getActualOccurrenceKey(actual)) : undefined;
     const minutes = getActualMinutes(actual);
     const subject = getActualSubject(actual, plan);
+    const materialId = actual.materialId?.trim() || plan?.materialId?.trim() || '';
+    const materialName = actual.materialName?.trim() || plan?.materialName?.trim() || '';
     const material =
-      (actual.materialId ? materialsById.get(actual.materialId) : undefined) ??
-      (actual.materialName ? materialsByName.get(actual.materialName) : undefined);
+      (materialId ? materialsById.get(materialId) : undefined) ??
+      (materialName ? materialsByName.get(materialName) : undefined);
     const materialKey =
-      actual.materialId?.trim() ||
-      (actual.materialName?.trim() ? `name:${actual.materialName.trim()}` : '__unset__');
-    const materialLabel =
-      actual.materialName?.trim() || material?.name || UNSET_MATERIAL_LABEL;
+      materialId || (materialName ? `name:${materialName}` : '__unset__');
+    const materialLabel = materialName || material?.name || UNSET_MATERIAL_LABEL;
     const materialSubject = material?.subjectName || subject;
     const currentMaterial = materialMinutes.get(materialKey) ?? {
       label: materialLabel,
@@ -235,9 +303,16 @@ function buildReportSummary({
   const learningDays = new Set(
     rangeActuals.filter((actual) => getActualMinutes(actual) > 0).map((actual) => actual.occurrenceDate),
   ).size;
-  const materialUnsetCount = rangeActuals.filter(
-    (actual) => !actual.materialId && !actual.materialName?.trim(),
-  ).length;
+  const materialUnsetCount = rangeActuals.filter((actual) => {
+    const plan = actual.planId ? planByOccurrenceKey.get(getActualOccurrenceKey(actual)) : undefined;
+
+    return (
+      !actual.materialId?.trim() &&
+      !actual.materialName?.trim() &&
+      !plan?.materialId?.trim() &&
+      !plan?.materialName?.trim()
+    );
+  }).length;
   const subjectComparisons = [...new Set([
     ...plannedSubjectMinutes.keys(),
     ...subjectMinutes.keys(),
@@ -410,7 +485,7 @@ function MetricCard({
   );
 }
 
-function TotalsList({
+function MaterialPieChart({
   title,
   entries,
   emptyText,
@@ -419,6 +494,12 @@ function TotalsList({
   entries: TotalEntry[];
   emptyText: string;
 }) {
+  const chartEntries = getMaterialChartEntries(entries);
+  const chartTotalMinutes = chartEntries.reduce(
+    (sum, entry) => sum + entry.minutes,
+    0,
+  );
+
   return (
     <section className="panel report-card">
       <div className="section-header">
@@ -426,39 +507,39 @@ function TotalsList({
           <h2>{title}</h2>
         </div>
       </div>
-      {entries.length === 0 ? (
+      {chartEntries.length === 0 ? (
         <p className="empty-copy">{emptyText}</p>
       ) : (
-        <div className="report-ranking-list">
-          {entries.map((entry) => (
-            <article className="report-ranking-item" key={entry.key}>
-              <div className="report-ranking-head">
-                <div className="label-row">
-                  <span
-                    className="report-color-dot"
-                    style={{ backgroundColor: entry.color ?? DEFAULT_SUBJECT_COLOR }}
-                  />
-                  <strong>{entry.label}</strong>
-                </div>
-                <span>{formatMinutes(entry.minutes)}</span>
-              </div>
-              {entry.subject ? (
-                <span className="report-ranking-subject">{entry.subject}</span>
-              ) : null}
-              <div className="subject-breakdown-track">
-                <div
-                  className="subject-breakdown-fill"
-                  style={{
-                    width: `${Math.round(entry.ratio * 100)}%`,
-                    backgroundColor: entry.color ?? DEFAULT_SUBJECT_COLOR,
-                  }}
+        <div className="report-pie-layout">
+          <div className="report-pie-chart-wrap">
+            <div
+              className="report-pie-chart"
+              role="img"
+              aria-label={`${title}: ${formatMinutes(chartTotalMinutes)}`}
+              style={{ background: buildMaterialPieGradient(chartEntries) }}
+            />
+            <div className="report-pie-total">
+              <strong>{formatMinutes(chartTotalMinutes)}</strong>
+              <span>記録時間ベース</span>
+            </div>
+          </div>
+          <div className="report-pie-legend">
+            {chartEntries.map((entry, index) => (
+              <div className="report-pie-legend-item" key={entry.key}>
+                <span
+                  className="report-pie-legend-dot"
+                  style={{ backgroundColor: getMaterialChartColor(entry, index) }}
                 />
+                <div className="report-pie-legend-body">
+                  <strong>{entry.label}</strong>
+                  <span>
+                    {formatMinutes(entry.minutes)} /{' '}
+                    {formatShare(entry.minutes, chartTotalMinutes)}
+                  </span>
+                </div>
               </div>
-              <span className="report-ranking-ratio">
-                {Math.round(entry.ratio * 100)}%
-              </span>
-            </article>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </section>
@@ -650,9 +731,7 @@ export function ReportView(props: ReportViewProps) {
         : scope === 'year'
           ? `${selectedDate.slice(0, 4)}年`
           : `${formatCompactDate(scopeRange.startDate)} - ${formatCompactDate(scopeRange.endDate)}`;
-  const topMaterials = getTopEntries(summary.materialTotals);
-  const topSubjects = getTopEntries(summary.subjectTotals);
-  const topMaterial = topMaterials[0];
+  const topMaterial = summary.materialTotals.find((entry) => entry.minutes > 0);
   const unrecordedItems = summary.unrecordedPlans.map((plan) => ({
     id: `${plan.id}-${plan.date}`,
     title: plan.title,
@@ -691,7 +770,7 @@ export function ReportView(props: ReportViewProps) {
         <div className="section-header">
           <div>
             <h2>レポート</h2>
-            <p>{rangeLabel} の学習状況を、予定・記録・教科・教材で確認できます。</p>
+            <p>{rangeLabel} の学習状況を、予定・記録・教材で確認できます。</p>
           </div>
           <div className="segmented-control report-scope-tabs" role="tablist">
             {REPORT_SCOPES.map((option) => (
@@ -727,28 +806,36 @@ export function ReportView(props: ReportViewProps) {
       {scope === 'day' ? (
         <>
           <div className="report-grid">
-            <TotalsList
-              title="教科別学習時間"
-              entries={topSubjects}
-              emptyText="この日の記録はまだありません。"
+            <MaterialPieChart
+              title="教材別学習比率"
+              entries={summary.materialTotals}
+              emptyText="この日の記録時間はまだありません。"
             />
-            <TotalsList
-              title="教材別学習時間"
-              entries={topMaterials}
-              emptyText="教材付きの記録はまだありません。"
-            />
-          </div>
-          <div className="report-grid">
             <CompactList
               title="未記録の予定"
               items={unrecordedItems}
               emptyText="未記録の学習予定はありません。"
             />
+          </div>
+          <div className="report-grid">
             <CompactList
               title="予定なし記録"
               items={standaloneItems}
               emptyText="予定なし記録はありません。"
             />
+            <section className="panel report-card">
+              <div className="section-header">
+                <div>
+                  <h2>教材メモ</h2>
+                </div>
+              </div>
+              <div className="report-summary-line">
+                <span>
+                  最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
+                </span>
+                <span>教材未設定: {summary.materialUnsetCount}件</span>
+              </div>
+            </section>
           </div>
         </>
       ) : null}
@@ -772,15 +859,15 @@ export function ReportView(props: ReportViewProps) {
             onOpenDay={props.onOpenDay}
           />
           <div className="report-grid">
-            <TotalsList
-              title="教科別学習時間"
-              entries={topSubjects}
-              emptyText="この週の記録はまだありません。"
+            <MaterialPieChart
+              title="教材別学習比率"
+              entries={summary.materialTotals}
+              emptyText="この週の記録時間はまだありません。"
             />
-            <TotalsList
-              title="教材別学習時間"
-              entries={topMaterials}
-              emptyText="教材付きの記録はまだありません。"
+            <CompactList
+              title="週の気づき"
+              items={insightItems}
+              emptyText="大きな偏りはまだ見つかっていません。"
             />
           </div>
           <div className="report-grid">
@@ -795,29 +882,6 @@ export function ReportView(props: ReportViewProps) {
               emptyText="予定なし記録はありません。"
             />
           </div>
-          <div className="report-grid">
-            <CompactList
-              title="週の気づき"
-              items={insightItems}
-              emptyText="大きな偏りはまだ見つかっていません。"
-            />
-            <section className="panel report-card">
-              <div className="section-header">
-                <div>
-                  <h2>よく使った教材</h2>
-                </div>
-              </div>
-              {topMaterial ? (
-                <div className="report-feature-material">
-                  <strong>{topMaterial.label}</strong>
-                  <span>{topMaterial.subject ?? UNSET_SUBJECT_LABEL}</span>
-                  <b>{formatMinutes(topMaterial.minutes)}</b>
-                </div>
-              ) : (
-                <p className="empty-copy">教材付きの記録はまだありません。</p>
-              )}
-            </section>
-          </div>
         </>
       ) : null}
 
@@ -825,30 +889,25 @@ export function ReportView(props: ReportViewProps) {
         <>
           <ComparisonBars title="週ごとの学習時間推移" entries={monthWeekComparisons} />
           <div className="report-grid">
-            <TotalsList
-              title="教科別学習時間"
-              entries={topSubjects}
-              emptyText="この月の記録はまだありません。"
+            <MaterialPieChart
+              title="教材別学習比率"
+              entries={summary.materialTotals}
+              emptyText="この月の記録時間はまだありません。"
             />
-            <TotalsList
-              title="教材別学習時間"
-              entries={topMaterials}
-              emptyText="教材付きの記録はまだありません。"
-            />
-          </div>
-          <section className="panel report-card">
-            <div className="section-header">
-              <div>
-                <h2>月間サマリー</h2>
+            <section className="panel report-card">
+              <div className="section-header">
+                <div>
+                  <h2>月間サマリー</h2>
+                </div>
               </div>
-            </div>
-            <div className="report-summary-line">
-              <span>学習日数: {summary.learningDays}日</span>
-              <span>
-                最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
-              </span>
-            </div>
-          </section>
+              <div className="report-summary-line">
+                <span>学習日数: {summary.learningDays}日</span>
+                <span>
+                  最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
+                </span>
+              </div>
+            </section>
+          </div>
         </>
       ) : null}
 
@@ -856,28 +915,26 @@ export function ReportView(props: ReportViewProps) {
         <>
           <ComparisonBars title="月ごとの予定 / 記録" entries={yearMonthComparisons} />
           <div className="report-grid">
-            <TotalsList
-              title="年間の教科別学習時間"
-              entries={topSubjects}
-              emptyText="この年の記録はまだありません。"
+            <MaterialPieChart
+              title="年間の教材別学習比率"
+              entries={summary.materialTotals}
+              emptyText="この年の記録時間はまだありません。"
             />
-            <TotalsList
-              title="年間の教材別学習時間"
-              entries={topMaterials}
-              emptyText="教材付きの記録はまだありません。"
-            />
-          </div>
-          <section className="panel report-card">
-            <div className="section-header">
-              <div>
-                <h2>年間サマリー</h2>
+            <section className="panel report-card">
+              <div className="section-header">
+                <div>
+                  <h2>年間サマリー</h2>
+                </div>
               </div>
-            </div>
-            <div className="report-summary-line">
-              <span>年間記録時間: {formatMinutes(summary.actualMinutes)}</span>
-              <span>学習日数: {summary.learningDays}日</span>
-            </div>
-          </section>
+              <div className="report-summary-line">
+                <span>年間記録時間: {formatMinutes(summary.actualMinutes)}</span>
+                <span>学習日数: {summary.learningDays}日</span>
+                <span>
+                  最も多く使った教材: {topMaterial ? topMaterial.label : 'なし'}
+                </span>
+              </div>
+            </section>
+          </div>
         </>
       ) : null}
     </section>

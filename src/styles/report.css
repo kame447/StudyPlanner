@@ -241,6 +241,12 @@
   min-width: 0;
 }
 
+.report-pie-legend-body strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .report-pie-legend-body span {
   color: var(--text-muted);
   font-size: 0.8rem;
