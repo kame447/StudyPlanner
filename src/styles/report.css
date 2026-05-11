@@ -460,16 +460,31 @@
 }
 
 .report-comparison-chart {
+  position: relative;
   display: grid;
   gap: 10px;
   align-items: end;
   min-width: 0;
-  background-image:
-    linear-gradient(to bottom, var(--border) 0 1px, transparent 1px),
-    linear-gradient(to bottom, transparent calc(50% - 1px), var(--border) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
-    linear-gradient(to bottom, transparent calc(100% - 1px), var(--border-strong) calc(100% - 1px));
-  background-repeat: no-repeat;
-  background-size: 100% 210px;
+}
+
+.report-comparison-grid-lines {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 210px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.report-comparison-grid-lines span {
+  display: block;
+  width: 100%;
+  border-top: 1px solid var(--border);
+}
+
+.report-comparison-grid-lines span:last-child {
+  border-top-color: var(--border-strong);
 }
 
 .report-comparison-column {
@@ -480,6 +495,7 @@
 }
 
 .report-comparison-column-track {
+  position: relative;
   display: flex;
   align-items: end;
   justify-content: center;
@@ -498,10 +514,36 @@
   width: 100%;
 }
 
+.report-comparison-bar {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+}
+
 .report-comparison-fill {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
   width: 100%;
+  height: var(--bar-height);
   min-height: 0;
   border-radius: 8px 8px 0 0;
+}
+
+.report-comparison-value {
+  position: absolute;
+  left: 50%;
+  bottom: min(calc(var(--bar-height) + 4px), calc(100% - 1.35em));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 56px;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
 }
 
 .report-comparison-label {
@@ -572,7 +614,10 @@
 
   .report-comparison-chart {
     gap: 6px;
-    background-size: 100% 184px;
+  }
+
+  .report-comparison-grid-lines {
+    height: 184px;
   }
 
   .report-comparison-column-track {
@@ -582,6 +627,11 @@
   .report-comparison-bar-pair {
     grid-template-columns: repeat(2, minmax(3px, 12px));
     gap: 3px;
+  }
+
+  .report-comparison-value {
+    max-width: 42px;
+    font-size: 0.55rem;
   }
 
   .report-comparison-label strong,

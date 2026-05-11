@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import {
   addDays,
   addMonths,
@@ -136,6 +136,12 @@ function getComparisonChartMax(minutes: number): number {
   }
 
   return Math.ceil(minutes / 120) * 120;
+}
+
+function getComparisonTicks(maxMinutes: number): number[] {
+  return Array.from({ length: 5 }, (_, index) =>
+    Math.round(maxMinutes - (maxMinutes / 4) * index),
+  );
 }
 
 function buildSubjectColorMap(subjects: StudySubject[]): Map<string, string> {
@@ -577,7 +583,7 @@ function ComparisonBars({
     60,
     ...entries.flatMap((entry) => [entry.plannedMinutes, entry.actualMinutes]),
   ));
-  const tickMinutes = [maxMinutes, Math.round(maxMinutes / 2), 0];
+  const tickMinutes = getComparisonTicks(maxMinutes);
 
   return (
     <section className="panel report-card">
@@ -608,6 +614,11 @@ function ComparisonBars({
             gridTemplateColumns: `repeat(${entries.length}, minmax(0, 1fr))`,
           }}
         >
+          <div className="report-comparison-grid-lines" aria-hidden="true">
+            {tickMinutes.map((minutes) => (
+              <span key={minutes} />
+            ))}
+          </div>
           {entries.map((entry) => {
             const plannedHeight =
               entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
@@ -619,15 +630,33 @@ function ComparisonBars({
                   <div className="report-comparison-column-track">
                     <div className="report-comparison-bar-pair">
                       <div
-                        className="report-comparison-fill planned"
-                        title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
-                        style={{ height: `${plannedHeight}%` }}
-                      />
+                        className="report-comparison-bar"
+                        style={{ '--bar-height': `${plannedHeight}%` } as CSSProperties}
+                      >
+                        {entry.plannedMinutes > 0 ? (
+                          <span className="report-comparison-value">
+                            {formatMinutes(entry.plannedMinutes)}
+                          </span>
+                        ) : null}
+                        <div
+                          className="report-comparison-fill planned"
+                          title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
+                        />
+                      </div>
                       <div
-                        className="report-comparison-fill actual"
-                        title={`記録 ${formatMinutes(entry.actualMinutes)}`}
-                        style={{ height: `${actualHeight}%` }}
-                      />
+                        className="report-comparison-bar"
+                        style={{ '--bar-height': `${actualHeight}%` } as CSSProperties}
+                      >
+                        {entry.actualMinutes > 0 ? (
+                          <span className="report-comparison-value">
+                            {formatMinutes(entry.actualMinutes)}
+                          </span>
+                        ) : null}
+                        <div
+                          className="report-comparison-fill actual"
+                          title={`記録 ${formatMinutes(entry.actualMinutes)}`}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
