@@ -354,14 +354,6 @@
     font-size: 0.7rem;
   }
 
-  .report-pie-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .report-pie-chart {
-    width: min(200px, 72vw);
-  }
-
   .report-timeline-item {
     grid-template-columns: 1fr;
   }
@@ -1170,25 +1162,6 @@
     font-size: 0.68rem;
   }
 
-  .report-pie-layout {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .report-pie-chart {
-    width: min(180px, 56vw);
-  }
-
-  .report-pie-legend {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .report-pie-legend-item {
-    padding: 8px 10px;
-    border-radius: 14px;
-  }
-
   .report-timeline-scroll {
     max-height: 360px;
   }
@@ -1983,8 +1956,7 @@
 
   .notebook-topline,
   .score-grid,
-  .report-range-form,
-  .report-pie-legend {
+  .report-range-form {
     grid-template-columns: 1fr;
   }
 
