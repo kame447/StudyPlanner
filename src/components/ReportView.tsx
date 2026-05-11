@@ -123,19 +123,21 @@ function formatRate(rate: number | null): string {
 }
 
 function getComparisonChartMax(minutes: number): number {
-  if (minutes <= 60) {
+  const paddedMinutes = minutes * 1.16;
+
+  if (paddedMinutes <= 60) {
     return 60;
   }
 
-  if (minutes <= 120) {
-    return Math.ceil(minutes / 30) * 30;
+  if (paddedMinutes <= 120) {
+    return Math.ceil(paddedMinutes / 30) * 30;
   }
 
-  if (minutes <= 360) {
-    return Math.ceil(minutes / 60) * 60;
+  if (paddedMinutes <= 360) {
+    return Math.ceil(paddedMinutes / 60) * 60;
   }
 
-  return Math.ceil(minutes / 120) * 120;
+  return Math.ceil(paddedMinutes / 120) * 120;
 }
 
 function getComparisonTicks(maxMinutes: number): number[] {
@@ -624,6 +626,10 @@ function ComparisonBars({
               entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
             const actualHeight =
               entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
+            const shouldStaggerLabels =
+              entry.plannedMinutes > 0 &&
+              entry.actualMinutes > 0 &&
+              Math.abs(plannedHeight - actualHeight) < 12;
             const content = (
               <>
                 <div className="report-comparison-column">
@@ -634,7 +640,7 @@ function ComparisonBars({
                         style={{ '--bar-height': `${plannedHeight}%` } as CSSProperties}
                       >
                         {entry.plannedMinutes > 0 ? (
-                          <span className="report-comparison-value">
+                          <span className="report-comparison-value planned">
                             {formatMinutes(entry.plannedMinutes)}
                           </span>
                         ) : null}
@@ -648,7 +654,13 @@ function ComparisonBars({
                         style={{ '--bar-height': `${actualHeight}%` } as CSSProperties}
                       >
                         {entry.actualMinutes > 0 ? (
-                          <span className="report-comparison-value">
+                          <span
+                            className={
+                              shouldStaggerLabels
+                                ? 'report-comparison-value actual staggered'
+                                : 'report-comparison-value actual'
+                            }
+                          >
                             {formatMinutes(entry.actualMinutes)}
                           </span>
                         ) : null}
