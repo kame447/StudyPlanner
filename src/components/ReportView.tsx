@@ -55,6 +55,12 @@ interface TotalEntry {
   subject?: string;
 }
 
+interface MaterialEntrySeed {
+  key: string;
+  label: string;
+  subject: string;
+}
+
 interface PeriodComparison {
   key: string;
   label: string;
@@ -101,6 +107,7 @@ const MATERIAL_CHART_COLORS = [
   '#4f9f9a',
   '#8d9aa6',
 ];
+const MATERIAL_PIE_LABEL_THRESHOLD = 0.1;
 
 function endOfMonth(date: string): string {
   return addDays(addMonths(startOfMonth(date), 1), -1);
@@ -197,6 +204,59 @@ function getActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject.trim() || UNSET_SUBJECT_LABEL;
 }
 
+function getActualTitle(actual: Actual, plan?: Plan): string {
+  return actual.title?.trim() || plan?.title.trim() || '';
+}
+
+function resolveMaterialEntry({
+  actual,
+  plan,
+  materialsById,
+  materialsByName,
+  fallbackSubject,
+}: {
+  actual: Actual;
+  plan?: Plan;
+  materialsById: Map<string, StudyMaterial>;
+  materialsByName: Map<string, StudyMaterial>;
+  fallbackSubject: string;
+}): MaterialEntrySeed {
+  const actualMaterialId = actual.materialId?.trim() || '';
+  const actualMaterialName = actual.materialName?.trim() || '';
+  const planMaterialId = plan?.materialId?.trim() || '';
+  const planMaterialName = plan?.materialName?.trim() || '';
+
+  const materialId = actualMaterialId || planMaterialId;
+  const materialName = actualMaterialName || planMaterialName;
+  const material =
+    (materialId ? materialsById.get(materialId) : undefined) ??
+    (materialName ? materialsByName.get(materialName) : undefined);
+
+  if (materialId || materialName) {
+    return {
+      key: material?.id ? `material:${material.id}` : `material-name:${materialName || materialId}`,
+      label: materialName || material?.name || UNSET_MATERIAL_LABEL,
+      subject: material?.subjectName || fallbackSubject,
+    };
+  }
+
+  const title = getActualTitle(actual, plan);
+
+  if (title) {
+    return {
+      key: `title:${title}`,
+      label: title,
+      subject: fallbackSubject,
+    };
+  }
+
+  return {
+    key: '__unset__',
+    label: UNSET_MATERIAL_LABEL,
+    subject: fallbackSubject,
+  };
+}
+
 function getMaterialChartEntries(entries: TotalEntry[], limit = 6): TotalEntry[] {
   const positiveEntries = entries.filter((entry) => entry.minutes > 0);
 
@@ -227,6 +287,34 @@ function getMaterialChartEntries(entries: TotalEntry[], limit = 6): TotalEntry[]
 function getMaterialChartColor(entry: TotalEntry, index: number): string {
   if (entry.key === '__unset__' || entry.key === '__other_materials__') {
     return DEFAULT_SUBJECT_COLOR;
+  }
+
+  return entry.color ?? MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
+}
+
+function getMaterialColor(
+  entry: { key: string; subject: string },
+  index: number,
+  subjectColorMap: Map<string, string>,
+): string {
+  if (entry.key === '__unset__') {
+    return DEFAULT_SUBJECT_COLOR;
+  }
+
+  const subjectColor = subjectColorMap.get(entry.subject);
+
+  if (subjectColor) {
+    const variants = [
+      { ratio: 76, target: 'white' },
+      { ratio: 72, target: 'black' },
+      { ratio: 58, target: 'white' },
+      { ratio: 62, target: 'black' },
+      { ratio: 88, target: 'white' },
+      { ratio: 46, target: 'black' },
+    ];
+    const variant = variants[index % variants.length];
+
+    return `color-mix(in srgb, ${subjectColor} ${variant.ratio}%, ${variant.target})`;
   }
 
   return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
@@ -316,23 +404,21 @@ function buildReportSummary({
     const plan = actual.planId ? planByOccurrenceKey.get(getActualOccurrenceKey(actual)) : undefined;
     const minutes = getActualMinutes(actual);
     const subject = getActualSubject(actual, plan);
-    const materialId = actual.materialId?.trim() || plan?.materialId?.trim() || '';
-    const materialName = actual.materialName?.trim() || plan?.materialName?.trim() || '';
-    const material =
-      (materialId ? materialsById.get(materialId) : undefined) ??
-      (materialName ? materialsByName.get(materialName) : undefined);
-    const materialKey =
-      materialId || (materialName ? `name:${materialName}` : '__unset__');
-    const materialLabel = materialName || material?.name || UNSET_MATERIAL_LABEL;
-    const materialSubject = material?.subjectName || subject;
-    const currentMaterial = materialMinutes.get(materialKey) ?? {
-      label: materialLabel,
-      subject: materialSubject,
+    const materialEntry = resolveMaterialEntry({
+      actual,
+      plan,
+      materialsById,
+      materialsByName,
+      fallbackSubject: subject,
+    });
+    const currentMaterial = materialMinutes.get(materialEntry.key) ?? {
+      label: materialEntry.label,
+      subject: materialEntry.subject,
       minutes: 0,
     };
 
     subjectMinutes.set(subject, (subjectMinutes.get(subject) ?? 0) + minutes);
-    materialMinutes.set(materialKey, {
+    materialMinutes.set(materialEntry.key, {
       ...currentMaterial,
       minutes: currentMaterial.minutes + minutes,
     });
@@ -354,9 +440,12 @@ function buildReportSummary({
       subject: entry.subject,
       minutes: entry.minutes,
       ratio: actualMinutes === 0 ? 0 : entry.minutes / actualMinutes,
-      color: subjectColorMap.get(entry.subject) ?? DEFAULT_SUBJECT_COLOR,
     }))
-    .sort((left, right) => right.minutes - left.minutes);
+    .sort((left, right) => right.minutes - left.minutes)
+    .map((entry, index) => ({
+      ...entry,
+      color: getMaterialColor(entry, index, subjectColorMap),
+    }));
   const unrecordedPlans = rangePlans.filter(
     (plan) => !actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
   );
@@ -371,7 +460,8 @@ function buildReportSummary({
       !actual.materialId?.trim() &&
       !actual.materialName?.trim() &&
       !plan?.materialId?.trim() &&
-      !plan?.materialName?.trim()
+      !plan?.materialName?.trim() &&
+      !getActualTitle(actual, plan)
     );
   }).length;
   const subjectComparisons = [...new Set([
@@ -562,6 +652,21 @@ function MaterialPieChart({
     (sum, entry) => sum + entry.minutes,
     0,
   );
+  let sliceCursor = 0;
+  const chartSlices = chartEntries.map((entry, index) => {
+    const share = chartTotalMinutes === 0 ? 0 : entry.minutes / chartTotalMinutes;
+    const middle = sliceCursor + share / 2;
+    const angle = (middle * 360 - 90) * (Math.PI / 180);
+    sliceCursor += share;
+
+    return {
+      entry,
+      index,
+      share,
+      left: 50 + Math.cos(angle) * 31,
+      top: 50 + Math.sin(angle) * 31,
+    };
+  });
 
   return (
     <section className="panel report-card">
@@ -580,7 +685,22 @@ function MaterialPieChart({
               role="img"
               aria-label={`${title}: ${formatMinutes(chartTotalMinutes)}`}
               style={{ background: buildMaterialPieGradient(chartEntries) }}
-            />
+            >
+              {chartSlices
+                .filter((slice) => slice.share >= MATERIAL_PIE_LABEL_THRESHOLD)
+                .map((slice) => (
+                  <span
+                    className="report-pie-slice-label"
+                    key={slice.entry.key}
+                    style={{
+                      left: `${slice.left}%`,
+                      top: `${slice.top}%`,
+                    }}
+                  >
+                    {Math.round(slice.share * 100)}%
+                  </span>
+                ))}
+            </div>
             <div className="report-pie-total">
               <strong>{formatMinutes(chartTotalMinutes)}</strong>
               <span>記録時間ベース</span>
