@@ -122,6 +122,22 @@ function formatRate(rate: number | null): string {
   return rate === null ? '-' : `${Math.round(rate)}%`;
 }
 
+function getComparisonChartMax(minutes: number): number {
+  if (minutes <= 60) {
+    return 60;
+  }
+
+  if (minutes <= 120) {
+    return Math.ceil(minutes / 30) * 30;
+  }
+
+  if (minutes <= 360) {
+    return Math.ceil(minutes / 60) * 60;
+  }
+
+  return Math.ceil(minutes / 120) * 120;
+}
+
 function buildSubjectColorMap(subjects: StudySubject[]): Map<string, string> {
   return new Map(subjects.map((subject) => [subject.name, subject.color]));
 }
@@ -470,14 +486,16 @@ function buildYearMonthComparisons({
 function MetricCard({
   label,
   value,
+  variant = 'compact',
   help,
 }: {
   label: string;
   value: string;
+  variant?: 'primary' | 'compact';
   help?: string;
 }) {
   return (
-    <article className="report-metric-card">
+    <article className={`report-metric-card ${variant}`}>
       <span className="report-metric-label">{label}</span>
       <strong className="report-metric-value">{value}</strong>
       {help ? <span className="report-metric-help">{help}</span> : null}
@@ -555,10 +573,11 @@ function ComparisonBars({
   entries: PeriodComparison[];
   onOpenDay?: (date: string) => void;
 }) {
-  const maxMinutes = Math.max(
+  const maxMinutes = getComparisonChartMax(Math.max(
     60,
     ...entries.flatMap((entry) => [entry.plannedMinutes, entry.actualMinutes]),
-  );
+  ));
+  const tickMinutes = [maxMinutes, Math.round(maxMinutes / 2), 0];
 
   return (
     <section className="panel report-card">
@@ -577,62 +596,69 @@ function ComparisonBars({
           </span>
         </div>
       </div>
-      <div
-        className="report-comparison-chart"
-        style={{
-          gridTemplateColumns: `repeat(${entries.length}, minmax(0, 1fr))`,
-        }}
-      >
-        {entries.map((entry) => {
-          const plannedHeight =
-            entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
-          const actualHeight =
-            entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
-          const content = (
-            <>
-              <div className="report-comparison-column">
-                <div className="report-comparison-column-track">
-                  <div className="report-comparison-bar-pair">
-                    <div
-                      className="report-comparison-fill planned"
-                      title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
-                      style={{ height: `${plannedHeight}%` }}
-                    />
-                    <div
-                      className="report-comparison-fill actual"
-                      title={`記録 ${formatMinutes(entry.actualMinutes)}`}
-                      style={{ height: `${actualHeight}%` }}
-                    />
+      <div className="report-comparison-plot">
+        <div className="report-comparison-axis" aria-hidden="true">
+          {tickMinutes.map((minutes) => (
+            <span key={minutes}>{formatMinutes(minutes)}</span>
+          ))}
+        </div>
+        <div
+          className="report-comparison-chart"
+          style={{
+            gridTemplateColumns: `repeat(${entries.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {entries.map((entry) => {
+            const plannedHeight =
+              entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
+            const actualHeight =
+              entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
+            const content = (
+              <>
+                <div className="report-comparison-column">
+                  <div className="report-comparison-column-track">
+                    <div className="report-comparison-bar-pair">
+                      <div
+                        className="report-comparison-fill planned"
+                        title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
+                        style={{ height: `${plannedHeight}%` }}
+                      />
+                      <div
+                        className="report-comparison-fill actual"
+                        title={`記録 ${formatMinutes(entry.actualMinutes)}`}
+                        style={{ height: `${actualHeight}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="report-comparison-label">
-                <strong>{entry.label}</strong>
-                {entry.sublabel ? <span>{entry.sublabel}</span> : null}
-              </div>
-            </>
-          );
+                <div className="report-comparison-label">
+                  <strong>{entry.label}</strong>
+                  {entry.sublabel ? <span>{entry.sublabel}</span> : null}
+                </div>
+              </>
+            );
 
-          return onOpenDay && /^\d{4}-\d{2}-\d{2}$/.test(entry.key) ? (
-            <button
-              aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
-              className="report-comparison-item interactive"
-              key={entry.key}
-              onClick={() => onOpenDay(entry.key)}
-              type="button"
-            >
-              {content}
-            </button>
-          ) : (
-            <article
-              aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
-              className="report-comparison-item"
-              key={entry.key}
-            >
-              {content}
-            </article>
-          );
-        })}
+            return onOpenDay && /^\d{4}-\d{2}-\d{2}$/.test(entry.key) ? (
+              <button
+                aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
+                className="report-comparison-item interactive"
+                key={entry.key}
+                onClick={() => onOpenDay(entry.key)}
+                type="button"
+              >
+                {content}
+              </button>
+            ) : (
+              <article
+                aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
+                className="report-comparison-item"
+                key={entry.key}
+              >
+                {content}
+              </article>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -750,6 +776,15 @@ export function ReportView(props: ReportViewProps) {
           ? `${selectedDate.slice(0, 4)}年`
           : `${formatCompactDate(scopeRange.startDate)} - ${formatCompactDate(scopeRange.endDate)}`;
   const topMaterial = summary.materialTotals.find((entry) => entry.minutes > 0);
+  const diffMinutes = summary.actualMinutes - summary.plannedMinutes;
+  const diffLabel = diffMinutes === 0
+    ? '差分なし'
+    : `${diffMinutes > 0 ? '+' : '-'}${formatMinutes(Math.abs(diffMinutes))}`;
+  const activityMetricLabel = scope === 'month' || scope === 'year' ? '学習日数' : '予定なし記録';
+  const activityMetricValue =
+    scope === 'month' || scope === 'year'
+      ? `${summary.learningDays}日`
+      : `${summary.standaloneActuals.length}件`;
   const unrecordedItems = summary.unrecordedPlans.map((plan) => ({
     id: `${plan.id}-${plan.date}`,
     title: plan.title,
@@ -806,18 +841,28 @@ export function ReportView(props: ReportViewProps) {
           </div>
         </div>
 
-        <div className="report-metrics-grid">
-          <MetricCard label="予定時間" value={formatMinutes(summary.plannedMinutes)} />
-          <MetricCard label="記録時間" value={formatMinutes(summary.actualMinutes)} />
-          <MetricCard label="達成率" value={formatRate(summary.achievementRate)} />
-          <MetricCard
-            label="未記録予定"
-            value={`${summary.unrecordedPlans.length}件`}
-          />
-          <MetricCard
-            label={scope === 'month' || scope === 'year' ? '学習日数' : '予定なし記録'}
-            value={scope === 'month' || scope === 'year' ? `${summary.learningDays}日` : `${summary.standaloneActuals.length}件`}
-          />
+        <div className="report-metrics-panel">
+          <div className="report-metrics-primary">
+            <MetricCard
+              label="予定時間"
+              value={formatMinutes(summary.plannedMinutes)}
+              variant="primary"
+            />
+            <MetricCard
+              label="記録時間"
+              value={formatMinutes(summary.actualMinutes)}
+              variant="primary"
+            />
+          </div>
+          <div className="report-metric-chips">
+            <MetricCard label="達成率" value={formatRate(summary.achievementRate)} />
+            <MetricCard
+              label="未記録予定"
+              value={`${summary.unrecordedPlans.length}件`}
+            />
+            <MetricCard label={activityMetricLabel} value={activityMetricValue} />
+            <MetricCard label="差分" value={diffLabel} />
+          </div>
         </div>
       </div>
 
