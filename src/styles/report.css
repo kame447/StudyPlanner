@@ -553,11 +553,15 @@
   color: var(--text);
   font-size: 0.66rem;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.08;
   text-align: center;
   white-space: normal;
   pointer-events: none;
   z-index: 3;
+}
+
+.report-comparison-value span {
+  display: block;
 }
 
 .report-comparison-value.staggered {

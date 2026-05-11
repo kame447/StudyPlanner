@@ -123,27 +123,64 @@ function formatRate(rate: number | null): string {
 }
 
 function getComparisonChartMax(minutes: number): number {
-  const paddedMinutes = minutes * 1.16;
+  const stepMinutes = getComparisonTickStep(minutes);
+  let maxMinutes = Math.ceil(minutes / stepMinutes) * stepMinutes;
 
-  if (paddedMinutes <= 60) {
+  if (maxMinutes < minutes * 1.08) {
+    maxMinutes += stepMinutes;
+  }
+
+  return Math.max(60, maxMinutes);
+}
+
+function getComparisonTickStep(minutes: number): number {
+  if (minutes <= 360) {
     return 60;
   }
 
-  if (paddedMinutes <= 120) {
-    return Math.ceil(paddedMinutes / 30) * 30;
+  if (minutes <= 600) {
+    return 120;
   }
 
-  if (paddedMinutes <= 360) {
-    return Math.ceil(paddedMinutes / 60) * 60;
+  if (minutes <= 1800) {
+    return 300;
   }
 
-  return Math.ceil(paddedMinutes / 120) * 120;
+  if (minutes <= 3600) {
+    return 600;
+  }
+
+  if (minutes <= 7200) {
+    return 1200;
+  }
+
+  return 3000;
 }
 
 function getComparisonTicks(maxMinutes: number): number[] {
-  return Array.from({ length: 5 }, (_, index) =>
-    Math.round(maxMinutes - (maxMinutes / 4) * index),
-  );
+  const stepMinutes = getComparisonTickStep(maxMinutes);
+  const ticks: number[] = [];
+
+  for (let minutes = maxMinutes; minutes >= 0; minutes -= stepMinutes) {
+    ticks.push(minutes);
+  }
+
+  return ticks[ticks.length - 1] === 0 ? ticks : [...ticks, 0];
+}
+
+function formatStackedMinutes(minutes: number): string[] {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours > 0 && remainingMinutes > 0) {
+    return [`${hours}時間`, `${remainingMinutes}分`];
+  }
+
+  if (hours > 0) {
+    return [`${hours}時間`];
+  }
+
+  return [`${remainingMinutes}分`];
 }
 
 function buildSubjectColorMap(subjects: StudySubject[]): Map<string, string> {
@@ -642,7 +679,9 @@ function ComparisonBars({
                         >
                           {entry.plannedMinutes > 0 ? (
                             <span className="report-comparison-value planned">
-                              {formatMinutes(entry.plannedMinutes)}
+                              {formatStackedMinutes(entry.plannedMinutes).map((line) => (
+                                <span key={line}>{line}</span>
+                              ))}
                             </span>
                           ) : null}
                           <div
@@ -662,7 +701,9 @@ function ComparisonBars({
                                   : 'report-comparison-value actual'
                               }
                             >
-                              {formatMinutes(entry.actualMinutes)}
+                              {formatStackedMinutes(entry.actualMinutes).map((line) => (
+                                <span key={line}>{line}</span>
+                              ))}
                             </span>
                           ) : null}
                           <div
