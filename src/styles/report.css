@@ -24,14 +24,14 @@
 
 .report-metrics-panel {
   display: grid;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .report-metrics-primary,
 .report-metric-chips {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .report-metrics-primary {
@@ -64,16 +64,23 @@
 
 .report-metric-card {
   display: grid;
-  gap: 3px;
-  padding: 9px 10px;
-  border-radius: 14px;
+  gap: 2px;
+  min-height: 0;
+  padding: 7px 9px;
+  border-radius: 12px;
   background: var(--surface-soft);
   border: 1px solid var(--border);
 }
 
 .report-metric-card.primary {
-  gap: 5px;
-  padding: 12px;
+  gap: 3px;
+  padding: 9px 10px;
+}
+
+.report-metric-chips .report-metric-card {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
 }
 
 .report-metric-label,
@@ -83,17 +90,25 @@
 }
 
 .report-metric-value {
-  font-size: 1rem;
+  font-size: 0.88rem;
   line-height: 1.1;
 }
 
 .report-metric-card.primary .report-metric-value {
-  font-size: 1.34rem;
+  font-size: 1.18rem;
   line-height: 1.1;
 }
 
 .report-metric-label {
-  font-size: 0.75rem;
+  font-size: 0.66rem;
+}
+
+.report-metric-chips .report-metric-label {
+  font-size: 0.62rem;
+}
+
+.report-metric-chips .report-metric-value {
+  text-align: right;
 }
 
 .report-bar-chart-shell {
@@ -342,11 +357,31 @@
 }
 
 .report-view .section-header {
-  gap: 14px;
+  gap: 10px;
 }
 
 .report-scope-tabs {
   min-width: min(360px, 100%);
+  gap: 6px;
+}
+
+.report-scope-tabs .segment {
+  min-height: 34px;
+  padding: 6px 11px;
+  font-size: 0.9rem;
+}
+
+.report-view > .panel:first-child {
+  padding: 16px;
+}
+
+.report-view > .panel:first-child .section-header h2 {
+  font-size: 1.25rem;
+}
+
+.report-view > .panel:first-child .section-header p {
+  margin-top: 3px;
+  font-size: 0.82rem;
 }
 
 .report-ranking-list,

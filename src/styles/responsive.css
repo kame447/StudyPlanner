@@ -1100,12 +1100,12 @@
 
   .report-metrics-primary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 6px;
   }
 
   .report-metric-chips {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 6px;
   }
 
   .report-grid {
@@ -1117,12 +1117,26 @@
     padding: 14px;
   }
 
+  .report-view > .panel:first-child {
+    padding: 12px;
+  }
+
+  .report-scope-tabs {
+    gap: 5px;
+  }
+
+  .report-scope-tabs .segment {
+    min-height: 30px;
+    padding: 5px 9px;
+    font-size: 0.82rem;
+  }
+
   .report-metric-card {
-    padding: 8px 9px;
+    padding: 6px 8px;
   }
 
   .report-metric-card.primary {
-    padding: 10px;
+    padding: 8px 9px;
   }
 
   .report-metric-label,
@@ -1131,11 +1145,11 @@
   }
 
   .report-metric-value {
-    font-size: 0.95rem;
+    font-size: 0.82rem;
   }
 
   .report-metric-card.primary .report-metric-value {
-    font-size: 1.18rem;
+    font-size: 1.04rem;
   }
 
   .report-range-toolbar {
@@ -1989,17 +2003,17 @@
   .report-metrics-panel,
   .report-metrics-primary,
   .report-metric-chips {
-    gap: 7px;
+    gap: 6px;
   }
 
   .report-metric-card {
-    padding: 8px;
+    padding: 6px 7px;
     border-radius: 12px;
-    gap: 4px;
+    gap: 2px;
   }
 
   .report-metric-card.primary {
-    padding: 9px;
+    padding: 7px 8px;
   }
 
   .report-bar-chart-shell {
@@ -2012,11 +2026,11 @@
   }
 
   .report-metric-value {
-    font-size: 0.92rem;
+    font-size: 0.78rem;
   }
 
   .report-metric-card.primary .report-metric-value {
-    font-size: 1.08rem;
+    font-size: 0.96rem;
   }
 
   .report-timeline-scroll {
@@ -2094,16 +2108,16 @@
   .report-metrics-panel,
   .report-metrics-primary,
   .report-metric-chips {
-    gap: 6px;
+    gap: 5px;
   }
 
   .report-metric-card {
-    padding: 7px;
+    padding: 5px 6px;
     border-radius: 10px;
   }
 
   .report-metric-card.primary {
-    padding: 8px;
+    padding: 6px 7px;
   }
 
   .report-metric-label,
@@ -2112,11 +2126,11 @@
   }
 
   .report-metric-value {
-    font-size: 0.82rem;
+    font-size: 0.72rem;
   }
 
   .report-metric-card.primary .report-metric-value {
-    font-size: 0.98rem;
+    font-size: 0.88rem;
   }
 
   .month-week-chip-row {
