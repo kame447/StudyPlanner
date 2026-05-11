@@ -442,6 +442,7 @@
 }
 
 .report-comparison-plot {
+  --comparison-item-width: 70px;
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
   gap: 10px;
@@ -459,12 +460,20 @@
   padding-top: 1px;
 }
 
+.report-comparison-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
 .report-comparison-chart {
   position: relative;
   display: grid;
-  gap: 10px;
+  gap: 14px;
   align-items: end;
-  min-width: 0;
+  width: max-content;
+  min-width: 100%;
 }
 
 .report-comparison-grid-lines {
@@ -506,8 +515,8 @@
 
 .report-comparison-bar-pair {
   display: grid;
-  grid-template-columns: repeat(2, minmax(4px, 18px));
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(10px, 18px));
+  gap: 8px;
   align-items: end;
   justify-content: center;
   height: 100%;
@@ -537,7 +546,7 @@
   bottom: min(calc(var(--bar-height) + 8px), calc(100% - 1.45em));
   transform: translateX(-50%);
   width: max-content;
-  max-width: 56px;
+  max-width: 68px;
   padding: 1px 3px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--surface) 86%, transparent);
@@ -612,6 +621,7 @@
   }
 
   .report-comparison-plot {
+    --comparison-item-width: 76px;
     grid-template-columns: 40px minmax(0, 1fr);
     gap: 7px;
   }
@@ -622,7 +632,7 @@
   }
 
   .report-comparison-chart {
-    gap: 6px;
+    gap: 12px;
   }
 
   .report-comparison-grid-lines {
@@ -634,12 +644,12 @@
   }
 
   .report-comparison-bar-pair {
-    grid-template-columns: repeat(2, minmax(3px, 12px));
-    gap: 3px;
+    grid-template-columns: repeat(2, minmax(9px, 13px));
+    gap: 7px;
   }
 
   .report-comparison-value {
-    max-width: 42px;
+    max-width: 56px;
     padding: 1px 2px;
     font-size: 0.54rem;
   }

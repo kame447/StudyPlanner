@@ -610,95 +610,97 @@ function ComparisonBars({
             <span key={minutes}>{formatMinutes(minutes)}</span>
           ))}
         </div>
-        <div
-          className="report-comparison-chart"
-          style={{
-            gridTemplateColumns: `repeat(${entries.length}, minmax(0, 1fr))`,
-          }}
-        >
-          <div className="report-comparison-grid-lines" aria-hidden="true">
-            {tickMinutes.map((minutes) => (
-              <span key={minutes} />
-            ))}
-          </div>
-          {entries.map((entry) => {
-            const plannedHeight =
-              entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
-            const actualHeight =
-              entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
-            const shouldStaggerLabels =
-              entry.plannedMinutes > 0 &&
-              entry.actualMinutes > 0 &&
-              Math.abs(plannedHeight - actualHeight) < 12;
-            const content = (
-              <>
-                <div className="report-comparison-column">
-                  <div className="report-comparison-column-track">
-                    <div className="report-comparison-bar-pair">
-                      <div
-                        className="report-comparison-bar"
-                        style={{ '--bar-height': `${plannedHeight}%` } as CSSProperties}
-                      >
-                        {entry.plannedMinutes > 0 ? (
-                          <span className="report-comparison-value planned">
-                            {formatMinutes(entry.plannedMinutes)}
-                          </span>
-                        ) : null}
+        <div className="report-comparison-scroll">
+          <div
+            className="report-comparison-chart"
+            style={{
+              gridTemplateColumns: `repeat(${entries.length}, minmax(var(--comparison-item-width), 1fr))`,
+            }}
+          >
+            <div className="report-comparison-grid-lines" aria-hidden="true">
+              {tickMinutes.map((minutes) => (
+                <span key={minutes} />
+              ))}
+            </div>
+            {entries.map((entry) => {
+              const plannedHeight =
+                entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
+              const actualHeight =
+                entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
+              const shouldStaggerLabels =
+                entry.plannedMinutes > 0 &&
+                entry.actualMinutes > 0 &&
+                Math.abs(plannedHeight - actualHeight) < 12;
+              const content = (
+                <>
+                  <div className="report-comparison-column">
+                    <div className="report-comparison-column-track">
+                      <div className="report-comparison-bar-pair">
                         <div
-                          className="report-comparison-fill planned"
-                          title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
-                        />
-                      </div>
-                      <div
-                        className="report-comparison-bar"
-                        style={{ '--bar-height': `${actualHeight}%` } as CSSProperties}
-                      >
-                        {entry.actualMinutes > 0 ? (
-                          <span
-                            className={
-                              shouldStaggerLabels
-                                ? 'report-comparison-value actual staggered'
-                                : 'report-comparison-value actual'
-                            }
-                          >
-                            {formatMinutes(entry.actualMinutes)}
-                          </span>
-                        ) : null}
+                          className="report-comparison-bar"
+                          style={{ '--bar-height': `${plannedHeight}%` } as CSSProperties}
+                        >
+                          {entry.plannedMinutes > 0 ? (
+                            <span className="report-comparison-value planned">
+                              {formatMinutes(entry.plannedMinutes)}
+                            </span>
+                          ) : null}
+                          <div
+                            className="report-comparison-fill planned"
+                            title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
+                          />
+                        </div>
                         <div
-                          className="report-comparison-fill actual"
-                          title={`記録 ${formatMinutes(entry.actualMinutes)}`}
-                        />
+                          className="report-comparison-bar"
+                          style={{ '--bar-height': `${actualHeight}%` } as CSSProperties}
+                        >
+                          {entry.actualMinutes > 0 ? (
+                            <span
+                              className={
+                                shouldStaggerLabels
+                                  ? 'report-comparison-value actual staggered'
+                                  : 'report-comparison-value actual'
+                              }
+                            >
+                              {formatMinutes(entry.actualMinutes)}
+                            </span>
+                          ) : null}
+                          <div
+                            className="report-comparison-fill actual"
+                            title={`記録 ${formatMinutes(entry.actualMinutes)}`}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-                <div className="report-comparison-label">
-                  <strong>{entry.label}</strong>
-                  {entry.sublabel ? <span>{entry.sublabel}</span> : null}
-                </div>
-              </>
-            );
+                  <div className="report-comparison-label">
+                    <strong>{entry.label}</strong>
+                    {entry.sublabel ? <span>{entry.sublabel}</span> : null}
+                  </div>
+                </>
+              );
 
-            return onOpenDay && /^\d{4}-\d{2}-\d{2}$/.test(entry.key) ? (
-              <button
-                aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
-                className="report-comparison-item interactive"
-                key={entry.key}
-                onClick={() => onOpenDay(entry.key)}
-                type="button"
-              >
-                {content}
-              </button>
-            ) : (
-              <article
-                aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
-                className="report-comparison-item"
-                key={entry.key}
-              >
-                {content}
-              </article>
-            );
-          })}
+              return onOpenDay && /^\d{4}-\d{2}-\d{2}$/.test(entry.key) ? (
+                <button
+                  aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
+                  className="report-comparison-item interactive"
+                  key={entry.key}
+                  onClick={() => onOpenDay(entry.key)}
+                  type="button"
+                >
+                  {content}
+                </button>
+              ) : (
+                <article
+                  aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
+                  className="report-comparison-item"
+                  key={entry.key}
+                >
+                  {content}
+                </article>
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>
