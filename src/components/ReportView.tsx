@@ -136,7 +136,7 @@ function getActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject.trim() || UNSET_SUBJECT_LABEL;
 }
 
-function getMaterialChartEntries(entries: TotalEntry[], limit = 5): TotalEntry[] {
+function getMaterialChartEntries(entries: TotalEntry[], limit = 6): TotalEntry[] {
   const positiveEntries = entries.filter((entry) => entry.minutes > 0);
 
   if (positiveEntries.length <= limit) {
@@ -169,6 +169,22 @@ function getMaterialChartColor(entry: TotalEntry, index: number): string {
   }
 
   return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
+}
+
+function buildMaterialPieGradient(entries: TotalEntry[]): string {
+  const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
+  let cursor = 0;
+
+  const stops = entries.map((entry, index) => {
+    const start = cursor;
+    const share = totalMinutes === 0 ? 0 : (entry.minutes / totalMinutes) * 100;
+    const end = index === entries.length - 1 ? 100 : cursor + share;
+    cursor = end;
+
+    return `${getMaterialChartColor(entry, index)} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  });
+
+  return `conic-gradient(${stops.join(', ')})`;
 }
 
 function formatShare(minutes: number, totalMinutes: number): string {
@@ -469,7 +485,7 @@ function MetricCard({
   );
 }
 
-function MaterialBarChart({
+function MaterialPieChart({
   title,
   entries,
   emptyText,
@@ -483,7 +499,6 @@ function MaterialBarChart({
     (sum, entry) => sum + entry.minutes,
     0,
   );
-  const maxMinutes = Math.max(1, ...chartEntries.map((entry) => entry.minutes));
 
   return (
     <section className="panel report-card">
@@ -495,43 +510,36 @@ function MaterialBarChart({
       {chartEntries.length === 0 ? (
         <p className="empty-copy">{emptyText}</p>
       ) : (
-        <div
-          className="report-material-chart"
-          role="img"
-          aria-label={`${title}: ${formatMinutes(chartTotalMinutes)}`}
-        >
-          <div
-            className="report-material-bars"
-            style={{
-              gridTemplateColumns: `repeat(${chartEntries.length}, minmax(0, 1fr))`,
-            }}
-          >
+        <div className="report-pie-layout">
+          <div className="report-pie-chart-wrap">
+            <div
+              className="report-pie-chart"
+              role="img"
+              aria-label={`${title}: ${formatMinutes(chartTotalMinutes)}`}
+              style={{ background: buildMaterialPieGradient(chartEntries) }}
+            />
+            <div className="report-pie-total">
+              <strong>{formatMinutes(chartTotalMinutes)}</strong>
+              <span>記録時間ベース</span>
+            </div>
+          </div>
+          <div className="report-pie-legend">
             {chartEntries.map((entry, index) => (
-              <div className="report-material-bar-item" key={entry.key}>
-                <strong className="report-material-bar-ratio">
-                  {formatShare(entry.minutes, chartTotalMinutes)}
-                </strong>
-                <div className="report-material-bar-track">
-                  <div
-                    className="report-material-bar-fill"
-                    style={{
-                      height: `${Math.max(8, (entry.minutes / maxMinutes) * 100)}%`,
-                      backgroundColor: getMaterialChartColor(entry, index),
-                    }}
-                  />
+              <div className="report-pie-legend-item" key={entry.key}>
+                <span
+                  className="report-pie-legend-dot"
+                  style={{ backgroundColor: getMaterialChartColor(entry, index) }}
+                />
+                <div className="report-pie-legend-body">
+                  <strong title={entry.label}>{entry.label}</strong>
+                  <span>
+                    {formatMinutes(entry.minutes)} /{' '}
+                    {formatShare(entry.minutes, chartTotalMinutes)}
+                  </span>
                 </div>
-                <strong className="report-material-bar-label" title={entry.label}>
-                  {entry.label}
-                </strong>
-                <span className="report-material-bar-time">
-                  {formatMinutes(entry.minutes)}
-                </span>
               </div>
             ))}
           </div>
-          <span className="report-material-chart-total">
-            記録時間ベース: {formatMinutes(chartTotalMinutes)}
-          </span>
         </div>
       )}
     </section>
@@ -558,42 +566,56 @@ function ComparisonBars({
         <div>
           <h2>{title}</h2>
         </div>
+        <div className="report-comparison-legend" aria-hidden="true">
+          <span>
+            <i className="planned" />
+            予定
+          </span>
+          <span>
+            <i className="actual" />
+            記録
+          </span>
+        </div>
       </div>
-      <div className="report-comparison-list">
+      <div
+        className="report-comparison-chart"
+        style={{
+          gridTemplateColumns: `repeat(${entries.length}, minmax(0, 1fr))`,
+        }}
+      >
         {entries.map((entry) => {
+          const plannedHeight =
+            entry.plannedMinutes === 0 ? 0 : Math.max(3, (entry.plannedMinutes / maxMinutes) * 100);
+          const actualHeight =
+            entry.actualMinutes === 0 ? 0 : Math.max(3, (entry.actualMinutes / maxMinutes) * 100);
           const content = (
             <>
+              <div className="report-comparison-column">
+                <div className="report-comparison-column-track">
+                  <div className="report-comparison-bar-pair">
+                    <div
+                      className="report-comparison-fill planned"
+                      title={`予定 ${formatMinutes(entry.plannedMinutes)}`}
+                      style={{ height: `${plannedHeight}%` }}
+                    />
+                    <div
+                      className="report-comparison-fill actual"
+                      title={`記録 ${formatMinutes(entry.actualMinutes)}`}
+                      style={{ height: `${actualHeight}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
               <div className="report-comparison-label">
                 <strong>{entry.label}</strong>
                 {entry.sublabel ? <span>{entry.sublabel}</span> : null}
-              </div>
-              <div className="report-comparison-bars">
-                <div className="report-comparison-row">
-                  <span>予定</span>
-                  <div className="report-comparison-track">
-                    <div
-                      className="report-comparison-fill planned"
-                      style={{ width: `${(entry.plannedMinutes / maxMinutes) * 100}%` }}
-                    />
-                  </div>
-                  <span>{formatMinutes(entry.plannedMinutes)}</span>
-                </div>
-                <div className="report-comparison-row">
-                  <span>記録</span>
-                  <div className="report-comparison-track">
-                    <div
-                      className="report-comparison-fill actual"
-                      style={{ width: `${(entry.actualMinutes / maxMinutes) * 100}%` }}
-                    />
-                  </div>
-                  <span>{formatMinutes(entry.actualMinutes)}</span>
-                </div>
               </div>
             </>
           );
 
           return onOpenDay && /^\d{4}-\d{2}-\d{2}$/.test(entry.key) ? (
             <button
+              aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
               className="report-comparison-item interactive"
               key={entry.key}
               onClick={() => onOpenDay(entry.key)}
@@ -602,7 +624,11 @@ function ComparisonBars({
               {content}
             </button>
           ) : (
-            <article className="report-comparison-item" key={entry.key}>
+            <article
+              aria-label={`${entry.label} ${entry.sublabel ?? ''} 予定 ${formatMinutes(entry.plannedMinutes)} 記録 ${formatMinutes(entry.actualMinutes)}`}
+              className="report-comparison-item"
+              key={entry.key}
+            >
               {content}
             </article>
           );
@@ -798,7 +824,7 @@ export function ReportView(props: ReportViewProps) {
       {scope === 'day' ? (
         <>
           <div className="report-grid">
-            <MaterialBarChart
+            <MaterialPieChart
               title="教材別学習比率"
               entries={summary.materialTotals}
               emptyText="この日の記録時間はまだありません。"
@@ -851,7 +877,7 @@ export function ReportView(props: ReportViewProps) {
             onOpenDay={props.onOpenDay}
           />
           <div className="report-grid">
-            <MaterialBarChart
+            <MaterialPieChart
               title="教材別学習比率"
               entries={summary.materialTotals}
               emptyText="この週の記録時間はまだありません。"
@@ -881,7 +907,7 @@ export function ReportView(props: ReportViewProps) {
         <>
           <ComparisonBars title="週ごとの学習時間推移" entries={monthWeekComparisons} />
           <div className="report-grid">
-            <MaterialBarChart
+            <MaterialPieChart
               title="教材別学習比率"
               entries={summary.materialTotals}
               emptyText="この月の記録時間はまだありません。"
@@ -907,7 +933,7 @@ export function ReportView(props: ReportViewProps) {
         <>
           <ComparisonBars title="月ごとの予定 / 記録" entries={yearMonthComparisons} />
           <div className="report-grid">
-            <MaterialBarChart
+            <MaterialPieChart
               title="年間の教材別学習比率"
               entries={summary.materialTotals}
               emptyText="この年の記録時間はまだありません。"
