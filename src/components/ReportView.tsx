@@ -97,6 +97,7 @@ const DEFAULT_SUBJECT_COLOR = '#8d9aa6';
 const UNSET_SUBJECT_LABEL = '未設定';
 const UNSET_MATERIAL_LABEL = '教材未設定';
 const OTHER_MATERIAL_LABEL = 'その他';
+const OTHER_MATERIAL_COLOR = '#a4aab2';
 const MATERIAL_CHART_COLORS = [
   '#567fb6',
   '#d9824f',
@@ -279,17 +280,25 @@ function getMaterialChartEntries(entries: TotalEntry[], limit = 6): TotalEntry[]
       label: OTHER_MATERIAL_LABEL,
       minutes: otherMinutes,
       ratio: visibleTotalMinutes === 0 ? 0 : otherMinutes / visibleTotalMinutes,
-      color: DEFAULT_SUBJECT_COLOR,
+      color: OTHER_MATERIAL_COLOR,
     },
   ];
 }
 
 function getMaterialChartColor(entry: TotalEntry, index: number): string {
-  if (entry.key === '__unset__' || entry.key === '__other_materials__') {
+  if (entry.color) {
+    return entry.color;
+  }
+
+  if (entry.key === '__unset__') {
     return DEFAULT_SUBJECT_COLOR;
   }
 
-  return entry.color ?? MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
+  if (entry.key === '__other_materials__') {
+    return OTHER_MATERIAL_COLOR;
+  }
+
+  return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
 }
 
 function getMaterialColor(
@@ -391,6 +400,7 @@ function buildReportSummary({
   const subjectMinutes = new Map<string, number>();
   const plannedSubjectMinutes = new Map<string, number>();
   const materialMinutes = new Map<string, { label: string; subject: string; minutes: number }>();
+  const materialVariantCountsBySubject = new Map<string, number>();
 
   rangePlans.forEach((plan) => {
     const subject = plan.subject.trim() || UNSET_SUBJECT_LABEL;
@@ -442,10 +452,24 @@ function buildReportSummary({
       ratio: actualMinutes === 0 ? 0 : entry.minutes / actualMinutes,
     }))
     .sort((left, right) => right.minutes - left.minutes)
-    .map((entry, index) => ({
-      ...entry,
-      color: getMaterialColor(entry, index, subjectColorMap),
-    }));
+    .map((entry, index) => {
+      const subjectKey = entry.subject || UNSET_SUBJECT_LABEL;
+      const subjectVariantIndex =
+        materialVariantCountsBySubject.get(subjectKey) ?? 0;
+      materialVariantCountsBySubject.set(
+        subjectKey,
+        subjectVariantIndex + 1,
+      );
+
+      return {
+        ...entry,
+        color: getMaterialColor(
+          entry,
+          subjectColorMap.has(entry.subject) ? subjectVariantIndex : index,
+          subjectColorMap,
+        ),
+      };
+    });
   const unrecordedPlans = rangePlans.filter(
     (plan) => !actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
   );
@@ -669,7 +693,7 @@ function MaterialPieChart({
   });
 
   return (
-    <section className="panel report-card">
+    <section className="panel report-card report-pie-card">
       <div className="section-header">
         <div>
           <h2>{title}</h2>
