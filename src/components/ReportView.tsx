@@ -1,27 +1,27 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import {
-  addDays,
-  addMonths,
   formatCompactDate,
   formatDateLabel,
   formatMinutes,
   formatMonthLabel,
-  getMonthWeeks,
   getWeekDates,
   getWeekdayLabel,
-  startOfMonth,
-  startOfWeek,
 } from '../lib/date';
 import {
-  buildPlanOccurrenceKey,
-  expandPlansForDateRange,
-  getActualOccurrenceKey,
-} from '../lib/planRecurrence';
-import {
-  getActualMinutes,
-  getPlannedMinutes,
-  isStudyTimePlan,
-} from '../lib/studyAnalytics';
+  buildMonthWeekComparisons,
+  buildRangeDailyComparisons,
+  buildReportSummary,
+  buildYearMonthComparisons,
+  getComparisonChartMax,
+  getComparisonTicks,
+  getMaterialChartColor,
+  getMaterialChartEntries,
+  getReportScopeRange,
+  UNSET_SUBJECT_LABEL,
+  type ReportPeriodComparison,
+  type ReportScope,
+  type ReportTotalEntry,
+} from '../lib/reportAnalytics';
 import type {
   Actual,
   DayNote,
@@ -31,8 +31,6 @@ import type {
   StudyMaterial,
   StudySubject,
 } from '../types/domain';
-
-type ReportScope = 'day' | 'week' | 'month' | 'year';
 
 interface ReportViewProps {
   selectedDate: string;
@@ -46,46 +44,6 @@ interface ReportViewProps {
   onSaveDayNote: (draft: DayNoteDraft) => Promise<void>;
 }
 
-interface TotalEntry {
-  key: string;
-  label: string;
-  minutes: number;
-  ratio: number;
-  color?: string;
-  subject?: string;
-}
-
-interface MaterialEntrySeed {
-  key: string;
-  label: string;
-  subject: string;
-}
-
-interface PeriodComparison {
-  key: string;
-  label: string;
-  sublabel?: string;
-  plannedMinutes: number;
-  actualMinutes: number;
-}
-
-interface ReportSummary {
-  startDate: string;
-  endDate: string;
-  plannedMinutes: number;
-  actualMinutes: number;
-  achievementRate: number | null;
-  unrecordedPlans: Plan[];
-  standaloneActuals: Actual[];
-  actuals: Actual[];
-  subjectTotals: TotalEntry[];
-  materialTotals: TotalEntry[];
-  learningDays: number;
-  materialUnsetCount: number;
-  underPlannedSubjects: TotalEntry[];
-  extraStudiedSubjects: TotalEntry[];
-}
-
 const REPORT_SCOPES: Array<{ value: ReportScope; label: string }> = [
   { value: 'day', label: '日' },
   { value: 'week', label: '週' },
@@ -93,87 +51,10 @@ const REPORT_SCOPES: Array<{ value: ReportScope; label: string }> = [
   { value: 'year', label: '年' },
 ];
 
-const DEFAULT_SUBJECT_COLOR = '#8d9aa6';
-const UNSET_SUBJECT_LABEL = '未設定';
-const UNSET_MATERIAL_LABEL = '教材未設定';
-const OTHER_MATERIAL_LABEL = 'その他';
-const OTHER_MATERIAL_COLOR = '#a4aab2';
-const MATERIAL_CHART_COLORS = [
-  '#567fb6',
-  '#d9824f',
-  '#5f9f6e',
-  '#c95f75',
-  '#8a70b8',
-  '#b99b3e',
-  '#4f9f9a',
-  '#8d9aa6',
-];
 const MATERIAL_PIE_LABEL_THRESHOLD = 0.1;
-
-function endOfMonth(date: string): string {
-  return addDays(addMonths(startOfMonth(date), 1), -1);
-}
-
-function getYearStart(date: string): string {
-  return `${date.slice(0, 4)}-01-01`;
-}
-
-function getYearEnd(date: string): string {
-  return `${date.slice(0, 4)}-12-31`;
-}
-
-function isDateInRange(date: string, startDate: string, endDate: string): boolean {
-  return date.localeCompare(startDate) >= 0 && date.localeCompare(endDate) <= 0;
-}
 
 function formatRate(rate: number | null): string {
   return rate === null ? '-' : `${Math.round(rate)}%`;
-}
-
-function getComparisonChartMax(minutes: number): number {
-  const stepMinutes = getComparisonTickStep(minutes);
-  let maxMinutes = Math.ceil(minutes / stepMinutes) * stepMinutes;
-
-  if (maxMinutes < minutes * 1.08) {
-    maxMinutes += stepMinutes;
-  }
-
-  return Math.max(60, maxMinutes);
-}
-
-function getComparisonTickStep(minutes: number): number {
-  if (minutes <= 360) {
-    return 60;
-  }
-
-  if (minutes <= 600) {
-    return 120;
-  }
-
-  if (minutes <= 1800) {
-    return 300;
-  }
-
-  if (minutes <= 3600) {
-    return 600;
-  }
-
-  if (minutes <= 7200) {
-    return 1200;
-  }
-
-  return 3000;
-}
-
-function getComparisonTicks(maxMinutes: number): number[] {
-  const stepMinutes = getComparisonTickStep(maxMinutes);
-  const ticks: number[] = [];
-
-  for (let minutes = maxMinutes; minutes >= 0; minutes -= stepMinutes) {
-    ticks.push(minutes);
-  }
-
-  return ticks[ticks.length - 1] === 0 ? ticks : [...ticks, 0];
 }
 
 function formatStackedMinutes(minutes: number): string[] {
@@ -191,145 +72,7 @@ function formatStackedMinutes(minutes: number): string[] {
   return [`${remainingMinutes}分`];
 }
 
-function buildSubjectColorMap(subjects: StudySubject[]): Map<string, string> {
-  return new Map(subjects.map((subject) => [subject.name, subject.color]));
-}
-
-function getPlanByOccurrenceKey(plans: Plan[]): Map<string, Plan> {
-  return new Map(
-    plans.map((plan) => [buildPlanOccurrenceKey(plan.id, plan.date), plan]),
-  );
-}
-
-function getActualSubject(actual: Actual, plan?: Plan): string {
-  return actual.subject.trim() || plan?.subject.trim() || UNSET_SUBJECT_LABEL;
-}
-
-function getActualTitle(actual: Actual, plan?: Plan): string {
-  return actual.title?.trim() || plan?.title.trim() || '';
-}
-
-function resolveMaterialEntry({
-  actual,
-  plan,
-  materialsById,
-  materialsByName,
-  fallbackSubject,
-}: {
-  actual: Actual;
-  plan?: Plan;
-  materialsById: Map<string, StudyMaterial>;
-  materialsByName: Map<string, StudyMaterial>;
-  fallbackSubject: string;
-}): MaterialEntrySeed {
-  const actualMaterialId = actual.materialId?.trim() || '';
-  const actualMaterialName = actual.materialName?.trim() || '';
-  const planMaterialId = plan?.materialId?.trim() || '';
-  const planMaterialName = plan?.materialName?.trim() || '';
-
-  const materialId = actualMaterialId || planMaterialId;
-  const materialName = actualMaterialName || planMaterialName;
-  const material =
-    (materialId ? materialsById.get(materialId) : undefined) ??
-    (materialName ? materialsByName.get(materialName) : undefined);
-
-  if (materialId || materialName) {
-    return {
-      key: material?.id ? `material:${material.id}` : `material-name:${materialName || materialId}`,
-      label: materialName || material?.name || UNSET_MATERIAL_LABEL,
-      subject: material?.subjectName || fallbackSubject,
-    };
-  }
-
-  const title = getActualTitle(actual, plan);
-
-  if (title) {
-    return {
-      key: `title:${title}`,
-      label: title,
-      subject: fallbackSubject,
-    };
-  }
-
-  return {
-    key: '__unset__',
-    label: UNSET_MATERIAL_LABEL,
-    subject: fallbackSubject,
-  };
-}
-
-function getMaterialChartEntries(entries: TotalEntry[], limit = 6): TotalEntry[] {
-  const positiveEntries = entries.filter((entry) => entry.minutes > 0);
-
-  if (positiveEntries.length <= limit) {
-    return positiveEntries;
-  }
-
-  const visibleEntries = positiveEntries.slice(0, limit - 1);
-  const hiddenEntries = positiveEntries.slice(limit - 1);
-  const visibleTotalMinutes = positiveEntries.reduce(
-    (sum, entry) => sum + entry.minutes,
-    0,
-  );
-  const otherMinutes = hiddenEntries.reduce((sum, entry) => sum + entry.minutes, 0);
-
-  return [
-    ...visibleEntries,
-    {
-      key: '__other_materials__',
-      label: OTHER_MATERIAL_LABEL,
-      minutes: otherMinutes,
-      ratio: visibleTotalMinutes === 0 ? 0 : otherMinutes / visibleTotalMinutes,
-      color: OTHER_MATERIAL_COLOR,
-    },
-  ];
-}
-
-function getMaterialChartColor(entry: TotalEntry, index: number): string {
-  if (entry.color) {
-    return entry.color;
-  }
-
-  if (entry.key === '__unset__') {
-    return DEFAULT_SUBJECT_COLOR;
-  }
-
-  if (entry.key === '__other_materials__') {
-    return OTHER_MATERIAL_COLOR;
-  }
-
-  return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
-}
-
-function getMaterialColor(
-  entry: { key: string; subject: string },
-  index: number,
-  subjectColorMap: Map<string, string>,
-): string {
-  if (entry.key === '__unset__') {
-    return DEFAULT_SUBJECT_COLOR;
-  }
-
-  const subjectColor = subjectColorMap.get(entry.subject);
-
-  if (subjectColor) {
-    const variants = [
-      { ratio: 76, target: 'white' },
-      { ratio: 72, target: 'black' },
-      { ratio: 58, target: 'white' },
-      { ratio: 62, target: 'black' },
-      { ratio: 88, target: 'white' },
-      { ratio: 46, target: 'black' },
-    ];
-    const variant = variants[index % variants.length];
-
-    return `color-mix(in srgb, ${subjectColor} ${variant.ratio}%, ${variant.target})`;
-  }
-
-  return MATERIAL_CHART_COLORS[index % MATERIAL_CHART_COLORS.length];
-}
-
-function buildMaterialPieGradient(entries: TotalEntry[]): string {
+function buildMaterialPieGradient(entries: ReportTotalEntry[]): string {
   const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
   let cursor = 0;
 
@@ -353,293 +96,6 @@ function formatShare(minutes: number, totalMinutes: number): string {
   const percent = (minutes / totalMinutes) * 100;
 
   return percent > 0 && percent < 1 ? '<1%' : `${Math.round(percent)}%`;
-}
-
-function buildReportSummary({
-  startDate,
-  endDate,
-  plans,
-  actuals,
-  subjects,
-  materials,
-}: {
-  startDate: string;
-  endDate: string;
-  plans: Plan[];
-  actuals: Actual[];
-  subjects: StudySubject[];
-  materials: StudyMaterial[];
-}): ReportSummary {
-  const subjectColorMap = buildSubjectColorMap(subjects);
-  const materialsById = new Map(materials.map((material) => [material.id, material]));
-  const materialsByName = new Map(materials.map((material) => [material.name, material]));
-  const rangePlans = expandPlansForDateRange(plans, startDate, endDate).filter(
-    isStudyTimePlan,
-  );
-  const planByOccurrenceKey = getPlanByOccurrenceKey(rangePlans);
-  const actualByOccurrenceKey = new Map(
-    actuals
-      .filter((actual) => actual.planId)
-      .map((actual) => [getActualOccurrenceKey(actual), actual]),
-  );
-  const rangeActuals = actuals.filter((actual) => {
-    if (!isDateInRange(actual.occurrenceDate, startDate, endDate)) {
-      return false;
-    }
-
-    return !actual.planId || planByOccurrenceKey.has(getActualOccurrenceKey(actual));
-  });
-  const plannedMinutes = rangePlans.reduce(
-    (sum, plan) => sum + getPlannedMinutes(plan),
-    0,
-  );
-  const actualMinutes = rangeActuals.reduce(
-    (sum, actual) => sum + getActualMinutes(actual),
-    0,
-  );
-  const subjectMinutes = new Map<string, number>();
-  const plannedSubjectMinutes = new Map<string, number>();
-  const materialMinutes = new Map<string, { label: string; subject: string; minutes: number }>();
-  const materialVariantCountsBySubject = new Map<string, number>();
-
-  rangePlans.forEach((plan) => {
-    const subject = plan.subject.trim() || UNSET_SUBJECT_LABEL;
-    plannedSubjectMinutes.set(
-      subject,
-      (plannedSubjectMinutes.get(subject) ?? 0) + getPlannedMinutes(plan),
-    );
-  });
-
-  rangeActuals.forEach((actual) => {
-    const plan = actual.planId ? planByOccurrenceKey.get(getActualOccurrenceKey(actual)) : undefined;
-    const minutes = getActualMinutes(actual);
-    const subject = getActualSubject(actual, plan);
-    const materialEntry = resolveMaterialEntry({
-      actual,
-      plan,
-      materialsById,
-      materialsByName,
-      fallbackSubject: subject,
-    });
-    const currentMaterial = materialMinutes.get(materialEntry.key) ?? {
-      label: materialEntry.label,
-      subject: materialEntry.subject,
-      minutes: 0,
-    };
-
-    subjectMinutes.set(subject, (subjectMinutes.get(subject) ?? 0) + minutes);
-    materialMinutes.set(materialEntry.key, {
-      ...currentMaterial,
-      minutes: currentMaterial.minutes + minutes,
-    });
-  });
-
-  const subjectTotals = [...subjectMinutes.entries()]
-    .map(([label, minutes]) => ({
-      key: label,
-      label,
-      minutes,
-      ratio: actualMinutes === 0 ? 0 : minutes / actualMinutes,
-      color: subjectColorMap.get(label) ?? DEFAULT_SUBJECT_COLOR,
-    }))
-    .sort((left, right) => right.minutes - left.minutes);
-  const materialTotals = [...materialMinutes.entries()]
-    .map(([key, entry]) => ({
-      key,
-      label: entry.label,
-      subject: entry.subject,
-      minutes: entry.minutes,
-      ratio: actualMinutes === 0 ? 0 : entry.minutes / actualMinutes,
-    }))
-    .sort((left, right) => right.minutes - left.minutes)
-    .map((entry, index) => {
-      const subjectKey = entry.subject || UNSET_SUBJECT_LABEL;
-      const subjectVariantIndex =
-        materialVariantCountsBySubject.get(subjectKey) ?? 0;
-      materialVariantCountsBySubject.set(
-        subjectKey,
-        subjectVariantIndex + 1,
-      );
-
-      return {
-        ...entry,
-        color: getMaterialColor(
-          entry,
-          subjectColorMap.has(entry.subject) ? subjectVariantIndex : index,
-          subjectColorMap,
-        ),
-      };
-    });
-  const unrecordedPlans = rangePlans.filter(
-    (plan) => !actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
-  );
-  const standaloneActuals = rangeActuals.filter((actual) => !actual.planId);
-  const learningDays = new Set(
-    rangeActuals.filter((actual) => getActualMinutes(actual) > 0).map((actual) => actual.occurrenceDate),
-  ).size;
-  const materialUnsetCount = rangeActuals.filter((actual) => {
-    const plan = actual.planId ? planByOccurrenceKey.get(getActualOccurrenceKey(actual)) : undefined;
-
-    return (
-      !actual.materialId?.trim() &&
-      !actual.materialName?.trim() &&
-      !plan?.materialId?.trim() &&
-      !plan?.materialName?.trim() &&
-      !getActualTitle(actual, plan)
-    );
-  }).length;
-  const subjectComparisons = [...new Set([
-    ...plannedSubjectMinutes.keys(),
-    ...subjectMinutes.keys(),
-  ])].map((subject) => ({
-    key: subject,
-    label: subject,
-    minutes: Math.abs((subjectMinutes.get(subject) ?? 0) - (plannedSubjectMinutes.get(subject) ?? 0)),
-    ratio: 0,
-    color: subjectColorMap.get(subject) ?? DEFAULT_SUBJECT_COLOR,
-    planned: plannedSubjectMinutes.get(subject) ?? 0,
-    actual: subjectMinutes.get(subject) ?? 0,
-  }));
-
-  return {
-    startDate,
-    endDate,
-    plannedMinutes,
-    actualMinutes,
-    achievementRate: plannedMinutes === 0 ? null : (actualMinutes / plannedMinutes) * 100,
-    unrecordedPlans,
-    standaloneActuals,
-    actuals: rangeActuals,
-    subjectTotals,
-    materialTotals,
-    learningDays,
-    materialUnsetCount,
-    underPlannedSubjects: subjectComparisons
-      .filter((entry) => entry.planned > entry.actual)
-      .sort((left, right) => right.minutes - left.minutes)
-      .slice(0, 3),
-    extraStudiedSubjects: subjectComparisons
-      .filter((entry) => entry.actual > entry.planned)
-      .sort((left, right) => right.minutes - left.minutes)
-      .slice(0, 3),
-  };
-}
-
-function buildRangeDailyComparisons({
-  startDate,
-  endDate,
-  plans,
-  actuals,
-  subjects,
-  materials,
-}: {
-  startDate: string;
-  endDate: string;
-  plans: Plan[];
-  actuals: Actual[];
-  subjects: StudySubject[];
-  materials: StudyMaterial[];
-}): PeriodComparison[] {
-  const dates: string[] = [];
-  let cursor = startDate;
-
-  while (cursor.localeCompare(endDate) <= 0) {
-    dates.push(cursor);
-    cursor = addDays(cursor, 1);
-  }
-
-  return dates.map((date) => {
-    const summary = buildReportSummary({
-      startDate: date,
-      endDate: date,
-      plans,
-      actuals,
-      subjects,
-      materials,
-    });
-
-    return {
-      key: date,
-      label: getWeekdayLabel(date),
-      sublabel: formatCompactDate(date),
-      plannedMinutes: summary.plannedMinutes,
-      actualMinutes: summary.actualMinutes,
-    };
-  });
-}
-
-function buildMonthWeekComparisons({
-  selectedDate,
-  plans,
-  actuals,
-  subjects,
-  materials,
-}: {
-  selectedDate: string;
-  plans: Plan[];
-  actuals: Actual[];
-  subjects: StudySubject[];
-  materials: StudyMaterial[];
-}): PeriodComparison[] {
-  const monthStart = startOfMonth(selectedDate);
-  const monthEnd = endOfMonth(selectedDate);
-
-  return getMonthWeeks(selectedDate).map((week) => {
-    const startDate =
-      week.startDate.localeCompare(monthStart) < 0 ? monthStart : week.startDate;
-    const endDate = week.endDate.localeCompare(monthEnd) > 0 ? monthEnd : week.endDate;
-    const summary = buildReportSummary({
-      startDate,
-      endDate,
-      plans,
-      actuals,
-      subjects,
-      materials,
-    });
-
-    return {
-      key: week.startDate,
-      label: week.label,
-      sublabel: `${formatCompactDate(startDate)}-${formatCompactDate(endDate)}`,
-      plannedMinutes: summary.plannedMinutes,
-      actualMinutes: summary.actualMinutes,
-    };
-  });
-}
-
-function buildYearMonthComparisons({
-  selectedDate,
-  plans,
-  actuals,
-  subjects,
-  materials,
-}: {
-  selectedDate: string;
-  plans: Plan[];
-  actuals: Actual[];
-  subjects: StudySubject[];
-  materials: StudyMaterial[];
-}): PeriodComparison[] {
-  const year = selectedDate.slice(0, 4);
-
-  return Array.from({ length: 12 }, (_, index) => {
-    const month = `${year}-${String(index + 1).padStart(2, '0')}-01`;
-    const summary = buildReportSummary({
-      startDate: month,
-      endDate: endOfMonth(month),
-      plans,
-      actuals,
-      subjects,
-      materials,
-    });
-
-    return {
-      key: month,
-      label: `${index + 1}月`,
-      plannedMinutes: summary.plannedMinutes,
-      actualMinutes: summary.actualMinutes,
-    };
-  });
 }
 
 function MetricCard({
@@ -668,7 +124,7 @@ function MaterialPieChart({
   emptyText,
 }: {
   title: string;
-  entries: TotalEntry[];
+  entries: ReportTotalEntry[];
   emptyText: string;
 }) {
   const chartEntries = getMaterialChartEntries(entries);
@@ -759,7 +215,7 @@ function ComparisonBars({
   onOpenDay,
 }: {
   title: string;
-  entries: PeriodComparison[];
+  entries: ReportPeriodComparison[];
   onOpenDay?: (date: string) => void;
 }) {
   const maxMinutes = getComparisonChartMax(Math.max(
@@ -929,14 +385,7 @@ export function ReportView(props: ReportViewProps) {
   const selectedDate = props.selectedDate;
   const subjects = props.studySubjects ?? [];
   const materials = props.studyMaterials ?? [];
-  const weekStart = startOfWeek(selectedDate);
-  const monthStart = startOfMonth(selectedDate);
-  const scopeRange = {
-    day: { startDate: selectedDate, endDate: selectedDate },
-    week: { startDate: weekStart, endDate: addDays(weekStart, 6) },
-    month: { startDate: monthStart, endDate: endOfMonth(selectedDate) },
-    year: { startDate: getYearStart(selectedDate), endDate: getYearEnd(selectedDate) },
-  }[scope];
+  const scopeRange = getReportScopeRange(scope, selectedDate);
   const summary = useMemo(
     () =>
       buildReportSummary({
@@ -1004,7 +453,7 @@ export function ReportView(props: ReportViewProps) {
           ? `${selectedDate.slice(0, 4)}年`
           : `${formatCompactDate(scopeRange.startDate)} - ${formatCompactDate(scopeRange.endDate)}`;
   const topMaterial = summary.materialTotals.find((entry) => entry.minutes > 0);
-  const diffMinutes = summary.actualMinutes - summary.plannedMinutes;
+  const diffMinutes = summary.differenceMinutes;
   const diffLabel = diffMinutes === 0
     ? '差分なし'
     : `${diffMinutes > 0 ? '+' : '-'}${formatMinutes(Math.abs(diffMinutes))}`;
