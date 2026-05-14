@@ -2,7 +2,12 @@ import type {
   PlannerRepository,
   PlannerStorageGateway,
 } from './repositoryContracts';
-import { filterByUserId, replaceById } from './repositoryUtils';
+import {
+  dedupeLinkedActualRecords,
+  filterByUserId,
+  replaceById,
+  upsertActualRecord,
+} from './repositoryUtils';
 
 export function createPlannerRepository(
   storageGateway: PlannerStorageGateway,
@@ -12,7 +17,9 @@ export function createPlannerRepository(
       return filterByUserId(await storageGateway.readPlans(), userId);
     },
     async getActuals(userId) {
-      return filterByUserId(await storageGateway.readActuals(), userId);
+      return dedupeLinkedActualRecords(
+        filterByUserId(await storageGateway.readActuals(), userId),
+      );
     },
     async getDayNotes(userId) {
       return filterByUserId(await storageGateway.readDayNotes(), userId);
@@ -57,22 +64,19 @@ export function createPlannerRepository(
       ]);
     },
     async upsertActual(actual) {
-      const nextActuals = (await storageGateway.readActuals())
-        .filter(
-          (item) =>
-            !(
-              item.userId === actual.userId &&
-              (item.id === actual.id ||
-                (actual.planId
-                  ? item.planId === actual.planId &&
-                    item.occurrenceDate === actual.occurrenceDate
-                  : false))
-            ),
-        )
-        .concat(actual);
+      const actuals = await storageGateway.readActuals();
+      const nextActuals = upsertActualRecord(actuals, actual);
+      const nextActual = nextActuals.find(
+        (item) =>
+          item.userId === actual.userId &&
+          (actual.planId
+            ? item.planId === actual.planId &&
+              item.occurrenceDate === actual.occurrenceDate
+            : item.id === actual.id),
+      ) ?? actual;
 
       await storageGateway.writeActuals(nextActuals);
-      return actual;
+      return nextActual;
     },
     async deleteActual(userId, actualId) {
       const actuals = (await storageGateway.readActuals()).filter(

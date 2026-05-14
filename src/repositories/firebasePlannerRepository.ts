@@ -23,12 +23,14 @@ import type {
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 import {
+  dedupeLinkedActualRecords,
   normalizeActualRecord,
   normalizePlanRecord,
   normalizeScheduleTemplateRecord,
   normalizeTimetablePeriodRecord,
   normalizeTimetableTermRecord,
   normalizeTodoRecord,
+  resolveActualForUpsert,
 } from './repositoryUtils';
 
 type PlannerDoc =
@@ -139,6 +141,58 @@ async function listActualsByPlanId(
   }) as Actual);
 }
 
+async function listActualsByPlanOccurrence(
+  firestoreDb: Firestore,
+  actual: Actual,
+): Promise<Actual[]> {
+  if (!actual.planId) {
+    return [];
+  }
+
+  const snapshot = await getDocs(
+    query(
+      collection(firestoreDb, 'actuals'),
+      where('userId', '==', actual.userId),
+      where('planId', '==', actual.planId),
+      where('occurrenceDate', '==', actual.occurrenceDate),
+    ),
+  );
+
+  return snapshot.docs.map((document) =>
+    normalizeActualRecord({
+      ...document.data(),
+      id: document.id,
+    } as Actual),
+  );
+}
+
+async function upsertActualDocument(
+  firestoreDb: Firestore,
+  actual: Actual,
+): Promise<Actual> {
+  if (!actual.planId) {
+    return await upsertDocument(firestoreDb, 'actuals', actual);
+  }
+
+  const matchingActuals = await listActualsByPlanOccurrence(firestoreDb, actual);
+  const nextActual = stripUndefinedDeep(
+    resolveActualForUpsert(matchingActuals, actual),
+  );
+  const batch = writeBatch(firestoreDb);
+
+  batch.set(doc(firestoreDb, 'actuals', nextActual.id), nextActual, {
+    merge: true,
+  });
+  matchingActuals
+    .filter((matchingActual) => matchingActual.id !== nextActual.id)
+    .forEach((duplicateActual) => {
+      batch.delete(doc(firestoreDb, 'actuals', duplicateActual.id));
+    });
+
+  await batch.commit();
+  return nextActual;
+}
+
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
 ): PlannerRepository {
@@ -156,8 +210,10 @@ export function createFirebasePlannerRepository(
     },
     async getActuals(userId) {
       try {
-        return (await listByUserId<Actual>(firestoreDb, 'actuals', userId)).map(
-          normalizeActualRecord,
+        return dedupeLinkedActualRecords(
+          (await listByUserId<Actual>(firestoreDb, 'actuals', userId)).map(
+            normalizeActualRecord,
+          ),
         );
       } catch (error) {
         throw new Error(
@@ -338,7 +394,7 @@ export function createFirebasePlannerRepository(
     },
     async upsertActual(actual) {
       try {
-        return await upsertDocument(firestoreDb, 'actuals', actual);
+        return await upsertActualDocument(firestoreDb, actual);
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('記録を保存できませんでした。', error as { message?: string | null }),

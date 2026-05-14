@@ -159,9 +159,10 @@ export function ActualEditorCard({
           }
         : draft;
 
-      await onSaveActual(nextPlan, nextDraft, actual?.id);
       setIsOpen(false);
+      await onSaveActual(nextPlan, nextDraft, actual?.id);
     } catch {
+      setIsOpen(true);
       setError('記録の保存に失敗しました。');
     }
   }

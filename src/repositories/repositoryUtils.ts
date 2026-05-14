@@ -34,6 +34,97 @@ export function filterByUserId<T extends { userId: string }>(
   return records.filter((record) => record.userId === userId);
 }
 
+function getLinkedActualKey(actual: Actual): string | null {
+  return actual.planId
+    ? `${actual.userId}::${actual.planId}::${actual.occurrenceDate}`
+    : null;
+}
+
+function compareActualRecency(left: Actual, right: Actual): number {
+  const updatedAtComparison = right.updatedAt.localeCompare(left.updatedAt);
+
+  return updatedAtComparison !== 0
+    ? updatedAtComparison
+    : left.id.localeCompare(right.id);
+}
+
+export function resolveActualForUpsert(
+  records: Actual[],
+  actual: Actual,
+): Actual {
+  if (!actual.planId) {
+    return actual;
+  }
+
+  const sameUserRecords = records.filter((record) => record.userId === actual.userId);
+  const exactIdRecord = sameUserRecords.find((record) => record.id === actual.id);
+
+  if (exactIdRecord) {
+    return actual;
+  }
+
+  const actualKey = getLinkedActualKey(actual);
+  const existingLinkedActual = sameUserRecords
+    .filter((record) => getLinkedActualKey(record) === actualKey)
+    .sort(compareActualRecency)[0];
+
+  return existingLinkedActual
+    ? {
+        ...actual,
+        id: existingLinkedActual.id,
+      }
+    : actual;
+}
+
+export function upsertActualRecord(records: Actual[], actual: Actual): Actual[] {
+  const resolvedActual = resolveActualForUpsert(records, actual);
+  const resolvedKey = getLinkedActualKey(resolvedActual);
+
+  return records
+    .filter((record) => {
+      if (record.userId !== resolvedActual.userId) {
+        return true;
+      }
+
+      if (record.id === resolvedActual.id) {
+        return false;
+      }
+
+      return !resolvedKey || getLinkedActualKey(record) !== resolvedKey;
+    })
+    .concat(resolvedActual);
+}
+
+export function dedupeLinkedActualRecords(records: Actual[]): Actual[] {
+  const dedupedRecords: Actual[] = [];
+  const linkedRecordIndexByKey = new Map<string, number>();
+
+  records.forEach((record) => {
+    const key = getLinkedActualKey(record);
+
+    if (!key) {
+      dedupedRecords.push(record);
+      return;
+    }
+
+    const existingIndex = linkedRecordIndexByKey.get(key);
+
+    if (existingIndex === undefined) {
+      linkedRecordIndexByKey.set(key, dedupedRecords.length);
+      dedupedRecords.push(record);
+      return;
+    }
+
+    const existingRecord = dedupedRecords[existingIndex];
+
+    if (compareActualRecency(record, existingRecord) < 0) {
+      dedupedRecords[existingIndex] = record;
+    }
+  });
+
+  return dedupedRecords;
+}
+
 function normalizeRepeat(value: unknown): MonthEventRepeat {
   return value === 'daily' ||
     value === 'weekly' ||

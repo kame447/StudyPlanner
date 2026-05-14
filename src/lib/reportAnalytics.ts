@@ -101,6 +101,41 @@ export const MATERIAL_CHART_COLORS = [
   '#8d9aa6',
 ];
 
+function compareActualRecency(left: Actual, right: Actual): number {
+  const updatedAtComparison = right.updatedAt.localeCompare(left.updatedAt);
+
+  return updatedAtComparison !== 0
+    ? updatedAtComparison
+    : left.id.localeCompare(right.id);
+}
+
+function dedupeLinkedActuals(actuals: Actual[]): Actual[] {
+  const dedupedActuals: Actual[] = [];
+  const linkedActualIndexByKey = new Map<string, number>();
+
+  actuals.forEach((actual) => {
+    if (!actual.planId) {
+      dedupedActuals.push(actual);
+      return;
+    }
+
+    const key = getActualOccurrenceKey(actual);
+    const existingIndex = linkedActualIndexByKey.get(key);
+
+    if (existingIndex === undefined) {
+      linkedActualIndexByKey.set(key, dedupedActuals.length);
+      dedupedActuals.push(actual);
+      return;
+    }
+
+    if (compareActualRecency(actual, dedupedActuals[existingIndex]) < 0) {
+      dedupedActuals[existingIndex] = actual;
+    }
+  });
+
+  return dedupedActuals;
+}
+
 export function endOfMonth(date: string): string {
   return addDays(addMonths(startOfMonth(date), 1), -1);
 }
@@ -317,12 +352,13 @@ export function buildReportSummary({
     isStudyTimePlan,
   );
   const planByOccurrenceKey = getPlanByOccurrenceKey(rangePlans);
+  const dedupedActuals = dedupeLinkedActuals(actuals);
   const actualByOccurrenceKey = new Map(
-    actuals
+    dedupedActuals
       .filter((actual) => actual.planId)
       .map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
-  const rangeActuals = actuals.filter((actual) => {
+  const rangeActuals = dedupedActuals.filter((actual) => {
     if (!isDateInRange(actual.occurrenceDate, startDate, endDate)) {
       return false;
     }

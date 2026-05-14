@@ -447,4 +447,33 @@ describe('report summary metrics', () => {
     expect(summary.unrecordedPlans).toEqual([]);
     expect(summary.standaloneActuals).toEqual([]);
   });
+
+  it('does not double count duplicate linked actuals', () => {
+    const summary = buildReportSummary({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      plans: [plan({ id: 'plan-duplicate' })],
+      actuals: [
+        actual({
+          id: 'actual-old',
+          planId: 'plan-duplicate',
+          actualStartTime: '09:00',
+          actualEndTime: '10:00',
+          updatedAt: '2026-05-04T00:00:00.000Z',
+        }),
+        actual({
+          id: 'actual-new',
+          planId: 'plan-duplicate',
+          actualStartTime: '09:00',
+          actualEndTime: '11:00',
+          updatedAt: '2026-05-04T01:00:00.000Z',
+        }),
+      ],
+      subjects,
+      materials,
+    });
+
+    expect(summary.actuals.map((entry) => entry.id)).toEqual(['actual-new']);
+    expect(summary.actualMinutes).toBe(120);
+  });
 });

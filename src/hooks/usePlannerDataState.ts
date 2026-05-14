@@ -487,6 +487,20 @@ export function usePlannerDataState({
     );
   }
 
+  function upsertActualByOccurrenceKey(
+    current: Actual[],
+    nextActual: Actual,
+    removedActualIds: string[] = [],
+  ): Actual[] {
+    const removedIdSet = new Set(removedActualIds);
+
+    return upsertByKey(
+      current.filter((actual) => !removedIdSet.has(actual.id)),
+      nextActual,
+      (actual) => getActualOccurrenceKey(actual),
+    );
+  }
+
   async function runSequentially<T>(
     items: T[],
     handler: (item: T) => Promise<void>,
@@ -730,9 +744,11 @@ export function usePlannerDataState({
           await plannerRepository.upsertPlan(editResult.updatedPlan);
         }
 
+        const savedMigratedActuals: Actual[] = [];
+
         if (migratedActuals.length > 0) {
           await runSequentially(migratedActuals, async (actual) => {
-            await plannerRepository.upsertActual(actual);
+            savedMigratedActuals.push(await plannerRepository.upsertActual(actual));
           });
         }
 
@@ -748,7 +764,7 @@ export function usePlannerDataState({
           ];
           return sortAndUpsertPlans(withoutDeleted, nextPlans);
         });
-        setActuals((current) => upsertActualsById(current, migratedActuals));
+        setActuals((current) => upsertActualsById(current, savedMigratedActuals));
         setSelectedDate(occurrenceDate);
         setMonthDate(startOfMonth(occurrenceDate));
         setPendingRecurringPlanAction(null);
@@ -1021,20 +1037,40 @@ export function usePlannerDataState({
       ? actuals.find((actual) => actual.id === targetActualId)
       : actuals.find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
     const nextActual = createActualFromDraft(userId, draft, existingActual);
+    const rollbackActual = existingActual;
+
+    setActuals((current) =>
+      upsertActualByOccurrenceKey(
+        targetActualId
+          ? current.filter((actual) => actual.id !== targetActualId)
+          : current,
+        nextActual,
+      ),
+    );
 
     try {
-      await plannerRepository.upsertActual(nextActual);
+      const savedActual = await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
-        upsertByKey(
-          targetActualId
-            ? current.filter((actual) => actual.id !== targetActualId)
-            : current,
-          nextActual,
-          (item) => getActualOccurrenceKey(item),
+        upsertActualByOccurrenceKey(
+          current,
+          savedActual,
+          targetActualId ? [targetActualId, nextActual.id] : [nextActual.id],
         ),
       );
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
+      setActuals((current) => {
+        const rolledBackActuals = current.filter(
+          (actual) =>
+            actual.id !== nextActual.id &&
+            (!targetActualId || actual.id !== targetActualId) &&
+            getActualOccurrenceKey(actual) !== occurrenceKey,
+        );
+
+        return rollbackActual
+          ? upsertActualByOccurrenceKey(rolledBackActuals, rollbackActual)
+          : rolledBackActuals;
+      });
       showNotice(
         resolveErrorMessage(error, '記録を保存できませんでした。'),
         'error',
@@ -1077,9 +1113,9 @@ export function usePlannerDataState({
     }, existingActual);
 
     try {
-      await plannerRepository.upsertActual(nextActual);
+      const savedActual = await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
-        upsertByKey(current, nextActual, (item) => getActualOccurrenceKey(item)),
+        upsertByKey(current, savedActual, (item) => getActualOccurrenceKey(item)),
       );
       showNotice('記録を保存しました。', 'success');
     } catch (error) {
@@ -1125,9 +1161,13 @@ export function usePlannerDataState({
     };
 
     try {
-      await plannerRepository.upsertActual(nextActual);
+      const savedActual = await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
-        current.filter((item) => item.id !== actual.id).concat(nextActual),
+        upsertByKey(
+          current.filter((item) => item.id !== actual.id),
+          savedActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
       );
       showNotice('予定に紐づけました。', 'success');
     } catch (error) {
