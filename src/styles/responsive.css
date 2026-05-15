@@ -333,6 +333,27 @@
     align-items: stretch;
   }
 
+  .modal-card.month-picker-modal {
+    width: min(390px, calc(100vw - 28px));
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .month-picker-modal .month-wheel-picker {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+    gap: 8px;
+  }
+
+  .modal-card.month-picker-modal .month-wheel-picker::before,
+  .modal-card.month-picker-modal .month-wheel-picker::after {
+    height: 64px;
+  }
+
+  .month-picker-modal .month-picker-actions {
+    grid-template-columns: 1fr 1fr 1.2fr;
+    align-items: stretch;
+  }
+
   .report-bar-chart-shell {
     grid-template-columns: 52px minmax(0, 1fr);
     gap: 10px;
@@ -1623,6 +1644,30 @@
   .modal-card .month-wheel-picker::before,
   .modal-card .month-wheel-picker::after {
     height: 42px;
+  }
+
+  .modal-card.month-picker-modal {
+    width: min(370px, calc(100vw - 20px));
+    padding: 12px;
+  }
+
+  .month-picker-modal .month-wheel-list {
+    height: 214px;
+    padding-block: 84px;
+  }
+
+  .month-picker-modal .month-wheel-item {
+    min-height: 46px;
+    font-size: 1.08rem;
+  }
+
+  .month-picker-modal .month-wheel-item.active {
+    font-size: 1.42rem;
+  }
+
+  .modal-card.month-picker-modal .month-wheel-picker::before,
+  .modal-card.month-picker-modal .month-wheel-picker::after {
+    height: 56px;
   }
 
   .view-titlebar,

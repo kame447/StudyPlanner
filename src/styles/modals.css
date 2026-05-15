@@ -739,71 +739,118 @@
   font-weight: 700;
 }
 
+.month-picker-overlay {
+  align-items: center;
+  padding: 18px;
+  overflow: hidden;
+  background: rgba(15, 20, 22, 0.34);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
 .month-picker-modal {
-  width: min(520px, 100%);
+  width: min(390px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+  max-height: calc(
+    100dvh - 36px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  padding: 14px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+  box-shadow: 0 22px 52px rgba(12, 18, 20, 0.2);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.month-picker-summary {
+  padding: 4px 8px 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .month-wheel-picker {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: 8px;
+  align-items: stretch;
+  padding: 0 4px;
 }
 
 .month-wheel-picker::before,
 .month-wheel-picker::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 56px;
+  left: 4px;
+  right: 4px;
+  height: 64px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .month-wheel-picker::before {
-  top: 24px;
-  background: linear-gradient(180deg, var(--surface) 0%, transparent 100%);
+  top: 20px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-strong) 96%, transparent) 0%,
+    transparent 100%
+  );
 }
 
 .month-wheel-picker::after {
   bottom: 0;
-  background: linear-gradient(0deg, var(--surface) 0%, transparent 100%);
+  background: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--surface-strong) 96%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.month-wheel-selection {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 48px;
+  transform: translateY(calc(-50% + 9px));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-selected) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .month-wheel-column {
   position: relative;
   display: grid;
-  gap: 10px;
+  grid-template-rows: auto 1fr;
+  gap: 4px;
+  min-width: 0;
 }
 
 .month-wheel-column::after {
-  content: '';
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  top: calc(50% + 16px);
-  height: 52px;
-  transform: translateY(-50%);
-  border-radius: 16px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-selected);
-  pointer-events: none;
+  content: none;
 }
 
 .month-wheel-label {
-  font-size: 0.86rem;
-  font-weight: 700;
+  font-size: 0.68rem;
+  font-weight: 800;
   color: var(--text-muted);
+  text-align: center;
 }
 
 .month-wheel-list {
-  height: 248px;
+  height: 228px;
   overflow-y: auto;
-  padding: 96px 0;
+  padding: 90px 0;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .month-wheel-list::-webkit-scrollbar {
@@ -816,23 +863,42 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 52px;
-  padding: 0 12px;
+  min-height: 48px;
+  padding: 0 8px;
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.18rem;
+  font-weight: 700;
+  opacity: 0.48;
   scroll-snap-align: center;
+  transition:
+    color 0.16s ease,
+    font-size 0.16s ease,
+    opacity 0.16s ease;
 }
 
 .month-wheel-item.active {
   color: var(--text-primary);
-  font-weight: 800;
+  font-size: 1.56rem;
+  font-weight: 900;
+  opacity: 1;
 }
 
 .month-picker-actions {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.month-picker-actions .ghost-button,
+.month-picker-actions .primary-button {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  box-shadow: none;
 }
 
 .month-event-chip-list {

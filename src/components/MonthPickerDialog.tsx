@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatMonthLabel, todayIsoDate } from '../lib/date';
+import { todayIsoDate } from '../lib/date';
 
 interface MonthPickerDialogProps {
   open: boolean;
@@ -176,113 +176,97 @@ export function MonthPickerDialog({
   }
 
   return (
-    <div className="overlay modal-overlay" onClick={onClose}>
+    <div className="overlay modal-overlay month-picker-overlay" onClick={onClose}>
       <div
         className="modal-card month-picker-modal"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="section-stack">
-          <div className="section-header">
-            <div>
-              <h2>年月を選択</h2>
-              <p>{formatMonthLabel(activeMonthDate)} から直接移動できます。</p>
+        <div className="month-picker-summary" aria-live="polite">
+          {selectedYear}年{selectedMonth}月
+        </div>
+
+        <div className="month-wheel-picker" aria-label="年月を選択">
+          <div className="month-wheel-selection" aria-hidden="true" />
+          <div className="month-wheel-column">
+            <span className="month-wheel-label">年</span>
+            <div
+              ref={yearPickerRef}
+              className="month-wheel-list"
+              onScroll={handleYearScroll}
+            >
+              {yearOptions.map((year) => (
+                <button
+                  key={year}
+                  className={
+                    selectedYear === year
+                      ? 'month-wheel-item active'
+                      : 'month-wheel-item'
+                  }
+                  data-value={year}
+                  onClick={() => {
+                    setSelectedYear(year);
+                    scrollToPickerValue(yearPickerRef.current, year, 'smooth');
+                  }}
+                  type="button"
+                >
+                  {year}年
+                </button>
+              ))}
             </div>
-            <button className="ghost-button" onClick={onClose} type="button">
-              閉じる
-            </button>
           </div>
 
-          <section className="assistant-settings-card">
-            <div className="month-wheel-picker">
-              <div className="month-wheel-column">
-                <span className="month-wheel-label">年</span>
-                <div
-                  ref={yearPickerRef}
-                  className="month-wheel-list"
-                  onScroll={handleYearScroll}
+          <div className="month-wheel-column">
+            <span className="month-wheel-label">月</span>
+            <div
+              ref={monthPickerRef}
+              className="month-wheel-list"
+              onScroll={handleMonthScroll}
+            >
+              {MONTH_OPTIONS.map((month) => (
+                <button
+                  key={month.value}
+                  className={
+                    selectedMonth === month.value
+                      ? 'month-wheel-item active'
+                      : 'month-wheel-item'
+                  }
+                  data-value={month.value}
+                  onClick={() => {
+                    setSelectedMonth(month.value);
+                    scrollToPickerValue(
+                      monthPickerRef.current,
+                      month.value,
+                      'smooth',
+                    );
+                  }}
+                  type="button"
                 >
-                  {yearOptions.map((year) => (
-                    <button
-                      key={year}
-                      className={
-                        selectedYear === year
-                          ? 'month-wheel-item active'
-                          : 'month-wheel-item'
-                      }
-                      data-value={year}
-                      onClick={() => {
-                        setSelectedYear(year);
-                        scrollToPickerValue(yearPickerRef.current, year, 'smooth');
-                      }}
-                      type="button"
-                    >
-                      {year}年
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="month-wheel-column">
-                <span className="month-wheel-label">月</span>
-                <div
-                  ref={monthPickerRef}
-                  className="month-wheel-list"
-                  onScroll={handleMonthScroll}
-                >
-                  {MONTH_OPTIONS.map((month) => (
-                    <button
-                      key={month.value}
-                      className={
-                        selectedMonth === month.value
-                          ? 'month-wheel-item active'
-                          : 'month-wheel-item'
-                      }
-                      data-value={month.value}
-                      onClick={() => {
-                        setSelectedMonth(month.value);
-                        scrollToPickerValue(
-                          monthPickerRef.current,
-                          month.value,
-                          'smooth',
-                        );
-                      }}
-                      type="button"
-                    >
-                      {month.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {month.label}
+                </button>
+              ))}
             </div>
+          </div>
+        </div>
 
-            <div className="row-actions month-picker-actions">
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  setSelectedYear(currentYear);
-                  scrollToPickerValue(yearPickerRef.current, currentYear, 'smooth');
-                }}
-                type="button"
-              >
-                今年
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  setSelectedYear(currentYear);
-                  setSelectedMonth(currentMonth);
-                  onSelectMonth(currentMonthDate);
-                  onClose();
-                }}
-                type="button"
-              >
-                今月へ
-              </button>
-              <button className="primary-button" onClick={handleApply} type="button">
-                {selectedYear}年{selectedMonth}月へ移動
-              </button>
-            </div>
-          </section>
+        <div className="row-actions month-picker-actions">
+          <button className="ghost-button" onClick={onClose} type="button">
+            キャンセル
+          </button>
+          <button
+            className="ghost-button"
+            onClick={() => {
+              setSelectedYear(currentYear);
+              setSelectedMonth(currentMonth);
+              scrollToPickerValue(yearPickerRef.current, currentYear, 'smooth');
+              scrollToPickerValue(monthPickerRef.current, currentMonth, 'smooth');
+            }}
+            type="button"
+          >
+            今月
+          </button>
+          <button className="primary-button" onClick={handleApply} type="button">
+            決定
+          </button>
         </div>
       </div>
     </div>
