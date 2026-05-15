@@ -14,6 +14,7 @@ import {
   getActualOccurrenceKey,
 } from '../lib/planRecurrence';
 import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
+import { WeekPickerDialog } from './DatePickerDialogs';
 import type { Actual, Plan, PlanSourceType } from '../types/domain';
 
 interface WeekViewProps {
@@ -143,6 +144,7 @@ export function WeekView({
   onOpenDay,
 }: WeekViewProps) {
   const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
+  const [isWeekPickerOpen, setIsWeekPickerOpen] = useState(false);
   const weekDates = getWeekDates(selectedDate);
   const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
@@ -167,7 +169,14 @@ export function WeekView({
                 >
                   <span aria-hidden="true">＜</span>
                 </button>
-                <span className="week-range-chip">{weekRangeLabel}</span>
+                <button
+                  className="week-range-chip date-picker-trigger"
+                  onClick={() => setIsWeekPickerOpen(true)}
+                  type="button"
+                  aria-label="週を選択"
+                >
+                  {weekRangeLabel}
+                </button>
                 <button
                   className="ghost-button nav-icon-button"
                   onClick={() => onChangeWeek(addDays(selectedDate, 7))}
@@ -189,6 +198,13 @@ export function WeekView({
           </div>
         </div>
       </div>
+
+      <WeekPickerDialog
+        open={isWeekPickerOpen}
+        selectedDate={selectedDate}
+        onSelectWeek={onChangeWeek}
+        onClose={() => setIsWeekPickerOpen(false)}
+      />
 
       <div className="week-timeline-toolbar print-hide">
         <div className="segmented-control week-timeline-mode-control">

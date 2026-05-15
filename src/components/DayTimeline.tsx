@@ -22,6 +22,7 @@ interface DayTimelineProps {
   onSelectEntry: (entry: DayTimelineSelection) => void;
   onPreviousDay: () => void;
   onNextDay: () => void;
+  onOpenDatePicker: () => void;
   onPrint: () => void;
   onImportTimetable?: () => void;
   timetableImportCount?: number;
@@ -198,6 +199,7 @@ export function DayTimeline({
   onSelectEntry,
   onPreviousDay,
   onNextDay,
+  onOpenDatePicker,
   onPrint,
   onImportTimetable,
   timetableImportCount = 0,
@@ -336,7 +338,14 @@ export function DayTimeline({
               >
                 <span aria-hidden="true">＜</span>
               </button>
-              <span className="week-range-chip">{dateLabel}</span>
+              <button
+                className="week-range-chip date-picker-trigger"
+                onClick={onOpenDatePicker}
+                type="button"
+                aria-label="日付を選択"
+              >
+                {dateLabel}
+              </button>
               <button
                 className="ghost-button nav-icon-button"
                 onClick={onNextDay}

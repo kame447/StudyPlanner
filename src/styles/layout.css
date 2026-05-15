@@ -339,6 +339,20 @@
   white-space: nowrap;
 }
 
+.date-picker-trigger {
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.date-picker-trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-strong);
+}
+
 .my-page-trigger {
   display: inline-flex;
   align-items: center;

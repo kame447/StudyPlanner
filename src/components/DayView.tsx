@@ -26,6 +26,7 @@ import {
 } from '../lib/timetableImport';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
+import { DayCalendarDialog } from './DatePickerDialogs';
 import { DayTimeline } from './DayTimeline';
 import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
 import type {
@@ -529,6 +530,7 @@ export function DayView({
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
+  const [isDayCalendarOpen, setIsDayCalendarOpen] = useState(false);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
   const [selectedTimetableSourceIds, setSelectedTimetableSourceIds] = useState<Set<string>>(
     () => new Set(),
@@ -903,6 +905,13 @@ export function DayView({
         </div>
       ) : null}
 
+      <DayCalendarDialog
+        open={isDayCalendarOpen}
+        selectedDate={selectedDate}
+        onSelectDate={onChangeDay}
+        onClose={() => setIsDayCalendarOpen(false)}
+      />
+
       <DayTimeline
         dateLabel={dayRangeLabel}
         plans={dayPlans}
@@ -928,6 +937,7 @@ export function DayView({
         }
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
+        onOpenDatePicker={() => setIsDayCalendarOpen(true)}
         onPrint={() => window.print()}
         onImportTimetable={openTimetableImport}
         timetableImportCount={timetableImportCandidates.length}

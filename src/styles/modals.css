@@ -901,6 +901,213 @@
   box-shadow: none;
 }
 
+.date-picker-overlay {
+  align-items: center;
+  justify-content: center;
+  justify-items: center;
+  padding: 18px 18px calc(var(--app-bottom-nav-clearance) + 18px);
+  overflow: hidden;
+  background: rgba(15, 20, 22, 0.28);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.compact-date-picker-modal {
+  width: min(430px, calc(100vw - 28px));
+  display: grid;
+  gap: 12px;
+  max-height: calc(
+    100dvh - var(--app-bottom-nav-clearance) - 38px - env(safe-area-inset-top, 0px)
+  );
+  padding: 14px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
+  box-shadow: 0 20px 48px rgba(12, 18, 20, 0.18);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.compact-picker-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 0 4px;
+}
+
+.compact-picker-title strong {
+  font-size: 0.95rem;
+}
+
+.compact-picker-title span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.week-picker-modal {
+  width: min(520px, calc(100vw - 28px));
+}
+
+.week-picker-grid {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.82fr) minmax(82px, 0.68fr) minmax(150px, 1.28fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.compact-picker-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.compact-picker-column > span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.compact-picker-options {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  max-height: min(260px, calc(100dvh - var(--app-bottom-nav-clearance) - 170px));
+  padding: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.compact-picker-option {
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.compact-picker-option:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent-strong);
+}
+
+.compact-picker-option.active {
+  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 7px 16px var(--accent-shadow);
+}
+
+.week-option {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-height: 48px;
+}
+
+.week-option strong {
+  font-size: 0.84rem;
+}
+
+.week-option small {
+  font-size: 0.68rem;
+  font-weight: 800;
+  opacity: 0.78;
+}
+
+.compact-picker-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 8px;
+}
+
+.compact-picker-actions .ghost-button,
+.compact-picker-actions .primary-button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  box-shadow: none;
+}
+
+.mini-calendar-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mini-calendar-header strong {
+  text-align: center;
+  font-size: 0.98rem;
+}
+
+.mini-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.mini-calendar-weekday {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.mini-calendar-day {
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.mini-calendar-day:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.mini-calendar-day.is-outside {
+  color: color-mix(in srgb, var(--text-muted) 58%, transparent);
+}
+
+.mini-calendar-day.is-saturday {
+  color: var(--calendar-saturday);
+}
+
+.mini-calendar-day.is-holiday {
+  color: var(--calendar-holiday);
+}
+
+.mini-calendar-day.is-today {
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.mini-calendar-day.is-selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 18px var(--accent-shadow);
+}
+
 .month-event-chip-list {
   display: flex;
   gap: 8px;

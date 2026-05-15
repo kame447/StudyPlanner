@@ -354,6 +354,41 @@
     align-items: stretch;
   }
 
+  .modal-card.compact-date-picker-modal {
+    width: min(430px, calc(100vw - 20px));
+    max-height: calc(
+      100dvh - var(--app-bottom-nav-clearance) - 24px - env(safe-area-inset-top, 0px)
+    );
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .week-picker-modal .week-picker-grid {
+    grid-template-columns: minmax(76px, 0.78fr) minmax(68px, 0.62fr) minmax(132px, 1.25fr);
+    gap: 6px;
+  }
+
+  .compact-picker-options {
+    max-height: min(228px, calc(100dvh - var(--app-bottom-nav-clearance) - 156px));
+  }
+
+  .compact-picker-option {
+    min-height: 34px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    font-size: 0.76rem;
+  }
+
+  .week-option {
+    min-height: 46px;
+  }
+
+  .mini-calendar-day {
+    min-height: 34px;
+    border-radius: 10px;
+    font-size: 0.78rem;
+  }
+
   .report-bar-chart-shell {
     grid-template-columns: 52px minmax(0, 1fr);
     gap: 10px;
@@ -1668,6 +1703,57 @@
   .modal-card.month-picker-modal .month-wheel-picker::before,
   .modal-card.month-picker-modal .month-wheel-picker::after {
     height: 56px;
+  }
+
+  .modal-card.compact-date-picker-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(
+      100dvh - var(--app-bottom-nav-clearance) - 16px - env(safe-area-inset-top, 0px)
+    );
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .week-picker-modal .week-picker-grid {
+    grid-template-columns: minmax(72px, 0.76fr) minmax(58px, 0.56fr) minmax(124px, 1.25fr);
+    gap: 5px;
+  }
+
+  .compact-picker-title strong {
+    font-size: 0.86rem;
+  }
+
+  .compact-picker-title span {
+    font-size: 0.68rem;
+  }
+
+  .compact-picker-options {
+    max-height: min(210px, calc(100dvh - var(--app-bottom-nav-clearance) - 146px));
+    gap: 4px;
+  }
+
+  .compact-picker-option {
+    min-height: 32px;
+    padding: 6px 7px;
+    font-size: 0.7rem;
+  }
+
+  .week-option {
+    min-height: 43px;
+  }
+
+  .week-option small {
+    font-size: 0.58rem;
+  }
+
+  .mini-calendar-grid {
+    gap: 3px;
+  }
+
+  .mini-calendar-day {
+    min-height: 32px;
+    border-radius: 9px;
+    font-size: 0.72rem;
   }
 
   .view-titlebar,
