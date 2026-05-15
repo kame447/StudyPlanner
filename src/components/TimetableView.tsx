@@ -1,5 +1,12 @@
-import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { TimetableOcrImportDialog } from './TimetableOcrImportDialog';
+import {
+  Suspense,
+  lazy,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
 import {
   createTimetableOcrFilePayload,
   requestTimetableOcr,
@@ -15,6 +22,12 @@ import type {
   TimetableTermDraft,
   TimetableTermKind,
 } from '../types/domain';
+
+const TimetableOcrImportDialog = lazy(() =>
+  import('./TimetableOcrImportDialog').then((module) => ({
+    default: module.TimetableOcrImportDialog,
+  })),
+);
 
 interface TimetableViewProps {
   userId: string;
@@ -1008,17 +1021,19 @@ export function TimetableView({
       ) : null}
 
       {timetableOcrResult ? (
-        <TimetableOcrImportDialog
-          userId={userId}
-          termId={activeTermId}
-          fileName={timetableOcrFileName}
-          result={timetableOcrResult}
-          existingPeriods={savedPeriodsForTerm}
-          existingTemplates={termTemplates}
-          onClose={() => setTimetableOcrResult(null)}
-          onSaveTimetablePeriod={onSaveTimetablePeriod}
-          onSaveScheduleTemplate={onSaveScheduleTemplate}
-        />
+        <Suspense fallback={null}>
+          <TimetableOcrImportDialog
+            userId={userId}
+            termId={activeTermId}
+            fileName={timetableOcrFileName}
+            result={timetableOcrResult}
+            existingPeriods={savedPeriodsForTerm}
+            existingTemplates={termTemplates}
+            onClose={() => setTimetableOcrResult(null)}
+            onSaveTimetablePeriod={onSaveTimetablePeriod}
+            onSaveScheduleTemplate={onSaveScheduleTemplate}
+          />
+        </Suspense>
       ) : null}
     </section>
   );

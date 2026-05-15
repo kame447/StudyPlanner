@@ -1,25 +1,16 @@
-import { useMemo, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
-import {
-  BookshelfView,
-  type BookshelfInitialAction,
-} from './components/BookshelfView';
-import { DayView } from './components/DayView';
+import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
-import { QuickEntryModal } from './components/QuickEntryModal';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
-import { ReportView } from './components/ReportView';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
-import { TimetableView } from './components/TimetableView';
-import { TodoView } from './components/TodoView';
 import { UserAvatar } from './components/UserAvatar';
-import { WeekView } from './components/WeekView';
 import { createEmptyDayNoteDraft } from './domain/planner';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
@@ -29,6 +20,42 @@ import {
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
 import { getUserDisplayName } from './lib/userProfile';
+
+const BookshelfView = lazy(() =>
+  import('./components/BookshelfView').then((module) => ({
+    default: module.BookshelfView,
+  })),
+);
+const DayView = lazy(() =>
+  import('./components/DayView').then((module) => ({
+    default: module.DayView,
+  })),
+);
+const QuickEntryModal = lazy(() =>
+  import('./components/QuickEntryModal').then((module) => ({
+    default: module.QuickEntryModal,
+  })),
+);
+const ReportView = lazy(() =>
+  import('./components/ReportView').then((module) => ({
+    default: module.ReportView,
+  })),
+);
+const TimetableView = lazy(() =>
+  import('./components/TimetableView').then((module) => ({
+    default: module.TimetableView,
+  })),
+);
+const TodoView = lazy(() =>
+  import('./components/TodoView').then((module) => ({
+    default: module.TodoView,
+  })),
+);
+const WeekView = lazy(() =>
+  import('./components/WeekView').then((module) => ({
+    default: module.WeekView,
+  })),
+);
 
 export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
@@ -284,96 +311,98 @@ export default function App() {
           />
         ) : null}
 
-        {viewMode === 'week' ? (
-          <WeekView
-            selectedDate={selectedDate}
-            plans={plans}
-            actuals={actuals}
-            onChangeWeek={openWeek}
-            onOpenDay={openDay}
-          />
-        ) : null}
+        <Suspense fallback={<SplashScreen />}>
+          {viewMode === 'week' ? (
+            <WeekView
+              selectedDate={selectedDate}
+              plans={plans}
+              actuals={actuals}
+              onChangeWeek={openWeek}
+              onOpenDay={openDay}
+            />
+          ) : null}
 
-        {viewMode === 'day' ? (
-          <DayView
-            selectedDate={selectedDate}
-            userId={user.id}
-            plans={plans}
-            actuals={actuals}
-            monthEvents={monthEvents}
-            studySubjects={studySubjects}
-            studyMaterials={studyMaterials}
-            scheduleTemplates={scheduleTemplates}
-            timetableTermId={activeTimetableTermId}
-            onChangeDay={openDay}
-            onEditPlan={openEditPlan}
-            onDeletePlan={deletePlan}
-            onSavePlan={savePlanDraft}
-            onSaveActual={saveActual}
-            onSaveStandaloneActual={saveStandaloneActual}
-            onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
-            onDeleteActual={deleteActual}
-            onOpenBookshelf={() => setViewMode('bookshelf')}
-            onOpenAddMaterial={() => {
-              setBookshelfInitialAction('add-material');
-              setViewMode('bookshelf');
-            }}
-          />
-        ) : null}
+          {viewMode === 'day' ? (
+            <DayView
+              selectedDate={selectedDate}
+              userId={user.id}
+              plans={plans}
+              actuals={actuals}
+              monthEvents={monthEvents}
+              studySubjects={studySubjects}
+              studyMaterials={studyMaterials}
+              scheduleTemplates={scheduleTemplates}
+              timetableTermId={activeTimetableTermId}
+              onChangeDay={openDay}
+              onEditPlan={openEditPlan}
+              onDeletePlan={deletePlan}
+              onSavePlan={savePlanDraft}
+              onSaveActual={saveActual}
+              onSaveStandaloneActual={saveStandaloneActual}
+              onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
+              onDeleteActual={deleteActual}
+              onOpenBookshelf={() => setViewMode('bookshelf')}
+              onOpenAddMaterial={() => {
+                setBookshelfInitialAction('add-material');
+                setViewMode('bookshelf');
+              }}
+            />
+          ) : null}
 
-        {viewMode === 'todo' ? (
-          <TodoView
-            userId={user.id}
-            selectedDate={selectedDate}
-            todos={todos}
-            onSaveTodo={saveTodo}
-            onScheduleTodo={scheduleTodoAsPlan}
-            onDeleteTodo={deleteTodo}
-          />
-        ) : null}
+          {viewMode === 'todo' ? (
+            <TodoView
+              userId={user.id}
+              selectedDate={selectedDate}
+              todos={todos}
+              onSaveTodo={saveTodo}
+              onScheduleTodo={scheduleTodoAsPlan}
+              onDeleteTodo={deleteTodo}
+            />
+          ) : null}
 
-        {viewMode === 'report' ? (
-          <ReportView
-            selectedDate={selectedDate}
-            dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
-            plans={plans}
-            actuals={actuals}
-            monthEvents={monthEvents}
-            studySubjects={studySubjects}
-            studyMaterials={studyMaterials}
-            onOpenDay={openDay}
-            onSaveDayNote={saveDayNote}
-          />
-        ) : null}
+          {viewMode === 'report' ? (
+            <ReportView
+              selectedDate={selectedDate}
+              dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
+              plans={plans}
+              actuals={actuals}
+              monthEvents={monthEvents}
+              studySubjects={studySubjects}
+              studyMaterials={studyMaterials}
+              onOpenDay={openDay}
+              onSaveDayNote={saveDayNote}
+            />
+          ) : null}
 
-        {viewMode === 'timetable' ? (
-          <TimetableView
-            userId={user.id}
-            activeTerm={activeTimetableTerm}
-            timetablePeriods={timetablePeriods}
-            scheduleTemplates={scheduleTemplates}
-            onActivateTerm={activateTimetableTerm}
-            onClearTermData={clearTimetableTermData}
-            onSaveTimetablePeriod={saveTimetablePeriod}
-            onDeleteTimetablePeriod={deleteTimetablePeriod}
-            onSaveScheduleTemplate={saveScheduleTemplate}
-            onDeleteScheduleTemplate={deleteScheduleTemplate}
-          />
-        ) : null}
+          {viewMode === 'timetable' ? (
+            <TimetableView
+              userId={user.id}
+              activeTerm={activeTimetableTerm}
+              timetablePeriods={timetablePeriods}
+              scheduleTemplates={scheduleTemplates}
+              onActivateTerm={activateTimetableTerm}
+              onClearTermData={clearTimetableTermData}
+              onSaveTimetablePeriod={saveTimetablePeriod}
+              onDeleteTimetablePeriod={deleteTimetablePeriod}
+              onSaveScheduleTemplate={saveScheduleTemplate}
+              onDeleteScheduleTemplate={deleteScheduleTemplate}
+            />
+          ) : null}
 
-        {viewMode === 'bookshelf' ? (
-          <BookshelfView
-            userId={user.id}
-            subjects={studySubjects}
-            materials={studyMaterials}
-            initialAction={bookshelfInitialAction}
-            onInitialActionHandled={() => setBookshelfInitialAction(null)}
-            onSaveSubject={saveStudySubject}
-            onDeleteSubject={deleteStudySubject}
-            onSaveMaterial={saveStudyMaterial}
-            onDeleteMaterial={deleteStudyMaterial}
-          />
-        ) : null}
+          {viewMode === 'bookshelf' ? (
+            <BookshelfView
+              userId={user.id}
+              subjects={studySubjects}
+              materials={studyMaterials}
+              initialAction={bookshelfInitialAction}
+              onInitialActionHandled={() => setBookshelfInitialAction(null)}
+              onSaveSubject={saveStudySubject}
+              onDeleteSubject={deleteStudySubject}
+              onSaveMaterial={saveStudyMaterial}
+              onDeleteMaterial={deleteStudyMaterial}
+            />
+          ) : null}
+        </Suspense>
 
       </main>
 
@@ -415,19 +444,21 @@ export default function App() {
       ) : null}
 
       {isQuickEntryOpen ? (
-        <QuickEntryModal
-          userId={user.id}
-          selectedDate={selectedDate}
-          plans={plans}
-          actuals={actuals}
-          materials={studyMaterials}
-          subjects={studySubjects}
-          onClose={() => setIsQuickEntryOpen(false)}
-          onSaveTodo={saveTodo}
-          onSavePlan={savePlanDraft}
-          onSaveStandaloneActual={saveStandaloneActual}
-          onSaveLinkedActual={saveActual}
-        />
+        <Suspense fallback={null}>
+          <QuickEntryModal
+            userId={user.id}
+            selectedDate={selectedDate}
+            plans={plans}
+            actuals={actuals}
+            materials={studyMaterials}
+            subjects={studySubjects}
+            onClose={() => setIsQuickEntryOpen(false)}
+            onSaveTodo={saveTodo}
+            onSavePlan={savePlanDraft}
+            onSaveStandaloneActual={saveStandaloneActual}
+            onSaveLinkedActual={saveActual}
+          />
+        </Suspense>
       ) : null}
 
       <MyPageDialog

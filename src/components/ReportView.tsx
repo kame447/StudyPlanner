@@ -405,44 +405,60 @@ export function ReportView(props: ReportViewProps) {
     ],
   );
   const dailyComparisons = useMemo(
-    () =>
-      buildRangeDailyComparisons({
+    () => {
+      if (scope !== 'week') {
+        return [];
+      }
+
+      return buildRangeDailyComparisons({
         ...scopeRange,
         plans: props.plans,
         actuals: props.actuals,
         subjects,
         materials,
-      }),
+      });
+    },
     [
       materials,
       props.actuals,
       props.plans,
+      scope,
       scopeRange.endDate,
       scopeRange.startDate,
       subjects,
     ],
   );
   const monthWeekComparisons = useMemo(
-    () =>
-      buildMonthWeekComparisons({
+    () => {
+      if (scope !== 'month') {
+        return [];
+      }
+
+      return buildMonthWeekComparisons({
         selectedDate,
         plans: props.plans,
         actuals: props.actuals,
         subjects,
         materials,
-      }),
-    [materials, props.actuals, props.plans, selectedDate, subjects],
+      });
+    },
+    [materials, props.actuals, props.plans, scope, selectedDate, subjects],
   );
   const yearMonthComparisons = useMemo(
-    () =>
-      buildYearMonthComparisons({
+    () => {
+      if (scope !== 'year') {
+        return [];
+      }
+
+      return buildYearMonthComparisons({
         selectedDate,
         plans: props.plans,
         actuals: props.actuals,
         subjects,
         materials,
-      }),
-    [materials, props.actuals, props.plans, selectedDate, subjects],
+      });
+    },
+    [materials, props.actuals, props.plans, scope, selectedDate, subjects],
   );
   const rangeLabel =
     scope === 'day'
