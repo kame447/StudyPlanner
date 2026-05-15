@@ -1205,6 +1205,10 @@
 }
 
 @media screen and (max-width: 640px) {
+  :root {
+    --app-bottom-nav-height: 72px;
+  }
+
   .app-toast-layer {
     top: 8px;
     width: calc(100vw - 14px);
@@ -1242,6 +1246,10 @@
 
   .app-shell {
     padding-bottom: calc(12px + var(--app-bottom-nav-clearance));
+  }
+
+  .app-view-switcher.panel {
+    padding: 9px 12px calc(14px + env(safe-area-inset-bottom, 0px));
   }
 
   .splash-screen {
@@ -1733,11 +1741,12 @@
   }
 
   .app-view-switcher .segment {
-    min-height: 31px;
+    min-height: 35px;
     min-width: max-content;
-    padding-block: 6px;
-    padding-inline: 9px;
-    font-size: 0.7rem;
+    padding-block: 7px;
+    padding-inline: 12px;
+    font-size: 0.74rem;
+    font-weight: 850;
   }
 
   .toolbar .primary-button {
@@ -1760,8 +1769,8 @@
     width: max-content;
     max-width: none;
     min-width: max-content;
-    gap: 2px;
-    padding: 2px;
+    gap: 3px;
+    padding: 3px;
     border-radius: 14px;
   }
 
@@ -2049,6 +2058,7 @@
 @media screen and (max-width: 380px) {
   :root {
     --mobile-ad-reserve: 76px;
+    --app-bottom-nav-height: 74px;
   }
 
   .loading-screen,
@@ -2095,15 +2105,15 @@
   }
 
   .app-view-switcher.panel {
-    padding: 7px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 10px calc(12px + env(safe-area-inset-bottom, 0px));
     border-radius: 0;
   }
 
   .app-view-switcher .segment {
-    min-height: 30px;
-    padding: 5px 8px;
+    min-height: 33px;
+    padding: 6px 9px;
     border-radius: 10px;
-    font-size: 0.66rem;
+    font-size: 0.7rem;
   }
 
   .notebook-summary-grid {
