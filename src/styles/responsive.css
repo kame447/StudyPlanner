@@ -406,7 +406,7 @@
 
   .app-toast-layer.bottom {
     top: auto;
-    bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--app-bottom-nav-clearance) + 16px);
   }
 
   .app-toast {
@@ -435,6 +435,7 @@
   }
 
   .app-shell {
+    padding-bottom: calc(14px + var(--app-bottom-nav-clearance));
     gap: 14px;
   }
 
@@ -584,6 +585,7 @@
   .app-view-switcher.toolbar {
     flex-direction: row;
     align-items: center;
+    justify-content: flex-start;
     overflow-x: auto;
   }
 
@@ -594,7 +596,7 @@
     width: max-content;
     max-width: none;
     min-width: max-content;
-    gap: 6px;
+    gap: 3px;
   }
 
   .toolbar .segment {
@@ -609,11 +611,11 @@
 
   .app-view-switcher .segment {
     flex: 0 0 auto;
-    min-height: 38px;
+    min-height: 32px;
     min-width: max-content;
-    padding-block: 8px;
-    padding-inline: 12px;
-    font-size: 0.78rem;
+    padding-block: 6px;
+    padding-inline: 10px;
+    font-size: 0.74rem;
   }
 
   .toolbar .row-actions {
@@ -1210,7 +1212,7 @@
 
   .app-toast-layer.bottom {
     top: auto;
-    bottom: calc(106px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--app-bottom-nav-clearance) + 14px);
   }
 
   .app-toast {
@@ -1236,6 +1238,10 @@
   .auth-shell,
   .app-shell {
     padding: 12px;
+  }
+
+  .app-shell {
+    padding-bottom: calc(12px + var(--app-bottom-nav-clearance));
   }
 
   .splash-screen {
@@ -1727,11 +1733,11 @@
   }
 
   .app-view-switcher .segment {
-    min-height: 36px;
+    min-height: 31px;
     min-width: max-content;
-    padding-block: 7px;
-    padding-inline: 11px;
-    font-size: 0.74rem;
+    padding-block: 6px;
+    padding-inline: 9px;
+    font-size: 0.7rem;
   }
 
   .toolbar .primary-button {
@@ -1754,7 +1760,9 @@
     width: max-content;
     max-width: none;
     min-width: max-content;
-    gap: 6px;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 14px;
   }
 
   .month-grid {
@@ -2047,7 +2055,9 @@
   .auth-shell,
   .app-shell {
     padding: 10px;
-    padding-bottom: calc(10px + var(--mobile-ad-reserve) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(
+      10px + var(--mobile-ad-reserve) + var(--app-bottom-nav-clearance)
+    );
   }
 
   .splash-screen {
@@ -2082,6 +2092,18 @@
   .toolbar {
     padding: 10px;
     border-radius: 14px;
+  }
+
+  .app-view-switcher.panel {
+    padding: 7px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+  }
+
+  .app-view-switcher .segment {
+    min-height: 30px;
+    padding: 5px 8px;
+    border-radius: 10px;
+    font-size: 0.66rem;
   }
 
   .notebook-summary-grid {

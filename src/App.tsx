@@ -210,60 +210,6 @@ export default function App() {
         </div>
       </header>
 
-      <div className="toolbar panel app-view-switcher print-hide">
-        <div className="segmented-control">
-          <button
-            className={viewMode === 'month' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('month')}
-            type="button"
-          >
-            月
-          </button>
-          <button
-            className={viewMode === 'week' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('week')}
-            type="button"
-          >
-            週
-          </button>
-          <button
-            className={viewMode === 'day' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('day')}
-            type="button"
-          >
-            日
-          </button>
-          <button
-            className={viewMode === 'todo' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('todo')}
-            type="button"
-          >
-            Todo
-          </button>
-          <button
-            className={viewMode === 'report' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('report')}
-            type="button"
-          >
-            レポート
-          </button>
-          <button
-            className={viewMode === 'timetable' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('timetable')}
-            type="button"
-          >
-            時間割
-          </button>
-          <button
-            className={viewMode === 'bookshelf' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('bookshelf')}
-            type="button"
-          >
-            本棚
-          </button>
-        </div>
-      </div>
-
       {notice ? (
         <div
           className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
@@ -405,6 +351,60 @@ export default function App() {
         </Suspense>
 
       </main>
+
+      <div className="toolbar panel app-view-switcher print-hide">
+        <div className="segmented-control">
+          <button
+            className={viewMode === 'month' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('month')}
+            type="button"
+          >
+            月
+          </button>
+          <button
+            className={viewMode === 'week' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('week')}
+            type="button"
+          >
+            週
+          </button>
+          <button
+            className={viewMode === 'day' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('day')}
+            type="button"
+          >
+            日
+          </button>
+          <button
+            className={viewMode === 'todo' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('todo')}
+            type="button"
+          >
+            Todo
+          </button>
+          <button
+            className={viewMode === 'report' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('report')}
+            type="button"
+          >
+            レポート
+          </button>
+          <button
+            className={viewMode === 'timetable' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('timetable')}
+            type="button"
+          >
+            時間割
+          </button>
+          <button
+            className={viewMode === 'bookshelf' ? 'segment active' : 'segment'}
+            onClick={() => setViewMode('bookshelf')}
+            type="button"
+          >
+            本棚
+          </button>
+        </div>
+      </div>
 
       {viewMode === 'day' || viewMode === 'todo' ? (
         <button

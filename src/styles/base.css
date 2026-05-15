@@ -113,6 +113,10 @@
   --textarea-background: rgba(255, 255, 255, 0.82);
   --overlay-background: rgba(31, 43, 43, 0.24);
   --mobile-ad-reserve: 0px;
+  --app-bottom-nav-height: 58px;
+  --app-bottom-nav-clearance: calc(
+    var(--app-bottom-nav-height) + env(safe-area-inset-bottom, 0px)
+  );
   line-height: 1.5;
 }
 
