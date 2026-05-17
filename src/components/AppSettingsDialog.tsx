@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ChevronRight,
   FileText,
+  HelpCircle,
   Info,
   Mail,
   Palette,
@@ -13,7 +14,6 @@ import {
   type ThemeMode,
   type ThemePalette,
 } from '../lib/themePalette';
-import { FaqView } from './FaqView';
 
 type AppSettingsTab = 'settings' | 'support';
 
@@ -182,19 +182,6 @@ export function AppSettingsDialog({
             </div>
           ) : (
             <div className="section-stack" role="tabpanel">
-              <FaqView />
-
-              <section className="assistant-settings-card support-section">
-                <strong>ヘルプ</strong>
-                <a className="support-link-row" href="/contact">
-                  <span className="support-link-main">
-                    <Mail aria-hidden="true" size={20} strokeWidth={1.9} />
-                    <span>お問い合わせ</span>
-                  </span>
-                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-                </a>
-              </section>
-
               <section className="assistant-settings-card support-section">
                 <strong>サービスについて</strong>
                 <a className="support-link-row" href="/terms">
@@ -208,6 +195,20 @@ export function AppSettingsDialog({
                   <span className="support-link-main">
                     <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />
                     <span>プライバシーポリシー</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
+                </a>
+                <a className="support-link-row" href="/contact">
+                  <span className="support-link-main">
+                    <Mail aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>お問い合わせ</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
+                </a>
+                <a className="support-link-row" href="/faq">
+                  <span className="support-link-main">
+                    <HelpCircle aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>よくある質問</span>
                   </span>
                   <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
                 </a>

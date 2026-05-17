@@ -1,9 +1,12 @@
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Settings } from 'lucide-react';
+import { AdminGuard } from './components/AdminGuard';
+import { AdminRoutes } from './components/AdminViews';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
+import { FaqView } from './components/FaqView';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -12,6 +15,7 @@ import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog'
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { UserAvatar } from './components/UserAvatar';
 import { createEmptyDayNoteDraft } from './domain/planner';
+import { useAdminStatus } from './hooks/useAdminStatus';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
 import {
@@ -58,6 +62,7 @@ const WeekView = lazy(() =>
 );
 
 export default function App() {
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
@@ -130,6 +135,34 @@ export default function App() {
     setEditorDraft,
     currentDayNote,
   } = usePlannerAppState();
+  const { status: adminStatus, isAdmin } = useAdminStatus(user?.id);
+  const navigate = useCallback(
+    (path: string, options: { replace?: boolean } = {}) => {
+      if (window.location.pathname !== path) {
+        if (options.replace) {
+          window.history.replaceState({}, '', path);
+        } else {
+          window.history.pushState({}, '', path);
+        }
+      }
+
+      setCurrentPath(path);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   const activeTimetableTerm = useMemo(
     () =>
       timetableTerms.find((term) => term.isActive) ??
@@ -138,7 +171,7 @@ export default function App() {
     [timetableTerms],
   );
   const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
-  const currentPath = window.location.pathname;
+  const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
 
   if (currentPath === '/terms') {
     return <LegalPage kind="terms" />;
@@ -150,6 +183,14 @@ export default function App() {
 
   if (currentPath === '/contact') {
     return <LegalPage kind="contact" />;
+  }
+
+  if (currentPath === '/faq') {
+    return (
+      <div className="app-shell">
+        <FaqView />
+      </div>
+    );
   }
 
   if (booting) {
@@ -180,6 +221,91 @@ export default function App() {
     );
   }
 
+  if (isAdminRoute) {
+    return (
+      <div className="app-shell admin-app-shell">
+        <header className="app-header hero-card print-hide">
+          <StudyPlannerLogo />
+
+          <div className="header-actions">
+            <div className="user-badge header-profile-name">
+              {getUserDisplayName(user)}
+            </div>
+            <button
+              className="ghost-button my-page-trigger"
+              onClick={() => setIsMyPageOpen(true)}
+              type="button"
+              aria-label="マイページを開く"
+            >
+              <UserAvatar user={user} small />
+              <span className="my-page-trigger-label">マイページ</span>
+            </button>
+            <button
+              className="ghost-button header-settings-button"
+              onClick={() => setIsAppSettingsOpen(true)}
+              type="button"
+              aria-label="アプリ設定を開く"
+              title="アプリ設定"
+            >
+              <Settings aria-hidden="true" size={22} strokeWidth={1.9} />
+            </button>
+          </div>
+        </header>
+
+        {notice ? (
+          <div
+            className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
+            aria-live="polite"
+          >
+            <div className={`app-notice app-toast ${notice.tone}`}>
+              <span>{notice.text}</span>
+              {notice.actionLabel && notice.onAction ? (
+                <button
+                  className="app-toast-action"
+                  onClick={() => {
+                    void notice.onAction?.();
+                  }}
+                  type="button"
+                >
+                  {notice.actionLabel}
+                </button>
+              ) : null}
+              <button
+                className="app-toast-close"
+                onClick={dismissNotice}
+                type="button"
+                aria-label="通知を閉じる"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <AdminGuard status={adminStatus}>
+          <AdminRoutes path={currentPath} navigate={navigate} />
+        </AdminGuard>
+
+        <MyPageDialog
+          open={isMyPageOpen}
+          user={user}
+          onSaveProfile={saveUserProfile}
+          onSignOut={signOut}
+          onClose={() => setIsMyPageOpen(false)}
+        />
+
+        <AppSettingsDialog
+          open={isAppSettingsOpen}
+          themeMode={themeMode}
+          themePalette={themePalette}
+          onChangeTheme={setThemeMode}
+          onChangeThemePalette={setThemePalette}
+          onClose={() => setIsAppSettingsOpen(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header hero-card print-hide">
@@ -189,6 +315,15 @@ export default function App() {
           <div className="user-badge header-profile-name">
             {getUserDisplayName(user)}
           </div>
+          {isAdmin ? (
+            <button
+              className="ghost-button admin-header-link"
+              onClick={() => navigate('/admin/users')}
+              type="button"
+            >
+              管理者画面
+            </button>
+          ) : null}
           <button
             className="ghost-button my-page-trigger"
             onClick={() => setIsMyPageOpen(true)}

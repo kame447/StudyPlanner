@@ -1,0 +1,450 @@
+.admin-app-shell {
+  max-width: 980px;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+.admin-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.admin-detail-shell {
+  gap: 12px;
+}
+
+.admin-hero,
+.admin-profile-card,
+.admin-state-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-title-row h1 {
+  margin: 0;
+  font-size: clamp(1.15rem, 3vw, 1.55rem);
+  line-height: 1.15;
+}
+
+.admin-title-row p,
+.admin-state-card p,
+.admin-profile-card p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.admin-title-row code,
+.admin-user-copy code {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+.admin-icon-badge,
+.admin-user-avatar {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
+  color: var(--accent-strong);
+  font-weight: 900;
+  overflow: hidden;
+}
+
+.admin-user-avatar {
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  box-shadow: 0 10px 22px var(--accent-shadow);
+}
+
+.admin-user-avatar-large {
+  width: 58px;
+  height: 58px;
+  font-size: 1.3rem;
+}
+
+.admin-readonly-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.admin-header-link {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 13px;
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.admin-search-card {
+  padding: 12px;
+}
+
+.admin-search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  color: var(--text-muted);
+}
+
+.admin-search-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.94rem;
+}
+
+.admin-user-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-user-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-user-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.admin-user-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-user-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-user-copy strong {
+  font-size: 1rem;
+}
+
+.admin-user-copy span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-stats {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-user-stats span,
+.admin-metric-card {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.admin-user-stats strong,
+.admin-metric-card strong {
+  color: var(--text-primary);
+  font-size: 0.94rem;
+  line-height: 1.2;
+}
+
+.admin-user-card-icon {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--text-muted);
+}
+
+.admin-metric-grid,
+.admin-delta-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-delta-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-section-card {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-report-head h2,
+.admin-report-head p {
+  margin: 0;
+}
+
+.admin-report-head p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.admin-report-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+}
+
+.admin-report-tabs .segment {
+  min-height: 42px;
+  justify-content: center;
+  border-radius: 12px;
+  font-weight: 900;
+}
+
+.admin-period-nav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-period-nav strong {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  text-align: center;
+}
+
+.admin-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-section-heading h2 {
+  margin: 0;
+}
+
+.admin-section-heading span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.admin-item-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-list-item {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+}
+
+.admin-list-item-inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.admin-list-item span,
+.admin-list-item p,
+.admin-empty-state {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.admin-daily-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-daily-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 72px 34px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.admin-weekly-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 72px 34px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.admin-daily-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.admin-daily-track span {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.admin-daily-row small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.admin-weekly-row small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.admin-back-button {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@media screen and (max-width: 700px) {
+  .admin-app-shell {
+    padding: 14px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .admin-shell {
+    gap: 12px;
+  }
+
+  .admin-hero,
+  .admin-profile-card,
+  .admin-state-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-user-stats,
+  .admin-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-report-head {
+    flex-direction: column;
+  }
+
+  .admin-user-card-icon {
+    display: none;
+  }
+
+  .admin-header-link {
+    min-width: 38px;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+  }
+
+  .admin-daily-row {
+    grid-template-columns: 40px minmax(0, 1fr) 62px 30px;
+    gap: 6px;
+  }
+
+  .admin-weekly-row {
+    grid-template-columns: 82px minmax(0, 1fr) 62px 30px;
+    gap: 6px;
+  }
+}
+
+@media screen and (max-width: 380px) {
+  .admin-app-shell {
+    padding: 10px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .admin-user-stats,
+  .admin-metric-grid {
+    gap: 6px;
+  }
+
+  .admin-user-stats span,
+  .admin-metric-card {
+    padding: 8px;
+    border-radius: 12px;
+  }
+}

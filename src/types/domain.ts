@@ -30,6 +30,83 @@ export interface UserProfileDraft {
   avatar: string;
 }
 
+export interface AdminProfile {
+  id: string;
+  email: string;
+  username: string;
+  avatar: string;
+  createdAt: string;
+}
+
+export interface AdminDashboardStats {
+  todayStudyMinutes: number;
+  weekStudyMinutes: number;
+  todayActualCount: number;
+  incompleteTodoCount: number;
+  lastUpdatedAt: string | null;
+}
+
+export interface AdminDailyRecordSummary {
+  date: string;
+  minutes: number;
+  actualCount: number;
+}
+
+export interface AdminMaterialSummary {
+  key: string;
+  label: string;
+  minutes: number;
+}
+
+export type AdminReportMode = 'day' | 'week' | 'month';
+
+export interface AdminWeeklyRecordSummary {
+  startDate: string;
+  endDate: string;
+  minutes: number;
+  actualCount: number;
+}
+
+export interface AdminPeriodReportSummary {
+  mode: AdminReportMode;
+  startDate: string;
+  endDate: string;
+  plannedMinutes: number;
+  actualMinutes: number;
+  differenceMinutes: number;
+  actualCount: number;
+  plans: Plan[];
+  actuals: Actual[];
+  incompleteTodos: TodoTask[];
+  dayNotes: DayNote[];
+  dailySummaries: AdminDailyRecordSummary[];
+  weeklySummaries: AdminWeeklyRecordSummary[];
+  materialSummaries: AdminMaterialSummary[];
+}
+
+export interface AdminUserSummary {
+  profile: AdminProfile;
+  stats: AdminDashboardStats;
+}
+
+export interface AdminUserDetailData {
+  profile: AdminProfile;
+  stats: AdminDashboardStats;
+  plans: Plan[];
+  actuals: Actual[];
+  todos: TodoTask[];
+  dayNotes: DayNote[];
+  studyMaterials: StudyMaterial[];
+  todayPlans: Plan[];
+  todayActuals: Actual[];
+  incompleteTodos: TodoTask[];
+  recentDayNotes: DayNote[];
+  last7Days: AdminDailyRecordSummary[];
+  materialSummaries: AdminMaterialSummary[];
+  weekPlannedMinutes: number;
+  weekActualMinutes: number;
+}
+
 export type RecurrenceRuleKind = 'daily' | 'monthly' | 'day-type' | 'weekday' | 'date';
 
 export type RecurrenceDayType = 'weekday' | 'weekend';

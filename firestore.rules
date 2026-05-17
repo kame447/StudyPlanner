@@ -1,87 +1,113 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+
     function isOwner(userId) {
-      return signedIn() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function canReadOwnedResource() {
+      return isOwner(resource.data.userId) || isAdmin();
+    }
+
+    function canCreateOwnedResource() {
+      return isOwner(request.resource.data.userId);
+    }
+
+    function canUpdateOwnedResource() {
+      return isOwner(resource.data.userId)
+        && isOwner(request.resource.data.userId);
+    }
+
+    match /admins/{adminId} {
+      allow get: if isOwner(adminId) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /profiles/{userId} {
-      allow read, create, update: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId);
       allow delete: if false;
     }
 
     match /plans/{planId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /actuals/{actualId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /day_notes/{dayNoteId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /month_events/{monthEventId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /todos/{todoId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /study_subjects/{subjectId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /study_materials/{materialId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /schedule_templates/{scheduleTemplateId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /timetable_terms/{termId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /timetable_periods/{periodId} {
-      allow read, delete: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
-        && isOwner(request.resource.data.userId);
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource();
+      allow update: if canUpdateOwnedResource();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /app_catalogs/{catalogId} {
