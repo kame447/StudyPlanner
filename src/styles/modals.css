@@ -588,6 +588,14 @@
   text-decoration: none;
 }
 
+.support-link-button {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .support-link-row:hover {
   background: var(--surface-selected);
 }

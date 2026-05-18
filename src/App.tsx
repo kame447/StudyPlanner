@@ -298,8 +298,11 @@ export default function App() {
           open={isAppSettingsOpen}
           themeMode={themeMode}
           themePalette={themePalette}
+          isAdmin={isAdmin}
           onChangeTheme={setThemeMode}
           onChangeThemePalette={setThemePalette}
+          onOpenAdmin={() => navigate('/admin/users')}
+          onSignOut={signOut}
           onClose={() => setIsAppSettingsOpen(false)}
         />
       </div>
@@ -315,15 +318,6 @@ export default function App() {
           <div className="user-badge header-profile-name">
             {getUserDisplayName(user)}
           </div>
-          {isAdmin ? (
-            <button
-              className="ghost-button admin-header-link"
-              onClick={() => navigate('/admin/users')}
-              type="button"
-            >
-              管理者画面
-            </button>
-          ) : null}
           <button
             className="ghost-button my-page-trigger"
             onClick={() => setIsMyPageOpen(true)}
@@ -608,8 +602,11 @@ export default function App() {
         open={isAppSettingsOpen}
         themeMode={themeMode}
         themePalette={themePalette}
+        isAdmin={isAdmin}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
+        onOpenAdmin={() => navigate('/admin/users')}
+        onSignOut={signOut}
         onClose={() => setIsAppSettingsOpen(false)}
       />
     </div>
