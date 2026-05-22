@@ -419,19 +419,17 @@
 
 .month-event-editor-body {
   display: grid;
-  gap: 10px;
+  gap: 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
-  padding: 2px 2px 4px;
+  padding: 0 2px 4px;
 }
 
-.month-event-editor-card,
-.month-event-list-card,
-.month-event-checklist-card {
+.month-event-editor-card {
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -440,9 +438,27 @@
   background: color-mix(in srgb, var(--surface-strong) 82%, var(--surface-soft) 18%);
 }
 
+.month-event-core-section,
+.month-event-subtle-section,
+.month-event-addons,
+.month-event-addon-panel {
+  display: grid;
+  gap: 9px;
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+}
+
+.month-event-core-section:first-child {
+  padding-top: 8px;
+}
+
+.month-event-addon-panel {
+  padding: 10px 0 12px;
+}
+
 .month-event-title-card {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
-  background: color-mix(in srgb, var(--surface-strong) 88%, var(--accent) 12%);
+  border-color: color-mix(in srgb, var(--border) 68%, transparent);
+  background: transparent;
 }
 
 .month-event-card-title {
@@ -464,6 +480,63 @@
   grid-template-columns: minmax(128px, 1.1fr) minmax(92px, 0.75fr);
   gap: 8px;
   min-width: 0;
+}
+
+.month-event-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.month-event-all-day-switch {
+  position: relative;
+  display: inline-flex;
+  width: 48px;
+  height: 28px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.month-event-all-day-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.month-event-all-day-switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 22%, var(--surface-strong) 78%);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.month-event-all-day-switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 2px 7px rgb(15 23 42 / 0.16);
+  transition: transform 0.18s ease;
+}
+
+.month-event-all-day-switch input:checked + span {
+  background: color-mix(in srgb, var(--accent) 78%, var(--surface-strong) 22%);
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border) 30%);
+}
+
+.month-event-all-day-switch input:checked + span::after {
+  transform: translateX(20px);
 }
 
 .month-event-repeat-card {
@@ -489,7 +562,7 @@
 
 .month-event-modal .field span {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -503,16 +576,50 @@
   padding: 7px 10px;
   border-radius: 10px;
   background: var(--surface-strong);
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   line-height: 1.25;
 }
 
 .modal-card.month-event-modal .month-event-title-field input {
-  min-height: 44px;
-  padding: 9px 12px;
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--input-border) 68%);
-  font-size: 1rem;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-color: var(--input-border);
+  font-size: 0.95rem;
   font-weight: 850;
+}
+
+.month-event-addon-chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.month-event-addon-prefix {
+  color: var(--accent);
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.month-event-addon-chip {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 84%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.month-event-addon-chip.active {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border) 62%);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+  color: var(--accent);
 }
 
 .modal-card.month-event-modal .field input[type='date'],

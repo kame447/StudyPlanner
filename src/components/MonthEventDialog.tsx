@@ -25,6 +25,16 @@ interface MonthEventDialogProps {
   onClose: () => void;
 }
 
+type MonthEventAddonKey = 'repeat' | 'url' | 'location' | 'memo' | 'checklist';
+
+const MONTH_EVENT_ADDONS: Array<{ key: MonthEventAddonKey; label: string }> = [
+  { key: 'repeat', label: '繰り返し' },
+  { key: 'url', label: 'URL' },
+  { key: 'location', label: '場所' },
+  { key: 'memo', label: 'メモ' },
+  { key: 'checklist', label: 'チェックリスト' },
+];
+
 function sanitizeDraft(draft: MonthEventDraft): MonthEventDraft {
   const checklist = draft.checklist
     .map((item) => ({
@@ -60,6 +70,32 @@ function sanitizeDraft(draft: MonthEventDraft): MonthEventDraft {
   };
 }
 
+function getInitialExpandedAddons(draft: MonthEventDraft): Set<MonthEventAddonKey> {
+  const next = new Set<MonthEventAddonKey>();
+
+  if (draft.repeat !== 'none') {
+    next.add('repeat');
+  }
+
+  if (draft.url.trim()) {
+    next.add('url');
+  }
+
+  if (draft.locationTags.some((tag) => tag.trim().length > 0)) {
+    next.add('location');
+  }
+
+  if (draft.memo.trim()) {
+    next.add('memo');
+  }
+
+  if (draft.checklist.length > 0) {
+    next.add('checklist');
+  }
+
+  return next;
+}
+
 export function MonthEventDialog({
   openDate,
   userId,
@@ -76,7 +112,10 @@ export function MonthEventDialog({
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [showDeleteScopePrompt, setShowDeleteScopePrompt] = useState(false);
-  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [expandedAddons, setExpandedAddons] = useState<Set<MonthEventAddonKey>>(
+    () => getInitialExpandedAddons(createEmptyMonthEventDraft(userId, openDate ?? '')),
+  );
+  const [isAllDay, setIsAllDay] = useState(false);
   const [isSavingMonthEvent, setIsSavingMonthEvent] = useState(false);
 
   const visibleEvents = useMemo(() => {
@@ -104,16 +143,18 @@ export function MonthEventDialog({
         ? monthEvents.find((monthEvent) => monthEvent.id === initialEventId) ?? null
         : null;
 
-    setEditingEventId(initialEvent?.id ?? null);
-    setDraft(
+    const nextDraft =
       initialEvent
         ? createMonthEventDraftFromEvent(initialEvent)
-        : createEmptyMonthEventDraft(userId, openDate),
-    );
+        : createEmptyMonthEventDraft(userId, openDate);
+
+    setEditingEventId(initialEvent?.id ?? null);
+    setDraft(nextDraft);
     setStatus('');
     setError('');
     setShowDeleteScopePrompt(false);
-    setShowOptionalFields(false);
+    setExpandedAddons(getInitialExpandedAddons(nextDraft));
+    setIsAllDay(nextDraft.startTime === '00:00' && nextDraft.endTime === '23:59');
     setIsSavingMonthEvent(false);
   }, [initialEventId, monthEvents, openDate, userId]);
 
@@ -122,21 +163,17 @@ export function MonthEventDialog({
   }
 
   const activeDate = openDate;
-  const optionalFieldCount = [
-    draft.url.trim(),
-    draft.locationTags.some((tag) => tag.trim().length > 0) ? 'location' : '',
-    draft.memo.trim(),
-  ].filter(Boolean).length;
-  const optionalSummary =
-    optionalFieldCount > 0 ? `${optionalFieldCount}件入力済み` : '未入力';
 
   function resetEditor(nextStatus = '') {
+    const nextDraft = createEmptyMonthEventDraft(userId, activeDate);
+
     setEditingEventId(null);
-    setDraft(createEmptyMonthEventDraft(userId, activeDate));
+    setDraft(nextDraft);
     setError('');
     setStatus(nextStatus);
     setShowDeleteScopePrompt(false);
-    setShowOptionalFields(false);
+    setExpandedAddons(getInitialExpandedAddons(nextDraft));
+    setIsAllDay(false);
     setIsSavingMonthEvent(false);
   }
 
@@ -145,12 +182,56 @@ export function MonthEventDialog({
   }
 
   function handleSelectEvent(monthEvent: MonthEvent) {
+    const nextDraft = createMonthEventDraftFromEvent(monthEvent);
+
     setEditingEventId(monthEvent.id);
-    setDraft(createMonthEventDraftFromEvent(monthEvent));
+    setDraft(nextDraft);
     setStatus('');
     setError('');
     setShowDeleteScopePrompt(false);
-    setShowOptionalFields(false);
+    setExpandedAddons(getInitialExpandedAddons(nextDraft));
+    setIsAllDay(nextDraft.startTime === '00:00' && nextDraft.endTime === '23:59');
+  }
+
+  function expandAddon(key: MonthEventAddonKey) {
+    setExpandedAddons((current) => new Set(current).add(key));
+  }
+
+  function collapseAddon(key: MonthEventAddonKey) {
+    setExpandedAddons((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+
+    if (key === 'repeat') {
+      setDraft((current) => ({
+        ...current,
+        repeat: 'none',
+        repeatUntil: null,
+        excludedDates: [],
+      }));
+    } else if (key === 'url') {
+      setDraft((current) => ({ ...current, url: '' }));
+    } else if (key === 'location') {
+      setDraft((current) => ({ ...current, locationTags: [] }));
+    } else if (key === 'memo') {
+      setDraft((current) => ({ ...current, memo: '' }));
+    } else if (key === 'checklist') {
+      setDraft((current) => ({ ...current, checklist: [] }));
+    }
+  }
+
+  function toggleAllDay(nextChecked: boolean) {
+    setIsAllDay(nextChecked);
+
+    if (nextChecked) {
+      setDraft((current) => ({
+        ...current,
+        startTime: '00:00',
+        endTime: '23:59',
+      }));
+    }
   }
 
   async function handleSave() {
@@ -295,7 +376,7 @@ export function MonthEventDialog({
         </div>
 
         <div className="month-event-editor-body">
-          <section className="month-event-editor-card month-event-title-card">
+          <section className="month-event-core-section month-event-title-card">
             <label className="field month-event-title-field">
               <span>タイトル</span>
               <input
@@ -306,14 +387,22 @@ export function MonthEventDialog({
                     title: event.target.value,
                   })
                 }
-                placeholder="例: 体育祭 / バイト / 面接"
+                placeholder="タイトル"
               />
             </label>
           </section>
 
-          <section className="month-event-editor-card">
-            <div className="month-event-card-title">
-              <strong>日付・時刻</strong>
+          <section className="month-event-core-section">
+            <div className="month-event-toggle-row">
+              <span>終日</span>
+              <label className="month-event-all-day-switch">
+                <input
+                  type="checkbox"
+                  checked={isAllDay}
+                  onChange={(event) => toggleAllDay(event.target.checked)}
+                />
+                <span />
+              </label>
             </div>
             <div className="month-event-datetime-grid">
               <label className="field">
@@ -334,6 +423,7 @@ export function MonthEventDialog({
                 <input
                   type="time"
                   value={draft.startTime}
+                  disabled={isAllDay}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
@@ -356,6 +446,7 @@ export function MonthEventDialog({
                 <input
                   type="time"
                   value={draft.endTime}
+                  disabled={isAllDay}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
@@ -367,31 +458,7 @@ export function MonthEventDialog({
             </div>
           </section>
 
-          <section className="month-event-editor-card month-event-repeat-card">
-            <div className="month-event-card-title">
-              <strong>繰り返し</strong>
-            </div>
-            <label className="field">
-              <span>設定</span>
-              <select
-                value={draft.repeat}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    repeat: event.target.value as MonthEventDraft['repeat'],
-                  })
-                }
-              >
-                {MONTH_EVENT_REPEAT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
-
-          <section className="assistant-settings-card month-event-list-card">
+          <section className="month-event-subtle-section month-event-list-card">
             <div className="label-row">
               <strong>登録済みの主要予定</strong>
               <button className="ghost-button" onClick={handleNewEvent} type="button">
@@ -456,24 +523,77 @@ export function MonthEventDialog({
             </section>
           ) : null}
 
-          <section className="month-event-editor-card month-event-optional-card">
-            <button
-              className="collapsible-toggle"
-              onClick={() => setShowOptionalFields((current) => !current)}
-              type="button"
-              aria-expanded={showOptionalFields}
-            >
-              <span className="collapsible-toggle-copy">
-                <span>追加情報</span>
-                <strong>URL・場所タグ・メモ</strong>
-              </span>
-              <span className="collapsible-toggle-summary" aria-hidden="true">
-                {showOptionalFields ? '閉じる' : optionalSummary}
-              </span>
-            </button>
+          <section className="month-event-addons">
+            <div className="month-event-addon-chip-row">
+              <span className="month-event-addon-prefix">＋</span>
+              {MONTH_EVENT_ADDONS.map((addon) => {
+                const isExpanded = expandedAddons.has(addon.key);
 
-            {showOptionalFields ? (
-              <div className="collapsible-panel">
+                return (
+                  <button
+                    className={
+                      isExpanded
+                        ? 'month-event-addon-chip active'
+                        : 'month-event-addon-chip'
+                    }
+                    key={addon.key}
+                    onClick={() =>
+                      isExpanded ? collapseAddon(addon.key) : expandAddon(addon.key)
+                    }
+                    type="button"
+                    aria-pressed={isExpanded}
+                  >
+                    {isExpanded ? '−' : '＋'} {addon.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {expandedAddons.has('repeat') ? (
+              <section className="month-event-addon-panel">
+                <div className="label-row">
+                  <strong>繰り返し</strong>
+                  <button
+                    className="mini-button"
+                    onClick={() => collapseAddon('repeat')}
+                    type="button"
+                  >
+                    外す
+                  </button>
+                </div>
+                <label className="field">
+                  <span>設定</span>
+                  <select
+                    value={draft.repeat}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        repeat: event.target.value as MonthEventDraft['repeat'],
+                      })
+                    }
+                  >
+                    {MONTH_EVENT_REPEAT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+            ) : null}
+
+            {expandedAddons.has('url') ? (
+              <section className="month-event-addon-panel">
+                <div className="label-row">
+                  <strong>URL</strong>
+                  <button
+                    className="mini-button"
+                    onClick={() => collapseAddon('url')}
+                    type="button"
+                  >
+                    外す
+                  </button>
+                </div>
                 <label className="field">
                   <span>URL</span>
                   <input
@@ -487,7 +607,21 @@ export function MonthEventDialog({
                     placeholder="https://..."
                   />
                 </label>
+              </section>
+            ) : null}
 
+            {expandedAddons.has('location') ? (
+              <section className="month-event-addon-panel">
+                <div className="label-row">
+                  <strong>場所</strong>
+                  <button
+                    className="mini-button"
+                    onClick={() => collapseAddon('location')}
+                    type="button"
+                  >
+                    外す
+                  </button>
+                </div>
                 <label className="field">
                   <span>場所タグ</span>
                   <input
@@ -498,10 +632,24 @@ export function MonthEventDialog({
                         locationTags: event.target.value.split(','),
                       })
                     }
-                    placeholder="例: 学校, 体育館, 渋谷"
+                    placeholder="学校, 体育館"
                   />
                 </label>
+              </section>
+            ) : null}
 
+            {expandedAddons.has('memo') ? (
+              <section className="month-event-addon-panel">
+                <div className="label-row">
+                  <strong>メモ</strong>
+                  <button
+                    className="mini-button"
+                    onClick={() => collapseAddon('memo')}
+                    type="button"
+                  >
+                    外す
+                  </button>
+                </div>
                 <label className="field">
                   <span>メモ</span>
                   <textarea
@@ -513,80 +661,91 @@ export function MonthEventDialog({
                         memo: event.target.value,
                       })
                     }
-                    placeholder="持ち物や補足を書けます"
+                    placeholder="持ち物や補足"
                   />
                 </label>
-              </div>
+              </section>
             ) : null}
-          </section>
 
-          <section className="month-event-editor-card month-event-checklist-card">
-            <div className="label-row">
-              <strong>チェックリスト</strong>
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    checklist: [...draft.checklist, createEmptyMonthEventChecklistItem()],
-                  })
-                }
-                type="button"
-              >
-                項目を追加
-              </button>
-            </div>
-
-            {draft.checklist.length > 0 ? (
-              <div className="month-event-checklist">
-                {draft.checklist.map((item) => (
-                  <div key={item.id} className="month-event-checklist-item">
-                    <input
-                      type="checkbox"
-                      checked={item.checked}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          checklist: draft.checklist.map((entry) =>
-                            entry.id === item.id
-                              ? { ...entry, checked: event.target.checked }
-                              : entry,
-                          ),
-                        })
-                      }
-                    />
-                    <input
-                      value={item.text}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          checklist: draft.checklist.map((entry) =>
-                            entry.id === item.id
-                              ? { ...entry, text: event.target.value }
-                              : entry,
-                          ),
-                        })
-                      }
-                      placeholder="例: 履歴書を持つ"
-                    />
+            {expandedAddons.has('checklist') ? (
+              <section className="month-event-addon-panel month-event-checklist-card">
+                <div className="label-row">
+                  <strong>チェックリスト</strong>
+                  <div className="row-actions">
                     <button
-                      className="mini-button danger"
+                      className="mini-button"
                       onClick={() =>
                         setDraft({
                           ...draft,
-                          checklist: draft.checklist.filter((entry) => entry.id !== item.id),
+                          checklist: [...draft.checklist, createEmptyMonthEventChecklistItem()],
                         })
                       }
                       type="button"
                     >
-                      削除
+                      項目を追加
+                    </button>
+                    <button
+                      className="mini-button"
+                      onClick={() => collapseAddon('checklist')}
+                      type="button"
+                    >
+                      外す
                     </button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="detail-note">必要な持ち物や確認事項を追加できます。</p>
-            )}
+                </div>
+
+                {draft.checklist.length > 0 ? (
+                  <div className="month-event-checklist">
+                    {draft.checklist.map((item) => (
+                      <div key={item.id} className="month-event-checklist-item">
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              checklist: draft.checklist.map((entry) =>
+                                entry.id === item.id
+                                  ? { ...entry, checked: event.target.checked }
+                                  : entry,
+                              ),
+                            })
+                          }
+                        />
+                        <input
+                          value={item.text}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              checklist: draft.checklist.map((entry) =>
+                                entry.id === item.id
+                                  ? { ...entry, text: event.target.value }
+                                  : entry,
+                              ),
+                            })
+                          }
+                          placeholder="確認事項"
+                        />
+                        <button
+                          className="mini-button danger"
+                          onClick={() =>
+                            setDraft({
+                              ...draft,
+                              checklist: draft.checklist.filter((entry) => entry.id !== item.id),
+                            })
+                          }
+                          type="button"
+                        >
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="detail-note">必要な持ち物や確認事項を追加できます。</p>
+                )}
+              </section>
+            ) : null}
           </section>
 
           {error ? <p className="inline-error">{error}</p> : null}
