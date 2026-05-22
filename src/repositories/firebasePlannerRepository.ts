@@ -1,6 +1,7 @@
 import type { Firestore } from 'firebase/firestore';
 import {
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDocs,
@@ -164,6 +165,32 @@ async function listActualsByPlanOccurrence(
       id: document.id,
     } as Actual),
   );
+}
+
+async function upsertStudyMaterialDocument(
+  firestoreDb: Firestore,
+  item: StudyMaterial,
+): Promise<StudyMaterial> {
+  const sanitizedItem = stripUndefinedDeep(item);
+  const firestorePayload =
+    item.paceEnabled === true
+      ? sanitizedItem
+      : {
+          ...sanitizedItem,
+          progressUnit: deleteField(),
+          progressUnitLabel: deleteField(),
+          totalUnits: deleteField(),
+          currentUnit: deleteField(),
+          targetDate: deleteField(),
+          estimatedMinutesPerUnit: deleteField(),
+          maxUnitsPerDay: deleteField(),
+        };
+
+  await setDoc(doc(firestoreDb, 'study_materials', item.id), firestorePayload, {
+    merge: true,
+  });
+
+  return sanitizedItem;
 }
 
 async function upsertActualDocument(
@@ -493,7 +520,7 @@ export function createFirebasePlannerRepository(
     },
     async upsertStudyMaterial(item) {
       try {
-        return await upsertDocument(firestoreDb, 'study_materials', item);
+        return await upsertStudyMaterialDocument(firestoreDb, item);
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(

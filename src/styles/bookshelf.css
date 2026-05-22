@@ -83,6 +83,11 @@
     box-shadow 0.18s ease;
 }
 
+.bookshelf-material-card.has-pace {
+  width: 148px;
+  min-width: 148px;
+}
+
 .bookshelf-material-card:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--subject-color) 38%, var(--border) 62%);
@@ -99,6 +104,54 @@
   line-height: 1.25;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.material-pace-summary {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.material-pace-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--subject-color) 13%, var(--surface-strong) 87%);
+}
+
+.material-pace-progress span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--subject-color);
+}
+
+.material-pace-chip-row {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.bookshelf-material-card .material-pace-chip-row span,
+.bookshelf-material-card .material-pace-note {
+  min-height: 0;
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1.15;
+  -webkit-line-clamp: unset;
+}
+
+.bookshelf-material-card .material-pace-note {
+  overflow-wrap: anywhere;
 }
 
 .bookshelf-material-image,
@@ -214,6 +267,53 @@
   object-fit: cover;
 }
 
+.material-pace-settings {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
+}
+
+.material-pace-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: inherit;
+}
+
+.material-pace-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.material-pace-toggle span {
+  display: grid;
+  gap: 2px;
+}
+
+.material-pace-toggle strong {
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.material-pace-toggle small {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.material-pace-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .daily-bookshelf-link-card {
   display: grid;
   gap: 12px;
@@ -306,6 +406,11 @@
     padding: 6px;
   }
 
+  .bookshelf-material-card.has-pace {
+    width: 136px;
+    min-width: 136px;
+  }
+
   .bookshelf-material-card span {
     font-size: 0.66rem;
   }
@@ -320,6 +425,10 @@
   }
 
   .bookshelf-material-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .material-pace-form-grid {
     grid-template-columns: 1fr;
   }
 

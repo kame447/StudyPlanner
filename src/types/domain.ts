@@ -230,6 +230,13 @@ export interface StudySubjectDraft {
 }
 
 export type StudyMaterialStatus = 'active' | 'archived';
+export type StudyMaterialProgressUnit =
+  | 'page'
+  | 'problem'
+  | 'section'
+  | 'video'
+  | 'word'
+  | 'custom';
 
 export interface StudyMaterial {
   id: string;
@@ -242,6 +249,14 @@ export interface StudyMaterial {
   coverImageDataUrl?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
+  paceEnabled?: boolean;
+  progressUnit?: StudyMaterialProgressUnit;
+  progressUnitLabel?: string;
+  totalUnits?: number;
+  currentUnit?: number;
+  targetDate?: string;
+  estimatedMinutesPerUnit?: number;
+  maxUnitsPerDay?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -255,6 +270,14 @@ export interface StudyMaterialDraft {
   coverImageDataUrl?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
+  paceEnabled?: boolean;
+  progressUnit?: StudyMaterialProgressUnit;
+  progressUnitLabel?: string;
+  totalUnits?: number;
+  currentUnit?: number;
+  targetDate?: string;
+  estimatedMinutesPerUnit?: number;
+  maxUnitsPerDay?: number;
 }
 
 export type MonthEventRepeat = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';

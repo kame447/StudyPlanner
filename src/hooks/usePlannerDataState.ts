@@ -1534,6 +1534,24 @@ export function usePlannerDataState({
       (material) => material.id === targetMaterialId,
     );
     const now = new Date().toISOString();
+    const paceEnabled = draft.paceEnabled === true;
+    const totalUnits =
+      typeof draft.totalUnits === 'number' && Number.isFinite(draft.totalUnits)
+        ? Math.max(0, draft.totalUnits)
+        : undefined;
+    const currentUnit =
+      typeof draft.currentUnit === 'number' && Number.isFinite(draft.currentUnit)
+        ? Math.min(Math.max(0, draft.currentUnit), totalUnits ?? draft.currentUnit)
+        : undefined;
+    const estimatedMinutesPerUnit =
+      typeof draft.estimatedMinutesPerUnit === 'number' &&
+      Number.isFinite(draft.estimatedMinutesPerUnit)
+        ? Math.max(0, draft.estimatedMinutesPerUnit)
+        : undefined;
+    const maxUnitsPerDay =
+      typeof draft.maxUnitsPerDay === 'number' && Number.isFinite(draft.maxUnitsPerDay)
+        ? Math.max(0, draft.maxUnitsPerDay)
+        : undefined;
     const nextMaterial: StudyMaterial = {
       id: currentMaterial?.id ?? createId('study-material'),
       userId,
@@ -1544,6 +1562,17 @@ export function usePlannerDataState({
       coverImageDataUrl: draft.coverImageDataUrl || undefined,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
+      paceEnabled,
+      progressUnit: draft.progressUnit ?? currentMaterial?.progressUnit ?? 'page',
+      progressUnitLabel:
+        draft.progressUnit === 'custom'
+          ? draft.progressUnitLabel?.trim() || undefined
+          : undefined,
+      totalUnits,
+      currentUnit,
+      targetDate: draft.targetDate?.trim() || undefined,
+      estimatedMinutesPerUnit,
+      maxUnitsPerDay,
       createdAt: currentMaterial?.createdAt ?? now,
       updatedAt: now,
     };
