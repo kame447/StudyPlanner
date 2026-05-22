@@ -20,7 +20,10 @@ import {
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
-import { getMaterialUnitLabel } from '../lib/materialPace';
+import {
+  buildActualMaterialProgressUpdatesFromInput,
+  getMaterialUnitLabel,
+} from '../lib/materialPace';
 import {
   buildTimetableImportCandidates,
   createPlanDraftFromTimetableImportCandidate,
@@ -187,16 +190,6 @@ function MaterialQuickCreateModal({
   const canSave = Boolean(endTime) && !isSubmitting;
   const materialUnitLabel = getMaterialUnitLabel(material);
 
-  function parseProgressInput(value: string): number | undefined {
-    if (!value.trim()) {
-      return undefined;
-    }
-
-    const numericValue = Number(value);
-
-    return Number.isFinite(numericValue) ? Math.max(0, numericValue) : undefined;
-  }
-
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
       setIsCustomDuration(true);
@@ -261,25 +254,12 @@ function MaterialQuickCreateModal({
           sourceId: null,
         });
       } else {
-        const deltaUnits = parseProgressInput(deltaUnitsInput);
-        const toUnit = parseProgressInput(toUnitInput);
-        const materialProgressUpdates =
-          material.paceEnabled === true &&
-          (deltaUnits !== undefined || toUnit !== undefined)
-            ? [
-                {
-                  materialId: material.id,
-                  progressUnit: material.progressUnit,
-                  progressUnitLabel:
-                    material.progressUnit === 'custom'
-                      ? material.progressUnitLabel
-                      : undefined,
-                  fromUnit: material.currentUnit ?? 0,
-                  toUnit,
-                  deltaUnits,
-                },
-              ]
-            : undefined;
+        const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
+          materials: [material],
+          materialId: material.id,
+          deltaUnitsInput,
+          toUnitInput,
+        });
 
         await onSaveStandaloneActual({
           ...baseFields,
@@ -819,6 +799,7 @@ export function DayView({
                 plan={selectedDetailPlan}
                 plans={plans}
                 actuals={actuals}
+                materials={studyMaterials}
                 actual={selectedDetailActual}
                 onEditPlan={onEditPlan}
                 onDeletePlan={onDeletePlan}

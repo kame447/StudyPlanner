@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyMaterialProgressUpdate,
   applyMaterialProgressUpdates,
+  buildActualMaterialProgressUpdatesFromInput,
   calculateNextMaterialUnit,
   calculateDailyQuota,
   calculateMaterialPace,
@@ -215,5 +216,113 @@ describe('material progress updates', () => {
 
     expect(nextMaterials[0].currentUnit).toBe(15);
     expect(nextMaterials[1].currentUnit).toBe(20);
+  });
+});
+
+describe('actual material progress draft input', () => {
+  it('returns undefined when materialId is not selected', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material()],
+        materialId: '',
+        deltaUnitsInput: '5',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('builds materialProgressUpdates from deltaUnits input', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material({ currentUnit: 10 })],
+        materialId: 'material-1',
+        deltaUnitsInput: '5',
+      }),
+    ).toEqual([
+      {
+        materialId: 'material-1',
+        progressUnit: 'problem',
+        progressUnitLabel: undefined,
+        fromUnit: 10,
+        toUnit: undefined,
+        deltaUnits: 5,
+      },
+    ]);
+  });
+
+  it('builds materialProgressUpdates from toUnit input', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material({ currentUnit: 10 })],
+        materialId: 'material-1',
+        toUnitInput: '30',
+      })?.[0],
+    ).toMatchObject({
+      materialId: 'material-1',
+      fromUnit: 10,
+      toUnit: 30,
+    });
+  });
+
+  it('keeps both toUnit and deltaUnits when both are entered', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material()],
+        materialId: 'material-1',
+        deltaUnitsInput: '5',
+        toUnitInput: '30',
+      })?.[0],
+    ).toMatchObject({
+      toUnit: 30,
+      deltaUnits: 5,
+    });
+  });
+
+  it('inherits the selected material currentUnit and unit labels', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [
+          material({
+            currentUnit: 12,
+            progressUnit: 'custom',
+            progressUnitLabel: 'レッスン',
+          }),
+        ],
+        materialId: 'material-1',
+        deltaUnitsInput: '2',
+      })?.[0],
+    ).toMatchObject({
+      fromUnit: 12,
+      progressUnit: 'custom',
+      progressUnitLabel: 'レッスン',
+    });
+  });
+
+  it('does not build updates for pace disabled materials', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material({ paceEnabled: false })],
+        materialId: 'material-1',
+        deltaUnitsInput: '5',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('does not build updates from invalid or non-positive numeric input', () => {
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material()],
+        materialId: 'material-1',
+        deltaUnitsInput: '0',
+        toUnitInput: '-1',
+      }),
+    ).toBeUndefined();
+
+    expect(
+      buildActualMaterialProgressUpdatesFromInput({
+        materials: [material()],
+        materialId: 'material-1',
+        deltaUnitsInput: 'abc',
+      }),
+    ).toBeUndefined();
   });
 });

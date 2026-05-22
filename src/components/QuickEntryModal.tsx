@@ -8,6 +8,10 @@ import {
   inferSubjectFromTitleWithUserCatalog,
 } from '../lib/subjectInference';
 import {
+  buildActualMaterialProgressUpdatesFromInput,
+  getMaterialUnitLabel,
+} from '../lib/materialPace';
+import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
   SUPPORTED_QUICK_ENTRY_REPEAT_KINDS,
@@ -107,6 +111,9 @@ export function QuickEntryModal({
   const [subject, setSubject] = useState('');
   const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
   const [selectedMaterialId, setSelectedMaterialId] = useState('');
+  const [progressMaterialId, setProgressMaterialId] = useState('');
+  const [deltaUnitsInput, setDeltaUnitsInput] = useState('');
+  const [toUnitInput, setToUnitInput] = useState('');
   const [materialSource, setMaterialSource] = useState<MaterialSource>('none');
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
@@ -138,12 +145,18 @@ export function QuickEntryModal({
       ),
     [materials, userId],
   );
+  const paceMaterials = useMemo(
+    () => availableMaterials.filter((material) => material.paceEnabled === true),
+    [availableMaterials],
+  );
   const availableSubjects = useMemo(
     () => subjects.filter((subjectItem) => subjectItem.userId === userId),
     [subjects, userId],
   );
   const selectedMaterial =
     availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
+  const selectedProgressMaterial =
+    paceMaterials.find((material) => material.id === progressMaterialId) ?? null;
   const candidateActual =
     actualEndTime && title.trim()
       ? {
@@ -276,6 +289,11 @@ export function QuickEntryModal({
       if (inference.source === 'material' && inference.materialId) {
         setSelectedMaterialId(inference.materialId);
         setMaterialSource('title');
+        const inferredMaterial =
+          availableMaterials.find((item) => item.id === inference.materialId) ?? null;
+        setProgressMaterialId(
+          inferredMaterial?.paceEnabled === true ? inferredMaterial.id : '',
+        );
 
         if (subjectSource !== 'user' && inference.subject) {
           setSubject(inference.subject);
@@ -288,6 +306,7 @@ export function QuickEntryModal({
 
       if (didClearTitleMaterial) {
         setSelectedMaterialId('');
+        setProgressMaterialId('');
         setMaterialSource('none');
 
         if (subjectSource === 'material') {
@@ -320,6 +339,8 @@ export function QuickEntryModal({
       availableMaterials.find((item) => item.id === materialId) ?? null;
 
     if (!material) {
+      setProgressMaterialId('');
+
       if (subjectSource === 'material') {
         const inferredSubject = inferSubjectFromTitle(title);
 
@@ -328,6 +349,8 @@ export function QuickEntryModal({
       }
       return;
     }
+
+    setProgressMaterialId(material.paceEnabled === true ? material.id : '');
 
     if (subjectSource !== 'user') {
       setSubject(material.subjectName);
@@ -353,6 +376,15 @@ export function QuickEntryModal({
     );
   }
 
+  function buildMaterialProgressUpdates() {
+    return buildActualMaterialProgressUpdatesFromInput({
+      materials: paceMaterials,
+      materialId: progressMaterialId,
+      deltaUnitsInput,
+      toUnitInput,
+    });
+  }
+
   function renderMaterialSelect() {
     if (availableMaterials.length === 0) {
       return null;
@@ -376,6 +408,68 @@ export function QuickEntryModal({
     );
   }
 
+  function renderMaterialProgressInputs() {
+    if (entryKind !== 'actual' || paceMaterials.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="quick-entry-card">
+        <div className="quick-entry-card-head">
+          <h3>教材進捗</h3>
+        </div>
+        <div className="material-quick-progress-grid">
+          <label className="field">
+            <span>教材</span>
+            <select
+              value={progressMaterialId}
+              onChange={(event) => setProgressMaterialId(event.target.value)}
+            >
+              <option value="">記録しない</option>
+              {paceMaterials.map((material) => (
+                <option key={material.id} value={material.id}>
+                  {material.name}（{material.subjectName || '科目未設定'}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>進めた量</span>
+            <input
+              min="0"
+              step="1"
+              type="number"
+              value={deltaUnitsInput}
+              onChange={(event) => setDeltaUnitsInput(event.target.value)}
+              placeholder={
+                selectedProgressMaterial
+                  ? getMaterialUnitLabel(selectedProgressMaterial)
+                  : '例: 5'
+              }
+            />
+          </label>
+          <label className="field">
+            <span>到達位置</span>
+            <input
+              min="0"
+              step="1"
+              type="number"
+              value={toUnitInput}
+              onChange={(event) => setToUnitInput(event.target.value)}
+              placeholder={
+                selectedProgressMaterial
+                  ? `${selectedProgressMaterial.currentUnit ?? 0}${getMaterialUnitLabel(
+                      selectedProgressMaterial,
+                    )}`
+                  : '例: 30'
+              }
+            />
+          </label>
+        </div>
+      </section>
+    );
+  }
+
   async function handleSaveLinkedActual(plan: Plan) {
     if (!actualEndTime || !title.trim()) {
       return;
@@ -394,6 +488,7 @@ export function QuickEntryModal({
         isAlignedToPlan: false,
         note: memo.trim(),
         ...getSelectedMaterialFields(),
+        materialProgressUpdates: buildMaterialProgressUpdates(),
       });
       onClose();
     } finally {
@@ -426,6 +521,7 @@ export function QuickEntryModal({
           isAlignedToPlan: false,
           note: memo.trim(),
           ...getSelectedMaterialFields(),
+          materialProgressUpdates: buildMaterialProgressUpdates(),
         });
       } else if (mode === 'scheduled' || mode === 'repeat') {
         const planDraft = buildQuickEntryPlanDraft({
@@ -877,6 +973,8 @@ export function QuickEntryModal({
                     </label>
                   </div>
                 </section>
+
+                {renderMaterialProgressInputs()}
 
                 {linkCandidates.length > 0 ? (
                   <section className="quick-entry-card standalone-link-section">

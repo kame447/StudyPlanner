@@ -4,13 +4,18 @@ import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
 import { expandPlansForDate, getPlanOccurrenceDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
-import type { Actual, ActualDraft, Plan } from '../types/domain';
+import {
+  buildActualMaterialProgressUpdatesFromInput,
+  getMaterialUnitLabel,
+} from '../lib/materialPace';
+import type { Actual, ActualDraft, Plan, StudyMaterial } from '../types/domain';
 import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
   plans: Plan[];
   actuals: Actual[];
+  materials: StudyMaterial[];
   actual?: Actual;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
@@ -62,6 +67,7 @@ export function ActualEditorCard({
   plan,
   plans,
   actuals,
+  materials,
   actual,
   onEditPlan,
   onDeletePlan,
@@ -76,12 +82,17 @@ export function ActualEditorCard({
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');
   const [selectedCandidatePlanId, setSelectedCandidatePlanId] = useState<string | null>(null);
+  const [progressMaterialId, setProgressMaterialId] = useState('');
+  const [deltaUnitsInput, setDeltaUnitsInput] = useState('');
+  const [toUnitInput, setToUnitInput] = useState('');
 
   useEffect(() => {
     setDraft(buildDraft(plan, actual));
     setError('');
     setIsOpen(forceOpen || !actual);
     setSelectedCandidatePlanId(null);
+    setDeltaUnitsInput('');
+    setToUnitInput('');
   }, [actual?.id, forceOpen, plan]);
 
   const planMinutes = minutesBetween(plan.startTime, plan.endTime);
@@ -117,6 +128,29 @@ export function ActualEditorCard({
   const selectedCandidate = linkCandidates.find(
     (candidate) => candidate.plan.id === selectedCandidatePlanId,
   );
+  const paceMaterials = useMemo(
+    () =>
+      materials.filter(
+        (material) =>
+          material.userId === plan.userId &&
+          material.status !== 'archived' &&
+          material.paceEnabled === true,
+      ),
+    [materials, plan.userId],
+  );
+  const selectedProgressMaterial =
+    paceMaterials.find((material) => material.id === progressMaterialId) ?? null;
+
+  useEffect(() => {
+    const existingProgressMaterialId = actual?.materialProgressUpdates?.[0]?.materialId;
+    const preferredMaterialId =
+      existingProgressMaterialId ?? actual?.materialId ?? plan.materialId ?? '';
+    const hasPreferredMaterial = paceMaterials.some(
+      (material) => material.id === preferredMaterialId,
+    );
+
+    setProgressMaterialId(hasPreferredMaterial ? preferredMaterialId : '');
+  }, [actual?.id, actual?.materialId, actual?.materialProgressUpdates, paceMaterials, plan.materialId]);
 
   function setAlignedToPlan(nextAligned: boolean) {
     setDraft((current) => ({
@@ -152,13 +186,23 @@ export function ActualEditorCard({
     setError('');
     try {
       const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
+      const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
+        materials: paceMaterials,
+        materialId: progressMaterialId,
+        deltaUnitsInput,
+        toUnitInput,
+      });
       const nextDraft: ActualDraft = isActualDateChanged
         ? {
             ...draft,
             planId: selectedCandidate?.plan.id ?? null,
             isAlignedToPlan: false,
+            materialProgressUpdates,
           }
-        : draft;
+        : {
+            ...draft,
+            materialProgressUpdates,
+          };
 
       setIsOpen(false);
       await onSaveActual(nextPlan, nextDraft, actual?.id);
@@ -404,6 +448,62 @@ export function ActualEditorCard({
                 }
               />
             </label>
+
+            {paceMaterials.length > 0 ? (
+              <div className="actual-progress-input-panel">
+                <div className="actual-editor-section-title">
+                  <strong>教材進捗</strong>
+                </div>
+                <div className="material-quick-progress-grid">
+                  <label className="field">
+                    <span>教材</span>
+                    <select
+                      value={progressMaterialId}
+                      onChange={(event) => setProgressMaterialId(event.target.value)}
+                    >
+                      <option value="">記録しない</option>
+                      {paceMaterials.map((material) => (
+                        <option key={material.id} value={material.id}>
+                          {material.name}（{material.subjectName || '科目未設定'}）
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>進めた量</span>
+                    <input
+                      min="0"
+                      step="1"
+                      type="number"
+                      value={deltaUnitsInput}
+                      onChange={(event) => setDeltaUnitsInput(event.target.value)}
+                      placeholder={
+                        selectedProgressMaterial
+                          ? getMaterialUnitLabel(selectedProgressMaterial)
+                          : '例: 5'
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>到達位置</span>
+                    <input
+                      min="0"
+                      step="1"
+                      type="number"
+                      value={toUnitInput}
+                      onChange={(event) => setToUnitInput(event.target.value)}
+                      placeholder={
+                        selectedProgressMaterial
+                          ? `${selectedProgressMaterial.currentUnit ?? 0}${getMaterialUnitLabel(
+                              selectedProgressMaterial,
+                            )}`
+                          : '例: 30'
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {isActualDateChanged ? (

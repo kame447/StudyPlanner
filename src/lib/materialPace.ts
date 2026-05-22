@@ -27,6 +27,13 @@ export interface MaterialPaceResult {
   status: MaterialPaceStatus;
 }
 
+export interface MaterialProgressDraftInput {
+  materials: StudyMaterial[];
+  materialId?: string | null;
+  deltaUnitsInput?: string;
+  toUnitInput?: string;
+}
+
 const UNIT_LABELS: Record<StudyMaterialProgressUnit, string> = {
   page: 'ページ',
   problem: '問',
@@ -54,6 +61,18 @@ function normalizeProgressValue(value: unknown): number | undefined {
   }
 
   return value;
+}
+
+function parsePositiveProgressInput(value: string | undefined): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const numericValue = Number(value);
+
+  return Number.isFinite(numericValue) && numericValue > 0
+    ? numericValue
+    : undefined;
 }
 
 function clampUnit(value: number, totalUnits?: number): number {
@@ -293,6 +312,46 @@ export function normalizeMaterialProgressUpdate(
     toUnit,
     deltaUnits,
   };
+}
+
+export function buildActualMaterialProgressUpdatesFromInput({
+  materials,
+  materialId,
+  deltaUnitsInput,
+  toUnitInput,
+}: MaterialProgressDraftInput): ActualMaterialProgressUpdate[] | undefined {
+  if (!materialId) {
+    return undefined;
+  }
+
+  const material = materials.find(
+    (item) => item.id === materialId && item.paceEnabled === true,
+  );
+
+  if (!material) {
+    return undefined;
+  }
+
+  const deltaUnits = parsePositiveProgressInput(deltaUnitsInput);
+  const toUnit = parsePositiveProgressInput(toUnitInput);
+
+  if (deltaUnits === undefined && toUnit === undefined) {
+    return undefined;
+  }
+
+  return [
+    {
+      materialId: material.id,
+      progressUnit: material.progressUnit,
+      progressUnitLabel:
+        material.progressUnit === 'custom'
+          ? material.progressUnitLabel
+          : undefined,
+      fromUnit: normalizeUnitCount(material.currentUnit) ?? 0,
+      toUnit,
+      deltaUnits,
+    },
+  ];
 }
 
 export function calculateNextMaterialUnit(
