@@ -121,6 +121,23 @@ function AdminEmptyState({ children }: { children: string }) {
   return <p className="admin-empty-state">{children}</p>;
 }
 
+function AdminAppReturnButton({
+  onReturn,
+}: {
+  onReturn: () => void;
+}) {
+  return (
+    <button
+      className="ghost-button admin-app-return-button"
+      onClick={onReturn}
+      type="button"
+    >
+      <ArrowLeft aria-hidden="true" size={18} strokeWidth={2} />
+      通常画面に戻る
+    </button>
+  );
+}
+
 function AdminUsersPage({
   navigate,
 }: {
@@ -170,6 +187,8 @@ function AdminUsersPage({
 
   return (
     <main className="admin-shell">
+      <AdminAppReturnButton onReturn={() => navigate('/')} />
+
       <section className="admin-hero panel">
         <div className="admin-title-row">
           <span className="admin-icon-badge">
@@ -645,6 +664,8 @@ function AdminUserDetailPage({
 
   return (
     <main className="admin-shell admin-detail-shell">
+      <AdminAppReturnButton onReturn={() => navigate('/')} />
+
       <button
         className="ghost-button admin-back-button"
         onClick={() => navigate('/admin/users')}
@@ -791,6 +812,8 @@ export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
   if (path === '/admin') {
     return (
       <main className="admin-shell">
+        <AdminAppReturnButton onReturn={() => navigate('/')} />
+
         <section className="admin-state-card panel">
           <strong>管理者画面へ移動しています</strong>
         </section>
