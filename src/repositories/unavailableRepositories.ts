@@ -101,6 +101,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
     async upsertStudyMaterial() {
       throw createConfigurationError();
     },
+    async updateStudyMaterialProgress() {
+      throw createConfigurationError();
+    },
     async deleteStudyMaterial() {
       throw createConfigurationError();
     },

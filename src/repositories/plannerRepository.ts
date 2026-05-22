@@ -148,6 +148,26 @@ export function createPlannerRepository(
       await storageGateway.writeStudyMaterials(nextItems);
       return item;
     },
+    async updateStudyMaterialProgress(userId, materialId, nextCurrentUnit) {
+      const materials = await storageGateway.readStudyMaterials();
+      const targetMaterial = materials.find(
+        (item) => item.userId === userId && item.id === materialId,
+      );
+
+      if (!targetMaterial) {
+        return;
+      }
+
+      const updatedMaterial = {
+        ...targetMaterial,
+        currentUnit: Math.max(0, nextCurrentUnit),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await storageGateway.writeStudyMaterials(
+        replaceById(materials, updatedMaterial),
+      );
+    },
     async deleteStudyMaterial(userId, materialId) {
       const items = (await storageGateway.readStudyMaterials()).filter(
         (item) => !(item.userId === userId && item.id === materialId),

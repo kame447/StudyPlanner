@@ -242,6 +242,7 @@ export function createActualFromDraft(
     note: draft.note,
     materialId: draft.materialId ?? null,
     materialName: draft.materialName?.trim() ?? '',
+    materialProgressUpdates: draft.materialProgressUpdates,
     updatedAt: new Date().toISOString(),
   };
 }

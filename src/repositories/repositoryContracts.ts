@@ -87,6 +87,11 @@ export interface PlannerRepository {
   upsertStudySubject(item: StudySubject): Promise<StudySubject>;
   deleteStudySubject(userId: string, subjectId: string): Promise<void>;
   upsertStudyMaterial(item: StudyMaterial): Promise<StudyMaterial>;
+  updateStudyMaterialProgress(
+    userId: string,
+    materialId: string,
+    nextCurrentUnit: number,
+  ): Promise<void>;
   deleteStudyMaterial(userId: string, materialId: string): Promise<void>;
   upsertScheduleTemplate(item: ScheduleTemplate): Promise<ScheduleTemplate>;
   deleteScheduleTemplate(userId: string, templateId: string): Promise<void>;

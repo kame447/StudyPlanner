@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyMaterialProgressUpdate,
+  applyMaterialProgressUpdates,
+  calculateNextMaterialUnit,
   calculateDailyQuota,
   calculateMaterialPace,
   getMaterialUnitLabel,
@@ -117,5 +120,100 @@ describe('materialPace', () => {
     expect(result.dailyQuota).toBe(9.875);
     expect(result.suggestedDailyUnits).toBe(10);
     expect(result.estimatedDailyMinutes).toBe(60);
+  });
+});
+
+describe('material progress updates', () => {
+  it('adds deltaUnits to currentUnit', () => {
+    expect(
+      calculateNextMaterialUnit(material({ currentUnit: 10 }), {
+        materialId: 'material-1',
+        deltaUnits: 5,
+      }),
+    ).toBe(15);
+  });
+
+  it('uses toUnit as the next currentUnit', () => {
+    expect(
+      calculateNextMaterialUnit(material({ currentUnit: 10 }), {
+        materialId: 'material-1',
+        toUnit: 30,
+      }),
+    ).toBe(30);
+  });
+
+  it('prefers toUnit when both toUnit and deltaUnits are set', () => {
+    expect(
+      calculateNextMaterialUnit(material({ currentUnit: 10 }), {
+        materialId: 'material-1',
+        toUnit: 30,
+        deltaUnits: 5,
+      }),
+    ).toBe(30);
+  });
+
+  it('clamps next currentUnit to totalUnits', () => {
+    expect(
+      calculateNextMaterialUnit(material({ currentUnit: 90, totalUnits: 100 }), {
+        materialId: 'material-1',
+        deltaUnits: 20,
+      }),
+    ).toBe(100);
+  });
+
+  it('does not go below zero', () => {
+    expect(
+      calculateNextMaterialUnit(material({ currentUnit: 10 }), {
+        materialId: 'material-1',
+        deltaUnits: -20,
+      }),
+    ).toBe(0);
+  });
+
+  it('does not update materials with pace disabled', () => {
+    const current = material({ paceEnabled: false, currentUnit: 10 });
+
+    expect(
+      applyMaterialProgressUpdate(current, {
+        materialId: 'material-1',
+        deltaUnits: 5,
+      }),
+    ).toBe(current);
+  });
+
+  it('ignores updates for a different materialId', () => {
+    const current = material({ currentUnit: 10 });
+
+    expect(
+      applyMaterialProgressUpdate(current, {
+        materialId: 'material-other',
+        deltaUnits: 5,
+      }),
+    ).toBe(current);
+  });
+
+  it('treats missing currentUnit as zero', () => {
+    expect(
+      calculateNextMaterialUnit(material({ currentUnit: undefined }), {
+        materialId: 'material-1',
+        deltaUnits: 5,
+      }),
+    ).toBe(5);
+  });
+
+  it('applies updates across a material list', () => {
+    const nextMaterials = applyMaterialProgressUpdates(
+      [
+        material({ id: 'material-1', currentUnit: 10 }),
+        material({ id: 'material-2', currentUnit: 20 }),
+      ],
+      [
+        { materialId: 'material-1', deltaUnits: 5 },
+        { materialId: 'missing', deltaUnits: 100 },
+      ],
+    );
+
+    expect(nextMaterials[0].currentUnit).toBe(15);
+    expect(nextMaterials[1].currentUnit).toBe(20);
   });
 });

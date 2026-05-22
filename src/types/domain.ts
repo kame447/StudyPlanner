@@ -179,6 +179,16 @@ export interface Actual {
   updatedAt: string;
   materialId?: string | null;
   materialName?: string;
+  materialProgressUpdates?: ActualMaterialProgressUpdate[];
+}
+
+export interface ActualMaterialProgressUpdate {
+  materialId: string;
+  progressUnit?: StudyMaterialProgressUnit;
+  progressUnitLabel?: string;
+  fromUnit?: number;
+  toUnit?: number;
+  deltaUnits?: number;
 }
 
 export interface PlanDraft {
@@ -212,6 +222,7 @@ export interface ActualDraft {
   note: string;
   materialId?: string | null;
   materialName?: string;
+  materialProgressUpdates?: ActualMaterialProgressUpdate[];
 }
 
 export interface StudySubject {

@@ -10,6 +10,7 @@ import {
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
+import { applyMaterialProgressUpdates } from '../lib/materialPace';
 import { plannerRepository } from '../repositories';
 import {
   applyRecurringPlanDeleteScope,
@@ -1058,6 +1059,9 @@ export function usePlannerDataState({
         ),
       );
       showNotice('記録を保存しました。', 'success');
+      if (!existingActual) {
+        await applySavedActualMaterialProgress(savedActual);
+      }
     } catch (error) {
       setActuals((current) => {
         const rolledBackActuals = current.filter(
@@ -1118,12 +1122,63 @@ export function usePlannerDataState({
         upsertByKey(current, savedActual, (item) => getActualOccurrenceKey(item)),
       );
       showNotice('記録を保存しました。', 'success');
+      if (!existingActual) {
+        await applySavedActualMaterialProgress(savedActual);
+      }
     } catch (error) {
       showNotice(
         resolveErrorMessage(error, '記録を保存できませんでした。'),
         'error',
       );
       throw error;
+    }
+  }
+
+  async function applySavedActualMaterialProgress(actual: Actual) {
+    if (!userId || !actual.materialProgressUpdates?.length) {
+      return;
+    }
+
+    const nextMaterials = applyMaterialProgressUpdates(
+      studyMaterials,
+      actual.materialProgressUpdates,
+    );
+    const changedMaterials = nextMaterials.filter((nextMaterial) => {
+      const currentMaterial = studyMaterials.find(
+        (material) => material.id === nextMaterial.id,
+      );
+
+      return (
+        currentMaterial &&
+        currentMaterial.currentUnit !== nextMaterial.currentUnit
+      );
+    });
+
+    if (changedMaterials.length === 0) {
+      return;
+    }
+
+    try {
+      await runSequentially(changedMaterials, async (material) => {
+        await plannerRepository.updateStudyMaterialProgress(
+          userId,
+          material.id,
+          material.currentUnit ?? 0,
+        );
+      });
+      setStudyMaterials((current) =>
+        sortStudyMaterials(
+          nextMaterials.map((nextMaterial) => {
+            const currentMaterial = current.find(
+              (material) => material.id === nextMaterial.id,
+            );
+
+            return currentMaterial ? { ...currentMaterial, ...nextMaterial } : nextMaterial;
+          }),
+        ),
+      );
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, '教材の進捗を保存できませんでした。'), 'error');
     }
   }
 

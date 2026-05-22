@@ -54,6 +54,7 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
     note: actual?.note ?? '',
     materialId: actual?.materialId ?? plan.materialId ?? null,
     materialName: actual?.materialName ?? plan.materialName ?? '',
+    materialProgressUpdates: actual?.materialProgressUpdates,
   };
 }
 

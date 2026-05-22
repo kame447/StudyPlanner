@@ -1,4 +1,5 @@
 import type {
+  ActualMaterialProgressUpdate,
   StudyMaterial,
   StudyMaterialProgressUnit,
 } from '../types/domain';
@@ -45,6 +46,22 @@ function normalizeUnitCount(value: unknown): number | null {
   }
 
   return Math.max(0, value);
+}
+
+function normalizeProgressValue(value: unknown): number | undefined {
+  if (!isFiniteNumber(value)) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function clampUnit(value: number, totalUnits?: number): number {
+  const lowerBounded = Math.max(0, value);
+
+  return isFiniteNumber(totalUnits)
+    ? Math.min(lowerBounded, Math.max(0, totalUnits))
+    : lowerBounded;
 }
 
 function toLocalDate(dateString: string): Date | null {
@@ -247,4 +264,91 @@ export function calculateMaterialPace(
         : Math.ceil(suggestedDailyUnits * estimatedMinutesPerUnit),
     status: 'on-track',
   };
+}
+
+export function normalizeMaterialProgressUpdate(
+  update: ActualMaterialProgressUpdate,
+  material: StudyMaterial,
+): ActualMaterialProgressUpdate | null {
+  if (!update.materialId || update.materialId !== material.id) {
+    return null;
+  }
+
+  const fromUnit = normalizeProgressValue(update.fromUnit);
+  const toUnit = normalizeProgressValue(update.toUnit);
+  const deltaUnits = normalizeProgressValue(update.deltaUnits);
+
+  if (toUnit === undefined && deltaUnits === undefined) {
+    return null;
+  }
+
+  return {
+    materialId: material.id,
+    progressUnit: update.progressUnit ?? material.progressUnit,
+    progressUnitLabel:
+      update.progressUnit === 'custom' || material.progressUnit === 'custom'
+        ? update.progressUnitLabel ?? material.progressUnitLabel
+        : undefined,
+    fromUnit,
+    toUnit,
+    deltaUnits,
+  };
+}
+
+export function calculateNextMaterialUnit(
+  material: StudyMaterial,
+  update: ActualMaterialProgressUpdate,
+): number | null {
+  if (material.paceEnabled !== true || update.materialId !== material.id) {
+    return null;
+  }
+
+  const normalizedUpdate = normalizeMaterialProgressUpdate(update, material);
+
+  if (!normalizedUpdate) {
+    return null;
+  }
+
+  const currentUnit = normalizeUnitCount(material.currentUnit) ?? 0;
+  const totalUnits = normalizeUnitCount(material.totalUnits) ?? undefined;
+  const nextUnit =
+    normalizedUpdate.toUnit !== undefined
+      ? normalizedUpdate.toUnit
+      : currentUnit + (normalizedUpdate.deltaUnits ?? 0);
+
+  return clampUnit(nextUnit, totalUnits);
+}
+
+export function applyMaterialProgressUpdate(
+  material: StudyMaterial,
+  update: ActualMaterialProgressUpdate,
+): StudyMaterial {
+  const nextCurrentUnit = calculateNextMaterialUnit(material, update);
+
+  if (nextCurrentUnit === null) {
+    return material;
+  }
+
+  return {
+    ...material,
+    currentUnit: nextCurrentUnit,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyMaterialProgressUpdates(
+  materials: StudyMaterial[],
+  updates: ActualMaterialProgressUpdate[] | null | undefined,
+): StudyMaterial[] {
+  if (!updates || updates.length === 0) {
+    return materials;
+  }
+
+  return materials.map((material) =>
+    updates.reduce(
+      (currentMaterial, update) =>
+        applyMaterialProgressUpdate(currentMaterial, update),
+      material,
+    ),
+  );
 }

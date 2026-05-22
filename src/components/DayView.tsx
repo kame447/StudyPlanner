@@ -20,6 +20,7 @@ import {
   getRecurrenceWeekday,
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
+import { getMaterialUnitLabel } from '../lib/materialPace';
 import {
   buildTimetableImportCandidates,
   createPlanDraftFromTimetableImportCandidate,
@@ -180,8 +181,21 @@ function MaterialQuickCreateModal({
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [deltaUnitsInput, setDeltaUnitsInput] = useState('');
+  const [toUnitInput, setToUnitInput] = useState('');
   const endTime = calculateEndTime(startTime, durationMinutes);
   const canSave = Boolean(endTime) && !isSubmitting;
+  const materialUnitLabel = getMaterialUnitLabel(material);
+
+  function parseProgressInput(value: string): number | undefined {
+    if (!value.trim()) {
+      return undefined;
+    }
+
+    const numericValue = Number(value);
+
+    return Number.isFinite(numericValue) ? Math.max(0, numericValue) : undefined;
+  }
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -247,6 +261,26 @@ function MaterialQuickCreateModal({
           sourceId: null,
         });
       } else {
+        const deltaUnits = parseProgressInput(deltaUnitsInput);
+        const toUnit = parseProgressInput(toUnitInput);
+        const materialProgressUpdates =
+          material.paceEnabled === true &&
+          (deltaUnits !== undefined || toUnit !== undefined)
+            ? [
+                {
+                  materialId: material.id,
+                  progressUnit: material.progressUnit,
+                  progressUnitLabel:
+                    material.progressUnit === 'custom'
+                      ? material.progressUnitLabel
+                      : undefined,
+                  fromUnit: material.currentUnit ?? 0,
+                  toUnit,
+                  deltaUnits,
+                },
+              ]
+            : undefined;
+
         await onSaveStandaloneActual({
           ...baseFields,
           planId: null,
@@ -255,6 +289,7 @@ function MaterialQuickCreateModal({
           actualEndTime: endTime,
           isAlignedToPlan: false,
           note: '',
+          materialProgressUpdates,
         });
       }
 
@@ -375,6 +410,33 @@ function MaterialQuickCreateModal({
                   placeholder="75"
                 />
               </label>
+            ) : null}
+
+            {kind === 'actual' && material.paceEnabled === true ? (
+              <div className="material-quick-progress-grid">
+                <label className="field">
+                  <span>進めた量</span>
+                  <input
+                    min="0"
+                    step="1"
+                    type="number"
+                    value={deltaUnitsInput}
+                    onChange={(event) => setDeltaUnitsInput(event.target.value)}
+                    placeholder={`${materialUnitLabel}`}
+                  />
+                </label>
+                <label className="field">
+                  <span>到達位置</span>
+                  <input
+                    min="0"
+                    step="1"
+                    type="number"
+                    value={toUnitInput}
+                    onChange={(event) => setToUnitInput(event.target.value)}
+                    placeholder={`${material.currentUnit ?? 0}${materialUnitLabel}`}
+                  />
+                </label>
+              </div>
             ) : null}
 
           </div>

@@ -530,6 +530,27 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async updateStudyMaterialProgress(_userId, materialId, nextCurrentUnit) {
+      const updatedAt = new Date().toISOString();
+
+      try {
+        await setDoc(
+          doc(firestoreDb, 'study_materials', materialId),
+          {
+            currentUnit: Math.max(0, nextCurrentUnit),
+            updatedAt,
+          },
+          { merge: true },
+        );
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage(
+            '教材の進捗を保存できませんでした。',
+            error as { message?: string | null },
+          ),
+        );
+      }
+    },
     async deleteStudyMaterial(_userId, materialId) {
       try {
         await deleteDoc(doc(firestoreDb, 'study_materials', materialId));

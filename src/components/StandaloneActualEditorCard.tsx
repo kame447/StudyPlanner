@@ -177,6 +177,7 @@ export function StandaloneActualEditorCard({
           note: note.trim(),
           materialId: actual.materialId ?? null,
           materialName: actual.materialName ?? '',
+          materialProgressUpdates: actual.materialProgressUpdates,
         },
         actual.id,
       );
