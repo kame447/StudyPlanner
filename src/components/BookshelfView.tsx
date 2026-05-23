@@ -834,7 +834,7 @@ export function BookshelfView({
                         type="button"
                       >
                         <MaterialCover material={material} subject={subject} />
-                        <span>{material.name}</span>
+                        <span className="bookshelf-material-title">{material.name}</span>
                         <MaterialPaceSummary pace={pace} />
                       </button>
                     );
