@@ -381,8 +381,8 @@ export function MonthEventDialog({
         <div className="month-event-editor-body">
           <section className="month-event-core-section month-event-title-card">
             <label className="field month-event-title-field">
-              <span>タイトル</span>
               <input
+                aria-label="タイトル"
                 value={draft.title}
                 onChange={(event) =>
                   setDraft({
@@ -571,8 +571,8 @@ export function MonthEventDialog({
                   <strong>繰り返し</strong>
                 </div>
                 <label className="field">
-                  <span>設定</span>
                   <select
+                    aria-label="繰り返し"
                     value={draft.repeat}
                     onChange={(event) =>
                       setDraft({
@@ -597,8 +597,8 @@ export function MonthEventDialog({
                   <strong>URL</strong>
                 </div>
                 <label className="field">
-                  <span>URL</span>
                   <input
+                    aria-label="URL"
                     value={draft.url}
                     onChange={(event) =>
                       setDraft({
@@ -618,8 +618,8 @@ export function MonthEventDialog({
                   <strong>場所</strong>
                 </div>
                 <label className="field">
-                  <span>場所タグ</span>
                   <input
+                    aria-label="場所"
                     value={draft.locationTags.join(', ')}
                     onChange={(event) =>
                       setDraft({
@@ -639,8 +639,8 @@ export function MonthEventDialog({
                   <strong>メモ</strong>
                 </div>
                 <label className="field">
-                  <span>メモ</span>
                   <textarea
+                    aria-label="メモ"
                     rows={3}
                     value={draft.memo}
                     onChange={(event) =>
