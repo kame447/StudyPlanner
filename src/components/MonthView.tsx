@@ -190,7 +190,7 @@ export function MonthView({
       return;
     }
 
-    cellRefs.current.get(selectedDate)?.focus();
+    cellRefs.current.get(selectedDate)?.focus({ preventScroll: true });
     shouldFocusSelectedCell.current = false;
   }, [selectedDate, activeMonthDate]);
 

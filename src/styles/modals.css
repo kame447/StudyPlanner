@@ -13,6 +13,7 @@
   z-index: var(--z-modal-content);
   width: min(460px, 100vw);
   height: 100vh;
+  height: 100dvh;
   padding: 24px;
   border-radius: 0;
   overflow-y: auto;
