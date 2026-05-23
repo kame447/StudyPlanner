@@ -9,7 +9,6 @@ import {
 } from 'react';
 import {
   addMonths,
-  formatMinutes,
   formatMonthLabel,
   getCalendarDayTone,
   getJapaneseHolidayName,
@@ -601,7 +600,7 @@ export function MonthView({
                 doesMonthEventOccurOnDate(monthEvent, cell.date),
               ),
             );
-            const limitedMonthEvents = visibleMonthEvents.slice(0, 2);
+            const limitedMonthEvents = visibleMonthEvents.slice(0, 3);
             const cellClassName = [
               'month-cell',
               cell.inCurrentMonth ? '' : 'is-muted',
@@ -688,37 +687,6 @@ export function MonthView({
                   ) : null}
                 </div>
 
-                <div className="month-study-summary">
-                  <p className="month-target">
-                    <span className="month-target-label month-target-label-full">
-                      目標
-                    </span>
-                    <span className="month-target-label month-target-label-short">
-                      目
-                    </span>{' '}
-                    <span className="month-target-value month-target-value-full">
-                      {targetMinutes > 0 ? formatMinutes(targetMinutes) : '0分'}
-                    </span>
-                    <span className="month-target-value month-target-value-short">
-                      {formatCompactStudyMinutes(targetMinutes)}
-                    </span>
-                  </p>
-                  <p className="month-target">
-                    <span className="month-target-label month-target-label-full">
-                      記録
-                    </span>
-                    <span className="month-target-label month-target-label-short">
-                      実
-                    </span>{' '}
-                    <span className="month-target-value month-target-value-full">
-                      {actualMinutes > 0 ? formatMinutes(actualMinutes) : '0分'}
-                    </span>
-                    <span className="month-target-value month-target-value-short">
-                      {formatCompactStudyMinutes(actualMinutes)}
-                    </span>
-                  </p>
-                </div>
-
                 <div className="month-major-event-list">
                   {limitedMonthEvents.map((monthEvent) => (
                     <span
@@ -741,6 +709,12 @@ export function MonthView({
                     </span>
                   ) : null}
                 </div>
+
+                <p className="month-study-summary">
+                  <span>目 {formatCompactStudyMinutes(targetMinutes)}</span>
+                  <span aria-hidden="true">/</span>
+                  <span>記 {formatCompactStudyMinutes(actualMinutes)}</span>
+                </p>
               </button>
             );
           })}

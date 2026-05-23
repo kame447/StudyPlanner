@@ -146,8 +146,8 @@
 }
 
 .month-cell {
-  min-height: 140px;
-  padding: 14px;
+  min-height: 156px;
+  padding: 12px;
   text-align: left;
   border-radius: 0;
   background: var(--month-cell-background);
@@ -156,17 +156,30 @@
   border-width: 1px 0 0;
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 7px;
 }
 
 .month-cell:nth-last-child(-n + 7) {
   border-bottom-width: 1px;
 }
 
-.month-study-summary,
 .month-major-event-list {
   display: grid;
-  gap: 6px;
+  gap: 4px;
+}
+
+.month-study-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .month-cell.is-muted {
@@ -250,9 +263,14 @@
 .month-major-event-pill {
   justify-content: flex-start;
   max-width: 100%;
+  min-height: 19px;
+  padding: 2px 7px;
+  border-radius: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.72rem;
+  line-height: 1.15;
 }
 
 .month-week-chip-short,
