@@ -110,6 +110,14 @@
     padding: 10px;
   }
 
+  .modal-overlay.daily-detail-modal-overlay,
+  .modal-overlay.month-event-modal-overlay,
+  .modal-overlay.quick-entry-overlay,
+  .modal-overlay.timetable-modal-overlay,
+  .modal-overlay.timetable-ocr-overlay {
+    align-items: start;
+  }
+
   .modal-card {
     width: min(100%, calc(100vw - 20px));
     max-height: 86vh;
