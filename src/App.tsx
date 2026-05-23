@@ -25,41 +25,128 @@ import {
 } from './lib/appAccessGate';
 import { getUserDisplayName } from './lib/userProfile';
 
-const BookshelfView = lazy(() =>
+type IdleCallbackHandle = number;
+type IdleCapableWindow = Window & {
+  requestIdleCallback?: (
+    callback: () => void,
+    options?: { timeout?: number },
+  ) => IdleCallbackHandle;
+  cancelIdleCallback?: (handle: IdleCallbackHandle) => void;
+};
+
+const loadBookshelfView = () =>
   import('./components/BookshelfView').then((module) => ({
     default: module.BookshelfView,
-  })),
-);
-const DayView = lazy(() =>
+  }));
+const loadDayView = () =>
   import('./components/DayView').then((module) => ({
     default: module.DayView,
-  })),
-);
-const QuickEntryModal = lazy(() =>
+  }));
+const loadQuickEntryModal = () =>
   import('./components/QuickEntryModal').then((module) => ({
     default: module.QuickEntryModal,
-  })),
-);
-const ReportView = lazy(() =>
+  }));
+const loadReportView = () =>
   import('./components/ReportView').then((module) => ({
     default: module.ReportView,
-  })),
-);
-const TimetableView = lazy(() =>
+  }));
+const loadTimetableView = () =>
   import('./components/TimetableView').then((module) => ({
     default: module.TimetableView,
-  })),
-);
-const TodoView = lazy(() =>
+  }));
+const loadTimetableOcrImportDialog = () =>
+  import('./components/TimetableOcrImportDialog').then((module) => ({
+    default: module.TimetableOcrImportDialog,
+  }));
+const loadTodoView = () =>
   import('./components/TodoView').then((module) => ({
     default: module.TodoView,
-  })),
-);
-const WeekView = lazy(() =>
+  }));
+const loadWeekView = () =>
   import('./components/WeekView').then((module) => ({
     default: module.WeekView,
-  })),
-);
+  }));
+
+const BookshelfView = lazy(loadBookshelfView);
+const DayView = lazy(loadDayView);
+const QuickEntryModal = lazy(loadQuickEntryModal);
+const ReportView = lazy(loadReportView);
+const TimetableView = lazy(loadTimetableView);
+const TodoView = lazy(loadTodoView);
+const WeekView = lazy(loadWeekView);
+
+let didStartMainViewPreload = false;
+
+function preloadChunk(name: string, loader: () => Promise<unknown>): Promise<void> {
+  return loader()
+    .then(() => undefined)
+    .catch((error) => {
+      console.warn(`[preload] ${name} chunk could not be loaded.`, error);
+    });
+}
+
+function scheduleAfterIdle(callback: () => void, timeout = 1600): () => void {
+  const idleWindow = window as IdleCapableWindow;
+
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout });
+
+    return () => {
+      idleWindow.cancelIdleCallback?.(handle);
+    };
+  }
+
+  const handle = window.setTimeout(callback, Math.min(timeout, 900));
+
+  return () => {
+    window.clearTimeout(handle);
+  };
+}
+
+function preloadMainViewChunks(): () => void {
+  let cancelled = false;
+  let lowPriorityCleanup: (() => void) | null = null;
+
+  const highPriorityCleanup = scheduleAfterIdle(() => {
+    if (cancelled) {
+      return;
+    }
+
+    didStartMainViewPreload = true;
+
+    void Promise.all([
+      preloadChunk('WeekView', loadWeekView),
+      preloadChunk('DayView', loadDayView),
+      preloadChunk('TodoView', loadTodoView),
+      preloadChunk('ReportView', loadReportView),
+    ]).finally(() => {
+      if (cancelled) {
+        return;
+      }
+
+      lowPriorityCleanup = scheduleAfterIdle(() => {
+        if (cancelled) {
+          return;
+        }
+
+        void preloadChunk('TimetableView', loadTimetableView)
+          .then(() =>
+            Promise.all([
+              preloadChunk('BookshelfView', loadBookshelfView),
+              preloadChunk('QuickEntryModal', loadQuickEntryModal),
+              preloadChunk('TimetableOcrImportDialog', loadTimetableOcrImportDialog),
+            ]),
+          );
+      }, 2600);
+    });
+  }, 1200);
+
+  return () => {
+    cancelled = true;
+    highPriorityCleanup();
+    lowPriorityCleanup?.();
+  };
+}
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -172,6 +259,18 @@ export default function App() {
   );
   const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
   const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
+
+  useEffect(() => {
+    if (booting || !user || !appAccessGranted || isAdminRoute) {
+      return;
+    }
+
+    if (didStartMainViewPreload) {
+      return;
+    }
+
+    return preloadMainViewChunks();
+  }, [appAccessGranted, booting, isAdminRoute, user]);
 
   if (currentPath === '/terms') {
     return <LegalPage kind="terms" />;
