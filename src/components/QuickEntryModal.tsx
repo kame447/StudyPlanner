@@ -11,6 +11,7 @@ import {
   buildActualMaterialProgressUpdatesFromInput,
   getMaterialUnitLabel,
 } from '../lib/materialPace';
+import { resolveMaterialSubjectName } from '../lib/materialSubject';
 import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
@@ -157,6 +158,10 @@ export function QuickEntryModal({
     availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
   const selectedProgressMaterial =
     paceMaterials.find((material) => material.id === progressMaterialId) ?? null;
+  const selectedMaterialSubject = resolveMaterialSubjectName(
+    selectedMaterial,
+    availableSubjects,
+  );
   const candidateActual =
     actualEndTime && title.trim()
       ? {
@@ -295,8 +300,13 @@ export function QuickEntryModal({
           inferredMaterial?.paceEnabled === true ? inferredMaterial.id : '',
         );
 
-        if (subjectSource !== 'user' && inference.subject) {
-          setSubject(inference.subject);
+        const inferredMaterialSubject = resolveMaterialSubjectName(
+          inferredMaterial,
+          availableSubjects,
+        );
+
+        if (subjectSource !== 'user' && inferredMaterialSubject) {
+          setSubject(inferredMaterialSubject);
           setSubjectSource('material');
         }
         return;
@@ -353,7 +363,7 @@ export function QuickEntryModal({
     setProgressMaterialId(material.paceEnabled === true ? material.id : '');
 
     if (subjectSource !== 'user') {
-      setSubject(material.subjectName);
+      setSubject(resolveMaterialSubjectName(material, availableSubjects));
       setSubjectSource('material');
     }
   }
@@ -369,9 +379,13 @@ export function QuickEntryModal({
   }
 
   function resolveSubject(fallbackSubject = ''): string {
+    if (subjectSource === 'material' && selectedMaterialSubject) {
+      return selectedMaterialSubject;
+    }
+
     return (
       subject.trim() ||
-      selectedMaterial?.subjectName.trim() ||
+      selectedMaterialSubject ||
       fallbackSubject.trim()
     );
   }

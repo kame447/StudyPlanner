@@ -24,6 +24,7 @@ import {
   buildActualMaterialProgressUpdatesFromInput,
   getMaterialUnitLabel,
 } from '../lib/materialPace';
+import { resolveMaterialSubjectName } from '../lib/materialSubject';
 import {
   buildTimetableImportCandidates,
   createPlanDraftFromTimetableImportCandidate,
@@ -165,6 +166,7 @@ function MaterialQuickCreateModal({
   userId,
   selectedDate,
   material,
+  subjects,
   onClose,
   onSavePlan,
   onSaveStandaloneActual,
@@ -172,6 +174,7 @@ function MaterialQuickCreateModal({
   userId: string;
   selectedDate: string;
   material: StudyMaterial;
+  subjects: StudySubject[];
   onClose: () => void;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -189,6 +192,7 @@ function MaterialQuickCreateModal({
   const endTime = calculateEndTime(startTime, durationMinutes);
   const canSave = Boolean(endTime) && !isSubmitting;
   const materialUnitLabel = getMaterialUnitLabel(material);
+  const materialSubjectName = resolveMaterialSubjectName(material, subjects);
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -233,7 +237,7 @@ function MaterialQuickCreateModal({
       const baseFields = {
         userId,
         title: material.name,
-        subject: material.subjectName,
+        subject: materialSubjectName,
         materialId: material.id,
         materialName: material.name,
       };
@@ -535,7 +539,7 @@ function DailyMaterialShelf({
                       material={material}
                       color={material.color || section.color}
                     />
-                    <span>{material.name}</span>
+                    <span className="bookshelf-material-title">{material.name}</span>
                   </button>
                 ))}
               </div>
@@ -858,6 +862,7 @@ export function DayView({
           userId={userId}
           selectedDate={selectedDate}
           material={quickMaterial}
+          subjects={studySubjects}
           onClose={() => setQuickMaterial(null)}
           onSavePlan={onSavePlan}
           onSaveStandaloneActual={onSaveStandaloneActual}
