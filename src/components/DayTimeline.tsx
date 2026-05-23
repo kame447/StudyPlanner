@@ -53,6 +53,7 @@ interface TimelineEntry {
 const HOUR_HEIGHT = 68;
 const MIN_BLOCK_HEIGHT = 28;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
+const NON_SUBJECT_LABELS = new Set(["予定", "記録"]);
 
 function getDisplayMetrics(startTime: string, endTime: string) {
   const topPx = (minutesFromTime(startTime) / 60) * HOUR_HEIGHT;
@@ -190,6 +191,26 @@ function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
   );
 }
 
+function resolveTimelineSubjectLabel(
+  entry: Pick<TimelineEntry, "subject" | "type" | "sourceType">
+): string {
+  const subject = entry.subject.trim();
+
+  if (subject && !NON_SUBJECT_LABELS.has(subject)) {
+    return subject;
+  }
+
+  const fallbackLabel = getSubjectLabel(
+    entry.subject,
+    entry.type,
+    entry.sourceType
+  ).trim();
+
+  return fallbackLabel && !NON_SUBJECT_LABELS.has(fallbackLabel)
+    ? fallbackLabel
+    : "教科未設定";
+}
+
 export function DayTimeline({
   dateLabel,
   plans,
@@ -291,7 +312,7 @@ export function DayTimeline({
           selectionId: `standalone-actual:${actual.id}`,
           entryKind: "standalone-actual" as const,
           title: actual.title?.trim() || "記録",
-          subject: actual.subject.trim() || "記録",
+          subject: actual.subject.trim(),
           type: "study" as const,
           sourceType: "manual" as const,
           startTime: actual.actualStartTime,
@@ -304,7 +325,7 @@ export function DayTimeline({
   const legendMap = new Map<string, string>();
 
   [...planEntries, ...actualEntries].forEach((entry) => {
-    const label = getSubjectLabel(entry.subject, entry.type, entry.sourceType);
+    const label = resolveTimelineSubjectLabel(entry);
     legendMap.set(label, getSubjectTheme(label, entry.type, entry.sourceType).fill);
   });
   const timelineLegend = (
@@ -428,11 +449,7 @@ export function DayTimeline({
                     entry.type,
                     entry.sourceType
                   );
-                  const subjectLabel = getSubjectLabel(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
+                  const displaySubjectLabel = resolveTimelineSubjectLabel(entry);
 
                   return (
                     <button
@@ -471,9 +488,9 @@ export function DayTimeline({
                         <span
                           className="timeline-entry-subject"
                           style={{ color: theme.text }}
-                          title={subjectLabel}
+                          title={displaySubjectLabel}
                         >
-                          {subjectLabel}
+                          {displaySubjectLabel}
                         </span>
                       </div>
                     </button>
@@ -487,11 +504,7 @@ export function DayTimeline({
                     entry.type,
                     entry.sourceType
                   );
-                  const subjectLabel = getSubjectLabel(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
-                  );
+                  const displaySubjectLabel = resolveTimelineSubjectLabel(entry);
 
                   return (
                     <button
@@ -537,9 +550,9 @@ export function DayTimeline({
                         </span>
                         <span
                           className="timeline-entry-subject"
-                          title={subjectLabel}
+                          title={displaySubjectLabel}
                         >
-                          {subjectLabel}
+                          {displaySubjectLabel}
                         </span>
                       </div>
                     </button>
