@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   createEmptyMonthEventChecklistItem,
   createEmptyMonthEventDraft,
@@ -34,6 +34,35 @@ const MONTH_EVENT_ADDONS: Array<{ key: MonthEventAddonKey; label: string }> = [
   { key: 'memo', label: 'メモ' },
   { key: 'checklist', label: 'チェックリスト' },
 ];
+
+const FULL_WEEKDAY_LABELS = [
+  '日曜日',
+  '月曜日',
+  '火曜日',
+  '水曜日',
+  '木曜日',
+  '金曜日',
+  '土曜日',
+];
+
+const MONTH_EVENT_BAR_COLORS = ['#56c59a', '#e56d9a', '#5f9df7', '#f2ad4e', '#8a7cf6'];
+
+function formatMonthEventDateHeading(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${FULL_WEEKDAY_LABELS[date.getDay()]}`;
+}
+
+function getTimelineItemStyle(index: number): CSSProperties {
+  return {
+    '--month-event-bar-color':
+      MONTH_EVENT_BAR_COLORS[index % MONTH_EVENT_BAR_COLORS.length],
+  } as CSSProperties;
+}
 
 function sanitizeDraft(draft: MonthEventDraft): MonthEventDraft {
   const checklist = draft.checklist
@@ -197,31 +226,6 @@ export function MonthEventDialog({
     setExpandedAddons((current) => new Set(current).add(key));
   }
 
-  function collapseAddon(key: MonthEventAddonKey) {
-    setExpandedAddons((current) => {
-      const next = new Set(current);
-      next.delete(key);
-      return next;
-    });
-
-    if (key === 'repeat') {
-      setDraft((current) => ({
-        ...current,
-        repeat: 'none',
-        repeatUntil: null,
-        excludedDates: [],
-      }));
-    } else if (key === 'url') {
-      setDraft((current) => ({ ...current, url: '' }));
-    } else if (key === 'location') {
-      setDraft((current) => ({ ...current, locationTags: [] }));
-    } else if (key === 'memo') {
-      setDraft((current) => ({ ...current, memo: '' }));
-    } else if (key === 'checklist') {
-      setDraft((current) => ({ ...current, checklist: [] }));
-    }
-  }
-
   function toggleAllDay(nextChecked: boolean) {
     setIsAllDay(nextChecked);
 
@@ -361,9 +365,8 @@ export function MonthEventDialog({
           <button className="ghost-button" onClick={onClose} type="button">
             閉じる
           </button>
-          <div className="month-event-editor-heading">
-            <h2>{editingEvent ? '主要予定を編集' : '主要予定を追加'}</h2>
-            <p>{formatDateLabel(activeDate)}</p>
+          <div className="month-event-date-heading" aria-label={formatDateLabel(activeDate)}>
+            {formatMonthEventDateHeading(activeDate)}
           </div>
           <button
             className="primary-button month-event-save-button"
@@ -404,10 +407,11 @@ export function MonthEventDialog({
                 <span />
               </label>
             </div>
-            <div className="month-event-datetime-grid">
-              <label className="field">
-                <span>開始日</span>
+            <div className="month-event-datetime-rows">
+              <div className="month-event-datetime-row">
+                <span className="month-event-datetime-label">開始</span>
                 <input
+                  className="month-event-date-input"
                   type="date"
                   value={draft.date}
                   onChange={(event) =>
@@ -416,11 +420,10 @@ export function MonthEventDialog({
                       date: event.target.value,
                     })
                   }
+                  aria-label="開始"
                 />
-              </label>
-              <label className="field">
-                <span>開始時刻</span>
                 <input
+                  className="month-event-time-input"
                   type="time"
                   value={draft.startTime}
                   disabled={isAllDay}
@@ -430,20 +433,20 @@ export function MonthEventDialog({
                       startTime: event.target.value,
                     })
                   }
+                  aria-label="開始時刻"
                 />
-              </label>
-              <label className="field">
-                <span>終了日</span>
+              </div>
+              <div className="month-event-datetime-row">
+                <span className="month-event-datetime-label">終了</span>
                 <input
+                  className="month-event-date-input"
                   type="date"
                   value={draft.date}
                   disabled
-                  aria-label="終了日"
+                  aria-label="終了"
                 />
-              </label>
-              <label className="field">
-                <span>終了時刻</span>
                 <input
+                  className="month-event-time-input"
                   type="time"
                   value={draft.endTime}
                   disabled={isAllDay}
@@ -453,35 +456,48 @@ export function MonthEventDialog({
                       endTime: event.target.value,
                     })
                   }
+                  aria-label="終了時刻"
                 />
-              </label>
+              </div>
             </div>
           </section>
 
           <section className="month-event-subtle-section month-event-list-card">
             <div className="label-row">
-              <strong>登録済みの主要予定</strong>
+              <strong>この日の予定</strong>
               <button className="ghost-button" onClick={handleNewEvent} type="button">
-                新規予定
+                新規
               </button>
             </div>
 
             {visibleEvents.length > 0 ? (
-              <div className="month-event-chip-list">
-                {visibleEvents.map((monthEvent) => (
+              <div className="month-event-timeline-list">
+                {visibleEvents.map((monthEvent, index) => (
                   <button
                     key={monthEvent.id}
                     className={
                       editingEventId === monthEvent.id
-                        ? 'month-event-chip active'
-                        : 'month-event-chip'
+                        ? 'month-event-timeline-item active'
+                        : 'month-event-timeline-item'
                     }
+                    style={getTimelineItemStyle(index)}
                     onClick={() => handleSelectEvent(monthEvent)}
                     type="button"
                   >
-                    <strong>{monthEvent.title}</strong>
-                    <span>{formatMonthEventTimeRange(monthEvent)}</span>
-                    <span>{getMonthEventRepeatLabel(monthEvent.repeat)}</span>
+                    <span className="month-event-timeline-times">
+                      <span>{monthEvent.startTime}</span>
+                      <span>{monthEvent.endTime}</span>
+                    </span>
+                    <span className="month-event-timeline-bar" aria-hidden="true" />
+                    <span className="month-event-timeline-copy">
+                      <strong>{monthEvent.title}</strong>
+                      <span>
+                        {formatMonthEventTimeRange(monthEvent)}
+                        {monthEvent.repeat !== 'none'
+                          ? ` / ${getMonthEventRepeatLabel(monthEvent.repeat)}`
+                          : ''}
+                      </span>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -525,7 +541,6 @@ export function MonthEventDialog({
 
           <section className="month-event-addons">
             <div className="month-event-addon-chip-row">
-              <span className="month-event-addon-prefix">＋</span>
               {MONTH_EVENT_ADDONS.map((addon) => {
                 const isExpanded = expandedAddons.has(addon.key);
 
@@ -537,13 +552,14 @@ export function MonthEventDialog({
                         : 'month-event-addon-chip'
                     }
                     key={addon.key}
-                    onClick={() =>
-                      isExpanded ? collapseAddon(addon.key) : expandAddon(addon.key)
-                    }
+                    onClick={() => expandAddon(addon.key)}
                     type="button"
                     aria-pressed={isExpanded}
                   >
-                    {isExpanded ? '−' : '＋'} {addon.label}
+                    <span className="month-event-addon-plus" aria-hidden="true">
+                      ＋
+                    </span>
+                    <span>{addon.label}</span>
                   </button>
                 );
               })}
@@ -553,13 +569,6 @@ export function MonthEventDialog({
               <section className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>繰り返し</strong>
-                  <button
-                    className="mini-button"
-                    onClick={() => collapseAddon('repeat')}
-                    type="button"
-                  >
-                    外す
-                  </button>
                 </div>
                 <label className="field">
                   <span>設定</span>
@@ -586,13 +595,6 @@ export function MonthEventDialog({
               <section className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>URL</strong>
-                  <button
-                    className="mini-button"
-                    onClick={() => collapseAddon('url')}
-                    type="button"
-                  >
-                    外す
-                  </button>
                 </div>
                 <label className="field">
                   <span>URL</span>
@@ -614,13 +616,6 @@ export function MonthEventDialog({
               <section className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>場所</strong>
-                  <button
-                    className="mini-button"
-                    onClick={() => collapseAddon('location')}
-                    type="button"
-                  >
-                    外す
-                  </button>
                 </div>
                 <label className="field">
                   <span>場所タグ</span>
@@ -642,13 +637,6 @@ export function MonthEventDialog({
               <section className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>メモ</strong>
-                  <button
-                    className="mini-button"
-                    onClick={() => collapseAddon('memo')}
-                    type="button"
-                  >
-                    外す
-                  </button>
                 </div>
                 <label className="field">
                   <span>メモ</span>
@@ -683,13 +671,6 @@ export function MonthEventDialog({
                       type="button"
                     >
                       項目を追加
-                    </button>
-                    <button
-                      className="mini-button"
-                      onClick={() => collapseAddon('checklist')}
-                      type="button"
-                    >
-                      外す
                     </button>
                   </div>
                 </div>
