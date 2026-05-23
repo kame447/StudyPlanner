@@ -1065,8 +1065,8 @@
   .timeline-shell {
     --timeline-head-height: 32px;
     --timeline-row-gap: 6px;
-    --timeline-hour-height: 20px;
-    --timeline-min-block-height: 20px;
+    --timeline-hour-height: 26px;
+    --timeline-min-block-height: 18px;
     --timeline-hour-label-offset: -6px;
     --timeline-title-size: 0.58rem;
     --timeline-meta-size: 0.48rem;
@@ -2125,8 +2125,8 @@
   .timeline-shell {
     --timeline-head-height: 28px;
     --timeline-row-gap: 5px;
-    --timeline-hour-height: 18px;
-    --timeline-min-block-height: 20px;
+    --timeline-hour-height: 24px;
+    --timeline-min-block-height: 18px;
     --timeline-title-size: 0.54rem;
     --timeline-meta-size: 0.46rem;
     --timeline-chip-size: 0.32rem;

@@ -50,8 +50,8 @@ interface TimelineEntry {
   standalone?: boolean;
 }
 
-const HOUR_HEIGHT = 54;
-const MIN_BLOCK_HEIGHT = 34;
+const HOUR_HEIGHT = 68;
+const MIN_BLOCK_HEIGHT = 28;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 
 function getDisplayMetrics(startTime: string, endTime: string) {
