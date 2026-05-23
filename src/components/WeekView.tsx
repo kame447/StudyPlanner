@@ -1,8 +1,8 @@
 import { useState, type CSSProperties } from 'react';
 import {
   addDays,
+  formatCompactMinutes,
   formatDateLabel,
-  formatMinutes,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -329,15 +329,12 @@ export function WeekView({
                   </button>
                   <p className="week-day-summary">
                     <span className="week-day-summary-item">
-                      <span className="week-day-summary-label-full">計画</span>
-                      <span className="week-day-summary-label-short">計</span>{' '}
-                      <strong>{formatMinutes(dayPlanMinutes)}</strong>
+                      <span>目標</span>{' '}
+                      <strong>{formatCompactMinutes(dayPlanMinutes)}</strong>
                     </span>
-                    <span className="week-day-summary-separator">/</span>
                     <span className="week-day-summary-item">
-                      <span className="week-day-summary-label-full">記録</span>
-                      <span className="week-day-summary-label-short">実</span>{' '}
-                      <strong>{formatMinutes(dayActualMinutes)}</strong>
+                      <span>記録</span>{' '}
+                      <strong>{formatCompactMinutes(dayActualMinutes)}</strong>
                     </span>
                   </p>
               </div>

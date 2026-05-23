@@ -448,6 +448,25 @@ export function formatMinutes(minutes: number): string {
   return `${Math.floor(minutes / 60)}時間${minutes % 60}分`;
 }
 
+export function formatCompactMinutes(minutes: number): string {
+  if (minutes <= 0) {
+    return '0m';
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours > 0 && remainingMinutes > 0) {
+    return `${hours}h${remainingMinutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${remainingMinutes}m`;
+}
+
 export function sortByDateTime<T extends { date: string; startTime: string }>(
   items: T[],
 ): T[] {

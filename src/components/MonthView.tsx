@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   addMonths,
+  formatCompactMinutes,
   formatMonthLabel,
   getCalendarDayTone,
   getJapaneseHolidayName,
@@ -71,25 +72,6 @@ function createMonthsAfter(lastMonthDate: string, count: number): string[] {
   return Array.from({ length: count }, (_, index) =>
     addMonths(lastMonthDate, index + 1),
   );
-}
-
-function formatCompactStudyMinutes(minutes: number): string {
-  if (minutes <= 0) {
-    return '0m';
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-
-  if (hours > 0 && remainingMinutes > 0) {
-    return `${hours}h${remainingMinutes}m`;
-  }
-
-  if (hours > 0) {
-    return `${hours}h`;
-  }
-
-  return `${remainingMinutes}m`;
 }
 
 function getCalendarDayNumber(dateString: string): string {
@@ -688,8 +670,8 @@ export function MonthView({
                 </div>
 
                 <p className="month-study-summary">
-                  <span>目標 {formatCompactStudyMinutes(targetMinutes)}</span>
-                  <span>記録 {formatCompactStudyMinutes(actualMinutes)}</span>
+                  <span>目標 {formatCompactMinutes(targetMinutes)}</span>
+                  <span>記録 {formatCompactMinutes(actualMinutes)}</span>
                 </p>
 
                 <div className="month-major-event-list">

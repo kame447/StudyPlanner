@@ -455,11 +455,6 @@
   font-size: inherit;
 }
 
-.week-day-summary-separator {
-  color: var(--text-muted);
-  flex: 0 0 auto;
-}
-
 .week-comparison-subtitle {
   display: flex;
   gap: 6px;
@@ -866,15 +861,12 @@
   .month-target-label-full,
   .month-target-value-full,
   .month-major-event-full,
-  .week-day-summary-label-full,
-  .week-subtitle-label-full,
-  .week-day-summary-separator {
+  .week-subtitle-label-full {
     display: none;
   }
 
   .month-week-chip-short,
   .month-major-event-short,
-  .week-day-summary-label-short,
   .week-subtitle-label-short {
     display: inline;
   }
