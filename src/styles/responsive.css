@@ -16,12 +16,6 @@
 }
 
 @media screen and (max-width: 800px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px;
-  }
-
   .loading-screen,
   .auth-shell,
   .app-shell {
@@ -270,12 +264,6 @@
 
   .month-event-modal .label-row strong {
     font-size: 0.72rem;
-  }
-
-  input:not([type='checkbox']):not([type='radio']),
-  select,
-  textarea {
-    font-size: 16px;
   }
 
   .month-event-modal .month-event-chip-list {
@@ -1659,12 +1647,6 @@
 
   .month-event-modal .datetime-row .field {
     gap: 3px;
-  }
-
-  input:not([type='checkbox']):not([type='radio']),
-  select,
-  textarea {
-    font-size: 16px;
   }
 
   .month-event-modal .ghost-button,

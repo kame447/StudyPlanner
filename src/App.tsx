@@ -16,6 +16,7 @@ import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { UserAvatar } from './components/UserAvatar';
 import { createEmptyDayNoteDraft } from './domain/planner';
 import { useAdminStatus } from './hooks/useAdminStatus';
+import { useIOSViewportFocusGuard } from './hooks/useIOSViewportFocusGuard';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
 import {
@@ -149,6 +150,8 @@ function preloadMainViewChunks(): () => void {
 }
 
 export default function App() {
+  useIOSViewportFocusGuard();
+
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);

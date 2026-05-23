@@ -163,7 +163,7 @@
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 16px;
+  font-size: inherit;
   font-weight: 500;
   line-height: 1;
   text-align: center;
@@ -1170,7 +1170,7 @@
   .modal-card.timetable-ocr-modal .field select {
     min-height: 40px;
     padding: 8px 9px;
-    font-size: 16px;
+    font-size: 0.84rem;
   }
 
   .timetable-ocr-modal img,
