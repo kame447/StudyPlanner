@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type PointerEvent,
 } from 'react';
 import {
   createTimetableOcrFilePayload,
@@ -72,6 +73,8 @@ const TERM_KIND_OPTIONS: Array<{ value: TimetableTermKind; label: string }> = [
 ];
 
 const TERM_YEARS = [2024, 2025, 2026, 2027];
+const EMPTY_CELL_DOUBLE_TAP_DELAY_MS = 320;
+const EMPTY_CELL_TAP_MOVE_THRESHOLD_PX = 10;
 
 const DEFAULT_PERIODS: DisplayPeriod[] = [
   { userId: '', termId: 'default', periodNumber: 1, label: '1', startTime: '08:40', endTime: '10:10' },
@@ -245,6 +248,13 @@ export function TimetableView({
 }: TimetableViewProps) {
   const activeTermId = activeTerm?.id ?? 'default';
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const emptyCellPointerRef = useRef<{
+    cellKey: string;
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const lastEmptyCellTapRef = useRef<{ cellKey: string; at: number } | null>(null);
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
@@ -361,6 +371,61 @@ export function TimetableView({
   function openEditEditor(template: ScheduleTemplate) {
     setEditingTemplate(template);
     setDraft(createTemplateDraftFromTemplate(template));
+  }
+
+  function handleEmptyCellPointerDown(
+    event: PointerEvent<HTMLButtonElement>,
+    cellKey: string,
+  ) {
+    emptyCellPointerRef.current = {
+      cellKey,
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+
+  function handleEmptyCellPointerUp(
+    event: PointerEvent<HTMLButtonElement>,
+    cellKey: string,
+    weekday: RecurrenceWeekday,
+    period: DisplayPeriod,
+  ) {
+    const pointerStart = emptyCellPointerRef.current;
+    emptyCellPointerRef.current = null;
+
+    if (
+      !pointerStart ||
+      pointerStart.cellKey !== cellKey ||
+      pointerStart.pointerId !== event.pointerId
+    ) {
+      lastEmptyCellTapRef.current = null;
+      return;
+    }
+
+    const moveX = Math.abs(event.clientX - pointerStart.x);
+    const moveY = Math.abs(event.clientY - pointerStart.y);
+
+    if (
+      moveX > EMPTY_CELL_TAP_MOVE_THRESHOLD_PX ||
+      moveY > EMPTY_CELL_TAP_MOVE_THRESHOLD_PX
+    ) {
+      lastEmptyCellTapRef.current = null;
+      return;
+    }
+
+    const now = window.performance.now();
+    const previousTap = lastEmptyCellTapRef.current;
+    const isDoubleTap =
+      previousTap?.cellKey === cellKey &&
+      now - previousTap.at <= EMPTY_CELL_DOUBLE_TAP_DELAY_MS;
+
+    lastEmptyCellTapRef.current = { cellKey, at: now };
+
+    if (isDoubleTap) {
+      lastEmptyCellTapRef.current = null;
+      openCreateEditor(weekday, period);
+    }
   }
 
   async function persistPeriods(periods: DisplayPeriod[]) {
@@ -677,10 +742,34 @@ export function TimetableView({
                         .join(' ')
                     }
                     key={cellKey}
-                    onClick={() =>
+                    onClick={() => {
+                      if (templates[0]) {
+                        openEditEditor(templates[0]);
+                      }
+                    }}
+                    onPointerDown={
                       templates[0]
-                        ? openEditEditor(templates[0])
-                        : openCreateEditor(weekday.value, period)
+                        ? undefined
+                        : (event) => handleEmptyCellPointerDown(event, cellKey)
+                    }
+                    onPointerUp={
+                      templates[0]
+                        ? undefined
+                        : (event) =>
+                            handleEmptyCellPointerUp(
+                              event,
+                              cellKey,
+                              weekday.value,
+                              period,
+                            )
+                    }
+                    onPointerCancel={
+                      templates[0]
+                        ? undefined
+                        : () => {
+                            emptyCellPointerRef.current = null;
+                            lastEmptyCellTapRef.current = null;
+                          }
                     }
                     type="button"
                   >
