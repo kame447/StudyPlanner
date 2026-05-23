@@ -808,7 +808,7 @@
   }
 
   .month-cell {
-    min-height: 104px;
+    min-height: 112px;
     padding: 7px;
     gap: 3px;
     border-radius: 0;
@@ -895,7 +895,7 @@
   }
 
   .month-study-summary {
-    gap: 2px;
+    gap: 1px;
     font-size: 0.5rem;
     line-height: 1.05;
   }
@@ -1931,7 +1931,7 @@
   }
 
   .month-cell {
-    min-height: 90px;
+    min-height: 98px;
     padding: 6px;
     gap: 3px;
     border-radius: 0;
@@ -2336,7 +2336,7 @@
   }
 
   .month-cell {
-    min-height: 76px;
+    min-height: 84px;
     padding: 4px;
     gap: 2px;
     border-radius: 0;
@@ -2385,7 +2385,7 @@
 
   .month-study-summary {
     gap: 1px;
-    font-size: 0.38rem;
+    font-size: 0.4rem;
     line-height: 1;
   }
 

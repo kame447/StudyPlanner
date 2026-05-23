@@ -687,6 +687,11 @@ export function MonthView({
                   ) : null}
                 </div>
 
+                <p className="month-study-summary">
+                  <span>目標 {formatCompactStudyMinutes(targetMinutes)}</span>
+                  <span>記録 {formatCompactStudyMinutes(actualMinutes)}</span>
+                </p>
+
                 <div className="month-major-event-list">
                   {limitedMonthEvents.map((monthEvent) => (
                     <span
@@ -709,12 +714,6 @@ export function MonthView({
                     </span>
                   ) : null}
                 </div>
-
-                <p className="month-study-summary">
-                  <span>目 {formatCompactStudyMinutes(targetMinutes)}</span>
-                  <span aria-hidden="true">/</span>
-                  <span>記 {formatCompactStudyMinutes(actualMinutes)}</span>
-                </p>
               </button>
             );
           })}
