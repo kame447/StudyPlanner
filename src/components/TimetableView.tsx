@@ -699,8 +699,12 @@ export function TimetableView({
                 }
               >
                 <strong>{period.label}限</strong>
-                <label>
+                <label className="timetable-period-time-field">
+                  <span className="timetable-period-time-text">
+                    {period.startTime ?? '--:--'}
+                  </span>
                   <input
+                    aria-label={`${period.label}限 開始時刻`}
                     type="time"
                     value={period.startTime ?? ''}
                     disabled={savingPeriods}
@@ -710,8 +714,12 @@ export function TimetableView({
                   />
                 </label>
                 <span className="timetable-period-separator" aria-hidden="true" />
-                <label>
+                <label className="timetable-period-time-field">
+                  <span className="timetable-period-time-text">
+                    {period.endTime ?? '--:--'}
+                  </span>
                   <input
+                    aria-label={`${period.label}限 終了時刻`}
                     type="time"
                     value={period.endTime ?? ''}
                     disabled={savingPeriods}

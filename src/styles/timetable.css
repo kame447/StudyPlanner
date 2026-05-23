@@ -107,8 +107,8 @@
   grid-template-rows: auto auto auto auto;
   align-content: center;
   justify-items: center;
-  gap: 2px;
-  padding: 7px 4px;
+  gap: 1px;
+  padding: 6px 3px;
   background: color-mix(in srgb, var(--surface) 78%, transparent);
   color: var(--text-muted);
   text-align: center;
@@ -120,34 +120,58 @@
 
 .timetable-period-cell strong {
   color: var(--text);
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.05;
   white-space: nowrap;
 }
 
-.timetable-period-cell label {
+.timetable-period-time-field {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 16px;
+  line-height: 1;
+}
+
+.timetable-period-time-text {
   display: block;
   width: 100%;
   min-width: 0;
+  overflow: visible;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .timetable-period-cell input {
+  position: absolute;
+  inset: -2px 0;
   width: 100%;
-  min-height: 13px;
+  height: calc(100% + 4px);
+  min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 0.6rem;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 500;
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  opacity: 0;
   appearance: none;
   -webkit-appearance: none;
+  cursor: pointer;
 }
 
 .timetable-period-cell input::-webkit-calendar-picker-indicator {
@@ -162,23 +186,25 @@
   padding: 0;
 }
 
-.timetable-period-cell input:focus {
+.timetable-period-time-field:focus-within {
   outline: 2px solid var(--focus-outline);
+  outline-offset: 1px;
+  border-radius: 6px;
   background: var(--surface);
 }
 
 .timetable-period-separator {
   width: 1px;
-  height: 8px;
+  height: 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted) 62%, transparent);
+  background: color-mix(in srgb, var(--text-muted) 44%, transparent);
 }
 
 .timetable-period-status {
   max-width: 100%;
   color: var(--text-muted);
-  font-size: 0.54rem;
-  font-weight: 800;
+  font-size: 9px;
+  font-weight: 600;
   line-height: 1.05;
   white-space: normal;
 }
@@ -945,25 +971,31 @@
   }
 
   .timetable-period-cell {
-    gap: 2px;
-    padding: 6px 2px;
+    gap: 1px;
+    padding: 5px 2px;
   }
 
   .timetable-period-cell strong {
-    font-size: 0.68rem;
+    font-size: 10px;
+    font-weight: 600;
   }
 
-  .timetable-period-cell input {
-    min-height: 12px;
-    font-size: 0.48rem;
+  .timetable-period-time-field {
+    min-height: 14px;
+  }
+
+  .timetable-period-time-text {
+    font-size: 11px;
+    font-weight: 500;
   }
 
   .timetable-period-separator {
-    height: 7px;
+    height: 6px;
   }
 
   .timetable-period-status {
-    font-size: 0.46rem;
+    font-size: 8px;
+    font-weight: 600;
   }
 
   .timetable-grid-cell {
@@ -1161,12 +1193,16 @@
     padding: 4px;
   }
 
-  .timetable-period-cell input {
-    font-size: 0.44rem;
+  .timetable-period-time-field {
+    min-height: 13px;
+  }
+
+  .timetable-period-time-text {
+    font-size: 10px;
   }
 
   .timetable-period-cell strong {
-    font-size: 0.62rem;
+    font-size: 9px;
   }
 
   .timetable-class-card {
