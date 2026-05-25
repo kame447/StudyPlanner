@@ -275,24 +275,22 @@ export function TodoView({
     }
 
     setSavingTodoId(editingTodo.id);
-    try {
-      await onSaveTodo(
-        {
-          ...editDraft,
-          userId,
-          title: editDraft.title.trim(),
-          subject: editDraft.subject.trim(),
-          dueDate: editDraft.dueDate || null,
-          dueTime: editDraft.dueDate ? editDraft.dueTime || null : null,
-          memo: editDraft.memo.trim(),
-          status: editingTodo.status,
-        },
-        editingTodo.id,
-      );
-      closeEditModal();
-    } finally {
-      setSavingTodoId(null);
-    }
+    void onSaveTodo(
+      {
+        ...editDraft,
+        userId,
+        title: editDraft.title.trim(),
+        subject: editDraft.subject.trim(),
+        dueDate: editDraft.dueDate || null,
+        dueTime: editDraft.dueDate ? editDraft.dueTime || null : null,
+        memo: editDraft.memo.trim(),
+        status: editingTodo.status,
+      },
+      editingTodo.id,
+    )
+      .catch(() => undefined)
+      .finally(() => setSavingTodoId(null));
+    closeEditModal();
   }
 
   async function updateTodoStatus(todo: TodoTask, status: TodoStatus) {
@@ -371,27 +369,25 @@ export function TodoView({
     }
 
     setSavingTodoId(schedulingTodo.id);
-    try {
-      await onScheduleTodo(schedulingTodo, {
-        userId,
-        title: schedulingTodo.title.trim(),
-        subject: schedulingTodo.subject.trim(),
-        date: scheduleDate,
-        startTime: scheduleStartTime,
-        endTime: resolveQuickEntryEndTime(scheduleStartTime, scheduleMinutes),
-        repeat: 'none',
-        repeatUntil: null,
-        excludedDates: [],
-        recurrenceRules: [],
-        type: schedulingTodo.type,
-        memo: schedulingTodo.memo.trim(),
-        sourceType: 'todo',
-        sourceId: schedulingTodo.id,
-      });
-      closeScheduleModal();
-    } finally {
-      setSavingTodoId(null);
-    }
+    void onScheduleTodo(schedulingTodo, {
+      userId,
+      title: schedulingTodo.title.trim(),
+      subject: schedulingTodo.subject.trim(),
+      date: scheduleDate,
+      startTime: scheduleStartTime,
+      endTime: resolveQuickEntryEndTime(scheduleStartTime, scheduleMinutes),
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      recurrenceRules: [],
+      type: schedulingTodo.type,
+      memo: schedulingTodo.memo.trim(),
+      sourceType: 'todo',
+      sourceId: schedulingTodo.id,
+    })
+      .catch(() => undefined)
+      .finally(() => setSavingTodoId(null));
+    closeScheduleModal();
   }
 
   function renderTodo(todo: TodoTask) {

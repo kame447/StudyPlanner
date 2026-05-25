@@ -233,56 +233,50 @@ function MaterialQuickCreateModal({
 
     setError('');
     setIsSubmitting(true);
-    try {
-      const baseFields = {
-        userId,
-        title: material.name,
-        subject: materialSubjectName,
+    const baseFields = {
+      userId,
+      title: material.name,
+      subject: materialSubjectName,
+      materialId: material.id,
+      materialName: material.name,
+    };
+
+    if (kind === 'plan') {
+      void onSavePlan({
+        ...baseFields,
+        date,
+        startTime,
+        endTime,
+        repeat: 'none',
+        repeatUntil: null,
+        excludedDates: [],
+        recurrenceRules: [],
+        type: 'study',
+        memo: '',
+        sourceType: 'manual',
+        sourceId: null,
+      }).catch(() => undefined);
+    } else {
+      const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
+        materials: [material],
         materialId: material.id,
-        materialName: material.name,
-      };
+        deltaUnitsInput,
+        toUnitInput,
+      });
 
-      if (kind === 'plan') {
-        await onSavePlan({
-          ...baseFields,
-          date,
-          startTime,
-          endTime,
-          repeat: 'none',
-          repeatUntil: null,
-          excludedDates: [],
-          recurrenceRules: [],
-          type: 'study',
-          memo: '',
-          sourceType: 'manual',
-          sourceId: null,
-        });
-      } else {
-        const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
-          materials: [material],
-          materialId: material.id,
-          deltaUnitsInput,
-          toUnitInput,
-        });
-
-        await onSaveStandaloneActual({
-          ...baseFields,
-          planId: null,
-          occurrenceDate: date,
-          actualStartTime: startTime,
-          actualEndTime: endTime,
-          isAlignedToPlan: false,
-          note: '',
-          materialProgressUpdates,
-        });
-      }
-
-      onClose();
-    } catch {
-      setError(kind === 'plan' ? '予定を保存できませんでした。' : '記録を保存できませんでした。');
-    } finally {
-      setIsSubmitting(false);
+      void onSaveStandaloneActual({
+        ...baseFields,
+        planId: null,
+        occurrenceDate: date,
+        actualStartTime: startTime,
+        actualEndTime: endTime,
+        isAlignedToPlan: false,
+        note: '',
+        materialProgressUpdates,
+      }).catch(() => undefined);
     }
+
+    onClose();
   }
 
   return (

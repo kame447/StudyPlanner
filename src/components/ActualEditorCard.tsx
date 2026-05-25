@@ -172,7 +172,7 @@ export function ActualEditorCard({
     setError('');
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
       setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
@@ -184,58 +184,46 @@ export function ActualEditorCard({
     }
 
     setError('');
-    try {
-      const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
-      const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
-        materials: paceMaterials,
-        materialId: progressMaterialId,
-        deltaUnitsInput,
-        toUnitInput,
-      });
-      const nextDraft: ActualDraft = isActualDateChanged
-        ? {
-            ...draft,
-            planId: selectedCandidate?.plan.id ?? null,
-            isAlignedToPlan: false,
-            materialProgressUpdates,
-          }
-        : {
-            ...draft,
-            materialProgressUpdates,
-          };
+    const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
+    const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
+      materials: paceMaterials,
+      materialId: progressMaterialId,
+      deltaUnitsInput,
+      toUnitInput,
+    });
+    const nextDraft: ActualDraft = isActualDateChanged
+      ? {
+          ...draft,
+          planId: selectedCandidate?.plan.id ?? null,
+          isAlignedToPlan: false,
+          materialProgressUpdates,
+        }
+      : {
+          ...draft,
+          materialProgressUpdates,
+        };
 
-      setIsOpen(false);
-      await onSaveActual(nextPlan, nextDraft, actual?.id);
-    } catch {
-      setIsOpen(true);
-      setError('記録の保存に失敗しました。');
-    }
+    setIsOpen(false);
+    onSaveActual(nextPlan, nextDraft, actual?.id).catch(() => undefined);
   }
 
-  async function handleDeletePlan() {
-    try {
-      await onDeletePlan(plan);
-      setIsOpen(false);
-      if (!isScopedRecurringPlan) {
-        onClose?.();
-      }
-    } catch {
-      setError('予定の削除に失敗しました。');
+  function handleDeletePlan() {
+    setIsOpen(false);
+    if (!isScopedRecurringPlan) {
+      onClose?.();
     }
+
+    onDeletePlan(plan).catch(() => undefined);
   }
 
-  async function handleDeleteActual() {
+  function handleDeleteActual() {
     if (!actual) {
       return;
     }
 
-    try {
-      await onDeleteActual(actual);
-      setIsOpen(false);
-      onClose?.();
-    } catch {
-      setError('記録の削除に失敗しました。');
-    }
+    setIsOpen(false);
+    onClose?.();
+    onDeleteActual(actual).catch(() => undefined);
   }
 
   return (

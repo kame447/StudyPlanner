@@ -916,20 +916,26 @@ export function usePlannerDataState({
 
     const currentPlan = plans.find((plan) => plan.id === (targetPlanId ?? editingPlanId));
     const nextPlan = createPlanFromDraft(draft, currentPlan);
+    const previousPlans = plans;
+    const previousSelectedDate = selectedDate;
+    const previousMonthDate = monthDate;
 
     try {
-      await plannerRepository.upsertPlan(nextPlan);
       setPlans((current) =>
         sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
       );
       setSelectedDate(nextPlan.date);
       setMonthDate(startOfMonth(nextPlan.date));
       closePlanEditor();
+      await plannerRepository.upsertPlan(nextPlan);
       showNotice(
         currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
         'success',
       );
     } catch (error) {
+      setPlans(previousPlans);
+      setSelectedDate(previousSelectedDate);
+      setMonthDate(previousMonthDate);
       showNotice(
         resolveErrorMessage(error, '学習予定を保存できませんでした。'),
         'error',
@@ -975,35 +981,31 @@ export function usePlannerDataState({
           )
         : null;
     const linkedActuals = actuals.filter((actual) => actual.planId === plan.id);
-
-    try {
-      await plannerRepository.deletePlan(userId, plan.id);
-      if (linkedTodo) {
-        await plannerRepository.upsertTodo({
+    const previousPlans = plans;
+    const previousActuals = actuals;
+    const previousTodos = todos;
+    const nextLinkedTodo = linkedTodo
+      ? {
           ...linkedTodo,
-          status: 'open',
+          status: 'open' as const,
           scheduledPlanId: null,
           updatedAt: new Date().toISOString(),
-        });
-      }
+        }
+      : null;
 
+    try {
       setPlans((current) => removeByKey(current, plan.id, (item) => item.id));
       setActuals((current) => current.filter((actual) => actual.planId !== plan.id));
-      if (linkedTodo) {
+      if (nextLinkedTodo) {
         setTodos((current) =>
-          upsertByKey(
-            current,
-            {
-              ...linkedTodo,
-              status: 'open',
-              scheduledPlanId: null,
-              updatedAt: new Date().toISOString(),
-            },
-            (todo) => todo.id,
-          ),
+          upsertByKey(current, nextLinkedTodo, (todo) => todo.id),
         );
       }
       closePlanEditor();
+      if (nextLinkedTodo) {
+        await plannerRepository.upsertTodo(nextLinkedTodo);
+      }
+      await plannerRepository.deletePlan(userId, plan.id);
       showDeleteUndoNotice(async () => {
         await plannerRepository.upsertPlan(plan);
 
@@ -1020,6 +1022,19 @@ export function usePlannerDataState({
         }
       });
     } catch (error) {
+      if (nextLinkedTodo && linkedTodo) {
+        try {
+          await plannerRepository.upsertTodo(linkedTodo);
+        } catch (rollbackError) {
+          console.error('[PlanDelete] failed to rollback linked todo', {
+            todoId: linkedTodo.id,
+            error: getErrorDiagnostics(rollbackError),
+          });
+        }
+      }
+      setPlans(previousPlans);
+      setActuals(previousActuals);
+      setTodos(previousTodos);
       showNotice(
         resolveErrorMessage(error, '予定を削除できませんでした。'),
         'error',
@@ -1115,17 +1130,32 @@ export function usePlannerDataState({
       isAlignedToPlan: false,
       note: draft.note.trim(),
     }, existingActual);
+    const previousActuals = actuals;
 
     try {
+      setActuals((current) =>
+        upsertByKey(
+          targetActualId
+            ? current.filter((actual) => actual.id !== targetActualId)
+            : current,
+          nextActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
+      );
       const savedActual = await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
-        upsertByKey(current, savedActual, (item) => getActualOccurrenceKey(item)),
+        upsertByKey(
+          current.filter((actual) => actual.id !== nextActual.id),
+          savedActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
       );
       showNotice('記録を保存しました。', 'success');
       if (!existingActual) {
         await applySavedActualMaterialProgress(savedActual);
       }
     } catch (error) {
+      setActuals(previousActuals);
       showNotice(
         resolveErrorMessage(error, '記録を保存できませんでした。'),
         'error',
@@ -1214,8 +1244,16 @@ export function usePlannerDataState({
       note: actual.note.trim(),
       updatedAt: new Date().toISOString(),
     };
+    const previousActuals = actuals;
 
     try {
+      setActuals((current) =>
+        upsertByKey(
+          current.filter((item) => item.id !== actual.id),
+          nextActual,
+          (item) => getActualOccurrenceKey(item),
+        ),
+      );
       const savedActual = await plannerRepository.upsertActual(nextActual);
       setActuals((current) =>
         upsertByKey(
@@ -1226,6 +1264,7 @@ export function usePlannerDataState({
       );
       showNotice('予定に紐づけました。', 'success');
     } catch (error) {
+      setActuals(previousActuals);
       showNotice(
         resolveErrorMessage(error, '予定に紐づけできませんでした。'),
         'error',
@@ -1239,11 +1278,14 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const previousActuals = actuals;
+
     try {
-      await plannerRepository.deleteActual(userId, actual.id);
       setActuals((current) => removeByKey(current, actual.id, (item) => item.id));
+      await plannerRepository.deleteActual(userId, actual.id);
       showNotice('記録を削除しました。');
     } catch (error) {
+      setActuals(previousActuals);
       showNotice(
         resolveErrorMessage(error, '記録を削除できませんでした。'),
         'error',
@@ -1385,12 +1427,14 @@ export function usePlannerDataState({
       createdAt: currentTodo?.createdAt ?? now,
       updatedAt: now,
     };
+    const previousTodos = todos;
 
     try {
-      await plannerRepository.upsertTodo(nextTodo);
       setTodos((current) => upsertByKey(current, nextTodo, (todo) => todo.id));
+      await plannerRepository.upsertTodo(nextTodo);
       showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
     } catch (error) {
+      setTodos(previousTodos);
       showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
       throw error;
     }
@@ -1425,20 +1469,28 @@ export function usePlannerDataState({
     };
 
     let didCreatePlan = false;
+    const previousPlans = plans;
+    const previousTodos = todos;
+    const previousSelectedDate = selectedDate;
+    const previousMonthDate = monthDate;
 
     try {
-      await plannerRepository.upsertPlan(nextPlan);
-      didCreatePlan = true;
-      await plannerRepository.upsertTodo(nextTodo);
       setPlans((current) =>
         sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
       );
       setTodos((current) => upsertByKey(current, nextTodo, (item) => item.id));
       setSelectedDate(nextPlan.date);
       setMonthDate(startOfMonth(nextPlan.date));
+      await plannerRepository.upsertPlan(nextPlan);
+      didCreatePlan = true;
+      await plannerRepository.upsertTodo(nextTodo);
       showNotice('Todoを予定化しました。', 'success');
       return nextPlan;
     } catch (error) {
+      setPlans(previousPlans);
+      setTodos(previousTodos);
+      setSelectedDate(previousSelectedDate);
+      setMonthDate(previousMonthDate);
       if (didCreatePlan) {
         try {
           await plannerRepository.deletePlan(userId, nextPlan.id);
@@ -1460,14 +1512,17 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const previousTodos = todos;
+
     try {
-      await plannerRepository.deleteTodo(userId, todo.id);
       setTodos((current) => removeByKey(current, todo.id, (item) => item.id));
+      await plannerRepository.deleteTodo(userId, todo.id);
       showDeleteUndoNotice(async () => {
         await plannerRepository.upsertTodo(todo);
         setTodos((current) => upsertByKey(current, todo, (item) => item.id));
       });
     } catch (error) {
+      setTodos(previousTodos);
       showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
       throw error;
     }

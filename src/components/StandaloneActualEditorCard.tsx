@@ -163,42 +163,30 @@ export function StandaloneActualEditorCard({
 
     setError('');
     setIsSubmitting(true);
-    try {
-      await onSaveStandaloneActual(
-        {
-          userId: actual.userId,
-          planId: null,
-          occurrenceDate,
-          actualStartTime: startTime,
-          actualEndTime: endTime,
-          title: title.trim(),
-          subject: subject.trim(),
-          isAlignedToPlan: false,
-          note: note.trim(),
-          materialId: actual.materialId ?? null,
-          materialName: actual.materialName ?? '',
-          materialProgressUpdates: actual.materialProgressUpdates,
-        },
-        actual.id,
-      );
-      onClose();
-    } catch {
-      setError('記録を保存できませんでした。');
-    } finally {
-      setIsSubmitting(false);
-    }
+    void onSaveStandaloneActual(
+      {
+        userId: actual.userId,
+        planId: null,
+        occurrenceDate,
+        actualStartTime: startTime,
+        actualEndTime: endTime,
+        title: title.trim(),
+        subject: subject.trim(),
+        isAlignedToPlan: false,
+        note: note.trim(),
+        materialId: actual.materialId ?? null,
+        materialName: actual.materialName ?? '',
+        materialProgressUpdates: actual.materialProgressUpdates,
+      },
+      actual.id,
+    ).catch(() => undefined);
+    onClose();
   }
 
   async function handleDelete() {
     setIsSubmitting(true);
-    try {
-      await onDeleteActual(actual);
-      onClose();
-    } catch {
-      setError('記録を削除できませんでした。');
-    } finally {
-      setIsSubmitting(false);
-    }
+    void onDeleteActual(actual).catch(() => undefined);
+    onClose();
   }
 
   async function handleLink(plan: Plan) {
@@ -218,14 +206,8 @@ export function StandaloneActualEditorCard({
 
     setError('');
     setIsSubmitting(true);
-    try {
-      await onLinkStandaloneActualToPlan(candidateActual, plan);
-      onClose();
-    } catch {
-      setError('予定に紐づけできませんでした。');
-    } finally {
-      setIsSubmitting(false);
-    }
+    void onLinkStandaloneActualToPlan(candidateActual, plan).catch(() => undefined);
+    onClose();
   }
 
   return (

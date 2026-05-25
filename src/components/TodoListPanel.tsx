@@ -54,7 +54,7 @@ export function TodoListPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const visibleTodos = todos.filter((todo) => todo.status !== 'archived');
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!draft.title.trim()) {
@@ -62,18 +62,16 @@ export function TodoListPanel({
     }
 
     setIsSubmitting(true);
-    try {
-      await onSaveTodo({
-        ...draft,
-        userId,
-        title: draft.title.trim(),
-        subject: draft.subject.trim(),
-        memo: draft.memo.trim(),
-      });
-      setDraft(createEmptyTodoDraft(userId));
-    } finally {
-      setIsSubmitting(false);
-    }
+    onSaveTodo({
+      ...draft,
+      userId,
+      title: draft.title.trim(),
+      subject: draft.subject.trim(),
+      memo: draft.memo.trim(),
+    })
+      .catch(() => undefined)
+      .finally(() => setIsSubmitting(false));
+    setDraft(createEmptyTodoDraft(userId));
   }
 
   function updateDraft<K extends keyof TodoTaskDraft>(

@@ -490,24 +490,20 @@ export function QuickEntryModal({
     }
 
     setIsSubmitting(true);
-    try {
-      await onSaveLinkedActual(plan, {
-        userId,
-        planId: plan.id,
-        occurrenceDate: selectedDate,
-        actualStartTime,
-        actualEndTime,
-        title: title.trim(),
-        subject: resolveSubject(plan.subject),
-        isAlignedToPlan: false,
-        note: memo.trim(),
-        ...getSelectedMaterialFields(),
-        materialProgressUpdates: buildMaterialProgressUpdates(),
-      });
-      onClose();
-    } finally {
-      setIsSubmitting(false);
-    }
+    void onSaveLinkedActual(plan, {
+      userId,
+      planId: plan.id,
+      occurrenceDate: selectedDate,
+      actualStartTime,
+      actualEndTime,
+      title: title.trim(),
+      subject: resolveSubject(plan.subject),
+      isAlignedToPlan: false,
+      note: memo.trim(),
+      ...getSelectedMaterialFields(),
+      materialProgressUpdates: buildMaterialProgressUpdates(),
+    }).catch(() => undefined);
+    onClose();
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -518,63 +514,62 @@ export function QuickEntryModal({
     }
 
     setIsSubmitting(true);
-    try {
-      if (entryKind === 'actual') {
-        if (!actualEndTime) {
-          return;
-        }
-
-        await onSaveStandaloneActual({
-          userId,
-          planId: null,
-          occurrenceDate: selectedDate,
-          actualStartTime,
-          actualEndTime,
-          title: title.trim(),
-          subject: resolveSubject(),
-          isAlignedToPlan: false,
-          note: memo.trim(),
-          ...getSelectedMaterialFields(),
-          materialProgressUpdates: buildMaterialProgressUpdates(),
-        });
-      } else if (mode === 'scheduled' || mode === 'repeat') {
-        const planDraft = buildQuickEntryPlanDraft({
-          mode,
-          userId,
-          title,
-          subject: resolveSubject(),
-          type,
-          memo,
-          date,
-          startTime,
-          estimatedMinutes,
-          repeatKind,
-          weekdays,
-          ...getSelectedMaterialFields(),
-        });
-
-        if (!planDraft) {
-          return;
-        }
-
-        await onSavePlan(planDraft);
-      } else {
-        await onSaveTodo({
-          userId,
-          title: title.trim(),
-          subject: subject.trim(),
-          type,
-          estimatedMinutes,
-          dueDate: dueDate || null,
-          dueTime: dueDate ? dueTime || null : null,
-          memo: memo.trim(),
-          pinned: todoPinned,
-        });
+    if (entryKind === 'actual') {
+      if (!actualEndTime) {
+        setIsSubmitting(false);
+        return;
       }
-      onClose();
-    } finally {
-      setIsSubmitting(false);
+
+      void onSaveStandaloneActual({
+        userId,
+        planId: null,
+        occurrenceDate: selectedDate,
+        actualStartTime,
+        actualEndTime,
+        title: title.trim(),
+        subject: resolveSubject(),
+        isAlignedToPlan: false,
+        note: memo.trim(),
+        ...getSelectedMaterialFields(),
+        materialProgressUpdates: buildMaterialProgressUpdates(),
+      }).catch(() => undefined);
+    } else if (mode === 'scheduled' || mode === 'repeat') {
+      const planDraft = buildQuickEntryPlanDraft({
+        mode,
+        userId,
+        title,
+        subject: resolveSubject(),
+        type,
+        memo,
+        date,
+        startTime,
+        estimatedMinutes,
+        repeatKind,
+        weekdays,
+        ...getSelectedMaterialFields(),
+      });
+
+      if (!planDraft) {
+        setIsSubmitting(false);
+        return;
+      }
+
+      void onSavePlan(planDraft).catch(() => undefined);
+    } else {
+      void onSaveTodo({
+        userId,
+        title: title.trim(),
+        subject: subject.trim(),
+        type,
+        estimatedMinutes,
+        dueDate: dueDate || null,
+        dueTime: dueDate ? dueTime || null : null,
+        memo: memo.trim(),
+        pinned: todoPinned,
+      }).catch(() => undefined);
     }
+
+    onClose();
   }
 
   return (
