@@ -104,7 +104,7 @@
 .timetable-period-cell {
   height: var(--timetable-cell-height);
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto auto auto;
   align-content: center;
   justify-items: center;
   gap: 4px;
@@ -197,7 +197,20 @@
 }
 
 .timetable-period-separator {
-  display: none;
+  display: grid;
+  place-items: center;
+  min-height: 8px;
+  color: var(--text-muted);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.timetable-period-separator::before {
+  content: '~';
+  display: block;
+  transform: rotate(90deg);
+  transform-origin: center;
 }
 
 .timetable-period-status {
@@ -988,8 +1001,13 @@
   }
 
   .timetable-period-time-text {
-    font-size: 10.5px;
+    font-size: 5px;
     font-weight: 500;
+  }
+
+  .timetable-period-separator {
+    min-height: 6px;
+    font-size: 6px;
   }
 
   .timetable-period-status {
@@ -1197,7 +1215,7 @@
   }
 
   .timetable-period-time-text {
-    font-size: 10px;
+    font-size: 5px;
   }
 
   .timetable-period-cell strong {
