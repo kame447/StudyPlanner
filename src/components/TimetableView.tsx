@@ -698,7 +698,7 @@ export function TimetableView({
                     : 'timetable-period-cell needs-time'
                 }
               >
-                <strong>{period.label}限</strong>
+                <strong aria-label={`${period.label}限`}>{period.label}</strong>
                 <label className="timetable-period-time-field">
                   <span className="timetable-period-time-text">
                     {period.startTime ?? '--:--'}

@@ -1,6 +1,6 @@
 .timetable-view {
-  --timetable-period-column-width: 56px;
-  --timetable-grid-gap: 7px;
+  --timetable-period-column-width: 46px;
+  --timetable-grid-gap: 6px;
   --timetable-cell-height: clamp(96px, 13vh, 126px);
   display: grid;
   gap: 12px;
@@ -104,11 +104,11 @@
 .timetable-period-cell {
   height: var(--timetable-cell-height);
   display: grid;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto;
   align-content: center;
   justify-items: center;
-  gap: 2px;
-  padding: 5px 2px;
+  gap: 4px;
+  padding: 5px 1px;
   background: color-mix(in srgb, var(--surface) 78%, transparent);
   color: var(--text-muted);
   text-align: center;
@@ -120,9 +120,9 @@
 
 .timetable-period-cell strong {
   color: var(--text);
-  font-size: 11px;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 1.05;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -132,7 +132,7 @@
   place-items: center;
   width: 100%;
   min-width: 0;
-  min-height: 14px;
+  min-height: 12px;
   line-height: 1;
 }
 
@@ -142,7 +142,7 @@
   min-width: 0;
   overflow: visible;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -901,8 +901,8 @@
 
 @media screen and (max-width: 900px) {
   .timetable-view {
-    --timetable-period-column-width: 50px;
-    --timetable-grid-gap: 6px;
+    --timetable-period-column-width: 42px;
+    --timetable-grid-gap: 5px;
     --timetable-cell-height: clamp(92px, 12.2vh, 116px);
   }
 
@@ -913,7 +913,7 @@
 
 @media screen and (max-width: 640px) {
   .timetable-view {
-    --timetable-period-column-width: 40px;
+    --timetable-period-column-width: 34px;
     --timetable-grid-gap: 4px;
     --timetable-cell-height: clamp(84px, 11.2vh, 104px);
     gap: 9px;
@@ -968,21 +968,21 @@
   }
 
   .timetable-period-cell {
-    gap: 2px;
-    padding: 4px 1px;
+    gap: 3px;
+    padding: 4px 0;
   }
 
   .timetable-period-cell strong {
-    font-size: 11px;
+    font-size: 19px;
     font-weight: 600;
   }
 
   .timetable-period-time-field {
-    min-height: 13px;
+    min-height: 11px;
   }
 
   .timetable-period-time-text {
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 500;
   }
 
@@ -1176,7 +1176,7 @@
 
 @media screen and (max-width: 380px) {
   .timetable-view {
-    --timetable-period-column-width: 38px;
+    --timetable-period-column-width: 32px;
     --timetable-grid-gap: 3px;
     --timetable-cell-height: clamp(76px, 10.6vh, 94px);
     padding: 6px;
@@ -1187,15 +1187,15 @@
   }
 
   .timetable-period-time-field {
-    min-height: 13px;
+    min-height: 10px;
   }
 
   .timetable-period-time-text {
-    font-size: 10.5px;
+    font-size: 10px;
   }
 
   .timetable-period-cell strong {
-    font-size: 10px;
+    font-size: 18px;
   }
 
   .timetable-class-card {
