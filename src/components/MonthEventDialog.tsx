@@ -254,21 +254,7 @@ export function MonthEventDialog({
     setError('');
     setShowDeleteScopePrompt(false);
     setIsSavingMonthEvent(true);
-    try {
-      await onSave(nextDraft, editingEventId ?? undefined);
-    } catch {
-      setError('月の主要予定を保存できませんでした。');
-      return;
-    } finally {
-      setIsSavingMonthEvent(false);
-    }
-
-    if (!editingEvent) {
-      resetEditor('月の主要予定を追加しました。');
-    } else {
-      setStatus('月の主要予定を更新しました。');
-      setDraft(nextDraft);
-    }
+    void onSave(nextDraft, editingEventId ?? undefined).catch(() => undefined);
     onClose();
   }
 
@@ -289,13 +275,8 @@ export function MonthEventDialog({
       return;
     }
 
-    try {
-      await onDelete(editingEvent);
-    } catch {
-      setError('月の主要予定を削除できませんでした。');
-      return;
-    }
-    resetEditor('月の主要予定を削除しました。');
+    setIsSavingMonthEvent(true);
+    void onDelete(editingEvent).catch(() => undefined);
     onClose();
   }
 
@@ -312,13 +293,8 @@ export function MonthEventDialog({
         excludedDates: [...baseDraft.excludedDates, activeDate],
       });
 
-      try {
-        await onSave(nextDraft, editingEvent.id);
-      } catch {
-        setError('月の主要予定を削除できませんでした。');
-        return;
-      }
-      resetEditor('この予定だけ削除しました。');
+      setIsSavingMonthEvent(true);
+      void onSave(nextDraft, editingEvent.id).catch(() => undefined);
       onClose();
       return;
     }
@@ -329,13 +305,8 @@ export function MonthEventDialog({
     );
 
     if (!previousOccurrenceDate) {
-      try {
-        await onDelete(editingEvent);
-      } catch {
-        setError('月の主要予定を削除できませんでした。');
-        return;
-      }
-      resetEditor('この日以降の繰り返し予定を削除しました。');
+      setIsSavingMonthEvent(true);
+      void onDelete(editingEvent).catch(() => undefined);
       onClose();
       return;
     }
@@ -348,13 +319,8 @@ export function MonthEventDialog({
       ),
     });
 
-    try {
-      await onSave(nextDraft, editingEvent.id);
-    } catch {
-      setError('月の主要予定を削除できませんでした。');
-      return;
-    }
-    resetEditor('この日以降の繰り返し予定を削除しました。');
+    setIsSavingMonthEvent(true);
+    void onSave(nextDraft, editingEvent.id).catch(() => undefined);
     onClose();
   }
 

@@ -1287,9 +1287,11 @@ export function usePlannerDataState({
       (monthEvent) => monthEvent.id === targetMonthEventId,
     );
     const nextMonthEvent = createMonthEventFromDraft(draft, currentMonthEvent);
+    const previousMonthEvents = monthEvents;
+    const previousSelectedDate = selectedDate;
+    const previousMonthDate = monthDate;
 
     try {
-      await plannerRepository.upsertMonthEvent(nextMonthEvent);
       setMonthEvents((current) =>
         sortMonthEvents(upsertByKey(current, nextMonthEvent, (item) => item.id)),
       );
@@ -1299,11 +1301,15 @@ export function usePlannerDataState({
       }
 
       setMonthDate(startOfMonth(nextMonthEvent.date));
+      await plannerRepository.upsertMonthEvent(nextMonthEvent);
       showNotice(
         currentMonthEvent ? '月の主要予定を更新しました。' : '月の主要予定を追加しました。',
         'success',
       );
     } catch (error) {
+      setMonthEvents(previousMonthEvents);
+      setSelectedDate(previousSelectedDate);
+      setMonthDate(previousMonthDate);
       showNotice(
         resolveErrorMessage(error, '月の主要予定を保存できませんでした。'),
         'error',
@@ -1317,11 +1323,13 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const previousMonthEvents = monthEvents;
+
     try {
-      await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
       setMonthEvents((current) =>
         sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
       );
+      await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
       showDeleteUndoNotice(async () => {
         await plannerRepository.upsertMonthEvent(monthEvent);
         setMonthEvents((current) =>
@@ -1331,6 +1339,7 @@ export function usePlannerDataState({
         );
       });
     } catch (error) {
+      setMonthEvents(previousMonthEvents);
       showNotice(
         resolveErrorMessage(error, '月の主要予定を削除できませんでした。'),
         'error',

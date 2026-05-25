@@ -4,13 +4,16 @@ import {
   buildPlanOccurrenceKey,
   getActualOccurrenceKey,
 } from "../lib/planRecurrence";
-import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
+import { resolveMaterialSubjectName } from "../lib/materialSubject";
+import { getSubjectLabel, getSubjectTheme, type SubjectTheme } from "../lib/subjectTheme";
 import type {
   Actual,
   MonthEvent,
   Plan,
   PlanSourceType,
   PlanType,
+  StudyMaterial,
+  StudySubject,
 } from "../types/domain";
 
 interface DayTimelineProps {
@@ -18,6 +21,8 @@ interface DayTimelineProps {
   plans: Plan[];
   monthEvents: MonthEvent[];
   actuals: Actual[];
+  studyMaterials: StudyMaterial[];
+  studySubjects: StudySubject[];
   selectedEntryId?: string;
   onSelectEntry: (entry: DayTimelineSelection) => void;
   onPreviousDay: () => void;
@@ -42,6 +47,7 @@ interface TimelineEntry {
   subject: string;
   type: PlanType;
   sourceType?: PlanSourceType;
+  materialId?: string | null;
   startTime: string;
   endTime: string;
   lane: number;
@@ -54,6 +60,15 @@ const HOUR_HEIGHT = 68;
 const MIN_BLOCK_HEIGHT = 28;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 const NON_SUBJECT_LABELS = new Set(["予定", "記録"]);
+
+function buildThemeFromSubjectColor(color: string): SubjectTheme {
+  return {
+    fill: color,
+    soft: `color-mix(in srgb, ${color} 14%, var(--surface-strong) 86%)`,
+    border: `color-mix(in srgb, ${color} 42%, var(--border) 58%)`,
+    text: color,
+  };
+}
 
 function getDisplayMetrics(startTime: string, endTime: string) {
   const topPx = (minutesFromTime(startTime) / 60) * HOUR_HEIGHT;
@@ -191,13 +206,53 @@ function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
   );
 }
 
-function resolveTimelineSubjectLabel(
-  entry: Pick<TimelineEntry, "subject" | "type" | "sourceType">
-): string {
+function resolveTimelineSubject(
+  entry: Pick<TimelineEntry, "subject" | "type" | "sourceType" | "materialId">,
+  materialsById: Map<string, StudyMaterial>,
+  subjectsById: Map<string, StudySubject>,
+  subjectsByName: Map<string, StudySubject>
+): { label: string; theme: SubjectTheme } {
   const subject = entry.subject.trim();
 
   if (subject && !NON_SUBJECT_LABELS.has(subject)) {
-    return subject;
+    const subjectRecord = subjectsByName.get(subject);
+    const material = entry.materialId ? materialsById.get(entry.materialId) : null;
+    const materialSubjectLabel = resolveMaterialSubjectName(
+      material,
+      Array.from(subjectsById.values())
+    );
+    const materialColor =
+      materialSubjectLabel === subject
+        ? subjectsById.get(material?.subjectId ?? "")?.color || material?.color
+        : undefined;
+
+    return {
+      label: subject,
+      theme: subjectRecord?.color || materialColor
+        ? buildThemeFromSubjectColor(subjectRecord?.color || materialColor || "")
+        : getSubjectTheme(subject, entry.type, entry.sourceType),
+    };
+  }
+
+  const material = entry.materialId ? materialsById.get(entry.materialId) : null;
+  const materialSubjectLabel = resolveMaterialSubjectName(
+    material,
+    Array.from(subjectsById.values())
+  );
+
+  if (materialSubjectLabel) {
+    const subjectRecord =
+      material && subjectsById.get(material.subjectId)
+        ? subjectsById.get(material.subjectId)
+        : subjectsByName.get(materialSubjectLabel);
+
+    return {
+      label: materialSubjectLabel,
+      theme:
+        subjectRecord?.color || material?.color
+          ? buildThemeFromSubjectColor(subjectRecord?.color || material?.color || "")
+          : getSubjectTheme(materialSubjectLabel, entry.type, entry.sourceType),
+    };
   }
 
   const fallbackLabel = getSubjectLabel(
@@ -206,9 +261,17 @@ function resolveTimelineSubjectLabel(
     entry.sourceType
   ).trim();
 
-  return fallbackLabel && !NON_SUBJECT_LABELS.has(fallbackLabel)
-    ? fallbackLabel
-    : "教科未設定";
+  if (fallbackLabel && !NON_SUBJECT_LABELS.has(fallbackLabel)) {
+    return {
+      label: fallbackLabel,
+      theme: getSubjectTheme(fallbackLabel, entry.type, entry.sourceType),
+    };
+  }
+
+  return {
+    label: "教科未設定",
+    theme: getSubjectTheme("", entry.type, entry.sourceType),
+  };
 }
 
 export function DayTimeline({
@@ -216,6 +279,8 @@ export function DayTimeline({
   plans,
   monthEvents,
   actuals,
+  studyMaterials,
+  studySubjects,
   selectedEntryId,
   onSelectEntry,
   onPreviousDay,
@@ -225,6 +290,9 @@ export function DayTimeline({
   onImportTimetable,
   timetableImportCount = 0,
 }: DayTimelineProps) {
+  const materialsById = new Map(studyMaterials.map((material) => [material.id, material]));
+  const subjectsById = new Map(studySubjects.map((subject) => [subject.id, subject]));
+  const subjectsByName = new Map(studySubjects.map((subject) => [subject.name.trim(), subject]));
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
   );
@@ -238,6 +306,7 @@ export function DayTimeline({
       subject: plan.subject,
       type: plan.type,
       sourceType: plan.sourceType,
+      materialId: plan.materialId ?? null,
       startTime: plan.startTime,
       endTime: plan.endTime,
     })),
@@ -275,6 +344,7 @@ export function DayTimeline({
             subject: resolveActualSubject(actual, plan),
             type: plan.type,
             sourceType: plan.sourceType,
+            materialId: actual.materialId ?? plan.materialId ?? null,
             startTime: actual.actualStartTime,
             endTime: actual.actualEndTime,
             alignedToPlan: resolveAlignedToPlan(actual, plan),
@@ -298,6 +368,7 @@ export function DayTimeline({
             subject: actual.subject.trim() || "主要予定",
             type: "other" as const,
             sourceType: "manual" as const,
+            materialId: actual.materialId ?? null,
             startTime: actual.actualStartTime,
             endTime: actual.actualEndTime,
             alignedToPlan: false,
@@ -315,6 +386,7 @@ export function DayTimeline({
           subject: actual.subject.trim(),
           type: "study" as const,
           sourceType: "manual" as const,
+          materialId: actual.materialId ?? null,
           startTime: actual.actualStartTime,
           endTime: actual.actualEndTime,
           alignedToPlan: false,
@@ -325,8 +397,13 @@ export function DayTimeline({
   const legendMap = new Map<string, string>();
 
   [...planEntries, ...actualEntries].forEach((entry) => {
-    const label = resolveTimelineSubjectLabel(entry);
-    legendMap.set(label, getSubjectTheme(label, entry.type, entry.sourceType).fill);
+    const subject = resolveTimelineSubject(
+      entry,
+      materialsById,
+      subjectsById,
+      subjectsByName
+    );
+    legendMap.set(subject.label, subject.theme.fill);
   });
   const timelineLegend = (
     <div className="timeline-legend">
@@ -444,12 +521,13 @@ export function DayTimeline({
 
                 {planEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const theme = getSubjectTheme(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
+                  const subject = resolveTimelineSubject(
+                    entry,
+                    materialsById,
+                    subjectsById,
+                    subjectsByName
                   );
-                  const displaySubjectLabel = resolveTimelineSubjectLabel(entry);
+                  const theme = subject.theme;
 
                   return (
                     <button
@@ -459,13 +537,19 @@ export function DayTimeline({
                           ? "timeline-plan-block split is-selected"
                           : "timeline-plan-block split"
                       }
-                      style={buildColumnBlockStyle(
-                        minutesFromTime(entry.startTime),
-                        duration,
-                        entry.lane,
-                        entry.laneCount,
-                        "plan"
-                      )}
+                      style={{
+                        ...buildColumnBlockStyle(
+                          minutesFromTime(entry.startTime),
+                          duration,
+                          entry.lane,
+                          entry.laneCount,
+                          "plan"
+                        ),
+                        backgroundColor: theme.soft,
+                        borderColor: theme.border,
+                        color: theme.text,
+                        boxShadow: `inset 5px 0 0 ${theme.fill}`,
+                      }}
                       onClick={() =>
                         onSelectEntry(
                           entry.entryKind === "plan"
@@ -488,9 +572,9 @@ export function DayTimeline({
                         <span
                           className="timeline-entry-subject"
                           style={{ color: theme.text }}
-                          title={displaySubjectLabel}
+                          title={subject.label}
                         >
-                          {displaySubjectLabel}
+                          {subject.label}
                         </span>
                       </div>
                     </button>
@@ -499,12 +583,13 @@ export function DayTimeline({
 
                 {actualEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const theme = getSubjectTheme(
-                    entry.subject,
-                    entry.type,
-                    entry.sourceType
+                  const subject = resolveTimelineSubject(
+                    entry,
+                    materialsById,
+                    subjectsById,
+                    subjectsByName
                   );
-                  const displaySubjectLabel = resolveTimelineSubjectLabel(entry);
+                  const theme = subject.theme;
 
                   return (
                     <button
@@ -550,9 +635,9 @@ export function DayTimeline({
                         </span>
                         <span
                           className="timeline-entry-subject"
-                          title={displaySubjectLabel}
+                          title={subject.label}
                         >
-                          {displaySubjectLabel}
+                          {subject.label}
                         </span>
                       </div>
                     </button>

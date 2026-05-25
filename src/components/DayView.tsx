@@ -965,6 +965,8 @@ export function DayView({
         plans={dayPlans}
         monthEvents={dayMonthEvents}
         actuals={dayActuals}
+        studyMaterials={studyMaterials}
+        studySubjects={studySubjects}
         selectedEntryId={
           selectedPlan
             ? `plan:${selectedPlan.id}`
