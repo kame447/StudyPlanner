@@ -1,6 +1,6 @@
 .timetable-view {
-  --timetable-period-column-width: 72px;
-  --timetable-grid-gap: 8px;
+  --timetable-period-column-width: 56px;
+  --timetable-grid-gap: 7px;
   --timetable-cell-height: clamp(96px, 13vh, 126px);
   display: grid;
   gap: 12px;
@@ -107,8 +107,8 @@
   grid-template-rows: auto auto auto auto;
   align-content: center;
   justify-items: center;
-  gap: 1px;
-  padding: 6px 3px;
+  gap: 2px;
+  padding: 5px 2px;
   background: color-mix(in srgb, var(--surface) 78%, transparent);
   color: var(--text-muted);
   text-align: center;
@@ -120,7 +120,7 @@
 
 .timetable-period-cell strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.05;
   white-space: nowrap;
@@ -132,7 +132,7 @@
   place-items: center;
   width: 100%;
   min-width: 0;
-  min-height: 16px;
+  min-height: 14px;
   line-height: 1;
 }
 
@@ -142,7 +142,7 @@
   min-width: 0;
   overflow: visible;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -194,10 +194,7 @@
 }
 
 .timetable-period-separator {
-  width: 1px;
-  height: 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted) 44%, transparent);
+  display: none;
 }
 
 .timetable-period-status {
@@ -904,8 +901,8 @@
 
 @media screen and (max-width: 900px) {
   .timetable-view {
-    --timetable-period-column-width: 62px;
-    --timetable-grid-gap: 7px;
+    --timetable-period-column-width: 50px;
+    --timetable-grid-gap: 6px;
     --timetable-cell-height: clamp(92px, 12.2vh, 116px);
   }
 
@@ -916,7 +913,7 @@
 
 @media screen and (max-width: 640px) {
   .timetable-view {
-    --timetable-period-column-width: 48px;
+    --timetable-period-column-width: 40px;
     --timetable-grid-gap: 4px;
     --timetable-cell-height: clamp(84px, 11.2vh, 104px);
     gap: 9px;
@@ -971,26 +968,22 @@
   }
 
   .timetable-period-cell {
-    gap: 1px;
-    padding: 5px 2px;
+    gap: 2px;
+    padding: 4px 1px;
   }
 
   .timetable-period-cell strong {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
   }
 
   .timetable-period-time-field {
-    min-height: 14px;
+    min-height: 13px;
   }
 
   .timetable-period-time-text {
     font-size: 11px;
     font-weight: 500;
-  }
-
-  .timetable-period-separator {
-    height: 6px;
   }
 
   .timetable-period-status {
@@ -1183,7 +1176,7 @@
 
 @media screen and (max-width: 380px) {
   .timetable-view {
-    --timetable-period-column-width: 44px;
+    --timetable-period-column-width: 38px;
     --timetable-grid-gap: 3px;
     --timetable-cell-height: clamp(76px, 10.6vh, 94px);
     padding: 6px;
@@ -1198,11 +1191,11 @@
   }
 
   .timetable-period-time-text {
-    font-size: 10px;
+    font-size: 10.5px;
   }
 
   .timetable-period-cell strong {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .timetable-class-card {
