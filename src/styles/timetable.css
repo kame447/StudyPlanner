@@ -923,22 +923,23 @@
 @media screen and (max-width: 900px) {
   .timetable-view {
     --timetable-period-column-width: 42px;
-    --timetable-grid-gap: 5px;
+    --timetable-grid-gap: 4px;
     --timetable-cell-height: clamp(92px, 12.2vh, 116px);
   }
 
   .timetable-grid-shell {
-    padding: 8px;
+    padding: 6px;
   }
 }
 
 @media screen and (max-width: 640px) {
   .timetable-view {
     --timetable-period-column-width: 34px;
-    --timetable-grid-gap: 3px;
+    --timetable-grid-gap: 2px;
     --timetable-cell-height: clamp(84px, 11.2vh, 104px);
     gap: 9px;
-    padding: 8px;
+    margin-inline: -10px;
+    padding: 6px 2px;
     border-radius: 14px;
   }
 
@@ -971,7 +972,7 @@
   }
 
   .timetable-grid-shell {
-    padding: 4px;
+    padding: 2px;
     border-radius: 14px;
   }
 
@@ -1208,11 +1209,12 @@
     --timetable-period-column-width: 32px;
     --timetable-grid-gap: 2px;
     --timetable-cell-height: clamp(76px, 10.6vh, 94px);
-    padding: 6px;
+    margin-inline: -10px;
+    padding: 4px 1px;
   }
 
   .timetable-grid-shell {
-    padding: 3px;
+    padding: 1px;
   }
 
   .timetable-period-time-field {
