@@ -101,6 +101,11 @@
   font-weight: 900;
 }
 
+.timetable-corner-cell {
+  border-color: transparent;
+  background: transparent;
+}
+
 .timetable-period-cell {
   height: var(--timetable-cell-height);
   display: grid;
@@ -1001,7 +1006,7 @@
   }
 
   .timetable-period-time-text {
-    font-size: 5px;
+    font-size: 7px;
     font-weight: 500;
   }
 
@@ -1215,7 +1220,7 @@
   }
 
   .timetable-period-time-text {
-    font-size: 5px;
+    font-size: 7px;
   }
 
   .timetable-period-cell strong {
