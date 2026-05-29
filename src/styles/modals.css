@@ -384,6 +384,7 @@
   box-shadow: 0 22px 48px rgb(15 23 42 / 0.24);
   pointer-events: auto;
   touch-action: none;
+  cursor: grab;
 }
 
 .floating-tracking-panel.dragging {
@@ -400,7 +401,7 @@
 
 .floating-tracking-panel-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 38px;
@@ -409,8 +410,13 @@
   user-select: none;
 }
 
-.floating-tracking-panel-header strong,
-.floating-tracking-panel-header span {
+.floating-tracking-panel-title {
+  min-width: 0;
+  text-align: center;
+}
+
+.floating-tracking-panel-title strong,
+.floating-tracking-panel-title span {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -418,13 +424,13 @@
   white-space: nowrap;
 }
 
-.floating-tracking-panel-header strong {
+.floating-tracking-panel-title strong {
   color: var(--text);
   font-size: 0.9rem;
   font-weight: 900;
 }
 
-.floating-tracking-panel-header span {
+.floating-tracking-panel-title span {
   margin-top: 2px;
   color: var(--text-muted);
   font-size: 0.68rem;

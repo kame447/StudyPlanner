@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface FloatingActualTrackingPanelProps {
@@ -13,7 +13,6 @@ type PanelPosition = {
   y: number;
 };
 
-const LONG_PRESS_MS = 320;
 const VIEWPORT_MARGIN = 8;
 
 function isInteractiveElement(target: EventTarget | null): boolean {
@@ -40,28 +39,20 @@ export function FloatingActualTrackingPanel({
   targetLabel,
 }: FloatingActualTrackingPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const longPressTimerRef = useRef<number | null>(null);
   const dragPointerIdRef = useRef<number | null>(null);
   const dragOffsetRef = useRef<PanelPosition>({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
   const [position, setPosition] = useState<PanelPosition | null>(null);
-  const [isDragPriming, setIsDragPriming] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [trackingDisplay, setTrackingDisplay] = useState('00:00:00');
 
-  const clearLongPressTimer = useCallback(() => {
-    if (longPressTimerRef.current === null) {
-      return;
-    }
-
-    window.clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = null;
-  }, []);
-
   useEffect(() => {
-    return clearLongPressTimer;
-  }, [clearLongPressTimer]);
+    return () => {
+      dragPointerIdRef.current = null;
+      isDraggingRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     function handleResize() {
@@ -76,11 +67,6 @@ export function FloatingActualTrackingPanel({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  function startDragging() {
-    isDraggingRef.current = true;
-    setIsDragging(true);
-  }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || isInteractiveElement(event.target)) {
@@ -104,12 +90,8 @@ export function FloatingActualTrackingPanel({
     };
     setPosition({ x: rect.left, y: rect.top });
     panel.setPointerCapture(event.pointerId);
-    setIsDragPriming(true);
-    clearLongPressTimer();
-    longPressTimerRef.current = window.setTimeout(() => {
-      longPressTimerRef.current = null;
-      startDragging();
-    }, LONG_PRESS_MS);
+    isDraggingRef.current = true;
+    setIsDragging(true);
   }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -137,8 +119,13 @@ export function FloatingActualTrackingPanel({
   }
 
   function stopDragging(event: PointerEvent<HTMLDivElement>) {
+    if (dragPointerIdRef.current !== event.pointerId) {
+      event.stopPropagation();
+      return;
+    }
+
+    event.preventDefault();
     event.stopPropagation();
-    clearLongPressTimer();
 
     const panel = panelRef.current;
     if (
@@ -151,7 +138,6 @@ export function FloatingActualTrackingPanel({
 
     dragPointerIdRef.current = null;
     isDraggingRef.current = false;
-    setIsDragPriming(false);
     setIsDragging(false);
   }
 
@@ -165,7 +151,7 @@ export function FloatingActualTrackingPanel({
 
   return (
     <>
-      {isDragPriming || isDragging ? (
+      {isDragging ? (
         <div className="floating-tracking-event-shield print-hide" aria-hidden="true" />
       ) : null}
       <div
@@ -183,14 +169,6 @@ export function FloatingActualTrackingPanel({
         onPointerCancel={stopDragging}
       >
         <div className="floating-tracking-panel-header">
-          <div>
-            <strong>計測補助</strong>
-            <span>
-              {isCollapsed
-                ? `${trackingDisplay}${targetLabel ? ` / ${targetLabel}` : ''}`
-                : targetLabel || 'フローティング表示'}
-            </span>
-          </div>
           <button
             className="floating-tracking-collapse"
             onClick={(event) => {
@@ -202,6 +180,14 @@ export function FloatingActualTrackingPanel({
           >
             {isCollapsed ? '＋' : '−'}
           </button>
+          <div className="floating-tracking-panel-title">
+            <strong>計測補助</strong>
+            <span>
+              {isCollapsed
+                ? `${trackingDisplay}${targetLabel ? ` / ${targetLabel}` : ''}`
+                : targetLabel || 'フローティング表示'}
+            </span>
+          </div>
           <button
             className="floating-tracking-close"
             onClick={(event) => {
