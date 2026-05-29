@@ -358,11 +358,20 @@
   justify-self: flex-start;
 }
 
+.floating-tracking-event-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482998;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+}
+
 .floating-tracking-panel {
   position: fixed;
   top: max(12px, env(safe-area-inset-top, 0px) + 12px);
   right: max(12px, env(safe-area-inset-right, 0px) + 12px);
-  z-index: 3000;
+  z-index: 2147482999;
   display: grid;
   gap: 8px;
   width: min(330px, calc(100vw - 16px));
@@ -373,6 +382,7 @@
   overflow: auto;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   box-shadow: 0 22px 48px rgb(15 23 42 / 0.24);
+  pointer-events: auto;
   touch-action: manipulation;
 }
 
@@ -389,6 +399,8 @@
   gap: 8px;
   min-height: 38px;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .floating-tracking-panel-header strong,

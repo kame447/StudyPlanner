@@ -43,7 +43,9 @@ export function FloatingActualTrackingPanel({
   const longPressTimerRef = useRef<number | null>(null);
   const dragPointerIdRef = useRef<number | null>(null);
   const dragOffsetRef = useRef<PanelPosition>({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
   const [position, setPosition] = useState<PanelPosition | null>(null);
+  const [isDragPriming, setIsDragPriming] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const clearLongPressTimer = useCallback(() => {
@@ -73,11 +75,24 @@ export function FloatingActualTrackingPanel({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  function startDragging(event: PointerEvent<HTMLDivElement>) {
+  function startDragging() {
+    isDraggingRef.current = true;
+    setIsDragging(true);
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || isInteractiveElement(event.target)) {
+      event.stopPropagation();
+      return;
+    }
+
     const panel = panelRef.current;
     if (!panel) {
       return;
     }
+
+    event.preventDefault();
+    event.stopPropagation();
 
     const rect = panel.getBoundingClientRect();
     dragPointerIdRef.current = event.pointerId;
@@ -86,19 +101,12 @@ export function FloatingActualTrackingPanel({
       y: event.clientY - rect.top,
     };
     setPosition({ x: rect.left, y: rect.top });
-    setIsDragging(true);
     panel.setPointerCapture(event.pointerId);
-  }
-
-  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || isInteractiveElement(event.target)) {
-      return;
-    }
-
+    setIsDragPriming(true);
     clearLongPressTimer();
     longPressTimerRef.current = window.setTimeout(() => {
       longPressTimerRef.current = null;
-      startDragging(event);
+      startDragging();
     }, LONG_PRESS_MS);
   }
 
@@ -109,6 +117,12 @@ export function FloatingActualTrackingPanel({
     }
 
     event.preventDefault();
+    event.stopPropagation();
+
+    if (!isDraggingRef.current) {
+      return;
+    }
+
     setPosition(
       clampPosition(
         {
@@ -121,6 +135,7 @@ export function FloatingActualTrackingPanel({
   }
 
   function stopDragging(event: PointerEvent<HTMLDivElement>) {
+    event.stopPropagation();
     clearLongPressTimer();
 
     const panel = panelRef.current;
@@ -129,6 +144,8 @@ export function FloatingActualTrackingPanel({
     }
 
     dragPointerIdRef.current = null;
+    isDraggingRef.current = false;
+    setIsDragPriming(false);
     setIsDragging(false);
   }
 
@@ -141,39 +158,48 @@ export function FloatingActualTrackingPanel({
     : undefined;
 
   return (
-    <div
-      ref={panelRef}
-      className={
-        isDragging
-          ? 'floating-tracking-panel dragging print-hide'
-          : 'floating-tracking-panel print-hide'
-      }
-      style={positionStyle}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={stopDragging}
-      onPointerCancel={stopDragging}
-    >
-      <div className="floating-tracking-panel-header">
-        <div>
-          <strong>計測補助</strong>
-          <span>{targetLabel || 'フローティング表示'}</span>
+    <>
+      {isDragPriming || isDragging ? (
+        <div className="floating-tracking-event-shield print-hide" aria-hidden="true" />
+      ) : null}
+      <div
+        ref={panelRef}
+        className={
+          isDragging
+            ? 'floating-tracking-panel dragging print-hide'
+            : 'floating-tracking-panel print-hide'
+        }
+        style={positionStyle}
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onPointerMove={handlePointerMove}
+        onPointerUp={stopDragging}
+        onPointerCancel={stopDragging}
+      >
+        <div className="floating-tracking-panel-header" onPointerDown={handlePointerDown}>
+          <div>
+            <strong>計測補助</strong>
+            <span>{targetLabel || 'フローティング表示'}</span>
+          </div>
+          <button
+            className="floating-tracking-close"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            type="button"
+            aria-label="計測補助を閉じる"
+          >
+            ×
+          </button>
         </div>
-        <button
-          className="floating-tracking-close"
-          onClick={onClose}
-          type="button"
-          aria-label="計測補助を閉じる"
-        >
-          ×
-        </button>
-      </div>
 
-      <ActualTrackingTools
-        onApplyMeasuredRange={onApplyMeasuredRange}
-        canApplyMeasuredRange={hasApplyTarget}
-        applyDisabledReason="詳細入力を開いている間だけ記録時刻へ反映できます。"
-      />
-    </div>
+        <ActualTrackingTools
+          onApplyMeasuredRange={onApplyMeasuredRange}
+          canApplyMeasuredRange={hasApplyTarget}
+          applyDisabledReason="詳細入力を開いている間だけ記録時刻へ反映できます。"
+        />
+      </div>
+    </>
   );
 }
