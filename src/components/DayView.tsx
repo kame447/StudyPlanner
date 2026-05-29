@@ -65,6 +65,7 @@ interface DayViewProps {
   onDeleteActual: (actual: Actual) => Promise<void>;
   onOpenTrackingTools?: (
     onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+    onApplyMeasuredRangeToTarget: (startTime: string, endTime: string) => void,
     targetLabel: string,
   ) => void;
   onDetachTrackingTools?: (

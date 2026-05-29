@@ -12,6 +12,7 @@ interface ActualTrackingToolsProps {
   onApplyMeasuredRange: (startTime: string, endTime: string) => void;
   canApplyMeasuredRange?: boolean;
   applyDisabledReason?: string;
+  onDisplayChange?: (display: string) => void;
 }
 
 function formatClockTime(date: Date): string {
@@ -79,6 +80,7 @@ export function ActualTrackingTools({
   onApplyMeasuredRange,
   canApplyMeasuredRange = true,
   applyDisabledReason,
+  onDisplayChange,
 }: ActualTrackingToolsProps) {
   const [mode, setMode] = useState<TrackingMode>('stopwatch');
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -103,6 +105,14 @@ export function ActualTrackingTools({
   const timerRemainingMs = Math.max(timerTargetMs - timerElapsedMs, 0);
   const isTimerLocked =
     timer.anchorMs !== null || timer.runningFromMs !== null || timer.elapsedBeforeMs > 0;
+  const activeDisplay =
+    mode === 'stopwatch'
+      ? formatDurationDisplay(stopwatchElapsedMs)
+      : formatDurationDisplay(timerRemainingMs);
+
+  useEffect(() => {
+    onDisplayChange?.(activeDisplay);
+  }, [activeDisplay, onDisplayChange]);
 
   useEffect(() => {
     if (!stopwatch.runningFromMs && !timer.runningFromMs) {

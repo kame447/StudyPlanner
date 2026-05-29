@@ -17,7 +17,7 @@ const LONG_PRESS_MS = 320;
 const VIEWPORT_MARGIN = 8;
 
 function isInteractiveElement(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement
+  return target instanceof Element
     ? Boolean(target.closest('button, input, select, textarea, a, [role="button"]'))
     : false;
 }
@@ -47,6 +47,8 @@ export function FloatingActualTrackingPanel({
   const [position, setPosition] = useState<PanelPosition | null>(null);
   const [isDragPriming, setIsDragPriming] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [trackingDisplay, setTrackingDisplay] = useState('00:00:00');
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current === null) {
@@ -139,7 +141,11 @@ export function FloatingActualTrackingPanel({
     clearLongPressTimer();
 
     const panel = panelRef.current;
-    if (panel && dragPointerIdRef.current === event.pointerId) {
+    if (
+      panel &&
+      dragPointerIdRef.current === event.pointerId &&
+      panel.hasPointerCapture(event.pointerId)
+    ) {
       panel.releasePointerCapture(event.pointerId);
     }
 
@@ -166,21 +172,36 @@ export function FloatingActualTrackingPanel({
         ref={panelRef}
         className={
           isDragging
-            ? 'floating-tracking-panel dragging print-hide'
-            : 'floating-tracking-panel print-hide'
+            ? `floating-tracking-panel dragging${isCollapsed ? ' collapsed' : ''} print-hide`
+            : `floating-tracking-panel${isCollapsed ? ' collapsed' : ''} print-hide`
         }
         style={positionStyle}
         onClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
+        onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={stopDragging}
         onPointerCancel={stopDragging}
       >
-        <div className="floating-tracking-panel-header" onPointerDown={handlePointerDown}>
+        <div className="floating-tracking-panel-header">
           <div>
             <strong>計測補助</strong>
-            <span>{targetLabel || 'フローティング表示'}</span>
+            <span>
+              {isCollapsed
+                ? `${trackingDisplay}${targetLabel ? ` / ${targetLabel}` : ''}`
+                : targetLabel || 'フローティング表示'}
+            </span>
           </div>
+          <button
+            className="floating-tracking-collapse"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsCollapsed((current) => !current);
+            }}
+            type="button"
+            aria-label={isCollapsed ? '計測補助を展開' : '計測補助を折りたたむ'}
+          >
+            {isCollapsed ? '＋' : '−'}
+          </button>
           <button
             className="floating-tracking-close"
             onClick={(event) => {
@@ -194,11 +215,14 @@ export function FloatingActualTrackingPanel({
           </button>
         </div>
 
-        <ActualTrackingTools
-          onApplyMeasuredRange={onApplyMeasuredRange}
-          canApplyMeasuredRange={hasApplyTarget}
-          applyDisabledReason="詳細入力を開いている間だけ記録時刻へ反映できます。"
-        />
+        <div className="floating-tracking-panel-body" hidden={isCollapsed}>
+          <ActualTrackingTools
+            onApplyMeasuredRange={onApplyMeasuredRange}
+            canApplyMeasuredRange={hasApplyTarget}
+            applyDisabledReason="反映先がありません。詳細入力から計測補助を開いてください。"
+            onDisplayChange={setTrackingDisplay}
+          />
+        </div>
       </div>
     </>
   );

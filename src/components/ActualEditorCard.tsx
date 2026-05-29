@@ -22,6 +22,7 @@ interface ActualEditorCardProps {
   onDeleteActual: (actual: Actual) => Promise<void>;
   onOpenTrackingTools?: (
     onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+    onApplyMeasuredRangeToTarget: (startTime: string, endTime: string) => void,
     targetLabel: string,
   ) => void;
   onDetachTrackingTools?: (
@@ -185,8 +186,38 @@ export function ActualEditorCard({
   }, [applyMeasuredRange, onDetachTrackingTools]);
 
   function openTrackingTools() {
+    const targetPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
+    const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
+      materials: paceMaterials,
+      materialId: progressMaterialId,
+      deltaUnitsInput,
+      toUnitInput,
+    });
+    const targetDraft: ActualDraft = isActualDateChanged
+      ? {
+          ...draft,
+          planId: selectedCandidate?.plan.id ?? null,
+          isAlignedToPlan: false,
+          materialProgressUpdates,
+        }
+      : {
+          ...draft,
+          materialProgressUpdates,
+        };
+
     onOpenTrackingTools?.(
       applyMeasuredRange,
+      (startTime, endTime) => {
+        onSaveActual(
+          targetPlan,
+          {
+            ...targetDraft,
+            actualStartTime: startTime,
+            actualEndTime: endTime,
+          },
+          actual?.id,
+        ).catch(() => undefined);
+      },
       `${draft.occurrenceDate} ${plan.title}`,
     );
   }

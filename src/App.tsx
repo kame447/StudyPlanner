@@ -159,7 +159,8 @@ export default function App() {
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [isTrackingPanelOpen, setIsTrackingPanelOpen] = useState(false);
   const [trackingApplyTargetLabel, setTrackingApplyTargetLabel] = useState('');
-  const trackingApplyRef = useRef<((startTime: string, endTime: string) => void) | null>(null);
+  const trackingEditorApplyRef = useRef<((startTime: string, endTime: string) => void) | null>(null);
+  const trackingTargetApplyRef = useRef<((startTime: string, endTime: string) => void) | null>(null);
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
   const [appAccessGranted, setAppAccessGranted] = useState(
@@ -233,9 +234,11 @@ export default function App() {
   const openTrackingTools = useCallback(
     (
       onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+      onApplyMeasuredRangeToTarget: (startTime: string, endTime: string) => void,
       targetLabel: string,
     ) => {
-      trackingApplyRef.current = onApplyMeasuredRange;
+      trackingEditorApplyRef.current = onApplyMeasuredRange;
+      trackingTargetApplyRef.current = onApplyMeasuredRangeToTarget;
       setTrackingApplyTargetLabel(targetLabel);
       setIsTrackingPanelOpen(true);
     },
@@ -243,23 +246,30 @@ export default function App() {
   );
   const detachTrackingTools = useCallback(
     (onApplyMeasuredRange: (startTime: string, endTime: string) => void) => {
-      if (trackingApplyRef.current !== onApplyMeasuredRange) {
+      if (trackingEditorApplyRef.current !== onApplyMeasuredRange) {
         return;
       }
 
-      trackingApplyRef.current = null;
-      setTrackingApplyTargetLabel('');
+      trackingEditorApplyRef.current = null;
     },
     [],
   );
   const applyMeasuredRangeFromFloatingPanel = useCallback(
     (startTime: string, endTime: string) => {
-      trackingApplyRef.current?.(startTime, endTime);
+      if (trackingEditorApplyRef.current) {
+        trackingEditorApplyRef.current(startTime, endTime);
+        return;
+      }
+
+      trackingTargetApplyRef.current?.(startTime, endTime);
     },
     [],
   );
   const closeTrackingPanel = useCallback(() => {
     setIsTrackingPanelOpen(false);
+    trackingEditorApplyRef.current = null;
+    trackingTargetApplyRef.current = null;
+    setTrackingApplyTargetLabel('');
   }, []);
   const navigate = useCallback(
     (path: string, options: { replace?: boolean } = {}) => {
@@ -731,7 +741,7 @@ export default function App() {
 
       {isTrackingPanelOpen ? (
         <FloatingActualTrackingPanel
-          hasApplyTarget={Boolean(trackingApplyRef.current)}
+          hasApplyTarget={Boolean(trackingEditorApplyRef.current || trackingTargetApplyRef.current)}
           onApplyMeasuredRange={applyMeasuredRangeFromFloatingPanel}
           onClose={closeTrackingPanel}
           targetLabel={trackingApplyTargetLabel}
