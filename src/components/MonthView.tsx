@@ -533,6 +533,7 @@ export function MonthView({
       actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
     );
     const panelActualStudyMinutesByDate = new Map<string, number>();
+    const panelDateSet = new Set(panelGrid.map((cell) => cell.date));
 
     panelPlanOccurrences.forEach((plan) => {
       const actual = actualByOccurrenceKey.get(
@@ -546,6 +547,18 @@ export function MonthView({
       panelActualStudyMinutesByDate.set(
         plan.date,
         (panelActualStudyMinutesByDate.get(plan.date) ?? 0) +
+          minutesBetween(actual.actualStartTime, actual.actualEndTime),
+      );
+    });
+
+    actuals.forEach((actual) => {
+      if (actual.planId || !panelDateSet.has(actual.occurrenceDate)) {
+        return;
+      }
+
+      panelActualStudyMinutesByDate.set(
+        actual.occurrenceDate,
+        (panelActualStudyMinutesByDate.get(actual.occurrenceDate) ?? 0) +
           minutesBetween(actual.actualStartTime, actual.actualEndTime),
       );
     });
