@@ -246,7 +246,9 @@
 }
 
 .actual-form-compact {
+  display: grid;
   gap: 10px;
+  padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
 }
 
 .actual-editor-section-title strong {
@@ -532,6 +534,46 @@
 
 .actual-editor-actions {
   justify-content: flex-start;
+}
+
+.actual-editor-save-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  gap: 7px;
+  margin: 2px -2px 0;
+  padding: 10px 2px max(10px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 0%, transparent) 0%,
+      color-mix(in srgb, var(--surface) 94%, transparent) 18%,
+      var(--surface) 100%
+    );
+  backdrop-filter: blur(10px);
+}
+
+.actual-editor-save-summary {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-detail-modal .actual-editor-save-button {
+  width: 100%;
+  min-height: 54px;
+  border-radius: 15px;
+  font-size: 0.96rem;
+  font-weight: 900;
+  box-shadow: 0 14px 26px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .month-event-modal-overlay {

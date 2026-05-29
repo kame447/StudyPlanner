@@ -306,15 +306,6 @@ export function ActualEditorCard({
         </div>
 
         <div className="row-actions actual-editor-head-actions">
-          {isOpen ? (
-            <button
-              className="primary-button"
-              onClick={() => void handleSave()}
-              type="button"
-            >
-              記録保存
-            </button>
-          ) : null}
           {hidePlanActions ? null : (
             <>
               <button
@@ -633,6 +624,20 @@ export function ActualEditorCard({
               </button>
             </div>
           ) : null}
+
+          <div className="actual-editor-save-footer">
+            <p className="actual-editor-save-summary">
+              {draft.actualStartTime} - {draft.actualEndTime} /{' '}
+              {draft.isAlignedToPlan ? plan.title : draft.title.trim() || plan.title}
+            </p>
+            <button
+              className="primary-button actual-editor-save-button"
+              onClick={() => void handleSave()}
+              type="button"
+            >
+              記録保存
+            </button>
+          </div>
         </div>
       ) : null}
     </article>
