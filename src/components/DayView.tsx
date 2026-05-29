@@ -63,6 +63,13 @@ interface DayViewProps {
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
+  onOpenTrackingTools?: (
+    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+    targetLabel: string,
+  ) => void;
+  onDetachTrackingTools?: (
+    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+  ) => void;
   onOpenBookshelf: () => void;
   onOpenAddMaterial: () => void;
 }
@@ -565,6 +572,8 @@ export function DayView({
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
   onDeleteActual,
+  onOpenTrackingTools,
+  onDetachTrackingTools,
   onOpenBookshelf,
   onOpenAddMaterial,
 }: DayViewProps) {
@@ -803,6 +812,8 @@ export function DayView({
                 onDeletePlan={onDeletePlan}
                 onSaveActual={onSaveActual}
                 onDeleteActual={onDeleteActual}
+                onOpenTrackingTools={onOpenTrackingTools}
+                onDetachTrackingTools={onDetachTrackingTools}
                 onClose={closeModal}
                 forceOpen
                 hideToggleButton

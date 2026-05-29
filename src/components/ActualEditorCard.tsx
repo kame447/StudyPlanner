@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
@@ -9,7 +9,6 @@ import {
   getMaterialUnitLabel,
 } from '../lib/materialPace';
 import type { Actual, ActualDraft, Plan, StudyMaterial } from '../types/domain';
-import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
@@ -21,6 +20,13 @@ interface ActualEditorCardProps {
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
+  onOpenTrackingTools?: (
+    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+    targetLabel: string,
+  ) => void;
+  onDetachTrackingTools?: (
+    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+  ) => void;
   onClose?: () => void;
   forceOpen?: boolean;
   hideToggleButton?: boolean;
@@ -73,6 +79,8 @@ export function ActualEditorCard({
   onDeletePlan,
   onSaveActual,
   onDeleteActual,
+  onOpenTrackingTools,
+  onDetachTrackingTools,
   onClose,
   forceOpen = false,
   hideToggleButton = false,
@@ -163,13 +171,24 @@ export function ActualEditorCard({
     }));
   }
 
-  function applyMeasuredRange(startTime: string, endTime: string) {
+  const applyMeasuredRange = useCallback((startTime: string, endTime: string) => {
     setDraft((current) => ({
       ...current,
       actualStartTime: startTime,
       actualEndTime: endTime,
     }));
     setError('');
+  }, []);
+
+  useEffect(() => {
+    return () => onDetachTrackingTools?.(applyMeasuredRange);
+  }, [applyMeasuredRange, onDetachTrackingTools]);
+
+  function openTrackingTools() {
+    onOpenTrackingTools?.(
+      applyMeasuredRange,
+      `${draft.occurrenceDate} ${plan.title}`,
+    );
   }
 
   function handleSave() {
@@ -558,10 +577,13 @@ export function ActualEditorCard({
             </section>
           ) : null}
 
-          <details className="actual-tracking-details">
-            <summary>計測補助</summary>
-            <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
-          </details>
+          <button
+            className="ghost-button actual-tracking-launch-button"
+            onClick={openTrackingTools}
+            type="button"
+          >
+            計測補助を開く
+          </button>
 
           {error ? <p className="inline-error">{error}</p> : null}
 

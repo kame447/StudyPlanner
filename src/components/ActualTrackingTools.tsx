@@ -10,6 +10,8 @@ interface TrackerState {
 
 interface ActualTrackingToolsProps {
   onApplyMeasuredRange: (startTime: string, endTime: string) => void;
+  canApplyMeasuredRange?: boolean;
+  applyDisabledReason?: string;
 }
 
 function formatClockTime(date: Date): string {
@@ -75,6 +77,8 @@ function buildMeasuredRange(anchorMs: number, durationMs: number) {
 
 export function ActualTrackingTools({
   onApplyMeasuredRange,
+  canApplyMeasuredRange = true,
+  applyDisabledReason,
 }: ActualTrackingToolsProps) {
   const [mode, setMode] = useState<TrackingMode>('stopwatch');
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -238,6 +242,9 @@ export function ActualTrackingTools({
           <p className="detail-note">
             開始からの経過時間を測ります。反映すると、開始時刻と終了時刻を記録入力へセットします。
           </p>
+          {!canApplyMeasuredRange && applyDisabledReason ? (
+            <p className="detail-note tracking-apply-note">{applyDisabledReason}</p>
+          ) : null}
           <div className="row-actions">
             <button
               className="ghost-button"
@@ -253,7 +260,7 @@ export function ActualTrackingTools({
               className="mini-button"
               onClick={applyStopwatchRange}
               type="button"
-              disabled={!stopwatch.anchorMs || stopwatchElapsedMs <= 0}
+              disabled={!canApplyMeasuredRange || !stopwatch.anchorMs || stopwatchElapsedMs <= 0}
             >
               記録時刻へ反映
             </button>
@@ -284,6 +291,9 @@ export function ActualTrackingTools({
           <p className="detail-note">
             カウントダウンします。反映すると、開始から実際に進んだ分だけを記録時刻へ入れます。
           </p>
+          {!canApplyMeasuredRange && applyDisabledReason ? (
+            <p className="detail-note tracking-apply-note">{applyDisabledReason}</p>
+          ) : null}
 
           <div className="row-actions">
             <button
@@ -305,7 +315,7 @@ export function ActualTrackingTools({
               className="mini-button"
               onClick={applyTimerRange}
               type="button"
-              disabled={!timer.anchorMs || timerElapsedMs <= 0}
+              disabled={!canApplyMeasuredRange || !timer.anchorMs || timerElapsedMs <= 0}
             >
               記録時刻へ反映
             </button>

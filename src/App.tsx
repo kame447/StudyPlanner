@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { AdminGuard } from './components/AdminGuard';
 import { AdminRoutes } from './components/AdminViews';
@@ -7,6 +7,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { FaqView } from './components/FaqView';
+import { FloatingActualTrackingPanel } from './components/FloatingActualTrackingPanel';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -156,6 +157,9 @@ export default function App() {
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [isTrackingPanelOpen, setIsTrackingPanelOpen] = useState(false);
+  const [trackingApplyTargetLabel, setTrackingApplyTargetLabel] = useState('');
+  const trackingApplyRef = useRef<((startTime: string, endTime: string) => void) | null>(null);
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
   const [appAccessGranted, setAppAccessGranted] = useState(
@@ -226,6 +230,37 @@ export default function App() {
     currentDayNote,
   } = usePlannerAppState();
   const { status: adminStatus, isAdmin } = useAdminStatus(user?.id);
+  const openTrackingTools = useCallback(
+    (
+      onApplyMeasuredRange: (startTime: string, endTime: string) => void,
+      targetLabel: string,
+    ) => {
+      trackingApplyRef.current = onApplyMeasuredRange;
+      setTrackingApplyTargetLabel(targetLabel);
+      setIsTrackingPanelOpen(true);
+    },
+    [],
+  );
+  const detachTrackingTools = useCallback(
+    (onApplyMeasuredRange: (startTime: string, endTime: string) => void) => {
+      if (trackingApplyRef.current !== onApplyMeasuredRange) {
+        return;
+      }
+
+      trackingApplyRef.current = null;
+      setTrackingApplyTargetLabel('');
+    },
+    [],
+  );
+  const applyMeasuredRangeFromFloatingPanel = useCallback(
+    (startTime: string, endTime: string) => {
+      trackingApplyRef.current?.(startTime, endTime);
+    },
+    [],
+  );
+  const closeTrackingPanel = useCallback(() => {
+    setIsTrackingPanelOpen(false);
+  }, []);
   const navigate = useCallback(
     (path: string, options: { replace?: boolean } = {}) => {
       if (window.location.pathname !== path) {
@@ -518,6 +553,8 @@ export default function App() {
               onSaveStandaloneActual={saveStandaloneActual}
               onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
               onDeleteActual={deleteActual}
+              onOpenTrackingTools={openTrackingTools}
+              onDetachTrackingTools={detachTrackingTools}
               onOpenBookshelf={() => setViewMode('bookshelf')}
               onOpenAddMaterial={() => {
                 setBookshelfInitialAction('add-material');
@@ -690,6 +727,15 @@ export default function App() {
             onSaveLinkedActual={saveActual}
           />
         </Suspense>
+      ) : null}
+
+      {isTrackingPanelOpen ? (
+        <FloatingActualTrackingPanel
+          hasApplyTarget={Boolean(trackingApplyRef.current)}
+          onApplyMeasuredRange={applyMeasuredRangeFromFloatingPanel}
+          onClose={closeTrackingPanel}
+          targetLabel={trackingApplyTargetLabel}
+        />
       ) : null}
 
       <MyPageDialog
