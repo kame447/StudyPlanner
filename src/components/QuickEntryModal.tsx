@@ -20,6 +20,7 @@ import {
 } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
+import { TimeWheelPicker } from './TimeRangeFields';
 import type {
   Actual,
   ActualDraft,
@@ -814,10 +815,10 @@ export function QuickEntryModal({
                         </label>
                         <label className="field">
                           <span>開始時刻</span>
-                          <input
-                            type="time"
+                          <TimeWheelPicker
                             value={startTime}
-                            onChange={(event) => setStartTime(event.target.value)}
+                            role="start"
+                            onChange={setStartTime}
                           />
                         </label>
                       </div>
@@ -899,10 +900,10 @@ export function QuickEntryModal({
                         </label>
                         <label className="field">
                           <span>開始時刻</span>
-                          <input
-                            type="time"
+                          <TimeWheelPicker
                             value={startTime}
-                            onChange={(event) => setStartTime(event.target.value)}
+                            role="start"
+                            onChange={setStartTime}
                           />
                         </label>
                       </div>
@@ -947,10 +948,10 @@ export function QuickEntryModal({
                   <div className="quick-entry-two-column-grid">
                     <label className="field">
                       <span>開始時刻</span>
-                      <input
-                        type="time"
+                      <TimeWheelPicker
                         value={actualStartTime}
-                        onChange={(event) => setActualStartTime(event.target.value)}
+                        role="start"
+                        onChange={setActualStartTime}
                       />
                     </label>
                   </div>

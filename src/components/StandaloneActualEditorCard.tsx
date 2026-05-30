@@ -3,6 +3,7 @@ import { formatMinutesToTime, minutesBetween, parseTimeToMinutes } from '../lib/
 import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import { inferSubjectFromTitle } from '../lib/subjectInference';
+import { TimeWheelPicker } from './TimeRangeFields';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
 
 type DurationOptionValue = number | 'custom';
@@ -279,15 +280,17 @@ export function StandaloneActualEditorCard({
             </label>
             <label className="field">
               <span>開始時刻</span>
-              <input
-                type="time"
+              <TimeWheelPicker
                 value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
+                role="start"
+                onChange={setStartTime}
               />
             </label>
             <label className="field">
               <span>終了時刻</span>
-              <input type="time" value={endTime ?? ''} disabled />
+              <output className="time-wheel-readonly">
+                {endTime ?? '--:--'}
+              </output>
             </label>
           </div>
 

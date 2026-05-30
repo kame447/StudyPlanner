@@ -266,7 +266,7 @@
 }
 
 .actual-time-grid {
-  grid-template-columns: minmax(128px, 1.1fr) repeat(2, minmax(86px, 0.75fr));
+  grid-template-columns: minmax(128px, 0.9fr) repeat(2, minmax(156px, 1fr));
 }
 
 .actual-content-grid {
@@ -1659,7 +1659,7 @@
   }
 
   .actual-time-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .modal-card.daily-detail-modal .field input,

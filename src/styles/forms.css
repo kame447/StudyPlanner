@@ -55,6 +55,51 @@
   max-width: 100%;
 }
 
+.time-wheel-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(58px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.time-wheel-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.time-wheel-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: 10px;
+  text-align: center;
+  text-align-last: center;
+}
+
+.time-wheel-unit {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.time-wheel-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  font-weight: 700;
+  box-sizing: border-box;
+}
+
 /* DO NOT REMOVE: ios-safari-time-input-overlap-fix
    開始/終了セルの重なり再発防止。
    Safari の date/time input は通常 input と幅計算がずれるため、

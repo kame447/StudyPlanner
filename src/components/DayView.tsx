@@ -34,6 +34,7 @@ import { ActualEditorCard } from './ActualEditorCard';
 import { DayCalendarDialog } from './DatePickerDialogs';
 import { DayTimeline } from './DayTimeline';
 import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
+import { TimeWheelPicker } from './TimeRangeFields';
 import type {
   Actual,
   ActualDraft,
@@ -359,10 +360,10 @@ function MaterialQuickCreateModal({
               </label>
               <label className="field">
                 <span>開始時間</span>
-                <input
-                  type="time"
+                <TimeWheelPicker
                   value={startTime}
-                  onChange={(event) => setStartTime(event.target.value)}
+                  role="start"
+                  onChange={setStartTime}
                 />
               </label>
             </div>
