@@ -4,7 +4,10 @@ import {
   doesPlanOccurOnDate,
   expandPlansForDate,
 } from './planRecurrence';
-import { buildQuickEntryPlanDraft } from './quickEntryDrafts';
+import {
+  buildQuickEntryPlanDraft,
+  resolveQuickEntryEndTime,
+} from './quickEntryDrafts';
 
 const baseInput = {
   userId: 'user-1',
@@ -171,5 +174,10 @@ describe('buildQuickEntryPlanDraft', () => {
       materialId: 'material-1',
       materialName: '黄色チャート',
     });
+  });
+
+  it('clamps quick-entry end times to the end of the same day', () => {
+    expect(resolveQuickEntryEndTime('23:30', 60)).toBe('24:00');
+    expect(resolveQuickEntryEndTime('21:00', 60)).toBe('22:00');
   });
 });

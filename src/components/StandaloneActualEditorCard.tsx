@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { minutesBetween, minutesFromTime, timeFromMinutes } from '../lib/date';
+import { formatMinutesToTime, minutesBetween, parseTimeToMinutes } from '../lib/date';
 import { expandPlansForDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import { inferSubjectFromTitle } from '../lib/subjectInference';
@@ -32,9 +32,12 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
     return null;
   }
 
-  const endMinutes = (minutesFromTime(startTime) + durationMinutes) % (24 * 60);
+  const endMinutes = Math.min(
+    parseTimeToMinutes(startTime, 'start') + durationMinutes,
+    24 * 60,
+  );
 
-  return timeFromMinutes(endMinutes);
+  return formatMinutesToTime(endMinutes, 'end');
 }
 
 function getInitialDuration(actual: Actual): number | null {

@@ -701,6 +701,10 @@
   min-width: 0;
 }
 
+.month-event-time-range-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .month-event-datetime-label {
   color: var(--text);
   font-size: 0.78rem;
@@ -1714,6 +1718,10 @@
   .month-event-datetime-row {
     grid-template-columns: 34px minmax(112px, 1fr) minmax(78px, 0.54fr);
     gap: 6px;
+  }
+
+  .month-event-time-range-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .month-event-repeat-card {

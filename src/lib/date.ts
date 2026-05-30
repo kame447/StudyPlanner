@@ -407,9 +407,22 @@ export function getCalendarDayTone(dateString: string): CalendarDayTone {
   return 'weekday';
 }
 
+export type TimeBoundaryRole = 'start' | 'end';
+
 export function minutesFromTime(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
+}
+
+export function parseTimeToMinutes(
+  time: string,
+  role: TimeBoundaryRole = 'start',
+): number {
+  if (role === 'end' && time === '00:00') {
+    return 24 * 60;
+  }
+
+  return minutesFromTime(time);
 }
 
 export function timeFromMinutes(totalMinutes: number): string {
@@ -419,17 +432,45 @@ export function timeFromMinutes(totalMinutes: number): string {
   return `${pad(hours)}:${pad(minutes)}`;
 }
 
+export function formatMinutesToTime(
+  totalMinutes: number,
+  role: TimeBoundaryRole = 'start',
+): string {
+  const clampedMinutes =
+    role === 'end'
+      ? clampEndMinutes(totalMinutes)
+      : Math.min(Math.max(0, totalMinutes), 24 * 60 - 1);
+
+  return timeFromMinutes(clampedMinutes);
+}
+
+export function clampEndMinutes(minutes: number): number {
+  return Math.min(Math.max(0, minutes), 24 * 60);
+}
+
+export function calculateAutoEndTimeForCreate(startMinutes: number): string {
+  return formatMinutesToTime(Math.min(startMinutes + 60, 24 * 60), 'end');
+}
+
+export function calculateShiftedEndTimeForEdit(
+  newStartMinutes: number,
+  durationMinutes: number,
+): string {
+  return formatMinutesToTime(
+    Math.min(newStartMinutes + Math.max(1, durationMinutes), 24 * 60),
+    'end',
+  );
+}
+
+export function calculateTimeRangeDurationMinutes(
+  startTime: string,
+  endTime: string,
+): number {
+  return parseTimeToMinutes(endTime, 'end') - parseTimeToMinutes(startTime, 'start');
+}
+
 export function minutesBetween(startTime: string, endTime: string): number {
-  const startMinutes = minutesFromTime(startTime);
-  const endMinutes = minutesFromTime(endTime);
-
-  if (endMinutes === startMinutes) {
-    return 0;
-  }
-
-  return endMinutes > startMinutes
-    ? endMinutes - startMinutes
-    : endMinutes + 24 * 60 - startMinutes;
+  return calculateTimeRangeDurationMinutes(startTime, endTime);
 }
 
 export function formatMinutes(minutes: number): string {

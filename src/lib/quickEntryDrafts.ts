@@ -1,4 +1,4 @@
-import { minutesFromTime, timeFromMinutes } from './date';
+import { formatMinutesToTime, parseTimeToMinutes } from './date';
 import { normalizeRecurrenceRules } from './planRecurrence';
 import type {
   PlanDraft,
@@ -40,13 +40,13 @@ export function resolveQuickEntryEndTime(
   startTime: string,
   estimatedMinutes: number,
 ): string {
-  const startMinutes = minutesFromTime(startTime);
+  const startMinutes = parseTimeToMinutes(startTime, 'start');
   const endMinutes =
     estimatedMinutes > 0 && estimatedMinutes < 24 * 60
-      ? (startMinutes + estimatedMinutes) % (24 * 60)
+      ? Math.min(startMinutes + estimatedMinutes, 24 * 60)
       : startMinutes;
 
-  return timeFromMinutes(endMinutes);
+  return formatMinutesToTime(endMinutes, 'end');
 }
 
 export function buildQuickEntryPlanDraft(

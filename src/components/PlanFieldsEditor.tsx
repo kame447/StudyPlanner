@@ -1,5 +1,6 @@
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { PLAN_REPEAT_OPTIONS } from '../lib/planRecurrence';
+import { TimeRangeFields } from './TimeRangeFields';
 import type { PlanDraft } from '../types/domain';
 
 interface PlanFieldsEditorProps {
@@ -7,6 +8,7 @@ interface PlanFieldsEditorProps {
   onChange: (draft: PlanDraft) => void;
   disableDateField?: boolean;
   disableRepeatFields?: boolean;
+  timeRangeMode?: 'create' | 'edit';
 }
 
 export function PlanFieldsEditor({
@@ -14,6 +16,7 @@ export function PlanFieldsEditor({
   onChange,
   disableDateField = false,
   disableRepeatFields = false,
+  timeRangeMode = 'create',
 }: PlanFieldsEditorProps) {
   function updateField<K extends keyof PlanDraft>(field: K, value: PlanDraft[K]) {
     onChange({
@@ -73,23 +76,18 @@ export function PlanFieldsEditor({
       </div>
 
       <div className="field-pair field-full">
-        <label className="field">
-          <span>開始</span>
-          <input
-            type="time"
-            value={draft.startTime}
-            onChange={(event) => updateField('startTime', event.target.value)}
-          />
-        </label>
-
-        <label className="field">
-          <span>終了</span>
-          <input
-            type="time"
-            value={draft.endTime}
-            onChange={(event) => updateField('endTime', event.target.value)}
-          />
-        </label>
+        <TimeRangeFields
+          startTime={draft.startTime}
+          endTime={draft.endTime}
+          mode={timeRangeMode}
+          onChange={(range) =>
+            onChange({
+              ...draft,
+              startTime: range.startTime,
+              endTime: range.endTime,
+            })
+          }
+        />
       </div>
 
       <div className="field-pair field-full">

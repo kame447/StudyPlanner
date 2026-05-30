@@ -71,6 +71,7 @@ export function PlanEditorPanel({
             onChange={onChange}
             disableDateField={recurringEditMode}
             disableRepeatFields={recurringEditMode}
+            timeRangeMode="edit"
           />
 
           {hasInvalidTime ? (

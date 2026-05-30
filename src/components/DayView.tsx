@@ -8,10 +8,10 @@ import {
 import { BookOpen } from 'lucide-react';
 import {
   addDays,
+  formatMinutesToTime,
   formatDateLabel,
-  minutesFromTime,
+  parseTimeToMinutes,
   sortByDateTime,
-  timeFromMinutes,
 } from '../lib/date';
 import {
   buildPlanOccurrenceKey,
@@ -107,7 +107,10 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
     return null;
   }
 
-  return timeFromMinutes((minutesFromTime(startTime) + durationMinutes) % (24 * 60));
+  return formatMinutesToTime(
+    Math.min(parseTimeToMinutes(startTime, 'start') + durationMinutes, 24 * 60),
+    'end',
+  );
 }
 
 function MaterialShelfCover({

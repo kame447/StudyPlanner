@@ -8,6 +8,7 @@ import {
   buildActualMaterialProgressUpdatesFromInput,
   getMaterialUnitLabel,
 } from '../lib/materialPace';
+import { TimeRangeFields } from './TimeRangeFields';
 import type { Actual, ActualDraft, Plan, StudyMaterial } from '../types/domain';
 
 interface ActualEditorCardProps {
@@ -366,32 +367,18 @@ export function ActualEditorCard({
                   }}
                 />
               </label>
-              <label className="field">
-                <span>開始</span>
-                <input
-                  type="time"
-                  value={draft.actualStartTime}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      actualStartTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>終了</span>
-                <input
-                  type="time"
-                  value={draft.actualEndTime}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      actualEndTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
+              <TimeRangeFields
+                startTime={draft.actualStartTime}
+                endTime={draft.actualEndTime}
+                mode={actual ? 'edit' : 'create'}
+                onChange={(range) =>
+                  setDraft({
+                    ...draft,
+                    actualStartTime: range.startTime,
+                    actualEndTime: range.endTime,
+                  })
+                }
+              />
             </div>
           </section>
 

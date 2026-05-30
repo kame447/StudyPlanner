@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
-import { minutesFromTime, timeFromMinutes } from '../lib/date';
+import { formatMinutesToTime, parseTimeToMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import {
@@ -87,9 +87,12 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
     return null;
   }
 
-  const endMinutes = (minutesFromTime(startTime) + durationMinutes) % (24 * 60);
+  const endMinutes = Math.min(
+    parseTimeToMinutes(startTime, 'start') + durationMinutes,
+    24 * 60,
+  );
 
-  return timeFromMinutes(endMinutes);
+  return formatMinutesToTime(endMinutes, 'end');
 }
 
 export function QuickEntryModal({

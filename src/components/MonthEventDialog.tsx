@@ -13,6 +13,7 @@ import {
   MONTH_EVENT_REPEAT_OPTIONS,
   sortMonthEvents,
 } from '../lib/monthEvents';
+import { TimeRangeFields } from './TimeRangeFields';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
 
 interface MonthEventDialogProps {
@@ -125,6 +126,15 @@ function getInitialExpandedAddons(draft: MonthEventDraft): Set<MonthEventAddonKe
   return next;
 }
 
+function isAllDayTimeRange(draft: MonthEventDraft): boolean {
+  return (
+    draft.startTime === '00:00' &&
+    (draft.endTime === '24:00' ||
+      draft.endTime === '00:00' ||
+      draft.endTime === '23:59')
+  );
+}
+
 export function MonthEventDialog({
   openDate,
   userId,
@@ -183,7 +193,7 @@ export function MonthEventDialog({
     setError('');
     setShowDeleteScopePrompt(false);
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
-    setIsAllDay(nextDraft.startTime === '00:00' && nextDraft.endTime === '23:59');
+    setIsAllDay(isAllDayTimeRange(nextDraft));
     setIsSavingMonthEvent(false);
   }, [initialEventId, monthEvents, openDate, userId]);
 
@@ -219,7 +229,7 @@ export function MonthEventDialog({
     setError('');
     setShowDeleteScopePrompt(false);
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
-    setIsAllDay(nextDraft.startTime === '00:00' && nextDraft.endTime === '23:59');
+    setIsAllDay(isAllDayTimeRange(nextDraft));
   }
 
   function expandAddon(key: MonthEventAddonKey) {
@@ -233,7 +243,7 @@ export function MonthEventDialog({
       setDraft((current) => ({
         ...current,
         startTime: '00:00',
-        endTime: '23:59',
+        endTime: '24:00',
       }));
     }
   }
@@ -388,41 +398,21 @@ export function MonthEventDialog({
                   }
                   aria-label="開始"
                 />
-                <input
-                  className="month-event-time-input"
-                  type="time"
-                  value={draft.startTime}
-                  disabled={isAllDay}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      startTime: event.target.value,
-                    })
-                  }
-                  aria-label="開始時刻"
-                />
               </div>
-              <div className="month-event-datetime-row">
-                <span className="month-event-datetime-label">終了</span>
-                <input
-                  className="month-event-date-input"
-                  type="date"
-                  value={draft.date}
-                  disabled
-                  aria-label="終了"
-                />
-                <input
-                  className="month-event-time-input"
-                  type="time"
-                  value={draft.endTime}
+              <div className="month-event-datetime-row month-event-time-range-row">
+                <TimeRangeFields
+                  startTime={draft.startTime}
+                  endTime={draft.endTime}
+                  mode={editingEventId ? 'edit' : 'create'}
                   disabled={isAllDay}
-                  onChange={(event) =>
+                  inputClassName="month-event-time-input"
+                  onChange={(range) =>
                     setDraft({
                       ...draft,
-                      endTime: event.target.value,
+                      startTime: range.startTime,
+                      endTime: range.endTime,
                     })
                   }
-                  aria-label="終了時刻"
                 />
               </div>
             </div>
