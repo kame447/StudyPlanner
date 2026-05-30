@@ -2,10 +2,9 @@ import type { CSSProperties } from "react";
 import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
   buildPlanOccurrenceKey,
-  getActualOccurrenceKey,
 } from "../lib/planRecurrence";
-import { resolveMaterialSubjectName } from "../lib/materialSubject";
-import { getSubjectLabel, getSubjectTheme, type SubjectTheme } from "../lib/subjectTheme";
+import { normalizeStudyRecordsForDisplay } from "../lib/studyRecords";
+import { resolveTimelineSubjectDisplay } from "../lib/timelineSubject";
 import type {
   Actual,
   MonthEvent,
@@ -48,6 +47,7 @@ interface TimelineEntry {
   type: PlanType;
   sourceType?: PlanSourceType;
   materialId?: string | null;
+  materialName?: string;
   startTime: string;
   endTime: string;
   lane: number;
@@ -59,16 +59,6 @@ interface TimelineEntry {
 const HOUR_HEIGHT = 68;
 const MIN_BLOCK_HEIGHT = 28;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
-const NON_SUBJECT_LABELS = new Set(["予定", "記録"]);
-
-function buildThemeFromSubjectColor(color: string): SubjectTheme {
-  return {
-    fill: color,
-    soft: `color-mix(in srgb, ${color} 14%, var(--surface-strong) 86%)`,
-    border: `color-mix(in srgb, ${color} 42%, var(--border) 58%)`,
-    text: color,
-  };
-}
 
 function getDisplayMetrics(startTime: string, endTime: string) {
   const topPx = (minutesFromTime(startTime) / 60) * HOUR_HEIGHT;
@@ -206,74 +196,6 @@ function resolveAlignedToPlan(actual: Actual, plan: Plan): boolean {
   );
 }
 
-function resolveTimelineSubject(
-  entry: Pick<TimelineEntry, "subject" | "type" | "sourceType" | "materialId">,
-  materialsById: Map<string, StudyMaterial>,
-  subjectsById: Map<string, StudySubject>,
-  subjectsByName: Map<string, StudySubject>
-): { label: string; theme: SubjectTheme } {
-  const subject = entry.subject.trim();
-
-  if (subject && !NON_SUBJECT_LABELS.has(subject)) {
-    const subjectRecord = subjectsByName.get(subject);
-    const material = entry.materialId ? materialsById.get(entry.materialId) : null;
-    const materialSubjectLabel = resolveMaterialSubjectName(
-      material,
-      Array.from(subjectsById.values())
-    );
-    const materialColor =
-      materialSubjectLabel === subject
-        ? subjectsById.get(material?.subjectId ?? "")?.color || material?.color
-        : undefined;
-
-    return {
-      label: subject,
-      theme: subjectRecord?.color || materialColor
-        ? buildThemeFromSubjectColor(subjectRecord?.color || materialColor || "")
-        : getSubjectTheme(subject, entry.type, entry.sourceType),
-    };
-  }
-
-  const material = entry.materialId ? materialsById.get(entry.materialId) : null;
-  const materialSubjectLabel = resolveMaterialSubjectName(
-    material,
-    Array.from(subjectsById.values())
-  );
-
-  if (materialSubjectLabel) {
-    const subjectRecord =
-      material && subjectsById.get(material.subjectId)
-        ? subjectsById.get(material.subjectId)
-        : subjectsByName.get(materialSubjectLabel);
-
-    return {
-      label: materialSubjectLabel,
-      theme:
-        subjectRecord?.color || material?.color
-          ? buildThemeFromSubjectColor(subjectRecord?.color || material?.color || "")
-          : getSubjectTheme(materialSubjectLabel, entry.type, entry.sourceType),
-    };
-  }
-
-  const fallbackLabel = getSubjectLabel(
-    entry.subject,
-    entry.type,
-    entry.sourceType
-  ).trim();
-
-  if (fallbackLabel && !NON_SUBJECT_LABELS.has(fallbackLabel)) {
-    return {
-      label: fallbackLabel,
-      theme: getSubjectTheme(fallbackLabel, entry.type, entry.sourceType),
-    };
-  }
-
-  return {
-    label: "教科未設定",
-    theme: getSubjectTheme("", entry.type, entry.sourceType),
-  };
-}
-
 export function DayTimeline({
   dateLabel,
   plans,
@@ -293,9 +215,15 @@ export function DayTimeline({
   const materialsById = new Map(studyMaterials.map((material) => [material.id, material]));
   const subjectsById = new Map(studySubjects.map((subject) => [subject.id, subject]));
   const subjectsByName = new Map(studySubjects.map((subject) => [subject.name.trim(), subject]));
-  const actualByOccurrenceKey = new Map(
-    actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
-  );
+  const monthEventIds = new Set(monthEvents.map((monthEvent) => monthEvent.id));
+  const studyActualRecords = normalizeStudyRecordsForDisplay({
+    actuals: actuals.filter(
+      (actual) => !actual.planId || !monthEventIds.has(actual.planId),
+    ),
+    plans,
+    materials: studyMaterials,
+    subjects: studySubjects,
+  });
   const planEntries = buildTimelineEntries([
     ...plans.map((plan) => ({
       id: buildPlanOccurrenceKey(plan.id, plan.date),
@@ -307,6 +235,7 @@ export function DayTimeline({
       type: plan.type,
       sourceType: plan.sourceType,
       materialId: plan.materialId ?? null,
+      materialName: plan.materialName,
       startTime: plan.startTime,
       endTime: plan.endTime,
     })),
@@ -325,32 +254,28 @@ export function DayTimeline({
   ]);
   const actualEntries = buildTimelineEntries(
     [
-      ...plans.flatMap((plan) => {
-        const actual = actualByOccurrenceKey.get(
-          buildPlanOccurrenceKey(plan.id, plan.date)
-        );
-
-        if (!actual) {
-          return [];
-        }
-
-        return [
-          {
-            id: actual.id,
-            targetId: plan.id,
-            selectionId: `plan:${plan.id}`,
-            entryKind: "plan" as const,
-            title: resolveActualTitle(actual, plan),
-            subject: resolveActualSubject(actual, plan),
-            type: plan.type,
-            sourceType: plan.sourceType,
-            materialId: actual.materialId ?? plan.materialId ?? null,
-            startTime: actual.actualStartTime,
-            endTime: actual.actualEndTime,
-            alignedToPlan: resolveAlignedToPlan(actual, plan),
-          },
-        ];
-      }),
+      ...studyActualRecords.map((record) => ({
+        id: record.actualId,
+        targetId: record.isLinkedToPlan && record.planId ? record.planId : record.actualId,
+        selectionId:
+          record.isLinkedToPlan && record.planId
+            ? `plan:${record.planId}`
+            : `standalone-actual:${record.actualId}`,
+        entryKind: record.isLinkedToPlan ? ("plan" as const) : ("standalone-actual" as const),
+        title: record.title,
+        subject: record.subject,
+        type: record.type,
+        sourceType: record.sourceType,
+        materialId: record.materialId,
+        materialName: record.materialName,
+        startTime: record.startTime,
+        endTime: record.endTime,
+        alignedToPlan:
+          record.isLinkedToPlan && record.plan
+            ? resolveAlignedToPlan(record.actual, record.plan)
+            : false,
+        standalone: !record.isLinkedToPlan,
+      })),
       ...monthEvents.flatMap((monthEvent) => {
         const actual = actuals.find((candidate) => candidate.planId === monthEvent.id);
 
@@ -369,39 +294,21 @@ export function DayTimeline({
             type: "other" as const,
             sourceType: "manual" as const,
             materialId: actual.materialId ?? null,
+            materialName: actual.materialName,
             startTime: actual.actualStartTime,
             endTime: actual.actualEndTime,
             alignedToPlan: false,
           },
         ];
       }),
-      ...actuals
-        .filter((actual) => !actual.planId)
-        .map((actual) => ({
-          id: actual.id,
-          targetId: actual.id,
-          selectionId: `standalone-actual:${actual.id}`,
-          entryKind: "standalone-actual" as const,
-          title: actual.title?.trim() || "記録",
-          subject: actual.subject.trim(),
-          type: "study" as const,
-          sourceType: "manual" as const,
-          materialId: actual.materialId ?? null,
-          startTime: actual.actualStartTime,
-          endTime: actual.actualEndTime,
-          alignedToPlan: false,
-          standalone: true,
-        })),
     ]
   );
   const legendMap = new Map<string, string>();
 
   [...planEntries, ...actualEntries].forEach((entry) => {
-    const subject = resolveTimelineSubject(
+    const subject = resolveTimelineSubjectDisplay(
       entry,
-      materialsById,
-      subjectsById,
-      subjectsByName
+      { materialsById, subjectsById, subjectsByName }
     );
     legendMap.set(subject.label, subject.theme.fill);
   });
@@ -521,11 +428,9 @@ export function DayTimeline({
 
                 {planEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const subject = resolveTimelineSubject(
+                  const subject = resolveTimelineSubjectDisplay(
                     entry,
-                    materialsById,
-                    subjectsById,
-                    subjectsByName
+                    { materialsById, subjectsById, subjectsByName }
                   );
                   const theme = subject.theme;
 
@@ -583,11 +488,9 @@ export function DayTimeline({
 
                 {actualEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const subject = resolveTimelineSubject(
+                  const subject = resolveTimelineSubjectDisplay(
                     entry,
-                    materialsById,
-                    subjectsById,
-                    subjectsByName
+                    { materialsById, subjectsById, subjectsByName }
                   );
                   const theme = subject.theme;
 

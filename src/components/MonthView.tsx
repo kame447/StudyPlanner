@@ -25,10 +25,13 @@ import {
   sortMonthEvents,
 } from '../lib/monthEvents';
 import {
-  buildPlanOccurrenceKey,
   expandPlansForDateRange,
-  getActualOccurrenceKey,
 } from '../lib/planRecurrence';
+import {
+  isStudyRecordForDisplay,
+  normalizeStudyRecordsForDisplay,
+  sumStudyRecordMinutes,
+} from '../lib/studyRecords';
 import { MonthPickerDialog } from './MonthPickerDialog';
 import { MonthEventDialog } from './MonthEventDialog';
 import type { Actual, MonthEvent, MonthEventDraft, Plan } from '../types/domain';
@@ -529,37 +532,25 @@ export function MonthView({
       );
     });
 
-    const actualByOccurrenceKey = new Map(
-      actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
-    );
     const panelActualStudyMinutesByDate = new Map<string, number>();
-    const panelDateSet = new Set(panelGrid.map((cell) => cell.date));
+    const panelActualRecords =
+      panelGrid.length > 0
+        ? normalizeStudyRecordsForDisplay({
+            actuals,
+            plans,
+            startDate: panelGrid[0].date,
+            endDate: panelGrid[panelGrid.length - 1].date,
+          }).filter(isStudyRecordForDisplay)
+        : [];
 
-    panelPlanOccurrences.forEach((plan) => {
-      const actual = actualByOccurrenceKey.get(
-        buildPlanOccurrenceKey(plan.id, plan.date),
+    panelGrid.forEach((cell) => {
+      const dayRecords = panelActualRecords.filter(
+        (record) => record.date === cell.date,
       );
 
-      if (!actual || plan.type !== 'study') {
-        return;
-      }
-
       panelActualStudyMinutesByDate.set(
-        plan.date,
-        (panelActualStudyMinutesByDate.get(plan.date) ?? 0) +
-          minutesBetween(actual.actualStartTime, actual.actualEndTime),
-      );
-    });
-
-    actuals.forEach((actual) => {
-      if (actual.planId || !panelDateSet.has(actual.occurrenceDate)) {
-        return;
-      }
-
-      panelActualStudyMinutesByDate.set(
-        actual.occurrenceDate,
-        (panelActualStudyMinutesByDate.get(actual.occurrenceDate) ?? 0) +
-          minutesBetween(actual.actualStartTime, actual.actualEndTime),
+        cell.date,
+        sumStudyRecordMinutes(dayRecords),
       );
     });
 

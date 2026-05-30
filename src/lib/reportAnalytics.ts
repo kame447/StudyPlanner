@@ -10,13 +10,16 @@ import {
 import {
   buildPlanOccurrenceKey,
   expandPlansForDateRange,
-  getActualOccurrenceKey,
 } from './planRecurrence';
 import {
-  getActualMinutes,
   getPlannedMinutes,
   isStudyTimePlan,
 } from './studyAnalytics';
+import {
+  isStudyRecordForDisplay,
+  normalizeStudyRecordsForDisplay,
+  sumStudyRecordMinutes,
+} from './studyRecords';
 import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
 
 export type ReportScope = 'day' | 'week' | 'month' | 'year';
@@ -101,41 +104,6 @@ export const MATERIAL_CHART_COLORS = [
   '#8d9aa6',
 ];
 
-function compareActualRecency(left: Actual, right: Actual): number {
-  const updatedAtComparison = right.updatedAt.localeCompare(left.updatedAt);
-
-  return updatedAtComparison !== 0
-    ? updatedAtComparison
-    : left.id.localeCompare(right.id);
-}
-
-function dedupeLinkedActuals(actuals: Actual[]): Actual[] {
-  const dedupedActuals: Actual[] = [];
-  const linkedActualIndexByKey = new Map<string, number>();
-
-  actuals.forEach((actual) => {
-    if (!actual.planId) {
-      dedupedActuals.push(actual);
-      return;
-    }
-
-    const key = getActualOccurrenceKey(actual);
-    const existingIndex = linkedActualIndexByKey.get(key);
-
-    if (existingIndex === undefined) {
-      linkedActualIndexByKey.set(key, dedupedActuals.length);
-      dedupedActuals.push(actual);
-      return;
-    }
-
-    if (compareActualRecency(actual, dedupedActuals[existingIndex]) < 0) {
-      dedupedActuals[existingIndex] = actual;
-    }
-  });
-
-  return dedupedActuals;
-}
-
 export function endOfMonth(date: string): string {
   return addDays(addMonths(startOfMonth(date), 1), -1);
 }
@@ -186,16 +154,6 @@ export function buildSubjectColorMap(
   subjects: StudySubject[],
 ): Map<string, string> {
   return new Map(subjects.map((subject) => [subject.name, subject.color]));
-}
-
-function getPlanByOccurrenceKey(plans: Plan[]): Map<string, Plan> {
-  return new Map(
-    plans.map((plan) => [buildPlanOccurrenceKey(plan.id, plan.date), plan]),
-  );
-}
-
-function getActualSubject(actual: Actual, plan?: Plan): string {
-  return actual.subject.trim() || plan?.subject.trim() || UNSET_SUBJECT_LABEL;
 }
 
 function getActualTitle(actual: Actual, plan?: Plan): string {
@@ -351,28 +309,25 @@ export function buildReportSummary({
   const rangePlans = expandPlansForDateRange(plans, startDate, endDate).filter(
     isStudyTimePlan,
   );
-  const planByOccurrenceKey = getPlanByOccurrenceKey(rangePlans);
-  const dedupedActuals = dedupeLinkedActuals(actuals);
+  const rangeRecords = normalizeStudyRecordsForDisplay({
+    actuals,
+    plans,
+    subjects,
+    materials,
+    startDate,
+    endDate,
+  }).filter(isStudyRecordForDisplay);
   const actualByOccurrenceKey = new Map(
-    dedupedActuals
-      .filter((actual) => actual.planId)
-      .map((actual) => [getActualOccurrenceKey(actual), actual]),
+    rangeRecords
+      .filter((record) => record.isLinkedToPlan)
+      .map((record) => [record.occurrenceKey, record.actual]),
   );
-  const rangeActuals = dedupedActuals.filter((actual) => {
-    if (!isDateInRange(actual.occurrenceDate, startDate, endDate)) {
-      return false;
-    }
-
-    return !actual.planId || planByOccurrenceKey.has(getActualOccurrenceKey(actual));
-  });
+  const rangeActuals = rangeRecords.map((record) => record.actual);
   const plannedMinutes = rangePlans.reduce(
     (sum, plan) => sum + getPlannedMinutes(plan),
     0,
   );
-  const actualMinutes = rangeActuals.reduce(
-    (sum, actual) => sum + getActualMinutes(actual),
-    0,
-  );
+  const actualMinutes = sumStudyRecordMinutes(rangeRecords);
   const subjectMinutes = new Map<string, number>();
   const plannedSubjectMinutes = new Map<string, number>();
   const materialMinutes = new Map<
@@ -389,12 +344,11 @@ export function buildReportSummary({
     );
   });
 
-  rangeActuals.forEach((actual) => {
-    const plan = actual.planId
-      ? planByOccurrenceKey.get(getActualOccurrenceKey(actual))
-      : undefined;
-    const minutes = getActualMinutes(actual);
-    const subject = getActualSubject(actual, plan);
+  rangeRecords.forEach((record) => {
+    const actual = record.actual;
+    const plan = record.plan;
+    const minutes = record.durationMinutes;
+    const subject = record.subjectLabel;
     const materialEntry = resolveMaterialEntry({
       actual,
       plan,
@@ -452,16 +406,17 @@ export function buildReportSummary({
     (plan) =>
       !actualByOccurrenceKey.has(buildPlanOccurrenceKey(plan.id, plan.date)),
   );
-  const standaloneActuals = rangeActuals.filter((actual) => !actual.planId);
+  const standaloneActuals = rangeRecords
+    .filter((record) => record.linkKind === 'standalone')
+    .map((record) => record.actual);
   const learningDays = new Set(
-    rangeActuals
-      .filter((actual) => getActualMinutes(actual) > 0)
-      .map((actual) => actual.occurrenceDate),
+    rangeRecords
+      .filter((record) => record.durationMinutes > 0)
+      .map((record) => record.date),
   ).size;
-  const materialUnsetCount = rangeActuals.filter((actual) => {
-    const plan = actual.planId
-      ? planByOccurrenceKey.get(getActualOccurrenceKey(actual))
-      : undefined;
+  const materialUnsetCount = rangeRecords.filter((record) => {
+    const actual = record.actual;
+    const plan = record.plan;
 
     return (
       !actual.materialId?.trim() &&

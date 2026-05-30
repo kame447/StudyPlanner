@@ -539,6 +539,8 @@ export default function App() {
               selectedDate={selectedDate}
               plans={plans}
               actuals={actuals}
+              studyMaterials={studyMaterials}
+              studySubjects={studySubjects}
               onChangeWeek={openWeek}
               onOpenDay={openDay}
             />

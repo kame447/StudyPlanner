@@ -11,16 +11,27 @@ import {
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
-  getActualOccurrenceKey,
 } from '../lib/planRecurrence';
-import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
+import {
+  normalizeStudyRecordsForDisplay,
+  sumStudyRecordMinutes,
+} from '../lib/studyRecords';
+import { resolveTimelineSubjectDisplay } from '../lib/timelineSubject';
 import { WeekPickerDialog } from './DatePickerDialogs';
-import type { Actual, Plan, PlanSourceType } from '../types/domain';
+import type {
+  Actual,
+  Plan,
+  PlanSourceType,
+  StudyMaterial,
+  StudySubject,
+} from '../types/domain';
 
 interface WeekViewProps {
   selectedDate: string;
   plans: Plan[];
   actuals: Actual[];
+  studyMaterials: StudyMaterial[];
+  studySubjects: StudySubject[];
   onChangeWeek: (date: string) => void;
   onOpenDay: (date: string) => void;
 }
@@ -33,6 +44,8 @@ interface WeekTimelineBaseBlock {
   subject: string;
   type: Plan['type'];
   sourceType?: PlanSourceType;
+  materialId?: string | null;
+  materialName?: string;
   startTime: string;
   endTime: string;
 }
@@ -128,18 +141,12 @@ function getWeekTimelineDisplayClass(laneCount: number): string {
   return 'week-timeline-block--wide';
 }
 
-function resolveActualTitle(actual: Actual, plan?: Plan): string {
-  return actual.title?.trim() || plan?.title || '記録';
-}
-
-function resolveActualSubject(actual: Actual, plan?: Plan): string {
-  return actual.subject.trim() || plan?.subject || '記録';
-}
-
 export function WeekView({
   selectedDate,
   plans,
   actuals,
+  studyMaterials,
+  studySubjects,
   onChangeWeek,
   onOpenDay,
 }: WeekViewProps) {
@@ -147,10 +154,17 @@ export function WeekView({
   const [isWeekPickerOpen, setIsWeekPickerOpen] = useState(false);
   const weekDates = getWeekDates(selectedDate);
   const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
-  const actualByOccurrenceKey = new Map(
-    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
-  );
+  const materialsById = new Map(studyMaterials.map((material) => [material.id, material]));
+  const subjectsById = new Map(studySubjects.map((subject) => [subject.id, subject]));
+  const subjectsByName = new Map(studySubjects.map((subject) => [subject.name.trim(), subject]));
+  const weekActualRecords = normalizeStudyRecordsForDisplay({
+    actuals,
+    plans,
+    materials: studyMaterials,
+    subjects: studySubjects,
+    startDate: weekDates[0],
+    endDate: weekDates[6],
+  });
 
   return (
     <section className="panel">
@@ -254,40 +268,14 @@ export function WeekView({
         <div className="week-timeline-days">
         {weekDates.map((date) => {
           const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
-          const dayPlanKeys = new Set(
-            dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
-          );
-          const linkedActuals = dayPlans.flatMap((plan) => {
-            const actual = actualByOccurrenceKey.get(
-              buildPlanOccurrenceKey(plan.id, plan.date),
-            );
-
-            return actual ? [{ actual, plan }] : [];
-          });
-          const standaloneActuals = actuals
-            .filter(
-              (actual) =>
-                actual.occurrenceDate === date &&
-                !dayPlanKeys.has(getActualOccurrenceKey(actual)),
-            )
-            .map((actual) => ({
-              actual,
-              plan: actual.planId ? planById.get(actual.planId) : undefined,
-            }));
-          const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
-            (left, right) =>
-              minutesFromTime(left.actual.actualStartTime) -
-              minutesFromTime(right.actual.actualStartTime),
+          const dayActualRecords = weekActualRecords.filter(
+            (record) => record.date === date,
           );
           const dayPlanMinutes = dayPlans.reduce(
             (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
             0,
           );
-          const dayActualMinutes = dayActuals.reduce(
-            (sum, { actual }) =>
-              sum + minutesBetween(actual.actualStartTime, actual.actualEndTime),
-            0,
-          );
+          const dayActualMinutes = sumStudyRecordMinutes(dayActualRecords);
           const planBlocks = buildWeekTimelineLanes(
             dayPlans.map((plan) => ({
               id: buildPlanOccurrenceKey(plan.id, plan.date),
@@ -295,19 +283,23 @@ export function WeekView({
               subject: plan.subject,
               type: plan.type,
               sourceType: plan.sourceType,
+              materialId: plan.materialId ?? null,
+              materialName: plan.materialName,
               startTime: plan.startTime,
               endTime: plan.endTime,
             })),
           );
           const actualBlocks = buildWeekTimelineLanes(
-            dayActuals.map(({ actual, plan }) => ({
-              id: actual.id,
-              title: resolveActualTitle(actual, plan),
-              subject: resolveActualSubject(actual, plan),
-              type: plan?.type ?? 'other',
-              sourceType: plan?.sourceType,
-              startTime: actual.actualStartTime,
-              endTime: actual.actualEndTime,
+            dayActualRecords.map((record) => ({
+              id: record.actualId,
+              title: record.title,
+              subject: record.subject,
+              type: record.type,
+              sourceType: record.sourceType,
+              materialId: record.materialId,
+              materialName: record.materialName,
+              startTime: record.startTime,
+              endTime: record.endTime,
             })),
           );
           const hasVisibleBlocks =
@@ -354,11 +346,11 @@ export function WeekView({
 
                 {(timelineMode === 'plan' || timelineMode === 'compare') &&
                   planBlocks.map((entry) => {
-                    const subjectLabel = getSubjectLabel(
-                      entry.subject,
-                      entry.type,
-                      entry.sourceType,
-                    );
+                    const subject = resolveTimelineSubjectDisplay(entry, {
+                      materialsById,
+                      subjectsById,
+                      subjectsByName,
+                    });
 
                     return (
                       <button
@@ -377,7 +369,12 @@ export function WeekView({
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span className="week-timeline-subject">{subjectLabel}</span>
+                            <span
+                              className="week-timeline-subject"
+                              title={subject.label}
+                            >
+                              {subject.label}
+                            </span>
                           </span>
                         </span>
                       </button>
@@ -386,16 +383,12 @@ export function WeekView({
 
                 {(timelineMode === 'actual' || timelineMode === 'compare') &&
                   actualBlocks.map((entry) => {
-                    const theme = getSubjectTheme(
-                      entry.subject,
-                      entry.type,
-                      entry.sourceType,
-                    );
-                    const subjectLabel = getSubjectLabel(
-                      entry.subject,
-                      entry.type,
-                      entry.sourceType,
-                    );
+                    const subject = resolveTimelineSubjectDisplay(entry, {
+                      materialsById,
+                      subjectsById,
+                      subjectsByName,
+                    });
+                    const theme = subject.theme;
 
                     return (
                       <button
@@ -426,7 +419,12 @@ export function WeekView({
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span className="week-timeline-subject">{subjectLabel}</span>
+                            <span
+                              className="week-timeline-subject"
+                              title={subject.label}
+                            >
+                              {subject.label}
+                            </span>
                           </span>
                         </span>
                       </button>
