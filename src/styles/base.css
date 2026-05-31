@@ -261,36 +261,6 @@ button {
   cursor: pointer;
 }
 
-.csv-test-card {
-  gap: 12px;
-}
-
-.csv-test-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.csv-test-result-card.pass {
-  border-color: rgba(23, 109, 102, 0.18);
-}
-
-.csv-test-result-card.fail {
-  border-color: rgba(167, 63, 63, 0.22);
-}
-
-.csv-test-result-card.partial,
-.csv-test-result-card.skip {
-  border-color: rgba(169, 131, 47, 0.22);
-}
-
-.csv-test-row {
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  display: grid;
-  gap: 6px;
-}
-
 #root {
   min-height: 100vh;
 }

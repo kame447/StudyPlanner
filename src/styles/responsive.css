@@ -126,15 +126,6 @@
     max-width: none;
   }
 
-  .plan-input-shell {
-    max-height: calc(86vh - 28px);
-    gap: 12px;
-  }
-
-  .plan-input-tab-content {
-    gap: 12px;
-  }
-
   .modal-card .section-stack,
   .modal-card .auth-stage-card,
   .modal-card .assistant-settings-card,
@@ -1453,15 +1444,6 @@
   .plan-input-modal,
   .plan-editor-modal {
     width: calc(100vw - 16px);
-  }
-
-  .plan-input-shell {
-    max-height: calc(86vh - 24px);
-    gap: 10px;
-  }
-
-  .plan-input-tab-content {
-    gap: 10px;
   }
 
   .modal-card .section-stack,

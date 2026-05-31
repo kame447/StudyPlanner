@@ -15,7 +15,6 @@ import { PlanEditorPanel } from './components/PlanEditorPanel';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { UserAvatar } from './components/UserAvatar';
-import { createEmptyDayNoteDraft } from './domain/planner';
 import { useAdminStatus } from './hooks/useAdminStatus';
 import { useIOSViewportFocusGuard } from './hooks/useIOSViewportFocusGuard';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
@@ -207,7 +206,6 @@ export default function App() {
     saveStandaloneActual,
     linkStandaloneActualToPlan,
     deleteActual,
-    saveDayNote,
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
@@ -228,7 +226,6 @@ export default function App() {
     openWeek,
     openDay,
     setEditorDraft,
-    currentDayNote,
   } = usePlannerAppState();
   const { status: adminStatus, isAdmin } = useAdminStatus(user?.id);
   const openTrackingTools = useCallback(
@@ -589,14 +586,11 @@ export default function App() {
           {viewMode === 'report' ? (
             <ReportView
               selectedDate={selectedDate}
-              dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
               plans={plans}
               actuals={actuals}
-              monthEvents={monthEvents}
               studySubjects={studySubjects}
               studyMaterials={studyMaterials}
               onOpenDay={openDay}
-              onSaveDayNote={saveDayNote}
             />
           ) : null}
 

@@ -459,10 +459,6 @@
   border: 1px solid var(--border-strong);
 }
 
-.nl-rules-mode-card {
-  gap: 12px;
-}
-
 .assistant-settings-grid {
   display: grid;
   gap: 14px;

@@ -71,25 +71,6 @@
   overflow: hidden;
 }
 
-.plan-input-shell {
-  width: 100%;
-  min-width: 0;
-  max-height: calc(min(88vh, 920px) - 48px);
-  display: grid;
-  gap: 20px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
-}
-
-.plan-input-tab-content {
-  width: 100%;
-  min-width: 0;
-  display: grid;
-  gap: 20px;
-}
-
-.plan-input-tab-content > *,
 .plan-input-modal .section-stack,
 .plan-input-modal .form-grid,
 .plan-input-modal .field,
@@ -101,8 +82,7 @@
 
 .plan-input-modal .field input,
 .plan-input-modal .field select,
-.plan-input-modal .field textarea,
-.plan-input-tab-content > .section-stack > .primary-button {
+.plan-input-modal .field textarea {
   width: 100%;
 }
 

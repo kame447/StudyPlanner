@@ -24,9 +24,6 @@ import {
 } from '../lib/reportAnalytics';
 import type {
   Actual,
-  DayNote,
-  DayNoteDraft,
-  MonthEvent,
   Plan,
   StudyMaterial,
   StudySubject,
@@ -34,14 +31,11 @@ import type {
 
 interface ReportViewProps {
   selectedDate: string;
-  dayNote: DayNote | DayNoteDraft;
   plans: Plan[];
   actuals: Actual[];
-  monthEvents: MonthEvent[];
   studySubjects?: StudySubject[];
   studyMaterials?: StudyMaterial[];
   onOpenDay: (date: string) => void;
-  onSaveDayNote: (draft: DayNoteDraft) => Promise<void>;
 }
 
 const REPORT_SCOPES: Array<{ value: ReportScope; label: string }> = [
@@ -505,10 +499,6 @@ export function ReportView(props: ReportViewProps) {
       detail: `${summary.materialUnsetCount}件`,
     },
   ].filter((item) => item.id !== 'unset-material' || summary.materialUnsetCount > 0);
-
-  void props.dayNote;
-  void props.monthEvents;
-  void props.onSaveDayNote;
 
   return (
     <section className="section-stack report-view">
