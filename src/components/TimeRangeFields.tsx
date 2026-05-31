@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   calculateAutoEndTimeForCreate,
   calculateShiftedEndTimeForEdit,
@@ -10,6 +11,7 @@ type TimeRangeMode = 'create' | 'edit';
 type TimePickerRole = 'start' | 'end';
 
 const MINUTES_PER_DAY = 24 * 60;
+const WHEEL_ITEM_HEIGHT = 48;
 
 interface TimeRangeFieldsProps {
   startTime: string;
@@ -91,17 +93,52 @@ export function TimeWheelPicker({
     role,
     normalizedMinMinutes,
   );
-  const selectedHour = Math.floor(selectedMinutes / 60);
-  const selectedMinute = selectedMinutes % 60;
-  const hourOptions = buildHourOptions(role, normalizedMinMinutes);
-  const minuteOptions = buildMinuteOptions(
-    selectedHour,
-    role,
-    normalizedMinMinutes,
+  const [open, setOpen] = useState(false);
+  const [draftMinutes, setDraftMinutes] = useState(selectedMinutes);
+  const hourListRef = useRef<HTMLDivElement | null>(null);
+  const minuteListRef = useRef<HTMLDivElement | null>(null);
+  const selectedHour = Math.floor(draftMinutes / 60);
+  const selectedMinute = draftMinutes % 60;
+  const hourOptions = useMemo(
+    () => buildHourOptions(role, normalizedMinMinutes),
+    [normalizedMinMinutes, role],
   );
-  const selectClassName = inputClassName
-    ? `time-wheel-select ${inputClassName}`
-    : 'time-wheel-select';
+  const minuteOptions = useMemo(
+    () => buildMinuteOptions(selectedHour, role, normalizedMinMinutes),
+    [normalizedMinMinutes, role, selectedHour],
+  );
+  const triggerClassName = inputClassName
+    ? `time-wheel-trigger ${inputClassName}`
+    : 'time-wheel-trigger';
+
+  useEffect(() => {
+    if (open) {
+      setDraftMinutes(selectedMinutes);
+    }
+  }, [open, selectedMinutes]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const hourIndex = hourOptions.indexOf(selectedHour);
+    const minuteIndex = minuteOptions.indexOf(selectedMinute);
+
+    if (hourIndex >= 0) {
+      hourListRef.current?.scrollTo({
+        top: hourIndex * WHEEL_ITEM_HEIGHT,
+        behavior: 'smooth',
+      });
+    }
+
+    if (minuteIndex >= 0) {
+      minuteListRef.current?.scrollTo({
+        top: minuteIndex * WHEEL_ITEM_HEIGHT,
+        behavior: 'smooth',
+      });
+    }
+  }, [hourOptions, minuteOptions, open, selectedHour, selectedMinute]);
 
   function commit(nextHour: number, preferredMinute: number) {
     const nextMinuteOptions = buildMinuteOptions(
@@ -118,45 +155,141 @@ export function TimeWheelPicker({
       normalizedMinMinutes,
     );
 
-    onChange(formatMinutesToTime(nextMinutes, role));
+    setDraftMinutes(nextMinutes);
+  }
+
+  function commitAndClose() {
+    onChange(formatMinutesToTime(draftMinutes, role));
+    setOpen(false);
+  }
+
+  function handleColumnScroll(
+    list: HTMLDivElement,
+    options: number[],
+    unit: 'hour' | 'minute',
+  ) {
+    const optionIndex = Math.min(
+      Math.max(0, Math.round(list.scrollTop / WHEEL_ITEM_HEIGHT)),
+      options.length - 1,
+    );
+    const nextValue = options[optionIndex];
+
+    if (unit === 'hour') {
+      commit(nextValue, selectedMinute);
+      return;
+    }
+
+    commit(selectedHour, nextValue);
   }
 
   return (
-    <div className="time-wheel-picker">
-      <div className="time-wheel-column">
-        <span className="time-wheel-unit">時</span>
-        <select
-          aria-label={role === 'start' ? '開始 時' : '終了 時'}
-          className={selectClassName}
-          value={selectedHour}
-          disabled={disabled}
-          onChange={(event) => commit(Number(event.target.value), selectedMinute)}
-        >
-          {hourOptions.map((hour) => (
-            <option key={hour} value={hour}>
-              {padTimePart(hour)}
-            </option>
-          ))}
-        </select>
-      </div>
+    <>
+      <button
+        type="button"
+        className={triggerClassName}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+      >
+        {formatMinutesToTime(selectedMinutes, role)}
+      </button>
 
-      <div className="time-wheel-column">
-        <span className="time-wheel-unit">分</span>
-        <select
-          aria-label={role === 'start' ? '開始 分' : '終了 分'}
-          className={selectClassName}
-          value={selectedMinute}
-          disabled={disabled}
-          onChange={(event) => commit(selectedHour, Number(event.target.value))}
+      {open ? (
+        <div
+          className="overlay modal-overlay time-picker-overlay"
+          onClick={() => setOpen(false)}
         >
-          {minuteOptions.map((minute) => (
-            <option key={minute} value={minute}>
-              {padTimePart(minute)}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
+          <div
+            className="modal-card time-picker-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={role === 'start' ? '開始時刻を選択' : '終了時刻を選択'}
+          >
+            <div className="time-picker-title">
+              <strong>{role === 'start' ? '開始時刻' : '終了時刻'}</strong>
+              <span>{formatMinutesToTime(draftMinutes, role)}</span>
+            </div>
+
+            <div className="time-wheel-picker" aria-label="時刻を選択">
+              <div className="time-wheel-selection" aria-hidden="true" />
+              <div className="time-wheel-column">
+                <span className="time-wheel-unit">時</span>
+                <div
+                  className="time-wheel-list"
+                  ref={hourListRef}
+                  onScroll={(event) =>
+                    handleColumnScroll(event.currentTarget, hourOptions, 'hour')
+                  }
+                >
+                  {hourOptions.map((hour) => (
+                    <button
+                      key={hour}
+                      className={
+                        hour === selectedHour
+                          ? 'time-wheel-item active'
+                          : 'time-wheel-item'
+                      }
+                      type="button"
+                      onClick={() => commit(hour, selectedMinute)}
+                    >
+                      {padTimePart(hour)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <span className="time-wheel-separator" aria-hidden="true">
+                :
+              </span>
+
+              <div className="time-wheel-column">
+                <span className="time-wheel-unit">分</span>
+                <div
+                  className="time-wheel-list"
+                  ref={minuteListRef}
+                  onScroll={(event) =>
+                    handleColumnScroll(event.currentTarget, minuteOptions, 'minute')
+                  }
+                >
+                  {minuteOptions.map((minute) => (
+                    <button
+                      key={minute}
+                      className={
+                        minute === selectedMinute
+                          ? 'time-wheel-item active'
+                          : 'time-wheel-item'
+                      }
+                      type="button"
+                      onClick={() => commit(selectedHour, minute)}
+                    >
+                      {padTimePart(minute)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="time-picker-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setOpen(false)}
+                type="button"
+              >
+                キャンセル
+              </button>
+              <button
+                className="primary-button"
+                onClick={commitAndClose}
+                type="button"
+              >
+                決定
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -202,8 +335,8 @@ export function TimeRangeFields({
   }
 
   return (
-    <>
-      <label className={labelClassName}>
+    <div className="time-range-fields">
+      <div className={labelClassName}>
         <span>{startLabel}</span>
         <TimeWheelPicker
           value={startValue}
@@ -212,9 +345,9 @@ export function TimeRangeFields({
           inputClassName={inputClassName}
           onChange={updateStart}
         />
-      </label>
+      </div>
 
-      <label className={labelClassName}>
+      <div className={labelClassName}>
         <span>{endLabel}</span>
         <TimeWheelPicker
           value={endValue}
@@ -224,7 +357,7 @@ export function TimeRangeFields({
           minMinutes={Math.min(startMinutes + 1, MINUTES_PER_DAY)}
           onChange={updateEnd}
         />
-      </label>
-    </>
+      </div>
+    </div>
   );
 }

@@ -701,10 +701,6 @@
   min-width: 0;
 }
 
-.month-event-time-range-row {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .month-event-datetime-label {
   color: var(--text);
   font-size: 0.78rem;
@@ -801,16 +797,28 @@
 .modal-card.month-event-modal .field input,
 .modal-card.month-event-modal .field select,
 .modal-card.month-event-modal .field textarea,
-.modal-card.month-event-modal .month-event-date-input,
+.modal-card.month-event-modal .month-event-date-button,
 .modal-card.month-event-modal .month-event-time-input,
 .modal-card.month-event-modal .month-event-checklist-item input[type='text'],
 .modal-card.month-event-modal .month-event-checklist-item input:not([type='checkbox']) {
   min-height: 38px;
   padding: 7px 10px;
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   background: var(--surface-strong);
+  color: inherit;
+  font: inherit;
   font-size: 0.82rem;
   line-height: 1.25;
+}
+
+.modal-card.month-event-modal .month-event-date-button,
+.modal-card.month-event-modal .month-event-time-input {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .modal-card.month-event-modal .month-event-title-field input {
@@ -866,7 +874,7 @@
 
 .modal-card.month-event-modal .field input[type='date'],
 .modal-card.month-event-modal .field input[type='time'],
-.modal-card.month-event-modal .month-event-date-input,
+.modal-card.month-event-modal .month-event-date-button,
 .modal-card.month-event-modal .month-event-time-input {
   inline-size: 100%;
   min-inline-size: 0;
@@ -1720,10 +1728,6 @@
     gap: 6px;
   }
 
-  .month-event-time-range-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .month-event-repeat-card {
     grid-template-columns: 1fr;
   }
@@ -1731,7 +1735,7 @@
   .modal-card.month-event-modal .field input,
   .modal-card.month-event-modal .field select,
   .modal-card.month-event-modal .field textarea,
-  .modal-card.month-event-modal .month-event-date-input,
+  .modal-card.month-event-modal .month-event-date-button,
   .modal-card.month-event-modal .month-event-time-input,
   .modal-card.month-event-modal .month-event-checklist-item input[type='text'],
   .modal-card.month-event-modal .month-event-checklist-item input:not([type='checkbox']) {

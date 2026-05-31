@@ -4,7 +4,14 @@ import {
   createEmptyMonthEventDraft,
   createMonthEventDraftFromEvent,
 } from '../domain/planner';
-import { formatDateLabel, minutesBetween } from '../lib/date';
+import {
+  calculateAutoEndTimeForCreate,
+  calculateShiftedEndTimeForEdit,
+  calculateTimeRangeDurationMinutes,
+  formatDateLabel,
+  minutesBetween,
+  parseTimeToMinutes,
+} from '../lib/date';
 import {
   doesMonthEventOccurOnDate,
   formatMonthEventTimeRange,
@@ -13,7 +20,8 @@ import {
   MONTH_EVENT_REPEAT_OPTIONS,
   sortMonthEvents,
 } from '../lib/monthEvents';
-import { TimeRangeFields } from './TimeRangeFields';
+import { DayCalendarDialog } from './DatePickerDialogs';
+import { TimeWheelPicker } from './TimeRangeFields';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
 
 interface MonthEventDialogProps {
@@ -47,6 +55,7 @@ const FULL_WEEKDAY_LABELS = [
 ];
 
 const MONTH_EVENT_BAR_COLORS = ['#56c59a', '#e56d9a', '#5f9df7', '#f2ad4e', '#8a7cf6'];
+const MINUTES_PER_DAY = 24 * 60;
 
 function formatMonthEventDateHeading(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
@@ -56,6 +65,18 @@ function formatMonthEventDateHeading(dateString: string): string {
   }
 
   return `${date.getMonth() + 1}月${date.getDate()}日 ${FULL_WEEKDAY_LABELS[date.getDay()]}`;
+}
+
+function formatMonthEventDateButton(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  const weekdayLabel = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日(${weekdayLabel})`;
 }
 
 function getTimelineItemStyle(index: number): CSSProperties {
@@ -156,6 +177,9 @@ export function MonthEventDialog({
   );
   const [isAllDay, setIsAllDay] = useState(false);
   const [isSavingMonthEvent, setIsSavingMonthEvent] = useState(false);
+  const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end' | null>(
+    null,
+  );
 
   const visibleEvents = useMemo(() => {
     if (!openDate) {
@@ -195,6 +219,7 @@ export function MonthEventDialog({
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
     setIsAllDay(isAllDayTimeRange(nextDraft));
     setIsSavingMonthEvent(false);
+    setDatePickerTarget(null);
   }, [initialEventId, monthEvents, openDate, userId]);
 
   if (!openDate) {
@@ -202,6 +227,8 @@ export function MonthEventDialog({
   }
 
   const activeDate = openDate;
+  const startMinutes = parseTimeToMinutes(draft.startTime, 'start');
+  const datetimeButtonDate = formatMonthEventDateButton(draft.date);
 
   function resetEditor(nextStatus = '') {
     const nextDraft = createEmptyMonthEventDraft(userId, activeDate);
@@ -214,6 +241,7 @@ export function MonthEventDialog({
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
     setIsAllDay(false);
     setIsSavingMonthEvent(false);
+    setDatePickerTarget(null);
   }
 
   function handleNewEvent() {
@@ -230,6 +258,7 @@ export function MonthEventDialog({
     setShowDeleteScopePrompt(false);
     setExpandedAddons(getInitialExpandedAddons(nextDraft));
     setIsAllDay(isAllDayTimeRange(nextDraft));
+    setDatePickerTarget(null);
   }
 
   function expandAddon(key: MonthEventAddonKey) {
@@ -246,6 +275,29 @@ export function MonthEventDialog({
         endTime: '24:00',
       }));
     }
+  }
+
+  function updateStartTime(nextStartTime: string) {
+    const nextStartMinutes = parseTimeToMinutes(nextStartTime, 'start');
+    const nextEndTime = editingEventId
+      ? calculateShiftedEndTimeForEdit(
+          nextStartMinutes,
+          calculateTimeRangeDurationMinutes(draft.startTime, draft.endTime),
+        )
+      : calculateAutoEndTimeForCreate(nextStartMinutes);
+
+    setDraft({
+      ...draft,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+    });
+  }
+
+  function updateEndTime(nextEndTime: string) {
+    setDraft({
+      ...draft,
+      endTime: nextEndTime,
+    });
   }
 
   async function handleSave() {
@@ -386,33 +438,39 @@ export function MonthEventDialog({
             <div className="month-event-datetime-rows">
               <div className="month-event-datetime-row">
                 <span className="month-event-datetime-label">開始</span>
-                <input
-                  className="month-event-date-input"
-                  type="date"
-                  value={draft.date}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      date: event.target.value,
-                    })
-                  }
-                  aria-label="開始"
-                />
-              </div>
-              <div className="month-event-datetime-row month-event-time-range-row">
-                <TimeRangeFields
-                  startTime={draft.startTime}
-                  endTime={draft.endTime}
-                  mode={editingEventId ? 'edit' : 'create'}
+                <button
+                  className="month-event-date-button"
+                  onClick={() => setDatePickerTarget('start')}
+                  type="button"
+                  aria-label="開始日"
+                >
+                  {datetimeButtonDate}
+                </button>
+                <TimeWheelPicker
+                  value={draft.startTime}
+                  role="start"
                   disabled={isAllDay}
                   inputClassName="month-event-time-input"
-                  onChange={(range) =>
-                    setDraft({
-                      ...draft,
-                      startTime: range.startTime,
-                      endTime: range.endTime,
-                    })
-                  }
+                  onChange={updateStartTime}
+                />
+              </div>
+              <div className="month-event-datetime-row">
+                <span className="month-event-datetime-label">終了</span>
+                <button
+                  className="month-event-date-button"
+                  onClick={() => setDatePickerTarget('end')}
+                  type="button"
+                  aria-label="終了日"
+                >
+                  {datetimeButtonDate}
+                </button>
+                <TimeWheelPicker
+                  value={draft.endTime}
+                  role="end"
+                  disabled={isAllDay}
+                  inputClassName="month-event-time-input"
+                  minMinutes={Math.min(startMinutes + 1, MINUTES_PER_DAY)}
+                  onChange={updateEndTime}
                 />
               </div>
             </div>
@@ -702,6 +760,17 @@ export function MonthEventDialog({
           </div>
         ) : null}
       </div>
+      <DayCalendarDialog
+        open={datePickerTarget !== null}
+        selectedDate={draft.date}
+        onSelectDate={(nextDate) =>
+          setDraft((current) => ({
+            ...current,
+            date: nextDate,
+          }))
+        }
+        onClose={() => setDatePickerTarget(null)}
+      />
     </div>
   );
 }
