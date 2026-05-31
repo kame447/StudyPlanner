@@ -11,7 +11,8 @@ type TimeRangeMode = 'create' | 'edit';
 type TimePickerRole = 'start' | 'end';
 
 const MINUTES_PER_DAY = 24 * 60;
-const WHEEL_ITEM_HEIGHT = 48;
+const MINUTE_STEP = 5;
+const PICKER_SCROLL_SETTLE_MS = 90;
 
 interface TimeRangeFieldsProps {
   startTime: string;
@@ -51,9 +52,17 @@ function buildHourOptions(role: TimePickerRole, minMinutes = 0): number[] {
   const maxHour = role === 'end' ? 24 : 23;
   const minHour = role === 'end' ? Math.floor(minMinutes / 60) : 0;
 
-  return Array.from(
+  const hours = Array.from(
     { length: maxHour - minHour + 1 },
     (_, index) => minHour + index,
+  );
+
+  if (role === 'start') {
+    return hours;
+  }
+
+  return hours.filter(
+    (hour) => buildMinuteOptions(hour, role, minMinutes).length > 0,
   );
 }
 
@@ -69,13 +78,68 @@ function buildMinuteOptions(
   const hourStartMinutes = hour * 60;
   const minMinute =
     role === 'end' && Math.floor(minMinutes / 60) === hour
-      ? minMinutes - hourStartMinutes
+      ? Math.ceil((minMinutes - hourStartMinutes) / MINUTE_STEP) * MINUTE_STEP
       : 0;
 
+  if (minMinute >= 60) {
+    return [];
+  }
+
   return Array.from(
-    { length: 60 - minMinute },
-    (_, index) => minMinute + index,
+    { length: Math.floor((60 - minMinute - 1) / MINUTE_STEP) + 1 },
+    (_, index) => minMinute + index * MINUTE_STEP,
   );
+}
+
+function findClosestWheelValue(
+  container: HTMLDivElement,
+  values: number[],
+): number | null {
+  const centerY = container.scrollTop + container.clientHeight / 2;
+  let closestValue: number | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  values.forEach((value) => {
+    const item = container.querySelector<HTMLElement>(`[data-value="${value}"]`);
+
+    if (!item) {
+      return;
+    }
+
+    const itemCenter = item.offsetTop + item.offsetHeight / 2;
+    const distance = Math.abs(itemCenter - centerY);
+
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestValue = value;
+    }
+  });
+
+  return closestValue;
+}
+
+function scrollToWheelValue(
+  container: HTMLDivElement | null,
+  value: number,
+  behavior: ScrollBehavior,
+) {
+  if (!container) {
+    return;
+  }
+
+  const item = container.querySelector<HTMLElement>(`[data-value="${value}"]`);
+
+  if (!item) {
+    return;
+  }
+
+  const nextScrollTop =
+    item.offsetTop - container.clientHeight / 2 + item.offsetHeight / 2;
+
+  container.scrollTo({
+    top: Math.max(0, nextScrollTop),
+    behavior,
+  });
 }
 
 export function TimeWheelPicker({
@@ -97,6 +161,8 @@ export function TimeWheelPicker({
   const [draftMinutes, setDraftMinutes] = useState(selectedMinutes);
   const hourListRef = useRef<HTMLDivElement | null>(null);
   const minuteListRef = useRef<HTMLDivElement | null>(null);
+  const hourScrollTimeoutRef = useRef<number | null>(null);
+  const minuteScrollTimeoutRef = useRef<number | null>(null);
   const selectedHour = Math.floor(draftMinutes / 60);
   const selectedMinute = draftMinutes % 60;
   const hourOptions = useMemo(
@@ -111,44 +177,79 @@ export function TimeWheelPicker({
     ? `time-wheel-trigger ${inputClassName}`
     : 'time-wheel-trigger';
 
-  useEffect(() => {
-    if (open) {
-      setDraftMinutes(selectedMinutes);
-    }
-  }, [open, selectedMinutes]);
+  function normalizeToWheelMinutes(minutes: number): number {
+    const clampedMinutes = clampPickerMinutes(
+      minutes,
+      role,
+      normalizedMinMinutes,
+    );
+    const hours = buildHourOptions(role, normalizedMinMinutes);
+    const rawHour = Math.floor(clampedMinutes / 60);
+    const nextHour = hours.includes(rawHour)
+      ? rawHour
+      : hours.find((hour) => hour > rawHour) ?? hours[hours.length - 1];
+    const minuteOptionsForHour = buildMinuteOptions(
+      nextHour,
+      role,
+      normalizedMinMinutes,
+    );
+    const rawMinute = nextHour === rawHour ? clampedMinutes % 60 : 0;
+    const nextMinute = minuteOptionsForHour.includes(rawMinute)
+      ? rawMinute
+      : minuteOptionsForHour.find((minute) => minute > rawMinute) ??
+        minuteOptionsForHour[0];
+
+    return clampPickerMinutes(
+      nextHour * 60 + nextMinute,
+      role,
+      normalizedMinMinutes,
+    );
+  }
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const hourIndex = hourOptions.indexOf(selectedHour);
-    const minuteIndex = minuteOptions.indexOf(selectedMinute);
+    const nextDraftMinutes = normalizeToWheelMinutes(selectedMinutes);
+    const nextHour = Math.floor(nextDraftMinutes / 60);
+    const nextMinute = nextDraftMinutes % 60;
 
-    if (hourIndex >= 0) {
-      hourListRef.current?.scrollTo({
-        top: hourIndex * WHEEL_ITEM_HEIGHT,
-        behavior: 'smooth',
-      });
-    }
+    setDraftMinutes(nextDraftMinutes);
 
-    if (minuteIndex >= 0) {
-      minuteListRef.current?.scrollTo({
-        top: minuteIndex * WHEEL_ITEM_HEIGHT,
-        behavior: 'smooth',
-      });
-    }
-  }, [hourOptions, minuteOptions, open, selectedHour, selectedMinute]);
+    const scrollTimer = window.setTimeout(() => {
+      scrollToWheelValue(hourListRef.current, nextHour, 'auto');
+      scrollToWheelValue(minuteListRef.current, nextMinute, 'auto');
+    }, 0);
 
-  function commit(nextHour: number, preferredMinute: number) {
+    return () => {
+      window.clearTimeout(scrollTimer);
+
+      if (hourScrollTimeoutRef.current !== null) {
+        window.clearTimeout(hourScrollTimeoutRef.current);
+      }
+
+      if (minuteScrollTimeoutRef.current !== null) {
+        window.clearTimeout(minuteScrollTimeoutRef.current);
+      }
+    };
+  }, [open, selectedMinutes, normalizedMinMinutes]);
+
+  function setDraftFromParts(nextHour: number, preferredMinute: number) {
     const nextMinuteOptions = buildMinuteOptions(
       nextHour,
       role,
       normalizedMinMinutes,
     );
+
+    if (nextMinuteOptions.length === 0) {
+      return null;
+    }
+
     const nextMinute = nextMinuteOptions.includes(preferredMinute)
       ? preferredMinute
-      : nextMinuteOptions[0];
+      : nextMinuteOptions.find((minute) => minute > preferredMinute) ??
+        nextMinuteOptions[0];
     const nextMinutes = clampPickerMinutes(
       nextHour * 60 + nextMinute,
       role,
@@ -156,30 +257,79 @@ export function TimeWheelPicker({
     );
 
     setDraftMinutes(nextMinutes);
+
+    return {
+      hour: Math.floor(nextMinutes / 60),
+      minute: nextMinutes % 60,
+      minutes: nextMinutes,
+    };
+  }
+
+  function commit(nextHour: number, preferredMinute: number) {
+    setDraftFromParts(nextHour, preferredMinute);
   }
 
   function commitAndClose() {
-    onChange(formatMinutesToTime(draftMinutes, role));
+    const nextMinutes = clampPickerMinutes(
+      normalizeToWheelMinutes(draftMinutes),
+      role,
+      normalizedMinMinutes,
+    );
+
+    onChange(formatMinutesToTime(nextMinutes, role));
     setOpen(false);
   }
 
-  function handleColumnScroll(
-    list: HTMLDivElement,
-    options: number[],
-    unit: 'hour' | 'minute',
-  ) {
-    const optionIndex = Math.min(
-      Math.max(0, Math.round(list.scrollTop / WHEEL_ITEM_HEIGHT)),
-      options.length - 1,
-    );
-    const nextValue = options[optionIndex];
-
-    if (unit === 'hour') {
-      commit(nextValue, selectedMinute);
+  function handleHourScroll() {
+    if (!hourListRef.current) {
       return;
     }
 
-    commit(selectedHour, nextValue);
+    if (hourScrollTimeoutRef.current !== null) {
+      window.clearTimeout(hourScrollTimeoutRef.current);
+    }
+
+    hourScrollTimeoutRef.current = window.setTimeout(() => {
+      const nextHour = findClosestWheelValue(hourListRef.current!, hourOptions);
+
+      if (nextHour === null) {
+        return;
+      }
+
+      const nextDraft = setDraftFromParts(nextHour, selectedMinute);
+
+      scrollToWheelValue(hourListRef.current, nextHour, 'smooth');
+
+      if (nextDraft) {
+        window.setTimeout(() => {
+          scrollToWheelValue(minuteListRef.current, nextDraft.minute, 'smooth');
+        }, 0);
+      }
+    }, PICKER_SCROLL_SETTLE_MS);
+  }
+
+  function handleMinuteScroll() {
+    if (!minuteListRef.current) {
+      return;
+    }
+
+    if (minuteScrollTimeoutRef.current !== null) {
+      window.clearTimeout(minuteScrollTimeoutRef.current);
+    }
+
+    minuteScrollTimeoutRef.current = window.setTimeout(() => {
+      const nextMinute = findClosestWheelValue(
+        minuteListRef.current!,
+        minuteOptions,
+      );
+
+      if (nextMinute === null) {
+        return;
+      }
+
+      setDraftFromParts(selectedHour, nextMinute);
+      scrollToWheelValue(minuteListRef.current, nextMinute, 'smooth');
+    }, PICKER_SCROLL_SETTLE_MS);
   }
 
   return (
@@ -218,9 +368,7 @@ export function TimeWheelPicker({
                 <div
                   className="time-wheel-list"
                   ref={hourListRef}
-                  onScroll={(event) =>
-                    handleColumnScroll(event.currentTarget, hourOptions, 'hour')
-                  }
+                  onScroll={handleHourScroll}
                 >
                   {hourOptions.map((hour) => (
                     <button
@@ -230,8 +378,23 @@ export function TimeWheelPicker({
                           ? 'time-wheel-item active'
                           : 'time-wheel-item'
                       }
+                      data-value={hour}
                       type="button"
-                      onClick={() => commit(hour, selectedMinute)}
+                      onClick={() => {
+                        const nextDraft = setDraftFromParts(hour, selectedMinute);
+
+                        scrollToWheelValue(hourListRef.current, hour, 'smooth');
+
+                        if (nextDraft) {
+                          window.setTimeout(() => {
+                            scrollToWheelValue(
+                              minuteListRef.current,
+                              nextDraft.minute,
+                              'smooth',
+                            );
+                          }, 0);
+                        }
+                      }}
                     >
                       {padTimePart(hour)}
                     </button>
@@ -248,9 +411,7 @@ export function TimeWheelPicker({
                 <div
                   className="time-wheel-list"
                   ref={minuteListRef}
-                  onScroll={(event) =>
-                    handleColumnScroll(event.currentTarget, minuteOptions, 'minute')
-                  }
+                  onScroll={handleMinuteScroll}
                 >
                   {minuteOptions.map((minute) => (
                     <button
@@ -260,8 +421,12 @@ export function TimeWheelPicker({
                           ? 'time-wheel-item active'
                           : 'time-wheel-item'
                       }
+                      data-value={minute}
                       type="button"
-                      onClick={() => commit(selectedHour, minute)}
+                      onClick={() => {
+                        commit(selectedHour, minute);
+                        scrollToWheelValue(minuteListRef.current, minute, 'smooth');
+                      }}
                     >
                       {padTimePart(minute)}
                     </button>
