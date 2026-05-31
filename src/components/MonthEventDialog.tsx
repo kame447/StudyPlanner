@@ -278,26 +278,28 @@ export function MonthEventDialog({
   }
 
   function updateStartTime(nextStartTime: string) {
-    const nextStartMinutes = parseTimeToMinutes(nextStartTime, 'start');
-    const nextEndTime = editingEventId
-      ? calculateShiftedEndTimeForEdit(
-          nextStartMinutes,
-          calculateTimeRangeDurationMinutes(draft.startTime, draft.endTime),
-        )
-      : calculateAutoEndTimeForCreate(nextStartMinutes);
+    setDraft((current) => {
+      const nextStartMinutes = parseTimeToMinutes(nextStartTime, 'start');
+      const nextEndTime = editingEventId
+        ? calculateShiftedEndTimeForEdit(
+            nextStartMinutes,
+            calculateTimeRangeDurationMinutes(current.startTime, current.endTime),
+          )
+        : calculateAutoEndTimeForCreate(nextStartMinutes);
 
-    setDraft({
-      ...draft,
-      startTime: nextStartTime,
-      endTime: nextEndTime,
+      return {
+        ...current,
+        startTime: nextStartTime,
+        endTime: nextEndTime,
+      };
     });
   }
 
   function updateEndTime(nextEndTime: string) {
-    setDraft({
-      ...draft,
+    setDraft((current) => ({
+      ...current,
       endTime: nextEndTime,
-    });
+    }));
   }
 
   async function handleSave() {

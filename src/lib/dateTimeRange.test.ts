@@ -15,6 +15,11 @@ describe('time range utilities', () => {
     expect(formatMinutesToTime(24 * 60, 'end')).toBe('24:00');
   });
 
+  it('does not allow 24:00 as a start boundary', () => {
+    expect(formatMinutesToTime(24 * 60, 'start')).toBe('23:59');
+    expect(formatMinutesToTime(24 * 60, 'end')).toBe('24:00');
+  });
+
   it('calculates create end times near the selected start time', () => {
     expect(calculateAutoEndTimeForCreate(parseTimeToMinutes('21:00'))).toBe('22:00');
     expect(calculateAutoEndTimeForCreate(parseTimeToMinutes('13:30'))).toBe('14:30');
@@ -56,5 +61,15 @@ describe('time range utilities', () => {
     expect(minutesBetween('00:00', '24:00')).toBe(24 * 60);
     expect(minutesBetween('10:00', '09:00')).toBeLessThan(0);
     expect(minutesBetween('18:00', '17:59')).toBeLessThan(0);
+  });
+
+  it('keeps the only valid end near midnight at 24:00', () => {
+    expect(calculateAutoEndTimeForCreate(parseTimeToMinutes('23:55'))).toBe('24:00');
+    expect(
+      calculateShiftedEndTimeForEdit(
+        parseTimeToMinutes('23:55'),
+        calculateTimeRangeDurationMinutes('23:00', '00:00'),
+      ),
+    ).toBe('24:00');
   });
 });

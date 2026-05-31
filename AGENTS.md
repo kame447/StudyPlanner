@@ -131,6 +131,7 @@ Rules:
 - Create a repository/service abstraction for auth and data access
 - Keep AI-related logic separate from UI rendering logic
 - Prefer predictable, maintainable code over clever shortcuts
+
 ## Natural language scheduling rules
 
 - Keep natural language schedule parsing in a staged pipeline
@@ -181,6 +182,44 @@ AI must:
 - Add comments only where they help understanding
 - Keep files reasonably scoped
 - Follow existing project conventions once established
+
+## Git operation policy
+
+Codex must not perform Git write operations.
+
+Do not run the following commands unless the user explicitly asks for that exact command in the current message:
+
+- git add
+- git commit
+- git reset
+- git restore
+- git checkout
+- git switch
+- git merge
+- git rebase
+- git cherry-pick
+- git stash
+- git clean
+- git pull
+- git push
+- git mv
+- git rm
+
+Codex may run read-only Git commands for investigation:
+
+- git status
+- git diff
+- git diff --stat
+- git log
+- git show
+- git branch
+- git rev-parse
+
+Before making changes, Codex should inspect the current diff when relevant.
+After making changes, Codex should report changed files and leave staging, committing, reverting, and pushing to the user.
+
+Codex must not remove `.git/index.lock` automatically.
+If a Git lock file exists, Codex should stop and tell the user instead of deleting it.
 
 ## Verification rules
 

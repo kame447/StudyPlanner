@@ -91,7 +91,7 @@
   align-items: center;
   justify-content: center;
   justify-items: center;
-  padding: 18px;
+  padding: 10px;
   overflow: hidden;
   background: rgba(15, 20, 22, 0.3);
   backdrop-filter: blur(2px);
@@ -99,15 +99,15 @@
 }
 
 .time-picker-modal {
-  width: min(350px, calc(100vw - 28px));
+  width: min(276px, calc(100vw - 20px));
   display: grid;
-  gap: 12px;
+  gap: 8px;
   max-height: calc(
     100dvh - var(--app-bottom-nav-clearance) - 38px - env(safe-area-inset-top, 0px)
   );
-  padding: 14px;
+  padding: 10px;
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: 18px;
   background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
   box-shadow: 0 20px 48px rgba(12, 18, 20, 0.18);
   backdrop-filter: blur(16px);
@@ -117,18 +117,18 @@
 .time-picker-title {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  padding: 0 4px;
+  padding: 0 2px;
 }
 
 .time-picker-title strong {
-  font-size: 0.95rem;
+  font-size: 0.82rem;
 }
 
 .time-picker-title span {
   color: var(--text-muted);
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   font-weight: 900;
   white-space: nowrap;
 }
@@ -136,25 +136,26 @@
 .time-wheel-picker {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
-  gap: 4px;
+  grid-template-columns: minmax(64px, 74px) 12px minmax(64px, 74px);
+  gap: 2px;
   align-items: stretch;
-  padding: 0 4px;
+  justify-content: center;
+  padding: 0 2px;
 }
 
 .time-wheel-picker::before,
 .time-wheel-picker::after {
   content: '';
   position: absolute;
-  left: 4px;
-  right: 4px;
-  height: 64px;
+  left: 2px;
+  right: 2px;
+  height: 38px;
   pointer-events: none;
   z-index: 3;
 }
 
 .time-wheel-picker::before {
-  top: 20px;
+  top: 16px;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--surface-strong) 96%, transparent) 0%,
@@ -173,13 +174,13 @@
 
 .time-wheel-selection {
   position: absolute;
-  left: 4px;
-  right: 4px;
+  left: 2px;
+  right: 2px;
   top: 50%;
-  height: 48px;
-  transform: translateY(calc(-50% + 9px));
+  height: 34px;
+  transform: translateY(calc(-50% + 8px));
   border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
-  border-radius: 14px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--surface-selected) 72%, transparent);
   pointer-events: none;
   z-index: 1;
@@ -189,21 +190,21 @@
   position: relative;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .time-wheel-unit {
   color: var(--text-muted);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 800;
   text-align: center;
 }
 
 .time-wheel-list {
-  height: 228px;
+  height: 126px;
   overflow-y: auto;
-  padding: 90px 0;
+  padding: 47px 0;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
   overscroll-behavior-y: contain;
@@ -222,15 +223,15 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 48px;
-  padding: 0 8px;
+  min-height: 32px;
+  padding: 0 4px;
   border: 0;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 1.18rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  opacity: 0.48;
+  opacity: 0.5;
   scroll-snap-align: center;
   transition:
     color 0.16s ease,
@@ -241,7 +242,7 @@
 
 .time-wheel-item.active {
   color: var(--text-primary);
-  font-size: 1.56rem;
+  font-size: 1.28rem;
   font-weight: 900;
   opacity: 1;
 }
@@ -251,24 +252,24 @@
   z-index: 2;
   align-self: center;
   justify-self: center;
-  margin-top: 22px;
+  margin-top: 15px;
   color: var(--text-primary);
-  font-size: 1.56rem;
+  font-size: 1.24rem;
   font-weight: 900;
 }
 
 .time-picker-actions {
   display: grid;
   grid-template-columns: 1fr 1.1fr;
-  gap: 8px;
+  gap: 6px;
 }
 
 .time-picker-actions .ghost-button,
 .time-picker-actions .primary-button {
-  min-height: 38px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 0.78rem;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 0.74rem;
   box-shadow: none;
 }
 

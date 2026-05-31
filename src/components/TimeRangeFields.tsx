@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   calculateAutoEndTimeForCreate,
   calculateShiftedEndTimeForEdit,
@@ -270,8 +271,32 @@ export function TimeWheelPicker({
   }
 
   function commitAndClose() {
+    if (hourScrollTimeoutRef.current !== null) {
+      window.clearTimeout(hourScrollTimeoutRef.current);
+    }
+
+    if (minuteScrollTimeoutRef.current !== null) {
+      window.clearTimeout(minuteScrollTimeoutRef.current);
+    }
+
+    const wheelHour =
+      hourListRef.current
+        ? findClosestWheelValue(hourListRef.current, hourOptions)
+        : null;
+    const commitHour = wheelHour ?? selectedHour;
+    const commitMinuteOptions = buildMinuteOptions(
+      commitHour,
+      role,
+      normalizedMinMinutes,
+    );
+    const wheelMinute =
+      minuteListRef.current
+        ? findClosestWheelValue(minuteListRef.current, commitMinuteOptions)
+        : null;
+    const commitMinute = wheelMinute ?? selectedMinute;
+    const nextDraft = setDraftFromParts(commitHour, commitMinute);
     const nextMinutes = clampPickerMinutes(
-      normalizeToWheelMinutes(draftMinutes),
+      normalizeToWheelMinutes(nextDraft?.minutes ?? draftMinutes),
       role,
       normalizedMinMinutes,
     );
@@ -332,6 +357,123 @@ export function TimeWheelPicker({
     }, PICKER_SCROLL_SETTLE_MS);
   }
 
+  const pickerDialog = open ? (
+    <div
+      className="overlay modal-overlay time-picker-overlay"
+      onClick={() => setOpen(false)}
+    >
+      <div
+        className="modal-card time-picker-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={role === 'start' ? '開始時刻を選択' : '終了時刻を選択'}
+      >
+        <div className="time-picker-title">
+          <strong>{role === 'start' ? '開始時刻' : '終了時刻'}</strong>
+          <span>{formatMinutesToTime(draftMinutes, role)}</span>
+        </div>
+
+        <div className="time-wheel-picker" aria-label="時刻を選択">
+          <div className="time-wheel-selection" aria-hidden="true" />
+          <div className="time-wheel-column">
+            <span className="time-wheel-unit">時</span>
+            <div
+              className="time-wheel-list"
+              ref={hourListRef}
+              onScroll={handleHourScroll}
+            >
+              {hourOptions.map((hour) => (
+                <button
+                  key={hour}
+                  className={
+                    hour === selectedHour
+                      ? 'time-wheel-item active'
+                      : 'time-wheel-item'
+                  }
+                  data-value={hour}
+                  type="button"
+                  onClick={() => {
+                    const nextDraft = setDraftFromParts(hour, selectedMinute);
+
+                    scrollToWheelValue(hourListRef.current, hour, 'smooth');
+
+                    if (nextDraft) {
+                      window.setTimeout(() => {
+                        scrollToWheelValue(
+                          minuteListRef.current,
+                          nextDraft.minute,
+                          'smooth',
+                        );
+                      }, 0);
+                    }
+                  }}
+                >
+                  {padTimePart(hour)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <span className="time-wheel-separator" aria-hidden="true">
+            :
+          </span>
+
+          <div className="time-wheel-column">
+            <span className="time-wheel-unit">分</span>
+            <div
+              className="time-wheel-list"
+              ref={minuteListRef}
+              onScroll={handleMinuteScroll}
+            >
+              {minuteOptions.map((minute) => (
+                <button
+                  key={minute}
+                  className={
+                    minute === selectedMinute
+                      ? 'time-wheel-item active'
+                      : 'time-wheel-item'
+                  }
+                  data-value={minute}
+                  type="button"
+                  onClick={() => {
+                    commit(selectedHour, minute);
+                    scrollToWheelValue(minuteListRef.current, minute, 'smooth');
+                  }}
+                >
+                  {padTimePart(minute)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="time-picker-actions">
+          <button
+            className="ghost-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(false);
+            }}
+            type="button"
+          >
+            キャンセル
+          </button>
+          <button
+            className="primary-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              commitAndClose();
+            }}
+            type="button"
+          >
+            決定
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <button
@@ -344,116 +486,9 @@ export function TimeWheelPicker({
         {formatMinutesToTime(selectedMinutes, role)}
       </button>
 
-      {open ? (
-        <div
-          className="overlay modal-overlay time-picker-overlay"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="modal-card time-picker-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={role === 'start' ? '開始時刻を選択' : '終了時刻を選択'}
-          >
-            <div className="time-picker-title">
-              <strong>{role === 'start' ? '開始時刻' : '終了時刻'}</strong>
-              <span>{formatMinutesToTime(draftMinutes, role)}</span>
-            </div>
-
-            <div className="time-wheel-picker" aria-label="時刻を選択">
-              <div className="time-wheel-selection" aria-hidden="true" />
-              <div className="time-wheel-column">
-                <span className="time-wheel-unit">時</span>
-                <div
-                  className="time-wheel-list"
-                  ref={hourListRef}
-                  onScroll={handleHourScroll}
-                >
-                  {hourOptions.map((hour) => (
-                    <button
-                      key={hour}
-                      className={
-                        hour === selectedHour
-                          ? 'time-wheel-item active'
-                          : 'time-wheel-item'
-                      }
-                      data-value={hour}
-                      type="button"
-                      onClick={() => {
-                        const nextDraft = setDraftFromParts(hour, selectedMinute);
-
-                        scrollToWheelValue(hourListRef.current, hour, 'smooth');
-
-                        if (nextDraft) {
-                          window.setTimeout(() => {
-                            scrollToWheelValue(
-                              minuteListRef.current,
-                              nextDraft.minute,
-                              'smooth',
-                            );
-                          }, 0);
-                        }
-                      }}
-                    >
-                      {padTimePart(hour)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <span className="time-wheel-separator" aria-hidden="true">
-                :
-              </span>
-
-              <div className="time-wheel-column">
-                <span className="time-wheel-unit">分</span>
-                <div
-                  className="time-wheel-list"
-                  ref={minuteListRef}
-                  onScroll={handleMinuteScroll}
-                >
-                  {minuteOptions.map((minute) => (
-                    <button
-                      key={minute}
-                      className={
-                        minute === selectedMinute
-                          ? 'time-wheel-item active'
-                          : 'time-wheel-item'
-                      }
-                      data-value={minute}
-                      type="button"
-                      onClick={() => {
-                        commit(selectedHour, minute);
-                        scrollToWheelValue(minuteListRef.current, minute, 'smooth');
-                      }}
-                    >
-                      {padTimePart(minute)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="time-picker-actions">
-              <button
-                className="ghost-button"
-                onClick={() => setOpen(false)}
-                type="button"
-              >
-                キャンセル
-              </button>
-              <button
-                className="primary-button"
-                onClick={commitAndClose}
-                type="button"
-              >
-                決定
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {pickerDialog && typeof document !== 'undefined'
+        ? createPortal(pickerDialog, document.body)
+        : pickerDialog}
     </>
   );
 }

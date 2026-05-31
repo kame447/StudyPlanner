@@ -161,6 +161,21 @@ describe('buildQuickEntryPlanDraft', () => {
     });
   });
 
+  it('uses the confirmed start time when building scheduled plan drafts', () => {
+    const draft = buildQuickEntryPlanDraft({
+      ...baseInput,
+      mode: 'scheduled',
+      repeatKind: 'daily',
+      startTime: '10:00',
+      estimatedMinutes: 240,
+    });
+
+    expect(draft).toMatchObject({
+      startTime: '10:00',
+      endTime: '14:00',
+    });
+  });
+
   it('keeps selected material fields on scheduled plan drafts', () => {
     const draft = buildQuickEntryPlanDraft({
       ...baseInput,
@@ -178,6 +193,8 @@ describe('buildQuickEntryPlanDraft', () => {
 
   it('clamps quick-entry end times to the end of the same day', () => {
     expect(resolveQuickEntryEndTime('23:30', 60)).toBe('24:00');
+    expect(resolveQuickEntryEndTime('23:55', 30)).toBe('24:00');
     expect(resolveQuickEntryEndTime('21:00', 60)).toBe('22:00');
+    expect(resolveQuickEntryEndTime('00:00', 60)).toBe('01:00');
   });
 });
