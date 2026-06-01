@@ -10,10 +10,12 @@ import {
 
 type TimeRangeMode = 'create' | 'edit';
 type TimePickerRole = 'start' | 'end';
+type TimeWheelColumn = 'hour' | 'minute';
 
 const MINUTES_PER_DAY = 24 * 60;
 const MINUTE_STEP = 5;
 const PICKER_SCROLL_SETTLE_MS = 90;
+const PROGRAMMATIC_SCROLL_IGNORE_MS = 140;
 
 interface TimeRangeFieldsProps {
   startTime: string;
@@ -164,6 +166,8 @@ export function TimeWheelPicker({
   const minuteListRef = useRef<HTMLDivElement | null>(null);
   const hourScrollTimeoutRef = useRef<number | null>(null);
   const minuteScrollTimeoutRef = useRef<number | null>(null);
+  const ignoreHourScrollUntilRef = useRef(0);
+  const ignoreMinuteScrollUntilRef = useRef(0);
   const selectedHour = Math.floor(draftMinutes / 60);
   const selectedMinute = draftMinutes % 60;
   const hourOptions = useMemo(
@@ -177,6 +181,49 @@ export function TimeWheelPicker({
   const triggerClassName = inputClassName
     ? `time-wheel-trigger ${inputClassName}`
     : 'time-wheel-trigger';
+
+  function clearHourScrollTimeout() {
+    if (hourScrollTimeoutRef.current !== null) {
+      window.clearTimeout(hourScrollTimeoutRef.current);
+      hourScrollTimeoutRef.current = null;
+    }
+  }
+
+  function clearMinuteScrollTimeout() {
+    if (minuteScrollTimeoutRef.current !== null) {
+      window.clearTimeout(minuteScrollTimeoutRef.current);
+      minuteScrollTimeoutRef.current = null;
+    }
+  }
+
+  function markProgrammaticScroll(column: TimeWheelColumn) {
+    const ignoreUntil = Date.now() + PROGRAMMATIC_SCROLL_IGNORE_MS;
+
+    if (column === 'hour') {
+      ignoreHourScrollUntilRef.current = ignoreUntil;
+      clearHourScrollTimeout();
+      return;
+    }
+
+    ignoreMinuteScrollUntilRef.current = ignoreUntil;
+    clearMinuteScrollTimeout();
+  }
+
+  function scrollHourTo(hour: number) {
+    markProgrammaticScroll('hour');
+    scrollToWheelValue(hourListRef.current, hour, 'auto');
+  }
+
+  function scrollMinuteTo(minute: number) {
+    markProgrammaticScroll('minute');
+    scrollToWheelValue(minuteListRef.current, minute, 'auto');
+  }
+
+  function setDraftMinutesIfChanged(nextMinutes: number) {
+    setDraftMinutes((currentMinutes) =>
+      currentMinutes === nextMinutes ? currentMinutes : nextMinutes,
+    );
+  }
 
   function normalizeToWheelMinutes(minutes: number): number {
     const clampedMinutes = clampPickerMinutes(
@@ -216,25 +263,19 @@ export function TimeWheelPicker({
     const nextHour = Math.floor(nextDraftMinutes / 60);
     const nextMinute = nextDraftMinutes % 60;
 
-    setDraftMinutes(nextDraftMinutes);
+    setDraftMinutesIfChanged(nextDraftMinutes);
 
     const scrollTimer = window.setTimeout(() => {
-      scrollToWheelValue(hourListRef.current, nextHour, 'auto');
-      scrollToWheelValue(minuteListRef.current, nextMinute, 'auto');
+      scrollHourTo(nextHour);
+      scrollMinuteTo(nextMinute);
     }, 0);
 
     return () => {
       window.clearTimeout(scrollTimer);
-
-      if (hourScrollTimeoutRef.current !== null) {
-        window.clearTimeout(hourScrollTimeoutRef.current);
-      }
-
-      if (minuteScrollTimeoutRef.current !== null) {
-        window.clearTimeout(minuteScrollTimeoutRef.current);
-      }
+      clearHourScrollTimeout();
+      clearMinuteScrollTimeout();
     };
-  }, [open, selectedMinutes, normalizedMinMinutes]);
+  }, [open]);
 
   function setDraftFromParts(nextHour: number, preferredMinute: number) {
     const nextMinuteOptions = buildMinuteOptions(
@@ -257,7 +298,7 @@ export function TimeWheelPicker({
       normalizedMinMinutes,
     );
 
-    setDraftMinutes(nextMinutes);
+    setDraftMinutesIfChanged(nextMinutes);
 
     return {
       hour: Math.floor(nextMinutes / 60),
@@ -271,13 +312,8 @@ export function TimeWheelPicker({
   }
 
   function commitAndClose() {
-    if (hourScrollTimeoutRef.current !== null) {
-      window.clearTimeout(hourScrollTimeoutRef.current);
-    }
-
-    if (minuteScrollTimeoutRef.current !== null) {
-      window.clearTimeout(minuteScrollTimeoutRef.current);
-    }
+    clearHourScrollTimeout();
+    clearMinuteScrollTimeout();
 
     const wheelHour =
       hourListRef.current
@@ -310,11 +346,15 @@ export function TimeWheelPicker({
       return;
     }
 
-    if (hourScrollTimeoutRef.current !== null) {
-      window.clearTimeout(hourScrollTimeoutRef.current);
+    if (Date.now() < ignoreHourScrollUntilRef.current) {
+      return;
     }
 
+    clearHourScrollTimeout();
+
     hourScrollTimeoutRef.current = window.setTimeout(() => {
+      hourScrollTimeoutRef.current = null;
+
       const nextHour = findClosestWheelValue(hourListRef.current!, hourOptions);
 
       if (nextHour === null) {
@@ -323,11 +363,11 @@ export function TimeWheelPicker({
 
       const nextDraft = setDraftFromParts(nextHour, selectedMinute);
 
-      scrollToWheelValue(hourListRef.current, nextHour, 'smooth');
+      scrollHourTo(nextHour);
 
       if (nextDraft) {
         window.setTimeout(() => {
-          scrollToWheelValue(minuteListRef.current, nextDraft.minute, 'smooth');
+          scrollMinuteTo(nextDraft.minute);
         }, 0);
       }
     }, PICKER_SCROLL_SETTLE_MS);
@@ -338,11 +378,15 @@ export function TimeWheelPicker({
       return;
     }
 
-    if (minuteScrollTimeoutRef.current !== null) {
-      window.clearTimeout(minuteScrollTimeoutRef.current);
+    if (Date.now() < ignoreMinuteScrollUntilRef.current) {
+      return;
     }
 
+    clearMinuteScrollTimeout();
+
     minuteScrollTimeoutRef.current = window.setTimeout(() => {
+      minuteScrollTimeoutRef.current = null;
+
       const nextMinute = findClosestWheelValue(
         minuteListRef.current!,
         minuteOptions,
@@ -353,7 +397,7 @@ export function TimeWheelPicker({
       }
 
       setDraftFromParts(selectedHour, nextMinute);
-      scrollToWheelValue(minuteListRef.current, nextMinute, 'smooth');
+      scrollMinuteTo(nextMinute);
     }, PICKER_SCROLL_SETTLE_MS);
   }
 
@@ -396,15 +440,11 @@ export function TimeWheelPicker({
                   onClick={() => {
                     const nextDraft = setDraftFromParts(hour, selectedMinute);
 
-                    scrollToWheelValue(hourListRef.current, hour, 'smooth');
+                    scrollHourTo(hour);
 
                     if (nextDraft) {
                       window.setTimeout(() => {
-                        scrollToWheelValue(
-                          minuteListRef.current,
-                          nextDraft.minute,
-                          'smooth',
-                        );
+                        scrollMinuteTo(nextDraft.minute);
                       }, 0);
                     }
                   }}
@@ -438,7 +478,7 @@ export function TimeWheelPicker({
                   type="button"
                   onClick={() => {
                     commit(selectedHour, minute);
-                    scrollToWheelValue(minuteListRef.current, minute, 'smooth');
+                    scrollMinuteTo(minute);
                   }}
                 >
                   {padTimePart(minute)}
