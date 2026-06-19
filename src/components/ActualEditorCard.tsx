@@ -1,34 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
 import { expandPlansForDate, getPlanOccurrenceDate } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
-import {
-  buildActualMaterialProgressUpdatesFromInput,
-  getMaterialUnitLabel,
-} from '../lib/materialPace';
-import { TimeRangeFields } from './TimeRangeFields';
-import type { Actual, ActualDraft, Plan, StudyMaterial } from '../types/domain';
+import type { Actual, ActualDraft, Plan } from '../types/domain';
+import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
   plans: Plan[];
   actuals: Actual[];
-  materials: StudyMaterial[];
   actual?: Actual;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
-  onOpenTrackingTools?: (
-    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
-    onApplyMeasuredRangeToTarget: (startTime: string, endTime: string) => void,
-    targetLabel: string,
-  ) => void;
-  onDetachTrackingTools?: (
-    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
-  ) => void;
   onClose?: () => void;
   forceOpen?: boolean;
   hideToggleButton?: boolean;
@@ -67,7 +54,6 @@ function buildDraft(plan: Plan, actual?: Actual): ActualDraft {
     note: actual?.note ?? '',
     materialId: actual?.materialId ?? plan.materialId ?? null,
     materialName: actual?.materialName ?? plan.materialName ?? '',
-    materialProgressUpdates: actual?.materialProgressUpdates,
   };
 }
 
@@ -75,14 +61,11 @@ export function ActualEditorCard({
   plan,
   plans,
   actuals,
-  materials,
   actual,
   onEditPlan,
   onDeletePlan,
   onSaveActual,
   onDeleteActual,
-  onOpenTrackingTools,
-  onDetachTrackingTools,
   onClose,
   forceOpen = false,
   hideToggleButton = false,
@@ -92,17 +75,12 @@ export function ActualEditorCard({
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');
   const [selectedCandidatePlanId, setSelectedCandidatePlanId] = useState<string | null>(null);
-  const [progressMaterialId, setProgressMaterialId] = useState('');
-  const [deltaUnitsInput, setDeltaUnitsInput] = useState('');
-  const [toUnitInput, setToUnitInput] = useState('');
 
   useEffect(() => {
     setDraft(buildDraft(plan, actual));
     setError('');
     setIsOpen(forceOpen || !actual);
     setSelectedCandidatePlanId(null);
-    setDeltaUnitsInput('');
-    setToUnitInput('');
   }, [actual?.id, forceOpen, plan]);
 
   const planMinutes = minutesBetween(plan.startTime, plan.endTime);
@@ -138,29 +116,6 @@ export function ActualEditorCard({
   const selectedCandidate = linkCandidates.find(
     (candidate) => candidate.plan.id === selectedCandidatePlanId,
   );
-  const paceMaterials = useMemo(
-    () =>
-      materials.filter(
-        (material) =>
-          material.userId === plan.userId &&
-          material.status !== 'archived' &&
-          material.paceEnabled === true,
-      ),
-    [materials, plan.userId],
-  );
-  const selectedProgressMaterial =
-    paceMaterials.find((material) => material.id === progressMaterialId) ?? null;
-
-  useEffect(() => {
-    const existingProgressMaterialId = actual?.materialProgressUpdates?.[0]?.materialId;
-    const preferredMaterialId =
-      existingProgressMaterialId ?? actual?.materialId ?? plan.materialId ?? '';
-    const hasPreferredMaterial = paceMaterials.some(
-      (material) => material.id === preferredMaterialId,
-    );
-
-    setProgressMaterialId(hasPreferredMaterial ? preferredMaterialId : '');
-  }, [actual?.id, actual?.materialId, actual?.materialProgressUpdates, paceMaterials, plan.materialId]);
 
   function setAlignedToPlan(nextAligned: boolean) {
     setDraft((current) => ({
@@ -173,57 +128,16 @@ export function ActualEditorCard({
     }));
   }
 
-  const applyMeasuredRange = useCallback((startTime: string, endTime: string) => {
+  function applyMeasuredRange(startTime: string, endTime: string) {
     setDraft((current) => ({
       ...current,
       actualStartTime: startTime,
       actualEndTime: endTime,
     }));
     setError('');
-  }, []);
-
-  useEffect(() => {
-    return () => onDetachTrackingTools?.(applyMeasuredRange);
-  }, [applyMeasuredRange, onDetachTrackingTools]);
-
-  function openTrackingTools() {
-    const targetPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
-    const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
-      materials: paceMaterials,
-      materialId: progressMaterialId,
-      deltaUnitsInput,
-      toUnitInput,
-    });
-    const targetDraft: ActualDraft = isActualDateChanged
-      ? {
-          ...draft,
-          planId: selectedCandidate?.plan.id ?? null,
-          isAlignedToPlan: false,
-          materialProgressUpdates,
-        }
-      : {
-          ...draft,
-          materialProgressUpdates,
-        };
-
-    onOpenTrackingTools?.(
-      applyMeasuredRange,
-      (startTime, endTime) => {
-        onSaveActual(
-          targetPlan,
-          {
-            ...targetDraft,
-            actualStartTime: startTime,
-            actualEndTime: endTime,
-          },
-          actual?.id,
-        ).catch(() => undefined);
-      },
-      `${draft.occurrenceDate} ${plan.title}`,
-    );
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
       setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
@@ -235,46 +149,48 @@ export function ActualEditorCard({
     }
 
     setError('');
-    const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
-    const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
-      materials: paceMaterials,
-      materialId: progressMaterialId,
-      deltaUnitsInput,
-      toUnitInput,
-    });
-    const nextDraft: ActualDraft = isActualDateChanged
-      ? {
-          ...draft,
-          planId: selectedCandidate?.plan.id ?? null,
-          isAlignedToPlan: false,
-          materialProgressUpdates,
-        }
-      : {
-          ...draft,
-          materialProgressUpdates,
-        };
+    try {
+      const nextPlan = isActualDateChanged && selectedCandidate ? selectedCandidate.plan : plan;
+      const nextDraft: ActualDraft = isActualDateChanged
+        ? {
+            ...draft,
+            planId: selectedCandidate?.plan.id ?? null,
+            isAlignedToPlan: false,
+          }
+        : draft;
 
-    setIsOpen(false);
-    onSaveActual(nextPlan, nextDraft, actual?.id).catch(() => undefined);
-  }
-
-  function handleDeletePlan() {
-    setIsOpen(false);
-    if (!isScopedRecurringPlan) {
-      onClose?.();
+      setIsOpen(false);
+      await onSaveActual(nextPlan, nextDraft, actual?.id);
+    } catch {
+      setIsOpen(true);
+      setError('記録の保存に失敗しました。');
     }
-
-    onDeletePlan(plan).catch(() => undefined);
   }
 
-  function handleDeleteActual() {
+  async function handleDeletePlan() {
+    try {
+      await onDeletePlan(plan);
+      setIsOpen(false);
+      if (!isScopedRecurringPlan) {
+        onClose?.();
+      }
+    } catch {
+      setError('予定の削除に失敗しました。');
+    }
+  }
+
+  async function handleDeleteActual() {
     if (!actual) {
       return;
     }
 
-    setIsOpen(false);
-    onClose?.();
-    onDeleteActual(actual).catch(() => undefined);
+    try {
+      await onDeleteActual(actual);
+      setIsOpen(false);
+      onClose?.();
+    } catch {
+      setError('記録の削除に失敗しました。');
+    }
   }
 
   return (
@@ -307,6 +223,15 @@ export function ActualEditorCard({
         </div>
 
         <div className="row-actions actual-editor-head-actions">
+          {isOpen ? (
+            <button
+              className="primary-button"
+              onClick={() => void handleSave()}
+              type="button"
+            >
+              記録保存
+            </button>
+          ) : null}
           {hidePlanActions ? null : (
             <>
               <button
@@ -367,18 +292,32 @@ export function ActualEditorCard({
                   }}
                 />
               </label>
-              <TimeRangeFields
-                startTime={draft.actualStartTime}
-                endTime={draft.actualEndTime}
-                mode={actual ? 'edit' : 'create'}
-                onChange={(range) =>
-                  setDraft({
-                    ...draft,
-                    actualStartTime: range.startTime,
-                    actualEndTime: range.endTime,
-                  })
-                }
-              />
+              <label className="field">
+                <span>開始</span>
+                <input
+                  type="time"
+                  value={draft.actualStartTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      actualStartTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>終了</span>
+                <input
+                  type="time"
+                  value={draft.actualEndTime}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      actualEndTime: event.target.value,
+                    })
+                  }
+                />
+              </label>
             </div>
           </section>
 
@@ -464,62 +403,6 @@ export function ActualEditorCard({
                 }
               />
             </label>
-
-            {paceMaterials.length > 0 ? (
-              <div className="actual-progress-input-panel">
-                <div className="actual-editor-section-title">
-                  <strong>教材進捗</strong>
-                </div>
-                <div className="material-quick-progress-grid">
-                  <label className="field">
-                    <span>教材</span>
-                    <select
-                      value={progressMaterialId}
-                      onChange={(event) => setProgressMaterialId(event.target.value)}
-                    >
-                      <option value="">記録しない</option>
-                      {paceMaterials.map((material) => (
-                        <option key={material.id} value={material.id}>
-                          {material.name}（{material.subjectName || '科目未設定'}）
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>進めた量</span>
-                    <input
-                      min="0"
-                      step="1"
-                      type="number"
-                      value={deltaUnitsInput}
-                      onChange={(event) => setDeltaUnitsInput(event.target.value)}
-                      placeholder={
-                        selectedProgressMaterial
-                          ? getMaterialUnitLabel(selectedProgressMaterial)
-                          : '例: 5'
-                      }
-                    />
-                  </label>
-                  <label className="field">
-                    <span>到達位置</span>
-                    <input
-                      min="0"
-                      step="1"
-                      type="number"
-                      value={toUnitInput}
-                      onChange={(event) => setToUnitInput(event.target.value)}
-                      placeholder={
-                        selectedProgressMaterial
-                          ? `${selectedProgressMaterial.currentUnit ?? 0}${getMaterialUnitLabel(
-                              selectedProgressMaterial,
-                            )}`
-                          : '例: 30'
-                      }
-                    />
-                  </label>
-                </div>
-              </div>
-            ) : null}
           </section>
 
           {isActualDateChanged ? (
@@ -586,13 +469,10 @@ export function ActualEditorCard({
             </section>
           ) : null}
 
-          <button
-            className="ghost-button actual-tracking-launch-button"
-            onClick={openTrackingTools}
-            type="button"
-          >
-            計測補助を開く
-          </button>
+          <details className="actual-tracking-details">
+            <summary>計測補助</summary>
+            <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
+          </details>
 
           {error ? <p className="inline-error">{error}</p> : null}
 
@@ -611,20 +491,6 @@ export function ActualEditorCard({
               </button>
             </div>
           ) : null}
-
-          <div className="actual-editor-save-footer">
-            <p className="actual-editor-save-summary">
-              {draft.actualStartTime} - {draft.actualEndTime} /{' '}
-              {draft.isAlignedToPlan ? plan.title : draft.title.trim() || plan.title}
-            </p>
-            <button
-              className="primary-button actual-editor-save-button"
-              onClick={() => void handleSave()}
-              type="button"
-            >
-              記録保存
-            </button>
-          </div>
         </div>
       ) : null}
     </article>

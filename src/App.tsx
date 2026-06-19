@@ -1,13 +1,9 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { Settings } from 'lucide-react';
-import { AdminGuard } from './components/AdminGuard';
-import { AdminRoutes } from './components/AdminViews';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
-import { FaqView } from './components/FaqView';
-import { FloatingActualTrackingPanel } from './components/FloatingActualTrackingPanel';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -15,8 +11,9 @@ import { PlanEditorPanel } from './components/PlanEditorPanel';
 import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog';
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { UserAvatar } from './components/UserAvatar';
-import { useAdminStatus } from './hooks/useAdminStatus';
-import { useIOSViewportFocusGuard } from './hooks/useIOSViewportFocusGuard';
+import { createEmptyDayNoteDraft } from './domain/planner';
+import { useWeeklyPlanningState } from './features/weeklyPlanning/useWeeklyPlanningState';
+import { createPlanDraftFromWeeklyDraftBlock } from './features/weeklyPlanning/weeklyPlanningTransforms';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
 import {
@@ -26,140 +23,46 @@ import {
 } from './lib/appAccessGate';
 import { getUserDisplayName } from './lib/userProfile';
 
-type IdleCallbackHandle = number;
-type IdleCapableWindow = Window & {
-  requestIdleCallback?: (
-    callback: () => void,
-    options?: { timeout?: number },
-  ) => IdleCallbackHandle;
-  cancelIdleCallback?: (handle: IdleCallbackHandle) => void;
-};
-
-const loadBookshelfView = () =>
+const BookshelfView = lazy(() =>
   import('./components/BookshelfView').then((module) => ({
     default: module.BookshelfView,
-  }));
-const loadDayView = () =>
+  })),
+);
+const DayView = lazy(() =>
   import('./components/DayView').then((module) => ({
     default: module.DayView,
-  }));
-const loadQuickEntryModal = () =>
+  })),
+);
+const QuickEntryModal = lazy(() =>
   import('./components/QuickEntryModal').then((module) => ({
     default: module.QuickEntryModal,
-  }));
-const loadReportView = () =>
+  })),
+);
+const ReportView = lazy(() =>
   import('./components/ReportView').then((module) => ({
     default: module.ReportView,
-  }));
-const loadTimetableView = () =>
+  })),
+);
+const TimetableView = lazy(() =>
   import('./components/TimetableView').then((module) => ({
     default: module.TimetableView,
-  }));
-const loadTimetableOcrImportDialog = () =>
-  import('./components/TimetableOcrImportDialog').then((module) => ({
-    default: module.TimetableOcrImportDialog,
-  }));
-const loadTodoView = () =>
+  })),
+);
+const TodoView = lazy(() =>
   import('./components/TodoView').then((module) => ({
     default: module.TodoView,
-  }));
-const loadWeekView = () =>
+  })),
+);
+const WeekView = lazy(() =>
   import('./components/WeekView').then((module) => ({
     default: module.WeekView,
-  }));
-
-const BookshelfView = lazy(loadBookshelfView);
-const DayView = lazy(loadDayView);
-const QuickEntryModal = lazy(loadQuickEntryModal);
-const ReportView = lazy(loadReportView);
-const TimetableView = lazy(loadTimetableView);
-const TodoView = lazy(loadTodoView);
-const WeekView = lazy(loadWeekView);
-
-let didStartMainViewPreload = false;
-
-function preloadChunk(name: string, loader: () => Promise<unknown>): Promise<void> {
-  return loader()
-    .then(() => undefined)
-    .catch((error) => {
-      console.warn(`[preload] ${name} chunk could not be loaded.`, error);
-    });
-}
-
-function scheduleAfterIdle(callback: () => void, timeout = 1600): () => void {
-  const idleWindow = window as IdleCapableWindow;
-
-  if (typeof idleWindow.requestIdleCallback === 'function') {
-    const handle = idleWindow.requestIdleCallback(callback, { timeout });
-
-    return () => {
-      idleWindow.cancelIdleCallback?.(handle);
-    };
-  }
-
-  const handle = window.setTimeout(callback, Math.min(timeout, 900));
-
-  return () => {
-    window.clearTimeout(handle);
-  };
-}
-
-function preloadMainViewChunks(): () => void {
-  let cancelled = false;
-  let lowPriorityCleanup: (() => void) | null = null;
-
-  const highPriorityCleanup = scheduleAfterIdle(() => {
-    if (cancelled) {
-      return;
-    }
-
-    didStartMainViewPreload = true;
-
-    void Promise.all([
-      preloadChunk('WeekView', loadWeekView),
-      preloadChunk('DayView', loadDayView),
-      preloadChunk('TodoView', loadTodoView),
-      preloadChunk('ReportView', loadReportView),
-    ]).finally(() => {
-      if (cancelled) {
-        return;
-      }
-
-      lowPriorityCleanup = scheduleAfterIdle(() => {
-        if (cancelled) {
-          return;
-        }
-
-        void preloadChunk('TimetableView', loadTimetableView)
-          .then(() =>
-            Promise.all([
-              preloadChunk('BookshelfView', loadBookshelfView),
-              preloadChunk('QuickEntryModal', loadQuickEntryModal),
-              preloadChunk('TimetableOcrImportDialog', loadTimetableOcrImportDialog),
-            ]),
-          );
-      }, 2600);
-    });
-  }, 1200);
-
-  return () => {
-    cancelled = true;
-    highPriorityCleanup();
-    lowPriorityCleanup?.();
-  };
-}
+  })),
+);
 
 export default function App() {
-  useIOSViewportFocusGuard();
-
-  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
-  const [isTrackingPanelOpen, setIsTrackingPanelOpen] = useState(false);
-  const [trackingApplyTargetLabel, setTrackingApplyTargetLabel] = useState('');
-  const trackingEditorApplyRef = useRef<((startTime: string, endTime: string) => void) | null>(null);
-  const trackingTargetApplyRef = useRef<((startTime: string, endTime: string) => void) | null>(null);
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
   const [appAccessGranted, setAppAccessGranted] = useState(
@@ -206,6 +109,7 @@ export default function App() {
     saveStandaloneActual,
     linkStandaloneActualToPlan,
     deleteActual,
+    saveDayNote,
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
@@ -226,75 +130,17 @@ export default function App() {
     openWeek,
     openDay,
     setEditorDraft,
+    currentDayNote,
   } = usePlannerAppState();
-  const { status: adminStatus, isAdmin } = useAdminStatus(user?.id);
-  const openTrackingTools = useCallback(
-    (
-      onApplyMeasuredRange: (startTime: string, endTime: string) => void,
-      onApplyMeasuredRangeToTarget: (startTime: string, endTime: string) => void,
-      targetLabel: string,
-    ) => {
-      trackingEditorApplyRef.current = onApplyMeasuredRange;
-      trackingTargetApplyRef.current = onApplyMeasuredRangeToTarget;
-      setTrackingApplyTargetLabel(targetLabel);
-      setIsTrackingPanelOpen(true);
-    },
-    [],
+  const planningUserId = user?.id ?? 'anonymous';
+  const { planningState, dispatchPlanningAction } = useWeeklyPlanningState(
+    planningUserId,
+    selectedDate,
   );
-  const detachTrackingTools = useCallback(
-    (onApplyMeasuredRange: (startTime: string, endTime: string) => void) => {
-      if (trackingEditorApplyRef.current !== onApplyMeasuredRange) {
-        return;
-      }
-
-      trackingEditorApplyRef.current = null;
-    },
-    [],
+  const pendingWeeklyDraftBlocks = useMemo(
+    () => planningState.draftBlocks.filter((block) => block.status === 'draft'),
+    [planningState.draftBlocks],
   );
-  const applyMeasuredRangeFromFloatingPanel = useCallback(
-    (startTime: string, endTime: string) => {
-      if (trackingEditorApplyRef.current) {
-        trackingEditorApplyRef.current(startTime, endTime);
-        return;
-      }
-
-      trackingTargetApplyRef.current?.(startTime, endTime);
-    },
-    [],
-  );
-  const closeTrackingPanel = useCallback(() => {
-    setIsTrackingPanelOpen(false);
-    trackingEditorApplyRef.current = null;
-    trackingTargetApplyRef.current = null;
-    setTrackingApplyTargetLabel('');
-  }, []);
-  const navigate = useCallback(
-    (path: string, options: { replace?: boolean } = {}) => {
-      if (window.location.pathname !== path) {
-        if (options.replace) {
-          window.history.replaceState({}, '', path);
-        } else {
-          window.history.pushState({}, '', path);
-        }
-      }
-
-      setCurrentPath(path);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, []);
-
   const activeTimetableTerm = useMemo(
     () =>
       timetableTerms.find((term) => term.isActive) ??
@@ -303,19 +149,36 @@ export default function App() {
     [timetableTerms],
   );
   const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
-  const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
+  const currentPath = window.location.pathname;
 
-  useEffect(() => {
-    if (booting || !user || !appAccessGranted || isAdminRoute) {
+  async function approveWeeklyDraftBlocks() {
+    if (!user || pendingWeeklyDraftBlocks.length === 0) {
       return;
     }
 
-    if (didStartMainViewPreload) {
-      return;
+    const savedBlockIds: string[] = [];
+
+    try {
+      for (const block of pendingWeeklyDraftBlocks) {
+        await savePlanDraft(createPlanDraftFromWeeklyDraftBlock(block, user.id));
+        savedBlockIds.push(block.id);
+      }
+    } catch (error) {
+      if (savedBlockIds.length > 0) {
+        dispatchPlanningAction({
+          type: 'remove_draft_blocks',
+          blockIds: savedBlockIds,
+        });
+      }
+
+      throw error;
     }
 
-    return preloadMainViewChunks();
-  }, [appAccessGranted, booting, isAdminRoute, user]);
+    dispatchPlanningAction({
+      type: 'remove_draft_blocks',
+      blockIds: savedBlockIds,
+    });
+  }
 
   if (currentPath === '/terms') {
     return <LegalPage kind="terms" />;
@@ -327,14 +190,6 @@ export default function App() {
 
   if (currentPath === '/contact') {
     return <LegalPage kind="contact" />;
-  }
-
-  if (currentPath === '/faq') {
-    return (
-      <div className="app-shell">
-        <FaqView />
-      </div>
-    );
   }
 
   if (booting) {
@@ -362,94 +217,6 @@ export default function App() {
         onSignInWithGoogle={signInWithGoogle}
         onSendPasswordReset={sendPasswordReset}
       />
-    );
-  }
-
-  if (isAdminRoute) {
-    return (
-      <div className="app-shell admin-app-shell">
-        <header className="app-header hero-card print-hide">
-          <StudyPlannerLogo />
-
-          <div className="header-actions">
-            <div className="user-badge header-profile-name">
-              {getUserDisplayName(user)}
-            </div>
-            <button
-              className="ghost-button my-page-trigger"
-              onClick={() => setIsMyPageOpen(true)}
-              type="button"
-              aria-label="マイページを開く"
-            >
-              <UserAvatar user={user} small />
-              <span className="my-page-trigger-label">マイページ</span>
-            </button>
-            <button
-              className="ghost-button header-settings-button"
-              onClick={() => setIsAppSettingsOpen(true)}
-              type="button"
-              aria-label="アプリ設定を開く"
-              title="アプリ設定"
-            >
-              <Settings aria-hidden="true" size={22} strokeWidth={1.9} />
-            </button>
-          </div>
-        </header>
-
-        {notice ? (
-          <div
-            className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
-            aria-live="polite"
-          >
-            <div className={`app-notice app-toast ${notice.tone}`}>
-              <span>{notice.text}</span>
-              {notice.actionLabel && notice.onAction ? (
-                <button
-                  className="app-toast-action"
-                  onClick={() => {
-                    void notice.onAction?.();
-                  }}
-                  type="button"
-                >
-                  {notice.actionLabel}
-                </button>
-              ) : null}
-              <button
-                className="app-toast-close"
-                onClick={dismissNotice}
-                type="button"
-                aria-label="通知を閉じる"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <AdminGuard status={adminStatus}>
-          <AdminRoutes path={currentPath} navigate={navigate} />
-        </AdminGuard>
-
-        <MyPageDialog
-          open={isMyPageOpen}
-          user={user}
-          onSaveProfile={saveUserProfile}
-          onSignOut={signOut}
-          onClose={() => setIsMyPageOpen(false)}
-        />
-
-        <AppSettingsDialog
-          open={isAppSettingsOpen}
-          themeMode={themeMode}
-          themePalette={themePalette}
-          isAdmin={isAdmin}
-          onChangeTheme={setThemeMode}
-          onChangeThemePalette={setThemePalette}
-          onOpenAdmin={() => navigate('/admin/users')}
-          onSignOut={signOut}
-          onClose={() => setIsAppSettingsOpen(false)}
-        />
-      </div>
     );
   }
 
@@ -482,149 +249,6 @@ export default function App() {
           </button>
         </div>
       </header>
-
-      {notice ? (
-        <div
-          className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
-          aria-live="polite"
-        >
-          <div className={`app-notice app-toast ${notice.tone}`}>
-            <span>{notice.text}</span>
-            {notice.actionLabel && notice.onAction ? (
-              <button
-                className="app-toast-action"
-                onClick={() => {
-                  void notice.onAction?.();
-                }}
-                type="button"
-              >
-                {notice.actionLabel}
-              </button>
-            ) : null}
-            <button
-              className="app-toast-close"
-              onClick={dismissNotice}
-              type="button"
-              aria-label="通知を閉じる"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <main className="section-stack">
-        {viewMode === 'month' ? (
-          <MonthView
-            monthDate={monthDate}
-            selectedDate={selectedDate}
-            userId={user.id}
-            plans={plans}
-            actuals={actuals}
-            monthEvents={monthEvents}
-            onSelectDate={selectDate}
-            onChangeMonth={changeMonth}
-            onOpenWeek={openWeek}
-            onSaveMonthEvent={saveMonthEvent}
-            onDeleteMonthEvent={deleteMonthEvent}
-          />
-        ) : null}
-
-        <Suspense fallback={<SplashScreen />}>
-          {viewMode === 'week' ? (
-            <WeekView
-              selectedDate={selectedDate}
-              plans={plans}
-              actuals={actuals}
-              studyMaterials={studyMaterials}
-              studySubjects={studySubjects}
-              onChangeWeek={openWeek}
-              onOpenDay={openDay}
-            />
-          ) : null}
-
-          {viewMode === 'day' ? (
-            <DayView
-              selectedDate={selectedDate}
-              userId={user.id}
-              plans={plans}
-              actuals={actuals}
-              monthEvents={monthEvents}
-              studySubjects={studySubjects}
-              studyMaterials={studyMaterials}
-              scheduleTemplates={scheduleTemplates}
-              timetableTermId={activeTimetableTermId}
-              onChangeDay={openDay}
-              onEditPlan={openEditPlan}
-              onDeletePlan={deletePlan}
-              onSavePlan={savePlanDraft}
-              onSaveActual={saveActual}
-              onSaveStandaloneActual={saveStandaloneActual}
-              onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
-              onDeleteActual={deleteActual}
-              onOpenTrackingTools={openTrackingTools}
-              onDetachTrackingTools={detachTrackingTools}
-              onOpenBookshelf={() => setViewMode('bookshelf')}
-              onOpenAddMaterial={() => {
-                setBookshelfInitialAction('add-material');
-                setViewMode('bookshelf');
-              }}
-            />
-          ) : null}
-
-          {viewMode === 'todo' ? (
-            <TodoView
-              userId={user.id}
-              selectedDate={selectedDate}
-              todos={todos}
-              onSaveTodo={saveTodo}
-              onScheduleTodo={scheduleTodoAsPlan}
-              onDeleteTodo={deleteTodo}
-            />
-          ) : null}
-
-          {viewMode === 'report' ? (
-            <ReportView
-              selectedDate={selectedDate}
-              plans={plans}
-              actuals={actuals}
-              studySubjects={studySubjects}
-              studyMaterials={studyMaterials}
-              onOpenDay={openDay}
-            />
-          ) : null}
-
-          {viewMode === 'timetable' ? (
-            <TimetableView
-              userId={user.id}
-              activeTerm={activeTimetableTerm}
-              timetablePeriods={timetablePeriods}
-              scheduleTemplates={scheduleTemplates}
-              onActivateTerm={activateTimetableTerm}
-              onClearTermData={clearTimetableTermData}
-              onSaveTimetablePeriod={saveTimetablePeriod}
-              onDeleteTimetablePeriod={deleteTimetablePeriod}
-              onSaveScheduleTemplate={saveScheduleTemplate}
-              onDeleteScheduleTemplate={deleteScheduleTemplate}
-            />
-          ) : null}
-
-          {viewMode === 'bookshelf' ? (
-            <BookshelfView
-              userId={user.id}
-              subjects={studySubjects}
-              materials={studyMaterials}
-              initialAction={bookshelfInitialAction}
-              onInitialActionHandled={() => setBookshelfInitialAction(null)}
-              onSaveSubject={saveStudySubject}
-              onDeleteSubject={deleteStudySubject}
-              onSaveMaterial={saveStudyMaterial}
-              onDeleteMaterial={deleteStudyMaterial}
-            />
-          ) : null}
-        </Suspense>
-
-      </main>
 
       <div className="toolbar panel app-view-switcher print-hide">
         <div className="segmented-control">
@@ -680,6 +304,156 @@ export default function App() {
         </div>
       </div>
 
+      {notice ? (
+        <div
+          className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
+          aria-live="polite"
+        >
+          <div className={`app-notice app-toast ${notice.tone}`}>
+            <span>{notice.text}</span>
+            {notice.actionLabel && notice.onAction ? (
+              <button
+                className="app-toast-action"
+                onClick={() => {
+                  void notice.onAction?.();
+                }}
+                type="button"
+              >
+                {notice.actionLabel}
+              </button>
+            ) : null}
+            <button
+              className="app-toast-close"
+              onClick={dismissNotice}
+              type="button"
+              aria-label="通知を閉じる"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <main className="section-stack">
+        {viewMode === 'month' ? (
+          <MonthView
+            monthDate={monthDate}
+            selectedDate={selectedDate}
+            userId={user.id}
+            plans={plans}
+            actuals={actuals}
+            monthEvents={monthEvents}
+            onSelectDate={selectDate}
+            onChangeMonth={changeMonth}
+            onOpenWeek={openWeek}
+            onSaveMonthEvent={saveMonthEvent}
+            onDeleteMonthEvent={deleteMonthEvent}
+          />
+        ) : null}
+
+        <Suspense fallback={<SplashScreen />}>
+          {viewMode === 'week' ? (
+            <WeekView
+              selectedDate={selectedDate}
+              plans={plans}
+              actuals={actuals}
+              weeklyDraftBlocks={pendingWeeklyDraftBlocks}
+              onRemoveWeeklyDraftBlock={(blockId) =>
+                dispatchPlanningAction({ type: 'remove_draft_block', blockId })
+              }
+              onChangeWeek={openWeek}
+              onOpenDay={openDay}
+            />
+          ) : null}
+
+          {viewMode === 'day' ? (
+            <DayView
+              selectedDate={selectedDate}
+              userId={user.id}
+              plans={plans}
+              actuals={actuals}
+              monthEvents={monthEvents}
+              studySubjects={studySubjects}
+              studyMaterials={studyMaterials}
+              scheduleTemplates={scheduleTemplates}
+              timetableTermId={activeTimetableTermId}
+              weeklyDraftBlocks={pendingWeeklyDraftBlocks}
+              onRemoveWeeklyDraftBlock={(blockId) =>
+                dispatchPlanningAction({ type: 'remove_draft_block', blockId })
+              }
+              onChangeDay={openDay}
+              onEditPlan={openEditPlan}
+              onDeletePlan={deletePlan}
+              onSavePlan={savePlanDraft}
+              onSaveActual={saveActual}
+              onSaveStandaloneActual={saveStandaloneActual}
+              onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
+              onDeleteActual={deleteActual}
+              onOpenBookshelf={() => setViewMode('bookshelf')}
+              onOpenAddMaterial={() => {
+                setBookshelfInitialAction('add-material');
+                setViewMode('bookshelf');
+              }}
+            />
+          ) : null}
+
+          {viewMode === 'todo' ? (
+            <TodoView
+              userId={user.id}
+              selectedDate={selectedDate}
+              todos={todos}
+              onSaveTodo={saveTodo}
+              onScheduleTodo={scheduleTodoAsPlan}
+              onDeleteTodo={deleteTodo}
+            />
+          ) : null}
+
+          {viewMode === 'report' ? (
+            <ReportView
+              selectedDate={selectedDate}
+              dayNote={currentDayNote ?? createEmptyDayNoteDraft(user.id, selectedDate)}
+              plans={plans}
+              actuals={actuals}
+              monthEvents={monthEvents}
+              studySubjects={studySubjects}
+              studyMaterials={studyMaterials}
+              onOpenDay={openDay}
+              onSaveDayNote={saveDayNote}
+            />
+          ) : null}
+
+          {viewMode === 'timetable' ? (
+            <TimetableView
+              userId={user.id}
+              activeTerm={activeTimetableTerm}
+              timetablePeriods={timetablePeriods}
+              scheduleTemplates={scheduleTemplates}
+              onActivateTerm={activateTimetableTerm}
+              onClearTermData={clearTimetableTermData}
+              onSaveTimetablePeriod={saveTimetablePeriod}
+              onDeleteTimetablePeriod={deleteTimetablePeriod}
+              onSaveScheduleTemplate={saveScheduleTemplate}
+              onDeleteScheduleTemplate={deleteScheduleTemplate}
+            />
+          ) : null}
+
+          {viewMode === 'bookshelf' ? (
+            <BookshelfView
+              userId={user.id}
+              subjects={studySubjects}
+              materials={studyMaterials}
+              initialAction={bookshelfInitialAction}
+              onInitialActionHandled={() => setBookshelfInitialAction(null)}
+              onSaveSubject={saveStudySubject}
+              onDeleteSubject={deleteStudySubject}
+              onSaveMaterial={saveStudyMaterial}
+              onDeleteMaterial={deleteStudyMaterial}
+            />
+          ) : null}
+        </Suspense>
+
+      </main>
+
       {viewMode === 'day' || viewMode === 'todo' ? (
         <button
           className="daily-add-fab print-hide"
@@ -726,6 +500,17 @@ export default function App() {
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
+            weeklyDraftBlocks={pendingWeeklyDraftBlocks}
+            onCreateWeeklyDraftBlocks={(blocks) =>
+              dispatchPlanningAction({ type: 'add_draft_blocks', blocks })
+            }
+            onRemoveWeeklyDraftBlock={(blockId) =>
+              dispatchPlanningAction({ type: 'remove_draft_block', blockId })
+            }
+            onClearWeeklyDraftBlocks={() =>
+              dispatchPlanningAction({ type: 'clear_draft_blocks' })
+            }
+            onApproveWeeklyDraftBlocks={approveWeeklyDraftBlocks}
             onClose={() => setIsQuickEntryOpen(false)}
             onSaveTodo={saveTodo}
             onSavePlan={savePlanDraft}
@@ -733,15 +518,6 @@ export default function App() {
             onSaveLinkedActual={saveActual}
           />
         </Suspense>
-      ) : null}
-
-      {isTrackingPanelOpen ? (
-        <FloatingActualTrackingPanel
-          hasApplyTarget={Boolean(trackingEditorApplyRef.current || trackingTargetApplyRef.current)}
-          onApplyMeasuredRange={applyMeasuredRangeFromFloatingPanel}
-          onClose={closeTrackingPanel}
-          targetLabel={trackingApplyTargetLabel}
-        />
       ) : null}
 
       <MyPageDialog
@@ -756,11 +532,8 @@ export default function App() {
         open={isAppSettingsOpen}
         themeMode={themeMode}
         themePalette={themePalette}
-        isAdmin={isAdmin}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
-        onOpenAdmin={() => navigate('/admin/users')}
-        onSignOut={signOut}
         onClose={() => setIsAppSettingsOpen(false)}
       />
     </div>

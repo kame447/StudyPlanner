@@ -2,17 +2,16 @@ import type { CSSProperties } from "react";
 import { minutesBetween, minutesFromTime } from "../lib/date";
 import {
   buildPlanOccurrenceKey,
+  getActualOccurrenceKey,
 } from "../lib/planRecurrence";
-import { normalizeStudyRecordsForDisplay } from "../lib/studyRecords";
-import { resolveTimelineSubjectDisplay } from "../lib/timelineSubject";
+import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
+import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
 import type {
   Actual,
   MonthEvent,
   Plan,
   PlanSourceType,
   PlanType,
-  StudyMaterial,
-  StudySubject,
 } from "../types/domain";
 
 interface DayTimelineProps {
@@ -20,13 +19,12 @@ interface DayTimelineProps {
   plans: Plan[];
   monthEvents: MonthEvent[];
   actuals: Actual[];
-  studyMaterials: StudyMaterial[];
-  studySubjects: StudySubject[];
+  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   selectedEntryId?: string;
   onSelectEntry: (entry: DayTimelineSelection) => void;
   onPreviousDay: () => void;
   onNextDay: () => void;
-  onOpenDatePicker: () => void;
   onPrint: () => void;
   onImportTimetable?: () => void;
   timetableImportCount?: number;
@@ -46,8 +44,6 @@ interface TimelineEntry {
   subject: string;
   type: PlanType;
   sourceType?: PlanSourceType;
-  materialId?: string | null;
-  materialName?: string;
   startTime: string;
   endTime: string;
   lane: number;
@@ -56,8 +52,8 @@ interface TimelineEntry {
   standalone?: boolean;
 }
 
-const HOUR_HEIGHT = 68;
-const MIN_BLOCK_HEIGHT = 28;
+const HOUR_HEIGHT = 54;
+const MIN_BLOCK_HEIGHT = 34;
 const DAY_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 
 function getDisplayMetrics(startTime: string, endTime: string) {
@@ -201,29 +197,19 @@ export function DayTimeline({
   plans,
   monthEvents,
   actuals,
-  studyMaterials,
-  studySubjects,
+  weeklyDraftBlocks = [],
+  onRemoveWeeklyDraftBlock,
   selectedEntryId,
   onSelectEntry,
   onPreviousDay,
   onNextDay,
-  onOpenDatePicker,
   onPrint,
   onImportTimetable,
   timetableImportCount = 0,
 }: DayTimelineProps) {
-  const materialsById = new Map(studyMaterials.map((material) => [material.id, material]));
-  const subjectsById = new Map(studySubjects.map((subject) => [subject.id, subject]));
-  const subjectsByName = new Map(studySubjects.map((subject) => [subject.name.trim(), subject]));
-  const monthEventIds = new Set(monthEvents.map((monthEvent) => monthEvent.id));
-  const studyActualRecords = normalizeStudyRecordsForDisplay({
-    actuals: actuals.filter(
-      (actual) => !actual.planId || !monthEventIds.has(actual.planId),
-    ),
-    plans,
-    materials: studyMaterials,
-    subjects: studySubjects,
-  });
+  const actualByOccurrenceKey = new Map(
+    actuals.map((actual) => [getActualOccurrenceKey(actual), actual])
+  );
   const planEntries = buildTimelineEntries([
     ...plans.map((plan) => ({
       id: buildPlanOccurrenceKey(plan.id, plan.date),
@@ -234,8 +220,6 @@ export function DayTimeline({
       subject: plan.subject,
       type: plan.type,
       sourceType: plan.sourceType,
-      materialId: plan.materialId ?? null,
-      materialName: plan.materialName,
       startTime: plan.startTime,
       endTime: plan.endTime,
     })),
@@ -252,30 +236,47 @@ export function DayTimeline({
       endTime: monthEvent.endTime,
     })),
   ]);
+  const draftEntries = buildTimelineEntries(
+    weeklyDraftBlocks.map((block) => ({
+      id: block.id,
+      targetId: block.id,
+      selectionId: `weekly-draft:${block.id}`,
+      entryKind: "plan" as const,
+      title: block.title,
+      subject: block.subject || block.label,
+      type: block.type,
+      sourceType: undefined,
+      startTime: block.startTime,
+      endTime: block.endTime,
+    }))
+  );
   const actualEntries = buildTimelineEntries(
     [
-      ...studyActualRecords.map((record) => ({
-        id: record.actualId,
-        targetId: record.isLinkedToPlan && record.planId ? record.planId : record.actualId,
-        selectionId:
-          record.isLinkedToPlan && record.planId
-            ? `plan:${record.planId}`
-            : `standalone-actual:${record.actualId}`,
-        entryKind: record.isLinkedToPlan ? ("plan" as const) : ("standalone-actual" as const),
-        title: record.title,
-        subject: record.subject,
-        type: record.type,
-        sourceType: record.sourceType,
-        materialId: record.materialId,
-        materialName: record.materialName,
-        startTime: record.startTime,
-        endTime: record.endTime,
-        alignedToPlan:
-          record.isLinkedToPlan && record.plan
-            ? resolveAlignedToPlan(record.actual, record.plan)
-            : false,
-        standalone: !record.isLinkedToPlan,
-      })),
+      ...plans.flatMap((plan) => {
+        const actual = actualByOccurrenceKey.get(
+          buildPlanOccurrenceKey(plan.id, plan.date)
+        );
+
+        if (!actual) {
+          return [];
+        }
+
+        return [
+          {
+            id: actual.id,
+            targetId: plan.id,
+            selectionId: `plan:${plan.id}`,
+            entryKind: "plan" as const,
+            title: resolveActualTitle(actual, plan),
+            subject: resolveActualSubject(actual, plan),
+            type: plan.type,
+            sourceType: plan.sourceType,
+            startTime: actual.actualStartTime,
+            endTime: actual.actualEndTime,
+            alignedToPlan: resolveAlignedToPlan(actual, plan),
+          },
+        ];
+      }),
       ...monthEvents.flatMap((monthEvent) => {
         const actual = actuals.find((candidate) => candidate.planId === monthEvent.id);
 
@@ -293,24 +294,35 @@ export function DayTimeline({
             subject: actual.subject.trim() || "主要予定",
             type: "other" as const,
             sourceType: "manual" as const,
-            materialId: actual.materialId ?? null,
-            materialName: actual.materialName,
             startTime: actual.actualStartTime,
             endTime: actual.actualEndTime,
             alignedToPlan: false,
           },
         ];
       }),
+      ...actuals
+        .filter((actual) => !actual.planId)
+        .map((actual) => ({
+          id: actual.id,
+          targetId: actual.id,
+          selectionId: `standalone-actual:${actual.id}`,
+          entryKind: "standalone-actual" as const,
+          title: actual.title?.trim() || "記録",
+          subject: actual.subject.trim() || "記録",
+          type: "study" as const,
+          sourceType: "manual" as const,
+          startTime: actual.actualStartTime,
+          endTime: actual.actualEndTime,
+          alignedToPlan: false,
+          standalone: true,
+        })),
     ]
   );
   const legendMap = new Map<string, string>();
 
-  [...planEntries, ...actualEntries].forEach((entry) => {
-    const subject = resolveTimelineSubjectDisplay(
-      entry,
-      { materialsById, subjectsById, subjectsByName }
-    );
-    legendMap.set(subject.label, subject.theme.fill);
+  [...planEntries, ...draftEntries, ...actualEntries].forEach((entry) => {
+    const label = getSubjectLabel(entry.subject, entry.type, entry.sourceType);
+    legendMap.set(label, getSubjectTheme(label, entry.type, entry.sourceType).fill);
   });
   const timelineLegend = (
     <div className="timeline-legend">
@@ -343,14 +355,7 @@ export function DayTimeline({
               >
                 <span aria-hidden="true">＜</span>
               </button>
-              <button
-                className="week-range-chip date-picker-trigger"
-                onClick={onOpenDatePicker}
-                type="button"
-                aria-label="日付を選択"
-              >
-                {dateLabel}
-              </button>
+              <span className="week-range-chip">{dateLabel}</span>
               <button
                 className="ghost-button nav-icon-button"
                 onClick={onNextDay}
@@ -382,7 +387,9 @@ export function DayTimeline({
         </div>
       </header>
 
-      {planEntries.length === 0 && actualEntries.length === 0 ? (
+      {planEntries.length === 0 &&
+      draftEntries.length === 0 &&
+      actualEntries.length === 0 ? (
         <>
           <p className="empty-copy">
             この日の予定はありません。追加すると時間軸に並びます。
@@ -428,11 +435,16 @@ export function DayTimeline({
 
                 {planEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const subject = resolveTimelineSubjectDisplay(
-                    entry,
-                    { materialsById, subjectsById, subjectsByName }
+                  const theme = getSubjectTheme(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
                   );
-                  const theme = subject.theme;
+                  const subjectLabel = getSubjectLabel(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
 
                   return (
                     <button
@@ -442,19 +454,13 @@ export function DayTimeline({
                           ? "timeline-plan-block split is-selected"
                           : "timeline-plan-block split"
                       }
-                      style={{
-                        ...buildColumnBlockStyle(
-                          minutesFromTime(entry.startTime),
-                          duration,
-                          entry.lane,
-                          entry.laneCount,
-                          "plan"
-                        ),
-                        backgroundColor: theme.soft,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        boxShadow: `inset 5px 0 0 ${theme.fill}`,
-                      }}
+                      style={buildColumnBlockStyle(
+                        minutesFromTime(entry.startTime),
+                        duration,
+                        entry.lane,
+                        entry.laneCount,
+                        "plan"
+                      )}
                       onClick={() =>
                         onSelectEntry(
                           entry.entryKind === "plan"
@@ -477,22 +483,84 @@ export function DayTimeline({
                         <span
                           className="timeline-entry-subject"
                           style={{ color: theme.text }}
-                          title={subject.label}
+                          title={subjectLabel}
                         >
-                          {subject.label}
+                          {subjectLabel}
                         </span>
                       </div>
                     </button>
                   );
                 })}
 
+                {draftEntries.map((entry) => {
+                  const duration = minutesBetween(entry.startTime, entry.endTime);
+                  const subjectLabel = getSubjectLabel(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
+
+                  return (
+                    <div
+                      key={`draft-${entry.id}`}
+                      className="timeline-plan-block split timeline-draft-block"
+                      style={buildColumnBlockStyle(
+                        minutesFromTime(entry.startTime),
+                        duration,
+                        entry.lane,
+                        entry.laneCount,
+                        "plan"
+                      )}
+                      title={`${entry.title} / ${entry.startTime}-${entry.endTime}`}
+                    >
+                      <div className="timeline-entry-line">
+                        <strong
+                          className="timeline-entry-title"
+                          title={entry.title}
+                        >
+                          {entry.title}
+                        </strong>
+                        <span className="timeline-entry-time">
+                          {entry.startTime}-{entry.endTime}
+                        </span>
+                        <span
+                          className="timeline-entry-subject"
+                          title={subjectLabel}
+                        >
+                          {subjectLabel}
+                        </span>
+                        <span className="weekly-draft-badge">AI提案</span>
+                      </div>
+                      {onRemoveWeeklyDraftBlock ? (
+                        <button
+                          className="weekly-draft-remove-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onRemoveWeeklyDraftBlock(entry.id);
+                          }}
+                          type="button"
+                          aria-label={`${entry.title}を削除`}
+                          title="仮予定を削除"
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
                 {actualEntries.map((entry) => {
                   const duration = minutesBetween(entry.startTime, entry.endTime);
-                  const subject = resolveTimelineSubjectDisplay(
-                    entry,
-                    { materialsById, subjectsById, subjectsByName }
+                  const theme = getSubjectTheme(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
                   );
-                  const theme = subject.theme;
+                  const subjectLabel = getSubjectLabel(
+                    entry.subject,
+                    entry.type,
+                    entry.sourceType
+                  );
 
                   return (
                     <button
@@ -538,9 +606,9 @@ export function DayTimeline({
                         </span>
                         <span
                           className="timeline-entry-subject"
-                          title={subject.label}
+                          title={subjectLabel}
                         >
-                          {subject.label}
+                          {subjectLabel}
                         </span>
                       </div>
                     </button>

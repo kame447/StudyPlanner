@@ -119,8 +119,8 @@
 .timeline-shell {
   --timeline-head-height: 44px;
   --timeline-row-gap: 10px;
-  --timeline-hour-height: 68px;
-  --timeline-min-block-height: 28px;
+  --timeline-hour-height: 54px;
+  --timeline-min-block-height: 24px;
   --timeline-hour-label-offset: -6px;
   --timeline-title-size: clamp(0.94rem, 0.88rem + 0.18vw, 1.06rem);
   --timeline-meta-size: clamp(0.7rem, 0.67rem + 0.08vw, 0.78rem);
@@ -270,9 +270,23 @@
   box-shadow: 0 10px 24px rgba(36, 49, 48, 0.08);
 }
 
+.timeline-draft-block {
+  padding-right: 30px;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border) 46%);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+  color: var(--text);
+  box-shadow: inset 5px 0 0 color-mix(in srgb, var(--accent) 52%, transparent);
+  cursor: default;
+}
+
 .timeline-plan-block:hover,
 .timeline-actual-block:hover {
   transform: translateY(-1px);
+}
+
+.timeline-draft-block:hover {
+  transform: none;
 }
 
 .timeline-plan-block.is-selected,

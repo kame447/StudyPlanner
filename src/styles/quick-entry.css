@@ -234,6 +234,54 @@
   align-items: flex-end;
 }
 
+.weekly-planning-assistant {
+  gap: 10px;
+}
+
+.weekly-draft-control-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
+}
+
+.weekly-draft-list {
+  display: grid;
+  gap: 7px;
+}
+
+.weekly-draft-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.weekly-draft-list-item span {
+  min-width: 0;
+}
+
+.weekly-draft-list-item strong,
+.weekly-draft-list-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-draft-list-item small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
 .quick-entry-mode-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -492,7 +540,7 @@
 
   .quick-entry-title-field input {
     min-height: 42px;
-    font-size: 0.86rem;
+    font-size: 16px;
   }
 
   .quick-entry-input-method-tabs .segment,
@@ -517,7 +565,7 @@
   .quick-entry-card .field textarea {
     min-height: 40px;
     padding: 8px 9px;
-    font-size: 0.8rem;
+    font-size: 16px;
   }
 
   .quick-entry-chip,

@@ -1,8 +1,8 @@
 import { useState, type CSSProperties } from 'react';
 import {
   addDays,
-  formatCompactMinutes,
   formatDateLabel,
+  formatMinutes,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -11,27 +11,18 @@ import {
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
+  getActualOccurrenceKey,
 } from '../lib/planRecurrence';
-import {
-  normalizeStudyRecordsForDisplay,
-  sumStudyRecordMinutes,
-} from '../lib/studyRecords';
-import { resolveTimelineSubjectDisplay } from '../lib/timelineSubject';
-import { WeekPickerDialog } from './DatePickerDialogs';
-import type {
-  Actual,
-  Plan,
-  PlanSourceType,
-  StudyMaterial,
-  StudySubject,
-} from '../types/domain';
+import { getSubjectLabel, getSubjectTheme } from '../lib/subjectTheme';
+import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import type { Actual, Plan, PlanSourceType } from '../types/domain';
 
 interface WeekViewProps {
   selectedDate: string;
   plans: Plan[];
   actuals: Actual[];
-  studyMaterials: StudyMaterial[];
-  studySubjects: StudySubject[];
+  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onChangeWeek: (date: string) => void;
   onOpenDay: (date: string) => void;
 }
@@ -44,8 +35,6 @@ interface WeekTimelineBaseBlock {
   subject: string;
   type: Plan['type'];
   sourceType?: PlanSourceType;
-  materialId?: string | null;
-  materialName?: string;
   startTime: string;
   endTime: string;
 }
@@ -141,30 +130,30 @@ function getWeekTimelineDisplayClass(laneCount: number): string {
   return 'week-timeline-block--wide';
 }
 
+function resolveActualTitle(actual: Actual, plan?: Plan): string {
+  return actual.title?.trim() || plan?.title || '記録';
+}
+
+function resolveActualSubject(actual: Actual, plan?: Plan): string {
+  return actual.subject.trim() || plan?.subject || '記録';
+}
+
 export function WeekView({
   selectedDate,
   plans,
   actuals,
-  studyMaterials,
-  studySubjects,
+  weeklyDraftBlocks = [],
+  onRemoveWeeklyDraftBlock,
   onChangeWeek,
   onOpenDay,
 }: WeekViewProps) {
   const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
-  const [isWeekPickerOpen, setIsWeekPickerOpen] = useState(false);
   const weekDates = getWeekDates(selectedDate);
   const weekRangeLabel = `${formatDateLabel(weekDates[0])} - ${formatDateLabel(weekDates[6])}`;
-  const materialsById = new Map(studyMaterials.map((material) => [material.id, material]));
-  const subjectsById = new Map(studySubjects.map((subject) => [subject.id, subject]));
-  const subjectsByName = new Map(studySubjects.map((subject) => [subject.name.trim(), subject]));
-  const weekActualRecords = normalizeStudyRecordsForDisplay({
-    actuals,
-    plans,
-    materials: studyMaterials,
-    subjects: studySubjects,
-    startDate: weekDates[0],
-    endDate: weekDates[6],
-  });
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const actualByOccurrenceKey = new Map(
+    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
+  );
 
   return (
     <section className="panel">
@@ -183,14 +172,7 @@ export function WeekView({
                 >
                   <span aria-hidden="true">＜</span>
                 </button>
-                <button
-                  className="week-range-chip date-picker-trigger"
-                  onClick={() => setIsWeekPickerOpen(true)}
-                  type="button"
-                  aria-label="週を選択"
-                >
-                  {weekRangeLabel}
-                </button>
+                <span className="week-range-chip">{weekRangeLabel}</span>
                 <button
                   className="ghost-button nav-icon-button"
                   onClick={() => onChangeWeek(addDays(selectedDate, 7))}
@@ -212,13 +194,6 @@ export function WeekView({
           </div>
         </div>
       </div>
-
-      <WeekPickerDialog
-        open={isWeekPickerOpen}
-        selectedDate={selectedDate}
-        onSelectWeek={onChangeWeek}
-        onClose={() => setIsWeekPickerOpen(false)}
-      />
 
       <div className="week-timeline-toolbar print-hide">
         <div className="segmented-control week-timeline-mode-control">
@@ -268,14 +243,47 @@ export function WeekView({
         <div className="week-timeline-days">
         {weekDates.map((date) => {
           const dayPlans = sortByDateTime(expandPlansForDate(plans, date));
-          const dayActualRecords = weekActualRecords.filter(
-            (record) => record.date === date,
+          const dayPlanKeys = new Set(
+            dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
+          );
+          const linkedActuals = dayPlans.flatMap((plan) => {
+            const actual = actualByOccurrenceKey.get(
+              buildPlanOccurrenceKey(plan.id, plan.date),
+            );
+
+            return actual ? [{ actual, plan }] : [];
+          });
+          const standaloneActuals = actuals
+            .filter(
+              (actual) =>
+                actual.occurrenceDate === date &&
+                !dayPlanKeys.has(getActualOccurrenceKey(actual)),
+            )
+            .map((actual) => ({
+              actual,
+              plan: actual.planId ? planById.get(actual.planId) : undefined,
+            }));
+          const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
+            (left, right) =>
+              minutesFromTime(left.actual.actualStartTime) -
+              minutesFromTime(right.actual.actualStartTime),
           );
           const dayPlanMinutes = dayPlans.reduce(
             (sum, plan) => sum + minutesBetween(plan.startTime, plan.endTime),
             0,
           );
-          const dayActualMinutes = sumStudyRecordMinutes(dayActualRecords);
+          const dayActualMinutes = dayActuals.reduce(
+            (sum, { actual }) =>
+              sum + minutesBetween(actual.actualStartTime, actual.actualEndTime),
+            0,
+          );
+          const dayDraftBlocks = weeklyDraftBlocks.filter(
+            (block) => block.date === date && block.status === 'draft',
+          );
+          const dayDraftMinutes = dayDraftBlocks.reduce(
+            (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
+            0,
+          );
           const planBlocks = buildWeekTimelineLanes(
             dayPlans.map((plan) => ({
               id: buildPlanOccurrenceKey(plan.id, plan.date),
@@ -283,31 +291,40 @@ export function WeekView({
               subject: plan.subject,
               type: plan.type,
               sourceType: plan.sourceType,
-              materialId: plan.materialId ?? null,
-              materialName: plan.materialName,
               startTime: plan.startTime,
               endTime: plan.endTime,
             })),
           );
           const actualBlocks = buildWeekTimelineLanes(
-            dayActualRecords.map((record) => ({
-              id: record.actualId,
-              title: record.title,
-              subject: record.subject,
-              type: record.type,
-              sourceType: record.sourceType,
-              materialId: record.materialId,
-              materialName: record.materialName,
-              startTime: record.startTime,
-              endTime: record.endTime,
+            dayActuals.map(({ actual, plan }) => ({
+              id: actual.id,
+              title: resolveActualTitle(actual, plan),
+              subject: resolveActualSubject(actual, plan),
+              type: plan?.type ?? 'other',
+              sourceType: plan?.sourceType,
+              startTime: actual.actualStartTime,
+              endTime: actual.actualEndTime,
+            })),
+          );
+          const draftBlocks = buildWeekTimelineLanes(
+            dayDraftBlocks.map((block) => ({
+              id: block.id,
+              title: block.title,
+              subject: block.subject || block.label,
+              type: block.type,
+              sourceType: undefined,
+              startTime: block.startTime,
+              endTime: block.endTime,
             })),
           );
           const hasVisibleBlocks =
             timelineMode === 'plan'
-              ? planBlocks.length > 0
+              ? planBlocks.length > 0 || draftBlocks.length > 0
               : timelineMode === 'actual'
                 ? actualBlocks.length > 0
-                : planBlocks.length > 0 || actualBlocks.length > 0;
+                : planBlocks.length > 0 ||
+                  draftBlocks.length > 0 ||
+                  actualBlocks.length > 0;
 
           return (
             <article key={date} className="week-timeline-day">
@@ -321,13 +338,26 @@ export function WeekView({
                   </button>
                   <p className="week-day-summary">
                     <span className="week-day-summary-item">
-                      <span>目標</span>{' '}
-                      <strong>{formatCompactMinutes(dayPlanMinutes)}</strong>
+                      <span className="week-day-summary-label-full">計画</span>
+                      <span className="week-day-summary-label-short">計</span>{' '}
+                      <strong>{formatMinutes(dayPlanMinutes)}</strong>
                     </span>
+                    <span className="week-day-summary-separator">/</span>
                     <span className="week-day-summary-item">
-                      <span>記録</span>{' '}
-                      <strong>{formatCompactMinutes(dayActualMinutes)}</strong>
+                      <span className="week-day-summary-label-full">記録</span>
+                      <span className="week-day-summary-label-short">実</span>{' '}
+                      <strong>{formatMinutes(dayActualMinutes)}</strong>
                     </span>
+                    {dayDraftMinutes > 0 ? (
+                      <>
+                        <span className="week-day-summary-separator">/</span>
+                        <span className="week-day-summary-item">
+                          <span className="week-day-summary-label-full">仮</span>
+                          <span className="week-day-summary-label-short">仮</span>{' '}
+                          <strong>{formatMinutes(dayDraftMinutes)}</strong>
+                        </span>
+                      </>
+                    ) : null}
                   </p>
               </div>
 
@@ -346,11 +376,11 @@ export function WeekView({
 
                 {(timelineMode === 'plan' || timelineMode === 'compare') &&
                   planBlocks.map((entry) => {
-                    const subject = resolveTimelineSubjectDisplay(entry, {
-                      materialsById,
-                      subjectsById,
-                      subjectsByName,
-                    });
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType,
+                    );
 
                     return (
                       <button
@@ -369,26 +399,67 @@ export function WeekView({
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span
-                              className="week-timeline-subject"
-                              title={subject.label}
-                            >
-                              {subject.label}
-                            </span>
+                            <span className="week-timeline-subject">{subjectLabel}</span>
                           </span>
                         </span>
                       </button>
                     );
                   })}
 
+                {(timelineMode === 'plan' || timelineMode === 'compare') &&
+                  draftBlocks.map((entry) => {
+                    const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+
+                    return (
+                      <div
+                        key={`draft-${entry.id}`}
+                        className={`week-timeline-block week-timeline-draft-block ${getWeekTimelineDisplayClass(entry.laneCount)}`}
+                        style={buildWeekTimelineBlockStyle(entry)}
+                        title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                      >
+                        <span className="week-timeline-entry-line">
+                          <strong className="week-timeline-block__title">
+                            {entry.title}
+                          </strong>
+                          <span className="week-timeline-meta">
+                            <span className="week-timeline-time">
+                              {entry.startTime}-{entry.endTime}
+                            </span>
+                            <span className="week-timeline-subject">{subjectLabel}</span>
+                            <span className="weekly-draft-badge">AI提案</span>
+                          </span>
+                        </span>
+                        {onRemoveWeeklyDraftBlock ? (
+                          <button
+                            className="weekly-draft-remove-button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onRemoveWeeklyDraftBlock(entry.id);
+                            }}
+                            type="button"
+                            aria-label={`${entry.title}を削除`}
+                            title="仮予定を削除"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+
                 {(timelineMode === 'actual' || timelineMode === 'compare') &&
                   actualBlocks.map((entry) => {
-                    const subject = resolveTimelineSubjectDisplay(entry, {
-                      materialsById,
-                      subjectsById,
-                      subjectsByName,
-                    });
-                    const theme = subject.theme;
+                    const theme = getSubjectTheme(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType,
+                    );
+                    const subjectLabel = getSubjectLabel(
+                      entry.subject,
+                      entry.type,
+                      entry.sourceType,
+                    );
 
                     return (
                       <button
@@ -419,12 +490,7 @@ export function WeekView({
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span
-                              className="week-timeline-subject"
-                              title={subject.label}
-                            >
-                              {subject.label}
-                            </span>
+                            <span className="week-timeline-subject">{subjectLabel}</span>
                           </span>
                         </span>
                       </button>

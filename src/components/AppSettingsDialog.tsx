@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ChevronRight,
   FileText,
-  HelpCircle,
   Info,
-  LogOut,
   Mail,
   Palette,
   ShieldCheck,
@@ -15,6 +13,7 @@ import {
   type ThemeMode,
   type ThemePalette,
 } from '../lib/themePalette';
+import { FaqView } from './FaqView';
 
 type AppSettingsTab = 'settings' | 'support';
 
@@ -22,11 +21,8 @@ interface AppSettingsDialogProps {
   open: boolean;
   themeMode: ThemeMode;
   themePalette: ThemePalette;
-  isAdmin?: boolean;
   onChangeTheme: (nextThemeMode: ThemeMode) => void;
   onChangeThemePalette: (nextThemePalette: ThemePalette) => void;
-  onOpenAdmin?: () => void;
-  onSignOut: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -34,11 +30,8 @@ export function AppSettingsDialog({
   open,
   themeMode,
   themePalette,
-  isAdmin = false,
   onChangeTheme,
   onChangeThemePalette,
-  onOpenAdmin,
-  onSignOut,
   onClose,
 }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
@@ -180,45 +173,28 @@ export function AppSettingsDialog({
                 </div>
               </section>
 
-              {isAdmin && onOpenAdmin ? (
-                <section className="assistant-settings-card support-section">
-                  <strong>管理者</strong>
-                  <button
-                    className="support-link-row support-link-button"
-                    onClick={() => {
-                      onClose();
-                      onOpenAdmin();
-                    }}
-                    type="button"
-                  >
-                    <span className="support-link-main">
-                      <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />
-                      <span>管理者画面</span>
-                    </span>
-                    <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-                  </button>
-                </section>
-              ) : null}
-
               <section className="assistant-settings-card app-settings-placeholder">
                 <strong>その他</strong>
-                <button
-                  className="support-link-row support-link-button danger"
-                  onClick={() => {
-                    void onSignOut();
-                  }}
-                  type="button"
-                >
-                  <span className="support-link-main">
-                    <LogOut aria-hidden="true" size={20} strokeWidth={1.9} />
-                    <span>ログアウト</span>
-                  </span>
-                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-                </button>
+                <p className="detail-note">
+                  通知やカレンダー連携など、今後の設定項目をここに追加できます。
+                </p>
               </section>
             </div>
           ) : (
             <div className="section-stack" role="tabpanel">
+              <FaqView />
+
+              <section className="assistant-settings-card support-section">
+                <strong>ヘルプ</strong>
+                <a className="support-link-row" href="/contact">
+                  <span className="support-link-main">
+                    <Mail aria-hidden="true" size={20} strokeWidth={1.9} />
+                    <span>お問い合わせ</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
+                </a>
+              </section>
+
               <section className="assistant-settings-card support-section">
                 <strong>サービスについて</strong>
                 <a className="support-link-row" href="/terms">
@@ -232,20 +208,6 @@ export function AppSettingsDialog({
                   <span className="support-link-main">
                     <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />
                     <span>プライバシーポリシー</span>
-                  </span>
-                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-                </a>
-                <a className="support-link-row" href="/contact">
-                  <span className="support-link-main">
-                    <Mail aria-hidden="true" size={20} strokeWidth={1.9} />
-                    <span>お問い合わせ</span>
-                  </span>
-                  <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-                </a>
-                <a className="support-link-row" href="/faq">
-                  <span className="support-link-main">
-                    <HelpCircle aria-hidden="true" size={20} strokeWidth={1.9} />
-                    <span>よくある質問</span>
                   </span>
                   <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
                 </a>

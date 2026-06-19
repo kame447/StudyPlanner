@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
-import { formatMinutesToTime, parseTimeToMinutes } from '../lib/date';
+import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
 import {
   inferSubjectFromTitle,
   inferSubjectFromTitleWithUserCatalog,
 } from '../lib/subjectInference';
-import {
-  buildActualMaterialProgressUpdatesFromInput,
-  getMaterialUnitLabel,
-} from '../lib/materialPace';
-import { resolveMaterialSubjectName } from '../lib/materialSubject';
 import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
@@ -20,7 +15,7 @@ import {
 } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
-import { TimeWheelPicker } from './TimeRangeFields';
+import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
   ActualDraft,
@@ -47,6 +42,11 @@ interface QuickEntryModalProps {
   actuals: Actual[];
   materials: StudyMaterial[];
   subjects: StudySubject[];
+  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
+  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
+  onClearWeeklyDraftBlocks?: () => void;
+  onApproveWeeklyDraftBlocks?: () => Promise<void>;
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -88,12 +88,9 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
     return null;
   }
 
-  const endMinutes = Math.min(
-    parseTimeToMinutes(startTime, 'start') + durationMinutes,
-    24 * 60,
-  );
+  const endMinutes = (minutesFromTime(startTime) + durationMinutes) % (24 * 60);
 
-  return formatMinutesToTime(endMinutes, 'end');
+  return timeFromMinutes(endMinutes);
 }
 
 export function QuickEntryModal({
@@ -103,6 +100,11 @@ export function QuickEntryModal({
   actuals,
   materials,
   subjects,
+  weeklyDraftBlocks = [],
+  onCreateWeeklyDraftBlocks,
+  onRemoveWeeklyDraftBlock,
+  onClearWeeklyDraftBlocks,
+  onApproveWeeklyDraftBlocks,
   onClose,
   onSaveTodo,
   onSavePlan,
@@ -116,9 +118,6 @@ export function QuickEntryModal({
   const [subject, setSubject] = useState('');
   const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
   const [selectedMaterialId, setSelectedMaterialId] = useState('');
-  const [progressMaterialId, setProgressMaterialId] = useState('');
-  const [deltaUnitsInput, setDeltaUnitsInput] = useState('');
-  const [toUnitInput, setToUnitInput] = useState('');
   const [materialSource, setMaterialSource] = useState<MaterialSource>('none');
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
@@ -150,22 +149,12 @@ export function QuickEntryModal({
       ),
     [materials, userId],
   );
-  const paceMaterials = useMemo(
-    () => availableMaterials.filter((material) => material.paceEnabled === true),
-    [availableMaterials],
-  );
   const availableSubjects = useMemo(
     () => subjects.filter((subjectItem) => subjectItem.userId === userId),
     [subjects, userId],
   );
   const selectedMaterial =
     availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
-  const selectedProgressMaterial =
-    paceMaterials.find((material) => material.id === progressMaterialId) ?? null;
-  const selectedMaterialSubject = resolveMaterialSubjectName(
-    selectedMaterial,
-    availableSubjects,
-  );
   const candidateActual =
     actualEndTime && title.trim()
       ? {
@@ -298,19 +287,9 @@ export function QuickEntryModal({
       if (inference.source === 'material' && inference.materialId) {
         setSelectedMaterialId(inference.materialId);
         setMaterialSource('title');
-        const inferredMaterial =
-          availableMaterials.find((item) => item.id === inference.materialId) ?? null;
-        setProgressMaterialId(
-          inferredMaterial?.paceEnabled === true ? inferredMaterial.id : '',
-        );
 
-        const inferredMaterialSubject = resolveMaterialSubjectName(
-          inferredMaterial,
-          availableSubjects,
-        );
-
-        if (subjectSource !== 'user' && inferredMaterialSubject) {
-          setSubject(inferredMaterialSubject);
+        if (subjectSource !== 'user' && inference.subject) {
+          setSubject(inference.subject);
           setSubjectSource('material');
         }
         return;
@@ -320,7 +299,6 @@ export function QuickEntryModal({
 
       if (didClearTitleMaterial) {
         setSelectedMaterialId('');
-        setProgressMaterialId('');
         setMaterialSource('none');
 
         if (subjectSource === 'material') {
@@ -353,8 +331,6 @@ export function QuickEntryModal({
       availableMaterials.find((item) => item.id === materialId) ?? null;
 
     if (!material) {
-      setProgressMaterialId('');
-
       if (subjectSource === 'material') {
         const inferredSubject = inferSubjectFromTitle(title);
 
@@ -364,10 +340,8 @@ export function QuickEntryModal({
       return;
     }
 
-    setProgressMaterialId(material.paceEnabled === true ? material.id : '');
-
     if (subjectSource !== 'user') {
-      setSubject(resolveMaterialSubjectName(material, availableSubjects));
+      setSubject(material.subjectName);
       setSubjectSource('material');
     }
   }
@@ -383,24 +357,11 @@ export function QuickEntryModal({
   }
 
   function resolveSubject(fallbackSubject = ''): string {
-    if (subjectSource === 'material' && selectedMaterialSubject) {
-      return selectedMaterialSubject;
-    }
-
     return (
       subject.trim() ||
-      selectedMaterialSubject ||
+      selectedMaterial?.subjectName.trim() ||
       fallbackSubject.trim()
     );
-  }
-
-  function buildMaterialProgressUpdates() {
-    return buildActualMaterialProgressUpdatesFromInput({
-      materials: paceMaterials,
-      materialId: progressMaterialId,
-      deltaUnitsInput,
-      toUnitInput,
-    });
   }
 
   function renderMaterialSelect() {
@@ -426,88 +387,29 @@ export function QuickEntryModal({
     );
   }
 
-  function renderMaterialProgressInputs() {
-    if (entryKind !== 'actual' || paceMaterials.length === 0) {
-      return null;
-    }
-
-    return (
-      <section className="quick-entry-card">
-        <div className="quick-entry-card-head">
-          <h3>教材進捗</h3>
-        </div>
-        <div className="material-quick-progress-grid">
-          <label className="field">
-            <span>教材</span>
-            <select
-              value={progressMaterialId}
-              onChange={(event) => setProgressMaterialId(event.target.value)}
-            >
-              <option value="">記録しない</option>
-              {paceMaterials.map((material) => (
-                <option key={material.id} value={material.id}>
-                  {material.name}（{material.subjectName || '科目未設定'}）
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>進めた量</span>
-            <input
-              min="0"
-              step="1"
-              type="number"
-              value={deltaUnitsInput}
-              onChange={(event) => setDeltaUnitsInput(event.target.value)}
-              placeholder={
-                selectedProgressMaterial
-                  ? getMaterialUnitLabel(selectedProgressMaterial)
-                  : '例: 5'
-              }
-            />
-          </label>
-          <label className="field">
-            <span>到達位置</span>
-            <input
-              min="0"
-              step="1"
-              type="number"
-              value={toUnitInput}
-              onChange={(event) => setToUnitInput(event.target.value)}
-              placeholder={
-                selectedProgressMaterial
-                  ? `${selectedProgressMaterial.currentUnit ?? 0}${getMaterialUnitLabel(
-                      selectedProgressMaterial,
-                    )}`
-                  : '例: 30'
-              }
-            />
-          </label>
-        </div>
-      </section>
-    );
-  }
-
   async function handleSaveLinkedActual(plan: Plan) {
     if (!actualEndTime || !title.trim()) {
       return;
     }
 
     setIsSubmitting(true);
-    void onSaveLinkedActual(plan, {
-      userId,
-      planId: plan.id,
-      occurrenceDate: selectedDate,
-      actualStartTime,
-      actualEndTime,
-      title: title.trim(),
-      subject: resolveSubject(plan.subject),
-      isAlignedToPlan: false,
-      note: memo.trim(),
-      ...getSelectedMaterialFields(),
-      materialProgressUpdates: buildMaterialProgressUpdates(),
-    }).catch(() => undefined);
-    onClose();
+    try {
+      await onSaveLinkedActual(plan, {
+        userId,
+        planId: plan.id,
+        occurrenceDate: selectedDate,
+        actualStartTime,
+        actualEndTime,
+        title: title.trim(),
+        subject: resolveSubject(plan.subject),
+        isAlignedToPlan: false,
+        note: memo.trim(),
+        ...getSelectedMaterialFields(),
+      });
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -518,62 +420,62 @@ export function QuickEntryModal({
     }
 
     setIsSubmitting(true);
-    if (entryKind === 'actual') {
-      if (!actualEndTime) {
-        setIsSubmitting(false);
-        return;
+    try {
+      if (entryKind === 'actual') {
+        if (!actualEndTime) {
+          return;
+        }
+
+        await onSaveStandaloneActual({
+          userId,
+          planId: null,
+          occurrenceDate: selectedDate,
+          actualStartTime,
+          actualEndTime,
+          title: title.trim(),
+          subject: resolveSubject(),
+          isAlignedToPlan: false,
+          note: memo.trim(),
+          ...getSelectedMaterialFields(),
+        });
+      } else if (mode === 'scheduled' || mode === 'repeat') {
+        const planDraft = buildQuickEntryPlanDraft({
+          mode,
+          userId,
+          title,
+          subject: resolveSubject(),
+          type,
+          memo,
+          date,
+          startTime,
+          estimatedMinutes,
+          repeatKind,
+          weekdays,
+          ...getSelectedMaterialFields(),
+        });
+
+        if (!planDraft) {
+          return;
+        }
+
+        await onSavePlan(planDraft);
+      } else {
+        await onSaveTodo({
+          userId,
+          title: title.trim(),
+          subject: subject.trim(),
+          type,
+          estimatedMinutes,
+          dueDate: dueDate || null,
+          dueTime: dueDate ? dueTime || null : null,
+          memo: memo.trim(),
+          pinned: todoPinned,
+        });
       }
-
-      void onSaveStandaloneActual({
-        userId,
-        planId: null,
-        occurrenceDate: selectedDate,
-        actualStartTime,
-        actualEndTime,
-        title: title.trim(),
-        subject: resolveSubject(),
-        isAlignedToPlan: false,
-        note: memo.trim(),
-        ...getSelectedMaterialFields(),
-        materialProgressUpdates: buildMaterialProgressUpdates(),
-      }).catch(() => undefined);
-    } else if (mode === 'scheduled' || mode === 'repeat') {
-      const planDraft = buildQuickEntryPlanDraft({
-        mode,
-        userId,
-        title,
-        subject: resolveSubject(),
-        type,
-        memo,
-        date,
-        startTime,
-        estimatedMinutes,
-        repeatKind,
-        weekdays,
-        ...getSelectedMaterialFields(),
-      });
-
-      if (!planDraft) {
-        setIsSubmitting(false);
-        return;
-      }
-
-      void onSavePlan(planDraft).catch(() => undefined);
-    } else {
-      void onSaveTodo({
-        userId,
-        title: title.trim(),
-        subject: subject.trim(),
-        type,
-        estimatedMinutes,
-        dueDate: dueDate || null,
-        dueTime: dueDate ? dueTime || null : null,
-        memo: memo.trim(),
-        pinned: todoPinned,
-      }).catch(() => undefined);
+      onClose();
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onClose();
   }
 
   return (
@@ -685,6 +587,11 @@ export function QuickEntryModal({
                 materials={availableMaterials}
                 subjects={availableSubjects}
                 onApplyDraft={onSavePlan}
+                weeklyDraftBlocks={weeklyDraftBlocks}
+                onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
+                onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+                onClearWeeklyDraftBlocks={onClearWeeklyDraftBlocks}
+                onApproveWeeklyDraftBlocks={onApproveWeeklyDraftBlocks}
                 embedded
               />
             </section>
@@ -815,10 +722,10 @@ export function QuickEntryModal({
                         </label>
                         <label className="field">
                           <span>開始時刻</span>
-                          <TimeWheelPicker
+                          <input
+                            type="time"
                             value={startTime}
-                            role="start"
-                            onChange={setStartTime}
+                            onChange={(event) => setStartTime(event.target.value)}
                           />
                         </label>
                       </div>
@@ -900,10 +807,10 @@ export function QuickEntryModal({
                         </label>
                         <label className="field">
                           <span>開始時刻</span>
-                          <TimeWheelPicker
+                          <input
+                            type="time"
                             value={startTime}
-                            role="start"
-                            onChange={setStartTime}
+                            onChange={(event) => setStartTime(event.target.value)}
                           />
                         </label>
                       </div>
@@ -948,10 +855,10 @@ export function QuickEntryModal({
                   <div className="quick-entry-two-column-grid">
                     <label className="field">
                       <span>開始時刻</span>
-                      <TimeWheelPicker
+                      <input
+                        type="time"
                         value={actualStartTime}
-                        role="start"
-                        onChange={setActualStartTime}
+                        onChange={(event) => setActualStartTime(event.target.value)}
                       />
                     </label>
                   </div>
@@ -986,8 +893,6 @@ export function QuickEntryModal({
                     </label>
                   </div>
                 </section>
-
-                {renderMaterialProgressInputs()}
 
                 {linkCandidates.length > 0 ? (
                   <section className="quick-entry-card standalone-link-section">

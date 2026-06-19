@@ -416,12 +416,31 @@
   color: var(--timeline-plan-text);
 }
 
+.week-timeline-draft-block {
+  z-index: 3;
+  padding-right: 26px;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border) 46%);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+  color: var(--text);
+  box-shadow: inset 4px 0 0 color-mix(in srgb, var(--accent) 52%, transparent);
+  cursor: default;
+}
+
+.week-timeline-draft-block:hover {
+  transform: none;
+}
+
 .week-timeline-actual-block {
   z-index: 2;
 }
 
 .week-timeline-canvas.mode-compare .week-timeline-plan-block {
   opacity: 0.78;
+}
+
+.week-timeline-canvas.mode-compare .week-timeline-draft-block {
+  opacity: 0.92;
 }
 
 .week-timeline-canvas.mode-compare .week-timeline-actual-block {
@@ -437,5 +456,45 @@
   color: var(--text-muted);
   font-size: 0.72rem;
   text-align: center;
+}
+
+.weekly-draft-badge {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border) 66%);
+  color: var(--accent-strong);
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.weekly-draft-remove-button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.weekly-draft-remove-button:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border) 58%);
 }
 

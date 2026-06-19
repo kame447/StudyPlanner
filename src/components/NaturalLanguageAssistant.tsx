@@ -6,6 +6,14 @@ import {
   getPlannerAiRuntimeInfo,
 } from '../services/naturalLanguagePlanner';
 import type {
+  AiInputMode,
+  WeeklyPlanDraftBlock,
+} from '../features/weeklyPlanning/types';
+import {
+  createFallbackWeeklyDraftBlock,
+  createWeeklyDraftBlockFromPlanDraft,
+} from '../features/weeklyPlanning/weeklyPlanningTransforms';
+import type {
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
   Plan,
@@ -22,6 +30,11 @@ interface NaturalLanguageAssistantProps {
   materials?: StudyMaterial[];
   subjects?: StudySubject[];
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
+  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
+  onClearWeeklyDraftBlocks?: () => void;
+  onApproveWeeklyDraftBlocks?: () => Promise<void>;
   embedded?: boolean;
 }
 
@@ -79,8 +92,14 @@ export function NaturalLanguageAssistant({
   materials = [],
   subjects = [],
   onApplyDraft,
+  weeklyDraftBlocks = [],
+  onCreateWeeklyDraftBlocks,
+  onRemoveWeeklyDraftBlock,
+  onClearWeeklyDraftBlocks,
+  onApproveWeeklyDraftBlocks,
   embedded = false,
 }: NaturalLanguageAssistantProps) {
+  const [aiInputMode, setAiInputMode] = useState<AiInputMode>('chat');
   const [mode, setMode] = useState<NaturalLanguageMode>('add');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -104,6 +123,10 @@ export function NaturalLanguageAssistant({
   const applyableAddSuggestions = suggestions.filter((suggestion) =>
     canApplySuggestion(suggestion),
   );
+  const pendingWeeklyDraftBlocks = weeklyDraftBlocks.filter(
+    (block) => block.status === 'draft',
+  );
+  const canCreateWeeklyDraft = text.trim().length > 0;
 
   async function handleAnalyze() {
     if (!text.trim()) {
@@ -134,6 +157,85 @@ export function NaturalLanguageAssistant({
       setEditTargetPlanId(nextSuggestions[0]?.matchedPlanId ?? '');
     } catch {
       setError('提案の生成に失敗しました。');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
+  async function handleCreateWeeklyDrafts() {
+    if (!onCreateWeeklyDraftBlocks) {
+      setError('週間計画の仮予定を作成する準備ができていません。');
+      return;
+    }
+
+    if (!text.trim()) {
+      setError('週間計画にしたい内容を入力してください。');
+      return;
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      const nextSuggestions = await generateNaturalLanguageSuggestions({
+        mode: 'add',
+        text,
+        selectedDate,
+        plans,
+        userId,
+        userMaterials: materials,
+        userSubjects: subjects,
+      });
+      const nextBlocks = nextSuggestions
+        .filter((suggestion) => canApplySuggestion(suggestion))
+        .map((suggestion) =>
+          createWeeklyDraftBlockFromPlanDraft(suggestion.parsedPlan),
+        );
+
+      if (nextBlocks.length === 0) {
+        nextBlocks.push(
+          createFallbackWeeklyDraftBlock({
+            userId,
+            selectedDate,
+            text,
+          }),
+        );
+      }
+
+      onCreateWeeklyDraftBlocks(nextBlocks);
+      setError('');
+      setStatus(
+        `${nextBlocks.length}件の週間計画ドラフトを作りました。承認するまで保存されません。`,
+      );
+      setText('');
+    } catch {
+      const fallbackBlock = createFallbackWeeklyDraftBlock({
+        userId,
+        selectedDate,
+        text,
+      });
+      onCreateWeeklyDraftBlocks([fallbackBlock]);
+      setError('');
+      setStatus('簡易ドラフトを1件作りました。承認するまで保存されません。');
+      setText('');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
+  async function handleApproveWeeklyDrafts() {
+    if (!onApproveWeeklyDraftBlocks || pendingWeeklyDraftBlocks.length === 0) {
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      await onApproveWeeklyDraftBlocks();
+      setError('');
+      setStatus(`${pendingWeeklyDraftBlocks.length}件の仮予定を通常予定として保存しました。`);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : '仮予定の承認に失敗しました。',
+      );
     } finally {
       setIsAnalyzing(false);
     }
@@ -235,8 +337,7 @@ export function NaturalLanguageAssistant({
         <div>
           <h2>AI入力補助</h2>
           <p>
-            まず current pipeline で解析し、不足がある場合だけ OpenAI assist で補助します。
-            十分に解析できる入力では API は呼びません。
+            相談では従来通り予定を直接追加・修正し、週間計画では未保存の仮予定として表示します。
           </p>
         </div>
         <div className="assistant-runtime">
@@ -245,6 +346,35 @@ export function NaturalLanguageAssistant({
         </div>
       </div>
 
+      <div className="segmented-control">
+        <button
+          className={aiInputMode === 'chat' ? 'segment active' : 'segment'}
+          onClick={() => {
+            setAiInputMode('chat');
+            setError('');
+            setStatus('');
+          }}
+          type="button"
+        >
+          相談
+        </button>
+        <button
+          className={aiInputMode === 'weekly_planning' ? 'segment active' : 'segment'}
+          onClick={() => {
+            setAiInputMode('weekly_planning');
+            setError('');
+            setStatus('');
+            setSuggestions([]);
+            setEditTargetPlanId('');
+          }}
+          type="button"
+        >
+          週間計画
+        </button>
+      </div>
+
+      {aiInputMode === 'chat' ? (
+        <>
       <div className="segmented-control">
         <button
           className={mode === 'add' ? 'segment active' : 'segment'}
@@ -418,6 +548,91 @@ export function NaturalLanguageAssistant({
           ) : null}
         </div>
       ) : null}
+        </>
+      ) : (
+        <div className="section-stack weekly-planning-assistant">
+          <label className="field field-full">
+            <span>週間計画にしたいこと</span>
+            <textarea
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              rows={4}
+              placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
+            />
+          </label>
+
+          <div className="row-actions">
+            <button
+              className="primary-button"
+              onClick={() => void handleCreateWeeklyDrafts()}
+              type="button"
+              disabled={isAnalyzing || !canCreateWeeklyDraft}
+            >
+              {isAnalyzing ? '作成中...' : '仮予定を作る'}
+            </button>
+          </div>
+
+          {pendingWeeklyDraftBlocks.length > 0 ? (
+            <div className="weekly-draft-control-card">
+              <div className="label-row">
+                <strong>未承認の週間計画</strong>
+                <span className="confidence-badge">
+                  {pendingWeeklyDraftBlocks.length}件 / 未保存
+                </span>
+              </div>
+              <div className="weekly-draft-list">
+                {pendingWeeklyDraftBlocks.map((block) => (
+                  <div className="weekly-draft-list-item" key={block.id}>
+                    <span>
+                      <strong>{block.title}</strong>
+                      <small>
+                        {block.date} {block.startTime}-{block.endTime} / {block.label}
+                      </small>
+                    </span>
+                    {onRemoveWeeklyDraftBlock ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => onRemoveWeeklyDraftBlock(block.id)}
+                        type="button"
+                      >
+                        削除
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              <div className="row-actions">
+                {onClearWeeklyDraftBlocks ? (
+                  <button
+                    className="ghost-button"
+                    onClick={onClearWeeklyDraftBlocks}
+                    type="button"
+                  >
+                    一括破棄
+                  </button>
+                ) : null}
+                {onApproveWeeklyDraftBlocks ? (
+                  <button
+                    className="primary-button"
+                    onClick={() => void handleApproveWeeklyDrafts()}
+                    type="button"
+                    disabled={isAnalyzing}
+                  >
+                    一括承認して保存
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="assistant-feedback-card">
+              <strong>週間計画MVP</strong>
+              <p className="detail-note">
+                ここで作る仮予定は、承認するまで通常予定として保存されません。
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 

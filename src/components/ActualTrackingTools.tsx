@@ -79,7 +79,7 @@ function buildMeasuredRange(anchorMs: number, durationMs: number) {
 export function ActualTrackingTools({
   onApplyMeasuredRange,
   canApplyMeasuredRange = true,
-  applyDisabledReason,
+  applyDisabledReason = '',
   onDisplayChange,
 }: ActualTrackingToolsProps) {
   const [mode, setMode] = useState<TrackingMode>('stopwatch');
@@ -105,14 +105,14 @@ export function ActualTrackingTools({
   const timerRemainingMs = Math.max(timerTargetMs - timerElapsedMs, 0);
   const isTimerLocked =
     timer.anchorMs !== null || timer.runningFromMs !== null || timer.elapsedBeforeMs > 0;
-  const activeDisplay =
-    mode === 'stopwatch'
-      ? formatDurationDisplay(stopwatchElapsedMs)
-      : formatDurationDisplay(timerRemainingMs);
 
   useEffect(() => {
-    onDisplayChange?.(activeDisplay);
-  }, [activeDisplay, onDisplayChange]);
+    onDisplayChange?.(
+      mode === 'stopwatch'
+        ? formatDurationDisplay(stopwatchElapsedMs)
+        : formatDurationDisplay(timerRemainingMs),
+    );
+  }, [mode, onDisplayChange, stopwatchElapsedMs, timerRemainingMs]);
 
   useEffect(() => {
     if (!stopwatch.runningFromMs && !timer.runningFromMs) {
@@ -252,9 +252,6 @@ export function ActualTrackingTools({
           <p className="detail-note">
             開始からの経過時間を測ります。反映すると、開始時刻と終了時刻を記録入力へセットします。
           </p>
-          {!canApplyMeasuredRange && applyDisabledReason ? (
-            <p className="detail-note tracking-apply-note">{applyDisabledReason}</p>
-          ) : null}
           <div className="row-actions">
             <button
               className="ghost-button"
@@ -270,7 +267,10 @@ export function ActualTrackingTools({
               className="mini-button"
               onClick={applyStopwatchRange}
               type="button"
-              disabled={!canApplyMeasuredRange || !stopwatch.anchorMs || stopwatchElapsedMs <= 0}
+              disabled={
+                !canApplyMeasuredRange || !stopwatch.anchorMs || stopwatchElapsedMs <= 0
+              }
+              title={!canApplyMeasuredRange ? applyDisabledReason : undefined}
             >
               記録時刻へ反映
             </button>
@@ -301,9 +301,6 @@ export function ActualTrackingTools({
           <p className="detail-note">
             カウントダウンします。反映すると、開始から実際に進んだ分だけを記録時刻へ入れます。
           </p>
-          {!canApplyMeasuredRange && applyDisabledReason ? (
-            <p className="detail-note tracking-apply-note">{applyDisabledReason}</p>
-          ) : null}
 
           <div className="row-actions">
             <button
@@ -326,6 +323,7 @@ export function ActualTrackingTools({
               onClick={applyTimerRange}
               type="button"
               disabled={!canApplyMeasuredRange || !timer.anchorMs || timerElapsedMs <= 0}
+              title={!canApplyMeasuredRange ? applyDisabledReason : undefined}
             >
               記録時刻へ反映
             </button>

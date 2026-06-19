@@ -8,10 +8,10 @@ import {
 import { BookOpen } from 'lucide-react';
 import {
   addDays,
-  formatMinutesToTime,
   formatDateLabel,
-  parseTimeToMinutes,
+  minutesFromTime,
   sortByDateTime,
+  timeFromMinutes,
 } from '../lib/date';
 import {
   buildPlanOccurrenceKey,
@@ -21,20 +21,14 @@ import {
 } from '../lib/planRecurrence';
 import { doesMonthEventOccurOnDate, sortMonthEvents } from '../lib/monthEvents';
 import {
-  buildActualMaterialProgressUpdatesFromInput,
-  getMaterialUnitLabel,
-} from '../lib/materialPace';
-import { resolveMaterialSubjectName } from '../lib/materialSubject';
-import {
   buildTimetableImportCandidates,
   createPlanDraftFromTimetableImportCandidate,
 } from '../lib/timetableImport';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { ActualEditorCard } from './ActualEditorCard';
-import { DayCalendarDialog } from './DatePickerDialogs';
 import { DayTimeline } from './DayTimeline';
 import { StandaloneActualEditorCard } from './StandaloneActualEditorCard';
-import { TimeWheelPicker } from './TimeRangeFields';
+import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
   ActualDraft,
@@ -56,6 +50,8 @@ interface DayViewProps {
   studyMaterials: StudyMaterial[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId: string;
+  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
   onDeletePlan: (plan: Plan) => Promise<void>;
@@ -64,14 +60,6 @@ interface DayViewProps {
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
   onLinkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   onDeleteActual: (actual: Actual) => Promise<void>;
-  onOpenTrackingTools?: (
-    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
-    onApplyMeasuredRangeToTarget: (startTime: string, endTime: string) => void,
-    targetLabel: string,
-  ) => void;
-  onDetachTrackingTools?: (
-    onApplyMeasuredRange: (startTime: string, endTime: string) => void,
-  ) => void;
   onOpenBookshelf: () => void;
   onOpenAddMaterial: () => void;
 }
@@ -108,10 +96,7 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
     return null;
   }
 
-  return formatMinutesToTime(
-    Math.min(parseTimeToMinutes(startTime, 'start') + durationMinutes, 24 * 60),
-    'end',
-  );
+  return timeFromMinutes((minutesFromTime(startTime) + durationMinutes) % (24 * 60));
 }
 
 function MaterialShelfCover({
@@ -178,7 +163,6 @@ function MaterialQuickCreateModal({
   userId,
   selectedDate,
   material,
-  subjects,
   onClose,
   onSavePlan,
   onSaveStandaloneActual,
@@ -186,7 +170,6 @@ function MaterialQuickCreateModal({
   userId: string;
   selectedDate: string;
   material: StudyMaterial;
-  subjects: StudySubject[];
   onClose: () => void;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -199,12 +182,8 @@ function MaterialQuickCreateModal({
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [deltaUnitsInput, setDeltaUnitsInput] = useState('');
-  const [toUnitInput, setToUnitInput] = useState('');
   const endTime = calculateEndTime(startTime, durationMinutes);
   const canSave = Boolean(endTime) && !isSubmitting;
-  const materialUnitLabel = getMaterialUnitLabel(material);
-  const materialSubjectName = resolveMaterialSubjectName(material, subjects);
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -245,50 +224,48 @@ function MaterialQuickCreateModal({
 
     setError('');
     setIsSubmitting(true);
-    const baseFields = {
-      userId,
-      title: material.name,
-      subject: materialSubjectName,
-      materialId: material.id,
-      materialName: material.name,
-    };
-
-    if (kind === 'plan') {
-      void onSavePlan({
-        ...baseFields,
-        date,
-        startTime,
-        endTime,
-        repeat: 'none',
-        repeatUntil: null,
-        excludedDates: [],
-        recurrenceRules: [],
-        type: 'study',
-        memo: '',
-        sourceType: 'manual',
-        sourceId: null,
-      }).catch(() => undefined);
-    } else {
-      const materialProgressUpdates = buildActualMaterialProgressUpdatesFromInput({
-        materials: [material],
+    try {
+      const baseFields = {
+        userId,
+        title: material.name,
+        subject: material.subjectName,
         materialId: material.id,
-        deltaUnitsInput,
-        toUnitInput,
-      });
+        materialName: material.name,
+      };
 
-      void onSaveStandaloneActual({
-        ...baseFields,
-        planId: null,
-        occurrenceDate: date,
-        actualStartTime: startTime,
-        actualEndTime: endTime,
-        isAlignedToPlan: false,
-        note: '',
-        materialProgressUpdates,
-      }).catch(() => undefined);
+      if (kind === 'plan') {
+        await onSavePlan({
+          ...baseFields,
+          date,
+          startTime,
+          endTime,
+          repeat: 'none',
+          repeatUntil: null,
+          excludedDates: [],
+          recurrenceRules: [],
+          type: 'study',
+          memo: '',
+          sourceType: 'manual',
+          sourceId: null,
+        });
+      } else {
+        await onSaveStandaloneActual({
+          ...baseFields,
+          planId: null,
+          occurrenceDate: date,
+          actualStartTime: startTime,
+          actualEndTime: endTime,
+          isAlignedToPlan: false,
+          note: '',
+        });
+      }
+
+      onClose();
+    } catch {
+      setError(kind === 'plan' ? '予定を保存できませんでした。' : '記録を保存できませんでした。');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onClose();
   }
 
   return (
@@ -360,10 +337,10 @@ function MaterialQuickCreateModal({
               </label>
               <label className="field">
                 <span>開始時間</span>
-                <TimeWheelPicker
+                <input
+                  type="time"
                   value={startTime}
-                  role="start"
-                  onChange={setStartTime}
+                  onChange={(event) => setStartTime(event.target.value)}
                 />
               </label>
             </div>
@@ -400,33 +377,6 @@ function MaterialQuickCreateModal({
                   placeholder="75"
                 />
               </label>
-            ) : null}
-
-            {kind === 'actual' && material.paceEnabled === true ? (
-              <div className="material-quick-progress-grid">
-                <label className="field">
-                  <span>進めた量</span>
-                  <input
-                    min="0"
-                    step="1"
-                    type="number"
-                    value={deltaUnitsInput}
-                    onChange={(event) => setDeltaUnitsInput(event.target.value)}
-                    placeholder={`${materialUnitLabel}`}
-                  />
-                </label>
-                <label className="field">
-                  <span>到達位置</span>
-                  <input
-                    min="0"
-                    step="1"
-                    type="number"
-                    value={toUnitInput}
-                    onChange={(event) => setToUnitInput(event.target.value)}
-                    placeholder={`${material.currentUnit ?? 0}${materialUnitLabel}`}
-                  />
-                </label>
-              </div>
             ) : null}
 
           </div>
@@ -545,7 +495,7 @@ function DailyMaterialShelf({
                       material={material}
                       color={material.color || section.color}
                     />
-                    <span className="bookshelf-material-title">{material.name}</span>
+                    <span>{material.name}</span>
                   </button>
                 ))}
               </div>
@@ -569,6 +519,8 @@ export function DayView({
   studyMaterials,
   scheduleTemplates,
   timetableTermId,
+  weeklyDraftBlocks = [],
+  onRemoveWeeklyDraftBlock,
   onChangeDay,
   onEditPlan,
   onDeletePlan,
@@ -577,14 +529,11 @@ export function DayView({
   onSaveStandaloneActual,
   onLinkStandaloneActualToPlan,
   onDeleteActual,
-  onOpenTrackingTools,
-  onDetachTrackingTools,
   onOpenBookshelf,
   onOpenAddMaterial,
 }: DayViewProps) {
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
-  const [isDayCalendarOpen, setIsDayCalendarOpen] = useState(false);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
   const [selectedTimetableSourceIds, setSelectedTimetableSourceIds] = useState<Set<string>>(
     () => new Set(),
@@ -811,14 +760,11 @@ export function DayView({
                 plan={selectedDetailPlan}
                 plans={plans}
                 actuals={actuals}
-                materials={studyMaterials}
                 actual={selectedDetailActual}
                 onEditPlan={onEditPlan}
                 onDeletePlan={onDeletePlan}
                 onSaveActual={onSaveActual}
                 onDeleteActual={onDeleteActual}
-                onOpenTrackingTools={onOpenTrackingTools}
-                onDetachTrackingTools={onDetachTrackingTools}
                 onClose={closeModal}
                 forceOpen
                 hideToggleButton
@@ -872,7 +818,6 @@ export function DayView({
           userId={userId}
           selectedDate={selectedDate}
           material={quickMaterial}
-          subjects={studySubjects}
           onClose={() => setQuickMaterial(null)}
           onSavePlan={onSavePlan}
           onSaveStandaloneActual={onSaveStandaloneActual}
@@ -963,20 +908,15 @@ export function DayView({
         </div>
       ) : null}
 
-      <DayCalendarDialog
-        open={isDayCalendarOpen}
-        selectedDate={selectedDate}
-        onSelectDate={onChangeDay}
-        onClose={() => setIsDayCalendarOpen(false)}
-      />
-
       <DayTimeline
         dateLabel={dayRangeLabel}
         plans={dayPlans}
         monthEvents={dayMonthEvents}
         actuals={dayActuals}
-        studyMaterials={studyMaterials}
-        studySubjects={studySubjects}
+        weeklyDraftBlocks={weeklyDraftBlocks.filter(
+          (block) => block.date === selectedDate && block.status === 'draft',
+        )}
+        onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
         selectedEntryId={
           selectedPlan
             ? `plan:${selectedPlan.id}`
@@ -997,7 +937,6 @@ export function DayView({
         }
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}
-        onOpenDatePicker={() => setIsDayCalendarOpen(true)}
         onPrint={() => window.print()}
         onImportTimetable={openTimetableImport}
         timetableImportCount={timetableImportCandidates.length}
