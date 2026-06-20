@@ -190,14 +190,14 @@ describe('naturalLanguagePlanner facade', () => {
     expect(suggestions).toEqual([adapterSuggestion]);
   });
 
-  it('add が 0 件でも旧 parser fallback しない', async () => {
+  it('add が 0 件なら通常 PlanDraft fallback に潰さず 0 件のまま返す', async () => {
     facadeState.addPipelineRun = {
       pipelineResult: undefined,
       suggestions: [],
     };
 
     const suggestions = await planner.generateNaturalLanguageSuggestions(
-      createAddInput('明日19時から数学を1時間'),
+      createAddInput('来週、英語を3時間、計算理論を4時間、卒研を2時間やりたい'),
     );
 
     expect(addAdapterSpy).toHaveBeenCalledTimes(1);
@@ -222,7 +222,7 @@ describe('naturalLanguagePlanner facade', () => {
     expect(suggestions).toEqual([adapterSuggestion]);
   });
 
-  it('edit が 0 件でも旧 parser fallback しない', async () => {
+  it('edit が 0 件なら通常 PlanDraft fallback に潰さず 0 件のまま返す', async () => {
     facadeState.editPipelineRun = {
       pipelineResult: undefined,
       suggestions: [],

@@ -529,6 +529,7 @@ export function DayTimeline({
                         >
                           {subjectLabel}
                         </span>
+                        <span className="weekly-draft-badge">仮予定</span>
                         <span className="weekly-draft-badge">AI提案</span>
                       </div>
                       {onRemoveWeeklyDraftBlock ? (

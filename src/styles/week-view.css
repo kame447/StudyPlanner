@@ -185,7 +185,8 @@
 }
 
 .week-timeline-legend-plan,
-.week-timeline-legend-actual {
+.week-timeline-legend-actual,
+.week-timeline-legend-draft {
   width: 16px;
   height: 12px;
   border-radius: 5px;
@@ -199,6 +200,11 @@
 .week-timeline-legend-actual {
   background: var(--accent);
   box-shadow: inset 4px 0 0 var(--accent-strong);
+}
+
+.week-timeline-legend-draft {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+  border: 1px dashed color-mix(in srgb, var(--accent) 54%, var(--border) 46%);
 }
 
 .week-timeline-shell {

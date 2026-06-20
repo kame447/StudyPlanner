@@ -26,6 +26,50 @@
   box-shadow: 0 22px 60px rgb(15 23 42 / 0.28);
 }
 
+.quick-entry-overlay:has(.weekly-draft-preview) {
+  align-items: stretch;
+  padding: 8px;
+}
+
+.quick-entry-modal:has(.weekly-draft-preview) {
+  width: min(960px, calc(100vw - 16px));
+  max-height: calc(
+    100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  height: calc(
+    100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) {
+  padding: 8px;
+  border-radius: 16px;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-switch-card {
+  display: none;
+}
+
+.quick-entry-modal:has(.weekly-draft-preview) .quick-entry-modal-body,
+.quick-entry-modal:has(.weekly-draft-preview) .quick-entry-ai-panel,
+.quick-entry-modal:has(.weekly-draft-preview) .section-stack {
+  min-height: 0;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-modal-body {
+  gap: 0;
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-ai-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .quick-entry-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -238,48 +282,584 @@
   gap: 10px;
 }
 
+.quick-entry-modal:has(.weekly-draft-preview) .weekly-planning-assistant {
+  gap: 8px;
+}
+
+.weekly-planning-confirmation-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+}
+
+.weekly-planning-confirmation-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
 .weekly-draft-control-card {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-strong) 8%);
 }
 
-.weekly-draft-list {
+.weekly-draft-confirmation-main {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+}
+
+.weekly-draft-summary-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--surface-strong) 92%, var(--accent) 8%),
+    color-mix(in srgb, var(--surface) 94%, var(--accent) 6%)
+  );
+}
+
+.weekly-draft-summary-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  border: 2px solid var(--accent-strong);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.weekly-draft-summary-main {
   display: grid;
   gap: 7px;
+  min-width: 0;
 }
 
-.weekly-draft-list-item {
+.weekly-draft-summary-main > strong {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.weekly-draft-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.weekly-draft-status-row span {
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border) 78%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-strong) 91%);
+  color: var(--accent-strong);
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.weekly-draft-summary-grid {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 8px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 9px 16px;
+  align-items: baseline;
+  padding-top: 4px;
+  font-size: 0.9rem;
+}
+
+.weekly-draft-summary-grid span {
+  color: var(--text-muted);
+}
+
+.weekly-draft-summary-grid strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.96rem;
+  overflow-wrap: anywhere;
+}
+
+.weekly-draft-preview {
+  --weekly-draft-preview-hour-height: 22px;
+  --weekly-draft-preview-ten-minute-height: calc(
+    var(--weekly-draft-preview-hour-height) / 6
+  );
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+}
+
+.weekly-draft-preview-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
 }
 
-.weekly-draft-list-item span {
+.weekly-draft-preview-tab {
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.weekly-draft-preview-tab.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: var(--surface);
+}
+
+.weekly-draft-preview-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.weekly-draft-preview-scroll {
+  overflow: auto;
+  max-height: min(64vh, 680px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview {
+  overflow: visible;
+}
+
+.quick-entry-modal:has(.weekly-draft-preview) .weekly-draft-preview-scroll {
+  max-height: max(
+    360px,
+    calc(
+      100dvh - 330px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    )
+  );
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-scroll {
+  max-height: none;
+  overflow: visible;
+}
+
+.weekly-draft-preview-grid {
+  width: 100%;
   min-width: 0;
 }
 
-.weekly-draft-list-item strong,
-.weekly-draft-list-item small {
+.weekly-draft-preview-header,
+.weekly-draft-preview-body {
+  display: grid;
+}
+
+.weekly-draft-preview-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-strong) 8%);
+}
+
+.weekly-draft-preview-corner,
+.weekly-draft-preview-date {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 3px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.weekly-draft-preview-corner {
+  color: var(--text-muted);
+  font-weight: 900;
+  text-align: right;
+}
+
+.weekly-draft-preview-date strong,
+.weekly-draft-preview-date small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-draft-preview-date small {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+}
+
+.weekly-draft-preview-time-axis,
+.weekly-draft-preview-day-column {
+  position: relative;
+}
+
+.weekly-draft-preview-time-axis {
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-strong) 70%, var(--surface) 30%);
+}
+
+.weekly-draft-preview-day-column {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border-left: 1px solid var(--border);
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface) 92%, var(--accent) 8%),
+    var(--surface)
+  );
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.weekly-draft-preview-time-label {
+  position: absolute;
+  right: 7px;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.weekly-draft-preview-time-label--start {
+  transform: translateY(0);
+}
+
+.weekly-draft-preview-time-label--end {
+  transform: translateY(-100%);
+}
+
+.weekly-draft-preview-hour-line {
+  position: absolute;
+  right: 0;
+  left: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 68%, transparent 32%);
+  pointer-events: none;
+}
+
+.weekly-draft-preview-block {
+  --weekly-draft-tone: var(--accent);
+  --weekly-draft-tone-bg: color-mix(in srgb, var(--accent) 13%, var(--surface-strong) 87%);
+  position: absolute;
+  right: 4px;
+  left: 4px;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--weekly-draft-tone) 46%, var(--border) 54%);
+  border-radius: 6px;
+  background: var(--weekly-draft-tone-bg);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow) 8%, transparent 92%);
+}
+
+.weekly-draft-tone-1 {
+  --weekly-draft-tone: #3b82f6;
+  --weekly-draft-tone-bg: #eaf2ff;
+}
+
+.weekly-draft-tone-2 {
+  --weekly-draft-tone: #16a34a;
+  --weekly-draft-tone-bg: #eaf8ee;
+}
+
+.weekly-draft-tone-3 {
+  --weekly-draft-tone: #f97316;
+  --weekly-draft-tone-bg: #fff1e6;
+}
+
+.weekly-draft-tone-4 {
+  --weekly-draft-tone: #ef4444;
+  --weekly-draft-tone-bg: #ffecef;
+}
+
+.weekly-draft-tone-5 {
+  --weekly-draft-tone: #8b5cf6;
+  --weekly-draft-tone-bg: #f1edff;
+}
+
+.weekly-draft-tone-6 {
+  --weekly-draft-tone: #0d9488;
+  --weekly-draft-tone-bg: #e6f6f4;
+}
+
+.weekly-draft-tone-7 {
+  --weekly-draft-tone: #f59e0b;
+  --weekly-draft-tone-bg: #fff5df;
+}
+
+.weekly-draft-tone-8 {
+  --weekly-draft-tone: #64748b;
+  --weekly-draft-tone-bg: #eef2f6;
+}
+
+.weekly-draft-preview-block--overview {
+  display: grid;
+  gap: 1px;
+  place-items: center;
+  padding: 2px;
+  text-align: center;
+}
+
+.weekly-draft-preview-block--overview strong,
+.weekly-draft-preview-block--overview small {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+}
+
+.weekly-draft-preview-block--overview strong {
+  color: var(--text);
+  font-size: 0.58rem;
+  font-weight: 850;
+  -webkit-line-clamp: 1;
+}
+
+.weekly-draft-preview-block--overview small {
+  color: color-mix(in srgb, var(--text-muted) 86%, var(--weekly-draft-tone) 14%);
+  font-size: 0.5rem;
+  font-weight: 750;
+  -webkit-line-clamp: 1;
+}
+
+.weekly-draft-preview-block--detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  right: 6px;
+  left: 10px;
+  padding: 6px 38px 6px 8px;
+  border-radius: 8px;
+}
+
+.weekly-draft-preview-block-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.weekly-draft-preview-block-main strong,
+.weekly-draft-preview-block-main small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.weekly-draft-list-item small {
-  margin-top: 3px;
+.weekly-draft-preview-block-main strong {
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.weekly-draft-preview-block-main small {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   line-height: 1.2;
+}
+
+.weekly-draft-preview-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.weekly-draft-preview-remove {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border) 65%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--accent) 18%);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.weekly-draft-preview-remove:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.weekly-draft-day-detail {
+  --weekly-draft-preview-hour-height: 44px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 0 0;
+}
+
+.weekly-draft-day-detail-header {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.weekly-draft-day-detail-header strong {
+  justify-self: center;
+  min-width: 0;
+  font-size: 0.98rem;
+}
+
+.weekly-draft-day-detail-header::after {
+  content: '';
+  width: 1px;
+}
+
+.weekly-draft-back-button {
+  min-height: 34px;
+}
+
+.weekly-draft-day-nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.weekly-draft-day-nav .ghost-button {
+  border-radius: 999px;
+  box-shadow: 0 5px 12px rgb(15 23 42 / 0.08);
+}
+
+.weekly-draft-day-nav span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.weekly-draft-preview-scroll--day {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.weekly-draft-day-grid {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  width: 100%;
+}
+
+.weekly-draft-day-time-axis {
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--surface) 22%);
+}
+
+.weekly-draft-day-column {
+  position: relative;
+  min-width: 0;
+  background: var(--surface);
+}
+
+.weekly-draft-ten-minute-guide {
+  position: absolute;
+  left: 0;
+  width: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 48%, transparent 52%);
+  pointer-events: none;
+}
+
+.weekly-draft-ten-minute-guide--half {
+  width: 32px;
+  border-top-color: color-mix(in srgb, var(--border) 72%, transparent 28%);
+}
+
+.weekly-draft-ten-minute-guide--hour {
+  right: 0;
+  width: auto;
+  border-top-color: color-mix(in srgb, var(--border) 92%, transparent 8%);
+}
+
+.weekly-draft-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 2px -4px -4px;
+  padding: 10px 4px 4px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%) 78%,
+    transparent
+  );
+}
+
+.weekly-draft-action-bar .ghost-button,
+.weekly-draft-action-bar .primary-button {
+  min-height: 58px;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.weekly-draft-action-bar .ghost-button {
+  border: 1px solid #ef4444;
+  background: var(--surface);
+  color: #ef4444;
+}
+
+.weekly-draft-action-bar .primary-button {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 
 .quick-entry-mode-tabs {
@@ -617,4 +1197,170 @@
   .quick-entry-two-column-grid {
     grid-template-columns: 1fr;
   }
+}
+/* Weekly planning confirmation: make the whole confirmation screen one scrollable page */
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(960px, calc(100vw - 16px));
+  height: calc(
+    100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  max-height: calc(
+    100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  padding: 8px;
+  overflow: hidden;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+  gap: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .quick-entry-ai-panel {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .section-stack,
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-planning-assistant {
+  display: block;
+  min-height: 0;
+}
+
+.weekly-planning-confirmation-screen {
+  display: block;
+  width: 100%;
+  min-height: auto;
+}
+
+.weekly-planning-confirmation-header {
+  margin: 8px 0 12px;
+}
+
+.weekly-draft-control-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.weekly-draft-confirmation-main {
+  display: block;
+  width: 100%;
+  min-height: auto;
+}
+
+.weekly-draft-summary-hero {
+  margin: 0 0 12px;
+}
+
+.weekly-draft-preview {
+  display: block;
+  width: 100%;
+  min-height: auto;
+  overflow: visible;
+  background: transparent;
+}
+
+.weekly-draft-preview-switch {
+  margin-bottom: 8px;
+}
+
+.weekly-draft-preview-scroll,
+.quick-entry-modal:has(.weekly-draft-preview) .weekly-draft-preview-scroll,
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-scroll {
+  max-height: none;
+  height: auto;
+  overflow: visible;
+}
+
+.weekly-draft-preview-grid {
+  width: 100%;
+}
+
+/* Prevent the action buttons from covering the timetable */
+.weekly-draft-action-bar {
+  position: static;
+  z-index: auto;
+  margin: 14px 0 0;
+  padding: 0;
+  background: transparent;
+}
+
+.weekly-draft-action-bar .ghost-button,
+.weekly-draft-action-bar .primary-button {
+  min-height: 56px;
+}
+
+/* Weekly planning day detail: remove extra blank space after 24:00 */
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-detail {
+  display: block;
+  min-height: 0;
+  height: auto;
+  padding-bottom: 0;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-scroll--day {
+  display: block;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-grid {
+  align-items: start;
+  min-height: 0;
+  height: auto;
+}
+
+/* The timetable itself should end at the calculated 24:00 line, not stretch to fill the viewport */
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-time-axis,
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-column {
+  min-height: 0;
+}
+
+/* Prevent empty flex/grid expansion below the day grid */
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-grid,
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-body {
+  min-height: 0;
+  height: auto;
+}
+
+/* Weekly planning preview: keep overview/day timeline heights independent */
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-detail {
+  min-height: 0;
+  height: auto;
+  padding-bottom: 0;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-preview-scroll--day {
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-grid {
+  align-items: start;
+  align-content: start;
+  min-height: 0;
+  height: auto;
+}
+
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-time-axis,
+.quick-entry-modal:has(.weekly-planning-confirmation-screen) .weekly-draft-day-column {
+  min-height: 0;
 }

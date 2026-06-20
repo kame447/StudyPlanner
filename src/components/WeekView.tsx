@@ -223,6 +223,10 @@ export function WeekView({
             <span className="week-timeline-legend-actual" />
             記録
           </span>
+          <span className="week-timeline-legend-item">
+            <span className="week-timeline-legend-draft" />
+            仮予定
+          </span>
         </div>
       </div>
 
@@ -427,6 +431,7 @@ export function WeekView({
                               {entry.startTime}-{entry.endTime}
                             </span>
                             <span className="week-timeline-subject">{subjectLabel}</span>
+                            <span className="weekly-draft-badge">仮予定</span>
                             <span className="weekly-draft-badge">AI提案</span>
                           </span>
                         </span>

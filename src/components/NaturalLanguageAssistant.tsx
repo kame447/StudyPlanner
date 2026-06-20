@@ -1,5 +1,10 @@
-import { useState } from 'react';
-import { sortByDateTime } from '../lib/date';
+import { type CSSProperties, useState } from 'react';
+import {
+  formatMinutes,
+  minutesBetween,
+  minutesFromTime,
+  sortByDateTime,
+} from '../lib/date';
 import { PlanFieldsEditor } from './PlanFieldsEditor';
 import {
   generateNaturalLanguageSuggestions,
@@ -11,7 +16,8 @@ import type {
 } from '../features/weeklyPlanning/types';
 import {
   createFallbackWeeklyDraftBlock,
-  createWeeklyDraftBlockFromPlanDraft,
+  createSimpleWeeklyDraftBlocksFromText,
+  looksLikeWeeklyPlanningRequest,
 } from '../features/weeklyPlanning/weeklyPlanningTransforms';
 import type {
   NaturalLanguageMode,
@@ -71,6 +77,18 @@ const ISSUE_LABELS: Record<string, string> = {
   subject_not_grounded: '科目推定が入力文と一致していません',
 };
 
+const WEEKLY_DRAFT_PREVIEW_START_HOUR = 0;
+const WEEKLY_DRAFT_PREVIEW_END_HOUR = 24;
+const WEEKLY_DRAFT_PREVIEW_HOURS = Array.from(
+  { length: WEEKLY_DRAFT_PREVIEW_END_HOUR - WEEKLY_DRAFT_PREVIEW_START_HOUR + 1 },
+  (_, index) => WEEKLY_DRAFT_PREVIEW_START_HOUR + index,
+);
+const WEEKLY_DRAFT_PREVIEW_TEN_MINUTE_MARKS = Array.from(
+  { length: (WEEKLY_DRAFT_PREVIEW_END_HOUR - WEEKLY_DRAFT_PREVIEW_START_HOUR) * 6 + 1 },
+  (_, index) => index,
+);
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
 function canApplySuggestion(
   suggestion: NaturalLanguageSuggestion,
   targetPlanId = '',
@@ -83,6 +101,62 @@ function canApplySuggestion(
     suggestion.parsedPlan.endTime.trim().length > 0 &&
     (suggestion.mode !== 'edit' || targetPlanId.trim().length > 0)
   );
+}
+
+function formatHourLabel(hour: number): string {
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
+function getWeeklyDraftTimeLabelClass(hour: number): string {
+  if (hour === WEEKLY_DRAFT_PREVIEW_START_HOUR) {
+    return 'weekly-draft-preview-time-label weekly-draft-preview-time-label--start';
+  }
+
+  if (hour === WEEKLY_DRAFT_PREVIEW_END_HOUR) {
+    return 'weekly-draft-preview-time-label weekly-draft-preview-time-label--end';
+  }
+
+  return 'weekly-draft-preview-time-label';
+}
+
+function formatDraftDateLabel(date: string): string {
+  const [, month = '', day = ''] = date.split('-');
+  const weekdayIndex = new Date(`${date}T00:00:00`).getDay();
+  return `${Number(month)}/${Number(day)}（${WEEKDAY_LABELS[weekdayIndex] ?? ''}）`;
+}
+
+function getWeeklyDraftToneClass(block: WeeklyPlanDraftBlock): string {
+  const key = (block.label || block.subject || block.title).trim();
+  const toneIndex =
+    Array.from(key || block.id).reduce(
+      (sum, character) => sum + character.charCodeAt(0),
+      0,
+    ) % 8;
+
+  return `weekly-draft-tone-${toneIndex + 1}`;
+}
+
+function buildWeeklyDraftPreviewMarkerStyle(
+  tenMinuteUnit: number,
+): CSSProperties {
+  return {
+    top: `calc(${tenMinuteUnit} * var(--weekly-draft-preview-ten-minute-height))`,
+  };
+}
+
+function buildWeeklyDraftPreviewBlockStyle(
+  block: WeeklyPlanDraftBlock,
+  rangeStartMinutes: number,
+): CSSProperties {
+  const startMinutes = minutesFromTime(block.startTime);
+  const durationMinutes = minutesBetween(block.startTime, block.endTime);
+  const startTenMinuteUnit = (startMinutes - rangeStartMinutes) / 10;
+  const durationTenMinuteUnits = durationMinutes / 10;
+
+  return {
+    top: `calc(${startTenMinuteUnit} * var(--weekly-draft-preview-ten-minute-height))`,
+    height: `calc(${durationTenMinuteUnits} * var(--weekly-draft-preview-ten-minute-height))`,
+  };
 }
 
 export function NaturalLanguageAssistant({
@@ -107,6 +181,10 @@ export function NaturalLanguageAssistant({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [suggestions, setSuggestions] = useState<NaturalLanguageSuggestion[]>([]);
   const [editTargetPlanId, setEditTargetPlanId] = useState('');
+  const [weeklyDraftPreviewMode, setWeeklyDraftPreviewMode] = useState<
+    'overview' | 'day'
+  >('overview');
+  const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
   const runtimeInfo = getPlannerAiRuntimeInfo();
 
   const nearbyPlans = plans.filter((plan) => {
@@ -126,11 +204,83 @@ export function NaturalLanguageAssistant({
   const pendingWeeklyDraftBlocks = weeklyDraftBlocks.filter(
     (block) => block.status === 'draft',
   );
+  const sortedPendingWeeklyDraftBlocks = sortByDateTime(pendingWeeklyDraftBlocks);
+  const pendingWeeklyDraftTotalMinutes = pendingWeeklyDraftBlocks.reduce(
+    (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
+    0,
+  );
+  const pendingWeeklyDraftDates = Array.from(
+    new Set(pendingWeeklyDraftBlocks.map((block) => block.date)),
+  ).sort();
+  const pendingWeeklyDraftDateRange =
+    pendingWeeklyDraftDates.length === 0
+      ? '-'
+      : pendingWeeklyDraftDates[0] ===
+          pendingWeeklyDraftDates[pendingWeeklyDraftDates.length - 1]
+        ? pendingWeeklyDraftDates[0]
+        : `${pendingWeeklyDraftDates[0]}〜${
+            pendingWeeklyDraftDates[pendingWeeklyDraftDates.length - 1]
+          }`;
+  const pendingWeeklyDraftDateGroups = pendingWeeklyDraftDates.map((date) => ({
+    date,
+    blocks: sortedPendingWeeklyDraftBlocks.filter((block) => block.date === date),
+  }));
+  const activeWeeklyDraftDate = pendingWeeklyDraftDates.includes(selectedWeeklyDraftDate)
+    ? selectedWeeklyDraftDate
+    : pendingWeeklyDraftDates[0] ?? '';
+  const activeWeeklyDraftDateIndex = pendingWeeklyDraftDates.indexOf(activeWeeklyDraftDate);
+  const activeWeeklyDraftBlocks = activeWeeklyDraftDate
+    ? sortedPendingWeeklyDraftBlocks.filter(
+        (block) => block.date === activeWeeklyDraftDate,
+      )
+    : [];
+  const pendingWeeklyDraftPreviewStartMinutes =
+    WEEKLY_DRAFT_PREVIEW_START_HOUR * 60;
+  const pendingWeeklyDraftPreviewEndMinutes = WEEKLY_DRAFT_PREVIEW_END_HOUR * 60;
+  const pendingWeeklyDraftPreviewDurationMinutes =
+    pendingWeeklyDraftPreviewEndMinutes - pendingWeeklyDraftPreviewStartMinutes;
+
+const WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT = 22;
+const WEEKLY_DRAFT_DAY_HOUR_HEIGHT = 44;
+
+const pendingWeeklyDraftOverviewTimelineHeight =
+  (pendingWeeklyDraftPreviewDurationMinutes / 60) *
+  WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT;
+
+const pendingWeeklyDraftDayTimelineHeight =
+  (pendingWeeklyDraftPreviewDurationMinutes / 60) *
+  WEEKLY_DRAFT_DAY_HOUR_HEIGHT;
+  const pendingWeeklyDraftPreviewGridStyle: CSSProperties = {
+    gridTemplateColumns: `56px repeat(${Math.max(
+      pendingWeeklyDraftDateGroups.length,
+      1,
+    )}, minmax(44px, 1fr))`,
+  };
+
+const pendingWeeklyDraftOverviewTimelineStyle = {
+  height: `${pendingWeeklyDraftOverviewTimelineHeight}px`,
+  '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT}px`,
+  '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT / 6}px`,
+} as CSSProperties;
+
+const pendingWeeklyDraftDayTimelineStyle = {
+  height: `${pendingWeeklyDraftDayTimelineHeight}px`,
+  '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT}px`,
+  '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT / 6}px`,
+} as CSSProperties;
   const canCreateWeeklyDraft = text.trim().length > 0;
 
   async function handleAnalyze() {
     if (!text.trim()) {
       setError('自然言語の入力内容を入れてください。');
+      return;
+    }
+
+    if (looksLikeWeeklyPlanningRequest(text)) {
+      setError('複数タスクの週間計画は「週間計画」モードで作成してください。');
+      setStatus('');
+      setSuggestions([]);
+      setEditTargetPlanId('');
       return;
     }
 
@@ -146,6 +296,14 @@ export function NaturalLanguageAssistant({
         userMaterials: materials,
         userSubjects: subjects,
       });
+
+      if (nextSuggestions.length === 0) {
+        setError('叩き台を作れませんでした。入力内容を少し具体的にしてください。');
+        setStatus('');
+        setSuggestions([]);
+        setEditTargetPlanId('');
+        return;
+      }
 
       setError('');
       setStatus(
@@ -176,36 +334,34 @@ export function NaturalLanguageAssistant({
     setIsAnalyzing(true);
 
     try {
-      const nextSuggestions = await generateNaturalLanguageSuggestions({
-        mode: 'add',
-        text,
-        selectedDate,
-        plans,
+      const simpleDraftBlocks = createSimpleWeeklyDraftBlocksFromText({
         userId,
-        userMaterials: materials,
-        userSubjects: subjects,
+        selectedDate,
+        text,
       });
-      const nextBlocks = nextSuggestions
-        .filter((suggestion) => canApplySuggestion(suggestion))
-        .map((suggestion) =>
-          createWeeklyDraftBlockFromPlanDraft(suggestion.parsedPlan),
-        );
 
-      if (nextBlocks.length === 0) {
-        nextBlocks.push(
-          createFallbackWeeklyDraftBlock({
-            userId,
-            selectedDate,
-            text,
-          }),
+      if (simpleDraftBlocks.length > 0) {
+        onCreateWeeklyDraftBlocks(simpleDraftBlocks);
+        setWeeklyDraftPreviewMode('overview');
+        setSelectedWeeklyDraftDate('');
+        setError('');
+        setStatus(
+          `${simpleDraftBlocks.length}件の週間計画ドラフトを作りました。承認するまで保存されません。`,
         );
+        setText('');
+        return;
       }
 
-      onCreateWeeklyDraftBlocks(nextBlocks);
+      const fallbackBlock = createFallbackWeeklyDraftBlock({
+        userId,
+        selectedDate,
+        text,
+      });
+      onCreateWeeklyDraftBlocks([fallbackBlock]);
+      setWeeklyDraftPreviewMode('overview');
+      setSelectedWeeklyDraftDate('');
       setError('');
-      setStatus(
-        `${nextBlocks.length}件の週間計画ドラフトを作りました。承認するまで保存されません。`,
-      );
+      setStatus('簡易ドラフトを1件作りました。承認するまで保存されません。');
       setText('');
     } catch {
       const fallbackBlock = createFallbackWeeklyDraftBlock({
@@ -214,6 +370,8 @@ export function NaturalLanguageAssistant({
         text,
       });
       onCreateWeeklyDraftBlocks([fallbackBlock]);
+      setWeeklyDraftPreviewMode('overview');
+      setSelectedWeeklyDraftDate('');
       setError('');
       setStatus('簡易ドラフトを1件作りました。承認するまで保存されません。');
       setText('');
@@ -239,6 +397,25 @@ export function NaturalLanguageAssistant({
     } finally {
       setIsAnalyzing(false);
     }
+  }
+
+  function openWeeklyDraftDay(date: string) {
+    setSelectedWeeklyDraftDate(date);
+    setWeeklyDraftPreviewMode('day');
+  }
+
+  function moveWeeklyDraftDay(offset: number) {
+    if (activeWeeklyDraftDateIndex < 0) {
+      return;
+    }
+
+    const nextDate = pendingWeeklyDraftDates[activeWeeklyDraftDateIndex + offset];
+    if (!nextDate) {
+      return;
+    }
+
+    setSelectedWeeklyDraftDate(nextDate);
+    setWeeklyDraftPreviewMode('day');
   }
 
   function updateSuggestionAt(index: number, nextSuggestion: NaturalLanguageSuggestion) {
@@ -549,59 +726,258 @@ export function NaturalLanguageAssistant({
         </div>
       ) : null}
         </>
-      ) : (
-        <div className="section-stack weekly-planning-assistant">
-          <label className="field field-full">
-            <span>週間計画にしたいこと</span>
-            <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              rows={4}
-              placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
-            />
-          </label>
-
-          <div className="row-actions">
-            <button
-              className="primary-button"
-              onClick={() => void handleCreateWeeklyDrafts()}
-              type="button"
-              disabled={isAnalyzing || !canCreateWeeklyDraft}
-            >
-              {isAnalyzing ? '作成中...' : '仮予定を作る'}
-            </button>
+      ) : pendingWeeklyDraftBlocks.length > 0 ? (
+        <div className="weekly-planning-assistant weekly-planning-confirmation-screen">
+          <div className="weekly-planning-confirmation-header">
+            <strong>週間計画を確認</strong>
           </div>
 
-          {pendingWeeklyDraftBlocks.length > 0 ? (
-            <div className="weekly-draft-control-card">
-              <div className="label-row">
-                <strong>未承認の週間計画</strong>
-                <span className="confidence-badge">
-                  {pendingWeeklyDraftBlocks.length}件 / 未保存
+          <div className="weekly-draft-confirmation-main">
+              <div className="weekly-draft-summary-hero">
+                <span className="weekly-draft-summary-check" aria-hidden="true">
+                  ✓
                 </span>
+                <div className="weekly-draft-summary-main">
+                  <strong>{pendingWeeklyDraftBlocks.length}件の仮予定を作成しました</strong>
+                  <span className="weekly-draft-status-row">
+                    <span>未承認</span>
+                    <span>未保存</span>
+                  </span>
+                </div>
+                <div className="weekly-draft-summary-grid">
+                  <span>合計時間</span>
+                  <strong>
+                    {formatMinutes(pendingWeeklyDraftTotalMinutes)}（
+                    {pendingWeeklyDraftTotalMinutes.toLocaleString()}分）
+                  </strong>
+                  <span>対象期間</span>
+                  <strong>{pendingWeeklyDraftDateRange}</strong>
+                </div>
               </div>
-              <div className="weekly-draft-list">
-                {pendingWeeklyDraftBlocks.map((block) => (
-                  <div className="weekly-draft-list-item" key={block.id}>
-                    <span>
-                      <strong>{block.title}</strong>
-                      <small>
-                        {block.date} {block.startTime}-{block.endTime} / {block.label}
-                      </small>
-                    </span>
-                    {onRemoveWeeklyDraftBlock ? (
+              <div className="weekly-draft-preview" aria-label="未承認週間計画の時間割確認">
+                <div className="weekly-draft-preview-switch" role="tablist">
+                  <button
+                    className={
+                      weeklyDraftPreviewMode === 'overview'
+                        ? 'weekly-draft-preview-tab active'
+                        : 'weekly-draft-preview-tab'
+                    }
+                    onClick={() => setWeeklyDraftPreviewMode('overview')}
+                    type="button"
+                  >
+                    全体
+                  </button>
+                  <button
+                    className={
+                      weeklyDraftPreviewMode === 'day'
+                        ? 'weekly-draft-preview-tab active'
+                        : 'weekly-draft-preview-tab'
+                    }
+                    onClick={() => setWeeklyDraftPreviewMode('day')}
+                    type="button"
+                    disabled={pendingWeeklyDraftDates.length === 0}
+                  >
+                    日別
+                  </button>
+                </div>
+
+                {weeklyDraftPreviewMode === 'overview' ? (
+                  <>
+                    <p className="detail-note">
+                      日付をタップすると、その日の詳細を確認できます。
+                    </p>
+                    <div className="weekly-draft-preview-scroll">
+                      <div className="weekly-draft-preview-grid">
+                        <div
+                          className="weekly-draft-preview-header"
+                          style={pendingWeeklyDraftPreviewGridStyle}
+                        >
+                          <span className="weekly-draft-preview-corner">時間</span>
+                          {pendingWeeklyDraftDateGroups.map((group) => (
+                            <button
+                              className="weekly-draft-preview-date"
+                              key={group.date}
+                              onClick={() => openWeeklyDraftDay(group.date)}
+                              type="button"
+                            >
+                              <strong>{formatDraftDateLabel(group.date)}</strong>
+                              <small>{group.blocks.length}件</small>
+                            </button>
+                          ))}
+                        </div>
+                        <div
+                          className="weekly-draft-preview-body"
+                          style={pendingWeeklyDraftPreviewGridStyle}
+                        >
+                          <div
+                            className="weekly-draft-preview-time-axis"
+                            style={pendingWeeklyDraftOverviewTimelineStyle}
+                          >
+                            {WEEKLY_DRAFT_PREVIEW_HOURS.map((hour) => (
+                              <span
+                                className={getWeeklyDraftTimeLabelClass(hour)}
+                                key={hour}
+                                style={buildWeeklyDraftPreviewMarkerStyle(
+                                  (hour - WEEKLY_DRAFT_PREVIEW_START_HOUR) * 6,
+                                )}
+                              >
+                                {formatHourLabel(hour)}
+                              </span>
+                            ))}
+                          </div>
+                          {pendingWeeklyDraftDateGroups.map((group) => (
+                            <button
+                              className="weekly-draft-preview-day-column"
+                              key={group.date}
+                              onClick={() => openWeeklyDraftDay(group.date)}
+                              style={pendingWeeklyDraftOverviewTimelineStyle}
+                              type="button"
+                            >
+                              {WEEKLY_DRAFT_PREVIEW_HOURS.map((hour) => (
+                                <span
+                                  className="weekly-draft-preview-hour-line"
+                                  key={`${group.date}-${hour}`}
+                                  style={buildWeeklyDraftPreviewMarkerStyle(
+                                    (hour - WEEKLY_DRAFT_PREVIEW_START_HOUR) * 6,
+                                  )}
+                                />
+                              ))}
+                              {group.blocks.map((block) => (
+                                <span
+                                  className={`weekly-draft-preview-block weekly-draft-preview-block--overview ${getWeeklyDraftToneClass(block)}`}
+                                  key={block.id}
+                                  style={buildWeeklyDraftPreviewBlockStyle(
+                                    block,
+                                    pendingWeeklyDraftPreviewStartMinutes,
+                                  )}
+                                  title={`${block.title} / ${block.startTime}-${block.endTime}`}
+                                >
+                                  <strong>{block.title}</strong>
+                                  <small>
+                                    {block.startTime}-{block.endTime}
+                                  </small>
+                                </span>
+                              ))}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="weekly-draft-day-detail">
+                    <div className="weekly-draft-day-detail-header">
                       <button
-                        className="ghost-button"
-                        onClick={() => onRemoveWeeklyDraftBlock(block.id)}
+                        className="ghost-button weekly-draft-back-button"
+                        onClick={() => setWeeklyDraftPreviewMode('overview')}
                         type="button"
                       >
-                        削除
+                        全体に戻る
                       </button>
-                    ) : null}
+                      <strong>
+                        {activeWeeklyDraftDate
+                          ? formatDraftDateLabel(activeWeeklyDraftDate)
+                          : '日別詳細'}
+                      </strong>
+                    </div>
+                    <div className="weekly-draft-day-nav">
+                      <button
+                        className="ghost-button"
+                        disabled={activeWeeklyDraftDateIndex <= 0}
+                        onClick={() => moveWeeklyDraftDay(-1)}
+                        type="button"
+                      >
+                        前日
+                      </button>
+                      <span>{activeWeeklyDraftBlocks.length}件</span>
+                      <button
+                        className="ghost-button"
+                        disabled={
+                          activeWeeklyDraftDateIndex < 0 ||
+                          activeWeeklyDraftDateIndex >= pendingWeeklyDraftDates.length - 1
+                        }
+                        onClick={() => moveWeeklyDraftDay(1)}
+                        type="button"
+                      >
+                        翌日
+                      </button>
+                    </div>
+                    <div className="weekly-draft-preview-scroll weekly-draft-preview-scroll--day">
+                      <div className="weekly-draft-day-grid">
+                        <div
+                          className="weekly-draft-preview-time-axis weekly-draft-day-time-axis"
+                          style={pendingWeeklyDraftDayTimelineStyle}
+                        >
+                          {WEEKLY_DRAFT_PREVIEW_HOURS.map((hour) => (
+                            <span
+                              className={getWeeklyDraftTimeLabelClass(hour)}
+                              key={hour}
+                              style={buildWeeklyDraftPreviewMarkerStyle(
+                                (hour - WEEKLY_DRAFT_PREVIEW_START_HOUR) * 6,
+                              )}
+                            >
+                              {formatHourLabel(hour)}
+                            </span>
+                          ))}
+                        </div>
+                        <div
+                          className="weekly-draft-day-column"
+                          style={pendingWeeklyDraftDayTimelineStyle}
+                        >
+                          {WEEKLY_DRAFT_PREVIEW_TEN_MINUTE_MARKS.map((unit) => (
+                            <span
+                              className={
+                                unit % 6 === 0
+                                  ? 'weekly-draft-ten-minute-guide weekly-draft-ten-minute-guide--hour'
+                                  : unit % 3 === 0
+                                    ? 'weekly-draft-ten-minute-guide weekly-draft-ten-minute-guide--half'
+                                    : 'weekly-draft-ten-minute-guide'
+                              }
+                              key={unit}
+                              style={buildWeeklyDraftPreviewMarkerStyle(unit)}
+                            />
+                          ))}
+                          {activeWeeklyDraftBlocks.map((block) => (
+                            <div
+                              className={`weekly-draft-preview-block weekly-draft-preview-block--detail ${getWeeklyDraftToneClass(block)}`}
+                              key={block.id}
+                              style={buildWeeklyDraftPreviewBlockStyle(
+                                block,
+                                pendingWeeklyDraftPreviewStartMinutes,
+                              )}
+                              title={`${block.title} / ${block.startTime}-${block.endTime}`}
+                            >
+                              <span className="weekly-draft-preview-block-main">
+                                <strong>{block.title}</strong>
+                                <small>
+                                  {block.startTime}-{block.endTime}
+                                </small>
+                              </span>
+                              <span className="weekly-draft-preview-badges">
+                                <span className="weekly-draft-badge">仮予定</span>
+                                <span className="weekly-draft-badge">
+                                  {block.label || block.subject || block.title}
+                                </span>
+                              </span>
+                              {onRemoveWeeklyDraftBlock ? (
+                                <button
+                                  aria-label={`${block.title}を削除`}
+                                  className="weekly-draft-preview-remove"
+                                  onClick={() => onRemoveWeeklyDraftBlock(block.id)}
+                                  type="button"
+                                >
+                                  ×
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
-              <div className="row-actions">
+              <div className="row-actions weekly-draft-action-bar">
                 {onClearWeeklyDraftBlocks ? (
                   <button
                     className="ghost-button"
@@ -622,15 +998,40 @@ export function NaturalLanguageAssistant({
                   </button>
                 ) : null}
               </div>
-            </div>
-          ) : (
+          </div>
+        </div>
+      ) : (
+        <div className="section-stack weekly-planning-assistant">
+          <label className="field field-full">
+            <span>週間計画にしたいこと</span>
+            <textarea
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              rows={4}
+              placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
+            />
+            <small className="detail-note">
+              現在は簡易生成です。複数タスクと時間を入力すると、仮予定に分けて作成します。
+            </small>
+          </label>
+
+          <div className="row-actions">
+            <button
+              className="primary-button"
+              onClick={() => void handleCreateWeeklyDrafts()}
+              type="button"
+              disabled={isAnalyzing || !canCreateWeeklyDraft}
+            >
+              {isAnalyzing ? '作成中...' : '仮予定を作る'}
+            </button>
+          </div>
+
             <div className="assistant-feedback-card">
               <strong>週間計画MVP</strong>
               <p className="detail-note">
                 ここで作る仮予定は、承認するまで通常予定として保存されません。
               </p>
             </div>
-          )}
         </div>
       )}
     </>
