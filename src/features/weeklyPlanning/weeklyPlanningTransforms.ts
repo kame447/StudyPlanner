@@ -221,6 +221,7 @@ interface WeeklyPlanningSessionBlock {
   splitCount: number;
   priority: 'normal' | 'high';
   deadlineDate?: string;
+  retryLevel?: number;
 }
 
 export interface WeeklyPlanningDefaultConditions {
@@ -326,6 +327,7 @@ export interface WeeklyPlacementDiagnostics {
     | 'search_failure'
     | 'min_block_fragmentation'
     | 'existing_plan_conflict'
+    | 'placement_retry_limit'
     | 'hard_constraint'
     | 'unknown';
 }
@@ -957,6 +959,7 @@ export function scoreSessionChunkPlan(
 
     if (
       chunk === policy.maxSessionMinutes &&
+      policy.maxSessionMinutes > policy.targetSessionMinutes &&
       !policy.userExplicit &&
       policy.mode !== 'deep_work'
     ) {
@@ -985,6 +988,7 @@ export function scoreSessionChunkPlan(
 
   if (
     maxSessionHits > 1 &&
+    policy.maxSessionMinutes > policy.targetSessionMinutes &&
     !policy.userExplicit &&
     policy.mode !== 'deep_work'
   ) {
@@ -2866,6 +2870,7 @@ function calculateWeeklyPlacementDiagnostics(params: {
   blocks: WeeklyPlanDraftBlock[];
   initialSlots: AvailabilitySlot[];
   remainingSlots: AvailabilitySlot[];
+  retryLimitReached?: boolean;
 }): WeeklyPlacementDiagnostics {
   const baseSlots = buildAvailabilitySlots({
     defaults: params.defaults,
@@ -2916,7 +2921,9 @@ function calculateWeeklyPlacementDiagnostics(params: {
   const failureReason: WeeklyPlacementDiagnostics['failureReason'] =
     params.unplacedMinutes <= 0
       ? 'unknown'
-      : existingPlanBlockedMinutes > 0 &&
+      : params.retryLimitReached
+        ? 'placement_retry_limit'
+        : existingPlanBlockedMinutes > 0 &&
           (totalAvailableCapacity < params.requestedMinutes || unusedAvailableMinutes === 0)
         ? 'existing_plan_conflict'
         : totalAvailableCapacity < params.requestedMinutes
@@ -2948,10 +2955,19 @@ function buildWeeklyPlanningSessionBlocks(
   minSessionMinutes = DEFAULT_MIN_STUDY_BLOCK_MINUTES,
 ): WeeklyPlanningSessionBlock[] {
   const groups = tasks.map((task) => {
-    const splitMinutes = splitDurationIntoDraftBlockMinutesWithMax(
+    const taskProfile = inferStudyTaskProfile(task);
+    const sessionPolicy = derivePersonalizedSessionPolicy({
+      taskTitle: task.title,
+      taskProfile,
+      basePolicy: deriveSessionLengthPolicy(taskProfile, {
+        maxSessionMinutes,
+        minSessionMinutes,
+      }),
+    });
+    const splitMinutes = splitDurationIntoSessionChunks(
       task.durationMinutes,
-      maxSessionMinutes,
-      minSessionMinutes,
+      sessionPolicy,
+      taskProfile,
     );
 
     return splitMinutes.map((durationMinutes, splitIndex) => ({
@@ -2963,6 +2979,7 @@ function buildWeeklyPlanningSessionBlocks(
       splitCount: splitMinutes.length,
       priority: task.priority,
       deadlineDate: task.deadlineDate,
+      retryLevel: 0,
     }));
   });
   const sessions: WeeklyPlanningSessionBlock[] = [];
@@ -2986,7 +3003,7 @@ function buildWeeklyPlanningSessionBlocks(
   return sessions;
 }
 
-function splitDurationIntoDraftBlockMinutesWithMax(
+export function splitDurationIntoDraftBlockMinutesWithMax(
   durationMinutes: number,
   maxSessionMinutes: number,
   minSessionMinutes = DEFAULT_MIN_STUDY_BLOCK_MINUTES,
@@ -3025,8 +3042,10 @@ function splitSessionMinutesForRetry(
   );
   const splitMinutes: number[] = [];
   let remainingMinutes = durationMinutes;
+  let guardCount = 0;
 
-  while (remainingMinutes >= minSessionMinutes) {
+  while (remainingMinutes >= minSessionMinutes && guardCount < 20) {
+    guardCount += 1;
     const nextMinutes = preferredMinutes.find((minutes) => {
       if (minutes > remainingMinutes) {
         return false;
@@ -3036,24 +3055,44 @@ function splitSessionMinutesForRetry(
         return false;
       }
 
-      return true;
+      const nextRemainingMinutes = remainingMinutes - minutes;
+
+      return nextRemainingMinutes === 0 || nextRemainingMinutes >= minSessionMinutes;
     });
 
     if (!nextMinutes) {
       break;
     }
 
-    const nextRemainingMinutes = remainingMinutes - nextMinutes;
-
-    if (nextRemainingMinutes > 0 && nextRemainingMinutes < minSessionMinutes) {
-      continue;
-    }
-
     splitMinutes.push(nextMinutes);
-    remainingMinutes = nextRemainingMinutes;
+    remainingMinutes -= nextMinutes;
   }
 
   return remainingMinutes === 0 && splitMinutes.length > 1 ? splitMinutes : [];
+}
+
+function isProgressiveRetrySplit(
+  originalMinutes: number,
+  retrySplitMinutes: number[],
+): boolean {
+  return (
+    retrySplitMinutes.length > 1 &&
+    retrySplitMinutes.reduce((sum, minutes) => sum + minutes, 0) === originalMinutes &&
+    retrySplitMinutes.every(
+      (minutes) => minutes > 0 && minutes < originalMinutes,
+    )
+  );
+}
+
+function withIncrementedRetryLevel(
+  session: WeeklyPlanningSessionBlock,
+  durationMinutes: number,
+): WeeklyPlanningSessionBlock {
+  return {
+    ...session,
+    durationMinutes,
+    retryLevel: (session.retryLevel ?? 0) + 1,
+  };
 }
 
 function calculatePreferredOverlapMinutes(
@@ -3436,11 +3475,40 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
   const taskPreferredStartAfterMinutes = new Map<string, number>();
   const blocks: WeeklyPlanDraftBlock[] = [];
   let unplacedMinutes = 0;
+  let retryLimitReached = false;
+  let processedSessions = 0;
+  const maxPlacementAttempts = Math.max(200, sessionQueue.length * 20);
+  const sessionAttemptCounts = new Map<string, number>();
 
   while (sessionQueue.length > 0) {
     const session = sessionQueue.shift();
 
     if (!session) {
+      break;
+    }
+
+    processedSessions += 1;
+    const retryLevel = session.retryLevel ?? 0;
+    const attemptKey = `${session.title}|${session.durationMinutes}|${retryLevel}`;
+    const attemptCount = (sessionAttemptCounts.get(attemptKey) ?? 0) + 1;
+    sessionAttemptCounts.set(attemptKey, attemptCount);
+
+    if (
+      processedSessions > maxPlacementAttempts ||
+      attemptCount > Math.max(20, sessionQueue.length + blocks.length + 1)
+    ) {
+      retryLimitReached = true;
+      unplacedMinutes += session.durationMinutes;
+      continue;
+    }
+
+    if (sessionQueue.length > maxPlacementAttempts) {
+      retryLimitReached = true;
+      unplacedMinutes += session.durationMinutes + sessionQueue.reduce(
+        (sum, queuedSession) => sum + queuedSession.durationMinutes,
+        0,
+      );
+      sessionQueue.length = 0;
       break;
     }
 
@@ -3450,18 +3518,14 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
         assessment.defaults.minStudyBlockMinutes,
       );
 
-      if (retrySplitMinutes.length > 0) {
+      if (isProgressiveRetrySplit(session.durationMinutes, retrySplitMinutes)) {
         const [nextMinutes, ...laterMinutes] = retrySplitMinutes;
 
-        sessionQueue.unshift({
-          ...session,
-          durationMinutes: nextMinutes,
-        });
+        sessionQueue.unshift(withIncrementedRetryLevel(session, nextMinutes));
         sessionQueue.push(
-          ...laterMinutes.map((durationMinutes) => ({
-            ...session,
-            durationMinutes,
-          })),
+          ...laterMinutes.map((durationMinutes) =>
+            withIncrementedRetryLevel(session, durationMinutes),
+          ),
         );
         continue;
       }
@@ -3484,13 +3548,11 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
         assessment.defaults.minStudyBlockMinutes,
       );
 
-      if (retrySplitMinutes.length > 0) {
+      if (isProgressiveRetrySplit(session.durationMinutes, retrySplitMinutes)) {
         sessionQueue.unshift(
-          ...retrySplitMinutes
-            .map((durationMinutes) => ({
-              ...session,
-              durationMinutes,
-            })),
+          ...retrySplitMinutes.map((durationMinutes) =>
+            withIncrementedRetryLevel(session, durationMinutes),
+          ),
         );
         continue;
       }
@@ -3501,17 +3563,13 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
 
         if (
           firstMinutes >= assessment.defaults.minStudyBlockMinutes &&
-          secondMinutes >= assessment.defaults.minStudyBlockMinutes
+          secondMinutes >= assessment.defaults.minStudyBlockMinutes &&
+          firstMinutes < session.durationMinutes &&
+          secondMinutes < session.durationMinutes
         ) {
           sessionQueue.unshift(
-            {
-              ...session,
-              durationMinutes: secondMinutes,
-            },
-            {
-              ...session,
-              durationMinutes: firstMinutes,
-            },
+            withIncrementedRetryLevel(session, secondMinutes),
+            withIncrementedRetryLevel(session, firstMinutes),
           );
           continue;
         }
@@ -3612,11 +3670,16 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
     blocks,
     initialSlots,
     remainingSlots: slots,
+    retryLimitReached,
   });
   const warnings =
     unplacedMinutes > 0
-      ? diagnostics.failureReason === 'existing_plan_conflict'
+      ? diagnostics.failureReason === 'placement_retry_limit'
         ? [
+            `\u914d\u7f6e\u5019\u88dc\u306e\u518d\u8a66\u884c\u4e0a\u9650\u306b\u9054\u3057\u305f\u305f\u3081\u3001${unplacedMinutes}\u5206\u3092\u672a\u914d\u7f6e\u306b\u3057\u307e\u3057\u305f\u3002\u914d\u7f6e\u6e08\u307f\u306f${placedMinutes}\u5206\u3001\u5fc5\u8981\u6642\u9593\u306f${diagnostics.requestedMinutes}\u5206\u3067\u3059\u3002`,
+          ]
+        : diagnostics.failureReason === 'existing_plan_conflict'
+          ? [
             `既存予定とその前後${assessment.defaults.bufferMinutes}分を避けたため、${unplacedMinutes}分を配置できませんでした。既存予定で塞がれた時間は${diagnostics.existingPlanBlockedMinutes}分です。`,
           ]
         : diagnostics.failureReason === 'capacity_shortage'
@@ -3640,7 +3703,8 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
       warnings: [
         ...warnings,
         diagnostics.failureReason === 'capacity_shortage' ||
-        diagnostics.failureReason === 'existing_plan_conflict'
+        diagnostics.failureReason === 'existing_plan_conflict' ||
+        diagnostics.failureReason === 'placement_retry_limit'
           ? '期間を延ばす / 夜も使う / 既存予定の少ない日にずらす / 「配置できる分だけでいい」と返信してください。'
           : '配置順や分割方法を変えて再配置します。必要なら「配置できる分だけでいい」と返信してください。',
       ],

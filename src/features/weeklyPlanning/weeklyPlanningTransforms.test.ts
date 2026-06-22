@@ -175,6 +175,7 @@ describe('weeklyPlanningTransforms', () => {
       );
       expect(deriveSessionLengthPolicy(vocabularyProfile).mode).toBe('short_focus');
       expect(deriveSessionLengthPolicy(longReadingProfile).mode).toBe('balanced');
+
     });
 
     it('infers different profiles for Java grammar review and Java implementation', () => {
@@ -966,6 +967,57 @@ describe('weeklyPlanningTransforms', () => {
     expect(assessment.questions[0]).toContain('タスク名と合計時間');
   });
 
+  it('uses policy-based session chunks for availability-aware default task splitting', () => {
+    [
+      ['英語を3時間', [90, 90]],
+      ['英語を4時間', [90, 90, 60]],
+      ['英語を5時間', [90, 90, 60, 60]],
+    ].forEach(([taskText, expectedMinutes]) => {
+      const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+        userId: 'user-1',
+        selectedDate: '2026-06-19',
+        text: `来週、${taskText}。この条件で作成`,
+        existingPlans: [],
+      });
+
+      expect(result.unplacedMinutes).toBe(0);
+      expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual(
+        expectedMinutes,
+      );
+      expect(totalDraftMinutes(result.blocks)).toBe(
+        (expectedMinutes as number[]).reduce((sum, minutes) => sum + minutes, 0),
+      );
+      expect(
+        result.blocks.every(
+          (block) =>
+            minutesBetween(block.startTime, block.endTime) <=
+            result.defaults.maxSessionMinutes,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it('does not mass-produce thirty-minute chunks for heavy default tasks', () => {
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-19',
+      text: '来週、計算理論を5時間。この条件で作成',
+      existingPlans: [],
+    });
+    const thirtyMinuteChunks = result.blocks.filter(
+      (block) => minutesBetween(block.startTime, block.endTime) < 40,
+    );
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
+      90,
+      90,
+      60,
+      60,
+    ]);
+    expect(thirtyMinuteChunks).toHaveLength(0);
+  });
+
   it('keeps 55 hours and all task names in availability-aware placement', () => {
     const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
       userId: 'user-1',
@@ -1041,18 +1093,28 @@ describe('weeklyPlanningTransforms', () => {
     const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
       userId: 'user-1',
       selectedDate: '2026-06-19',
-      text: '来週、英語を2時間やりたい',
+      text: '\u6765\u9031\u3001\u82f1\u8a9e\u30922\u6642\u9593\u3084\u308a\u305f\u3044',
       existingPlans: [],
     });
 
-    expect(result.blocks).toHaveLength(1);
-    expect(result.blocks[0]).toMatchObject({ date: '2026-06-26', title: '英語' });
-    expect(minutesFromClock(result.blocks[0].startTime)).toBeGreaterThanOrEqual(
-      minutesFromClock('11:00'),
-    );
-    expect(minutesFromClock(result.blocks[0].endTime)).toBeLessThanOrEqual(
-      minutesFromClock('18:00'),
-    );
+    expect(result.blocks.length).toBeGreaterThan(0);
+    expect(totalDraftMinutes(result.blocks)).toBe(120);
+    expect(
+      result.blocks.every(
+        (block) =>
+          minutesBetween(block.startTime, block.endTime) <=
+          result.defaults.maxSessionMinutes,
+      ),
+    ).toBe(true);
+    result.blocks.forEach((block) => {
+      expect(block).toMatchObject({ date: '2026-06-26', title: '\u82f1\u8a9e' });
+      expect(minutesFromClock(block.startTime)).toBeGreaterThanOrEqual(
+        minutesFromClock('11:00'),
+      );
+      expect(minutesFromClock(block.endTime)).toBeLessThanOrEqual(
+        minutesFromClock('18:00'),
+      );
+    });
   });
 
   it('keeps a break between generated sessions on the same day', () => {
@@ -1292,6 +1354,34 @@ describe('weeklyPlanningTransforms', () => {
     expect(result.warnings.join('\n')).toContain('配置できる分だけでいい');
   });
 
+  it('does not retry forever when a blocked session cannot split without a tiny remainder', () => {
+    const existingPlans = [
+      '2026-06-26',
+      '2026-06-27',
+      '2026-06-28',
+      '2026-06-29',
+      '2026-06-30',
+      '2026-07-01',
+    ].map((date, index) =>
+      plan({
+        id: `blocked-remainder-${index}`,
+        date,
+        startTime: '08:00',
+        endTime: '24:00',
+      }),
+    );
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-19',
+      text: '\u6765\u9031\u3001\u82f1\u8a9e\u309275\u5206\u3002\u3053\u306e\u6761\u4ef6\u3067\u4f5c\u6210',
+      existingPlans,
+    });
+
+    expect(result.blocks).toEqual([]);
+    expect(result.unplacedMinutes).toBe(75);
+    expect(result.diagnostics?.failureReason).toBe('existing_plan_conflict');
+  });
+
   it('creates partial drafts only when explicitly allowed', () => {
     const existingPlans = Array.from({ length: 6 }, (_, index) =>
       plan({
@@ -1314,7 +1404,7 @@ describe('weeklyPlanningTransforms', () => {
     expect(totalDraftMinutes(result.blocks)).toBe(result.placedMinutes);
   });
 
-  it('retries a 120 minute session as 90 and 30 minute blocks when needed', () => {
+  it('uses policy-based 60 minute chunks instead of relying on retry for a cramped 120 minute task', () => {
     const existingPlans = [
       plan({
         id: 'busy-morning',
@@ -1347,12 +1437,12 @@ describe('weeklyPlanningTransforms', () => {
 
     expect(result.unplacedMinutes).toBe(0);
     expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
-      90,
-      30,
+      60,
+      60,
     ]);
   });
 
-  it('reuses a 30 minute slot after the break window', () => {
+  it('avoids creating a 30 minute retry chunk when policy-based 90 minute chunks fit', () => {
     const existingPlans = [
       plan({
         id: 'busy-early',
@@ -1386,9 +1476,9 @@ describe('weeklyPlanningTransforms', () => {
     expect(result.unplacedMinutes).toBe(0);
     expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
       90,
-      60,
-      30,
+      90,
     ]);
+    expect(result.blocks.every((block) => minutesBetween(block.startTime, block.endTime) >= 90)).toBe(true);
   });
 
 
