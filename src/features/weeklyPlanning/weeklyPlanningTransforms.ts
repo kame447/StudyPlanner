@@ -95,6 +95,105 @@ export interface SessionLengthPolicyOptions {
   override?: SessionLengthPolicyOverride;
 }
 
+export interface SessionChunkPlan {
+  chunks: number[];
+  score: number;
+  reason: string;
+}
+
+export interface UserTaskPreferenceProfile {
+  taskKey: string;
+  sampleCount: number;
+  confidence: number;
+  preferredSessionMinutes: number;
+  minSessionMinutes: number;
+  maxSessionMinutes: number;
+  dislikesTinyBlocks: number;
+  prefersLongSessions: number;
+  completionRate: number;
+  morningReliability: number;
+  nightHeavyTaskReliability: number;
+}
+
+export interface UserPlanningProfile {
+  version: 1;
+  feedbackCount: number;
+  confidence: number;
+  preferredSessionMinutes: number;
+  minSessionMinutes: number;
+  maxSessionMinutes: number;
+  dislikesTinyBlocks: number;
+  prefersLongSessions: number;
+  morningReliability: number;
+  nightHeavyTaskReliability: number;
+  taskPreferences: Record<string, UserTaskPreferenceProfile>;
+}
+
+export type WeeklyPlanningFeedbackSignal =
+  | {
+      kind: 'block_deleted';
+      durationMinutes: number;
+      taskTitle?: string;
+      taskProfile?: StudyTaskProfile;
+      startTime?: string;
+    }
+  | {
+      kind: 'session_resized';
+      fromMinutes: number;
+      toMinutes: number;
+      taskTitle?: string;
+      taskProfile?: StudyTaskProfile;
+      startTime?: string;
+    }
+  | {
+      kind: 'session_moved';
+      durationMinutes?: number;
+      taskTitle?: string;
+      taskProfile?: StudyTaskProfile;
+      fromStartTime: string;
+      toStartTime: string;
+    }
+  | {
+      kind: 'session_completed';
+      durationMinutes: number;
+      taskTitle?: string;
+      taskProfile?: StudyTaskProfile;
+      startTime?: string;
+    }
+  | {
+      kind: 'session_uncompleted';
+      durationMinutes: number;
+      taskTitle?: string;
+      taskProfile?: StudyTaskProfile;
+      startTime?: string;
+    }
+  | {
+      kind: 'explicit_preference';
+      taskTitle?: string;
+      taskProfile?: StudyTaskProfile;
+      preferredSessionMinutes?: number;
+      minSessionMinutes?: number;
+      maxSessionMinutes?: number;
+      dislikesTinyBlocks?: number;
+      prefersLongSessions?: number;
+    };
+
+export interface PersonalizedSessionPolicy extends SessionLengthPolicy {
+  basePolicy: SessionLengthPolicy;
+  confidence: number;
+  personalizationApplied: boolean;
+  taskPreference?: UserTaskPreferenceProfile;
+  reasons: string[];
+}
+
+export interface PersonalizedSessionPolicyInput {
+  taskTitle?: string;
+  taskProfile: StudyTaskProfile;
+  basePolicy?: SessionLengthPolicy;
+  userProfile?: UserPlanningProfile;
+  explicitOverride?: SessionLengthPolicyOverride;
+}
+
 export type StudyTaskProfileInput =
   | string
   | Partial<
@@ -549,6 +648,879 @@ export function deriveSessionLengthPolicy(
     options.override,
     absoluteMaxSessionMinutes,
   );
+}
+
+export function normalizeSessionChunkMinutes(minutes: number): number {
+  return Math.max(0, Math.round(minutes));
+}
+
+function roundChunkMinutesToFive(minutes: number): number {
+  return Math.round(minutes / 5) * 5;
+}
+
+function normalizeSessionChunks(chunks: number[]): number[] {
+  return chunks
+    .map(normalizeSessionChunkMinutes)
+    .filter((chunk) => chunk > 0)
+    .sort((left, right) => right - left);
+}
+
+function sumSessionChunks(chunks: number[]): number {
+  return chunks.reduce((sum, chunk) => sum + chunk, 0);
+}
+
+function isValidSessionChunkPlan(
+  chunks: number[],
+  totalMinutes: number,
+  policy: SessionLengthPolicy,
+): boolean {
+  if (chunks.length === 0 || sumSessionChunks(chunks) !== totalMinutes) {
+    return false;
+  }
+
+  if (chunks.some((chunk) => chunk > policy.maxSessionMinutes || chunk <= 0)) {
+    return false;
+  }
+
+  const smallChunks = chunks.filter((chunk) => chunk < policy.minSessionMinutes);
+
+  if (smallChunks.length === 0) {
+    return true;
+  }
+
+  return (
+    policy.allowSmallRemainder &&
+    smallChunks.length === 1 &&
+    chunks[chunks.length - 1] === smallChunks[0]
+  );
+}
+
+function createTargetFirstSessionCandidate(
+  totalMinutes: number,
+  policy: SessionLengthPolicy,
+): number[] | null {
+  const chunks: number[] = [];
+  let remainingMinutes = totalMinutes;
+
+  while (remainingMinutes > policy.maxSessionMinutes) {
+    const nextChunk = Math.min(policy.targetSessionMinutes, policy.maxSessionMinutes);
+    chunks.push(nextChunk);
+    remainingMinutes -= nextChunk;
+  }
+
+  if (remainingMinutes > 0) {
+    chunks.push(remainingMinutes);
+  }
+
+  return isValidSessionChunkPlan(chunks, totalMinutes, policy)
+    ? normalizeSessionChunks(chunks)
+    : null;
+}
+
+function createSessionCandidateForChunkCount(
+  totalMinutes: number,
+  chunkCount: number,
+  policy: SessionLengthPolicy,
+): number[] | null {
+  if (chunkCount <= 0) {
+    return null;
+  }
+
+  const chunks = Array.from({ length: chunkCount }, () => policy.targetSessionMinutes);
+  let deltaMinutes = sumSessionChunks(chunks) - totalMinutes;
+
+  if (deltaMinutes > 0) {
+    let cursor = chunks.length - 1;
+
+    while (deltaMinutes > 0) {
+      const current = chunks[cursor];
+      const lowerBound =
+        policy.allowSmallRemainder && cursor === chunks.length - 1
+          ? 1
+          : policy.minSessionMinutes;
+      const reducibleMinutes = current - lowerBound;
+
+      if (reducibleMinutes > 0) {
+        const step = Math.min(
+          deltaMinutes,
+          reducibleMinutes,
+          deltaMinutes >= 30 && reducibleMinutes >= 30 ? 30 : deltaMinutes,
+        );
+        chunks[cursor] -= step;
+        deltaMinutes -= step;
+      }
+
+      cursor -= 1;
+
+      if (cursor < 0) {
+        cursor = chunks.length - 1;
+      }
+
+      if (chunks.every((chunk, index) => {
+        const lowerBound =
+          policy.allowSmallRemainder && index === chunks.length - 1
+            ? 1
+            : policy.minSessionMinutes;
+        return chunk <= lowerBound;
+      })) {
+        break;
+      }
+    }
+  }
+
+  if (deltaMinutes < 0) {
+    let remainingIncrease = Math.abs(deltaMinutes);
+    let cursor = 0;
+
+    while (remainingIncrease > 0) {
+      const expandableMinutes = policy.maxSessionMinutes - chunks[cursor];
+
+      if (expandableMinutes > 0) {
+        const step = Math.min(remainingIncrease, expandableMinutes);
+        chunks[cursor] += step;
+        remainingIncrease -= step;
+      }
+
+      cursor += 1;
+
+      if (cursor >= chunks.length) {
+        cursor = 0;
+      }
+
+      if (chunks.every((chunk) => chunk >= policy.maxSessionMinutes)) {
+        break;
+      }
+    }
+
+    deltaMinutes = -remainingIncrease;
+  }
+
+  const normalizedChunks = normalizeSessionChunks(
+    chunks.map(roundChunkMinutesToFive),
+  );
+  const normalizedDelta = totalMinutes - sumSessionChunks(normalizedChunks);
+
+  if (normalizedDelta !== 0 && normalizedChunks.length > 0) {
+    normalizedChunks[normalizedChunks.length - 1] += normalizedDelta;
+  }
+
+  return isValidSessionChunkPlan(normalizedChunks, totalMinutes, policy)
+    ? normalizeSessionChunks(normalizedChunks)
+    : null;
+}
+
+function createUserFixedMaxFirstCandidate(
+  totalMinutes: number,
+  policy: SessionLengthPolicy,
+): number[] | null {
+  if (!policy.userExplicit && policy.mode !== 'user_fixed') {
+    return null;
+  }
+
+  const chunks: number[] = [];
+  let remainingMinutes = totalMinutes;
+
+  while (remainingMinutes > policy.maxSessionMinutes) {
+    chunks.push(policy.maxSessionMinutes);
+    remainingMinutes -= policy.maxSessionMinutes;
+  }
+
+  if (remainingMinutes > 0) {
+    chunks.push(remainingMinutes);
+  }
+
+  return isValidSessionChunkPlan(chunks, totalMinutes, policy)
+    ? normalizeSessionChunks(chunks)
+    : null;
+}
+
+export function createSessionChunkCandidates(
+  totalMinutes: number,
+  policy: SessionLengthPolicy,
+): number[][] {
+  const normalizedTotalMinutes = normalizeSessionChunkMinutes(totalMinutes);
+
+  if (normalizedTotalMinutes <= 0) {
+    return [];
+  }
+
+  const minimumChunkMinutes = policy.allowSmallRemainder
+    ? 1
+    : policy.minSessionMinutes;
+  const minChunkCount = Math.max(
+    1,
+    Math.ceil(normalizedTotalMinutes / policy.maxSessionMinutes),
+  );
+  const maxChunkCount = Math.max(
+    minChunkCount,
+    Math.ceil(normalizedTotalMinutes / minimumChunkMinutes),
+  );
+  const preferredChunkCount = Math.max(
+    minChunkCount,
+    Math.round(normalizedTotalMinutes / policy.targetSessionMinutes),
+  );
+  const chunkCounts = new Set<number>([
+    minChunkCount,
+    preferredChunkCount,
+    Math.ceil(normalizedTotalMinutes / policy.targetSessionMinutes),
+    Math.floor(normalizedTotalMinutes / policy.targetSessionMinutes),
+  ]);
+
+  for (let offset = -4; offset <= 4; offset += 1) {
+    chunkCounts.add(preferredChunkCount + offset);
+  }
+
+  const candidates = [
+    createTargetFirstSessionCandidate(normalizedTotalMinutes, policy),
+    createUserFixedMaxFirstCandidate(normalizedTotalMinutes, policy),
+    ...Array.from(chunkCounts)
+      .filter((chunkCount) => chunkCount >= minChunkCount && chunkCount <= maxChunkCount)
+      .map((chunkCount) =>
+        createSessionCandidateForChunkCount(
+          normalizedTotalMinutes,
+          chunkCount,
+          policy,
+        ),
+      ),
+  ];
+  const uniqueCandidates = new Map<string, number[]>();
+
+  candidates.forEach((candidate) => {
+    if (!candidate) {
+      return;
+    }
+
+    const normalizedCandidate = normalizeSessionChunks(candidate);
+
+    if (!isValidSessionChunkPlan(normalizedCandidate, normalizedTotalMinutes, policy)) {
+      return;
+    }
+
+    uniqueCandidates.set(normalizedCandidate.join(','), normalizedCandidate);
+  });
+
+  return Array.from(uniqueCandidates.values());
+}
+
+export function scoreSessionChunkPlan(
+  chunks: number[],
+  policy: SessionLengthPolicy,
+  profile: StudyTaskProfile = DEFAULT_STUDY_TASK_PROFILE,
+): SessionChunkPlan {
+  const normalizedChunks = normalizeSessionChunks(chunks);
+  const heavyTaskScore = profile.cognitiveLoad + profile.contextRetentionCost;
+  let score = 0;
+  const reasons: string[] = [];
+
+  normalizedChunks.forEach((chunk, index) => {
+    const targetDistance = Math.abs(chunk - policy.targetSessionMinutes);
+    score -= targetDistance;
+
+    if (chunk === policy.targetSessionMinutes) {
+      score += 28;
+      reasons.push('target-match');
+    }
+
+    if (policy.mode === 'balanced' && chunk === 60) {
+      score += 16;
+      reasons.push('balanced-remainder');
+    }
+
+    if (policy.mode === 'short_focus' && chunk === 60) {
+      score += 24;
+      reasons.push('short-focus-target');
+    }
+
+    if ((policy.mode === 'deep_work' || policy.userExplicit) && chunk === 120) {
+      score += 26;
+      reasons.push('long-focus-allowed');
+    }
+
+    if (chunk < policy.minSessionMinutes) {
+      const isAllowedFinalRemainder =
+        policy.allowSmallRemainder && index === normalizedChunks.length - 1;
+      score -= isAllowedFinalRemainder ? 24 : 90;
+      reasons.push(isAllowedFinalRemainder ? 'small-final-remainder' : 'small-block');
+    }
+
+    if (chunk < 30) {
+      score -= policy.allowSmallRemainder && index === normalizedChunks.length - 1
+        ? 30
+        : 120;
+      reasons.push('tiny-block');
+    }
+
+    if (heavyTaskScore >= 8 && chunk < 40) {
+      score -= 60;
+      reasons.push('heavy-task-short-block');
+    }
+
+    if (
+      chunk === policy.maxSessionMinutes &&
+      !policy.userExplicit &&
+      policy.mode !== 'deep_work'
+    ) {
+      score -= 45;
+      reasons.push('max-stickiness');
+    }
+
+    if (policy.mode === 'balanced' && chunk > policy.targetSessionMinutes) {
+      score -= (chunk - policy.targetSessionMinutes) * 1.5;
+      reasons.push('balanced-over-target');
+    }
+  });
+
+  const smallChunks = normalizedChunks.filter(
+    (chunk) => chunk < policy.minSessionMinutes,
+  );
+
+  if (smallChunks.length > 1) {
+    score -= smallChunks.length * 80;
+    reasons.push('multiple-small-remainders');
+  }
+
+  const maxSessionHits = normalizedChunks.filter(
+    (chunk) => chunk === policy.maxSessionMinutes,
+  ).length;
+
+  if (
+    maxSessionHits > 1 &&
+    !policy.userExplicit &&
+    policy.mode !== 'deep_work'
+  ) {
+    score -= maxSessionHits * 35;
+    reasons.push('repeated-max-sessions');
+  }
+
+  score -= normalizedChunks.length * 2;
+
+  return {
+    chunks: normalizedChunks,
+    score,
+    reason: Array.from(new Set(reasons)).join(', ') || 'neutral',
+  };
+}
+
+export function splitDurationIntoSessionChunks(
+  totalMinutes: number,
+  policy: SessionLengthPolicy,
+  profile: StudyTaskProfile = DEFAULT_STUDY_TASK_PROFILE,
+): number[] {
+  const normalizedTotalMinutes = normalizeSessionChunkMinutes(totalMinutes);
+  const candidates = createSessionChunkCandidates(normalizedTotalMinutes, policy);
+
+  if (candidates.length === 0) {
+    return normalizedTotalMinutes > 0 ? [Math.min(normalizedTotalMinutes, policy.maxSessionMinutes)] : [];
+  }
+
+  return candidates
+    .map((chunks) => scoreSessionChunkPlan(chunks, policy, profile))
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return right.score - left.score;
+      }
+
+      if (left.chunks.length !== right.chunks.length) {
+        return left.chunks.length - right.chunks.length;
+      }
+
+      return left.chunks.join(',').localeCompare(right.chunks.join(','));
+    })[0].chunks;
+}
+
+function clampPreference01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function blendPreference(current: number, target: number, rate: number): number {
+  return current + (target - current) * rate;
+}
+
+function resolveFeedbackLearningRate(profile: UserPlanningProfile): number {
+  return Math.min(0.2, 0.06 + profile.confidence * 0.14);
+}
+
+function resolveTaskPreferenceLearningRate(taskPreference: UserTaskPreferenceProfile): number {
+  return Math.min(0.24, 0.08 + taskPreference.confidence * 0.16);
+}
+
+function createDefaultUserTaskPreferenceProfile(
+  taskKey: string,
+): UserTaskPreferenceProfile {
+  return {
+    taskKey,
+    sampleCount: 0,
+    confidence: 0,
+    preferredSessionMinutes: 90,
+    minSessionMinutes: 45,
+    maxSessionMinutes: DEFAULT_MAX_SESSION_MINUTES,
+    dislikesTinyBlocks: 0.5,
+    prefersLongSessions: 0.5,
+    completionRate: 0.5,
+    morningReliability: 0.5,
+    nightHeavyTaskReliability: 0.5,
+  };
+}
+
+export function createDefaultUserPlanningProfile(): UserPlanningProfile {
+  return {
+    version: 1,
+    feedbackCount: 0,
+    confidence: 0,
+    preferredSessionMinutes: 90,
+    minSessionMinutes: 45,
+    maxSessionMinutes: DEFAULT_MAX_SESSION_MINUTES,
+    dislikesTinyBlocks: 0.5,
+    prefersLongSessions: 0.5,
+    morningReliability: 0.5,
+    nightHeavyTaskReliability: 0.5,
+    taskPreferences: {},
+  };
+}
+
+function resolveUserTaskPreferenceKey(params: {
+  taskTitle?: string;
+  taskProfile?: StudyTaskProfile;
+}): string | null {
+  const text = params.taskTitle ? normalizeTaskProfileText(params.taskTitle) : '';
+
+  if (/卒研|研究/.test(text)) {
+    return 'research';
+  }
+
+  if (/英単語|単語|暗記|用語|定義/.test(text)) {
+    return 'memorization';
+  }
+
+  if (/java|javascript|typescript|実装|開発/.test(text)) {
+    return 'implementation';
+  }
+
+  if (/英語|長文|読解/.test(text)) {
+    return 'english';
+  }
+
+  if (text) {
+    return text.slice(0, 32);
+  }
+
+  if (params.taskProfile?.contextRetentionCost && params.taskProfile.contextRetentionCost >= 4) {
+    return 'context-heavy';
+  }
+
+  return null;
+}
+
+function isMorningTime(time?: string): boolean {
+  return time !== undefined && minutesFromTime(time) < 12 * 60;
+}
+
+function isNightTime(time?: string): boolean {
+  return time !== undefined && minutesFromTime(time) >= 20 * 60;
+}
+
+function updateTaskPreference(
+  profile: UserPlanningProfile,
+  signal: WeeklyPlanningFeedbackSignal,
+  update: (taskPreference: UserTaskPreferenceProfile, rate: number) => UserTaskPreferenceProfile,
+): UserPlanningProfile {
+  const taskKey = resolveUserTaskPreferenceKey({
+    taskTitle: signal.taskTitle,
+    taskProfile: signal.taskProfile,
+  });
+
+  if (!taskKey) {
+    return profile;
+  }
+
+  const currentPreference =
+    profile.taskPreferences[taskKey] ?? createDefaultUserTaskPreferenceProfile(taskKey);
+  const rate = resolveTaskPreferenceLearningRate(currentPreference);
+  const nextPreference = update(currentPreference, rate);
+  const sampleCount = currentPreference.sampleCount + 1;
+  const confidence = clampPreference01(currentPreference.confidence + 0.06);
+
+  return {
+    ...profile,
+    taskPreferences: {
+      ...profile.taskPreferences,
+      [taskKey]: {
+        ...nextPreference,
+        sampleCount,
+        confidence,
+      },
+    },
+  };
+}
+
+function updateUserPlanningProfileFromSingleFeedback(
+  profile: UserPlanningProfile,
+  signal: WeeklyPlanningFeedbackSignal,
+): UserPlanningProfile {
+  const rate = resolveFeedbackLearningRate(profile);
+  let nextProfile: UserPlanningProfile = {
+    ...profile,
+    feedbackCount: profile.feedbackCount + 1,
+    confidence: clampPreference01(profile.confidence + 0.04),
+    taskPreferences: { ...profile.taskPreferences },
+  };
+
+  if (signal.kind === 'block_deleted' && signal.durationMinutes < 40) {
+    nextProfile = {
+      ...nextProfile,
+      dislikesTinyBlocks: clampPreference01(
+        blendPreference(nextProfile.dislikesTinyBlocks, 1, rate),
+      ),
+      minSessionMinutes: Math.round(
+        blendPreference(nextProfile.minSessionMinutes, 50, rate),
+      ),
+    };
+  }
+
+  if (signal.kind === 'session_resized') {
+    nextProfile = {
+      ...nextProfile,
+      preferredSessionMinutes: Math.round(
+        blendPreference(nextProfile.preferredSessionMinutes, signal.toMinutes, rate),
+      ),
+      prefersLongSessions: clampPreference01(
+        blendPreference(
+          nextProfile.prefersLongSessions,
+          signal.toMinutes < signal.fromMinutes ? 0.25 : 0.75,
+          rate,
+        ),
+      ),
+    };
+  }
+
+  if (signal.kind === 'session_moved') {
+    if (isMorningTime(signal.fromStartTime) && !isMorningTime(signal.toStartTime)) {
+      nextProfile = {
+        ...nextProfile,
+        morningReliability: clampPreference01(
+          blendPreference(nextProfile.morningReliability, 0, rate),
+        ),
+      };
+    }
+  }
+
+  if (signal.kind === 'session_completed') {
+    nextProfile = {
+      ...nextProfile,
+      preferredSessionMinutes: Math.round(
+        blendPreference(nextProfile.preferredSessionMinutes, signal.durationMinutes, rate),
+      ),
+      prefersLongSessions: clampPreference01(
+        blendPreference(
+          nextProfile.prefersLongSessions,
+          signal.durationMinutes >= 90 ? 0.7 : 0.45,
+          rate,
+        ),
+      ),
+    };
+  }
+
+  if (signal.kind === 'session_uncompleted') {
+    nextProfile = {
+      ...nextProfile,
+      preferredSessionMinutes: Math.round(
+        blendPreference(
+          nextProfile.preferredSessionMinutes,
+          Math.min(signal.durationMinutes, 75),
+          rate,
+        ),
+      ),
+      prefersLongSessions: clampPreference01(
+        blendPreference(nextProfile.prefersLongSessions, 0.25, rate),
+      ),
+    };
+
+    if (isNightTime(signal.startTime) && (signal.taskProfile?.cognitiveLoad ?? 3) >= 4) {
+      nextProfile = {
+        ...nextProfile,
+        nightHeavyTaskReliability: clampPreference01(
+          blendPreference(nextProfile.nightHeavyTaskReliability, 0, rate),
+        ),
+      };
+    }
+  }
+
+  if (signal.kind === 'explicit_preference') {
+    const explicitRate = Math.max(0.35, rate);
+    nextProfile = {
+      ...nextProfile,
+      preferredSessionMinutes:
+        signal.preferredSessionMinutes !== undefined
+          ? Math.round(
+              blendPreference(
+                nextProfile.preferredSessionMinutes,
+                signal.preferredSessionMinutes,
+                explicitRate,
+              ),
+            )
+          : nextProfile.preferredSessionMinutes,
+      minSessionMinutes:
+        signal.minSessionMinutes !== undefined
+          ? Math.round(
+              blendPreference(
+                nextProfile.minSessionMinutes,
+                signal.minSessionMinutes,
+                explicitRate,
+              ),
+            )
+          : nextProfile.minSessionMinutes,
+      maxSessionMinutes:
+        signal.maxSessionMinutes !== undefined
+          ? Math.round(
+              blendPreference(
+                nextProfile.maxSessionMinutes,
+                signal.maxSessionMinutes,
+                explicitRate,
+              ),
+            )
+          : nextProfile.maxSessionMinutes,
+      dislikesTinyBlocks:
+        signal.dislikesTinyBlocks !== undefined
+          ? clampPreference01(
+              blendPreference(
+                nextProfile.dislikesTinyBlocks,
+                signal.dislikesTinyBlocks,
+                explicitRate,
+              ),
+            )
+          : nextProfile.dislikesTinyBlocks,
+      prefersLongSessions:
+        signal.prefersLongSessions !== undefined
+          ? clampPreference01(
+              blendPreference(
+                nextProfile.prefersLongSessions,
+                signal.prefersLongSessions,
+                explicitRate,
+              ),
+            )
+          : nextProfile.prefersLongSessions,
+    };
+  }
+
+  nextProfile = updateTaskPreference(nextProfile, signal, (taskPreference, taskRate) => {
+    if (signal.kind === 'session_completed') {
+      return {
+        ...taskPreference,
+        preferredSessionMinutes: Math.round(
+          blendPreference(
+            taskPreference.preferredSessionMinutes,
+            signal.durationMinutes,
+            taskRate,
+          ),
+        ),
+        completionRate: clampPreference01(
+          blendPreference(taskPreference.completionRate, 1, taskRate),
+        ),
+        prefersLongSessions: clampPreference01(
+          blendPreference(
+            taskPreference.prefersLongSessions,
+            signal.durationMinutes >= 90 ? 0.8 : 0.45,
+            taskRate,
+          ),
+        ),
+      };
+    }
+
+    if (signal.kind === 'session_uncompleted') {
+      return {
+        ...taskPreference,
+        completionRate: clampPreference01(
+          blendPreference(taskPreference.completionRate, 0, taskRate),
+        ),
+        prefersLongSessions: clampPreference01(
+          blendPreference(taskPreference.prefersLongSessions, 0.25, taskRate),
+        ),
+      };
+    }
+
+    if (signal.kind === 'session_resized') {
+      return {
+        ...taskPreference,
+        preferredSessionMinutes: Math.round(
+          blendPreference(taskPreference.preferredSessionMinutes, signal.toMinutes, taskRate),
+        ),
+      };
+    }
+
+    if (signal.kind === 'block_deleted' && signal.durationMinutes < 40) {
+      return {
+        ...taskPreference,
+        dislikesTinyBlocks: clampPreference01(
+          blendPreference(taskPreference.dislikesTinyBlocks, 1, taskRate),
+        ),
+      };
+    }
+
+    if (signal.kind === 'session_moved') {
+      return {
+        ...taskPreference,
+        morningReliability:
+          isMorningTime(signal.fromStartTime) && !isMorningTime(signal.toStartTime)
+            ? clampPreference01(
+                blendPreference(taskPreference.morningReliability, 0, taskRate),
+              )
+            : taskPreference.morningReliability,
+      };
+    }
+
+    if (signal.kind === 'explicit_preference') {
+      return {
+        ...taskPreference,
+        preferredSessionMinutes:
+          signal.preferredSessionMinutes !== undefined
+            ? Math.round(
+                blendPreference(
+                  taskPreference.preferredSessionMinutes,
+                  signal.preferredSessionMinutes,
+                  Math.max(0.35, taskRate),
+                ),
+              )
+            : taskPreference.preferredSessionMinutes,
+        minSessionMinutes:
+          signal.minSessionMinutes !== undefined
+            ? Math.round(
+                blendPreference(
+                  taskPreference.minSessionMinutes,
+                  signal.minSessionMinutes,
+                  Math.max(0.35, taskRate),
+                ),
+              )
+            : taskPreference.minSessionMinutes,
+        maxSessionMinutes:
+          signal.maxSessionMinutes !== undefined
+            ? Math.round(
+                blendPreference(
+                  taskPreference.maxSessionMinutes,
+                  signal.maxSessionMinutes,
+                  Math.max(0.35, taskRate),
+                ),
+              )
+            : taskPreference.maxSessionMinutes,
+      };
+    }
+
+    return taskPreference;
+  });
+
+  return nextProfile;
+}
+
+export function updateUserPlanningProfileFromFeedback(
+  profile: UserPlanningProfile,
+  feedback: WeeklyPlanningFeedbackSignal | WeeklyPlanningFeedbackSignal[],
+): UserPlanningProfile {
+  const signals = Array.isArray(feedback) ? feedback : [feedback];
+
+  return signals.reduce(updateUserPlanningProfileFromSingleFeedback, profile);
+}
+
+export function mergeUserPolicyWithExplicitOverride(
+  policy: SessionLengthPolicy,
+  explicitOverride?: SessionLengthPolicyOverride,
+): SessionLengthPolicy {
+  if (!explicitOverride?.userExplicit) {
+    return policy;
+  }
+
+  return mergeSessionLengthPolicyOverride(policy, explicitOverride);
+}
+
+export function derivePersonalizedSessionPolicy(
+  input: PersonalizedSessionPolicyInput,
+): PersonalizedSessionPolicy {
+  const basePolicy = input.basePolicy ?? deriveSessionLengthPolicy(input.taskProfile);
+  const explicitPolicy = mergeUserPolicyWithExplicitOverride(
+    basePolicy,
+    input.explicitOverride,
+  );
+
+  if (input.explicitOverride?.userExplicit) {
+    return {
+      ...explicitPolicy,
+      basePolicy,
+      confidence: 1,
+      personalizationApplied: true,
+      reasons: ['explicit-override'],
+    };
+  }
+
+  const userProfile = input.userProfile;
+
+  if (!userProfile || userProfile.feedbackCount === 0) {
+    return {
+      ...basePolicy,
+      basePolicy,
+      confidence: 0,
+      personalizationApplied: false,
+      reasons: ['base-policy'],
+    };
+  }
+
+  const taskKey = resolveUserTaskPreferenceKey({
+    taskTitle: input.taskTitle,
+    taskProfile: input.taskProfile,
+  });
+  const taskPreference = taskKey ? userProfile.taskPreferences[taskKey] : undefined;
+  const taskConfidence = taskPreference?.confidence ?? 0;
+  const confidence = Math.max(userProfile.confidence, taskConfidence);
+  const strength = Math.min(0.65, confidence * 0.55);
+  const targetPreference = taskPreference?.preferredSessionMinutes ?? userProfile.preferredSessionMinutes;
+  const minPreference = taskPreference?.minSessionMinutes ?? userProfile.minSessionMinutes;
+  const maxPreference = taskPreference?.maxSessionMinutes ?? userProfile.maxSessionMinutes;
+  const dislikesTinyBlocks = Math.max(
+    userProfile.dislikesTinyBlocks,
+    taskPreference?.dislikesTinyBlocks ?? 0,
+  );
+  const prefersLongSessions = Math.max(
+    userProfile.prefersLongSessions,
+    taskPreference?.prefersLongSessions ?? 0,
+  );
+  const nextTarget = Math.round(
+    blendPreference(basePolicy.targetSessionMinutes, targetPreference, strength),
+  );
+  const nextMin = Math.round(
+    blendPreference(
+      basePolicy.minSessionMinutes,
+      dislikesTinyBlocks > 0.6 ? Math.max(minPreference, 45) : minPreference,
+      strength,
+    ),
+  );
+  const nextMax = Math.round(
+    blendPreference(
+      basePolicy.maxSessionMinutes,
+      prefersLongSessions > 0.65 ? Math.max(maxPreference, basePolicy.maxSessionMinutes) : maxPreference,
+      strength * 0.6,
+    ),
+  );
+  const personalizedPolicy = normalizeSessionLengthPolicy(
+    {
+      ...basePolicy,
+      minSessionMinutes: nextMin,
+      targetSessionMinutes: nextTarget,
+      maxSessionMinutes: nextMax,
+      allowSmallRemainder:
+        dislikesTinyBlocks > 0.65 ? false : basePolicy.allowSmallRemainder,
+    },
+    Math.max(basePolicy.maxSessionMinutes, nextMax),
+  );
+
+  return {
+    ...personalizedPolicy,
+    basePolicy,
+    confidence,
+    personalizationApplied: strength > 0,
+    taskPreference,
+    reasons: [
+      'learned-user-profile',
+      taskPreference ? 'task-preference' : 'global-preference',
+      dislikesTinyBlocks > 0.65 ? 'tiny-blocks-disliked' : '',
+    ].filter(Boolean),
+  };
 }
 
 function nowIso(): string {
