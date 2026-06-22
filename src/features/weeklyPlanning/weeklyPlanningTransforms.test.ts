@@ -5,11 +5,13 @@ import {
   assessWeeklyPlanningRequest,
   createAvailabilityAwareWeeklyDraftBlocksFromText,
   createFallbackWeeklyDraftBlock,
+  deriveSessionLengthPolicy,
   createPlanDraftFromWeeklyDraftBlock,
   createSimpleWeeklyDraftBlocksFromText,
   createWeeklyDraftBlockFromPlanDraft,
   createWeeklyPlanningPendingConfig,
   distributeWeeklyDraftBlocks,
+  inferStudyTaskProfile,
   mergeWeeklyPlanningRevision,
   parseWeeklyPlanningConditionOperations,
   looksLikeWeeklyPlanningRequest,
@@ -131,6 +133,180 @@ function expectBlocksSortedByDateAndStartTime(
 }
 
 describe('weeklyPlanningTransforms', () => {
+  describe('study task profile and session length policy phase 1', () => {
+    it('keeps task names as profile signals rather than fixed target minutes', () => {
+      const profile = inferStudyTaskProfile('英単語を180分');
+      const defaultPolicy = deriveSessionLengthPolicy(profile);
+      const userPolicy = deriveSessionLengthPolicy(profile, {
+        override: {
+          mode: 'user_fixed',
+          minSessionMinutes: 60,
+          targetSessionMinutes: 120,
+          maxSessionMinutes: 120,
+          allowSmallRemainder: false,
+          userExplicit: true,
+        },
+      });
+
+      expect(profile).not.toHaveProperty('targetSessionMinutes');
+      expect(defaultPolicy.mode).toBe('short_focus');
+      expect(userPolicy).toMatchObject({
+        mode: 'user_fixed',
+        targetSessionMinutes: 120,
+        maxSessionMinutes: 120,
+        userExplicit: true,
+      });
+    });
+
+    it('infers vocabulary as short-focus leaning and long reading as balanced leaning', () => {
+      const vocabularyProfile = inferStudyTaskProfile('英単語を暗記する');
+      const longReadingProfile = inferStudyTaskProfile('英語長文を読む');
+
+      expect(vocabularyProfile.chunkability).toBeGreaterThan(
+        longReadingProfile.chunkability,
+      );
+      expect(vocabularyProfile.repetitionBenefit).toBeGreaterThan(
+        longReadingProfile.repetitionBenefit,
+      );
+      expect(deriveSessionLengthPolicy(vocabularyProfile).mode).toBe('short_focus');
+      expect(deriveSessionLengthPolicy(longReadingProfile).mode).toBe('balanced');
+    });
+
+    it('infers different profiles for Java grammar review and Java implementation', () => {
+      const grammarProfile = inferStudyTaskProfile('Java文法復習');
+      const implementationProfile = inferStudyTaskProfile('Java実装');
+
+      expect(grammarProfile.chunkability).toBeGreaterThan(
+        implementationProfile.chunkability,
+      );
+      expect(implementationProfile.contextRetentionCost).toBeGreaterThan(
+        grammarProfile.contextRetentionCost,
+      );
+      expect(implementationProfile.switchingCost).toBeGreaterThan(
+        grammarProfile.switchingCost,
+      );
+      expect(deriveSessionLengthPolicy(grammarProfile).mode).toBe('short_focus');
+      expect(deriveSessionLengthPolicy(implementationProfile).mode).toBe('deep_work');
+    });
+
+    it('infers different profiles for graduation research reading writing and annotation', () => {
+      const readingProfile = inferStudyTaskProfile('卒研 文献読み');
+      const writingProfile = inferStudyTaskProfile('卒研 文章作成');
+      const annotationProfile = inferStudyTaskProfile('卒研 アノテーション');
+
+      expect(readingProfile.fatigueRisk).toBeGreaterThan(
+        annotationProfile.fatigueRisk,
+      );
+      expect(annotationProfile.chunkability).toBeGreaterThan(
+        writingProfile.chunkability,
+      );
+      expect(annotationProfile.feedbackGranularity).toBeGreaterThan(
+        readingProfile.feedbackGranularity,
+      );
+      expect(writingProfile.contextRetentionCost).toBeGreaterThan(
+        annotationProfile.contextRetentionCost,
+      );
+    });
+
+    it('derives short balanced and deep policies from profile signals', () => {
+      const shortPolicy = deriveSessionLengthPolicy({
+        cognitiveLoad: 2,
+        contextRetentionCost: 2,
+        chunkability: 5,
+        feedbackGranularity: 5,
+        fatigueRisk: 2,
+        switchingCost: 2,
+        repetitionBenefit: 5,
+        deadlinePressure: 3,
+      });
+      const balancedPolicy = deriveSessionLengthPolicy({
+        cognitiveLoad: 5,
+        contextRetentionCost: 4,
+        chunkability: 2,
+        feedbackGranularity: 3,
+        fatigueRisk: 4,
+        switchingCost: 3,
+        repetitionBenefit: 2,
+        deadlinePressure: 3,
+      });
+      const deepPolicy = deriveSessionLengthPolicy({
+        cognitiveLoad: 4,
+        contextRetentionCost: 5,
+        chunkability: 2,
+        feedbackGranularity: 3,
+        fatigueRisk: 3,
+        switchingCost: 5,
+        repetitionBenefit: 2,
+        deadlinePressure: 3,
+      });
+
+      expect(shortPolicy).toMatchObject({
+        mode: 'short_focus',
+        minSessionMinutes: 30,
+        targetSessionMinutes: 60,
+        maxSessionMinutes: 90,
+        allowSmallRemainder: true,
+      });
+      expect(balancedPolicy).toMatchObject({
+        mode: 'balanced',
+        minSessionMinutes: 45,
+        targetSessionMinutes: 90,
+        maxSessionMinutes: 120,
+        allowSmallRemainder: false,
+      });
+      expect(deepPolicy).toMatchObject({
+        mode: 'deep_work',
+        minSessionMinutes: 60,
+        targetSessionMinutes: 105,
+        maxSessionMinutes: 120,
+        allowSmallRemainder: false,
+      });
+    });
+
+    it('keeps 120 minutes out of the default center while allowing explicit 120-minute policy', () => {
+      const implementationProfile = inferStudyTaskProfile('Java実装');
+      const defaultPolicy = deriveSessionLengthPolicy(implementationProfile);
+      const explicitPolicy = deriveSessionLengthPolicy(implementationProfile, {
+        override: {
+          targetSessionMinutes: 120,
+          maxSessionMinutes: 120,
+          userExplicit: true,
+        },
+      });
+
+      expect(defaultPolicy.mode).toBe('deep_work');
+      expect(defaultPolicy.targetSessionMinutes).not.toBe(120);
+      expect(explicitPolicy).toMatchObject({
+        mode: 'user_fixed',
+        targetSessionMinutes: 120,
+        maxSessionMinutes: 120,
+        userExplicit: true,
+      });
+    });
+
+    it('treats user explicit policy as higher priority than default heuristics', () => {
+      const shortProfile = inferStudyTaskProfile('英単語');
+      const policy = deriveSessionLengthPolicy(shortProfile, {
+        override: {
+          minSessionMinutes: 60,
+          targetSessionMinutes: 90,
+          maxSessionMinutes: 90,
+          allowSmallRemainder: false,
+          userExplicit: true,
+        },
+      });
+
+      expect(policy).toMatchObject({
+        mode: 'user_fixed',
+        minSessionMinutes: 60,
+        targetSessionMinutes: 90,
+        maxSessionMinutes: 90,
+        allowSmallRemainder: false,
+        userExplicit: true,
+      });
+    });
+  });
+
   it('keeps weekly drafts separate from saved plan ids and occurrence keys', () => {
     const block = createWeeklyDraftBlockFromPlanDraft(planDraft());
 

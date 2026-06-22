@@ -55,6 +55,55 @@ export interface SimpleWeeklyTask {
   deadlineDate?: string;
 }
 
+export type StudyTaskProfileScore = 1 | 2 | 3 | 4 | 5;
+
+export interface StudyTaskProfile {
+  cognitiveLoad: StudyTaskProfileScore;
+  contextRetentionCost: StudyTaskProfileScore;
+  chunkability: StudyTaskProfileScore;
+  feedbackGranularity: StudyTaskProfileScore;
+  fatigueRisk: StudyTaskProfileScore;
+  switchingCost: StudyTaskProfileScore;
+  repetitionBenefit: StudyTaskProfileScore;
+  deadlinePressure: StudyTaskProfileScore;
+}
+
+export type SessionLengthPolicyMode =
+  | 'short_focus'
+  | 'balanced'
+  | 'deep_work'
+  | 'user_fixed';
+
+export interface SessionLengthPolicy {
+  mode: SessionLengthPolicyMode;
+  minSessionMinutes: number;
+  targetSessionMinutes: number;
+  maxSessionMinutes: number;
+  allowSmallRemainder: boolean;
+  userExplicit?: boolean;
+}
+
+export type SessionLengthPolicyOverride = Partial<
+  Omit<SessionLengthPolicy, 'userExplicit'>
+> & {
+  userExplicit?: boolean;
+};
+
+export interface SessionLengthPolicyOptions {
+  maxSessionMinutes?: number;
+  minSessionMinutes?: number;
+  override?: SessionLengthPolicyOverride;
+}
+
+export type StudyTaskProfileInput =
+  | string
+  | Partial<
+      Pick<
+        SimpleWeeklyTask,
+        'title' | 'sourceText' | 'durationMinutes' | 'deadlineDate'
+      >
+    >;
+
 interface TimeInterval {
   startMinutes: number;
   endMinutes: number;
@@ -193,6 +242,313 @@ function normalizeWeeklyPlanningText(text: string): string {
     .replace(/[：]/g, ':')
     .replace(/[〜～−―–—]/g, '~')
     .replace(/[　]/g, ' ');
+}
+
+const DEFAULT_STUDY_TASK_PROFILE: StudyTaskProfile = {
+  cognitiveLoad: 3,
+  contextRetentionCost: 3,
+  chunkability: 3,
+  feedbackGranularity: 3,
+  fatigueRisk: 3,
+  switchingCost: 3,
+  repetitionBenefit: 3,
+  deadlinePressure: 3,
+};
+
+export function clampProfileScore(score: number): StudyTaskProfileScore {
+  return Math.min(5, Math.max(1, Math.round(score))) as StudyTaskProfileScore;
+}
+
+export function normalizeTaskProfileText(text: string): string {
+  return normalizeWeeklyPlanningText(text)
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveStudyTaskProfileText(input: StudyTaskProfileInput): string {
+  if (typeof input === 'string') {
+    return normalizeTaskProfileText(input);
+  }
+
+  return normalizeTaskProfileText(
+    [input.title, input.sourceText].filter(Boolean).join(' '),
+  );
+}
+
+function applyStudyTaskProfilePatch(
+  profile: StudyTaskProfile,
+  patch: Partial<Record<keyof StudyTaskProfile, number>>,
+): StudyTaskProfile {
+  return Object.entries(patch).reduce<StudyTaskProfile>(
+    (nextProfile, [key, value]) => ({
+      ...nextProfile,
+      [key]: clampProfileScore(value),
+    }),
+    profile,
+  );
+}
+
+export function inferStudyTaskProfile(
+  input: StudyTaskProfileInput,
+): StudyTaskProfile {
+  const text = resolveStudyTaskProfileText(input);
+  const hasDeadline =
+    (typeof input !== 'string' && Boolean(input.deadlineDate)) ||
+    /締切|期限|まで|迄/.test(text);
+  let profile = { ...DEFAULT_STUDY_TASK_PROFILE };
+
+  if (/英単語|単語|語彙|ボキャブラリ|暗記|用語|定義暗記/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 2,
+      contextRetentionCost: 2,
+      chunkability: 5,
+      feedbackGranularity: 5,
+      fatigueRisk: 2,
+      switchingCost: 2,
+      repetitionBenefit: 5,
+    });
+  }
+
+  if (/英語.*長文|長文.*英語|英文読解|長文読解|読解/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 3,
+      contextRetentionCost: 3,
+      chunkability: 3,
+      feedbackGranularity: 3,
+      fatigueRisk: 3,
+      repetitionBenefit: 3,
+    });
+  }
+
+  if (/java|javascript|typescript|プログラミング/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 3,
+      contextRetentionCost: 3,
+      switchingCost: 3,
+    });
+  }
+
+  if (/(java|javascript|typescript).*(文法|復習)|(文法|復習).*(java|javascript|typescript)/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 2,
+      contextRetentionCost: 2,
+      chunkability: 4,
+      feedbackGranularity: 4,
+      fatigueRisk: 2,
+      switchingCost: 2,
+      repetitionBenefit: 4,
+    });
+  }
+
+  if (/(java|javascript|typescript).*(実装|開発|制作)|(実装|開発|制作).*(java|javascript|typescript)/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 4,
+      contextRetentionCost: 5,
+      chunkability: 2,
+      feedbackGranularity: 3,
+      fatigueRisk: 3,
+      switchingCost: 5,
+      repetitionBenefit: 2,
+    });
+  }
+
+  if (/計算理論|証明|証明問題|数学|線形代数|確率統計/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 5,
+      contextRetentionCost: 4,
+      chunkability: 2,
+      feedbackGranularity: 3,
+      fatigueRisk: 4,
+      switchingCost: 3,
+      repetitionBenefit: 2,
+    });
+  }
+
+  if (/卒研|研究/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 4,
+      contextRetentionCost: 4,
+      fatigueRisk: 3,
+      switchingCost: 4,
+    });
+  }
+
+  if (/(卒研|研究).*(文献|論文|読み)|(文献|論文).*(卒研|研究)/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 4,
+      contextRetentionCost: 3,
+      chunkability: 3,
+      feedbackGranularity: 2,
+      fatigueRisk: 4,
+      switchingCost: 3,
+      repetitionBenefit: 2,
+    });
+  }
+
+  if (/(卒研|研究).*(アノテーション| annotation|ラベル付け)|(アノテーション|annotation|ラベル付け).*(卒研|研究)/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 2,
+      contextRetentionCost: 2,
+      chunkability: 5,
+      feedbackGranularity: 5,
+      fatigueRisk: 2,
+      switchingCost: 2,
+      repetitionBenefit: 4,
+    });
+  }
+
+  if (/(卒研|研究).*(文章|執筆|論文作成|書く)|(文章|執筆|論文作成|書く).*(卒研|研究)/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 4,
+      contextRetentionCost: 4,
+      chunkability: 3,
+      feedbackGranularity: 3,
+      fatigueRisk: 3,
+      switchingCost: 4,
+      repetitionBenefit: 2,
+    });
+  }
+
+  if (/レポート|文章作成|執筆/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: Math.max(profile.cognitiveLoad, 4),
+      contextRetentionCost: Math.max(profile.contextRetentionCost, 4),
+      switchingCost: Math.max(profile.switchingCost, 4),
+    });
+  }
+
+  if (/obsidian|整理|転記|まとめ/.test(text)) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      cognitiveLoad: 2,
+      contextRetentionCost: 2,
+      chunkability: 4,
+      feedbackGranularity: 4,
+      fatigueRisk: 2,
+      switchingCost: 2,
+      repetitionBenefit: 3,
+    });
+  }
+
+  if (hasDeadline) {
+    profile = applyStudyTaskProfilePatch(profile, {
+      deadlinePressure: 4,
+    });
+  }
+
+  return profile;
+}
+
+function normalizeSessionLengthPolicy(
+  policy: SessionLengthPolicy,
+  absoluteMaxSessionMinutes: number,
+): SessionLengthPolicy {
+  const maxSessionMinutes = Math.max(
+    30,
+    Math.min(policy.maxSessionMinutes, absoluteMaxSessionMinutes),
+  );
+  const minSessionMinutes = Math.min(
+    maxSessionMinutes,
+    Math.max(1, policy.minSessionMinutes),
+  );
+  const targetSessionMinutes = Math.min(
+    maxSessionMinutes,
+    Math.max(minSessionMinutes, policy.targetSessionMinutes),
+  );
+
+  return {
+    ...policy,
+    minSessionMinutes,
+    targetSessionMinutes,
+    maxSessionMinutes,
+  };
+}
+
+export function mergeSessionLengthPolicyOverride(
+  basePolicy: SessionLengthPolicy,
+  override: SessionLengthPolicyOverride | undefined,
+  absoluteMaxSessionMinutes = DEFAULT_MAX_SESSION_MINUTES,
+): SessionLengthPolicy {
+  if (!override) {
+    return normalizeSessionLengthPolicy(basePolicy, absoluteMaxSessionMinutes);
+  }
+
+  return normalizeSessionLengthPolicy(
+    {
+      ...basePolicy,
+      ...override,
+      mode: override.userExplicit
+        ? override.mode ?? 'user_fixed'
+        : override.mode ?? basePolicy.mode,
+      userExplicit: override.userExplicit ?? basePolicy.userExplicit,
+    },
+    absoluteMaxSessionMinutes,
+  );
+}
+
+export function deriveSessionLengthPolicy(
+  profile: StudyTaskProfile,
+  options: SessionLengthPolicyOptions = {},
+): SessionLengthPolicy {
+  const absoluteMaxSessionMinutes = Math.max(
+    30,
+    options.maxSessionMinutes ?? DEFAULT_MAX_SESSION_MINUTES,
+  );
+  const minimumSessionMinutes = Math.max(
+    1,
+    options.minSessionMinutes ?? DEFAULT_MIN_STUDY_BLOCK_MINUTES,
+  );
+  const shortFocusScore =
+    profile.chunkability +
+    profile.feedbackGranularity +
+    profile.repetitionBenefit -
+    profile.contextRetentionCost -
+    profile.switchingCost +
+    (6 - profile.fatigueRisk) * 0.5;
+  const deepWorkScore =
+    profile.cognitiveLoad +
+    profile.contextRetentionCost +
+    profile.switchingCost -
+    profile.chunkability -
+    Math.max(0, profile.fatigueRisk - 3) * 2;
+  const mode: SessionLengthPolicyMode =
+    shortFocusScore >= 5 && profile.contextRetentionCost <= 3
+      ? 'short_focus'
+      : deepWorkScore >= 8 && profile.fatigueRisk <= 3
+        ? 'deep_work'
+        : 'balanced';
+  const basePolicyByMode: Record<
+    Exclude<SessionLengthPolicyMode, 'user_fixed'>,
+    SessionLengthPolicy
+  > = {
+    short_focus: {
+      mode: 'short_focus',
+      minSessionMinutes: Math.max(30, minimumSessionMinutes),
+      targetSessionMinutes: 60,
+      maxSessionMinutes: Math.min(90, absoluteMaxSessionMinutes),
+      allowSmallRemainder: true,
+    },
+    balanced: {
+      mode: 'balanced',
+      minSessionMinutes: Math.max(45, minimumSessionMinutes),
+      targetSessionMinutes: 90,
+      maxSessionMinutes: absoluteMaxSessionMinutes,
+      allowSmallRemainder: false,
+    },
+    deep_work: {
+      mode: 'deep_work',
+      minSessionMinutes: Math.max(60, minimumSessionMinutes),
+      targetSessionMinutes: 105,
+      maxSessionMinutes: absoluteMaxSessionMinutes,
+      allowSmallRemainder: false,
+    },
+  };
+
+  return mergeSessionLengthPolicyOverride(
+    basePolicyByMode[mode],
+    options.override,
+    absoluteMaxSessionMinutes,
+  );
 }
 
 function nowIso(): string {
