@@ -282,6 +282,69 @@
   gap: 10px;
 }
 
+.weekly-planning-response-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--text);
+}
+
+.weekly-planning-response-card.warning {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+
+.weekly-planning-response-card strong {
+  font-size: 0.9rem;
+}
+
+.weekly-planning-response-card p {
+  margin: 0;
+  white-space: pre-line;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.weekly-planning-chat-log {
+  display: grid;
+  gap: 10px;
+}
+
+.weekly-planning-chat-message {
+  display: grid;
+  gap: 6px;
+  max-width: min(100%, 38rem);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.weekly-planning-chat-message--user {
+  justify-self: end;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.weekly-planning-chat-message--assistant {
+  justify-self: start;
+  background: color-mix(in srgb, var(--surface-elevated) 60%, var(--surface));
+}
+
+.weekly-planning-chat-message strong {
+  font-size: 0.82rem;
+}
+
+.weekly-planning-chat-message p {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.6;
+}
+
 .quick-entry-modal:has(.weekly-draft-preview) .weekly-planning-assistant {
   gap: 8px;
 }
@@ -600,6 +663,93 @@
   border-radius: 6px;
   background: var(--weekly-draft-tone-bg);
   box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow) 8%, transparent 92%);
+  z-index: 3;
+}
+
+.weekly-draft-preview-buffer {
+  position: absolute;
+  right: 2px;
+  left: 2px;
+  z-index: 1;
+  box-sizing: border-box;
+  min-height: 4px;
+  overflow: hidden;
+  border: 1px dashed color-mix(in srgb, var(--text-muted) 42%, transparent 58%);
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--text-muted) 12%, transparent 88%) 0,
+      color-mix(in srgb, var(--text-muted) 12%, transparent 88%) 6px,
+      transparent 6px,
+      transparent 12px
+    ),
+    color-mix(in srgb, var(--surface-strong) 72%, transparent 28%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.weekly-draft-preview-existing {
+  position: absolute;
+  right: 6px;
+  left: 6px;
+  z-index: 2;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 34%, var(--border) 66%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-muted) 13%, var(--surface-strong) 87%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.weekly-draft-preview-existing--overview {
+  display: grid;
+  gap: 1px;
+  place-items: center;
+  padding: 2px;
+  text-align: center;
+}
+
+.weekly-draft-preview-existing--overview strong,
+.weekly-draft-preview-existing--overview small {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+}
+
+.weekly-draft-preview-existing--overview strong {
+  color: var(--text-muted);
+  font-size: 0.56rem;
+  font-weight: 850;
+  -webkit-line-clamp: 1;
+}
+
+.weekly-draft-preview-existing--overview small {
+  color: var(--text-muted);
+  font-size: 0.48rem;
+  font-weight: 800;
+  -webkit-line-clamp: 1;
+}
+
+.weekly-draft-preview-buffer--detail {
+  display: grid;
+  align-items: start;
+  padding: 2px 6px;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.weekly-draft-preview-existing--detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  right: 14px;
+  left: 18px;
+  padding: 6px 8px;
+  border-radius: 8px;
 }
 
 .weekly-draft-tone-1 {

@@ -13,11 +13,18 @@ import {
 import type {
   AiInputMode,
   WeeklyPlanDraftBlock,
+  WeeklyPlanningMessage,
 } from '../features/weeklyPlanning/types';
 import {
-  createFallbackWeeklyDraftBlock,
-  createSimpleWeeklyDraftBlocksFromText,
+  applyWeeklyPlanningConditionOverride,
+  assessWeeklyPlanningRequest,
+  createAvailabilityAwareWeeklyDraftBlocksFromText,
+  createWeeklyPlanningPendingConfig,
+  isExplicitCreateConfirmation,
+  isExplicitPartialPlacementConfirmation,
   looksLikeWeeklyPlanningRequest,
+  summarizeWeeklyPlanningPendingConfig,
+  type WeeklyPlanningPendingConfig,
 } from '../features/weeklyPlanning/weeklyPlanningTransforms';
 import type {
   NaturalLanguageMode,
@@ -144,18 +151,63 @@ function buildWeeklyDraftPreviewMarkerStyle(
   };
 }
 
-function buildWeeklyDraftPreviewBlockStyle(
-  block: WeeklyPlanDraftBlock,
+function buildWeeklyDraftPreviewMinuteRangeStyle(
+  startMinutes: number,
+  endMinutes: number,
   rangeStartMinutes: number,
 ): CSSProperties {
-  const startMinutes = minutesFromTime(block.startTime);
-  const durationMinutes = minutesBetween(block.startTime, block.endTime);
   const startTenMinuteUnit = (startMinutes - rangeStartMinutes) / 10;
-  const durationTenMinuteUnits = durationMinutes / 10;
+  const durationTenMinuteUnits = Math.max(0, endMinutes - startMinutes) / 10;
 
   return {
     top: `calc(${startTenMinuteUnit} * var(--weekly-draft-preview-ten-minute-height))`,
     height: `calc(${durationTenMinuteUnits} * var(--weekly-draft-preview-ten-minute-height))`,
+  };
+}
+
+function buildWeeklyDraftPreviewBlockStyle(
+  block: WeeklyPlanDraftBlock,
+  rangeStartMinutes: number,
+): CSSProperties {
+  return buildWeeklyDraftPreviewMinuteRangeStyle(
+    minutesFromTime(block.startTime),
+    minutesFromTime(block.endTime),
+    rangeStartMinutes,
+  );
+}
+
+function buildExistingPlanPreviewStyle(
+  plan: Plan,
+  rangeStartMinutes: number,
+): CSSProperties {
+  return buildWeeklyDraftPreviewMinuteRangeStyle(
+    minutesFromTime(plan.startTime),
+    minutesFromTime(plan.endTime),
+    rangeStartMinutes,
+  );
+}
+
+function buildExistingPlanBufferPreviewStyle(params: {
+  plan: Plan;
+  bufferMinutes: number;
+  rangeStartMinutes: number;
+}): CSSProperties {
+  return buildWeeklyDraftPreviewMinuteRangeStyle(
+    Math.max(0, minutesFromTime(params.plan.startTime) - params.bufferMinutes),
+    Math.min(24 * 60, minutesFromTime(params.plan.endTime) + params.bufferMinutes),
+    params.rangeStartMinutes,
+  );
+}
+
+function createWeeklyPlanningMessage(
+  role: WeeklyPlanningMessage['role'],
+  content: string,
+): WeeklyPlanningMessage {
+  return {
+    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -185,6 +237,13 @@ export function NaturalLanguageAssistant({
     'overview' | 'day'
   >('overview');
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
+  const [weeklyPlanningPendingConfig, setWeeklyPlanningPendingConfig] =
+    useState<WeeklyPlanningPendingConfig | null>(null);
+  const [weeklyDraftPreviewBufferMinutes, setWeeklyDraftPreviewBufferMinutes] =
+    useState(30);
+  const [weeklyPlanningMessages, setWeeklyPlanningMessages] = useState<
+    WeeklyPlanningMessage[]
+  >([]);
   const runtimeInfo = getPlannerAiRuntimeInfo();
 
   const nearbyPlans = plans.filter((plan) => {
@@ -224,6 +283,7 @@ export function NaturalLanguageAssistant({
   const pendingWeeklyDraftDateGroups = pendingWeeklyDraftDates.map((date) => ({
     date,
     blocks: sortedPendingWeeklyDraftBlocks.filter((block) => block.date === date),
+    existingPlans: sortByDateTime(plans.filter((plan) => plan.date === date)),
   }));
   const activeWeeklyDraftDate = pendingWeeklyDraftDates.includes(selectedWeeklyDraftDate)
     ? selectedWeeklyDraftDate
@@ -234,22 +294,25 @@ export function NaturalLanguageAssistant({
         (block) => block.date === activeWeeklyDraftDate,
       )
     : [];
+  const activeWeeklyExistingPlans = activeWeeklyDraftDate
+    ? sortByDateTime(plans.filter((plan) => plan.date === activeWeeklyDraftDate))
+    : [];
   const pendingWeeklyDraftPreviewStartMinutes =
     WEEKLY_DRAFT_PREVIEW_START_HOUR * 60;
   const pendingWeeklyDraftPreviewEndMinutes = WEEKLY_DRAFT_PREVIEW_END_HOUR * 60;
   const pendingWeeklyDraftPreviewDurationMinutes =
     pendingWeeklyDraftPreviewEndMinutes - pendingWeeklyDraftPreviewStartMinutes;
 
-const WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT = 22;
-const WEEKLY_DRAFT_DAY_HOUR_HEIGHT = 44;
+  const WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT = 22;
+  const WEEKLY_DRAFT_DAY_HOUR_HEIGHT = 44;
 
-const pendingWeeklyDraftOverviewTimelineHeight =
-  (pendingWeeklyDraftPreviewDurationMinutes / 60) *
-  WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT;
+  const pendingWeeklyDraftOverviewTimelineHeight =
+    (pendingWeeklyDraftPreviewDurationMinutes / 60) *
+    WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT;
 
-const pendingWeeklyDraftDayTimelineHeight =
-  (pendingWeeklyDraftPreviewDurationMinutes / 60) *
-  WEEKLY_DRAFT_DAY_HOUR_HEIGHT;
+  const pendingWeeklyDraftDayTimelineHeight =
+    (pendingWeeklyDraftPreviewDurationMinutes / 60) *
+    WEEKLY_DRAFT_DAY_HOUR_HEIGHT;
   const pendingWeeklyDraftPreviewGridStyle: CSSProperties = {
     gridTemplateColumns: `56px repeat(${Math.max(
       pendingWeeklyDraftDateGroups.length,
@@ -257,18 +320,69 @@ const pendingWeeklyDraftDayTimelineHeight =
     )}, minmax(44px, 1fr))`,
   };
 
-const pendingWeeklyDraftOverviewTimelineStyle = {
-  height: `${pendingWeeklyDraftOverviewTimelineHeight}px`,
-  '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT}px`,
-  '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT / 6}px`,
-} as CSSProperties;
+  const pendingWeeklyDraftOverviewTimelineStyle = {
+    height: `${pendingWeeklyDraftOverviewTimelineHeight}px`,
+    '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT}px`,
+    '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_OVERVIEW_HOUR_HEIGHT / 6}px`,
+  } as CSSProperties;
 
-const pendingWeeklyDraftDayTimelineStyle = {
-  height: `${pendingWeeklyDraftDayTimelineHeight}px`,
-  '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT}px`,
-  '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT / 6}px`,
-} as CSSProperties;
+  const pendingWeeklyDraftDayTimelineStyle = {
+    height: `${pendingWeeklyDraftDayTimelineHeight}px`,
+    '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT}px`,
+    '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT / 6}px`,
+  } as CSSProperties;
   const canCreateWeeklyDraft = text.trim().length > 0;
+
+  function appendWeeklyPlanningMessage(
+    role: WeeklyPlanningMessage['role'],
+    content: string,
+  ) {
+    setWeeklyPlanningMessages((current) => [
+      ...current,
+      createWeeklyPlanningMessage(role, content),
+    ].slice(-24));
+  }
+
+  function resetWeeklyPlanningSession() {
+    setWeeklyPlanningPendingConfig(null);
+    setWeeklyPlanningMessages([]);
+    setError('');
+    setStatus('');
+    setText('');
+  }
+
+  function clearWeeklyPlanningDrafts() {
+    onClearWeeklyDraftBlocks?.();
+    resetWeeklyPlanningSession();
+  }
+
+  function clearWeeklyPlanningDraftsOnly() {
+    onClearWeeklyDraftBlocks?.();
+    setSelectedWeeklyDraftDate('');
+    setWeeklyDraftPreviewMode('overview');
+    setError('');
+    setStatus('');
+  }
+
+  function renderWeeklyPlanningHistory() {
+    if (weeklyPlanningMessages.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="weekly-planning-chat-log" aria-label="週間計画の会話履歴">
+        {weeklyPlanningMessages.map((message) => (
+          <div
+            className={`weekly-planning-chat-message weekly-planning-chat-message--${message.role}`}
+            key={message.id}
+          >
+            <strong>{message.role === 'user' ? 'あなた' : 'アプリ'}</strong>
+            <p>{message.content}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   async function handleAnalyze() {
     if (!text.trim()) {
@@ -326,54 +440,179 @@ const pendingWeeklyDraftDayTimelineStyle = {
       return;
     }
 
-    if (!text.trim()) {
+    const createWeeklyDraftBlocks = onCreateWeeklyDraftBlocks;
+    const trimmedText = text.trim();
+
+    if (!trimmedText) {
       setError('週間計画にしたい内容を入力してください。');
       return;
     }
 
-    setIsAnalyzing(true);
+    function buildPendingConfigMessage(
+      config: WeeklyPlanningPendingConfig,
+      leadText?: string,
+    ): string {
+      return [
+        leadText,
+        '更新後の条件案:',
+        summarizeWeeklyPlanningPendingConfig(config),
+        'この条件でよければ「この条件で作成」と入力してください。',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+    }
 
-    try {
-      const simpleDraftBlocks = createSimpleWeeklyDraftBlocksFromText({
+    function createDraftsFromPendingConfig(config: WeeklyPlanningPendingConfig) {
+      const plannedDraftResult = createAvailabilityAwareWeeklyDraftBlocksFromText({
         userId,
         selectedDate,
-        text,
+        text: config.sourceText,
+        pendingConfig: config,
+        existingPlans: plans,
+        allowPartialPlacement: config.allowPartialPlacement,
       });
 
-      if (simpleDraftBlocks.length > 0) {
-        onCreateWeeklyDraftBlocks(simpleDraftBlocks);
+      if (plannedDraftResult.blocks.length > 0) {
+        onClearWeeklyDraftBlocks?.();
+        createWeeklyDraftBlocks(plannedDraftResult.blocks);
+        setWeeklyDraftPreviewBufferMinutes(plannedDraftResult.defaults.bufferMinutes);
         setWeeklyDraftPreviewMode('overview');
         setSelectedWeeklyDraftDate('');
+        setWeeklyPlanningPendingConfig(null);
         setError('');
-        setStatus(
-          `${simpleDraftBlocks.length}件の週間計画ドラフトを作りました。承認するまで保存されません。`,
-        );
+        const message = [
+          `${plannedDraftResult.blocks.length}件の週間計画ドラフトを作りました。承認するまで保存されません。`,
+          plannedDraftResult.warnings.join('\n'),
+        ]
+          .filter(Boolean)
+          .join('\n');
+        setStatus(message);
+        appendWeeklyPlanningMessage('assistant', message);
         setText('');
         return;
       }
 
-      const fallbackBlock = createFallbackWeeklyDraftBlock({
-        userId,
-        selectedDate,
-        text,
-      });
-      onCreateWeeklyDraftBlocks([fallbackBlock]);
-      setWeeklyDraftPreviewMode('overview');
-      setSelectedWeeklyDraftDate('');
-      setError('');
-      setStatus('簡易ドラフトを1件作りました。承認するまで保存されません。');
+      const failureMessage =
+        plannedDraftResult.warnings.join('\n') ||
+        '指定された条件で配置できる仮予定がありませんでした。';
+      const needsConfirmationMessage =
+        plannedDraftResult.unplacedMinutes > 0 && !config.allowPartialPlacement;
+
+      if (needsConfirmationMessage) {
+        setWeeklyPlanningPendingConfig(config);
+        setError('');
+        setStatus(failureMessage);
+        appendWeeklyPlanningMessage('assistant', failureMessage);
+        setText('');
+        return;
+      }
+
+      setError(failureMessage);
+      setStatus('');
+      appendWeeklyPlanningMessage('assistant', failureMessage);
       setText('');
-    } catch {
-      const fallbackBlock = createFallbackWeeklyDraftBlock({
-        userId,
+    }
+
+    appendWeeklyPlanningMessage('user', trimmedText);
+    setIsAnalyzing(true);
+
+    try {
+      if (weeklyPlanningPendingConfig) {
+        const shouldCreateDrafts =
+          isExplicitCreateConfirmation(trimmedText) ||
+          isExplicitPartialPlacementConfirmation(trimmedText);
+
+        if (shouldCreateDrafts) {
+          createDraftsFromPendingConfig({
+            ...weeklyPlanningPendingConfig,
+            allowPartialPlacement:
+              weeklyPlanningPendingConfig.allowPartialPlacement ||
+              isExplicitPartialPlacementConfirmation(trimmedText),
+          });
+          return;
+        }
+
+        const override = applyWeeklyPlanningConditionOverride({
+          config: weeklyPlanningPendingConfig,
+          text: trimmedText,
+        });
+
+        if (override.kind === 'updated') {
+          setWeeklyPlanningPendingConfig(override.config);
+          setError('');
+          const message = buildPendingConfigMessage(
+            override.config,
+            override.messages.join('\n'),
+          );
+          setStatus(message);
+          appendWeeklyPlanningMessage('assistant', message);
+          setText('');
+          return;
+        }
+
+        setError('');
+        setStatus(override.message);
+        appendWeeklyPlanningMessage('assistant', override.message);
+        setText('');
+        return;
+      }
+
+      const assessment = assessWeeklyPlanningRequest({
         selectedDate,
-        text,
+        text: trimmedText,
+        hasPendingConfirmation: false,
+        confirmationText: trimmedText,
       });
-      onCreateWeeklyDraftBlocks([fallbackBlock]);
-      setWeeklyDraftPreviewMode('overview');
-      setSelectedWeeklyDraftDate('');
-      setError('');
-      setStatus('簡易ドラフトを1件作りました。承認するまで保存されません。');
+
+      if (assessment.kind === 'empty') {
+        const message = assessment.questions.join('\n');
+        setError(message);
+        setStatus('');
+        appendWeeklyPlanningMessage('assistant', message);
+        setText('');
+        return;
+      }
+
+      if (assessment.kind === 'needs_task_details') {
+        setWeeklyPlanningPendingConfig(null);
+        setError('');
+        const message = assessment.questions.join('\n');
+        setStatus(message);
+        appendWeeklyPlanningMessage('assistant', message);
+        setText('');
+        return;
+      }
+
+      if (
+        assessment.kind === 'needs_confirmation' ||
+        assessment.kind === 'needs_time_estimate'
+      ) {
+        const pendingConfig = createWeeklyPlanningPendingConfig({
+          sourceText: trimmedText,
+          assessment,
+        });
+        setWeeklyPlanningPendingConfig(pendingConfig);
+        setError('');
+        const message =
+          `${assessment.questions.join('\n')}\n\n${summarizeWeeklyPlanningPendingConfig(
+            pendingConfig,
+          )}`;
+        setStatus(message);
+        appendWeeklyPlanningMessage('assistant', message);
+        setText('');
+        return;
+      }
+
+      const pendingConfig = createWeeklyPlanningPendingConfig({
+        sourceText: trimmedText,
+        assessment,
+      });
+      createDraftsFromPendingConfig(pendingConfig);
+    } catch {
+      const message = '週間計画の作成に失敗しました。';
+      setError(message);
+      setStatus('');
+      appendWeeklyPlanningMessage('assistant', message);
       setText('');
     } finally {
       setIsAnalyzing(false);
@@ -389,7 +628,9 @@ const pendingWeeklyDraftDayTimelineStyle = {
     try {
       await onApproveWeeklyDraftBlocks();
       setError('');
-      setStatus(`${pendingWeeklyDraftBlocks.length}件の仮予定を通常予定として保存しました。`);
+      const message = `${pendingWeeklyDraftBlocks.length}件の仮予定を通常予定として保存しました。`;
+      setStatus(message);
+      appendWeeklyPlanningMessage('assistant', message);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : '仮予定の承認に失敗しました。',
@@ -530,6 +771,7 @@ const pendingWeeklyDraftDayTimelineStyle = {
             setAiInputMode('chat');
             setError('');
             setStatus('');
+            setText('');
           }}
           type="button"
         >
@@ -543,6 +785,7 @@ const pendingWeeklyDraftDayTimelineStyle = {
             setStatus('');
             setSuggestions([]);
             setEditTargetPlanId('');
+            setText('');
           }}
           type="button"
         >
@@ -732,6 +975,21 @@ const pendingWeeklyDraftDayTimelineStyle = {
             <strong>週間計画を確認</strong>
           </div>
 
+          {renderWeeklyPlanningHistory()}
+
+          {error || status ? (
+            <div
+              className={
+                error
+                  ? 'weekly-planning-response-card warning'
+                  : 'weekly-planning-response-card'
+              }
+            >
+              <strong>{error ? '確認が必要です' : '週間計画の状態'}</strong>
+              <p>{error || status}</p>
+            </div>
+          ) : null}
+
           <div className="weekly-draft-confirmation-main">
               <div className="weekly-draft-summary-hero">
                 <span className="weekly-draft-summary-check" aria-hidden="true">
@@ -842,6 +1100,32 @@ const pendingWeeklyDraftDayTimelineStyle = {
                                   )}
                                 />
                               ))}
+                              {group.existingPlans.map((plan) => (
+                                <span
+                                  className="weekly-draft-preview-buffer weekly-draft-preview-buffer--overview"
+                                  key={`${plan.id}-buffer`}
+                                  style={buildExistingPlanBufferPreviewStyle({
+                                    plan,
+                                    bufferMinutes: weeklyDraftPreviewBufferMinutes,
+                                    rangeStartMinutes: pendingWeeklyDraftPreviewStartMinutes,
+                                  })}
+                                  title={`バッファ / ${plan.startTime}-${plan.endTime} 前後${weeklyDraftPreviewBufferMinutes}分`}
+                                />
+                              ))}
+                              {group.existingPlans.map((plan) => (
+                                <span
+                                  className="weekly-draft-preview-existing weekly-draft-preview-existing--overview"
+                                  key={plan.id}
+                                  style={buildExistingPlanPreviewStyle(
+                                    plan,
+                                    pendingWeeklyDraftPreviewStartMinutes,
+                                  )}
+                                  title={`既存予定: ${plan.title} / ${plan.startTime}-${plan.endTime}`}
+                                >
+                                  <strong>{plan.title}</strong>
+                                  <small>既存予定</small>
+                                </span>
+                              ))}
                               {group.blocks.map((block) => (
                                 <span
                                   className={`weekly-draft-preview-block weekly-draft-preview-block--overview ${getWeeklyDraftToneClass(block)}`}
@@ -937,6 +1221,42 @@ const pendingWeeklyDraftDayTimelineStyle = {
                               style={buildWeeklyDraftPreviewMarkerStyle(unit)}
                             />
                           ))}
+                          {activeWeeklyExistingPlans.map((plan) => (
+                            <span
+                              className="weekly-draft-preview-buffer weekly-draft-preview-buffer--detail"
+                              key={`${plan.id}-buffer`}
+                              style={buildExistingPlanBufferPreviewStyle({
+                                plan,
+                                bufferMinutes: weeklyDraftPreviewBufferMinutes,
+                                rangeStartMinutes: pendingWeeklyDraftPreviewStartMinutes,
+                              })}
+                              title={`バッファ / ${plan.startTime}-${plan.endTime} 前後${weeklyDraftPreviewBufferMinutes}分`}
+                            >
+                              バッファ
+                            </span>
+                          ))}
+                          {activeWeeklyExistingPlans.map((plan) => (
+                            <div
+                              className="weekly-draft-preview-existing weekly-draft-preview-existing--detail"
+                              key={plan.id}
+                              style={buildExistingPlanPreviewStyle(
+                                plan,
+                                pendingWeeklyDraftPreviewStartMinutes,
+                              )}
+                              title={`既存予定: ${plan.title} / ${plan.startTime}-${plan.endTime}`}
+                            >
+                              <span className="weekly-draft-preview-block-main">
+                                <strong>{plan.title}</strong>
+                                <small>
+                                  {plan.startTime}-{plan.endTime}
+                                </small>
+                              </span>
+                              <span className="weekly-draft-preview-badges">
+                                <span className="weekly-draft-badge">既存予定</span>
+                                <span className="weekly-draft-badge">編集対象外</span>
+                              </span>
+                            </div>
+                          ))}
                           {activeWeeklyDraftBlocks.map((block) => (
                             <div
                               className={`weekly-draft-preview-block weekly-draft-preview-block--detail ${getWeeklyDraftToneClass(block)}`}
@@ -981,7 +1301,7 @@ const pendingWeeklyDraftDayTimelineStyle = {
                 {onClearWeeklyDraftBlocks ? (
                   <button
                     className="ghost-button"
-                    onClick={onClearWeeklyDraftBlocks}
+                    onClick={clearWeeklyPlanningDraftsOnly}
                     type="button"
                   >
                     一括破棄
@@ -1002,6 +1322,8 @@ const pendingWeeklyDraftDayTimelineStyle = {
         </div>
       ) : (
         <div className="section-stack weekly-planning-assistant">
+          {renderWeeklyPlanningHistory()}
+
           <label className="field field-full">
             <span>週間計画にしたいこと</span>
             <textarea
@@ -1011,7 +1333,7 @@ const pendingWeeklyDraftDayTimelineStyle = {
               placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
             />
             <small className="detail-note">
-              現在は簡易生成です。複数タスクと時間を入力すると、仮予定に分けて作成します。
+              条件確認のあと、「この条件で作成」または「配置できる分だけでいい」でのみ仮予定を作成します。
             </small>
           </label>
 
@@ -1022,16 +1344,44 @@ const pendingWeeklyDraftDayTimelineStyle = {
               type="button"
               disabled={isAnalyzing || !canCreateWeeklyDraft}
             >
-              {isAnalyzing ? '作成中...' : '仮予定を作る'}
+              {isAnalyzing ? '送信中...' : '送信'}
             </button>
+            {weeklyPlanningMessages.length > 0 ? (
+              <button
+                className="ghost-button"
+                onClick={clearWeeklyPlanningDrafts}
+                type="button"
+              >
+                履歴をクリア
+              </button>
+            ) : null}
           </div>
 
-            <div className="assistant-feedback-card">
-              <strong>週間計画MVP</strong>
-              <p className="detail-note">
-                ここで作る仮予定は、承認するまで通常予定として保存されません。
-              </p>
+          {error || status ? (
+            <div
+              className={
+                error
+                  ? 'weekly-planning-response-card warning'
+                  : 'weekly-planning-response-card'
+              }
+            >
+              <strong>
+                {error
+                  ? '確認が必要です'
+                  : weeklyPlanningPendingConfig
+                    ? '週間計画の確認'
+                    : '週間計画の応答'}
+              </strong>
+              <p>{error || status}</p>
             </div>
+          ) : null}
+
+          <div className="assistant-feedback-card">
+            <strong>週間計画MVP</strong>
+            <p className="detail-note">
+              ここで作る仮予定は、承認するまで通常予定として保存されません。
+            </p>
+          </div>
         </div>
       )}
     </>
