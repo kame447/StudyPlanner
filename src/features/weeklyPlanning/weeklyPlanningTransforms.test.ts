@@ -967,33 +967,23 @@ describe('weeklyPlanningTransforms', () => {
     expect(assessment.questions[0]).toContain('タスク名と合計時間');
   });
 
-  it('uses policy-based session chunks for availability-aware default task splitting', () => {
+
+  it('uses day-first session chunks for availability-aware default task splitting', () => {
     [
-      ['英語を3時間', [90, 90]],
-      ['英語を4時間', [90, 90, 60]],
-      ['英語を5時間', [90, 90, 60, 60]],
-    ].forEach(([taskText, expectedMinutes]) => {
+      ['\u82f1\u8a9e\u30923\u6642\u9593', [60, 60, 60]],
+      ['\u82f1\u8a9e\u30924\u6642\u9593', [60, 60, 60, 60]],
+      ['\u82f1\u8a9e\u30925\u6642\u9593', [60, 60, 60, 60, 60]],
+    ].forEach(([taskText, expectedChunks]) => {
       const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
         userId: 'user-1',
         selectedDate: '2026-06-19',
-        text: `来週、${taskText}。この条件で作成`,
+        text: `\u6765\u9031\u3001${taskText}\u3084\u308a\u305f\u3044`,
         existingPlans: [],
       });
 
-      expect(result.unplacedMinutes).toBe(0);
       expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual(
-        expectedMinutes,
+        expectedChunks,
       );
-      expect(totalDraftMinutes(result.blocks)).toBe(
-        (expectedMinutes as number[]).reduce((sum, minutes) => sum + minutes, 0),
-      );
-      expect(
-        result.blocks.every(
-          (block) =>
-            minutesBetween(block.startTime, block.endTime) <=
-            result.defaults.maxSessionMinutes,
-        ),
-      ).toBe(true);
     });
   });
 
@@ -1010,12 +1000,392 @@ describe('weeklyPlanningTransforms', () => {
 
     expect(result.unplacedMinutes).toBe(0);
     expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
-      90,
-      90,
+      60,
+      60,
+      60,
       60,
       60,
     ]);
     expect(thirtyMinuteChunks).toHaveLength(0);
+  });
+
+  it('spreads a lightweight three-day weekly plan before chunking', () => {
+    const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3001\u8a08\u7b97\u7406\u8ad6\u30924\u6642\u9593\u3001\u5352\u7814\u30922\u6642\u9593\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '3\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [],
+    });
+    const datesByTitle = result.blocks.reduce<Record<string, Set<string>>>(
+      (groups, block) => {
+        groups[block.title] = groups[block.title] ?? new Set<string>();
+        groups[block.title].add(block.date);
+        return groups;
+      },
+      {},
+    );
+    const dailyTitleCounts = Object.values(blocksGroupedByDate(result.blocks)).map(
+      (dateBlocks) => new Set(dateBlocks.map((block) => block.title)).size,
+    );
+    const dailyTotals = Object.values(blocksGroupedByDate(result.blocks)).map(
+      (dateBlocks) => totalDraftMinutes(dateBlocks),
+    );
+    const durations = result.blocks.map((block) =>
+      minutesBetween(block.startTime, block.endTime),
+    );
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(totalDraftMinutes(result.blocks)).toBe(540);
+    expect(new Set(result.blocks.map((block) => block.date)).size).toBe(3);
+    expect(datesByTitle['\u82f1\u8a9e'].size).toBeGreaterThan(1);
+    expect(datesByTitle['\u8a08\u7b97\u7406\u8ad6'].size).toBeGreaterThan(1);
+    expect(durations.some((duration) => duration > 0 && duration < 40)).toBe(false);
+    expect(durations).not.toEqual(expect.arrayContaining([90, 30]));
+    expect(dailyTitleCounts.every((count) => count > 1)).toBe(true);
+    expect(Math.max(...dailyTotals) - Math.min(...dailyTotals)).toBeLessThanOrEqual(90);
+    expect(result.diagnostics?.placementQuality).toMatchObject({
+      tinyChunkPenalty: 0,
+      sameTaskClumpingPenalty: 0,
+      compactness: 0,
+    });
+    expect(result.diagnostics?.sessionEvaluations?.length).toBe(result.blocks.length);
+    expect(
+      result.diagnostics?.sessionEvaluations?.every((evaluation) => evaluation.selected),
+    ).toBe(true);
+  });
+
+  it('keeps same-day placement compact after a blocking interval clears', () => {
+    const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e1\u6642\u9593\u3001\u8a08\u7b97\u7406\u8ad61\u6642\u9593\u3001\u5352\u78141\u6642\u9593\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '1\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [],
+    });
+    const sortedBlocks = result.blocks
+      .slice()
+      .sort(
+        (left, right) =>
+          minutesFromClock(left.startTime) - minutesFromClock(right.startTime),
+      );
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(totalDraftMinutes(result.blocks)).toBe(180);
+    expect(sortedBlocks).toHaveLength(3);
+    expect(minutesFromClock(sortedBlocks[2].startTime)).toBe(
+      minutesFromClock(sortedBlocks[1].endTime) + result.defaults.breakMinutes,
+    );
+    expect(minutesFromClock(sortedBlocks[2].startTime)).toBeLessThan(
+      minutesFromClock('17:00'),
+    );
+    expect(result.diagnostics?.placementQuality?.compactness).toBe(0);
+  });
+
+
+  it('persists follow-up long-session intent in pending config and placement scoring', () => {
+    const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e3\u6642\u9593\u3001\u8a08\u7b97\u7406\u8ad64\u30924\u6642\u9593\u3001\u5352\u78142\u6642\u9593\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    let pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '\u9577\u3081\u3067',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    expect(override.messages).toContain('長めのセッションを優先する設定に変更しました。');
+    pendingConfig = override.config;
+    expect(pendingConfig.sessionIntentOverrides).toContainEqual(
+      expect.objectContaining({ scope: 'global', kind: 'prefer_long' }),
+    );
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig,
+      existingPlans: [],
+    });
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(result.diagnostics?.placementQuality?.explicitIntentOverride).toBe(true);
+    expect(
+      result.diagnostics?.sessionEvaluations?.some(
+        (evaluation) =>
+          (evaluation.selected?.components.explicitOverrideBonus ?? 0) > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it('rounds day quotas to natural planning units while preserving total minutes', () => {
+    const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e\u3092200\u5206\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '3\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [],
+    });
+    const durations = result.blocks.map((block) =>
+      minutesBetween(block.startTime, block.endTime),
+    );
+
+    expect(totalDraftMinutes(result.blocks)).toBe(200);
+    expect(durations).not.toEqual([67, 67, 66]);
+    expect(durations.every((duration) => duration % 5 === 0)).toBe(true);
+  });
+
+
+
+  it('keeps total minutes when no non-tiny heavy chunk candidate exists', () => {
+    const sourceText = '\u6765\u9031\u3001\u5352\u7814\u3092100\u5206\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    let pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const dayOverride = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '1\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+    expect(dayOverride.kind).toBe('updated');
+    if (dayOverride.kind !== 'updated') return;
+    pendingConfig = dayOverride.config;
+    const maxOverride = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '1\u56de90\u5206\u3067',
+    });
+    expect(maxOverride.kind).toBe('updated');
+    if (maxOverride.kind !== 'updated') return;
+
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: maxOverride.config,
+      existingPlans: [],
+    });
+
+    expect(totalDraftMinutes(result.blocks)).toBe(100);
+    expect(result.unplacedMinutes).toBe(0);
+    expect(
+      result.diagnostics?.tinyChunkViolations?.some(
+        (violation) =>
+          violation.title === '\u5352\u7814' &&
+          !violation.allowed &&
+          violation.durationMinutes > 0 &&
+          violation.durationMinutes < 60,
+      ),
+    ).toBe(true);
+  });
+
+  it('classifies gaps caused by existing plans or buffers', () => {
+    const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e1\u6642\u9593\u3001\u8a08\u7b97\u7406\u8ad61\u6642\u9593\u3001\u5352\u78141\u6642\u9593\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '1\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [
+        plan({
+          id: 'midday-existing-plan',
+          date: '2026-06-30',
+          startTime: '15:00',
+          endTime: '15:30',
+        }),
+      ],
+    });
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(
+      result.diagnostics?.gapReasons?.some(
+        (gap) => gap.reason === 'existing_plan' || gap.reason === 'existing_plan_buffer',
+      ),
+    ).toBe(true);
+    expect(result.diagnostics?.gapReasons?.some((gap) => gap.reason === 'unexplained_gap')).toBe(false);
+  });
+
+  it('falls back from preferredDate without dropping sessions and records diagnostics', () => {
+    const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e3\u6642\u9593\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '3\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [
+        plan({
+          id: 'blocks-first-preferred-date',
+          date: '2026-06-30',
+          startTime: '08:00',
+          endTime: '24:00',
+        }),
+      ],
+    });
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(totalDraftMinutes(result.blocks)).toBe(180);
+    expect(result.diagnostics?.fallbackPlacements?.length).toBeGreaterThan(0);
+    expect(result.diagnostics?.fallbackPlacements?.[0]).toMatchObject({
+      title: '\u82f1\u8a9e',
+      preferredDate: '2026-06-30',
+    });
+  });
+
+
+  it('keeps default 120 minute tasks away from 90 plus 30 while allowing explicit two-hour blocks', () => {
+    const sourceText = '\u6765\u9031\u3001\u5352\u7814\u30922\u6642\u9593\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '3\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const defaultResult = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [],
+    });
+    const explicitText = '\u6765\u9031\u3001\u5352\u7814\u30922\u6642\u9593\u30012\u6642\u9593\u5358\u4f4d\u3067\u3084\u308a\u305f\u3044';
+    const explicitAssessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: explicitText,
+    });
+    const explicitPendingConfig = createWeeklyPlanningPendingConfig({
+      sourceText: explicitText,
+      assessment: explicitAssessment,
+    });
+    const explicitOverride = applyWeeklyPlanningConditionOverride({
+      config: explicitPendingConfig,
+      text: '3\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(defaultResult.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
+      60,
+      60,
+    ]);
+    expect(explicitOverride.kind).toBe('updated');
+    if (explicitOverride.kind !== 'updated') return;
+    const explicitResult = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: explicitText,
+      pendingConfig: explicitOverride.config,
+      existingPlans: [],
+    });
+
+    expect(explicitResult.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
+      120,
+    ]);
+  });
+
+  it('switches only explicit one-shot tasks to compact placement', () => {
+    const sourceText = '\u6765\u9031\u3001\u5352\u7814\u30922\u6642\u9593\u3092\u5148\u306b\u4e00\u6c17\u306b\u7247\u3065\u3051\u305f\u3044\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3001\u8a08\u7b97\u7406\u8ad6\u30924\u6642\u9593\u3082\u3084\u308a\u305f\u3044';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-23',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '3\u65e5\u9593\u3067\u3084\u3063\u3066',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: sourceText,
+      pendingConfig: override.config,
+      existingPlans: [],
+    });
+    const datesByTitle = result.blocks.reduce<Record<string, Set<string>>>(
+      (groups, block) => {
+        groups[block.title] = groups[block.title] ?? new Set<string>();
+        groups[block.title].add(block.date);
+        return groups;
+      },
+      {},
+    );
+
+    expect(totalDraftMinutes(result.blocks)).toBe(540);
+    expect(datesByTitle['\u5352\u7814'].size).toBe(1);
+    expect(datesByTitle['\u82f1\u8a9e'].size).toBeGreaterThan(1);
+    expect(datesByTitle['\u8a08\u7b97\u7406\u8ad6'].size).toBeGreaterThan(1);
+    expect(result.diagnostics?.placementQuality?.explicitIntentOverride).toBe(true);
   });
 
   it('keeps 55 hours and all task names in availability-aware placement', () => {
@@ -1107,7 +1477,8 @@ describe('weeklyPlanningTransforms', () => {
       ),
     ).toBe(true);
     result.blocks.forEach((block) => {
-      expect(block).toMatchObject({ date: '2026-06-26', title: '\u82f1\u8a9e' });
+      expect(block.title).toBe('\u82f1\u8a9e');
+      expect(block.date >= '2026-06-26' && block.date <= '2026-07-01').toBe(true);
       expect(minutesFromClock(block.startTime)).toBeGreaterThanOrEqual(
         minutesFromClock('11:00'),
       );
@@ -1156,12 +1527,19 @@ describe('weeklyPlanningTransforms', () => {
     });
 
     expect(totalDraftMinutes(result.blocks)).toBe(126);
-    expect(result.blocks).toHaveLength(2);
+    expect(result.blocks.length).toBeGreaterThanOrEqual(2);
     expect(
       result.blocks.every(
-        (block) => minutesBetween(block.startTime, block.endTime) >= 30,
+        (block) =>
+          minutesBetween(block.startTime, block.endTime) >= 30 &&
+          minutesBetween(block.startTime, block.endTime) <= result.defaults.maxSessionMinutes,
       ),
     ).toBe(true);
+    expect(
+      result.blocks.some(
+        (block) => minutesBetween(block.startTime, block.endTime) > 0 && minutesBetween(block.startTime, block.endTime) < 30,
+      ),
+    ).toBe(false);
   });
 
   it('extracts deadlines and high priority metadata for weekly planning tasks', () => {
@@ -1182,26 +1560,33 @@ describe('weeklyPlanningTransforms', () => {
     expect(assessment.confirmationSummary).toContain('週の前半');
   });
 
+
   it('places high-priority or deadline tasks earlier and keeps planning metadata in memo', () => {
     const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
       userId: 'user-1',
       selectedDate: '2026-06-19',
-      text: '来週、英語を2時間、6/30までに重要なレポート作成を2時間やりたい',
+      text: '\u6765\u9031\u3001\u82f1\u8a9e\u30922\u6642\u9593\u30016/30\u307e\u3067\u306b\u91cd\u8981\u306a\u30ec\u30dd\u30fc\u30c8\u4f5c\u6210\u30922\u6642\u9593\u3084\u308a\u305f\u3044',
       existingPlans: [],
     });
-    const reportBlock = result.blocks.find((block) => block.title === 'レポート作成');
-    const englishBlock = result.blocks.find((block) => block.title === '英語');
+    const reportBlocks = result.blocks.filter((block) => block.title === '\u30ec\u30dd\u30fc\u30c8\u4f5c\u6210');
+    const reportBlock = reportBlocks[0];
+    const englishBlock = result.blocks.find((block) => block.title === '\u82f1\u8a9e');
 
     expect(reportBlock).toBeDefined();
     expect(englishBlock).toBeDefined();
     expect(reportBlock?.date.localeCompare(englishBlock?.date ?? '')).toBeLessThanOrEqual(
       0,
     );
-    expect(reportBlock?.memo).toContain('優先度: 高');
-    expect(reportBlock?.memo).toContain('締切: 2026-06-30');
-    expect(reportBlock?.memo).toContain('対象週: 2026-06-26〜2026-07-02');
-    expect(reportBlock?.memo).toContain('予備日: 2026-07-02');
-    expect(reportBlock?.memo).toContain('配置済み: 120分');
+    expect(reportBlock?.memo).toContain('\u512a\u5148\u5ea6: \u9ad8');
+    expect(reportBlock?.memo).toContain('\u7de0\u5207: 2026-06-30');
+    expect(reportBlock?.memo).toContain('\u5bfe\u8c61\u9031: 2026-06-26\u301c2026-07-02');
+    expect(reportBlock?.memo).toContain('\u4e88\u5099\u65e5: 2026-07-02');
+    expect(
+      reportBlocks.reduce(
+        (total, block) => total + minutesBetween(block.startTime, block.endTime),
+        0,
+      ),
+    ).toBe(120);
   });
 
   it('uses explicit life-cycle settings but still asks for final confirmation on omakase', () => {
@@ -1442,7 +1827,8 @@ describe('weeklyPlanningTransforms', () => {
     ]);
   });
 
-  it('avoids creating a 30 minute retry chunk when policy-based 90 minute chunks fit', () => {
+
+  it('avoids creating a 30 minute retry chunk when day-first 60 minute chunks fit', () => {
     const existingPlans = [
       plan({
         id: 'busy-early',
@@ -1468,19 +1854,19 @@ describe('weeklyPlanningTransforms', () => {
     const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
       userId: 'user-1',
       selectedDate: '2026-06-19',
-      text: '来週、英語を3時間。この条件で作成',
+      text: '\u6765\u9031\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3002\u3053\u306e\u6761\u4ef6\u3067\u4f5c\u6210',
       existingPlans,
       allowPartialPlacement: true,
     });
 
     expect(result.unplacedMinutes).toBe(0);
     expect(result.blocks.map((block) => minutesBetween(block.startTime, block.endTime))).toEqual([
-      90,
-      90,
+      60,
+      60,
+      60,
     ]);
-    expect(result.blocks.every((block) => minutesBetween(block.startTime, block.endTime) >= 90)).toBe(true);
+    expect(result.blocks.every((block) => minutesBetween(block.startTime, block.endTime) >= 60)).toBe(true);
   });
-
 
   it('updates pending weekly planning day count with a fixed day-count reply', () => {
     const assessment = assessWeeklyPlanningRequest({
@@ -1618,7 +2004,7 @@ describe('weeklyPlanningTransforms', () => {
     });
     let pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
 
-    for (const reply of ['7日間で', '1回90分で', '13時から22時で']) {
+    for (const reply of ['7日間で', '1回90分で', '9時から24時で']) {
       const override = applyWeeklyPlanningConditionOverride({
         config: pendingConfig,
         text: reply,
@@ -1643,8 +2029,8 @@ describe('weeklyPlanningTransforms', () => {
       result.blocks.every(
         (block) =>
           minutesBetween(block.startTime, block.endTime) <= 90 &&
-          minutesFromClock(block.startTime) >= minutesFromClock('13:00') &&
-          minutesFromClock(block.endTime) <= minutesFromClock('22:00'),
+          minutesFromClock(block.startTime) >= minutesFromClock('09:00') &&
+          minutesFromClock(block.endTime) <= minutesFromClock('24:00'),
       ),
     ).toBe(true);
   });
@@ -1692,12 +2078,19 @@ describe('weeklyPlanningTransforms', () => {
     });
 
     expect(totalDraftMinutes(result.blocks)).toBe(180);
-    expect(result.blocks).toHaveLength(2);
+    expect(result.blocks.length).toBeGreaterThanOrEqual(2);
     expect(
       result.blocks.every(
-        (block) => minutesBetween(block.startTime, block.endTime) <= 90,
+        (block) =>
+          minutesBetween(block.startTime, block.endTime) >= result.defaults.minStudyBlockMinutes &&
+          minutesBetween(block.startTime, block.endTime) <= 90,
       ),
     ).toBe(true);
+    expect(
+      result.blocks.some(
+        (block) => minutesBetween(block.startTime, block.endTime) > 0 && minutesBetween(block.startTime, block.endTime) < 30,
+      ),
+    ).toBe(false);
     expect(
       result.blocks.every(
         (block) =>

@@ -212,17 +212,52 @@ interface AvailabilitySlot extends TimeInterval {
   date: string;
 }
 
+export type SessionIntentScope = 'task' | 'global';
+
+export type SessionIntentKind =
+  | 'prefer_long'
+  | 'fixed_two_hour'
+  | 'one_shot_first'
+  | 'consolidate';
+
+export interface SessionIntentOverride {
+  scope: SessionIntentScope;
+  kind: SessionIntentKind;
+  targetSessionMinutes?: number;
+  appliesToTaskTitle?: string;
+}
+
+export interface PlacementScoreComponents {
+  preferredWindowBonus: number;
+  dailyLoadPenalty: number;
+  sameTaskPenalty: number;
+  subjectSpreadBonus: number;
+  compactnessPenalty: number;
+  explicitOverrideBonus: number;
+  preferredDateBonus: number;
+  fallbackPenalty: number;
+}
+
 interface WeeklyPlanningSessionBlock {
   title: string;
   type: PlanType;
   durationMinutes: number;
   sourceTaskMinutes: number;
+  sourceText: string;
+  allowTinySession: boolean;
+  minimumUsefulSessionMinutes: number;
   splitIndex: number;
   splitCount: number;
   priority: 'normal' | 'high';
   deadlineDate?: string;
   retryLevel?: number;
+  preferredDate?: string;
+  dayQuotaMinutes?: number;
+  consolidationIntent?: boolean;
+  sessionIntentKind?: SessionIntentKind;
+  sessionIntentScope?: SessionIntentScope;
 }
+
 
 export interface WeeklyPlanningDefaultConditions {
   startDate: string;
@@ -279,6 +314,7 @@ export interface WeeklyPlanningPendingConfig {
   tasks: SimpleWeeklyTask[];
   defaults: WeeklyPlanningDefaultConditions;
   allowPartialPlacement: boolean;
+  sessionIntentOverrides?: SessionIntentOverride[];
 }
 
 export type WeeklyPlanningConditionOverrideResult =
@@ -305,7 +341,39 @@ export type WeeklyConditionOperation =
   | { kind: 'setMaxSessionMinutes'; minutes: number }
   | { kind: 'setBreakMinutes'; minutes: number }
   | { kind: 'setSleepWindow'; startTime: string; endTime: string }
-  | { kind: 'allowPartialPlacement' };
+  | { kind: 'allowPartialPlacement' }
+  | { kind: 'addSessionIntentOverride'; override: SessionIntentOverride };
+
+export interface WeeklyPlacementQualityDiagnostics {
+  dailyLoadBalance: number;
+  taskSpread: number;
+  sameTaskClumpingPenalty: number;
+  tinyChunkPenalty: number;
+  compactness: number;
+  preferredWindowBonus: number;
+  explicitIntentOverride: boolean;
+}
+
+export interface SessionPlacementEvaluation {
+  title: string;
+  durationMinutes: number;
+  preferredDate?: string;
+  selected?: {
+    date: string;
+    startMinutes: number;
+    endMinutes: number;
+    score: number;
+    components: PlacementScoreComponents;
+  };
+  rejectedCandidates?: Array<{
+    date: string;
+    startMinutes: number;
+    endMinutes: number;
+    score: number;
+    components: PlacementScoreComponents;
+    reason: string;
+  }>;
+}
 
 export interface WeeklyPlacementDiagnostics {
   requestedMinutes: number;
@@ -321,6 +389,33 @@ export interface WeeklyPlacementDiagnostics {
     availableMinutes: number;
     placedMinutes: number;
     unusedMinutes: number;
+  }>;
+  placementQuality?: WeeklyPlacementQualityDiagnostics;
+  sessionEvaluations?: SessionPlacementEvaluation[];
+  fallbackPlacements?: Array<{
+    title: string;
+    durationMinutes: number;
+    preferredDate: string;
+    actualDate: string;
+    reason: string;
+  }>;
+  retryEvents?: Array<{
+    title: string;
+    originalDurationMinutes: number;
+    retriedDurations: number[];
+    reason: string;
+  }>;
+  tinyChunkViolations?: Array<{
+    title: string;
+    durationMinutes: number;
+    allowed: boolean;
+    reason: string;
+  }>;
+  gapReasons?: Array<{
+    date: string;
+    startMinutes: number;
+    endMinutes: number;
+    reason: string;
   }>;
   failureReason:
     | 'capacity_shortage'
@@ -1014,7 +1109,14 @@ export function splitDurationIntoSessionChunks(
   const candidates = createSessionChunkCandidates(normalizedTotalMinutes, policy);
 
   if (candidates.length === 0) {
-    return normalizedTotalMinutes > 0 ? [Math.min(normalizedTotalMinutes, policy.maxSessionMinutes)] : [];
+    if (normalizedTotalMinutes <= 0) {
+      return [];
+    }
+
+    return distributeMinutesAcrossBuckets(
+      normalizedTotalMinutes,
+      Math.max(1, Math.ceil(normalizedTotalMinutes / policy.maxSessionMinutes)),
+    );
   }
 
   return candidates
@@ -1573,6 +1675,7 @@ function stripWeeklyPlanningTaskTitle(text: string): string {
     .replace(/夜中(?:も)?(?:OK|ok|可)/g, '')
     .replace(/0時以降(?:も)?(?:OK|ok|可)/g, '')
     .replace(/(?:午前|午後|夜|夜中心|午後中心|午前中心|日中中心|夜型|朝型)中心/g, '')
+    .replace(/(?:(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d|\u9577\u3081|\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u5148\u306b|\u7247\u3065\u3051(?:\u305f\u3044)?|\u7247\u4ed8\u3051(?:\u305f\u3044)?)/g, '')
     .replace(/\d{1,2}(?::\d{1,2})?\s*(?:時)?\s*(?:から|まで|迄)$/g, '')
     .replace(/(?:まで|迄|締切|期限)に?/g, '')
     .replace(/(?:重要な|優先|急ぎ|高優先度|最優先)な?/g, '')
@@ -1581,7 +1684,12 @@ function stripWeeklyPlanningTaskTitle(text: string): string {
     .replace(/\s*(?:やりたい|したい|勉強したい|学習したい|進めたい|取り組みたい)\s*$/g, '')
     .replace(/\s*(?:にして|として|で|を|は|に|が|へ|より|の)+\s*$/g, '')
     .replace(/^\s*(?:を|は|に|で|が|へ|より|の)+\s*/g, '')
+    .replace(/\s*(?:\u306b\u3057\u3066|\u3068\u3057\u3066|\u3067|\u3092|\u306f|\u306b|\u3082|\u304c|\u3078|\u3088\u308a|\u306e)+\s*$/g, '')
+    .replace(/^\s*(?:\u3092|\u306f|\u306b|\u3082|\u3067|\u304c|\u3078|\u3088\u308a|\u306e)+\s*/g, '')
     .replace(/[「」"'、。,.]/g, ' ')
+    .replace(/(?:(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d|\u9577\u3081|\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u5148\u306b|\u7247\u3065\u3051(?:\u305f\u3044)?|\u7247\u4ed8\u3051(?:\u305f\u3044)?)/g, '')
+    .replace(/\s*(?:\u306b\u3057\u3066|\u3068\u3057\u3066|\u3067|\u3092|\u306f|\u306b|\u3082|\u304c|\u3078|\u3088\u308a|\u306e)+\s*$/g, '')
+    .replace(/^\s*(?:\u3092|\u306f|\u306b|\u3082|\u3067|\u304c|\u3078|\u3088\u308a|\u306e)+\s*/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1744,6 +1852,9 @@ function isPlacementConditionOnly(text: string): boolean {
     .trim();
 
   return (
+    /^(?:(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d|\u9577\u3081|\u4e00\u6c17|\u307e\u3068\u3081\u3066)(?:\u3067|\u306b|\u3067\u3084\u308a\u305f\u3044|\u306b\u3057\u305f\u3044)?$/.test(
+      normalizedText,
+    ) ||
     /^\d{1,2}(?::\d{1,2})?\s*(?:時)?\s*(?:起床|起きる|起き|就寝|寝たい|寝る|寝)$/.test(
       normalizedText,
     ) ||
@@ -2123,6 +2234,10 @@ export function createWeeklyPlanningPendingConfig(params: {
     tasks: params.assessment.tasks,
     defaults: cloneWeeklyPlanningDefaults(params.assessment.defaults),
     allowPartialPlacement: params.allowPartialPlacement ?? false,
+    sessionIntentOverrides: inferSessionIntentOverridesFromText({
+      text: params.sourceText,
+      tasks: params.assessment.tasks,
+    }),
   };
 }
 
@@ -2134,6 +2249,101 @@ export function summarizeWeeklyPlanningPendingConfig(
     defaults: config.defaults,
     includeEstimateProposal: config.tasks.some((task) => task.requiresTimeEstimate),
   });
+}
+
+
+function createSessionIntentOverrideFromText(
+  text: string,
+  scope: SessionIntentScope = 'global',
+): SessionIntentOverride | null {
+  const normalizedText = normalizeConditionText(text);
+
+  if (/(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d/.test(normalizedText)) {
+    return {
+      scope,
+      kind: 'fixed_two_hour',
+      targetSessionMinutes: 120,
+    };
+  }
+
+  if (/\u9577\u3081|\u5168\u4f53\u7684\u306b\u9577/.test(normalizedText)) {
+    return {
+      scope,
+      kind: 'prefer_long',
+      targetSessionMinutes: 120,
+    };
+  }
+
+  if (/\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u7247\u3065\u3051|\u7247\u4ed8\u3051/.test(normalizedText)) {
+    return { scope, kind: 'consolidate', targetSessionMinutes: 120 };
+  }
+
+  if (/\u5148\u306b|\u4eca\u65e5\u4e2d|\u512a\u5148/.test(normalizedText)) {
+    return { scope, kind: 'one_shot_first', targetSessionMinutes: 120 };
+  }
+
+  return null;
+}
+
+function normalizeSessionIntentOverride(
+  override: SessionIntentOverride,
+): SessionIntentOverride {
+  return {
+    ...override,
+    targetSessionMinutes: override.targetSessionMinutes
+      ? Math.max(30, Math.round(override.targetSessionMinutes))
+      : undefined,
+  };
+}
+
+function mergeSessionIntentOverrides(
+  baseOverrides: SessionIntentOverride[] = [],
+  nextOverride: SessionIntentOverride,
+): SessionIntentOverride[] {
+  const normalizedNext = normalizeSessionIntentOverride(nextOverride);
+  const keyFor = (override: SessionIntentOverride) =>
+    `${override.scope}|${override.kind}|${override.appliesToTaskTitle ?? ''}`;
+  const nextKey = keyFor(normalizedNext);
+
+  return [
+    ...baseOverrides.filter((override) => keyFor(override) !== nextKey),
+    normalizedNext,
+  ];
+}
+
+function inferSessionIntentOverridesFromText(params: {
+  text: string;
+  tasks: SimpleWeeklyTask[];
+}): SessionIntentOverride[] {
+  const normalizedText = normalizeWeeklyPlanningText(params.text);
+  const overrides: SessionIntentOverride[] = [];
+
+  if (
+    /(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d/.test(normalizedText) ||
+    /\u5168\u4f53|\u5168\u4f53\u7684|\u5168\u90e8|\u307f\u3093\u306a/.test(normalizedText)
+  ) {
+    const globalOverride = createSessionIntentOverrideFromText(normalizedText, 'global');
+
+    if (globalOverride) {
+      overrides.push(globalOverride);
+    }
+  }
+
+  params.tasks.forEach((task) => {
+    const taskOverride = createSessionIntentOverrideFromText(task.sourceText, 'task');
+
+    if (taskOverride && hasTaskConsolidationIntent(task.sourceText)) {
+      overrides.push({
+        ...taskOverride,
+        appliesToTaskTitle: task.title,
+      });
+    }
+  });
+
+  return overrides.reduce<SessionIntentOverride[]>(
+    (merged, override) => mergeSessionIntentOverrides(merged, override),
+    [],
+  );
 }
 
 function resolveUnavailableReason(text: string): string {
@@ -2171,6 +2381,19 @@ function classifyConditionClause(clause: string): WeeklyConditionOperation[] {
       normalizedClause,
     );
   const hasEndCue = /終了|終わり|まで|何時まで|夜は/.test(normalizedClause);
+
+  const sessionIntentOverride = createSessionIntentOverrideFromText(
+    normalizedClause,
+    'global',
+  );
+
+  if (sessionIntentOverride) {
+    operations.push({
+      kind: 'addSessionIntentOverride',
+      override: sessionIntentOverride,
+    });
+  }
+
 
   if (dayCountMatch) {
     const dayCount = parseJapaneseSmallInteger(dayCountMatch[1]);
@@ -2438,6 +2661,20 @@ function applyWeeklyConditionOperation(params: {
         message: `睡眠時間を${operation.startTime}から${operation.endTime}に変更しました。`,
       };
     }
+    case 'addSessionIntentOverride': {
+      return {
+        config: {
+          ...config,
+          sessionIntentOverrides: mergeSessionIntentOverrides(
+            config.sessionIntentOverrides,
+            operation.override,
+          ),
+        },
+        message: operation.override.kind === 'fixed_two_hour'
+            ? '2時間単位を優先する設定に変更しました。'
+            : '長めのセッションを優先する設定に変更しました。',
+      };
+    }
     case 'allowPartialPlacement': {
       return {
         config: { ...config, allowPartialPlacement: true },
@@ -2468,6 +2705,7 @@ export function applyWeeklyPlanningConditionOverride(params: {
     ...params.config,
     tasks: params.config.tasks.map((task) => ({ ...task, amount: { ...task.amount } })),
     defaults: cloneWeeklyPlanningDefaults(params.config.defaults),
+    sessionIntentOverrides: [...(params.config.sessionIntentOverrides ?? [])],
   };
   const messages: string[] = [];
 
@@ -2861,6 +3099,236 @@ function calculateBreakMinutesConsumed(params: {
   }, 0);
 }
 
+function intervalOverlapsUnavailableRange(
+  defaults: WeeklyPlanningDefaultConditions,
+  startMinutes: number,
+  endMinutes: number,
+): boolean {
+  return defaults.unavailableRanges.some((range) =>
+    intersectInterval(
+      { startMinutes, endMinutes },
+      {
+        startMinutes: minutesFromTime(range.startTime),
+        endMinutes: minutesFromTime(range.endTime),
+      },
+    ),
+  );
+}
+
+function calculatePlacementQualityDiagnostics(params: {
+  defaults: WeeklyPlanningDefaultConditions;
+  tasks: SimpleWeeklyTask[];
+  blocks: WeeklyPlanDraftBlock[];
+}): WeeklyPlacementQualityDiagnostics {
+  const planningDates = Array.from(
+    { length: params.defaults.dayCount },
+    (_, index) => addDays(params.defaults.startDate, index),
+  );
+  const dailyMinutes = planningDates.map((date) =>
+    params.blocks
+      .filter((block) => block.date === date)
+      .reduce(
+        (sum, block) => sum + minutesBetween(block.startTime, block.endTime),
+        0,
+      ),
+  );
+  const activeDailyMinutes = dailyMinutes.filter((minutes) => minutes > 0);
+  const dailyLoadBalance = activeDailyMinutes.length > 0
+    ? Math.max(...activeDailyMinutes) - Math.min(...activeDailyMinutes)
+    : 0;
+  const taskDates = new Map<string, Set<string>>();
+  const taskDateCounts = new Map<string, number>();
+  let tinyChunkPenalty = 0;
+  let preferredWindowBonus = 0;
+  let compactnessGapMinutes = 0;
+
+  params.blocks.forEach((block) => {
+    const durationMinutes = minutesBetween(block.startTime, block.endTime);
+    const dates = taskDates.get(block.title) ?? new Set<string>();
+    dates.add(block.date);
+    taskDates.set(block.title, dates);
+    const taskDateKey = `${block.title}|${block.date}`;
+    taskDateCounts.set(taskDateKey, (taskDateCounts.get(taskDateKey) ?? 0) + 1);
+
+    if (durationMinutes > 0 && durationMinutes < 40) {
+      tinyChunkPenalty += 1;
+    }
+
+    preferredWindowBonus += calculatePreferredOverlapMinutes(
+      params.defaults,
+      minutesFromTime(block.startTime),
+      minutesFromTime(block.endTime),
+    );
+  });
+
+  planningDates.forEach((date) => {
+    const dateBlocks = params.blocks
+      .filter((block) => block.date === date)
+      .slice()
+      .sort(
+        (left, right) =>
+          minutesFromTime(left.startTime) - minutesFromTime(right.startTime),
+      );
+
+    dateBlocks.forEach((block, index) => {
+      if (index === 0) {
+        return;
+      }
+
+      const previousEnd = minutesFromTime(dateBlocks[index - 1].endTime);
+      const currentStart = minutesFromTime(block.startTime);
+      const gapMinutes = currentStart - previousEnd;
+
+      if (
+        gapMinutes > params.defaults.breakMinutes &&
+        !intervalOverlapsUnavailableRange(params.defaults, previousEnd, currentStart)
+      ) {
+        compactnessGapMinutes += gapMinutes - params.defaults.breakMinutes;
+      }
+    });
+  });
+
+  const taskSpread = Array.from(taskDates.values()).reduce(
+    (total, dates) => total + dates.size,
+    0,
+  );
+  const sameTaskClumpingPenalty = Array.from(taskDateCounts.values()).reduce(
+    (total, count) => total + Math.max(0, count - 1),
+    0,
+  );
+
+  return {
+    dailyLoadBalance,
+    taskSpread,
+    sameTaskClumpingPenalty,
+    tinyChunkPenalty,
+    compactness: compactnessGapMinutes,
+    preferredWindowBonus,
+    explicitIntentOverride: params.tasks.some((task) =>
+      hasTaskConsolidationIntent(task.sourceText),
+    ),
+  };
+}
+
+
+function resolveGapReason(params: {
+  defaults: WeeklyPlanningDefaultConditions;
+  existingPlans: Plan[];
+  date: string;
+  startMinutes: number;
+  endMinutes: number;
+}): string {
+  const gapInterval = { startMinutes: params.startMinutes, endMinutes: params.endMinutes };
+  const plansForDate = params.existingPlans.filter((plan) => plan.date === params.date);
+  const overlappingPlan = plansForDate.find((plan) =>
+    intersectInterval(gapInterval, {
+      startMinutes: minutesFromTime(plan.startTime),
+      endMinutes: minutesFromTime(plan.endTime),
+    }),
+  );
+
+  if (overlappingPlan) {
+    return 'existing_plan';
+  }
+
+  const overlappingPlanBuffer = plansForDate.find((plan) => {
+    const planStart = minutesFromTime(plan.startTime);
+    const planEnd = minutesFromTime(plan.endTime);
+
+    return (
+      intersectInterval(gapInterval, {
+        startMinutes: Math.max(0, planStart - params.defaults.bufferMinutes),
+        endMinutes: planStart,
+      }) ||
+      intersectInterval(gapInterval, {
+        startMinutes: planEnd,
+        endMinutes: Math.min(24 * 60, planEnd + params.defaults.bufferMinutes),
+      })
+    );
+  });
+
+  if (overlappingPlanBuffer) {
+    return 'existing_plan_buffer';
+  }
+
+  const overlappingUnavailable = params.defaults.unavailableRanges.find((range) =>
+    intersectInterval(
+      gapInterval,
+      {
+        startMinutes: minutesFromTime(range.startTime),
+        endMinutes: minutesFromTime(range.endTime),
+      },
+    ),
+  );
+
+  if (overlappingUnavailable) {
+    return overlappingUnavailable.reason;
+  }
+
+  const overlapsAvailableRange = params.defaults.availableStudyRanges.some((range) =>
+    intersectInterval(gapInterval, {
+      startMinutes: minutesFromTime(range.startTime),
+      endMinutes: minutesFromTime(range.endTime),
+    }),
+  );
+
+  if (!overlapsAvailableRange) {
+    return 'sleep';
+  }
+
+  return 'unexplained_gap';
+}
+
+function calculateGapReasons(params: {
+  defaults: WeeklyPlanningDefaultConditions;
+  existingPlans: Plan[];
+  blocks: WeeklyPlanDraftBlock[];
+}): NonNullable<WeeklyPlacementDiagnostics['gapReasons']> {
+  const blocksByDate = new Map<string, WeeklyPlanDraftBlock[]>();
+
+  params.blocks.forEach((block) => {
+    blocksByDate.set(block.date, [...(blocksByDate.get(block.date) ?? []), block]);
+  });
+
+  return Array.from(blocksByDate.entries()).flatMap(([date, dateBlocks]) => {
+    const sortedBlocks = dateBlocks
+      .slice()
+      .sort(
+        (left, right) =>
+          minutesFromTime(left.startTime) - minutesFromTime(right.startTime),
+      );
+    const reasons: NonNullable<WeeklyPlacementDiagnostics['gapReasons']> = [];
+
+    sortedBlocks.forEach((block, index) => {
+      if (index === 0) {
+        return;
+      }
+
+      const previousEnd = minutesFromTime(sortedBlocks[index - 1].endTime);
+      const currentStart = minutesFromTime(block.startTime);
+
+      if (currentStart - previousEnd <= params.defaults.breakMinutes) {
+        return;
+      }
+
+      reasons.push({
+        date,
+        startMinutes: previousEnd,
+        endMinutes: currentStart,
+        reason: resolveGapReason({
+          defaults: params.defaults,
+          existingPlans: params.existingPlans,
+          date,
+          startMinutes: previousEnd,
+          endMinutes: currentStart,
+        }),
+      });
+    });
+
+    return reasons;
+  });
+}
+
 function calculateWeeklyPlacementDiagnostics(params: {
   defaults: WeeklyPlanningDefaultConditions;
   existingPlans: Plan[];
@@ -2871,6 +3339,11 @@ function calculateWeeklyPlacementDiagnostics(params: {
   initialSlots: AvailabilitySlot[];
   remainingSlots: AvailabilitySlot[];
   retryLimitReached?: boolean;
+  tasks: SimpleWeeklyTask[];
+  sessionEvaluations?: SessionPlacementEvaluation[];
+  fallbackPlacements?: NonNullable<WeeklyPlacementDiagnostics['fallbackPlacements']>;
+  retryEvents?: NonNullable<WeeklyPlacementDiagnostics['retryEvents']>;
+  tinyChunkViolations?: NonNullable<WeeklyPlacementDiagnostics['tinyChunkViolations']>;
 }): WeeklyPlacementDiagnostics {
   const baseSlots = buildAvailabilitySlots({
     defaults: params.defaults,
@@ -2918,6 +3391,23 @@ function calculateWeeklyPlacementDiagnostics(params: {
       Math.max(maxMinutes, Math.max(0, slot.endMinutes - slot.startMinutes)),
     0,
   );
+  const placementQuality = {
+    ...calculatePlacementQualityDiagnostics({
+      defaults: params.defaults,
+      tasks: params.tasks,
+      blocks: params.blocks,
+    }),
+    explicitIntentOverride:
+      params.sessionEvaluations?.some(
+        (evaluation) =>
+          (evaluation.selected?.components.explicitOverrideBonus ?? 0) > 0,
+      ) ?? false,
+  };
+  const gapReasons = calculateGapReasons({
+    defaults: params.defaults,
+    existingPlans: params.existingPlans,
+    blocks: params.blocks,
+  });
   const failureReason: WeeklyPlacementDiagnostics['failureReason'] =
     params.unplacedMinutes <= 0
       ? 'unknown'
@@ -2945,42 +3435,316 @@ function calculateWeeklyPlacementDiagnostics(params: {
     breakMinutesConsumed,
     unusedAvailableMinutes,
     dailyCapacity,
+    placementQuality,
+    sessionEvaluations: params.sessionEvaluations,
+    fallbackPlacements: params.fallbackPlacements,
+    retryEvents: params.retryEvents,
+    tinyChunkViolations: params.tinyChunkViolations,
+    gapReasons,
     failureReason,
+  };
+}
+
+
+function hasTaskConsolidationIntent(text: string): boolean {
+  const normalizedText = normalizeWeeklyPlanningText(text);
+
+  return /\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u7247\u3065\u3051|\u7247\u4ed8\u3051|\u5148\u306b|\u4eca\u65e5\u4e2d|\u512a\u5148|\u9577\u3081|(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d/.test(
+    normalizedText,
+  );
+}
+
+function allowsTinySessionForTask(task: Pick<SimpleWeeklyTask, 'title' | 'sourceText'>): boolean {
+  const normalizedText = normalizeWeeklyPlanningText(
+    `${task.title} ${task.sourceText}`,
+  );
+
+  return /\u6697\u8a18|\u5358\u8a9e|\u5c0f\u30c6\u30b9\u30c8|\u30c1\u30a7\u30c3\u30af|\u78ba\u8a8d|\u5fa9\u7fd2|\u30b9\u30ad\u30de|\u9699\u9593|\u8efd\u304f|30\s*\u5206\s*\u3060\u3051/.test(
+    normalizedText,
+  );
+}
+
+function roundToPlanningQuantum(minutes: number, quantumMinutes = 5): number {
+  return Math.round(minutes / quantumMinutes) * quantumMinutes;
+}
+
+function distributeMinutesAcrossBuckets(
+  totalMinutes: number,
+  bucketCount: number,
+  quantumMinutes = 5,
+): number[] {
+  const safeBucketCount = Math.max(1, bucketCount);
+  const roundedAverage = roundToPlanningQuantum(totalMinutes / safeBucketCount, quantumMinutes);
+  const buckets = Array.from({ length: safeBucketCount }, () => roundedAverage);
+  let deltaMinutes = totalMinutes - buckets.reduce((sum, minutes) => sum + minutes, 0);
+  let cursor = 0;
+
+  while (Math.abs(deltaMinutes) >= quantumMinutes && buckets.length > 0) {
+    const step = deltaMinutes > 0 ? quantumMinutes : -quantumMinutes;
+    buckets[cursor] += step;
+    deltaMinutes -= step;
+    cursor = (cursor + 1) % buckets.length;
+  }
+
+  if (deltaMinutes !== 0 && buckets.length > 0) {
+    buckets[buckets.length - 1] += deltaMinutes;
+  }
+
+  return buckets.sort((left, right) => right - left);
+}
+
+function isHeavyStudyTask(task: Pick<SimpleWeeklyTask, 'title' | 'sourceText'>): boolean {
+  const normalizedText = normalizeWeeklyPlanningText(`${task.title} ${task.sourceText}`);
+
+  return /\u5352\u7814|\u5b9f\u88c5|\u30ec\u30dd\u30fc\u30c8|\u8a08\u7b97\u7406\u8ad6|\u6587\u732e|\u7814\u7a76|\u8ad6\u6587|\u6df1\u3044|\u9577\u6587/.test(
+    normalizedText,
+  );
+}
+
+function resolveMinimumUsefulSessionMinutes(params: {
+  task: Pick<SimpleWeeklyTask, 'title' | 'sourceText'>;
+  allowTinySession: boolean;
+  policyMinSessionMinutes?: number;
+}): number {
+  if (params.allowTinySession) {
+    return Math.max(30, params.policyMinSessionMinutes ?? 30);
+  }
+
+  if (isHeavyStudyTask(params.task)) {
+    return Math.max(60, params.policyMinSessionMinutes ?? 60);
+  }
+
+  return Math.max(45, params.policyMinSessionMinutes ?? 45);
+}
+
+function resolveTaskSpreadDayCount(params: {
+  task: SimpleWeeklyTask;
+  dayCount: number;
+  consolidationIntent: boolean;
+  allowTinySession: boolean;
+}): number {
+  if (params.consolidationIntent || params.dayCount <= 1) {
+    return 1;
+  }
+
+  const minimumUsefulDailyMinutes = params.allowTinySession ? 30 : 60;
+  const possibleSpreadDays = Math.max(
+    1,
+    Math.floor(params.task.durationMinutes / minimumUsefulDailyMinutes),
+  );
+
+  return Math.min(params.dayCount, possibleSpreadDays);
+}
+
+function resolveTaskSpreadDateIndexes(params: {
+  taskIndex: number;
+  dayCount: number;
+  spreadDayCount: number;
+  forceEarly: boolean;
+}): number[] {
+  if (params.spreadDayCount >= params.dayCount) {
+    return Array.from({ length: params.dayCount }, (_, index) => index);
+  }
+
+  const startIndex = params.forceEarly ? 0 : params.taskIndex % params.dayCount;
+  return Array.from({ length: params.spreadDayCount }, (_, index) =>
+    (startIndex + index) % params.dayCount,
+  ).sort((left, right) => left - right);
+}
+
+function splitQuotaIntoSessionChunks(params: {
+  quotaMinutes: number;
+  policy: SessionLengthPolicy;
+  profile: StudyTaskProfile;
+  allowTinySession: boolean;
+  task: Pick<SimpleWeeklyTask, 'title' | 'sourceText'>;
+}): number[] {
+  const chunks = splitDurationIntoSessionChunks(
+    params.quotaMinutes,
+    params.policy,
+    params.profile,
+  );
+  const minimumUsefulMinutes = resolveMinimumUsefulSessionMinutes({
+    task: params.task,
+    allowTinySession: params.allowTinySession,
+    policyMinSessionMinutes: params.policy.minSessionMinutes,
+  });
+  const hasDiscouragedTinyChunk = chunks.some(
+    (chunk) => chunk > 0 && chunk < minimumUsefulMinutes,
+  );
+
+  if (!hasDiscouragedTinyChunk) {
+    return chunks;
+  }
+
+  for (let chunkCount = 2; chunkCount <= 6; chunkCount += 1) {
+    const candidate = distributeMinutesAcrossBuckets(params.quotaMinutes, chunkCount);
+
+    if (
+      candidate.every(
+        (chunk) =>
+          chunk >= minimumUsefulMinutes && chunk <= params.policy.maxSessionMinutes,
+      )
+    ) {
+      return candidate;
+    }
+  }
+
+  return chunks;
+}
+
+
+function resolveSessionIntentForTask(params: {
+  task: SimpleWeeklyTask;
+  overrides: SessionIntentOverride[];
+}): SessionIntentOverride | undefined {
+  const taskOverride = params.overrides.find(
+    (override) =>
+      override.scope === 'task' &&
+      override.appliesToTaskTitle === params.task.title,
+  );
+
+  if (taskOverride) {
+    return taskOverride;
+  }
+
+  const sourceOverride = createSessionIntentOverrideFromText(
+    params.task.sourceText,
+    'task',
+  );
+
+  if (sourceOverride && hasTaskConsolidationIntent(params.task.sourceText)) {
+    return {
+      ...sourceOverride,
+      appliesToTaskTitle: params.task.title,
+    };
+  }
+
+  return params.overrides.find((override) => override.scope === 'global');
+}
+
+function shouldConsolidateSessionIntent(
+  intent: SessionIntentOverride | undefined,
+): boolean {
+  return (
+    (intent?.scope === 'task' &&
+      (intent.kind === 'consolidate' ||
+        intent.kind === 'one_shot_first' ||
+        intent.kind === 'fixed_two_hour')) ||
+    (intent?.scope === 'global' && intent.kind === 'fixed_two_hour')
+  );
+}
+
+function createSessionPolicyOverrideFromIntent(
+  intent: SessionIntentOverride | undefined,
+): SessionLengthPolicyOverride | undefined {
+  if (!intent) {
+    return undefined;
+  }
+
+  const targetSessionMinutes = intent.targetSessionMinutes ??
+    (intent.kind === 'fixed_two_hour' || intent.kind === 'prefer_long' ? 120 : undefined);
+
+  if (!targetSessionMinutes) {
+    return undefined;
+  }
+
+  return {
+    mode: 'user_fixed',
+    minSessionMinutes: Math.min(60, targetSessionMinutes),
+    targetSessionMinutes,
+    maxSessionMinutes: targetSessionMinutes,
+    allowSmallRemainder: false,
+    userExplicit: true,
   };
 }
 
 function buildWeeklyPlanningSessionBlocks(
   tasks: SimpleWeeklyTask[],
-  maxSessionMinutes: number,
-  minSessionMinutes = DEFAULT_MIN_STUDY_BLOCK_MINUTES,
+  defaults: WeeklyPlanningDefaultConditions,
+  sessionIntentOverrides: SessionIntentOverride[] = [],
 ): WeeklyPlanningSessionBlock[] {
-  const groups = tasks.map((task) => {
+  const planningDates = Array.from(
+    { length: defaults.dayCount },
+    (_, index) => addDays(defaults.startDate, index),
+  );
+  const groups = tasks.map((task, taskIndex) => {
     const taskProfile = inferStudyTaskProfile(task);
+    const sessionIntent = resolveSessionIntentForTask({
+      task,
+      overrides: sessionIntentOverrides,
+    });
+    const consolidationIntent = shouldConsolidateSessionIntent(sessionIntent);
+    const sessionPolicyOverride = createSessionPolicyOverrideFromIntent(sessionIntent);
     const sessionPolicy = derivePersonalizedSessionPolicy({
       taskTitle: task.title,
       taskProfile,
       basePolicy: deriveSessionLengthPolicy(taskProfile, {
-        maxSessionMinutes,
-        minSessionMinutes,
+        maxSessionMinutes: defaults.maxSessionMinutes,
+        minSessionMinutes: defaults.minStudyBlockMinutes,
+        override: sessionPolicyOverride
+          ? {
+              ...sessionPolicyOverride,
+              maxSessionMinutes: Math.min(
+                defaults.maxSessionMinutes,
+                sessionPolicyOverride.maxSessionMinutes ?? defaults.maxSessionMinutes,
+              ),
+            }
+          : undefined,
       }),
     });
-    const splitMinutes = splitDurationIntoSessionChunks(
+    const allowTinySession = allowsTinySessionForTask(task);
+    const spreadDayCount = resolveTaskSpreadDayCount({
+      task,
+      dayCount: defaults.dayCount,
+      consolidationIntent,
+      allowTinySession,
+    });
+    const dateIndexes = resolveTaskSpreadDateIndexes({
+      taskIndex,
+      dayCount: defaults.dayCount,
+      spreadDayCount,
+      forceEarly: task.priority === 'high' || Boolean(task.deadlineDate),
+    });
+    const dailyQuotas = distributeMinutesAcrossBuckets(
       task.durationMinutes,
-      sessionPolicy,
-      taskProfile,
+      dateIndexes.length,
     );
 
-    return splitMinutes.map((durationMinutes, splitIndex) => ({
-      title: task.title,
-      type: task.type,
-      durationMinutes,
-      sourceTaskMinutes: task.durationMinutes,
-      splitIndex,
-      splitCount: splitMinutes.length,
-      priority: task.priority,
-      deadlineDate: task.deadlineDate,
-      retryLevel: 0,
-    }));
+    return dateIndexes.flatMap((dateIndex, quotaIndex) => {
+      const quotaMinutes = dailyQuotas[quotaIndex];
+      const splitMinutes = splitQuotaIntoSessionChunks({
+        quotaMinutes,
+        policy: sessionPolicy,
+        profile: taskProfile,
+        allowTinySession,
+        task,
+      });
+
+      return splitMinutes.map((durationMinutes, splitIndex) => ({
+        title: task.title,
+        type: task.type,
+        durationMinutes,
+        sourceTaskMinutes: task.durationMinutes,
+        sourceText: task.sourceText,
+        allowTinySession,
+        minimumUsefulSessionMinutes: resolveMinimumUsefulSessionMinutes({
+          task,
+          allowTinySession,
+          policyMinSessionMinutes: sessionPolicy.minSessionMinutes,
+        }),
+        dayQuotaMinutes: quotaMinutes,
+        splitIndex,
+        splitCount: splitMinutes.length,
+        priority: task.priority,
+        deadlineDate: task.deadlineDate,
+        retryLevel: 0,
+        preferredDate: planningDates[dateIndex],
+        consolidationIntent,
+        sessionIntentKind: sessionIntent?.kind,
+        sessionIntentScope: sessionIntent?.scope,
+      }));
+    });
   });
   const sessions: WeeklyPlanningSessionBlock[] = [];
   let hasRemainingSessions = true;
@@ -3033,42 +3797,41 @@ export function splitDurationIntoDraftBlockMinutesWithMax(
   return blockMinutes;
 }
 
+
 function splitSessionMinutesForRetry(
-  durationMinutes: number,
-  minSessionMinutes: number,
+  session: WeeklyPlanningSessionBlock,
+  defaults: WeeklyPlanningDefaultConditions,
 ): number[] {
-  const preferredMinutes = [90, 60, 30].filter(
-    (minutes) => minutes >= minSessionMinutes,
+  const taskLike = {
+    title: session.title,
+    sourceText: session.sourceText,
+  };
+  const allowTinySession = session.allowTinySession;
+  const minimumUsefulMinutes = Math.max(
+    session.minimumUsefulSessionMinutes,
+    resolveMinimumUsefulSessionMinutes({
+      task: taskLike,
+      allowTinySession,
+      policyMinSessionMinutes: defaults.minStudyBlockMinutes,
+    }),
   );
-  const splitMinutes: number[] = [];
-  let remainingMinutes = durationMinutes;
-  let guardCount = 0;
 
-  while (remainingMinutes >= minSessionMinutes && guardCount < 20) {
-    guardCount += 1;
-    const nextMinutes = preferredMinutes.find((minutes) => {
-      if (minutes > remainingMinutes) {
-        return false;
-      }
+  for (let chunkCount = 2; chunkCount <= 5; chunkCount += 1) {
+    const candidate = distributeMinutesAcrossBuckets(session.durationMinutes, chunkCount);
 
-      if (minutes === remainingMinutes && splitMinutes.length === 0) {
-        return false;
-      }
-
-      const nextRemainingMinutes = remainingMinutes - minutes;
-
-      return nextRemainingMinutes === 0 || nextRemainingMinutes >= minSessionMinutes;
-    });
-
-    if (!nextMinutes) {
-      break;
+    if (
+      candidate.every(
+        (minutes) =>
+          minutes >= minimumUsefulMinutes &&
+          minutes < session.durationMinutes &&
+          minutes <= defaults.maxSessionMinutes,
+      )
+    ) {
+      return candidate;
     }
-
-    splitMinutes.push(nextMinutes);
-    remainingMinutes -= nextMinutes;
   }
 
-  return remainingMinutes === 0 && splitMinutes.length > 1 ? splitMinutes : [];
+  return [];
 }
 
 function isProgressiveRetrySplit(
@@ -3110,13 +3873,23 @@ function calculatePreferredOverlapMinutes(
   }, 0);
 }
 
-function chooseStartMinutesForSlot(params: {
+
+function createStartMinuteCandidatesForSlot(params: {
   slot: AvailabilitySlot;
   durationMinutes: number;
   defaults: WeeklyPlanningDefaultConditions;
-}): number {
+  adjacentStartMinutes?: number;
+}): number[] {
   const latestStartMinutes = params.slot.endMinutes - params.durationMinutes;
   const candidates = new Set<number>([params.slot.startMinutes]);
+
+  if (
+    params.adjacentStartMinutes !== undefined &&
+    params.adjacentStartMinutes >= params.slot.startMinutes &&
+    params.adjacentStartMinutes <= latestStartMinutes
+  ) {
+    candidates.add(params.adjacentStartMinutes);
+  }
 
   params.defaults.preferredStudyRanges.forEach((range) => {
     const preferredStart = minutesFromTime(range.startTime);
@@ -3142,83 +3915,155 @@ function chooseStartMinutesForSlot(params: {
     });
   });
 
-  return Array.from(candidates).sort((left, right) => {
-    const leftOverlap = calculatePreferredOverlapMinutes(
-      params.defaults,
-      left,
-      left + params.durationMinutes,
-    );
-    const rightOverlap = calculatePreferredOverlapMinutes(
-      params.defaults,
-      right,
-      right + params.durationMinutes,
-    );
-    const leftFutureSameSizeSlots = [
-      left - params.defaults.breakMinutes - params.slot.startMinutes,
-      params.slot.endMinutes -
-        (left + params.durationMinutes + params.defaults.breakMinutes),
-    ].filter((minutes) => minutes >= params.durationMinutes).length;
-    const rightFutureSameSizeSlots = [
-      right - params.defaults.breakMinutes - params.slot.startMinutes,
-      params.slot.endMinutes -
-        (right + params.durationMinutes + params.defaults.breakMinutes),
-    ].filter((minutes) => minutes >= params.durationMinutes).length;
-    const leftScore = leftOverlap + leftFutureSameSizeSlots * params.durationMinutes;
-    const rightScore =
-      rightOverlap + rightFutureSameSizeSlots * params.durationMinutes;
+  return Array.from(candidates).sort((left, right) => left - right);
+}
 
-    if (leftScore !== rightScore) {
-      return rightScore - leftScore;
-    }
+function findPreviousBlockBefore(
+  blocks: WeeklyPlanDraftBlock[],
+  startMinutes: number,
+): WeeklyPlanDraftBlock | undefined {
+  return blocks
+    .filter((block) => minutesFromTime(block.endTime) <= startMinutes)
+    .sort(
+      (left, right) =>
+        minutesFromTime(right.endTime) - minutesFromTime(left.endTime),
+    )[0];
+}
 
-    return left - right;
-  })[0];
+function calculateCompactnessPenalty(params: {
+  dateBlocks: WeeklyPlanDraftBlock[];
+  startMinutes: number;
+  defaults: WeeklyPlanningDefaultConditions;
+}): number {
+  const previousBlock = findPreviousBlockBefore(params.dateBlocks, params.startMinutes);
+
+  if (!previousBlock) {
+    return 0;
+  }
+
+  const previousEndMinutes = minutesFromTime(previousBlock.endTime);
+  const gapMinutes = params.startMinutes - previousEndMinutes;
+
+  if (gapMinutes <= params.defaults.breakMinutes) {
+    return 0;
+  }
+
+  if (intervalOverlapsUnavailableRange(params.defaults, previousEndMinutes, params.startMinutes)) {
+    return 0;
+  }
+
+  return -(gapMinutes - params.defaults.breakMinutes) * 2;
+}
+
+function sumPlacementScoreComponents(components: PlacementScoreComponents): number {
+  return (
+    components.preferredWindowBonus +
+    components.dailyLoadPenalty +
+    components.sameTaskPenalty +
+    components.subjectSpreadBonus +
+    components.compactnessPenalty +
+    components.explicitOverrideBonus +
+    components.preferredDateBonus +
+    components.fallbackPenalty
+  );
+}
+
+function calculatePlacementScoreComponents(params: {
+  session: WeeklyPlanningSessionBlock;
+  date: string;
+  startMinutes: number;
+  endMinutes: number;
+  blocksByDate: Map<string, WeeklyPlanDraftBlock[]>;
+  dayLoads: Map<string, number>;
+  defaults: WeeklyPlanningDefaultConditions;
+  targetDailyMinutes: number;
+}): PlacementScoreComponents {
+  const dateBlocks = params.blocksByDate.get(params.date) ?? [];
+  const sameTaskCount = dateBlocks.filter(
+    (block) => block.title === params.session.title,
+  ).length;
+  const nextDayLoad = (params.dayLoads.get(params.date) ?? 0) + params.session.durationMinutes;
+  const dailyLoadDistance = Math.abs(nextDayLoad - params.targetDailyMinutes);
+  const preferredOverlapMinutes = calculatePreferredOverlapMinutes(
+    params.defaults,
+    params.startMinutes,
+    params.endMinutes,
+  );
+  const isPreferredDate = params.session.preferredDate === params.date;
+  const isExplicitOverride = Boolean(params.session.sessionIntentKind);
+
+  return {
+    preferredWindowBonus: preferredOverlapMinutes,
+    dailyLoadPenalty: -dailyLoadDistance / 3,
+    sameTaskPenalty: params.session.consolidationIntent ? 0 : -sameTaskCount * 90,
+    subjectSpreadBonus: sameTaskCount === 0 ? 35 : 0,
+    compactnessPenalty: calculateCompactnessPenalty({
+      dateBlocks,
+      startMinutes: params.startMinutes,
+      defaults: params.defaults,
+    }),
+    explicitOverrideBonus: isExplicitOverride ? 35 : 0,
+    preferredDateBonus: isPreferredDate ? 120 : 0,
+    fallbackPenalty: params.session.preferredDate && !isPreferredDate ? -35 : 0,
+  };
 }
 
 function findBestSlot(params: {
-  slots: AvailabilitySlot[];
+  session: WeeklyPlanningSessionBlock;
+  availableSlots: AvailabilitySlot[];
+  blocksByDate: Map<string, WeeklyPlanDraftBlock[]>;
   dayLoads: Map<string, number>;
-  durationMinutes: number;
   defaults: WeeklyPlanningDefaultConditions;
+  targetDailyMinutes: number;
   preferEarlierDates: boolean;
-  preferredDate?: string;
-  preferredStartAfterMinutes?: number;
-}): { slotIndex: number; startMinutes: number } | null {
-  return params.slots
-    .map((slot, index) => ({
-      index,
-      slot,
-      load: params.dayLoads.get(slot.date) ?? 0,
-      startMinutes: chooseStartMinutesForSlot({
-        slot,
-        durationMinutes: params.durationMinutes,
-        defaults: params.defaults,
-      }),
-    }))
-    .filter(
-      (candidate) =>
-        candidate.slot.endMinutes - candidate.slot.startMinutes >=
-          params.durationMinutes &&
-        (params.preferredDate !== candidate.slot.date ||
-          params.preferredStartAfterMinutes === undefined ||
-          candidate.startMinutes >= params.preferredStartAfterMinutes),
-    )
-    .map((candidate) => ({
-      ...candidate,
-      preferredOverlapMinutes: calculatePreferredOverlapMinutes(
-        params.defaults,
-        candidate.startMinutes,
-        candidate.startMinutes + params.durationMinutes,
-      ),
-    }))
-    .sort((left, right) => {
-      if (params.preferredDate) {
-        const leftPreferred = left.slot.date === params.preferredDate ? 0 : 1;
-        const rightPreferred = right.slot.date === params.preferredDate ? 0 : 1;
+  preferredStartAfterMinutesByDate: Map<string, number>;
+}): {
+  slotIndex: number;
+  startMinutes: number;
+  score: number;
+  components: PlacementScoreComponents;
+  rejectedCandidates: SessionPlacementEvaluation['rejectedCandidates'];
+} | null {
+  const scoredCandidates = params.availableSlots
+    .flatMap((slot, index) => {
+      if (slot.endMinutes - slot.startMinutes < params.session.durationMinutes) {
+        return [];
+      }
 
-        if (leftPreferred !== rightPreferred) {
-          return leftPreferred - rightPreferred;
-        }
+      const adjacentStartMinutes = params.preferredStartAfterMinutesByDate.get(slot.date);
+
+      return createStartMinuteCandidatesForSlot({
+        slot,
+        durationMinutes: params.session.durationMinutes,
+        defaults: params.defaults,
+        adjacentStartMinutes,
+      }).map((startMinutes) => {
+        const endMinutes = startMinutes + params.session.durationMinutes;
+        const components = calculatePlacementScoreComponents({
+          session: params.session,
+          date: slot.date,
+          startMinutes,
+          endMinutes,
+          blocksByDate: params.blocksByDate,
+          dayLoads: params.dayLoads,
+          defaults: params.defaults,
+          targetDailyMinutes: params.targetDailyMinutes,
+        });
+        const score = sumPlacementScoreComponents(components);
+
+        return {
+          index,
+          slot,
+          startMinutes,
+          endMinutes,
+          components,
+          score,
+        };
+      });
+    })
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return right.score - left.score;
       }
 
       if (params.preferEarlierDates) {
@@ -3229,7 +4074,17 @@ function findBestSlot(params: {
         }
       }
 
-      const loadDelta = left.load - right.load;
+      const preferredDateDelta =
+        (right.slot.date === params.session.preferredDate ? 1 : 0) -
+        (left.slot.date === params.session.preferredDate ? 1 : 0);
+
+      if (preferredDateDelta !== 0) {
+        return preferredDateDelta;
+      }
+
+      const loadDelta =
+        (params.dayLoads.get(left.slot.date) ?? 0) -
+        (params.dayLoads.get(right.slot.date) ?? 0);
 
       if (loadDelta !== 0) {
         return loadDelta;
@@ -3241,19 +4096,31 @@ function findBestSlot(params: {
         return dateDelta;
       }
 
-      const preferredOverlapDelta =
-        right.preferredOverlapMinutes - left.preferredOverlapMinutes;
-
-      if (preferredOverlapDelta !== 0) {
-        return preferredOverlapDelta;
-      }
-
       return left.startMinutes - right.startMinutes;
-    })
-    .map((candidate) => ({
-      slotIndex: candidate.index,
+    });
+
+  const selectedCandidate = scoredCandidates[0];
+
+  if (!selectedCandidate) {
+    return null;
+  }
+
+  return {
+    slotIndex: selectedCandidate.index,
+    startMinutes: selectedCandidate.startMinutes,
+    score: selectedCandidate.score,
+    components: selectedCandidate.components,
+    rejectedCandidates: scoredCandidates.slice(1, 6).map((candidate) => ({
+      date: candidate.slot.date,
       startMinutes: candidate.startMinutes,
-    }))[0] ?? null;
+      endMinutes: candidate.endMinutes,
+      score: candidate.score,
+      components: candidate.components,
+      reason: candidate.score < selectedCandidate.score
+        ? 'lower_score'
+        : 'tie_breaker',
+    })),
+  };
 }
 
 export function looksLikeWeeklyPlanningRequest(text: string): boolean {
@@ -3467,13 +4334,22 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
   );
   const sessionQueue = buildWeeklyPlanningSessionBlocks(
     assessment.tasks,
-    assessment.defaults.maxSessionMinutes,
-    assessment.defaults.minStudyBlockMinutes,
+    assessment.defaults,
+    params.pendingConfig?.sessionIntentOverrides ??
+      inferSessionIntentOverridesFromText({
+        text: params.text,
+        tasks: assessment.tasks,
+      }),
   );
   const dayLoads = new Map<string, number>();
-  const taskPreferredDates = new Map<string, string>();
-  const taskPreferredStartAfterMinutes = new Map<string, number>();
+  const datePreferredStartAfterMinutes = new Map<string, number>();
   const blocks: WeeklyPlanDraftBlock[] = [];
+  const blocksByDate = new Map<string, WeeklyPlanDraftBlock[]>();
+  const sessionEvaluations: SessionPlacementEvaluation[] = [];
+  const fallbackPlacements: NonNullable<WeeklyPlacementDiagnostics['fallbackPlacements']> = [];
+  const retryEvents: NonNullable<WeeklyPlacementDiagnostics['retryEvents']> = [];
+  const tinyChunkViolations: NonNullable<WeeklyPlacementDiagnostics['tinyChunkViolations']> = [];
+  const targetDailyMinutes = requestedMinutes / Math.max(1, assessment.defaults.dayCount);
   let unplacedMinutes = 0;
   let retryLimitReached = false;
   let processedSessions = 0;
@@ -3514,11 +4390,17 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
 
     if ((params.existingPlans?.length ?? 0) > 0 && session.durationMinutes > 90) {
       const retrySplitMinutes = splitSessionMinutesForRetry(
-        session.durationMinutes,
-        assessment.defaults.minStudyBlockMinutes,
+        session,
+        assessment.defaults,
       );
 
       if (isProgressiveRetrySplit(session.durationMinutes, retrySplitMinutes)) {
+        retryEvents.push({
+          title: session.title,
+          originalDurationMinutes: session.durationMinutes,
+          retriedDurations: retrySplitMinutes,
+          reason: 'existing_plan_large_session_pre_split',
+        });
         const [nextMinutes, ...laterMinutes] = retrySplitMinutes;
 
         sessionQueue.unshift(withIncrementedRetryLevel(session, nextMinutes));
@@ -3532,23 +4414,30 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
     }
 
     const placement = findBestSlot({
-      slots,
+      session,
+      availableSlots: slots,
+      blocksByDate,
       dayLoads,
-      durationMinutes: session.durationMinutes,
       defaults: assessment.defaults,
+      targetDailyMinutes,
       preferEarlierDates:
         session.priority === 'high' || Boolean(session.deadlineDate),
-      preferredDate: taskPreferredDates.get(session.title),
-      preferredStartAfterMinutes: taskPreferredStartAfterMinutes.get(session.title),
+      preferredStartAfterMinutesByDate: datePreferredStartAfterMinutes,
     });
 
     if (!placement) {
       const retrySplitMinutes = splitSessionMinutesForRetry(
-        session.durationMinutes,
-        assessment.defaults.minStudyBlockMinutes,
+        session,
+        assessment.defaults,
       );
 
       if (isProgressiveRetrySplit(session.durationMinutes, retrySplitMinutes)) {
+        retryEvents.push({
+          title: session.title,
+          originalDurationMinutes: session.durationMinutes,
+          retriedDurations: retrySplitMinutes,
+          reason: 'no_candidate_slot_rechunk',
+        });
         sessionQueue.unshift(
           ...retrySplitMinutes.map((durationMinutes) =>
             withIncrementedRetryLevel(session, durationMinutes),
@@ -3557,23 +4446,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
         continue;
       }
 
-      if (session.durationMinutes > assessment.defaults.minStudyBlockMinutes) {
-        const firstMinutes = Math.ceil(session.durationMinutes / 2 / 10) * 10;
-        const secondMinutes = session.durationMinutes - firstMinutes;
 
-        if (
-          firstMinutes >= assessment.defaults.minStudyBlockMinutes &&
-          secondMinutes >= assessment.defaults.minStudyBlockMinutes &&
-          firstMinutes < session.durationMinutes &&
-          secondMinutes < session.durationMinutes
-        ) {
-          sessionQueue.unshift(
-            withIncrementedRetryLevel(session, secondMinutes),
-            withIncrementedRetryLevel(session, firstMinutes),
-          );
-          continue;
-        }
-      }
 
       unplacedMinutes += session.durationMinutes;
       continue;
@@ -3583,7 +4456,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
     const startMinutes = placement.startMinutes;
     const endMinutes = startMinutes + session.durationMinutes;
 
-    blocks.push({
+    const placedBlock: WeeklyPlanDraftBlock = {
       id: createId('weekly-draft'),
       userId: params.userId,
       date: slot.date,
@@ -3617,15 +4490,55 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
       userEdited: false,
       createdAt: timestamp,
       updatedAt: timestamp,
+    };
+
+    blocks.push(placedBlock);
+    blocksByDate.set(slot.date, [
+      ...(blocksByDate.get(slot.date) ?? []),
+      placedBlock,
+    ]);
+    sessionEvaluations.push({
+      title: session.title,
+      durationMinutes: session.durationMinutes,
+      preferredDate: session.preferredDate,
+      selected: {
+        date: slot.date,
+        startMinutes,
+        endMinutes,
+        score: placement.score,
+        components: placement.components,
+      },
+      rejectedCandidates: placement.rejectedCandidates,
     });
+
+    if (session.preferredDate && session.preferredDate !== slot.date) {
+      fallbackPlacements.push({
+        title: session.title,
+        durationMinutes: session.durationMinutes,
+        preferredDate: session.preferredDate,
+        actualDate: slot.date,
+        reason: 'preferred_date_lower_scored_or_unavailable',
+      });
+    }
+
+    const minimumUsefulMinutes = session.minimumUsefulSessionMinutes;
+
+    if (session.durationMinutes < minimumUsefulMinutes) {
+      tinyChunkViolations.push({
+        title: session.title,
+        durationMinutes: session.durationMinutes,
+        allowed: session.allowTinySession,
+        reason: 'below_minimum_useful_session_minutes',
+      });
+    }
+
 
     dayLoads.set(
       slot.date,
       (dayLoads.get(slot.date) ?? 0) + session.durationMinutes,
     );
-    taskPreferredDates.set(session.title, slot.date);
-    taskPreferredStartAfterMinutes.set(
-      session.title,
+    datePreferredStartAfterMinutes.set(
+      slot.date,
       endMinutes + assessment.defaults.breakMinutes,
     );
 
@@ -3671,6 +4584,11 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
     initialSlots,
     remainingSlots: slots,
     retryLimitReached,
+    tasks: assessment.tasks,
+    sessionEvaluations,
+    fallbackPlacements,
+    retryEvents,
+    tinyChunkViolations,
   });
   const warnings =
     unplacedMinutes > 0
