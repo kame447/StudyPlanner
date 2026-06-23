@@ -3,17 +3,25 @@ import { addDays, minutesFromTime, startOfWeek, timeFromMinutes } from '../../li
 import {
   detectType,
   parseDurationMinutes,
-  sanitizeSuggestedTitle,
   splitAddTaskTexts,
 } from '../../services/naturalLanguageRules';
 import type { Plan, PlanDraft } from '../../types/domain';
 import type { WeeklyPlanDraftBlock } from './types';
 import {
-  isPlacementConditionOnly,
   normalizeConditionText,
   normalizeWeeklyPlanningText,
   parseJapaneseSmallInteger,
 } from './parsing/weeklyPlanningText';
+import { resolveSimpleTaskTitle } from './parsing/weeklyTitleCleanup';
+export { resolveSimpleTaskTitle, stripWeeklyPlanningTaskTitle } from './parsing/weeklyTitleCleanup';
+import { extractSimpleWeeklyPlanningTasks } from './parsing/weeklyTaskExtraction';
+export { extractSimpleWeeklyPlanningTasks } from './parsing/weeklyTaskExtraction';
+import {
+  classifyQualityPreferenceOperations,
+  getQualityPreferenceMessage,
+  hasQualityAvoidanceCue,
+  mergeWeeklyPlanningQualityPreferences,
+} from './parsing/weeklyQualityPreferenceParser';
 export { looksLikeWeeklyPlanningRequest } from './parsing/weeklyPlanningText';
 import {
   allowsTinySessionForTask,
@@ -105,7 +113,6 @@ import type {
   WeeklyPlanningQualityPreference,
   WeeklyPlanningRequestAssessment,
   WeeklyPlanningSessionBlock,
-  WeeklyPlanningTaskAmount,
 } from './weeklyPlanningTypes';
 export type {
   AvailabilityAwareWeeklyDraftResult,
@@ -139,7 +146,6 @@ export type {
   WeeklyPlanningQualityPreference,
   WeeklyPlanningRequestAssessment,
   WeeklyPlanningSessionBlock,
-  WeeklyPlanningTaskAmount,
 } from './weeklyPlanningTypes';
 export const WEEKLY_PLANNING_CONDITION_OVERRIDE_HELP =
   '対応できる条件変更例: 「7日間で」「勉強開始9時から」「22時までで」「9時から22時で」「お昼は13〜14時」「1回90分で」「休憩15分で」「睡眠は2時から9時」「配置できる分だけでいい」。';
@@ -169,87 +175,6 @@ function resolveBlockLabel(block: WeeklyPlanDraftBlock): string {
     block.title.trim() ||
     '学習予定'
   );
-}
-
-function stripWeeklyPlanningTaskTitle(text: string): string {
-  return normalizeWeeklyPlanningText(text)
-    .replace(/来週|今週|週間|週/g, '')
-    .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*(?:まで|迄|締切|期限)?/g, '')
-    .replace(/\d{1,2}[/月]\d{1,2}(?:日)?\s*(?:まで|迄|締切|期限)?/g, '')
-    .replace(/p\.\s*\d+\s*[-〜~]\s*\d+/gi, '')
-    .replace(/(?:毎日|1日|一日)?\s*\d+(?:\.\d+)?\s*(?:時間|分|語|単語|個|ページ|問|問題|題|年分)/g, '')
-    .replace(/第\s*\d+\s*章/g, '')
-    .replace(/\d{1,2}(?::\d{1,2})?\s*(?:時)?\s*(?:起床|起きる|起き|就寝|寝たい|寝る|寝)/g, '')
-    .replace(/(?:前後|バッファ|余裕)\s*\d+\s*分/g, '')
-    .replace(/\d+\s*分\s*(?:前後|バッファ|余裕)/g, '')
-    .replace(/(?:最大|1回|一回|セッション)\s*\d+\s*分/g, '')
-    .replace(/\d+\s*分\s*(?:まで|以内|最大)/g, '')
-    .replace(/(?:休憩|休み)\s*\d+\s*分/g, '')
-    .replace(/\d+\s*分\s*(?:休憩|休み)/g, '')
-    .replace(/深夜(?:も)?(?:OK|ok|可|使う|使って|入れて)/g, '')
-    .replace(/夜中(?:も)?(?:OK|ok|可)/g, '')
-    .replace(/0時以降(?:も)?(?:OK|ok|可)/g, '')
-    .replace(/(?:午前|午後|夜|夜中心|午後中心|午前中心|日中中心|夜型|朝型)中心/g, '')
-    .replace(/(?:(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d|\u9577\u3081|\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u5148\u306b|\u7247\u3065\u3051(?:\u305f\u3044)?|\u7247\u4ed8\u3051(?:\u305f\u3044)?)/g, '')
-    .replace(/\d{1,2}(?::\d{1,2})?\s*(?:時)?\s*(?:から|まで|迄)$/g, '')
-    .replace(/(?:まで|迄|締切|期限)に?/g, '')
-    .replace(/(?:重要な|優先|急ぎ|高優先度|最優先)な?/g, '')
-    .replace(/(?:おまかせ|任せ|普通|デフォルト|そのまま|適当|わからない|分からない|OK|ok|はい|進め)/g, '')
-    .replace(/\s*(?:追加|変更|修正)\s*$/g, '')
-    .replace(/\s*(?:やりたい|したい|勉強したい|学習したい|進めたい|取り組みたい)\s*$/g, '')
-    .replace(/\s*(?:にして|として|で|を|は|に|が|へ|より|の)+\s*$/g, '')
-    .replace(/^\s*(?:を|は|に|で|が|へ|より|の)+\s*/g, '')
-    .replace(/\s*(?:\u306b\u3057\u3066|\u3068\u3057\u3066|\u3067|\u3092|\u306f|\u306b|\u3082|\u304c|\u3078|\u3088\u308a|\u306e)+\s*$/g, '')
-    .replace(/^\s*(?:\u3092|\u306f|\u306b|\u3082|\u3067|\u304c|\u3078|\u3088\u308a|\u306e)+\s*/g, '')
-    .replace(/[「」"'、。,.]/g, ' ')
-    .replace(/(?:(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d|\u9577\u3081|\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u5148\u306b|\u7247\u3065\u3051(?:\u305f\u3044)?|\u7247\u4ed8\u3051(?:\u305f\u3044)?)/g, '')
-    .replace(/\s*(?:\u306b\u3057\u3066|\u3068\u3057\u3066|\u3067|\u3092|\u306f|\u306b|\u3082|\u304c|\u3078|\u3088\u308a|\u306e)+\s*$/g, '')
-    .replace(/^\s*(?:\u3092|\u306f|\u306b|\u3082|\u3067|\u304c|\u3078|\u3088\u308a|\u306e)+\s*/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function resolveSimpleTaskTitle(text: string): string {
-  const weeklyTitle = stripWeeklyPlanningTaskTitle(text);
-
-  if (weeklyTitle) {
-    return weeklyTitle;
-  }
-
-  const sanitizedTitle = sanitizeSuggestedTitle(text)
-    .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*(?:まで|迄|締切|期限)?/g, '')
-    .replace(/\d{1,2}[/月]\d{1,2}(?:日)?\s*(?:まで|迄|締切|期限)?/g, '')
-    .replace(/\d{1,2}(?::\d{1,2})?\s*(?:時)?\s*(?:起床|起きる|起き|就寝|寝たい|寝る|寝)/g, '')
-    .replace(/(?:前後|バッファ|余裕)\s*\d+\s*分/g, '')
-    .replace(/\d+\s*分\s*(?:前後|バッファ|余裕)/g, '')
-    .replace(/(?:最大|1回|一回|セッション)\s*\d+\s*分/g, '')
-    .replace(/\d+\s*分\s*(?:まで|以内|最大)/g, '')
-    .replace(/(?:休憩|休み)\s*\d+\s*分/g, '')
-    .replace(/\d+\s*分\s*(?:休憩|休み)/g, '')
-    .replace(/深夜(?:も)?(?:OK|ok|可|使う|使って|入れて)/g, '')
-    .replace(/夜中(?:も)?(?:OK|ok|可)/g, '')
-    .replace(/0時以降(?:も)?(?:OK|ok|可)/g, '')
-    .replace(/(?:まで|迄|締切|期限)に?/g, '')
-    .replace(/(?:重要|優先|急ぎ|高優先度|最優先)な?/g, '')
-    .replace(/(?:おまかせ|任せ|普通|デフォルト|そのまま|適当|OK|ok|はい|進め|作成|生成)/g, '')
-    .replace(/\s*(?:やりたい|したい|勉強したい|学習したい|進めたい|取り組みたい)\s*$/g, '')
-    .replace(/[をはにでがへよりの]+$/g, '')
-    .replace(/^[をはにでがへよりの]+/g, '')
-    .trim();
-
-  return sanitizedTitle || '学習';
-}
-
-function splitWeeklyPlanningTaskTexts(text: string): string[] {
-  return normalizeWeeklyPlanningText(text)
-    .replace(/[。,]/g, '、')
-    .split('、')
-    .map((taskText) => taskText.trim())
-    .filter(Boolean);
-}
-
-function padDatePart(value: string): string {
-  return value.padStart(2, '0');
 }
 
 function formatClockParts(hourText: string, minuteText = '0'): string {
@@ -351,102 +276,6 @@ function resolvePreferredStudyRanges(
   }
 
   return DEFAULT_PREFERRED_STUDY_RANGES;
-}
-
-function resolveTaskPriority(text: string): 'normal' | 'high' {
-  return /重要|優先|急ぎ|高優先度|最優先|締切|期限/.test(text)
-    ? 'high'
-    : 'normal';
-}
-
-function parseWeeklyPlanningTaskAmount(
-  text: string,
-): WeeklyPlanningTaskAmount | null {
-  const normalizedText = normalizeWeeklyPlanningText(text);
-  const daily = /毎日|1日|一日/.test(normalizedText);
-  const durationMinutes = parseDurationMinutes(normalizedText);
-
-  if (durationMinutes && !isPlacementConditionOnly(normalizedText)) {
-    return {
-      unit: 'minutes',
-      value: durationMinutes,
-      text: `${durationMinutes}分`,
-      daily,
-    };
-  }
-
-  const pageRangeMatch = normalizedText.match(/p\.\s*(\d+)\s*[-〜~]\s*(\d+)/i);
-
-  if (pageRangeMatch) {
-    const startPage = Number(pageRangeMatch[1]);
-    const endPage = Number(pageRangeMatch[2]);
-
-    return {
-      unit: 'pages',
-      value: Math.max(0, endPage - startPage + 1),
-      text: pageRangeMatch[0],
-      daily,
-    };
-  }
-
-  const amountPatterns: Array<{
-    unit: WeeklyPlanningTaskAmount['unit'];
-    pattern: RegExp;
-  }> = [
-    { unit: 'words', pattern: /(\d+)\s*(?:語|単語)/ },
-    { unit: 'items', pattern: /(\d+)\s*個/ },
-    { unit: 'pages', pattern: /(\d+)\s*ページ/ },
-    { unit: 'problems', pattern: /(\d+)\s*(?:問|問題)/ },
-    { unit: 'passages', pattern: /(\d+)\s*題/ },
-    { unit: 'years', pattern: /(\d+)\s*年分/ },
-  ];
-
-  for (const amountPattern of amountPatterns) {
-    const match = normalizedText.match(amountPattern.pattern);
-
-    if (match) {
-      return {
-        unit: amountPattern.unit,
-        value: Number(match[1]),
-        text: match[0],
-        daily,
-      };
-    }
-  }
-
-  if (/第\s*\d+\s*章|章|単元|教材|ターゲット1900|青チャート/.test(normalizedText)) {
-    return {
-      unit: /第\s*\d+\s*章|章/.test(normalizedText) ? 'chapter' : 'material',
-      text: normalizedText,
-      daily,
-    };
-  }
-
-  return null;
-}
-
-function extractTaskDeadlineDate(text: string, selectedDate: string): string | undefined {
-  const normalizedText = normalizeWeeklyPlanningText(text);
-  const isoMatch = normalizedText.match(
-    /(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*(?:まで|迄|締切|期限)?/,
-  );
-
-  if (isoMatch) {
-    return `${isoMatch[1]}-${padDatePart(isoMatch[2])}-${padDatePart(isoMatch[3])}`;
-  }
-
-  const monthDayMatch = normalizedText.match(
-    /(\d{1,2})[/月](\d{1,2})(?:日)?\s*(?:まで|迄|締切|期限)?/,
-  );
-
-  if (!monthDayMatch) {
-    return undefined;
-  }
-
-  const selectedYear = selectedDate.slice(0, 4);
-  return `${selectedYear}-${padDatePart(monthDayMatch[1])}-${padDatePart(
-    monthDayMatch[2],
-  )}`;
 }
 
 function resolveDistributionKey(block: WeeklyPlanDraftBlock): string {
@@ -806,64 +635,6 @@ function resolveUnavailableReason(text: string): string {
   return '使用不可';
 }
 
-function hasQualityAvoidanceCue(text: string): boolean {
-  return /ならない|なりにくい|避けたい|避ける|避けて|しない|しにくい|なし|出ない|作らない|固めない|固まらない|細切れにならない/.test(
-    text,
-  );
-}
-
-function classifyQualityPreferenceOperations(text: string): WeeklyConditionOperation[] {
-  const operations: WeeklyConditionOperation[] = [];
-  const normalizedText = normalizeConditionText(text);
-  const addPreference = (preference: WeeklyPlanningQualityPreference) => {
-    if (
-      !operations.some(
-        (operation) =>
-          operation.kind === 'addQualityPreference' && operation.preference === preference,
-      )
-    ) {
-      operations.push({ kind: 'addQualityPreference', preference });
-    }
-  };
-
-  if (/分散/.test(normalizedText)) {
-    addPreference('preferTaskSpread');
-  }
-
-  if (
-    /(?:1|一)\s*日\s*(?:1|一)\s*科目|(?:1|一)\s*日(?:だけ)?に?固め|(?:1|一)\s*日(?:だけ)?/.test(
-      normalizedText,
-    ) && hasQualityAvoidanceCue(normalizedText)
-  ) {
-    addPreference('avoidSingleSubjectDay');
-  }
-
-  if (
-    /30\s*分台|30\s*分だけ|短すぎ|短い/.test(normalizedText) &&
-    hasQualityAvoidanceCue(normalizedText)
-  ) {
-    addPreference('avoidTinyChunks');
-  }
-
-  if (/細切れ/.test(normalizedText) && hasQualityAvoidanceCue(normalizedText)) {
-    addPreference(
-      /重いタスク|重め|卒研|レポート|実装|計算理論/.test(normalizedText)
-        ? 'avoidFragmentingHeavyTasks'
-        : 'avoidTinyChunks',
-    );
-  }
-
-  if (
-    /同じ科目|同一科目|同じタスク|同一タスク|科目/.test(normalizedText) &&
-    /固ま|固め/.test(normalizedText) &&
-    hasQualityAvoidanceCue(normalizedText)
-  ) {
-    addPreference('avoidSameTaskClumping');
-  }
-
-  return operations;
-}
-
 function hasExplicitDayCountInstruction(text: string): boolean {
   return /日(?:間)?\s*(?:で|にして|へ変更|に変更|に分散|へ分散|で分散|でやって|で作成|使って|配置|$)/.test(
     text,
@@ -1028,28 +799,6 @@ export function parseWeeklyPlanningConditionOperations(
       array.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(operation)) ===
       index,
   );
-}
-
-function mergeWeeklyPlanningQualityPreferences(
-  current: WeeklyPlanningQualityPreference[] | undefined,
-  preference: WeeklyPlanningQualityPreference,
-): WeeklyPlanningQualityPreference[] {
-  return current?.includes(preference) ? [...current] : [...(current ?? []), preference];
-}
-
-function getQualityPreferenceMessage(preference: WeeklyPlanningQualityPreference): string {
-  switch (preference) {
-    case 'preferTaskSpread':
-      return '複数日に分散しやすい配置を優先します。';
-    case 'avoidSingleSubjectDay':
-      return '1日1科目だけに偏りにくい配置を優先します。';
-    case 'avoidTinyChunks':
-      return '30分台の細かい学習ブロックを避ける設定にしました。';
-    case 'avoidFragmentingHeavyTasks':
-      return '重いタスクが細切れになりにくい配置を優先します。';
-    case 'avoidSameTaskClumping':
-      return '同じ科目が同じ日に固まりにくい配置を優先します。';
-  }
 }
 
 function withUpdatedAvailableRanges(
@@ -1328,53 +1077,6 @@ function buildWeeklyPlanningConfirmationSummary(params: {
   ]
     .filter(Boolean)
     .join('\n');
-}
-
-export function extractSimpleWeeklyPlanningTasks(
-  text: string,
-  selectedDate?: string,
-): SimpleWeeklyTask[] {
-  const trimmedText = text.trim();
-
-  if (!trimmedText) {
-    return [];
-  }
-
-  return splitWeeklyPlanningTaskTexts(trimmedText)
-    .map((taskText) => {
-      if (isPlacementConditionOnly(taskText)) {
-        return null;
-      }
-
-      const amount = parseWeeklyPlanningTaskAmount(taskText);
-
-      if (!amount) {
-        return null;
-      }
-
-      const title = resolveSimpleTaskTitle(taskText);
-      const durationMinutes = amount.unit === 'minutes' ? amount.value ?? 0 : 0;
-      const deadlineDate = extractTaskDeadlineDate(
-        taskText,
-        selectedDate ?? new Date().toISOString().slice(0, 10),
-      );
-      const task: SimpleWeeklyTask = {
-        title,
-        durationMinutes,
-        amount,
-        requiresTimeEstimate: amount.unit !== 'minutes',
-        type: detectType(taskText),
-        sourceText: taskText,
-        priority: resolveTaskPriority(taskText),
-      };
-
-      if (deadlineDate) {
-        task.deadlineDate = deadlineDate;
-      }
-
-      return task;
-    })
-    .filter((task): task is SimpleWeeklyTask => task !== null);
 }
 
 export function assessWeeklyPlanningRequest(params: {
@@ -1820,6 +1522,7 @@ function calculateWeeklyPlacementDiagnostics(params: {
   fallbackPlacements?: NonNullable<WeeklyPlacementDiagnostics['fallbackPlacements']>;
   retryEvents?: NonNullable<WeeklyPlacementDiagnostics['retryEvents']>;
   tinyChunkViolations?: NonNullable<WeeklyPlacementDiagnostics['tinyChunkViolations']>;
+  qualityPreferences?: WeeklyPlanningQualityPreference[];
 }): WeeklyPlacementDiagnostics {
   const baseSlots = buildAvailabilitySlots({
     defaults: params.defaults,
@@ -1917,6 +1620,7 @@ function calculateWeeklyPlacementDiagnostics(params: {
     retryEvents: params.retryEvents,
     tinyChunkViolations: params.tinyChunkViolations,
     gapReasons,
+    qualityPreferences: params.qualityPreferences,
     failureReason,
   };
 }
@@ -2794,6 +2498,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
     fallbackPlacements,
     retryEvents,
     tinyChunkViolations,
+    qualityPreferences: params.pendingConfig?.qualityPreferences ?? [],
   });
   const warnings =
     unplacedMinutes > 0

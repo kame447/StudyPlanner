@@ -2743,4 +2743,131 @@ describe('weeklyPlanningTransforms', () => {
     expect(result.warnings.join('\n')).toContain('既存予定とその前後30分');
   });
 
+  it('keeps follow-up quality preference text out of task titles and draft labels', () => {
+    const sourceText = '来週、英語10時間、数学8時間、卒研6時間やりたい';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '6日間に分散\n1日1科目だけになりにくい\n1回が30分台にならない\n重いタスクが細切れにならない',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    expect(override.config.tasks.map((task) => task.title)).toEqual([
+      '英語',
+      '数学',
+      '卒研',
+    ]);
+    override.config.tasks.forEach((task) => {
+      expect(task.title).not.toMatch(/6日間|分散|やりたい|30分台|細切れ|1日1科目/);
+    });
+
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-19',
+      text: 'この条件で作成',
+      pendingConfig: override.config,
+    });
+    const allowedTitles = new Set(['英語', '数学', '卒研']);
+
+    result.blocks.forEach((block) => {
+      expect(allowedTitles.has(block.title)).toBe(true);
+      [block.title, block.subject, block.label].forEach((value) => {
+        expect(value).not.toMatch(/6日間|分散|やりたい|30分台|細切れ|1日1科目/);
+      });
+    });
+  });
+
+  it('exposes quality preferences to availability-aware placement diagnostics', () => {
+    const sourceText = '来週、英語3時間、数学3時間、卒研3時間やりたい';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '6日間に分散\n1日1科目だけになりにくい\n30分台を避けたい',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    expect(override.config.qualityPreferences).toEqual(
+      expect.arrayContaining([
+        'preferTaskSpread',
+        'avoidSingleSubjectDay',
+        'avoidTinyChunks',
+      ]),
+    );
+
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-19',
+      text: 'この条件で作成',
+      pendingConfig: override.config,
+    });
+
+    expect(result.diagnostics?.qualityPreferences).toEqual(
+      expect.arrayContaining([
+        'preferTaskSpread',
+        'avoidSingleSubjectDay',
+        'avoidTinyChunks',
+      ]),
+    );
+  });
+
+  it('keeps same-subject blocks from creating unexplained multi-hour gaps in the three-day case', () => {
+    const sourceText = '来週、卒研2時間、英語3時間、計算理論4時間やりたい';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: '3日間でやって',
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-19',
+      text: 'この条件で作成',
+      pendingConfig: override.config,
+    });
+
+    Object.values(blocksGroupedByDate(result.blocks)).forEach((dateBlocks) => {
+      const byTitle = new Map<string, typeof dateBlocks>();
+      dateBlocks.forEach((block) => {
+        byTitle.set(block.title, [...(byTitle.get(block.title) ?? []), block]);
+      });
+      byTitle.forEach((titleBlocks) => {
+        const sorted = sortBlocksByStartTime(titleBlocks);
+        sorted.slice(1).forEach((block, index) => {
+          const previous = sorted[index];
+          const gapMinutes = minutesFromClock(block.startTime) - minutesFromClock(previous.endTime);
+          expect(gapMinutes).toBeLessThanOrEqual(120);
+        });
+      });
+    });
+  });
+
+  it('keeps same-day subject reentry bounded for larger weekly plans', () => {
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-19',
+      text: '来週、英語10時間、数学8時間、卒研6時間やりたい。この条件で作成',
+    });
+
+    Object.values(blocksGroupedByDate(result.blocks)).forEach((dateBlocks) => {
+      expect(maxRunsForSameTitleInDay(dateBlocks)).toBeLessThanOrEqual(2);
+    });
+  });
+
+
 });

@@ -406,6 +406,13 @@ export interface WeeklyPlacementDiagnostics {
     endMinutes: number;
     reason: string;
   }>;
+  sameSubjectGaps?: Array<{
+    date: string;
+    title: string;
+    gapMinutes: number;
+    reason: string;
+  }>;
+  qualityPreferences?: WeeklyPlanningQualityPreference[];
   failureReason:
     | 'capacity_shortage'
     | 'search_failure'
