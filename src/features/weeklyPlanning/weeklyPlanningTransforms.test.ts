@@ -17,6 +17,7 @@ import {
   inferStudyTaskProfile,
   mergeWeeklyPlanningRevision,
   parseWeeklyPlanningConditionOperations,
+  summarizeWeeklyPlanningPendingConfig,
   splitDurationIntoSessionChunks,
   updateUserPlanningProfileFromFeedback,
   looksLikeWeeklyPlanningRequest,
@@ -109,6 +110,94 @@ function blocksGroupedByDate(
     groups[block.date] = [...(groups[block.date] ?? []), block];
     return groups;
   }, {});
+}
+
+function sortBlocksByStartTime(
+  blocks: ReturnType<typeof createSimpleWeeklyDraftBlocksFromText>,
+): ReturnType<typeof createSimpleWeeklyDraftBlocksFromText> {
+  return blocks
+    .slice()
+    .sort(
+      (left, right) =>
+        minutesFromClock(left.startTime) - minutesFromClock(right.startTime),
+    );
+}
+
+function countSubjectSwitches(
+  blocks: ReturnType<typeof createSimpleWeeklyDraftBlocksFromText>,
+): number {
+  const sortedBlocks = sortBlocksByStartTime(blocks);
+
+  return sortedBlocks.reduce((switches, block, index) => {
+    if (index === 0) {
+      return switches;
+    }
+
+    return sortedBlocks[index - 1].title === block.title ? switches : switches + 1;
+  }, 0);
+}
+
+function countSameDaySubjectFragmentations(
+  blocks: ReturnType<typeof createSimpleWeeklyDraftBlocksFromText>,
+): number {
+  const runsByTitle = new Map<string, number>();
+  let previousTitle: string | undefined;
+
+  sortBlocksByStartTime(blocks).forEach((block) => {
+    if (block.title !== previousTitle) {
+      runsByTitle.set(block.title, (runsByTitle.get(block.title) ?? 0) + 1);
+    }
+
+    previousTitle = block.title;
+  });
+
+  return Array.from(runsByTitle.values()).reduce(
+    (total, runs) => total + Math.max(0, runs - 1),
+    0,
+  );
+}
+
+function maxRunsForSameTitleInDay(
+  blocks: ReturnType<typeof createSimpleWeeklyDraftBlocksFromText>,
+): number {
+  const runsByTitle = new Map<string, number>();
+  let previousTitle: string | undefined;
+
+  sortBlocksByStartTime(blocks).forEach((block) => {
+    if (block.title !== previousTitle) {
+      runsByTitle.set(block.title, (runsByTitle.get(block.title) ?? 0) + 1);
+    }
+
+    previousTitle = block.title;
+  });
+
+  return Math.max(0, ...Array.from(runsByTitle.values()));
+}
+
+function averageStartMinutesByDateForTitle(
+  blocks: ReturnType<typeof createSimpleWeeklyDraftBlocksFromText>,
+  title: string,
+): number[] {
+  return Object.values(blocksGroupedByDate(blocks))
+    .map((dateBlocks) => dateBlocks.filter((block) => block.title === title))
+    .filter((dateBlocks) => dateBlocks.length > 0)
+    .map((dateBlocks) =>
+      dateBlocks.reduce((sum, block) => sum + minutesFromClock(block.startTime), 0) /
+      dateBlocks.length,
+    );
+}
+
+function lateMinutesForTitles(
+  blocks: ReturnType<typeof createSimpleWeeklyDraftBlocksFromText>,
+  titlePattern: RegExp,
+): number {
+  return blocks
+    .filter((block) => titlePattern.test(block.title))
+    .reduce((total, block) => {
+      const startMinutes = minutesFromClock(block.startTime);
+      const endMinutes = minutesFromClock(block.endTime);
+      return total + Math.max(0, endMinutes - Math.max(startMinutes, 22 * 60));
+    }, 0);
 }
 
 function expectBlocksSortedByDateAndStartTime(
@@ -1068,6 +1157,76 @@ describe('weeklyPlanningTransforms', () => {
     ).toBe(true);
   });
 
+  it('keeps same-day subjects grouped while preserving day-level spread', () => {
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: '来週、英語10時間、数学8時間、卒研6時間やりたい。この条件で作成',
+      existingPlans: [],
+    });
+    const groupedBlocks = blocksGroupedByDate(result.blocks);
+    const durations = result.blocks.map((block) =>
+      minutesBetween(block.startTime, block.endTime),
+    );
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(totalDraftMinutes(result.blocks)).toBe(1440);
+    expect(new Set(result.blocks.map((block) => block.date)).size).toBe(6);
+    expect(durations.some((duration) => duration > 0 && duration < 40)).toBe(false);
+    expect(
+      Object.values(groupedBlocks).every(
+        (dateBlocks) => new Set(dateBlocks.map((block) => block.title)).size > 1,
+      ),
+    ).toBe(true);
+    expect(
+      Object.values(groupedBlocks).every((dateBlocks) =>
+        maxRunsForSameTitleInDay(dateBlocks) < 3,
+      ),
+    ).toBe(true);
+    expect(
+      Object.values(groupedBlocks).every((dateBlocks) =>
+        countSameDaySubjectFragmentations(dateBlocks) <= 1,
+      ),
+    ).toBe(true);
+    expect(
+      Object.values(groupedBlocks).every((dateBlocks) =>
+        countSubjectSwitches(dateBlocks) <= Math.max(2, new Set(dateBlocks.map((block) => block.title)).size),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps each subject near a stable time band across days', () => {
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: '来週、英語10時間、数学8時間、卒研6時間やりたい。この条件で作成',
+      existingPlans: [],
+    });
+
+    ['英語', '数学', '卒研'].forEach((title) => {
+      const averages = averageStartMinutesByDateForTitle(result.blocks, title);
+
+      expect(averages.length).toBeGreaterThan(1);
+      expect(Math.max(...averages) - Math.min(...averages)).toBeLessThanOrEqual(180);
+    });
+  });
+
+  it('keeps heavy tasks from being overrepresented after 22:00', () => {
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: '2026-06-23',
+      text: '来週、卒研6時間、Java実装6時間、英語4時間やりたい。この条件で作成',
+      existingPlans: [],
+    });
+    const heavyLateMinutes = lateMinutesForTitles(result.blocks, /卒研|Java実装/);
+    const englishLateMinutes = lateMinutesForTitles(result.blocks, /英語/);
+
+    expect(result.unplacedMinutes).toBe(0);
+    expect(totalDraftMinutes(result.blocks)).toBe(960);
+    expect(heavyLateMinutes).toBeLessThanOrEqual(60);
+    expect(heavyLateMinutes).toBeLessThanOrEqual(englishLateMinutes + 60);
+  });
+
   it('keeps same-day placement compact after a blocking interval clears', () => {
     const sourceText = '\u6765\u9031\u3001\u82f1\u8a9e1\u6642\u9593\u3001\u8a08\u7b97\u7406\u8ad61\u6642\u9593\u3001\u5352\u78141\u6642\u9593\u3084\u308a\u305f\u3044';
     const assessment = assessWeeklyPlanningRequest({
@@ -1968,6 +2127,58 @@ describe('weeklyPlanningTransforms', () => {
     expect(override.kind).toBe('updated');
     if (override.kind !== 'updated') return;
     expect(override.config.defaults.breakMinutes).toBe(15);
+  });
+
+  it('keeps quality preferences from overriding numeric planning conditions', () => {
+    const sourceText = '来週、英語を3時間、計算理論を4時間、卒研を2時間やりたい';
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: sourceText,
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
+    const override = applyWeeklyPlanningConditionOverride({
+      config: pendingConfig,
+      text: `6日間に分散
+1日1科目だけになりにくい
+1回が30分台にならない
+重いタスクが細切れにならない`,
+    });
+
+    expect(override.kind).toBe('updated');
+    if (override.kind !== 'updated') return;
+    expect(override.config.defaults.dayCount).toBe(6);
+    expect(override.config.defaults.maxSessionMinutes).not.toBe(30);
+    expect(override.config.qualityPreferences).toEqual(
+      expect.arrayContaining([
+        'preferTaskSpread',
+        'avoidSingleSubjectDay',
+        'avoidTinyChunks',
+        'avoidFragmentingHeavyTasks',
+      ]),
+    );
+
+    const summary = summarizeWeeklyPlanningPendingConfig(override.config);
+    expect(summary).not.toContain('1日間');
+    expect(summary).not.toContain('最大30分');
+  });
+
+  it('keeps explicit numeric condition replies working alongside quality preferences', () => {
+    expect(parseWeeklyPlanningConditionOperations('3日間でやって')).toContainEqual({
+      kind: 'setDayCount',
+      dayCount: 3,
+    });
+    expect(parseWeeklyPlanningConditionOperations('1回90分で')).toContainEqual({
+      kind: 'setMaxSessionMinutes',
+      minutes: 90,
+    });
+    expect(parseWeeklyPlanningConditionOperations('長めで')).toContainEqual({
+      kind: 'addSessionIntentOverride',
+      override: { scope: 'global', kind: 'prefer_long', targetSessionMinutes: 120 },
+    });
+    expect(parseWeeklyPlanningConditionOperations('2時間単位で')).toContainEqual({
+      kind: 'addSessionIntentOverride',
+      override: { scope: 'global', kind: 'fixed_two_hour', targetSessionMinutes: 120 },
+    });
   });
 
   it('updates pending weekly planning sleep window', () => {
