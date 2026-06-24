@@ -7,22 +7,22 @@ import {
 } from '../../services/naturalLanguageRules';
 import type { Plan, PlanDraft } from '../../types/domain';
 import type { WeeklyPlanDraftBlock } from './types';
-import {
-  normalizeConditionText,
-  normalizeWeeklyPlanningText,
-  parseJapaneseSmallInteger,
-} from './parsing/weeklyPlanningText';
+import { normalizeWeeklyPlanningText } from './parsing/weeklyPlanningText';
 import { resolveSimpleTaskTitle } from './parsing/weeklyTitleCleanup';
 export { resolveSimpleTaskTitle, stripWeeklyPlanningTaskTitle } from './parsing/weeklyTitleCleanup';
 import { extractSimpleWeeklyPlanningTasks } from './parsing/weeklyTaskExtraction';
 export { extractSimpleWeeklyPlanningTasks } from './parsing/weeklyTaskExtraction';
-import {
-  classifyQualityPreferenceOperations,
-  getQualityPreferenceMessage,
-  hasQualityAvoidanceCue,
-  mergeWeeklyPlanningQualityPreferences,
-} from './parsing/weeklyQualityPreferenceParser';
 export { looksLikeWeeklyPlanningRequest } from './parsing/weeklyPlanningText';
+import {
+  createSessionIntentOverrideFromText,
+  hasTaskConsolidationIntent,
+  inferSessionIntentOverridesFromText,
+} from './parsing/weeklyConditionParser';
+export { parseWeeklyPlanningConditionOperations } from './parsing/weeklyConditionParser';
+export {
+  applyWeeklyPlanningConditionOverride,
+  WEEKLY_PLANNING_CONDITION_OVERRIDE_HELP,
+} from './config/weeklyPendingConfigUpdater';
 import {
   allowsTinySessionForTask,
   inferStudyTaskProfile,
@@ -101,16 +101,13 @@ import type {
   AvailabilitySlot,
   PlacementScoreComponents,
   SessionIntentOverride,
-  SessionIntentScope,
   SessionLengthPolicy,
   SessionLengthPolicyOverride,
   SessionPlacementEvaluation,
   SimpleWeeklyTask,
   StudyTaskProfile,
-  WeeklyConditionOperation,
   WeeklyPlacementDiagnostics,
   WeeklyPlacementQualityDiagnostics,
-  WeeklyPlanningConditionOverrideResult,
   WeeklyPlanningDefaultConditions,
   WeeklyPlanningPendingConfig,
   WeeklyPlanningQualityPreference,
@@ -150,9 +147,6 @@ export type {
   WeeklyPlanningRequestAssessment,
   WeeklyPlanningSessionBlock,
 } from './weeklyPlanningTypes';
-export const WEEKLY_PLANNING_CONDITION_OVERRIDE_HELP =
-  '対応できる条件変更例: 「7日間で」「勉強開始9時から」「22時までで」「9時から22時で」「お昼は13〜14時」「1回90分で」「休憩15分で」「睡眠は2時から9時」「配置できる分だけでいい」。';
-
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -392,111 +386,10 @@ function cloneWeeklyPlanningDefaults(
   };
 }
 
-function withUpdatedDayCount(
-  defaults: WeeklyPlanningDefaultConditions,
-  dayCount: number,
-): WeeklyPlanningDefaultConditions {
-  const nextDayCount = Math.max(1, Math.floor(dayCount));
-
-  return {
-    ...cloneWeeklyPlanningDefaults(defaults),
-    dayCount: nextDayCount,
-    reserveDate: addDays(defaults.startDate, nextDayCount),
-  };
-}
-
 function formatStudyRanges(
   ranges: WeeklyPlanningDefaultConditions['preferredStudyRanges'],
 ): string {
   return ranges.map((range) => `${range.startTime}-${range.endTime}`).join('、');
-}
-
-function splitConditionClauses(text: string): string[] {
-  return normalizeWeeklyPlanningText(text)
-    .replace(/\r?\n+/g, '、')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/(?:それと|あと|さらに)/g, '、')
-    .replace(
-      /で(?=(?:お昼|昼|昼休み|夕食|夜ごはん|夜ご飯|晩ごはん|晩ご飯|食事|休憩|睡眠|寝|起床|勉強|開始|終了|夜は|朝は|午前|午後|最大|1回|一回|[\d一二三四五六七八九十]+\s*日(?:間)?))/g,
-      '、',
-    )
-    .split(/[、。,\.]+/)
-    .map((clause) =>
-      clause
-        .replace(/(?:でいい|にして|想定でやってほしい)$/g, '')
-        .trim(),
-    )
-    .filter(Boolean);
-}
-
-function parseClockRange(text: string): { startTime: string; endTime: string } | null {
-  const normalizedText = normalizeConditionText(text);
-  const match = normalizedText.match(
-    /(\d{1,2})(?::(\d{1,2}))?\s*(?:時)?(半)?\s*(?:から|~|-)\s*(\d{1,2})(?::(\d{1,2}))?\s*(?:時)?(半)?/,
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    startTime: formatClockParts(match[1], match[3] ? '30' : (match[2] ?? '0')),
-    endTime: formatClockParts(match[4], match[6] ? '30' : (match[5] ?? '0')),
-  };
-}
-
-function extractClockMentions(text: string): string[] {
-  const normalizedText = normalizeConditionText(text);
-  const mentions: string[] = [];
-
-  Array.from(normalizedText.matchAll(/(\d{1,2})(?::(\d{1,2})|時(半)?)/g)).forEach(
-    (match) => {
-      mentions.push(formatClockParts(match[1], match[3] ? '30' : (match[2] ?? '0')));
-    },
-  );
-  Array.from(normalizedText.matchAll(/(\d{1,2})\s*(?=から|まで)/g)).forEach(
-    (match) => {
-      const time = formatClockParts(match[1], '0');
-
-      if (!mentions.includes(time)) {
-        mentions.push(time);
-      }
-    },
-  );
-
-  return mentions;
-}
-
-function extractDurationMentions(text: string): number[] {
-  return Array.from(normalizeConditionText(text).matchAll(/(\d+)\s*分/g)).map(
-    (match) => Number(match[1]),
-  );
-}
-
-function getLastMinutesMention(text: string): number | null {
-  const mentions = extractDurationMentions(text);
-  const lastMention = mentions[mentions.length - 1];
-
-  return lastMention ?? null;
-}
-
-function getAvailableStudyRangesForSleep(params: {
-  wakeTime: string;
-  sleepStartTime: string;
-}): WeeklyPlanningDefaultConditions['availableStudyRanges'] {
-  const wakeMinutes = minutesFromTime(params.wakeTime);
-  const sleepStartMinutes = minutesFromTime(params.sleepStartTime);
-  const endTime =
-    sleepStartMinutes > wakeMinutes ? params.sleepStartTime : DEFAULT_SLEEP_START_TIME;
-
-  return [
-    {
-      startTime: params.wakeTime,
-      endTime,
-      reason: '睡眠時間を除いた時間',
-    },
-  ];
 }
 
 export function createWeeklyPlanningPendingConfig(params: {
@@ -527,519 +420,6 @@ export function summarizeWeeklyPlanningPendingConfig(
   });
 }
 
-
-function createSessionIntentOverrideFromText(
-  text: string,
-  scope: SessionIntentScope = 'global',
-): SessionIntentOverride | null {
-  const normalizedText = normalizeConditionText(text);
-
-  if (/(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d/.test(normalizedText)) {
-    return {
-      scope,
-      kind: 'fixed_two_hour',
-      targetSessionMinutes: 120,
-    };
-  }
-
-  if (/\u9577\u3081|\u5168\u4f53\u7684\u306b\u9577/.test(normalizedText)) {
-    return {
-      scope,
-      kind: 'prefer_long',
-      targetSessionMinutes: 120,
-    };
-  }
-
-  if (/\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u7247\u3065\u3051|\u7247\u4ed8\u3051/.test(normalizedText)) {
-    return { scope, kind: 'consolidate', targetSessionMinutes: 120 };
-  }
-
-  if (/\u5148\u306b|\u4eca\u65e5\u4e2d|\u512a\u5148/.test(normalizedText)) {
-    return { scope, kind: 'one_shot_first', targetSessionMinutes: 120 };
-  }
-
-  return null;
-}
-
-function normalizeSessionIntentOverride(
-  override: SessionIntentOverride,
-): SessionIntentOverride {
-  return {
-    ...override,
-    targetSessionMinutes: override.targetSessionMinutes
-      ? Math.max(30, Math.round(override.targetSessionMinutes))
-      : undefined,
-  };
-}
-
-function mergeSessionIntentOverrides(
-  baseOverrides: SessionIntentOverride[] = [],
-  nextOverride: SessionIntentOverride,
-): SessionIntentOverride[] {
-  const normalizedNext = normalizeSessionIntentOverride(nextOverride);
-  const keyFor = (override: SessionIntentOverride) =>
-    `${override.scope}|${override.kind}|${override.appliesToTaskTitle ?? ''}`;
-  const nextKey = keyFor(normalizedNext);
-
-  return [
-    ...baseOverrides.filter((override) => keyFor(override) !== nextKey),
-    normalizedNext,
-  ];
-}
-
-function inferSessionIntentOverridesFromText(params: {
-  text: string;
-  tasks: SimpleWeeklyTask[];
-}): SessionIntentOverride[] {
-  const normalizedText = normalizeWeeklyPlanningText(params.text);
-  const overrides: SessionIntentOverride[] = [];
-
-  if (
-    /(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d/.test(normalizedText) ||
-    /\u5168\u4f53|\u5168\u4f53\u7684|\u5168\u90e8|\u307f\u3093\u306a/.test(normalizedText)
-  ) {
-    const globalOverride = createSessionIntentOverrideFromText(normalizedText, 'global');
-
-    if (globalOverride) {
-      overrides.push(globalOverride);
-    }
-  }
-
-  params.tasks.forEach((task) => {
-    const taskOverride = createSessionIntentOverrideFromText(task.sourceText, 'task');
-
-    if (taskOverride && hasTaskConsolidationIntent(task.sourceText)) {
-      overrides.push({
-        ...taskOverride,
-        appliesToTaskTitle: task.title,
-      });
-    }
-  });
-
-  return overrides.reduce<SessionIntentOverride[]>(
-    (merged, override) => mergeSessionIntentOverrides(merged, override),
-    [],
-  );
-}
-
-function resolveUnavailableReason(text: string): string {
-  if (/昼|お昼|昼食|昼ごはん|昼ご飯|ランチ/.test(text)) {
-    return '昼食';
-  }
-
-  if (/夕食|夜ごはん|夜ご飯|晩ごはん|晩ご飯|晩御飯|食事|ごはん|ご飯/.test(text)) {
-    return '夕食';
-  }
-
-  if (/休憩|休み|インターバル/.test(text)) {
-    return '休憩';
-  }
-
-  return '使用不可';
-}
-
-function hasExplicitDayCountInstruction(text: string): boolean {
-  return /日(?:間)?\s*(?:で|にして|へ変更|に変更|に分散|へ分散|で分散|でやって|で作成|使って|配置|$)/.test(
-    text,
-  );
-}
-
-function hasExplicitMaxSessionInstruction(text: string): boolean {
-  return (
-    /(?:1回|一回|1セッション|セッション|最大|上限|連続|ぶっ続け).*?\d+\s*分\s*(?:で|まで|以内|にして|に変更|上限|$)/.test(
-      text,
-    ) ||
-    /\d+\s*分\s*(?:以内|まで)/.test(text) ||
-    /(?:最大|上限)\s*\d+\s*分/.test(text) ||
-    /じゃなくて\s*\d+\s*分/.test(text)
-  );
-}
-
-function classifyConditionClause(clause: string): WeeklyConditionOperation[] {
-  const normalizedClause = normalizeConditionText(clause);
-  const operations: WeeklyConditionOperation[] = [];
-  const dayCountMatch = normalizedClause.match(
-    /([\d一二三四五六七八九十]+)\s*日(?:間)?(?=\s*(?:で|に|へ|使|配置|$))/,
-  );
-  const qualityPreferenceOperations = classifyQualityPreferenceOperations(normalizedClause);
-  const hasQualityAvoidance = hasQualityAvoidanceCue(normalizedClause);
-
-  const clockRange = parseClockRange(normalizedClause);
-  const clockMentions = extractClockMentions(normalizedClause);
-  const minuteMentions = extractDurationMentions(normalizedClause);
-  const lastMinutes = minuteMentions[minuteMentions.length - 1];
-  const hasSleepCue = /睡眠|寝る|寝て|就寝|起床|起きる|起き/.test(normalizedClause);
-  const hasUnavailableCue =
-    /昼|お昼|昼食|昼ごはん|昼ご飯|ランチ|夕食|夜ごはん|夜ご飯|晩ごはん|晩ご飯|食事|ごはん|ご飯|空け|使わない|除外|無理/.test(
-      normalizedClause,
-    ) ||
-    (/休憩|休み|インターバル/.test(normalizedClause) && Boolean(clockRange));
-  const hasStartCue =
-    /勉強開始|開始|始め|スタート|勉強可能|使える|朝は|午前は|から勉強|勉強できる/.test(
-      normalizedClause,
-    );
-  const hasEndCue = /終了|終わり|まで|何時まで|夜は/.test(normalizedClause);
-
-  const sessionIntentOverride = createSessionIntentOverrideFromText(
-    normalizedClause,
-    'global',
-  );
-
-  if (sessionIntentOverride) {
-    operations.push({
-      kind: 'addSessionIntentOverride',
-      override: sessionIntentOverride,
-    });
-  }
-
-
-  if (dayCountMatch && hasExplicitDayCountInstruction(normalizedClause)) {
-    const dayCount = parseJapaneseSmallInteger(dayCountMatch[1]);
-    if (dayCount !== null) {
-      operations.push({ kind: 'setDayCount', dayCount });
-    }
-  } else if (/予備日(?:も)?使|予備日を使/.test(normalizedClause)) {
-    operations.push({ kind: 'extendDayCount', days: 1 });
-  } else if (/期間を延ばす/.test(normalizedClause)) {
-    operations.push({ kind: 'extendDayCount', days: 1 });
-  }
-
-  if (isExplicitPartialPlacementConfirmation(normalizedClause)) {
-    operations.push({ kind: 'allowPartialPlacement' });
-  }
-
-  if (hasSleepCue && clockRange) {
-    operations.push({
-      kind: 'setSleepWindow',
-      startTime: clockRange.startTime,
-      endTime: clockRange.endTime,
-    });
-    return operations;
-  }
-
-  if (hasSleepCue && clockMentions.length >= 2) {
-    operations.push({
-      kind: 'setSleepWindow',
-      startTime: clockMentions[0],
-      endTime: clockMentions[1],
-    });
-    return operations;
-  }
-
-  if (/食事|昼食|夕食|昼休み|休憩/.test(normalizedClause) && /なし|不要|いらない|消して|外して/.test(normalizedClause)) {
-    operations.push({
-      kind: 'removeUnavailableRange',
-      reason: /昼|昼食|昼休み/.test(normalizedClause)
-        ? '昼食'
-        : /夕|夜ご飯|食事/.test(normalizedClause)
-          ? '夕食'
-          : undefined,
-    });
-    return operations;
-  }
-
-  if (clockRange && hasUnavailableCue) {
-    operations.push({
-      kind: 'addUnavailableRange',
-      startTime: clockRange.startTime,
-      endTime: clockRange.endTime,
-      reason: resolveUnavailableReason(normalizedClause),
-    });
-    return operations;
-  }
-
-  if (clockRange && /中心|集中|メイン|優先/.test(normalizedClause)) {
-    operations.push({
-      kind: 'setPreferredRange',
-      startTime: clockRange.startTime,
-      endTime: clockRange.endTime,
-    });
-  } else if (clockRange) {
-    operations.push({
-      kind: 'setAvailableRange',
-      startTime: clockRange.startTime,
-      endTime: clockRange.endTime,
-    });
-  } else if (clockMentions.length > 0 && hasStartCue && !hasEndCue) {
-    operations.push({ kind: 'setAvailableStartTime', startTime: clockMentions[0] });
-  } else if (clockMentions.length > 0 && hasEndCue) {
-    operations.push({ kind: 'setAvailableEndTime', endTime: clockMentions[0] });
-  }
-
-  if (!hasQualityAvoidance && hasExplicitMaxSessionInstruction(normalizedClause)) {
-    const minutes = getLastMinutesMention(normalizedClause);
-    if (minutes !== null) {
-      operations.push({ kind: 'setMaxSessionMinutes', minutes: Math.max(30, minutes) });
-    }
-  }
-
-  qualityPreferenceOperations.forEach((operation) => operations.push(operation));
-
-  if (/休憩|休み|インターバル/.test(normalizedClause) && !clockRange && lastMinutes !== undefined) {
-    operations.push({ kind: 'setBreakMinutes', minutes: Math.max(0, lastMinutes) });
-  }
-
-  if (/午前は使わない/.test(normalizedClause)) {
-    operations.push({ kind: 'setAvailableStartTime', startTime: '12:00' });
-  } else if (/夜も使う/.test(normalizedClause)) {
-    operations.push({
-      kind: 'setAvailableRange',
-      startTime: '20:00',
-      endTime: '24:00',
-    });
-  }
-
-  return operations;
-}
-
-export function parseWeeklyPlanningConditionOperations(
-  text: string,
-): WeeklyConditionOperation[] {
-  const operations = splitConditionClauses(text).flatMap(classifyConditionClause);
-
-  return operations.filter(
-    (operation, index, array) =>
-      array.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(operation)) ===
-      index,
-  );
-}
-
-function withUpdatedAvailableRanges(
-  defaults: WeeklyPlanningDefaultConditions,
-  updater: (
-    range: WeeklyPlanningDefaultConditions['availableStudyRanges'][number],
-  ) => WeeklyPlanningDefaultConditions['availableStudyRanges'][number],
-): WeeklyPlanningDefaultConditions {
-  const nextDefaults = cloneWeeklyPlanningDefaults(defaults);
-  const nextRanges = nextDefaults.availableStudyRanges
-    .map(updater)
-    .filter((range) => minutesFromTime(range.startTime) < minutesFromTime(range.endTime));
-
-  nextDefaults.availableStudyRanges =
-    nextRanges.length > 0
-      ? nextRanges
-      : [{ startTime: DEFAULT_WAKE_TIME, endTime: DEFAULT_SLEEP_START_TIME, reason: '既定' }];
-  return nextDefaults;
-}
-
-function applyWeeklyConditionOperation(params: {
-  config: WeeklyPlanningPendingConfig;
-  operation: WeeklyConditionOperation;
-}): { config: WeeklyPlanningPendingConfig; message: string } {
-  const config = params.config;
-  const operation = params.operation;
-
-  switch (operation.kind) {
-    case 'setDayCount': {
-      return {
-        config: { ...config, defaults: withUpdatedDayCount(config.defaults, operation.dayCount) },
-        message: `${operation.dayCount}日間に変更しました。`,
-      };
-    }
-    case 'extendDayCount': {
-      const dayCount = config.defaults.dayCount + operation.days;
-      return {
-        config: { ...config, defaults: withUpdatedDayCount(config.defaults, dayCount) },
-        message: operation.days === 1 ? '予備日も配置対象に入れました。' : `${dayCount}日間に変更しました。`,
-      };
-    }
-    case 'setAvailableStartTime': {
-      return {
-        config: {
-          ...config,
-          defaults: withUpdatedAvailableRanges(config.defaults, (range) => ({
-            ...range,
-            startTime: operation.startTime,
-            reason: '指定された勉強可能時間帯',
-          })),
-        },
-        message: `勉強開始時刻を${operation.startTime}に変更しました。`,
-      };
-    }
-    case 'setAvailableEndTime': {
-      return {
-        config: {
-          ...config,
-          defaults: withUpdatedAvailableRanges(config.defaults, (range) => ({
-            ...range,
-            endTime: operation.endTime,
-            reason: '指定された勉強可能時間帯',
-          })),
-        },
-        message: `勉強終了時刻を${operation.endTime}に変更しました。`,
-      };
-    }
-    case 'setAvailableRange': {
-      const range = {
-        startTime: operation.startTime,
-        endTime: operation.endTime,
-        reason: '指定された勉強可能時間帯',
-      };
-      const defaults = cloneWeeklyPlanningDefaults(config.defaults);
-      defaults.availableStudyRanges = [range];
-      defaults.preferredStudyRanges = [range];
-      defaults.unavailableRanges = [];
-      return {
-        config: { ...config, defaults },
-        message: `勉強可能時間帯を${operation.startTime}-${operation.endTime}に変更しました。`,
-      };
-    }
-    case 'addUnavailableRange': {
-      const defaults = cloneWeeklyPlanningDefaults(config.defaults);
-      defaults.unavailableRanges = [
-        ...defaults.unavailableRanges.filter((range) => range.reason !== operation.reason),
-        {
-          startTime: operation.startTime,
-          endTime: operation.endTime,
-          reason: operation.reason,
-        },
-      ];
-      return {
-        config: { ...config, defaults },
-        message: `${operation.reason}として${operation.startTime}-${operation.endTime}を使わない時間にしました。`,
-      };
-    }
-    case 'removeUnavailableRange': {
-      const defaults = cloneWeeklyPlanningDefaults(config.defaults);
-      defaults.unavailableRanges = operation.reason
-        ? defaults.unavailableRanges.filter((range) => range.reason !== operation.reason)
-        : [];
-      return {
-        config: { ...config, defaults },
-        message: operation.reason
-          ? `${operation.reason}の除外時間を外しました。`
-          : '使わない時間帯を外しました。',
-      };
-    }
-    case 'setPreferredRange': {
-      const range = {
-        startTime: operation.startTime,
-        endTime: operation.endTime,
-        reason: '指定された集中時間帯',
-      };
-      const defaults = cloneWeeklyPlanningDefaults(config.defaults);
-      defaults.preferredStudyRanges = [range];
-      return {
-        config: { ...config, defaults },
-        message: `集中しやすい時間帯を${operation.startTime}-${operation.endTime}に変更しました。`,
-      };
-    }
-    case 'setMaxSessionMinutes': {
-      return {
-        config: {
-          ...config,
-          defaults: {
-            ...cloneWeeklyPlanningDefaults(config.defaults),
-            maxSessionMinutes: operation.minutes,
-          },
-        },
-        message: `1回の学習上限を${operation.minutes}分に変更しました。`,
-      };
-    }
-    case 'setBreakMinutes': {
-      return {
-        config: {
-          ...config,
-          defaults: {
-            ...cloneWeeklyPlanningDefaults(config.defaults),
-            breakMinutes: operation.minutes,
-          },
-        },
-        message: `休憩時間を${operation.minutes}分に変更しました。`,
-      };
-    }
-    case 'setSleepWindow': {
-      const defaults = cloneWeeklyPlanningDefaults(config.defaults);
-      defaults.sleepStartTime = operation.startTime;
-      defaults.wakeTime = operation.endTime;
-      defaults.availableStudyRanges = getAvailableStudyRangesForSleep({
-        wakeTime: defaults.wakeTime,
-        sleepStartTime: defaults.sleepStartTime,
-      });
-      return {
-        config: { ...config, defaults },
-        message: `睡眠時間を${operation.startTime}から${operation.endTime}に変更しました。`,
-      };
-    }
-    case 'addSessionIntentOverride': {
-      return {
-        config: {
-          ...config,
-          sessionIntentOverrides: mergeSessionIntentOverrides(
-            config.sessionIntentOverrides,
-            operation.override,
-          ),
-        },
-        message: operation.override.kind === 'fixed_two_hour'
-            ? '2時間単位を優先する設定に変更しました。'
-            : '長めのセッションを優先する設定に変更しました。',
-      };
-    }
-    case 'addQualityPreference': {
-      return {
-        config: {
-          ...config,
-          qualityPreferences: mergeWeeklyPlanningQualityPreferences(
-            config.qualityPreferences,
-            operation.preference,
-          ),
-        },
-        message: getQualityPreferenceMessage(operation.preference),
-      };
-    }
-    case 'allowPartialPlacement': {
-      return {
-        config: { ...config, allowPartialPlacement: true },
-        message: '配置できる分だけ作成する設定に変更しました。',
-      };
-    }
-    default: {
-      return { config, message: '' };
-    }
-  }
-}
-
-export function applyWeeklyPlanningConditionOverride(params: {
-  config: WeeklyPlanningPendingConfig;
-  text: string;
-}): WeeklyPlanningConditionOverrideResult {
-  const operations = parseWeeklyPlanningConditionOperations(params.text);
-
-  if (operations.length === 0) {
-    return {
-      kind: 'unrecognized',
-      config: params.config,
-      message: WEEKLY_PLANNING_CONDITION_OVERRIDE_HELP,
-    };
-  }
-
-  let nextConfig: WeeklyPlanningPendingConfig = {
-    ...params.config,
-    tasks: params.config.tasks.map((task) => ({ ...task, amount: { ...task.amount } })),
-    defaults: cloneWeeklyPlanningDefaults(params.config.defaults),
-    sessionIntentOverrides: [...(params.config.sessionIntentOverrides ?? [])],
-    qualityPreferences: [...(params.config.qualityPreferences ?? [])],
-  };
-  const messages: string[] = [];
-
-  operations.forEach((operation) => {
-    const result = applyWeeklyConditionOperation({
-      config: nextConfig,
-      operation,
-    });
-    nextConfig = result.config;
-
-    if (result.message) {
-      messages.push(result.message);
-    }
-  });
-
-  return {
-    kind: 'updated',
-    config: nextConfig,
-    messages,
-  };
-}
 
 function buildWeeklyPlanningConfirmationSummary(params: {
   tasks: SimpleWeeklyTask[];
@@ -1628,14 +1008,6 @@ function calculateWeeklyPlacementDiagnostics(params: {
   };
 }
 
-
-function hasTaskConsolidationIntent(text: string): boolean {
-  const normalizedText = normalizeWeeklyPlanningText(text);
-
-  return /\u4e00\u6c17|\u307e\u3068\u3081\u3066|\u7247\u3065\u3051|\u7247\u4ed8\u3051|\u5148\u306b|\u4eca\u65e5\u4e2d|\u512a\u5148|\u9577\u3081|(?:2|\u4e8c)\s*\u6642\u9593\s*\u5358\u4f4d/.test(
-    normalizedText,
-  );
-}
 
 function splitQuotaIntoSessionChunks(params: {
   quotaMinutes: number;
@@ -2388,7 +1760,6 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
         );
         continue;
       }
-
 
 
       unplacedMinutes += session.durationMinutes;
