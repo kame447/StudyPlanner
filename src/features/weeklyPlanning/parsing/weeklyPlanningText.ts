@@ -58,6 +58,9 @@ export function isPlacementConditionOnly(text: string): boolean {
     .trim();
 
   return (
+    /(?:避けたい|避ける|避けて|ならない|なりにくい|しない|しにくい|作らない|出ない|細切れ|分散|苦手|使わない)/.test(
+      normalizedText,
+    ) ||
     /^(?:(?:2|二)\s*時間\s*単位|長め|一気|まとめて)(?:で|に|でやりたい|にしたい)?$/.test(
       normalizedText,
     ) ||

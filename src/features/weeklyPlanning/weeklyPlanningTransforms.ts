@@ -62,8 +62,11 @@ import { splitDurationIntoSessionChunks } from './scheduling/sessionChunking';
 import {
   calculatePlacementScoreComponents,
   calculatePreferredOverlapMinutes,
+  comparePlacementRank,
+  createPlacementRank,
   createStartMinuteCandidatesForSlot,
   intervalOverlapsUnavailableRange,
+  makeDateTitleKey,
   sumPlacementScoreComponents,
 } from './scheduling/placementScoring';
 export {
@@ -1925,7 +1928,9 @@ function findBestSlot(params: {
   targetDailyMinutes: number;
   preferEarlierDates: boolean;
   preferredStartAfterMinutesByDate: Map<string, number>;
+  preferredStartAfterMinutesByDateAndTitle: Map<string, number>;
   subjectAnchorMinutesByTitle: Map<string, number>;
+  qualityPreferences?: WeeklyPlanningQualityPreference[];
 }): {
   slotIndex: number;
   startMinutes: number;
@@ -1939,7 +1944,11 @@ function findBestSlot(params: {
         return [];
       }
 
-      const adjacentStartMinutes = params.preferredStartAfterMinutesByDate.get(slot.date);
+      const dateBlocks = params.blocksByDate.get(slot.date) ?? [];
+      const adjacentStartMinutes =
+        params.preferredStartAfterMinutesByDateAndTitle.get(
+          makeDateTitleKey(slot.date, params.session.title),
+        ) ?? params.preferredStartAfterMinutesByDate.get(slot.date);
 
       return createStartMinuteCandidatesForSlot({
         slot,
@@ -1947,6 +1956,13 @@ function findBestSlot(params: {
         defaults: params.defaults,
         adjacentStartMinutes,
         subjectAnchorMinutes: params.subjectAnchorMinutesByTitle.get(params.session.title),
+        dateBlocks,
+        title: params.session.title,
+        subject: params.session.title,
+        label: params.session.title,
+        breakMinutes: params.defaults.breakMinutes,
+        minStudyBlockMinutes: params.defaults.minStudyBlockMinutes,
+        fallbackStepMinutes: 15,
       }).map((startMinutes) => {
         const endMinutes = startMinutes + params.session.durationMinutes;
         const components = calculatePlacementScoreComponents({
@@ -1961,6 +1977,18 @@ function findBestSlot(params: {
           subjectAnchorMinutesByTitle: params.subjectAnchorMinutesByTitle,
         });
         const score = sumPlacementScoreComponents(components);
+        const rank = createPlacementRank({
+          session: params.session,
+          date: slot.date,
+          startMinutes,
+          endMinutes,
+          components,
+          blocksByDate: params.blocksByDate,
+          dayLoads: params.dayLoads,
+          defaults: params.defaults,
+          targetDailyMinutes: params.targetDailyMinutes,
+          qualityPreferences: params.qualityPreferences,
+        });
 
         return {
           index,
@@ -1969,12 +1997,15 @@ function findBestSlot(params: {
           endMinutes,
           components,
           score,
+          rank,
         };
       });
     })
     .sort((left, right) => {
-      if (left.score !== right.score) {
-        return right.score - left.score;
+      const rankOrder = comparePlacementRank(left.rank, right.rank);
+
+      if (rankOrder !== 0) {
+        return rankOrder;
       }
 
       if (params.preferEarlierDates) {
@@ -2251,6 +2282,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
   );
   const dayLoads = new Map<string, number>();
   const datePreferredStartAfterMinutes = new Map<string, number>();
+  const dateTitlePreferredStartAfterMinutes = new Map<string, number>();
   const blocks: WeeklyPlanDraftBlock[] = [];
   const blocksByDate = new Map<string, WeeklyPlanDraftBlock[]>();
   const sessionEvaluations: SessionPlacementEvaluation[] = [];
@@ -2331,7 +2363,9 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
       preferEarlierDates:
         session.priority === 'high' || Boolean(session.deadlineDate),
       preferredStartAfterMinutesByDate: datePreferredStartAfterMinutes,
+      preferredStartAfterMinutesByDateAndTitle: dateTitlePreferredStartAfterMinutes,
       subjectAnchorMinutesByTitle,
+      qualityPreferences: params.pendingConfig?.qualityPreferences ?? [],
     });
 
     if (!placement) {
@@ -2448,6 +2482,10 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
     );
     datePreferredStartAfterMinutes.set(
       slot.date,
+      endMinutes + assessment.defaults.breakMinutes,
+    );
+    dateTitlePreferredStartAfterMinutes.set(
+      makeDateTitleKey(slot.date, session.title),
       endMinutes + assessment.defaults.breakMinutes,
     );
 
