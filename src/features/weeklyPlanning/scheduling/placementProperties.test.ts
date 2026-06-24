@@ -139,6 +139,7 @@ describe('weekly placement properties', () => {
         expectNoInvalidBlocks(result.blocks);
         expectNoUnavailableOverlaps(result.blocks, { unavailableRanges: defaults.unavailableRanges });
         expect(hasOverlapWithExistingPlans(result.blocks, existingPlans, defaults.bufferMinutes)).toBe(false);
+        expect(result.diagnostics?.hardViolationCount ?? 0).toBe(0);
         if (existingPlans.length === 0) {
           expectNoSameDayTitleReentry(result.blocks);
         }

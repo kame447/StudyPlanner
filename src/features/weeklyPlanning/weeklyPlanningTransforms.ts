@@ -1,11 +1,13 @@
 import { createId } from '../../lib/id';
 import { addDays, minutesFromTime, startOfWeek, timeFromMinutes } from '../../lib/date';
+import { getRecurrenceWeekday } from '../../lib/planRecurrence';
+import { buildTimetableImportCandidates } from '../../lib/timetableImport';
 import {
   detectType,
   parseDurationMinutes,
   splitAddTaskTexts,
 } from '../../services/naturalLanguageRules';
-import type { Plan, PlanDraft } from '../../types/domain';
+import type { Plan, PlanDraft, ScheduleTemplate } from '../../types/domain';
 import type { WeeklyPlanDraftBlock } from './types';
 import { normalizeWeeklyPlanningText } from './parsing/weeklyPlanningText';
 import { resolveSimpleTaskTitle } from './parsing/weeklyTitleCleanup';
@@ -54,6 +56,7 @@ import {
 } from './scheduling/dailyDistribution';
 import {
   buildAvailabilitySlots,
+  buildPlanBusyIntervalsForDate,
   intersectInterval,
   sumIntervals,
   sumSlotMinutes,
@@ -113,6 +116,7 @@ import type {
   WeeklyPlanningQualityPreference,
   WeeklyPlanningRequestAssessment,
   WeeklyPlanningSessionBlock,
+  WeeklyPlanningTimetableConstraints,
 } from './weeklyPlanningTypes';
 export type {
   AvailabilityAwareWeeklyDraftResult,
@@ -146,6 +150,7 @@ export type {
   WeeklyPlanningQualityPreference,
   WeeklyPlanningRequestAssessment,
   WeeklyPlanningSessionBlock,
+  WeeklyPlanningTimetableConstraints,
 } from './weeklyPlanningTypes';
 function nowIso(): string {
   return new Date().toISOString();
@@ -614,6 +619,77 @@ export function mergeWeeklyPlanningRevision(params: {
   };
 }
 
+function getScheduleTemplateTermId(template: ScheduleTemplate): string {
+  return template.termId || 'default';
+}
+
+function createTimetableBlockingPlans(params: {
+  userId: string;
+  defaults: WeeklyPlanningDefaultConditions;
+} & WeeklyPlanningTimetableConstraints): Plan[] {
+  const templates = (params.scheduleTemplates ?? []).filter(
+    (template) => getScheduleTemplateTermId(template) === (params.timetableTermId ?? 'default'),
+  );
+
+  if (templates.length === 0) {
+    return [];
+  }
+
+  const termId = params.timetableTermId ?? 'default';
+  const planningDates = Array.from(
+    { length: params.defaults.dayCount },
+    (_, index) => addDays(params.defaults.startDate, index),
+  );
+
+  return planningDates.flatMap((date) =>
+    buildTimetableImportCandidates({
+      templates,
+      date,
+      weekday: getRecurrenceWeekday(date),
+      termId,
+    }).map((candidate) => ({
+      id: 'weekly-timetable-block:' + candidate.sourceId,
+      seriesId: 'weekly-timetable-block',
+      userId: params.userId,
+      title: candidate.title,
+      subject: candidate.subject,
+      date,
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+      repeat: 'none',
+      repeatUntil: null,
+      excludedDates: [],
+      recurrenceRules: [],
+      type: candidate.type,
+      memo: candidate.memo,
+      createdAt: '',
+      updatedAt: '',
+      sourceType: 'timetable',
+      sourceId: candidate.sourceId,
+    })),
+  );
+}
+
+function countHardConstraintViolations(params: {
+  blocks: WeeklyPlanDraftBlock[];
+  existingPlans: Plan[];
+  defaults: WeeklyPlanningDefaultConditions;
+}): number {
+  return params.blocks.reduce((count, block) => {
+    const blockInterval = {
+      startMinutes: minutesFromTime(block.startTime),
+      endMinutes: minutesFromTime(block.endTime),
+    };
+    const hasBusyOverlap = buildPlanBusyIntervalsForDate({
+      date: block.date,
+      plans: params.existingPlans,
+      bufferMinutes: params.defaults.bufferMinutes,
+    }).some((busyInterval) => intersectInterval(blockInterval, busyInterval));
+
+    return hasBusyOverlap ? count + 1 : count;
+  }, 0);
+}
+
 function calculateBreakMinutesConsumed(params: {
   blocks: WeeklyPlanDraftBlock[];
   breakMinutes: number;
@@ -925,6 +1001,11 @@ function calculateWeeklyPlacementDiagnostics(params: {
     blocks: params.blocks,
     breakMinutes: params.defaults.breakMinutes,
   });
+  const hardViolationCount = countHardConstraintViolations({
+    blocks: params.blocks,
+    existingPlans: params.existingPlans,
+    defaults: params.defaults,
+  });
   const unusedAvailableMinutes = sumSlotMinutes(params.remainingSlots);
   const planningDates = Array.from(
     { length: params.defaults.dayCount },
@@ -994,6 +1075,7 @@ function calculateWeeklyPlacementDiagnostics(params: {
     totalAvailableCapacity,
     totalUnavailableMinutes,
     existingPlanBlockedMinutes,
+    hardViolationCount,
     breakMinutesConsumed,
     unusedAvailableMinutes,
     dailyCapacity,
@@ -1587,7 +1669,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
   existingPlans?: Plan[];
   allowPartialPlacement?: boolean;
   pendingConfig?: WeeklyPlanningPendingConfig;
-}): AvailabilityAwareWeeklyDraftResult {
+} & WeeklyPlanningTimetableConstraints): AvailabilityAwareWeeklyDraftResult {
   const assessment: WeeklyPlanningRequestAssessment = params.pendingConfig
     ? {
         kind: 'ready',
@@ -1622,9 +1704,18 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
   }
 
   const timestamp = nowIso();
+  const blockingPlans = [
+    ...(params.existingPlans ?? []),
+    ...createTimetableBlockingPlans({
+      userId: params.userId,
+      defaults: assessment.defaults,
+      scheduleTemplates: params.scheduleTemplates,
+      timetableTermId: params.timetableTermId,
+    }),
+  ];
   const slots = buildAvailabilitySlots({
     defaults: assessment.defaults,
-    existingPlans: params.existingPlans ?? [],
+    existingPlans: blockingPlans,
   }).sort((left, right) => {
     const dateOrder = left.date.localeCompare(right.date);
 
@@ -1700,7 +1791,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
       break;
     }
 
-    if ((params.existingPlans?.length ?? 0) > 0 && session.durationMinutes > 90) {
+    if (blockingPlans.length > 0 && session.durationMinutes > 90) {
       const retrySplitMinutes = splitSessionMinutesForRetry(
         session,
         assessment.defaults,
@@ -1894,7 +1985,7 @@ export function createAvailabilityAwareWeeklyDraftBlocksFromText(params: {
   );
   const diagnostics = calculateWeeklyPlacementDiagnostics({
     defaults: assessment.defaults,
-    existingPlans: params.existingPlans ?? [],
+    existingPlans: blockingPlans,
     requestedMinutes,
     placedMinutes,
     unplacedMinutes,

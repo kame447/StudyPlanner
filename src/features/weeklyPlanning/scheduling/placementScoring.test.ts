@@ -11,6 +11,7 @@ import {
   countSameDaySubjectFragmentations,
   countSubjectSwitches,
   expectBlocksSortedByDateAndStartTime,
+  hasOverlapWithExistingPlans,
   lateMinutesForTitles,
   maxRunsForSameTitleInDay,
   minutesBetween,
@@ -890,5 +891,106 @@ describe('scheduling placementScoring', () => {
 
     expect(result.blocks).toHaveLength(1);
     expect(minutesFromClock(result.blocks[0].startTime)).toBeLessThan(8 * 60);
+  });
+
+
+  it('treats active timetable templates as existing busy intervals for weekly planning', () => {
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: SELECTED_DATE,
+      text: '来週、英語150分やりたい',
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({
+      sourceText: '来週、英語150分やりたい',
+      assessment,
+    });
+    const defaults = {
+      ...pendingConfig.defaults,
+      dayCount: 1,
+      reserveDate: '2026-06-30',
+      bufferMinutes: 30,
+      availableStudyRanges: [
+        { startTime: '09:00', endTime: '13:00', reason: 'test available' },
+      ],
+      preferredStudyRanges: [
+        { startTime: '09:00', endTime: '13:00', reason: 'test preferred' },
+      ],
+      unavailableRanges: [],
+    };
+    const scheduleTemplates = [
+      {
+        id: 'template-mon-2',
+        userId: 'user-1',
+        title: '計算理論',
+        subject: '計算理論',
+        type: 'school-event' as const,
+        weekday: 'tue' as const,
+        startTime: '10:20',
+        endTime: '11:50',
+        termId: 'term-1',
+        periodNumber: 2,
+        classroom: 'A101',
+        memo: '',
+        active: true,
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+      },
+    ];
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: SELECTED_DATE,
+      text: 'この条件で作成',
+      scheduleTemplates,
+      timetableTermId: 'term-1',
+      allowPartialPlacement: true,
+      pendingConfig: { ...pendingConfig, defaults },
+    });
+
+    expect(result.placedMinutes + result.unplacedMinutes).toBe(150);
+    expect(result.unplacedMinutes).toBeGreaterThan(0);
+    expect(result.blocks.some((block) => {
+      const startMinutes = minutesFromClock(block.startTime);
+      const endMinutes = minutesFromClock(block.endTime);
+      return block.date === defaults.startDate && startMinutes < 12 * 60 + 20 && endMinutes > 9 * 60 + 50;
+    })).toBe(false);
+    expect(result.diagnostics?.hardViolationCount).toBe(0);
+  });
+  it('keeps minutes unplaced instead of violating existing plan buffers', () => {
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: SELECTED_DATE,
+      text: '来週、英語150分やりたい',
+    });
+    const pendingConfig = createWeeklyPlanningPendingConfig({
+      sourceText: '来週、英語150分やりたい',
+      assessment,
+    });
+    const defaults = {
+      ...pendingConfig.defaults,
+      dayCount: 1,
+      reserveDate: '2026-06-30',
+      bufferMinutes: 30,
+      availableStudyRanges: [
+        { startTime: '09:00', endTime: '13:00', reason: 'test available' },
+      ],
+      preferredStudyRanges: [
+        { startTime: '09:00', endTime: '13:00', reason: 'test preferred' },
+      ],
+      unavailableRanges: [],
+    };
+    const existingPlans = [
+      plan({ date: defaults.startDate, startTime: '10:20', endTime: '11:50' }),
+    ];
+    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
+      userId: 'user-1',
+      selectedDate: SELECTED_DATE,
+      text: 'この条件で作成',
+      existingPlans,
+      allowPartialPlacement: true,
+      pendingConfig: { ...pendingConfig, defaults },
+    });
+
+    expect(result.placedMinutes + result.unplacedMinutes).toBe(150);
+    expect(result.unplacedMinutes).toBeGreaterThan(0);
+    expect(hasOverlapWithExistingPlans(result.blocks, existingPlans, defaults.bufferMinutes)).toBe(false);
+    expect(result.diagnostics?.hardViolationCount).toBe(0);
   });
 });

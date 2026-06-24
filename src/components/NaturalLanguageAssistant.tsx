@@ -32,6 +32,7 @@ import type {
   Plan,
   PlanDraft,
   SuggestionField,
+  ScheduleTemplate,
   StudyMaterial,
   StudySubject,
 } from '../types/domain';
@@ -42,6 +43,8 @@ interface NaturalLanguageAssistantProps {
   plans: Plan[];
   materials?: StudyMaterial[];
   subjects?: StudySubject[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
@@ -217,6 +220,8 @@ export function NaturalLanguageAssistant({
   plans,
   materials = [],
   subjects = [],
+  scheduleTemplates = [],
+  timetableTermId,
   onApplyDraft,
   weeklyDraftBlocks = [],
   onCreateWeeklyDraftBlocks,
@@ -469,6 +474,8 @@ export function NaturalLanguageAssistant({
         text: config.sourceText,
         pendingConfig: config,
         existingPlans: plans,
+        scheduleTemplates,
+        timetableTermId,
         allowPartialPlacement: config.allowPartialPlacement,
       });
 

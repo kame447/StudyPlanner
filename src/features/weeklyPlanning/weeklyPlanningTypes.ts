@@ -1,4 +1,4 @@
-import type { PlanType } from '../../types/domain';
+import type { PlanType, ScheduleTemplate } from '../../types/domain';
 import type { WeeklyPlanDraftBlock } from './types';
 
 export interface WeeklyPlanningTaskAmount {
@@ -277,6 +277,11 @@ export interface WeeklyPlanningRequestAssessment {
   confirmationSummary: string;
 }
 
+export interface WeeklyPlanningTimetableConstraints {
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+}
+
 export interface AvailabilityAwareWeeklyDraftResult {
   blocks: WeeklyPlanDraftBlock[];
   placedMinutes: number;
@@ -371,6 +376,7 @@ export interface WeeklyPlacementDiagnostics {
   totalAvailableCapacity: number;
   totalUnavailableMinutes: number;
   existingPlanBlockedMinutes: number;
+  hardViolationCount: number;
   breakMinutesConsumed: number;
   unusedAvailableMinutes: number;
   dailyCapacity: Array<{

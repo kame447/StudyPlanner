@@ -8,6 +8,50 @@ export function intersectInterval(left: TimeInterval, right: TimeInterval): bool
   return left.startMinutes < right.endMinutes && right.startMinutes < left.endMinutes;
 }
 
+export function mergeIntervals(intervals: TimeInterval[]): TimeInterval[] {
+  return intervals
+    .filter((interval) => interval.endMinutes > interval.startMinutes)
+    .slice()
+    .sort((left, right) => {
+      const startDelta = left.startMinutes - right.startMinutes;
+
+      if (startDelta !== 0) {
+        return startDelta;
+      }
+
+      return left.endMinutes - right.endMinutes;
+    })
+    .reduce<TimeInterval[]>((merged, interval) => {
+      const previous = merged[merged.length - 1];
+
+      if (!previous || interval.startMinutes > previous.endMinutes) {
+        merged.push({ ...interval });
+        return merged;
+      }
+
+      previous.endMinutes = Math.max(previous.endMinutes, interval.endMinutes);
+      return merged;
+    }, []);
+}
+
+export function buildPlanBusyIntervalsForDate(params: {
+  date: string;
+  plans: Plan[];
+  bufferMinutes: number;
+}): TimeInterval[] {
+  return mergeIntervals(
+    params.plans
+      .filter((plan) => plan.date === params.date)
+      .map((plan) => ({
+        startMinutes: Math.max(0, minutesFromTime(plan.startTime) - params.bufferMinutes),
+        endMinutes: Math.min(
+          SIMPLE_DRAFT_DAY_END_MINUTES,
+          minutesFromTime(plan.endTime) + params.bufferMinutes,
+        ),
+      })),
+  );
+}
+
 export function subtractInterval(slots: TimeInterval[], blocked: TimeInterval): TimeInterval[] {
   return slots.flatMap((slot) => {
     if (!intersectInterval(slot, blocked)) {
@@ -72,20 +116,13 @@ export function buildAvailabilitySlots(params: {
   return planningDates.flatMap((date) => {
     let intervals = [...baseIntervals];
 
-    params.existingPlans
-      .filter((plan) => plan.date === date)
-      .forEach((plan) => {
-        intervals = subtractInterval(intervals, {
-          startMinutes: Math.max(
-            0,
-            minutesFromTime(plan.startTime) - params.defaults.bufferMinutes,
-          ),
-          endMinutes: Math.min(
-            SIMPLE_DRAFT_DAY_END_MINUTES,
-            minutesFromTime(plan.endTime) + params.defaults.bufferMinutes,
-          ),
-        });
-      });
+    buildPlanBusyIntervalsForDate({
+      date,
+      plans: params.existingPlans,
+      bufferMinutes: params.defaults.bufferMinutes,
+    }).forEach((busyInterval) => {
+      intervals = subtractInterval(intervals, busyInterval);
+    });
 
     return intervals
       .filter(

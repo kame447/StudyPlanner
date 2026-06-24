@@ -500,6 +500,8 @@ export default function App() {
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
+            scheduleTemplates={scheduleTemplates}
+            timetableTermId={activeTimetableTermId}
             weeklyDraftBlocks={pendingWeeklyDraftBlocks}
             onCreateWeeklyDraftBlocks={(blocks) =>
               dispatchPlanningAction({ type: 'add_draft_blocks', blocks })
