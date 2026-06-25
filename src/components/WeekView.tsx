@@ -130,6 +130,33 @@ function getWeekTimelineDisplayClass(laneCount: number): string {
   return 'week-timeline-block--wide';
 }
 
+function getWeekTimelineDurationClass(startTime: string, endTime: string): string {
+  const durationMinutes = minutesBetween(startTime, endTime);
+
+  if (durationMinutes <= 15) {
+    return 'week-timeline-block--micro';
+  }
+
+  if (durationMinutes <= 30) {
+    return 'week-timeline-block--tiny';
+  }
+
+  if (durationMinutes <= 45) {
+    return 'week-timeline-block--short';
+  }
+
+  return '';
+}
+
+function getWeekTimelineBlockClass(entry: WeekTimelineBlock): string {
+  return [
+    getWeekTimelineDisplayClass(entry.laneCount),
+    getWeekTimelineDurationClass(entry.startTime, entry.endTime),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function resolveActualTitle(actual: Actual, plan?: Plan): string {
   return actual.title?.trim() || plan?.title || '記録';
 }
@@ -385,14 +412,16 @@ export function WeekView({
                       entry.type,
                       entry.sourceType,
                     );
+                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
 
                     return (
                       <button
                         key={`plan-${entry.id}`}
-                        className={`week-timeline-block week-timeline-plan-block ${getWeekTimelineDisplayClass(entry.laneCount)}`}
+                        className={`week-timeline-block week-timeline-plan-block ${getWeekTimelineBlockClass(entry)}`}
                         style={buildWeekTimelineBlockStyle(entry)}
                         onClick={() => onOpenDay(date)}
-                        title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        title={[entry.title, entry.startTime + '-' + entry.endTime, subjectLabel].join(' / ')}
+                        aria-label={entry.title + '、' + entry.startTime + 'から' + entry.endTime + '、' + subjectLabel}
                         type="button"
                       >
                         <span className="week-timeline-entry-line">
@@ -403,7 +432,9 @@ export function WeekView({
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span className="week-timeline-subject">{subjectLabel}</span>
+                            {showSubjectLabel ? (
+                              <span className="week-timeline-subject">{subjectLabel}</span>
+                            ) : null}
                           </span>
                         </span>
                       </button>
@@ -413,26 +444,32 @@ export function WeekView({
                 {(timelineMode === 'plan' || timelineMode === 'compare') &&
                   draftBlocks.map((entry) => {
                     const subjectLabel = getSubjectLabel(entry.subject, entry.type);
+                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
 
                     return (
                       <div
                         key={`draft-${entry.id}`}
-                        className={`week-timeline-block week-timeline-draft-block ${getWeekTimelineDisplayClass(entry.laneCount)}`}
+                        className={`week-timeline-block week-timeline-draft-block ${getWeekTimelineBlockClass(entry)}`}
                         style={buildWeekTimelineBlockStyle(entry)}
-                        title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        title={[entry.title, entry.startTime + '-' + entry.endTime, subjectLabel, '仮予定'].join(' / ')}
+                        aria-label={entry.title + '、' + entry.startTime + 'から' + entry.endTime + '、' + subjectLabel + '、仮予定'}
+                        role="group"
                         onDoubleClick={(event) => event.stopPropagation()}
                       >
                         <span className="week-timeline-entry-line">
-                          <strong className="week-timeline-block__title">
-                            {entry.title}
-                          </strong>
+                          <span className="week-timeline-title-row">
+                            <strong className="week-timeline-block__title">
+                              {entry.title}
+                            </strong>
+                            <span className="weekly-draft-badge">仮予定</span>
+                          </span>
                           <span className="week-timeline-meta">
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span className="week-timeline-subject">{subjectLabel}</span>
-                            <span className="weekly-draft-badge">仮予定</span>
-                            <span className="weekly-draft-badge">AI提案</span>
+                            {showSubjectLabel ? (
+                              <span className="week-timeline-subject">{subjectLabel}</span>
+                            ) : null}
                           </span>
                         </span>
                         {onRemoveWeeklyDraftBlock ? (
@@ -465,11 +502,12 @@ export function WeekView({
                       entry.type,
                       entry.sourceType,
                     );
+                    const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
 
                     return (
                       <button
                         key={`actual-${entry.id}`}
-                        className={`week-timeline-block week-timeline-actual-block ${getWeekTimelineDisplayClass(entry.laneCount)}`}
+                        className={`week-timeline-block week-timeline-actual-block ${getWeekTimelineBlockClass(entry)}`}
                         style={{
                           ...buildWeekTimelineBlockStyle(
                             entry,
@@ -484,7 +522,8 @@ export function WeekView({
                               : `inset 4px 0 0 ${theme.fill}`,
                         }}
                         onClick={() => onOpenDay(date)}
-                        title={`${entry.title} / ${entry.startTime} - ${entry.endTime}`}
+                        title={[entry.title, entry.startTime + '-' + entry.endTime, subjectLabel].join(' / ')}
+                        aria-label={entry.title + '、' + entry.startTime + 'から' + entry.endTime + '、' + subjectLabel}
                         type="button"
                       >
                         <span className="week-timeline-entry-line">
@@ -495,7 +534,9 @@ export function WeekView({
                             <span className="week-timeline-time">
                               {entry.startTime}-{entry.endTime}
                             </span>
-                            <span className="week-timeline-subject">{subjectLabel}</span>
+                            {showSubjectLabel ? (
+                              <span className="week-timeline-subject">{subjectLabel}</span>
+                            ) : null}
                           </span>
                         </span>
                       </button>

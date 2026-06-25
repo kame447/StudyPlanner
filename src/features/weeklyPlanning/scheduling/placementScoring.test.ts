@@ -5,6 +5,7 @@ import {
   createAvailabilityAwareWeeklyDraftBlocksFromText,
   createWeeklyPlanningPendingConfig,
 } from '../weeklyPlanningTransforms';
+const SELECTED_DATE = '2026-06-19';
 import {
   averageStartMinutesByDateForTitle,
   blocksGroupedByDate,

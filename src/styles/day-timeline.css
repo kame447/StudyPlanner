@@ -295,6 +295,73 @@
   outline-offset: 1px;
 }
 
+.timeline-plan-block.is-compact,
+.timeline-actual-block.is-compact,
+.timeline-plan-block.is-narrow,
+.timeline-actual-block.is-narrow {
+  padding-inline: 5px;
+  border-radius: 10px;
+}
+
+.timeline-plan-block.is-short,
+.timeline-plan-block.is-tiny,
+.timeline-plan-block.is-micro,
+.timeline-actual-block.is-short,
+.timeline-actual-block.is-tiny,
+.timeline-actual-block.is-micro {
+  padding-block: 2px;
+  padding-inline: 5px;
+  border-radius: 9px;
+}
+
+.timeline-plan-block.is-short .timeline-entry-line,
+.timeline-plan-block.is-tiny .timeline-entry-line,
+.timeline-plan-block.is-micro .timeline-entry-line,
+.timeline-actual-block.is-short .timeline-entry-line,
+.timeline-actual-block.is-tiny .timeline-entry-line,
+.timeline-actual-block.is-micro .timeline-entry-line {
+  gap: 3px;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.timeline-plan-block.is-compact .timeline-entry-subject,
+.timeline-plan-block.is-narrow .timeline-entry-subject,
+.timeline-plan-block.is-short .timeline-entry-subject,
+.timeline-plan-block.is-tiny .timeline-entry-subject,
+.timeline-plan-block.is-micro .timeline-entry-time,
+.timeline-plan-block.is-micro .timeline-entry-subject,
+.timeline-actual-block.is-compact .timeline-entry-subject,
+.timeline-actual-block.is-narrow .timeline-entry-subject,
+.timeline-actual-block.is-short .timeline-entry-subject,
+.timeline-actual-block.is-tiny .timeline-entry-subject,
+.timeline-actual-block.is-micro .timeline-entry-time,
+.timeline-actual-block.is-micro .timeline-entry-subject {
+  display: none;
+}
+
+.timeline-plan-block.is-tiny .timeline-entry-title,
+.timeline-plan-block.is-micro .timeline-entry-title,
+.timeline-actual-block.is-tiny .timeline-entry-title,
+.timeline-actual-block.is-micro .timeline-entry-title {
+  font-size: 0.72rem;
+}
+
+.timeline-draft-block.is-short,
+.timeline-draft-block.is-tiny,
+.timeline-draft-block.is-micro {
+  padding-right: 22px;
+}
+
+.timeline-draft-block.is-tiny .weekly-draft-remove-button,
+.timeline-draft-block.is-micro .weekly-draft-remove-button {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  font-size: 0.58rem;
+}
+
 .timeline-plan-block p,
 .timeline-actual-block p {
   margin-bottom: 0;
@@ -316,6 +383,43 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.timeline-draft-block .timeline-entry-line {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.timeline-draft-block .timeline-entry-meta-row {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.timeline-draft-block .timeline-entry-meta-row .timeline-entry-time,
+.timeline-draft-block .timeline-entry-meta-row .weekly-draft-badge {
+  flex: 0 0 auto;
+}
+
+.timeline-draft-block .timeline-entry-meta-row .timeline-entry-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-draft-block .weekly-draft-badge {
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timeline-entry-title,

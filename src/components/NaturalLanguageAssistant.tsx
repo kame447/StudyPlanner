@@ -190,16 +190,22 @@ function buildExistingPlanPreviewStyle(
   );
 }
 
-function buildExistingPlanBufferPreviewStyle(params: {
-  plan: Plan;
-  bufferMinutes: number;
-  rangeStartMinutes: number;
-}): CSSProperties {
-  return buildWeeklyDraftPreviewMinuteRangeStyle(
-    Math.max(0, minutesFromTime(params.plan.startTime) - params.bufferMinutes),
-    Math.min(24 * 60, minutesFromTime(params.plan.endTime) + params.bufferMinutes),
-    params.rangeStartMinutes,
-  );
+function getExistingPlanPreviewSizeClass(plan: Plan): string {
+  const durationMinutes = minutesBetween(plan.startTime, plan.endTime);
+
+  if (durationMinutes <= 30) {
+    return 'weekly-draft-preview-existing--micro';
+  }
+
+  if (durationMinutes <= 45) {
+    return 'weekly-draft-preview-existing--tiny';
+  }
+
+  if (durationMinutes <= 60) {
+    return 'weekly-draft-preview-existing--short';
+  }
+
+  return '';
 }
 
 function createWeeklyPlanningMessage(
@@ -244,8 +250,6 @@ export function NaturalLanguageAssistant({
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
   const [weeklyPlanningPendingConfig, setWeeklyPlanningPendingConfig] =
     useState<WeeklyPlanningPendingConfig | null>(null);
-  const [weeklyDraftPreviewBufferMinutes, setWeeklyDraftPreviewBufferMinutes] =
-    useState(30);
   const [weeklyPlanningMessages, setWeeklyPlanningMessages] = useState<
     WeeklyPlanningMessage[]
   >([]);
@@ -482,7 +486,6 @@ export function NaturalLanguageAssistant({
       if (plannedDraftResult.blocks.length > 0) {
         onClearWeeklyDraftBlocks?.();
         createWeeklyDraftBlocks(plannedDraftResult.blocks);
-        setWeeklyDraftPreviewBufferMinutes(plannedDraftResult.defaults.bufferMinutes);
         setWeeklyDraftPreviewMode('overview');
         setSelectedWeeklyDraftDate('');
         setWeeklyPlanningPendingConfig(null);
@@ -1109,28 +1112,21 @@ export function NaturalLanguageAssistant({
                               ))}
                               {group.existingPlans.map((plan) => (
                                 <span
-                                  className="weekly-draft-preview-buffer weekly-draft-preview-buffer--overview"
-                                  key={`${plan.id}-buffer`}
-                                  style={buildExistingPlanBufferPreviewStyle({
-                                    plan,
-                                    bufferMinutes: weeklyDraftPreviewBufferMinutes,
-                                    rangeStartMinutes: pendingWeeklyDraftPreviewStartMinutes,
-                                  })}
-                                  title={`バッファ / ${plan.startTime}-${plan.endTime} 前後${weeklyDraftPreviewBufferMinutes}分`}
-                                />
-                              ))}
-                              {group.existingPlans.map((plan) => (
-                                <span
-                                  className="weekly-draft-preview-existing weekly-draft-preview-existing--overview"
+                                  className={[
+                                    'weekly-draft-preview-existing weekly-draft-preview-existing--overview',
+                                    getExistingPlanPreviewSizeClass(plan),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' ')}
                                   key={plan.id}
                                   style={buildExistingPlanPreviewStyle(
                                     plan,
                                     pendingWeeklyDraftPreviewStartMinutes,
                                   )}
-                                  title={`既存予定: ${plan.title} / ${plan.startTime}-${plan.endTime}`}
+                                  title={`${plan.title} / ${plan.startTime}-${plan.endTime}`}
                                 >
                                   <strong>{plan.title}</strong>
-                                  <small>既存予定</small>
+                                  <small>{plan.startTime}-{plan.endTime}</small>
                                 </span>
                               ))}
                               {group.blocks.map((block) => (
@@ -1158,13 +1154,6 @@ export function NaturalLanguageAssistant({
                 ) : (
                   <div className="weekly-draft-day-detail">
                     <div className="weekly-draft-day-detail-header">
-                      <button
-                        className="ghost-button weekly-draft-back-button"
-                        onClick={() => setWeeklyDraftPreviewMode('overview')}
-                        type="button"
-                      >
-                        全体に戻る
-                      </button>
                       <strong>
                         {activeWeeklyDraftDate
                           ? formatDraftDateLabel(activeWeeklyDraftDate)
@@ -1229,20 +1218,6 @@ export function NaturalLanguageAssistant({
                             />
                           ))}
                           {activeWeeklyExistingPlans.map((plan) => (
-                            <span
-                              className="weekly-draft-preview-buffer weekly-draft-preview-buffer--detail"
-                              key={`${plan.id}-buffer`}
-                              style={buildExistingPlanBufferPreviewStyle({
-                                plan,
-                                bufferMinutes: weeklyDraftPreviewBufferMinutes,
-                                rangeStartMinutes: pendingWeeklyDraftPreviewStartMinutes,
-                              })}
-                              title={`バッファ / ${plan.startTime}-${plan.endTime} 前後${weeklyDraftPreviewBufferMinutes}分`}
-                            >
-                              バッファ
-                            </span>
-                          ))}
-                          {activeWeeklyExistingPlans.map((plan) => (
                             <div
                               className="weekly-draft-preview-existing weekly-draft-preview-existing--detail"
                               key={plan.id}
@@ -1250,17 +1225,13 @@ export function NaturalLanguageAssistant({
                                 plan,
                                 pendingWeeklyDraftPreviewStartMinutes,
                               )}
-                              title={`既存予定: ${plan.title} / ${plan.startTime}-${plan.endTime}`}
+                              title={`${plan.title} / ${plan.startTime}-${plan.endTime}`}
                             >
                               <span className="weekly-draft-preview-block-main">
                                 <strong>{plan.title}</strong>
                                 <small>
                                   {plan.startTime}-{plan.endTime}
                                 </small>
-                              </span>
-                              <span className="weekly-draft-preview-badges">
-                                <span className="weekly-draft-badge">既存予定</span>
-                                <span className="weekly-draft-badge">編集対象外</span>
                               </span>
                             </div>
                           ))}
@@ -1276,15 +1247,13 @@ export function NaturalLanguageAssistant({
                             >
                               <span className="weekly-draft-preview-block-main">
                                 <strong>{block.title}</strong>
-                                <small>
-                                  {block.startTime}-{block.endTime}
+                                <small className="weekly-draft-preview-meta-row">
+                                  <span>{block.startTime}-{block.endTime}</span>
+                                  <span className="weekly-draft-badge">仮予定</span>
+                                  <span className="weekly-draft-badge weekly-draft-preview-subject-badge">
+                                    {block.label || block.subject || block.title}
+                                  </span>
                                 </small>
-                              </span>
-                              <span className="weekly-draft-preview-badges">
-                                <span className="weekly-draft-badge">仮予定</span>
-                                <span className="weekly-draft-badge">
-                                  {block.label || block.subject || block.title}
-                                </span>
                               </span>
                               {onRemoveWeeklyDraftBlock ? (
                                 <button

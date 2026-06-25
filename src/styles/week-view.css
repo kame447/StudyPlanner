@@ -342,6 +342,41 @@
   font-weight: 700;
 }
 
+.week-timeline-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.week-timeline-title-row .week-timeline-block__title {
+  min-width: 0;
+}
+
+.week-timeline-title-row .weekly-draft-badge {
+  flex: 0 0 auto;
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-timeline-block:not(.week-timeline-block--short):not(.week-timeline-block--tiny):not(.week-timeline-block--micro) .week-timeline-block__title {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.08;
+}
+
+.week-timeline-block--short .week-timeline-block__title,
+.week-timeline-block--tiny .week-timeline-block__title,
+.week-timeline-block--micro .week-timeline-block__title {
+  display: block;
+  white-space: nowrap;
+}
+
 .week-timeline-meta {
   display: flex;
   align-items: center;
@@ -504,3 +539,55 @@
   border-color: color-mix(in srgb, var(--danger) 42%, var(--border) 58%);
 }
 
+.week-timeline-block--short,
+.week-timeline-block--tiny,
+.week-timeline-block--micro {
+  padding: 2px 5px;
+  border-radius: 8px;
+}
+
+.week-timeline-block--short .week-timeline-entry-line,
+.week-timeline-block--tiny .week-timeline-entry-line,
+.week-timeline-block--micro .week-timeline-entry-line {
+  display: grid;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.week-timeline-block--short .week-timeline-meta,
+.week-timeline-block--tiny .week-timeline-meta {
+  gap: 3px;
+}
+
+.week-timeline-block--short .week-timeline-subject,
+.week-timeline-block--tiny .week-timeline-subject,
+.week-timeline-block--micro .week-timeline-meta {
+  display: none;
+}
+
+.week-timeline-block--short .week-timeline-time,
+.week-timeline-block--tiny .week-timeline-time {
+  font-size: 0.54rem;
+}
+
+.week-timeline-block--micro .week-timeline-block__title {
+  font-size: 0.56rem;
+  line-height: 1;
+}
+
+.week-timeline-draft-block.week-timeline-block--short,
+.week-timeline-draft-block.week-timeline-block--tiny,
+.week-timeline-draft-block.week-timeline-block--micro {
+  padding-right: 22px;
+}
+
+.week-timeline-block--tiny .weekly-draft-remove-button,
+.week-timeline-block--micro .weekly-draft-remove-button {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  font-size: 0.58rem;
+}

@@ -172,6 +172,31 @@ function buildColumnBlockStyle(
   };
 }
 
+function getTimelineDensityClass(
+  startTime: string,
+  endTime: string,
+  laneCount: number
+): string {
+  const durationMinutes = minutesBetween(startTime, endTime);
+  const classes: string[] = [];
+
+  if (laneCount >= 3) {
+    classes.push("is-narrow");
+  } else if (laneCount >= 2) {
+    classes.push("is-compact");
+  }
+
+  if (durationMinutes <= 15) {
+    classes.push("is-micro");
+  } else if (durationMinutes <= 30) {
+    classes.push("is-tiny");
+  } else if (durationMinutes <= 45) {
+    classes.push("is-short");
+  }
+
+  return classes.join(" ");
+}
+
 function resolveActualTitle(actual: Actual, plan: Plan): string {
   const actualTitle = actual.title?.trim();
   return actualTitle || plan.title;
@@ -445,15 +470,22 @@ export function DayTimeline({
                     entry.type,
                     entry.sourceType
                   );
+                  const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
 
                   return (
                     <button
                       key={entry.id}
-                      className={
-                        selectedEntryId === entry.selectionId
-                          ? "timeline-plan-block split is-selected"
-                          : "timeline-plan-block split"
-                      }
+                      className={[
+                        "timeline-plan-block split",
+                        selectedEntryId === entry.selectionId ? "is-selected" : "",
+                        getTimelineDensityClass(
+                          entry.startTime,
+                          entry.endTime,
+                          entry.laneCount
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       style={buildColumnBlockStyle(
                         minutesFromTime(entry.startTime),
                         duration,
@@ -468,6 +500,8 @@ export function DayTimeline({
                             : { kind: "month-event", id: entry.targetId }
                         )
                       }
+                      title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
+                      aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel}
                       type="button"
                     >
                       <div className="timeline-entry-line">
@@ -480,13 +514,15 @@ export function DayTimeline({
                         <span className="timeline-entry-time">
                           {entry.startTime}-{entry.endTime}
                         </span>
-                        <span
-                          className="timeline-entry-subject"
-                          style={{ color: theme.text }}
-                          title={subjectLabel}
-                        >
-                          {subjectLabel}
-                        </span>
+                        {showSubjectLabel ? (
+                          <span
+                            className="timeline-entry-subject"
+                            style={{ color: theme.text }}
+                            title={subjectLabel}
+                          >
+                            {subjectLabel}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -499,11 +535,21 @@ export function DayTimeline({
                     entry.type,
                     entry.sourceType
                   );
+                  const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
 
                   return (
                     <div
                       key={`draft-${entry.id}`}
-                      className="timeline-plan-block split timeline-draft-block"
+                      className={[
+                        "timeline-plan-block split timeline-draft-block",
+                        getTimelineDensityClass(
+                          entry.startTime,
+                          entry.endTime,
+                          entry.laneCount
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       style={buildColumnBlockStyle(
                         minutesFromTime(entry.startTime),
                         duration,
@@ -511,7 +557,9 @@ export function DayTimeline({
                         entry.laneCount,
                         "plan"
                       )}
-                      title={`${entry.title} / ${entry.startTime}-${entry.endTime}`}
+                      title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel, "仮予定"].join(" / ")}
+                      role="group"
+                      aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel + "、仮予定"}
                     >
                       <div className="timeline-entry-line">
                         <strong
@@ -520,17 +568,20 @@ export function DayTimeline({
                         >
                           {entry.title}
                         </strong>
-                        <span className="timeline-entry-time">
-                          {entry.startTime}-{entry.endTime}
+                        <span className="timeline-entry-meta-row">
+                          <span className="timeline-entry-time">
+                            {entry.startTime}-{entry.endTime}
+                          </span>
+                          <span className="weekly-draft-badge">仮予定</span>
+                          {showSubjectLabel ? (
+                            <span
+                              className="timeline-entry-subject"
+                              title={subjectLabel}
+                            >
+                              {subjectLabel}
+                            </span>
+                          ) : null}
                         </span>
-                        <span
-                          className="timeline-entry-subject"
-                          title={subjectLabel}
-                        >
-                          {subjectLabel}
-                        </span>
-                        <span className="weekly-draft-badge">仮予定</span>
-                        <span className="weekly-draft-badge">AI提案</span>
                       </div>
                       {onRemoveWeeklyDraftBlock ? (
                         <button
@@ -562,15 +613,22 @@ export function DayTimeline({
                     entry.type,
                     entry.sourceType
                   );
+                  const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
 
                   return (
                     <button
                       key={entry.id}
-                      className={
-                        selectedEntryId === entry.selectionId
-                          ? "timeline-actual-block split is-selected"
-                          : "timeline-actual-block split"
-                      }
+                      className={[
+                        "timeline-actual-block split",
+                        selectedEntryId === entry.selectionId ? "is-selected" : "",
+                        getTimelineDensityClass(
+                          entry.startTime,
+                          entry.endTime,
+                          entry.laneCount
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       style={{
                         ...buildColumnBlockStyle(
                           minutesFromTime(entry.startTime),
@@ -593,6 +651,8 @@ export function DayTimeline({
                               : { kind: "standalone-actual", id: entry.targetId }
                         )
                       }
+                      title={[entry.title, entry.startTime + "-" + entry.endTime, subjectLabel].join(" / ")}
+                      aria-label={entry.title + "、" + entry.startTime + "から" + entry.endTime + "、" + subjectLabel}
                       type="button"
                     >
                       <div className="timeline-entry-line">
@@ -605,12 +665,14 @@ export function DayTimeline({
                         <span className="timeline-entry-time">
                           {entry.startTime}-{entry.endTime}
                         </span>
-                        <span
-                          className="timeline-entry-subject"
-                          title={subjectLabel}
-                        >
-                          {subjectLabel}
-                        </span>
+                        {showSubjectLabel ? (
+                          <span
+                            className="timeline-entry-subject"
+                            title={subjectLabel}
+                          >
+                            {subjectLabel}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
