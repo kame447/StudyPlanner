@@ -1,0 +1,50 @@
+import type { ExamPrepScope, UnitRateEstimate } from './weeklyPlanningIntakeTypes';
+import { parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
+
+function buildYearFieldUnitRate(
+  match: RegExpMatchArray,
+  segment: string,
+): UnitRateEstimate | undefined {
+  const hours = parseSmallInteger(match[1]);
+
+  if (!hours) {
+    return undefined;
+  }
+
+  return {
+    unit: 'year_field_chunk',
+    minutesPerUnit: hours * 60,
+    source: 'user',
+    uncertainty: /くらい|ぐらい|だいたい/.test(segment) ? 'medium' : 'low',
+    rawText: match[0],
+  };
+}
+
+export function parseUnitRate(
+  text: string,
+  examPrepScope: ExamPrepScope | undefined,
+): UnitRateEstimate | undefined {
+  for (const segment of splitIntakeSegments(text)) {
+    const explicitYearFieldMatch = segment.match(
+      /(?:1|一)\s*分野(?:の)?\s*(?:1|一)\s*年分.*?([0-9]+|[一二三四五六七八九十]+)\s*時間/,
+    );
+
+    if (explicitYearFieldMatch) {
+      return buildYearFieldUnitRate(explicitYearFieldMatch, segment);
+    }
+
+    if (examPrepScope?.unitModel !== 'year_field_chunk') {
+      continue;
+    }
+
+    const contextualYearMatch = segment.match(
+      /(?:1|一)?\s*年分(?:は|が|で|に)?\s*([0-9]+|[一二三四五六七八九十]+)\s*時間/,
+    );
+
+    if (contextualYearMatch) {
+      return buildYearFieldUnitRate(contextualYearMatch, segment);
+    }
+  }
+
+  return undefined;
+}
