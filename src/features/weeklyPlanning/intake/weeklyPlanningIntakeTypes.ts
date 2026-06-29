@@ -1,0 +1,173 @@
+export type PlanningIntakeStatus =
+  | 'idle'
+  | 'needs_scope'
+  | 'range_collected'
+  | 'scope_collected'
+  | 'needs_exam_info'
+  | 'needs_year_range'
+  | 'needs_progress_clarification'
+  | 'needs_unit_rate'
+  | 'needs_priority_policy'
+  | 'needs_life_constraints'
+  | 'draft_ready'
+  | 'revision_pending'
+  | 'approved';
+
+export type PlanningIntent =
+  | 'weekly_study_planning'
+  | 'exam_prep_planning'
+  | 'regular_schedule'
+  | 'study_advice'
+  | 'unknown';
+
+export type PlanningRangeConfidence = 'explicit' | 'inferred' | 'missing';
+
+export interface PlanningRange {
+  startDateTime?: string;
+  endDateTime?: string;
+  sourceText?: string;
+  confidence: PlanningRangeConfidence;
+}
+
+export type StudyScopeUnit =
+  | 'minutes'
+  | 'hours'
+  | 'pages'
+  | 'problems'
+  | 'words'
+  | 'lessons'
+  | 'chapters'
+  | 'year_field_chunk'
+  | 'topic'
+  | 'unknown';
+
+export type ExamPrepStrategyHint = 'field_first' | 'year_first' | 'unknown';
+
+export interface ExamPrepScope {
+  examType?: string;
+  fields: string[];
+  totalFields?: number;
+  totalYears?: number;
+  yearRange?: {
+    startYear: number;
+    endYear: number;
+    sourceText: string;
+  };
+  strategyHint?: ExamPrepStrategyHint;
+  unitModel?: StudyScopeUnit;
+  unitCountHint?: number;
+  rawText: string[];
+}
+
+export interface StudyTaskScope {
+  title: string;
+  subject?: string;
+  examType?: string;
+  field?: string;
+  year?: number;
+  unit: StudyScopeUnit;
+  amount?: number;
+  rawText: string;
+  requiresTimeEstimate: boolean;
+}
+
+export type StudyProgressAmbiguity =
+  | 'completion_direction'
+  | 'year_range'
+  | 'field_scope'
+  | 'scope_range'
+  | 'none';
+
+export interface StudyProgress {
+  field?: string;
+  completedYears?: number[];
+  completionBoundaryYear?: number;
+  current?: string;
+  incomplete?: string[];
+  ambiguity: StudyProgressAmbiguity;
+  rawText: string;
+}
+
+export interface UnitRateEstimate {
+  unit: StudyScopeUnit;
+  minutesPerUnit?: number;
+  source: 'user' | 'assumption' | 'default';
+  uncertainty?: 'low' | 'medium' | 'high';
+  rawText?: string;
+}
+
+export type LifeConstraintKind =
+  | 'sleep'
+  | 'meal'
+  | 'bath'
+  | 'commute'
+  | 'club'
+  | 'cram_school'
+  | 'fixed_event'
+  | 'unavailable'
+  | 'buffer';
+
+export interface LifeConstraint {
+  kind: LifeConstraintKind;
+  date?: string;
+  start?: string;
+  end?: string;
+  durationMinutes?: number;
+  hardness: 'hard' | 'soft';
+  rawText?: string;
+}
+
+export type PriorityPolicy =
+  | { kind: 'field_first'; order: string[] }
+  | { kind: 'deadline_first' }
+  | { kind: 'weakness_first' }
+  | { kind: 'score_weight_first' }
+  | { kind: 'balanced' }
+  | { kind: 'unknown' };
+
+export type PlanningIntakeMissing =
+  | 'tasks_or_goals'
+  | 'fixed_events'
+  | 'sleep_cycle'
+  | 'meal_bath_constraints'
+  | 'year_range'
+  | 'progress'
+  | 'completion_direction'
+  | 'unit_duration_estimate'
+  | 'priority_policy'
+  | 'next_field_after_math'
+  | 'life_constraints';
+
+export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
+
+export interface PlanningIntakeState {
+  status: PlanningIntakeStatus;
+  intent: PlanningIntent;
+  range?: PlanningRange;
+  examPrepScope?: ExamPrepScope;
+  tasks: StudyTaskScope[];
+  progress: StudyProgress[];
+  unitRates: UnitRateEstimate[];
+  constraints: LifeConstraint[];
+  priorityPolicy: PriorityPolicy;
+  missing: PlanningIntakeMissing[];
+  assumptions: string[];
+  uncertainties: PlanningIntakeUncertainty[];
+  questions: string[];
+  shouldCreateDraft: boolean;
+  shouldSavePlan: false;
+  sourceTurns: string[];
+}
+
+export interface WeeklyPlanningIntakeContext {
+  selectedDate: string;
+}
+
+export interface WeeklyPlanningIntakeInterpreter {
+  // TODO: implement an AI-backed interpreter behind this boundary later.
+  interpretUserTurn(
+    state: PlanningIntakeState,
+    userText: string,
+    context: WeeklyPlanningIntakeContext,
+  ): Promise<Partial<PlanningIntakeState>>;
+}
