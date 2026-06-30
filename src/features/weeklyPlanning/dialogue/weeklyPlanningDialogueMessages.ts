@@ -98,7 +98,7 @@ export function createWeeklyPlanningDialogueMessage(
         decision,
       )}`;
     case 'offer_dry_run_preview':
-      return `仮予定候補を作れる状態です。まだカレンダーには保存・表示しません。${buildConditionSummary(
+      return `仮予定候補を未保存previewとして表示しました。通常予定としては保存していません。${buildConditionSummary(
         decision,
       )}`;
     case 'ask_relax_constraints':

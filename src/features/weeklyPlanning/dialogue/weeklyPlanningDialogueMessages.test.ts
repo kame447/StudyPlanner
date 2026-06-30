@@ -65,7 +65,8 @@ describe('weekly planning dialogue messages', () => {
     }));
 
     expect(message).toContain('仮予定候補');
-    expect(message).toContain('保存・表示しません');
+    expect(message).toContain('preview');
+    expect(message).toContain('保存していません');
     expect(message).toContain('配置候補');
   });
 
