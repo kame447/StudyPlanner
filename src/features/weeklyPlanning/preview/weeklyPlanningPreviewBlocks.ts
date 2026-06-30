@@ -1,3 +1,4 @@
+import type { WeeklyPlanDraftBlock } from '../types';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 
 export interface WeeklyPlanningPreviewBlock {
@@ -35,5 +36,42 @@ export function createWeeklyPlanningPreviewBlocks(
     status: 'preview',
     isSaved: false,
     workItemKey: candidate.workItemKey,
+  }));
+}
+
+export interface CreateWeeklyDraftBlocksFromPreviewCandidatesInput {
+  candidates: WeeklyDraftCandidate[];
+  userId: string;
+  createdAt: string;
+}
+
+export function createWeeklyDraftBlocksFromPreviewCandidates({
+  candidates,
+  userId,
+  createdAt,
+}: CreateWeeklyDraftBlocksFromPreviewCandidatesInput): WeeklyPlanDraftBlock[] {
+  return candidates.map((candidate) => ({
+    id: `weekly-draft-${candidate.stableKey}`,
+    userId,
+    date: candidate.date,
+    startTime: candidate.startTime,
+    endTime: candidate.endTime,
+    title: candidate.title,
+    subject: candidate.field,
+    type: 'study',
+    label: candidate.field,
+    materialId: null,
+    materialName: '',
+    memo: [
+      `year: ${candidate.year}`,
+      `estimatedMinutes: ${candidate.estimatedMinutes}`,
+      `workItemKey: ${candidate.workItemKey}`,
+      'source: dry-run preview',
+    ].join(' / '),
+    source: 'ai',
+    status: 'draft',
+    userEdited: false,
+    createdAt,
+    updatedAt: createdAt,
   }));
 }
