@@ -15,17 +15,10 @@ import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningMessage,
 } from '../features/weeklyPlanning/types';
-import {
-  applyWeeklyPlanningConditionOverride,
-  assessWeeklyPlanningRequest,
-  createAvailabilityAwareWeeklyDraftBlocksFromText,
-  createWeeklyPlanningPendingConfig,
-  isExplicitCreateConfirmation,
-  isExplicitPartialPlacementConfirmation,
-  looksLikeWeeklyPlanningRequest,
-  summarizeWeeklyPlanningPendingConfig,
-  type WeeklyPlanningPendingConfig,
-} from '../features/weeklyPlanning/weeklyPlanningTransforms';
+import { looksLikeWeeklyPlanningRequest } from '../features/weeklyPlanning/weeklyPlanningTransforms';
+import { createWeeklyPlanningDialogueMessage } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueMessages';
+import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
+import { runWeeklyPlanningIntakePipeline } from '../features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline';
 import type {
   NaturalLanguageMode,
   NaturalLanguageSuggestion,
@@ -226,11 +219,8 @@ export function NaturalLanguageAssistant({
   plans,
   materials = [],
   subjects = [],
-  scheduleTemplates = [],
-  timetableTermId,
   onApplyDraft,
   weeklyDraftBlocks = [],
-  onCreateWeeklyDraftBlocks,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
   onApproveWeeklyDraftBlocks,
@@ -248,11 +238,11 @@ export function NaturalLanguageAssistant({
     'overview' | 'day'
   >('overview');
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
-  const [weeklyPlanningPendingConfig, setWeeklyPlanningPendingConfig] =
-    useState<WeeklyPlanningPendingConfig | null>(null);
   const [weeklyPlanningMessages, setWeeklyPlanningMessages] = useState<
     WeeklyPlanningMessage[]
   >([]);
+  const [weeklyPlanningIntakeState, setWeeklyPlanningIntakeState] =
+    useState<PlanningIntakeState | null>(null);
   const runtimeInfo = getPlannerAiRuntimeInfo();
 
   const nearbyPlans = plans.filter((plan) => {
@@ -353,7 +343,7 @@ export function NaturalLanguageAssistant({
   }
 
   function resetWeeklyPlanningSession() {
-    setWeeklyPlanningPendingConfig(null);
+    setWeeklyPlanningIntakeState(null);
     setWeeklyPlanningMessages([]);
     setError('');
     setStatus('');
@@ -444,12 +434,6 @@ export function NaturalLanguageAssistant({
   }
 
   async function handleCreateWeeklyDrafts() {
-    if (!onCreateWeeklyDraftBlocks) {
-      setError('週間計画の仮予定を作成する準備ができていません。');
-      return;
-    }
-
-    const createWeeklyDraftBlocks = onCreateWeeklyDraftBlocks;
     const trimmedText = text.trim();
 
     if (!trimmedText) {
@@ -457,169 +441,31 @@ export function NaturalLanguageAssistant({
       return;
     }
 
-    function buildPendingConfigMessage(
-      config: WeeklyPlanningPendingConfig,
-      leadText?: string,
-    ): string {
-      return [
-        leadText,
-        '更新後の条件案:',
-        summarizeWeeklyPlanningPendingConfig(config),
-        'この条件でよければ「この条件で作成」と入力してください。',
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-    }
-
-    function createDraftsFromPendingConfig(config: WeeklyPlanningPendingConfig) {
-      const plannedDraftResult = createAvailabilityAwareWeeklyDraftBlocksFromText({
-        userId,
-        selectedDate,
-        text: config.sourceText,
-        pendingConfig: config,
-        existingPlans: plans,
-        scheduleTemplates,
-        timetableTermId,
-        allowPartialPlacement: config.allowPartialPlacement,
-      });
-
-      if (plannedDraftResult.blocks.length > 0) {
-        onClearWeeklyDraftBlocks?.();
-        createWeeklyDraftBlocks(plannedDraftResult.blocks);
-        setWeeklyDraftPreviewMode('overview');
-        setSelectedWeeklyDraftDate('');
-        setWeeklyPlanningPendingConfig(null);
-        setError('');
-        const message = [
-          `${plannedDraftResult.blocks.length}件の週間計画ドラフトを作りました。承認するまで保存されません。`,
-          plannedDraftResult.warnings.join('\n'),
-        ]
-          .filter(Boolean)
-          .join('\n');
-        setStatus(message);
-        appendWeeklyPlanningMessage('assistant', message);
-        setText('');
-        return;
-      }
-
-      const failureMessage =
-        plannedDraftResult.warnings.join('\n') ||
-        '指定された条件で配置できる仮予定がありませんでした。';
-      const needsConfirmationMessage =
-        plannedDraftResult.unplacedMinutes > 0 && !config.allowPartialPlacement;
-
-      if (needsConfirmationMessage) {
-        setWeeklyPlanningPendingConfig(config);
-        setError('');
-        setStatus(failureMessage);
-        appendWeeklyPlanningMessage('assistant', failureMessage);
-        setText('');
-        return;
-      }
-
-      setError(failureMessage);
-      setStatus('');
-      appendWeeklyPlanningMessage('assistant', failureMessage);
-      setText('');
-    }
-
     appendWeeklyPlanningMessage('user', trimmedText);
     setIsAnalyzing(true);
 
     try {
-      if (weeklyPlanningPendingConfig) {
-        const shouldCreateDrafts =
-          isExplicitCreateConfirmation(trimmedText) ||
-          isExplicitPartialPlacementConfirmation(trimmedText);
-
-        if (shouldCreateDrafts) {
-          createDraftsFromPendingConfig({
-            ...weeklyPlanningPendingConfig,
-            allowPartialPlacement:
-              weeklyPlanningPendingConfig.allowPartialPlacement ||
-              isExplicitPartialPlacementConfirmation(trimmedText),
-          });
-          return;
-        }
-
-        const override = applyWeeklyPlanningConditionOverride({
-          config: weeklyPlanningPendingConfig,
-          text: trimmedText,
-        });
-
-        if (override.kind === 'updated') {
-          setWeeklyPlanningPendingConfig(override.config);
-          setError('');
-          const message = buildPendingConfigMessage(
-            override.config,
-            override.messages.join('\n'),
-          );
-          setStatus(message);
-          appendWeeklyPlanningMessage('assistant', message);
-          setText('');
-          return;
-        }
-
-        setError('');
-        setStatus(override.message);
-        appendWeeklyPlanningMessage('assistant', override.message);
-        setText('');
-        return;
-      }
-
-      const assessment = assessWeeklyPlanningRequest({
-        selectedDate,
-        text: trimmedText,
-        hasPendingConfirmation: false,
-        confirmationText: trimmedText,
+      const pipelineOutput = runWeeklyPlanningIntakePipeline({
+        previousState: weeklyPlanningIntakeState ?? undefined,
+        userText: trimmedText,
+        planningStartDate: selectedDate,
+        planningDayCount: 7,
+        sessionPolicy: {
+          firstDayStartTime: '09:00',
+          dayStartTime: '09:00',
+          dayEndTime: '22:00',
+          breakMinutes: 10,
+        },
       });
+      const message = createWeeklyPlanningDialogueMessage(pipelineOutput.decision);
 
-      if (assessment.kind === 'empty') {
-        const message = assessment.questions.join('\n');
-        setError(message);
-        setStatus('');
-        appendWeeklyPlanningMessage('assistant', message);
-        setText('');
-        return;
-      }
-
-      if (assessment.kind === 'needs_task_details') {
-        setWeeklyPlanningPendingConfig(null);
-        setError('');
-        const message = assessment.questions.join('\n');
-        setStatus(message);
-        appendWeeklyPlanningMessage('assistant', message);
-        setText('');
-        return;
-      }
-
-      if (
-        assessment.kind === 'needs_confirmation' ||
-        assessment.kind === 'needs_time_estimate'
-      ) {
-        const pendingConfig = createWeeklyPlanningPendingConfig({
-          sourceText: trimmedText,
-          assessment,
-        });
-        setWeeklyPlanningPendingConfig(pendingConfig);
-        setError('');
-        const message =
-          `${assessment.questions.join('\n')}\n\n${summarizeWeeklyPlanningPendingConfig(
-            pendingConfig,
-          )}`;
-        setStatus(message);
-        appendWeeklyPlanningMessage('assistant', message);
-        setText('');
-        return;
-      }
-
-      const pendingConfig = createWeeklyPlanningPendingConfig({
-        sourceText: trimmedText,
-        assessment,
-      });
-      createDraftsFromPendingConfig(pendingConfig);
+      setWeeklyPlanningIntakeState(pipelineOutput.state);
+      setError('');
+      setStatus(message);
+      appendWeeklyPlanningMessage('assistant', message);
+      setText('');
     } catch {
-      const message = '週間計画の作成に失敗しました。';
+      const message = '週間計画の会話状態を更新できませんでした。';
       setError(message);
       setStatus('');
       appendWeeklyPlanningMessage('assistant', message);
@@ -795,6 +641,7 @@ export function NaturalLanguageAssistant({
             setStatus('');
             setSuggestions([]);
             setEditTargetPlanId('');
+            setWeeklyPlanningIntakeState(null);
             setText('');
           }}
           type="button"
@@ -1344,7 +1191,7 @@ export function NaturalLanguageAssistant({
               <strong>
                 {error
                   ? '確認が必要です'
-                  : weeklyPlanningPendingConfig
+                  : weeklyPlanningIntakeState
                     ? '週間計画の確認'
                     : '週間計画の応答'}
               </strong>
