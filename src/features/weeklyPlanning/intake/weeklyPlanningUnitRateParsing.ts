@@ -1,3 +1,4 @@
+import type { SetUnitRateCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, UnitRateEstimate } from './weeklyPlanningIntakeTypes';
 import { parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
 
@@ -47,4 +48,21 @@ export function parseUnitRate(
   }
 
   return undefined;
+}
+
+export function parseSetUnitRateCommand(
+  text: string,
+  examPrepScope: ExamPrepScope | undefined,
+): SetUnitRateCommand | undefined {
+  const unitRate = parseUnitRate(text, examPrepScope);
+
+  return unitRate
+    ? {
+        type: 'set_unit_rate',
+        unitRate,
+        sourceText: text,
+        sourceSegment: unitRate.rawText,
+        confidence: unitRate.uncertainty === 'medium' ? 'medium' : 'high',
+      }
+    : undefined;
 }

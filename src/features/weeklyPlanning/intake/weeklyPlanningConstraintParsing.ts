@@ -1,3 +1,4 @@
+import type { AddFixedEventCommand, UpdateLifeConstraintCommand } from './weeklyPlanningCommandTypes';
 import type { LifeConstraint, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import { parseClockTime, parseHour, formatHourTime } from './weeklyPlanningTimeParsing';
 import { resolveUnavailableDate } from './weeklyPlanningUnavailableParsing';
@@ -145,4 +146,50 @@ export function hasLifeConstraint(constraint: LifeConstraint): boolean {
 
 export function hasConfirmedFixedEvent(constraint: LifeConstraint): boolean {
   return constraint.kind === 'fixed_event' && constraint.hardness === 'hard';
+}
+export function parseConstraintCommands(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): Array<AddFixedEventCommand | UpdateLifeConstraintCommand> {
+  const commands: Array<AddFixedEventCommand | UpdateLifeConstraintCommand> = [];
+
+  parseConstraints(text, context).forEach((constraint) => {
+    if (constraint.kind === 'fixed_event') {
+      commands.push({
+        type: 'add_fixed_event',
+        event: {
+          date: constraint.date,
+          start: constraint.start,
+          end: constraint.end,
+          durationMinutes: constraint.durationMinutes,
+          hardness: constraint.hardness,
+        },
+        sourceText: text,
+        sourceSegment: constraint.rawText,
+        confidence: constraint.hardness === 'hard' ? 'high' : 'medium',
+      });
+      return;
+    }
+
+    if (constraint.kind === 'unavailable') {
+      return;
+    }
+
+    commands.push({
+      type: 'update_life_constraint',
+      kind: constraint.kind,
+      constraint: {
+        date: constraint.date,
+        start: constraint.start,
+        end: constraint.end,
+        durationMinutes: constraint.durationMinutes,
+        hardness: constraint.hardness,
+      },
+      sourceText: text,
+      sourceSegment: constraint.rawText,
+      confidence: constraint.hardness === 'hard' ? 'high' : 'medium',
+    });
+  });
+
+  return commands;
 }

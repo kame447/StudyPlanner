@@ -1,3 +1,4 @@
+import type { MarkCompletedUnitsCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, StudyProgress } from './weeklyPlanningIntakeTypes';
 import { resolveFieldName } from './weeklyPlanningFieldParsing';
 import { normalizeIntakeText, splitIntakeSegments, uniqueList } from './weeklyPlanningTextParsing';
@@ -271,4 +272,38 @@ export function parseCompletedSingleYearRevision(
   }
 
   return undefined;
+}
+
+export function parseMarkCompletedUnitsCommand(
+  text: string,
+  yearRange: ExamPrepScope['yearRange'] | undefined,
+  fields: string[],
+): MarkCompletedUnitsCommand | undefined {
+  const completedYearDirection = parseCompletedYearDirection(text, yearRange, fields);
+
+  if (completedYearDirection) {
+    return {
+      type: 'mark_completed_units',
+      field: completedYearDirection.field,
+      completedYears: completedYearDirection.completedYears,
+      mergeMode: 'replace',
+      sourceText: text,
+      sourceSegment: completedYearDirection.rawText,
+      confidence: 'high',
+    };
+  }
+
+  const completedSingleYearRevision = parseCompletedSingleYearRevision(text, yearRange, fields);
+
+  return completedSingleYearRevision
+    ? {
+        type: 'mark_completed_units',
+        field: completedSingleYearRevision.field,
+        completedYears: [completedSingleYearRevision.completedYear],
+        mergeMode: 'append',
+        sourceText: text,
+        sourceSegment: completedSingleYearRevision.rawText,
+        confidence: 'high',
+      }
+    : undefined;
 }

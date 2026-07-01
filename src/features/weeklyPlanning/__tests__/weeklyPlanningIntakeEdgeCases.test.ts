@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { toLifeConstraintFromAddUnavailableCommand } from '../intake/weeklyPlanningCommandAdapter';
+import {
+  toLifeConstraintFromAddFixedEventCommand,
+  toLifeConstraintFromAddUnavailableCommand,
+  toExamScopeFromSetExamScopeCommand,
+  toLifeConstraintFromUpdateLifeConstraintCommand,
+  toPlanningRangeFromSetPlanningRangeCommand,
+  toPriorityPolicyFromSetPriorityPolicyCommand,
+  toStudyProgressFromMarkCompletedUnitsCommand,
+  toUnitRateFromSetUnitRateCommand,
+} from '../intake/weeklyPlanningCommandAdapter';
+import { parseMarkCompletedUnitsCommand } from '../intake/weeklyPlanningCompletionParsing';
 import { getLifeConstraintIdentity } from '../intake/weeklyPlanningConstraintIdentity';
+import { parseConstraintCommands } from '../intake/weeklyPlanningConstraintParsing';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
 import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
+import { parseSetPriorityPolicyCommand } from '../intake/weeklyPlanningPriorityParsing';
+import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from '../intake/weeklyPlanningScopeParsing';
+import { parseSetUnitRateCommand } from '../intake/weeklyPlanningUnitRateParsing';
 import {
   isHardUnavailableExpression,
   isUncertainAvailabilityExpression,
@@ -459,6 +473,127 @@ describe('weekly planning intake edge cases', () => {
 
   it('Phase 9.5 keeps ambiguous unavailable text out of add_unavailable commands', () => {
     expect(parseAddUnavailableCommand('\u591c\u306f\u4f7f\u3048\u306a\u3044\u304b\u3082', context)).toBeUndefined();
+  });
+  it('Phase 9.7 parses planning range and exam scope as commands before domain application', () => {
+    const rangeCommand = parseSetPlanningRangeCommand(
+      '\u4eca\u65e519\u6642\u304b\u3089\u571f\u65e5\u306e\u7d42\u308f\u308a\u307e\u3067\u4e88\u5b9a\u7acb\u3066\u305f\u3044',
+      context,
+    );
+    const scopeCommand = parseSetExamScopeCommand(
+      '\u9662\u8a66\u30675\u5206\u91ce\u30017\u5e74\u5206\u3092\u3084\u308a\u305f\u3044\n\u7b2c1\u90e8 \u6570\u5b66\u30fb\u6570\u7406\u7cfb',
+      undefined,
+    );
+
+    expect(rangeCommand).toMatchObject({
+      type: 'set_planning_range',
+      range: {
+        startDateTime: '2026-06-26T19:00:00',
+        endDateTime: '2026-06-28T24:00:00',
+        confidence: 'explicit',
+      },
+    });
+    expect(rangeCommand ? toPlanningRangeFromSetPlanningRangeCommand(rangeCommand) : undefined)
+      .toMatchObject({ startDateTime: '2026-06-26T19:00:00' });
+    expect(scopeCommand).toMatchObject({
+      type: 'set_exam_scope',
+      scope: {
+        examType: '\u9662\u8a66',
+        totalFields: 5,
+        totalYears: 7,
+        fields: ['\u6570\u5b66\u30fb\u6570\u7406\u7cfb'],
+        unitModel: 'year_field_chunk',
+      },
+    });
+    expect(scopeCommand ? toExamScopeFromSetExamScopeCommand(scopeCommand) : undefined)
+      .toMatchObject({ examType: '\u9662\u8a66', totalFields: 5, totalYears: 7 });
+  });
+  it('Phase 9.6 parses fixed events and life constraints as commands before domain conversion', () => {
+    const fixedEventCommand = parseConstraintCommands(
+      '\u65e5\u66dc\u306e13\u6642\u304b\u3089\u6b6f\u533b\u8005',
+      context,
+    )[0];
+    const lifeConstraintCommand = parseConstraintCommands(
+      '\u304a\u98a8\u5442\u306f22\u6642\u306b\u5909\u66f4',
+      context,
+    )[0];
+
+    expect(fixedEventCommand).toMatchObject({
+      type: 'add_fixed_event',
+      event: {
+        date: '2026-06-28',
+        start: '13:00',
+        durationMinutes: 60,
+        hardness: 'hard',
+      },
+    });
+    expect(fixedEventCommand && fixedEventCommand.type === 'add_fixed_event'
+      ? toLifeConstraintFromAddFixedEventCommand(fixedEventCommand)
+      : undefined).toMatchObject({
+        kind: 'fixed_event',
+        date: '2026-06-28',
+        start: '13:00',
+        hardness: 'hard',
+      });
+    expect(lifeConstraintCommand).toMatchObject({
+      type: 'update_life_constraint',
+      kind: 'bath',
+      constraint: {
+        start: '22:00',
+        durationMinutes: 30,
+        hardness: 'hard',
+      },
+    });
+    expect(lifeConstraintCommand && lifeConstraintCommand.type === 'update_life_constraint'
+      ? toLifeConstraintFromUpdateLifeConstraintCommand(lifeConstraintCommand)
+      : undefined).toMatchObject({
+        kind: 'bath',
+        start: '22:00',
+        hardness: 'hard',
+      });
+  });
+
+  it('Phase 9.6 parses priority, completed units, and unit rate as commands before domain conversion', () => {
+    const draftReady = applyWeekendExamReadyForDraftRequest();
+    const fields = draftReady.examPrepScope?.fields ?? [];
+    const priorityCommand = parseSetPriorityPolicyCommand(
+      '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u3092\u5148\u306b\u3057\u305f\u3044',
+      fields,
+      draftReady.priorityPolicy.kind === 'field_first' ? draftReady.priorityPolicy.order : [],
+    );
+    const completedCommand = parseMarkCompletedUnitsCommand(
+      '\u6570\u5b66\u306e2020\u3082\u7d42\u308f\u3063\u3066\u305f',
+      draftReady.examPrepScope?.yearRange,
+      fields,
+    );
+    const unitRateCommand = parseSetUnitRateCommand(
+      '\u4e00\u5e74\u5206\u306f2\u6642\u9593\u304f\u3089\u3044',
+      draftReady.examPrepScope,
+    );
+
+    expect(priorityCommand).toMatchObject({ type: 'set_priority_policy' });
+    expect(priorityCommand ? toPriorityPolicyFromSetPriorityPolicyCommand(priorityCommand) : undefined)
+      .toMatchObject({ kind: 'field_first' });
+    expect(completedCommand).toMatchObject({
+      type: 'mark_completed_units',
+      field: '\u6570\u5b66\u30fb\u6570\u7406\u7cfb',
+      completedYears: [2020],
+      mergeMode: 'append',
+    });
+    expect(completedCommand ? toStudyProgressFromMarkCompletedUnitsCommand(completedCommand) : undefined)
+      .toMatchObject({
+        field: '\u6570\u5b66\u30fb\u6570\u7406\u7cfb',
+        completedYears: [2020],
+        ambiguity: 'none',
+      });
+    expect(unitRateCommand).toMatchObject({
+      type: 'set_unit_rate',
+      unitRate: {
+        unit: 'year_field_chunk',
+        minutesPerUnit: 120,
+      },
+    });
+    expect(unitRateCommand ? toUnitRateFromSetUnitRateCommand(unitRateCommand) : undefined)
+      .toMatchObject({ unit: 'year_field_chunk', minutesPerUnit: 120 });
   });
   it.each([
     ['\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '16:00', end: '19:00' }],

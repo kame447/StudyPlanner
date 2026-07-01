@@ -1,29 +1,35 @@
-import { addDays, startOfWeek } from '../../../lib/date';
 import {
   assessWeeklyPlanningRequest,
   looksLikeWeeklyPlanningRequest,
   mergeWeeklyPlanningRevision,
 } from '../weeklyPlanningTransforms';
 import type {
-  ExamPrepScope,
-  PlanningIntakeMissing,
   PlanningIntakeState,
   StudyScopeUnit,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
 import {
-  parseCompletedSingleYearRevision,
-  parseCompletedYearDirection,
+  parseMarkCompletedUnitsCommand,
   parseProgressHint,
 } from './weeklyPlanningCompletionParsing';
-import { toLifeConstraintFromAddUnavailableCommand } from './weeklyPlanningCommandAdapter';
+import {
+  toLifeConstraintFromAddFixedEventCommand,
+  toLifeConstraintFromAddUnavailableCommand,
+  toLifeConstraintFromUpdateLifeConstraintCommand,
+  toPlanningRangeFromSetPlanningRangeCommand,
+  toPriorityPolicyFromSetPriorityPolicyCommand,
+  toStudyProgressFromMarkCompletedUnitsCommand,
+  toUnitRateFromSetUnitRateCommand,
+} from './weeklyPlanningCommandAdapter';
 import { mergeLifeConstraints } from './weeklyPlanningConstraintIdentity';
-import { hasConfirmedFixedEvent, hasExplicitNoFixedEvents, hasLifeConstraint, parseConstraints } from './weeklyPlanningConstraintParsing';
+import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
+import { hasExplicitNoFixedEvents, parseConstraintCommands } from './weeklyPlanningConstraintParsing';
 import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
 import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
-import { parsePriorityPolicy } from './weeklyPlanningPriorityParsing';
-import { normalizeIntakeText, parseSmallInteger, uniqueList } from './weeklyPlanningTextParsing';
-import { parseUnitRate } from './weeklyPlanningUnitRateParsing';
+import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
+import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
+import { normalizeIntakeText, uniqueList } from './weeklyPlanningTextParsing';
+import { parseSetUnitRateCommand } from './weeklyPlanningUnitRateParsing';
 
 const DEFAULT_PRIORITY_POLICY = { kind: 'unknown' } as const;
 
@@ -67,105 +73,208 @@ export function createInitialPlanningIntakeState(): PlanningIntakeState {
   };
 }
 
-function formatDateTime(date: string, time: string): string {
-  return `${date}T${time}:00`;
+function parseWeeklyPlanningCommands(params: {
+  userText: string;
+  context: WeeklyPlanningIntakeContext;
+  state: PlanningIntakeState;
+}): ParsedWeeklyPlanningCommand[] {
+  const effectiveScope = params.state.examPrepScope;
+  const fields = effectiveScope?.fields ?? [];
+  const currentPriorityOrder = params.state.priorityPolicy.kind === 'field_first'
+    ? params.state.priorityPolicy.order
+    : [];
+  const optionalCommands: Array<ParsedWeeklyPlanningCommand | undefined> = [
+    parseSetPriorityPolicyCommand(params.userText, fields, currentPriorityOrder),
+    parseMarkCompletedUnitsCommand(
+      params.userText,
+      effectiveScope?.yearRange,
+      fields,
+    ),
+    parseSetUnitRateCommand(params.userText, effectiveScope),
+  ];
+
+  return [
+    ...optionalCommands.filter((command): command is ParsedWeeklyPlanningCommand => Boolean(command)),
+    ...parseAddUnavailableCommands(params.userText, params.context),
+    ...parseConstraintCommands(params.userText, params.context),
+  ];
 }
 
-function parseWeekendRange(
-  text: string,
-  context: WeeklyPlanningIntakeContext,
-): PlanningIntakeState['range'] | undefined {
-  const normalizedText = normalizeIntakeText(text);
-  const startMatch = normalizedText.match(/今日(?:の)?\s*(\d{1,2})\s*時/);
+function applyMarkCompletedUnitsCommand(
+  state: PlanningIntakeState,
+  command: Extract<ParsedWeeklyPlanningCommand, { type: 'mark_completed_units' }>,
+): PlanningIntakeState {
+  const commandProgress = toStudyProgressFromMarkCompletedUnitsCommand(command);
 
-  if (!startMatch || !/土日.*(?:終わり|最後)|日曜.*(?:終わり|最後)/.test(normalizedText)) {
-    return undefined;
+  if (command.mergeMode === 'replace') {
+    if (state.progress.length === 0) {
+      return state;
+    }
+
+    let progressIndex = -1;
+
+    for (let index = state.progress.length - 1; index >= 0; index -= 1) {
+      if (state.progress[index].field === command.field) {
+        progressIndex = index;
+        break;
+      }
+    }
+
+    const targetIndex = progressIndex >= 0 ? progressIndex : state.progress.length - 1;
+    const targetProgress = state.progress[targetIndex];
+    const updatedProgress = {
+      ...targetProgress,
+      ...commandProgress,
+    };
+
+    return {
+      ...state,
+      progress: [
+        ...state.progress.slice(0, targetIndex),
+        updatedProgress,
+        ...state.progress.slice(targetIndex + 1),
+      ],
+      missing: removeMissing(state.missing, ['completion_direction']),
+    };
   }
 
-  const weekStart = startOfWeek(context.selectedDate);
-  const sunday = addDays(weekStart, 6);
-  const startHour = Number(startMatch[1]);
-  const startTime = `${String(startHour).padStart(2, '0')}:00`;
+  const progressIndex = state.progress.findIndex((progress) => progress.field === command.field);
+  const existingProgress =
+    progressIndex >= 0
+      ? state.progress[progressIndex]
+      : {
+          field: command.field,
+          ambiguity: 'none' as const,
+          rawText: command.sourceSegment ?? command.sourceText,
+        };
+  const updatedProgress = {
+    ...existingProgress,
+    field: command.field,
+    completedYears: uniqueList([
+      ...(existingProgress.completedYears ?? []),
+      ...command.completedYears,
+    ]),
+    ambiguity: 'none' as const,
+    rawText: command.sourceSegment ?? command.sourceText,
+  };
 
   return {
-    startDateTime: formatDateTime(context.selectedDate, startTime),
-    endDateTime: formatDateTime(sunday, '24:00'),
-    sourceText: text,
-    confidence: 'explicit',
+    ...state,
+    progress:
+      progressIndex >= 0
+        ? [
+            ...state.progress.slice(0, progressIndex),
+            updatedProgress,
+            ...state.progress.slice(progressIndex + 1),
+          ]
+        : [...state.progress, updatedProgress],
+    missing: removeMissing(state.missing, ['completion_direction']),
   };
 }
 
-function extractExamFields(text: string): string[] {
-  return normalizeIntakeText(text)
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/\s+/g, ' '))
-    .map((line) => line.match(/第\s*\d+\s*部\s+(.+)$/)?.[1]?.trim())
-    .filter((field): field is string => Boolean(field));
-}
+function applyWeeklyPlanningCommand(
+  state: PlanningIntakeState,
+  command: ParsedWeeklyPlanningCommand,
+): PlanningIntakeState {
+  switch (command.type) {
+    case 'add_unavailable':
+      return {
+        ...state,
+        constraints: mergeLifeConstraints(state.constraints, [
+          toLifeConstraintFromAddUnavailableCommand(command),
+        ]),
+      };
+    case 'add_fixed_event':
+      return {
+        ...state,
+        constraints: mergeLifeConstraints(state.constraints, [
+          toLifeConstraintFromAddFixedEventCommand(command),
+        ]),
+        missing: command.event.hardness === 'hard'
+          ? removeMissing(state.missing, ['fixed_events'])
+          : state.missing,
+      };
+    case 'update_life_constraint':
+      return {
+        ...state,
+        constraints: mergeLifeConstraints(state.constraints, [
+          toLifeConstraintFromUpdateLifeConstraintCommand(command),
+        ]),
+        missing: removeMissing(state.missing, [
+          'sleep_cycle',
+          'meal_bath_constraints',
+          'life_constraints',
+        ]),
+      };
+    case 'set_priority_policy':
+      return {
+        ...state,
+        priorityPolicy: toPriorityPolicyFromSetPriorityPolicyCommand(command),
+        missing: removeMissing(state.missing, [
+          'priority_policy',
+          'next_field_after_math',
+        ]),
+      };
+    case 'mark_completed_units':
+      return applyMarkCompletedUnitsCommand(state, command);
+    case 'set_unit_rate': {
+      const unitRate = toUnitRateFromSetUnitRateCommand(command);
+      return {
+        ...state,
+        unitRates: [
+          ...state.unitRates.filter((rate) => rate.unit !== unitRate.unit),
+          unitRate,
+        ],
+        missing: removeMissing(state.missing, ['unit_duration_estimate']),
+      };
+    }
+    case 'set_exam_scope': {
+      const nextState = {
+        ...state,
+        intent: command.scope.examType === '院試' ? 'exam_prep_planning' : state.intent,
+        examPrepScope: command.scope,
+        missing: removeMissing(state.missing, ['tasks_or_goals']),
+      };
 
-function parseTotalYears(text: string): number | undefined {
-  const match = normalizeIntakeText(text).match(/([0-9]+|[一二三四五六七八九十]+)\s*年分/);
-  return match ? parseSmallInteger(match[1]) : undefined;
-}
+      let nextMissing = nextState.missing;
+      if (command.scope.totalYears && !command.scope.yearRange) {
+        nextMissing = addMissing(nextMissing, ['year_range']);
+      }
+      if (command.scope.yearRange) {
+        nextMissing = removeMissing(nextMissing, ['year_range']);
+      }
+      if (command.scope.unitModel === 'year_field_chunk' && nextState.unitRates.length === 0) {
+        nextMissing = addMissing(nextMissing, ['unit_duration_estimate']);
+      }
 
-function parseTotalFields(text: string): number | undefined {
-  const match = normalizeIntakeText(text).match(/([0-9]+|[一二三四五六七八九十]+)\s*分野/);
-  return match ? parseSmallInteger(match[1]) : undefined;
-}
-
-
-
-
-function parseYearRange(text: string): ExamPrepScope['yearRange'] | undefined {
-  const match = normalizeIntakeText(text).match(/(20\d{2})\s*[〜~-]\s*(20\d{2})/);
-
-  if (!match) {
-    return undefined;
+      return {
+        ...nextState,
+        missing: nextMissing,
+      };
+    }
+    case 'set_planning_range':
+      return {
+        ...state,
+        intent: 'weekly_study_planning',
+        range: toPlanningRangeFromSetPlanningRangeCommand(command),
+        missing: addMissing(state.missing, [
+          'tasks_or_goals',
+          'fixed_events',
+          'sleep_cycle',
+          'meal_bath_constraints',
+        ]),
+      };
+    default:
+      return state;
   }
-
-  return {
-    startYear: Number(match[1]),
-    endYear: Number(match[2]),
-    sourceText: match[0],
-  };
 }
 
-
-
-function mergeExamPrepScope(
-  previousScope: ExamPrepScope | undefined,
-  text: string,
-): ExamPrepScope | undefined {
-  const normalizedText = normalizeIntakeText(text);
-  const fields = uniqueList([...(previousScope?.fields ?? []), ...extractExamFields(text)]);
-  const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
-  const totalYears = parseTotalYears(text) ?? previousScope?.totalYears;
-  const yearRange = parseYearRange(text) ?? previousScope?.yearRange;
-  const examType = /院試/.test(normalizedText) ? '院試' : previousScope?.examType;
-  const strategyHint =
-    /分野ごと/.test(normalizedText) ? 'field_first' : previousScope?.strategyHint;
-  const unitModel =
-    examType || fields.length > 0 || totalYears
-      ? 'year_field_chunk'
-      : previousScope?.unitModel;
-
-  if (!examType && fields.length === 0 && !totalFields && !totalYears && !previousScope) {
-    return undefined;
-  }
-
-  return {
-    examType,
-    fields,
-    totalFields,
-    totalYears,
-    yearRange,
-    strategyHint,
-    unitModel,
-    unitCountHint: totalFields && totalYears ? totalFields * totalYears : previousScope?.unitCountHint,
-    rawText: [...(previousScope?.rawText ?? []), text],
-  };
+function applyWeeklyPlanningCommands(
+  state: PlanningIntakeState,
+  commands: ParsedWeeklyPlanningCommand[],
+): PlanningIntakeState {
+  return commands.reduce(applyWeeklyPlanningCommand, state);
 }
-
 
 export function applyWeeklyPlanningUserTurn(
   previousState: PlanningIntakeState | undefined,
@@ -192,61 +301,19 @@ export function applyWeeklyPlanningUserTurn(
     shouldSavePlan: false,
   };
 
-  const range = parseWeekendRange(userText, context);
-
-  if (range) {
-    nextState = {
-      ...nextState,
-      intent: 'weekly_study_planning',
-      range,
-      missing: addMissing(nextState.missing, [
-        'tasks_or_goals',
-        'fixed_events',
-        'sleep_cycle',
-        'meal_bath_constraints',
-      ]),
-    };
+  const setupCommands: ParsedWeeklyPlanningCommand[] = [];
+  const planningRangeCommand = parseSetPlanningRangeCommand(userText, context);
+  if (planningRangeCommand) {
+    setupCommands.push(planningRangeCommand);
+  }
+  const examScopeCommand = parseSetExamScopeCommand(userText, nextState.examPrepScope);
+  if (examScopeCommand) {
+    setupCommands.push(examScopeCommand);
   }
 
-  const scope = mergeExamPrepScope(nextState.examPrepScope, userText);
-
-  if (scope) {
-    nextState = {
-      ...nextState,
-      intent: scope.examType === '院試' ? 'exam_prep_planning' : nextState.intent,
-      examPrepScope: scope,
-      missing: removeMissing(nextState.missing, ['tasks_or_goals']),
-    };
-
-    if (scope.totalYears && !scope.yearRange) {
-      nextState.missing = addMissing(nextState.missing, ['year_range']);
-    }
-    if (scope.yearRange) {
-      nextState.missing = removeMissing(nextState.missing, ['year_range']);
-    }
-
-    if (scope.unitModel === 'year_field_chunk' && nextState.unitRates.length === 0) {
-      nextState.missing = addMissing(nextState.missing, ['unit_duration_estimate']);
-    }
-  }
-
-    const fields = nextState.examPrepScope?.fields ?? [];
-  const currentPriorityOrder = nextState.priorityPolicy.kind === 'field_first'
-    ? nextState.priorityPolicy.order
-    : [];
-  const priorityPolicy = parsePriorityPolicy(userText, fields, currentPriorityOrder);
-
-  if (priorityPolicy) {
-    nextState = {
-      ...nextState,
-      priorityPolicy,
-      missing: removeMissing(nextState.missing, [
-        "priority_policy",
-        "next_field_after_math",
-      ]),
-    };
-  }
-
+  nextState = applyWeeklyPlanningCommands(nextState, setupCommands);
+  const fields = nextState.examPrepScope?.fields ?? [];
+  // TODO(Phase 9.8): move ambiguous progress hints into ParsedWeeklyPlanningCommand. They do not yet have enough certainty to share the mark_completed_units command path.
   const progressHint = parseProgressHint(userText, fields);
 
   if (progressHint) {
@@ -257,128 +324,17 @@ export function applyWeeklyPlanningUserTurn(
     };
   }
 
-  const completedYearDirection = parseCompletedYearDirection(
-    userText,
-    nextState.examPrepScope?.yearRange,
-    fields,
+  nextState = applyWeeklyPlanningCommands(
+    nextState,
+    parseWeeklyPlanningCommands({ userText, context, state: nextState }),
   );
 
-  if (completedYearDirection && nextState.progress.length > 0) {
-    let progressIndex = -1;
-
-    for (let index = nextState.progress.length - 1; index >= 0; index -= 1) {
-      if (nextState.progress[index].field === completedYearDirection.field) {
-        progressIndex = index;
-        break;
-      }
-    }
-
-    const targetIndex = progressIndex >= 0 ? progressIndex : nextState.progress.length - 1;
-    const targetProgress = nextState.progress[targetIndex];
-    const updatedProgress = {
-      ...targetProgress,
-      field: completedYearDirection.field,
-      completedYears: completedYearDirection.completedYears,
-      ambiguity: 'none' as const,
-      rawText: completedYearDirection.rawText,
-    };
-
+  if (hasExplicitNoFixedEvents(userText)) {
     nextState = {
       ...nextState,
-      progress: [
-        ...nextState.progress.slice(0, targetIndex),
-        updatedProgress,
-        ...nextState.progress.slice(targetIndex + 1),
-      ],
-      missing: removeMissing(nextState.missing, ['completion_direction']),
+      missing: removeMissing(nextState.missing, ['fixed_events']),
     };
   }
-
-
-  const completedSingleYearRevision = parseCompletedSingleYearRevision(
-    userText,
-    nextState.examPrepScope?.yearRange,
-    fields,
-  );
-
-  if (completedSingleYearRevision) {
-    const progressIndex = nextState.progress.findIndex(
-      (progress) => progress.field === completedSingleYearRevision.field,
-    );
-    const existingProgress =
-      progressIndex >= 0
-        ? nextState.progress[progressIndex]
-        : {
-            field: completedSingleYearRevision.field,
-            ambiguity: 'none' as const,
-            rawText: completedSingleYearRevision.rawText,
-          };
-    const completedYears = uniqueList([
-      ...(existingProgress.completedYears ?? []),
-      completedSingleYearRevision.completedYear,
-    ]);
-    const updatedProgress = {
-      ...existingProgress,
-      field: completedSingleYearRevision.field,
-      completedYears,
-      ambiguity: 'none' as const,
-      rawText: completedSingleYearRevision.rawText,
-    };
-
-    nextState = {
-      ...nextState,
-      progress:
-        progressIndex >= 0
-          ? [
-              ...nextState.progress.slice(0, progressIndex),
-              updatedProgress,
-              ...nextState.progress.slice(progressIndex + 1),
-            ]
-          : [...nextState.progress, updatedProgress],
-      missing: removeMissing(nextState.missing, ['completion_direction']),
-    };
-  }
-
-  const unitRate = parseUnitRate(userText, nextState.examPrepScope);
-
-  if (unitRate) {
-    nextState = {
-      ...nextState,
-      unitRates: [
-        ...nextState.unitRates.filter((rate) => rate.unit !== unitRate.unit),
-        unitRate,
-      ],
-      missing: removeMissing(nextState.missing, ['unit_duration_estimate']),
-    };
-  }
-
-  const addUnavailableCommands = parseAddUnavailableCommands(userText, context);
-  const constraints = [
-    ...addUnavailableCommands.map(toLifeConstraintFromAddUnavailableCommand),
-    ...parseConstraints(userText, context),
-  ];
-  const missingToRemoveForConstraints: PlanningIntakeMissing[] = [];
-
-  if (constraints.some(hasLifeConstraint)) {
-    missingToRemoveForConstraints.push(
-      'sleep_cycle',
-      'meal_bath_constraints',
-      'life_constraints',
-    );
-  }
-
-  if (constraints.some(hasConfirmedFixedEvent) || hasExplicitNoFixedEvents(userText)) {
-    missingToRemoveForConstraints.push('fixed_events');
-  }
-
-  if (constraints.length > 0 || missingToRemoveForConstraints.length > 0) {
-    nextState = {
-      ...nextState,
-      constraints: mergeLifeConstraints(nextState.constraints, constraints),
-      missing: removeMissing(nextState.missing, missingToRemoveForConstraints),
-    };
-  }
-
   if (/知らない分野.*時間かかる|細かく見る.*時間かかる/.test(normalizeIntakeText(userText))) {
     nextState = {
       ...nextState,
@@ -389,6 +345,7 @@ export function applyWeeklyPlanningUserTurn(
     };
   }
 
+  // TODO(Phase 9.8): keep the legacy weekly parser fallback isolated until the normal/weekly route regression set is expanded.
   if (
     nextState.intent === 'unknown' &&
     looksLikeWeeklyPlanningRequest(userText)

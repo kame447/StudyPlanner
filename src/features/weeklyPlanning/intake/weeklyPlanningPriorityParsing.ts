@@ -1,3 +1,4 @@
+import type { SetPriorityPolicyCommand } from './weeklyPlanningCommandTypes';
 import type { PriorityPolicy } from './weeklyPlanningIntakeTypes';
 import { resolveFieldByKeyword } from './weeklyPlanningFieldParsing';
 import { splitIntakeSegments, uniqueList } from './weeklyPlanningTextParsing';
@@ -76,4 +77,21 @@ export function parsePriorityPolicy(
   }
 
   return undefined;
+}
+
+export function parseSetPriorityPolicyCommand(
+  text: string,
+  fields: string[],
+  currentOrder: string[] = [],
+): SetPriorityPolicyCommand | undefined {
+  const policy = parsePriorityPolicy(text, fields, currentOrder);
+
+  return policy
+    ? {
+        type: 'set_priority_policy',
+        policy,
+        sourceText: text,
+        confidence: 'high',
+      }
+    : undefined;
 }
