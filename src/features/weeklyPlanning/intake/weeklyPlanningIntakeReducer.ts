@@ -11,7 +11,11 @@ import type {
   StudyScopeUnit,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
-import { parseCompletedYearDirection, parseProgressHint } from './weeklyPlanningCompletionParsing';
+import {
+  parseCompletedSingleYearRevision,
+  parseCompletedYearDirection,
+  parseProgressHint,
+} from './weeklyPlanningCompletionParsing';
 import { hasConfirmedFixedEvent, hasExplicitNoFixedEvents, hasLifeConstraint, parseConstraints } from './weeklyPlanningConstraintParsing';
 import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
 import { parsePriorityPolicy } from './weeklyPlanningPriorityParsing';
@@ -277,6 +281,51 @@ export function applyWeeklyPlanningUserTurn(
         updatedProgress,
         ...nextState.progress.slice(targetIndex + 1),
       ],
+      missing: removeMissing(nextState.missing, ['completion_direction']),
+    };
+  }
+
+
+  const completedSingleYearRevision = parseCompletedSingleYearRevision(
+    userText,
+    nextState.examPrepScope?.yearRange,
+    fields,
+  );
+
+  if (completedSingleYearRevision) {
+    const progressIndex = nextState.progress.findIndex(
+      (progress) => progress.field === completedSingleYearRevision.field,
+    );
+    const existingProgress =
+      progressIndex >= 0
+        ? nextState.progress[progressIndex]
+        : {
+            field: completedSingleYearRevision.field,
+            ambiguity: 'none' as const,
+            rawText: completedSingleYearRevision.rawText,
+          };
+    const completedYears = uniqueList([
+      ...(existingProgress.completedYears ?? []),
+      completedSingleYearRevision.completedYear,
+    ]);
+    const updatedProgress = {
+      ...existingProgress,
+      field: completedSingleYearRevision.field,
+      completedYears,
+      ambiguity: 'none' as const,
+      rawText: completedSingleYearRevision.rawText,
+    };
+
+    nextState = {
+      ...nextState,
+      progress:
+        progressIndex >= 0
+          ? [
+              ...nextState.progress.slice(0, progressIndex),
+              updatedProgress,
+              ...nextState.progress.slice(progressIndex + 1),
+            ]
+          : [...nextState.progress, updatedProgress],
       missing: removeMissing(nextState.missing, ['completion_direction']),
     };
   }

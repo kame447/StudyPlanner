@@ -165,6 +165,74 @@ describe('weekly planning intake pipeline', () => {
     });
   });
 
+
+
+
+  it('updates remaining work items and dry-run candidates after a preview-stage completed year revision', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const mathField = finalState.examPrepScope?.fields.find((field) =>
+      field.includes('\u6570\u5b66'),
+    );
+
+    if (!mathField) {
+      throw new Error('expected math field');
+    }
+
+    const output = runTurn(finalState, '\u3084\u3063\u3071\u308a\u6570\u5b66\u306e2020\u3082\u7d42\u308f\u3063\u3066\u305f');
+    const mathProgress = output.state.progress.find(
+      (progress) => progress.field === mathField,
+    );
+    const mathItems = output.remainingWorkItems?.items.filter(
+      (item) => item.field === mathField,
+    );
+
+    expect(mathProgress?.completedYears).toEqual([2025, 2024, 2023, 2022, 2021, 2020]);
+    expect(mathItems?.map((item) => item.year)).toEqual([2019]);
+    expect(output.draftCandidates?.some(
+      (candidate) => candidate.field === mathField && candidate.year === 2020,
+    )).toBe(false);
+    expect(output.draftCandidates?.length).toBeGreaterThan(0);
+    expect(output.decision).toMatchObject({
+      kind: 'offer_dry_run_preview',
+      shouldCreateDraft: true,
+      shouldSavePlan: false,
+    });
+  });
+
+  it('does not turn fieldless completed year revisions into draft changes', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const mathField = finalState.examPrepScope?.fields.find((field) =>
+      field.includes('\u6570\u5b66'),
+    );
+
+    if (!mathField) {
+      throw new Error('expected math field');
+    }
+
+    const output = runTurn(finalState, '2020\u3082\u7d42\u308f\u3063\u3066\u305f');
+    const mathProgress = output.state.progress.find(
+      (progress) => progress.field === mathField,
+    );
+
+    expect(mathProgress?.completedYears).toEqual([2025, 2024, 2023, 2022, 2021]);
+    expect(output.remainingWorkItems?.items.filter(
+      (item) => item.field === mathField,
+    ).map((item) => item.year)).toEqual([2020, 2019]);
+    expect(output.decision.shouldSavePlan).toBe(false);
+  });
+
   it('is deterministic for the same input sequence', () => {
     expect(runWeekendExamSequence()).toEqual(runWeekendExamSequence());
   });
