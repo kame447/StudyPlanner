@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningRemainingWorkItem } from '../intake/weeklyPlanningRemainingWorkItems';
 import { createWeeklyDraftCandidatesFromRemainingWorkItems } from './weeklyDraftCandidateGenerator';
+import { expandRecurringUnavailableConstraints } from './weeklyPlanningConstraintScheduling';
 
 const remainingWorkItems: WeeklyPlanningRemainingWorkItem[] = [
   {
@@ -162,6 +163,118 @@ describe('weekly draft candidate generator dry-run', () => {
     expect(first.candidates.map((candidate) => candidate.durationMinutes)).toEqual([120, 120]);
   });
 
+  it('expands date-less unavailable constraints into each planning day as a pure scheduling helper', () => {
+    expect(expandRecurringUnavailableConstraints({
+      constraints: [
+        {
+          kind: 'unavailable' as const,
+          start: '16:00',
+          end: '19:00',
+          hardness: 'hard' as const,
+        },
+      ],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 3,
+    }).map((constraint) => constraint.date)).toEqual([
+      '2026-06-26',
+      '2026-06-27',
+      '2026-06-28',
+    ]);
+  });
+  it('expands date-less unavailable time bands across planning days before scheduling', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [remainingWorkItems[0]],
+      constraints: [],
+      fixedEvents: [
+        {
+          kind: 'unavailable' as const,
+          start: '16:00',
+          end: '19:00',
+          hardness: 'hard' as const,
+          rawText: '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067',
+        },
+      ],
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '16:00',
+        dayStartTime: '16:00',
+        dayEndTime: '22:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-26',
+        startTime: '19:00',
+        endTime: '21:00',
+      }),
+    ]);
+    expect(result.diagnostics.fixedEventConflicts).toEqual([]);
+  });
+
+  it('treats all-day unavailable dates as busy and moves candidates to later days', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [remainingWorkItems[0]],
+      constraints: [],
+      fixedEvents: [
+        {
+          kind: 'unavailable' as const,
+          date: '2026-06-26',
+          start: '00:00',
+          end: '24:00',
+          hardness: 'hard' as const,
+          rawText: '\u91d1\u66dc\u306f\u4f7f\u308f\u306a\u3044\u3067',
+        },
+      ],
+      planningDayCount: 2,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '22:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-27',
+        startTime: '09:00',
+        endTime: '11:00',
+      }),
+    ]);
+    expect(result.diagnostics.fixedEventConflicts).toEqual([]);
+  });
+
+  it('reports unscheduled items when unavailable constraints block the whole planning window', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [remainingWorkItems[0]],
+      constraints: [],
+      fixedEvents: [
+        {
+          kind: 'unavailable' as const,
+          start: '09:00',
+          end: '22:00',
+          hardness: 'hard' as const,
+          rawText: '\u7d42\u65e5\u4f7f\u308f\u306a\u3044',
+        },
+      ],
+      planningDayCount: 2,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '22:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.diagnostics.unscheduledItems).toEqual([remainingWorkItems[0]]);
+    expect(result.diagnostics.totalScheduledMinutes).toBe(0);
+  });
   it('reports unscheduled items instead of over-scheduling when the planning window is too small', () => {
     const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
       ...baseInput,

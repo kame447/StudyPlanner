@@ -233,6 +233,172 @@ describe('weekly planning intake pipeline', () => {
     expect(output.decision.shouldSavePlan).toBe(false);
   });
 
+
+  it('adds a fixed event revision after preview and regenerates dry-run candidates without saving', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const output = runTurn(finalState, '\u91d1\u66dc\u306e16\u6642\u304b\u3089\u30d0\u30a4\u30c8');
+
+    expect(output.state.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'fixed_event',
+          date: SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
+          start: '16:00',
+          durationMinutes: 60,
+          hardness: 'hard',
+        }),
+      ]),
+    );
+    expect(output.draftRequest?.fixedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'fixed_event', start: '16:00' }),
+      ]),
+    );
+    expect(output.draftCandidates?.length).toBeGreaterThan(0);
+    expect(output.decision.shouldSavePlan).toBe(false);
+  });
+
+  it('updates an existing life constraint after preview without duplicating the same kind', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const output = runTurn(finalState, '\u98a8\u5442\u306f21\u6642\u306b\u3057\u3066');
+    const bathConstraints = output.state.constraints.filter(
+      (constraint) => constraint.kind === 'bath',
+    );
+
+    expect(bathConstraints).toEqual([
+      expect.objectContaining({
+        kind: 'bath',
+        date: SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
+        start: '21:00',
+        durationMinutes: 30,
+        hardness: 'hard',
+      }),
+    ]);
+    expect(output.draftRequest?.constraints.filter(
+      (constraint) => constraint.kind === 'bath',
+    )).toEqual([
+      expect.objectContaining({ kind: 'bath', start: '21:00' }),
+    ]);
+    expect(output.draftCandidates?.length).toBeGreaterThan(0);
+    expect(output.decision.shouldSavePlan).toBe(false);
+  });
+
+  it('updates field-first priority after preview and regenerates remaining work item order', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const softwareField = finalState.examPrepScope?.fields.find((field) =>
+      field.includes('\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2'),
+    );
+
+    if (!softwareField) {
+      throw new Error('expected software field');
+    }
+
+    const output = runTurn(finalState, '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u3092\u5148\u306b\u3057\u305f\u3044');
+
+    expect(output.state.priorityPolicy).toMatchObject({
+      kind: 'field_first',
+      order: expect.arrayContaining([softwareField]),
+    });
+    expect(output.state.priorityPolicy.kind === 'field_first'
+      ? output.state.priorityPolicy.order
+      : undefined).toEqual([softwareField, finalState.examPrepScope?.fields.find((field) =>
+        field.includes('\u6570\u5b66'),
+      )]);
+    expect(output.remainingWorkItems?.items[0]?.field).toBe(softwareField);
+    expect(output.draftCandidates?.[0]?.field).toBe(softwareField);
+    expect(output.decision.shouldSavePlan).toBe(false);
+  });
+
+  it('adds unavailable time constraints after preview and regenerates candidates without scheduling inside the blocked range', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const output = runTurn(finalState, '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067');
+    const overlapsEvening = output.draftCandidates?.some((candidate) => {
+      const [startHour, startMinute] = candidate.startTime.split(':').map(Number);
+      const [endHour, endMinute] = candidate.endTime.split(':').map(Number);
+      const startMinutes = startHour * 60 + startMinute;
+      const endMinutes = endHour * 60 + endMinute;
+
+      return startMinutes < 19 * 60 && 16 * 60 < endMinutes;
+    });
+
+    expect(output.state.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'unavailable',
+          start: '16:00',
+          end: '19:00',
+          hardness: 'hard',
+        }),
+      ]),
+    );
+    expect(output.draftRequest?.fixedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'unavailable', start: '16:00', end: '19:00' }),
+      ]),
+    );
+    expect(output.draftCandidates?.length).toBeGreaterThan(0);
+    expect(overlapsEvening).toBe(false);
+    expect(output.decision.shouldSavePlan).toBe(false);
+  });
+
+  it('adds unavailable whole-day constraints after preview and keeps draft generation unsaved', () => {
+    const outputs = runWeekendExamSequence();
+    const finalState = outputs[outputs.length - 1]?.state;
+
+    if (!finalState) {
+      throw new Error('expected final state');
+    }
+
+    const output = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: finalState,
+      userText: '7\u67083\u65e5\u306f\u4f7f\u308f\u306a\u3044\u3067',
+      planningDayCount: 8,
+    });
+
+    expect(output.state.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'unavailable',
+          date: '2026-07-03',
+          start: '00:00',
+          end: '24:00',
+          hardness: 'hard',
+        }),
+      ]),
+    );
+    expect(output.draftRequest?.fixedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'unavailable', date: '2026-07-03' }),
+      ]),
+    );
+    expect(output.diagnostics?.shouldSavePlan).toBe(false);
+    expect(output.decision.shouldSavePlan).toBe(false);
+  });
   it('is deterministic for the same input sequence', () => {
     expect(runWeekendExamSequence()).toEqual(runWeekendExamSequence());
   });

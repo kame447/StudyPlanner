@@ -3,6 +3,7 @@ import type { LifeConstraint } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningRemainingWorkItem } from '../intake/weeklyPlanningRemainingWorkItems';
 import type { SessionLengthPolicy } from '../weeklyPlanningTypes';
 import { splitDurationIntoSessionChunks } from './sessionChunking';
+import { expandRecurringUnavailableConstraints, isFixedSchedulingConstraint } from './weeklyPlanningConstraintScheduling';
 
 export interface WeeklyDraftCandidateSessionPolicy extends SessionLengthPolicy {
   dayStartTime: string;
@@ -169,15 +170,20 @@ function buildBusyIntervals(params: {
   constraints: LifeConstraint[];
   fixedEvents: LifeConstraint[];
   planningStartDate: string;
+  planningDayCount: number;
 }): {
   intervals: BusyInterval[];
   floatingConstraints: LifeConstraint[];
 } {
-  const allConstraints = [...params.constraints, ...params.fixedEvents];
+  const expandedConstraints = expandRecurringUnavailableConstraints({
+    constraints: [...params.constraints, ...params.fixedEvents],
+    planningStartDate: params.planningStartDate,
+    planningDayCount: params.planningDayCount,
+  });
   const intervals: BusyInterval[] = [];
   const floatingConstraints: LifeConstraint[] = [];
 
-  allConstraints.forEach((constraint) => {
+  expandedConstraints.forEach((constraint) => {
     const interval = constraintToBusyInterval(constraint, params.planningStartDate);
 
     if (interval) {
@@ -255,9 +261,6 @@ function candidateHasConflict(
     .map((interval) => createConflict({ interval, candidate }));
 }
 
-function isFixedConstraint(kind: LifeConstraint['kind']): boolean {
-  return kind === 'fixed_event' || kind === 'unavailable';
-}
 
 function createDeterministicKey(candidates: WeeklyDraftCandidate[]): string {
   return candidates
@@ -294,6 +297,7 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     constraints: input.constraints,
     fixedEvents: input.fixedEvents,
     planningStartDate: input.planningStartDate,
+    planningDayCount: input.planningDayCount,
   });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledItems: WeeklyPlanningRemainingWorkItem[] = [];
@@ -354,8 +358,8 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
   });
 
   const allConflicts = candidates.flatMap((candidate) => candidateHasConflict(candidate, busyIntervals));
-  const fixedEventConflicts = allConflicts.filter((conflict) => isFixedConstraint(conflict.constraintKind));
-  const lifeConstraintConflicts = allConflicts.filter((conflict) => !isFixedConstraint(conflict.constraintKind));
+  const fixedEventConflicts = allConflicts.filter((conflict) => isFixedSchedulingConstraint(conflict.constraintKind));
+  const lifeConstraintConflicts = allConflicts.filter((conflict) => !isFixedSchedulingConstraint(conflict.constraintKind));
   const totalRequestedMinutes = input.remainingWorkItems.reduce(
     (sum, item) => sum + item.estimatedMinutes,
     0,

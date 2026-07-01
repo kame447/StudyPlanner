@@ -45,6 +45,7 @@ export function runWeeklyPlanningIntakePipeline(
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
   const state = applyWeeklyPlanningUserTurn(previousState, input.userText, {
     selectedDate: input.planningStartDate,
+    planningDayCount: input.planningDayCount,
   });
   const draftRequest = createWeeklyDraftRequestFromIntakeState(state);
   const remainingWorkItems = draftRequest

@@ -16,7 +16,10 @@ import {
   parseCompletedYearDirection,
   parseProgressHint,
 } from './weeklyPlanningCompletionParsing';
+import { toLifeConstraintFromAddUnavailableCommand } from './weeklyPlanningCommandAdapter';
+import { mergeLifeConstraints } from './weeklyPlanningConstraintIdentity';
 import { hasConfirmedFixedEvent, hasExplicitNoFixedEvents, hasLifeConstraint, parseConstraints } from './weeklyPlanningConstraintParsing';
+import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
 import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
 import { parsePriorityPolicy } from './weeklyPlanningPriorityParsing';
 import { normalizeIntakeText, parseSmallInteger, uniqueList } from './weeklyPlanningTextParsing';
@@ -109,6 +112,9 @@ function parseTotalFields(text: string): number | undefined {
   const match = normalizeIntakeText(text).match(/([0-9]+|[一二三四五六七八九十]+)\s*分野/);
   return match ? parseSmallInteger(match[1]) : undefined;
 }
+
+
+
 
 function parseYearRange(text: string): ExamPrepScope['yearRange'] | undefined {
   const match = normalizeIntakeText(text).match(/(20\d{2})\s*[〜~-]\s*(20\d{2})/);
@@ -225,7 +231,10 @@ export function applyWeeklyPlanningUserTurn(
   }
 
     const fields = nextState.examPrepScope?.fields ?? [];
-  const priorityPolicy = parsePriorityPolicy(userText, fields);
+  const currentPriorityOrder = nextState.priorityPolicy.kind === 'field_first'
+    ? nextState.priorityPolicy.order
+    : [];
+  const priorityPolicy = parsePriorityPolicy(userText, fields, currentPriorityOrder);
 
   if (priorityPolicy) {
     nextState = {
@@ -343,7 +352,11 @@ export function applyWeeklyPlanningUserTurn(
     };
   }
 
-  const constraints = parseConstraints(userText, context);
+  const addUnavailableCommands = parseAddUnavailableCommands(userText, context);
+  const constraints = [
+    ...addUnavailableCommands.map(toLifeConstraintFromAddUnavailableCommand),
+    ...parseConstraints(userText, context),
+  ];
   const missingToRemoveForConstraints: PlanningIntakeMissing[] = [];
 
   if (constraints.some(hasLifeConstraint)) {
@@ -361,7 +374,7 @@ export function applyWeeklyPlanningUserTurn(
   if (constraints.length > 0 || missingToRemoveForConstraints.length > 0) {
     nextState = {
       ...nextState,
-      constraints: [...nextState.constraints, ...constraints],
+      constraints: mergeLifeConstraints(nextState.constraints, constraints),
       missing: removeMissing(nextState.missing, missingToRemoveForConstraints),
     };
   }

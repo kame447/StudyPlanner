@@ -161,6 +161,7 @@ export interface PlanningIntakeState {
 
 export interface WeeklyPlanningIntakeContext {
   selectedDate: string;
+  planningDayCount?: number;
 }
 
 export interface WeeklyPlanningIntakeInterpreter {

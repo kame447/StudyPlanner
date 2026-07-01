@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { toLifeConstraintFromAddUnavailableCommand } from '../intake/weeklyPlanningCommandAdapter';
+import { getLifeConstraintIdentity } from '../intake/weeklyPlanningConstraintIdentity';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
 import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
+import {
+  isHardUnavailableExpression,
+  isUncertainAvailabilityExpression,
+  parseAddUnavailableCommand,
+  resolveUnavailableDaypartRange,
+} from '../intake/weeklyPlanningUnavailableParsing';
 import {
   WP_RP_001_WEEKEND_EXAM_TURNS,
 } from '../testFixtures/weeklyPlanningRoleplayCases';
@@ -325,6 +333,221 @@ describe('weekly planning intake edge cases', () => {
       ]),
     );
     expect(ambiguous.missing).toContain('fixed_events');
+  });
+
+  it('Phase 9.2 parses explicit fixed-event additions but keeps uncertain events unconfirmed', () => {
+    const baseState = applyWeekendExamReadyForLifeConstraints();
+    const confirmed = applyWeeklyPlanningUserTurn(
+      baseState,
+      '\u65e5\u66dc\u306e13\u6642\u304b\u3089\u6b6f\u533b\u8005',
+      context,
+    );
+    const ambiguous = applyWeeklyPlanningUserTurn(
+      baseState,
+      '\u65e5\u66dc\u306e13\u6642\u304b\u3089\u6b6f\u533b\u8005\u304b\u3082',
+      context,
+    );
+
+    expect(confirmed.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'fixed_event',
+          date: '2026-06-28',
+          start: '13:00',
+          hardness: 'hard',
+        }),
+      ]),
+    );
+    expect(confirmed.missing).not.toContain('fixed_events');
+    expect(ambiguous.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'fixed_event',
+          date: '2026-06-28',
+          start: '13:00',
+          hardness: 'soft',
+        }),
+      ]),
+    );
+    expect(ambiguous.missing).toContain('fixed_events');
+  });
+
+  it('Phase 9.2 updates timed life constraints but does not replace them with vague wording', () => {
+    const draftReady = applyWeekendExamReadyForDraftRequest();
+    const updatedBath = applyWeeklyPlanningUserTurn(
+      draftReady,
+      '\u304a\u98a8\u5442\u306f22\u6642\u306b\u5909\u66f4',
+      context,
+    );
+    const vagueBath = applyWeeklyPlanningUserTurn(draftReady, '\u591c\u306b\u98a8\u5442', context);
+
+    expect(updatedBath.constraints.filter((constraint) => constraint.kind === 'bath')).toEqual([
+      expect.objectContaining({ start: '22:00', hardness: 'hard' }),
+    ]);
+    expect(vagueBath.constraints.filter((constraint) => constraint.kind === 'bath')).toEqual(
+      draftReady.constraints.filter((constraint) => constraint.kind === 'bath'),
+    );
+  });
+
+  it('Phase 9.2 updates priority only for known fields', () => {
+    const draftReady = applyWeekendExamReadyForDraftRequest();
+    const softwareFirst = applyWeeklyPlanningUserTurn(
+      draftReady,
+      '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u3092\u5148\u306b\u3057\u305f\u3044',
+      context,
+    );
+    const unknownField = applyWeeklyPlanningUserTurn(
+      draftReady,
+      '\u82f1\u8a9e\u3092\u5148\u306b\u3057\u305f\u3044',
+      context,
+    );
+
+    expect(softwareFirst.priorityPolicy.kind === 'field_first'
+      ? softwareFirst.priorityPolicy.order
+      : undefined).toEqual(['\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u7cfb', '\u6570\u5b66\u30fb\u6570\u7406\u7cfb']);
+    expect(unknownField.priorityPolicy).toEqual(draftReady.priorityPolicy);
+  });
+
+  it('Phase 9.4a exposes small unavailable parsing helpers for daypart and uncertainty boundaries', () => {
+    expect(resolveUnavailableDaypartRange('\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067')).toMatchObject({
+      start: '16:00',
+      end: '19:00',
+    });
+    expect(isHardUnavailableExpression('\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067')).toBe(true);
+    expect(isUncertainAvailabilityExpression('\u591c\u306f\u4f7f\u3048\u306a\u3044\u304b\u3082')).toBe(true);
+    expect(isHardUnavailableExpression('\u591c\u306f\u4f7f\u3048\u306a\u3044\u304b\u3082')).toBe(false);
+  });
+
+  it('Phase 9.4a keeps equivalent unavailable constraint identity independent from raw text', () => {
+    expect(getLifeConstraintIdentity({
+      kind: 'unavailable',
+      start: '16:00',
+      end: '19:00',
+      hardness: 'hard',
+      rawText: '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067',
+    })).toBe(getLifeConstraintIdentity({
+      kind: 'unavailable',
+      start: '16:00',
+      end: '19:00',
+      hardness: 'hard',
+      rawText: '\u5915\u65b9\u306f\u9664\u5916',
+    }));
+  });
+  it('Phase 9.5 parses unavailable text as an add_unavailable command before domain conversion', () => {
+    const command = parseAddUnavailableCommand(
+      '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067',
+      context,
+    );
+
+    expect(command).toMatchObject({
+      type: 'add_unavailable',
+      range: {
+        start: '16:00',
+        end: '19:00',
+        hardness: 'hard',
+      },
+      confidence: 'high',
+      sourceSegment: '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067',
+    });
+    expect(command ? toLifeConstraintFromAddUnavailableCommand(command) : undefined).toMatchObject({
+      kind: 'unavailable',
+      start: '16:00',
+      end: '19:00',
+      hardness: 'hard',
+    });
+  });
+
+  it('Phase 9.5 keeps ambiguous unavailable text out of add_unavailable commands', () => {
+    expect(parseAddUnavailableCommand('\u591c\u306f\u4f7f\u3048\u306a\u3044\u304b\u3082', context)).toBeUndefined();
+  });
+  it.each([
+    ['\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '16:00', end: '19:00' }],
+    ['\u5348\u524d\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '08:00', end: '12:00' }],
+    ['14\u6642\u304b\u308916\u6642\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '14:00', end: '16:00' }],
+    ['15\u6642\u4ee5\u964d\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '15:00', end: '24:00' }],
+  ])('Phase 9.3 parses hard unavailable time ranges: %s', (text, expected) => {
+    const state = applyWeeklyPlanningUserTurn(applyWeekendExamReadyForDraftRequest(), text, context);
+
+    expect(state.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'unavailable',
+          hardness: 'hard',
+          ...expected,
+        }),
+      ]),
+    );
+  });
+
+  it.each([
+    ['\u65e5\u66dc\u306f\u7a7a\u3051\u3066', '2026-06-28'],
+    ['7\u67083\u65e5\u306f\u4f7f\u308f\u306a\u3044\u3067', '2026-07-03'],
+    ['2026-07-03\u306f\u4f7f\u308f\u306a\u3044\u3067', '2026-07-03'],
+  ])('Phase 9.3 parses hard unavailable days within the planning range: %s', (text, expectedDate) => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      text,
+      { ...context, planningDayCount: 8 },
+    );
+
+    expect(state.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'unavailable',
+          date: expectedDate,
+          start: '00:00',
+          end: '24:00',
+          hardness: 'hard',
+        }),
+      ]),
+    );
+  });
+
+  it('Phase 9.3 does not create hard unavailable constraints for dates outside the planning range', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      '2026-07-04\u306f\u4f7f\u308f\u306a\u3044\u3067',
+      { ...context, planningDayCount: 8 },
+    );
+
+    expect(state.constraints).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'unavailable', date: '2026-07-04' }),
+      ]),
+    );
+  });
+
+  it.each([
+    '\u591c\u306f\u4f7f\u3048\u306a\u3044\u304b\u3082',
+    '\u3067\u304d\u308c\u3070\u5348\u524d\u306f\u907f\u3051\u305f\u3044',
+    '\u65e5\u66dc\u306f\u7a7a\u3051\u305f\u3044\u304b\u3082',
+    '\u91d1\u66dc\u306f\u5fae\u5999',
+    '\u4e88\u5b9a\u304c\u5165\u308b\u304b\u3082',
+  ])('Phase 9.3 keeps ambiguous unavailable wording out of hard constraints: %s', (text) => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      text,
+      { ...context, planningDayCount: 8 },
+    );
+
+    expect(state.constraints).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'unavailable', hardness: 'hard' }),
+      ]),
+    );
+  });
+
+  it('Phase 9.3 does not duplicate the same unavailable constraint across repeated turns', () => {
+    const once = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067',
+      context,
+    );
+    const twice = applyWeeklyPlanningUserTurn(once, '\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067', context);
+
+    expect(twice.constraints.filter((constraint) =>
+      constraint.kind === 'unavailable' && constraint.start === '16:00' && constraint.end === '19:00',
+    )).toHaveLength(1);
   });
   it('ML-eval stateless pipeline is deterministic for identical roleplay input sequences', () => {
     const runPipeline = () => {
