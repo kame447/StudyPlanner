@@ -7,3 +7,6 @@ dist
 .cert
 .wrangler
 workers/ai-proxy/.dev.vars
+
+# Claude Code local settings
+.claude/settings.local.json
