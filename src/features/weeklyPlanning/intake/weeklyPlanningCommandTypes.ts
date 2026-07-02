@@ -1,6 +1,7 @@
 import type {
   ExamPrepScope,
   PlanningRange,
+  PlanningIntakeUncertainty,
   LifeConstraintKind,
   PriorityPolicy,
   StudyScopeUnit,
@@ -13,6 +14,7 @@ export type ParsedWeeklyPlanningCommand =
   | SetPriorityPolicyCommand
   | MarkCompletedUnitsCommand
   | NoteProgressBoundaryCommand
+  | NoteUncertaintyCommand
   | SetUnitRateCommand
   | SetExamScopeCommand
   | SetPlanningRangeCommand;
@@ -83,6 +85,14 @@ export interface NoteProgressBoundaryCommand {
   field?: string;
   boundaryYear: number;
   ambiguity: 'completion_direction';
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NoteUncertaintyCommand {
+  type: 'note_uncertainty';
+  uncertainty: PlanningIntakeUncertainty;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

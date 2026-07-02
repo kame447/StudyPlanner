@@ -3,6 +3,7 @@ import type {
   AddUnavailableCommand,
   MarkCompletedUnitsCommand,
   NoteProgressBoundaryCommand,
+  NoteUncertaintyCommand,
   SetPriorityPolicyCommand,
   SetExamScopeCommand,
   SetPlanningRangeCommand,
@@ -12,6 +13,7 @@ import type {
 import type {
   ExamPrepScope,
   LifeConstraint,
+  PlanningIntakeUncertainty,
   PlanningRange,
   PriorityPolicy,
   StudyProgress,
@@ -63,6 +65,12 @@ export function toPriorityPolicyFromSetPriorityPolicyCommand(
   command: SetPriorityPolicyCommand,
 ): PriorityPolicy {
   return command.policy;
+}
+
+export function toUncertaintyFromNoteUncertaintyCommand(
+  command: NoteUncertaintyCommand,
+): PlanningIntakeUncertainty {
+  return command.uncertainty;
 }
 
 export function toStudyProgressFromMarkCompletedUnitsCommand(

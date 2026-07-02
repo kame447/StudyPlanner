@@ -8,6 +8,7 @@ import {
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
+  toUncertaintyFromNoteUncertaintyCommand,
   toUnitRateFromSetUnitRateCommand,
 } from '../intake/weeklyPlanningCommandAdapter';
 import {
@@ -22,6 +23,7 @@ import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReduc
 import { parseSetPriorityPolicyCommand } from '../intake/weeklyPlanningPriorityParsing';
 import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from '../intake/weeklyPlanningScopeParsing';
 import { parseSetUnitRateCommand } from '../intake/weeklyPlanningUnitRateParsing';
+import { parseNoteUncertaintyCommand } from '../intake/weeklyPlanningUncertaintyParsing';
 import {
   isHardUnavailableExpression,
   isUncertainAvailabilityExpression,
@@ -657,6 +659,75 @@ describe('weekly planning intake edge cases', () => {
       ]),
     );
     expect(state.missing).toContain('completion_direction');
+  });
+
+  it.each([
+    [
+      '\u77e5\u3089\u306a\u3044\u5206\u91ce\u306f\u6642\u9593\u304b\u304b\u308b\u3068\u601d\u3046',
+      '\u77e5\u3089\u306a\u3044\u5206\u91ce\u306f\u6642\u9593\u304b\u304b\u308b',
+    ],
+    [
+      '\u7d30\u304b\u304f\u898b\u308b\u3068\u6642\u9593\u304b\u304b\u308b',
+      '\u7d30\u304b\u304f\u898b\u308b\u3068\u6642\u9593\u304b\u304b\u308b',
+    ],
+    [
+      '\u77e5\u3089\u306a\u3044\u5206\u91ce\u306f\u3000\u6642\u9593\u304b\u304b\u308b',
+      '\u77e5\u3089\u306a\u3044\u5206\u91ce\u306f \u6642\u9593\u304b\u304b\u308b',
+    ],
+  ])('Phase R1-1 parses uncertainty text as a note_uncertainty command: %s', (text, sourceSegment) => {
+    const command = parseNoteUncertaintyCommand(text);
+
+    expect(command).toMatchObject({
+      type: 'note_uncertainty',
+      uncertainty: 'unknown_fields_may_take_longer',
+      sourceText: text,
+      sourceSegment,
+      confidence: 'medium',
+    });
+    expect(command ? toUncertaintyFromNoteUncertaintyCommand(command) : undefined)
+      .toBe('unknown_fields_may_take_longer');
+  });
+
+  it.each([
+    '\u6642\u9593\u304b\u304b\u308b',
+    '\u77e5\u3089\u306a\u3044\u5206\u91ce\u304c\u3042\u308b',
+  ])('Phase R1-1 does not parse partial uncertainty wording as a command: %s', (text) => {
+    expect(parseNoteUncertaintyCommand(text)).toBeUndefined();
+  });
+
+  it('Phase R1-1 records unknown field duration uncertainty through the reducer path', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      '\u77e5\u3089\u306a\u3044\u5206\u91ce\u306f\u6642\u9593\u304b\u304b\u308b\u3068\u601d\u3046',
+      context,
+    );
+
+    expect(state.uncertainties).toEqual(['unknown_fields_may_take_longer']);
+  });
+
+  it('Phase R1-1 does not record uncertainty for partial non-matching wording', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      '\u6642\u9593\u304b\u304b\u308b',
+      context,
+    );
+
+    expect(state.uncertainties).toEqual([]);
+  });
+
+  it('Phase R1-1 keeps unknown field duration uncertainty unique across turns', () => {
+    const once = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      '\u77e5\u3089\u306a\u3044\u5206\u91ce\u306f\u6642\u9593\u304b\u304b\u308b\u3068\u601d\u3046',
+      context,
+    );
+    const twice = applyWeeklyPlanningUserTurn(
+      once,
+      '\u7d30\u304b\u304f\u898b\u308b\u3068\u6642\u9593\u304b\u304b\u308b',
+      context,
+    );
+
+    expect(twice.uncertainties).toEqual(['unknown_fields_may_take_longer']);
   });
 
   it.each([

@@ -20,6 +20,7 @@ import {
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
+  toUncertaintyFromNoteUncertaintyCommand,
   toUnitRateFromSetUnitRateCommand,
 } from './weeklyPlanningCommandAdapter';
 import { mergeLifeConstraints } from './weeklyPlanningConstraintIdentity';
@@ -29,8 +30,9 @@ import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing'
 import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
 import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
 import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
-import { normalizeIntakeText, uniqueList } from './weeklyPlanningTextParsing';
+import { uniqueList } from './weeklyPlanningTextParsing';
 import { parseSetUnitRateCommand } from './weeklyPlanningUnitRateParsing';
+import { parseNoteUncertaintyCommand } from './weeklyPlanningUncertaintyParsing';
 
 const DEFAULT_PRIORITY_POLICY = { kind: 'unknown' } as const;
 
@@ -92,6 +94,7 @@ function parseWeeklyPlanningCommands(params: {
       fields,
     ),
     parseSetUnitRateCommand(params.userText, effectiveScope),
+    parseNoteUncertaintyCommand(params.userText),
   ];
 
   return [
@@ -227,6 +230,14 @@ function applyWeeklyPlanningCommand(
         ],
         missing: addMissing(state.missing, ['completion_direction']),
       };
+    case 'note_uncertainty':
+      return {
+        ...state,
+        uncertainties: uniqueList([
+          ...state.uncertainties,
+          toUncertaintyFromNoteUncertaintyCommand(command),
+        ]),
+      };
     case 'set_unit_rate': {
       const unitRate = toUnitRateFromSetUnitRateCommand(command);
       return {
@@ -337,15 +348,6 @@ export function applyWeeklyPlanningUserTurn(
     nextState = {
       ...nextState,
       missing: removeMissing(nextState.missing, ['fixed_events']),
-    };
-  }
-  if (/知らない分野.*時間かかる|細かく見る.*時間かかる/.test(normalizeIntakeText(userText))) {
-    nextState = {
-      ...nextState,
-      uncertainties: uniqueList([
-        ...nextState.uncertainties,
-        'unknown_fields_may_take_longer',
-      ]),
     };
   }
 
