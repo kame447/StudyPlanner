@@ -7,9 +7,13 @@ import {
   toPlanningRangeFromSetPlanningRangeCommand,
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
+  toStudyProgressFromNoteProgressBoundaryCommand,
   toUnitRateFromSetUnitRateCommand,
 } from '../intake/weeklyPlanningCommandAdapter';
-import { parseMarkCompletedUnitsCommand } from '../intake/weeklyPlanningCompletionParsing';
+import {
+  parseMarkCompletedUnitsCommand,
+  parseNoteProgressBoundaryCommand,
+} from '../intake/weeklyPlanningCompletionParsing';
 import { getLifeConstraintIdentity } from '../intake/weeklyPlanningConstraintIdentity';
 import { parseConstraintCommands } from '../intake/weeklyPlanningConstraintParsing';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
@@ -595,6 +599,66 @@ describe('weekly planning intake edge cases', () => {
     expect(unitRateCommand ? toUnitRateFromSetUnitRateCommand(unitRateCommand) : undefined)
       .toMatchObject({ unit: 'year_field_chunk', minutesPerUnit: 120 });
   });
+
+
+  it('Phase 9.7 parses ambiguous progress boundary as a command before domain conversion', () => {
+    const draftReady = applyWeekendExamReadyForDraftRequest();
+    const fields = draftReady.examPrepScope?.fields ?? [];
+    const text = '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f2021\u307e\u3067\u7d42\u308f\u3063\u3066\u308b';
+    const sourceSegment = '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f2021\u307e\u3067\u7d42\u308f';
+    const command = parseNoteProgressBoundaryCommand(text, fields);
+
+    expect(command).toMatchObject({
+      type: 'note_progress_boundary',
+      field: '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f',
+      boundaryYear: 2021,
+      ambiguity: 'completion_direction',
+      sourceText: text,
+      sourceSegment,
+      confidence: 'medium',
+    });
+    expect(command ? toStudyProgressFromNoteProgressBoundaryCommand(command) : undefined)
+      .toMatchObject({
+        field: '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f',
+        completionBoundaryYear: 2021,
+        ambiguity: 'completion_direction',
+        rawText: sourceSegment,
+      });
+  });
+
+  it.each([
+    '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f2021\u307e\u3067\u7d42\u308f\u3063\u3066\u306a\u3044',
+    '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u304c2021\u307e\u3067\u7d42\u308f\u3063\u305f\u3089\u6570\u5b66\u3092\u3084\u308b',
+    '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f2021\u307e\u3067\u3084\u308b\u4e88\u5b9a',
+  ])('Phase 9.7 does not create progress boundary commands for non-completed expressions: %s', (text) => {
+    const draftReady = applyWeekendExamReadyForDraftRequest();
+    const fields = draftReady.examPrepScope?.fields ?? [];
+
+    expect(parseNoteProgressBoundaryCommand(text, fields)).toBeUndefined();
+  });
+
+  it('Phase 9.7 applies ambiguous progress boundary commands through the reducer path', () => {
+    const text = '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f2021\u307e\u3067\u7d42\u308f\u3063\u3066\u308b';
+    const sourceSegment = '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f2021\u307e\u3067\u7d42\u308f';
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForDraftRequest(),
+      text,
+      context,
+    );
+
+    expect(state.progress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: '\u30bd\u30d5\u30c8\u30a6\u30a7\u30a2\u306f',
+          completionBoundaryYear: 2021,
+          ambiguity: 'completion_direction',
+          rawText: sourceSegment,
+        }),
+      ]),
+    );
+    expect(state.missing).toContain('completion_direction');
+  });
+
   it.each([
     ['\u5915\u65b9\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '16:00', end: '19:00' }],
     ['\u5348\u524d\u306f\u4f7f\u308f\u306a\u3044\u3067', { start: '08:00', end: '12:00' }],

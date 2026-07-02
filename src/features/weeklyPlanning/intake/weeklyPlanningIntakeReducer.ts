@@ -10,7 +10,7 @@ import type {
 } from './weeklyPlanningIntakeTypes';
 import {
   parseMarkCompletedUnitsCommand,
-  parseProgressHint,
+  parseNoteProgressBoundaryCommand,
 } from './weeklyPlanningCompletionParsing';
 import {
   toLifeConstraintFromAddFixedEventCommand,
@@ -19,6 +19,7 @@ import {
   toPlanningRangeFromSetPlanningRangeCommand,
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
+  toStudyProgressFromNoteProgressBoundaryCommand,
   toUnitRateFromSetUnitRateCommand,
 } from './weeklyPlanningCommandAdapter';
 import { mergeLifeConstraints } from './weeklyPlanningConstraintIdentity';
@@ -217,6 +218,15 @@ function applyWeeklyPlanningCommand(
       };
     case 'mark_completed_units':
       return applyMarkCompletedUnitsCommand(state, command);
+    case 'note_progress_boundary':
+      return {
+        ...state,
+        progress: [
+          ...state.progress,
+          toStudyProgressFromNoteProgressBoundaryCommand(command),
+        ],
+        missing: addMissing(state.missing, ['completion_direction']),
+      };
     case 'set_unit_rate': {
       const unitRate = toUnitRateFromSetUnitRateCommand(command);
       return {
@@ -313,15 +323,9 @@ export function applyWeeklyPlanningUserTurn(
 
   nextState = applyWeeklyPlanningCommands(nextState, setupCommands);
   const fields = nextState.examPrepScope?.fields ?? [];
-  // TODO(Phase 9.8): move ambiguous progress hints into ParsedWeeklyPlanningCommand. They do not yet have enough certainty to share the mark_completed_units command path.
-  const progressHint = parseProgressHint(userText, fields);
-
-  if (progressHint) {
-    nextState = {
-      ...nextState,
-      progress: [...nextState.progress, progressHint],
-      missing: addMissing(nextState.missing, ['completion_direction']),
-    };
+  const progressBoundaryCommand = parseNoteProgressBoundaryCommand(userText, fields);
+  if (progressBoundaryCommand) {
+    nextState = applyWeeklyPlanningCommands(nextState, [progressBoundaryCommand]);
   }
 
   nextState = applyWeeklyPlanningCommands(

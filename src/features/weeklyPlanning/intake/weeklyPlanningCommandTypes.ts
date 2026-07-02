@@ -12,6 +12,7 @@ export type ParsedWeeklyPlanningCommand =
   | UpdateLifeConstraintCommand
   | SetPriorityPolicyCommand
   | MarkCompletedUnitsCommand
+  | NoteProgressBoundaryCommand
   | SetUnitRateCommand
   | SetExamScopeCommand
   | SetPlanningRangeCommand;
@@ -72,6 +73,16 @@ export interface MarkCompletedUnitsCommand {
   field: string;
   completedYears: number[];
   mergeMode: 'replace' | 'append';
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NoteProgressBoundaryCommand {
+  type: 'note_progress_boundary';
+  field?: string;
+  boundaryYear: number;
+  ambiguity: 'completion_direction';
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

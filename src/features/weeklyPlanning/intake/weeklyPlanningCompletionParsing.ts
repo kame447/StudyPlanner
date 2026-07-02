@@ -1,4 +1,4 @@
-import type { MarkCompletedUnitsCommand } from './weeklyPlanningCommandTypes';
+import type { MarkCompletedUnitsCommand, NoteProgressBoundaryCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, StudyProgress } from './weeklyPlanningIntakeTypes';
 import { resolveFieldName } from './weeklyPlanningFieldParsing';
 import { normalizeIntakeText, splitIntakeSegments, uniqueList } from './weeklyPlanningTextParsing';
@@ -28,6 +28,26 @@ export function parseProgressHint(text: string, fields: string[]): StudyProgress
   }
 
   return undefined;
+}
+
+export function parseNoteProgressBoundaryCommand(
+  text: string,
+  fields: string[],
+): NoteProgressBoundaryCommand | undefined {
+  const progressHint = parseProgressHint(text, fields);
+  const boundaryYear = progressHint?.completionBoundaryYear;
+
+  return progressHint && boundaryYear !== undefined
+    ? {
+        type: 'note_progress_boundary',
+        field: progressHint.field,
+        boundaryYear,
+        ambiguity: 'completion_direction',
+        sourceText: text,
+        sourceSegment: progressHint.rawText,
+        confidence: 'medium',
+      }
+    : undefined;
 }
 
 interface YearRangeExpression {
