@@ -1,11 +1,5 @@
-import {
-  assessWeeklyPlanningRequest,
-  looksLikeWeeklyPlanningRequest,
-  mergeWeeklyPlanningRevision,
-} from '../weeklyPlanningTransforms';
 import type {
   PlanningIntakeState,
-  StudyScopeUnit,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
 import {
@@ -33,29 +27,9 @@ import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from './weekly
 import { uniqueList } from './weeklyPlanningTextParsing';
 import { parseSetUnitRateCommand } from './weeklyPlanningUnitRateParsing';
 import { parseNoteUncertaintyCommand } from './weeklyPlanningUncertaintyParsing';
+import { applyLegacyWeeklyPlanningFallback } from './weeklyPlanningLegacyFallback';
 
 const DEFAULT_PRIORITY_POLICY = { kind: 'unknown' } as const;
-
-
-function mapWeeklyAmountUnit(unit: string): StudyScopeUnit {
-  switch (unit) {
-    case "minutes":
-    case "words":
-    case "pages":
-    case "problems":
-      return unit;
-    case "passages":
-      return "lessons";
-    case "chapter":
-      return "chapters";
-    case "items":
-    case "material":
-    case "years":
-    default:
-      return "unknown";
-  }
-}
-
 
 export function createInitialPlanningIntakeState(): PlanningIntakeState {
   return {
@@ -351,49 +325,12 @@ export function applyWeeklyPlanningUserTurn(
     };
   }
 
-  // TODO(Phase 9.8): keep the legacy weekly parser fallback isolated until the normal/weekly route regression set is expanded.
-  if (
-    nextState.intent === 'unknown' &&
-    looksLikeWeeklyPlanningRequest(userText)
-  ) {
-    const assessment = assessWeeklyPlanningRequest({
-      selectedDate: context.selectedDate,
-      text: userText,
-    });
-    nextState = {
-      ...nextState,
-      intent: 'weekly_study_planning',
-      tasks: assessment.tasks.map((task) => ({
-        title: task.title,
-        subject: task.title,
-        unit: mapWeeklyAmountUnit(task.amount.unit),
-        amount: task.amount.value,
-        rawText: task.sourceText,
-        requiresTimeEstimate: task.requiresTimeEstimate,
-      })),
-      missing: assessment.kind === 'ready' ? nextState.missing : addMissing(nextState.missing, ['life_constraints']),
-    };
-  } else if (previousState && nextState.intent === 'weekly_study_planning') {
-    const revision = mergeWeeklyPlanningRevision({
-      selectedDate: context.selectedDate,
-      previousText: previousState.sourceTurns.join('、'),
-      revisionText: userText,
-    });
-
-    if (revision.tasks.length > 0 && !nextState.examPrepScope) {
-      nextState = {
-        ...nextState,
-        tasks: revision.tasks.map((task) => ({
-          title: task.title,
-          subject: task.title,
-          unit: mapWeeklyAmountUnit(task.amount.unit),
-          amount: task.amount.value,
-          rawText: task.sourceText,
-          requiresTimeEstimate: task.requiresTimeEstimate,
-        })),
-      };
-    }
-  }
+  nextState = applyLegacyWeeklyPlanningFallback({
+    state: nextState,
+    previousState,
+    userText,
+    context,
+  });
 
   if (
     nextState.examPrepScope &&

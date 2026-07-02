@@ -155,4 +155,41 @@ describe('weekly planning legacy fallback regression', () => {
     expect(revised.missing).toEqual(examState.missing);
     expect(revised.shouldSavePlan).toBe(false);
   });
+
+  it('legacy fallback branch B preserves tasks when weekly state already has examPrepScope', () => {
+    const previousState = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      tasks: [
+        {
+          title: '\u65e2\u5b58\u30bf\u30b9\u30af',
+          subject: '\u65e2\u5b58\u30bf\u30b9\u30af',
+          unit: 'minutes' as const,
+          amount: 90,
+          rawText: '\u65e2\u5b58\u30bf\u30b9\u30af\u309290\u5206',
+          requiresTimeEstimate: false,
+        },
+      ],
+      examPrepScope: {
+        examType: '\u9662\u8a66',
+        fields: ['\u6570\u5b66\u30fb\u6570\u7406\u7cfb'],
+        totalYears: 7,
+        unitModel: 'year_field_chunk' as const,
+        rawText: ['\u9662\u8a66\u3067\u6570\u5b66\u30fb\u6570\u7406\u7cfb\u3092\u9032\u3081\u308b'],
+      },
+      sourceTurns: ['\u6765\u9031\u3001\u65e2\u5b58\u30bf\u30b9\u30af\u309290\u5206'],
+    };
+
+    const revised = applyWeeklyPlanningUserTurn(previousState, '\u3042\u3068\u7269\u7406\u30922\u6642\u9593', context);
+
+    expect(revised.intent).toBe('weekly_study_planning');
+    expect(revised.examPrepScope).toEqual(previousState.examPrepScope);
+    expect(revised.tasks).toEqual(previousState.tasks);
+    expect(revised.sourceTurns).toEqual([
+      '\u6765\u9031\u3001\u65e2\u5b58\u30bf\u30b9\u30af\u309290\u5206',
+      '\u3042\u3068\u7269\u7406\u30922\u6642\u9593',
+    ]);
+    expect(revised.shouldSavePlan).toBe(false);
+  });
+
 });
