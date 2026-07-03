@@ -47,6 +47,130 @@ function runWeekendExamSequence() {
 }
 
 describe('weekly planning intake pipeline', () => {
+
+  describe('legacy fallback via pipeline', () => {
+    it('keeps branch A assessment for a first weekly pipeline turn', () => {
+      const output = runTurn(undefined, '\u6765\u9031\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593');
+
+      expect(output.state.intent).toBe('weekly_study_planning');
+      expect(output.state.status).toBe('needs_life_constraints');
+      expect(output.state.tasks).toEqual([
+        {
+          title: '\u82f1\u8a9e',
+          subject: '\u82f1\u8a9e',
+          unit: 'minutes',
+          amount: 180,
+          rawText: '\u82f1\u8a9e\u30923\u6642\u9593',
+          requiresTimeEstimate: false,
+        },
+        {
+          title: '\u6570\u5b66',
+          subject: '\u6570\u5b66',
+          unit: 'minutes',
+          amount: 120,
+          rawText: '\u6570\u5b66\u30922\u6642\u9593',
+          requiresTimeEstimate: false,
+        },
+      ]);
+      expect(output.state.missing).toEqual(['life_constraints']);
+      expect(output.state.sourceTurns).toEqual([
+        '\u6765\u9031\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593',
+      ]);
+      expect(output.draftRequest).toBeNull();
+      expect(output.remainingWorkItems).toBeNull();
+      expect(output.draftCandidates).toBeNull();
+      expect(output.diagnostics).toBeNull();
+      expect(output.decision).toMatchObject({
+        kind: 'ask_missing_info',
+        requiredFields: ['life_constraints'],
+        shouldCreateDraft: false,
+        shouldSavePlan: false,
+      });
+      expect(output.state.shouldSavePlan).toBe(false);
+    });
+
+    it('keeps branch A inactive for first pipeline turns without a weekly keyword', () => {
+      const output = runTurn(undefined, '\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593');
+
+      expect(output.state.intent).toBe('unknown');
+      expect(output.state.status).toBe('idle');
+      expect(output.state.tasks).toEqual([]);
+      expect(output.state.missing).toEqual([]);
+      expect(output.state.sourceTurns).toEqual([
+        '\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593',
+      ]);
+      expect(output.draftRequest).toBeNull();
+      expect(output.remainingWorkItems).toBeNull();
+      expect(output.draftCandidates).toBeNull();
+      expect(output.diagnostics).toBeNull();
+      expect(output.decision).toMatchObject({
+        kind: 'cannot_create_draft',
+        shouldCreateDraft: false,
+        shouldSavePlan: false,
+      });
+      expect(output.state.shouldSavePlan).toBe(false);
+    });
+
+    it('documents the first-turn pipeline truthiness difference for setup-command legacy fallback', () => {
+      // Reducer direct-call regression passes previousState: undefined and keeps
+      // tasks empty for this same text. The pipeline passes an initial state into
+      // the reducer, so branch B currently sees a truthy previousState and merges
+      // the duration tasks on the first user-visible turn.
+      const output = runTurn(
+        undefined,
+        '\u4eca\u65e5\u306e19\u6642\u304b\u3089\u571f\u65e5\u306e\u7d42\u308f\u308a\u307e\u3067\u4e88\u5b9a\u7acb\u3066\u305f\u3044\u3002\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593',
+      );
+
+      expect(output.state.intent).toBe('weekly_study_planning');
+      expect(output.state.status).toBe('needs_scope');
+      expect(output.state.range).toMatchObject({
+        startDateTime: '2026-06-26T19:00:00',
+        endDateTime: '2026-06-28T24:00:00',
+        confidence: 'explicit',
+      });
+      expect(output.state.tasks).toEqual([
+        {
+          title: '\u82f1\u8a9e',
+          subject: '\u82f1\u8a9e',
+          unit: 'minutes',
+          amount: 180,
+          rawText: '\u82f1\u8a9e\u30923\u6642\u9593',
+          requiresTimeEstimate: false,
+        },
+        {
+          title: '\u6570\u5b66',
+          subject: '\u6570\u5b66',
+          unit: 'minutes',
+          amount: 120,
+          rawText: '\u6570\u5b66\u30922\u6642\u9593',
+          requiresTimeEstimate: false,
+        },
+      ]);
+      expect(output.state.missing).toEqual([
+        'tasks_or_goals',
+        'fixed_events',
+        'sleep_cycle',
+        'meal_bath_constraints',
+      ]);
+      expect(output.draftRequest).toBeNull();
+      expect(output.remainingWorkItems).toBeNull();
+      expect(output.draftCandidates).toBeNull();
+      expect(output.diagnostics).toBeNull();
+      expect(output.decision).toMatchObject({
+        kind: 'ask_missing_info',
+        requiredFields: [
+          'tasks_or_goals',
+          'fixed_events',
+          'sleep_cycle',
+          'life_constraints',
+        ],
+        shouldCreateDraft: false,
+        shouldSavePlan: false,
+      });
+      expect(output.state.shouldSavePlan).toBe(false);
+    });
+  });
+
   it('returns ask_missing_info for an under-specified first utterance', () => {
     const output = runTurn(undefined, WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly);
 
