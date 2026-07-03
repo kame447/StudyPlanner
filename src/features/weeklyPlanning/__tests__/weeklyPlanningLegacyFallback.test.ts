@@ -192,4 +192,53 @@ describe('weekly planning legacy fallback regression', () => {
     expect(revised.shouldSavePlan).toBe(false);
   });
 
+
+  it('legacy fallback branch B replaces tasks for weekly state without examPrepScope', () => {
+    const previousState = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      tasks: [
+        {
+          title: '既存タスク',
+          subject: '既存タスク',
+          unit: 'minutes' as const,
+          amount: 90,
+          rawText: '既存タスクを90分',
+          requiresTimeEstimate: false,
+        },
+      ],
+      missing: ['life_constraints' as const],
+      sourceTurns: ['来週、英語を3時間'],
+    };
+
+    const revised = applyWeeklyPlanningUserTurn(previousState, 'あと数学を2時間', context);
+
+    expect(revised.intent).toBe('weekly_study_planning');
+    expect(revised.examPrepScope).toBeUndefined();
+    expect(revised.tasks).toEqual([
+      {
+        title: '英語',
+        subject: '英語',
+        unit: 'minutes',
+        amount: 180,
+        rawText: '英語を3時間',
+        requiresTimeEstimate: false,
+      },
+      {
+        title: 'あと数学',
+        subject: 'あと数学',
+        unit: 'minutes',
+        amount: 120,
+        rawText: 'あと数学を2時間',
+        requiresTimeEstimate: false,
+      },
+    ]);
+    expect(revised.missing).toEqual(['life_constraints']);
+    expect(revised.sourceTurns).toEqual([
+      '来週、英語を3時間',
+      'あと数学を2時間',
+    ]);
+    expect(revised.shouldSavePlan).toBe(false);
+  });
+
 });

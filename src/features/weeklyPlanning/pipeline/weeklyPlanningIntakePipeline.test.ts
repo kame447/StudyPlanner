@@ -169,6 +169,68 @@ describe('weekly planning intake pipeline', () => {
       });
       expect(output.state.shouldSavePlan).toBe(false);
     });
+
+    it('legacy fallback keeps tasks_or_goals missing after branch B fills first-turn setup tasks', () => {
+      const output = runTurn(
+        undefined,
+        '今日の19時から土日の終わりまで予定立てたい。英語を3時間、数学を2時間',
+      );
+
+      expect(output.state.intent).toBe('weekly_study_planning');
+      expect(output.state.tasks).toHaveLength(2);
+      expect(output.state.tasks.map((task) => task.title)).toEqual(['英語', '数学']);
+      expect(output.state.missing).toContain('tasks_or_goals');
+      expect(output.state.status).toBe('needs_scope');
+      expect(output.decision).toMatchObject({
+        kind: 'ask_missing_info',
+        requiredFields: expect.arrayContaining(['tasks_or_goals']),
+        shouldSavePlan: false,
+      });
+    });
+
+    it('legacy fallback merges a second pipeline turn into the previous weekly state', () => {
+      const first = runTurn(undefined, '来週、英語を3時間、数学を2時間');
+      const second = runTurn(first.state, 'あと物理を2時間');
+
+      expect(second.state.intent).toBe('weekly_study_planning');
+      expect(second.state.tasks).toEqual([
+        {
+          title: '英語',
+          subject: '英語',
+          unit: 'minutes',
+          amount: 180,
+          rawText: '英語を3時間',
+          requiresTimeEstimate: false,
+        },
+        {
+          title: '数学',
+          subject: '数学',
+          unit: 'minutes',
+          amount: 120,
+          rawText: '数学を2時間',
+          requiresTimeEstimate: false,
+        },
+        {
+          title: 'あと物理',
+          subject: 'あと物理',
+          unit: 'minutes',
+          amount: 120,
+          rawText: 'あと物理を2時間',
+          requiresTimeEstimate: false,
+        },
+      ]);
+      expect(second.state.missing).toEqual(['life_constraints']);
+      expect(second.state.sourceTurns).toEqual([
+        '来週、英語を3時間、数学を2時間',
+        'あと物理を2時間',
+      ]);
+      expect(second.decision).toMatchObject({
+        kind: 'ask_missing_info',
+        requiredFields: ['life_constraints'],
+        shouldSavePlan: false,
+      });
+    });
+
   });
 
   it('returns ask_missing_info for an under-specified first utterance', () => {

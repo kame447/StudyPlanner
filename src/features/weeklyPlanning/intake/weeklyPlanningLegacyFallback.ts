@@ -3,6 +3,7 @@ import {
   looksLikeWeeklyPlanningRequest,
   mergeWeeklyPlanningRevision,
 } from '../weeklyPlanningTransforms';
+import type { SimpleWeeklyTask } from '../weeklyPlanningTypes';
 import type {
   PlanningIntakeState,
   StudyScopeUnit,
@@ -29,6 +30,72 @@ function mapWeeklyAmountUnit(unit: string): StudyScopeUnit {
   }
 }
 
+function toPlanningTasks(tasks: SimpleWeeklyTask[]): PlanningIntakeState['tasks'] {
+  return tasks.map((task) => ({
+    title: task.title,
+    subject: task.title,
+    unit: mapWeeklyAmountUnit(task.amount.unit),
+    amount: task.amount.value,
+    rawText: task.sourceText,
+    requiresTimeEstimate: task.requiresTimeEstimate,
+  }));
+}
+
+function shouldApplyFirstAssessFallback(state: PlanningIntakeState, userText: string): boolean {
+  return state.intent === 'unknown' && looksLikeWeeklyPlanningRequest(userText);
+}
+
+// previousState truthiness is part of the current behavior. The pipeline can
+// pass a truthy initial state even for a first user-visible turn.
+function shouldApplyRevisionMergeFallback(
+  previousState: PlanningIntakeState | undefined,
+  state: PlanningIntakeState,
+): boolean {
+  return Boolean(previousState) && state.intent === 'weekly_study_planning';
+}
+
+function applyFirstAssessFallback(params: {
+  state: PlanningIntakeState;
+  userText: string;
+  context: WeeklyPlanningIntakeContext;
+}): PlanningIntakeState {
+  const assessment = assessWeeklyPlanningRequest({
+    selectedDate: params.context.selectedDate,
+    text: params.userText,
+  });
+
+  return {
+    ...params.state,
+    intent: 'weekly_study_planning',
+    tasks: toPlanningTasks(assessment.tasks),
+    missing: assessment.kind === 'ready'
+      ? params.state.missing
+      : addMissing(params.state.missing, ['life_constraints']),
+  };
+}
+
+function applyRevisionMergeFallback(params: {
+  state: PlanningIntakeState;
+  previousState: PlanningIntakeState;
+  userText: string;
+  context: WeeklyPlanningIntakeContext;
+}): PlanningIntakeState {
+  const revision = mergeWeeklyPlanningRevision({
+    selectedDate: params.context.selectedDate,
+    previousText: params.previousState.sourceTurns.join('、'),
+    revisionText: params.userText,
+  });
+
+  if (revision.tasks.length === 0 || params.state.examPrepScope) {
+    return params.state;
+  }
+
+  return {
+    ...params.state,
+    tasks: toPlanningTasks(revision.tasks),
+  };
+}
+
 export function applyLegacyWeeklyPlanningFallback(params: {
   state: PlanningIntakeState;
   previousState: PlanningIntakeState | undefined;
@@ -36,52 +103,24 @@ export function applyLegacyWeeklyPlanningFallback(params: {
   context: WeeklyPlanningIntakeContext;
 }): PlanningIntakeState {
   const { previousState, userText, context } = params;
-  let nextState = params.state;
+  const nextState = params.state;
 
   // TODO(Phase 9.8): keep the legacy weekly parser fallback isolated until the normal/weekly route regression set is expanded.
-  if (
-    nextState.intent === 'unknown' &&
-    looksLikeWeeklyPlanningRequest(userText)
-  ) {
-    const assessment = assessWeeklyPlanningRequest({
-      selectedDate: context.selectedDate,
-      text: userText,
+  if (shouldApplyFirstAssessFallback(nextState, userText)) {
+    return applyFirstAssessFallback({
+      state: nextState,
+      userText,
+      context,
     });
-    nextState = {
-      ...nextState,
-      intent: 'weekly_study_planning',
-      tasks: assessment.tasks.map((task) => ({
-        title: task.title,
-        subject: task.title,
-        unit: mapWeeklyAmountUnit(task.amount.unit),
-        amount: task.amount.value,
-        rawText: task.sourceText,
-        requiresTimeEstimate: task.requiresTimeEstimate,
-      })),
-      missing: assessment.kind === 'ready' ? nextState.missing : addMissing(nextState.missing, ['life_constraints']),
-    };
-  } else if (previousState && nextState.intent === 'weekly_study_planning') {
-    // previousState truthiness is part of the current behavior. The pipeline can
-    // pass a truthy initial state even for a first user-visible turn.
-    const revision = mergeWeeklyPlanningRevision({
-      selectedDate: context.selectedDate,
-      previousText: previousState.sourceTurns.join('\u3001'),
-      revisionText: userText,
-    });
+  }
 
-    if (revision.tasks.length > 0 && !nextState.examPrepScope) {
-      nextState = {
-        ...nextState,
-        tasks: revision.tasks.map((task) => ({
-          title: task.title,
-          subject: task.title,
-          unit: mapWeeklyAmountUnit(task.amount.unit),
-          amount: task.amount.value,
-          rawText: task.sourceText,
-          requiresTimeEstimate: task.requiresTimeEstimate,
-        })),
-      };
-    }
+  if (shouldApplyRevisionMergeFallback(previousState, nextState)) {
+    return applyRevisionMergeFallback({
+      state: nextState,
+      previousState: previousState as PlanningIntakeState,
+      userText,
+      context,
+    });
   }
 
   return nextState;
