@@ -11,6 +11,7 @@ import {
   toLifeConstraintFromAddUnavailableCommand,
   toLifeConstraintFromUpdateLifeConstraintCommand,
   toPlanningRangeFromSetPlanningRangeCommand,
+  toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand,
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
@@ -19,7 +20,7 @@ import {
 } from './weeklyPlanningCommandAdapter';
 import { mergeLifeConstraints } from './weeklyPlanningConstraintIdentity';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
-import { hasExplicitNoFixedEvents, parseConstraintCommands } from './weeklyPlanningConstraintParsing';
+import { parseConstraintCommands, parseNoteNoFixedEventsCommand } from './weeklyPlanningConstraintParsing';
 import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
 import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
 import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
@@ -68,6 +69,7 @@ function parseWeeklyPlanningCommands(params: {
       fields,
     ),
     parseSetUnitRateCommand(params.userText, effectiveScope),
+    parseNoteNoFixedEventsCommand(params.userText),
     parseNoteUncertaintyCommand(params.userText),
   ];
 
@@ -212,6 +214,13 @@ function applyWeeklyPlanningCommand(
           toUncertaintyFromNoteUncertaintyCommand(command),
         ]),
       };
+    case 'note_no_fixed_events':
+      return toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand(command)
+        ? {
+            ...state,
+            missing: removeMissing(state.missing, ['fixed_events']),
+          }
+        : state;
     case 'set_unit_rate': {
       const unitRate = toUnitRateFromSetUnitRateCommand(command);
       return {
@@ -318,12 +327,6 @@ export function applyWeeklyPlanningUserTurn(
     parseWeeklyPlanningCommands({ userText, context, state: nextState }),
   );
 
-  if (hasExplicitNoFixedEvents(userText)) {
-    nextState = {
-      ...nextState,
-      missing: removeMissing(nextState.missing, ['fixed_events']),
-    };
-  }
 
   nextState = applyLegacyWeeklyPlanningFallback({
     state: nextState,

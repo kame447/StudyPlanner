@@ -1,4 +1,8 @@
-import type { AddFixedEventCommand, UpdateLifeConstraintCommand } from './weeklyPlanningCommandTypes';
+import type {
+  AddFixedEventCommand,
+  NoteNoFixedEventsCommand,
+  UpdateLifeConstraintCommand,
+} from './weeklyPlanningCommandTypes';
 import type { LifeConstraint, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import { parseClockTime, parseHour, formatHourTime } from './weeklyPlanningTimeParsing';
 import { resolveUnavailableDate } from './weeklyPlanningUnavailableParsing';
@@ -134,10 +138,40 @@ export function parseConstraints(text: string, context: WeeklyPlanningIntakeCont
   return constraints;
 }
 
+function parseNoFixedEventsSourceSegment(text: string): string | undefined {
+  for (const segment of splitIntakeSegments(text)) {
+    const match = segment.match(
+      /(?:\u4ed6\u306e)?\u56fa\u5b9a\u4e88\u5b9a.*\u306a\u3044|(?:\u4ed6\u306e)?\u4e88\u5b9a.*\u306a\u3044|\u7528\u4e8b.*\u306a\u3044/,
+    );
+
+    if (match) {
+      return match[0];
+    }
+  }
+
+  return undefined;
+}
+
 export function hasExplicitNoFixedEvents(text: string): boolean {
-  return splitIntakeSegments(text).some((segment) =>
-    /(?:\u4ed6\u306e)?\u56fa\u5b9a\u4e88\u5b9a.*\u306a\u3044|(?:\u4ed6\u306e)?\u4e88\u5b9a.*\u306a\u3044|\u7528\u4e8b.*\u306a\u3044/.test(segment),
-  );
+  return parseNoFixedEventsSourceSegment(text) !== undefined;
+}
+
+export function parseNoteNoFixedEventsCommand(
+  text: string,
+): NoteNoFixedEventsCommand | undefined {
+  const sourceSegment = parseNoFixedEventsSourceSegment(text);
+
+  if (!sourceSegment) {
+    return undefined;
+  }
+
+  return {
+    type: 'note_no_fixed_events',
+    noFixedEvents: true,
+    sourceText: text,
+    sourceSegment,
+    confidence: 'high',
+  };
 }
 
 export function hasLifeConstraint(constraint: LifeConstraint): boolean {

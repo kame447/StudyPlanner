@@ -14,6 +14,7 @@ export type ParsedWeeklyPlanningCommand =
   | SetPriorityPolicyCommand
   | MarkCompletedUnitsCommand
   | NoteProgressBoundaryCommand
+  | NoteNoFixedEventsCommand
   | NoteUncertaintyCommand
   | SetUnitRateCommand
   | SetExamScopeCommand
@@ -85,6 +86,14 @@ export interface NoteProgressBoundaryCommand {
   field?: string;
   boundaryYear: number;
   ambiguity: 'completion_direction';
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NoteNoFixedEventsCommand {
+  type: 'note_no_fixed_events';
+  noFixedEvents: true;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

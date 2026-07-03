@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   toLifeConstraintFromAddFixedEventCommand,
   toLifeConstraintFromAddUnavailableCommand,
+  toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand,
   toExamScopeFromSetExamScopeCommand,
   toLifeConstraintFromUpdateLifeConstraintCommand,
   toPlanningRangeFromSetPlanningRangeCommand,
@@ -16,7 +17,10 @@ import {
   parseNoteProgressBoundaryCommand,
 } from '../intake/weeklyPlanningCompletionParsing';
 import { getLifeConstraintIdentity } from '../intake/weeklyPlanningConstraintIdentity';
-import { parseConstraintCommands } from '../intake/weeklyPlanningConstraintParsing';
+import {
+  parseConstraintCommands,
+  parseNoteNoFixedEventsCommand,
+} from '../intake/weeklyPlanningConstraintParsing';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
 import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
@@ -308,6 +312,68 @@ describe('weekly planning intake edge cases', () => {
     );
     expect(ambiguous.missing).toContain('fixed_events');
   });
+  it.each([
+    '他の固定予定はない',
+    '固定予定は特にない',
+    '他の予定はない',
+    '用事はない',
+  ])('Stage 2 parses explicit no-fixed-events text as note_no_fixed_events command: %s', (text) => {
+    const command = parseNoteNoFixedEventsCommand(text);
+
+    expect(command).toMatchObject({
+      type: 'note_no_fixed_events',
+      noFixedEvents: true,
+      sourceText: text,
+      sourceSegment: text,
+      confidence: 'high',
+    });
+    expect(
+      command ? toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand(command) : false,
+    ).toBe(true);
+  });
+
+  it.each([
+    '固定予定がある',
+    '予定が入るかも',
+    '用事がある',
+  ])('Stage 2 does not parse non-matching text as note_no_fixed_events command: %s', (text) => {
+    expect(parseNoteNoFixedEventsCommand(text)).toBeUndefined();
+  });
+
+  it.each([
+    '他の固定予定はない',
+    '固定予定は特にない',
+    '他の予定はない',
+    '用事はない',
+  ])('Stage 1a removes fixed_events missing for explicit no-fixed-events text: %s', (text) => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForLifeConstraints(),
+      text,
+      context,
+    );
+
+    expect(state.missing).not.toContain('fixed_events');
+    expect(state.constraints).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'fixed_event' })]),
+    );
+    expect(state.shouldSavePlan).toBe(false);
+  });
+
+  it.each([
+    '固定予定がある',
+    '予定が入るかも',
+    '用事がある',
+  ])('Stage 1a keeps fixed_events missing when no-fixed-events text does not match: %s', (text) => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForLifeConstraints(),
+      text,
+      context,
+    );
+
+    expect(state.missing).toContain('fixed_events');
+    expect(state.shouldSavePlan).toBe(false);
+  });
+
   it('ML-eval constraint classification keeps no fixed events and event candidates reproducible', () => {
     const baseState = applyWeekendExamReadyForLifeConstraints();
     const noFixedEvents = applyWeeklyPlanningUserTurn(

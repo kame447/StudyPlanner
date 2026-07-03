@@ -2,6 +2,7 @@ import type {
   AddFixedEventCommand,
   AddUnavailableCommand,
   MarkCompletedUnitsCommand,
+  NoteNoFixedEventsCommand,
   NoteProgressBoundaryCommand,
   NoteUncertaintyCommand,
   SetPriorityPolicyCommand,
@@ -65,6 +66,12 @@ export function toPriorityPolicyFromSetPriorityPolicyCommand(
   command: SetPriorityPolicyCommand,
 ): PriorityPolicy {
   return command.policy;
+}
+
+export function toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand(
+  command: NoteNoFixedEventsCommand,
+): true {
+  return command.noFixedEvents;
 }
 
 export function toUncertaintyFromNoteUncertaintyCommand(
