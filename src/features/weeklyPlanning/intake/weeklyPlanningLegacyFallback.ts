@@ -9,7 +9,7 @@ import type {
   StudyScopeUnit,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
-import { addMissing } from './weeklyPlanningMissingStatus';
+import { addMissing, removeMissing } from './weeklyPlanningMissingStatus';
 
 function mapWeeklyAmountUnit(unit: string): StudyScopeUnit {
   switch (unit) {
@@ -93,6 +93,7 @@ function applyRevisionMergeFallback(params: {
   return {
     ...params.state,
     tasks: toPlanningTasks(revision.tasks),
+    missing: removeMissing(params.state.missing, ['tasks_or_goals']),
   };
 }
 

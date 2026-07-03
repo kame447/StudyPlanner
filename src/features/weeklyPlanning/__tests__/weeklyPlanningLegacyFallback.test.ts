@@ -193,6 +193,55 @@ describe('weekly planning legacy fallback regression', () => {
   });
 
 
+  it('legacy fallback branch B joins multiple previous source turns with Japanese comma', () => {
+    const previousState = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      tasks: [],
+      missing: ['life_constraints' as const],
+      sourceTurns: ['来週、英語を3時間', '数学を2時間'],
+    };
+
+    const revised = applyWeeklyPlanningUserTurn(previousState, 'あと物理を2時間', context);
+
+    expect(revised.intent).toBe('weekly_study_planning');
+    expect(revised.examPrepScope).toBeUndefined();
+    expect(revised.tasks).toEqual([
+      {
+        title: '英語',
+        subject: '英語',
+        unit: 'minutes',
+        amount: 180,
+        rawText: '英語を3時間',
+        requiresTimeEstimate: false,
+      },
+      {
+        title: '数学',
+        subject: '数学',
+        unit: 'minutes',
+        amount: 120,
+        rawText: '数学を2時間',
+        requiresTimeEstimate: false,
+      },
+      {
+        title: 'あと物理',
+        subject: 'あと物理',
+        unit: 'minutes',
+        amount: 120,
+        rawText: 'あと物理を2時間',
+        requiresTimeEstimate: false,
+      },
+    ]);
+    expect(revised.missing).toEqual(['life_constraints']);
+    expect(revised.sourceTurns).toEqual([
+      '来週、英語を3時間',
+      '数学を2時間',
+      'あと物理を2時間',
+    ]);
+    expect(revised.shouldSavePlan).toBe(false);
+  });
+
+
   it('legacy fallback branch B replaces tasks for weekly state without examPrepScope', () => {
     const previousState = {
       ...createInitialPlanningIntakeState(),

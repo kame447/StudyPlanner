@@ -122,7 +122,7 @@ describe('weekly planning intake pipeline', () => {
       );
 
       expect(output.state.intent).toBe('weekly_study_planning');
-      expect(output.state.status).toBe('needs_scope');
+      expect(output.state.status).toBe('needs_life_constraints');
       expect(output.state.range).toMatchObject({
         startDateTime: '2026-06-26T19:00:00',
         endDateTime: '2026-06-28T24:00:00',
@@ -147,11 +147,11 @@ describe('weekly planning intake pipeline', () => {
         },
       ]);
       expect(output.state.missing).toEqual([
-        'tasks_or_goals',
         'fixed_events',
         'sleep_cycle',
         'meal_bath_constraints',
       ]);
+      expect(output.state.missing).not.toContain('tasks_or_goals');
       expect(output.draftRequest).toBeNull();
       expect(output.remainingWorkItems).toBeNull();
       expect(output.draftCandidates).toBeNull();
@@ -159,7 +159,6 @@ describe('weekly planning intake pipeline', () => {
       expect(output.decision).toMatchObject({
         kind: 'ask_missing_info',
         requiredFields: [
-          'tasks_or_goals',
           'fixed_events',
           'sleep_cycle',
           'life_constraints',
@@ -170,7 +169,7 @@ describe('weekly planning intake pipeline', () => {
       expect(output.state.shouldSavePlan).toBe(false);
     });
 
-    it('legacy fallback keeps tasks_or_goals missing after branch B fills first-turn setup tasks', () => {
+    it('legacy fallback removes tasks_or_goals missing after branch B fills first-turn setup tasks', () => {
       const output = runTurn(
         undefined,
         '今日の19時から土日の終わりまで予定立てたい。英語を3時間、数学を2時間',
@@ -179,12 +178,24 @@ describe('weekly planning intake pipeline', () => {
       expect(output.state.intent).toBe('weekly_study_planning');
       expect(output.state.tasks).toHaveLength(2);
       expect(output.state.tasks.map((task) => task.title)).toEqual(['英語', '数学']);
-      expect(output.state.missing).toContain('tasks_or_goals');
-      expect(output.state.status).toBe('needs_scope');
+      expect(output.state.missing).toEqual([
+        'fixed_events',
+        'sleep_cycle',
+        'meal_bath_constraints',
+      ]);
+      expect(output.state.missing).not.toContain('tasks_or_goals');
+      expect(output.state.status).toBe('needs_life_constraints');
       expect(output.decision).toMatchObject({
         kind: 'ask_missing_info',
-        requiredFields: expect.arrayContaining(['tasks_or_goals']),
+        requiredFields: expect.arrayContaining([
+          'fixed_events',
+          'sleep_cycle',
+          'life_constraints',
+        ]),
         shouldSavePlan: false,
+      });
+      expect(output.decision).toMatchObject({
+        requiredFields: expect.not.arrayContaining(['tasks_or_goals']),
       });
     });
 
