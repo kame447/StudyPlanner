@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   toLifeConstraintFromAddFixedEventCommand,
   toLifeConstraintFromAddUnavailableCommand,
-  toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand,
   toExamScopeFromSetExamScopeCommand,
   toLifeConstraintFromUpdateLifeConstraintCommand,
   toPlanningRangeFromSetPlanningRangeCommand,
@@ -322,14 +321,10 @@ describe('weekly planning intake edge cases', () => {
 
     expect(command).toMatchObject({
       type: 'note_no_fixed_events',
-      noFixedEvents: true,
       sourceText: text,
       sourceSegment: text,
       confidence: 'high',
     });
-    expect(
-      command ? toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand(command) : false,
-    ).toBe(true);
   });
 
   it.each([

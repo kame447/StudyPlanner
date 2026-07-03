@@ -93,7 +93,6 @@ export interface NoteProgressBoundaryCommand {
 
 export interface NoteNoFixedEventsCommand {
   type: 'note_no_fixed_events';
-  noFixedEvents: true;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

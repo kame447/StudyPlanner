@@ -152,10 +152,6 @@ function parseNoFixedEventsSourceSegment(text: string): string | undefined {
   return undefined;
 }
 
-export function hasExplicitNoFixedEvents(text: string): boolean {
-  return parseNoFixedEventsSourceSegment(text) !== undefined;
-}
-
 export function parseNoteNoFixedEventsCommand(
   text: string,
 ): NoteNoFixedEventsCommand | undefined {
@@ -167,7 +163,6 @@ export function parseNoteNoFixedEventsCommand(
 
   return {
     type: 'note_no_fixed_events',
-    noFixedEvents: true,
     sourceText: text,
     sourceSegment,
     confidence: 'high',

@@ -11,7 +11,6 @@ import {
   toLifeConstraintFromAddUnavailableCommand,
   toLifeConstraintFromUpdateLifeConstraintCommand,
   toPlanningRangeFromSetPlanningRangeCommand,
-  toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand,
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
@@ -215,12 +214,10 @@ function applyWeeklyPlanningCommand(
         ]),
       };
     case 'note_no_fixed_events':
-      return toNoFixedEventsConfirmationFromNoteNoFixedEventsCommand(command)
-        ? {
-            ...state,
-            missing: removeMissing(state.missing, ['fixed_events']),
-          }
-        : state;
+      return {
+        ...state,
+        missing: removeMissing(state.missing, ['fixed_events']),
+      };
     case 'set_unit_rate': {
       const unitRate = toUnitRateFromSetUnitRateCommand(command);
       return {
