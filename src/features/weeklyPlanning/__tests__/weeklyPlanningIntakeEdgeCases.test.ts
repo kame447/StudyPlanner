@@ -263,6 +263,47 @@ describe('weekly planning intake edge cases', () => {
     });
   });
 
+  it('priority missing adds priority fields when exam scope, unit rate, and resolved math progress are present', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      WP_RP_001_WEEKEND_EXAM_TURNS.yearRangeProgressAndUnitRate,
+      context,
+    );
+
+    expect(state.examPrepScope).toBeDefined();
+    expect(state.unitRates.length).toBeGreaterThan(0);
+    expect(state.priorityPolicy).toEqual({ kind: 'unknown' });
+    expect(state.missing).not.toContain('year_range');
+    expect(state.missing).not.toContain('completion_direction');
+    expect(state.missing).toContain('priority_policy');
+    expect(state.missing).toContain('next_field_after_math');
+    expect(state.status).toBe('needs_priority_policy');
+  });
+
+  it('priority missing does not add priority fields after priority is confirmed', () => {
+    const state = applyWeekendExamReadyForLifeConstraints();
+
+    expect(state.priorityPolicy.kind).toBe('field_first');
+    expect(state.priorityPolicy.kind === 'field_first' ? state.priorityPolicy.order : []).toHaveLength(2);
+    expect(state.missing).not.toContain('priority_policy');
+    expect(state.missing).not.toContain('next_field_after_math');
+  });
+
+  it('priority missing does not add priority fields while year_range is still missing', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      WP_RP_001_WEEKEND_EXAM_TURNS.unitRateOnly,
+      context,
+    );
+
+    expect(state.examPrepScope).toBeDefined();
+    expect(state.unitRates.length).toBeGreaterThan(0);
+    expect(state.priorityPolicy).toEqual({ kind: 'unknown' });
+    expect(state.missing).toContain('year_range');
+    expect(state.missing).not.toContain('priority_policy');
+    expect(state.missing).not.toContain('next_field_after_math');
+  });
+
   it('WP-RP-001 keeps life constraints separate from fixed event confirmation', () => {
     const state = applyWeeklyPlanningUserTurn(
       applyWeekendExamReadyForLifeConstraints(),

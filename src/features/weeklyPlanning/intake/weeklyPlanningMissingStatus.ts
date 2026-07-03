@@ -16,6 +16,26 @@ export function removeMissing(
   return current.filter((item) => !removalSet.has(item));
 }
 
+function applyPriorityMissingState(state: PlanningIntakeState): PlanningIntakeState {
+  if (
+    state.examPrepScope &&
+    state.unitRates.length > 0 &&
+    state.priorityPolicy.kind === 'unknown' &&
+    !state.missing.includes('year_range') &&
+    !state.missing.includes('completion_direction')
+  ) {
+    return {
+      ...state,
+      missing: addMissing(state.missing, [
+        'priority_policy',
+        'next_field_after_math',
+      ]),
+    };
+  }
+
+  return state;
+}
+
 function resolveQuestions(state: PlanningIntakeState): string[] {
   const questions: string[] = [];
 
@@ -76,13 +96,14 @@ function resolveStatus(state: PlanningIntakeState): PlanningIntakeStatus {
 }
 
 export function finalizeState(state: PlanningIntakeState): PlanningIntakeState {
-  const status = resolveStatus(state);
+  const stateWithPriorityMissing = applyPriorityMissingState(state);
+  const status = resolveStatus(stateWithPriorityMissing);
   const nextState = {
-    ...state,
+    ...stateWithPriorityMissing,
     status,
-    missing: uniqueList(state.missing),
-    assumptions: uniqueList(state.assumptions),
-    uncertainties: uniqueList(state.uncertainties),
+    missing: uniqueList(stateWithPriorityMissing.missing),
+    assumptions: uniqueList(stateWithPriorityMissing.assumptions),
+    uncertainties: uniqueList(stateWithPriorityMissing.uncertainties),
   };
   const shouldCreateDraft = status === 'draft_ready' && nextState.missing.length === 0;
 

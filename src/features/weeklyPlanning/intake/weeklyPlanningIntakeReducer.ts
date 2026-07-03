@@ -332,18 +332,5 @@ export function applyWeeklyPlanningUserTurn(
     context,
   });
 
-  if (
-    nextState.examPrepScope &&
-    nextState.unitRates.length > 0 &&
-    nextState.priorityPolicy.kind === 'unknown' &&
-    !nextState.missing.includes('year_range') &&
-    !nextState.missing.includes('completion_direction')
-  ) {
-    nextState.missing = addMissing(nextState.missing, [
-      'priority_policy',
-      'next_field_after_math',
-    ]);
-  }
-
   return finalizeState(nextState);
 }
