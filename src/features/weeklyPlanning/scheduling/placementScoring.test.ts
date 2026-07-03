@@ -924,7 +924,7 @@ describe('scheduling placementScoring', () => {
         title: '計算理論',
         subject: '計算理論',
         type: 'school-event' as const,
-        weekday: 'tue' as const,
+        weekday: 'fri' as const,
         startTime: '10:20',
         endTime: '11:50',
         termId: 'term-1',

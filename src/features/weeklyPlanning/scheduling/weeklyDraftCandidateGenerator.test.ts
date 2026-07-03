@@ -248,6 +248,116 @@ describe('weekly draft candidate generator dry-run', () => {
     expect(result.diagnostics.fixedEventConflicts).toEqual([]);
   });
 
+  it('pins current implicit busy interval inference for start-only constraints', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [remainingWorkItems[0]],
+      constraints: [],
+      fixedEvents: [
+        {
+          kind: 'fixed_event' as const,
+          date: '2026-06-26',
+          start: '09:00',
+          hardness: 'hard' as const,
+          rawText: 'event starts at 09:00',
+        },
+      ],
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '12:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-26',
+        startTime: '10:00',
+        endTime: '12:00',
+      }),
+    ]);
+    expect(result.diagnostics.fixedEventConflicts).toEqual([]);
+  });
+
+  it('pins current implicit busy interval inference for end plus duration constraints', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          ...remainingWorkItems[0],
+          estimatedMinutes: 60,
+        },
+      ],
+      constraints: [],
+      fixedEvents: [
+        {
+          kind: 'fixed_event' as const,
+          date: '2026-06-26',
+          end: '11:00',
+          durationMinutes: 60,
+          hardness: 'hard' as const,
+          rawText: 'event ends at 11:00',
+        },
+      ],
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '10:00',
+        dayStartTime: '10:00',
+        dayEndTime: '12:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-26',
+        startTime: '11:00',
+        endTime: '12:00',
+      }),
+    ]);
+    expect(result.diagnostics.fixedEventConflicts).toEqual([]);
+  });
+
+  it('pins current implicit busy interval inference for meal end-only constraints', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          ...remainingWorkItems[0],
+          estimatedMinutes: 60,
+        },
+      ],
+      constraints: [
+        {
+          kind: 'meal' as const,
+          date: '2026-06-26',
+          end: '19:00',
+          hardness: 'hard' as const,
+          rawText: 'meal ends at 19:00',
+        },
+      ],
+      fixedEvents: [],
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '18:00',
+        dayStartTime: '18:00',
+        dayEndTime: '20:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-26',
+        startTime: '19:00',
+        endTime: '20:00',
+      }),
+    ]);
+    expect(result.diagnostics.lifeConstraintConflicts).toEqual([]);
+  });
+
   it('reports unscheduled items when unavailable constraints block the whole planning window', () => {
     const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
       ...baseInput,
