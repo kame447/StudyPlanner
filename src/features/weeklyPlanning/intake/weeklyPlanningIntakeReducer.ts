@@ -25,7 +25,10 @@ import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissin
 import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
 import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
 import { uniqueList } from './weeklyPlanningTextParsing';
-import { parseSetUnitRateCommand } from './weeklyPlanningUnitRateParsing';
+import {
+  parseBareDurationAsUnitRateCommand,
+  parseSetUnitRateCommand,
+} from './weeklyPlanningUnitRateParsing';
 import { parseNoteUncertaintyCommand } from './weeklyPlanningUncertaintyParsing';
 import { applyLegacyWeeklyPlanningFallback } from './weeklyPlanningLegacyFallback';
 
@@ -60,6 +63,12 @@ function parseWeeklyPlanningCommands(params: {
   const currentPriorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : [];
+  const explicitUnitRateCommand = parseSetUnitRateCommand(params.userText, effectiveScope);
+  const shortAnswerUnitRateCommand = explicitUnitRateCommand
+    ? undefined
+    : params.state.missing.includes('unit_duration_estimate')
+      ? parseBareDurationAsUnitRateCommand(params.userText)
+      : undefined;
   const optionalCommands: Array<ParsedWeeklyPlanningCommand | undefined> = [
     parseSetPriorityPolicyCommand(params.userText, fields, currentPriorityOrder),
     parseMarkCompletedUnitsCommand(
@@ -67,7 +76,8 @@ function parseWeeklyPlanningCommands(params: {
       effectiveScope?.yearRange,
       fields,
     ),
-    parseSetUnitRateCommand(params.userText, effectiveScope),
+    explicitUnitRateCommand,
+    shortAnswerUnitRateCommand,
     parseNoteNoFixedEventsCommand(params.userText),
     parseNoteUncertaintyCommand(params.userText),
   ];

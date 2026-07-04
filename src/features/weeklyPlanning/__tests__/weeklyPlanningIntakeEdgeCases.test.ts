@@ -236,6 +236,76 @@ describe('weekly planning intake edge cases', () => {
     }
   });
 
+  function applyWeekendExamReadyForUnitRateQuestion() {
+    return applyDetailsTextAfterExamScope([
+      '7年分は2019〜2025',
+      '数学の25〜21が終わったよ',
+    ].join('\n'));
+  }
+
+  it.each([
+    ['3時間です', 'low'],
+    ['3時間', 'low'],
+    ['3時間くらい', 'medium'],
+  ] as const)('R2 slot filling accepts short unit-rate answer while unit duration is missing: %s', (text, uncertainty) => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForUnitRateQuestion(),
+      text,
+      context,
+    );
+
+    expect(state.unitRates).toEqual([
+      expect.objectContaining({
+        unit: 'year_field_chunk',
+        minutesPerUnit: 180,
+        source: 'user',
+        uncertainty,
+      }),
+    ]);
+    expect(state.missing).not.toContain('unit_duration_estimate');
+    expect(state.questions).not.toContain('1つの年度×分野にだいたい何分かかりますか？');
+  });
+
+  it('R2 slot filling does not hijack short duration answers when unit-rate slot is closed', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      undefined,
+      '3時間です',
+      context,
+    );
+
+    expect(state.unitRates).toEqual([]);
+    expect(state.missing).not.toContain('unit_duration_estimate');
+  });
+
+  it('R2 slot filling keeps existing explicit unit-rate parsing unchanged', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      '1年分は3時間',
+      context,
+    );
+
+    expect(state.unitRates).toEqual([
+      expect.objectContaining({
+        unit: 'year_field_chunk',
+        minutesPerUnit: 180,
+        source: 'user',
+        uncertainty: 'low',
+      }),
+    ]);
+    expect(state.missing).not.toContain('unit_duration_estimate');
+  });
+
+  it('R2 slot filling does not treat longer uncertain duration text as a short answer', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForUnitRateQuestion(),
+      '3時間くらいかかるか分からない',
+      context,
+    );
+
+    expect(state.unitRates).toEqual([]);
+    expect(state.missing).toContain('unit_duration_estimate');
+  });
+
   it('WP-RP-001 priorityPolicy distinguishes field order from completion reports', () => {
     const afterScope = applyWeekendRangeAndExamScope();
     const ordered = applyWeeklyPlanningUserTurn(

@@ -1,6 +1,6 @@
 import type { SetUnitRateCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, UnitRateEstimate } from './weeklyPlanningIntakeTypes';
-import { parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
+import { normalizeIntakeText, parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
 
 function buildYearFieldUnitRate(
   match: RegExpMatchArray,
@@ -18,6 +18,42 @@ function buildYearFieldUnitRate(
     source: 'user',
     uncertainty: /くらい|ぐらい|だいたい/.test(segment) ? 'medium' : 'low',
     rawText: match[0],
+  };
+}
+
+export function parseBareDurationAsUnitRateCommand(
+  text: string,
+): SetUnitRateCommand | undefined {
+  const segment = normalizeIntakeText(text).trim();
+  const match = segment.match(
+    /^(?:だいたい\s*)?([0-9]+|[一二三四五六七八九十]+)\s*時間\s*(?:くらい|ぐらい)?\s*(?:です)?$/,
+  );
+
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = parseSmallInteger(match[1]);
+
+  if (!hours) {
+    return undefined;
+  }
+
+  const uncertainty = /くらい|ぐらい|だいたい/.test(segment) ? 'medium' : 'low';
+  const unitRate: UnitRateEstimate = {
+    unit: 'year_field_chunk',
+    minutesPerUnit: hours * 60,
+    source: 'user',
+    uncertainty,
+    rawText: match[0],
+  };
+
+  return {
+    type: 'set_unit_rate',
+    unitRate,
+    sourceText: text,
+    sourceSegment: unitRate.rawText,
+    confidence: uncertainty === 'medium' ? 'medium' : 'high',
   };
 }
 

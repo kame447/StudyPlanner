@@ -4,8 +4,8 @@
 
 **この文書は Codex に直接実装させるタスクmdではない。** 方向性と優先順位を決める文書であり、ここから Claude/Fable が `docs/ai/tasks/*.md`(Codex が1回で潰せる実装単位)を切り出す。
 
-- 作成日: 2026-07-02
-- 実コード基準: `note_progress_boundary` command 導入後(progressHint の command 化は実装・承認・コミット済み)
+- 作成日: 2026-07-02 / 最終更新: 2026-07-04(R1 クローズ、R2 初期スコープ追加)
+- 実コード基準: R1 完了・main マージ後(完了監査は `docs/ai/tasks/closed/20260703-weekly-planning-r1-completion-report.md`)
 - 古い設計文書と実コードが食い違う場合は実コードを優先する。`set_exam_scope` / `set_planning_range` は Phase 9.7 で command path 移行済み。
 
 ## 0. 運用循環
@@ -32,6 +32,8 @@
 タスクmdの書き方は `docs/ai/task-brief-template.md`、Codex 側のルールは `docs/ai/codex-task-guide.md`、責務境界の規範は `docs/ai/weekly-planning-pipeline-guide.md` §3 に従う。
 
 ## 1. 現在地
+
+> **2026-07-04 更新**: 本節は R1 着手前(2026-07-02 時点)の記録である。R1 の到達点は §3 Phase R1 のクローズ記録と completion report を参照。R1 マージ後の実使用で見つかった課題は §3「Phase R2 初期」にまとめた。
 
 実コードで確認した実装状況(2026-07-02 時点)。
 
@@ -94,7 +96,11 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
 
 今後の改善を Phase R1〜R8 に分ける(実装履歴の Phase 9.x 番号と衝突しないよう R 系で振る)。**Phase は複数タスクを束ねる上位方針であり、Codex に直接渡す単位ではない。** 各 Phase の「タスク分解例」が `docs/ai/tasks/*.md` 1本の粒度の目安である。
 
-### Phase R1: command boundary の完成と reducer 薄化【基盤】
+### Phase R1: command boundary の完成と reducer 薄化【クローズ済み 2026-07-04】
+
+**R1 はクローズ済み。** 達成済みとみなす範囲: 週間計画MVPの基本導線、通常入力との分離、command boundary の整理(reducer からの自然言語解釈の排除、legacy fallback の単一境界への隔離と regression 固定)、仮予定候補の生成・表示・承認・破棄の基本フロー。R1 の目的は完璧な自然言語対話ではなく、週間計画モードをユーザーが実際に触れる状態にすることだったため、ここで完了扱いとする。完了監査は `docs/ai/tasks/closed/20260703-weekly-planning-r1-completion-report.md`、main マージ済み。fallback の意味論整理(初回/継続ターン定義)は設計案まで作成済みで、実装は R2 以降の設計判断として繰り越し。
+
+以下は R1 実施時の計画(記録として保持)。
 
 - 目的: reducer から自然言語解釈を完全に排除し、すべての入力経路を parser → command → adapter → reducer に統一する。
 - spec 対応: §12(責務分離の基盤)
@@ -104,6 +110,31 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
   3. legacy fallback の隔離(fallback 呼び出しを明示的な境界関数へ切り出す。2 の後)
   4. `constraintToBusyInterval` の暗黙推定ルールの明文化テスト(テストのみ)
 - 完了条件の目安: reducer が日本語を一切見ない。fallback が単一の境界関数越しになる。
+
+### Phase R2 初期: 実使用フィードバック対応(intake 品質改善)【最優先・2026-07-04 追加】
+
+- 目的: R1 マージ後の実使用(過去問系入力)で確認された intake の受け入れ条件・slot filling・質問文脈・エラー分類・応答文言の問題を解消する。スケジューラ本体の配置精度の問題ではない。
+- 確認された挙動(実ログ由来):
+  1. 「過去問を10時間やりたい」「数学の過去問を8時間、英語の過去問を6時間やりたい」のような明示的な total / subject duration があっても、「1年分または1単位あたりの目安時間」を聞き続ける。過去問文脈で `unitModel: 'year_field_chunk'` に固定され、時間指定が無視される(`weeklyPlanningScopeParsing.ts` の `resolveUnitModel`)。
+  2. 目安時間を聞いた直後の「3時間です」「3時間」「3時間くらい」が受理されず、同じ質問が繰り返される。`parseUnitRate` が「年分」文脈を要求し、直前に何を聞いたかを使う slot filling がない。
+  3. 「過去問を1日五時間やりたい」「毎日3時間」「平日は2時間ずつ」「土日は5時間ずつ」が daily / weekday / weekend target として受理されず、「条件の整合性が取れず」エラーに落ちる。情報不足と条件矛盾の分類が混ざっている。
+  4. 「2020年から2025年までの過去問をやりたい」の年度範囲が拾えない。`parseYearRange` が `2020〜2025` / `2020-2025` 形式のみで、「から〜まで」形式は完了年度側 parser(`weeklyPlanningCompletionParsing.ts`)にしかない(移植または共通化を検討)。
+  5. 応答文言が事務的で、何が受理され何が不足かが伝わらない(「週間計画に必要な情報がまだ足りません。次に◯◯を教えてください。」「条件の整合性が取れず、仮予定候補を作れませんでした。」)。受理済み条件を表示しつつ、次に必要な情報だけを自然に聞く応答へ変える(spec §13 メンター対話方針)。
+- **先行小タスク**(それぞれ1タスクmd。この順を推奨):
+  1. 短答 slot filling — 直前に目安時間を聞いた状態(`missing` に `unit_duration_estimate`)なら「3時間です」系を `set_unit_rate` として受理し、同じ質問を繰り返さない。
+  2. 情報不足と条件矛盾の分類分離 — dialogueManager の decision kind 判定と文言の対応を直し、情報不足を「整合性が取れず」に落とさない。
+  3. 年度範囲「から〜まで」対応 — `parseYearRange` へのパターン追加(完了年度側との共通化を検討)+ exam scope シグナルの見直し。
+  4. 受理済み条件の応答反映と文言トーン改善 — ask_missing_info 系の応答に受理済みサマリを足し、文言をメンター調に和らげる(decision summary に素材あり。文言・表示のみでロジックに触れない)。
+- **設計が必要な中タスク**(いきなり実装せず、先に小さい設計メモを作ってから分割する):
+  5. 明示 duration と過去問文脈の共存 — 「過去問」語で year_field_chunk に固定せず、明示 duration があれば minutes ベースの計画も受理する。state / command / draft request の ready 条件に波及するため設計メモ先行。
+  6. daily / weekday / weekend target の受理 — 新 command と state フィールドの追加を伴うため設計メモ先行。
+- **回帰テスト(全体計画として担保する項目)**:
+  - 「3時間です」が直前質問への回答として受理される。受理後に同じ目安時間質問を繰り返さない。
+  - 「過去問を10時間やりたい」が total duration として扱われる。
+  - 「数学の過去問を8時間、英語の過去問を6時間やりたい」が科目別 duration として扱われる(「計算理論を4時間、線形代数を5時間」は既存どおり)。
+  - 「過去問を1日五時間やりたい」「毎日3時間」「平日は2時間ずつ」「土日は5時間ずつ」が整合性エラーに落ちず、target 条件として受理される。
+  - 「2020年から2025年まで」が年度範囲として扱える。
+  - 情報不足のケースで「条件の整合性が取れず」という文言に落ちない。
 
 ### Phase R2: 自然言語入力の対応範囲拡大【当面の主戦場】
 
@@ -182,7 +213,9 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
 
 ## 4. 優先順位の理由
 
-順序の骨格: **R1(境界完成)→ R2/R3(入力理解の拡大)→ R4(質問計画)→ R5(プロファイル)→ R6(進捗記録)→ R7(再計画)→ R8(配置品質とscheduler整合)**。
+順序の骨格: **R1(境界完成・クローズ済み)→ R2初期(実使用フィードバック対応)→ R2/R3(入力理解の拡大)→ R4(質問計画)→ R5(プロファイル)→ R6(進捗記録)→ R7(再計画)→ R8(配置品質とscheduler整合)**。
+
+R2 初期を最優先とする理由: 実ユーザーの利用で確認済みの体験問題であり、修正の入り口(parser・dialogue 文言・分類判定)がすべて特定済みで、R1 で整えた command boundary の上に小さく載せられるため。R2/R3 の本格的な入力理解拡大は、この初期対応と中タスクの設計メモを踏まえてから進める。
 
 1. **command boundary と reducer 薄化が最初。** すべての入力が正規化された command になっていないと、後段の質問計画・プロファイル・再計画が「経路ごとの特別処理」を持ち始め、spec §12 の責務分離が崩れる。fallback が残ったままだと、どの改善も fallback 経路で挙動が割れるリスクを抱える。
 2. **自然言語理解の拡大(R2)と単位一般化(R3)がその次。** 質問計画(R4)は「何が missing か」を正しく検出できて初めて意味を持つ。検出できない情報は質問対象にもならないため、入力理解が先。R2 の量・単位表現と R3 の unitKind 型は相互依存があるので、R3-1(型定義)を早めに置き、R2 は表現ごとに独立タスクで進める。
@@ -200,19 +233,19 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
 - **完了処理**: 実装 → ユーザー承認の後、タスクmdを `docs/ai/tasks/closed/` へ移動する。closed 内のタスクmdは記録なので書き換えない。承認前のタスクmdは `docs/ai/tasks/` 直下に残す。
 - **Phase をまたぐ発見**: タスク実装中に見つかった別問題は、そのタスクで直さず、roadmap の該当 Phase に追記するか新規タスク候補として報告する。
 
-直近完了タスク: progressHint の command 化(`docs/ai/tasks/closed/20260702-weekly-planning-progress-hint-command.md`、実装・承認・コミット済み)。運用循環の最初の1周が完了している。現在オープンなタスクは `docs/ai/tasks/` 直下を参照する(この roadmap には個別のオープンタスクを列挙しない)。
+直近の到達点: R1 一式がクローズ・main マージ済み(完了記録は `docs/ai/tasks/closed/20260703-weekly-planning-r1-completion-report.md`)。現在オープンなタスクは `docs/ai/tasks/` 直下を参照する(この roadmap には個別のオープンタスクを列挙しない)。
 
 ## 6. 最初に切るべきタスク候補
 
-roadmap を踏まえた次のタスクmd候補(今回はタスクmdを新規作成しない。切る時点で実コードを再調査すること)。
+> 2026-07-04 更新: R1 期の候補(uncertainty command 化、fallback regression、busy interval 明文化テスト)はすべて完了済み。現在の候補は Phase R2 初期(§3)から切る。
 
-1. **uncertainty 正規表現の command 化(R1-1)** — reducer 直書きの `知らない分野.*時間かかる` を parser + command(例: `note_uncertainty`)へ。挙動変更なし・小粒で、progressHint command 化と同じパターンの3点セット(parse / adapter / apply)。reducer 薄化がこれで uncertainty 分は完了する。
-2. **legacy fallback の regression テスト整備(R1-2、テストのみ)** — `applyWeeklyPlanningUserTurn` 経由で fallback(`assessWeeklyPlanningRequest` / `mergeWeeklyPlanningRevision`)を通る入力・通らない入力を spec 化する。fallback 隔離(R1-3)と将来のルート分岐変更の前提。
-3. **`constraintToBusyInterval` 暗黙推定の明文化テスト(R1-4、テストのみ)** — meal の end−60分既定、durationMinutes fallback などをテストで固定し、R8 の配置改善の安全網にする。
-4. **締切表現の parser + command 追加(R2-1)** — spec §5 の「締切はあるか」への最初の対応。missing / dialogue との連動を含むため、上記より一回り大きい。
-5. **`TaskProgressScope` / `unitKind` の型定義と互換 helper(R3-1)** — 挙動変更なしの型導入。R2 の量・単位表現タスクの受け皿になる。
+1. **短答 slot filling(R2初期-1)** — 「3時間です」を直前質問の回答として受理し、再質問ループを止める。体験への影響が大きく範囲が小さいため最初の1本。
+2. **情報不足と条件矛盾の分類分離(R2初期-2)** — dialogueManager の decision 判定と文言の対応修正。
+3. **年度範囲「から〜まで」対応(R2初期-3)** — parseYearRange のパターン追加と完了年度側 parser との共通化検討。
+4. **受理済み条件の応答反映と文言トーン改善(R2初期-4)** — 表示・文言のみ。
+5. **明示 duration と過去問文脈の共存の設計メモ(R2初期-5)** — 実装ではなく設計メモ。daily/weekday/weekend target(R2初期-6)の設計もあわせて検討してよい。
 
-推奨順は 1 → 2 → (3 は随時) → 4 または 5。1 と 2 は独立なので、どちらを先にしてもよい。
+推奨順は 1 → 2 → 3 → 4 → 5(2〜4 は独立なので入れ替え可)。切る時点で実コードを再調査すること。
 
 ## 7. 今やらないこと(現時点で触ると危険な範囲)
 
