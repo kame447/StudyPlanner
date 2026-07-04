@@ -163,12 +163,3 @@ export interface WeeklyPlanningIntakeContext {
   selectedDate: string;
   planningDayCount?: number;
 }
-
-export interface WeeklyPlanningIntakeInterpreter {
-  // TODO: implement an AI-backed interpreter behind this boundary later.
-  interpretUserTurn(
-    state: PlanningIntakeState,
-    userText: string,
-    context: WeeklyPlanningIntakeContext,
-  ): Promise<Partial<PlanningIntakeState>>;
-}

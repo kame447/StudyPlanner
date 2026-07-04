@@ -1,0 +1,249 @@
+import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
+import type {
+  CandidateValidationResult,
+  InterpretedCommandCandidate,
+  InterpreterStateSummary,
+} from './weeklyPlanningInterpreterTypes';
+
+const CONFIDENCE_RANK = {
+  low: 0,
+  medium: 1,
+  high: 2,
+} as const;
+
+const KNOWN_COMMAND_TYPES = new Set([
+  'add_unavailable',
+  'add_fixed_event',
+  'update_life_constraint',
+  'set_priority_policy',
+  'mark_completed_units',
+  'note_progress_boundary',
+  'note_no_fixed_events',
+  'note_uncertainty',
+  'set_unit_rate',
+  'set_exam_scope',
+  'set_planning_range',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isConfidence(value: unknown): value is ParsedWeeklyPlanningCommand['confidence'] {
+  return value === 'high' || value === 'medium' || value === 'low';
+}
+
+function isTime(value: unknown): boolean {
+  return typeof value === 'string' && /^([01]?\d|2[0-4]):[0-5]\d$/.test(value);
+}
+
+function isDate(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isReasonableYear(year: unknown): boolean {
+  if (typeof year !== 'number' || !Number.isInteger(year)) {
+    return false;
+  }
+
+  return year >= 2000 && year <= new Date().getFullYear() + 1;
+}
+
+function isReasonableMinutes(minutes: unknown): boolean {
+  return typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0 && minutes <= 24 * 60;
+}
+
+function commandType(command: unknown): string | undefined {
+  return isRecord(command) && typeof command.type === 'string' ? command.type : undefined;
+}
+
+function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningCommand {
+  if (!isRecord(command) || !isConfidence(command.confidence)) {
+    return false;
+  }
+
+  switch (command.type) {
+    case 'set_exam_scope':
+      return isRecord(command.scope) && Array.isArray(command.scope.fields) && Array.isArray(command.scope.rawText);
+    case 'set_planning_range':
+      return isRecord(command.range) && typeof command.range.confidence === 'string';
+    case 'set_priority_policy':
+      return isRecord(command.policy) && typeof command.policy.kind === 'string';
+    case 'mark_completed_units':
+      return typeof command.field === 'string' && Array.isArray(command.completedYears) && typeof command.mergeMode === 'string';
+    case 'note_progress_boundary':
+      return typeof command.boundaryYear === 'number' && command.ambiguity === 'completion_direction';
+    case 'set_unit_rate':
+      return isRecord(command.unitRate) && typeof command.unitRate.unit === 'string';
+    case 'add_unavailable':
+      return isRecord(command.range) && isTime(command.range.start) && isTime(command.range.end);
+    case 'add_fixed_event':
+      return isRecord(command.event);
+    case 'update_life_constraint':
+      return typeof command.kind === 'string' && isRecord(command.constraint);
+    case 'note_no_fixed_events':
+    case 'note_uncertainty':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null {
+  switch (command.type) {
+    case 'set_exam_scope': {
+      const yearRange = command.scope.yearRange;
+      if (yearRange && (!isReasonableYear(yearRange.startYear) || !isReasonableYear(yearRange.endYear))) {
+        return 'invalid-year-range';
+      }
+      return null;
+    }
+    case 'mark_completed_units':
+      return command.completedYears.every(isReasonableYear) ? null : 'invalid-completed-year';
+    case 'note_progress_boundary':
+      return isReasonableYear(command.boundaryYear) ? null : 'invalid-progress-year';
+    case 'set_unit_rate':
+      return isReasonableMinutes(command.unitRate.minutesPerUnit) ? null : 'invalid-unit-rate-minutes';
+    case 'add_fixed_event':
+      if (command.event.date && !isDate(command.event.date)) return 'invalid-date';
+      if (command.event.start && !isTime(command.event.start)) return 'invalid-time';
+      if (command.event.end && !isTime(command.event.end)) return 'invalid-time';
+      if (command.event.durationMinutes !== undefined && !isReasonableMinutes(command.event.durationMinutes)) {
+        return 'invalid-duration-minutes';
+      }
+      return null;
+    case 'update_life_constraint':
+      if (command.constraint.date && !isDate(command.constraint.date)) return 'invalid-date';
+      if (command.constraint.start && !isTime(command.constraint.start)) return 'invalid-time';
+      if (command.constraint.end && !isTime(command.constraint.end)) return 'invalid-time';
+      if (command.constraint.durationMinutes !== undefined && !isReasonableMinutes(command.constraint.durationMinutes)) {
+        return 'invalid-duration-minutes';
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
+  switch (command.type) {
+    case 'set_exam_scope':
+      return command.scope.yearRange ? ['exam_scope', 'year_range'] : ['exam_scope'];
+    case 'set_planning_range':
+      return ['planning_range'];
+    case 'set_priority_policy':
+      return ['priority_policy'];
+    case 'mark_completed_units':
+    case 'note_progress_boundary':
+      return ['progress'];
+    case 'set_unit_rate':
+      return ['unit_duration_estimate'];
+    case 'add_fixed_event':
+    case 'note_no_fixed_events':
+      return ['fixed_events'];
+    case 'add_unavailable':
+      return ['fixed_events'];
+    case 'update_life_constraint':
+      return ['life_constraints'];
+    default:
+      return [];
+  }
+}
+
+function referencedFields(command: ParsedWeeklyPlanningCommand): string[] {
+  switch (command.type) {
+    case 'set_priority_policy':
+      return command.policy.kind === 'field_first' ? command.policy.order : [];
+    case 'mark_completed_units':
+      return [command.field];
+    case 'note_progress_boundary':
+      return command.field ? [command.field] : [];
+    default:
+      return [];
+  }
+}
+
+function hasUnknownField(command: ParsedWeeklyPlanningCommand, knownFields: string[]): boolean {
+  const references = referencedFields(command);
+
+  return knownFields.length > 0 && references.some((field) => !knownFields.includes(field));
+}
+
+function addRejected(
+  result: CandidateValidationResult,
+  candidate: InterpretedCommandCandidate,
+  reason: string,
+): void {
+  result.rejected.push({ candidate, reason });
+}
+
+export function validateInterpretedCandidates(
+  candidates: InterpretedCommandCandidate[],
+  summary: InterpreterStateSummary,
+): CandidateValidationResult {
+  const result: CandidateValidationResult = {
+    accepted: [],
+    acceptedWithConfirmation: [],
+    clarifications: [],
+    rejected: [],
+  };
+  const occupiedSlots = new Map<string, { rank: number; candidate: InterpretedCommandCandidate }>();
+
+  candidates.forEach((candidate) => {
+    const rawCommand = candidate.command;
+
+    const type = commandType(rawCommand);
+
+    if (!type || !KNOWN_COMMAND_TYPES.has(type)) {
+      addRejected(result, candidate, 'unknown-command-type');
+      return;
+    }
+
+    if (!hasRequiredShape(rawCommand)) {
+      addRejected(result, candidate, 'invalid-command-shape');
+      return;
+    }
+
+    const command = rawCommand;
+    const valueError = validateValueRange(command);
+
+    if (valueError) {
+      addRejected(result, candidate, valueError);
+      return;
+    }
+
+    const slots = commandSlotKeys(command);
+
+    if (slots.some((slot) => summary.confirmedSlots.includes(slot))) {
+      addRejected(result, candidate, 'confirmed-slot-overwrite');
+      return;
+    }
+
+    const rank = CONFIDENCE_RANK[command.confidence];
+    const conflictingSlot = slots.find((slot) => occupiedSlots.has(slot));
+
+    if (conflictingSlot) {
+      const existing = occupiedSlots.get(conflictingSlot);
+      if (existing && existing.rank >= rank) {
+        addRejected(result, candidate, 'conflicting-slot-lower-confidence');
+        return;
+      }
+    }
+
+    slots.forEach((slot) => occupiedSlots.set(slot, { rank, candidate }));
+
+    if (command.confidence === 'low') {
+      result.clarifications.push(candidate);
+      return;
+    }
+
+    if (command.confidence === 'medium' || candidate.needsConfirmation || hasUnknownField(command, summary.knownFields)) {
+      result.acceptedWithConfirmation.push(command);
+      return;
+    }
+
+    result.accepted.push(command);
+  });
+
+  return result;
+}

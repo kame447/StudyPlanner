@@ -280,19 +280,28 @@ function applyWeeklyPlanningCommand(
   }
 }
 
-function applyWeeklyPlanningCommands(
+export function applyWeeklyPlanningCommands(
   state: PlanningIntakeState,
   commands: ParsedWeeklyPlanningCommand[],
 ): PlanningIntakeState {
   return commands.reduce(applyWeeklyPlanningCommand, state);
 }
 
-export function applyWeeklyPlanningUserTurn(
+export interface WeeklyPlanningUserTurnDiagnostics {
+  state: PlanningIntakeState;
+  deterministicCommandCount: number;
+  missingBefore: PlanningIntakeState['missing'];
+  missingAfter: PlanningIntakeState['missing'];
+}
+
+export function applyWeeklyPlanningUserTurnWithDiagnostics(
   previousState: PlanningIntakeState | undefined,
   userText: string,
   context: WeeklyPlanningIntakeContext,
-): PlanningIntakeState {
+): WeeklyPlanningUserTurnDiagnostics {
   const baseState = previousState ?? createInitialPlanningIntakeState();
+  const missingBefore = [...baseState.missing];
+  let deterministicCommandCount = 0;
   let nextState: PlanningIntakeState = {
     ...baseState,
     tasks: baseState.tasks.map((task) => ({ ...task })),
@@ -322,16 +331,20 @@ export function applyWeeklyPlanningUserTurn(
     setupCommands.push(examScopeCommand);
   }
 
+  deterministicCommandCount += setupCommands.length;
   nextState = applyWeeklyPlanningCommands(nextState, setupCommands);
   const fields = nextState.examPrepScope?.fields ?? [];
   const progressBoundaryCommand = parseNoteProgressBoundaryCommand(userText, fields);
   if (progressBoundaryCommand) {
+    deterministicCommandCount += 1;
     nextState = applyWeeklyPlanningCommands(nextState, [progressBoundaryCommand]);
   }
 
+  const turnCommands = parseWeeklyPlanningCommands({ userText, context, state: nextState });
+  deterministicCommandCount += turnCommands.length;
   nextState = applyWeeklyPlanningCommands(
     nextState,
-    parseWeeklyPlanningCommands({ userText, context, state: nextState }),
+    turnCommands,
   );
 
 
@@ -342,5 +355,20 @@ export function applyWeeklyPlanningUserTurn(
     context,
   });
 
-  return finalizeState(nextState);
+  const finalizedState = finalizeState(nextState);
+
+  return {
+    state: finalizedState,
+    deterministicCommandCount,
+    missingBefore,
+    missingAfter: [...finalizedState.missing],
+  };
+}
+
+export function applyWeeklyPlanningUserTurn(
+  previousState: PlanningIntakeState | undefined,
+  userText: string,
+  context: WeeklyPlanningIntakeContext,
+): PlanningIntakeState {
+  return applyWeeklyPlanningUserTurnWithDiagnostics(previousState, userText, context).state;
 }

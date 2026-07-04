@@ -4,7 +4,10 @@ import {
   SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
   WP_RP_001_WEEKEND_EXAM_TURNS,
 } from '../testFixtures/weeklyPlanningRoleplayCases';
-import { runWeeklyPlanningIntakePipeline } from './weeklyPlanningIntakePipeline';
+import {
+  runWeeklyPlanningIntakePipeline,
+  runWeeklyPlanningIntakePipelineWithInterpreter,
+} from './weeklyPlanningIntakePipeline';
 
 const defaultPipelineInput = {
   planningStartDate: SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
@@ -47,6 +50,18 @@ function runWeekendExamSequence() {
 }
 
 describe('weekly planning intake pipeline', () => {
+
+  it('keeps the async interpreter entrypoint identical when no interpreter is injected', async () => {
+    const input = {
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+    };
+
+    await expect(runWeeklyPlanningIntakePipelineWithInterpreter(input)).resolves.toEqual(
+      runWeeklyPlanningIntakePipeline(input),
+    );
+  });
+
 
   describe('legacy fallback via pipeline', () => {
     it('keeps branch A assessment for a first weekly pipeline turn', () => {

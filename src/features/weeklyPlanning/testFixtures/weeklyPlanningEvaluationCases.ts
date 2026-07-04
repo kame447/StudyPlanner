@@ -18,4 +18,9 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
     confirmedFixedEvent: '15時から病院がある',
     ambiguousFixedEvent: 'ゼミがあるかも',
   },
+  aiInterpreterFoundation: {
+    freeTextExamScopeAndPriority: '数学とOSとハードウェアとソフトウェアとヒューマンサイエンスがあって、2025〜2019までそれぞれある。分野ごとにまとめてやる。数学から始めて最後がヒューマンサイエンスかな',
+    fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
+    priorityOrder: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
+  },
 } as const;
