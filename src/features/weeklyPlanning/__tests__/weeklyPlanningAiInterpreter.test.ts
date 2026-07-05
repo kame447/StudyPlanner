@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AiConfig } from '../../../lib/aiConfig';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
-import { createAiWeeklyPlanningInterpreter } from '../intake/weeklyPlanningAiInterpreter';
+import {
+  createAiWeeklyPlanningInterpreter,
+  WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT,
+} from '../intake/weeklyPlanningAiInterpreter';
+import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
+import { WEEKLY_PLANNING_INTAKE_EVALUATION_CASES } from '../testFixtures/weeklyPlanningEvaluationCases';
 
 const config: AiConfig = {
   provider: 'openai',
@@ -39,13 +44,13 @@ describe('weekly planning AI interpreter', () => {
     }));
     const interpreter = createAiWeeklyPlanningInterpreter(config, client);
 
-    const candidates = await interpreter.interpretUserTurn({
+    const result = await interpreter.interpretUserTurn({
       userText: '数学からOSの順で進めたい',
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary,
     });
 
-    expect(candidates).toEqual([
+    expect(result.candidates).toEqual([
       {
         command: expect.objectContaining({
           type: 'set_priority_policy',
@@ -71,7 +76,93 @@ describe('weekly planning AI interpreter', () => {
     expect(request.messages[1].content).not.toContain('2030-01-01');
   });
 
-  it('shrinks to an empty candidate list when the response is not valid JSON or schema-shaped data', async () => {
+  it('keeps valid candidate units when one AI candidate has an invalid shape and defaults missing confidence to low', async () => {
+    const client = createMockClient(JSON.stringify({
+      candidates: [
+        { command: 'not-an-object', needsConfirmation: false },
+        {
+          command: {
+            type: 'set_priority_policy',
+            policy: { kind: 'field_first', order: ['数学', 'OS'] },
+            sourceText: '数学からOS',
+          },
+          needsConfirmation: false,
+        },
+      ],
+    }));
+    const interpreter = createAiWeeklyPlanningInterpreter(config, client);
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '数学からOSの順で進めたい',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary,
+    });
+
+    expect(result.parseRejections).toEqual([
+      { rawCandidate: { command: 'not-an-object', needsConfirmation: false }, reason: 'invalid-candidate-shape' },
+    ]);
+    expect(result.candidates).toEqual([
+      {
+        command: expect.objectContaining({
+          type: 'set_priority_policy',
+          confidence: 'low',
+        }),
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      },
+    ]);
+  });
+
+  it('captures the real smoke response shape with missing confidence and invalid field-year unitModel', async () => {
+    const client = createMockClient(JSON.stringify(
+      WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.smokeResponseWithoutConfidence,
+    ));
+    const interpreter = createAiWeeklyPlanningInterpreter(config, client);
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '実AI応答',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary: { knownFields: [], confirmedSlots: [] },
+    });
+    const validation = validateInterpretedCandidates(result.candidates, { knownFields: [], confirmedSlots: [] });
+
+    expect(result.parseRejections).toEqual([]);
+    expect(result.candidates.map((candidate) => candidate.command.confidence)).toEqual(['low', 'low']);
+    expect(validation.rejected).toEqual([
+      expect.objectContaining({ reason: 'invalid-unit-model' }),
+    ]);
+    expect(validation.clarifications).toEqual([
+      expect.objectContaining({
+        command: expect.objectContaining({ type: 'set_priority_policy' }),
+      }),
+    ]);
+  });
+
+  it('requires confidence on command objects in the structured response schema', () => {
+    const schema = WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT.json_schema.schema as {
+      properties: {
+        candidates: {
+          items: {
+            properties: {
+              command: {
+                required: string[];
+                properties: Record<string, unknown>;
+              };
+            };
+          };
+        };
+      };
+    };
+    const commandSchema = schema.properties.candidates.items.properties.command;
+
+    expect(commandSchema.required).toContain('confidence');
+    expect(commandSchema.properties.confidence).toEqual({
+      type: 'string',
+      enum: ['high', 'medium', 'low'],
+    });
+  });
+
+  it('shrinks invalid JSON to an empty result and defaults missing confidence in candidate-shaped data', async () => {
     const invalidJsonInterpreter = createAiWeeklyPlanningInterpreter(config, createMockClient('not json'));
     const invalidShapeInterpreter = createAiWeeklyPlanningInterpreter(config, createMockClient(JSON.stringify({
       candidates: [
@@ -83,12 +174,12 @@ describe('weekly planning AI interpreter', () => {
       userText: '数学から始めたい',
       context: { selectedDate: '2026-07-06' },
       stateSummary,
-    })).resolves.toEqual([]);
+    })).resolves.toEqual({ candidates: [], parseRejections: [] });
     await expect(invalidShapeInterpreter.interpretUserTurn({
       userText: '数学から始めたい',
       context: { selectedDate: '2026-07-06' },
       stateSummary,
-    })).resolves.toEqual([]);
+    })).resolves.toEqual({ candidates: [expect.objectContaining({ command: expect.objectContaining({ confidence: 'low' }) })], parseRejections: [] });
   });
 
   it('shrinks to an empty candidate list when the AI client throws', async () => {
@@ -103,7 +194,7 @@ describe('weekly planning AI interpreter', () => {
       userText: '数学から始めたい',
       context: { selectedDate: '2026-07-06' },
       stateSummary,
-    })).resolves.toEqual([]);
+    })).resolves.toEqual({ candidates: [], parseRejections: [] });
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 });

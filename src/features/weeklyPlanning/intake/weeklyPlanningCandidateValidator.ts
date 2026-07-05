@@ -25,6 +25,41 @@ const KNOWN_COMMAND_TYPES = new Set([
   'set_planning_range',
 ]);
 
+const STUDY_SCOPE_UNITS = new Set([
+  'minutes',
+  'hours',
+  'pages',
+  'problems',
+  'words',
+  'lessons',
+  'chapters',
+  'year_field_chunk',
+  'topic',
+  'unknown',
+]);
+
+const PRIORITY_POLICY_KINDS = new Set([
+  'field_first',
+  'deadline_first',
+  'weakness_first',
+  'score_weight_first',
+  'balanced',
+  'unknown',
+]);
+
+const LIFE_CONSTRAINT_KINDS = new Set([
+  'sleep',
+  'meal',
+  'bath',
+  'commute',
+  'club',
+  'cram_school',
+  'buffer',
+]);
+
+const HARDNESS_VALUES = new Set(['hard', 'soft']);
+const MERGE_MODES = new Set(['replace', 'append']);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -86,6 +121,30 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
       return true;
     default:
       return false;
+  }
+}
+
+function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | null {
+  switch (command.type) {
+    case 'set_exam_scope':
+      return command.scope.unitModel && !STUDY_SCOPE_UNITS.has(command.scope.unitModel)
+        ? 'invalid-unit-model'
+        : null;
+    case 'set_unit_rate':
+      return !STUDY_SCOPE_UNITS.has(command.unitRate.unit) ? 'invalid-unit' : null;
+    case 'set_priority_policy':
+      return !PRIORITY_POLICY_KINDS.has(command.policy.kind) ? 'invalid-priority-policy-kind' : null;
+    case 'mark_completed_units':
+      return !MERGE_MODES.has(command.mergeMode) ? 'invalid-merge-mode' : null;
+    case 'add_unavailable':
+      return !HARDNESS_VALUES.has(command.range.hardness) ? 'invalid-hardness' : null;
+    case 'add_fixed_event':
+      return !HARDNESS_VALUES.has(command.event.hardness) ? 'invalid-hardness' : null;
+    case 'update_life_constraint':
+      if (!LIFE_CONSTRAINT_KINDS.has(command.kind)) return 'invalid-life-constraint-kind';
+      return !HARDNESS_VALUES.has(command.constraint.hardness) ? 'invalid-hardness' : null;
+    default:
+      return null;
   }
 }
 
@@ -197,6 +256,7 @@ export function validateInterpretedCandidates(
     acceptedWithConfirmation: [],
     clarifications: [],
     rejected: [],
+    parseRejections: [],
   };
   const occupiedSlots = new Map<string, { rank: number; candidate: InterpretedCommandCandidate }>();
 
@@ -216,6 +276,13 @@ export function validateInterpretedCandidates(
     }
 
     const command = rawCommand;
+    const enumError = validateEnumVocabulary(command);
+
+    if (enumError) {
+      addRejected(result, candidate, enumError);
+      return;
+    }
+
     const valueError = validateValueRange(command);
 
     if (valueError) {

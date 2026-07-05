@@ -115,10 +115,13 @@ describe('weekly planning AI foundation without real AI', () => {
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
     });
-    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => [
-      candidate(setExamScopeCommand('high')),
-      candidate(priorityCommand('medium'), true),
-    ]);
+    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
+      candidates: [
+        candidate(setExamScopeCommand('high')),
+        candidate(priorityCommand('medium'), true),
+      ],
+      parseRejections: [],
+    }));
 
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
@@ -147,6 +150,33 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(output.interpreterDiagnostics?.accepted).toHaveLength(1);
     expect(output.interpreterDiagnostics?.acceptedWithConfirmation).toHaveLength(1);
     expect(output.interpreterDiagnostics?.rejected).toEqual([]);
+  });
+
+  it('exposes AI parser rejections through pipeline interpreter diagnostics', async () => {
+    const afterRange = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+    });
+    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
+      candidates: [candidate(priorityCommand('low'))],
+      parseRejections: [
+        { rawCandidate: { command: 'not-an-object', needsConfirmation: false }, reason: 'invalid-candidate-shape' },
+      ],
+    }));
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: afterRange.state,
+      userText: evaluationCase.freeTextExamScopeAndPriority,
+      interpreter: { interpretUserTurn },
+    });
+
+    expect(output.interpreterDiagnostics?.parseRejections).toEqual([
+      { rawCandidate: { command: 'not-an-object', needsConfirmation: false }, reason: 'invalid-candidate-shape' },
+    ]);
+    expect(output.interpreterDiagnostics?.clarifications).toEqual([
+      expect.objectContaining({ command: expect.objectContaining({ type: 'set_priority_policy' }) }),
+    ]);
   });
 
   it('keeps the async interpreter entrypoint identical to the sync pipeline when no interpreter is injected', async () => {
@@ -199,9 +229,10 @@ describe('weekly planning AI foundation without real AI', () => {
   });
 
   it('does not escalate when legacy fallback makes task progress in the current turn', async () => {
-    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => [
-      candidate(unitRateCommand(120, 'high')),
-    ]);
+    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
+      candidates: [candidate(unitRateCommand(120, 'high'))],
+      parseRejections: [],
+    }));
 
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,

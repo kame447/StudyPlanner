@@ -190,12 +190,13 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   }
 
   const stateSummary = createInterpreterStateSummary(deterministicTurn.state);
-  const candidates = await input.interpreter.interpretUserTurn({
+  const interpreterResult = await input.interpreter.interpretUserTurn({
     userText: input.userText,
     context,
     stateSummary,
   });
-  const interpreterDiagnostics = validateInterpretedCandidates(candidates, stateSummary);
+  const interpreterDiagnostics = validateInterpretedCandidates(interpreterResult.candidates, stateSummary);
+  interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
     ...interpreterDiagnostics.acceptedWithConfirmation,

@@ -15,12 +15,22 @@ export interface InterpreterStateSummary {
   planningRangeSummary?: string;
 }
 
+export interface InterpreterParseRejection {
+  rawCandidate: unknown;
+  reason: string;
+}
+
+export interface WeeklyPlanningInterpreterResult {
+  candidates: InterpretedCommandCandidate[];
+  parseRejections: InterpreterParseRejection[];
+}
+
 export interface WeeklyPlanningIntakeInterpreter {
   interpretUserTurn(params: {
     userText: string;
     context: WeeklyPlanningIntakeContext;
     stateSummary: InterpreterStateSummary;
-  }): Promise<InterpretedCommandCandidate[]>;
+  }): Promise<WeeklyPlanningInterpreterResult>;
 }
 
 export interface CandidateRejection {
@@ -33,4 +43,5 @@ export interface CandidateValidationResult {
   acceptedWithConfirmation: ParsedWeeklyPlanningCommand[];
   clarifications: InterpretedCommandCandidate[];
   rejected: CandidateRejection[];
+  parseRejections: InterpreterParseRejection[];
 }

@@ -7,17 +7,19 @@ import {
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
 import type {
   InterpretedCommandCandidate,
+  InterpreterParseRejection,
   InterpreterStateSummary,
+  WeeklyPlanningInterpreterResult,
   WeeklyPlanningIntakeInterpreter,
 } from './weeklyPlanningInterpreterTypes';
 
 interface AiInterpreterResponse {
-  candidates: InterpretedCommandCandidate[];
+  candidates: unknown[];
 }
 
 const CONFIDENCE_VALUES = new Set(['high', 'medium', 'low']);
 
-const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
     name: 'weekly_planning_interpreted_commands',
@@ -37,6 +39,13 @@ const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
               command: {
                 type: 'object',
                 additionalProperties: true,
+                required: ['confidence'],
+                properties: {
+                  confidence: {
+                    type: 'string',
+                    enum: ['high', 'medium', 'low'],
+                  },
+                },
               },
               needsConfirmation: { type: 'boolean' },
             },
@@ -51,38 +60,67 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isCommandCandidate(value: unknown): value is Omit<InterpretedCommandCandidate, 'origin'> {
-  if (!isRecord(value) || !isRecord(value.command) || typeof value.needsConfirmation !== 'boolean') {
-    return false;
-  }
-
-  return typeof value.command.type === 'string' && CONFIDENCE_VALUES.has(String(value.command.confidence));
+function normalizeConfidence(value: unknown): ParsedWeeklyPlanningCommand['confidence'] {
+  return CONFIDENCE_VALUES.has(String(value))
+    ? value as ParsedWeeklyPlanningCommand['confidence']
+    : 'low';
 }
 
-function parseInterpreterResponse(content: string): InterpretedCommandCandidate[] {
+function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null {
+  if (!isRecord(candidate) || !isRecord(candidate.command) || typeof candidate.needsConfirmation !== 'boolean') {
+    return null;
+  }
+
+  if (typeof candidate.command.type !== 'string') {
+    return null;
+  }
+
+  return {
+    command: {
+      ...candidate.command,
+      confidence: normalizeConfidence(candidate.command.confidence),
+    } as unknown as ParsedWeeklyPlanningCommand,
+    origin: 'ai_interpreter',
+    needsConfirmation: candidate.needsConfirmation,
+  };
+}
+
+function emptyInterpreterResult(): WeeklyPlanningInterpreterResult {
+  return {
+    candidates: [],
+    parseRejections: [],
+  };
+}
+
+function parseInterpreterResponse(content: string): WeeklyPlanningInterpreterResult {
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(content);
   } catch {
-    return [];
+    return emptyInterpreterResult();
   }
 
   if (!isRecord(parsed) || !Array.isArray(parsed.candidates)) {
-    return [];
-  }
-
-  if (!parsed.candidates.every(isCommandCandidate)) {
-    return [];
+    return emptyInterpreterResult();
   }
 
   const response = parsed as unknown as AiInterpreterResponse;
+  const candidates: InterpretedCommandCandidate[] = [];
+  const parseRejections: InterpreterParseRejection[] = [];
 
-  return response.candidates.map((candidate) => ({
-    command: candidate.command as ParsedWeeklyPlanningCommand,
-    origin: 'ai_interpreter',
-    needsConfirmation: candidate.needsConfirmation,
-  }));
+  response.candidates.forEach((rawCandidate) => {
+    const candidate = parseCandidate(rawCandidate);
+
+    if (!candidate) {
+      parseRejections.push({ rawCandidate, reason: 'invalid-candidate-shape' });
+      return;
+    }
+
+    candidates.push(candidate);
+  });
+
+  return { candidates, parseRejections };
 }
 
 function createSystemPrompt(): string {
@@ -92,6 +130,7 @@ function createSystemPrompt(): string {
     'Your job is to convert the current user turn into command candidates. The application will validate every command before applying it.',
     'Use only the provided userText and stateSummary. Do not assume saved plans, past turns, or life-constraint history.',
     'Prefer no command over an unsafe command. Return an empty candidates array when the turn is not enough.',
+    'Each command must include a confidence field with one of: high, medium, low.',
     'Command types you may emit:',
     '- set_exam_scope: examType, fields, totalFields, totalYears, yearRange, strategyHint, unitModel, rawText.',
     '- set_priority_policy: policy.kind field_first with order when the user describes field order or priority.',
@@ -131,7 +170,7 @@ export function createAiWeeklyPlanningInterpreter(
 
         return parseInterpreterResponse(content);
       } catch {
-        return [];
+        return emptyInterpreterResult();
       }
     },
   };

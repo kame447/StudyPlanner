@@ -1,5 +1,13 @@
 # R2-C-eval: AI interpreter の実 AI 評価(手動スモーク + opt-in 自動評価1回)
 
+> **実施記録(2026-07-05・Phase 1 完了)**
+>
+> - **結果: 実 AI 到達成功、抽出品質良好、受信側不整合で全滅。**
+> - 実ブラウザから ai-proxy への POST と AI 応答を確認(既存 Cloudflare proxy 構成のまま・鍵移動なし)。評価ケース第1号に対し、AI は `set_exam_scope`(fields 5件・yearRange 2025〜2019・strategyHint・unitModel)と `set_priority_policy`(field_first・order)を返した。期間指定ターンでも `set_planning_range` を返した。抽出品質は有望。
+> - しかし AI 応答の command に `confidence` が含まれず(response schema が要求していないため)、candidate parser の all-or-nothing 検査で**全候補が破棄**され、state に反映されなかった。アプリ応答は「条件の整合性が取れず…」となった。調査詳細と原因は `docs/ai/tasks/20260705-weekly-planning-ai-candidate-contract-fix.md` の背景を参照。
+> - 受信契約の不整合修正は上記 fix タスクへ分離。**R2-D は fix タスク完了後に進む**(本タスクの Phase 1 完了により「実 AI 評価1回」は達成済みだが、受信契約が直るまで renderer 接続に進まない)。
+> - Phase 2(opt-in 自動評価)は未実施・未判断のまま(評価用 key の用意はユーザー判断)。fix タスク完了後に実施すれば、修正後の契約での自動評価を兼ねられる。
+
 R2-C(`docs/ai/tasks/closed/20260704-weekly-planning-r2c-ai-connection-goal.md`、条件付きクローズ)から分離した、**実 AI 評価だけ**を扱う小タスク。コード変更・テスト変更は行わない(評価の実行と記録のみ)。
 
 **R2-D(renderer 実接続)の着手条件: 本タスクの実 AI 評価が少なくとも1回完了していること。**

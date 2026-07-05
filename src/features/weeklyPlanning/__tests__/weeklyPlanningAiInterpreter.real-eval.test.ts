@@ -135,7 +135,7 @@ describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real
       reachedApi: false,
     };
     const startedAt = performance.now();
-    const candidates = await createAiWeeklyPlanningInterpreter(
+    const interpreterResult = await createAiWeeklyPlanningInterpreter(
       config,
       createDirectOpenAiEvalClient(config, status),
     ).interpretUserTurn({
@@ -158,7 +158,8 @@ describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real
       return;
     }
 
-    const diagnostics = validateInterpretedCandidates(candidates, stateSummary);
+    const diagnostics = validateInterpretedCandidates(interpreterResult.candidates, stateSummary);
+    diagnostics.parseRejections = interpreterResult.parseRejections;
     const validatedCommands = [
       ...diagnostics.accepted,
       ...diagnostics.acceptedWithConfirmation,
@@ -173,7 +174,8 @@ describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real
       reachedApi: status.reachedApi,
       status: status.status,
       latencyMs,
-      candidates,
+      candidates: interpreterResult.candidates,
+      parseRejections: interpreterResult.parseRejections,
       accepted: diagnostics.accepted,
       acceptedWithConfirmation: diagnostics.acceptedWithConfirmation,
       clarifications: diagnostics.clarifications,
