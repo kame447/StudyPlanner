@@ -3,6 +3,7 @@ import { parseBareDurationAsUnitRateCommand } from '../intake/weeklyPlanningUnit
 
 export interface WeeklyPlanningInterpreterEscalationInput {
   deterministicCommandCount: number;
+  fallbackProgressCount?: number;
   missingBefore: PlanningIntakeMissing[];
   missingAfter: PlanningIntakeMissing[];
   userText: string;
@@ -24,13 +25,15 @@ export function shouldEscalateToInterpreter(
     return false;
   }
 
-  if (input.deterministicCommandCount > 0 && missingWasReduced(input.missingBefore, input.missingAfter)) {
+  const madeProgress = input.deterministicCommandCount > 0 || (input.fallbackProgressCount ?? 0) > 0;
+
+  if (madeProgress && missingWasReduced(input.missingBefore, input.missingAfter)) {
     return false;
   }
 
-  if (input.deterministicCommandCount > 0 && input.missingBefore.length === 0) {
+  if (madeProgress && input.missingBefore.length === 0) {
     return false;
   }
 
-  return input.deterministicCommandCount === 0 || !missingWasReduced(input.missingBefore, input.missingAfter);
+  return !madeProgress || !missingWasReduced(input.missingBefore, input.missingAfter);
 }

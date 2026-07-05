@@ -290,6 +290,7 @@ export function applyWeeklyPlanningCommands(
 export interface WeeklyPlanningUserTurnDiagnostics {
   state: PlanningIntakeState;
   deterministicCommandCount: number;
+  fallbackProgressCount: number;
   missingBefore: PlanningIntakeState['missing'];
   missingAfter: PlanningIntakeState['missing'];
 }
@@ -302,6 +303,7 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
   const baseState = previousState ?? createInitialPlanningIntakeState();
   const missingBefore = [...baseState.missing];
   let deterministicCommandCount = 0;
+  let fallbackProgressCount = 0;
   let nextState: PlanningIntakeState = {
     ...baseState,
     tasks: baseState.tasks.map((task) => ({ ...task })),
@@ -348,18 +350,36 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
   );
 
 
+  const tasksBeforeFallback = nextState.tasks.map((task) => [
+    task.title,
+    task.subject ?? '',
+    task.unit,
+    task.amount ?? '',
+    task.rawText,
+  ].join('\u001f'));
   nextState = applyLegacyWeeklyPlanningFallback({
     state: nextState,
     previousState,
     userText,
     context,
   });
+  const tasksAfterFallback = nextState.tasks.map((task) => [
+    task.title,
+    task.subject ?? '',
+    task.unit,
+    task.amount ?? '',
+    task.rawText,
+  ].join('\u001f'));
+  if (tasksAfterFallback.length > 0 && tasksAfterFallback.join('\u001e') !== tasksBeforeFallback.join('\u001e')) {
+    fallbackProgressCount += 1;
+  }
 
   const finalizedState = finalizeState(nextState);
 
   return {
     state: finalizedState,
     deterministicCommandCount,
+    fallbackProgressCount,
     missingBefore,
     missingAfter: [...finalizedState.missing],
   };

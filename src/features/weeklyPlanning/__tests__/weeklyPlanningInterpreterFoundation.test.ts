@@ -189,6 +189,49 @@ describe('weekly planning AI foundation without real AI', () => {
       userText: evaluationCase.freeTextExamScopeAndPriority,
       hasInterpreter: true,
     })).toBe(true);
+    expect(shouldEscalateToInterpreter({
+      deterministicCommandCount: 1,
+      missingBefore: ['tasks_or_goals'],
+      missingAfter: ['tasks_or_goals'],
+      userText: evaluationCase.freeTextExamScopeAndPriority,
+      hasInterpreter: true,
+    })).toBe(true);
+  });
+
+  it('does not escalate when legacy fallback makes task progress in the current turn', async () => {
+    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => [
+      candidate(unitRateCommand(120, 'high')),
+    ]);
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '来週、英語を3時間、数学を2時間',
+      interpreter: { interpretUserTurn },
+    });
+
+    expect(interpretUserTurn).not.toHaveBeenCalled();
+    expect(output.state.tasks.map((task) => task.title)).toEqual(['英語', '数学']);
+  });
+
+  it('keeps only the higher confidence candidate when a later candidate targets the same slot', () => {
+    const lowCandidate = candidate(unitRateCommand(90, 'low'));
+    const highCandidate = candidate(unitRateCommand(120, 'high'));
+
+    const result = validateInterpretedCandidates([
+      lowCandidate,
+      highCandidate,
+    ], baseSummary());
+
+    expect(result.accepted).toEqual([
+      expect.objectContaining({
+        type: 'set_unit_rate',
+        unitRate: expect.objectContaining({ minutesPerUnit: 120 }),
+      }),
+    ]);
+    expect(result.clarifications).toEqual([]);
+    expect(result.rejected).toEqual([
+      { candidate: lowCandidate, reason: 'conflicting-slot-lower-confidence' },
+    ]);
   });
 
   it('validates interpreted candidates without allowing state-shaped output', () => {

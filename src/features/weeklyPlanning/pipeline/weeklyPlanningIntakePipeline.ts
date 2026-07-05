@@ -180,6 +180,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
 
   if (!shouldEscalateToInterpreter({
     deterministicCommandCount: deterministicTurn.deterministicCommandCount,
+    fallbackProgressCount: deterministicTurn.fallbackProgressCount,
     missingBefore: deterministicTurn.missingBefore as PlanningIntakeMissing[],
     missingAfter: deterministicTurn.missingAfter as PlanningIntakeMissing[],
     userText: input.userText,

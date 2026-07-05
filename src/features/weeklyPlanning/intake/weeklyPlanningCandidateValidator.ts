@@ -177,6 +177,17 @@ function addRejected(
   result.rejected.push({ candidate, reason });
 }
 
+function removeCandidateFromAcceptedResults(
+  result: CandidateValidationResult,
+  candidate: InterpretedCommandCandidate,
+): void {
+  result.accepted = result.accepted.filter((command) => command !== candidate.command);
+  result.acceptedWithConfirmation = result.acceptedWithConfirmation.filter(
+    (command) => command !== candidate.command,
+  );
+  result.clarifications = result.clarifications.filter((item) => item !== candidate);
+}
+
 export function validateInterpretedCandidates(
   candidates: InterpretedCommandCandidate[],
   summary: InterpreterStateSummary,
@@ -227,6 +238,16 @@ export function validateInterpretedCandidates(
       if (existing && existing.rank >= rank) {
         addRejected(result, candidate, 'conflicting-slot-lower-confidence');
         return;
+      }
+
+      if (existing) {
+        removeCandidateFromAcceptedResults(result, existing.candidate);
+        addRejected(result, existing.candidate, 'conflicting-slot-lower-confidence');
+        Array.from(occupiedSlots.entries()).forEach(([slot, occupied]) => {
+          if (occupied.candidate === existing.candidate) {
+            occupiedSlots.delete(slot);
+          }
+        });
       }
     }
 
