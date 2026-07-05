@@ -22,6 +22,12 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
     freeTextExamScopeAndPriority: '数学とOSとハードウェアとソフトウェアとヒューマンサイエンスがあって、2025〜2019までそれぞれある。分野ごとにまとめてやる。数学から始めて最後がヒューマンサイエンスかな',
     fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
     priorityOrder: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
+    payloadMissingSmokeResponse: {
+      candidates: [
+        { command: { confidence: 'high' }, needsConfirmation: false },
+        { command: { confidence: 'medium' }, needsConfirmation: true },
+      ],
+    },
     smokeResponseWithoutConfidence: {
       candidates: [
         {
@@ -48,6 +54,51 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
             sourceText: '実AI応答',
           },
           needsConfirmation: false,
+        },
+      ],
+    },
+    completeCommandResponse: {
+      candidates: [
+        {
+          command: {
+            type: 'set_planning_range',
+            range: {
+              startDateTime: '2026-07-06',
+              endDateTime: '2026-07-12',
+              sourceText: '来週',
+              confidence: 'explicit',
+            },
+            sourceText: '来週',
+            confidence: 'high',
+          },
+          needsConfirmation: false,
+        },
+        {
+          command: {
+            type: 'set_exam_scope',
+            scope: {
+              examType: '院試',
+              fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
+              totalFields: 5,
+              totalYears: 7,
+              yearRange: { startYear: 2025, endYear: 2019, sourceText: '2025〜2019' },
+              strategyHint: 'field_first',
+              unitModel: 'year_field_chunk',
+              rawText: ['実AI応答'],
+            },
+            sourceText: '実AI応答',
+            confidence: 'high',
+          },
+          needsConfirmation: false,
+        },
+        {
+          command: {
+            type: 'set_priority_policy',
+            policy: { kind: 'field_first', order: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'] },
+            sourceText: '実AI応答',
+            confidence: 'medium',
+          },
+          needsConfirmation: true,
         },
       ],
     },

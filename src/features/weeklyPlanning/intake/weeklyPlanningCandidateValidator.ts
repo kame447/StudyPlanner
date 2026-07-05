@@ -11,7 +11,7 @@ const CONFIDENCE_RANK = {
   high: 2,
 } as const;
 
-const KNOWN_COMMAND_TYPES = new Set([
+export const KNOWN_COMMAND_TYPES = new Set([
   'add_unavailable',
   'add_fixed_event',
   'update_life_constraint',

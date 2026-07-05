@@ -19,6 +19,263 @@ interface AiInterpreterResponse {
 
 const CONFIDENCE_VALUES = new Set(['high', 'medium', 'low']);
 
+type JsonSchemaObject = Record<string, unknown>;
+
+const CONFIDENCE_SCHEMA = {
+  type: 'string',
+  enum: ['high', 'medium', 'low'],
+} as const;
+
+const STUDY_SCOPE_UNIT_SCHEMA = {
+  type: 'string',
+  enum: ['minutes', 'hours', 'pages', 'problems', 'words', 'lessons', 'chapters', 'year_field_chunk', 'topic', 'unknown'],
+} as const;
+
+const HARDNESS_SCHEMA = {
+  type: 'string',
+  enum: ['hard', 'soft'],
+} as const;
+
+function stringSchema(): JsonSchemaObject {
+  return { type: 'string' };
+}
+
+function numberSchema(): JsonSchemaObject {
+  return { type: 'number' };
+}
+
+function integerSchema(): JsonSchemaObject {
+  return { type: 'integer' };
+}
+
+function stringArraySchema(): JsonSchemaObject {
+  return {
+    type: 'array',
+    items: stringSchema(),
+  };
+}
+
+function yearRangeSchema(): JsonSchemaObject {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['startYear', 'endYear', 'sourceText'],
+    properties: {
+      startYear: integerSchema(),
+      endYear: integerSchema(),
+      sourceText: stringSchema(),
+    },
+  };
+}
+
+function commandSchema(params: {
+  type: string;
+  required?: string[];
+  properties?: Record<string, unknown>;
+}): JsonSchemaObject {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'confidence', 'sourceText', ...(params.required ?? [])],
+    properties: {
+      type: { const: params.type },
+      confidence: CONFIDENCE_SCHEMA,
+      sourceText: stringSchema(),
+      sourceSegment: stringSchema(),
+      ...(params.properties ?? {}),
+    },
+  };
+}
+
+const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
+  commandSchema({
+    type: 'add_unavailable',
+    required: ['range'],
+    properties: {
+      range: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['start', 'end', 'hardness'],
+        properties: {
+          date: stringSchema(),
+          start: stringSchema(),
+          end: stringSchema(),
+          hardness: HARDNESS_SCHEMA,
+          reason: stringSchema(),
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'add_fixed_event',
+    required: ['event'],
+    properties: {
+      event: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hardness'],
+        properties: {
+          date: stringSchema(),
+          start: stringSchema(),
+          end: stringSchema(),
+          durationMinutes: numberSchema(),
+          hardness: HARDNESS_SCHEMA,
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'update_life_constraint',
+    required: ['kind', 'constraint'],
+    properties: {
+      kind: {
+        type: 'string',
+        enum: ['sleep', 'meal', 'bath', 'commute', 'club', 'cram_school', 'buffer'],
+      },
+      constraint: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hardness'],
+        properties: {
+          date: stringSchema(),
+          start: stringSchema(),
+          end: stringSchema(),
+          durationMinutes: numberSchema(),
+          hardness: HARDNESS_SCHEMA,
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'set_priority_policy',
+    required: ['policy'],
+    properties: {
+      policy: {
+        anyOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'order'],
+            properties: {
+              kind: { const: 'field_first' },
+              order: stringArraySchema(),
+            },
+          },
+          ...['deadline_first', 'weakness_first', 'score_weight_first', 'balanced', 'unknown'].map((kind) => ({
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind'],
+            properties: { kind: { const: kind } },
+          })),
+        ],
+      },
+    },
+  }),
+  commandSchema({
+    type: 'mark_completed_units',
+    required: ['field', 'completedYears', 'mergeMode'],
+    properties: {
+      field: stringSchema(),
+      completedYears: {
+        type: 'array',
+        items: integerSchema(),
+      },
+      mergeMode: {
+        type: 'string',
+        enum: ['replace', 'append'],
+      },
+    },
+  }),
+  commandSchema({
+    type: 'note_progress_boundary',
+    required: ['boundaryYear', 'ambiguity'],
+    properties: {
+      field: stringSchema(),
+      boundaryYear: integerSchema(),
+      ambiguity: { const: 'completion_direction' },
+    },
+  }),
+  commandSchema({
+    type: 'note_no_fixed_events',
+  }),
+  commandSchema({
+    type: 'note_uncertainty',
+    required: ['uncertainty'],
+    properties: {
+      uncertainty: { const: 'unknown_fields_may_take_longer' },
+    },
+  }),
+  commandSchema({
+    type: 'set_unit_rate',
+    required: ['unitRate'],
+    properties: {
+      unitRate: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['unit', 'minutesPerUnit', 'source'],
+        properties: {
+          unit: STUDY_SCOPE_UNIT_SCHEMA,
+          minutesPerUnit: numberSchema(),
+          source: {
+            type: 'string',
+            enum: ['user', 'assumption', 'default'],
+          },
+          uncertainty: {
+            type: 'string',
+            enum: ['low', 'medium', 'high'],
+          },
+          rawText: stringSchema(),
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'set_exam_scope',
+    required: ['scope'],
+    properties: {
+      scope: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['fields', 'rawText'],
+        properties: {
+          examType: stringSchema(),
+          fields: stringArraySchema(),
+          totalFields: integerSchema(),
+          totalYears: integerSchema(),
+          yearRange: yearRangeSchema(),
+          strategyHint: {
+            type: 'string',
+            enum: ['field_first', 'year_first', 'unknown'],
+          },
+          unitModel: STUDY_SCOPE_UNIT_SCHEMA,
+          unitCountHint: integerSchema(),
+          rawText: stringArraySchema(),
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'set_planning_range',
+    required: ['range'],
+    properties: {
+      range: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['confidence'],
+        properties: {
+          startDateTime: stringSchema(),
+          endDateTime: stringSchema(),
+          sourceText: stringSchema(),
+          confidence: {
+            type: 'string',
+            enum: ['explicit', 'inferred', 'missing'],
+          },
+        },
+      },
+    },
+  }),
+];
+
 export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
@@ -37,15 +294,7 @@ export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseForm
             required: ['command', 'needsConfirmation'],
             properties: {
               command: {
-                type: 'object',
-                additionalProperties: true,
-                required: ['confidence'],
-                properties: {
-                  confidence: {
-                    type: 'string',
-                    enum: ['high', 'medium', 'low'],
-                  },
-                },
+                anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS,
               },
               needsConfirmation: { type: 'boolean' },
             },
@@ -55,7 +304,6 @@ export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseForm
     },
   },
 };
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }

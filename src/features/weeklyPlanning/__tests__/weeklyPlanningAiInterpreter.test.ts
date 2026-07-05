@@ -5,7 +5,10 @@ import {
   createAiWeeklyPlanningInterpreter,
   WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT,
 } from '../intake/weeklyPlanningAiInterpreter';
-import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
+import {
+  KNOWN_COMMAND_TYPES,
+  validateInterpretedCandidates,
+} from '../intake/weeklyPlanningCandidateValidator';
 import { WEEKLY_PLANNING_INTAKE_EVALUATION_CASES } from '../testFixtures/weeklyPlanningEvaluationCases';
 
 const config: AiConfig = {
@@ -21,6 +24,32 @@ const stateSummary = {
   planningRangeSummary: '2026-07-06〜2026-07-12',
 };
 
+
+function commandUnionSchemas() {
+  const schema = WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT.json_schema.schema as {
+    properties: {
+      candidates: {
+        items: {
+          properties: {
+            command: {
+              anyOf: Array<{
+                additionalProperties?: boolean;
+                required?: string[];
+                properties?: {
+                  type?: { const?: string };
+                  confidence?: unknown;
+                  [key: string]: unknown;
+                };
+              }>;
+            };
+          };
+        };
+      };
+    };
+  };
+
+  return schema.properties.candidates.items.properties.command.anyOf;
+}
 function createMockClient(content: string): OpenAiCompatibleClient {
   return {
     createChatCompletion: vi.fn(async () => content),
@@ -138,28 +167,66 @@ describe('weekly planning AI interpreter', () => {
     ]);
   });
 
-  it('requires confidence on command objects in the structured response schema', () => {
-    const schema = WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT.json_schema.schema as {
-      properties: {
-        candidates: {
-          items: {
-            properties: {
-              command: {
-                required: string[];
-                properties: Record<string, unknown>;
-              };
-            };
-          };
-        };
-      };
-    };
-    const commandSchema = schema.properties.candidates.items.properties.command;
+  it('defines a closed command schema for every known command type', () => {
+    const schemas = commandUnionSchemas();
+    const schemaTypes = schemas.map((schema) => schema.properties?.type?.const).sort();
 
-    expect(commandSchema.required).toContain('confidence');
-    expect(commandSchema.properties.confidence).toEqual({
-      type: 'string',
-      enum: ['high', 'medium', 'low'],
+    expect(schemaTypes).toEqual([...KNOWN_COMMAND_TYPES].sort());
+    schemas.forEach((schema) => {
+      expect(schema.additionalProperties).toBe(false);
+      expect(schema.required).toEqual(expect.arrayContaining(['type', 'confidence']));
+      expect(schema.properties?.confidence).toEqual({
+        type: 'string',
+        enum: ['high', 'medium', 'low'],
+      });
     });
+  });
+
+  it('drops payload-missing command responses into parse rejections', async () => {
+    const interpreter = createAiWeeklyPlanningInterpreter(
+      config,
+      createMockClient(JSON.stringify(
+        WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.payloadMissingSmokeResponse,
+      )),
+    );
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '実AI応答',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary,
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.parseRejections).toEqual([
+      expect.objectContaining({ reason: 'invalid-candidate-shape' }),
+      expect.objectContaining({ reason: 'invalid-candidate-shape' }),
+    ]);
+  });
+
+  it('parses and validates complete planning range, exam scope, and priority commands', async () => {
+    const interpreter = createAiWeeklyPlanningInterpreter(
+      config,
+      createMockClient(JSON.stringify(
+        WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.completeCommandResponse,
+      )),
+    );
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '実AI応答',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary: { knownFields: [], confirmedSlots: [] },
+    });
+    const validation = validateInterpretedCandidates(result.candidates, { knownFields: [], confirmedSlots: [] });
+
+    expect(result.parseRejections).toEqual([]);
+    expect(validation.accepted).toEqual([
+      expect.objectContaining({ type: 'set_planning_range' }),
+      expect.objectContaining({ type: 'set_exam_scope' }),
+    ]);
+    expect(validation.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
+    ]);
+    expect(validation.rejected).toEqual([]);
   });
 
   it('shrinks invalid JSON to an empty result and defaults missing confidence in candidate-shaped data', async () => {

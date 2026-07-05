@@ -152,6 +152,43 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(output.interpreterDiagnostics?.rejected).toEqual([]);
   });
 
+  it('applies complete AI planning range, exam scope, and priority commands through the pipeline', async () => {
+    const commands = WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.completeCommandResponse.candidates.map(
+      (item) => candidate(item.command as ParsedWeeklyPlanningCommand, item.needsConfirmation),
+    );
+    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
+      candidates: commands,
+      parseRejections: [],
+    }));
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: evaluationCase.freeTextExamScopeAndPriority,
+      interpreter: { interpretUserTurn },
+    });
+
+    expect(output.state.range).toMatchObject({
+      startDateTime: '2026-07-06',
+      endDateTime: '2026-07-12',
+    });
+    expect(output.state.examPrepScope).toMatchObject({
+      fields: evaluationCase.fields,
+      yearRange: { startYear: 2025, endYear: 2019 },
+      unitModel: 'year_field_chunk',
+    });
+    expect(output.state.priorityPolicy).toEqual({
+      kind: 'field_first',
+      order: evaluationCase.priorityOrder,
+    });
+    expect(output.interpreterDiagnostics?.accepted.map((command) => command.type)).toEqual([
+      'set_planning_range',
+      'set_exam_scope',
+    ]);
+    expect(output.interpreterDiagnostics?.acceptedWithConfirmation.map((command) => command.type)).toEqual([
+      'set_priority_policy',
+    ]);
+  });
+
   it('exposes AI parser rejections through pipeline interpreter diagnostics', async () => {
     const afterRange = runWeeklyPlanningIntakePipeline({
       ...defaultPipelineInput,
