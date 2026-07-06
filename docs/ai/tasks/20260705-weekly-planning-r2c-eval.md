@@ -6,7 +6,7 @@
 > - 実ブラウザから ai-proxy への POST と AI 応答を確認(既存 Cloudflare proxy 構成のまま・鍵移動なし)。評価ケース第1号に対し、AI は `set_exam_scope`(fields 5件・yearRange 2025〜2019・strategyHint・unitModel)と `set_priority_policy`(field_first・order)を返した。期間指定ターンでも `set_planning_range` を返した。抽出品質は有望。
 > - しかし AI 応答の command に `confidence` が含まれず(response schema が要求していないため)、candidate parser の all-or-nothing 検査で**全候補が破棄**され、state に反映されなかった。アプリ応答は「条件の整合性が取れず…」となった。調査詳細と原因は `docs/ai/tasks/20260705-weekly-planning-ai-candidate-contract-fix.md` の背景を参照。
 > - 受信契約の不整合修正は上記 fix タスクへ分離。**R2-D は fix タスク完了後に進む**(本タスクの Phase 1 完了により「実 AI 評価1回」は達成済みだが、受信契約が直るまで renderer 接続に進まない)。
-> - Phase 2(opt-in 自動評価)は未実施・未判断のまま(評価用 key の用意はユーザー判断)。fix タスク完了後に実施すれば、修正後の契約での自動評価を兼ねられる。
+> - Phase 2(opt-in 自動評価)は、評価用 API key を安全に用意しない判断によりスキップ済み(2026-07-07)。既存 secret / `.env` / Cloudflare proxy / Worker / wrangler 設定には触れていない。Phase 1 が完了済みのため、本タスクの実 AI 評価条件は満たす。
 
 > **追記(2026-07-05・継続対話スモークの結果)**
 >
@@ -14,6 +14,7 @@
 > - 対応タスク: `20260705-weekly-planning-candidate-wrapper-simplification.md`(最優先)、`20260705-weekly-planning-scope-parser-misparse-fix.md`、`20260705-weekly-planning-no-fixed-events-polite-form.md`。
 > - **R2-D 着手条件の更新**: 上記のうち candidate ラッパー簡素化と scope parser 修正が完了し、**継続対話スモークで exam scope と unit rate が両立すること**を確認してから R2-D へ進む。
 > - **発見事項(未タスク化)**: `update_life_constraint` の apply が1件で `sleep_cycle` / `meal_bath_constraints` / `life_constraints` の3つの missing を一括除去する粗い粒度になっている(sleep 1件で食事・風呂の不足まで解決済み扱いになる)。実害は未観測だが、missing 管理の kind 単位化を将来タスク候補として記録する。
+> - **発見事項(2026-07-05 追記・継続対話スモーク最終段階)**: (1) すべての必要情報が揃っても、draft request adapter の `progress.length === 0` ガードにより完了実績ゼロのユーザーが `cannot_create_draft` に落ちることが判明(対応: `20260705-weekly-planning-zero-progress-draft-request.md`)。(2) その修正後は、**unitCountHint 35 × unitRate 180分 = 105時間**が週末の計画ウィンドウに入り切らず、capacity 超過による `ask_relax_constraints` が次に顕在化する見込み(分類としては正しい挙動。本質対応は R8 の6等分・上限配分)。(3) `WeeklyDraftRequest` が `state.range` を持たず、generator は UI 固定の planningStartDate / 7日を使うため、**「今日19時から土日の終わりまで」の範囲指定が配置ウィンドウに反映されない mismatch** がある(将来、draft request への range 伝搬を設計する)。(4) generic error の分類分離(adapter の理由つき結果返却 → dialogueManager の decision 細分 → 文言化)は R2初期-2 タスクと一体で扱う方針。
 > - **発見事項(2026-07-05 追記・yearRange 単独受理の再設計条件)**: scope parser 修正の実装検証で、yearRange 単独入力から examPrepScope を決定的に新規生成すると、(a) 部分進展が escalation の「進展あり」判定を満たして AI 呼び出しを抑止し、決定的 parser では抽出できない fields / priority order が失われる、(b) 部分 scope の確定で `confirmedSlots` に `exam_scope` / `year_range` が入り、AI の完全な `set_exam_scope` が `confirmed-slot-overwrite` で拒否されうる、という実害が確認された(foundation テスト3件の失敗として顕在化)。このため yearRange 単独生成は取り下げ、AI escalation に委ねる現行方針を維持する。**将来 yearRange 単独の決定的受理を実装する場合は、escalation の部分進展判定(未消化の情報が残るターンでは部分進展でも escalate する等)と、validator の scope enrich 粒度(確定済み partial scope への fields 充実を許可する仕組み)をセットで再設計すること。**単独の parser 変更で入れてはいけない。
 
 R2-C(`docs/ai/tasks/closed/20260704-weekly-planning-r2c-ai-connection-goal.md`、条件付きクローズ)から分離した、**実 AI 評価だけ**を扱う小タスク。コード変更・テスト変更は行わない(評価の実行と記録のみ)。
