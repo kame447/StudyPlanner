@@ -28,6 +28,39 @@ function runTurn(previousState: PlanningIntakeState | undefined, userText: strin
   });
 }
 
+function runZeroProgressWeekendExamSequence() {
+  const turns = [
+    WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+    [
+      'とりあえず、院試進めたいよね',
+      '5分野あって',
+      '第 1 部　数学・数理系',
+      '第 2 部　ソフトウェア系',
+      '第 3 部　ハードウェア系',
+      '第 4 部　OS とネットワーク',
+      '第 5 部　ヒューマンサイエンス系',
+      '七年分ある',
+    ].join('\n'),
+    [
+      '7年分は2019〜2025',
+      '一分野の一年分は3時間くらい',
+    ].join('\n'),
+    WP_RP_001_WEEKEND_EXAM_TURNS.priorityPolicy,
+    WP_RP_001_WEEKEND_EXAM_TURNS.lifeConstraints,
+    WP_RP_001_WEEKEND_EXAM_TURNS.noFixedEvents,
+  ];
+  const outputs = [];
+  let previousState: PlanningIntakeState | undefined;
+
+  for (const userText of turns) {
+    const output = runTurn(previousState, userText);
+    outputs.push(output);
+    previousState = output.state;
+  }
+
+  return outputs;
+}
+
 function runWeekendExamSequence() {
   const turns = [
     WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
@@ -333,6 +366,26 @@ describe('weekly planning intake pipeline', () => {
     expect(beforeNoFixedEvents.draftCandidates).toBeNull();
     expect(beforeNoFixedEvents.diagnostics).toBeNull();
     expect(beforeNoFixedEvents.decision.kind).toBe('ask_missing_info');
+  });
+
+  it('moves zero-progress exam prep past cannot_create_draft in the pipeline', () => {
+    const outputs = runZeroProgressWeekendExamSequence();
+    const finalOutput = outputs[outputs.length - 1];
+
+    if (!finalOutput) {
+      throw new Error('expected final output');
+    }
+
+    expect(finalOutput.state.status).toBe('draft_ready');
+    expect(finalOutput.state.progress).toEqual([]);
+    expect(finalOutput.draftRequest?.progress).toEqual([]);
+    expect(finalOutput.remainingWorkItems?.items).toHaveLength(35);
+    expect(finalOutput.remainingWorkItems?.items.every((item) => item.estimatedMinutes === 180)).toBe(true);
+    expect(finalOutput.decision).toMatchObject({
+      kind: 'ask_relax_constraints',
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    });
   });
 
   it('creates draftRequest after explicit no-fixed-events confirmation', () => {

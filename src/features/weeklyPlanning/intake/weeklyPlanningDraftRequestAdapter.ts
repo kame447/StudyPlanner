@@ -74,7 +74,7 @@ export function createWeeklyDraftRequestFromIntakeState(
   const progress = state.progress.filter(hasCompletedYears);
   const unitRate = state.unitRates.find(isYearFieldUnitRate);
 
-  if (progress.length === 0 || !unitRate) {
+  if (!unitRate) {
     return null;
   }
 

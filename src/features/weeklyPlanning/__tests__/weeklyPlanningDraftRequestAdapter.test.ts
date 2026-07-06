@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
 import { WP_RP_001_WEEKEND_EXAM_TURNS } from '../testFixtures/weeklyPlanningRoleplayCases';
@@ -7,6 +8,57 @@ import {
   applyWeekendExamReadyForLifeConstraints,
   context,
 } from './weeklyPlanningRoleplayTestHelpers';
+
+const ZERO_PROGRESS_FIELDS = [
+  '数学・数理系',
+  'ソフトウェア系',
+  'ハードウェア系',
+  'OS とネットワーク',
+  'ヒューマンサイエンス系',
+];
+
+function createZeroProgressDraftReadyState(): PlanningIntakeState {
+  return {
+    status: 'draft_ready',
+    intent: 'exam_prep_planning',
+    examPrepScope: {
+      examType: '院試',
+      fields: ZERO_PROGRESS_FIELDS,
+      totalFields: 5,
+      totalYears: 7,
+      yearRange: {
+        startYear: 2019,
+        endYear: 2025,
+        sourceText: '2019〜2025',
+      },
+      unitModel: 'year_field_chunk',
+      rawText: ['院試の5分野を2019〜2025で進める'],
+    },
+    tasks: [],
+    progress: [],
+    unitRates: [
+      {
+        unit: 'year_field_chunk',
+        minutesPerUnit: 180,
+        source: 'user',
+        rawText: '一分野の一年分は3時間くらい',
+      },
+    ],
+    constraints: [],
+    priorityPolicy: {
+      kind: 'field_first',
+      order: ZERO_PROGRESS_FIELDS,
+    },
+    missing: [],
+    assumptions: [],
+    uncertainties: [],
+    questions: [],
+    shouldCreateDraft: true,
+    shouldSavePlan: false,
+    sourceTurns: ['完了済みはまだない'],
+  };
+}
+
 describe('weekly planning draft request adapter', () => {
   it('WP-RP-001 Phase 2 creates a draft request from the final draft_ready intake state', () => {
     const state = applyWeekendExamReadyForDraftRequest();
@@ -48,6 +100,32 @@ describe('weekly planning draft request adapter', () => {
       ]),
     );
     expect(request?.fixedEvents).toEqual([]);
+  });
+
+  it('creates a draft request from a draft_ready state with zero completed progress', () => {
+    const state = createZeroProgressDraftReadyState();
+    const request = createWeeklyDraftRequestFromIntakeState(state);
+
+    expect(request).toMatchObject({
+      examPrepScope: {
+        fields: ZERO_PROGRESS_FIELDS,
+        yearRange: {
+          startYear: 2019,
+          endYear: 2025,
+        },
+      },
+      progress: [],
+      unitRate: {
+        unit: 'year_field_chunk',
+        minutesPerUnit: 180,
+      },
+      priorityPolicy: {
+        kind: 'field_first',
+        order: ZERO_PROGRESS_FIELDS,
+      },
+      shouldCreateDraft: true,
+      shouldSavePlan: false,
+    });
   });
 
   it('WP-RP-001 Phase 2 does not create a draft request before the intake is draft_ready', () => {
