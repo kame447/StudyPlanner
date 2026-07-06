@@ -289,15 +289,7 @@ export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseForm
         candidates: {
           type: 'array',
           items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['command', 'needsConfirmation'],
-            properties: {
-              command: {
-                anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS,
-              },
-              needsConfirmation: { type: 'boolean' },
-            },
+            anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS,
           },
         },
       },
@@ -315,21 +307,27 @@ function normalizeConfidence(value: unknown): ParsedWeeklyPlanningCommand['confi
 }
 
 function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null {
-  if (!isRecord(candidate) || !isRecord(candidate.command) || typeof candidate.needsConfirmation !== 'boolean') {
+  if (!isRecord(candidate)) {
     return null;
   }
 
-  if (typeof candidate.command.type !== 'string') {
+  const command = isRecord(candidate.command) ? candidate.command : candidate;
+  if (typeof command.type !== 'string') {
     return null;
   }
+
+  const confidence = normalizeConfidence(command.confidence);
+  const wrappedNeedsConfirmation = isRecord(candidate.command) && typeof candidate.needsConfirmation === 'boolean'
+    ? candidate.needsConfirmation
+    : undefined;
 
   return {
     command: {
-      ...candidate.command,
-      confidence: normalizeConfidence(candidate.command.confidence),
+      ...command,
+      confidence,
     } as unknown as ParsedWeeklyPlanningCommand,
     origin: 'ai_interpreter',
-    needsConfirmation: candidate.needsConfirmation,
+    needsConfirmation: wrappedNeedsConfirmation ?? confidence === 'medium',
   };
 }
 
@@ -378,6 +376,7 @@ function createSystemPrompt(): string {
     'Your job is to convert the current user turn into command candidates. The application will validate every command before applying it.',
     'Use only the provided userText and stateSummary. Do not assume saved plans, past turns, or life-constraint history.',
     'Prefer no command over an unsafe command. Return an empty candidates array when the turn is not enough.',
+    'The candidates field must be an array of command objects, not wrapper objects.',
     'Each command must include a confidence field with one of: high, medium, low.',
     'Command types you may emit:',
     '- set_exam_scope: examType, fields, totalFields, totalYears, yearRange, strategyHint, unitModel, rawText.',

@@ -57,6 +57,32 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
         },
       ],
     },
+    topLevelNeedsConfirmationBareCommandResponse: {
+      candidates: [
+        {
+          type: 'set_exam_scope',
+          scope: {
+            examType: '院試',
+            fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
+            totalFields: 5,
+            totalYears: 7,
+            yearRange: { startYear: 2025, endYear: 2019, sourceText: '2025〜2019' },
+            strategyHint: 'field_first',
+            unitModel: 'year_field_chunk',
+            rawText: ['実AI応答'],
+          },
+          sourceText: '実AI応答',
+          confidence: 'high',
+        },
+        {
+          type: 'set_priority_policy',
+          policy: { kind: 'field_first', order: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'] },
+          sourceText: '実AI応答',
+          confidence: 'medium',
+        },
+      ],
+      needsConfirmation: false,
+    },
     completeCommandResponse: {
       candidates: [
         {

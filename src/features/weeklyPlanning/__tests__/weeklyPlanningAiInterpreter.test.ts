@@ -30,25 +30,21 @@ function commandUnionSchemas() {
     properties: {
       candidates: {
         items: {
-          properties: {
-            command: {
-              anyOf: Array<{
-                additionalProperties?: boolean;
-                required?: string[];
-                properties?: {
-                  type?: { const?: string };
-                  confidence?: unknown;
-                  [key: string]: unknown;
-                };
-              }>;
+          anyOf: Array<{
+            additionalProperties?: boolean;
+            required?: string[];
+            properties?: {
+              type?: { const?: string };
+              confidence?: unknown;
+              [key: string]: unknown;
             };
-          };
+          }>;
         };
       };
     };
   };
 
-  return schema.properties.candidates.items.properties.command.anyOf;
+  return schema.properties.candidates.items.anyOf;
 }
 function createMockClient(content: string): OpenAiCompatibleClient {
   return {
@@ -163,6 +159,67 @@ describe('weekly planning AI interpreter', () => {
     expect(validation.clarifications).toEqual([
       expect.objectContaining({
         command: expect.objectContaining({ type: 'set_priority_policy' }),
+      }),
+    ]);
+  });
+
+  it('accepts the simplified bare command array response and derives needsConfirmation from confidence', async () => {
+    const interpreter = createAiWeeklyPlanningInterpreter(
+      config,
+      createMockClient(JSON.stringify(
+        WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.topLevelNeedsConfirmationBareCommandResponse,
+      )),
+    );
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '実AI応答',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary: { knownFields: [], confirmedSlots: [] },
+    });
+    const validation = validateInterpretedCandidates(result.candidates, { knownFields: [], confirmedSlots: [] });
+
+    expect(result.parseRejections).toEqual([]);
+    expect(result.candidates.map((candidate) => ({
+      type: candidate.command.type,
+      needsConfirmation: candidate.needsConfirmation,
+    }))).toEqual([
+      { type: 'set_exam_scope', needsConfirmation: false },
+      { type: 'set_priority_policy', needsConfirmation: true },
+    ]);
+    expect(validation.accepted).toEqual([
+      expect.objectContaining({ type: 'set_exam_scope' }),
+    ]);
+    expect(validation.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
+    ]);
+  });
+
+  it('keeps accepting the legacy candidate wrapper shape', async () => {
+    const interpreter = createAiWeeklyPlanningInterpreter(config, createMockClient(JSON.stringify({
+      candidates: [
+        {
+          command: {
+            type: 'set_priority_policy',
+            policy: { kind: 'field_first', order: ['数学', 'OS'] },
+            sourceText: '数学からOS',
+            confidence: 'high',
+          },
+          needsConfirmation: true,
+        },
+      ],
+    })));
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '数学からOSの順で進めたい',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary,
+    });
+
+    expect(result.parseRejections).toEqual([]);
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        command: expect.objectContaining({ type: 'set_priority_policy', confidence: 'high' }),
+        needsConfirmation: true,
       }),
     ]);
   });

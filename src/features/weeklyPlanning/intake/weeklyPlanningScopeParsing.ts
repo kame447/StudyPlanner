@@ -1,7 +1,12 @@
 import { addDays, startOfWeek } from '../../../lib/date';
 import type { SetExamScopeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, StudyScopeUnit, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
-import { normalizeIntakeText, parseSmallInteger, uniqueList } from './weeklyPlanningTextParsing';
+import {
+  normalizeIntakeText,
+  parseSmallInteger,
+  splitIntakeSegments,
+  uniqueList,
+} from './weeklyPlanningTextParsing';
 
 function formatDateTime(date: string, time: string): string {
   return `${date}T${time}:00`;
@@ -55,9 +60,26 @@ function extractExamFields(text: string): string[] {
     .filter((field): field is string => Boolean(field));
 }
 
+function isYearFieldUnitRateSegment(segment: string): boolean {
+  return /(?:1|一)?\s*年分(?:は|が|で|に|あたり)?\s*([0-9]+|[一二三四五六七八九十]+)\s*(?:時間|分)/.test(segment)
+    || /(?:1|一)\s*分野(?:の)?\s*(?:1|一)\s*年分.*?([0-9]+|[一二三四五六七八九十]+)\s*(?:時間|分)/.test(segment);
+}
+
 function parseTotalYears(text: string): number | undefined {
-  const match = normalizeIntakeText(text).match(/([0-9]+|[一二三四五六七八九十]+)\s*年分/);
-  return match ? parseSmallInteger(match[1]) : undefined;
+  for (const segment of splitIntakeSegments(text)) {
+    if (isYearFieldUnitRateSegment(segment)) {
+      continue;
+    }
+
+    const match = segment.match(/([0-9]+|[一二三四五六七八九十]+)\s*年分/);
+    const totalYears = match ? parseSmallInteger(match[1]) : undefined;
+
+    if (totalYears) {
+      return totalYears;
+    }
+  }
+
+  return undefined;
 }
 
 function parseTotalFields(text: string): number | undefined {
@@ -127,7 +149,8 @@ function mergeExamPrepScope(
 
 function hasExamScopeSignal(text: string): boolean {
   const normalizedText = normalizeIntakeText(text);
-  return /院試|分野|年分|20\d{2}\s*[〜~-]\s*20\d{2}|第\s*\d+\s*部/.test(normalizedText);
+  return /院試|分野|20\d{2}\s*[〜~-]\s*20\d{2}|第\s*\d+\s*部/.test(normalizedText)
+    || Boolean(parseTotalYears(normalizedText));
 }
 
 export function parseSetExamScopeCommand(

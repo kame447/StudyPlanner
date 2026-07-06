@@ -8,6 +8,14 @@
 > - 受信契約の不整合修正は上記 fix タスクへ分離。**R2-D は fix タスク完了後に進む**(本タスクの Phase 1 完了により「実 AI 評価1回」は達成済みだが、受信契約が直るまで renderer 接続に進まない)。
 > - Phase 2(opt-in 自動評価)は未実施・未判断のまま(評価用 key の用意はユーザー判断)。fix タスク完了後に実施すれば、修正後の契約での自動評価を兼ねられる。
 
+> **追記(2026-07-05・継続対話スモークの結果)**
+>
+> - schema 完全化後の再スモークで、AI は完全な payload(set_exam_scope / set_priority_policy)を返したが、`needsConfirmation` が candidate 単位ではなく top-level に位置ずれし、parser で全候補が破棄された(strict: false 下の契約ドリフト)。また決定的 parser 側でも「1年分は3時間」の totalYears=1 誤解釈(phantom scope)と yearRange 単独入力の喪失、「固定予定はありません」(丁寧形)の不受理が確認された。
+> - 対応タスク: `20260705-weekly-planning-candidate-wrapper-simplification.md`(最優先)、`20260705-weekly-planning-scope-parser-misparse-fix.md`、`20260705-weekly-planning-no-fixed-events-polite-form.md`。
+> - **R2-D 着手条件の更新**: 上記のうち candidate ラッパー簡素化と scope parser 修正が完了し、**継続対話スモークで exam scope と unit rate が両立すること**を確認してから R2-D へ進む。
+> - **発見事項(未タスク化)**: `update_life_constraint` の apply が1件で `sleep_cycle` / `meal_bath_constraints` / `life_constraints` の3つの missing を一括除去する粗い粒度になっている(sleep 1件で食事・風呂の不足まで解決済み扱いになる)。実害は未観測だが、missing 管理の kind 単位化を将来タスク候補として記録する。
+> - **発見事項(2026-07-05 追記・yearRange 単独受理の再設計条件)**: scope parser 修正の実装検証で、yearRange 単独入力から examPrepScope を決定的に新規生成すると、(a) 部分進展が escalation の「進展あり」判定を満たして AI 呼び出しを抑止し、決定的 parser では抽出できない fields / priority order が失われる、(b) 部分 scope の確定で `confirmedSlots` に `exam_scope` / `year_range` が入り、AI の完全な `set_exam_scope` が `confirmed-slot-overwrite` で拒否されうる、という実害が確認された(foundation テスト3件の失敗として顕在化)。このため yearRange 単独生成は取り下げ、AI escalation に委ねる現行方針を維持する。**将来 yearRange 単独の決定的受理を実装する場合は、escalation の部分進展判定(未消化の情報が残るターンでは部分進展でも escalate する等)と、validator の scope enrich 粒度(確定済み partial scope への fields 充実を許可する仕組み)をセットで再設計すること。**単独の parser 変更で入れてはいけない。
+
 R2-C(`docs/ai/tasks/closed/20260704-weekly-planning-r2c-ai-connection-goal.md`、条件付きクローズ)から分離した、**実 AI 評価だけ**を扱う小タスク。コード変更・テスト変更は行わない(評価の実行と記録のみ)。
 
 **R2-D(renderer 実接続)の着手条件: 本タスクの実 AI 評価が少なくとも1回完了していること。**

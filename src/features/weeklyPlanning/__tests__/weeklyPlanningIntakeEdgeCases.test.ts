@@ -295,6 +295,56 @@ describe('weekly planning intake edge cases', () => {
     expect(state.missing).not.toContain('unit_duration_estimate');
   });
 
+  it('R2 scope parser does not overwrite existing totalYears from a contextual unit-rate answer', () => {
+    const before = applyWeekendExamReadyForUnitRateQuestion();
+    const state = applyWeeklyPlanningUserTurn(
+      before,
+      '1年分は3時間くらいです。',
+      context,
+    );
+
+    expect(before.examPrepScope).toMatchObject({
+      totalYears: 7,
+      yearRange: { startYear: 2019, endYear: 2025 },
+    });
+    expect(state.examPrepScope).toMatchObject({
+      totalYears: 7,
+      yearRange: { startYear: 2019, endYear: 2025 },
+    });
+    expect(state.unitRates).toEqual([
+      expect.objectContaining({
+        unit: 'year_field_chunk',
+        minutesPerUnit: 180,
+        uncertainty: 'medium',
+      }),
+    ]);
+    expect(state.missing.includes('tasks_or_goals')).toBe(before.missing.includes('tasks_or_goals'));
+    expect(state.missing.includes('year_range')).toBe(before.missing.includes('year_range'));
+  });
+
+  it('R2 scope parser does not create a phantom exam scope from a unit-rate answer without scope context', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      undefined,
+      '1年分は3時間くらいです。',
+      context,
+    );
+
+    expect(state.examPrepScope).toBeUndefined();
+    expect(state.unitRates).toEqual([]);
+  });
+
+  it('R2 scope parser does not create exam scope from a standalone year range without scope context', () => {
+    const text = '2025〜2019までそれぞれある';
+    const state = applyWeeklyPlanningUserTurn(
+      undefined,
+      text,
+      context,
+    );
+
+    expect(parseSetExamScopeCommand(text, undefined)).toBeUndefined();
+    expect(state.examPrepScope).toBeUndefined();
+  });
+
   it('R2 slot filling does not treat longer uncertain duration text as a short answer', () => {
     const state = applyWeeklyPlanningUserTurn(
       applyWeekendExamReadyForUnitRateQuestion(),
@@ -425,7 +475,11 @@ describe('weekly planning intake edge cases', () => {
   it.each([
     '他の固定予定はない',
     '固定予定は特にない',
+    '固定予定はありません',
+    '固定予定はないです',
+    '固定予定は無いです',
     '他の予定はない',
+    '他の予定はありません',
     '用事はない',
   ])('Stage 2 parses explicit no-fixed-events text as note_no_fixed_events command: %s', (text) => {
     const command = parseNoteNoFixedEventsCommand(text);
@@ -440,6 +494,7 @@ describe('weekly planning intake edge cases', () => {
 
   it.each([
     '固定予定がある',
+    '固定予定があります',
     '予定が入るかも',
     '用事がある',
   ])('Stage 2 does not parse non-matching text as note_no_fixed_events command: %s', (text) => {
@@ -449,7 +504,11 @@ describe('weekly planning intake edge cases', () => {
   it.each([
     '他の固定予定はない',
     '固定予定は特にない',
+    '固定予定はありません',
+    '固定予定はないです',
+    '固定予定は無いです',
     '他の予定はない',
+    '他の予定はありません',
     '用事はない',
   ])('Stage 1a removes fixed_events missing for explicit no-fixed-events text: %s', (text) => {
     const state = applyWeeklyPlanningUserTurn(
@@ -467,6 +526,7 @@ describe('weekly planning intake edge cases', () => {
 
   it.each([
     '固定予定がある',
+    '固定予定があります',
     '予定が入るかも',
     '用事がある',
   ])('Stage 1a keeps fixed_events missing when no-fixed-events text does not match: %s', (text) => {

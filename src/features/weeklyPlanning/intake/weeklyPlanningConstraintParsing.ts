@@ -141,7 +141,7 @@ export function parseConstraints(text: string, context: WeeklyPlanningIntakeCont
 function parseNoFixedEventsSourceSegment(text: string): string | undefined {
   for (const segment of splitIntakeSegments(text)) {
     const match = segment.match(
-      /(?:\u4ed6\u306e)?\u56fa\u5b9a\u4e88\u5b9a.*\u306a\u3044|(?:\u4ed6\u306e)?\u4e88\u5b9a.*\u306a\u3044|\u7528\u4e8b.*\u306a\u3044/,
+      /(?:\u4ed6\u306e)?\u56fa\u5b9a\u4e88\u5b9a.*(?:\u306a\u3044\u3067\u3059|\u7121\u3044\u3067\u3059|\u3042\u308a\u307e\u305b\u3093|\u306a\u3044|\u7121\u3044)|(?:\u4ed6\u306e)?\u4e88\u5b9a.*(?:\u306a\u3044\u3067\u3059|\u7121\u3044\u3067\u3059|\u3042\u308a\u307e\u305b\u3093|\u306a\u3044|\u7121\u3044)|\u7528\u4e8b.*(?:\u306a\u3044\u3067\u3059|\u7121\u3044\u3067\u3059|\u3042\u308a\u307e\u305b\u3093|\u306a\u3044|\u7121\u3044)/,
     );
 
     if (match) {
