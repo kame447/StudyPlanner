@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
+import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
 import { createWeeklyDraftCandidatesFromRemainingWorkItems } from '../scheduling/weeklyDraftCandidateGenerator';
@@ -51,7 +52,11 @@ describe('weekly planning dialogue manager', () => {
     expect(decision).toMatchObject({
       kind: 'ask_missing_info',
       messageKey: 'ask_life_constraints',
-      requiredFields: expect.arrayContaining(['fixed_events', 'life_constraints']),
+      requiredFields: ['fixed_events', 'sleep_cycle'],
+      questionPlan: [
+        expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
+        expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),
+      ],
       shouldCreateDraft: false,
       shouldSavePlan: false,
     });
@@ -66,6 +71,69 @@ describe('weekly planning dialogue manager', () => {
     expect(decision.kind).toBe('ask_missing_info');
     expect(decision.requiredFields).toContain('fixed_events');
     expect(decision.shouldSavePlan).toBe(false);
+  });
+
+  it('plans only the next dependent missing slots instead of listing every missing item', () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      missing: [
+        'tasks_or_goals',
+        'year_range',
+        'completion_direction',
+        'unit_duration_estimate',
+        'priority_policy',
+      ],
+    };
+    const decision = createWeeklyPlanningDialogueDecision({ state });
+
+    expect(decision.kind).toBe('ask_missing_info');
+    expect(decision.questionPlan).toEqual([
+      expect.objectContaining({
+        kind: 'missing_slot',
+        targetSlot: 'tasks_or_goals',
+        missing: ['tasks_or_goals'],
+        intent: 'ask_tasks_or_goals',
+      }),
+    ]);
+    expect(decision.requiredFields).toEqual(['tasks_or_goals']);
+  });
+
+  it('skips known upper slots and asks only currently eligible missing slots', () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      missing: ['completion_direction', 'unit_duration_estimate', 'priority_policy'],
+    };
+    const decision = createWeeklyPlanningDialogueDecision({ state });
+
+    expect(decision.questionPlan).toEqual([
+      expect.objectContaining({ targetSlot: 'completion_direction' }),
+    ]);
+    expect(decision.requiredFields).not.toContain('unit_rate');
+    expect(decision.requiredFields).not.toContain('priority_policy');
+  });
+
+  it('keeps sleep and meal/bath life constraint slots separate when planning questions', () => {
+    const sleepKnownState: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      missing: ['meal_bath_constraints', 'life_constraints'],
+    };
+    const mealBathKnownState: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      missing: ['sleep_cycle', 'life_constraints'],
+    };
+
+    expect(createWeeklyPlanningDialogueDecision({ state: sleepKnownState }).questionPlan).toEqual([
+      expect.objectContaining({
+        targetSlot: 'meal_bath_constraints',
+        missing: ['meal_bath_constraints'],
+      }),
+    ]);
+    expect(createWeeklyPlanningDialogueDecision({ state: mealBathKnownState }).questionPlan).toEqual([
+      expect.objectContaining({
+        targetSlot: 'sleep_cycle',
+        missing: ['sleep_cycle'],
+      }),
+    ]);
   });
 
   it('confirms field-scope ambiguity after missing fields are resolved', () => {

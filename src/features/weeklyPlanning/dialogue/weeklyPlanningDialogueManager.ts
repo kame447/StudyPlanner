@@ -43,10 +43,23 @@ export interface WeeklyPlanningDialogueDecisionSummary {
   lifeConstraintConflictCount?: number;
 }
 
+export type WeeklyPlanningQuestionPlanKind =
+  | 'missing_slot'
+  | 'missing_life_constraint';
+
+export interface WeeklyPlanningQuestionPlanItem {
+  kind: WeeklyPlanningQuestionPlanKind;
+  targetSlot: string;
+  missing: PlanningIntakeMissing[];
+  intent: string;
+  dependsOn?: PlanningIntakeMissing[];
+}
+
 export interface WeeklyPlanningDialogueDecision {
   kind: WeeklyPlanningDialogueDecisionKind;
   messageKey: string;
   requiredFields?: string[];
+  questionPlan?: WeeklyPlanningQuestionPlanItem[];
   ambiguities?: string[];
   summary?: WeeklyPlanningDialogueDecisionSummary;
   shouldCreateDraft: boolean;
@@ -65,7 +78,7 @@ const MISSING_FIELD_KEYS: Record<PlanningIntakeMissing, string> = {
   tasks_or_goals: 'tasks_or_goals',
   fixed_events: 'fixed_events',
   sleep_cycle: 'sleep_cycle',
-  meal_bath_constraints: 'life_constraints',
+  meal_bath_constraints: 'meal_bath_constraints',
   year_range: 'year_range',
   progress: 'progress',
   completion_direction: 'completion_direction',
@@ -74,6 +87,8 @@ const MISSING_FIELD_KEYS: Record<PlanningIntakeMissing, string> = {
   next_field_after_math: 'priority_policy',
   life_constraints: 'life_constraints',
 };
+
+const MAX_MISSING_QUESTIONS_PER_TURN = 2;
 
 function uniqueList<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -99,6 +114,103 @@ function missingMessageKey(missing: PlanningIntakeMissing[]): string {
   }
 
   return 'ask_missing_info';
+}
+
+function createQuestionPlanItem(params: {
+  missing: PlanningIntakeMissing[];
+  intent: string;
+  kind?: WeeklyPlanningQuestionPlanKind;
+  dependsOn?: PlanningIntakeMissing[];
+}): WeeklyPlanningQuestionPlanItem {
+  const primaryMissing = params.missing[0];
+
+  return {
+    kind: params.kind ?? 'missing_slot',
+    targetSlot: MISSING_FIELD_KEYS[primaryMissing],
+    missing: params.missing,
+    intent: params.intent,
+    dependsOn: params.dependsOn,
+  };
+}
+
+function createMissingQuestionPlan(
+  missing: PlanningIntakeMissing[],
+): WeeklyPlanningQuestionPlanItem[] {
+  const missingSet = new Set(missing);
+  const candidates: WeeklyPlanningQuestionPlanItem[] = [];
+  const addCandidate = (item: WeeklyPlanningQuestionPlanItem) => {
+    if (item.missing.some((missingItem) => missingSet.has(missingItem))) {
+      candidates.push(item);
+    }
+  };
+
+  addCandidate(createQuestionPlanItem({
+    missing: ['tasks_or_goals'],
+    intent: 'ask_tasks_or_goals',
+  }));
+  addCandidate(createQuestionPlanItem({
+    missing: ['year_range'],
+    intent: 'ask_year_range',
+    dependsOn: ['tasks_or_goals'],
+  }));
+  addCandidate(createQuestionPlanItem({
+    missing: ['completion_direction'],
+    intent: 'ask_progress_clarification',
+    dependsOn: ['tasks_or_goals', 'year_range'],
+  }));
+  addCandidate(createQuestionPlanItem({
+    missing: ['progress'],
+    intent: 'ask_progress_clarification',
+    dependsOn: ['tasks_or_goals', 'year_range'],
+  }));
+  addCandidate(createQuestionPlanItem({
+    missing: ['unit_duration_estimate'],
+    intent: 'ask_unit_rate',
+    dependsOn: ['tasks_or_goals', 'year_range', 'completion_direction'],
+  }));
+  const priorityCandidates: PlanningIntakeMissing[] = [
+    'priority_policy',
+    'next_field_after_math',
+  ];
+  const priorityMissing = priorityCandidates.filter((item) => missingSet.has(item));
+  if (priorityMissing.length > 0) {
+    addCandidate(createQuestionPlanItem({
+      missing: priorityMissing,
+      intent: 'ask_priority_policy',
+      dependsOn: ['tasks_or_goals', 'year_range', 'completion_direction', 'unit_duration_estimate'],
+    }));
+  }
+  addCandidate(createQuestionPlanItem({
+    missing: ['fixed_events'],
+    intent: 'ask_fixed_events',
+    kind: 'missing_life_constraint',
+  }));
+  addCandidate(createQuestionPlanItem({
+    missing: ['sleep_cycle'],
+    intent: 'ask_life_constraints',
+    kind: 'missing_life_constraint',
+  }));
+  addCandidate(createQuestionPlanItem({
+    missing: ['meal_bath_constraints'],
+    intent: 'ask_life_constraints',
+    kind: 'missing_life_constraint',
+  }));
+
+  if (
+    missingSet.has('life_constraints') &&
+    !missingSet.has('sleep_cycle') &&
+    !missingSet.has('meal_bath_constraints')
+  ) {
+    addCandidate(createQuestionPlanItem({
+      missing: ['life_constraints'],
+      intent: 'ask_life_constraints',
+      kind: 'missing_life_constraint',
+    }));
+  }
+
+  return candidates
+    .filter((item) => !item.dependsOn?.some((dependency) => missingSet.has(dependency)))
+    .slice(0, MAX_MISSING_QUESTIONS_PER_TURN);
 }
 
 function normalizeProgressAmbiguity(
@@ -177,6 +289,7 @@ function createDecision(params: {
   kind: WeeklyPlanningDialogueDecisionKind;
   messageKey: string;
   requiredFields?: string[];
+  questionPlan?: WeeklyPlanningQuestionPlanItem[];
   ambiguities?: string[];
   summary?: WeeklyPlanningDialogueDecisionSummary;
   shouldCreateDraft?: boolean;
@@ -184,7 +297,9 @@ function createDecision(params: {
   return {
     kind: params.kind,
     messageKey: params.messageKey,
-    requiredFields: params.requiredFields,
+    requiredFields: params.requiredFields
+      ?? params.questionPlan?.map((question) => question.targetSlot),
+    questionPlan: params.questionPlan,
     ambiguities: params.ambiguities,
     summary: params.summary,
     shouldCreateDraft: params.shouldCreateDraft ?? false,
@@ -198,10 +313,12 @@ export function createWeeklyPlanningDialogueDecision(
   const missing = uniqueList(input.state.missing);
 
   if (missing.length > 0) {
+    const questionPlan = createMissingQuestionPlan(missing);
+
     return createDecision({
       kind: 'ask_missing_info',
       messageKey: missingMessageKey(missing),
-      requiredFields: uniqueList(missing.map((item) => MISSING_FIELD_KEYS[item])),
+      questionPlan,
     });
   }
 

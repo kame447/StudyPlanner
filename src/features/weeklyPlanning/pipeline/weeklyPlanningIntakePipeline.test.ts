@@ -270,7 +270,10 @@ describe('weekly planning intake pipeline', () => {
         requiredFields: [
           'fixed_events',
           'sleep_cycle',
-          'life_constraints',
+        ],
+        questionPlan: [
+          expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
+          expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),
         ],
         shouldCreateDraft: false,
         shouldSavePlan: false,
@@ -296,15 +299,36 @@ describe('weekly planning intake pipeline', () => {
       expect(output.state.status).toBe('needs_life_constraints');
       expect(output.decision).toMatchObject({
         kind: 'ask_missing_info',
-        requiredFields: expect.arrayContaining([
+        requiredFields: [
           'fixed_events',
           'sleep_cycle',
-          'life_constraints',
-        ]),
+        ],
         shouldSavePlan: false,
       });
       expect(output.decision).toMatchObject({
         requiredFields: expect.not.arrayContaining(['tasks_or_goals']),
+      });
+    });
+
+    it('does not ask fixed events or sleep again after a compound turn fills both slots', () => {
+      const first = runTurn(
+        undefined,
+        '今日の19時から土日の終わりまで予定立てたい。英語を3時間、数学を2時間',
+      );
+      const second = runTurn(first.state, '固定予定はない。普段は8時に起きて、10時から勉強できる');
+
+      expect(second.state.missing).not.toContain('fixed_events');
+      expect(second.state.missing).not.toContain('sleep_cycle');
+      expect(second.state.missing).toContain('meal_bath_constraints');
+      expect(second.decision).toMatchObject({
+        kind: 'ask_missing_info',
+        requiredFields: ['meal_bath_constraints'],
+        questionPlan: [
+          expect.objectContaining({
+            targetSlot: 'meal_bath_constraints',
+            missing: ['meal_bath_constraints'],
+          }),
+        ],
       });
     });
 

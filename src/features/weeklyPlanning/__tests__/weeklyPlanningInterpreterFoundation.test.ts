@@ -401,6 +401,20 @@ describe('weekly planning AI foundation without real AI', () => {
       kind: 'ask_missing_info',
       messageKey: 'ask_life_constraints',
       requiredFields: ['fixed_events', 'life_constraints', 'unit_rate'],
+      questionPlan: [
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'fixed_events',
+          missing: ['fixed_events'],
+          intent: 'ask_fixed_events',
+        },
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'meal_bath_constraints',
+          missing: ['meal_bath_constraints'],
+          intent: 'ask_life_constraints',
+        },
+      ],
       shouldCreateDraft: false,
       shouldSavePlan: false,
     };
@@ -416,7 +430,11 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(input.assumptions).toEqual(['AI interpreted partial field order']);
     expect(input.nextQuestions.map((question) => question.slotKey)).toEqual([
       'fixed_events',
-      'life_constraints',
+      'meal_bath_constraints',
+    ]);
+    expect(input.nextQuestions.map((question) => question.intent)).toEqual([
+      'ask_fixed_events',
+      'ask_life_constraints',
     ]);
   });
 

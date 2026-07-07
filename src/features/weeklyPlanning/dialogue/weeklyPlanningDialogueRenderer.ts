@@ -38,6 +38,15 @@ function nextQuestionsFromDecision(
   decision: WeeklyPlanningDialogueDecision,
   maxQuestions: number,
 ): Array<{ slotKey: string; intent: string }> {
+  if (decision.questionPlan?.length) {
+    return decision.questionPlan
+      .slice(0, maxQuestions)
+      .map((question) => ({
+        slotKey: question.targetSlot,
+        intent: question.intent,
+      }));
+  }
+
   return (decision.requiredFields ?? [])
     .slice(0, maxQuestions)
     .map((field) => ({
