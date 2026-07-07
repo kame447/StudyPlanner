@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { WeeklyPlanningDialogueDecision } from '../dialogue/weeklyPlanningDialogueManager';
-import { createWeeklyPlanningDialogueMessage } from '../dialogue/weeklyPlanningDialogueMessages';
 import {
   createDialogueRenderInput,
   renderWeeklyPlanningDialogueMessage,
@@ -16,6 +15,7 @@ import type {
   InterpreterStateSummary,
   WeeklyPlanningIntakeInterpreter,
 } from '../intake/weeklyPlanningInterpreterTypes';
+import type { PlanningIntakeMissing } from '../intake/weeklyPlanningIntakeTypes';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
 import { shouldEscalateToInterpreter } from '../pipeline/weeklyPlanningInterpreterEscalation';
 import {
@@ -436,14 +436,84 @@ describe('weekly planning AI foundation without real AI', () => {
       'ask_fixed_events',
       'ask_life_constraints',
     ]);
+    expect(input.nextQuestions.map((question) => question.questionKind)).toEqual([
+      'missing_life_constraint',
+      'missing_life_constraint',
+    ]);
+    expect(input.nextQuestions).toEqual([
+      expect.not.objectContaining({ missing: expect.anything() }),
+      expect.not.objectContaining({ missing: expect.anything() }),
+    ]);
   });
 
-  it('uses fake renderer output only for code-planned questions and falls back when output is invalid', async () => {
+  it('renders only the planned questions in plan order even when state has other missing slots', async () => {
+    const state = {
+      ...createInitialPlanningIntakeState(),
+      missing: ['fixed_events', 'sleep_cycle', 'meal_bath_constraints', 'unit_duration_estimate'] as PlanningIntakeMissing[],
+    };
+    const decision: WeeklyPlanningDialogueDecision = {
+      kind: 'ask_missing_info',
+      messageKey: 'ask_life_constraints',
+      requiredFields: ['fixed_events', 'sleep_cycle', 'unit_rate'],
+      questionPlan: [
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'fixed_events',
+          missing: ['fixed_events'],
+          intent: 'ask_fixed_events',
+        },
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'sleep_cycle',
+          missing: ['sleep_cycle'],
+          intent: 'ask_life_constraints',
+        },
+      ],
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    };
+    const renderer: WeeklyPlanningDialogueRenderer = {
+      async render(input) {
+        expect(input.nextQuestions.map((question) => question.slotKey)).toEqual([
+          'fixed_events',
+          'sleep_cycle',
+        ]);
+        expect(input.nextQuestions.map((question) => question.intent)).toEqual([
+          'ask_fixed_events',
+          'ask_life_constraints',
+        ]);
+
+        return {
+          acknowledgement: '確認しました。',
+          questions: [
+            { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
+            { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+          ],
+        };
+      },
+    };
+
+    await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe([
+      '確認しました。',
+      '固定予定はありますか？',
+      '睡眠時間はどうしますか？',
+    ].join('\n'));
+  });
+
+  it('uses fake renderer output only when every planned question is returned exactly once', async () => {
     const state = createInitialPlanningIntakeState();
     const decision: WeeklyPlanningDialogueDecision = {
       kind: 'ask_missing_info',
       messageKey: 'ask_unit_rate',
       requiredFields: ['unit_rate'],
+      questionPlan: [
+        {
+          kind: 'missing_slot',
+          targetSlot: 'unit_rate',
+          missing: ['unit_duration_estimate'],
+          intent: 'ask_unit_rate',
+        },
+      ],
       shouldCreateDraft: false,
       shouldSavePlan: false,
     };
@@ -453,7 +523,6 @@ describe('weekly planning AI foundation without real AI', () => {
           acknowledgement: '条件を確認しました。',
           questions: [
             { slotKey: 'unit_rate', text: '1年分は何時間くらいですか？' },
-            { slotKey: 'daily_target', text: '毎日の目標も教えてください。' },
           ],
         };
       },
@@ -472,11 +541,16 @@ describe('weekly planning AI foundation without real AI', () => {
       '条件を確認しました。',
       '1年分は何時間くらいですか？',
     ].join('\n'));
+    const deterministicFallback = [
+      'ここまでの条件を確認しました。',
+      '1年分または1単位あたりの目安時間を教えてください。',
+    ].join('\n');
+
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer: outsidePlanRenderer })).resolves.toBe(
-      createWeeklyPlanningDialogueMessage(decision),
+      deterministicFallback,
     );
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision })).resolves.toBe(
-      createWeeklyPlanningDialogueMessage(decision),
+      deterministicFallback,
     );
   });
 });

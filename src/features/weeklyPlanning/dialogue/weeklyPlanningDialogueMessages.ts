@@ -19,7 +19,7 @@ function formatMinutes(minutes: number | undefined): string | null {
   return `${restMinutes}分`;
 }
 
-function formatRequiredFields(fields: string[] | undefined): string {
+function formatQuestionSlot(slotKey: string): string {
   const labels: Record<string, string> = {
     tasks_or_goals: '学習内容や目標',
     fixed_events: '授業・バイト・病院・ゼミなどの固定予定の有無',
@@ -32,9 +32,24 @@ function formatRequiredFields(fields: string[] | undefined): string {
     unit_rate: '1年分または1単位あたりの目安時間',
     priority_policy: '分野や年度の優先順',
   };
-  const resolved = (fields ?? []).map((field) => labels[field] ?? field);
+
+  return labels[slotKey] ?? slotKey;
+}
+
+function formatRequiredFields(fields: string[] | undefined): string {
+  const resolved = (fields ?? []).map(formatQuestionSlot);
 
   return resolved.length > 0 ? resolved.join('、') : '不足している条件';
+}
+
+function formatQuestionPlan(decision: WeeklyPlanningDialogueDecision): string {
+  const plannedSlots = decision.questionPlan?.map((question) => question.targetSlot) ?? [];
+
+  if (plannedSlots.length > 0) {
+    return plannedSlots.map(formatQuestionSlot).join('、');
+  }
+
+  return formatRequiredFields(decision.requiredFields);
 }
 
 function formatAmbiguities(ambiguities: string[] | undefined): string {
@@ -87,8 +102,8 @@ export function createWeeklyPlanningDialogueMessage(
 ): string {
   switch (decision.kind) {
     case 'ask_missing_info':
-      return `週間計画に必要な情報がまだ足りません。次に ${formatRequiredFields(
-        decision.requiredFields,
+      return `ここまでの条件を確認しました。次に ${formatQuestionPlan(
+        decision,
       )} を教えてください。`;
     case 'confirm_ambiguity':
       return `条件に曖昧な点があります。${formatAmbiguities(

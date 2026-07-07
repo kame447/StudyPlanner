@@ -17,7 +17,8 @@ import type {
   WeeklyPlanningMessage,
 } from '../features/weeklyPlanning/types';
 import { looksLikeWeeklyPlanningRequest } from '../features/weeklyPlanning/weeklyPlanningTransforms';
-import { createWeeklyPlanningDialogueMessage } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueMessages';
+import { createAiWeeklyPlanningDialogueRenderer } from '../features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer';
+import { renderWeeklyPlanningDialogueMessage } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer';
 import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
 import { createAiWeeklyPlanningInterpreter } from '../features/weeklyPlanning/intake/weeklyPlanningAiInterpreter';
 import {
@@ -535,7 +536,14 @@ export function NaturalLanguageAssistant({
           interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
         })
         : runWeeklyPlanningIntakePipeline(pipelineInput);
-      const message = createWeeklyPlanningDialogueMessage(pipelineOutput.decision);
+      const dialogueRenderer = shouldUseAiInterpreter
+        ? createAiWeeklyPlanningDialogueRenderer(aiConfig)
+        : undefined;
+      const message = await renderWeeklyPlanningDialogueMessage({
+        state: pipelineOutput.state,
+        decision: pipelineOutput.decision,
+        renderer: dialogueRenderer,
+      });
       const nextPreviewCandidates = pipelineOutput.draftCandidates ?? [];
       const nextPreviewBlocks = createWeeklyPlanningPreviewBlocks(
         nextPreviewCandidates,

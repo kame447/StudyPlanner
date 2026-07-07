@@ -13,15 +13,49 @@ function decision(
 }
 
 describe('weekly planning dialogue messages', () => {
-  it('renders missing-info prompts with required fields', () => {
+  it('renders missing-info prompts from questionPlan before legacy required fields', () => {
     const message = createWeeklyPlanningDialogueMessage(decision({
       kind: 'ask_missing_info',
       requiredFields: ['year_range', 'unit_rate'],
+      questionPlan: [
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'fixed_events',
+          missing: ['fixed_events'],
+          intent: 'ask_fixed_events',
+        },
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'sleep_cycle',
+          missing: ['sleep_cycle'],
+          intent: 'ask_life_constraints',
+        },
+      ],
       shouldCreateDraft: false,
     }));
 
-    expect(message).toContain('対象年度');
-    expect(message).toContain('目安時間');
+    expect(message).toContain('固定予定');
+    expect(message).toContain('睡眠時間');
+    expect(message).not.toContain('対象年度');
+    expect(message).not.toContain('目安時間');
+  });
+
+  it('keeps meal and bath constraints separate from broad life constraints in direct fallback', () => {
+    const message = createWeeklyPlanningDialogueMessage(decision({
+      kind: 'ask_missing_info',
+      questionPlan: [
+        {
+          kind: 'missing_life_constraint',
+          targetSlot: 'meal_bath_constraints',
+          missing: ['meal_bath_constraints'],
+          intent: 'ask_life_constraints',
+        },
+      ],
+      shouldCreateDraft: false,
+    }));
+
+    expect(message).toContain('食事・風呂などの生活制約');
+    expect(message).not.toContain('睡眠などの生活制約');
   });
 
   it('renders ambiguity confirmation messages', () => {
