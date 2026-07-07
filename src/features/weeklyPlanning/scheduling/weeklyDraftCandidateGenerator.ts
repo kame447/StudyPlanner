@@ -309,6 +309,48 @@ function buildBusyIntervals(params: {
   return { intervals: [...intervals, ...externalIntervals], floatingConstraints };
 }
 
+function buildStudyAvailableStartMinutesByDate(params: {
+  constraints: LifeConstraint[];
+  fixedEvents: LifeConstraint[];
+  planningStartDate: string;
+  planningDayCount: number;
+}): Map<string, number> {
+  const globalStarts: number[] = [];
+  const datedStarts = new Map<string, number[]>();
+
+  [...params.constraints, ...params.fixedEvents].forEach((constraint) => {
+    if (!constraint.studyAvailableStart) {
+      return;
+    }
+
+    const startMinutes = minutesFromTime(constraint.studyAvailableStart);
+
+    if (!constraint.date) {
+      globalStarts.push(startMinutes);
+      return;
+    }
+
+    datedStarts.set(constraint.date, [
+      ...(datedStarts.get(constraint.date) ?? []),
+      startMinutes,
+    ]);
+  });
+
+  const lowerBoundsByDate = new Map<string, number>();
+  const globalStart = globalStarts.length > 0 ? Math.max(...globalStarts) : undefined;
+
+  if (globalStart !== undefined) {
+    Array.from({ length: params.planningDayCount }, (_, dateIndex) => addDays(params.planningStartDate, dateIndex))
+      .forEach((date) => lowerBoundsByDate.set(date, globalStart));
+  }
+
+  datedStarts.forEach((starts, date) => {
+    lowerBoundsByDate.set(date, Math.max(...starts));
+  });
+
+  return lowerBoundsByDate;
+}
+
 function findNextSlot(params: {
   durationMinutes: number;
   cursorDateIndex: number;
@@ -317,12 +359,17 @@ function findNextSlot(params: {
   planningDayCount: number;
   policy: WeeklyDraftCandidateSessionPolicy;
   busyIntervals: BusyInterval[];
+  studyAvailableStartMinutesByDate: Map<string, number>;
 }): { dateIndex: number; startMinutes: number; endMinutes: number } | null {
   for (let dateIndex = params.cursorDateIndex; dateIndex < params.planningDayCount; dateIndex += 1) {
     const date = addDays(params.planningStartDate, dateIndex);
-    const dayStart = dateIndex === 0 && params.policy.firstDayStartTime
+    const policyDayStart = dateIndex === 0 && params.policy.firstDayStartTime
       ? minutesFromTime(params.policy.firstDayStartTime)
       : minutesFromTime(params.policy.dayStartTime);
+    const studyAvailableStart = params.studyAvailableStartMinutesByDate.get(date);
+    const dayStart = studyAvailableStart === undefined
+      ? policyDayStart
+      : Math.max(policyDayStart, studyAvailableStart);
     const dayEnd = minutesFromTime(params.policy.dayEndTime);
     let startMinutes = dateIndex === params.cursorDateIndex
       ? Math.max(params.cursorMinutes, dayStart)
@@ -416,6 +463,12 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     timetableTermId: input.timetableTermId,
     existingPlanBufferMinutes: input.existingPlanBufferMinutes,
   });
+  const studyAvailableStartMinutesByDate = buildStudyAvailableStartMinutesByDate({
+    constraints: input.constraints,
+    fixedEvents: input.fixedEvents,
+    planningStartDate: input.planningStartDate,
+    planningDayCount: input.planningDayCount,
+  });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledItems: WeeklyPlanningRemainingWorkItem[] = [];
   const decisionTrace = floatingConstraints.map(
@@ -427,7 +480,9 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     : minutesFromTime(policy.dayStartTime);
 
   input.remainingWorkItems.forEach((item) => {
-    const chunks = splitDurationIntoSessionChunks(item.estimatedMinutes, policy);
+    const chunks = item.splitPolicy === 'atomic'
+      ? [item.estimatedMinutes]
+      : splitDurationIntoSessionChunks(item.estimatedMinutes, policy);
     const itemKey = workItemKey(item);
     let chunkIndex = 0;
     let itemFullyScheduled = true;
@@ -441,6 +496,7 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
         planningDayCount: input.planningDayCount,
         policy,
         busyIntervals,
+        studyAvailableStartMinutesByDate,
       });
 
       if (!slot) {

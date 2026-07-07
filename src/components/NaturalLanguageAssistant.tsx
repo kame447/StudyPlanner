@@ -27,6 +27,7 @@ import {
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
+  removeWeeklyPlanningPreviewBlock,
   type WeeklyPlanningPreviewBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
@@ -422,6 +423,35 @@ export function NaturalLanguageAssistant({
     setWeeklyDraftPreviewMode('overview');
     setError('');
     setStatus('');
+  }
+
+  function removeLocalWeeklyPlanningPreviewBlock(blockId: string) {
+    const nextPreview = removeWeeklyPlanningPreviewBlock({
+      previewBlocks: weeklyPlanningPreviewBlocks,
+      candidates: weeklyPlanningPreviewCandidates,
+      blockId,
+    });
+    const nextDates = Array.from(
+      new Set(nextPreview.previewBlocks.map((block) => block.date)),
+    ).sort();
+
+    setWeeklyPlanningPreviewBlocks(nextPreview.previewBlocks);
+    setWeeklyPlanningPreviewCandidates(nextPreview.candidates);
+    if (nextPreview.previewBlocks.length === 0) {
+      setSelectedWeeklyDraftDate('');
+      setWeeklyDraftPreviewMode('overview');
+    } else if (!nextDates.includes(selectedWeeklyDraftDate)) {
+      setSelectedWeeklyDraftDate(nextDates[0] ?? '');
+    }
+  }
+
+  function removeVisibleWeeklyDraftBlock(blockId: string) {
+    if (hasLocalWeeklyPlanningPreview) {
+      removeLocalWeeklyPlanningPreviewBlock(blockId);
+      return;
+    }
+
+    onRemoveWeeklyDraftBlock?.(blockId);
   }
 
   function renderWeeklyPlanningHistory() {
@@ -1267,11 +1297,11 @@ export function NaturalLanguageAssistant({
                                   </span>
                                 </small>
                               </span>
-                              {!hasLocalWeeklyPlanningPreview && onRemoveWeeklyDraftBlock ? (
+                              {hasLocalWeeklyPlanningPreview || onRemoveWeeklyDraftBlock ? (
                                 <button
                                   aria-label={`${block.title}を削除`}
                                   className="weekly-draft-preview-remove"
-                                  onClick={() => onRemoveWeeklyDraftBlock(block.id)}
+                                  onClick={() => removeVisibleWeeklyDraftBlock(block.id)}
                                   type="button"
                                 >
                                   ×

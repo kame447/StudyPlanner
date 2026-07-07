@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   toLifeConstraintFromAddFixedEventCommand,
   toLifeConstraintFromAddUnavailableCommand,
@@ -22,7 +23,11 @@ import {
 } from '../intake/weeklyPlanningConstraintParsing';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
-import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
+import {
+  applyWeeklyPlanningCommands,
+  applyWeeklyPlanningUserTurn,
+  createInitialPlanningIntakeState,
+} from '../intake/weeklyPlanningIntakeReducer';
 import { parseSetPriorityPolicyCommand } from '../intake/weeklyPlanningPriorityParsing';
 import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from '../intake/weeklyPlanningScopeParsing';
 import { parseSetUnitRateCommand } from '../intake/weeklyPlanningUnitRateParsing';
@@ -47,6 +52,47 @@ import {
   context,
 } from './weeklyPlanningRoleplayTestHelpers';
 describe('weekly planning intake edge cases', () => {
+
+  it('keeps sleep end and study available start as separate values from one natural answer', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      createInitialPlanningIntakeState(),
+      '普段は8時に起きて、10時から勉強できる',
+      context,
+    );
+
+    expect(state.constraints).toEqual([
+      expect.objectContaining({
+        kind: 'sleep',
+        end: '08:00',
+        studyAvailableStart: '10:00',
+      }),
+    ]);
+  });
+
+  it('keeps meal and bath missing after applying only a sleep life constraint', () => {
+    const initialState = {
+      ...createInitialPlanningIntakeState(),
+      missing: ['sleep_cycle', 'meal_bath_constraints', 'life_constraints'] as PlanningIntakeState['missing'],
+    };
+    const state = applyWeeklyPlanningCommands(initialState, [
+      {
+        type: 'update_life_constraint',
+        kind: 'sleep',
+        constraint: {
+          start: '00:00',
+          end: '08:00',
+          hardness: 'hard',
+        },
+        sourceText: '睡眠は0時から8時',
+        confidence: 'high',
+      },
+    ]);
+
+    expect(state.missing).not.toContain('sleep_cycle');
+    expect(state.missing).toContain('meal_bath_constraints');
+    expect(state.missing).toContain('life_constraints');
+  });
+
   it.each([
     ['数学の25〜21が終わったよ', [2025, 2024, 2023, 2022, 2021]],
     ['数学の21〜25が終わったよ', [2021, 2022, 2023, 2024, 2025]],

@@ -39,6 +39,26 @@ export function createWeeklyPlanningPreviewBlocks(
   }));
 }
 
+export interface RemoveWeeklyPlanningPreviewBlockInput {
+  previewBlocks: WeeklyPlanningPreviewBlock[];
+  candidates: WeeklyDraftCandidate[];
+  blockId: string;
+}
+
+export function removeWeeklyPlanningPreviewBlock({
+  previewBlocks,
+  candidates,
+  blockId,
+}: RemoveWeeklyPlanningPreviewBlockInput): {
+  previewBlocks: WeeklyPlanningPreviewBlock[];
+  candidates: WeeklyDraftCandidate[];
+} {
+  return {
+    previewBlocks: previewBlocks.filter((block) => block.id !== blockId),
+    candidates: candidates.filter((candidate) => candidate.stableKey !== blockId),
+  };
+}
+
 export interface CreateWeeklyDraftBlocksFromPreviewCandidatesInput {
   candidates: WeeklyDraftCandidate[];
   userId: string;
@@ -51,7 +71,7 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
   createdAt,
 }: CreateWeeklyDraftBlocksFromPreviewCandidatesInput): WeeklyPlanDraftBlock[] {
   return candidates.map((candidate) => ({
-    id: `weekly-draft-${candidate.stableKey}`,
+    id: candidate.stableKey,
     userId,
     date: candidate.date,
     startTime: candidate.startTime,

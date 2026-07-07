@@ -3,6 +3,7 @@ import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGen
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
+  removeWeeklyPlanningPreviewBlock,
 } from './weeklyPlanningPreviewBlocks';
 
 const candidate: WeeklyDraftCandidate = {
@@ -52,7 +53,7 @@ describe('weekly planning preview blocks', () => {
     });
 
     expect(block).toMatchObject({
-      id: `weekly-draft-${candidate.stableKey}`,
+      id: candidate.stableKey,
       userId: 'user-1',
       date: candidate.date,
       startTime: candidate.startTime,
@@ -75,6 +76,41 @@ describe('weekly planning preview blocks', () => {
     expect(block?.memo).toContain('dry-run preview');
     expect(block).not.toHaveProperty('isSaved');
     expect(block).not.toHaveProperty('approvalStatus');
+  });
+
+
+  it('keeps the same block id when promoting preview blocks to drafts', () => {
+    const [previewBlock] = createWeeklyPlanningPreviewBlocks([candidate]);
+    const [draftBlock] = createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: [candidate],
+      userId: 'user-1',
+      createdAt: '2026-06-30T00:00:00.000Z',
+    });
+
+    expect(draftBlock?.id).toBe(previewBlock?.id);
+  });
+
+  it('removes a local preview block and matching candidate by block id', () => {
+    const secondCandidate: WeeklyDraftCandidate = {
+      ...candidate,
+      stableKey: 'candidate:math:2019:2026-06-27:11:00',
+      year: 2019,
+      title: '数学・数理系 2019年度',
+      workItemKey: '数学・数理系:2019',
+    };
+    const previewBlocks = createWeeklyPlanningPreviewBlocks([candidate, secondCandidate]);
+    const result = removeWeeklyPlanningPreviewBlock({
+      previewBlocks,
+      candidates: [candidate, secondCandidate],
+      blockId: candidate.stableKey,
+    });
+
+    expect(result.previewBlocks.map((block) => block.id)).toEqual([
+      secondCandidate.stableKey,
+    ]);
+    expect(result.candidates.map((item) => item.stableKey)).toEqual([
+      secondCandidate.stableKey,
+    ]);
   });
 
   it('returns an empty draft block list for empty candidates', () => {

@@ -10,6 +10,7 @@ const remainingWorkItems: WeeklyPlanningRemainingWorkItem[] = [
     year: 2020,
     estimatedMinutes: 120,
     unit: 'year_field_chunk',
+    splitPolicy: 'atomic',
     source: 'exam_prep_request',
   },
   {
@@ -17,6 +18,7 @@ const remainingWorkItems: WeeklyPlanningRemainingWorkItem[] = [
     year: 2019,
     estimatedMinutes: 120,
     unit: 'year_field_chunk',
+    splitPolicy: 'atomic',
     source: 'exam_prep_request',
   },
   {
@@ -24,6 +26,7 @@ const remainingWorkItems: WeeklyPlanningRemainingWorkItem[] = [
     year: 2025,
     estimatedMinutes: 120,
     unit: 'year_field_chunk',
+    splitPolicy: 'atomic',
     source: 'exam_prep_request',
   },
 ];
@@ -133,6 +136,89 @@ function hasCandidateOverlap(params: {
 
 describe('weekly draft candidate generator dry-run', () => {
 
+  it('uses study available start as the daily placement lower bound separately from sleep end', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 60,
+          unit: 'year_field_chunk',
+          splitPolicy: 'atomic',
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [
+        {
+          kind: 'sleep',
+          end: '08:00',
+          studyAvailableStart: '10:00',
+          hardness: 'hard',
+          rawText: '普段は8時に起きて、10時から勉強できる',
+        },
+      ],
+      fixedEvents: [],
+      planningStartDate: '2026-06-30',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '08:00',
+        dayStartTime: '08:00',
+        dayEndTime: '12:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-30',
+        startTime: '10:00',
+        endTime: '11:00',
+      }),
+    ]);
+  });
+
+  it('falls back to dayStartTime when study available start is unspecified', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 60,
+          unit: 'year_field_chunk',
+          splitPolicy: 'atomic',
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [
+        {
+          kind: 'sleep',
+          end: '08:00',
+          hardness: 'hard',
+          rawText: '8時起床',
+        },
+      ],
+      fixedEvents: [],
+      planningStartDate: '2026-06-30',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '08:00',
+        dayStartTime: '08:00',
+        dayEndTime: '12:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-30',
+        startTime: '08:00',
+        endTime: '09:00',
+      }),
+    ]);
+  });
+
   it('avoids existing plans as hard busy intervals with the legacy buffer', () => {
     const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
       ...baseInput,
@@ -142,6 +228,7 @@ describe('weekly draft candidate generator dry-run', () => {
           year: 2020,
           estimatedMinutes: 60,
           unit: 'year_field_chunk',
+          splitPolicy: 'atomic',
           source: 'exam_prep_request',
         },
       ],
@@ -183,6 +270,7 @@ describe('weekly draft candidate generator dry-run', () => {
           year: 2020,
           estimatedMinutes: 120,
           unit: 'year_field_chunk',
+          splitPolicy: 'atomic',
           source: 'exam_prep_request',
         },
       ],
@@ -262,6 +350,114 @@ describe('weekly draft candidate generator dry-run', () => {
     );
   });
 
+
+  it('keeps atomic year-field work items as a single block even when longer than max session', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 180,
+          unit: 'year_field_chunk',
+          splitPolicy: 'atomic',
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '13:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates.map((candidate) => ({
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+      durationMinutes: candidate.durationMinutes,
+      stableKey: candidate.stableKey,
+    }))).toEqual([
+      {
+        startTime: '09:00',
+        endTime: '12:00',
+        durationMinutes: 180,
+        stableKey: '数学・数理系:2020:chunk-0',
+      },
+    ]);
+    expect(result.diagnostics.unscheduledItems).toEqual([]);
+  });
+
+  it('keeps splittable total-minute work items on the existing session chunking path', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 180,
+          unit: 'minutes' as const,
+          splitPolicy: 'splittable' as const,
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '13:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates.map((candidate) => candidate.durationMinutes)).toEqual([120, 60]);
+    expect(result.diagnostics.unscheduledItems).toEqual([]);
+  });
+
+  it('reports an atomic work item as unscheduled instead of splitting when no slot can fit it', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 180,
+          unit: 'year_field_chunk',
+          splitPolicy: 'atomic',
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '11:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.diagnostics.unscheduledItems).toEqual([
+      expect.objectContaining({
+        field: '数学・数理系',
+        year: 2020,
+        estimatedMinutes: 180,
+        unit: 'year_field_chunk',
+        splitPolicy: 'atomic',
+      }),
+    ]);
+  });
+
   it('keeps total scheduled minutes consistent and never exceeds requested minutes', () => {
     const result = createWeeklyDraftCandidatesFromRemainingWorkItems(baseInput);
     const candidateMinutes = result.candidates.reduce(
@@ -283,6 +479,8 @@ describe('weekly draft candidate generator dry-run', () => {
         {
           ...remainingWorkItems[0],
           estimatedMinutes: 240,
+          unit: 'minutes' as const,
+          splitPolicy: 'splittable' as const,
         },
       ],
       fixedEvents: [],
@@ -299,6 +497,139 @@ describe('weekly draft candidate generator dry-run', () => {
 
     expect(first).toEqual(second);
     expect(first.candidates.map((candidate) => candidate.durationMinutes)).toEqual([120, 120]);
+  });
+
+
+  it('expands date-less meal time bands across all planning days before scheduling', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        { ...remainingWorkItems[0], estimatedMinutes: 60 },
+        { ...remainingWorkItems[1], estimatedMinutes: 60 },
+      ],
+      constraints: [
+        {
+          kind: 'meal' as const,
+          start: '19:00',
+          end: '20:00',
+          hardness: 'hard' as const,
+          rawText: '夜ご飯 19:00-20:00',
+        },
+      ],
+      fixedEvents: [],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 2,
+      sessionPolicy: {
+        firstDayStartTime: '19:00',
+        dayStartTime: '19:00',
+        dayEndTime: '21:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(hasCandidateOverlap({
+      result,
+      date: '2026-06-26',
+      startTime: '19:00',
+      endTime: '20:00',
+    })).toBe(false);
+    expect(hasCandidateOverlap({
+      result,
+      date: '2026-06-27',
+      startTime: '19:00',
+      endTime: '20:00',
+    })).toBe(false);
+    expect(result.candidates.map((candidate) => ({
+      date: candidate.date,
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+    }))).toEqual([
+      { date: '2026-06-26', startTime: '20:00', endTime: '21:00' },
+      { date: '2026-06-27', startTime: '20:00', endTime: '21:00' },
+    ]);
+  });
+
+  it('expands date-less sleep time bands across all planning days before scheduling', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        { ...remainingWorkItems[0], estimatedMinutes: 60 },
+        { ...remainingWorkItems[1], estimatedMinutes: 60 },
+      ],
+      constraints: [
+        {
+          kind: 'sleep' as const,
+          start: '00:00',
+          end: '08:00',
+          hardness: 'hard' as const,
+          rawText: '睡眠 0:00-8:00',
+        },
+      ],
+      fixedEvents: [],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 2,
+      sessionPolicy: {
+        firstDayStartTime: '00:00',
+        dayStartTime: '00:00',
+        dayEndTime: '09:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(hasCandidateOverlap({
+      result,
+      date: '2026-06-26',
+      startTime: '00:00',
+      endTime: '08:00',
+    })).toBe(false);
+    expect(hasCandidateOverlap({
+      result,
+      date: '2026-06-27',
+      startTime: '00:00',
+      endTime: '08:00',
+    })).toBe(false);
+    expect(result.candidates.map((candidate) => ({
+      date: candidate.date,
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+    }))).toEqual([
+      { date: '2026-06-26', startTime: '08:00', endTime: '09:00' },
+      { date: '2026-06-27', startTime: '08:00', endTime: '09:00' },
+    ]);
+  });
+
+  it('keeps time-unspecified variable meal constraints floating instead of scheduling them', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [{ ...remainingWorkItems[0], estimatedMinutes: 60 }],
+      constraints: [
+        {
+          kind: 'meal' as const,
+          hardness: 'soft' as const,
+          rawText: '夜ご飯は日によって違う',
+        },
+      ],
+      fixedEvents: [],
+      planningStartDate: '2026-06-26',
+      planningDayCount: 2,
+      sessionPolicy: {
+        firstDayStartTime: '19:00',
+        dayStartTime: '19:00',
+        dayEndTime: '21:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.diagnostics.decisionTrace).toContain(
+      'floating-meal-constraint:夜ご飯は日によって違う',
+    );
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        date: '2026-06-26',
+        startTime: '19:00',
+        endTime: '20:00',
+      }),
+    ]);
   });
 
   it('expands date-less unavailable constraints into each planning day as a pure scheduling helper', () => {

@@ -1,12 +1,34 @@
 import type { StudyScopeUnit } from './weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDraftRequest } from './weeklyPlanningDraftRequestAdapter';
 
+export type WorkItemSplitPolicy = 'atomic' | 'splittable';
+
 export interface WeeklyPlanningRemainingWorkItem {
   field: string;
   year: number;
   estimatedMinutes: number;
   unit: StudyScopeUnit;
+  splitPolicy: WorkItemSplitPolicy;
   source: 'exam_prep_request';
+}
+
+export function resolveWorkItemSplitPolicy(unit: StudyScopeUnit): WorkItemSplitPolicy {
+  switch (unit) {
+    case 'year_field_chunk':
+    case 'topic':
+      return 'atomic';
+    case 'minutes':
+    case 'hours':
+    case 'pages':
+    case 'problems':
+    case 'words':
+    case 'lessons':
+    case 'chapters':
+    case 'unknown':
+      return 'splittable';
+    default:
+      return 'splittable';
+  }
 }
 
 export type WeeklyPlanningRemainingWorkItemsAmbiguity =
@@ -88,6 +110,7 @@ export function createRemainingWorkItemsFromDraftRequest(
           year,
           estimatedMinutes: request.unitRate.minutesPerUnit,
           unit: request.unitRate.unit,
+          splitPolicy: resolveWorkItemSplitPolicy(request.unitRate.unit),
           source: 'exam_prep_request' as const,
         }));
     }),

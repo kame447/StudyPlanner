@@ -117,6 +117,29 @@ function mergeExamPrepScopeForCommand(
   };
 }
 
+function removeMissingForLifeConstraint(
+  missing: PlanningIntakeState['missing'],
+  kind: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'],
+): PlanningIntakeState['missing'] {
+  const keysToRemove: PlanningIntakeState['missing'] = [];
+
+  if (kind === 'sleep' || kind === 'buffer') {
+    keysToRemove.push('sleep_cycle');
+  }
+
+  if (kind === 'meal' || kind === 'bath') {
+    keysToRemove.push('meal_bath_constraints');
+  }
+
+  let nextMissing = removeMissing(missing, keysToRemove);
+
+  if (!nextMissing.includes('sleep_cycle') && !nextMissing.includes('meal_bath_constraints')) {
+    nextMissing = removeMissing(nextMissing, ['life_constraints']);
+  }
+
+  return nextMissing;
+}
+
 function applyMarkCompletedUnitsCommand(
   state: PlanningIntakeState,
   command: Extract<ParsedWeeklyPlanningCommand, { type: 'mark_completed_units' }>,
@@ -217,11 +240,7 @@ function applyWeeklyPlanningCommand(
         constraints: mergeLifeConstraints(state.constraints, [
           toLifeConstraintFromUpdateLifeConstraintCommand(command),
         ]),
-        missing: removeMissing(state.missing, [
-          'sleep_cycle',
-          'meal_bath_constraints',
-          'life_constraints',
-        ]),
+        missing: removeMissingForLifeConstraint(state.missing, command.kind),
       };
     case 'set_priority_policy':
       return {

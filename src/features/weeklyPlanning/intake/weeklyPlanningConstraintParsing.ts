@@ -43,9 +43,62 @@ function parseFixedEvent(segment: string, context: WeeklyPlanningIntakeContext):
   };
 }
 
+function formatParsedClockTime(hourText: string | undefined, minuteText: string | undefined): string | undefined {
+  if (!hourText) {
+    return undefined;
+  }
+
+  const hour = Number(hourText);
+  const minute = minuteText === undefined ? 0 : Number(minuteText);
+
+  if (hour < 0 || hour > 24 || minute < 0 || minute > 59) {
+    return undefined;
+  }
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function parseWakeAndStudyAvailableStart(segment: string): LifeConstraint | undefined {
+  const wakeMatch = segment.match(/(\d{1,2})\s*\u6642(?:\s*(\d{1,2})\s*\u5206)?(?:\u3054\u308d|\u9803)?\s*(?:\u306b)?\s*(?:\u8d77\u304d|\u8d77\u5e8a)/);
+
+  if (!wakeMatch) {
+    return undefined;
+  }
+
+  const studySource = segment.slice((wakeMatch.index ?? 0) + wakeMatch[0].length);
+  const studyMatch = studySource.match(/(?:\u52c9\u5f37|\u5b66\u7fd2)[^\u3002]*?(\d{1,2})\s*\u6642(?:\s*(\d{1,2})\s*\u5206)?(?:\u3054\u308d|\u9803)?\s*(?:\u304b\u3089|\u4ee5\u964d|\u306b\u306f)?|(\d{1,2})\s*\u6642(?:\s*(\d{1,2})\s*\u5206)?(?:\u3054\u308d|\u9803)?\s*(?:\u304b\u3089|\u4ee5\u964d|\u306b\u306f)?[^\u3002]*?(?:\u52c9\u5f37|\u5b66\u7fd2)/);
+
+  if (!studyMatch) {
+    return undefined;
+  }
+
+  const studyHour = studyMatch[1] ?? studyMatch[3];
+  const studyMinute = studyMatch[2] ?? studyMatch[4];
+  const sleepEnd = formatParsedClockTime(wakeMatch[1], wakeMatch[2]);
+  const studyAvailableStart = formatParsedClockTime(studyHour, studyMinute);
+
+  if (!sleepEnd || !studyAvailableStart) {
+    return undefined;
+  }
+
+  return {
+    kind: 'sleep',
+    end: sleepEnd,
+    studyAvailableStart,
+    hardness: 'hard',
+    rawText: segment,
+  };
+}
+
 function parseLifeConstraint(segment: string, context: WeeklyPlanningIntakeContext): LifeConstraint[] {
   const constraints: LifeConstraint[] = [];
   const hour = parseHour(segment);
+  const wakeAndStudyAvailableStart = parseWakeAndStudyAvailableStart(segment);
+
+  if (wakeAndStudyAvailableStart) {
+    constraints.push(wakeAndStudyAvailableStart);
+  }
+
 
   if (/\u4eca\u65e5\u306f?\s*2\s*\u6642.*\u5bdd/.test(segment)) {
     constraints.push({
@@ -122,7 +175,8 @@ function parseLifeConstraint(segment: string, context: WeeklyPlanningIntakeConte
 }
 
 export function parseConstraints(text: string, context: WeeklyPlanningIntakeContext): LifeConstraint[] {
-  const constraints: LifeConstraint[] = [];
+  const wakeAndStudyAvailableStart = parseWakeAndStudyAvailableStart(text);
+  const constraints: LifeConstraint[] = wakeAndStudyAvailableStart ? [wakeAndStudyAvailableStart] : [];
 
   for (const segment of splitIntakeSegments(text)) {
     const fixedEvent = parseFixedEvent(segment, context);
@@ -212,6 +266,7 @@ export function parseConstraintCommands(
         start: constraint.start,
         end: constraint.end,
         durationMinutes: constraint.durationMinutes,
+        studyAvailableStart: constraint.studyAvailableStart,
         hardness: constraint.hardness,
       },
       sourceText: text,

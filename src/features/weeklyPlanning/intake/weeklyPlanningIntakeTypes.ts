@@ -113,6 +113,7 @@ export interface LifeConstraint {
   start?: string;
   end?: string;
   durationMinutes?: number;
+  studyAvailableStart?: string;
   hardness: 'hard' | 'soft';
   rawText?: string;
 }
