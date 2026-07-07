@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
-import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
+import {
+  createRemainingWorkItemsFromDraftRequest,
+  resolveWorkItemSplitPolicy,
+} from '../intake/weeklyPlanningRemainingWorkItems';
 import { WP_RP_001_WEEKEND_EXAM_EXPECTED } from '../testFixtures/weeklyPlanningGoldExpectations';
 import { applyWeekendExamReadyForDraftRequest } from './weeklyPlanningRoleplayTestHelpers';
 
@@ -56,6 +59,16 @@ function createZeroProgressDraftReadyState(): PlanningIntakeState {
 }
 
 describe('weekly planning remaining work items', () => {
+  it('resolves split policy deterministically from the study scope unit', () => {
+    expect(resolveWorkItemSplitPolicy('year_field_chunk')).toBe('atomic');
+    expect(resolveWorkItemSplitPolicy('topic')).toBe('atomic');
+    expect(resolveWorkItemSplitPolicy('minutes')).toBe('splittable');
+    expect(resolveWorkItemSplitPolicy('hours')).toBe('splittable');
+    expect(resolveWorkItemSplitPolicy('pages')).toBe('splittable');
+    expect(resolveWorkItemSplitPolicy('problems')).toBe('splittable');
+    expect(resolveWorkItemSplitPolicy('unknown')).toBe('splittable');
+  });
+
   it('WP-RP-001 Phase 2.5 creates remaining work items from the draft request', () => {
     const request = createWeeklyDraftRequestFromIntakeState(
       applyWeekendExamReadyForDraftRequest(),
@@ -83,6 +96,8 @@ describe('weekly planning remaining work items', () => {
     expect(mathItems.every((item) => item.estimatedMinutes === 120)).toBe(true);
     expect(softwareItems.every((item) => item.estimatedMinutes === 120)).toBe(true);
     expect(mathItems.every((item) => item.unit === 'year_field_chunk')).toBe(true);
+    expect(mathItems.every((item) => item.splitPolicy === 'atomic')).toBe(true);
+    expect(softwareItems.every((item) => item.splitPolicy === 'atomic')).toBe(true);
     expect(softwareItems.every((item) => item.source === 'exam_prep_request')).toBe(true);
     expect(result.items.findIndex((item) => item.field === '数学・数理系')).toBeLessThan(
       result.items.findIndex((item) => item.field === 'ソフトウェア系'),
