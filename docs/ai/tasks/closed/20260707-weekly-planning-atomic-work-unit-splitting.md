@@ -1,5 +1,7 @@
 # 意味のある作業単位(1年度分・1回分)の atomic / splittable 分割方針
 
+> **完了記録(2026-07-07・コミット `404673c`)**: work item に分割方針を持たせ、意味単位(year_field_chunk 等)を atomic 既定で一まとまり配置、総量 unit は従来どおり分割。unit→splitPolicy の写像を契約テストで固定。配置不能 atomic は unscheduled diagnostics へ。分割許可の確認対話は staged-dialogue-known-info が所有(本タスクは diagnostics まで・自己完結)。weeklyPlanning テスト green / build 成功。
+
 「1年度分の過去問に3時間かかる」という unit rate 由来の work item が、総学習時間と同じように session chunking で自動分割(180分 → 120+60 など)されている。「合計10時間」のような総量は分割可能でよいが、「1年度分」「1回分」など**意味のある作業単位は原則一まとまりで扱う**か、分割可否をユーザーに確認したい。
 
 本mdの範囲外へ進まない。git add / commit / push はしない。

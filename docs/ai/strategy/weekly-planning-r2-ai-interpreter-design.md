@@ -2,9 +2,11 @@
 
 R2 を「正規表現 parser を増やして自然言語対応範囲を広げるフェーズ」から「AI interpreter + deterministic validation + AI dialogue renderer を含む入力理解基盤の拡張フェーズ」へ再整理するための設計メモである。**実装タスクmdではない。** ここから個別タスクを切るときは、この設計と切り出し時点の実コードを突き合わせること。
 
-> **状態(2026-07-07 更新): 本メモは大部分が実装反映済みの設計記録である。** §2〜§7(interpreter 境界の再設計、candidate validator、escalation、confidence→assumption/ambiguity、renderer 基盤、AI 実接続、テスト二層)は R2-A/R2-B/R2-C として実装・コミット済み。§8 の R2初期(slot filling / 分類分離 / 年度範囲 / 契約修正)と candidate 契約の一連の修正(confidence 必須化・schema union 化・wrapper 簡素化)も closed 済み。実 AI 評価も1回完了(`tasks/closed/20260705-weekly-planning-r2c-eval.md`)。
+> **状態(2026-07-07 更新): 本メモは全体が実装反映済みの設計記録である。** §2〜§7(interpreter 境界の再設計、candidate validator、escalation、confidence→assumption/ambiguity、renderer 基盤、AI 実接続、テスト二層)は R2-A/R2-B/R2-C として実装・コミット済み。§8 の R2初期と candidate 契約の一連の修正(confidence 必須化・schema union 化・wrapper 簡素化)も closed。interpreter の実 AI 評価も1回完了(`tasks/closed/20260705-weekly-planning-r2c-eval.md`)。
 >
-> **未実装として残るのは R2-D(renderer の実 AI 接続)のみ。** ただし R2-D の着手条件は「実使用スモーク由来の correctness/stabilization 群」と「対話設計(質問計画 D / 質問文 E)」の整理後になる。最新の進捗と着手順序は `weekly-planning-roadmap.md` を正とする(本メモは設計判断の記録として保持)。本メモは strategy 配下に残し、tasks/closed へは移動しない。
+> **R2-D(AI dialogue renderer の実接続)も完了(2026-07-07・監査で採用可判定)。** §5 の renderer 設計(RenderInput / 構造化出力 / plan 外破棄 / fallback)は、structured schema・`sanitizeDialogueRenderOutput` による validation(数・計画外 slot・重複・欠落を全チェックし questionPlan 順に再構成)・production injection(`createAiWeeklyPlanningDialogueRenderer`)・全経路 failure fallback として実装済み。「何を聞くか」は deterministic な questionPlan、「どう言うか」だけ AI が担う責務分離が成立。記録は `tasks/closed/20260707-weekly-planning-question-rendering-separation.md`。
+>
+> **R2-D 完了条件外の後続改善事項**(本メモの設計範囲外): retry policy、prompt tuning、実 AI 品質評価 / golden eval、コスト・レイテンシ計測、renderer の無質問ターン AI コール抑止。最新の進捗・着手順序は `weekly-planning-roadmap.md` を正とする。本メモは strategy 配下に残し、tasks/closed へは移動しない。
 
 - 作成日: 2026-07-04 / 最終更新: 2026-07-07(実装反映済みの設計記録として状態注記)
 - 前提: R1 クローズ済み(command boundary 完成、`docs/ai/tasks/closed/20260703-weekly-planning-r1-completion-report.md`)

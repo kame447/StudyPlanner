@@ -1,4 +1,21 @@
-# 質問文生成の責務分離(deterministic な slot 決定 + AI 質問文 + deterministic fallback)
+# 質問文生成の責務分離(deterministic な slot 決定 + AI 質問文 + deterministic fallback)【R2-D 完了】
+
+> **完了記録(2026-07-07・未コミット差分。監査で採用可判定)**
+>
+> R2-D(AI dialogue renderer の実接続)まで実装。監査で観点1・2を満たすと確認済み。
+> - **RenderInput 契約の充実**: `DialogueNextQuestion`(slotKey / intent / questionKind / options)。dialogueManager の questionPlan(`8d695d2`)を入力に、AI へは slotKey・intent・questionKind・options のみ渡し、計画外の missing(unit_duration_estimate 等)を送らない。
+> - **structured schema**: `WEEKLY_PLANNING_DIALOGUE_RENDERER_RESPONSE_FORMAT`(json_schema・questions[slotKey,text])。
+> - **validation(観点1)**: `sanitizeDialogueRenderOutput` が数の一致・計画外 slot・重複・欠落を全チェックし、最終出力を questionPlan 順に再構成。AI は各 slot の text のみ変更でき、対象/数/順序/slot identity を変えられない。
+> - **production injection**: `NaturalLanguageAssistant` が AI provider 有効時に `createAiWeeklyPlanningDialogueRenderer` を注入。既存 openAiCompatibleClient / aiConfig を再利用。
+> - **failure fallback(観点2)**: parse 失敗・非配列・型不正・数不一致・計画外・重複・欠落・call failure のすべてで部分採用せず deterministic fallback(受理サマリ+slot 別メンター調文言)へ。fake で5系統固定。
+> - deterministic fallback のメンター調化(R2初期-4 統合)も実装済み。renderer 未注入時も ask_missing_info はこの deterministic renderer を使用。
+> - weeklyPlanning 368 passed / build 成功 / `git diff --check` OK。
+>
+> **R2-D 本体の完了条件外(後続改善事項)**: retry policy、prompt tuning、実 AI 品質評価 / golden eval、コスト・レイテンシ計測は R2-D 完了条件に含めない。実 AI 評価(renderer の実ブラウザスモーク)は R2-C-eval と同様に別途1回行うのが望ましい。
+>
+> **監査で見つかった後続候補(production 未修正)**:
+> 1. `renderWeeklyPlanningDialogueMessage` が renderer 注入時、質問のないターン(ask_missing_info 以外 / nextQuestions 空)でも `render()` を呼び AI コールを消費する(sanitize で null→fallback のため正しさ影響なし・コストのみ)。`decision.kind === 'ask_missing_info' && nextQuestions.length > 0` で render をガードする最適化余地。
+> 2. `fallbackQuestionText` の `meal_bath_constraints` case は targetSlot 写像(→ `life_constraints`)により到達不能なデッドコード(害なし)。
 
 質問文について、「何を聞くか」の判断まで AI に任せず、missing 判定・次に確認する slot の決定は **deterministic なアプリ側**に残し、その構造化情報を AI に渡して**自然な日本語の質問文だけ**を生成させたい。AI が適切でない箇所まで AI 化しない。縮退時の deterministic renderer も含め、責務分離とコスト・レイテンシを設計する。
 

@@ -111,26 +111,31 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
   4. `constraintToBusyInterval` の暗黙推定ルールの明文化テスト(テストのみ)
 - 完了条件の目安: reducer が日本語を一切見ない。fallback が単一の境界関数越しになる。
 
-### Phase R2-AI: AI interpreter 基盤と実接続【R2-A/B/C 完了・2026-07-07】
+### Phase R2-AI: AI interpreter 基盤と実接続【R2-A/B/C/D 完了・2026-07-07】
 
-- R2-A(interpreter 境界の再設計・candidate validator・escalation)、R2-B(dialogue renderer 基盤・fallback)、R2-C(AI 実接続・opt-in UI 配線)をすべて実装・コミット済み。candidate 受信契約の一連の修正(confidence 必須化 → schema の anyOf union 完全化 → wrapper 簡素化)も closed。実 AI 評価も1回完了(`tasks/closed/20260705-weekly-planning-r2c-eval.md`)。設計記録は `weekly-planning-r2-ai-interpreter-design.md`(実装反映済み)。
-- **未実装は R2-D(renderer の実 AI 接続)のみ。** 着手条件は下記 R2-S の correctness 群と対話設計(質問計画 D / 質問文 E)の整理後。R2-D は「何を聞くか(deterministic)/どう言うか(AI 質問文)」の責務分離基盤が固まってから接続する。
+- R2-A(interpreter 境界の再設計・candidate validator・escalation)、R2-B(dialogue renderer 基盤・fallback)、R2-C(AI interpreter 実接続・opt-in UI 配線)をすべて実装・コミット済み。candidate 受信契約の一連の修正(confidence 必須化 → schema の anyOf union 完全化 → wrapper 簡素化)も closed。interpreter の実 AI 評価も1回完了(`tasks/closed/20260705-weekly-planning-r2c-eval.md`)。設計記録は `weekly-planning-r2-ai-interpreter-design.md`(実装反映済み)。
+- **R2-D(AI dialogue renderer の実接続)完了(2026-07-07・監査で採用可判定)**: structured schema、validation(`sanitizeDialogueRenderOutput` が数・計画外 slot・重複・欠落を全チェックし questionPlan 順に再構成 → AI は各 slot の text のみ変更可)、production injection(`createAiWeeklyPlanningDialogueRenderer` を AI provider 有効時に注入)、failure fallback(parse/型/数/計画外/重複/欠落/call failure すべて部分採用せず deterministic fallback)を実装。「何を聞くか」は questionPlan(deterministic)、「どう言うか」だけ AI。記録は `tasks/closed/20260707-weekly-planning-question-rendering-separation.md`。
+- **R2-D 完了条件外(後続改善事項)**: retry policy、prompt tuning、実 AI 品質評価 / golden eval、コスト・レイテンシ計測。renderer の実 AI 評価(実ブラウザスモーク)は R2-C-eval と同様に別途1回行うのが望ましい。
+- **監査由来の後続候補(production 未修正)**: (1) `renderWeeklyPlanningDialogueMessage` が質問のないターン(ask_missing_info 以外 / nextQuestions 空)でも `render()` を呼び AI コールを消費する(正しさ影響なし・コストのみ。render 前ガードで削減可)。(2) `fallbackQuestionText` の `meal_bath_constraints` case が targetSlot 写像で到達不能なデッドコード(害なし)。
 
-### Phase R2-S: 実使用スモーク stabilization / correctness【進行中・2026-07-07】
+### Phase R2-S: 実使用スモーク stabilization / correctness【完了・2026-07-07】
 
-実ブラウザの継続対話スモークで見つかった correctness regression と、新 intake path への legacy 不変条件の未移植群。AI 基盤(R2-AI)とは独立に「生成結果の正しさ」を担保する層。R2-D より前に片付けるべき品質の土台。
+実ブラウザの継続対話スモークで見つかった correctness regression と、新 intake path への legacy 不変条件の未移植群。AI 基盤(R2-AI)とは独立に「生成結果の正しさ」を担保した層。**残 open は消化済み。**
 
 - **完了(closed・2026-07-07)**:
   - yearRange 喪失/対象年度の再質問 — `set_exam_scope` apply を scope 置換から merge へ(`97742b0`)
   - 既存予定・時間割の busy interval 除外 — legacy availability 不変条件を新 intake path へ移植(`479f5e8`)
   - 生活制約の全計画日展開 + missing 粒度の kind 単位分離(`79157c4`)
   - sleep end と study available start の分離保持(`5cb7107`)
+  - 7日目予備日の新 path 移植(`7b3e288`)— R8 と隣接。6等分・1日上限は R8 へ残す
+  - atomic work unit(意味単位を非分割で配置・確認対話は D へ)(`404673c`)— R3/R8 と隣接
+  - 仮予定の個別削除導線の復活(UI regression)(`1df831f`)
+  - 対話設計: 質問計画 D(`8d695d2`)/ 質問文 E = R2-D(未コミット差分)— R4 の先取り
   - 先行: zero-progress draft、scope parser 誤解釈、no-fixed-events 丁寧形(いずれも closed)
-- **残 open**:
-  - 7日目予備日の新 path 移植(legacy `reserveDate` 未移植)— **R8(配置品質)と隣接**
-  - atomic work unit(意味単位「1年度分」を非分割で配置)— **R3(進捗単位)/ R8 と隣接**
-  - 仮予定の個別削除導線の復活(UI regression・preview 段階で削除ボタン非表示)
-  - 対話設計: 質問計画 D(`staged-dialogue-known-info`)/ 質問文 E(`question-rendering-separation`)— **R4(質問計画)の先取り・R2-D の前提**
+- **R2-S から派生して残る後続候補**(open task 化はしていない・次フェーズ判断待ち):
+  - capacity 超過(過去問全量で 100 時間超が計画ウィンドウに収まらない)への 6等分・1日上限配分 — **R8**
+  - 既知カレンダー予定の intake 注入と差分提示(staged 候補 b・未着手)/ 分割許可の確認対話(staged 候補 c・未着手)
+  - 明示 duration / daily・weekday・weekend target の受理(R2 初期の中タスク)
 
 ### Phase R2 初期: 実使用フィードバック対応(intake 品質改善)【一部反映済み・2026-07-04 記録】
 
@@ -236,9 +241,9 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
 
 ## 4. 優先順位の理由
 
-順序の骨格(2026-07-07 更新): **R1(クローズ)→ R2-AI(interpreter 基盤・実接続=完了)→ R2-S(実使用スモーク correctness=進行中)→ R2-D(renderer 実接続)→ R2/R3(入力理解の拡大)→ R4(質問計画)→ R5(プロファイル)→ R6(進捗記録)→ R7(再計画)→ R8(配置品質とscheduler整合)**。
+順序の骨格(2026-07-07 更新): **R1(クローズ)→ R2-AI(interpreter+renderer 基盤・実接続=R2-A/B/C/D 完了)→ R2-S(実使用スモーク correctness=完了)→ R8(capacity=配置品質)/ R3(進捗単位)/ R2 中タスク(明示 duration・target)→ R5(プロファイル)→ R6(進捗記録)→ R7(再計画)**。
 
-現在地は R2-S(stabilization)。correctness の土台(既存予定除外・生活制約・yearRange は完了、予備日・個別削除・atomic・対話設計が残 open)を固めてから R2-D の renderer 実接続へ進む。R4(質問計画)は R2-S の対話設計タスク(D/E)が先取りするため、R2-D と一体で扱う。R8(予備日・6等分・atomic 配置)は R2-S の一部が前倒しで着手される。
+現在地は R2-AI / R2-S の消化直後。AI interpreter・AI renderer の両方が実接続され、correctness の土台(yearRange・既存予定除外・生活制約・sleep/study start・予備日・個別削除・atomic・質問計画)はすべて完了・closed。R4(質問計画)は R2-S の D/E で先取り済み。次の主戦場は、実使用で顕在化した **capacity 超過(R8: 6等分・1日上限)** と、入力理解拡大(R3 進捗単位一般化 / R2 中タスクの明示 duration・target)。renderer / interpreter の実 AI 品質評価(実ブラウザスモーク)は各1回、別途行う。
 
 R2 初期を最優先とする理由: 実ユーザーの利用で確認済みの体験問題であり、修正の入り口(parser・dialogue 文言・分類判定)がすべて特定済みで、R1 で整えた command boundary の上に小さく載せられるため。R2/R3 の本格的な入力理解拡大は、この初期対応と中タスクの設計メモを踏まえてから進める。
 
@@ -258,20 +263,20 @@ R2 初期を最優先とする理由: 実ユーザーの利用で確認済みの
 - **完了処理**: 実装 → ユーザー承認の後、タスクmdを `docs/ai/tasks/closed/` へ移動する。closed 内のタスクmdは記録なので書き換えない。承認前のタスクmdは `docs/ai/tasks/` 直下に残す。
 - **Phase をまたぐ発見**: タスク実装中に見つかった別問題は、そのタスクで直さず、roadmap の該当 Phase に追記するか新規タスク候補として報告する。
 
-直近の到達点(2026-07-07): R1 に加え、R2-AI(interpreter 基盤・実接続・candidate 契約)と R2-S の correctness の主要4件(yearRange 保持・既存予定除外・生活制約・sleep/study start)がクローズ済み。現在オープンなタスクは `docs/ai/tasks/` 直下を参照する(この roadmap には個別のオープンタスクを網羅列挙しない。§6 に次に切る候補のみ記す)。
+直近の到達点(2026-07-07・更新): R1 に加え、R2-AI(interpreter+renderer の基盤・実接続・candidate 契約)と R2-S の correctness 群がすべてクローズ済み。**現在オープンなタスクは0本**(`docs/ai/tasks/` 直下は空、すべて closed)。次に切る候補は §6 を参照。
 
 ## 6. 最初に切るべきタスク候補
 
-> 2026-07-07 更新: R2-AI 基盤と R2-S の correctness 主要4件は完了。現在の open は Phase R2-S(§3)の残5本。次に切るべき候補は以下(依存とコード現状で判断)。
+> 2026-07-07 更新: R2-AI(interpreter+renderer)と R2-S(correctness)がすべて完了・closed。open は0本。次に切るべき候補は以下(実使用スモークの残課題と依存で判断)。
 >
-> **残 open タスクと依存**:
-> - `draft-block-individual-delete`(UI regression・独立・依存なし)
-> - `seventh-day-reserve`(generator・独立・R8 隣接)
-> - `atomic-work-unit-splitting`(work item/generator・独立で完結、確認対話は staged が所有)
-> - `staged-dialogue-known-info`(質問計画 D・設計主体・E の前提)
-> - `question-rendering-separation`(質問文 E・D の出力契約に依存)
+> **次に切る候補**:
+> 1. **capacity 超過の配分(R8 の先取り)** — 過去問全量で 100 時間超が計画ウィンドウに収まらず `ask_relax_constraints` に落ちる既知挙動。spec §3 の 6等分・1日上限(基準作業量 ×1.5)を新 intake path の generator に導入。予備日(`7b3e288`)と接続する配置品質の中核。
+> 2. **renderer / interpreter の実 AI 評価(実ブラウザスモーク各1回)** — R2-C-eval と同型。renderer は実接続直後で実挙動未検証。
+> 3. **明示 duration / daily・weekday・weekend target の受理**(R2 初期の中タスク)— 設計メモ先行。
+> 4. **既知カレンダー予定の intake 注入・差分提示**(staged 候補 b)/ 分割許可の確認対話(staged 候補 c)。
+> 5. 監査由来の小改善: renderer の無質問ターン AI コール抑止ガード(コスト削減・正しさ影響なし)。
 >
-> **次に着手すべき1本: `draft-block-individual-delete`。** 理由: 生成品質の correctness 群(yearRange/既存予定/生活制約)が揃った今、ユーザーが仮予定を操作できない UI regression が体験上の最大の欠落であり、他タスクへの依存がなく、scheduling/AI とは独立に完結できる。次点は `seventh-day-reserve`(独立・小)、その後に対話設計 D→E を R2-D の前提として着手する。
+> **次に着手すべき1本: capacity 配分(R8 先取り)。** 理由: correctness の土台と AI 入出力が揃った今、実使用で「生成はできるが全量が収まらず relax を促される」ことが体験上の最大の残欠落であり、予備日実装と直接つながる配置品質の中核。ただし着手前に設計メモ(6等分・上限・7日目予備日との整合)を先行させる。軽い先行として候補5(renderer コスト抑止ガード)を回収してもよい。
 
 1. **短答 slot filling(R2初期-1)** — 「3時間です」を直前質問の回答として受理し、再質問ループを止める。体験への影響が大きく範囲が小さいため最初の1本。
 2. **情報不足と条件矛盾の分類分離(R2初期-2)** — dialogueManager の decision 判定と文言の対応修正。

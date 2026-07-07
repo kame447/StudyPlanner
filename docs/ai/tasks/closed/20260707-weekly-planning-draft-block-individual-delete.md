@@ -1,5 +1,7 @@
 # 日付表示からの仮予定の個別削除導線を復活させる(UI regression)
 
+> **完了記録(2026-07-07・コミット `1df831f`)**: 日付ごとの表示から仮予定を個別削除する導線を復活。weeklyPlanning テスト green / build 成功。
+
 WeeklyPlanDraftBlock MVP では、仮予定の個別削除・一括破棄・一括承認が基本操作だった。現在、日付ごとの表示から仮予定を個別削除できない。renderer / scheduling とは別の **UI regression** として扱う。
 
 本mdの範囲外へ進まない。git add / commit / push はしない。
