@@ -1,4 +1,6 @@
-# AI interpreter の command response schema 完全化(union 化と完全性テスト)
+# AI interpreter の command response schema 完全化(union 化と完全性テスト)【完了 2026-07-05】
+
+> **完了記録**: 実装・採用・コミット済み。anyOf union(11 command)と schema 完全性テストを導入し、再スモークで AI は完全な payload を返すようになった。ただし strict: false 下で `needsConfirmation` がラッパーから top-level へ位置ずれするドリフトが新たに観測され、後続の `closed/20260705-weekly-planning-candidate-wrapper-simplification.md` で契約自体を簡素化して解決した。
 
 candidate contract fix 後の再スモークで見つかった回帰の修正タスク。**R2-D はこのタスクと再スモークの完了後に進む。**
 

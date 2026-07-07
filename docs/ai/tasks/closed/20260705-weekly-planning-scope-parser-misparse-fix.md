@@ -1,4 +1,6 @@
-# scope parser の誤解釈修正(「1年分は3時間」の totalYears 誤取得)
+# scope parser の誤解釈修正(「1年分は3時間」の totalYears 誤取得)【完了 2026-07-05】
+
+> **完了記録**: 実装・採用・コミット済み。単価文脈の totalYears 除外(修正#1)は継続対話スモークで機能を確認(phantom scope なし・totalYears 非上書き・unit rate 受理)。yearRange 単独生成(旧・問題2)は本md内の訂正どおり取り下げ・revert 済みで、foundation テスト3件も green に復帰。将来の再設計条件は `20260705-weekly-planning-r2c-eval.md` の発見事項を参照。
 
 継続対話スモークで確認された、決定的 scope parser の誤動作を修正する。intended behavior 変更として red → green で進める。
 

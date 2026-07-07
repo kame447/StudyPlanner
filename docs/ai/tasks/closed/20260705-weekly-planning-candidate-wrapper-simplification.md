@@ -1,4 +1,6 @@
-# 【最優先】AI candidate ラッパー契約の簡素化(candidates: command[] 化+寛容パース)
+# 【最優先】AI candidate ラッパー契約の簡素化(candidates: command[] 化+寛容パース)【完了 2026-07-05】
+
+> **完了記録**: 実装・採用・コミット済み。継続対話スモークで実 AI の bare command 応答(set_exam_scope / set_priority_policy)が parser → validator → reducer を通過し、**AI 経路が初めて end-to-end で成功**した。R2-D 着手条件のもう一方(scope parser 修正)も完了済み。残る前提は `20260705-weekly-planning-zero-progress-draft-request.md`(open)の完了とスモークでの draft 到達確認。
 
 継続対話スモークで、AI が完全な command payload を返したにもかかわらず、candidate ラッパーの `needsConfirmation` が top-level に位置ずれしただけで**全候補が破棄**される回帰が確認された。ラッパー契約を簡素化し、この種の位置ずれ・欠落で payload が失われないようにする。
 

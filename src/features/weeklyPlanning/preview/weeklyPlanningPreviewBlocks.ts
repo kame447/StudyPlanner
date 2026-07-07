@@ -59,6 +59,32 @@ export function removeWeeklyPlanningPreviewBlock({
   };
 }
 
+export function createWeeklyPlanningPreviewDisplayBlock(
+  block: WeeklyPlanningPreviewBlock,
+  userId: string,
+): WeeklyPlanDraftBlock {
+  const deterministicTimestamp = `${block.date}T${block.startTime}:00`;
+
+  return {
+    id: block.id,
+    userId,
+    date: block.date,
+    startTime: block.startTime,
+    endTime: block.endTime,
+    title: block.title,
+    subject: block.field,
+    type: 'study',
+    label: block.field,
+    materialId: null,
+    memo: `unsaved-preview: ${block.workItemKey}`,
+    source: 'ai',
+    status: 'draft',
+    userEdited: false,
+    createdAt: deterministicTimestamp,
+    updatedAt: deterministicTimestamp,
+  };
+}
+
 export interface CreateWeeklyDraftBlocksFromPreviewCandidatesInput {
   candidates: WeeklyDraftCandidate[];
   userId: string;

@@ -5,7 +5,10 @@ import {
   weeklyPlanningReducer,
 } from './weeklyPlanningReducer';
 
-function draftBlock(id: string): WeeklyPlanDraftBlock {
+function draftBlock(
+  id: string,
+  overrides: Partial<WeeklyPlanDraftBlock> = {},
+): WeeklyPlanDraftBlock {
   return {
     id,
     userId: 'user-1',
@@ -24,6 +27,7 @@ function draftBlock(id: string): WeeklyPlanDraftBlock {
     userEdited: false,
     createdAt: '2026-06-19T00:00:00.000Z',
     updatedAt: '2026-06-19T00:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -55,5 +59,81 @@ describe('weeklyPlanningReducer', () => {
     expect(afterRemove.draftBlocks.map((block) => block.id)).toEqual(['draft-2']);
     expect(afterClear.draftBlocks).toEqual([]);
     expect(afterClear.mode).toBe('idle');
+  });
+
+
+  it('removes only the matching draft block id while preserving the other blocks unchanged', () => {
+    const first = draftBlock('draft-1', {
+      title: 'math 2020',
+      subject: 'math',
+      startTime: '09:00',
+      endTime: '10:00',
+    });
+    const target = draftBlock('draft-2', {
+      title: 'math 2020',
+      subject: 'math',
+      startTime: '09:00',
+      endTime: '10:00',
+    });
+    const third = draftBlock('draft-3', {
+      title: 'math 2020',
+      subject: 'math',
+      startTime: '11:00',
+      endTime: '12:00',
+    });
+    const state = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
+      type: 'add_draft_blocks',
+      blocks: [first, target, third],
+    });
+
+    const afterRemove = weeklyPlanningReducer(state, {
+      type: 'remove_draft_block',
+      blockId: target.id,
+    });
+
+    expect(afterRemove.draftBlocks).toEqual([first, third]);
+    expect(afterRemove.mode).toBe('awaiting_approval');
+  });
+
+  it('keeps individually removed blocks out of the later bulk approval removal path', () => {
+    const removed = draftBlock('draft-1');
+    const remaining = draftBlock('draft-2');
+    const state = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
+      type: 'add_draft_blocks',
+      blocks: [removed, remaining],
+    });
+    const afterIndividualRemove = weeklyPlanningReducer(state, {
+      type: 'remove_draft_block',
+      blockId: removed.id,
+    });
+    const blockIdsApprovedFromCurrentState = afterIndividualRemove.draftBlocks
+      .filter((block) => block.status === 'draft')
+      .map((block) => block.id);
+    const afterBulkApprovalRemoval = weeklyPlanningReducer(afterIndividualRemove, {
+      type: 'remove_draft_blocks',
+      blockIds: blockIdsApprovedFromCurrentState,
+    });
+
+    expect(blockIdsApprovedFromCurrentState).toEqual([remaining.id]);
+    expect(afterBulkApprovalRemoval.draftBlocks).toEqual([]);
+    expect(afterBulkApprovalRemoval.mode).toBe('idle');
+  });
+
+  it('keeps bulk discard behavior intact after an individual removal', () => {
+    const state = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
+      type: 'add_draft_blocks',
+      blocks: [draftBlock('draft-1'), draftBlock('draft-2')],
+    });
+    const afterRemove = weeklyPlanningReducer(state, {
+      type: 'remove_draft_block',
+      blockId: 'draft-1',
+    });
+    const afterDiscard = weeklyPlanningReducer(afterRemove, {
+      type: 'clear_draft_blocks',
+    });
+
+    expect(afterRemove.draftBlocks.map((block) => block.id)).toEqual(['draft-2']);
+    expect(afterDiscard.draftBlocks).toEqual([]);
+    expect(afterDiscard.mode).toBe('idle');
   });
 });

@@ -2,7 +2,11 @@
 
 R2 を「正規表現 parser を増やして自然言語対応範囲を広げるフェーズ」から「AI interpreter + deterministic validation + AI dialogue renderer を含む入力理解基盤の拡張フェーズ」へ再整理するための設計メモである。**実装タスクmdではない。** ここから個別タスクを切るときは、この設計と切り出し時点の実コードを突き合わせること。
 
-- 作成日: 2026-07-04
+> **状態(2026-07-07 更新): 本メモは大部分が実装反映済みの設計記録である。** §2〜§7(interpreter 境界の再設計、candidate validator、escalation、confidence→assumption/ambiguity、renderer 基盤、AI 実接続、テスト二層)は R2-A/R2-B/R2-C として実装・コミット済み。§8 の R2初期(slot filling / 分類分離 / 年度範囲 / 契約修正)と candidate 契約の一連の修正(confidence 必須化・schema union 化・wrapper 簡素化)も closed 済み。実 AI 評価も1回完了(`tasks/closed/20260705-weekly-planning-r2c-eval.md`)。
+>
+> **未実装として残るのは R2-D(renderer の実 AI 接続)のみ。** ただし R2-D の着手条件は「実使用スモーク由来の correctness/stabilization 群」と「対話設計(質問計画 D / 質問文 E)」の整理後になる。最新の進捗と着手順序は `weekly-planning-roadmap.md` を正とする(本メモは設計判断の記録として保持)。本メモは strategy 配下に残し、tasks/closed へは移動しない。
+
+- 作成日: 2026-07-04 / 最終更新: 2026-07-07(実装反映済みの設計記録として状態注記)
 - 前提: R1 クローズ済み(command boundary 完成、`docs/ai/tasks/closed/20260703-weekly-planning-r1-completion-report.md`)
 - 関連: `docs/weekly-planning/weekly-planning-spec.md` §12(LLM/コード分担)、`docs/architecture/weekly-planning-responsibility-separation.md`(AI adapter は command 生成に限定・boundary 確立後に導入)、`docs/ai/strategy/weekly-planning-roadmap.md`
 

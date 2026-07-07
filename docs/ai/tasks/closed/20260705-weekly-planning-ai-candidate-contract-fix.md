@@ -1,4 +1,6 @@
-# AI candidate 受信契約の不整合修正(confidence 必須化・候補単位処理・enum 語彙検証)
+# AI candidate 受信契約の不整合修正(confidence 必須化・候補単位処理・enum 語彙検証)【完了 2026-07-05】
+
+> **完了記録**: 実装・採用・コミット済み。候補単位処理・parseRejections 記録・enum 語彙検証は以後の再スモークで機能を確認。ただし本タスクで schema の properties に confidence だけを列挙したことが「payload 欠落応答」の回帰を生み、後続の `closed/20260705-weekly-planning-command-schema-completion.md` で修正された。
 
 R2-C-eval の手動スモーク(実 AI 到達成功・抽出品質良好・**受信側不整合で全滅**)で判明した、AI 応答の受信契約の不整合を修正する小タスク。**R2-D(renderer 実接続)は本タスク完了後に進む。**
 

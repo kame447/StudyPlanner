@@ -3,6 +3,7 @@ import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGen
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
+  createWeeklyPlanningPreviewDisplayBlock,
   removeWeeklyPlanningPreviewBlock,
 } from './weeklyPlanningPreviewBlocks';
 
@@ -88,6 +89,22 @@ describe('weekly planning preview blocks', () => {
     });
 
     expect(draftBlock?.id).toBe(previewBlock?.id);
+  });
+
+  it('uses the same stable id for preview display removal and promotion', () => {
+    const [previewBlock] = createWeeklyPlanningPreviewBlocks([candidate]);
+    const [draftBlock] = createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: [candidate],
+      userId: 'user-1',
+      createdAt: '2026-06-30T00:00:00.000Z',
+    });
+    const displayBlock = createWeeklyPlanningPreviewDisplayBlock(
+      previewBlock!,
+      'user-1',
+    );
+
+    expect(displayBlock.id).toBe(previewBlock?.id);
+    expect(displayBlock.id).toBe(draftBlock?.id);
   });
 
   it('removes a local preview block and matching candidate by block id', () => {
