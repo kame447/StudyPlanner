@@ -8,6 +8,7 @@ import {
 } from '../dialogue/weeklyPlanningDialogueRenderer';
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import {
+  applyWeeklyPlanningCommands,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import type {
@@ -187,6 +188,39 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(output.interpreterDiagnostics?.acceptedWithConfirmation.map((command) => command.type)).toEqual([
       'set_priority_policy',
     ]);
+  });
+
+  it('keeps the existing year range when a later exam scope command omits it', () => {
+    const initialState = createInitialPlanningIntakeState();
+    const scopedState = applyWeeklyPlanningCommands(initialState, [
+      setExamScopeCommand('high'),
+    ]);
+    const followUpScopeWithoutYearRange: ParsedWeeklyPlanningCommand = {
+      type: 'set_exam_scope',
+      scope: {
+        examType: '院試',
+        fields: [...evaluationCase.fields],
+        totalFields: evaluationCase.fields.length,
+        totalYears: 7,
+        strategyHint: 'field_first',
+        unitModel: 'year_field_chunk',
+        rawText: ['バイト・睡眠・食事・風呂・過去問1年分3時間'],
+      },
+      sourceText: 'バイト・睡眠・食事・風呂・過去問1年分3時間',
+      confidence: 'medium',
+    };
+
+    const output = applyWeeklyPlanningCommands(scopedState, [
+      followUpScopeWithoutYearRange,
+    ]);
+
+    expect(output.examPrepScope).toMatchObject({
+      fields: evaluationCase.fields,
+      totalYears: 7,
+      yearRange: { startYear: 2025, endYear: 2019 },
+      unitModel: 'year_field_chunk',
+    });
+    expect(output.missing).not.toContain('year_range');
   });
 
   it('exposes AI parser rejections through pipeline interpreter diagnostics', async () => {

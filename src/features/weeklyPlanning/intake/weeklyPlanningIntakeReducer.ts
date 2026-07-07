@@ -1,4 +1,5 @@
 import type {
+  ExamPrepScope,
   PlanningIntakeState,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
@@ -87,6 +88,33 @@ function parseWeeklyPlanningCommands(params: {
     ...parseAddUnavailableCommands(params.userText, params.context),
     ...parseConstraintCommands(params.userText, params.context),
   ];
+}
+
+function mergeExamPrepScopeForCommand(
+  previousScope: ExamPrepScope | undefined,
+  commandScope: ExamPrepScope,
+): ExamPrepScope {
+  const totalFields = commandScope.totalFields ?? previousScope?.totalFields;
+  const totalYears = commandScope.totalYears ?? previousScope?.totalYears;
+  const fields = commandScope.fields.length > 0
+    ? commandScope.fields
+    : previousScope?.fields ?? [];
+
+  return {
+    examType: commandScope.examType ?? previousScope?.examType,
+    fields,
+    totalFields,
+    totalYears,
+    yearRange: commandScope.yearRange ?? previousScope?.yearRange,
+    strategyHint: commandScope.strategyHint ?? previousScope?.strategyHint,
+    unitModel: commandScope.unitModel ?? previousScope?.unitModel,
+    unitCountHint: commandScope.unitCountHint
+      ?? (totalFields && totalYears ? totalFields * totalYears : previousScope?.unitCountHint),
+    rawText: uniqueList([
+      ...(previousScope?.rawText ?? []),
+      ...commandScope.rawText,
+    ]),
+  };
 }
 
 function applyMarkCompletedUnitsCommand(
@@ -240,21 +268,22 @@ function applyWeeklyPlanningCommand(
       };
     }
     case 'set_exam_scope': {
+      const examPrepScope = mergeExamPrepScopeForCommand(state.examPrepScope, command.scope);
       const nextState = {
         ...state,
-        intent: command.scope.examType === '院試' ? 'exam_prep_planning' : state.intent,
-        examPrepScope: command.scope,
+        intent: examPrepScope.examType === '院試' ? 'exam_prep_planning' : state.intent,
+        examPrepScope,
         missing: removeMissing(state.missing, ['tasks_or_goals']),
       };
 
       let nextMissing = nextState.missing;
-      if (command.scope.totalYears && !command.scope.yearRange) {
+      if (examPrepScope.totalYears && !examPrepScope.yearRange) {
         nextMissing = addMissing(nextMissing, ['year_range']);
       }
-      if (command.scope.yearRange) {
+      if (examPrepScope.yearRange) {
         nextMissing = removeMissing(nextMissing, ['year_range']);
       }
-      if (command.scope.unitModel === 'year_field_chunk' && nextState.unitRates.length === 0) {
+      if (examPrepScope.unitModel === 'year_field_chunk' && nextState.unitRates.length === 0) {
         nextMissing = addMissing(nextMissing, ['unit_duration_estimate']);
       }
 
