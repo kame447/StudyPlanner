@@ -136,6 +136,167 @@ function hasCandidateOverlap(params: {
 
 describe('weekly draft candidate generator dry-run', () => {
 
+  function oneHourAtomicWorkItems(count: number): WeeklyPlanningRemainingWorkItem[] {
+    return Array.from({ length: count }, (_, index) => ({
+      field: 'math',
+      year: 2020 - index,
+      estimatedMinutes: 60,
+      unit: 'year_field_chunk' as const,
+      splitPolicy: 'atomic' as const,
+      source: 'exam_prep_request' as const,
+    }));
+  }
+
+  it('keeps the relative seventh day as reserve when normal work fits in the first six days', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: oneHourAtomicWorkItems(6),
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-07-01',
+      planningDayCount: 7,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '10:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates.map((candidate) => candidate.date)).toEqual([
+      '2026-07-01',
+      '2026-07-02',
+      '2026-07-03',
+      '2026-07-04',
+      '2026-07-05',
+      '2026-07-06',
+    ]);
+    expect(result.candidates.some((candidate) => candidate.date === '2026-07-07')).toBe(false);
+    expect(result.diagnostics.reserveDate).toBe('2026-07-07');
+    expect(result.diagnostics.normalPlacementDayCount).toBe(6);
+    expect(result.diagnostics.reserveDayUsed).toBe(false);
+  });
+
+  it('uses the reserve day only for overflow that does not fit in the first six days', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: oneHourAtomicWorkItems(7),
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-07-01',
+      planningDayCount: 7,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '10:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates.map((candidate) => candidate.date)).toEqual([
+      '2026-07-01',
+      '2026-07-02',
+      '2026-07-03',
+      '2026-07-04',
+      '2026-07-05',
+      '2026-07-06',
+      '2026-07-07',
+    ]);
+    expect(result.diagnostics.reserveDate).toBe('2026-07-07');
+    expect(result.diagnostics.reserveDayUsed).toBe(true);
+    expect(result.diagnostics.decisionTrace).toContain('reserve-day-used:2026-07-07');
+    expect(result.diagnostics.unscheduledItems).toEqual([]);
+  });
+
+  it('keeps reserve-day hard constraints in the planning window when overflow uses the reserve day', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: oneHourAtomicWorkItems(13),
+      constraints: [],
+      fixedEvents: [
+        {
+          kind: 'fixed_event' as const,
+          date: '2026-07-07',
+          start: '09:00',
+          end: '10:00',
+          hardness: 'hard' as const,
+          rawText: 'reserve day event',
+        },
+      ],
+      planningStartDate: '2026-07-01',
+      planningDayCount: 7,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '11:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.diagnostics.reserveDate).toBe('2026-07-07');
+    expect(result.diagnostics.reserveDayUsed).toBe(true);
+    expect(result.candidates[result.candidates.length - 1]).toEqual(expect.objectContaining({
+      date: '2026-07-07',
+      startTime: '10:00',
+      endTime: '11:00',
+    }));
+    expect(result.diagnostics.fixedEventConflicts).toEqual([]);
+  });
+
+  it('treats the final planning-window day as reserve regardless of weekday', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: oneHourAtomicWorkItems(6),
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-07-02',
+      planningDayCount: 7,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '10:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.diagnostics.reserveDate).toBe('2026-07-08');
+    expect(result.candidates.some((candidate) => candidate.date === '2026-07-08')).toBe(false);
+    expect(result.candidates.map((candidate) => candidate.date)).toEqual([
+      '2026-07-02',
+      '2026-07-03',
+      '2026-07-04',
+      '2026-07-05',
+      '2026-07-06',
+      '2026-07-07',
+    ]);
+  });
+
+  it('keeps short planning windows fully available instead of treating the final day as reserve', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: oneHourAtomicWorkItems(3),
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-07-01',
+      planningDayCount: 3,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '10:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(result.candidates.map((candidate) => candidate.date)).toEqual([
+      '2026-07-01',
+      '2026-07-02',
+      '2026-07-03',
+    ]);
+    expect(result.diagnostics.reserveDate).toBeUndefined();
+    expect(result.diagnostics.normalPlacementDayCount).toBe(3);
+    expect(result.diagnostics.reserveDayUsed).toBe(false);
+  });
+
   it('uses study available start as the daily placement lower bound separately from sleep end', () => {
     const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
       ...baseInput,

@@ -61,6 +61,9 @@ export interface WeeklyDraftCandidateDiagnostics {
   constraintConflicts: WeeklyDraftCandidateConflict[];
   fixedEventConflicts: WeeklyDraftCandidateConflict[];
   lifeConstraintConflicts: WeeklyDraftCandidateConflict[];
+  reserveDate?: string;
+  reserveDayUsed: boolean;
+  normalPlacementDayCount: number;
   fieldOrderPreserved: boolean;
   completedYearsExcluded: boolean;
   deterministicKey: string;
@@ -309,6 +312,31 @@ function buildBusyIntervals(params: {
   return { intervals: [...intervals, ...externalIntervals], floatingConstraints };
 }
 
+interface ReserveDayPolicy {
+  normalPlacementDayCount: number;
+  reserveDateIndex?: number;
+  reserveDate?: string;
+}
+
+function resolveReserveDayPolicy(params: {
+  planningStartDate: string;
+  planningDayCount: number;
+}): ReserveDayPolicy {
+  if (params.planningDayCount !== 7) {
+    return {
+      normalPlacementDayCount: params.planningDayCount,
+    };
+  }
+
+  const reserveDateIndex = params.planningDayCount - 1;
+
+  return {
+    normalPlacementDayCount: reserveDateIndex,
+    reserveDateIndex,
+    reserveDate: addDays(params.planningStartDate, reserveDateIndex),
+  };
+}
+
 function buildStudyAvailableStartMinutesByDate(params: {
   constraints: LifeConstraint[];
   fixedEvents: LifeConstraint[];
@@ -469,8 +497,13 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     planningStartDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
   });
+  const reservePolicy = resolveReserveDayPolicy({
+    planningStartDate: input.planningStartDate,
+    planningDayCount: input.planningDayCount,
+  });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledItems: WeeklyPlanningRemainingWorkItem[] = [];
+  let reserveDayUsed = false;
   const decisionTrace = floatingConstraints.map(
     (constraint) => `floating-${constraint.kind}-constraint:${constraint.rawText ?? 'no-source'}`,
   );
@@ -488,20 +521,37 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     let itemFullyScheduled = true;
 
     for (const durationMinutes of chunks) {
-      const slot = findNextSlot({
+      let slot = findNextSlot({
         durationMinutes,
         cursorDateIndex,
         cursorMinutes,
         planningStartDate: input.planningStartDate,
-        planningDayCount: input.planningDayCount,
+        planningDayCount: reservePolicy.normalPlacementDayCount,
         policy,
         busyIntervals,
         studyAvailableStartMinutesByDate,
       });
 
+      if (!slot && reservePolicy.reserveDateIndex !== undefined) {
+        slot = findNextSlot({
+          durationMinutes,
+          cursorDateIndex: reservePolicy.reserveDateIndex,
+          cursorMinutes: cursorDateIndex === reservePolicy.reserveDateIndex ? cursorMinutes : 0,
+          planningStartDate: input.planningStartDate,
+          planningDayCount: input.planningDayCount,
+          policy,
+          busyIntervals,
+          studyAvailableStartMinutesByDate,
+        });
+      }
+
       if (!slot) {
         itemFullyScheduled = false;
         break;
+      }
+
+      if (slot.dateIndex === reservePolicy.reserveDateIndex) {
+        reserveDayUsed = true;
       }
 
       const date = addDays(input.planningStartDate, slot.dateIndex);
@@ -542,6 +592,10 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     0,
   );
 
+  const finalDecisionTrace = reserveDayUsed && reservePolicy.reserveDate
+    ? [...decisionTrace, `reserve-day-used:${reservePolicy.reserveDate}`]
+    : decisionTrace;
+
   return {
     candidates,
     diagnostics: {
@@ -551,13 +605,16 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
       constraintConflicts: allConflicts,
       fixedEventConflicts,
       lifeConstraintConflicts,
+      reserveDate: reservePolicy.reserveDate,
+      reserveDayUsed,
+      normalPlacementDayCount: reservePolicy.normalPlacementDayCount,
       fieldOrderPreserved: isFieldOrderPreserved({
         remainingWorkItems: input.remainingWorkItems,
         candidates,
       }),
       completedYearsExcluded: true,
       deterministicKey: createDeterministicKey(candidates),
-      decisionTrace,
+      decisionTrace: finalDecisionTrace,
       shouldSavePlan: false,
     },
   };
