@@ -56,6 +56,7 @@ export interface UpdateLifeConstraintCommand {
     start?: string;
     end?: string;
     durationMinutes?: number;
+    studyAvailableStart?: string;
     hardness: 'hard' | 'soft';
   };
   sourceText: string;

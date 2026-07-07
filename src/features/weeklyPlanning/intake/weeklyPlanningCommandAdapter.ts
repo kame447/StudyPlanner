@@ -56,6 +56,7 @@ export function toLifeConstraintFromUpdateLifeConstraintCommand(
     start: command.constraint.start,
     end: command.constraint.end,
     durationMinutes: command.constraint.durationMinutes,
+    studyAvailableStart: command.constraint.studyAvailableStart,
     hardness: command.constraint.hardness,
     rawText: command.sourceSegment ?? command.sourceText,
   };
