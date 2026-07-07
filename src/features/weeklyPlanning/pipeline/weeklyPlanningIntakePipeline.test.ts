@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Plan } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
@@ -19,6 +20,66 @@ const defaultPipelineInput = {
     breakMinutes: 0,
   },
 };
+
+function plan(overrides: Partial<Plan>): Plan {
+  return {
+    id: 'plan-1',
+    seriesId: 'series-1',
+    userId: 'user-1',
+    title: 'バイト',
+    subject: 'バイト',
+    date: '2026-06-30',
+    startTime: '20:00',
+    endTime: '22:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [],
+    type: 'other',
+    memo: '',
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function draftReadyState(): PlanningIntakeState {
+  return {
+    status: 'draft_ready',
+    intent: 'exam_prep_planning',
+    examPrepScope: {
+      examType: '院試',
+      fields: ['数学'],
+      totalFields: 1,
+      totalYears: 1,
+      yearRange: { startYear: 2020, endYear: 2020, sourceText: '2020' },
+      strategyHint: 'field_first',
+      unitModel: 'year_field_chunk',
+      rawText: ['数学 2020'],
+    },
+    tasks: [],
+    progress: [],
+    unitRates: [
+      {
+        unit: 'year_field_chunk',
+        minutesPerUnit: 60,
+        source: 'user',
+        uncertainty: 'low',
+        rawText: '1年分1時間',
+      },
+    ],
+    constraints: [],
+    priorityPolicy: { kind: 'field_first', order: ['数学'] },
+    missing: [],
+    assumptions: [],
+    uncertainties: [],
+    questions: [],
+    shouldCreateDraft: true,
+    shouldSavePlan: false,
+    sourceTurns: [],
+  };
+}
+
 
 function runTurn(previousState: PlanningIntakeState | undefined, userText: string) {
   return runWeeklyPlanningIntakePipeline({
@@ -334,6 +395,34 @@ describe('weekly planning intake pipeline', () => {
       ambiguities: ['completed_years_without_field_scope'],
       shouldSavePlan: false,
     });
+  });
+
+
+  it('passes existing plans to the new intake dry-run generator as hard busy intervals', () => {
+    const output = runWeeklyPlanningIntakePipeline({
+      previousState: draftReadyState(),
+      userText: 'この条件で作成',
+      planningStartDate: '2026-06-30',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '20:30',
+        dayStartTime: '09:00',
+        dayEndTime: '22:00',
+        breakMinutes: 0,
+      },
+      existingPlans: [
+        plan({
+          date: '2026-06-30',
+          startTime: '20:00',
+          endTime: '22:00',
+        }),
+      ],
+    });
+
+    expect(output.draftRequest).not.toBeNull();
+    expect(output.draftCandidates).toEqual([]);
+    expect(output.diagnostics?.unscheduledItems).toHaveLength(1);
+    expect(output.diagnostics?.constraintConflicts).toEqual([]);
   });
 
   it('runs the WP-RP-001 sequence through dry-run preview without saving', () => {

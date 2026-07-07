@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningRemainingWorkItem } from '../intake/weeklyPlanningRemainingWorkItems';
+import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import { createWeeklyDraftCandidatesFromRemainingWorkItems } from './weeklyDraftCandidateGenerator';
 import { expandRecurringUnavailableConstraints } from './weeklyPlanningConstraintScheduling';
 
@@ -70,7 +71,144 @@ const baseInput = {
   },
 };
 
+function plan(overrides: Partial<Plan>): Plan {
+  return {
+    id: 'plan-1',
+    seriesId: 'series-1',
+    userId: 'user-1',
+    title: 'バイト',
+    subject: 'バイト',
+    date: '2026-06-30',
+    startTime: '20:00',
+    endTime: '22:00',
+    repeat: 'none',
+    repeatUntil: null,
+    excludedDates: [],
+    recurrenceRules: [],
+    type: 'other',
+    memo: '',
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function scheduleTemplate(overrides: Partial<ScheduleTemplate>): ScheduleTemplate {
+  return {
+    id: 'template-1',
+    userId: 'user-1',
+    title: '計算理論',
+    subject: '計算理論',
+    type: 'school-event',
+    weekday: 'tue',
+    startTime: '10:20',
+    endTime: '11:50',
+    termId: 'term-1',
+    periodNumber: 2,
+    classroom: 'A101',
+    memo: '',
+    active: true,
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function hasCandidateOverlap(params: {
+  result: ReturnType<typeof createWeeklyDraftCandidatesFromRemainingWorkItems>;
+  date: string;
+  startTime: string;
+  endTime: string;
+}): boolean {
+  const startMinutes = Number(params.startTime.slice(0, 2)) * 60 + Number(params.startTime.slice(3, 5));
+  const endMinutes = Number(params.endTime.slice(0, 2)) * 60 + Number(params.endTime.slice(3, 5));
+
+  return params.result.candidates.some((candidate) => {
+    const candidateStart = Number(candidate.startTime.slice(0, 2)) * 60 + Number(candidate.startTime.slice(3, 5));
+    const candidateEnd = Number(candidate.endTime.slice(0, 2)) * 60 + Number(candidate.endTime.slice(3, 5));
+
+    return candidate.date === params.date && candidateStart < endMinutes && startMinutes < candidateEnd;
+  });
+}
+
 describe('weekly draft candidate generator dry-run', () => {
+
+  it('avoids existing plans as hard busy intervals with the legacy buffer', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 60,
+          unit: 'year_field_chunk',
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-06-30',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '20:30',
+        dayStartTime: '09:00',
+        dayEndTime: '22:00',
+        breakMinutes: 0,
+      },
+      existingPlans: [
+        plan({
+          date: '2026-06-30',
+          startTime: '20:00',
+          endTime: '22:00',
+        }),
+      ],
+    });
+
+    expect(hasCandidateOverlap({
+      result,
+      date: '2026-06-30',
+      startTime: '20:00',
+      endTime: '22:00',
+    })).toBe(false);
+    expect(result.candidates).toEqual([]);
+    expect(result.diagnostics.unscheduledItems).toHaveLength(1);
+  });
+
+  it('avoids active timetable templates as hard busy intervals in the new intake generator', () => {
+    const result = createWeeklyDraftCandidatesFromRemainingWorkItems({
+      ...baseInput,
+      remainingWorkItems: [
+        {
+          field: '数学・数理系',
+          year: 2020,
+          estimatedMinutes: 120,
+          unit: 'year_field_chunk',
+          source: 'exam_prep_request',
+        },
+      ],
+      constraints: [],
+      fixedEvents: [],
+      planningStartDate: '2026-06-30',
+      planningDayCount: 1,
+      sessionPolicy: {
+        firstDayStartTime: '09:00',
+        dayStartTime: '09:00',
+        dayEndTime: '13:00',
+        breakMinutes: 0,
+      },
+      scheduleTemplates: [scheduleTemplate({})],
+      timetableTermId: 'term-1',
+    });
+
+    expect(hasCandidateOverlap({
+      result,
+      date: '2026-06-30',
+      startTime: '10:20',
+      endTime: '11:50',
+    })).toBe(false);
+    expect(result.diagnostics.constraintConflicts).toEqual([]);
+  });
+
   it('creates unapproved deterministic candidates while preserving field order and avoiding constraints', () => {
     const result = createWeeklyDraftCandidatesFromRemainingWorkItems(baseInput);
 

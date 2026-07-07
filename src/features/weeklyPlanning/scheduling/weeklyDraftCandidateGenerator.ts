@@ -1,4 +1,7 @@
 import { addDays } from '../../../lib/date';
+import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
+import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
+import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { LifeConstraint } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningRemainingWorkItem } from '../intake/weeklyPlanningRemainingWorkItems';
 import type { SessionLengthPolicy } from '../weeklyPlanningTypes';
@@ -19,6 +22,10 @@ export interface WeeklyDraftCandidateGeneratorInput {
   planningStartDate: string;
   planningDayCount: number;
   sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
+  existingPlans?: Plan[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  existingPlanBufferMinutes?: number;
 }
 
 export interface WeeklyDraftCandidate {
@@ -72,6 +79,8 @@ interface BusyInterval {
   endMinutes: number;
   constraint: LifeConstraint;
 }
+
+const DEFAULT_EXISTING_PLAN_BUFFER_MINUTES = 30;
 
 const DEFAULT_SESSION_POLICY: WeeklyDraftCandidateSessionPolicy = {
   mode: 'deep_work',
@@ -166,11 +175,99 @@ function constraintToBusyInterval(
   return null;
 }
 
+function createExternalBusyConstraint(params: {
+  kind: 'fixed_event';
+  rawText: string;
+}): LifeConstraint {
+  return {
+    kind: params.kind,
+    hardness: 'hard',
+    rawText: params.rawText,
+  };
+}
+
+function planToBusyInterval(plan: Plan, bufferMinutes: number): BusyInterval | null {
+  const startMinutes = Math.max(0, minutesFromTime(plan.startTime) - bufferMinutes);
+  const endMinutes = Math.min(24 * 60, minutesFromTime(plan.endTime) + bufferMinutes);
+
+  if (endMinutes <= startMinutes) {
+    return null;
+  }
+
+  return {
+    date: plan.date,
+    startMinutes,
+    endMinutes,
+    constraint: createExternalBusyConstraint({
+      kind: 'fixed_event',
+      rawText: `existing-plan:${plan.title}`,
+    }),
+  };
+}
+
+function getScheduleTemplateTermId(template: ScheduleTemplate): string {
+  return template.termId || 'default';
+}
+
+function buildTimetableBusyIntervals(params: {
+  scheduleTemplates: ScheduleTemplate[];
+  timetableTermId?: string;
+  planningStartDate: string;
+  planningDayCount: number;
+  bufferMinutes: number;
+}): BusyInterval[] {
+  const termId = params.timetableTermId ?? 'default';
+  const templates = params.scheduleTemplates.filter(
+    (template) => getScheduleTemplateTermId(template) === termId,
+  );
+
+  if (templates.length === 0) {
+    return [];
+  }
+
+  return Array.from({ length: params.planningDayCount }, (_, index) => addDays(params.planningStartDate, index))
+    .flatMap((date) =>
+      buildTimetableImportCandidates({
+        templates,
+        date,
+        weekday: getRecurrenceWeekday(date),
+        termId,
+      }).flatMap((candidate) => {
+        const interval = planToBusyInterval({
+          id: `weekly-timetable-block:${candidate.sourceId}`,
+          seriesId: 'weekly-timetable-block',
+          userId: candidate.templates[0]?.userId ?? '',
+          title: candidate.title,
+          subject: candidate.subject,
+          date,
+          startTime: candidate.startTime,
+          endTime: candidate.endTime,
+          repeat: 'none',
+          repeatUntil: null,
+          excludedDates: [],
+          recurrenceRules: [],
+          type: candidate.type,
+          memo: candidate.memo,
+          createdAt: '',
+          updatedAt: '',
+          sourceType: 'timetable',
+          sourceId: candidate.sourceId,
+        }, params.bufferMinutes);
+
+        return interval ? [interval] : [];
+      }),
+    );
+}
+
 function buildBusyIntervals(params: {
   constraints: LifeConstraint[];
   fixedEvents: LifeConstraint[];
   planningStartDate: string;
   planningDayCount: number;
+  existingPlans?: Plan[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  existingPlanBufferMinutes?: number;
 }): {
   intervals: BusyInterval[];
   floatingConstraints: LifeConstraint[];
@@ -193,7 +290,23 @@ function buildBusyIntervals(params: {
     }
   });
 
-  return { intervals, floatingConstraints };
+  const existingPlanBufferMinutes = params.existingPlanBufferMinutes ?? DEFAULT_EXISTING_PLAN_BUFFER_MINUTES;
+  const externalIntervals = [
+    ...(params.existingPlans ?? []).flatMap((plan) => {
+      const interval = planToBusyInterval(plan, existingPlanBufferMinutes);
+
+      return interval ? [interval] : [];
+    }),
+    ...buildTimetableBusyIntervals({
+      scheduleTemplates: params.scheduleTemplates ?? [],
+      timetableTermId: params.timetableTermId,
+      planningStartDate: params.planningStartDate,
+      planningDayCount: params.planningDayCount,
+      bufferMinutes: existingPlanBufferMinutes,
+    }),
+  ];
+
+  return { intervals: [...intervals, ...externalIntervals], floatingConstraints };
 }
 
 function findNextSlot(params: {
@@ -298,6 +411,10 @@ export function createWeeklyDraftCandidatesFromRemainingWorkItems(
     fixedEvents: input.fixedEvents,
     planningStartDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
+    existingPlans: input.existingPlans,
+    scheduleTemplates: input.scheduleTemplates,
+    timetableTermId: input.timetableTermId,
+    existingPlanBufferMinutes: input.existingPlanBufferMinutes,
   });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledItems: WeeklyPlanningRemainingWorkItem[] = [];

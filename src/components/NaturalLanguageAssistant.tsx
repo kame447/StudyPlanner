@@ -256,6 +256,8 @@ export function NaturalLanguageAssistant({
   plans,
   materials = [],
   subjects = [],
+  scheduleTemplates = [],
+  timetableTermId,
   onApplyDraft,
   weeklyDraftBlocks = [],
   onCreateWeeklyDraftBlocks,
@@ -515,6 +517,9 @@ export function NaturalLanguageAssistant({
           dayEndTime: '22:00',
           breakMinutes: 10,
         },
+        existingPlans: plans,
+        scheduleTemplates,
+        timetableTermId,
       };
       const aiConfig = getAiConfig();
       const shouldUseAiInterpreter =

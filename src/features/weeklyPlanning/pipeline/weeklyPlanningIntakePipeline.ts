@@ -24,6 +24,7 @@ import {
   createRemainingWorkItemsFromDraftRequest,
   type WeeklyPlanningRemainingWorkItemsResult,
 } from '../intake/weeklyPlanningRemainingWorkItems';
+import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import { shouldEscalateToInterpreter } from './weeklyPlanningInterpreterEscalation';
 import {
   createWeeklyDraftCandidatesFromRemainingWorkItems,
@@ -38,6 +39,10 @@ export interface WeeklyPlanningIntakePipelineInput {
   planningStartDate: string;
   planningDayCount: number;
   sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
+  existingPlans?: Plan[];
+  scheduleTemplates?: ScheduleTemplate[];
+  timetableTermId?: string;
+  existingPlanBufferMinutes?: number;
 }
 
 export interface WeeklyPlanningIntakePipelineWithInterpreterInput extends WeeklyPlanningIntakePipelineInput {
@@ -72,6 +77,10 @@ function buildPipelineOutput(params: {
       planningStartDate: input.planningStartDate,
       planningDayCount: input.planningDayCount,
       sessionPolicy: input.sessionPolicy,
+      existingPlans: input.existingPlans,
+      scheduleTemplates: input.scheduleTemplates,
+      timetableTermId: input.timetableTermId,
+      existingPlanBufferMinutes: input.existingPlanBufferMinutes,
     })
     : null;
   const decision = createWeeklyPlanningDialogueDecision({
