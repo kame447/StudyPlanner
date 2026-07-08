@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Plan } from '../../../types/domain';
+import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import type {
+  ConstraintSourceKind,
+} from '../intake/weeklyPlanningIntakeTypes';
+import type {
+  InterpretedCommandCandidate,
+  WeeklyPlanningIntakeInterpreter,
+} from '../intake/weeklyPlanningInterpreterTypes';
 import {
   SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
   WP_RP_001_WEEKEND_EXAM_TURNS,
@@ -779,5 +786,261 @@ describe('weekly planning intake pipeline', () => {
   });
   it('is deterministic for the same input sequence', () => {
     expect(runWeekendExamSequence()).toEqual(runWeekendExamSequence());
+  });
+});
+
+function timetableTemplate(overrides: Partial<ScheduleTemplate> = {}): ScheduleTemplate {
+  return {
+    id: 'tpl-1',
+    userId: 'user-1',
+    title: '授業',
+    subject: '数学',
+    type: 'study',
+    weekday: 'thu',
+    startTime: '13:00',
+    endTime: '14:30',
+    termId: 'default',
+    memo: '',
+    active: true,
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function fakeInterpreter(candidates: InterpretedCommandCandidate[]): WeeklyPlanningIntakeInterpreter {
+  return {
+    async interpretUserTurn() {
+      return { candidates, parseRejections: [] };
+    },
+  };
+}
+
+function useConstraintSourceCandidate(params: {
+  kind: ConstraintSourceKind;
+  sourceText: string;
+}): InterpretedCommandCandidate {
+  return {
+    command: {
+      type: 'use_constraint_source',
+      source: { kind: params.kind, selector: 'active' },
+      sourceText: params.sourceText,
+      confidence: 'high',
+    },
+    origin: 'ai_interpreter',
+    needsConfirmation: false,
+  };
+}
+
+function addFixedEventCandidate(sourceText: string): InterpretedCommandCandidate {
+  return {
+    command: {
+      type: 'add_fixed_event',
+      event: { start: '18:00', end: '20:30', hardness: 'hard' },
+      sourceText,
+      confidence: 'high',
+    },
+    origin: 'ai_interpreter',
+    needsConfirmation: false,
+  };
+}
+
+// fixed_events を含む missing 途中状態(WP-RP-001 の no-fixed-events 前)を作る。
+function stateWithFixedEventsMissing(): PlanningIntakeState {
+  const outputs = runWeekendExamSequence();
+  const beforeNoFixedEvents = outputs[4];
+
+  if (!beforeNoFixedEvents) {
+    throw new Error('expected pre-no-fixed-events state');
+  }
+
+  expect(beforeNoFixedEvents.state.missing).toContain('fixed_events');
+  return beforeNoFixedEvents.state;
+}
+
+describe('constraint source capability (use_constraint_source)', () => {
+  // 「予定表の通り」の同義表現。すべて同じ use_constraint_source(timetable) に写像される前提。
+  const timetablePhrasings = [
+    '授業は予定表に記載されている通りにあります',
+    '時間割に入っている予定を使って',
+    '登録済みの授業を考慮して',
+    'いつもの授業を避けて',
+    '普段通りの授業があります',
+  ];
+
+  it('satisfies fixed_events when timetable is non-empty (use_constraint_source)', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithFixedEventsMissing(),
+      userText: timetablePhrasings[0],
+      scheduleTemplates: [timetableTemplate()],
+      interpreter: fakeInterpreter([
+        useConstraintSourceCandidate({ kind: 'timetable', sourceText: timetablePhrasings[0] }),
+      ]),
+    });
+
+    expect(output.state.missing).not.toContain('fixed_events');
+    expect(output.state.constraintSourcesInUse).toEqual([
+      { kind: 'timetable', selector: 'active' },
+    ]);
+  });
+
+  it('maps every timetable phrasing to the same intent and the same resulting state', async () => {
+    const baseState = stateWithFixedEventsMissing();
+
+    const results = await Promise.all(
+      timetablePhrasings.map((phrasing) =>
+        runWeeklyPlanningIntakePipelineWithInterpreter({
+          ...defaultPipelineInput,
+          previousState: baseState,
+          userText: phrasing,
+          scheduleTemplates: [timetableTemplate()],
+          interpreter: fakeInterpreter([
+            useConstraintSourceCandidate({ kind: 'timetable', sourceText: phrasing }),
+          ]),
+        }),
+      ),
+    );
+
+    // 表現ゆれに依らず missing と constraintSourcesInUse が同一(semantic level で同じ intent)。
+    for (const result of results) {
+      expect(result.state.missing).not.toContain('fixed_events');
+      expect(result.state.constraintSourcesInUse).toEqual([
+        { kind: 'timetable', selector: 'active' },
+      ]);
+    }
+  });
+
+  it('does not satisfy fixed_events and falls to confirmation when the timetable is empty', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithFixedEventsMissing(),
+      userText: timetablePhrasings[0],
+      scheduleTemplates: [],
+      interpreter: fakeInterpreter([
+        useConstraintSourceCandidate({ kind: 'timetable', sourceText: timetablePhrasings[0] }),
+      ]),
+    });
+
+    // 空ソースを鵜呑みにしない: fixed_events は残り、確認メモが積まれる。
+    expect(output.state.missing).toContain('fixed_events');
+    expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
+    expect(output.state.assumptions.some((note) => note.includes('見つかりませんでした'))).toBe(true);
+  });
+
+  it('satisfies fixed_events via the existing add_fixed_event capability for a time-explicit part-time job', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithFixedEventsMissing(),
+      userText: '今日の夜18〜20:30でバイトがあります',
+      interpreter: fakeInterpreter([addFixedEventCandidate('今日の夜18〜20:30でバイトがあります')]),
+    });
+
+    expect(output.state.missing).not.toContain('fixed_events');
+    expect(output.state.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'fixed_event', start: '18:00', hardness: 'hard' }),
+      ]),
+    );
+  });
+
+  it('resolves existing_plans source against the existing plan count', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithFixedEventsMissing(),
+      userText: '登録済みの予定を考慮して',
+      existingPlans: [plan({ date: '2026-06-30' })],
+      interpreter: fakeInterpreter([
+        useConstraintSourceCandidate({ kind: 'existing_plans', sourceText: '登録済みの予定を考慮して' }),
+      ]),
+    });
+
+    expect(output.state.missing).not.toContain('fixed_events');
+    expect(output.state.constraintSourcesInUse).toEqual([
+      { kind: 'existing_plans', selector: 'active' },
+    ]);
+  });
+});
+
+function requestClarificationCandidate(params: {
+  sourceText: string;
+  ref?: string;
+}): InterpretedCommandCandidate {
+  return {
+    command: {
+      type: 'request_clarification',
+      target: 'referenced_term',
+      ref: params.ref,
+      sourceText: params.sourceText,
+      confidence: 'high',
+    },
+    origin: 'ai_interpreter',
+    needsConfirmation: false,
+  };
+}
+
+describe('clarification semantic intent (request_clarification)', () => {
+  // 聞き返しの同義表現。すべて同じ request_clarification に写像される前提。
+  const clarificationPhrasings = [
+    '固定の予定って何ですか？',
+    'それってどういう意味？',
+    '何を答えればいいの？',
+  ];
+
+  it('answers a term clarification without advancing state (missing unchanged)', async () => {
+    const previousState = stateWithFixedEventsMissing();
+    const missingBefore = [...previousState.missing];
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: clarificationPhrasings[0],
+      interpreter: fakeInterpreter([
+        requestClarificationCandidate({ sourceText: clarificationPhrasings[0], ref: 'fixed_events' }),
+      ]),
+    });
+
+    expect(output.state.missing).toEqual(missingBefore);
+    expect(output.state.uncertainties).toEqual([]);
+    expect(output.decision.kind).toBe('answer_clarification');
+    expect(output.decision.clarification?.explanation).toContain('固定の予定');
+    // 直前の質問(fixed_events)が維持される。
+    expect(output.decision.questionPlan?.some((question) => question.targetSlot === 'fixed_events')).toBe(true);
+  });
+
+  it('maps every clarification phrasing to the same intent and keeps state intact', async () => {
+    const baseState = stateWithFixedEventsMissing();
+    const missingBefore = [...baseState.missing];
+
+    const results = await Promise.all(
+      clarificationPhrasings.map((phrasing) =>
+        runWeeklyPlanningIntakePipelineWithInterpreter({
+          ...defaultPipelineInput,
+          previousState: baseState,
+          userText: phrasing,
+          interpreter: fakeInterpreter([requestClarificationCandidate({ sourceText: phrasing, ref: 'fixed_events' })]),
+        }),
+      ),
+    );
+
+    for (const result of results) {
+      expect(result.decision.kind).toBe('answer_clarification');
+      expect(result.state.missing).toEqual(missingBefore);
+    }
+  });
+
+  it('does not map a clarification to note_uncertainty or any answer command', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithFixedEventsMissing(),
+      userText: clarificationPhrasings[0],
+      interpreter: fakeInterpreter([
+        requestClarificationCandidate({ sourceText: clarificationPhrasings[0], ref: '固定の予定' }),
+      ]),
+    });
+
+    expect(output.state.uncertainties).toEqual([]);
+    expect(output.state.unitRates).toEqual(stateWithFixedEventsMissing().unitRates);
+    expect(output.decision.kind).toBe('answer_clarification');
   });
 });

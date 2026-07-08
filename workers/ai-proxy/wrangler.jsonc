@@ -5,7 +5,7 @@
   "vars": {
     "FIREBASE_WEB_API_KEY": "AIzaSyAMS_X5k0BFL2dtoLOGjPV22lcUj5gI7oo",
     "ALLOWED_ORIGIN": "https://studyplannner.pages.dev,https://studyplanner.pages.dev,http://localhost:5173,https://localhost:5173,https://localhost:4173,http://127.0.0.1:5173,https://127.0.0.1:5173,https://127.0.0.1:4173,https://192.168.0.5:4173",
-    "ALLOWED_CHAT_MODELS": "gpt-5.4-mini",
+    "ALLOWED_CHAT_MODELS": "gpt-5.4-mini,gpt-5.4-nano-2026-03-17,gpt-5.4-mini-2026-03-17",
     "ALLOWED_GEMINI_MODELS": "gemini-1.5-flash",
     "GEMINI_MODEL": "gemini-1.5-flash",
     "ENVIRONMENT": "production"

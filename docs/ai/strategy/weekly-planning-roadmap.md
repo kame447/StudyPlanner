@@ -137,6 +137,20 @@ spec にあるが現実装で未対応・弱い箇所。観点別に整理する
   - 既知カレンダー予定の intake 注入と差分提示(staged 候補 b・未着手)/ 分割許可の確認対話(staged 候補 c・未着手)
   - 明示 duration / daily・weekday・weekend target の受理(R2 初期の中タスク)
 
+### Phase R2-Capability: semantic intent ↔ planner capability の橋渡し【新設・2026-07-08】
+
+2026-07-08 の監査(実コード確認)で、R2 の command-candidate architecture(実装済み・有効な中間段階)の次の構造的課題が判明した。設計の正は `docs/architecture/weekly-planning-nl-capability-model.md`、R2 設計メモ §11「Post-R2 architecture evolution」も参照。
+
+- 課題: (1) AI interpreter が決定的 parser と同一の command 空間を共有し、意味解釈層になっていない。(2) `note_no_fixed_events` / `note_uncertainty` 等が発話パターン単位で増えている。(3) 既存予定・timetable を避ける汎用 capability は generator に稼働済みなのに、intake の missing/充足判定と interpreter stateSummary がその存在を知らない(**capability はあるが intake から見えない**)。
+- 方針: 全面 GoalIntent 移行はしない。R2 の command 境界の上に、**発話非依存の意味カテゴリ(semantic intent)を最小限だけ**載せ、fixed events / timetable を最初の vertical slice にして `表現ゆれ → semantic interpretation → planner capability resolution → deterministic state/missing → renderer context` を1経路貫通させる。
+- 実使用問題の診断原則(A〜F: interpretation / representation / capability / intake 可視性 / state transition / renderer context)を capability model 文書に恒久記録。今後の問題はこの分類で監査する。
+- **タスク(依存順)**:
+  1. `20260708-weekly-planning-constraint-source-capability.md`(基盤・vertical slice)— capability snapshot の intake/interpreter 可視化 + `use_constraint_source` intent + planner decision による `fixed_events` 充足。**先行必須。**
+  2. `20260708-weekly-planning-renderer-deterministic-context.md` — planning period(実例1「来週→今週」回帰防止)と平易語ヒントは基盤に依存せず先行可。利用中 constraint source の表示は基盤(1)完了後。
+  3. `20260708-weekly-planning-clarification-semantic-intent.md` — `request_clarification` intent(用語非依存)。基盤(1)の後。
+- **破棄**: 旧 `fixed-events-state-and-timetable-intent`(専用状態5値+専用 command の発話追随設計)。実使用問題は上記(1)の背景へ移設。
+- **stale**: `completion-target-model` は `CompletionTarget` / `mark_completion_target` / `resolveCompletionTargetMissing` として実装済み。verify のうえ closed へ(本フェーズの対象外)。
+
 ### Phase R2 初期: 実使用フィードバック対応(intake 品質改善)【一部反映済み・2026-07-04 記録】
 
 > **2026-07-07 更新**: 本節は R1 マージ直後の初期整理の記録。先行小タスク1(短答 slot filling)は完了・closed。3(年度範囲「から〜まで」)は scope parser 修正で部分対応済み。残る 2(分類分離)・4(トーン改善)は質問文タスク E(`question-rendering-separation`)へ、5/6(明示 duration・target 受理)は atomic / staged 系へ吸収して継続。以下は当時の記録として保持。
@@ -263,11 +277,13 @@ R2 初期を最優先とする理由: 実ユーザーの利用で確認済みの
 - **完了処理**: 実装 → ユーザー承認の後、タスクmdを `docs/ai/tasks/closed/` へ移動する。closed 内のタスクmdは記録なので書き換えない。承認前のタスクmdは `docs/ai/tasks/` 直下に残す。
 - **Phase をまたぐ発見**: タスク実装中に見つかった別問題は、そのタスクで直さず、roadmap の該当 Phase に追記するか新規タスク候補として報告する。
 
-直近の到達点(2026-07-07・更新): R1 に加え、R2-AI(interpreter+renderer の基盤・実接続・candidate 契約)と R2-S の correctness 群がすべてクローズ済み。**現在オープンなタスクは0本**(`docs/ai/tasks/` 直下は空、すべて closed)。次に切る候補は §6 を参照。
+直近の到達点(2026-07-08・更新): R1 に加え、R2-AI(interpreter+renderer の基盤・実接続・candidate 契約)と R2-S の correctness 群がすべてクローズ済み。**現在オープンなタスクは3本**(Phase R2-Capability。`constraint-source-capability` / `renderer-deterministic-context` / `clarification-semantic-intent`。依存順は R2-Capability 節を参照)。加えて `completion-target-model` は実装済み stale(verify 後 closed)。設計根拠は `docs/architecture/weekly-planning-nl-capability-model.md`。
 
 ## 6. 最初に切るべきタスク候補
 
-> 2026-07-07 更新: R2-AI(interpreter+renderer)と R2-S(correctness)がすべて完了・closed。open は0本。次に切るべき候補は以下(実使用スモークの残課題と依存で判断)。
+> 2026-07-08 更新: Phase **R2-Capability** の3 task を発行済み(open 3本)。**次に着手すべき1本は `constraint-source-capability`(基盤・vertical slice)**。理由: 実使用で体感最悪の「授業・バイトを伝えたのに broad 再質問」を、既存 capability の intake 可視化で直せ、以後の同種問題(capability はあるが intake が知らない)の手本になる。renderer の planning period 部分(実例1)は基盤に依存せず先行回収してよい。以下は capacity 等の中期候補(R2-Capability の後)。
+>
+> 2026-07-07 時点の候補(実使用スモークの残課題と依存で判断):
 >
 > **次に切る候補**:
 > 1. **capacity 超過の配分(R8 の先取り)** — 過去問全量で 100 時間超が計画ウィンドウに収まらず `ask_relax_constraints` に落ちる既知挙動。spec §3 の 6等分・1日上限(基準作業量 ×1.5)を新 intake path の generator に導入。予備日(`7b3e288`)と接続する配置品質の中核。

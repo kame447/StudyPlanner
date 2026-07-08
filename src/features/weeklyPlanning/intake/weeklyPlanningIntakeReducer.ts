@@ -303,6 +303,23 @@ function applyMarkCompletionTargetCommand(
   };
 }
 
+function applyUseConstraintSourceCommand(
+  state: PlanningIntakeState,
+  command: Extract<ParsedWeeklyPlanningCommand, { type: 'use_constraint_source' }>,
+): PlanningIntakeState {
+  // ソースの利用可否検証は validator(capability snapshot 参照)で済んでいる前提。
+  // ここでは「どのソースを利用中か」を記録し、fixed_events を充足するだけ。
+  const ref = { kind: command.source.kind, selector: command.source.selector };
+  const inUse = state.constraintSourcesInUse ?? [];
+  const alreadyInUse = inUse.some((source) => source.kind === ref.kind && source.selector === ref.selector);
+
+  return {
+    ...state,
+    constraintSourcesInUse: alreadyInUse ? inUse : [...inUse, ref],
+    missing: removeMissing(state.missing, ['fixed_events']),
+  };
+}
+
 function applyWeeklyPlanningCommand(
   state: PlanningIntakeState,
   command: ParsedWeeklyPlanningCommand,
@@ -333,6 +350,8 @@ function applyWeeklyPlanningCommand(
         ]),
         missing: removeMissingForLifeConstraint(state.missing, command.kind),
       };
+    case 'use_constraint_source':
+      return applyUseConstraintSourceCommand(state, command);
     case 'set_priority_policy':
       return {
         ...state,
@@ -456,6 +475,9 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
     })),
     unitRates: baseState.unitRates.map((unitRate) => ({ ...unitRate })),
     constraints: baseState.constraints.map((constraint) => ({ ...constraint })),
+    constraintSourcesInUse: baseState.constraintSourcesInUse
+      ? baseState.constraintSourcesInUse.map((source) => ({ ...source }))
+      : undefined,
     missing: [...baseState.missing],
     assumptions: [...baseState.assumptions],
     uncertainties: [...baseState.uncertainties],

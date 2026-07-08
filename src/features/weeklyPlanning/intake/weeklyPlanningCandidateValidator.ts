@@ -15,6 +15,8 @@ export const KNOWN_COMMAND_TYPES = new Set([
   'add_unavailable',
   'add_fixed_event',
   'update_life_constraint',
+  'use_constraint_source',
+  'request_clarification',
   'set_priority_policy',
   'mark_completed_units',
   'mark_completion_target',
@@ -60,6 +62,8 @@ const LIFE_CONSTRAINT_KINDS = new Set([
 
 const HARDNESS_VALUES = new Set(['hard', 'soft']);
 const MERGE_MODES = new Set(['replace', 'append']);
+const CONSTRAINT_SOURCE_KINDS = new Set(['timetable', 'existing_plans', 'calendar']);
+const CLARIFICATION_TARGETS = new Set(['referenced_question', 'referenced_term', 'unresolved_slot']);
 const COMPLETION_TARGET_KINDS = new Set([
   'all',
   'latest_n_years',
@@ -125,6 +129,13 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
       return isRecord(command.event);
     case 'update_life_constraint':
       return typeof command.kind === 'string' && isRecord(command.constraint);
+    case 'use_constraint_source':
+      return isRecord(command.source)
+        && typeof command.source.kind === 'string'
+        && command.source.selector === 'active';
+    case 'request_clarification':
+      return typeof command.target === 'string'
+        && (command.ref === undefined || typeof command.ref === 'string');
     case 'note_no_fixed_events':
     case 'note_uncertainty':
       return true;
@@ -154,8 +165,35 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
     case 'update_life_constraint':
       if (!LIFE_CONSTRAINT_KINDS.has(command.kind)) return 'invalid-life-constraint-kind';
       return !HARDNESS_VALUES.has(command.constraint.hardness) ? 'invalid-hardness' : null;
+    case 'use_constraint_source':
+      return !CONSTRAINT_SOURCE_KINDS.has(command.source.kind) ? 'invalid-constraint-source-kind' : null;
+    case 'request_clarification':
+      return !CLARIFICATION_TARGETS.has(command.target) ? 'invalid-clarification-target' : null;
     default:
       return null;
+  }
+}
+
+function constraintSourceAvailable(
+  source: Extract<ParsedWeeklyPlanningCommand, { type: 'use_constraint_source' }>['source'],
+  summary: InterpreterStateSummary,
+): boolean {
+  const availability = summary.availableConstraintSources;
+
+  // 可用性が不明なときは利用不可として扱う(空/不明なソースを鵜呑みにしない安全側)。
+  if (!availability) {
+    return false;
+  }
+
+  switch (source.kind) {
+    case 'timetable':
+      return availability.timetable;
+    case 'existing_plans':
+      return availability.existingPlans;
+    case 'calendar':
+      return availability.calendar;
+    default:
+      return false;
   }
 }
 
@@ -221,6 +259,7 @@ function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
       return ['unit_duration_estimate'];
     case 'add_fixed_event':
     case 'note_no_fixed_events':
+    case 'use_constraint_source':
       return ['fixed_events'];
     case 'add_unavailable':
       return ['fixed_events'];
@@ -279,6 +318,7 @@ export function validateInterpretedCandidates(
     accepted: [],
     acceptedWithConfirmation: [],
     clarifications: [],
+    clarificationRequests: [],
     rejected: [],
     parseRejections: [],
   };
@@ -311,6 +351,19 @@ export function validateInterpretedCandidates(
 
     if (valueError) {
       addRejected(result, candidate, valueError);
+      return;
+    }
+
+    // planner decision: 参照した schedule source が実際に非空かを capability snapshot で検証する。
+    // 空なら fixed_events を勝手に充足せず、rejected として残す(pipeline が確認へ倒す)。
+    if (command.type === 'use_constraint_source' && !constraintSourceAvailable(command.source, summary)) {
+      addRejected(result, candidate, 'constraint-source-unavailable');
+      return;
+    }
+
+    // 聞き返しは state を進めない対話イベント。slot を占有させず専用バケットへ振り分ける。
+    if (command.type === 'request_clarification') {
+      result.clarificationRequests.push(command);
       return;
     }
 

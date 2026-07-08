@@ -1,4 +1,4 @@
-import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import type { ConstraintSourceRef, PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDialogueDecision } from './weeklyPlanningDialogueManager';
 import { createWeeklyPlanningDialogueMessage } from './weeklyPlanningDialogueMessages';
 
@@ -7,9 +7,20 @@ export interface DialogueNextQuestion {
   intent: string;
   questionKind?: string;
   options?: string[];
+  /** slot の内部キーをそのまま訳させないための、ユーザー語彙での平易な言い換えヒント。 */
+  vocabularyHint?: string;
 }
 
 export interface DialogueRenderInput {
+  /**
+   * 計画対象期間のラベル(「来週」「今週」「週末」等)。
+   * ユーザー発話由来のときだけ設定する。不明なときは undefined のままにし、AI に週を捏造させない。
+   */
+  planningPeriodLabel?: string;
+  /** 対象単位(exam prep なら「年度」)。質問文の語彙に使う。 */
+  targetUnitLabel?: string;
+  /** 既に計画制約として利用中の schedule source の平易ラベル(「時間割」「登録済みの予定」等)。 */
+  constraintSourcesInUse?: string[];
   acceptedFacts: {
     fields?: string[];
     yearRange?: { startYear: number; endYear: number };
@@ -20,6 +31,59 @@ export interface DialogueRenderInput {
   assumptions: string[];
   nextQuestions: DialogueNextQuestion[];
   styleConstraints: { tone: 'mentor'; maxQuestions: number };
+}
+
+// slot の内部キー → ユーザー語彙での平易な言い換え。AI が「固定の予定」等の内部語を直訳しないための素材。
+const SLOT_VOCABULARY_HINTS: Record<string, string> = {
+  tasks_or_goals: '取り組みたい学習内容や目標',
+  year_range: '対象の年度範囲',
+  progress: '今どこまで進んでいるか',
+  completion_direction: '完了済みの年度が新しい側からか古い側からか',
+  unit_duration_estimate: '1年分(1単位)あたりの目安時間',
+  unit_rate: '1年分(1単位)あたりの目安時間',
+  priority_policy: '優先する分野や進める順番',
+  fixed_events: '授業・バイト・通院など動かせない予定',
+  sleep_cycle: '睡眠時間や、何時から勉強を始められるか',
+  meal_bath_constraints: '食事やお風呂など勉強を入れにくい時間',
+  life_constraints: '食事・お風呂・睡眠などの生活リズム',
+};
+
+const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
+  timetable: '時間割',
+  existing_plans: '登録済みの予定',
+  calendar: 'カレンダーの予定',
+};
+
+/**
+ * 計画期間ラベルはユーザー発話(range.sourceText)に含まれる語からのみ導く。
+ * 日付だけから「今週/来週」を推測して補完しない(実例1「来週」→「今週」の回帰防止)。
+ */
+function planningPeriodLabel(state: PlanningIntakeState): string | undefined {
+  const source = state.range?.sourceText;
+
+  if (!source) {
+    return undefined;
+  }
+
+  if (/来週/.test(source)) return '来週';
+  if (/今週/.test(source)) return '今週';
+  if (/週末|土日/.test(source)) return '週末';
+
+  return undefined;
+}
+
+function targetUnitLabel(state: PlanningIntakeState): string | undefined {
+  return state.examPrepScope?.unitModel === 'year_field_chunk' ? '年度' : undefined;
+}
+
+function constraintSourcesInUseLabels(state: PlanningIntakeState): string[] | undefined {
+  const sources = state.constraintSourcesInUse;
+
+  if (!sources || sources.length === 0) {
+    return undefined;
+  }
+
+  return sources.map((source) => CONSTRAINT_SOURCE_LABELS[source.kind]);
 }
 
 export interface DialogueRenderOutput {
@@ -53,6 +117,7 @@ function nextQuestionsFromDecision(
         intent: question.intent,
         questionKind: question.kind,
         options: question.targetFields,
+        vocabularyHint: SLOT_VOCABULARY_HINTS[question.targetSlot],
       }));
   }
 
@@ -61,6 +126,7 @@ function nextQuestionsFromDecision(
     .map((field) => ({
       slotKey: field,
       intent: decision.messageKey,
+      vocabularyHint: SLOT_VOCABULARY_HINTS[field],
     }));
 }
 
@@ -74,6 +140,9 @@ export function createDialogueRenderInput(params: {
     : undefined;
 
   return {
+    planningPeriodLabel: planningPeriodLabel(params.state),
+    targetUnitLabel: targetUnitLabel(params.state),
+    constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
     acceptedFacts: {
       fields: params.state.examPrepScope?.fields,
       yearRange: params.state.examPrepScope?.yearRange
@@ -151,9 +220,20 @@ function formatAcceptedFacts(input: DialogueRenderInput): string | null {
     input.acceptedFacts.priorityOrder?.length
       ? `優先順は${input.acceptedFacts.priorityOrder.join('、')}`
       : null,
+    input.constraintSourcesInUse?.length
+      ? `${input.constraintSourcesInUse.join('、')}を予定として利用中`
+      : null,
   ].filter((fact): fact is string => Boolean(fact));
 
-  return facts.length > 0 ? `${facts.join('、')}で受け取りました。` : null;
+  // 計画期間ラベルはユーザー発話由来のときだけ出す。無ければ週に触れない(捏造しない)。
+  const periodPrefix = input.planningPeriodLabel ? `${input.planningPeriodLabel}の計画ですね。` : null;
+  const factsSentence = facts.length > 0 ? `${facts.join('、')}で受け取りました。` : null;
+
+  if (!periodPrefix && !factsSentence) {
+    return null;
+  }
+
+  return [periodPrefix, factsSentence].filter((part): part is string => Boolean(part)).join('');
 }
 
 function fallbackQuestionText(question: DialogueNextQuestion): string {

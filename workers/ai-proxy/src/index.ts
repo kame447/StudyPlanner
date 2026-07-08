@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
 
 interface Env {
   OPENAI_API_KEY: string;
@@ -20,7 +21,8 @@ interface ChatMessage {
 }
 
 interface ChatCompletionRequest {
-  model: string;
+  model?: string;
+  purpose?: string;
   temperature?: number;
   messages: ChatMessage[];
   response_format?: Record<string, unknown>;
@@ -93,7 +95,7 @@ const IP_MINUTE_LIMIT = 20;
 const CHAT_DEFAULT_OUTPUT_TOKENS = 800;
 const CHAT_MAX_OUTPUT_TOKENS = 1200;
 const OCR_MAX_OUTPUT_TOKENS = 4096;
-const DEFAULT_ALLOWED_CHAT_MODELS = ['gpt-5.4-mini'];
+// purpose→model policy と既定 allowlist は ./modelPolicy に集約(純ロジックとして単体テスト可能)。
 const ALLOWED_MESSAGE_ROLES = new Set(['system', 'user', 'assistant']);
 const SERVICE_NAME = 'studyplanner-ai-proxy';
 const WORKER_DEBUG_VERSION = 'timetable-ocr-debug-20260429-001';
@@ -183,8 +185,11 @@ function validateRequestShape(payload: ChatCompletionRequest): string | null {
     return 'Invalid chat completion payload.';
   }
 
-  if (typeof payload.model !== 'string' || !payload.model.trim()) {
-    return 'Model is required.';
+  const hasModel = typeof payload.model === 'string' && payload.model.trim().length > 0;
+  const hasPurpose = typeof payload.purpose === 'string' && payload.purpose.trim().length > 0;
+
+  if (!hasModel && !hasPurpose) {
+    return 'Model or purpose is required.';
   }
 
   if (!Array.isArray(payload.messages) || payload.messages.length === 0) {
@@ -771,7 +776,16 @@ async function handleChatCompletion(
     });
   }
 
-  const model = payload.model.trim();
+  const modelResolution = resolveChatModel(payload);
+
+  if ('error' in modelResolution) {
+    return jsonResponse(request, env, 400, {
+      error: modelResolution.error,
+    });
+  }
+
+  // purpose 由来 / client 由来のいずれで解決した model も、必ず allowlist を通す(バイパスしない)。
+  const model = modelResolution.model;
   const allowedModels = getAllowedChatModels(env);
 
   if (!allowedModels.has(model)) {

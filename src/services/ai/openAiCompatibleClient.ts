@@ -2,6 +2,7 @@ import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
 } from '../../lib/aiConfig';
+import type { AiChatPurpose } from '../../lib/aiModelPolicy';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 
 export interface ChatMessage {
@@ -81,6 +82,7 @@ export interface OpenAiCompatibleClient {
     messages: ChatMessage[];
     temperature?: number;
     responseFormat?: JsonSchemaResponseFormat;
+    purpose?: AiChatPurpose;
   }): Promise<string>;
 }
 
@@ -92,14 +94,8 @@ export function createOpenAiCompatibleClient(
       messages,
       temperature = 0.2,
       responseFormat,
+      purpose,
     }) {
-      const payload: ChatCompletionRequest = {
-        model: config.model,
-        temperature,
-        messages,
-        response_format: responseFormat,
-      };
-
       if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
         const proxyUrl = getCloudflareAiProxyUrl();
         const firebaseAuth = getFirebaseAuth();
@@ -114,6 +110,17 @@ export function createOpenAiCompatibleClient(
 
         const idToken = await firebaseAuth.currentUser.getIdToken();
 
+        // 本番経路(Worker が single source of truth):
+        // purpose がある呼び出しは model 名を送らず、Worker が purpose から model を解決する。
+        // purpose 無しの既存呼び出し(general NL)は従来どおり config.model を送る。
+        const proxyBody = {
+          ...(purpose ? { purpose } : { model: config.model }),
+          temperature,
+          messages,
+          response_format: responseFormat,
+        };
+        const logModel = purpose ? `purpose:${purpose}` : config.model;
+
         try {
           const endpoint = proxyUrl.endsWith('/chat/completions')
             ? proxyUrl
@@ -124,7 +131,7 @@ export function createOpenAiCompatibleClient(
               'Content-Type': 'application/json',
               Authorization: `Bearer ${idToken}`,
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(proxyBody),
           });
           const result = (await response.json()) as AiProxyResponse;
           const proxiedContent = result.content?.trim();
@@ -136,7 +143,7 @@ export function createOpenAiCompatibleClient(
             console.error('[AI Proxy] response content missing', {
               proxyUrl: endpoint,
               responseMessage,
-              model: payload.model,
+              model: logModel,
             });
 
             throw new Error(responseMessage);
@@ -152,13 +159,21 @@ export function createOpenAiCompatibleClient(
           console.error('[AI Proxy] request failed', {
             proxyUrl,
             responseMessage,
-            model: payload.model,
+            model: logModel,
           });
 
           throw new Error(responseMessage);
         }
       }
 
+      // 直結(非 proxy / dev)経路: Worker が無いため config.model を dev-only fallback として使う。
+      // 用途別 routing は Worker のみが担うため、ここでは purpose を model へ解決しない。
+      const payload: ChatCompletionRequest = {
+        model: config.model,
+        temperature,
+        messages,
+        response_format: responseFormat,
+      };
       const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',
         headers: {

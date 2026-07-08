@@ -147,6 +147,37 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
     },
   }),
   commandSchema({
+    type: 'use_constraint_source',
+    required: ['source'],
+    properties: {
+      source: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'selector'],
+        properties: {
+          // 現在 active な参照元は timetable と existing_plans のみ。
+          // calendar は将来拡張用の内部型のため、AI には現時点で選択させない。
+          kind: {
+            type: 'string',
+            enum: ['timetable', 'existing_plans'],
+          },
+          selector: { const: 'active' },
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'request_clarification',
+    required: ['target'],
+    properties: {
+      target: {
+        type: 'string',
+        enum: ['referenced_question', 'referenced_term', 'unresolved_slot'],
+      },
+      ref: stringSchema(),
+    },
+  }),
+  commandSchema({
     type: 'set_priority_policy',
     required: ['policy'],
     properties: {
@@ -434,6 +465,9 @@ function createSystemPrompt(): string {
     '- set_unit_rate: minutesPerUnit for a known scope unit.',
     '- mark_completed_units or note_progress_boundary for completed year/field progress. Use mark_completion_target only for the desired future completion target.',
     '- add_fixed_event, add_unavailable, update_life_constraint, note_no_fixed_events, note_uncertainty, set_planning_range only when explicit in the current turn.',
+    '- use_constraint_source: when the user says the plan should reuse an existing schedule source instead of listing events. Map ALL such phrasings to this single intent and express the referenced source in source.kind, do not invent a new command per phrasing. The only currently available sources are: timetable (the app\'s class timetable) and existing_plans (schedules already saved in the app). selector is always active. Use source.kind=timetable when the user clearly means the class timetable: 「授業は予定表の通り」「いつもの授業を避けて」「時間割に入っている予定を使って」「登録済みの授業を考慮して」「普段通りの授業があります」. Use source.kind=existing_plans when the user clearly means already-saved plans: 「アプリに保存してある予定と被らないように」「登録してある予定を生かして」. There is no external calendar (Google/Apple/Outlook) integration; never emit a calendar source.',
+    '- Ambiguous source: if the phrasing could refer to more than one available source and you cannot uniquely decide between timetable and existing_plans (e.g. 「カレンダーに入れてあるやつ」 which might mean either), do NOT guess a single source. Emit request_clarification (target=unresolved_slot, ref=constraint_source) instead, or at most use_constraint_source with confidence=low. Never hard-apply a guessed source.',
+    '- request_clarification: when the user is asking what one of the app\'s question words or terms means, rather than answering it. Map ALL such phrasings to this single intent: 「固定の予定って何ですか？」「それってどういう意味？」「何を答えればいいの？」. Set ref to the term or slot being asked about (e.g. fixed_events) when identifiable. Never map such a question to note_uncertainty or any answer command; the user is not providing information, they are asking for an explanation.',
     'Confidence rules: high for explicit complete facts, medium for inferred or partially ordered facts that need confirmation, low for ambiguous facts.',
     'For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 and endYear to 2019.',
   ].join('\n');
@@ -463,6 +497,7 @@ export function createAiWeeklyPlanningInterpreter(
           ],
           temperature: 0.1,
           responseFormat: WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT,
+          purpose: 'weekly_planning_interpreter',
         });
 
         return parseInterpreterResponse(content);

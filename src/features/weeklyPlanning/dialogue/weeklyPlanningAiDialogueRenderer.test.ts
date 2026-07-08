@@ -6,11 +6,14 @@ import {
   createAiWeeklyPlanningDialogueRenderer,
   WEEKLY_PLANNING_DIALOGUE_RENDERER_RESPONSE_FORMAT,
 } from '../dialogue/weeklyPlanningAiDialogueRenderer';
-import { renderWeeklyPlanningDialogueMessage } from '../dialogue/weeklyPlanningDialogueRenderer';
+import {
+  createDialogueRenderInput,
+  renderWeeklyPlanningDialogueMessage,
+} from '../dialogue/weeklyPlanningDialogueRenderer';
 import {
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
-import type { PlanningIntakeMissing } from '../intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeMissing, PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 
 const config: AiConfig = {
   provider: 'openai',
@@ -171,6 +174,7 @@ describe('weekly planning AI dialogue renderer', () => {
     expect(client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
       temperature: 0.2,
       responseFormat: WEEKLY_PLANNING_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+      purpose: 'weekly_planning_renderer',
     }));
     const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const userPayload = JSON.parse(request.messages[1].content) as Record<string, unknown>;
@@ -183,11 +187,13 @@ describe('weekly planning AI dialogue renderer', () => {
           slotKey: 'fixed_events',
           intent: 'ask_fixed_events',
           questionKind: 'missing_life_constraint',
+          vocabularyHint: '授業・バイト・通院など動かせない予定',
         },
         {
           slotKey: 'sleep_cycle',
           intent: 'ask_life_constraints',
           questionKind: 'missing_life_constraint',
+          vocabularyHint: '睡眠時間や、何時から勉強を始められるか',
         },
       ],
       styleConstraints: { tone: 'mentor', maxQuestions: 2 },
@@ -274,6 +280,112 @@ describe('weekly planning AI dialogue renderer', () => {
   });
 
   it('does not mutate questionPlan after adopting AI text', async () => {
+    const renderer = createAiWeeklyPlanningDialogueRenderer(config, createMockClient(JSON.stringify({
+      questions: [
+        { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+        { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
+      ],
+    })));
+    const decision = missingDecision();
+    const before = JSON.parse(JSON.stringify(decision)) as WeeklyPlanningDialogueDecision;
+
+    await renderWeeklyPlanningDialogueMessage({
+      state: stateWithExtraMissing(),
+      decision,
+      renderer,
+    });
+
+    expect(decision).toEqual(before);
+  });
+});
+
+function askScopeDecision(): WeeklyPlanningDialogueDecision {
+  return {
+    kind: 'ask_missing_info',
+    messageKey: 'ask_scope',
+    requiredFields: ['tasks_or_goals'],
+    questionPlan: [
+      {
+        kind: 'missing_slot',
+        targetSlot: 'tasks_or_goals',
+        missing: ['tasks_or_goals'],
+        intent: 'ask_scope',
+      },
+    ],
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+  };
+}
+
+function stateWithNextWeekRange(): PlanningIntakeState {
+  return {
+    ...createInitialPlanningIntakeState(),
+    range: {
+      startDateTime: '2026-07-13T00:00:00',
+      endDateTime: '2026-07-19T24:00:00',
+      sourceText: '来週、過去問を進めたい',
+      confidence: 'inferred',
+    },
+    missing: ['tasks_or_goals'] as PlanningIntakeMissing[],
+  };
+}
+
+describe('weekly planning renderer deterministic context', () => {
+  it('carries the planning period label from range.sourceText into the render input', () => {
+    const input = createDialogueRenderInput({
+      state: stateWithNextWeekRange(),
+      decision: askScopeDecision(),
+    });
+
+    expect(input.planningPeriodLabel).toBe('来週');
+  });
+
+  it('does not fabricate a week: deterministic fallback says 来週, never 今週', async () => {
+    const message = await renderWeeklyPlanningDialogueMessage({
+      state: stateWithNextWeekRange(),
+      decision: askScopeDecision(),
+    });
+
+    expect(message).toContain('来週');
+    expect(message).not.toContain('今週');
+  });
+
+  it('omits the period label when the user never stated one (no fabrication)', async () => {
+    const state = {
+      ...createInitialPlanningIntakeState(),
+      missing: ['tasks_or_goals'] as PlanningIntakeMissing[],
+    };
+    const input = createDialogueRenderInput({ state, decision: askScopeDecision() });
+    const message = await renderWeeklyPlanningDialogueMessage({ state, decision: askScopeDecision() });
+
+    expect(input.planningPeriodLabel).toBeUndefined();
+    expect(message).not.toContain('来週');
+    expect(message).not.toContain('今週');
+  });
+
+  it('supplies a plain-vocabulary hint for internal slot keys (fixed_events)', () => {
+    const input = createDialogueRenderInput({
+      state: stateWithExtraMissing(),
+      decision: missingDecision(),
+    });
+
+    const fixedEvents = input.nextQuestions.find((question) => question.slotKey === 'fixed_events');
+
+    expect(fixedEvents?.vocabularyHint).toBe('授業・バイト・通院など動かせない予定');
+  });
+
+  it('surfaces constraint sources already in use as plain labels', () => {
+    const state: PlanningIntakeState = {
+      ...stateWithNextWeekRange(),
+      constraintSourcesInUse: [{ kind: 'timetable', selector: 'active' }],
+    };
+
+    const input = createDialogueRenderInput({ state, decision: askScopeDecision() });
+
+    expect(input.constraintSourcesInUse).toEqual(['時間割']);
+  });
+
+  it('does not mutate questionPlan after adopting AI text (regression guard)', async () => {
     const renderer = createAiWeeklyPlanningDialogueRenderer(config, createMockClient(JSON.stringify({
       questions: [
         { slotKey: 'fixed_events', text: '固定予定はありますか？' },

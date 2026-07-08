@@ -15,6 +15,7 @@ import type {
 
 export type WeeklyPlanningDialogueDecisionKind =
   | 'ask_missing_info'
+  | 'answer_clarification'
   | 'confirm_ambiguity'
   | 'confirm_draft_conditions'
   | 'offer_dry_run_preview'
@@ -64,6 +65,8 @@ export interface WeeklyPlanningDialogueDecision {
   questionPlan?: WeeklyPlanningQuestionPlanItem[];
   ambiguities?: string[];
   summary?: WeeklyPlanningDialogueDecisionSummary;
+  /** answer_clarification のときの、用語の deterministic な説明文。 */
+  clarification?: { explanation: string };
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
 }
@@ -396,4 +399,74 @@ export function createWeeklyPlanningDialogueDecision(
     messageKey: 'cannot_create_draft_from_intake',
     summary: createSummary(input),
   });
+}
+
+// 用語 slot key → deterministic な説明文。用語ごとに command/handler を増やさず、ここで説明を引く。
+const TERM_EXPLANATIONS: Record<string, string> = {
+  fixed_events: '「固定の予定」は、授業・バイト・通院など、時間が決まっていて動かせない予定のことです。',
+  sleep_cycle: '「睡眠のリズム」は、就寝・起床の時刻や、何時から勉強を始められるかのことです。',
+  meal_bath_constraints: '「生活の制約」は、食事やお風呂など、勉強を入れにくい時間のことです。',
+  life_constraints: '「生活の制約」は、食事・お風呂・睡眠などの生活リズムのことです。',
+  year_range: '「対象年度」は、過去問などで何年から何年までを対象にするかのことです。',
+  progress: '「進捗」は、今どこまで終わっているかのことです。',
+  completion_direction: '「完了済みの向き」は、終わった年度が新しい側からか古い側からかのことです。',
+  unit_rate: '「目安時間」は、1年分(1単位)にだいたい何分かかるかのことです。',
+  priority_policy: '「優先順」は、どの分野からどの順番で進めるかのことです。',
+  tasks_or_goals: '「学習内容や目標」は、この期間に取り組みたい教材やゴールのことです。',
+};
+
+// ref がユーザー語(「固定予定」等)のときに slot key へ寄せるためのキーワード。
+const CLARIFICATION_TERM_KEYWORDS: Array<{ pattern: RegExp; termKey: string }> = [
+  { pattern: /固定|動かせない/, termKey: 'fixed_events' },
+  { pattern: /睡眠|寝|起き/, termKey: 'sleep_cycle' },
+  { pattern: /食事|風呂/, termKey: 'meal_bath_constraints' },
+  { pattern: /年度/, termKey: 'year_range' },
+  { pattern: /進捗|進み/, termKey: 'progress' },
+  { pattern: /優先/, termKey: 'priority_policy' },
+  { pattern: /目安|単位/, termKey: 'unit_rate' },
+];
+
+const GENERIC_CLARIFICATION =
+  'この質問は、計画を作るために必要な条件をうかがっているものです。分かる範囲で教えてください。';
+
+function resolveClarificationTermKey(
+  state: PlanningIntakeState,
+  ref: string | undefined,
+): string | undefined {
+  if (ref && TERM_EXPLANATIONS[ref]) {
+    return ref;
+  }
+
+  if (ref) {
+    const matched = CLARIFICATION_TERM_KEYWORDS.find((entry) => entry.pattern.test(ref));
+    if (matched) {
+      return matched.termKey;
+    }
+  }
+
+  // ref から解決できないときは、いま尋ねている質問の slot を用語とみなす。
+  return createMissingQuestionPlan(state)[0]?.targetSlot;
+}
+
+/**
+ * 聞き返し(request_clarification)への応答決定を作る。
+ * state を進めず(missing を消さず)、用語説明を返し、直前の質問(questionPlan)を維持する。
+ */
+export function createWeeklyPlanningClarificationDecision(params: {
+  state: PlanningIntakeState;
+  ref?: string;
+}): WeeklyPlanningDialogueDecision {
+  const termKey = resolveClarificationTermKey(params.state, params.ref);
+  const explanation = (termKey && TERM_EXPLANATIONS[termKey]) || GENERIC_CLARIFICATION;
+  const questionPlan = createMissingQuestionPlan(params.state);
+
+  return {
+    kind: 'answer_clarification',
+    messageKey: 'answer_term_clarification',
+    requiredFields: questionPlan.map((question) => question.targetSlot),
+    questionPlan: questionPlan.length > 0 ? questionPlan : undefined,
+    clarification: { explanation },
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+  };
 }

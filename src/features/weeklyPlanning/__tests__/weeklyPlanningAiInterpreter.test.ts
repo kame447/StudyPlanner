@@ -89,6 +89,7 @@ describe('weekly planning AI interpreter', () => {
     expect(client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
       temperature: 0.1,
       responseFormat: expect.objectContaining({ type: 'json_schema' }),
+      purpose: 'weekly_planning_interpreter',
     }));
     const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     expect(request.messages[1]).toEqual({

@@ -1,4 +1,5 @@
 import {
+  createWeeklyPlanningClarificationDecision,
   createWeeklyPlanningDialogueDecision,
   type WeeklyPlanningDialogueDecision,
 } from '../dialogue/weeklyPlanningDialogueManager';
@@ -17,6 +18,8 @@ import { finalizeState } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
 import type {
   CandidateValidationResult,
+  ConstraintSourceAvailability,
+  PlannerCapabilitySnapshot,
   WeeklyPlanningIntakeInterpreter,
   InterpreterStateSummary,
 } from '../intake/weeklyPlanningInterpreterTypes';
@@ -137,13 +140,46 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
   return Array.from(new Set(slots));
 }
 
-function createInterpreterStateSummary(state: PlanningIntakeState): InterpreterStateSummary {
+function createPlannerCapabilitySnapshot(
+  input: WeeklyPlanningIntakePipelineInput,
+): PlannerCapabilitySnapshot {
+  const termId = input.timetableTermId ?? 'default';
+  const hasActiveTimetable = (input.scheduleTemplates ?? []).some(
+    (template) => (template.termId || 'default') === termId,
+  );
+
+  return {
+    hasActiveTimetable,
+    existingPlanCount: (input.existingPlans ?? []).length,
+  };
+}
+
+function toConstraintSourceAvailability(
+  snapshot: PlannerCapabilitySnapshot,
+): ConstraintSourceAvailability {
+  const hasExistingPlans = snapshot.existingPlanCount > 0;
+
+  // 現在 active な参照元は timetable と existing_plans のみ。
+  // calendar(Google/Apple/Outlook 等の外部連携)は未実装のため、常に利用不可として扱う
+  // (将来拡張用の内部型は残すが、現在の AI に利用可能と誤認させない)。
+  return {
+    timetable: snapshot.hasActiveTimetable,
+    existingPlans: hasExistingPlans,
+    calendar: false,
+  };
+}
+
+function createInterpreterStateSummary(
+  state: PlanningIntakeState,
+  snapshot: PlannerCapabilitySnapshot,
+): InterpreterStateSummary {
   return {
     knownFields: state.examPrepScope?.fields ?? [],
     confirmedSlots: confirmedSlotsFromState(state),
     planningRangeSummary: state.range
       ? [state.range.startDateTime, state.range.endDateTime].filter(Boolean).join('〜')
       : undefined,
+    availableConstraintSources: toConstraintSourceAvailability(snapshot),
   };
 }
 
@@ -169,6 +205,23 @@ function addConfirmationAssumptions(
   return {
     ...state,
     assumptions: Array.from(new Set([...state.assumptions, ...assumptions])),
+  };
+}
+
+const CONSTRAINT_SOURCE_UNAVAILABLE_NOTE =
+  '指定された予定表・カレンダーに該当する予定が見つかりませんでした。動かせない予定があれば教えてください。';
+
+function addConstraintSourceConfirmationAssumptions(
+  state: PlanningIntakeState,
+  unavailableSourceCount: number,
+): PlanningIntakeState {
+  if (unavailableSourceCount === 0) {
+    return state;
+  }
+
+  return {
+    ...state,
+    assumptions: Array.from(new Set([...state.assumptions, CONSTRAINT_SOURCE_UNAVAILABLE_NOTE])),
   };
 }
 
@@ -198,7 +251,8 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     return buildPipelineOutput({ input, state: deterministicTurn.state });
   }
 
-  const stateSummary = createInterpreterStateSummary(deterministicTurn.state);
+  const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
+  const stateSummary = createInterpreterStateSummary(deterministicTurn.state, capabilitySnapshot);
   const interpreterResult = await input.interpreter.interpretUserTurn({
     userText: input.userText,
     context,
@@ -206,14 +260,41 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   });
   const interpreterDiagnostics = validateInterpretedCandidates(interpreterResult.candidates, stateSummary);
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
+
+  // 聞き返しは state を進めない。用語説明を返し、直前の質問を維持する(missing 不変)。
+  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];
+  if (clarificationRequest) {
+    const ref = clarificationRequest.type === 'request_clarification'
+      ? clarificationRequest.ref
+      : undefined;
+    const output = buildPipelineOutput({
+      input,
+      state: deterministicTurn.state,
+      interpreterDiagnostics,
+    });
+    output.decision = createWeeklyPlanningClarificationDecision({
+      state: deterministicTurn.state,
+      ref,
+    });
+
+    return output;
+  }
+
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
     ...interpreterDiagnostics.acceptedWithConfirmation,
   ];
-  const interpretedState = interpretedCommands.length > 0
-    ? finalizeState(addConfirmationAssumptions(
-      applyWeeklyPlanningCommands(deterministicTurn.state, interpretedCommands),
-      interpreterDiagnostics,
+  // 参照 source が空で rejected になった use_constraint_source は、fixed_events を充足させず確認に倒す。
+  const unavailableSourceCount = interpreterDiagnostics.rejected.filter(
+    (rejection) => rejection.reason === 'constraint-source-unavailable',
+  ).length;
+  const interpretedState = interpretedCommands.length > 0 || unavailableSourceCount > 0
+    ? finalizeState(addConstraintSourceConfirmationAssumptions(
+      addConfirmationAssumptions(
+        applyWeeklyPlanningCommands(deterministicTurn.state, interpretedCommands),
+        interpreterDiagnostics,
+      ),
+      unavailableSourceCount,
     ))
     : deterministicTurn.state;
 

@@ -90,12 +90,18 @@ function createSystemPrompt(): string {
     'Do not infer missing state or scheduling details. Use only the provided renderer input.',
     'For every item in nextQuestions, return exactly one questions item with the same slotKey.',
     'If nextQuestions contains fixed_events, sleep_cycle, and meal_bath_constraints, keep those slot identities separate.',
+    'planningPeriodLabel is the planning period (e.g. 来週/今週/週末). If it is present, use exactly that word and never substitute a different period. If it is absent, do not mention or invent any week or period at all.',
+    'Each nextQuestions item may include vocabularyHint: a plain user-facing paraphrase. Prefer the vocabularyHint wording over the raw slotKey or intent so the user understands the question. Do not output internal keys like "fixed_events".',
+    'constraintSourcesInUse lists schedule sources already used as constraints. Do not ask again about what those sources already cover; you may briefly acknowledge them.',
     'Use a supportive mentor tone, but keep the text short.',
   ].join('\n');
 }
 
 function createUserPrompt(input: DialogueRenderInput): string {
   return JSON.stringify({
+    planningPeriodLabel: input.planningPeriodLabel,
+    targetUnitLabel: input.targetUnitLabel,
+    constraintSourcesInUse: input.constraintSourcesInUse,
     acceptedFacts: input.acceptedFacts,
     assumptions: input.assumptions,
     nextQuestions: input.nextQuestions.map((question) => ({
@@ -103,6 +109,7 @@ function createUserPrompt(input: DialogueRenderInput): string {
       intent: question.intent,
       questionKind: question.questionKind,
       options: question.options,
+      vocabularyHint: question.vocabularyHint,
     })),
     styleConstraints: input.styleConstraints,
   });
@@ -122,6 +129,7 @@ export function createAiWeeklyPlanningDialogueRenderer(
           ],
           temperature: 0.2,
           responseFormat: WEEKLY_PLANNING_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+          purpose: 'weekly_planning_renderer',
         });
 
         return parseRendererResponse(content);

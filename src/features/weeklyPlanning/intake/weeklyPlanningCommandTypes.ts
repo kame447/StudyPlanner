@@ -1,5 +1,6 @@
 import type {
   CompletionTarget,
+  ConstraintSourceKind,
   ExamPrepScope,
   PlanningRange,
   PlanningIntakeUncertainty,
@@ -12,6 +13,8 @@ export type ParsedWeeklyPlanningCommand =
   | AddUnavailableCommand
   | AddFixedEventCommand
   | UpdateLifeConstraintCommand
+  | UseConstraintSourceCommand
+  | RequestClarificationCommand
   | SetPriorityPolicyCommand
   | MarkCompletedUnitsCommand
   | MarkCompletionTargetCommand
@@ -21,6 +24,23 @@ export type ParsedWeeklyPlanningCommand =
   | SetUnitRateCommand
   | SetExamScopeCommand
   | SetPlanningRangeCommand;
+
+/**
+ * 「既存の schedule source を計画制約として利用する」という semantic intent。
+ * 「予定表の通り」「時間割に入っている予定を使って」「登録済みの授業を考慮して」
+ * 「いつもの授業を避けて」「普段通りの授業」等はすべて同じこの intent に写像する。
+ * 発話表現ごとに command を増やさない。参照対象は source payload で表現する。
+ */
+export interface UseConstraintSourceCommand {
+  type: 'use_constraint_source';
+  source: {
+    kind: ConstraintSourceKind;
+    selector: 'active';
+  };
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
 
 export interface AddUnavailableCommand {
   type: 'add_unavailable';
@@ -61,6 +81,22 @@ export interface UpdateLifeConstraintCommand {
     studyAvailableStart?: string;
     hardness: 'hard' | 'soft';
   };
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+/**
+ * ユーザーがアプリの質問語句・用語の意味を聞き返す semantic intent。
+ * 「固定の予定って何ですか？」「それってどういう意味？」「何を答えればいいの？」等は
+ * すべてこの1つの intent に写像する。用語ごとに command を増やさない。
+ * どの質問・用語・未解決 slot についての聞き返しかは target / ref で表現する。
+ * これは state を進めない(missing を消さない)対話イベントであり、reducer では state を変更しない。
+ */
+export interface RequestClarificationCommand {
+  type: 'request_clarification';
+  target: 'referenced_question' | 'referenced_term' | 'unresolved_slot';
+  ref?: string;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

@@ -108,6 +108,13 @@ export function createWeeklyPlanningDialogueMessage(
       return `ここまでの条件を確認しました。次に ${formatQuestionPlan(
         decision,
       )} を教えてください。`;
+    case 'answer_clarification':
+      return [
+        decision.clarification?.explanation,
+        decision.questionPlan?.length
+          ? `引き続き、${formatQuestionPlan(decision)} を教えてください。`
+          : null,
+      ].filter((part): part is string => Boolean(part)).join('\n');
     case 'confirm_ambiguity':
       return `条件に曖昧な点があります。${formatAmbiguities(
         decision.ambiguities,

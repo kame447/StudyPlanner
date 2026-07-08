@@ -215,3 +215,33 @@ Phase R2 の看板を差し替える。
 - 既存の決定的 parser の削除。
 - LangGraph 等のフレームワーク導入(現行の決定的パイプライン+DI 境界で足りる想定。必要になったら別途設計)。
 - scheduler / 保存導線 / UI の変更。
+
+## 11. Post-R2 architecture evolution(次段階への位置づけ・2026-07-08 追記)
+
+**本節は §2〜§7 の実装記録を書き換えない。** §2〜§7 は R2-A〜D の**実装済み事実の記録**であり、`AI interpreter → ParsedWeeklyPlanningCommand candidates → validator / reducer` という architecture は実装・コミット済みで、有効に稼働している。本節はその**次の課題**を追記するものである。
+
+### 11.1 R2 command-candidate architecture は有効な中間段階だった
+
+R2 で確立した「AI は state を直接更新せず、既存 command union の候補を返し、deterministic validator/reducer が適用する」という境界は正しく、維持する。confidence→assumption/ambiguity、escalation、plan 外質問の破棄、failure fallback も含めて、responsibility separation(spec §12)に沿った土台として機能している。
+
+### 11.2 実使用で判明した次の課題: semantic intent と planner capability の間の層
+
+2026-07-08 の監査(実コード確認)で、次の構造的問題が判明した:
+
+- **AI interpreter が決定的 parser と同一の command 空間(action space)を共有している**。`weeklyPlanningAiInterpreter.ts` の system prompt は決定的 parser と同じ 12 command を列挙し、`InterpretedCommandCandidate.command` の型も `ParsedWeeklyPlanningCommand` そのもの。つまり AI は「曖昧な自然文を一段抽象化した意味へ写像する層」ではなく、「同じ固定 enum への、より柔軟な classifier」になっている。新しい言い回しへの対応は、AI 側では system prompt への箇条書き追加、決定的側では regex 追加であり、**どちらも「発話パターンごとに個別対応を増やす」同じ増築様式**に閉じている。
+- `note_no_fixed_events` / `note_uncertainty` のように**1発話パターン=1 command 型**で増えた command が存在する(スケールしない)。
+- scheduling 層には既存予定・時間割を避ける**汎用 capability が既にある**のに、intake の missing/充足判定と interpreter stateSummary がその存在を知らない(**capability はあるが intake から見えない**)。これが「授業を伝えても再質問される」「予定表の通り、が扱われない」の直接原因。
+
+したがって次段階の課題は、**発話表現非依存の semantic intent(意味カテゴリ)と、planner capability の間の層**を最小限導入することである。
+
+### 11.3 次段階の設計の正は `weekly-planning-nl-capability-model.md`
+
+Post-R2 の設計は `docs/architecture/weekly-planning-nl-capability-model.md` を正とする。要点:
+
+- 実使用問題を A〜F(interpretation / representation / capability / intake 可視性 / state transition / renderer context)で分類する診断原則。
+- capability inventory を read-only / draft mutation / requires confirmation / destructive の権限区分つきで棚卸し。
+- `use_constraint_source` / `request_clarification` 等、**発話ではなく意味カテゴリ**単位の最小 intent 設計。
+- fixed events / timetable を最初の vertical slice にして、`表現ゆれ → semantic interpretation → planner capability resolution → deterministic state/missing → renderer context` を1経路だけ貫通させる。
+- **全面 GoalIntent 移行はしない**(§10 の「やらないこと」を継承)。R2 の command-candidate 境界の上に、意味カテゴリ層を薄く載せる。
+
+この方針の roadmap 反映は `weekly-planning-roadmap.md` の Phase R2-Capability を正とする。
