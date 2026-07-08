@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AiConfig } from '../../../lib/aiConfig';
+import { getCloudflareAiProxyUrl } from '../../../lib/aiConfig';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { createAiWeeklyPlanningInterpreter } from '../intake/weeklyPlanningAiInterpreter';
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
@@ -14,15 +15,10 @@ const shouldRunRealAiEvaluation = process.env.WEEKLY_PLANNING_REAL_AI_EVAL === '
 const foundationCase = WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation;
 const semanticIntentCases = WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.semanticIntent;
 
-// 用途別 model の比較実行。既定は本番 routing と同じ2 model。
-// 明示指定したい場合のみ WEEKLY_PLANNING_REAL_AI_EVAL_MODELS(カンマ区切り)/ _MODEL(単一)で上書きする。
+// 比較対象 model。既定は本番 routing と同じ2 model。_MODELS(カンマ)/ _MODEL(単一)で上書き可。
+// この eval は既存 Worker proxy の「model 指定経路(purpose 無し)」で model を切り替えて比較する。
+// 本番の purpose→model routing(interpreter は purpose を送る)はこの経路とは別で、変更しない。
 const DEFAULT_EVAL_MODELS = ['gpt-5.4-nano-2026-03-17', 'gpt-5.4-mini-2026-03-17'];
-
-// 推定コスト用の単価(USD / 1,000,000 tokens)。実請求とは別の見積り。実単価に合わせて更新すること。
-const MODEL_PRICING: Record<string, { prompt: number; completion: number }> = {
-  'gpt-5.4-nano-2026-03-17': { prompt: 0.05, completion: 0.4 },
-  'gpt-5.4-mini-2026-03-17': { prompt: 0.25, completion: 2.0 },
-};
 
 const baseStateSummary: InterpreterStateSummary = {
   knownFields: [],
@@ -31,7 +27,7 @@ const baseStateSummary: InterpreterStateSummary = {
 };
 
 // use_constraint_source 系: 現在 active な参照元(timetable / existing_plans)を利用可能にして評価する。
-// calendar は未実装のため false(AI が利用可能と誤認しないことを本番と揃える)。
+// calendar は未実装のため false(本番と揃える)。
 const constraintSourceStateSummary: InterpreterStateSummary = {
   ...baseStateSummary,
   availableConstraintSources: { timetable: true, existingPlans: true, calendar: false },
@@ -52,24 +48,16 @@ const POSITIVE_INTENT_GROUPS: EvalGroup[] = [
   'clarification',
 ];
 
-interface DirectOpenAiEvalStatus {
+interface ProxyEvalStatus {
   attempted: boolean;
   reachedApi: boolean;
   status?: number;
   error?: string;
-  usage?: unknown;
 }
 
-interface DirectOpenAiResponse {
-  choices?: Array<{ message?: { content?: string | null } }>;
-  usage?: unknown;
-  error?: { message?: string };
-}
-
-interface TokenUsage {
-  prompt: number;
-  completion: number;
-  total: number;
+interface AiProxyResponse {
+  content?: string;
+  error?: string;
 }
 
 interface EvalContext {
@@ -85,8 +73,16 @@ interface EvalCase {
   evaluate: (ctx: EvalContext) => Record<string, boolean>;
 }
 
-function readEvalApiKey(): string | null {
-  return process.env.WEEKLY_PLANNING_REAL_AI_EVAL_API_KEY?.trim() || null;
+function readEvalIdToken(): string | null {
+  return process.env.WEEKLY_PLANNING_REAL_AI_EVAL_ID_TOKEN?.trim() || null;
+}
+
+function resolveProxyUrl(): string | null {
+  return (
+    process.env.WEEKLY_PLANNING_REAL_AI_EVAL_PROXY_URL?.trim() ||
+    getCloudflareAiProxyUrl() ||
+    null
+  );
 }
 
 function resolveEvalModels(): string[] {
@@ -103,56 +99,70 @@ function resolveEvalModels(): string[] {
   return DEFAULT_EVAL_MODELS;
 }
 
-function buildConfig(apiKey: string, model: string): AiConfig {
-  return {
-    provider: 'openai',
-    baseUrl: process.env.WEEKLY_PLANNING_REAL_AI_EVAL_BASE_URL?.trim() || 'https://api.openai.com/v1',
-    model,
-    apiKey,
-  };
+// 連続呼び出しで Worker の quota(uid: 5/min, 30/day)に当たりやすいため、
+// 明示指定時のみ呼び出し間に待機できるようにする(既定 0)。
+function readCallDelayMs(): number {
+  const raw = Number(process.env.WEEKLY_PLANNING_REAL_AI_EVAL_DELAY_MS ?? '0');
+  return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
 
-function createDirectOpenAiEvalClient(
-  config: AiConfig,
-  status: DirectOpenAiEvalStatus,
-): OpenAiCompatibleClient {
-  // dev direct path を維持(proxy には切り替えない)。model は config.model を直接使う。
+function delay(ms: number): Promise<void> {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+}
+
+function evalInterpreterConfig(model: string): AiConfig {
+  // client を注入するため config.model は未使用(参照専用)。provider は openai。
+  return { provider: 'openai', baseUrl: '', model, apiKey: '' };
+}
+
+/**
+ * 既存 Worker AI Proxy 経由の eval 用 client。
+ * - `openAiCompatibleClient.ts` の proxy 契約(endpoint / Authorization / body / {content} 応答)に合わせる。
+ * - ただし Node には Firebase セッションが無いため、ID トークンは env から供給する。
+ * - model 指定経路(purpose を送らず model を送る)を使い、eval 対象 model を切り替えて比較する。
+ *   Worker は resolveChatModel で purpose 無し → payload.model を使い、allowlist 検証後に Secret で OpenAI を呼ぶ。
+ * - purpose を送らないため本番の purpose→model routing はこの eval では発火しない(壊さない)。
+ */
+function createProxyEvalClient(params: {
+  proxyUrl: string;
+  idToken: string;
+  model: string;
+  status: ProxyEvalStatus;
+}): OpenAiCompatibleClient {
   return {
     async createChatCompletion({ messages, temperature = 0.1, responseFormat }) {
-      status.attempted = true;
+      params.status.attempted = true;
+      const endpoint = params.proxyUrl.endsWith('/chat/completions')
+        ? params.proxyUrl
+        : `${params.proxyUrl.replace(/\/$/, '')}/chat/completions`;
 
       try {
-        const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.apiKey}`,
+            Authorization: `Bearer ${params.idToken}`,
           },
           body: JSON.stringify({
-            model: config.model,
+            model: params.model,
             temperature,
             messages,
             response_format: responseFormat,
           }),
         });
-        status.reachedApi = true;
-        status.status = response.status;
+        params.status.reachedApi = true;
+        params.status.status = response.status;
 
-        const data = (await response.json()) as DirectOpenAiResponse;
-        status.usage = data.usage;
+        const data = (await response.json()) as AiProxyResponse;
+        const content = data.content?.trim();
 
-        if (!response.ok) {
-          throw new Error(data.error?.message || `OpenAI request failed with status ${response.status}.`);
-        }
-
-        const content = data.choices?.[0]?.message?.content?.trim();
-        if (!content) {
-          throw new Error('OpenAI response was empty.');
+        if (!response.ok || !content) {
+          throw new Error(data.error || `AI proxy request failed with status ${response.status}.`);
         }
 
         return content;
       } catch (error) {
-        status.error = error instanceof Error ? error.message : 'OpenAI request failed.';
+        params.status.error = error instanceof Error ? error.message : 'AI proxy request failed.';
         throw error;
       }
     },
@@ -294,38 +304,6 @@ function buildEvalCases(): EvalCase[] {
   return cases;
 }
 
-function readUsage(usage: unknown): TokenUsage | null {
-  if (typeof usage !== 'object' || usage === null) {
-    return null;
-  }
-
-  const record = usage as Record<string, unknown>;
-  const prompt = typeof record.prompt_tokens === 'number' ? record.prompt_tokens : undefined;
-  const completion = typeof record.completion_tokens === 'number' ? record.completion_tokens : undefined;
-  const total = typeof record.total_tokens === 'number' ? record.total_tokens : undefined;
-
-  if (prompt === undefined && completion === undefined && total === undefined) {
-    return null;
-  }
-
-  const promptTokens = prompt ?? 0;
-  const completionTokens = completion ?? 0;
-  return {
-    prompt: promptTokens,
-    completion: completionTokens,
-    total: total ?? promptTokens + completionTokens,
-  };
-}
-
-function estimateCostUsd(model: string, usage: TokenUsage): number | null {
-  const pricing = MODEL_PRICING[model];
-  if (!pricing) {
-    return null;
-  }
-
-  return (usage.prompt / 1_000_000) * pricing.prompt + (usage.completion / 1_000_000) * pricing.completion;
-}
-
 interface CaseOutcome {
   id: string;
   group: EvalGroup;
@@ -338,23 +316,27 @@ interface CaseOutcome {
   latencyMs: number;
 }
 
-async function evaluateModel(apiKey: string, model: string, cases: EvalCase[]): Promise<{
+async function evaluateModel(params: {
+  proxyUrl: string;
+  idToken: string;
   model: string;
-  outcomes: CaseOutcome[];
-  usage: TokenUsage;
-  usageAvailable: boolean;
-}> {
-  const config = buildConfig(apiKey, model);
+  cases: EvalCase[];
+  callDelayMs: number;
+}): Promise<{ model: string; outcomes: CaseOutcome[] }> {
+  const config = evalInterpreterConfig(params.model);
   const outcomes: CaseOutcome[] = [];
-  const usage: TokenUsage = { prompt: 0, completion: 0, total: 0 };
-  let usageAvailable = false;
 
-  for (const evalCase of cases) {
-    const status: DirectOpenAiEvalStatus = { attempted: false, reachedApi: false };
+  for (let index = 0; index < params.cases.length; index += 1) {
+    const evalCase = params.cases[index];
+    if (index > 0) {
+      await delay(params.callDelayMs);
+    }
+
+    const status: ProxyEvalStatus = { attempted: false, reachedApi: false };
     const startedAt = performance.now();
     const interpreterResult = await createAiWeeklyPlanningInterpreter(
       config,
-      createDirectOpenAiEvalClient(config, status),
+      createProxyEvalClient({ proxyUrl: params.proxyUrl, idToken: params.idToken, model: params.model, status }),
     ).interpretUserTurn({
       userText: evalCase.userText,
       context: { selectedDate: '2026-07-06', planningDayCount: 7 },
@@ -362,20 +344,12 @@ async function evaluateModel(apiKey: string, model: string, cases: EvalCase[]): 
     });
     const latencyMs = Math.round(performance.now() - startedAt);
 
-    const parsedUsage = readUsage(status.usage);
-    if (parsedUsage) {
-      usageAvailable = true;
-      usage.prompt += parsedUsage.prompt;
-      usage.completion += parsedUsage.completion;
-      usage.total += parsedUsage.total;
-    }
-
     if (status.error || !status.reachedApi) {
       outcomes.push({
         id: evalCase.id,
         group: evalCase.group,
         reachedApi: status.reachedApi,
-        error: status.error ?? 'call did not reach the API',
+        error: status.error ?? 'call did not reach the proxy',
         metrics: {},
         candidateCount: 0,
         rejectedCount: 0,
@@ -401,7 +375,7 @@ async function evaluateModel(apiKey: string, model: string, cases: EvalCase[]): 
     });
   }
 
-  return { model, outcomes, usage, usageAvailable };
+  return { model: params.model, outcomes };
 }
 
 function meanBool(values: boolean[]): number | null {
@@ -427,7 +401,7 @@ function summarizeByGroup(outcomes: CaseOutcome[]): Record<string, Record<string
   return byGroup;
 }
 
-function summarizeModel(result: Awaited<ReturnType<typeof evaluateModel>>) {
+function summarizeModel(result: { model: string; outcomes: CaseOutcome[] }) {
   const evaluated = result.outcomes.filter((outcome) => outcome.reachedApi && !outcome.error);
   const totalCandidates = evaluated.reduce(
     (sum, outcome) => sum + outcome.candidateCount + outcome.parseRejectionCount,
@@ -438,7 +412,6 @@ function summarizeModel(result: Awaited<ReturnType<typeof evaluateModel>>) {
     0,
   );
   const latencies = evaluated.map((outcome) => outcome.latencyMs);
-  const cost = result.usageAvailable ? estimateCostUsd(result.model, result.usage) : null;
 
   return {
     model: result.model,
@@ -454,10 +427,9 @@ function summarizeModel(result: Awaited<ReturnType<typeof evaluateModel>>) {
       total: latencies.reduce((sum, value) => sum + value, 0),
       average: latencies.length ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length) : null,
     },
-    tokenUsage: result.usageAvailable ? result.usage : 'unavailable: provider response did not include usage',
-    estimatedCostUsd: cost === null
-      ? 'unavailable: no usage or no pricing entry for model (see MODEL_PRICING)'
-      : Number(cost.toFixed(6)),
+    // Worker proxy は {content} のみ返し usage を透過しないため、proxy 経由では token/コストを計測できない。
+    tokenUsage: 'unavailable: worker proxy does not forward token usage',
+    estimatedCostUsd: 'unavailable: token usage is not exposed through the proxy',
     byGroup: summarizeByGroup(evaluated),
     failures: result.outcomes
       .filter((outcome) =>
@@ -468,14 +440,16 @@ function summarizeModel(result: Awaited<ReturnType<typeof evaluateModel>>) {
 }
 
 describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real evaluation', () => {
-  it('compares semantic-intent golden cases across the routed models', async () => {
-    const apiKey = readEvalApiKey();
+  it('compares semantic-intent golden cases across the routed models via the Worker proxy', async () => {
+    const idToken = readEvalIdToken();
+    const proxyUrl = resolveProxyUrl();
 
-    if (!apiKey) {
+    if (!idToken || !proxyUrl) {
       console.info('[weekly-planning-ai-real-eval]', JSON.stringify({
         skipped: true,
-        reason: 'missing evaluation env: WEEKLY_PLANNING_REAL_AI_EVAL_API_KEY is required',
-        reachedApi: false,
+        reason: 'missing evaluation env: WEEKLY_PLANNING_REAL_AI_EVAL_ID_TOKEN and a proxy URL (VITE_CLOUDFLARE_AI_PROXY_URL or WEEKLY_PLANNING_REAL_AI_EVAL_PROXY_URL) are required',
+        hasIdToken: Boolean(idToken),
+        hasProxyUrl: Boolean(proxyUrl),
       }, null, 2));
       expect(true).toBe(true);
       return;
@@ -483,21 +457,25 @@ describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real
 
     const models = resolveEvalModels();
     const cases = buildEvalCases();
-    const perModel: Array<Awaited<ReturnType<typeof evaluateModel>>> = [];
+    const callDelayMs = readCallDelayMs();
+    const perModel: Array<{ model: string; outcomes: CaseOutcome[] }> = [];
 
     for (const model of models) {
-      perModel.push(await evaluateModel(apiKey, model, cases));
+      perModel.push(await evaluateModel({ proxyUrl, idToken, model, cases, callDelayMs }));
     }
 
     const comparison = perModel.map(summarizeModel);
     const anyReachedApi = perModel.some((result) => result.outcomes.some((outcome) => outcome.reachedApi));
 
     console.info('[weekly-planning-ai-real-eval]', JSON.stringify({
+      via: 'cloudflare-worker-ai-proxy (model path, no purpose)',
       models,
       caseCount: cases.length,
       comparison,
     }, null, 2));
 
     expect(anyReachedApi).toBe(true);
-  }, 240000);
+    // 両モデル比較の最悪ケース: 33×呼び出し間待機(既定推奨15s≒495s)+ 34回分の実 API 応答時間。
+    // 応答遅延を含めても完走できるよう 20 分に設定する。
+  }, 1200000);
 });

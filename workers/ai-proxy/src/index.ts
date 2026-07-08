@@ -88,7 +88,9 @@ const MINUTE_WINDOW_MS = 60 * 1000;
 const DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DAILY_QUOTA_OFFSET_MS = 9 * 60 * 60 * 1000;
 const CHAT_UID_MINUTE_LIMIT = 5;
-const CHAT_UID_DAY_LIMIT = 30;
+// nano/mini の real-eval 比較(全 golden cases × 2 model)を1日で回せるよう当面 100 に引き上げる。
+// 分あたりは 5 のまま(eval 側で呼び出し間隔を空ければ足りるため据え置き)。uid 単位・全 chat 利用者共通。
+const CHAT_UID_DAY_LIMIT = 100;
 const OCR_UID_MINUTE_LIMIT = 2;
 const OCR_UID_DAY_LIMIT = 5;
 const IP_MINUTE_LIMIT = 20;
