@@ -1,4 +1,5 @@
 import type {
+  CompletionTarget,
   ExamPrepScope,
   PlanningRange,
   PlanningIntakeUncertainty,
@@ -13,6 +14,7 @@ export type ParsedWeeklyPlanningCommand =
   | UpdateLifeConstraintCommand
   | SetPriorityPolicyCommand
   | MarkCompletedUnitsCommand
+  | MarkCompletionTargetCommand
   | NoteProgressBoundaryCommand
   | NoteNoFixedEventsCommand
   | NoteUncertaintyCommand
@@ -77,6 +79,15 @@ export interface MarkCompletedUnitsCommand {
   field: string;
   completedYears: number[];
   mergeMode: 'replace' | 'append';
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface MarkCompletionTargetCommand {
+  type: 'mark_completion_target';
+  field?: string;
+  target: CompletionTarget;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

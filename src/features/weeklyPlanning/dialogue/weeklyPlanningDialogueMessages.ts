@@ -92,6 +92,9 @@ function buildConditionSummary(decision: WeeklyPlanningDialogueDecision): string
     summary.lifeConstraintKinds?.length
       ? `生活制約: ${summary.lifeConstraintKinds.join('、')}`
       : null,
+    summary.assumptions?.length
+      ? `仮の前提: ${summary.assumptions.join('、')}`
+      : null,
   ].filter((part): part is string => Boolean(part));
 
   return parts.length > 0 ? `\n\n${parts.join('\n')}` : '';

@@ -106,6 +106,30 @@ describe('weekly planning AI dialogue renderer', () => {
     expect(renderer.render).not.toHaveBeenCalled();
   });
 
+  it('renders only untargeted completion target fields from questionPlan context', async () => {
+    const decision: WeeklyPlanningDialogueDecision = {
+      kind: 'ask_missing_info',
+      messageKey: 'ask_progress_clarification',
+      requiredFields: ['progress'],
+      questionPlan: [
+        {
+          kind: 'missing_slot',
+          targetSlot: 'progress',
+          missing: ['progress'],
+          intent: 'ask_progress_clarification',
+          targetFields: ['C'],
+        },
+      ],
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    };
+
+    await expect(renderWeeklyPlanningDialogueMessage({
+      state: createInitialPlanningIntakeState(),
+      decision,
+    })).resolves.toContain('Cはどこまで進めたいですか？');
+  });
+
   it('still calls the AI renderer when missing-info questions are planned', async () => {
     const renderer = {
       render: vi.fn(async () => ({

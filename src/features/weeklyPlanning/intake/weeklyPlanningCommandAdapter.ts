@@ -2,6 +2,7 @@ import type {
   AddFixedEventCommand,
   AddUnavailableCommand,
   MarkCompletedUnitsCommand,
+  MarkCompletionTargetCommand,
   NoteProgressBoundaryCommand,
   NoteUncertaintyCommand,
   SetPriorityPolicyCommand,
@@ -80,6 +81,17 @@ export function toStudyProgressFromMarkCompletedUnitsCommand(
   return {
     field: command.field,
     completedYears: command.completedYears,
+    ambiguity: 'none',
+    rawText: command.sourceSegment ?? command.sourceText,
+  };
+}
+
+export function toStudyProgressFromMarkCompletionTargetCommand(
+  command: MarkCompletionTargetCommand,
+): StudyProgress {
+  return {
+    field: command.field,
+    completionTarget: command.target,
     ambiguity: 'none',
     rawText: command.sourceSegment ?? command.sourceText,
   };

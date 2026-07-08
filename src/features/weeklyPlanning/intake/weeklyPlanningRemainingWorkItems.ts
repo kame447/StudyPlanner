@@ -1,4 +1,4 @@
-import type { StudyScopeUnit } from './weeklyPlanningIntakeTypes';
+import type { CompletionTarget, StudyScopeUnit } from './weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDraftRequest } from './weeklyPlanningDraftRequestAdapter';
 
 export type WorkItemSplitPolicy = 'atomic' | 'splittable';
@@ -38,6 +38,7 @@ export type WeeklyPlanningRemainingWorkItemsAmbiguity =
 export interface WeeklyPlanningRemainingWorkItemsResult {
   items: WeeklyPlanningRemainingWorkItem[];
   ambiguities: WeeklyPlanningRemainingWorkItemsAmbiguity[];
+  completionTargets: Array<{ field: string; target: CompletionTarget }>;
 }
 
 function uniqueList<T>(items: T[]): T[] {
@@ -54,6 +55,30 @@ function expandYearsForPlanning(startYear: number, endYear: number): number[] {
   }
 
   return years;
+}
+
+function selectYearsForCompletionTarget(
+  years: number[],
+  target: CompletionTarget | undefined,
+): number[] {
+  if (!target) {
+    return years;
+  }
+
+  switch (target.kind) {
+    case 'all':
+      return years;
+    case 'latest_n_years':
+      return years.slice(0, target.count);
+    case 'year_range': {
+      const targetYears = new Set(expandYearsForPlanning(target.startYear, target.endYear));
+      return years.filter((year) => targetYears.has(year));
+    }
+    case 'up_to_reachable':
+      return years;
+    default:
+      return years;
+  }
 }
 
 function resolveFieldOrder(request: WeeklyPlanningDraftRequest): {
@@ -76,6 +101,7 @@ export function createRemainingWorkItemsFromDraftRequest(
 ): WeeklyPlanningRemainingWorkItemsResult {
   const ambiguities: WeeklyPlanningRemainingWorkItemsAmbiguity[] = [];
   const completedYearsByField = new Map<string, Set<number>>();
+  const completionTargetByField = new Map<string, CompletionTarget>();
 
   request.progress.forEach((progress) => {
     if (!progress.field) {
@@ -84,8 +110,12 @@ export function createRemainingWorkItemsFromDraftRequest(
     }
 
     const completedYears = completedYearsByField.get(progress.field) ?? new Set<number>();
-    progress.completedYears.forEach((year) => completedYears.add(year));
+    (progress.completedYears ?? []).forEach((year) => completedYears.add(year));
     completedYearsByField.set(progress.field, completedYears);
+
+    if (progress.completionTarget) {
+      completionTargetByField.set(progress.field, progress.completionTarget);
+    }
   });
 
   const fieldOrder = resolveFieldOrder(request);
@@ -99,12 +129,19 @@ export function createRemainingWorkItemsFromDraftRequest(
     request.examPrepScope.yearRange.endYear,
   );
 
+  const completionTargets = Array.from(completionTargetByField.entries()).map(([field, target]) => ({
+    field,
+    target,
+  }));
+
   return {
     items: fieldOrder.fields.flatMap((field) => {
       const completedYears = completedYearsByField.get(field) ?? new Set<number>();
 
-      return years
-        .filter((year) => !completedYears.has(year))
+      const target = completionTargetByField.get(field);
+      const uncompletedYears = years.filter((year) => !completedYears.has(year));
+
+      return selectYearsForCompletionTarget(uncompletedYears, target)
         .map((year) => ({
           field,
           year,
@@ -115,5 +152,6 @@ export function createRemainingWorkItemsFromDraftRequest(
         }));
     }),
     ambiguities: uniqueList(ambiguities),
+    completionTargets,
   };
 }

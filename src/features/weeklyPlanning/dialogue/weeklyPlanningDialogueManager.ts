@@ -41,6 +41,7 @@ export interface WeeklyPlanningDialogueDecisionSummary {
   constraintConflictCount?: number;
   fixedEventConflictCount?: number;
   lifeConstraintConflictCount?: number;
+  assumptions?: string[];
 }
 
 export type WeeklyPlanningQuestionPlanKind =
@@ -53,6 +54,7 @@ export interface WeeklyPlanningQuestionPlanItem {
   missing: PlanningIntakeMissing[];
   intent: string;
   dependsOn?: PlanningIntakeMissing[];
+  targetFields?: string[];
 }
 
 export interface WeeklyPlanningDialogueDecision {
@@ -121,6 +123,7 @@ function createQuestionPlanItem(params: {
   intent: string;
   kind?: WeeklyPlanningQuestionPlanKind;
   dependsOn?: PlanningIntakeMissing[];
+  targetFields?: string[];
 }): WeeklyPlanningQuestionPlanItem {
   const primaryMissing = params.missing[0];
 
@@ -130,13 +133,33 @@ function createQuestionPlanItem(params: {
     missing: params.missing,
     intent: params.intent,
     dependsOn: params.dependsOn,
+    targetFields: params.targetFields,
   };
 }
 
+function resolveMissingCompletionTargetFields(state: PlanningIntakeState): string[] {
+  const fields = state.examPrepScope?.fields ?? [];
+  const hasCompletionTarget = state.progress.some((progress) => progress.completionTarget);
+
+  if (!hasCompletionTarget || fields.length === 0) {
+    return [];
+  }
+
+  const targetedFields = new Set(
+    state.progress
+      .filter((progress) => progress.field && progress.completionTarget)
+      .map((progress) => progress.field as string),
+  );
+
+  return fields.filter((field) => !targetedFields.has(field));
+}
+
 function createMissingQuestionPlan(
-  missing: PlanningIntakeMissing[],
+  state: PlanningIntakeState,
 ): WeeklyPlanningQuestionPlanItem[] {
+  const missing = state.missing;
   const missingSet = new Set(missing);
+  const missingCompletionTargetFields = resolveMissingCompletionTargetFields(state);
   const candidates: WeeklyPlanningQuestionPlanItem[] = [];
   const addCandidate = (item: WeeklyPlanningQuestionPlanItem) => {
     if (item.missing.some((missingItem) => missingSet.has(missingItem))) {
@@ -162,6 +185,7 @@ function createMissingQuestionPlan(
     missing: ['progress'],
     intent: 'ask_progress_clarification',
     dependsOn: ['tasks_or_goals', 'year_range'],
+    targetFields: missingCompletionTargetFields.length > 0 ? missingCompletionTargetFields : undefined,
   }));
   addCandidate(createQuestionPlanItem({
     missing: ['unit_duration_estimate'],
@@ -247,10 +271,10 @@ function summarizeCompletedYears(
   request: WeeklyPlanningDraftRequest | null | undefined,
 ): WeeklyPlanningDialogueDecisionSummary['completedYears'] | undefined {
   const completedYears = request?.progress
-    .filter((progress) => progress.completedYears.length > 0)
+    .filter((progress) => (progress.completedYears ?? []).length > 0)
     .map((progress) => ({
       field: progress.field,
-      years: [...progress.completedYears],
+      years: [...(progress.completedYears ?? [])],
     }));
 
   return completedYears && completedYears.length > 0 ? completedYears : undefined;
@@ -282,6 +306,7 @@ function createSummary(
     constraintConflictCount: diagnostics?.constraintConflicts.length,
     fixedEventConflictCount: diagnostics?.fixedEventConflicts.length,
     lifeConstraintConflictCount: diagnostics?.lifeConstraintConflicts.length,
+    assumptions: input.state.assumptions.length > 0 ? [...input.state.assumptions] : undefined,
   };
 }
 
@@ -313,7 +338,7 @@ export function createWeeklyPlanningDialogueDecision(
   const missing = uniqueList(input.state.missing);
 
   if (missing.length > 0) {
-    const questionPlan = createMissingQuestionPlan(missing);
+    const questionPlan = createMissingQuestionPlan(input.state);
 
     return createDecision({
       kind: 'ask_missing_info',

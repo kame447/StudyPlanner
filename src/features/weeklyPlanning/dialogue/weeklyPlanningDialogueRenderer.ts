@@ -52,6 +52,7 @@ function nextQuestionsFromDecision(
         slotKey: question.targetSlot,
         intent: question.intent,
         questionKind: question.kind,
+        options: question.targetFields,
       }));
   }
 
@@ -164,7 +165,9 @@ function fallbackQuestionText(question: DialogueNextQuestion): string {
     case 'completion_direction':
       return '完了済み年度の範囲を確認したいです。新しい年度側からか、古い年度側からか教えてください。';
     case 'progress':
-      return '現在の進捗を教えてください。';
+      return question.options?.length
+        ? question.options.join('、') + 'はどこまで進めたいですか？'
+        : '現在の進捗を教えてください。';
     case 'unit_rate':
       return '1年分または1単位あたりの目安時間を教えてください。';
     case 'priority_policy':

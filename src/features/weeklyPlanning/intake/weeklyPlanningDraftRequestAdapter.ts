@@ -11,7 +11,7 @@ export interface WeeklyPlanningDraftRequest {
   examPrepScope: ExamPrepScope & {
     yearRange: NonNullable<ExamPrepScope['yearRange']>;
   };
-  progress: Array<StudyProgress & { completedYears: number[] }>;
+  progress: StudyProgress[];
   unitRate: UnitRateEstimate & { minutesPerUnit: number };
   priorityPolicy: Extract<PriorityPolicy, { kind: 'field_first' }>;
   constraints: LifeConstraint[];
@@ -29,10 +29,11 @@ function hasYearRange(
   return Boolean(examPrepScope?.yearRange);
 }
 
-function hasCompletedYears(
-  progress: StudyProgress,
-): progress is StudyProgress & { completedYears: number[] } {
-  return Boolean(progress.completedYears && progress.completedYears.length > 0);
+function hasProgressForDraft(progress: StudyProgress): boolean {
+  return Boolean(
+    (progress.completedYears && progress.completedYears.length > 0) ||
+    progress.completionTarget,
+  );
 }
 
 function hasMinutesPerUnit(
@@ -71,7 +72,7 @@ export function createWeeklyDraftRequestFromIntakeState(
     return null;
   }
 
-  const progress = state.progress.filter(hasCompletedYears);
+  const progress = state.progress.filter(hasProgressForDraft);
   const unitRate = state.unitRates.find(isYearFieldUnitRate);
 
   if (!unitRate) {

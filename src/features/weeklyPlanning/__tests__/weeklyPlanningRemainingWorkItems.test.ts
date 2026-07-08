@@ -176,6 +176,157 @@ describe('weekly planning remaining work items', () => {
     );
   });
 
+
+
+  it('uses all completion target for every uncompleted year in the target field', () => {
+    const state = createZeroProgressDraftReadyState();
+    const request = createWeeklyDraftRequestFromIntakeState({
+      ...state,
+      progress: [
+        {
+          field: 'ヒューマンサイエンス系',
+          completedYears: [2025, 2024, 2023, 2022],
+          completionTarget: { kind: 'all', rawText: '残り全部' },
+          ambiguity: 'none',
+          rawText: 'ヒューマンサイエンスは2025〜2022まで完了済み、残り全部',
+        },
+      ],
+    });
+
+    expect(request).not.toBeNull();
+    if (!request) throw new Error('expected draft request');
+
+    const result = createRemainingWorkItemsFromDraftRequest(request);
+    expect(result.items.filter((item) => item.field === 'ヒューマンサイエンス系').map((item) => item.year)).toEqual([
+      2021,
+      2020,
+      2019,
+    ]);
+  });
+
+  it('uses latest_n_years completion target for the latest uncompleted years only', () => {
+    const request = createWeeklyDraftRequestFromIntakeState({
+      ...createZeroProgressDraftReadyState(),
+      progress: [
+        {
+          field: 'OS とネットワーク',
+          completionTarget: { kind: 'latest_n_years', count: 2, rawText: 'OSは2年分' },
+          ambiguity: 'none',
+          rawText: 'OSは2年分',
+        },
+      ],
+    });
+
+    expect(request).not.toBeNull();
+    if (!request) throw new Error('expected draft request');
+
+    const result = createRemainingWorkItemsFromDraftRequest(request);
+    expect(result.items.filter((item) => item.field === 'OS とネットワーク').map((item) => item.year)).toEqual([
+      2025,
+      2024,
+    ]);
+  });
+
+  it('keeps completedYears separate from explicit completion target ranges', () => {
+    const request = createWeeklyDraftRequestFromIntakeState({
+      ...createZeroProgressDraftReadyState(),
+      progress: [
+        {
+          field: '数学・数理系',
+          completedYears: [2025],
+          completionTarget: { kind: 'year_range', startYear: 2025, endYear: 2023, rawText: '2025〜2023までやりたい' },
+          ambiguity: 'none',
+          rawText: '数学は2025完了、2025〜2023までやりたい',
+        },
+      ],
+    });
+
+    expect(request).not.toBeNull();
+    if (!request) throw new Error('expected draft request');
+
+    const result = createRemainingWorkItemsFromDraftRequest(request);
+    expect(result.items.filter((item) => item.field === '数学・数理系').map((item) => item.year)).toEqual([
+      2024,
+      2023,
+    ]);
+  });
+
+  it('treats up_to_reachable as a tentative target without reducing year work items in this task', () => {
+    const request = createWeeklyDraftRequestFromIntakeState({
+      ...createZeroProgressDraftReadyState(),
+      progress: [
+        {
+          field: 'ソフトウェア系',
+          completionTarget: { kind: 'up_to_reachable', rawText: 'できるところまで' },
+          ambiguity: 'none',
+          rawText: 'ソフトウェアはできるところまで',
+        },
+      ],
+    });
+
+    expect(request).not.toBeNull();
+    if (!request) throw new Error('expected draft request');
+
+    const result = createRemainingWorkItemsFromDraftRequest(request);
+    expect(result.items.filter((item) => item.field === 'ソフトウェア系').map((item) => item.year)).toEqual([
+      2025,
+      2024,
+      2023,
+      2022,
+      2021,
+      2020,
+      2019,
+    ]);
+  });
+
+  it('preserves up_to_reachable identity separately from all in completionTargets metadata', () => {
+    const request = createWeeklyDraftRequestFromIntakeState({
+      ...createZeroProgressDraftReadyState(),
+      progress: [
+        {
+          field: 'ヒューマンサイエンス系',
+          completionTarget: { kind: 'all', rawText: '残り全部' },
+          ambiguity: 'none',
+          rawText: 'ヒューマンサイエンスは残り全部',
+        },
+        {
+          field: 'ソフトウェア系',
+          completionTarget: { kind: 'up_to_reachable', rawText: 'できるところまで' },
+          ambiguity: 'none',
+          rawText: 'ソフトウェアはできるところまで',
+        },
+      ],
+    });
+
+    expect(request).not.toBeNull();
+    if (!request) throw new Error('expected draft request');
+
+    const result = createRemainingWorkItemsFromDraftRequest(request);
+
+    // Both fields currently produce the same set of remaining years (capacity policy
+    // is not implemented yet), but identity must still be recoverable from metadata.
+    expect(result.items.filter((item) => item.field === 'ヒューマンサイエンス系').map((item) => item.year))
+      .toEqual(result.items.filter((item) => item.field === 'ソフトウェア系').map((item) => item.year));
+
+    expect(result.completionTargets).toEqual(
+      expect.arrayContaining([
+        { field: 'ヒューマンサイエンス系', target: { kind: 'all', rawText: '残り全部' } },
+        { field: 'ソフトウェア系', target: { kind: 'up_to_reachable', rawText: 'できるところまで' } },
+      ]),
+    );
+
+    const humanScienceTarget = result.completionTargets.find(
+      (entry) => entry.field === 'ヒューマンサイエンス系',
+    );
+    const softwareTarget = result.completionTargets.find(
+      (entry) => entry.field === 'ソフトウェア系',
+    );
+
+    expect(humanScienceTarget?.target.kind).toBe('all');
+    expect(softwareTarget?.target.kind).toBe('up_to_reachable');
+    expect(humanScienceTarget?.target.kind).not.toBe(softwareTarget?.target.kind);
+  });
+
   it('ML-eval stateless pipeline is deterministic for identical roleplay input sequences', () => {
     const runPipeline = () => {
       const finalState = applyWeekendExamReadyForDraftRequest();

@@ -254,6 +254,94 @@ describe('weekly planning intake edge cases', () => {
     expect(state.missing).toContain('completion_direction');
     expect(createWeeklyDraftRequestFromIntakeState(state)).toBeNull();
   });
+
+
+  it('accepts all as a field completion target without treating it as completedYears', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      '7年分は2019〜2025。ヒューマンサイエンスは全部かな',
+      context,
+    );
+
+    expect(state.progress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'ヒューマンサイエンス系',
+          completionTarget: { kind: 'all', rawText: 'ヒューマンサイエンスは全部かな' },
+          completedYears: undefined,
+          ambiguity: 'none',
+        }),
+      ]),
+    );
+    expect(state.missing).toContain('progress');
+    expect(state.assumptions).toEqual([]);
+  });
+
+  it('does not add an assumption note for all or latest_n_years completion targets', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      'ヒューマンサイエンスを全部終わらせたいのと、OSとソフトウェアは二年分はやりたい',
+      context,
+    );
+
+    expect(state.progress.length).toBeGreaterThan(0);
+    expect(state.assumptions).toEqual([]);
+  });
+
+  it('accepts up_to_reachable as a tentative completion target and stops broad target re-asking', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      '出来るところまで終わらせたいです',
+      context,
+    );
+
+    expect(state.progress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          completionTarget: { kind: 'up_to_reachable', rawText: '出来るところまで終わらせたいです' },
+          ambiguity: 'none',
+        }),
+      ]),
+    );
+    expect(state.assumptions).toEqual(expect.arrayContaining([
+      expect.stringContaining('できるところまで'),
+    ]));
+    expect(state.missing).not.toContain('progress');
+  });
+
+  it('keeps field-specific completion targets for all and latest years in one turn', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendRangeAndExamScope(),
+      'ヒューマンサイエンスを全部終わらせたいのと、OSとソフトウェアは二年分はやりたい',
+      context,
+    );
+
+    expect(state.progress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'ヒューマンサイエンス系',
+          completionTarget: { kind: 'all', rawText: expect.stringContaining('ヒューマンサイエンス') },
+        }),
+        expect.objectContaining({
+          field: 'OS とネットワーク',
+          completionTarget: { kind: 'latest_n_years', count: 2, rawText: expect.stringContaining('OS') },
+        }),
+        expect.objectContaining({
+          field: 'ソフトウェア系',
+          completionTarget: { kind: 'latest_n_years', count: 2, rawText: expect.stringContaining('ソフトウェア') },
+        }),
+      ]),
+    );
+    expect(state.missing).toContain('progress');
+
+    const completedState = applyWeeklyPlanningUserTurn(
+      state,
+      '数学は全部、ハードウェアは全部',
+      context,
+    );
+    expect(completedState.missing).not.toContain('progress');
+  });
+
   it.each([
     ['一分野の一年分は2時間くらい', true],
     ['一年分は2時間くらい', true],

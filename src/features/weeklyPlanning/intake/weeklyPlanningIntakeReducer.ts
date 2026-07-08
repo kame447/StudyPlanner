@@ -5,6 +5,7 @@ import type {
 } from './weeklyPlanningIntakeTypes';
 import {
   parseMarkCompletedUnitsCommand,
+  parseMarkCompletionTargetCommands,
   parseNoteProgressBoundaryCommand,
 } from './weeklyPlanningCompletionParsing';
 import {
@@ -14,6 +15,7 @@ import {
   toPlanningRangeFromSetPlanningRangeCommand,
   toPriorityPolicyFromSetPriorityPolicyCommand,
   toStudyProgressFromMarkCompletedUnitsCommand,
+  toStudyProgressFromMarkCompletionTargetCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
   toUncertaintyFromNoteUncertaintyCommand,
   toUnitRateFromSetUnitRateCommand,
@@ -73,6 +75,11 @@ function parseWeeklyPlanningCommands(params: {
   const optionalCommands: Array<ParsedWeeklyPlanningCommand | undefined> = [
     parseSetPriorityPolicyCommand(params.userText, fields, currentPriorityOrder),
     parseMarkCompletedUnitsCommand(
+      params.userText,
+      effectiveScope?.yearRange,
+      fields,
+    ),
+    ...parseMarkCompletionTargetCommands(
       params.userText,
       effectiveScope?.yearRange,
       fields,
@@ -212,6 +219,90 @@ function applyMarkCompletedUnitsCommand(
   };
 }
 
+function upsertCompletionTargetProgress(
+  state: PlanningIntakeState,
+  command: Extract<ParsedWeeklyPlanningCommand, { type: 'mark_completion_target' }>,
+  field: string | undefined,
+): PlanningIntakeState {
+  const commandProgress = {
+    ...toStudyProgressFromMarkCompletionTargetCommand(command),
+    field,
+  };
+  const progressIndex = state.progress.findIndex((progress) => progress.field === field);
+  const existingProgress = progressIndex >= 0
+    ? state.progress[progressIndex]
+    : {
+        field,
+        ambiguity: 'none' as const,
+        rawText: command.sourceSegment ?? command.sourceText,
+      };
+  const updatedProgress = {
+    ...existingProgress,
+    ...commandProgress,
+    completedYears: existingProgress.completedYears,
+    ambiguity: 'none' as const,
+    rawText: command.sourceSegment ?? command.sourceText,
+  };
+
+  return {
+    ...state,
+    progress: progressIndex >= 0
+      ? [
+          ...state.progress.slice(0, progressIndex),
+          updatedProgress,
+          ...state.progress.slice(progressIndex + 1),
+        ]
+      : [...state.progress, updatedProgress],
+  };
+}
+
+function resolveCompletionTargetMissing(
+  state: PlanningIntakeState,
+): PlanningIntakeState['missing'] {
+  const fields = state.examPrepScope?.fields ?? [];
+  const targetedFields = new Set(
+    state.progress
+      .filter((progress) => progress.field && progress.completionTarget)
+      .map((progress) => progress.field as string),
+  );
+
+  if (targetedFields.size === 0 || fields.length === 0) {
+    return removeMissing(state.missing, ['progress']);
+  }
+
+  const missingTargetFields = fields.filter((field) => !targetedFields.has(field));
+  return missingTargetFields.length > 0
+    ? addMissing(state.missing, ['progress'])
+    : removeMissing(state.missing, ['progress']);
+}
+
+function applyMarkCompletionTargetCommand(
+  state: PlanningIntakeState,
+  command: Extract<ParsedWeeklyPlanningCommand, { type: 'mark_completion_target' }>,
+): PlanningIntakeState {
+  const fields = command.field
+    ? [command.field]
+    : state.examPrepScope?.fields.length
+      ? state.examPrepScope.fields
+      : [undefined];
+  const nextState = fields.reduce(
+    (currentState, field) => upsertCompletionTargetProgress(currentState, command, field),
+    state,
+  );
+  const assumptions = command.target.kind === 'up_to_reachable'
+    ? uniqueList([
+        ...nextState.assumptions,
+        'できるところまでを仮の completion target として扱います。',
+      ])
+    : nextState.assumptions;
+
+  return {
+    ...nextState,
+    assumptions,
+    missing: resolveCompletionTargetMissing(nextState),
+  };
+}
+
 function applyWeeklyPlanningCommand(
   state: PlanningIntakeState,
   command: ParsedWeeklyPlanningCommand,
@@ -253,6 +344,8 @@ function applyWeeklyPlanningCommand(
       };
     case 'mark_completed_units':
       return applyMarkCompletedUnitsCommand(state, command);
+    case 'mark_completion_target':
+      return applyMarkCompletionTargetCommand(state, command);
     case 'note_progress_boundary':
       return {
         ...state,
@@ -359,6 +452,7 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
       ...progress,
       completedYears: progress.completedYears ? [...progress.completedYears] : undefined,
       incomplete: progress.incomplete ? [...progress.incomplete] : undefined,
+      completionTarget: progress.completionTarget ? { ...progress.completionTarget } : undefined,
     })),
     unitRates: baseState.unitRates.map((unitRate) => ({ ...unitRate })),
     constraints: baseState.constraints.map((constraint) => ({ ...constraint })),

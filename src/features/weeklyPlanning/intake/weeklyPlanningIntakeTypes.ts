@@ -78,9 +78,16 @@ export type StudyProgressAmbiguity =
   | 'scope_range'
   | 'none';
 
+export type CompletionTarget =
+  | { kind: 'all'; rawText: string }
+  | { kind: 'latest_n_years'; count: number; rawText: string }
+  | { kind: 'up_to_reachable'; rawText: string }
+  | { kind: 'year_range'; startYear: number; endYear: number; rawText: string };
+
 export interface StudyProgress {
   field?: string;
   completedYears?: number[];
+  completionTarget?: CompletionTarget;
   completionBoundaryYear?: number;
   current?: string;
   incomplete?: string[];

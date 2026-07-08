@@ -187,6 +187,56 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
     },
   }),
   commandSchema({
+    type: 'mark_completion_target',
+    required: ['target'],
+    properties: {
+      field: stringSchema(),
+      target: {
+        anyOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'rawText'],
+            properties: {
+              kind: { const: 'all' },
+              rawText: stringSchema(),
+            },
+          },
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'count', 'rawText'],
+            properties: {
+              kind: { const: 'latest_n_years' },
+              count: integerSchema(),
+              rawText: stringSchema(),
+            },
+          },
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'rawText'],
+            properties: {
+              kind: { const: 'up_to_reachable' },
+              rawText: stringSchema(),
+            },
+          },
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'startYear', 'endYear', 'rawText'],
+            properties: {
+              kind: { const: 'year_range' },
+              startYear: integerSchema(),
+              endYear: integerSchema(),
+              rawText: stringSchema(),
+            },
+          },
+        ],
+      },
+    },
+  }),
+  commandSchema({
     type: 'note_progress_boundary',
     required: ['boundaryYear', 'ambiguity'],
     properties: {
@@ -382,7 +432,7 @@ function createSystemPrompt(): string {
     '- set_exam_scope: examType, fields, totalFields, totalYears, yearRange, strategyHint, unitModel, rawText.',
     '- set_priority_policy: policy.kind field_first with order when the user describes field order or priority.',
     '- set_unit_rate: minutesPerUnit for a known scope unit.',
-    '- mark_completed_units or note_progress_boundary for completed year/field progress.',
+    '- mark_completed_units or note_progress_boundary for completed year/field progress. Use mark_completion_target only for the desired future completion target.',
     '- add_fixed_event, add_unavailable, update_life_constraint, note_no_fixed_events, note_uncertainty, set_planning_range only when explicit in the current turn.',
     'Confidence rules: high for explicit complete facts, medium for inferred or partially ordered facts that need confirmation, low for ambiguous facts.',
     'For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 and endYear to 2019.',

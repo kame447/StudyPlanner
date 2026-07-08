@@ -98,6 +98,32 @@ describe('weekly planning dialogue manager', () => {
     expect(decision.requiredFields).toEqual(['tasks_or_goals']);
   });
 
+  it('plans only untargeted completion target fields after partial field target acceptance', () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      examPrepScope: {
+        fields: ['A', 'B', 'C'],
+        yearRange: { startYear: 2025, endYear: 2023, sourceText: '2025〜2023' },
+        rawText: ['A/B/C'],
+      },
+      progress: [
+        { field: 'A', completionTarget: { kind: 'all', rawText: 'Aは全部' }, ambiguity: 'none', rawText: 'Aは全部' },
+        { field: 'B', completionTarget: { kind: 'latest_n_years', count: 2, rawText: 'Bは2年分' }, ambiguity: 'none', rawText: 'Bは2年分' },
+      ],
+      missing: ['progress'],
+    };
+    const decision = createWeeklyPlanningDialogueDecision({ state });
+
+    expect(decision.kind).toBe('ask_missing_info');
+    expect(decision.questionPlan).toEqual([
+      expect.objectContaining({
+        targetSlot: 'progress',
+        missing: ['progress'],
+        targetFields: ['C'],
+      }),
+    ]);
+  });
+
   it('skips known upper slots and asks only currently eligible missing slots', () => {
     const state: PlanningIntakeState = {
       ...createInitialPlanningIntakeState(),
@@ -184,6 +210,37 @@ describe('weekly planning dialogue manager', () => {
     ]);
     expect(decision.shouldCreateDraft).toBe(true);
     expect(decision.shouldSavePlan).toBe(false);
+  });
+
+  it('surfaces an up_to_reachable assumption note in the confirm_draft_conditions summary', () => {
+    const { state, request, remainingWorkItems } = createDraftReadyPipeline();
+    const stateWithAssumption: PlanningIntakeState = {
+      ...state,
+      assumptions: ['できるところまでを仮の completion target として扱います。'],
+    };
+    const decision = createWeeklyPlanningDialogueDecision({
+      state: stateWithAssumption,
+      draftRequest: request,
+      remainingWorkItems,
+    });
+
+    expect(decision.kind).toBe('confirm_draft_conditions');
+    expect(decision.summary?.assumptions).toEqual([
+      'できるところまでを仮の completion target として扱います。',
+    ]);
+  });
+
+  it('does not add an assumptions summary entry for the ordinary all/latest_n_years draft-ready flow', () => {
+    const { state, request, remainingWorkItems } = createDraftReadyPipeline();
+    const decision = createWeeklyPlanningDialogueDecision({
+      state,
+      draftRequest: request,
+      remainingWorkItems,
+    });
+
+    expect(decision.kind).toBe('confirm_draft_conditions');
+    expect(state.assumptions).toEqual([]);
+    expect(decision.summary?.assumptions).toBeUndefined();
   });
 
   it('offers a dry-run preview when candidates exist and nothing is unscheduled', () => {

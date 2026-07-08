@@ -86,6 +86,35 @@ describe('weekly planning dialogue messages', () => {
     expect(message).toContain('残り作業: 9件');
   });
 
+  it('includes the up_to_reachable assumption note in the confirm_draft_conditions message', () => {
+    const message = createWeeklyPlanningDialogueMessage(decision({
+      kind: 'confirm_draft_conditions',
+      shouldCreateDraft: true,
+      summary: {
+        yearRange: { startYear: 2019, endYear: 2025, sourceText: '2019〜2025' },
+        remainingWorkItemCount: 9,
+        assumptions: ['できるところまでを仮の completion target として扱います。'],
+      },
+    }));
+
+    expect(message).toContain('保存しません');
+    expect(message).toContain('仮の前提');
+    expect(message).toContain('できるところまでを仮の completion target として扱います。');
+  });
+
+  it('omits the assumption note from confirm_draft_conditions when there are no assumptions', () => {
+    const message = createWeeklyPlanningDialogueMessage(decision({
+      kind: 'confirm_draft_conditions',
+      shouldCreateDraft: true,
+      summary: {
+        yearRange: { startYear: 2019, endYear: 2025, sourceText: '2019〜2025' },
+        remainingWorkItemCount: 9,
+      },
+    }));
+
+    expect(message).not.toContain('仮の前提');
+  });
+
   it('renders dry-run preview summaries', () => {
     const message = createWeeklyPlanningDialogueMessage(decision({
       kind: 'offer_dry_run_preview',

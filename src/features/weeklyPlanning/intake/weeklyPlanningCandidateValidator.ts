@@ -17,6 +17,7 @@ export const KNOWN_COMMAND_TYPES = new Set([
   'update_life_constraint',
   'set_priority_policy',
   'mark_completed_units',
+  'mark_completion_target',
   'note_progress_boundary',
   'note_no_fixed_events',
   'note_uncertainty',
@@ -59,6 +60,12 @@ const LIFE_CONSTRAINT_KINDS = new Set([
 
 const HARDNESS_VALUES = new Set(['hard', 'soft']);
 const MERGE_MODES = new Set(['replace', 'append']);
+const COMPLETION_TARGET_KINDS = new Set([
+  'all',
+  'latest_n_years',
+  'up_to_reachable',
+  'year_range',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -106,6 +113,8 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
       return isRecord(command.policy) && typeof command.policy.kind === 'string';
     case 'mark_completed_units':
       return typeof command.field === 'string' && Array.isArray(command.completedYears) && typeof command.mergeMode === 'string';
+    case 'mark_completion_target':
+      return isRecord(command.target) && typeof command.target.kind === 'string';
     case 'note_progress_boundary':
       return typeof command.boundaryYear === 'number' && command.ambiguity === 'completion_direction';
     case 'set_unit_rate':
@@ -136,6 +145,8 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
       return !PRIORITY_POLICY_KINDS.has(command.policy.kind) ? 'invalid-priority-policy-kind' : null;
     case 'mark_completed_units':
       return !MERGE_MODES.has(command.mergeMode) ? 'invalid-merge-mode' : null;
+    case 'mark_completion_target':
+      return !COMPLETION_TARGET_KINDS.has(command.target.kind) ? 'invalid-completion-target-kind' : null;
     case 'add_unavailable':
       return !HARDNESS_VALUES.has(command.range.hardness) ? 'invalid-hardness' : null;
     case 'add_fixed_event':
@@ -159,6 +170,16 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
     }
     case 'mark_completed_units':
       return command.completedYears.every(isReasonableYear) ? null : 'invalid-completed-year';
+    case 'mark_completion_target':
+      if (command.target.kind === 'latest_n_years') {
+        return Number.isInteger(command.target.count) && command.target.count > 0 ? null : 'invalid-completion-target-count';
+      }
+      if (command.target.kind === 'year_range') {
+        return isReasonableYear(command.target.startYear) && isReasonableYear(command.target.endYear)
+          ? null
+          : 'invalid-completion-target-year-range';
+      }
+      return null;
     case 'note_progress_boundary':
       return isReasonableYear(command.boundaryYear) ? null : 'invalid-progress-year';
     case 'set_unit_rate':
@@ -193,6 +214,7 @@ function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
     case 'set_priority_policy':
       return ['priority_policy'];
     case 'mark_completed_units':
+    case 'mark_completion_target':
     case 'note_progress_boundary':
       return ['progress'];
     case 'set_unit_rate':
@@ -215,6 +237,8 @@ function referencedFields(command: ParsedWeeklyPlanningCommand): string[] {
       return command.policy.kind === 'field_first' ? command.policy.order : [];
     case 'mark_completed_units':
       return [command.field];
+    case 'mark_completion_target':
+      return command.field ? [command.field] : [];
     case 'note_progress_boundary':
       return command.field ? [command.field] : [];
     default:

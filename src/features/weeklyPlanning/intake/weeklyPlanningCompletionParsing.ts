@@ -1,7 +1,7 @@
-import type { MarkCompletedUnitsCommand, NoteProgressBoundaryCommand } from './weeklyPlanningCommandTypes';
+import type { MarkCompletedUnitsCommand, MarkCompletionTargetCommand, NoteProgressBoundaryCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, StudyProgress } from './weeklyPlanningIntakeTypes';
 import { resolveFieldName } from './weeklyPlanningFieldParsing';
-import { normalizeIntakeText, splitIntakeSegments, uniqueList } from './weeklyPlanningTextParsing';
+import { normalizeIntakeText, parseSmallInteger, splitIntakeSegments, uniqueList } from './weeklyPlanningTextParsing';
 
 export function parseProgressHint(text: string, fields: string[]): StudyProgress | undefined {
   for (const segment of splitIntakeSegments(text)) {
@@ -292,6 +292,146 @@ export function parseCompletedSingleYearRevision(
   }
 
   return undefined;
+}
+
+function resolveFieldScopesFromText(rawText: string, fields: string[]): string[] {
+  const normalizedText = normalizeIntakeText(rawText)
+    .replace(/(?:は|を|の|系)$/g, '')
+    .trim();
+  const tokens = normalizedText
+    .split(/と|、|,|，|・|\/|＆|&|\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const resolved = tokens
+    .map((token) => resolveFieldName(token, fields))
+    .filter((field): field is string => Boolean(field));
+
+  const directMatches = fields.filter((field) => {
+    if (normalizedText.includes(field)) {
+      return true;
+    }
+
+    return field
+      .split(/[\s・/]+/)
+      .filter((fieldToken) => fieldToken.length >= 2)
+      .some((fieldToken) => normalizedText.includes(fieldToken));
+  });
+
+  return uniqueList([...resolved, ...directMatches]);
+}
+
+function createCompletionTargetCommands(params: {
+  text: string;
+  segment: string;
+  fieldText?: string;
+  target: MarkCompletionTargetCommand['target'];
+  fields: string[];
+  confidence: MarkCompletionTargetCommand['confidence'];
+}): MarkCompletionTargetCommand[] {
+  const resolvedFields = resolveFieldScopesFromText(params.fieldText ?? '', params.fields);
+
+  if (resolvedFields.length === 0) {
+    return [{
+      type: 'mark_completion_target',
+      target: params.target,
+      sourceText: params.text,
+      sourceSegment: params.segment,
+      confidence: params.confidence,
+    }];
+  }
+
+  return resolvedFields.map((field) => ({
+    type: 'mark_completion_target',
+    field,
+    target: params.target,
+    sourceText: params.text,
+    sourceSegment: params.segment,
+    confidence: params.confidence,
+  }));
+}
+
+function hasCompletionTargetExpression(text: string): boolean {
+  return /やりたい|やるつもり|やる予定|進めたい|終わらせたい|終えたい|片付けたい|全部|全て|すべて|できるところまで|出来るところまで|いけるところまで|可能なところまで/.test(
+    normalizeIntakeText(text),
+  );
+}
+
+export function parseMarkCompletionTargetCommands(
+  text: string,
+  yearRange: ExamPrepScope['yearRange'] | undefined,
+  fields: string[],
+): MarkCompletionTargetCommand[] {
+  const commands: MarkCompletionTargetCommand[] = [];
+
+  for (const segment of splitIntakeSegments(text)) {
+    const normalizedSegment = normalizeIntakeText(segment);
+
+    if (/できるところまで|出来るところまで|いけるところまで|可能なところまで/.test(normalizedSegment)) {
+      commands.push(...createCompletionTargetCommands({
+        text,
+        segment,
+        fieldText: normalizedSegment.replace(/(?:できるところまで|出来るところまで|いけるところまで|可能なところまで).*/, ''),
+        target: { kind: 'up_to_reachable', rawText: segment },
+        fields,
+        confidence: 'medium',
+      }));
+      continue;
+    }
+
+    const latestYearsMatch = normalizedSegment.match(/(.+?)(?:は|を|の)?\s*([0-9一二三四五六七八九十]+)\s*年分(?:は)?(?:.*(?:やりたい|やるつもり|やる予定|進めたい|終わらせたい|終えたい|片付けたい))?/);
+    if (latestYearsMatch && hasCompletionTargetExpression(normalizedSegment)) {
+      const count = parseSmallInteger(latestYearsMatch[2]);
+      if (count && count > 0) {
+        commands.push(...createCompletionTargetCommands({
+          text,
+          segment,
+          fieldText: latestYearsMatch[1],
+          target: { kind: 'latest_n_years', count, rawText: segment },
+          fields,
+          confidence: 'high',
+        }));
+        continue;
+      }
+    }
+
+    const allMatch = normalizedSegment.match(/(?:(.+?)(?:は|を|の)?\s*)?(?:全部|全て|すべて)(?:かな|.*(?:やりたい|やるつもり|やる予定|進めたい|終わらせたい|終えたい|片付けたい))?/);
+    if (allMatch) {
+      commands.push(...createCompletionTargetCommands({
+        text,
+        segment,
+        fieldText: allMatch[1] ?? '',
+        target: { kind: 'all', rawText: segment },
+        fields,
+        confidence: 'high',
+      }));
+      continue;
+    }
+
+    if (!/やりたい|進めたい|終わらせたい|終えたい|片付けたい/.test(normalizedSegment)) {
+      continue;
+    }
+
+    const rangeExpressions = parseYearRangeExpressions(normalizedSegment);
+    rangeExpressions.forEach((rangeExpression) => {
+      const startYear = normalizeYearToken(rangeExpression.startText, yearRange);
+      const endYear = normalizeYearToken(rangeExpression.endText, yearRange);
+
+      if (!startYear || !endYear) {
+        return;
+      }
+
+      commands.push(...createCompletionTargetCommands({
+        text,
+        segment,
+        fieldText: normalizedSegment.slice(0, rangeExpression.index),
+        target: { kind: 'year_range', startYear, endYear, rawText: segment },
+        fields,
+        confidence: 'high',
+      }));
+    });
+  }
+
+  return commands;
 }
 
 export function parseMarkCompletedUnitsCommand(
