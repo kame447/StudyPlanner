@@ -354,11 +354,22 @@ export function validateInterpretedCandidates(
       return;
     }
 
-    // planner decision: 参照した schedule source が実際に非空かを capability snapshot で検証する。
-    // 空なら fixed_events を勝手に充足せず、rejected として残す(pipeline が確認へ倒す)。
-    if (command.type === 'use_constraint_source' && !constraintSourceAvailable(command.source, summary)) {
-      addRejected(result, candidate, 'constraint-source-unavailable');
-      return;
+    if (command.type === 'use_constraint_source') {
+      const resolution = candidate.constraintSourceResolution;
+      if (resolution && resolution.status !== 'resolved') {
+        if (resolution.clarificationRequest) {
+          result.clarificationRequests.push(resolution.clarificationRequest);
+        }
+        addRejected(result, candidate, `constraint-source-reference-${resolution.status}`);
+        return;
+      }
+
+      // planner decision: 参照した schedule source が実際に非空かを capability snapshot で検証する。
+      // 空なら fixed_events を勝手に充足せず、rejected として残す(pipeline が確認へ倒す)。
+      if (!constraintSourceAvailable(command.source, summary)) {
+        addRejected(result, candidate, 'constraint-source-unavailable');
+        return;
+      }
     }
 
     // 聞き返しは state を進めない対話イベント。slot を占有させず専用バケットへ振り分ける。

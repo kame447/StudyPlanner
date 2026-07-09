@@ -16,6 +16,7 @@ import {
 import type { PlanningIntakeMissing, PlanningIntakeState, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';
 import { finalizeState } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
+import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
 import type {
   CandidateValidationResult,
   ConstraintSourceAvailability,
@@ -258,7 +259,12 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     context,
     stateSummary,
   });
-  const interpreterDiagnostics = validateInterpretedCandidates(interpreterResult.candidates, stateSummary);
+  const resolvedCandidates = resolveConstraintSourceReferences({
+    candidates: interpreterResult.candidates,
+    userText: input.userText,
+    stateSummary,
+  });
+  const interpreterDiagnostics = validateInterpretedCandidates(resolvedCandidates, stateSummary);
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
   // 聞き返しは state を進めない。用語説明を返し、直前の質問を維持する(missing 不変)。

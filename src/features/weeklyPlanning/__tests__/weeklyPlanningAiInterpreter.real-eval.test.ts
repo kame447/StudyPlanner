@@ -5,8 +5,10 @@ import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatib
 import { createAiWeeklyPlanningInterpreter } from '../intake/weeklyPlanningAiInterpreter';
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
+import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
 import type {
   CandidateValidationResult,
+  InterpretedCommandCandidate,
   InterpreterStateSummary,
 } from '../intake/weeklyPlanningInterpreterTypes';
 import { WEEKLY_PLANNING_INTAKE_EVALUATION_CASES } from '../testFixtures/weeklyPlanningEvaluationCases';
@@ -53,6 +55,7 @@ interface ProxyEvalStatus {
   reachedApi: boolean;
   status?: number;
   error?: string;
+  rawContent?: string;
 }
 
 interface AiProxyResponse {
@@ -69,6 +72,7 @@ interface EvalCase {
   id: string;
   group: EvalGroup;
   userText: string;
+  expected: Record<string, boolean>;
   stateSummary: InterpreterStateSummary;
   evaluate: (ctx: EvalContext) => Record<string, boolean>;
 }
@@ -97,6 +101,16 @@ function resolveEvalModels(): string[] {
   }
 
   return DEFAULT_EVAL_MODELS;
+}
+
+function readCaseFilter(): Set<string> | null {
+  const raw = process.env.WEEKLY_PLANNING_REAL_AI_EVAL_CASE?.trim();
+  if (!raw) {
+    return null;
+  }
+
+  const ids = raw.split(',').map((id) => id.trim()).filter(Boolean);
+  return ids.length > 0 ? new Set(ids) : null;
 }
 
 // 連続呼び出しで Worker の quota(uid: 5/min, 30/day)に当たりやすいため、
@@ -155,6 +169,7 @@ function createProxyEvalClient(params: {
 
         const data = (await response.json()) as AiProxyResponse;
         const content = data.content?.trim();
+        params.status.rawContent = content;
 
         if (!response.ok || !content) {
           throw new Error(data.error || `AI proxy request failed with status ${response.status}.`);
@@ -219,6 +234,7 @@ function buildEvalCases(): EvalCase[] {
       id: 'foundation:exam_scope+priority',
       group: 'foundation',
       userText: foundationCase.freeTextExamScopeAndPriority,
+      expected: { intent: true, payload: true },
       stateSummary: baseStateSummary,
       evaluate: ({ commands }) => ({
         intent:
@@ -234,6 +250,7 @@ function buildEvalCases(): EvalCase[] {
       id: `unambiguous_timetable:${index}`,
       group: 'unambiguous_timetable',
       userText: text,
+      expected: { intent: true, payload: true },
       stateSummary: constraintSourceStateSummary,
       evaluate: ({ commands }) => ({
         intent: commands.some((command) => command.type === 'use_constraint_source'),
@@ -247,6 +264,7 @@ function buildEvalCases(): EvalCase[] {
       id: `unambiguous_existing_plans:${index}`,
       group: 'unambiguous_existing_plans',
       userText: text,
+      expected: { intent: true, payload: true },
       stateSummary: constraintSourceStateSummary,
       evaluate: ({ commands }) => ({
         intent: commands.some((command) => command.type === 'use_constraint_source'),
@@ -260,6 +278,7 @@ function buildEvalCases(): EvalCase[] {
       id: `ambiguous:${index}`,
       group: 'ambiguous',
       userText: text,
+      expected: { notHardApplied: true, clarified: true },
       stateSummary: constraintSourceStateSummary,
       // 単一 source に勝手に hard 確定しないこと(notHardApplied)を最優先で測り、
       // clarification に倒れたか(clarified)を併記する。
@@ -275,6 +294,7 @@ function buildEvalCases(): EvalCase[] {
       id: `clarification:${index}`,
       group: 'clarification',
       userText: text,
+      expected: { intent: true, payload: true },
       stateSummary: baseStateSummary,
       evaluate: ({ commands }) => ({
         intent: commands.some((command) => command.type === 'request_clarification'),
@@ -294,6 +314,7 @@ function buildEvalCases(): EvalCase[] {
       id: `negative:${index}`,
       group: 'negative',
       userText: text,
+      expected: { noFalseFire: true },
       stateSummary: constraintSourceStateSummary,
       evaluate: ({ commands }) => ({
         noFalseFire: !firedForbiddenIntent(commands),
@@ -307,9 +328,16 @@ function buildEvalCases(): EvalCase[] {
 interface CaseOutcome {
   id: string;
   group: EvalGroup;
+  userText: string;
+  expected: Record<string, boolean>;
   reachedApi: boolean;
   error?: string;
   metrics: Record<string, boolean>;
+  rawAiResponse?: string;
+  parsedCandidates?: InterpretedCommandCandidate[];
+  validatorResult?: CandidateValidationResult;
+  hardApplied?: boolean;
+  clarified?: boolean;
   candidateCount: number;
   rejectedCount: number;
   parseRejectionCount: number;
@@ -348,6 +376,8 @@ async function evaluateModel(params: {
       outcomes.push({
         id: evalCase.id,
         group: evalCase.group,
+        userText: evalCase.userText,
+        expected: evalCase.expected,
         reachedApi: status.reachedApi,
         error: status.error ?? 'call did not reach the proxy',
         metrics: {},
@@ -359,15 +389,30 @@ async function evaluateModel(params: {
       continue;
     }
 
-    const diagnostics = validateInterpretedCandidates(interpreterResult.candidates, evalCase.stateSummary);
+    const resolvedCandidates = resolveConstraintSourceReferences({
+      candidates: interpreterResult.candidates,
+      userText: evalCase.userText,
+      stateSummary: evalCase.stateSummary,
+    });
+    const diagnostics = validateInterpretedCandidates(resolvedCandidates, evalCase.stateSummary);
     diagnostics.parseRejections = interpreterResult.parseRejections;
     const commands = interpreterResult.candidates.map((candidate) => candidate.command);
+    const metrics = evalCase.evaluate({ commands, diagnostics });
+    const hardApplied = hardAppliedConstraintSource(diagnostics);
+    const clarified = requestedClarification({ commands, diagnostics });
 
     outcomes.push({
       id: evalCase.id,
       group: evalCase.group,
+      userText: evalCase.userText,
+      expected: evalCase.expected,
       reachedApi: true,
-      metrics: evalCase.evaluate({ commands, diagnostics }),
+      metrics,
+      rawAiResponse: status.rawContent,
+      parsedCandidates: resolvedCandidates,
+      validatorResult: diagnostics,
+      hardApplied,
+      clarified,
       candidateCount: interpreterResult.candidates.length,
       rejectedCount: diagnostics.rejected.length,
       parseRejectionCount: diagnostics.parseRejections.length,
@@ -435,7 +480,19 @@ function summarizeModel(result: { model: string; outcomes: CaseOutcome[] }) {
       .filter((outcome) =>
         Boolean(outcome.error) ||
         Object.entries(outcome.metrics).some(([key, value]) => key !== 'clarified' && value === false))
-      .map((outcome) => ({ id: outcome.id, error: outcome.error, metrics: outcome.metrics })),
+      .map((outcome) => ({
+        id: outcome.id,
+        group: outcome.group,
+        inputText: outcome.userText,
+        expected: outcome.expected,
+        error: outcome.error,
+        rawAiResponse: outcome.rawAiResponse,
+        parsedCandidates: outcome.parsedCandidates,
+        validatorResult: outcome.validatorResult,
+        finalEvaluationResult: outcome.metrics,
+        hardApplied: outcome.hardApplied,
+        clarified: outcome.clarified,
+      })),
   };
 }
 
@@ -456,9 +513,14 @@ describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real
     }
 
     const models = resolveEvalModels();
-    const cases = buildEvalCases();
+    const caseFilter = readCaseFilter();
+    const cases = buildEvalCases().filter((evalCase) => !caseFilter || caseFilter.has(evalCase.id));
     const callDelayMs = readCallDelayMs();
     const perModel: Array<{ model: string; outcomes: CaseOutcome[] }> = [];
+
+    if (cases.length === 0) {
+      throw new Error(`No weekly planning real-eval cases matched filter: ${Array.from(caseFilter ?? []).join(', ')}`);
+    }
 
     for (const model of models) {
       perModel.push(await evaluateModel({ proxyUrl, idToken, model, cases, callDelayMs }));
@@ -471,6 +533,7 @@ describe.skipIf(!shouldRunRealAiEvaluation)('weekly planning AI interpreter real
       via: 'cloudflare-worker-ai-proxy (model path, no purpose)',
       models,
       caseCount: cases.length,
+      caseFilter: caseFilter ? Array.from(caseFilter) : null,
       comparison,
     }, null, 2));
 

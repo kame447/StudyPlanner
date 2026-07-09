@@ -3,10 +3,25 @@ import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 
 export type InterpreterOrigin = 'ai_interpreter';
 
+export type ConstraintSourceReferenceResolutionStatus = 'resolved' | 'unresolved' | 'multiple';
+
+export interface ConstraintSourceReferenceResolution {
+  status: ConstraintSourceReferenceResolutionStatus;
+  resolvedKind?: 'timetable' | 'existing_plans' | 'calendar';
+  candidateKinds?: Array<'timetable' | 'existing_plans' | 'calendar'>;
+  reason: string;
+  clarificationRequest?: ParsedWeeklyPlanningCommand;
+}
+
 export interface InterpretedCommandCandidate {
   command: ParsedWeeklyPlanningCommand;
   origin: InterpreterOrigin;
   needsConfirmation: boolean;
+  /**
+   * Resolver が付与する constraint source の参照解決結果。
+   * validator は自然文を再解析せず、この status の enforcement のみを担当する。
+   */
+  constraintSourceResolution?: ConstraintSourceReferenceResolution;
 }
 
 /**

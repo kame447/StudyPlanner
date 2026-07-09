@@ -9,6 +9,7 @@ import {
   KNOWN_COMMAND_TYPES,
   validateInterpretedCandidates,
 } from '../intake/weeklyPlanningCandidateValidator';
+import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
 import { WEEKLY_PLANNING_INTAKE_EVALUATION_CASES } from '../testFixtures/weeklyPlanningEvaluationCases';
 
 const config: AiConfig = {
@@ -305,6 +306,47 @@ describe('weekly planning AI interpreter', () => {
       context: { selectedDate: '2026-07-06' },
       stateSummary,
     })).resolves.toEqual({ candidates: [expect.objectContaining({ command: expect.objectContaining({ confidence: 'low' }) })], parseRejections: [] });
+  });
+
+  it('keeps ambiguous constraint source resolution outside the validator natural-language boundary', () => {
+    const candidates = resolveConstraintSourceReferences({
+      userText: '入れてあるやつをそのまま考慮して',
+      stateSummary: {
+        knownFields: [],
+        confirmedSlots: ['planning_range'],
+        availableConstraintSources: { timetable: true, existingPlans: true, calendar: false },
+      },
+      candidates: [
+        {
+          command: {
+            type: 'use_constraint_source',
+            source: { kind: 'existing_plans', selector: 'active' },
+            sourceText: '入れてあるやつをそのまま考慮して',
+            confidence: 'high',
+          },
+          origin: 'ai_interpreter',
+          needsConfirmation: false,
+        },
+      ],
+    });
+    const validation = validateInterpretedCandidates(candidates, {
+      knownFields: [],
+      confirmedSlots: ['planning_range'],
+      availableConstraintSources: { timetable: true, existingPlans: true, calendar: false },
+    });
+
+    expect(candidates[0].constraintSourceResolution).toEqual(expect.objectContaining({ status: 'multiple' }));
+    expect(validation.accepted).toEqual([]);
+    expect(validation.clarificationRequests).toEqual([
+      expect.objectContaining({
+        type: 'request_clarification',
+        target: 'unresolved_slot',
+        ref: 'constraint_source',
+      }),
+    ]);
+    expect(validation.rejected).toEqual([
+      expect.objectContaining({ reason: 'constraint-source-reference-multiple' }),
+    ]);
   });
 
   it('shrinks to an empty candidate list when the AI client throws', async () => {

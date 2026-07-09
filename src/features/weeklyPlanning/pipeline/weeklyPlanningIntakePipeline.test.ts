@@ -960,6 +960,61 @@ describe('constraint source capability (use_constraint_source)', () => {
       { kind: 'existing_plans', selector: 'active' },
     ]);
   });
+
+
+  it('clarifies ambiguous constraint source references before hard applying nano-style candidates', async () => {
+    const previousState = stateWithFixedEventsMissing();
+    const missingBefore = [...previousState.missing];
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: '入れてあるやつをそのまま考慮して',
+      existingPlans: [plan({ date: '2026-06-30' })],
+      scheduleTemplates: [timetableTemplate()],
+      interpreter: fakeInterpreter([
+        useConstraintSourceCandidate({
+          kind: 'existing_plans',
+          sourceText: '入れてあるやつをそのまま考慮して',
+        }),
+      ]),
+    });
+
+    expect(output.state.missing).toEqual(missingBefore);
+    expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
+    expect(output.decision.kind).toBe('answer_clarification');
+    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([
+      expect.objectContaining({
+        type: 'request_clarification',
+        target: 'unresolved_slot',
+        ref: 'constraint_source',
+      }),
+    ]);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([
+      expect.objectContaining({ reason: 'constraint-source-reference-multiple' }),
+    ]);
+  });
+
+  it('clarifies ambiguous calendar wording when multiple constraint sources are active', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithFixedEventsMissing(),
+      userText: 'カレンダーに入ってる予定を使って',
+      existingPlans: [plan({ date: '2026-06-30' })],
+      scheduleTemplates: [timetableTemplate()],
+      interpreter: fakeInterpreter([
+        useConstraintSourceCandidate({
+          kind: 'existing_plans',
+          sourceText: 'カレンダーに入ってる予定を使って',
+        }),
+      ]),
+    });
+
+    expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
+    expect(output.decision.kind).toBe('answer_clarification');
+    expect(output.interpreterDiagnostics?.clarificationRequests[0]).toEqual(
+      expect.objectContaining({ target: 'unresolved_slot', ref: 'constraint_source' }),
+    );
+  });
 });
 
 function requestClarificationCandidate(params: {
