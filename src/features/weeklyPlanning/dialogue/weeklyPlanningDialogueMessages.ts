@@ -1,3 +1,4 @@
+import { userLabelForSlot } from '../intake/weeklyPlanningQuestionSlots';
 import type { WeeklyPlanningDialogueDecision } from './weeklyPlanningDialogueManager';
 
 function formatMinutes(minutes: number | undefined): string | null {
@@ -20,21 +21,7 @@ function formatMinutes(minutes: number | undefined): string | null {
 }
 
 function formatQuestionSlot(slotKey: string): string {
-  const labels: Record<string, string> = {
-    planning_start_date: '計画の開始日',
-    tasks_or_goals: '学習内容や目標',
-    fixed_events: '授業・バイト・病院・ゼミなどの固定予定の有無',
-    sleep_cycle: '睡眠時間',
-    meal_bath_constraints: '食事・風呂などの生活制約',
-    life_constraints: '食事・風呂・睡眠などの生活制約',
-    year_range: '対象年度',
-    progress: '現在の進捗',
-    completion_direction: '完了済み年度の範囲',
-    unit_rate: '1年分または1単位あたりの目安時間',
-    priority_policy: '分野や年度の優先順',
-  };
-
-  return labels[slotKey] ?? slotKey;
+  return userLabelForSlot(slotKey) ?? slotKey;
 }
 
 function formatRequiredFields(fields: string[] | undefined): string {

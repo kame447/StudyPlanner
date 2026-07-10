@@ -1,3 +1,10 @@
+import {
+  clarificationKeywordTarget,
+  messageKeyForMissing,
+  QUESTION_PLAN_SLOT_ORDER,
+  termExplanationForSlot,
+  type PlanningQuestionSlotKind,
+} from '../intake/weeklyPlanningQuestionSlots';
 import type { WeeklyPlanningDraftRequest } from '../intake/weeklyPlanningDraftRequestAdapter';
 import type {
   LifeConstraint,
@@ -45,9 +52,7 @@ export interface WeeklyPlanningDialogueDecisionSummary {
   assumptions?: string[];
 }
 
-export type WeeklyPlanningQuestionPlanKind =
-  | 'missing_slot'
-  | 'missing_life_constraint';
+export type WeeklyPlanningQuestionPlanKind = PlanningQuestionSlotKind;
 
 export interface WeeklyPlanningQuestionPlanItem {
   kind: WeeklyPlanningQuestionPlanKind;
@@ -79,21 +84,6 @@ export interface WeeklyPlanningDialogueDecisionInput {
   dryRunDiagnostics?: WeeklyDraftCandidateDiagnostics | null;
 }
 
-const MISSING_FIELD_KEYS: Record<PlanningIntakeMissing, string> = {
-  planning_start_date: 'planning_start_date',
-  tasks_or_goals: 'tasks_or_goals',
-  fixed_events: 'fixed_events',
-  sleep_cycle: 'sleep_cycle',
-  meal_bath_constraints: 'meal_bath_constraints',
-  year_range: 'year_range',
-  progress: 'progress',
-  completion_direction: 'completion_direction',
-  unit_duration_estimate: 'unit_rate',
-  priority_policy: 'priority_policy',
-  next_field_after_math: 'priority_policy',
-  life_constraints: 'life_constraints',
-};
-
 const MAX_MISSING_QUESTIONS_PER_TURN = 2;
 
 function uniqueList<T>(items: T[]): T[] {
@@ -101,145 +91,26 @@ function uniqueList<T>(items: T[]): T[] {
 }
 
 function missingMessageKey(missing: PlanningIntakeMissing[]): string {
-  if (missing.includes('planning_start_date')) return 'ask_planning_start_date';
-  if (missing.includes('year_range')) return 'ask_year_range';
-  if (missing.includes('unit_duration_estimate')) return 'ask_unit_rate';
-  if (missing.includes('priority_policy') || missing.includes('next_field_after_math')) {
-    return 'ask_priority_policy';
-  }
-  if (
-    missing.includes('life_constraints') ||
-    missing.includes('sleep_cycle') ||
-    missing.includes('meal_bath_constraints')
-  ) {
-    return 'ask_life_constraints';
-  }
-  if (missing.includes('fixed_events')) return 'ask_fixed_events';
-  if (missing.includes('tasks_or_goals')) return 'ask_tasks_or_goals';
-  if (missing.includes('completion_direction') || missing.includes('progress')) {
-    return 'ask_progress_clarification';
-  }
-
-  return 'ask_missing_info';
-}
-
-function createQuestionPlanItem(params: {
-  missing: PlanningIntakeMissing[];
-  intent: string;
-  kind?: WeeklyPlanningQuestionPlanKind;
-  dependsOn?: PlanningIntakeMissing[];
-  targetFields?: string[];
-}): WeeklyPlanningQuestionPlanItem {
-  const primaryMissing = params.missing[0];
-
-  return {
-    kind: params.kind ?? 'missing_slot',
-    targetSlot: MISSING_FIELD_KEYS[primaryMissing],
-    missing: params.missing,
-    intent: params.intent,
-    dependsOn: params.dependsOn,
-    targetFields: params.targetFields,
-  };
-}
-
-function resolveMissingCompletionTargetFields(state: PlanningIntakeState): string[] {
-  const fields = state.examPrepScope?.fields ?? [];
-  const hasCompletionTarget = state.progress.some((progress) => progress.completionTarget);
-
-  if (!hasCompletionTarget || fields.length === 0) {
-    return [];
-  }
-
-  const targetedFields = new Set(
-    state.progress
-      .filter((progress) => progress.field && progress.completionTarget)
-      .map((progress) => progress.field as string),
-  );
-
-  return fields.filter((field) => !targetedFields.has(field));
+  return messageKeyForMissing(missing);
 }
 
 export function createMissingQuestionPlan(
   state: PlanningIntakeState,
 ): WeeklyPlanningQuestionPlanItem[] {
-  const missing = state.missing;
-  const missingSet = new Set(missing);
-  const missingCompletionTargetFields = resolveMissingCompletionTargetFields(state);
-  const candidates: WeeklyPlanningQuestionPlanItem[] = [];
-  const addCandidate = (item: WeeklyPlanningQuestionPlanItem) => {
-    if (item.missing.some((missingItem) => missingSet.has(missingItem))) {
-      candidates.push(item);
-    }
-  };
-
-  addCandidate(createQuestionPlanItem({
-    missing: ['planning_start_date'],
-    intent: 'ask_planning_start_date',
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['tasks_or_goals'],
-    intent: 'ask_tasks_or_goals',
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['year_range'],
-    intent: 'ask_year_range',
-    dependsOn: ['tasks_or_goals'],
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['completion_direction'],
-    intent: 'ask_progress_clarification',
-    dependsOn: ['tasks_or_goals', 'year_range'],
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['progress'],
-    intent: 'ask_progress_clarification',
-    dependsOn: ['tasks_or_goals', 'year_range'],
-    targetFields: missingCompletionTargetFields.length > 0 ? missingCompletionTargetFields : undefined,
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['unit_duration_estimate'],
-    intent: 'ask_unit_rate',
-    dependsOn: ['tasks_or_goals', 'year_range', 'completion_direction'],
-  }));
-  const priorityCandidates: PlanningIntakeMissing[] = [
-    'priority_policy',
-    'next_field_after_math',
-  ];
-  const priorityMissing = priorityCandidates.filter((item) => missingSet.has(item));
-  if (priorityMissing.length > 0) {
-    addCandidate(createQuestionPlanItem({
-      missing: priorityMissing,
-      intent: 'ask_priority_policy',
-      dependsOn: ['tasks_or_goals', 'year_range', 'completion_direction', 'unit_duration_estimate'],
+  const missingSet = new Set(state.missing);
+  const candidates = QUESTION_PLAN_SLOT_ORDER
+    .filter((definition) =>
+      definition.missing.some((missing) => missingSet.has(missing))
+      && definition.isQuestionPlanEligible(state, missingSet),
+    )
+    .map((definition) => ({
+      kind: definition.kind,
+      targetSlot: definition.targetSlot,
+      missing: definition.missing.filter((missing) => missingSet.has(missing)),
+      intent: definition.intent,
+      dependsOn: definition.dependsOn ? [...definition.dependsOn] : undefined,
+      targetFields: definition.targetFields?.(state),
     }));
-  }
-  addCandidate(createQuestionPlanItem({
-    missing: ['fixed_events'],
-    intent: 'ask_fixed_events',
-    kind: 'missing_life_constraint',
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['sleep_cycle'],
-    intent: 'ask_life_constraints',
-    kind: 'missing_life_constraint',
-  }));
-  addCandidate(createQuestionPlanItem({
-    missing: ['meal_bath_constraints'],
-    intent: 'ask_life_constraints',
-    kind: 'missing_life_constraint',
-  }));
-
-  if (
-    missingSet.has('life_constraints') &&
-    !missingSet.has('sleep_cycle') &&
-    !missingSet.has('meal_bath_constraints')
-  ) {
-    addCandidate(createQuestionPlanItem({
-      missing: ['life_constraints'],
-      intent: 'ask_life_constraints',
-      kind: 'missing_life_constraint',
-    }));
-  }
 
   return candidates
     .filter((item) => !item.dependsOn?.some((dependency) => missingSet.has(dependency)))
@@ -407,32 +278,6 @@ export function createWeeklyPlanningDialogueDecision(
   });
 }
 
-// 用語 slot key → deterministic な説明文。用語ごとに command/handler を増やさず、ここで説明を引く。
-const TERM_EXPLANATIONS: Record<string, string> = {
-  fixed_events: '「固定の予定」は、授業・バイト・通院など、時間が決まっていて動かせない予定のことです。',
-  sleep_cycle: '「睡眠のリズム」は、就寝・起床の時刻や、何時から勉強を始められるかのことです。',
-  meal_bath_constraints: '「生活の制約」は、食事やお風呂など、勉強を入れにくい時間のことです。',
-  life_constraints: '「生活の制約」は、食事・お風呂・睡眠などの生活リズムのことです。',
-  year_range: '「対象年度」は、過去問などで何年から何年までを対象にするかのことです。',
-  progress: '「進捗」は、今どこまで終わっているかのことです。',
-  completion_direction: '「完了済みの向き」は、終わった年度が新しい側からか古い側からかのことです。',
-  unit_rate: '「目安時間」は、1年分(1単位)にだいたい何分かかるかのことです。',
-  priority_policy: '「優先順」は、どの分野からどの順番で進めるかのことです。',
-  tasks_or_goals: '「学習内容や目標」は、この期間に取り組みたい教材やゴールのことです。',
-  planning_start_date: '計画を始める日です。質問中の期間内で、開始したい曜日や日付を教えてください。',
-};
-
-// ref がユーザー語(「固定予定」等)のときに slot key へ寄せるためのキーワード。
-const CLARIFICATION_TERM_KEYWORDS: Array<{ pattern: RegExp; termKey: string }> = [
-  { pattern: /固定|動かせない/, termKey: 'fixed_events' },
-  { pattern: /睡眠|寝|起き/, termKey: 'sleep_cycle' },
-  { pattern: /食事|風呂/, termKey: 'meal_bath_constraints' },
-  { pattern: /年度/, termKey: 'year_range' },
-  { pattern: /進捗|進み/, termKey: 'progress' },
-  { pattern: /優先/, termKey: 'priority_policy' },
-  { pattern: /目安|単位/, termKey: 'unit_rate' },
-];
-
 const GENERIC_CLARIFICATION =
   'この質問は、計画を作るために必要な条件をうかがっているものです。分かる範囲で教えてください。';
 
@@ -440,14 +285,14 @@ function resolveClarificationTermKey(
   state: PlanningIntakeState,
   ref: string | undefined,
 ): string | undefined {
-  if (ref && TERM_EXPLANATIONS[ref]) {
+  if (ref && termExplanationForSlot(ref)) {
     return ref;
   }
 
   if (ref) {
-    const matched = CLARIFICATION_TERM_KEYWORDS.find((entry) => entry.pattern.test(ref));
-    if (matched) {
-      return matched.termKey;
+    const termKey = clarificationKeywordTarget(ref);
+    if (termKey) {
+      return termKey;
     }
   }
 
@@ -464,7 +309,7 @@ export function createWeeklyPlanningClarificationDecision(params: {
   ref?: string;
 }): WeeklyPlanningDialogueDecision {
   const termKey = resolveClarificationTermKey(params.state, params.ref);
-  const explanation = (termKey && TERM_EXPLANATIONS[termKey]) || GENERIC_CLARIFICATION;
+  const explanation = (termKey && termExplanationForSlot(termKey)) || GENERIC_CLARIFICATION;
   const questionPlan = createMissingQuestionPlan(params.state);
 
   return {

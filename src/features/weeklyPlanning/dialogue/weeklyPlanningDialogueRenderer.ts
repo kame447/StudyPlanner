@@ -1,3 +1,7 @@
+import {
+  fallbackQuestionForSlot,
+  vocabularyHintForSlot,
+} from '../intake/weeklyPlanningQuestionSlots';
 import type { ConstraintSourceRef, PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDialogueDecision } from './weeklyPlanningDialogueManager';
 import { createWeeklyPlanningDialogueMessage } from './weeklyPlanningDialogueMessages';
@@ -32,22 +36,6 @@ export interface DialogueRenderInput {
   nextQuestions: DialogueNextQuestion[];
   styleConstraints: { tone: 'mentor'; maxQuestions: number };
 }
-
-// slot の内部キー → ユーザー語彙での平易な言い換え。AI が「固定の予定」等の内部語を直訳しないための素材。
-const SLOT_VOCABULARY_HINTS: Record<string, string> = {
-  planning_start_date: '計画を始める日(質問中の期間内の曜日や日付)',
-  tasks_or_goals: '取り組みたい学習内容や目標',
-  year_range: '対象の年度範囲',
-  progress: '今どこまで進んでいるか',
-  completion_direction: '完了済みの年度が新しい側からか古い側からか',
-  unit_duration_estimate: '1年分(1単位)あたりの目安時間',
-  unit_rate: '1年分(1単位)あたりの目安時間',
-  priority_policy: '優先する分野や進める順番',
-  fixed_events: '授業・バイト・通院など動かせない予定',
-  sleep_cycle: '睡眠時間や、何時から勉強を始められるか',
-  meal_bath_constraints: '食事やお風呂など勉強を入れにくい時間',
-  life_constraints: '食事・お風呂・睡眠などの生活リズム',
-};
 
 const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
   timetable: '時間割',
@@ -120,7 +108,7 @@ function nextQuestionsFromDecision(
         intent: question.intent,
         questionKind: question.kind,
         options: question.targetFields,
-        vocabularyHint: SLOT_VOCABULARY_HINTS[question.targetSlot],
+        vocabularyHint: vocabularyHintForSlot(question.targetSlot),
       }));
   }
 
@@ -129,7 +117,7 @@ function nextQuestionsFromDecision(
     .map((field) => ({
       slotKey: field,
       intent: decision.messageKey,
-      vocabularyHint: SLOT_VOCABULARY_HINTS[field],
+      vocabularyHint: vocabularyHintForSlot(field),
     }));
 }
 
@@ -243,36 +231,10 @@ function fallbackQuestionText(
   question: DialogueNextQuestion,
   planningPeriodLabel?: string,
 ): string {
-  switch (question.slotKey) {
-    case 'planning_start_date':
-      return planningPeriodLabel
-        ? planningPeriodLabel + 'のどの日から計画を始めますか？'
-        : 'どの日から計画を始めますか？';
-    case 'tasks_or_goals':
-      return '計画したい学習内容や目標を教えてください。';
-    case 'year_range':
-      return '対象年度は何年から何年までですか？';
-    case 'completion_direction':
-      return '完了済み年度の範囲を確認したいです。新しい年度側からか、古い年度側からか教えてください。';
-    case 'progress':
-      return question.options?.length
-        ? question.options.join('、') + 'はどこまで進めたいですか？'
-        : '現在の進捗を教えてください。';
-    case 'unit_rate':
-      return '1年分または1単位あたりの目安時間を教えてください。';
-    case 'priority_policy':
-      return '週末で優先する分野や進める順番を教えてください。';
-    case 'fixed_events':
-      return '授業・バイト・通院など、動かせない予定があれば教えてください。';
-    case 'sleep_cycle':
-      return '睡眠時間や、何時から勉強を始められるかを教えてください。';
-    case 'meal_bath_constraints':
-      return '食事やお風呂など、勉強を入れにくい時間を教えてください。';
-    case 'life_constraints':
-      return '食事・お風呂・睡眠など、生活上の制約を教えてください。';
-    default:
-      return '次に確認したい条件を教えてください。';
-  }
+  return fallbackQuestionForSlot(question.slotKey, {
+    planningPeriodLabel,
+    options: question.options,
+  }) ?? '次に確認したい条件を教えてください。';
 }
 
 function renderDeterministicMissingQuestions(input: DialogueRenderInput): string {
