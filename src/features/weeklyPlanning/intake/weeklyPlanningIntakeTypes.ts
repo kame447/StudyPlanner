@@ -193,6 +193,7 @@ export interface PlanningIntakeState {
    * 実データの busy interval 化は generator 側の既存 capability が担う。ここは「どのソースを利用中か」の記録のみ。
    */
   constraintSourcesInUse?: ConstraintSourceRef[];
+  fixedEventsDeclaredNone?: true;
   priorityPolicy: PriorityPolicy;
   missing: PlanningIntakeMissing[];
   assumptions: string[];

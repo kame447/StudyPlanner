@@ -113,10 +113,27 @@ export function toUnitRateFromSetUnitRateCommand(
 ): UnitRateEstimate {
   return command.unitRate;
 }
+function calendarDayCount(startDateTime: string, endDateTime: string): number | undefined {
+  const start = new Date(startDateTime.slice(0, 10) + 'T00:00:00');
+  const end = new Date(endDateTime.slice(0, 10) + 'T00:00:00');
+  const difference = Math.round((end.getTime() - start.getTime()) / 86400000);
+
+  return Number.isFinite(difference) ? Math.max(1, difference + 1) : undefined;
+}
+
 export function toPlanningRangeFromSetPlanningRangeCommand(
   command: SetPlanningRangeCommand,
+  normalizeMissingDayCount = true,
 ): PlanningRange {
-  return command.range;
+  const range = command.range;
+  if (!normalizeMissingDayCount || range.calendarDayCount || !range.startDateTime || !range.endDateTime) {
+    return range;
+  }
+
+  const normalizedDayCount = calendarDayCount(range.startDateTime, range.endDateTime);
+  return normalizedDayCount
+    ? { ...range, calendarDayCount: normalizedDayCount }
+    : range;
 }
 export function toExamScopeFromSetExamScopeCommand(
   command: SetExamScopeCommand,

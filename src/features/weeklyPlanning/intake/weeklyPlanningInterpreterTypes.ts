@@ -48,6 +48,11 @@ export interface InterpreterStateSummary {
   knownFields: string[];
   confirmedSlots: string[];
   planningRangeSummary?: string;
+  pendingPlanningRange?: {
+    label: string;
+    startDate?: string;
+    endDate?: string;
+  };
   /**
    * 利用可能な既存 schedule source。省略時はすべて利用不可として扱う(空ソースを鵜呑みにしない安全側)。
    */

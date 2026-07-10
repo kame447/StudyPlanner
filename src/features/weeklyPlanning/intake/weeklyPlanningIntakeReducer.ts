@@ -24,7 +24,12 @@ import { mergeLifeConstraints } from './weeklyPlanningConstraintIdentity';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
 import { parseConstraintCommands, parseNoteNoFixedEventsCommand } from './weeklyPlanningConstraintParsing';
 import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
-import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
+import {
+  addMissing,
+  deriveMissingForPlanningRange,
+  finalizeState,
+  removeMissing,
+} from './weeklyPlanningMissingStatus';
 import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
 import { parseSetExamScopeCommand, parseSetPendingPlanningRangeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
 import { uniqueList } from './weeklyPlanningTextParsing';
@@ -320,35 +325,6 @@ function applyUseConstraintSourceCommand(
   };
 }
 
-function deriveMissingForPlanningRange(
-  state: PlanningIntakeState,
-): PlanningIntakeState['missing'] {
-  const missing: PlanningIntakeState['missing'] = [];
-  const constraintKinds = new Set(state.constraints.map((constraint) => constraint.kind));
-
-  if (!state.examPrepScope && state.tasks.length === 0) {
-    missing.push('tasks_or_goals');
-  }
-
-  if (
-    !constraintKinds.has('fixed_event')
-    && !constraintKinds.has('unavailable')
-    && !state.constraintSourcesInUse?.length
-  ) {
-    missing.push('fixed_events');
-  }
-
-  if (!constraintKinds.has('sleep') && !constraintKinds.has('buffer')) {
-    missing.push('sleep_cycle');
-  }
-
-  if (!constraintKinds.has('meal') && !constraintKinds.has('bath')) {
-    missing.push('meal_bath_constraints');
-  }
-
-  return missing;
-}
-
 function applyWeeklyPlanningCommand(
   state: PlanningIntakeState,
   command: ParsedWeeklyPlanningCommand,
@@ -414,6 +390,7 @@ function applyWeeklyPlanningCommand(
     case 'note_no_fixed_events':
       return {
         ...state,
+        fixedEventsDeclaredNone: true,
         missing: removeMissing(state.missing, ['fixed_events']),
       };
     case 'set_unit_rate': {
@@ -460,7 +437,7 @@ function applyWeeklyPlanningCommand(
       return {
         ...state,
         intent: 'weekly_study_planning',
-        range: toPlanningRangeFromSetPlanningRangeCommand(command),
+        range: toPlanningRangeFromSetPlanningRangeCommand(command, false),
         pendingPlanningRange: undefined,
         missing: addMissing(
           removeMissing(state.missing, ['planning_start_date']),

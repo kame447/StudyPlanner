@@ -378,6 +378,16 @@ export function validateInterpretedCandidates(
       return;
     }
 
+    if (command.type === 'set_planning_range' && summary.pendingPlanningRange) {
+      if (command.range.confidence !== 'explicit') {
+        addRejected(result, candidate, 'pending-range-clarification');
+        return;
+      }
+
+      result.acceptedWithConfirmation.push(command);
+      return;
+    }
+
     const slots = commandSlotKeys(command);
 
     if (slots.some((slot) => summary.confirmedSlots.includes(slot))) {

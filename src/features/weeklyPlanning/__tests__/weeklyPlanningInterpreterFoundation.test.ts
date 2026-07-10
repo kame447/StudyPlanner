@@ -8,14 +8,21 @@ import {
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import {
   applyWeeklyPlanningCommands,
+  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
+import { toPlanningRangeFromSetPlanningRangeCommand } from '../intake/weeklyPlanningCommandAdapter';
 import type {
   InterpretedCommandCandidate,
   InterpreterStateSummary,
   WeeklyPlanningIntakeInterpreter,
 } from '../intake/weeklyPlanningInterpreterTypes';
-import type { PlanningIntakeMissing } from '../intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeMissing, PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import {
+  deriveMissingForPlanningRange,
+  hasConfirmedFixedEvents,
+  hasConfirmedLifeConstraints,
+} from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
 import { shouldEscalateToInterpreter } from '../pipeline/weeklyPlanningInterpreterEscalation';
 import {
@@ -553,4 +560,147 @@ describe('weekly planning AI foundation without real AI', () => {
       deterministicFallback,
     );
   });
+
+  it.each([
+    ['same day', '2026-08-01T00:00:00', '2026-08-01T24:00:00', 1],
+    ['month boundary', '2026-07-31T00:00:00', '2026-08-02T24:00:00', 3],
+    ['five days', '2026-08-01T00:00:00', '2026-08-05T24:00:00', 5],
+  ])('normalizes AI planning ranges to calendar days: %s', (_label, startDateTime, endDateTime, expected) => {
+    const range = toPlanningRangeFromSetPlanningRangeCommand({
+      type: 'set_planning_range',
+      range: { startDateTime, endDateTime, confidence: 'explicit' },
+      sourceText: 'AI range',
+      confidence: 'high',
+    });
+
+    expect(range.calendarDayCount).toBe(expected);
+  });
+
+  it('preserves a deterministic calendarDayCount during range normalization', () => {
+    const range = toPlanningRangeFromSetPlanningRangeCommand({
+      type: 'set_planning_range',
+      range: {
+        startDateTime: '2026-08-01T00:00:00',
+        endDateTime: '2026-08-05T24:00:00',
+        calendarDayCount: 7,
+        confidence: 'explicit',
+      },
+      sourceText: 'deterministic range',
+      confidence: 'high',
+    });
+
+    expect(range.calendarDayCount).toBe(7);
+  });
+
+  it('derives fixed and life confirmation from state facts instead of missing absence', () => {
+    const empty = createInitialPlanningIntakeState();
+    expect(hasConfirmedFixedEvents({ ...empty, missing: [] })).toBe(false);
+    expect(hasConfirmedLifeConstraints({ ...empty, missing: [] })).toBe(false);
+
+    const hardFixed: PlanningIntakeState = {
+      ...empty,
+      constraints: [{ kind: 'fixed_event', start: '13:00', end: '14:00', hardness: 'hard' }],
+      missing: ['fixed_events'],
+    };
+    expect(hasConfirmedFixedEvents(hardFixed)).toBe(true);
+    expect(hasConfirmedFixedEvents({
+      ...hardFixed,
+      constraints: [{ ...hardFixed.constraints[0], hardness: 'soft' }],
+    })).toBe(false);
+    expect(hasConfirmedFixedEvents({
+      ...empty,
+      constraintSourcesInUse: [{ kind: 'timetable', selector: 'active' }],
+      missing: ['fixed_events'],
+    })).toBe(true);
+    expect(hasConfirmedFixedEvents({
+      ...empty,
+      fixedEventsDeclaredNone: true,
+      missing: ['fixed_events'],
+    })).toBe(true);
+
+    const completeLife: PlanningIntakeState = {
+      ...empty,
+      constraints: [
+        { kind: 'sleep', start: '23:00', end: '07:00', hardness: 'hard' },
+        { kind: 'meal', start: '19:00', durationMinutes: 30, hardness: 'hard' },
+      ],
+      missing: ['life_constraints', 'meal_bath_constraints'],
+    };
+    expect(hasConfirmedLifeConstraints({
+      ...completeLife,
+      constraints: [completeLife.constraints[0]],
+    })).toBe(false);
+    expect(hasConfirmedLifeConstraints(completeLife)).toBe(true);
+    expect(deriveMissingForPlanningRange({
+      ...completeLife,
+      fixedEventsDeclaredNone: true,
+    })).not.toEqual(expect.arrayContaining([
+      'fixed_events',
+      'sleep_cycle',
+      'meal_bath_constraints',
+    ]));
+  });
+
+  it('keeps the no-fixed-events fact through later user turns', () => {
+    const declared = applyWeeklyPlanningCommands(createInitialPlanningIntakeState(), [{
+      type: 'note_no_fixed_events',
+      sourceText: '固定の予定はありません',
+      confidence: 'high',
+    }]);
+    const later = applyWeeklyPlanningUserTurn(
+      declared,
+      'まだほかの条件を考えています',
+      { selectedDate: '2026-07-10', currentDateTime: '2026-07-10T15:30:00' },
+    );
+
+    expect(later.fixedEventsDeclaredNone).toBe(true);
+    expect(hasConfirmedFixedEvents(later)).toBe(true);
+  });
+
+  it('protects a pending range from inferred AI ranges and confirms explicit AI ranges', () => {
+    const summary = baseSummary({
+      pendingPlanningRange: {
+        label: '来週',
+        startDate: '2026-07-13',
+        endDate: '2026-07-19',
+      },
+    });
+    const rangeCandidate = (
+      confidence: 'explicit' | 'inferred',
+    ): InterpretedCommandCandidate => candidate({
+      type: 'set_planning_range',
+      range: {
+        startDateTime: '2026-07-15T00:00:00',
+        endDateTime: '2026-07-21T24:00:00',
+        confidence,
+      },
+      sourceText: 'range',
+      confidence: 'high',
+    });
+
+    const inferred = validateInterpretedCandidates([rangeCandidate('inferred')], summary);
+    expect(inferred.rejected).toEqual([
+      expect.objectContaining({ reason: 'pending-range-clarification' }),
+    ]);
+
+    const explicit = validateInterpretedCandidates([rangeCandidate('explicit')], summary);
+    expect(explicit.accepted).toEqual([]);
+    expect(explicit.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_planning_range' }),
+    ]);
+
+    const missingConfidence = validateInterpretedCandidates([candidate({
+      type: 'set_planning_range',
+      range: {
+        startDateTime: '2026-07-15T00:00:00',
+        endDateTime: '2026-07-21T24:00:00',
+      },
+      sourceText: 'range',
+      confidence: 'high',
+    } as unknown as ParsedWeeklyPlanningCommand)], summary);
+    expect(missingConfidence.rejected).toEqual([
+      expect.objectContaining({ reason: 'invalid-command-shape' }),
+    ]);
+  });
+
 });

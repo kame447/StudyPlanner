@@ -14,8 +14,13 @@ import {
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import type { PlanningIntakeMissing, PlanningIntakeState, PlanningRange, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';
-import { finalizeState } from '../intake/weeklyPlanningMissingStatus';
+import {
+  finalizeState,
+  hasConfirmedFixedEvents,
+  hasConfirmedLifeConstraints,
+} from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
+import { toPlanningRangeFromSetPlanningRangeCommand } from '../intake/weeklyPlanningCommandAdapter';
 import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
 import type {
   CandidateValidationResult,
@@ -202,10 +207,8 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
   if (state.progress.some((progress) => progress.completedYears?.length || progress.completionBoundaryYear)) {
     slots.push('progress');
   }
-  if (!state.missing.includes('fixed_events')) slots.push('fixed_events');
-  if (!state.missing.includes('life_constraints') && !state.missing.includes('meal_bath_constraints')) {
-    slots.push('life_constraints');
-  }
+  if (hasConfirmedFixedEvents(state)) slots.push('fixed_events');
+  if (hasConfirmedLifeConstraints(state)) slots.push('life_constraints');
 
   return Array.from(new Set(slots));
 }
@@ -249,6 +252,13 @@ function createInterpreterStateSummary(
     planningRangeSummary: state.range
       ? [state.range.startDateTime, state.range.endDateTime].filter(Boolean).join('〜')
       : undefined,
+    pendingPlanningRange: state.pendingPlanningRange
+      ? {
+          label: state.pendingPlanningRange.scope.label,
+          startDate: state.pendingPlanningRange.scope.startDate,
+          endDate: state.pendingPlanningRange.scope.endDate,
+        }
+      : undefined,
     availableConstraintSources: toConstraintSourceAvailability(snapshot),
   };
 }
@@ -270,7 +280,9 @@ function addConfirmationAssumptions(
   }
 
   const assumptions = validation.acceptedWithConfirmation.map((command) =>
-    `AI が ${command.type} として解釈しましたが、確信度が中程度のため確認が必要です。`,
+    command.type === 'set_planning_range'
+      ? 'AI が set_planning_range として解釈しましたが、開始日の確認中のため適用前に確認が必要です。'
+      : `AI が ${command.type} として解釈しましたが、確信度が中程度のため確認が必要です。`,
   );
 
   return {
@@ -358,13 +370,21 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
 
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
-    ...interpreterDiagnostics.acceptedWithConfirmation,
-  ];
+    ...interpreterDiagnostics.acceptedWithConfirmation.filter((command) =>
+      !(stateSummary.pendingPlanningRange && command.type === 'set_planning_range'),
+    ),
+  ].map((command) =>
+    command.type === 'set_planning_range'
+      ? { ...command, range: toPlanningRangeFromSetPlanningRangeCommand(command) }
+      : command,
+  );
   // 参照 source が空で rejected になった use_constraint_source は、fixed_events を充足させず確認に倒す。
   const unavailableSourceCount = interpreterDiagnostics.rejected.filter(
     (rejection) => rejection.reason === 'constraint-source-unavailable',
   ).length;
-  const interpretedState = interpretedCommands.length > 0 || unavailableSourceCount > 0
+  const interpretedState = interpretedCommands.length > 0
+    || interpreterDiagnostics.acceptedWithConfirmation.length > 0
+    || unavailableSourceCount > 0
     ? finalizeState(addConstraintSourceConfirmationAssumptions(
       addConfirmationAssumptions(
         applyWeeklyPlanningCommands(deterministicTurn.state, interpretedCommands),

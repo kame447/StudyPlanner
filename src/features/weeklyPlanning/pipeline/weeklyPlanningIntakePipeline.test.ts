@@ -1298,3 +1298,233 @@ describe('clarification semantic intent (request_clarification)', () => {
   });
 
 });
+
+describe('confirmed slots and AI planning range integration', () => {
+  function planningRangeCandidate(
+    rangeConfidence: 'explicit' | 'inferred',
+  ): InterpretedCommandCandidate {
+    return {
+      command: {
+        type: 'set_planning_range',
+        range: {
+          startDateTime: '2026-08-01T00:00:00',
+          endDateTime: '2026-08-05T24:00:00',
+          sourceText: '8月1日から5日間',
+          confidence: rangeConfidence,
+        },
+        sourceText: '8月1日から5日間',
+        confidence: 'high',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+    };
+  }
+
+  function pendingScopeState(): PlanningIntakeState {
+    return runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい。院試の過去問を7年分、5分野やりたい。',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    }).state;
+  }
+
+  it('accepts a timetable source while range is pending and keeps it after range resolution', async () => {
+    const sourceOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: pendingScopeState(),
+      userText: '時間割の通りでお願いします',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      scheduleTemplates: [timetableTemplate()],
+      interpreter: fakeInterpreter([
+        useConstraintSourceCandidate({
+          kind: 'timetable',
+          sourceText: '時間割の通りでお願いします',
+        }),
+      ]),
+    });
+
+    expect(sourceOutput.state.constraintSourcesInUse).toEqual([
+      { kind: 'timetable', selector: 'active' },
+    ]);
+    expect(sourceOutput.interpreterDiagnostics?.rejected).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
+    ]));
+
+    const resolvedOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: sourceOutput.state,
+      userText: '水曜日から',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    expect(resolvedOutput.state.missing).not.toContain('fixed_events');
+  });
+
+  it('still rejects AI fixed events after a hard fixed event was recorded', async () => {
+    const fixedOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: pendingScopeState(),
+      userText: '日曜の13時から歯医者',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: fixedOutput.state,
+      userText: 'ほかにも予定があります',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([addFixedEventCandidate('ほかにも予定があります')]),
+    });
+
+    expect(output.interpreterDiagnostics?.rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
+    ]));
+  });
+
+  it('treats a no-fixed-events declaration as confirmed on later turns', async () => {
+    const rangeOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+    });
+    const noneOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: rangeOutput.state,
+      userText: '固定の予定はありません',
+    });
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: noneOutput.state,
+      userText: 'ほかにも予定があります',
+      interpreter: fakeInterpreter([addFixedEventCandidate('ほかにも予定があります')]),
+    });
+
+    expect(output.state.fixedEventsDeclaredNone).toBe(true);
+    expect(output.interpreterDiagnostics?.rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
+    ]));
+  });
+
+  it('keeps existing confirmed-slot derivation while ignoring missing proxies', async () => {
+    const previousState: PlanningIntakeState = {
+      ...draftReadyState(),
+      status: 'needs_life_constraints',
+      range: {
+        startDateTime: '2026-07-10T00:00:00',
+        endDateTime: '2026-07-16T24:00:00',
+        calendarDayCount: 7,
+        confidence: 'explicit',
+      },
+      progress: [{
+        field: '数学',
+        completedYears: [2020],
+        ambiguity: 'none',
+        rawText: '2020は完了',
+      }],
+      constraints: [
+        { kind: 'fixed_event', start: '13:00', end: '14:00', hardness: 'hard' },
+        { kind: 'sleep', start: '23:00', end: '07:00', hardness: 'hard' },
+        { kind: 'meal', start: '19:00', durationMinutes: 30, hardness: 'hard' },
+      ],
+      missing: ['fixed_events', 'life_constraints', 'meal_bath_constraints'],
+      shouldCreateDraft: false,
+    };
+    const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
+      expect(params.stateSummary.confirmedSlots).toEqual(expect.arrayContaining([
+        'planning_range',
+        'exam_scope',
+        'year_range',
+        'unit_duration_estimate',
+        'priority_policy',
+        'progress',
+        'fixed_events',
+        'life_constraints',
+      ]));
+      return { candidates: [], parseRejections: [] };
+    };
+
+    await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: 'この条件を詳しく確認してほしいです',
+      interpreter: { interpretUserTurn },
+    });
+  });
+
+  it('normalizes an AI planning range and schedules from its first date', async () => {
+    const previousState: PlanningIntakeState = {
+      ...draftReadyState(),
+      status: 'needs_scope',
+      constraints: [
+        { kind: 'sleep', start: '23:00', end: '07:00', hardness: 'hard' },
+        { kind: 'meal', start: '19:00', durationMinutes: 30, hardness: 'hard' },
+      ],
+      fixedEventsDeclaredNone: true,
+      missing: ['planning_start_date'],
+      shouldCreateDraft: false,
+    };
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: '8月の前半を使いたいです',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([planningRangeCandidate('explicit')]),
+    });
+
+    expect(output.state.range?.calendarDayCount).toBe(5);
+    expect(output.draftCandidates?.[0]?.date).toBe('2026-08-01');
+  });
+
+  it('keeps pending clarification for inferred AI ranges and exposes pending summary', async () => {
+    const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
+      expect(params.stateSummary.pendingPlanningRange).toEqual({
+        label: '来週',
+        startDate: '2026-07-13',
+        endDate: '2026-07-19',
+      });
+      return {
+        candidates: [planningRangeCandidate('inferred')],
+        parseRejections: [],
+      };
+    };
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: pendingScopeState(),
+      userText: 'その期間でお願いします',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: { interpretUserTurn },
+    });
+
+    expect(output.state.range).toBeUndefined();
+    expect(output.state.pendingPlanningRange?.scope.label).toBe('来週');
+    expect(output.state.missing).toContain('planning_start_date');
+    expect(output.interpreterDiagnostics?.rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: 'pending-range-clarification' }),
+    ]));
+  });
+
+  it('keeps explicit AI ranges in confirmation without applying over pending scope', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: pendingScopeState(),
+      userText: '開始日は別に指定したいです',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([planningRangeCandidate('explicit')]),
+    });
+
+    expect(output.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_planning_range' }),
+    ]);
+    expect(output.state.range).toBeUndefined();
+    expect(output.state.pendingPlanningRange?.scope.label).toBe('来週');
+    expect(output.state.missing).toContain('planning_start_date');
+    expect(output.state.assumptions).toEqual(expect.arrayContaining([
+      expect.stringContaining('set_planning_range'),
+    ]));
+  });
+});
