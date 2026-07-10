@@ -48,6 +48,10 @@ export interface InterpreterStateSummary {
   knownFields: string[];
   confirmedSlots: string[];
   planningRangeSummary?: string;
+  lastQuestions?: Array<{
+    slotKey: string;
+    intent: string;
+  }>;
   pendingPlanningRange?: {
     label: string;
     startDate?: string;

@@ -159,7 +159,7 @@ function resolveMissingCompletionTargetFields(state: PlanningIntakeState): strin
   return fields.filter((field) => !targetedFields.has(field));
 }
 
-function createMissingQuestionPlan(
+export function createMissingQuestionPlan(
   state: PlanningIntakeState,
 ): WeeklyPlanningQuestionPlanItem[] {
   const missing = state.missing;

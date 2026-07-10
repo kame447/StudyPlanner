@@ -1626,3 +1626,90 @@ describe('confirmed slots and AI planning range integration', () => {
     ]));
   });
 });
+
+describe('Stage 1 interpreter grounding', () => {
+  function stateWithUnitRateQuestion(): PlanningIntakeState {
+    return {
+      ...draftReadyState(),
+      status: 'needs_unit_rate',
+      unitRates: [],
+      priorityPolicy: { kind: 'unknown' },
+      missing: ['unit_duration_estimate'],
+      shouldCreateDraft: false,
+    };
+  }
+
+  it('supplies previous-state unit-rate questions as lastQuestions', async () => {
+    const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
+      expect(params.stateSummary.lastQuestions).toEqual([
+        { slotKey: 'unit_rate', intent: 'ask_unit_rate' },
+      ]);
+      return { candidates: [], parseRejections: [] };
+    };
+
+    await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: stateWithUnitRateQuestion(),
+      userText: 'この質問に答えます',
+      interpreter: { interpretUserTurn },
+    });
+  });
+
+  it('omits lastQuestions on the first interpreter turn', async () => {
+    const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
+      expect(params.stateSummary.lastQuestions).toBeUndefined();
+      return { candidates: [], parseRejections: [] };
+    };
+
+    await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'この条件について相談があります',
+      interpreter: { interpretUserTurn },
+    });
+  });
+
+  it('applies an explicit tomorrow-and-day-after range returned by the interpreter', async () => {
+    const previousState: PlanningIntakeState = {
+      ...draftReadyState(),
+      status: 'needs_scope',
+      constraints: [
+        { kind: 'sleep', start: '23:00', end: '07:00', hardness: 'hard' },
+        { kind: 'meal', start: '19:00', durationMinutes: 30, hardness: 'hard' },
+      ],
+      fixedEventsDeclaredNone: true,
+      missing: ['planning_start_date'],
+      shouldCreateDraft: false,
+    };
+    const rangeCandidate: InterpretedCommandCandidate = {
+      command: {
+        type: 'set_planning_range',
+        range: {
+          startDateTime: '2026-07-11T00:00:00',
+          endDateTime: '2026-07-12T24:00:00',
+          sourceText: '明日と明後日',
+          confidence: 'explicit',
+        },
+        sourceText: '明日と明後日',
+        confidence: 'high',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+    };
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: '明日と明後日の予定を立てたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([rangeCandidate]),
+    });
+
+    expect(output.state.range).toMatchObject({
+      startDateTime: '2026-07-11T00:00:00',
+      endDateTime: '2026-07-12T24:00:00',
+      calendarDayCount: 2,
+    });
+    expect(output.draftCandidates?.[0]?.date).toBe('2026-07-11');
+  });
+});

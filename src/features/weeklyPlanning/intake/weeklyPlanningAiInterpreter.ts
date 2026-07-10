@@ -5,6 +5,7 @@ import {
   type OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
+import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import type {
   InterpretedCommandCandidate,
   InterpreterParseRejection,
@@ -450,12 +451,12 @@ function parseInterpreterResponse(content: string): WeeklyPlanningInterpreterRes
   return { candidates, parseRejections };
 }
 
-function createSystemPrompt(): string {
+export function createSystemPrompt(): string {
   return [
     'You are an interpreter for a Japanese study-planning intake pipeline.',
     'Return only JSON that matches the response schema. Do not return prose.',
     'Your job is to convert the current user turn into command candidates. The application will validate every command before applying it.',
-    'Use only the provided userText and stateSummary. Do not assume saved plans, past turns, or life-constraint history.',
+    'Use only the provided userText, context, and stateSummary. Do not assume saved plans, past turns, or life-constraint history.',
     'Prefer no command over an unsafe command. Return an empty candidates array when the turn is not enough.',
     'The candidates field must be an array of command objects, not wrapper objects.',
     'Each command must include a confidence field with one of: high, medium, low.',
@@ -466,6 +467,9 @@ function createSystemPrompt(): string {
     '- mark_completed_units or note_progress_boundary for completed year/field progress. Use mark_completion_target only for the desired future completion target.',
     '- add_fixed_event, add_unavailable, update_life_constraint, note_no_fixed_events, note_uncertainty, set_planning_range only when explicit in the current turn.',
     '- When stateSummary.pendingPlanningRange exists, emit set_planning_range only if the current turn explicitly states a start date. Do not infer a date; weekday answers are resolved by the deterministic parser.',
+    '- Resolve relative dates such as today, tomorrow, the day after tomorrow, and next week from context.currentDateTime. Emit ISO YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss values only when the resolution is certain.',
+    '- When stateSummary.lastQuestions is present, interpret short replies, corrections, and confirmations as answers to those slots before considering unrelated meanings.',
+    '- Do not infer unprovided past turns; use only the supplied context and grounding.',
     '- use_constraint_source: when the user says the plan should reuse an existing schedule source instead of listing events. Map ALL such phrasings to this single intent and express the referenced source in source.kind, do not invent a new command per phrasing. The only currently available sources are: timetable (the app\'s class timetable) and existing_plans (schedules already saved in the app). selector is always active. Use source.kind=timetable when the user clearly means the class timetable: 「授業は予定表の通り」「いつもの授業を避けて」「時間割に入っている予定を使って」「登録済みの授業を考慮して」「普段通りの授業があります」. Use source.kind=existing_plans when the user clearly means already-saved plans: 「アプリに保存してある予定と被らないように」「登録してある予定を生かして」. There is no external calendar (Google/Apple/Outlook) integration; never emit a calendar source.',
     '- Ambiguous source: if the phrasing could refer to more than one available source and you cannot uniquely decide between timetable and existing_plans (e.g. 「カレンダーに入れてあるやつ」 which might mean either), do NOT guess a single source. Emit request_clarification (target=unresolved_slot, ref=constraint_source) instead, or at most use_constraint_source with confidence=low. Never hard-apply a guessed source.',
     '- request_clarification: when the user is asking what one of the app\'s question words or terms means, rather than answering it. Map ALL such phrasings to this single intent: 「固定の予定って何ですか？」「それってどういう意味？」「何を答えればいいの？」. Set ref to the term or slot being asked about (e.g. fixed_events) when identifiable. Never map such a question to note_uncertainty or any answer command; the user is not providing information, they are asking for an explanation.',
@@ -474,12 +478,18 @@ function createSystemPrompt(): string {
   ].join('\n');
 }
 
-function createUserPrompt(params: {
+export function createUserPrompt(params: {
   userText: string;
+  context: WeeklyPlanningIntakeContext;
   stateSummary: InterpreterStateSummary;
 }): string {
   return JSON.stringify({
     userText: params.userText,
+    context: {
+      currentDateTime: params.context.currentDateTime,
+      selectedDate: params.context.selectedDate,
+      planningDayCount: params.context.planningDayCount,
+    },
     stateSummary: params.stateSummary,
   });
 }
@@ -489,12 +499,12 @@ export function createAiWeeklyPlanningInterpreter(
   client: OpenAiCompatibleClient = createOpenAiCompatibleClient(config),
 ): WeeklyPlanningIntakeInterpreter {
   return {
-    async interpretUserTurn({ userText, stateSummary }) {
+    async interpretUserTurn({ userText, context, stateSummary }) {
       try {
         const content = await client.createChatCompletion({
           messages: [
             { role: 'system', content: createSystemPrompt() },
-            { role: 'user', content: createUserPrompt({ userText, stateSummary }) },
+            { role: 'user', content: createUserPrompt({ userText, context, stateSummary }) },
           ],
           temperature: 0.1,
           responseFormat: WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT,

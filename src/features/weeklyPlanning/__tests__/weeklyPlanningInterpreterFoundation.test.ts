@@ -5,6 +5,10 @@ import {
   renderWeeklyPlanningDialogueMessage,
   type WeeklyPlanningDialogueRenderer,
 } from '../dialogue/weeklyPlanningDialogueRenderer';
+import {
+  createSystemPrompt,
+  createUserPrompt,
+} from '../intake/weeklyPlanningAiInterpreter';
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import {
   applyWeeklyPlanningCommands,
@@ -701,6 +705,43 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(missingConfidence.rejected).toEqual([
       expect.objectContaining({ reason: 'invalid-command-shape' }),
     ]);
+  });
+
+
+  it('includes deterministic context and last-question grounding in the AI prompt contract', () => {
+    const prompt = JSON.parse(createUserPrompt({
+      userText: '明日と明後日の予定を立てたい',
+      context: {
+        currentDateTime: '2026-07-10T15:30:00',
+        selectedDate: '2026-07-10',
+        planningDayCount: 7,
+      },
+      stateSummary: {
+        knownFields: [],
+        confirmedSlots: [],
+        lastQuestions: [{ slotKey: 'unit_rate', intent: 'ask_unit_rate' }],
+      },
+    })) as {
+      context: { currentDateTime: string; selectedDate: string; planningDayCount: number };
+      stateSummary: InterpreterStateSummary;
+    };
+
+    expect(prompt.context).toEqual({
+      currentDateTime: '2026-07-10T15:30:00',
+      selectedDate: '2026-07-10',
+      planningDayCount: 7,
+    });
+    expect(prompt.stateSummary.lastQuestions).toEqual([
+      { slotKey: 'unit_rate', intent: 'ask_unit_rate' },
+    ]);
+  });
+
+  it('instructs the interpreter to ground relative dates and short replies without inventing history', () => {
+    const prompt = createSystemPrompt();
+
+    expect(prompt).toContain('context.currentDateTime');
+    expect(prompt).toContain('stateSummary.lastQuestions');
+    expect(prompt).toContain('Do not infer unprovided past turns');
   });
 
 });

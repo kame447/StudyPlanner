@@ -1,4 +1,5 @@
 import {
+  createMissingQuestionPlan,
   createWeeklyPlanningClarificationDecision,
   createWeeklyPlanningDialogueDecision,
   type WeeklyPlanningDialogueDecision,
@@ -245,10 +246,17 @@ function toConstraintSourceAvailability(
 function createInterpreterStateSummary(
   state: PlanningIntakeState,
   snapshot: PlannerCapabilitySnapshot,
+  previousState?: PlanningIntakeState,
 ): InterpreterStateSummary {
   return {
     knownFields: state.examPrepScope?.fields ?? [],
     confirmedSlots: confirmedSlotsFromState(state),
+    lastQuestions: previousState
+      ? createMissingQuestionPlan(previousState).map((question) => ({
+          slotKey: question.targetSlot,
+          intent: question.intent,
+        }))
+      : undefined,
     planningRangeSummary: state.range
       ? [state.range.startDateTime, state.range.endDateTime].filter(Boolean).join('〜')
       : undefined,
@@ -335,7 +343,11 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   }
 
   const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
-  const stateSummary = createInterpreterStateSummary(deterministicTurn.state, capabilitySnapshot);
+  const stateSummary = createInterpreterStateSummary(
+    deterministicTurn.state,
+    capabilitySnapshot,
+    input.previousState,
+  );
   const interpreterResult = await input.interpreter.interpretUserTurn({
     userText: input.userText,
     context,

@@ -97,10 +97,15 @@ describe('weekly planning AI interpreter', () => {
       role: 'user',
       content: JSON.stringify({
         userText: '数学からOSの順で進めたい',
+        context: {
+          currentDateTime: undefined,
+          selectedDate: '2030-01-01',
+          planningDayCount: 7,
+        },
         stateSummary,
       }),
     });
-    expect(request.messages[1].content).not.toContain('2030-01-01');
+    expect(request.messages[1].content).toContain('2030-01-01');
   });
 
   it('keeps valid candidate units when one AI candidate has an invalid shape and defaults missing confidence to low', async () => {
