@@ -403,4 +403,86 @@ describe('weekly planning renderer deterministic context', () => {
 
     expect(decision).toEqual(before);
   });
+  function pendingStartState(): PlanningIntakeState {
+    return {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning',
+      pendingPlanningRange: {
+        scope: {
+          kind: 'next_week',
+          label: '来週',
+          startDate: '2026-07-13',
+          endDate: '2026-07-19',
+        },
+        durationDays: 7,
+        sourceText: '来週の計画を立てたい',
+      },
+      missing: ['planning_start_date'],
+    };
+  }
+
+  function askPlanningStartDateDecision(): WeeklyPlanningDialogueDecision {
+    return {
+      kind: 'ask_missing_info',
+      messageKey: 'ask_planning_start_date',
+      requiredFields: ['planning_start_date'],
+      questionPlan: [{
+        kind: 'missing_slot',
+        targetSlot: 'planning_start_date',
+        missing: ['planning_start_date'],
+        intent: 'ask_planning_start_date',
+      }],
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    };
+  }
+
+  it('renders a pending planning start question with its user-provided period label', async () => {
+    const message = await renderWeeklyPlanningDialogueMessage({
+      state: pendingStartState(),
+      decision: askPlanningStartDateDecision(),
+    });
+
+    expect(message).toContain('来週');
+    expect(message).toContain('どの日から計画を始め');
+    expect(message).not.toContain('次に確認したい条件を教えてください。');
+  });
+
+  it('passes the pending period label and start-date vocabulary hint to renderers', () => {
+    const input = createDialogueRenderInput({
+      state: pendingStartState(),
+      decision: askPlanningStartDateDecision(),
+    });
+    const startDateQuestion = input.nextQuestions.find(
+      (question) => question.slotKey === 'planning_start_date',
+    );
+
+    expect(input.planningPeriodLabel).toBe('来週');
+    expect(startDateQuestion?.vocabularyHint).toBeDefined();
+  });
+
+  it('passes the pending period label through the AI renderer input path', async () => {
+    const render = vi.fn(async () => ({
+      questions: [{
+        slotKey: 'planning_start_date',
+        text: '来週のどの日から計画を始めますか？',
+      }],
+    }));
+
+    await renderWeeklyPlanningDialogueMessage({
+      state: pendingStartState(),
+      decision: askPlanningStartDateDecision(),
+      renderer: { render },
+    });
+
+    expect(render).toHaveBeenCalledWith(expect.objectContaining({
+      planningPeriodLabel: '来週',
+      nextQuestions: [
+        expect.objectContaining({
+          slotKey: 'planning_start_date',
+          vocabularyHint: expect.any(String),
+        }),
+      ],
+    }));
+  });
 });

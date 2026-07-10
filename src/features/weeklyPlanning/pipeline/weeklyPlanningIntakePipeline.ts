@@ -13,7 +13,7 @@ import {
   applyWeeklyPlanningUserTurnWithDiagnostics,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
-import type { PlanningIntakeMissing, PlanningIntakeState, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeMissing, PlanningIntakeState, PlanningRange, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';
 import { finalizeState } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
 import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
@@ -43,6 +43,7 @@ export interface WeeklyPlanningIntakePipelineInput {
   planningStartDate: string;
   planningDayCount: number;
   sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
+  currentDateTime?: string;
   existingPlans?: Plan[];
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
@@ -51,6 +52,72 @@ export interface WeeklyPlanningIntakePipelineInput {
 
 export interface WeeklyPlanningIntakePipelineWithInterpreterInput extends WeeklyPlanningIntakePipelineInput {
   interpreter?: WeeklyPlanningIntakeInterpreter;
+}
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function currentLocalDateTime(): string {
+  const now = new Date();
+  return now.getFullYear()
+    + '-' + padDatePart(now.getMonth() + 1)
+    + '-' + padDatePart(now.getDate())
+    + 'T' + padDatePart(now.getHours())
+    + ':' + padDatePart(now.getMinutes())
+    + ':00';
+}
+
+function resolveCurrentDateTime(input: WeeklyPlanningIntakePipelineInput): string {
+  return input.currentDateTime ?? currentLocalDateTime();
+}
+
+function minutesFromTime(time: string): number {
+  const [hour = '0', minute = '0'] = time.split(':');
+  return Number(hour) * 60 + Number(minute);
+}
+
+function maxTime(left: string | undefined, right: string | undefined): string | undefined {
+  if (!left) return right;
+  if (!right) return left;
+  return minutesFromTime(left) >= minutesFromTime(right) ? left : right;
+}
+
+function dateDiffDays(startDate: string, endDate: string): number {
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  return Math.round((end.getTime() - start.getTime()) / 86400000);
+}
+
+function planningDayCountFromRange(range: PlanningRange, fallback: number): number {
+  if (!range.startDateTime || !range.endDateTime) return fallback;
+  const startDate = range.startDateTime.slice(0, 10);
+  const endDate = range.endDateTime.slice(0, 10);
+  return Math.max(1, dateDiffDays(startDate, endDate) + 1);
+}
+
+function resolveSchedulingInput(
+  input: WeeklyPlanningIntakePipelineInput,
+  state: PlanningIntakeState,
+): {
+  planningStartDate: string;
+  planningDayCount: number;
+  sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
+} {
+  const rangeStartDateTime = state.range?.startDateTime;
+  const usesResolvedCalendarWindow = Boolean(state.range?.calendarDayCount);
+  const planningStartDate = usesResolvedCalendarWindow && rangeStartDateTime
+    ? rangeStartDateTime.slice(0, 10)
+    : input.planningStartDate;
+  const rangeStartTime = rangeStartDateTime?.slice(11, 16);
+  const planningDayCount = state.range?.calendarDayCount
+    ?? (usesResolvedCalendarWindow ? planningDayCountFromRange(state.range as PlanningRange, input.planningDayCount) : input.planningDayCount);
+  const sessionPolicy = {
+    ...input.sessionPolicy,
+    firstDayStartTime: maxTime(input.sessionPolicy?.firstDayStartTime, rangeStartTime),
+  };
+
+  return { planningStartDate, planningDayCount, sessionPolicy };
 }
 
 export interface WeeklyPlanningIntakePipelineOutput {
@@ -70,6 +137,7 @@ function buildPipelineOutput(params: {
 }): WeeklyPlanningIntakePipelineOutput {
   const { input, state } = params;
   const draftRequest = createWeeklyDraftRequestFromIntakeState(state);
+  const schedulingInput = resolveSchedulingInput(input, state);
   const remainingWorkItems = draftRequest
     ? createRemainingWorkItemsFromDraftRequest(draftRequest)
     : null;
@@ -78,9 +146,9 @@ function buildPipelineOutput(params: {
       remainingWorkItems: remainingWorkItems.items,
       constraints: draftRequest.constraints,
       fixedEvents: draftRequest.fixedEvents,
-      planningStartDate: input.planningStartDate,
-      planningDayCount: input.planningDayCount,
-      sessionPolicy: input.sessionPolicy,
+      planningStartDate: schedulingInput.planningStartDate,
+      planningDayCount: schedulingInput.planningDayCount,
+      sessionPolicy: schedulingInput.sessionPolicy,
       existingPlans: input.existingPlans,
       scheduleTemplates: input.scheduleTemplates,
       timetableTermId: input.timetableTermId,
@@ -117,6 +185,7 @@ export function runWeeklyPlanningIntakePipeline(
   const state = applyWeeklyPlanningUserTurn(previousState, input.userText, {
     selectedDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
+    currentDateTime: resolveCurrentDateTime(input),
   });
 
   return buildPipelineOutput({ input, state });
@@ -188,6 +257,7 @@ function createInterpreterContext(input: WeeklyPlanningIntakePipelineInput): Wee
   return {
     selectedDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
+    currentDateTime: resolveCurrentDateTime(input),
   };
 }
 

@@ -156,4 +156,20 @@ describe('weekly planning dialogue messages', () => {
 
     expect(message).toContain('作れません');
   });
+
+  it('uses a user-facing label for planning_start_date clarification questions', () => {
+    const message = createWeeklyPlanningDialogueMessage(decision({
+      kind: 'answer_clarification',
+      questionPlan: [{
+        kind: 'missing_slot',
+        targetSlot: 'planning_start_date',
+        missing: ['planning_start_date'],
+        intent: 'ask_planning_start_date',
+      }],
+      shouldCreateDraft: false,
+    }));
+
+    expect(message).toContain('計画の開始日');
+    expect(message).not.toContain('planning_start_date');
+  });
 });

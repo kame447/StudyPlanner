@@ -80,6 +80,7 @@ export interface WeeklyPlanningDialogueDecisionInput {
 }
 
 const MISSING_FIELD_KEYS: Record<PlanningIntakeMissing, string> = {
+  planning_start_date: 'planning_start_date',
   tasks_or_goals: 'tasks_or_goals',
   fixed_events: 'fixed_events',
   sleep_cycle: 'sleep_cycle',
@@ -100,6 +101,7 @@ function uniqueList<T>(items: T[]): T[] {
 }
 
 function missingMessageKey(missing: PlanningIntakeMissing[]): string {
+  if (missing.includes('planning_start_date')) return 'ask_planning_start_date';
   if (missing.includes('year_range')) return 'ask_year_range';
   if (missing.includes('unit_duration_estimate')) return 'ask_unit_rate';
   if (missing.includes('priority_policy') || missing.includes('next_field_after_math')) {
@@ -170,6 +172,10 @@ function createMissingQuestionPlan(
     }
   };
 
+  addCandidate(createQuestionPlanItem({
+    missing: ['planning_start_date'],
+    intent: 'ask_planning_start_date',
+  }));
   addCandidate(createQuestionPlanItem({
     missing: ['tasks_or_goals'],
     intent: 'ask_tasks_or_goals',
@@ -413,6 +419,7 @@ const TERM_EXPLANATIONS: Record<string, string> = {
   unit_rate: '「目安時間」は、1年分(1単位)にだいたい何分かかるかのことです。',
   priority_policy: '「優先順」は、どの分野からどの順番で進めるかのことです。',
   tasks_or_goals: '「学習内容や目標」は、この期間に取り組みたい教材やゴールのことです。',
+  planning_start_date: '計画を始める日です。質問中の期間内で、開始したい曜日や日付を教えてください。',
 };
 
 // ref がユーザー語(「固定予定」等)のときに slot key へ寄せるためのキーワード。

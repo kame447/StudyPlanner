@@ -35,6 +35,7 @@ export interface DialogueRenderInput {
 
 // slot の内部キー → ユーザー語彙での平易な言い換え。AI が「固定の予定」等の内部語を直訳しないための素材。
 const SLOT_VOCABULARY_HINTS: Record<string, string> = {
+  planning_start_date: '計画を始める日(質問中の期間内の曜日や日付)',
   tasks_or_goals: '取り組みたい学習内容や目標',
   year_range: '対象の年度範囲',
   progress: '今どこまで進んでいるか',
@@ -61,13 +62,15 @@ const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
 function planningPeriodLabel(state: PlanningIntakeState): string | undefined {
   const source = state.range?.sourceText;
 
-  if (!source) {
-    return undefined;
+  if (source) {
+    if (/来週/.test(source)) return '来週';
+    if (/今週/.test(source)) return '今週';
+    if (/週末|土日/.test(source)) return '週末';
   }
 
-  if (/来週/.test(source)) return '来週';
-  if (/今週/.test(source)) return '今週';
-  if (/週末|土日/.test(source)) return '週末';
+  if (!state.range && state.pendingPlanningRange) {
+    return state.pendingPlanningRange.scope.label;
+  }
 
   return undefined;
 }
@@ -236,8 +239,15 @@ function formatAcceptedFacts(input: DialogueRenderInput): string | null {
   return [periodPrefix, factsSentence].filter((part): part is string => Boolean(part)).join('');
 }
 
-function fallbackQuestionText(question: DialogueNextQuestion): string {
+function fallbackQuestionText(
+  question: DialogueNextQuestion,
+  planningPeriodLabel?: string,
+): string {
   switch (question.slotKey) {
+    case 'planning_start_date':
+      return planningPeriodLabel
+        ? planningPeriodLabel + 'のどの日から計画を始めますか？'
+        : 'どの日から計画を始めますか？';
     case 'tasks_or_goals':
       return '計画したい学習内容や目標を教えてください。';
     case 'year_range':
@@ -269,7 +279,7 @@ function renderDeterministicMissingQuestions(input: DialogueRenderInput): string
   const acknowledgement = formatAcceptedFacts(input) ?? 'ここまでの条件を確認しました。';
   const questions = input.nextQuestions
     .slice(0, input.styleConstraints.maxQuestions)
-    .map(fallbackQuestionText);
+    .map((question) => fallbackQuestionText(question, input.planningPeriodLabel));
 
   return [acknowledgement, ...questions].join('\n');
 }

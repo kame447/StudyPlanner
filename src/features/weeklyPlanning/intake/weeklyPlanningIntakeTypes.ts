@@ -26,7 +26,21 @@ export interface PlanningRange {
   startDateTime?: string;
   endDateTime?: string;
   sourceText?: string;
+  calendarDayCount?: number;
   confidence: PlanningRangeConfidence;
+}
+
+export type PlanningTemporalScopeKind = 'next_week' | 'named_future_period';
+
+export interface PendingPlanningRangeClarification {
+  scope: {
+    kind: PlanningTemporalScopeKind;
+    label: string;
+    startDate?: string;
+    endDate?: string;
+  };
+  durationDays: number;
+  sourceText: string;
 }
 
 export type StudyScopeUnit =
@@ -149,6 +163,7 @@ export type PriorityPolicy =
   | { kind: 'unknown' };
 
 export type PlanningIntakeMissing =
+  | 'planning_start_date'
   | 'tasks_or_goals'
   | 'fixed_events'
   | 'sleep_cycle'
@@ -167,6 +182,7 @@ export interface PlanningIntakeState {
   status: PlanningIntakeStatus;
   intent: PlanningIntent;
   range?: PlanningRange;
+  pendingPlanningRange?: PendingPlanningRangeClarification;
   examPrepScope?: ExamPrepScope;
   tasks: StudyTaskScope[];
   progress: StudyProgress[];
@@ -190,4 +206,5 @@ export interface PlanningIntakeState {
 export interface WeeklyPlanningIntakeContext {
   selectedDate: string;
   planningDayCount?: number;
+  currentDateTime?: string;
 }

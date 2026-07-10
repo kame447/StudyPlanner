@@ -1017,6 +1017,141 @@ describe('constraint source capability (use_constraint_source)', () => {
   });
 });
 
+describe('planning range reseed and confidence guards', () => {
+  it('does not reseed answered scope when a pending range becomes explicit', () => {
+    const firstOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい。院試の過去問を7年分、5分野やりたい。',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const secondOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: firstOutput.state,
+      userText: '水曜日から',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(secondOutput.state.examPrepScope).toBeDefined();
+    expect(secondOutput.state.missing).not.toContain('tasks_or_goals');
+    expect(secondOutput.state.missing).toEqual(expect.arrayContaining([
+      'fixed_events',
+      'sleep_cycle',
+      'meal_bath_constraints',
+    ]));
+    expect(secondOutput.decision.questionPlan?.some(
+      (question) => question.targetSlot === 'tasks_or_goals',
+    )).toBe(false);
+  });
+
+  it('does not reseed fixed events collected while the planning range is pending', () => {
+    const firstOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const fixedEventOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: firstOutput.state,
+      userText: '日曜の13時から歯医者',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const rangeOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: fixedEventOutput.state,
+      userText: '水曜日から',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(rangeOutput.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'fixed_event', start: '13:00' }),
+    ]));
+    expect(rangeOutput.state.missing).not.toContain('fixed_events');
+  });
+
+  it('keeps an explicit range when a later turn only yields an inferred range', () => {
+    const pendingOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const explicitOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: pendingOutput.state,
+      userText: '水曜日から',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const laterOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: { ...explicitOutput.state, missing: [] },
+      userText: 'この一週間で数学を重点的にやりたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(laterOutput.state.range?.startDateTime).toBe('2026-07-15T00:00:00');
+    expect(laterOutput.state.missing).not.toEqual(expect.arrayContaining([
+      'fixed_events',
+      'sleep_cycle',
+      'meal_bath_constraints',
+    ]));
+  });
+
+  it('allows an explicit range to replace an existing explicit range', () => {
+    const pendingOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const explicitOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: pendingOutput.state,
+      userText: '水曜日から',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const replacedOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: explicitOutput.state,
+      userText: '7月20日から一週間で',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(replacedOutput.state.range).toMatchObject({
+      startDateTime: '2026-07-20T00:00:00',
+      confidence: 'explicit',
+    });
+  });
+
+  it('keeps a future scope pending when one-week wording is repeated without a start day', () => {
+    const firstOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+    const secondOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: firstOutput.state,
+      userText: 'この一週間で考えたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(secondOutput.state.range).toBeUndefined();
+    expect(secondOutput.state.pendingPlanningRange?.scope.label).toBe('来週');
+    expect(secondOutput.state.missing).toContain('planning_start_date');
+  });
+});
+
 function requestClarificationCandidate(params: {
   sourceText: string;
   ref?: string;
@@ -1098,4 +1233,68 @@ describe('clarification semantic intent (request_clarification)', () => {
     expect(output.state.unitRates).toEqual(stateWithFixedEventsMissing().unitRates);
     expect(output.decision.kind).toBe('answer_clarification');
   });
+
+  it('keeps future weekly scope pending until a start day is clarified', () => {
+    const firstOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: '来週の計画を立てたい',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(firstOutput.state.range).toBeUndefined();
+    expect(firstOutput.state.pendingPlanningRange).toMatchObject({
+      scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },
+      durationDays: 7,
+    });
+    expect(firstOutput.state.missing).toContain('planning_start_date');
+    expect(firstOutput.state.questions).toContain('来週のどの日から計画を始めますか？');
+    expect(firstOutput.decision).toMatchObject({
+      kind: 'ask_missing_info',
+      messageKey: 'ask_planning_start_date',
+    });
+
+    const secondOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: firstOutput.state,
+      userText: '水曜日から',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(secondOutput.state.pendingPlanningRange).toBeUndefined();
+    expect(secondOutput.state.range).toMatchObject({
+      startDateTime: '2026-07-15T00:00:00',
+      endDateTime: '2026-07-21T24:00:00',
+    });
+    expect(secondOutput.state.missing).not.toContain('planning_start_date');
+  });
+
+  it('uses resolved planning range as the scheduler window and first-day lower bound', () => {
+    const output = runWeeklyPlanningIntakePipeline({
+      previousState: {
+        ...draftReadyState(),
+        range: {
+          startDateTime: '2026-07-15T16:00:00',
+          endDateTime: '2026-07-21T24:00:00',
+          calendarDayCount: 7,
+          confidence: 'explicit',
+        },
+      },
+      userText: 'この条件で作成',
+      planningStartDate: '2026-07-10',
+      planningDayCount: 7,
+      sessionPolicy: {
+        dayStartTime: '09:00',
+        dayEndTime: '22:00',
+        breakMinutes: 0,
+      },
+    });
+
+    expect(output.draftCandidates?.[0]).toMatchObject({
+      date: '2026-07-15',
+      startTime: '16:00',
+    });
+  });
+
 });

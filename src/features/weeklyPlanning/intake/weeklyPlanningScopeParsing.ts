@@ -1,6 +1,6 @@
 import { addDays, startOfWeek } from '../../../lib/date';
-import type { SetExamScopeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
-import type { ExamPrepScope, StudyScopeUnit, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
+import type { SetExamScopeCommand, SetPendingPlanningRangeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
+import type { ExamPrepScope, PendingPlanningRangeClarification, StudyScopeUnit, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import {
   normalizeIntakeText,
   parseSmallInteger,
@@ -8,8 +8,18 @@ import {
   uniqueList,
 } from './weeklyPlanningTextParsing';
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  月: 0,
+  火: 1,
+  水: 2,
+  木: 3,
+  金: 4,
+  土: 5,
+  日: 6,
+};
+
 function formatDateTime(date: string, time: string): string {
-  return `${date}T${time}:00`;
+  return date + 'T' + time + ':00';
 }
 
 function parseWeekendPlanningRange(
@@ -26,7 +36,7 @@ function parseWeekendPlanningRange(
   const weekStart = startOfWeek(context.selectedDate);
   const sunday = addDays(weekStart, 6);
   const startHour = Number(startMatch[1]);
-  const startTime = `${String(startHour).padStart(2, '0')}:00`;
+  const startTime = String(startHour).padStart(2, '0') + ':00';
 
   return {
     startDateTime: formatDateTime(context.selectedDate, startTime),
@@ -36,11 +46,191 @@ function parseWeekendPlanningRange(
   };
 }
 
+function currentDateTime(context: WeeklyPlanningIntakeContext): string {
+  return context.currentDateTime ?? formatDateTime(context.selectedDate, '00:00');
+}
+
+function currentTime(context: WeeklyPlanningIntakeContext): string {
+  return currentDateTime(context).slice(11, 16) || '00:00';
+}
+
+function endDateTimeForDuration(startDate: string, durationDays: number): string {
+  return formatDateTime(addDays(startDate, durationDays - 1), '24:00');
+}
+
+function rangeFromStartDate(params: {
+  startDate: string;
+  startTime?: string;
+  durationDays: number;
+  sourceText: string;
+  confidence?: 'explicit' | 'inferred';
+}): SetPlanningRangeCommand['range'] {
+  return {
+    startDateTime: formatDateTime(params.startDate, params.startTime ?? '00:00'),
+    endDateTime: endDateTimeForDuration(params.startDate, params.durationDays),
+    sourceText: params.sourceText,
+    calendarDayCount: params.durationDays,
+    confidence: params.confidence ?? 'explicit',
+  };
+}
+
+function hasOneWeekDuration(text: string): boolean {
+  return /(?:一|1)\s*週間|7\s*日間?/.test(normalizeIntakeText(text));
+}
+
+function parseExplicitDate(text: string, context: WeeklyPlanningIntakeContext): string | undefined {
+  const match = normalizeIntakeText(text).match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*から)?/);
+  if (!match) return undefined;
+
+  const selectedYear = Number(context.selectedDate.slice(0, 4));
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const thisYear = selectedYear + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  return thisYear < context.selectedDate
+    ? String(selectedYear + 1) + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0')
+    : thisYear;
+}
+
+function nextWeekScope(context: WeeklyPlanningIntakeContext): PendingPlanningRangeClarification['scope'] {
+  const nextWeekStart = addDays(startOfWeek(context.selectedDate), 7);
+  return {
+    kind: 'next_week',
+    label: '来週',
+    startDate: nextWeekStart,
+    endDate: addDays(nextWeekStart, 6),
+  };
+}
+
+function parseWeekdayStart(text: string): number | undefined {
+  const match = normalizeIntakeText(text).match(/([月火水木金土日])(?:曜(?:日)?)?\s*から/);
+  return match ? WEEKDAY_INDEX[match[1]] : undefined;
+}
+
+function resolveWeekdayInScope(
+  weekdayIndex: number,
+  scope: PendingPlanningRangeClarification['scope'],
+): string | undefined {
+  if (!scope.startDate || !scope.endDate) return undefined;
+
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = addDays(scope.startDate, offset);
+    if (date > scope.endDate) return undefined;
+    if (offset === weekdayIndex) return date;
+  }
+
+  return undefined;
+}
+
+function parsePendingPlanningRange(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): SetPendingPlanningRangeCommand | undefined {
+  const normalizedText = normalizeIntakeText(text);
+  if (!hasOneWeekDuration(normalizedText) && !/来週.*計画/.test(normalizedText)) {
+    return undefined;
+  }
+
+  if (/夏休み/.test(normalizedText)) {
+    return {
+      type: 'set_pending_planning_range',
+      pending: {
+        scope: { kind: 'named_future_period', label: '夏休み' },
+        durationDays: 7,
+        sourceText: text,
+      },
+      sourceText: text,
+      confidence: 'high',
+    };
+  }
+
+  if (/来週/.test(normalizedText)) {
+    const scope = nextWeekScope(context);
+    const weekdayIndex = parseWeekdayStart(normalizedText);
+    const startDate = weekdayIndex === undefined ? undefined : resolveWeekdayInScope(weekdayIndex, scope);
+
+    if (startDate) {
+      return undefined;
+    }
+
+    return {
+      type: 'set_pending_planning_range',
+      pending: {
+        scope,
+        durationDays: 7,
+        sourceText: text,
+      },
+      sourceText: text,
+      confidence: 'high',
+    };
+  }
+
+  return undefined;
+}
+
+function parseWeeklyPlanningRange(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+  pending?: PendingPlanningRangeClarification,
+): SetPlanningRangeCommand['range'] | undefined {
+  const normalizedText = normalizeIntakeText(text);
+  const durationDays = hasOneWeekDuration(normalizedText) || pending ? 7 : undefined;
+  if (!durationDays) return undefined;
+
+  if (pending) {
+    const weekdayIndex = parseWeekdayStart(normalizedText);
+    const startDate = weekdayIndex === undefined
+      ? parseExplicitDate(normalizedText, context)
+      : resolveWeekdayInScope(weekdayIndex, pending.scope);
+    return startDate
+      ? rangeFromStartDate({ startDate, durationDays: pending.durationDays, sourceText: text })
+      : undefined;
+  }
+
+  const explicitDate = parseExplicitDate(normalizedText, context);
+  if (explicitDate) {
+    return rangeFromStartDate({ startDate: explicitDate, durationDays, sourceText: text });
+  }
+
+  if (/来週/.test(normalizedText)) {
+    const scope = nextWeekScope(context);
+    const weekdayIndex = parseWeekdayStart(normalizedText);
+    const startDate = weekdayIndex === undefined ? undefined : resolveWeekdayInScope(weekdayIndex, scope);
+    return startDate
+      ? rangeFromStartDate({ startDate, durationDays, sourceText: text })
+      : undefined;
+  }
+
+  if (/今日\s*から/.test(normalizedText)) {
+    return rangeFromStartDate({ startDate: context.selectedDate, durationDays, sourceText: text });
+  }
+
+  if (!/夏休み/.test(normalizedText)) {
+    return rangeFromStartDate({
+      startDate: currentDateTime(context).slice(0, 10),
+      startTime: currentTime(context),
+      durationDays,
+      sourceText: text,
+      confidence: 'inferred',
+    });
+  }
+
+  return undefined;
+}
+
+export function parseSetPendingPlanningRangeCommand(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): SetPendingPlanningRangeCommand | undefined {
+  const range = parseWeeklyPlanningRange(text, context);
+  return range ? undefined : parsePendingPlanningRange(text, context);
+}
+
 export function parseSetPlanningRangeCommand(
   text: string,
   context: WeeklyPlanningIntakeContext,
+  pending?: PendingPlanningRangeClarification,
 ): SetPlanningRangeCommand | undefined {
-  const range = parseWeekendPlanningRange(text, context);
+  const range = parseWeekendPlanningRange(text, context) ?? parseWeeklyPlanningRange(text, context, pending);
 
   return range
     ? {

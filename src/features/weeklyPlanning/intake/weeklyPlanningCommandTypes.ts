@@ -2,6 +2,7 @@ import type {
   CompletionTarget,
   ConstraintSourceKind,
   ExamPrepScope,
+  PendingPlanningRangeClarification,
   PlanningRange,
   PlanningIntakeUncertainty,
   LifeConstraintKind,
@@ -23,7 +24,8 @@ export type ParsedWeeklyPlanningCommand =
   | NoteUncertaintyCommand
   | SetUnitRateCommand
   | SetExamScopeCommand
-  | SetPlanningRangeCommand;
+  | SetPlanningRangeCommand
+  | SetPendingPlanningRangeCommand;
 
 /**
  * 「既存の schedule source を計画制約として利用する」という semantic intent。
@@ -178,6 +180,14 @@ export interface SetExamScopeCommand {
 export interface SetPlanningRangeCommand {
   type: 'set_planning_range';
   range: PlanningRange;
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface SetPendingPlanningRangeCommand {
+  type: 'set_pending_planning_range';
+  pending: PendingPlanningRangeClarification;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

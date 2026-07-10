@@ -21,6 +21,7 @@ function formatMinutes(minutes: number | undefined): string | null {
 
 function formatQuestionSlot(slotKey: string): string {
   const labels: Record<string, string> = {
+    planning_start_date: '計画の開始日',
     tasks_or_goals: '学習内容や目標',
     fixed_events: '授業・バイト・病院・ゼミなどの固定予定の有無',
     sleep_cycle: '睡眠時間',

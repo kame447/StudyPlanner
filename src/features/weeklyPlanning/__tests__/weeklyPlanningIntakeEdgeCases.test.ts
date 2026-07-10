@@ -29,7 +29,7 @@ import {
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import { parseSetPriorityPolicyCommand } from '../intake/weeklyPlanningPriorityParsing';
-import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from '../intake/weeklyPlanningScopeParsing';
+import { parseSetExamScopeCommand, parseSetPendingPlanningRangeCommand, parseSetPlanningRangeCommand } from '../intake/weeklyPlanningScopeParsing';
 import { parseSetUnitRateCommand } from '../intake/weeklyPlanningUnitRateParsing';
 import { parseNoteUncertaintyCommand } from '../intake/weeklyPlanningUncertaintyParsing';
 import {
@@ -879,6 +879,59 @@ describe('weekly planning intake edge cases', () => {
     expect(scopeCommand ? toExamScopeFromSetExamScopeCommand(scopeCommand) : undefined)
       .toMatchObject({ examType: '\u9662\u8a66', totalFields: 5, totalYears: 7 });
   });
+  it('parses weekly planning temporal scope without hiding unresolved start in planning range', () => {
+    const temporalContext = {
+      ...context,
+      selectedDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    };
+
+    expect(parseSetPlanningRangeCommand('今日から一週間の計画を立てたい', temporalContext))
+      .toMatchObject({
+        type: 'set_planning_range',
+        range: {
+          startDateTime: '2026-07-10T00:00:00',
+          endDateTime: '2026-07-16T24:00:00',
+          confidence: 'explicit',
+        },
+      });
+    expect(parseSetPlanningRangeCommand('一週間の計画を立てたい', temporalContext))
+      .toMatchObject({
+        type: 'set_planning_range',
+        range: {
+          startDateTime: '2026-07-10T15:30:00',
+          endDateTime: '2026-07-16T24:00:00',
+          confidence: 'inferred',
+        },
+      });
+    expect(parseSetPendingPlanningRangeCommand('来週の計画を立てたい', temporalContext))
+      .toMatchObject({
+        type: 'set_pending_planning_range',
+        pending: {
+          scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },
+          durationDays: 7,
+        },
+      });
+    expect(parseSetPlanningRangeCommand('来週の水曜日から一週間', temporalContext))
+      .toMatchObject({
+        type: 'set_planning_range',
+        range: {
+          startDateTime: '2026-07-15T00:00:00',
+          endDateTime: '2026-07-21T24:00:00',
+        },
+      });
+    expect(parseSetPlanningRangeCommand('7月15日から一週間', temporalContext))
+      .toMatchObject({
+        type: 'set_planning_range',
+        range: { startDateTime: '2026-07-15T00:00:00' },
+      });
+    expect(parseSetPendingPlanningRangeCommand('夏休みの一週間で計画を立てたい', temporalContext))
+      .toMatchObject({
+        type: 'set_pending_planning_range',
+        pending: { scope: { kind: 'named_future_period', label: '夏休み' } },
+      });
+  });
+
   it('Phase 9.6 parses fixed events and life constraints as commands before domain conversion', () => {
     const fixedEventCommand = parseConstraintCommands(
       '\u65e5\u66dc\u306e13\u6642\u304b\u3089\u6b6f\u533b\u8005',

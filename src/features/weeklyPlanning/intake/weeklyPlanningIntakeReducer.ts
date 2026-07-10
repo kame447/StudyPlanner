@@ -26,7 +26,7 @@ import { parseConstraintCommands, parseNoteNoFixedEventsCommand } from './weekly
 import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
 import { addMissing, finalizeState, removeMissing } from './weeklyPlanningMissingStatus';
 import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
-import { parseSetExamScopeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
+import { parseSetExamScopeCommand, parseSetPendingPlanningRangeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
 import { uniqueList } from './weeklyPlanningTextParsing';
 import {
   parseBareDurationAsUnitRateCommand,
@@ -320,6 +320,35 @@ function applyUseConstraintSourceCommand(
   };
 }
 
+function deriveMissingForPlanningRange(
+  state: PlanningIntakeState,
+): PlanningIntakeState['missing'] {
+  const missing: PlanningIntakeState['missing'] = [];
+  const constraintKinds = new Set(state.constraints.map((constraint) => constraint.kind));
+
+  if (!state.examPrepScope && state.tasks.length === 0) {
+    missing.push('tasks_or_goals');
+  }
+
+  if (
+    !constraintKinds.has('fixed_event')
+    && !constraintKinds.has('unavailable')
+    && !state.constraintSourcesInUse?.length
+  ) {
+    missing.push('fixed_events');
+  }
+
+  if (!constraintKinds.has('sleep') && !constraintKinds.has('buffer')) {
+    missing.push('sleep_cycle');
+  }
+
+  if (!constraintKinds.has('meal') && !constraintKinds.has('bath')) {
+    missing.push('meal_bath_constraints');
+  }
+
+  return missing;
+}
+
 function applyWeeklyPlanningCommand(
   state: PlanningIntakeState,
   command: ParsedWeeklyPlanningCommand,
@@ -423,17 +452,28 @@ function applyWeeklyPlanningCommand(
         missing: nextMissing,
       };
     }
-    case 'set_planning_range':
+    case 'set_planning_range': {
+      if (state.range?.confidence === 'explicit' && command.range.confidence !== 'explicit') {
+        return state;
+      }
+
       return {
         ...state,
         intent: 'weekly_study_planning',
         range: toPlanningRangeFromSetPlanningRangeCommand(command),
-        missing: addMissing(state.missing, [
-          'tasks_or_goals',
-          'fixed_events',
-          'sleep_cycle',
-          'meal_bath_constraints',
-        ]),
+        pendingPlanningRange: undefined,
+        missing: addMissing(
+          removeMissing(state.missing, ['planning_start_date']),
+          deriveMissingForPlanningRange(state),
+        ),
+      };
+    }
+    case 'set_pending_planning_range':
+      return {
+        ...state,
+        intent: 'weekly_study_planning',
+        pendingPlanningRange: command.pending,
+        missing: addMissing(state.missing, ['planning_start_date']),
       };
     default:
       return state;
@@ -478,6 +518,12 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
     constraintSourcesInUse: baseState.constraintSourcesInUse
       ? baseState.constraintSourcesInUse.map((source) => ({ ...source }))
       : undefined,
+    pendingPlanningRange: baseState.pendingPlanningRange
+      ? {
+          ...baseState.pendingPlanningRange,
+          scope: { ...baseState.pendingPlanningRange.scope },
+        }
+      : undefined,
     missing: [...baseState.missing],
     assumptions: [...baseState.assumptions],
     uncertainties: [...baseState.uncertainties],
@@ -488,9 +534,14 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
   };
 
   const setupCommands: ParsedWeeklyPlanningCommand[] = [];
-  const planningRangeCommand = parseSetPlanningRangeCommand(userText, context);
+  const planningRangeCommand = parseSetPlanningRangeCommand(userText, context, nextState.pendingPlanningRange);
   if (planningRangeCommand) {
     setupCommands.push(planningRangeCommand);
+  } else {
+    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(userText, context);
+    if (pendingPlanningRangeCommand) {
+      setupCommands.push(pendingPlanningRangeCommand);
+    }
   }
   const examScopeCommand = parseSetExamScopeCommand(userText, nextState.examPrepScope);
   if (examScopeCommand) {

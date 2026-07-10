@@ -39,6 +39,11 @@ function applyPriorityMissingState(state: PlanningIntakeState): PlanningIntakeSt
 function resolveQuestions(state: PlanningIntakeState): string[] {
   const questions: string[] = [];
 
+  if (state.missing.includes('planning_start_date')) {
+    const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
+    questions.push(scopeLabel + 'のどの日から計画を始めますか？');
+  }
+
   if (state.missing.includes('tasks_or_goals')) {
     questions.push('計画したい学習内容や目標を教えてください。');
   }
@@ -63,6 +68,10 @@ function resolveQuestions(state: PlanningIntakeState): string[] {
 }
 
 function resolveStatus(state: PlanningIntakeState): PlanningIntakeStatus {
+  if (state.missing.includes('planning_start_date')) {
+    return 'needs_scope';
+  }
+
   if (state.missing.includes('tasks_or_goals')) {
     return 'needs_scope';
   }
