@@ -1297,6 +1297,104 @@ describe('clarification semantic intent (request_clarification)', () => {
     });
   });
 
+  it('applies accepted fixed events before returning a term clarification', async () => {
+    const previousState = stateWithFixedEventsMissing();
+    const clarification = requestClarificationCandidate({
+      sourceText: '固定の予定って何ですか？',
+      ref: 'fixed_events',
+    });
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: '予定も伝えます。固定の予定って何ですか？',
+      interpreter: fakeInterpreter([
+        addFixedEventCandidate('予定も伝えます'),
+        clarification,
+      ]),
+    });
+
+    expect(output.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'fixed_event', start: '18:00', hardness: 'hard' }),
+    ]));
+    expect(output.decision.kind).toBe('answer_clarification');
+    expect(output.decision.clarification?.explanation).toContain('固定の予定');
+    expect(output.decision.questionPlan ?? []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ targetSlot: 'fixed_events' }),
+    ]));
+    expect(output.interpreterDiagnostics?.accepted).toEqual([
+      expect.objectContaining({ type: 'add_fixed_event' }),
+    ]);
+    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([
+      expect.objectContaining({ type: 'request_clarification', ref: 'fixed_events' }),
+    ]);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
+  });
+
+  it('keeps confirmation assumptions while answering a clarification in the same turn', async () => {
+    const previousState = stateWithFixedEventsMissing();
+    const confirmationCandidate: InterpretedCommandCandidate = {
+      command: {
+        type: 'add_fixed_event',
+        event: { start: '18:00', end: '20:30', hardness: 'hard' },
+        sourceText: '予定も伝えます',
+        confidence: 'medium',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: true,
+    };
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: '予定も伝えます。固定の予定って何ですか？',
+      interpreter: fakeInterpreter([
+        confirmationCandidate,
+        requestClarificationCandidate({
+          sourceText: '固定の予定って何ですか？',
+          ref: 'fixed_events',
+        }),
+      ]),
+    });
+
+    expect(output.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'fixed_event', start: '18:00' }),
+    ]));
+    expect(output.state.assumptions).toEqual(expect.arrayContaining([
+      expect.stringContaining('add_fixed_event'),
+    ]));
+    expect(output.decision.kind).toBe('answer_clarification');
+    expect(output.decision.questionPlan ?? []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ targetSlot: 'fixed_events' }),
+    ]));
+    expect(output.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'add_fixed_event' }),
+    ]);
+  });
+
+  it('does not apply low-confidence candidates without a clarification request', async () => {
+    const previousState = stateWithFixedEventsMissing();
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: 'この条件について補足があります',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'add_fixed_event',
+          event: { start: '18:00', end: '20:30', hardness: 'hard' },
+          sourceText: 'この条件について補足があります',
+          confidence: 'low',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+
+    expect(output.state.constraints).toEqual(previousState.constraints);
+    expect(output.interpreterDiagnostics?.accepted).toEqual([]);
+    expect(output.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([]);
+    expect(output.interpreterDiagnostics?.clarifications).toHaveLength(1);
+    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([]);
+  });
+
 });
 
 describe('confirmed slots and AI planning range integration', () => {

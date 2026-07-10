@@ -349,24 +349,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   const interpreterDiagnostics = validateInterpretedCandidates(resolvedCandidates, stateSummary);
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
-  // 聞き返しは state を進めない。用語説明を返し、直前の質問を維持する(missing 不変)。
   const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];
-  if (clarificationRequest) {
-    const ref = clarificationRequest.type === 'request_clarification'
-      ? clarificationRequest.ref
-      : undefined;
-    const output = buildPipelineOutput({
-      input,
-      state: deterministicTurn.state,
-      interpreterDiagnostics,
-    });
-    output.decision = createWeeklyPlanningClarificationDecision({
-      state: deterministicTurn.state,
-      ref,
-    });
-
-    return output;
-  }
 
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
@@ -394,9 +377,21 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     ))
     : deterministicTurn.state;
 
-  return buildPipelineOutput({
+  const output = buildPipelineOutput({
     input,
     state: interpretedState,
     interpreterDiagnostics,
   });
+
+  if (clarificationRequest) {
+    const ref = clarificationRequest.type === 'request_clarification'
+      ? clarificationRequest.ref
+      : undefined;
+    output.decision = createWeeklyPlanningClarificationDecision({
+      state: interpretedState,
+      ref,
+    });
+  }
+
+  return output;
 }
