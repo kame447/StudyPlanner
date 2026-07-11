@@ -82,4 +82,29 @@ describe('weekly planning question slot registry', () => {
       '週末で優先する分野や進める順番を教えてください。',
     ]);
   });
+
+  it('classifies every missing slot for preview synthesis', () => {
+    expect(
+      Object.fromEntries(
+        ALL_MISSING_SLOTS.map((slot) => [
+          slot,
+          QUESTION_SLOT_DEFINITION_BY_MISSING[slot].previewPolicy,
+        ]),
+      ),
+    ).toEqual({
+      planning_start_date: 'assumable',
+      tasks_or_goals: 'blocking',
+      fixed_events: 'assumable',
+      sleep_cycle: 'assumable',
+      meal_bath_constraints: 'assumable',
+      year_range: 'assumable',
+      progress: 'deferrable',
+      completion_direction: 'deferrable',
+      unit_duration_estimate: 'assumable',
+      priority_policy: 'assumable',
+      next_field_after_math: 'assumable',
+      life_constraints: 'assumable',
+    });
+  });
+
 });

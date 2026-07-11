@@ -8,6 +8,11 @@ export type PlanningQuestionSlotKind =
   | 'missing_slot'
   | 'missing_life_constraint';
 
+export type PlanningQuestionSlotPreviewPolicy =
+  | 'blocking'
+  | 'assumable'
+  | 'deferrable';
+
 interface FallbackQuestionContext {
   planningPeriodLabel?: string;
   options?: string[];
@@ -19,6 +24,7 @@ export interface PlanningQuestionSlotDefinition {
   intent: string;
   dependsOn?: readonly PlanningIntakeMissing[];
   kind: PlanningQuestionSlotKind;
+  previewPolicy: PlanningQuestionSlotPreviewPolicy;
   status: PlanningIntakeStatus | undefined;
   deterministicQuestion: (state: PlanningIntakeState) => string | undefined;
   isStateQuestionEligible: (state: PlanningIntakeState) => boolean;
@@ -68,6 +74,7 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'planning_start_date',
   intent: 'ask_planning_start_date',
   kind: 'missing_slot',
+  previewPolicy: 'assumable',
   status: 'needs_scope',
   deterministicQuestion: (state) => {
     const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
@@ -91,6 +98,7 @@ const tasksOrGoalsSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'tasks_or_goals',
   intent: 'ask_tasks_or_goals',
   kind: 'missing_slot',
+  previewPolicy: 'blocking',
   status: 'needs_scope',
   deterministicQuestion: () => '計画したい学習内容や目標を教えてください。',
   isStateQuestionEligible: (state) => isMissing(state, 'tasks_or_goals'),
@@ -108,6 +116,7 @@ const yearRangeSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'year_range',
   intent: 'ask_year_range',
   kind: 'missing_slot',
+  previewPolicy: 'assumable',
   status: 'needs_year_range',
   deterministicQuestion: () => '7年分は何年から何年までですか？',
   isStateQuestionEligible: (state) => isMissing(state, 'year_range'),
@@ -126,6 +135,7 @@ const completionDirectionSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'completion_direction',
   intent: 'ask_progress_clarification',
   kind: 'missing_slot',
+  previewPolicy: 'deferrable',
   status: 'needs_progress_clarification',
   deterministicQuestion: () =>
     '2021まで完了は、新しい年度から2021までですか？古い年度から2021までですか？',
@@ -146,6 +156,7 @@ const progressSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'progress',
   intent: 'ask_progress_clarification',
   kind: 'missing_slot',
+  previewPolicy: 'deferrable',
   status: undefined,
   deterministicQuestion: () => undefined,
   isStateQuestionEligible: () => false,
@@ -167,6 +178,7 @@ const unitDurationEstimateSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'unit_rate',
   intent: 'ask_unit_rate',
   kind: 'missing_slot',
+  previewPolicy: 'assumable',
   status: 'needs_unit_rate',
   deterministicQuestion: () =>
     '1つの年度×分野にだいたい何分かかりますか？',
@@ -188,6 +200,7 @@ const priorityPolicySlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'priority_policy',
   intent: 'ask_priority_policy',
   kind: 'missing_slot',
+  previewPolicy: 'assumable',
   status: 'needs_priority_policy',
   deterministicQuestion: () =>
     '週末で優先する分野や進める順番を教えてください。',
@@ -213,6 +226,7 @@ const fixedEventsSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'fixed_events',
   intent: 'ask_fixed_events',
   kind: 'missing_life_constraint',
+  previewPolicy: 'assumable',
   status: 'needs_life_constraints',
   deterministicQuestion: () => undefined,
   isStateQuestionEligible: () => false,
@@ -231,6 +245,7 @@ const sleepCycleSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'sleep_cycle',
   intent: 'ask_life_constraints',
   kind: 'missing_life_constraint',
+  previewPolicy: 'assumable',
   status: 'needs_life_constraints',
   deterministicQuestion: () => undefined,
   isStateQuestionEligible: () => false,
@@ -249,6 +264,7 @@ const mealBathConstraintsSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'meal_bath_constraints',
   intent: 'ask_life_constraints',
   kind: 'missing_life_constraint',
+  previewPolicy: 'assumable',
   status: 'needs_life_constraints',
   deterministicQuestion: () => undefined,
   isStateQuestionEligible: () => false,
@@ -267,6 +283,7 @@ const lifeConstraintsSlot: PlanningQuestionSlotDefinition = {
   targetSlot: 'life_constraints',
   intent: 'ask_life_constraints',
   kind: 'missing_life_constraint',
+  previewPolicy: 'assumable',
   status: 'needs_life_constraints',
   deterministicQuestion: () => undefined,
   isStateQuestionEligible: () => false,

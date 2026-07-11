@@ -5,7 +5,9 @@ import {
   type WeeklyPlanningDialogueDecision,
 } from '../dialogue/weeklyPlanningDialogueManager';
 import {
+  createAssumedWeeklyDraftRequest,
   createWeeklyDraftRequestFromIntakeState,
+  type AssumedWeeklyDraftRequest,
   type WeeklyPlanningDraftRequest,
 } from '../intake/weeklyPlanningDraftRequestAdapter';
 import {
@@ -105,6 +107,7 @@ function planningDayCountFromRange(range: PlanningRange, fallback: number): numb
 function resolveSchedulingInput(
   input: WeeklyPlanningIntakePipelineInput,
   state: PlanningIntakeState,
+  overrides?: { planningStartDate?: string },
 ): {
   planningStartDate: string;
   planningDayCount: number;
@@ -112,9 +115,10 @@ function resolveSchedulingInput(
 } {
   const rangeStartDateTime = state.range?.startDateTime;
   const usesResolvedCalendarWindow = Boolean(state.range?.calendarDayCount);
-  const planningStartDate = usesResolvedCalendarWindow && rangeStartDateTime
+  const resolvedPlanningStartDate = usesResolvedCalendarWindow && rangeStartDateTime
     ? rangeStartDateTime.slice(0, 10)
     : input.planningStartDate;
+  const planningStartDate = overrides?.planningStartDate ?? resolvedPlanningStartDate;
   const rangeStartTime = rangeStartDateTime?.slice(11, 16);
   const planningDayCount = state.range?.calendarDayCount
     ?? (usesResolvedCalendarWindow ? planningDayCountFromRange(state.range as PlanningRange, input.planningDayCount) : input.planningDayCount);
@@ -126,12 +130,55 @@ function resolveSchedulingInput(
   return { planningStartDate, planningDayCount, sessionPolicy };
 }
 
+function createDraftRun(
+  input: WeeklyPlanningIntakePipelineInput,
+  draftRequest: WeeklyPlanningDraftRequest,
+  schedulingInput: {
+    planningStartDate: string;
+    planningDayCount: number;
+    sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
+  },
+): {
+  remainingWorkItems: WeeklyPlanningRemainingWorkItemsResult;
+  candidates: WeeklyDraftCandidate[];
+  diagnostics: WeeklyDraftCandidateDiagnostics;
+} {
+  const remainingWorkItems = createRemainingWorkItemsFromDraftRequest(draftRequest);
+  const dryRun = createWeeklyDraftCandidatesFromRemainingWorkItems({
+    remainingWorkItems: remainingWorkItems.items,
+    constraints: draftRequest.constraints,
+    fixedEvents: draftRequest.fixedEvents,
+    planningStartDate: schedulingInput.planningStartDate,
+    planningDayCount: schedulingInput.planningDayCount,
+    sessionPolicy: schedulingInput.sessionPolicy,
+    existingPlans: input.existingPlans,
+    scheduleTemplates: input.scheduleTemplates,
+    timetableTermId: input.timetableTermId,
+    existingPlanBufferMinutes: input.existingPlanBufferMinutes,
+  });
+
+  return {
+    remainingWorkItems,
+    candidates: dryRun.candidates,
+    diagnostics: dryRun.diagnostics,
+  };
+}
+
+export interface WeeklyPlanningAssumedDraft {
+  draftRequest: WeeklyPlanningDraftRequest;
+  assumptions: AssumedWeeklyDraftRequest['assumptions'];
+  candidates: WeeklyDraftCandidate[];
+  diagnostics: WeeklyDraftCandidateDiagnostics;
+}
+
 export interface WeeklyPlanningIntakePipelineOutput {
   state: PlanningIntakeState;
   draftRequest: WeeklyPlanningDraftRequest | null;
   remainingWorkItems: WeeklyPlanningRemainingWorkItemsResult | null;
   draftCandidates: WeeklyDraftCandidate[] | null;
   diagnostics: WeeklyDraftCandidateDiagnostics | null;
+  /** Stage 1 の仮定つき dry-run。既存 decision / preview 出力には接続しない。 */
+  assumedDraft?: WeeklyPlanningAssumedDraft;
   decision: WeeklyPlanningDialogueDecision;
   interpreterDiagnostics?: CandidateValidationResult;
 }
@@ -144,38 +191,47 @@ function buildPipelineOutput(params: {
   const { input, state } = params;
   const draftRequest = createWeeklyDraftRequestFromIntakeState(state);
   const schedulingInput = resolveSchedulingInput(input, state);
-  const remainingWorkItems = draftRequest
-    ? createRemainingWorkItemsFromDraftRequest(draftRequest)
+  const confirmedDraftRun = draftRequest
+    ? createDraftRun(input, draftRequest, schedulingInput)
     : null;
-  const dryRun = draftRequest && remainingWorkItems
-    ? createWeeklyDraftCandidatesFromRemainingWorkItems({
-      remainingWorkItems: remainingWorkItems.items,
-      constraints: draftRequest.constraints,
-      fixedEvents: draftRequest.fixedEvents,
-      planningStartDate: schedulingInput.planningStartDate,
-      planningDayCount: schedulingInput.planningDayCount,
-      sessionPolicy: schedulingInput.sessionPolicy,
-      existingPlans: input.existingPlans,
-      scheduleTemplates: input.scheduleTemplates,
-      timetableTermId: input.timetableTermId,
-      existingPlanBufferMinutes: input.existingPlanBufferMinutes,
-    })
+  const assumedDraftRequest = draftRequest
+    ? null
+    : createAssumedWeeklyDraftRequest(state, {
+      currentDateTime: resolveCurrentDateTime(input),
+    });
+  const assumedDraftRun = assumedDraftRequest
+    ? createDraftRun(
+      input,
+      assumedDraftRequest.draftRequest,
+      resolveSchedulingInput(input, state, {
+        planningStartDate: assumedDraftRequest.planningStartDate,
+      }),
+    )
     : null;
   const decision = createWeeklyPlanningDialogueDecision({
     state,
     draftRequest,
-    remainingWorkItems,
-    dryRunCandidates: dryRun?.candidates ?? null,
-    dryRunDiagnostics: dryRun?.diagnostics ?? null,
+    remainingWorkItems: confirmedDraftRun?.remainingWorkItems ?? null,
+    dryRunCandidates: confirmedDraftRun?.candidates ?? null,
+    dryRunDiagnostics: confirmedDraftRun?.diagnostics ?? null,
   });
   const output: WeeklyPlanningIntakePipelineOutput = {
     state,
     draftRequest,
-    remainingWorkItems,
-    draftCandidates: dryRun?.candidates ?? null,
-    diagnostics: dryRun?.diagnostics ?? null,
+    remainingWorkItems: confirmedDraftRun?.remainingWorkItems ?? null,
+    draftCandidates: confirmedDraftRun?.candidates ?? null,
+    diagnostics: confirmedDraftRun?.diagnostics ?? null,
     decision,
   };
+
+  if (assumedDraftRequest && assumedDraftRun) {
+    output.assumedDraft = {
+      draftRequest: assumedDraftRequest.draftRequest,
+      assumptions: assumedDraftRequest.assumptions,
+      candidates: assumedDraftRun.candidates,
+      diagnostics: assumedDraftRun.diagnostics,
+    };
+  }
 
   if (params.interpreterDiagnostics) {
     output.interpreterDiagnostics = params.interpreterDiagnostics;

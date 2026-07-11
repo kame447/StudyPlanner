@@ -176,6 +176,12 @@ export type PlanningIntakeMissing =
   | 'next_field_after_math'
   | 'life_constraints';
 
+export interface PlanningAssumption {
+  slot: PlanningIntakeMissing;
+  source: 'default' | 'derived';
+  description: string;
+}
+
 export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
 
 export interface PlanningIntakeState {

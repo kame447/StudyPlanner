@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
+import {
+  createAssumedWeeklyDraftRequest,
+  createWeeklyDraftRequestFromIntakeState,
+  DEFAULT_ASSUMED_UNIT_MINUTES,
+} from '../intake/weeklyPlanningDraftRequestAdapter';
 import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
 import { WP_RP_001_WEEKEND_EXAM_TURNS } from '../testFixtures/weeklyPlanningRoleplayCases';
 import {
@@ -56,6 +60,57 @@ function createZeroProgressDraftReadyState(): PlanningIntakeState {
     shouldCreateDraft: true,
     shouldSavePlan: false,
     sourceTurns: ['完了済みはまだない'],
+  };
+}
+
+
+
+function createAssumablePreviewState(): PlanningIntakeState {
+  return {
+    status: 'needs_scope',
+    intent: 'exam_prep_planning',
+    pendingPlanningRange: {
+      scope: {
+        kind: 'next_week',
+        label: '来週',
+        startDate: '2026-07-20',
+        endDate: '2026-07-26',
+      },
+      durationDays: 7,
+      sourceText: '来週',
+    },
+    examPrepScope: {
+      examType: '院試',
+      fields: ZERO_PROGRESS_FIELDS,
+      totalFields: 5,
+      totalYears: 7,
+      unitModel: 'year_field_chunk',
+      rawText: ['院試の5分野を7年分'],
+    },
+    tasks: [],
+    progress: [],
+    unitRates: [],
+    constraints: [],
+    priorityPolicy: { kind: 'unknown' },
+    missing: [
+      'planning_start_date',
+      'fixed_events',
+      'sleep_cycle',
+      'meal_bath_constraints',
+      'year_range',
+      'progress',
+      'completion_direction',
+      'unit_duration_estimate',
+      'priority_policy',
+      'next_field_after_math',
+      'life_constraints',
+    ],
+    assumptions: [],
+    uncertainties: [],
+    questions: [],
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+    sourceTurns: ['来週、院試の過去問を5分野で7年分進めたい'],
   };
 }
 
@@ -187,4 +242,87 @@ describe('weekly planning draft request adapter', () => {
     ]);
     expect(request?.shouldSavePlan).toBe(false);
   });
+
+  it('synthesizes an exam-prep draft from assumable and deferrable slots without mutating state', () => {
+    const state = createAssumablePreviewState();
+    const before = structuredClone(state);
+    const assumed = createAssumedWeeklyDraftRequest(state, {
+      currentDateTime: '2026-07-11T10:00:00',
+    });
+
+    expect(assumed).toMatchObject({
+      planningStartDate: '2026-07-20',
+      draftRequest: {
+        examPrepScope: {
+          fields: ZERO_PROGRESS_FIELDS,
+          yearRange: { startYear: 2020, endYear: 2026 },
+        },
+        unitRate: {
+          unit: 'year_field_chunk',
+          minutesPerUnit: DEFAULT_ASSUMED_UNIT_MINUTES,
+          source: 'default',
+          uncertainty: 'high',
+        },
+        priorityPolicy: { kind: 'field_first', order: ZERO_PROGRESS_FIELDS },
+        progress: [],
+      },
+    });
+    expect(assumed?.assumptions.map((assumption) => assumption.slot)).toEqual(
+      expect.arrayContaining([
+        'planning_start_date',
+        'year_range',
+        'unit_duration_estimate',
+        'priority_policy',
+        'fixed_events',
+        'sleep_cycle',
+        'meal_bath_constraints',
+        'life_constraints',
+      ]),
+    );
+    expect(state).toEqual(before);
+    expect(state.range).toBeUndefined();
+    expect(state.pendingPlanningRange?.scope.startDate).toBe('2026-07-20');
+  });
+
+  it('does not synthesize when a preview prerequisite remains blocking', () => {
+    const withoutTotalYears = createAssumablePreviewState();
+    withoutTotalYears.examPrepScope = {
+      ...withoutTotalYears.examPrepScope!,
+      totalYears: undefined,
+    };
+    const withoutScopeStartDate = createAssumablePreviewState();
+    withoutScopeStartDate.pendingPlanningRange = {
+      ...withoutScopeStartDate.pendingPlanningRange!,
+      scope: {
+        ...withoutScopeStartDate.pendingPlanningRange!.scope,
+        startDate: undefined,
+      },
+    };
+    const withoutGoal = createAssumablePreviewState();
+    withoutGoal.missing = [...withoutGoal.missing, 'tasks_or_goals'];
+
+    expect(createAssumedWeeklyDraftRequest(withoutTotalYears, {
+      currentDateTime: '2026-07-11T10:00:00',
+    })).toBeNull();
+    expect(createAssumedWeeklyDraftRequest(withoutScopeStartDate, {
+      currentDateTime: '2026-07-11T10:00:00',
+    })).toBeNull();
+    expect(createAssumedWeeklyDraftRequest(withoutGoal, {
+      currentDateTime: '2026-07-11T10:00:00',
+    })).toBeNull();
+  });
+
+  it('prefers the confirmed draft request and returns no assumptions', () => {
+    const state = createZeroProgressDraftReadyState();
+    const confirmed = createWeeklyDraftRequestFromIntakeState(state);
+    const assumed = createAssumedWeeklyDraftRequest(state, {
+      currentDateTime: '2026-07-11T10:00:00',
+    });
+
+    expect(assumed).toEqual({
+      draftRequest: confirmed,
+      assumptions: [],
+    });
+  });
+
 });

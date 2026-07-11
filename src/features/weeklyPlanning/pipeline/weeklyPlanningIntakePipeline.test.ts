@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import { createWeeklyPlanningDialogueDecision } from '../dialogue/weeklyPlanningDialogueManager';
+import { renderWeeklyPlanningDialogueMessage } from '../dialogue/weeklyPlanningDialogueRenderer';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type {
   ConstraintSourceKind,
@@ -148,6 +150,57 @@ function runWeekendExamSequence() {
   }
 
   return outputs;
+}
+
+
+
+function assumablePreviewState(): PlanningIntakeState {
+  return {
+    status: 'needs_scope',
+    intent: 'exam_prep_planning',
+    pendingPlanningRange: {
+      scope: {
+        kind: 'next_week',
+        label: '来週',
+        startDate: '2026-07-20',
+        endDate: '2026-07-26',
+      },
+      durationDays: 7,
+      sourceText: '来週',
+    },
+    examPrepScope: {
+      examType: '院試',
+      fields: ['数学', 'ソフトウェア', 'ハードウェア', 'ネットワーク', '英語'],
+      totalFields: 5,
+      totalYears: 7,
+      unitModel: 'year_field_chunk',
+      rawText: ['院試の5分野を7年分'],
+    },
+    tasks: [],
+    progress: [],
+    unitRates: [],
+    constraints: [],
+    priorityPolicy: { kind: 'unknown' },
+    missing: [
+      'planning_start_date',
+      'fixed_events',
+      'sleep_cycle',
+      'meal_bath_constraints',
+      'year_range',
+      'progress',
+      'completion_direction',
+      'unit_duration_estimate',
+      'priority_policy',
+      'next_field_after_math',
+      'life_constraints',
+    ],
+    assumptions: [],
+    uncertainties: [],
+    questions: [],
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+    sourceTurns: ['来週、院試の過去問を5分野で7年分進めたい'],
+  };
 }
 
 describe('weekly planning intake pipeline', () => {
@@ -1712,4 +1765,47 @@ describe('Stage 1 interpreter grounding', () => {
     });
     expect(output.draftCandidates?.[0]?.date).toBe('2026-07-11');
   });
+
+  it('exposes an assumed dry run without changing dialogue or confirmed preview output', async () => {
+    const previousState = assumablePreviewState();
+    const before = structuredClone(previousState);
+    const output = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState,
+      userText: '',
+      currentDateTime: '2026-07-11T10:00:00',
+    });
+    const expectedDecision = createWeeklyPlanningDialogueDecision({
+      state: output.state,
+      draftRequest: null,
+      remainingWorkItems: null,
+      dryRunCandidates: null,
+      dryRunDiagnostics: null,
+    });
+
+    expect(output.assumedDraft?.candidates.length).toBeGreaterThan(0);
+    expect(output.assumedDraft?.assumptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slot: 'year_range', source: 'derived' }),
+        expect.objectContaining({ slot: 'unit_duration_estimate', source: 'default' }),
+      ]),
+    );
+    expect(output.assumedDraft?.candidates.every((candidate) =>
+      candidate.date >= '2026-07-20' && candidate.date <= '2026-07-26',
+    )).toBe(true);
+    expect(output.draftRequest).toBeNull();
+    expect(output.draftCandidates).toBeNull();
+    expect(output.decision).toEqual(expectedDecision);
+    await expect(renderWeeklyPlanningDialogueMessage({
+      state: output.state,
+      decision: output.decision,
+    })).resolves.toBe(await renderWeeklyPlanningDialogueMessage({
+      state: output.state,
+      decision: expectedDecision,
+    }));
+    expect(output.state.pendingPlanningRange?.scope.startDate).toBe('2026-07-20');
+    expect(output.state.range).toBeUndefined();
+    expect(previousState).toEqual(before);
+  });
+
 });
