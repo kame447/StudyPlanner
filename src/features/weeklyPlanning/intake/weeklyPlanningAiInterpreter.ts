@@ -455,10 +455,10 @@ export function createSystemPrompt(): string {
   return [
     'You are an interpreter for a Japanese study-planning intake pipeline.',
     'Return only JSON that matches the response schema. Do not return prose.',
-    'Your job is to convert the current user turn into command candidates. The application will validate every command before applying it.',
+    'You are called for every user turn and are the only semantic interpreter when available. Convert every independent meaning in the current user turn into command candidates; one turn may require multiple commands. The application will validate every command before applying it.',
     'Use only the provided userText, context, and stateSummary. Do not assume saved plans, past turns, or life-constraint history.',
     'Prefer no command over an unsafe command. Return an empty candidates array when the turn is not enough.',
-    'The candidates field must be an array of command objects, not wrapper objects.',
+    'Return all applicable commands from the current turn. If no command applies, return an empty candidates array; do not rely on a rules parser to fill omitted meanings.',
     'Each command must include a confidence field with one of: high, medium, low.',
     'Command types you may emit:',
     '- set_exam_scope: examType, fields, totalFields, totalYears, yearRange, strategyHint, unitModel, rawText.',
@@ -500,21 +500,17 @@ export function createAiWeeklyPlanningInterpreter(
 ): WeeklyPlanningIntakeInterpreter {
   return {
     async interpretUserTurn({ userText, context, stateSummary }) {
-      try {
-        const content = await client.createChatCompletion({
-          messages: [
-            { role: 'system', content: createSystemPrompt() },
-            { role: 'user', content: createUserPrompt({ userText, context, stateSummary }) },
-          ],
-          temperature: 0.1,
-          responseFormat: WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT,
-          purpose: 'weekly_planning_interpreter',
-        });
+      const content = await client.createChatCompletion({
+        messages: [
+          { role: 'system', content: createSystemPrompt() },
+          { role: 'user', content: createUserPrompt({ userText, context, stateSummary }) },
+        ],
+        temperature: 0.1,
+        responseFormat: WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT,
+        purpose: 'weekly_planning_interpreter',
+      });
 
-        return parseInterpreterResponse(content);
-      } catch {
-        return emptyInterpreterResult();
-      }
+      return parseInterpreterResponse(content);
     },
   };
 }

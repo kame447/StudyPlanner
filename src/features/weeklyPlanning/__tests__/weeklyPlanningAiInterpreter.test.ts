@@ -354,19 +354,10 @@ describe('weekly planning AI interpreter', () => {
     ]);
   });
 
-  it('shrinks to an empty candidate list when the AI client throws', async () => {
-    const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => {
-        throw new Error('network failed');
-      }),
-    };
+  it('propagates an AI client error so the pipeline can use turn-level rules fallback', async () => {
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => { throw new Error('network failed'); }) };
     const interpreter = createAiWeeklyPlanningInterpreter(config, client);
-
-    await expect(interpreter.interpretUserTurn({
-      userText: '数学から始めたい',
-      context: { selectedDate: '2026-07-06' },
-      stateSummary,
-    })).resolves.toEqual({ candidates: [], parseRejections: [] });
+    await expect(interpreter.interpretUserTurn({ userText: 'input', context: { selectedDate: '2026-07-06' }, stateSummary })).rejects.toThrow('network failed');
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 });

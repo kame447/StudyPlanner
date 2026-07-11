@@ -13,10 +13,11 @@ import {
 import {
   applyWeeklyPlanningCommands,
   applyWeeklyPlanningUserTurn,
+  beginWeeklyPlanningUserTurn,
   applyWeeklyPlanningUserTurnWithDiagnostics,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
-import type { PlanningIntakeMissing, PlanningIntakeState, PlanningRange, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeState, PlanningRange, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';
 import {
   finalizeState,
   hasConfirmedFixedEvents,
@@ -37,7 +38,6 @@ import {
   type WeeklyPlanningRemainingWorkItemsResult,
 } from '../intake/weeklyPlanningRemainingWorkItems';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
-import { shouldEscalateToInterpreter } from './weeklyPlanningInterpreterEscalation';
 import {
   createWeeklyDraftCandidatesFromRemainingWorkItems,
   type WeeklyDraftCandidate,
@@ -387,34 +387,31 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
 
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
   const context = createInterpreterContext(input);
-  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
-    previousState,
-    input.userText,
-    context,
-  );
-
-  if (!shouldEscalateToInterpreter({
-    deterministicCommandCount: deterministicTurn.deterministicCommandCount,
-    fallbackProgressCount: deterministicTurn.fallbackProgressCount,
-    missingBefore: deterministicTurn.missingBefore as PlanningIntakeMissing[],
-    missingAfter: deterministicTurn.missingAfter as PlanningIntakeMissing[],
-    userText: input.userText,
-    hasInterpreter: true,
-  })) {
-    return buildPipelineOutput({ input, state: deterministicTurn.state });
-  }
-
+  const preparedState = beginWeeklyPlanningUserTurn(previousState, input.userText);
   const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
   const stateSummary = createInterpreterStateSummary(
-    deterministicTurn.state,
+    preparedState,
     capabilitySnapshot,
     input.previousState,
   );
-  const interpreterResult = await input.interpreter.interpretUserTurn({
-    userText: input.userText,
-    context,
-    stateSummary,
-  });
+  let interpreterResult;
+
+  try {
+    interpreterResult = await input.interpreter.interpretUserTurn({
+      userText: input.userText,
+      context,
+      stateSummary,
+    });
+  } catch {
+    // Provider failures switch the whole turn to the existing rules path. Empty AI results do not.
+    const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
+      previousState,
+      input.userText,
+      context,
+    );
+    return buildPipelineOutput({ input, state: fallbackTurn.state });
+  }
+
   const resolvedCandidates = resolveConstraintSourceReferences({
     candidates: interpreterResult.candidates,
     userText: input.userText,
@@ -424,7 +421,6 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
   const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];
-
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
     ...interpreterDiagnostics.acceptedWithConfirmation.filter((command) =>
@@ -435,21 +431,16 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       ? { ...command, range: toPlanningRangeFromSetPlanningRangeCommand(command) }
       : command,
   );
-  // 参照 source が空で rejected になった use_constraint_source は、fixed_events を充足させず確認に倒す。
   const unavailableSourceCount = interpreterDiagnostics.rejected.filter(
     (rejection) => rejection.reason === 'constraint-source-unavailable',
   ).length;
-  const interpretedState = interpretedCommands.length > 0
-    || interpreterDiagnostics.acceptedWithConfirmation.length > 0
-    || unavailableSourceCount > 0
-    ? finalizeState(addConstraintSourceConfirmationAssumptions(
-      addConfirmationAssumptions(
-        applyWeeklyPlanningCommands(deterministicTurn.state, interpretedCommands),
-        interpreterDiagnostics,
-      ),
-      unavailableSourceCount,
-    ))
-    : deterministicTurn.state;
+  const interpretedState = finalizeState(addConstraintSourceConfirmationAssumptions(
+    addConfirmationAssumptions(
+      applyWeeklyPlanningCommands(preparedState, interpretedCommands),
+      interpreterDiagnostics,
+    ),
+    unavailableSourceCount,
+  ));
 
   const output = buildPipelineOutput({
     input,

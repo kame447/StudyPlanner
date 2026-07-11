@@ -384,8 +384,21 @@ export function validateInterpretedCandidates(
         return;
       }
 
-      result.acceptedWithConfirmation.push(command);
-      return;
+      const pendingStartDate = summary.pendingPlanningRange.startDate;
+      const pendingEndDate = summary.pendingPlanningRange.endDate;
+      const rangeStartDate = command.range.startDateTime?.slice(0, 10);
+      const isWithinPendingWindow = Boolean(
+        pendingStartDate
+        && pendingEndDate
+        && rangeStartDate
+        && rangeStartDate >= pendingStartDate
+        && rangeStartDate <= pendingEndDate,
+      );
+
+      if (!isWithinPendingWindow) {
+        result.acceptedWithConfirmation.push(command);
+        return;
+      }
     }
 
     const slots = commandSlotKeys(command);

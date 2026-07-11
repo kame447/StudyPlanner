@@ -1478,6 +1478,8 @@ describe('confirmed slots and AI planning range integration', () => {
     }).state;
   }
 
+  it('applies an explicit AI range whose start is inside the pending window', async () => { const output = await runWeeklyPlanningIntakePipelineWithInterpreter({ ...defaultPipelineInput, previousState: pendingScopeState(), userText: 'window range', planningStartDate: '2026-07-10', currentDateTime: '2026-07-10T15:30:00', interpreter: fakeInterpreter([{ command: { type: 'set_planning_range', range: { startDateTime: '2026-07-15T00:00:00', endDateTime: '2026-07-19T24:00:00', sourceText: 'window range', confidence: 'explicit' }, sourceText: 'window range', confidence: 'high' }, origin: 'ai_interpreter', needsConfirmation: false }]) }); expect(output.interpreterDiagnostics?.accepted).toEqual([expect.objectContaining({ type: 'set_planning_range' })]); expect(output.state.range?.startDateTime).toBe('2026-07-15T00:00:00'); expect(output.state.pendingPlanningRange).toBeUndefined(); });
+
   it('accepts a timetable source while range is pending and keeps it after range resolution', async () => {
     const sourceOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,

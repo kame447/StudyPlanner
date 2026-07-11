@@ -28,7 +28,6 @@ import {
   hasConfirmedLifeConstraints,
 } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
-import { shouldEscalateToInterpreter } from '../pipeline/weeklyPlanningInterpreterEscalation';
 import {
   runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
@@ -201,6 +200,8 @@ describe('weekly planning AI foundation without real AI', () => {
     ]);
   });
 
+  it('passes the full compound regression turn to AI and retains every command meaning', async () => { const hardware = String.fromCodePoint(0x30cf,0x30fc,0x30c9,0x30a6,0x30a7,0x30a2); const userText = [String.fromCodePoint(0x4eca,0x65e5,0x660e,0x65e5,0x306e,0x8a08,0x753b,0x3092,0x7acb,0x3066,0x305f,0x3044),String.fromCodePoint(0x3084,0x308b,0x3053,0x3068,0x306f,0x9662,0x8a66,0x306e,0x904e,0x53bb,0x554f,0x3067,0x3001,0x30cf,0x30fc,0x30c9,0x30a6,0x30a7,0x30a2,0x5206,0x91ce,0x3092,0x4e3b,0x306b,0x3084,0x308b),String.fromCodePoint(0x5e74,0x5ea6,0x306f)+'2024~2019'].join(String.fromCodePoint(0x0a)); const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({ candidates: [candidate({ type: 'set_planning_range', range: { startDateTime: '2026-07-10T00:00:00', endDateTime: '2026-07-11T24:00:00', confidence: 'explicit' }, sourceText: userText, confidence: 'high' }),candidate({ type: 'set_exam_scope', scope: { examType: String.fromCodePoint(0x9662,0x8a66), fields: [hardware], totalFields: 1, totalYears: 6, yearRange: { startYear: 2024, endYear: 2019, sourceText: '2024~2019' }, strategyHint: 'field_first', unitModel: 'year_field_chunk', rawText: [userText] }, sourceText: userText, confidence: 'high' }),candidate({ type: 'set_priority_policy', policy: { kind: 'field_first', order: [hardware] }, sourceText: userText, sourceSegment: hardware, confidence: 'high' })], parseRejections: [] })); const output = await runWeeklyPlanningIntakePipelineWithInterpreter({ ...defaultPipelineInput, userText, planningStartDate: '2026-07-10', currentDateTime: '2026-07-10T15:30:00', interpreter: { interpretUserTurn } }); expect(interpretUserTurn).toHaveBeenCalledWith(expect.objectContaining({ userText })); expect(output.state.range?.calendarDayCount).toBe(2); expect(output.state.examPrepScope?.yearRange).toMatchObject({ startYear: 2024, endYear: 2019 }); expect(output.state.priorityPolicy).toEqual({ kind: 'field_first', order: [hardware] }); });
+
   it('keeps the existing year range when a later exam scope command omits it', () => {
     const initialState = createInitialPlanningIntakeState();
     const scopedState = applyWeeklyPlanningCommands(initialState, [
@@ -272,58 +273,61 @@ describe('weekly planning AI foundation without real AI', () => {
     );
   });
 
-  it('does not escalate parser-handled turns, short answers, or missing interpreter cases', () => {
-    expect(shouldEscalateToInterpreter({
-      deterministicCommandCount: 1,
-      missingBefore: [],
-      missingAfter: ['tasks_or_goals'],
-      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
-      hasInterpreter: true,
-    })).toBe(false);
-    expect(shouldEscalateToInterpreter({
-      deterministicCommandCount: 0,
-      missingBefore: ['unit_duration_estimate'],
-      missingAfter: ['unit_duration_estimate'],
-      userText: '3時間です',
-      hasInterpreter: true,
-    })).toBe(false);
-    expect(shouldEscalateToInterpreter({
-      deterministicCommandCount: 0,
-      missingBefore: ['tasks_or_goals'],
-      missingAfter: ['tasks_or_goals'],
-      userText: evaluationCase.freeTextExamScopeAndPriority,
-      hasInterpreter: false,
-    })).toBe(false);
-    expect(shouldEscalateToInterpreter({
-      deterministicCommandCount: 0,
-      missingBefore: ['tasks_or_goals'],
-      missingAfter: ['tasks_or_goals'],
-      userText: evaluationCase.freeTextExamScopeAndPriority,
-      hasInterpreter: true,
-    })).toBe(true);
-    expect(shouldEscalateToInterpreter({
-      deterministicCommandCount: 1,
-      missingBefore: ['tasks_or_goals'],
-      missingAfter: ['tasks_or_goals'],
-      userText: evaluationCase.freeTextExamScopeAndPriority,
-      hasInterpreter: true,
-    })).toBe(true);
-  });
-
-  it('does not escalate when legacy fallback makes task progress in the current turn', async () => {
+  it('uses the interpreter for every provider turn and does not merge deterministic semantic parsing', async () => {
     const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
       candidates: [candidate(unitRateCommand(120, 'high'))],
       parseRejections: [],
     }));
 
+    const firstOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+      interpreter: { interpretUserTurn },
+    });
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
-      userText: '来週、英語を3時間、数学を2時間',
+      previousState: firstOutput.state,
+      userText: String.fromCodePoint(0x6765,0x9031,0x3001,0x82f1,0x8a9e,0x3092,0x33,0x6642,0x9593,0x3001,0x6570,0x5b66,0x3092,0x32,0x6642,0x9593),
+      interpreter: { interpretUserTurn },
+    });
+    const bareOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: output.state,
+      userText: String.fromCodePoint(0x3060,0x3044,0x305f,0x3044,0x33,0x6642,0x9593,0x304f,0x3089,0x3044),
       interpreter: { interpretUserTurn },
     });
 
-    expect(interpretUserTurn).not.toHaveBeenCalled();
-    expect(output.state.tasks.map((task) => task.title)).toEqual(['英語', '数学']);
+    expect(interpretUserTurn).toHaveBeenCalledTimes(3);
+    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);
+    expect(output.state.tasks).toEqual([]);
+    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);
+  });
+
+  it('uses rules fallback only after an interpreter error, not after empty candidates', async () => {
+    const userText = String.fromCodePoint(0x6765,0x9031,0x3001,0x82f1,0x8a9e,0x3092,0x33,0x6642,0x9593,0x3001,0x6570,0x5b66,0x3092,0x32,0x6642,0x9593);
+    const emptyInterpreter = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
+      candidates: [],
+      parseRejections: [],
+    }));
+    const emptyOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText,
+      interpreter: { interpretUserTurn: emptyInterpreter },
+    });
+    const failingInterpreter = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => {
+      throw new Error('provider unavailable');
+    });
+    const fallbackOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText,
+      interpreter: { interpretUserTurn: failingInterpreter },
+    });
+
+    expect(emptyInterpreter).toHaveBeenCalledTimes(1);
+    expect(emptyOutput.state.tasks).toEqual([]);
+    expect(failingInterpreter).toHaveBeenCalledTimes(1);
+    expect(fallbackOutput.state.tasks).toHaveLength(2);
+    expect(fallbackOutput.interpreterDiagnostics).toBeUndefined();
   });
 
   it('keeps only the higher confidence candidate when a later candidate targets the same slot', () => {
@@ -688,10 +692,10 @@ describe('weekly planning AI foundation without real AI', () => {
     ]);
 
     const explicit = validateInterpretedCandidates([rangeCandidate('explicit')], summary);
-    expect(explicit.accepted).toEqual([]);
-    expect(explicit.acceptedWithConfirmation).toEqual([
+    expect(explicit.accepted).toEqual([
       expect.objectContaining({ type: 'set_planning_range' }),
     ]);
+    expect(explicit.acceptedWithConfirmation).toEqual([]);
 
     const missingConfidence = validateInterpretedCandidates([candidate({
       type: 'set_planning_range',

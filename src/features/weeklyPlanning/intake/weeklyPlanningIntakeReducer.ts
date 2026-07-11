@@ -472,16 +472,13 @@ export interface WeeklyPlanningUserTurnDiagnostics {
   missingAfter: PlanningIntakeState['missing'];
 }
 
-export function applyWeeklyPlanningUserTurnWithDiagnostics(
+export function beginWeeklyPlanningUserTurn(
   previousState: PlanningIntakeState | undefined,
   userText: string,
-  context: WeeklyPlanningIntakeContext,
-): WeeklyPlanningUserTurnDiagnostics {
+): PlanningIntakeState {
   const baseState = previousState ?? createInitialPlanningIntakeState();
-  const missingBefore = [...baseState.missing];
-  let deterministicCommandCount = 0;
-  let fallbackProgressCount = 0;
-  let nextState: PlanningIntakeState = {
+
+  return {
     ...baseState,
     tasks: baseState.tasks.map((task) => ({ ...task })),
     progress: baseState.progress.map((progress) => ({
@@ -509,6 +506,18 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
     shouldCreateDraft: false,
     shouldSavePlan: false,
   };
+}
+
+export function applyWeeklyPlanningUserTurnWithDiagnostics(
+  previousState: PlanningIntakeState | undefined,
+  userText: string,
+  context: WeeklyPlanningIntakeContext,
+): WeeklyPlanningUserTurnDiagnostics {
+  const baseState = previousState ?? createInitialPlanningIntakeState();
+  const missingBefore = [...baseState.missing];
+  let deterministicCommandCount = 0;
+  let fallbackProgressCount = 0;
+  let nextState = beginWeeklyPlanningUserTurn(previousState, userText);
 
   const setupCommands: ParsedWeeklyPlanningCommand[] = [];
   const planningRangeCommand = parseSetPlanningRangeCommand(userText, context, nextState.pendingPlanningRange);
