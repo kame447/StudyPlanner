@@ -2,12 +2,14 @@ import {
   clarificationKeywordTarget,
   messageKeyForMissing,
   QUESTION_PLAN_SLOT_ORDER,
+  QUESTION_SLOT_DEFINITION_BY_MISSING,
   termExplanationForSlot,
   type PlanningQuestionSlotKind,
 } from '../intake/weeklyPlanningQuestionSlots';
 import type { WeeklyPlanningDraftRequest } from '../intake/weeklyPlanningDraftRequestAdapter';
 import type {
   LifeConstraint,
+  PlanningAssumption,
   PlanningIntakeMissing,
   PlanningIntakeState,
   StudyProgressAmbiguity,
@@ -50,6 +52,7 @@ export interface WeeklyPlanningDialogueDecisionSummary {
   fixedEventConflictCount?: number;
   lifeConstraintConflictCount?: number;
   assumptions?: string[];
+  previewAssumptions?: PlanningAssumption[];
 }
 
 export type WeeklyPlanningQuestionPlanKind = PlanningQuestionSlotKind;
@@ -82,6 +85,12 @@ export interface WeeklyPlanningDialogueDecisionInput {
   remainingWorkItems?: WeeklyPlanningRemainingWorkItemsResult | null;
   dryRunCandidates?: WeeklyDraftCandidate[] | null;
   dryRunDiagnostics?: WeeklyDraftCandidateDiagnostics | null;
+  assumedDraft?: {
+    draftRequest: WeeklyPlanningDraftRequest;
+    assumptions: PlanningAssumption[];
+    candidates: WeeklyDraftCandidate[];
+    diagnostics: WeeklyDraftCandidateDiagnostics;
+  };
 }
 
 const MAX_MISSING_QUESTIONS_PER_TURN = 2;
@@ -117,6 +126,39 @@ export function createMissingQuestionPlan(
     .slice(0, MAX_MISSING_QUESTIONS_PER_TURN);
 }
 
+function hasBlockingMissing(missing: PlanningIntakeMissing[]): boolean {
+  return missing.some(
+    (slot) => QUESTION_SLOT_DEFINITION_BY_MISSING[slot].previewPolicy === 'blocking',
+  );
+}
+
+function createPreviewQuestionPlan(
+  state: PlanningIntakeState,
+): WeeklyPlanningQuestionPlanItem[] {
+  const missingSet = new Set(state.missing);
+
+  return QUESTION_PLAN_SLOT_ORDER
+    .filter((definition) =>
+      definition.previewQuestionPriority !== undefined
+      && definition.missing.some((missing) => missingSet.has(missing))
+      && definition.isQuestionPlanEligible(state, missingSet),
+    )
+    .sort(
+      (left, right) =>
+        (left.previewQuestionPriority ?? Number.MAX_SAFE_INTEGER)
+        - (right.previewQuestionPriority ?? Number.MAX_SAFE_INTEGER),
+    )
+    .slice(0, 1)
+    .map((definition) => ({
+      kind: definition.kind,
+      targetSlot: definition.targetSlot,
+      missing: definition.missing.filter((missing) => missingSet.has(missing)),
+      intent: definition.intent,
+      dependsOn: definition.dependsOn ? [...definition.dependsOn] : undefined,
+      targetFields: definition.targetFields?.(state),
+    }));
+}
+
 function normalizeProgressAmbiguity(
   ambiguity: StudyProgressAmbiguity,
 ): string | null {
@@ -137,6 +179,18 @@ function collectAmbiguities(input: WeeklyPlanningDialogueDecisionInput): string[
   return uniqueList([...progressAmbiguities, ...remainingAmbiguities, ...softFixedEvents]);
 }
 
+function activeDraftRequest(
+  input: WeeklyPlanningDialogueDecisionInput,
+): WeeklyPlanningDraftRequest | null | undefined {
+  return input.draftRequest ?? input.assumedDraft?.draftRequest;
+}
+
+function activeDiagnostics(
+  input: WeeklyPlanningDialogueDecisionInput,
+): WeeklyDraftCandidateDiagnostics | null | undefined {
+  return input.dryRunDiagnostics ?? input.assumedDraft?.diagnostics;
+}
+
 function hasUnscheduledItems(
   diagnostics: WeeklyDraftCandidateDiagnostics | null | undefined,
 ): boolean {
@@ -144,7 +198,8 @@ function hasUnscheduledItems(
 }
 
 function hasDryRunPreview(input: WeeklyPlanningDialogueDecisionInput): boolean {
-  return Boolean(input.dryRunCandidates?.length && input.dryRunDiagnostics);
+  const candidates = input.dryRunCandidates ?? input.assumedDraft?.candidates;
+  return Boolean(candidates?.length && activeDiagnostics(input));
 }
 
 function summarizeCompletedYears(
@@ -170,8 +225,8 @@ function summarizeLifeConstraintKinds(
 function createSummary(
   input: WeeklyPlanningDialogueDecisionInput,
 ): WeeklyPlanningDialogueDecisionSummary {
-  const request = input.draftRequest;
-  const diagnostics = input.dryRunDiagnostics;
+  const request = activeDraftRequest(input);
+  const diagnostics = activeDiagnostics(input);
 
   return {
     yearRange: request?.examPrepScope.yearRange,
@@ -187,6 +242,9 @@ function createSummary(
     fixedEventConflictCount: diagnostics?.fixedEventConflicts.length,
     lifeConstraintConflictCount: diagnostics?.lifeConstraintConflicts.length,
     assumptions: input.state.assumptions.length > 0 ? [...input.state.assumptions] : undefined,
+    previewAssumptions: input.assumedDraft?.assumptions.length
+      ? [...input.assumedDraft.assumptions]
+      : undefined,
   };
 }
 
@@ -217,13 +275,11 @@ export function createWeeklyPlanningDialogueDecision(
 ): WeeklyPlanningDialogueDecision {
   const missing = uniqueList(input.state.missing);
 
-  if (missing.length > 0) {
-    const questionPlan = createMissingQuestionPlan(input.state);
-
+  if (hasBlockingMissing(missing)) {
     return createDecision({
       kind: 'ask_missing_info',
       messageKey: missingMessageKey(missing),
-      questionPlan,
+      questionPlan: createMissingQuestionPlan(input.state),
     });
   }
 
@@ -237,7 +293,7 @@ export function createWeeklyPlanningDialogueDecision(
     });
   }
 
-  if (input.state.shouldCreateDraft && !input.draftRequest) {
+  if (input.state.shouldCreateDraft && !input.draftRequest && !input.assumedDraft) {
     return createDecision({
       kind: 'cannot_create_draft',
       messageKey: 'cannot_create_draft_from_intake',
@@ -245,7 +301,7 @@ export function createWeeklyPlanningDialogueDecision(
     });
   }
 
-  if (hasUnscheduledItems(input.dryRunDiagnostics)) {
+  if (hasUnscheduledItems(activeDiagnostics(input))) {
     return createDecision({
       kind: 'ask_relax_constraints',
       messageKey: 'ask_relax_constraints_for_unscheduled_items',
@@ -257,8 +313,17 @@ export function createWeeklyPlanningDialogueDecision(
     return createDecision({
       kind: 'offer_dry_run_preview',
       messageKey: 'offer_weekly_plan_dry_run_preview',
+      questionPlan: createPreviewQuestionPlan(input.state),
       summary: createSummary(input),
       shouldCreateDraft: true,
+    });
+  }
+
+  if (missing.length > 0) {
+    return createDecision({
+      kind: 'ask_missing_info',
+      messageKey: missingMessageKey(missing),
+      questionPlan: createMissingQuestionPlan(input.state),
     });
   }
 

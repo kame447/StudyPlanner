@@ -177,7 +177,7 @@ export interface WeeklyPlanningIntakePipelineOutput {
   remainingWorkItems: WeeklyPlanningRemainingWorkItemsResult | null;
   draftCandidates: WeeklyDraftCandidate[] | null;
   diagnostics: WeeklyDraftCandidateDiagnostics | null;
-  /** Stage 1 の仮定つき dry-run。既存 decision / preview 出力には接続しない。 */
+  /** Stage 2 の仮定つき dry-run。既存preview block経路へ昇格する。 */
   assumedDraft?: WeeklyPlanningAssumedDraft;
   decision: WeeklyPlanningDialogueDecision;
   interpreterDiagnostics?: CandidateValidationResult;
@@ -208,29 +208,35 @@ function buildPipelineOutput(params: {
       }),
     )
     : null;
+  const assumedDraft = assumedDraftRequest && assumedDraftRun
+    ? {
+      draftRequest: assumedDraftRequest.draftRequest,
+      assumptions: assumedDraftRequest.assumptions,
+      candidates: assumedDraftRun.candidates,
+      diagnostics: assumedDraftRun.diagnostics,
+    }
+    : undefined;
+  const previewCandidates = confirmedDraftRun?.candidates ?? assumedDraft?.candidates ?? null;
+  const previewDiagnostics = confirmedDraftRun?.diagnostics ?? assumedDraft?.diagnostics ?? null;
   const decision = createWeeklyPlanningDialogueDecision({
     state,
     draftRequest,
     remainingWorkItems: confirmedDraftRun?.remainingWorkItems ?? null,
-    dryRunCandidates: confirmedDraftRun?.candidates ?? null,
-    dryRunDiagnostics: confirmedDraftRun?.diagnostics ?? null,
+    dryRunCandidates: previewCandidates,
+    dryRunDiagnostics: previewDiagnostics,
+    assumedDraft,
   });
   const output: WeeklyPlanningIntakePipelineOutput = {
     state,
     draftRequest,
     remainingWorkItems: confirmedDraftRun?.remainingWorkItems ?? null,
-    draftCandidates: confirmedDraftRun?.candidates ?? null,
-    diagnostics: confirmedDraftRun?.diagnostics ?? null,
+    draftCandidates: previewCandidates,
+    diagnostics: previewDiagnostics,
     decision,
   };
 
-  if (assumedDraftRequest && assumedDraftRun) {
-    output.assumedDraft = {
-      draftRequest: assumedDraftRequest.draftRequest,
-      assumptions: assumedDraftRequest.assumptions,
-      candidates: assumedDraftRun.candidates,
-      diagnostics: assumedDraftRun.diagnostics,
-    };
+  if (assumedDraft) {
+    output.assumedDraft = assumedDraft;
   }
 
   if (params.interpreterDiagnostics) {

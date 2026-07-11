@@ -25,6 +25,8 @@ export interface PlanningQuestionSlotDefinition {
   dependsOn?: readonly PlanningIntakeMissing[];
   kind: PlanningQuestionSlotKind;
   previewPolicy: PlanningQuestionSlotPreviewPolicy;
+  /** previewと同時に尋ねる候補の優先順位。未指定なら添付しない。 */
+  previewQuestionPriority?: number;
   status: PlanningIntakeStatus | undefined;
   deterministicQuestion: (state: PlanningIntakeState) => string | undefined;
   isStateQuestionEligible: (state: PlanningIntakeState) => boolean;
@@ -75,6 +77,7 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   intent: 'ask_planning_start_date',
   kind: 'missing_slot',
   previewPolicy: 'assumable',
+  previewQuestionPriority: 2,
   status: 'needs_scope',
   deterministicQuestion: (state) => {
     const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
@@ -179,6 +182,7 @@ const unitDurationEstimateSlot: PlanningQuestionSlotDefinition = {
   intent: 'ask_unit_rate',
   kind: 'missing_slot',
   previewPolicy: 'assumable',
+  previewQuestionPriority: 1,
   status: 'needs_unit_rate',
   deterministicQuestion: () =>
     '1つの年度×分野にだいたい何分かかりますか？',

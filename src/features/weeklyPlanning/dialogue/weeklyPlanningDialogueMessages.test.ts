@@ -172,4 +172,39 @@ describe('weekly planning dialogue messages', () => {
     expect(message).toContain('計画の開始日');
     expect(message).not.toContain('planning_start_date');
   });
+
+  it('distinguishes structured preview assumptions and invites one follow-up correction', () => {
+    const message = createWeeklyPlanningDialogueMessage({
+      kind: 'offer_dry_run_preview',
+      messageKey: 'offer_weekly_plan_dry_run_preview',
+      questionPlan: [{
+        kind: 'missing_slot',
+        targetSlot: 'unit_rate',
+        missing: ['unit_duration_estimate'],
+        intent: 'ask_unit_rate',
+      }],
+      summary: {
+        previewAssumptions: [
+          {
+            slot: 'unit_duration_estimate',
+            source: 'default',
+            description: '1年分・1分野あたり120分として仮置きします。',
+          },
+          {
+            slot: 'year_range',
+            source: 'derived',
+            description: '対象年度は2020年から2026年までとして扱います。',
+          },
+        ],
+      },
+      shouldCreateDraft: true,
+      shouldSavePlan: false,
+    });
+
+    expect(message).toContain('未保存preview');
+    expect(message).toContain('仮定: 1年分・1分野あたり120分として仮置きします。 ほか1件');
+    expect(message).toContain('目安時間');
+    expect(message).toContain('多すぎる・少なすぎる・曜日や配分を変えたい場合は教えてください。');
+  });
+
 });

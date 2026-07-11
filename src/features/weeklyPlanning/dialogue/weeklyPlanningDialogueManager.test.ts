@@ -331,12 +331,62 @@ describe('weekly planning dialogue manager', () => {
     );
   });
 
-  it('keeps missing information higher priority than completion ambiguity', () => {
+  it('keeps completion ambiguity ahead of nonblocking missing information', () => {
     const state = applyCompletionTextAfterKnownYearRange('25〜21が終わったよ');
     const decision = createWeeklyPlanningDialogueDecision({ state });
 
     expect(state.missing.length).toBeGreaterThan(0);
-    expect(decision.kind).toBe('ask_missing_info');
+    expect(decision.kind).toBe('confirm_ambiguity');
     expect(decision.shouldSavePlan).toBe(false);
   });
+
+  it('prioritizes blocking and ambiguity over an assumed preview, then offers one preview question', () => {
+    const { state, request, dryRun } = createDryRunPipeline();
+    const previewState: PlanningIntakeState = {
+      ...state,
+      status: 'needs_unit_rate',
+      unitRates: [],
+      missing: ['unit_duration_estimate'],
+      shouldCreateDraft: false,
+    };
+    const assumedDraft = {
+      draftRequest: request,
+      assumptions: [{
+        slot: 'unit_duration_estimate' as const,
+        source: 'default' as const,
+        description: '1年分・1分野あたり120分として仮置きします。',
+      }],
+      candidates: dryRun.candidates,
+      diagnostics: dryRun.diagnostics,
+    };
+
+    const previewDecision = createWeeklyPlanningDialogueDecision({
+      state: previewState,
+      assumedDraft,
+    });
+    const blockingDecision = createWeeklyPlanningDialogueDecision({
+      state: { ...previewState, missing: ['tasks_or_goals'] },
+      assumedDraft,
+    });
+    const ambiguityDecision = createWeeklyPlanningDialogueDecision({
+      state: {
+        ...previewState,
+        progress: [{ ambiguity: 'completion_direction', rawText: '25〜21が終わった' }],
+      },
+      assumedDraft,
+    });
+
+    expect(blockingDecision.kind).toBe('ask_missing_info');
+    expect(ambiguityDecision.kind).toBe('confirm_ambiguity');
+    expect(previewDecision).toMatchObject({
+      kind: 'offer_dry_run_preview',
+      questionPlan: [expect.objectContaining({ targetSlot: 'unit_rate' })],
+      summary: {
+        previewAssumptions: [expect.objectContaining({ slot: 'unit_duration_estimate' })],
+      },
+      shouldSavePlan: false,
+    });
+    expect(previewDecision.questionPlan).toHaveLength(1);
+  });
+
 });

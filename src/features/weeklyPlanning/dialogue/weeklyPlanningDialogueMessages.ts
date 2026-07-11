@@ -53,6 +53,19 @@ function formatAmbiguities(ambiguities: string[] | undefined): string {
   return resolved.length > 0 ? resolved.join('、') : '曖昧な条件';
 }
 
+function summarizePreviewAssumptions(
+  assumptions: NonNullable<WeeklyPlanningDialogueDecision['summary']>['previewAssumptions'],
+): string | null {
+  if (!assumptions?.length) {
+    return null;
+  }
+
+  const [primary, ...remaining] = assumptions;
+  return remaining.length > 0
+    ? `仮定: ${primary.description} ほか${remaining.length}件`
+    : `仮定: ${primary.description}`;
+}
+
 function buildConditionSummary(decision: WeeklyPlanningDialogueDecision): string {
   const summary = decision.summary;
 
@@ -83,6 +96,7 @@ function buildConditionSummary(decision: WeeklyPlanningDialogueDecision): string
     summary.assumptions?.length
       ? `仮の前提: ${summary.assumptions.join('、')}`
       : null,
+    summarizePreviewAssumptions(summary.previewAssumptions),
   ].filter((part): part is string => Boolean(part));
 
   return parts.length > 0 ? `\n\n${parts.join('\n')}` : '';
@@ -111,10 +125,14 @@ export function createWeeklyPlanningDialogueMessage(
       return `仮予定候補を作る前に、集まった条件を確認してください。この段階では保存しません。${buildConditionSummary(
         decision,
       )}`;
-    case 'offer_dry_run_preview':
-      return `仮予定候補を未保存previewとして表示しました。通常予定としては保存していません。${buildConditionSummary(
+    case 'offer_dry_run_preview': {
+      const previewQuestion = decision.questionPlan?.length
+        ? `あわせて、${formatQuestionPlan(decision)} を教えてください。`
+        : '';
+      return `現在の条件と仮定を使って未保存previewの仮予定候補を作成しました。通常予定としては保存していません。${previewQuestion}多すぎる・少なすぎる・曜日や配分を変えたい場合は教えてください。${buildConditionSummary(
         decision,
       )}`;
+    }
     case 'ask_relax_constraints':
       return `条件が厳しく、すべては配置しきれません。時間帯や生活制約を緩めるか、配置できる分だけにするか教えてください。${buildConditionSummary(
         decision,

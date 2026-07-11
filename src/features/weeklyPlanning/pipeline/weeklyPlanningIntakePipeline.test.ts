@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
-import { createWeeklyPlanningDialogueDecision } from '../dialogue/weeklyPlanningDialogueManager';
-import { renderWeeklyPlanningDialogueMessage } from '../dialogue/weeklyPlanningDialogueRenderer';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type {
   ConstraintSourceKind,
@@ -536,9 +534,9 @@ describe('weekly planning intake pipeline', () => {
     expect(beforeNoFixedEvents.state.missing).toContain('fixed_events');
     expect(beforeNoFixedEvents.draftRequest).toBeNull();
     expect(beforeNoFixedEvents.remainingWorkItems).toBeNull();
-    expect(beforeNoFixedEvents.draftCandidates).toBeNull();
-    expect(beforeNoFixedEvents.diagnostics).toBeNull();
-    expect(beforeNoFixedEvents.decision.kind).toBe('ask_missing_info');
+    expect(beforeNoFixedEvents.draftCandidates?.length).toBeGreaterThan(0);
+    expect(beforeNoFixedEvents.diagnostics).not.toBeNull();
+    expect(beforeNoFixedEvents.decision.kind).toBe('offer_dry_run_preview');
   });
 
   it('moves zero-progress exam prep past cannot_create_draft in the pipeline', () => {
@@ -1766,46 +1764,57 @@ describe('Stage 1 interpreter grounding', () => {
     expect(output.draftCandidates?.[0]?.date).toBe('2026-07-11');
   });
 
-  it('exposes an assumed dry run without changing dialogue or confirmed preview output', async () => {
-    const previousState = assumablePreviewState();
-    const before = structuredClone(previousState);
-    const output = runWeeklyPlanningIntakePipeline({
+});
+
+describe('preview policy Stage 2', () => {
+  it('promotes an assumed preview and replaces the unit-rate assumption through the next normal turn', () => {
+    const initialState: PlanningIntakeState = {
+      ...assumablePreviewState(),
+      priorityPolicy: {
+        kind: 'field_first',
+        order: ['数学', 'ソフトウェア', 'ハードウェア', 'ネットワーク', '英語'],
+      },
+      missing: assumablePreviewState().missing.filter(
+        (missing) => missing !== 'priority_policy' && missing !== 'next_field_after_math',
+      ),
+      sourceTurns: ['来週、院試の過去問を数学を含む5分野で7年分進めたい。数学を多めにやりたい'],
+    };
+    const firstOutput = runWeeklyPlanningIntakePipeline({
       ...defaultPipelineInput,
-      previousState,
+      previousState: initialState,
       userText: '',
-      currentDateTime: '2026-07-11T10:00:00',
-    });
-    const expectedDecision = createWeeklyPlanningDialogueDecision({
-      state: output.state,
-      draftRequest: null,
-      remainingWorkItems: null,
-      dryRunCandidates: null,
-      dryRunDiagnostics: null,
+      currentDateTime: '2026-07-10T15:30:00',
     });
 
-    expect(output.assumedDraft?.candidates.length).toBeGreaterThan(0);
-    expect(output.assumedDraft?.assumptions).toEqual(
+    expect(firstOutput.decision.kind).toBe('offer_dry_run_preview');
+    expect(firstOutput.draftCandidates?.length).toBeGreaterThan(0);
+    expect(firstOutput.decision.summary?.previewAssumptions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ slot: 'year_range', source: 'derived' }),
         expect.objectContaining({ slot: 'unit_duration_estimate', source: 'default' }),
       ]),
     );
-    expect(output.assumedDraft?.candidates.every((candidate) =>
-      candidate.date >= '2026-07-20' && candidate.date <= '2026-07-26',
-    )).toBe(true);
-    expect(output.draftRequest).toBeNull();
-    expect(output.draftCandidates).toBeNull();
-    expect(output.decision).toEqual(expectedDecision);
-    await expect(renderWeeklyPlanningDialogueMessage({
-      state: output.state,
-      decision: output.decision,
-    })).resolves.toBe(await renderWeeklyPlanningDialogueMessage({
-      state: output.state,
-      decision: expectedDecision,
-    }));
-    expect(output.state.pendingPlanningRange?.scope.startDate).toBe('2026-07-20');
-    expect(output.state.range).toBeUndefined();
-    expect(previousState).toEqual(before);
+    expect(firstOutput.decision.questionPlan?.length ?? 0).toBeLessThanOrEqual(1);
+    expect(firstOutput.decision.questionPlan?.[0]?.targetSlot).toBe('unit_rate');
+
+    const secondOutput = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      previousState: firstOutput.state,
+      userText: '1年分は3時間くらい',
+      currentDateTime: '2026-07-10T15:30:00',
+    });
+
+    expect(secondOutput.state.unitRates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ minutesPerUnit: 180, source: 'user' }),
+      ]),
+    );
+    expect(secondOutput.assumedDraft?.assumptions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slot: 'unit_duration_estimate' }),
+      ]),
+    );
+    expect(secondOutput.draftCandidates?.length).toBeGreaterThan(0);
+    expect(secondOutput.draftCandidates?.[0]?.estimatedMinutes).toBe(180);
   });
 
 });
