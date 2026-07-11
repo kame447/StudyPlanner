@@ -1768,6 +1768,163 @@ describe('Stage 1 interpreter grounding', () => {
 
 });
 
+describe('Stage 2 bounded conversation grounding', () => {
+  function interpreted(command: InterpretedCommandCandidate['command']): InterpretedCommandCandidate {
+    return { command, origin: 'ai_interpreter', needsConfirmation: false };
+  }
+
+  it('forwards chronological recent turns separately from a short current answer', async () => {
+    const recentTurns = [
+      { role: 'user' as const, content: 'one unit takes about three hours' },
+      { role: 'assistant' as const, content: 'how long does one unit take' },
+    ];
+    let callCount = 0;
+    const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
+      callCount += 1;
+      expect(params.userText).toBe('about three hours');
+      expect(params.recentTurns).toEqual(recentTurns);
+      return { candidates: [], parseRejections: [] };
+    };
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'about three hours',
+      recentTurns,
+      interpreter: { interpretUserTurn },
+    });
+
+    expect(callCount).toBe(1);
+    expect(output.state.tasks).toEqual([]);
+  });
+
+  it('re-emits a missing prior priority fact from recent turns through validator and reducer', async () => {
+    const recentTurns = [
+      { role: 'user' as const, content: 'focus on hardware first' },
+      { role: 'assistant' as const, content: 'which field should be prioritized' },
+    ];
+    const baseState = draftReadyState();
+    const previousState: PlanningIntakeState = {
+      ...baseState,
+      examPrepScope: baseState.examPrepScope ? {
+        ...baseState.examPrepScope,
+        fields: ['hardware'],
+        rawText: ['hardware'],
+      } : undefined,
+      priorityPolicy: { kind: 'unknown' },
+      missing: ['priority_policy'],
+      shouldCreateDraft: false,
+    };
+    const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
+      expect(params.recentTurns).toEqual(recentTurns);
+      return {
+        candidates: [interpreted({
+          type: 'set_priority_policy',
+          policy: { kind: 'field_first', order: ['hardware'] },
+          sourceText: 'as stated earlier',
+          confidence: 'high',
+        })],
+        parseRejections: [],
+      };
+    };
+
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: 'as stated earlier',
+      recentTurns,
+      interpreter: { interpretUserTurn },
+    });
+
+    expect(output.state.priorityPolicy).toEqual({ kind: 'field_first', order: ['hardware'] });
+    expect(output.interpreterDiagnostics?.accepted).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
+    ]);
+  });
+
+  it('keeps a fact accepted several turns ago when history suggests an explicit correction', async () => {
+    const previousState = draftReadyState();
+    const recentTurns = [
+      { role: 'user' as const, content: 'start with mathematics' },
+      { role: 'assistant' as const, content: 'mathematics priority was accepted' },
+      { role: 'user' as const, content: 'keep the other conditions' },
+    ];
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState,
+      userText: 'actually prioritize hardware',
+      recentTurns,
+      interpreter: fakeInterpreter([interpreted({
+        type: 'set_priority_policy',
+        policy: { kind: 'field_first', order: ['hardware'] },
+        sourceText: 'actually prioritize hardware',
+        confidence: 'high',
+      })]),
+    });
+
+    expect(output.state.priorityPolicy).toEqual(previousState.priorityPolicy);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([
+      expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
+    ]);
+  });
+
+  it('does not hard apply an ambiguous pronoun reference from recent turns', async () => {
+    const recentTurns = [
+      { role: 'user' as const, content: 'use the saved schedule source' },
+      { role: 'assistant' as const, content: 'which schedule source do you mean' },
+    ];
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'use that one',
+      recentTurns,
+      interpreter: fakeInterpreter([interpreted({
+        type: 'request_clarification',
+        target: 'unresolved_slot',
+        ref: 'constraint_source',
+        sourceText: 'use that one',
+        confidence: 'high',
+      })]),
+    });
+
+    expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
+    expect(output.decision.kind).toBe('answer_clarification');
+    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([
+      expect.objectContaining({ type: 'request_clarification', ref: 'constraint_source' }),
+    ]);
+  });
+  it('ignores recent turns in rules mode', () => {
+    const withHistory = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+      recentTurns: [{ role: 'assistant', content: 'history is not parsed in rules mode' }],
+    });
+    const withoutHistory = runWeeklyPlanningIntakePipeline({
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+    });
+
+    expect(withHistory).toEqual(withoutHistory);
+  });
+
+  it('ignores recent turns when an interpreter exception switches the whole turn to rules fallback', async () => {
+    const input = {
+      ...defaultPipelineInput,
+      userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
+      recentTurns: [{ role: 'assistant' as const, content: 'history remains grounding only' }],
+    };
+    const expected = runWeeklyPlanningIntakePipeline(input);
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...input,
+      interpreter: {
+        async interpretUserTurn() {
+          throw new Error('provider unavailable');
+        },
+      },
+    });
+
+    expect(output).toEqual(expected);
+  });
+});
+
 describe('preview policy Stage 2', () => {
   it('promotes an assumed preview and replaces the unit-rate assumption through the next normal turn', () => {
     const initialState: PlanningIntakeState = {

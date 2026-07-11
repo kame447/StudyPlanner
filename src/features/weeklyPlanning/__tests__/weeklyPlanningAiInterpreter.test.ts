@@ -97,6 +97,7 @@ describe('weekly planning AI interpreter', () => {
       role: 'user',
       content: JSON.stringify({
         userText: '数学からOSの順で進めたい',
+        recentConversation: [],
         context: {
           currentDateTime: undefined,
           selectedDate: '2030-01-01',

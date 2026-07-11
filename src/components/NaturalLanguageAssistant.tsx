@@ -61,6 +61,8 @@ interface NaturalLanguageAssistantProps {
   embedded?: boolean;
 }
 
+const WEEKLY_PLANNING_RECENT_TURN_LIMIT = 6;
+
 const FIELD_LABELS: Record<SuggestionField, string> = {
   targetPlan: '修正対象',
   date: '日付',
@@ -514,6 +516,9 @@ export function NaturalLanguageAssistant({
     try {
       const pipelineInput = {
         previousState: weeklyPlanningIntakeState ?? undefined,
+        recentTurns: weeklyPlanningMessages
+          .slice(-WEEKLY_PLANNING_RECENT_TURN_LIMIT)
+          .map(({ role, content }) => ({ role, content })),
         userText: trimmedText,
         planningStartDate: selectedDate,
         planningDayCount: 7,

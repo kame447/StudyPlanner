@@ -30,6 +30,7 @@ import type {
   CandidateValidationResult,
   ConstraintSourceAvailability,
   PlannerCapabilitySnapshot,
+  InterpreterRecentTurn,
   WeeklyPlanningIntakeInterpreter,
   InterpreterStateSummary,
 } from '../intake/weeklyPlanningInterpreterTypes';
@@ -48,6 +49,7 @@ import {
 export interface WeeklyPlanningIntakePipelineInput {
   previousState?: PlanningIntakeState;
   userText: string;
+  recentTurns?: InterpreterRecentTurn[];
   planningStartDate: string;
   planningDayCount: number;
   sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
@@ -401,6 +403,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       userText: input.userText,
       context,
       stateSummary,
+      recentTurns: input.recentTurns,
     });
   } catch {
     // Provider failures switch the whole turn to the existing rules path. Empty AI results do not.

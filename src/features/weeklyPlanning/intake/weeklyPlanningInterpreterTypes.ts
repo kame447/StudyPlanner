@@ -73,11 +73,17 @@ export interface WeeklyPlanningInterpreterResult {
   parseRejections: InterpreterParseRejection[];
 }
 
+export interface InterpreterRecentTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface WeeklyPlanningIntakeInterpreter {
   interpretUserTurn(params: {
     userText: string;
     context: WeeklyPlanningIntakeContext;
     stateSummary: InterpreterStateSummary;
+    recentTurns?: InterpreterRecentTurn[];
   }): Promise<WeeklyPlanningInterpreterResult>;
 }
 
