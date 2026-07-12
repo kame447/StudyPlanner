@@ -91,7 +91,7 @@ function parseExplicitDate(text: string, context: WeeklyPlanningIntakeContext): 
     : thisYear;
 }
 
-function nextWeekScope(context: WeeklyPlanningIntakeContext): PendingPlanningRangeClarification['scope'] {
+export function nextWeekScope(context: WeeklyPlanningIntakeContext): PendingPlanningRangeClarification['scope'] {
   const nextWeekStart = addDays(startOfWeek(context.selectedDate), 7);
   return {
     kind: 'next_week',

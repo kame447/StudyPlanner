@@ -24,7 +24,10 @@ import {
   hasConfirmedLifeConstraints,
 } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
-import { toPlanningRangeFromSetPlanningRangeCommand } from '../intake/weeklyPlanningCommandAdapter';
+import {
+  normalizeSetPendingPlanningRangeCommand,
+  toPlanningRangeFromSetPlanningRangeCommand,
+} from '../intake/weeklyPlanningCommandAdapter';
 import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
 import type {
   CandidateValidationResult,
@@ -429,11 +432,17 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     ...interpreterDiagnostics.acceptedWithConfirmation.filter((command) =>
       !(stateSummary.pendingPlanningRange && command.type === 'set_planning_range'),
     ),
-  ].map((command) =>
-    command.type === 'set_planning_range'
-      ? { ...command, range: toPlanningRangeFromSetPlanningRangeCommand(command) }
-      : command,
-  );
+  ].map((command) => {
+    if (command.type === 'set_planning_range') {
+      return { ...command, range: toPlanningRangeFromSetPlanningRangeCommand(command) };
+    }
+
+    if (command.type === 'set_pending_planning_range') {
+      return normalizeSetPendingPlanningRangeCommand(command, context);
+    }
+
+    return command;
+  });
   const unavailableSourceCount = interpreterDiagnostics.rejected.filter(
     (rejection) => rejection.reason === 'constraint-source-unavailable',
   ).length;

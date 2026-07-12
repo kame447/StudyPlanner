@@ -26,6 +26,7 @@ export const KNOWN_COMMAND_TYPES = new Set([
   'set_unit_rate',
   'set_exam_scope',
   'set_planning_range',
+  'set_pending_planning_range',
 ]);
 
 const STUDY_SCOPE_UNITS = new Set([
@@ -59,6 +60,8 @@ const LIFE_CONSTRAINT_KINDS = new Set([
   'cram_school',
   'buffer',
 ]);
+
+const PLANNING_TEMPORAL_SCOPE_KINDS = new Set(['next_week', 'named_future_period']);
 
 const HARDNESS_VALUES = new Set(['hard', 'soft']);
 const MERGE_MODES = new Set(['replace', 'append']);
@@ -113,6 +116,12 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
       return isRecord(command.scope) && Array.isArray(command.scope.fields) && Array.isArray(command.scope.rawText);
     case 'set_planning_range':
       return isRecord(command.range) && typeof command.range.confidence === 'string';
+    case 'set_pending_planning_range':
+      return isRecord(command.pending)
+        && isRecord(command.pending.scope)
+        && typeof command.pending.scope.kind === 'string'
+        && typeof command.pending.scope.label === 'string'
+        && typeof command.pending.sourceText === 'string';
     case 'set_priority_policy':
       return isRecord(command.policy) && typeof command.policy.kind === 'string';
     case 'mark_completed_units':
@@ -146,6 +155,9 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
 
 function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | null {
   switch (command.type) {
+    case 'set_pending_planning_range':
+      return !PLANNING_TEMPORAL_SCOPE_KINDS.has(command.pending.scope.kind)
+        ? 'invalid-planning-temporal-scope-kind' : null;
     case 'set_exam_scope':
       return command.scope.unitModel && !STUDY_SCOPE_UNITS.has(command.scope.unitModel)
         ? 'invalid-unit-model'
@@ -199,6 +211,15 @@ function constraintSourceAvailable(
 
 function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null {
   switch (command.type) {
+    case 'set_pending_planning_range': {
+      const { scope, durationDays } = command.pending;
+      if (scope.startDate !== undefined && !isDate(scope.startDate)) return 'invalid-date';
+      if (scope.endDate !== undefined && !isDate(scope.endDate)) return 'invalid-date';
+      if (durationDays !== undefined && (!Number.isInteger(durationDays) || durationDays <= 0)) {
+        return 'invalid-duration-days';
+      }
+      return null;
+    }
     case 'set_exam_scope': {
       const yearRange = command.scope.yearRange;
       if (yearRange && (!isReasonableYear(yearRange.startYear) || !isReasonableYear(yearRange.endYear))) {
@@ -248,6 +269,7 @@ function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
     case 'set_exam_scope':
       return command.scope.yearRange ? ['exam_scope', 'year_range'] : ['exam_scope'];
     case 'set_planning_range':
+    case 'set_pending_planning_range':
       return ['planning_range'];
     case 'set_priority_policy':
       return ['priority_policy'];

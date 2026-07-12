@@ -8,6 +8,7 @@ import type {
   SetPriorityPolicyCommand,
   SetExamScopeCommand,
   SetPlanningRangeCommand,
+  SetPendingPlanningRangeCommand,
   SetUnitRateCommand,
   UpdateLifeConstraintCommand,
 } from './weeklyPlanningCommandTypes';
@@ -19,7 +20,9 @@ import type {
   PriorityPolicy,
   StudyProgress,
   UnitRateEstimate,
+  WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
+import { nextWeekScope } from './weeklyPlanningScopeParsing';
 
 export function toLifeConstraintFromAddUnavailableCommand(
   command: AddUnavailableCommand,
@@ -105,6 +108,34 @@ export function toStudyProgressFromNoteProgressBoundaryCommand(
     completionBoundaryYear: command.boundaryYear,
     ambiguity: command.ambiguity,
     rawText: command.sourceSegment ?? command.sourceText,
+  };
+}
+
+export function normalizeSetPendingPlanningRangeCommand(
+  command: SetPendingPlanningRangeCommand,
+  context: WeeklyPlanningIntakeContext,
+): SetPendingPlanningRangeCommand {
+  if (command.pending.scope.kind !== 'next_week') {
+    return command;
+  }
+
+  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;
+  const normalizedScope = nextWeekScope({
+    ...context,
+    selectedDate: referenceDate,
+  });
+
+  return {
+    ...command,
+    pending: {
+      ...command.pending,
+      scope: {
+        ...command.pending.scope,
+        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,
+        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,
+      },
+      durationDays: command.pending.durationDays ?? 7,
+    },
   };
 }
 

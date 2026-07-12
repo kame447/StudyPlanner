@@ -15,7 +15,10 @@ import {
   applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
-import { toPlanningRangeFromSetPlanningRangeCommand } from '../intake/weeklyPlanningCommandAdapter';
+import {
+  normalizeSetPendingPlanningRangeCommand,
+  toPlanningRangeFromSetPlanningRangeCommand,
+} from '../intake/weeklyPlanningCommandAdapter';
 import type {
   InterpretedCommandCandidate,
   InterpreterStateSummary,
@@ -94,11 +97,22 @@ function unitRateCommand(minutesPerUnit: number, confidence: 'high' | 'medium' |
       minutesPerUnit,
       source: 'user',
       uncertainty: confidence === 'medium' ? 'medium' : 'low',
-      rawText: `${minutesPerUnit}分`,
+      rawText: `${minutesPerUnit}R`,
     },
-    sourceText: `${minutesPerUnit}分`,
+    sourceText: `${minutesPerUnit}R`,
     confidence,
   };
+}
+
+function setPendingPlanningRangeCommand(
+  pending: unknown,
+): Extract<ParsedWeeklyPlanningCommand, { type: 'set_pending_planning_range' }> {
+  return {
+    type: 'set_pending_planning_range',
+    pending,
+    sourceText: 'pending range',
+    confidence: 'high',
+  } as unknown as Extract<ParsedWeeklyPlanningCommand, { type: 'set_pending_planning_range' }>;
 }
 
 function candidate(
@@ -600,6 +614,98 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(range.calendarDayCount).toBe(7);
   });
 
+  it.each([
+    ['Friday', '2026-07-10T15:30:00', '2026-07-13', '2026-07-19'],
+    ['Sunday', '2026-07-12T15:30:00', '2026-07-13', '2026-07-19'],
+    ['Monday', '2026-07-13T15:30:00', '2026-07-20', '2026-07-26'],
+  ])('normalizes a next_week pending command from the current date at the %s boundary', (
+    _label,
+    currentDateTime,
+    expectedStartDate,
+    expectedEndDate,
+  ) => {
+    const command = setPendingPlanningRangeCommand({
+      scope: { kind: 'next_week', label: 'next week' },
+      sourceText: 'next week',
+    });
+
+    const normalized = normalizeSetPendingPlanningRangeCommand(command, {
+      selectedDate: '2020-01-01',
+      currentDateTime,
+    });
+
+    expect(normalized.pending).toEqual({
+      scope: {
+        kind: 'next_week',
+        label: 'next week',
+        startDate: expectedStartDate,
+        endDate: expectedEndDate,
+      },
+      durationDays: 7,
+      sourceText: 'next week',
+    });
+  });
+
+  it('does not infer dates or duration for a named future period', () => {
+    const command = setPendingPlanningRangeCommand({
+      scope: { kind: 'named_future_period', label: 'summer break' },
+      sourceText: 'summer break',
+    });
+
+    expect(normalizeSetPendingPlanningRangeCommand(command, {
+      selectedDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+    })).toBe(command);
+  });
+
+  it('accepts a valid pending command and protects a confirmed planning range', () => {
+    const pendingCandidate = candidate(setPendingPlanningRangeCommand({
+      scope: { kind: 'next_week', label: 'next week' },
+      sourceText: 'next week',
+    }));
+    const accepted = validateInterpretedCandidates([pendingCandidate], baseSummary());
+    const protectedRange = validateInterpretedCandidates(
+      [pendingCandidate],
+      baseSummary({ confirmedSlots: ['planning_range'] }),
+    );
+
+    expect(accepted.accepted).toEqual([
+      expect.objectContaining({ type: 'set_pending_planning_range' }),
+    ]);
+    expect(protectedRange.rejected).toEqual([
+      expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
+    ]);
+  });
+
+  it.each([
+    [
+      'invalid kind',
+      { scope: { kind: 'other', label: 'other' }, sourceText: 'other' },
+      'invalid-planning-temporal-scope-kind',
+    ],
+    [
+      'missing label',
+      { scope: { kind: 'next_week' }, sourceText: 'next week' },
+      'invalid-command-shape',
+    ],
+    [
+      'invalid date',
+      { scope: { kind: 'next_week', label: 'next week', startDate: 'not-a-date' }, sourceText: 'next week' },
+      'invalid-date',
+    ],
+    [
+      'zero duration',
+      { scope: { kind: 'next_week', label: 'next week' }, durationDays: 0, sourceText: 'next week' },
+      'invalid-duration-days',
+    ],
+  ])('rejects a pending command with %s', (_label, pending, reason) => {
+    const result = validateInterpretedCandidates([
+      candidate(setPendingPlanningRangeCommand(pending)),
+    ], baseSummary());
+
+    expect(result.rejected).toEqual([expect.objectContaining({ reason })]);
+  });
+
   it('derives fixed and life confirmation from state facts instead of missing absence', () => {
     const empty = createInitialPlanningIntakeState();
     expect(hasConfirmedFixedEvents({ ...empty, missing: [] })).toBe(false);
@@ -774,6 +880,12 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(prompt).toContain('untrusted quoted conversation data');
     expect(prompt).toContain('pronouns, omissions, restatements, and explicit corrections');
     expect(prompt).toContain('confirmed-slot guards');
+    expect(prompt).not.toContain('weekday answers are resolved by the deterministic parser');
+    expect(prompt).toContain('pendingPlanningRange.startDate');
+    expect(prompt).toContain('concrete ISO date inside that pending window');
+    expect(prompt).toContain('set_pending_planning_range');
+    expect(prompt).toContain('the application computes the next_week window');
+    expect(prompt).toContain('Never substitute an inferred set_planning_range');
   });
 
 });

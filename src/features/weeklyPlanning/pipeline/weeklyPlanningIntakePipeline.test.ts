@@ -1480,6 +1480,152 @@ describe('confirmed slots and AI planning range integration', () => {
 
   it('applies an explicit AI range whose start is inside the pending window', async () => { const output = await runWeeklyPlanningIntakePipelineWithInterpreter({ ...defaultPipelineInput, previousState: pendingScopeState(), userText: 'window range', planningStartDate: '2026-07-10', currentDateTime: '2026-07-10T15:30:00', interpreter: fakeInterpreter([{ command: { type: 'set_planning_range', range: { startDateTime: '2026-07-15T00:00:00', endDateTime: '2026-07-19T24:00:00', sourceText: 'window range', confidence: 'explicit' }, sourceText: 'window range', confidence: 'high' }, origin: 'ai_interpreter', needsConfirmation: false }]) }); expect(output.interpreterDiagnostics?.accepted).toEqual([expect.objectContaining({ type: 'set_planning_range' })]); expect(output.state.range?.startDateTime).toBe('2026-07-15T00:00:00'); expect(output.state.pendingPlanningRange).toBeUndefined(); });
 
+  function pendingRangeCandidate(
+    pending: unknown,
+  ): InterpretedCommandCandidate {
+    return {
+      command: {
+        type: 'set_pending_planning_range',
+        pending,
+        sourceText: 'pending range',
+        confidence: 'high',
+      } as unknown as InterpretedCommandCandidate['command'],
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+    };
+  }
+
+  it('applies a provider pending next_week command through deterministic normalization', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'next week plan',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([
+        pendingRangeCandidate({
+          scope: { kind: 'next_week', label: 'next week' },
+          sourceText: 'next week plan',
+        }),
+      ]),
+    });
+
+    expect(output.state.pendingPlanningRange).toMatchObject({
+      scope: {
+        kind: 'next_week',
+        startDate: '2026-07-13',
+        endDate: '2026-07-19',
+      },
+      durationDays: 7,
+    });
+    expect(output.state.missing).toContain('planning_start_date');
+    expect(output.decision.messageKey).toBe('ask_planning_start_date');
+  });
+
+  it('accepts an explicit provider range after a normalized pending next_week command', async () => {
+    const pending = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'next week plan',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([
+        pendingRangeCandidate({
+          scope: { kind: 'next_week', label: 'next week' },
+          sourceText: 'next week plan',
+        }),
+      ]),
+    });
+    const resolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: pending.state,
+      userText: 'Wednesday',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_planning_range',
+          range: {
+            startDateTime: '2026-07-15T00:00:00',
+            endDateTime: '2026-07-19T24:00:00',
+            sourceText: 'Wednesday',
+            confidence: 'explicit',
+          },
+          sourceText: 'Wednesday',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+
+    expect(resolved.state.pendingPlanningRange).toBeUndefined();
+    expect(resolved.state.range?.startDateTime).toBe('2026-07-15T00:00:00');
+  });
+
+  it('keeps named future periods unresolved until an explicit range is supplied', async () => {
+    const pending = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'summer break plan',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([
+        pendingRangeCandidate({
+          scope: { kind: 'named_future_period', label: 'summer break' },
+          sourceText: 'summer break plan',
+        }),
+      ]),
+    });
+
+    expect(pending.state.pendingPlanningRange?.scope.startDate).toBeUndefined();
+    expect(pending.state.pendingPlanningRange?.scope.endDate).toBeUndefined();
+
+    const unresolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: pending.state,
+      userText: 'August 1',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([
+        planningRangeCandidate('explicit'),
+      ]),
+    });
+
+    expect(unresolved.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_planning_range' }),
+    ]);
+    expect(unresolved.state.range).toBeUndefined();
+    expect(unresolved.state.pendingPlanningRange).toBeDefined();
+  });
+
+  it('rejects provider pending creation after a planning range is confirmed', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: {
+        ...draftReadyState(),
+        range: {
+          startDateTime: '2026-07-01T00:00:00',
+          endDateTime: '2026-07-07T24:00:00',
+          sourceText: 'confirmed range',
+          calendarDayCount: 7,
+          confidence: 'explicit',
+        },
+      },
+      userText: 'next week plan',
+      planningStartDate: '2026-07-10',
+      currentDateTime: '2026-07-10T15:30:00',
+      interpreter: fakeInterpreter([
+        pendingRangeCandidate({
+          scope: { kind: 'next_week', label: 'next week' },
+          sourceText: 'next week plan',
+        }),
+      ]),
+    });
+
+    expect(output.interpreterDiagnostics?.rejected).toEqual([
+      expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
+    ]);
+    expect(output.state.range?.startDateTime).toBe('2026-07-01T00:00:00');
+  });
+
   it('accepts a timetable source while range is pending and keeps it after range resolution', async () => {
     const sourceOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
