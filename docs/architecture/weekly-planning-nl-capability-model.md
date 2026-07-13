@@ -1,10 +1,12 @@
-A〜G historical marker: this document is evidence only; the current DoR and current queue are defined by docs/architecture/weekly-planning-dialogue-architecture-v4.md and the roadmap current queue.
+> **Historical evidence marker:** A〜Gは診断証拠である。current DoRは[weekly-planning-dialogue-architecture-v4.md](weekly-planning-dialogue-architecture-v4.md)、current queueはroadmap冒頭だけを正とする。
 
 # weeklyPlanning: 自然言語層と planner capability の分離モデル(提案)
 
 > **ステータス: 診断・capability inventory の参照記録。** A〜F の問題分類、既存 capability の可視化、command validation の原則は維持する。GoalIntent へ段階移行して deterministic questionPlan を主導する提案は現在の対話設計ではない。通常経路の唯一の正は [親設計 v4](weekly-planning-dialogue-architecture-v4.md) である。
 
-**ステータス: 提案(未実装)。次段階(Post-R2)の設計の正(design of record)。** 2026-07-07 の監査に基づく設計提案であり、`docs/architecture/weekly-planning-responsibility-separation.md`(R1 の command boundary 設計)を置き換えるものではなく、その `ParsedWeeklyPlanningCommand` 設計を実装した後に見えてきた「command 粒度が発話表現に追随して肥大化する」問題を是正するための後続設計。`weekly-planning-r2-ai-interpreter-design.md` の R2 command-candidate architecture(実装済み・有効な中間段階)の次の課題として位置づける。production code は本文書作成・更新時点で変更していない。
+> **Historical statement as of 2026-07-07; not current DoR.** 当時はPost-R2の設計候補として記録された。2026-07-13以降のcurrent DoRはv4である。
+
+**当時のステータス: 提案(未実装)。** 2026-07-07 の監査に基づく設計提案であり、`docs/architecture/weekly-planning-responsibility-separation.md`(R1 の command boundary 設計)を置き換えるものではなく、その `ParsedWeeklyPlanningCommand` 設計を実装した後に見えてきた「command 粒度が発話表現に追随して肥大化する」問題を是正するための後続設計。`weekly-planning-r2-ai-interpreter-design.md` の R2 command-candidate architecture(実装済み・有効な中間段階)の次の課題として位置づける。production code は本文書作成・更新時点で変更していない。
 
 > **2026-07-08 更新**: 監査を実コードで再確認し、以下を追記した。§6 診断原則(実使用問題を A〜F に分類する恒久フレーム)、§7 capability inventory(read-only / draft mutation / requires confirmation / destructive の権限区分つき)、§8 semantic intent の最小設計(`use_constraint_source` 等・発話非依存)、§9 vertical slice(fixed events / timetable を最初の縦切りにする理由)、§10 renderer context 契約(「来週→今週」問題の回帰防止を含む)。本文書を次段階 task 群(§4 で再構成)の設計根拠とする。
 
@@ -75,7 +77,7 @@ PlanningIntakeState
 
 ### 現状との違い
 
-現状は実質 `[1] AI classifier → [4] state transition` の2層で、[2]([3])が存在しない。command が「意図」と「適用方法」を1つの型に同居させてしまっているため、新しい発話に対応するたびに [1] と [4] の両方に手を入れる必要がある。
+現状は実質 `[1] AI classifier → [4] state transition` の2層で、層2（層3）が存在しない。command が「意図」と「適用方法」を1つの型に同居させてしまっているため、新しい発話に対応するたびに [1] と [4] の両方に手を入れる必要がある。
 
 提案する構造では、[1] の出力を**発話表現非依存の意味カテゴリ(GoalIntent)**に限定し、[2] の planner decision 層が「この GoalIntent は、今の state でどの capability にどう変換されるか」を決定する。これにより:
 
@@ -106,7 +108,9 @@ PlanningIntakeState
 | state transition・missing/confirmedSlots 更新 | **deterministic(既存 reducer のまま)** | 変更不要。ただし GoalIntent → capability 呼び出しの結果を受け取る形に整理 |
 | 質問文の自然文生成 | **AI renderer**(既存 R2-D 通り)| 「何を聞くか」は決定的 questionPlan、「どう言うか」だけ AI。この境界は監査時点で既に正しく実装されている |
 
-## 4. 現在 open の3 task の位置づけ
+## 4. Historical task inventory（2026-07-08時点）
+
+> **Historical task state; no item in this section is currently open.** 現在のowner/statusはv4、roadmap、roleplay P7 tableを参照する。
 
 > **2026-07-08 再構成結果**: 以下の分析に基づき task を再発行した。
 > - `fixed-events-state-and-timetable-intent` → **破棄**。専用状態5値+専用 command 追加という「発話追随」設計だったため。代替として基盤 task `20260708-weekly-planning-constraint-source-capability.md`(§9 の vertical slice)を新規発行。
@@ -135,7 +139,9 @@ RenderInput への context 追加は「AI に渡す事実を増やす」性質�
 
 **推奨**: このタスク自体は実装してよいが、§5 の基盤整理(GoalIntent 層の導入)を先に行うなら、`ask_clarification` は「command」ではなく「GoalIntent」として最初から新層に置くべき。基盤整理を先にしない場合、現行パターンに沿った実装として許容できるが、その場合も**「用語ごとに command を増やさない」**(`term` を payload にした汎用1 command にする、既に task md はそう書いている)ことは死守する。
 
-## 5. 結論
+## 5. Historical conclusions（2026-07-08時点）
+
+> **Historical conclusions; not current implementation instructions.** 当時のtask判断と提案を証拠として保持する。
 
 ### 5.1 現行 architecture の問題点
 
@@ -236,7 +242,9 @@ RenderInput への context 追加は「AI に渡す事実を増やす」性質�
 
 `CompletionTarget`(`weeklyPlanningIntakeTypes.ts`:`all` / `latest_n_years` / `up_to_reachable` / `year_range`)、`MarkCompletionTargetCommand`、reducer の `applyMarkCompletionTargetCommand` + `resolveCompletionTargetMissing`、interpreter schema、`weeklyPlanningRemainingWorkItems` への反映まで揃っている。**4つの表現バリエーションを別 command にせず、1 command の `target.kind` payload variation に吸収している**点が、本文書が推奨する semantic intent 設計の先取り。→ **`docs/ai/tasks/20260707-weekly-planning-completion-target-model.md` は実装済みで stale。verify のうえ closed へ移すことを推奨(本再構成の対象外)。**
 
-## 8. semantic intent の最小設計(発話非依存)
+## 8. Historical proposal: semantic intent の最小設計(発話非依存)
+
+> **Historical proposal; not current implementation instructions.** 設計根拠として保持し、current taskへ直接読み替えない。
 
 R2 の command-candidate architecture(実装済み)を壊さず、その上に**発話表現に追随しない意味カテゴリ**を最小限だけ導入する。全面 GoalIntent 移行はしない(§11 相当のやらないこと)。
 
@@ -281,7 +289,9 @@ payload:
 
 clarification や `use_constraint_source` を「`ParsedWeeklyPlanningCommand` に case を1つ足す」形で実装すること自体は、現行パターンの延長として許容できる。ただし**死守する不変条件**: 発話表現ごとに case を増やさず、payload(参照対象・target)で表現を吸収する。case 数は「意味カテゴリ数」に比例させ、「発話パターン数」に比例させない。
 
-## 9. vertical slice: fixed events / timetable を最初の縦切りにする
+## 9. Historical vertical-slice proposal: fixed events / timetable
+
+> **Historical sequence as of 2026-07-08; not current queue.** 以下は当時の縦切り提案である。
 
 全面移行を避け、次の1経路だけを最初に貫通させる:
 
@@ -307,7 +317,9 @@ clarification や `use_constraint_source` を「`ParsedWeeklyPlanningCommand` �
 - ambiguity 一般化(§8.3)。
 - timetable データ層の改修(intake は「利用中」の宣言・可用性参照まで. 実データの busy interval 化は `existing-plans-availability-exclusion`(closed)で完了済み)。
 
-## 10. renderer context 契約(F の恒久化)
+## 10. Historical renderer context contract（Fの証拠）
+
+> **Historical contract evidence; current response grounding is defined by v4 §4 and DA1.**
 
 renderer は「どう言うか」だけを担当する現在の責務分離(R2-D)を維持する。ただし自然な質問文に必要な deterministic context を欠かさない。RenderInput へ供給すべき最小 context:
 
@@ -323,4 +335,5 @@ renderer は「どう言うか」だけを担当する現在の責務分離(R2-D
 1. **AI は context 外の事実を捏造しない**: period を渡さないのに「今週/来週」を勝手に決めない。渡した period だけを使う。deterministic fallback も同じ period を出す。
 2. **「来週」と入力したら質問文は「今週」と言わない**(AI 経路・deterministic fallback の両方)。これは失ってはならない回帰。
 3. 個別文字列一致ではなく、**同義表現・表現ゆれが semantic level で同じ intent に解釈される契約**をテストで要求する(例: 「予定表の通り」「時間割に入っている」「登録済みの授業を考慮」が同一の `use_constraint_source(timetable, active)` になる)。
-\n\nHistorical handling: preserve the following evidence, but do not treat old proposals or old task order as implementation instructions. Current status is v4 only.
+
+> **Historical handling:** preserve this evidence, but do not treat old proposals or old task order as implementation instructions. Current status is v4 only.

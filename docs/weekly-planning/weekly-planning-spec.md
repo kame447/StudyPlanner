@@ -375,33 +375,42 @@ AIが作った予定が削除された場合、毎回理由を聞くと負担に
 
 ## 12. AI と deterministic core の責務分離
 
-LLMは自然文の意味解釈とtyped candidateの候補化、dialogue plannerのresponse plan候補、短い接続文を担う。LLMは日付・時刻・容量・配置・fact ID・state revision・承認・保存・削除を決めない。
+LLMは自然文の意味解釈、typed candidate候補、dialogue plannerの有限action/responseParts候補、事実値を含まない短い接続文を担う。LLMは日付・時刻・容量・配置・fact ID・formatter ID・state revision・proposal lifecycle ID/status・承認・保存・削除を決めない。
 
 ### LLMを使う部分
 
 - single AI interpreterによる自然文からのtyped candidate抽出
-- DialogueStateSnapshotに基づく有限のaction、factRefs、questionTopics、assumption draft、preview offerの選択
-- deterministic factを参照した接続文、選択肢、短いフィードバック
+- DialogueStateSnapshotとAllowedDialogueActionsに基づく有限actionの選択
+- responsePartsとしてfact/question/option参照を選ぶこと
+- PendingAssumptionProposalDraftの候補化
+- acknowledgement、transition、empathy、instruction、closingに限定した短いfree text
+
+AI responseで使用fact/topic/optionを表す正はresponsePartsだけとし、factRefsやquestionTopicsを二重申告させない。free textには日時、時間量、件数、タイトル、期間等の事実値を含めず、事実はfact partからdeterministicに描画する。
 
 ### deterministic coreで処理する部分
 
-- AI出力後のtyped candidate normalization（date/time/valueの正規化）
-- command AST / IRのshape・enum・値域・source fact・revision検証
+- AI出力後のtyped candidate normalization（日付、時刻、値の正規化）
+- command AST / IRのshape、enum、値域、source fact、revision検証
 - accepted commandのcompile、adapter、reducer、accepted/rejected/pendingのstate transition
-- StudyTaskScope → GenericWeeklyWorkItem、existing events、availability、busy interval、required/available/scheduled/unscheduled、scheduler、preview
-- response planのcompile、public fact registry、action/topic/option/factRef validator
+- PendingAssumptionProposalDraftからAssumptionProposalRecordを生成し、lifecycle historyを保持すること
+- StudyTaskScope → GenericWeeklyWorkItem、assumptionProposalRef、existing events、availability、busy interval、required/available/scheduled/unscheduled、scheduler、preview
+- responsePartsのcompile、public fact/formatter registry、action/topic/option/factRef validator
+- responsePartsからusedFactRefs、usedQuestionTopicIds、usedOptionIdsを導出すること
+- relative dateの一意解決、correction target/decision、preview stale化
 - stale request/revision、fallback、approval/save/delete、idempotency、localStorage/migration
 
-通常のprovider経路で、deterministic parserがuserTextをsemantic clause解析してAI結果とmergeすることはしない。rules fallback時だけ、既存のdeterministic parserがuserTextを解釈する。interpreter failureはturn-wide rules fallback、planner failureはaccepted stateを保持したdeterministic renderer fallback、stale/cancelled resultは破棄する。empty candidatesは正常なinterpreter結果でありfailureではない。
+通常provider経路でdeterministic parserがuserTextをsemantic clause解析してAI結果とmergeすることはしない。rules fallback時だけ既存deterministic parserがuserTextを解釈する。interpreter failureはturn-wide rules fallback、planner failureはaccepted stateを保持したdeterministic renderer fallback、StaleAsyncResultは無言で破棄する。StalePreviewApprovalAttemptは保存を拒否し、再計算または最新案確認が必要というdeterministic user-facing responseを表示する。empty candidatesは正常なinterpreter結果でありfailureではない。
 
-## 13. この機能の最終方針（v4監査修正版）
+## 13. この機能の最終方針（v4最終整合版）
 
-週間計画は、single AI interpreterと、検証済みstate/計算結果を根拠に次のactionを選ぶdialogue plannerの二段階で設計する。通常turnは最大2 AI call、openingは最大1 callとし、十分なdeterministic openingではAIを呼ばない。
+週間計画はsingle AI interpreterと、検証済みstate/計算結果を根拠に次のactionを選ぶdialogue plannerの二段階で設計する。通常turnは最大2 AI call、openingは最大1 callとし、十分なdeterministic openingではAIを呼ばない。
 
-受理済み事実、assumption proposal、訂正履歴、拒否理由、asked topic、active question、planning range、既存予定、空き時間、feasibility、preview可否を構造化stateとして保持する。全user-originated stringはuntrusted JSON dataであり、内部命令やIDに昇格させない。
+受理済み事実、AssumptionProposalRecord履歴、PendingAssumptionProposal view、訂正履歴、拒否理由、asked topic、active question、planning range、既存予定、空き時間、feasibility、preview可否を構造化stateとして保持する。全user-originated stringはuntrusted JSON dataであり、内部命令やIDに昇格させない。
 
-previewはstateRevision/previewIdに束縛された未承認draftで、staleなら保存不可。approval idempotencyはuserId + sourceDraftBlockIdをキーとし、approvalOperationIdは監査metadataに限定する。approval item ledgerでpartial failure/crash/retryを扱う。AIはapproval operationを起動しない。
+一意解決できる「来週」はselected dateからdeterministicにrange化し、同じplanning periodを再質問しない。曖昧な相対表現だけclarificationへ倒す。
 
-current queueはv4とroadmapの先頭current queueだけが正である。Gate P4（active verification gate）→ DA0a（blocked）→ DA0（blocked）→ DA1→DA1b→Draft approval idempotency→DA2→DA3a→DA3b→DA3c queued の順である。Gate P4完了前にopen implementation taskはなく、旧P4〜P9、T6、D1〜D7、v3 stageはhistorical/supersededである。
+previewはstateRevision/previewIdに束縛された未承認draftで、staleなら保存不可。approval idempotencyはuserId + sourceDraftBlockIdをkeyとし、approvalOperationIdは監査metadataに限定する。approval item ledgerでpartial failure/crash/retryを扱う。AIはapproval operationを起動しない。
 
-試験はP1〜P7とtraceability IDを正とし、golden text完全一致ではなくstrict contractと会話品質rubricで判定する。
+current queueはv4とroadmap冒頭Current queueだけが正である。Gate P4（active verification gate）→ DA0a（blocked）→ DA0（blocked）→ DA1 → DA1b → Draft approval idempotency → DA2 → DA3a → DA3b → DA3c（queued）の順である。Gate P4完了前にopen implementation taskはなく、旧P4〜P9、T6、D1〜D7、v3 stageはhistorical/supersededである。
+
+試験はP1〜P7 caseと必須15 Requirement IDのcanonical traceability tableを正とし、golden text完全一致ではなくstrict contractと会話品質rubricで判定する。

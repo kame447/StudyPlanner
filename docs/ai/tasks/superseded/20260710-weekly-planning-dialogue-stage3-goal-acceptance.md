@@ -8,6 +8,8 @@
 >
 > **追補 2026-07-13(P3 監査対応)**: I1・I2・I1追修正・P3 は実装・監査済み(closed)。P3 監査で「`planning_period` が未確定のまま preview 用に既定期間へ fallback する場合、`PlanningAssumption` が記録されない(唯一の暗黙仮定)」という取りこぼしが確認されたため、**最小の追跡追加を本タスクの範囲に含める**(「修正方針」5・受け入れ条件 9〜10)。goal acceptance の本来責務は拡大しない。
 
+> **Historical metadata only; do not use this section to start implementation.** Current status/dependencies are defined by v4 and the roadmap Current queue.
+
 Priority: **Medium**(理由: 実測事例「数学のテスト勉強したい」「テスト勉強はゴールでしょ？」の核心だが、legacy fallback(R1 regression 固定領域)に guard を入れるため、先行 stage の検証後に段階投入するのが安全。影響の大きさより投入順序を優先して Medium とする)
 
 本mdの範囲外へ進まない。git add / commit / push はしない。
@@ -145,7 +147,9 @@ sourceText / sourceSegment / confidence
 - `tasksSource` の後方互換: 既存の保存された intake state は存在しない(会話 state は非永続)ため migration 不要。
 - AI が amount を捏造するリスク → prompt で禁止 + 値域検証 + requiresTimeEstimate の既定 true 側。
 
-## Codexへの実装指示
+## Historical Codex instructions（do not execute）
+
+> **Superseded instructions.** 以下は当時の再現・監査証拠として保持する。current taskとして実行せず、v4 queueのtask mdを使用する。
 
 1. 最初に本md全体と `docs/ai/codex-task-guide.md`、親設計 §5・§6 を読む。
 2. Stage 2 の実装(explain_capability_gap / open_planning_dialogue)が存在することを確認する。無ければ実装せず報告する。

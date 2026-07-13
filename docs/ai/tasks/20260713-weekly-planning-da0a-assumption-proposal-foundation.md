@@ -2,19 +2,41 @@
 
 Status: **blocked — Gate P4 verification後**
 Priority: High
-Parent: ../../architecture/weekly-planning-dialogue-architecture-v4.md
-Requirement IDs: DA-ASSUMPTION-001, DA-INTERPRET-001, DA-PREVIEW-001
+Parent: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
+Requirement IDs: DA-ASSUMPTION-001, DA-INTERPRET-001
+Traceability: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
 Dependencies: Gate P4 → DA0a → DA0
 
 ## Scope / entry / exit
 
-AIのproposal draftをdeterministic coreがcanonicalなpending proposalへ変換する最小基盤。EntryはGate P4の採否確定。Exitはschema、deterministic ID、public source validation、stale validation、session-local保持、pending preview marker、hard apply禁止をunit/contract/integrationで証明すること。
+AIのproposal draftをdeterministic coreがcanonicalなpending recordへ変換する最小基盤である。
 
-Current pathは `userText → interpreter → candidate validator → adapter/reducer → draft/preview`。候補ファイルは `src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts`、`weeklyPlanningCandidateValidator.ts`、`weeklyPlanningCommandAdapter.ts`、`weeklyPlanningIntakeReducer.ts`、`weeklyPlanningDraftRequestAdapter.ts` とdialogue/preview境界を実コードで再確認する。
+Entry:
+
+- Gate P4の採否と既存src差分の所有者確認が完了している。
+- 現行interpreter、candidate validator、adapter/reducer、session-local stateの接続点を再調査済みである。
+
+Exit:
+
+- PendingAssumptionProposalDraftをvalidateする。
+- deterministic coreがAssumptionProposalRecordをstatus=pendingで生成する。
+- PendingAssumptionProposal subtypeとしてsession-local stateへ保持する。
+- proposalId、conversationId、turnId、revision、statusをAIに生成させない。
+- proposalIdをassumptionProposalRefとして後続DA0 adapterへ渡せる。
+- unit/contract/integrationでdraft、record、pending subtypeの分離を証明する。
+
+DA0aはGenericWeeklyWorkItem、candidate generator、preview block生成、scheduler配置、preview表示、save、approvalを扱わない。
 
 ## Exact types
 
-```ts
+~~~ts
+type AssumptionProposalStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "superseded"
+  | "expired";
+
 type PendingAssumptionProposalDraft = {
   slot: PlanningAssumptionSlot;
   targetRef: string;
@@ -24,7 +46,7 @@ type PendingAssumptionProposalDraft = {
   sourceFactRefs: string[];
 };
 
-type PendingAssumptionProposal = {
+type AssumptionProposalRecord = {
   proposalId: string;
   conversationId: string;
   slot: PlanningAssumptionSlot;
@@ -35,17 +57,27 @@ type PendingAssumptionProposal = {
   sourceFactRefs: string[];
   createdAtTurnId: string;
   createdFromStateRevision: number;
-  status: "pending";
+  status: AssumptionProposalStatus;
+  decidedAtTurnId?: string;
+  decidedAtStateRevision?: number;
+  supersededByProposalId?: string;
 };
-```
 
-AI出力はdraftのみ。proposalId、conversationId、turnId、revision、statusをAIに生成させない。coreがdraft+source+revisionからdeterministic IDを発行する。
+type PendingAssumptionProposal =
+  AssumptionProposalRecord & {
+    status: "pending";
+  };
+~~~
+
+AI出力はdraftだけである。coreはdraft、public source facts、conversation/turn/current revisionからdeterministic IDとcanonical recordを生成する。
 
 ## Transition / validator / failure
 
-no draft→draft validation→canonical pending、invalid/private/unknown source→rejected diagnostic、source revision mismatch→stale、pending→preview use only。accept/reject/modify/expiry/supersedeはDA1b。schema、enum、finite/range、size、public fact registry、conversation/turn/revision、authorization、duplicateをvalidateする。
+transitionはno draft → draft validation → canonical status=pending → session-local保持 → DA0へproposalRef handoffで終了する。accepted/rejected/superseded/expiredへの遷移はDA1bの責務である。
 
-interpreter failure、planner failure、stale/cancelはDA2/DA1のcategoryを再利用するが混同しない。active request一件、revision monotonicity、request混入なし。session-localのみ。reason/source/titleはuntrusted JSON data。save、repository、UI承認、migration、dialogue planner、relative constraint、scheduler全面改修はnon-goal。
+schema、slot/unit/value、finite/range/size、sourceFactRefs non-empty、public fact registry、targetRef、conversation/turn/revision、authorization、duplicateをvalidateする。private/unknown source、別user/conversation、source revision mismatchはcanonical化しない。reason/source/titleはuntrusted JSON dataである。
+
+interpreter failure、planner failure、StaleAsyncResultはDA1/DA2のcategoryと混同しない。active request一件、revision monotonicity、request混入なし。session-localのみ。save、repository、UI承認、migration、dialogue planner、relative constraint、scheduler全面改修はnon-goalである。
 
 ## P1〜P7 responsibility
 
@@ -53,14 +85,35 @@ interpreter failure、planner failure、stale/cancelはDA2/DA1のcategoryを再�
 | --- | --- | --- | --- |
 | P1 | Covered by another task | DA2 | request/submit lifecycle |
 | P2 | Covered by another task | DA2 | IME/focus/keyboard |
-| P3 | Applicable | DA0a | hostile/invalid boundary |
-| P4 | Covered by another task | approval | preview/save/idempotency |
-| P5 | Not applicable or regression only | future persistence / DA2 | migration scope |
-| P6 | Applicable | DA0a/DA2 | fallback and exam/non-exam |
-| P7 | Applicable | DA0a | typed refs/revision/diagnostics trace |
-
-
+| P3 | Applicable | DA0a | hostile draft/source boundary |
+| P4 | Not applicable | DA0、approval | DA0aはpreview/save非所有 |
+| P5 | Not applicable or regression only | future persistence、DA2 | session-local、no migration |
+| P6 | Applicable | DA0a、DA2 | failure categoryとexam/non-exam |
+| P7 | Applicable | DA0a | draft/record/pending、refs/revision trace |
 
 ## Acceptance / tests / commands
 
-unit: draft schema、ID、public source、stale。contract: draftとcanonicalの分離、pending marker。integration: unknown duration→pending preview、exam regression。property/fuzz: duplicate/long strings/NaN/Infinity/revision。roleplay: WP-DA-001 turns 3〜5、P3/P6。real-modelはredacted candidate replayのみ。既存test/build/lintを確認して実行し、`git diff --check`とdocs-only statusを確認する。Git add/commit/push/reset/restore/checkout/stashは禁止。
+unit:
+
+- draft schema、deterministic ID、public source、stale、duplicate。
+- status=pending以外をDA0aが生成しない。
+
+contract:
+
+- draft、AssumptionProposalRecord、PendingAssumptionProposalを別型・別証跡にする。
+- lifecycle metadataをAI outputから受け取らない。
+- DA0へ渡すassumptionProposalRefがcanonical proposalIdである。
+
+integration:
+
+- unknown duration candidate。
+- proposal draft validation。
+- deterministic canonicalizationとproposal ID生成。
+- source fact/revision検証。
+- session-local pending保持。
+- DA0 adapterへproposalRefを渡せること。
+- exam regression。
+
+unknown duration → pending previewという試験はDA0aから削除する。preview生成の最初のintegration testはDA0が所有する。
+
+property/fuzzはduplicate、long strings、NaN/Infinity、revision、cross-conversation source。roleplayはWP-DA-001 turns 3〜4、P3-ASSUMPTION-DECISION-001の前提、P7 matrix。real-modelはredacted draft fixture replayのみ。既存test/build/lintを確認して実行し、git diff --checkとstatusを確認する。Git writeは禁止。

@@ -2,34 +2,84 @@
 
 Status: **queued — DA0 after**
 Priority: High
-Parent: ../../architecture/weekly-planning-dialogue-architecture-v4.md
-Requirement IDs: DA-ACTION-001, DA-RESPONSE-001, DA-FALLBACK-001
-Dependencies: DA0
+Parent: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
+Requirement IDs: DA-ACTION-001, DA-RESPONSE-001, DA-FALLBACK-001, DA-SAFE-001
+Traceability: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
+Dependencies: DA0 → DA1
 
 ## Scope / current path / entry / exit
 
-snapshotから有限action、allowed topic/option/fact field、response parts、preview offerを検証可能にする。現行dialogue renderer、state summary、decision taxonomy、public fact境界を再調査する。EntryはDA0 preview contract。Exitはvalid responseだけがpublic factをrenderし、invalid responseが全体rejectされること。
+snapshotから有限action、allowed topic/option/fact field、responseParts、preview offerを検証可能にする。現行dialogue renderer、state summary、decision taxonomy、public fact境界を再調査する。
 
-## Exact types and validator table
+EntryはDA0 preview contract完了。ExitはresponsePartsだけがAI出力上の使用fact/topic/optionの正になり、coreがused refsを導出し、valid responseだけがpublic factsをrenderし、invalid responseが全体rejectされること。
 
-```ts
-type DialogueActionKind =
-  | "acknowledge" | "summarize_and_ask" | "confirm_reference"
-  | "propose_assumption" | "explain_feasibility" | "offer_preview"
-  | "answer_clarification" | "explain_capability_gap" | "fallback";
+## Exact response contract
 
-type AllowedDialogueAction = {
-  action: DialogueActionKind;
-  allowedQuestionTopicIds: string[];
-  allowedOptionIds: string[];
-  allowedFactFields: PublicFactField[];
-  previewOfferAllowed: boolean;
-  assumptionProposalAllowed: boolean;
+~~~ts
+type DialogueTextPurpose =
+  | "acknowledgement"
+  | "transition"
+  | "empathy"
+  | "instruction"
+  | "closing";
+
+type DialogueTextPart = {
+  kind: "text";
+  purpose: DialogueTextPurpose;
+  text: string;
 };
 
-type AllowedDialogueActions = {
-  stateRevision: number;
-  actions: AllowedDialogueAction[];
+type PublicFactFormatterId =
+  | "plain"
+  | "date_ja"
+  | "weekday_ja"
+  | "time_hm"
+  | "duration_minutes"
+  | "duration_hours_minutes"
+  | "planning_range_ja"
+  | "count_ja";
+
+type DialogueResponsePart =
+  | DialogueTextPart
+  | {
+      kind: "fact";
+      factRef: string;
+      field: PublicFactField;
+      formatterId?: PublicFactFormatterId;
+    }
+  | {
+      kind: "question";
+      topicId: string;
+      optionIds?: string[];
+    }
+  | {
+      kind: "option";
+      optionId: string;
+    };
+
+type DialogueResponsePlan = {
+  action: DialogueActionKind;
+  responseParts: DialogueResponsePart[];
+  assumptionProposalDraft?: PendingAssumptionProposalDraft;
+  previewOffer?: {
+    previewId: string;
+    stateRevision: number;
+  };
+};
+
+type ValidatedDialogueResponsePart = Readonly<DialogueResponsePart>;
+
+type ValidatedDialogueResponsePlan = {
+  action: DialogueActionKind;
+  responseParts: ValidatedDialogueResponsePart[];
+  usedFactRefs: string[];
+  usedQuestionTopicIds: string[];
+  usedOptionIds: string[];
+  assumptionProposalDraft?: PendingAssumptionProposalDraft;
+  previewOffer?: {
+    previewId: string;
+    stateRevision: number;
+  };
 };
 
 type DialoguePlannerResultEnvelope = {
@@ -40,13 +90,35 @@ type DialoguePlannerResultEnvelope = {
   outputStateRevision: number;
   responsePlan: DialogueResponsePlan;
 };
-```
+~~~
 
-response partはtext/fact/question/optionの有限union。assumptionはPendingAssumptionProposalDraftのみ、canonical proposalやprivate/raw diagnosticsは不可。`offer_preview`はpreviewId/stateRevision一致/stale=false、`propose_assumption`はdraft/sourceFactRefs、`fallback`はproposal/preview/private diagnostic/extra call禁止。unknown action/ref/field/topic/optionは全体reject、response再parseでstateを更新しない。
+factRefsとquestionTopicsをDialogueResponsePlanへ持たせない。validatorはresponsePartsからusedFactRefs、usedQuestionTopicIds、usedOptionIdsを順序保持・重複除去で導出する。allow-list照合後だけValidatedDialogueResponsePlanを生成する。一件でもinvalidならresponse全体rejectし、partial responseを描画しない。
 
-## State / failure / concurrency / persistence / security
+## Formatter registry / free text validator
 
-accepted/rejected/pending/correction/feasibility/preview snapshotをimmutable入力として使う。askedTopicHistory/activeQuestionとallowedQuestionTopicsを別管理する。interpreter failure、planner failure、stale discardを別diagnosticにする。active request lifecycleはDA2。contractはsession-local、save/migration/repositoryはnon-goal。stringsはuntrusted JSON data。
+formatter registryとfield互換表はDA1が所有する。title/subject=plain、date=date_ja、weekday=weekday_ja、start/end=time_hm、duration系=duration_minutesまたはduration_hours_minutes、planningRange=planning_range_ja、count=count_jaに限定する。不正組み合わせは全体rejectする。
+
+DA1はMAX_DIALOGUE_TEXT_PART_CODE_POINTSを実装前に固定し、初期値を120 code pointsとする。
+
+text part validator:
+
+- 数字、時刻、日付、期間、件数を含む場合は原則reject。
+- snapshotのtask/event/material title完全一致をreject。
+- required/available/scheduled/unscheduledの数値説明をreject。
+- factを示す文はfact partへ分解。
+- HTML/script/実行可能markdownとして扱わずescaped plain textで描画。
+- textからstate、fact、actionを再抽出しない。
+- 数値を伴う定型表現はdeterministic phrase/question rendererへ移す。
+
+制限緩和はDA3c評価に基づく別taskとし、DA1初期契約では安全側に固定する。
+
+## State / validator / failure
+
+accepted/rejected/pending/correction/feasibility/preview snapshotをimmutable入力にする。askedTopicHistory/activeQuestionとallowedQuestionTopicsを別管理する。action、field、formatter、factRef、topic、option、previewId、revisionをallow-list検証する。
+
+offer_previewはpreviewId/stateRevision一致/stale=false、propose_assumptionはdraft/sourceFactRefs、fallbackはproposal/preview/private diagnostic/extra call禁止。unknown/duplicate/private/stale itemはresponse全体reject。response textを再parseしてstateを更新しない。
+
+interpreter failure、planner failure、StaleAsyncResultを別diagnosticにする。active request lifecycleはDA2。contractはsession-local、save/migration/repositoryはnon-goal。stringsはuntrusted JSON dataである。
 
 ## P1〜P7 responsibility
 
@@ -54,14 +126,14 @@ accepted/rejected/pending/correction/feasibility/preview snapshotをimmutable入
 | --- | --- | --- | --- |
 | P1 | Covered by another task | DA2 | request/submit lifecycle |
 | P2 | Covered by another task | DA2 | IME/focus/keyboard |
-| P3 | Applicable | DA1 | hostile/invalid boundary |
+| P3 | Applicable | DA1 | hostile response/grounding boundary |
 | P4 | Covered by another task | approval | preview/save/idempotency |
-| P5 | Not applicable or regression only | future persistence / DA2 | migration scope |
-| P6 | Applicable | DA1/DA2 | fallback and exam/non-exam |
-| P7 | Applicable | DA1 | typed refs/revision/diagnostics trace |
-
-
+| P5 | Not applicable or regression only | future persistence、DA2 | migration scope |
+| P6 | Applicable | DA1、DA2 | planner fallback、stale分離 |
+| P7 | Applicable | DA1 | responsePartsとderived refs trace |
 
 ## Acceptance / tests / commands
 
-unit: union、registry、allow-list、no-reask。contract: action validator、envelope、revision。integration: snapshot→planner→validator→renderer、clarification orthogonality。property/fuzz: unknown/private IDs、duplicate option、oversize/NaN。roleplay: WP-DA turns 4〜11、P3/P6。real-modelはresponse fixture replay。既存scripts、diff check、status、Git write禁止。
+unitはfinite union、formatter registry、field互換、text validator、allow-list、no-reask。contractはaction validator、responseParts-only schema、derived used refs、envelope/revision、invalid全体reject。integrationはsnapshot→planner→validator→deterministic renderer、clarification orthogonality、planning range accepted後no re-ask。property/fuzzはunknown/private IDs、duplicate option、invalid formatter、数字/日時/title leak、oversize。
+
+roleplayはWP-DA turns 1、3〜11、P3-STALE-REF-001、P3-RESPONSE-DUPLICATE-SOURCE-001、P3-TEXT-FACT-LEAK-001、P6-PLANNER-FAILURE-001。real-modelはresponse fixture replay。既存scripts、diff check、status、Git write禁止。

@@ -20,7 +20,7 @@ v2(2026-07-10)で最上位思想を draft-first / progressive refinement に改�
   ```
 - v2 の draft-first 原則(preview を対話の材料にする・仮定合成・preview-first decision)は不変。v3 はその**解釈層の一本化**である。
 - 関連: `weekly-planning-nl-capability-model.md` / `docs/ai/strategy/weekly-planning-dialogue-design-review.md` / spec §12(LLM の担当 = 自然文からの抽出)
-- 本文書は Codex に直接渡さない。実装単位は §7。
+- **Historical instruction as of 2026-07-11; not current queue.** 当時の実装単位は §7 だった。current implementation taskはv4とroadmapのCurrent queueから選ぶ。
 - 最終更新: 2026-07-11(v3)
 
 ## 1. v3 の根拠(実会話・実コードで確認)
@@ -80,21 +80,23 @@ v2(2026-07-10)で最上位思想を draft-first / progressive refinement に改�
 | 応答の自然文生成 | AI renderer(sanitize + deterministic fallback) |
 | preview 承認・保存・副作用 | deterministic(UI 導線・`shouldSavePlan: false`) |
 
-## 7. 実装計画(v3 再構成)
+## 7. Historical implementation plan（v3、2026-07-11時点）
+
+> **Historical sequence as of 2026-07-11; not current queue.** 次表の状態・順序・task pathは当時の記録であり、現在の実装指示ではない。
 
 | # | 内容 | 状態 | task md |
 |---|---|---|---|
 | 済 | T1〜T5 / S1(grounding)/ P1(仮定合成)/ P2(preview-first decision) | **実装済み・検証済み**(446 tests green) | closed 参照 |
-| **I1** | **AI 単一解釈化**: escalation・bare-duration 短絡の廃止(provider 時毎 turn AI)、provider 時の deterministic semantic parse バイパス、pending 窓内 explicit range の受理調整、AI 失敗時の turn 単位 deterministic fallback | 発行済み・**次に実装** | `20260711-weekly-planning-ai-interpretation-stage1-single-interpreter.md` |
+| **I1** | **AI 単一解釈化**: escalation・bare-duration 短絡の廃止(provider 時毎 turn AI)、provider 時の deterministic semantic parse バイパス、pending 窓内 explicit range の受理調整、AI 失敗時の turn 単位 deterministic fallback | historical: 当時の次候補（not current queue） | `20260711-weekly-planning-ai-interpretation-stage1-single-interpreter.md` |
 | **I2** | **会話履歴の供給**: UI の会話履歴から直近 N turn を pipeline → interpreter へ。過去発話の再提示・訂正と state の reconciliation 指示。past-turns 禁止文の置換 | 発行済み | `20260711-weekly-planning-ai-interpretation-stage2-conversation-history.md` |
 | P3 | 開始 intent + decision taxonomy 分離(v3 改訂: begin 検出は AI 写像中心、deterministic gate は rules fallback) | 発行済み(改訂) | `20260710-weekly-planning-dialogue-stage2-entry-intent-decision-taxonomy.md` |
-| P4 | 学習目標受理(`set_study_goal`・AI 経由)+ legacy fallback 保護 | 発行済み(改訂) | `20260710-weekly-planning-dialogue-stage3-goal-acceptance.md` |
+| P4 | 学習目標受理(`set_study_goal`・AI 経由)+ legacy fallback 保護 | 発行済み(改訂) | `docs/ai/tasks/superseded/20260710-weekly-planning-dialogue-stage3-goal-acceptance.md`（historical path） |
 | P5 | 非 exam preview bridge(tasks → 暫定量 work items) | 未発行(P4 後) | — |
 | P6 | semantic act envelope(answers/corrects の形式化)+ 仮定の対話的置換の構造化 | 未発行(**縮小**: 会話文脈の回収は I1/I2 が担うため、残るのは訂正適用規則と DialogueContext の永続化のみ) | — |
 | P7 | AssistantActPlan / renderer 一般化 | 未発行 | — |
 | P9 | dialogue contract suite + T6 統合実行 | 未発行(最後) | — |
 
-**推奨順: I1 → I2 → P3 → P4 → P5 → P6 → P7 → P9。**
+**Historical sequence as of 2026-07-11; not current queue:** I1 → I2 → P3 → P4 → P5 → P6 → P7 → P9。
 旧 P8(常時解釈)は **I1 に吸収**。旧 P6 のうち conversation grounding / 過去発話 reconciliation は **I2 へ前倒し吸収**(P6 は訂正の適用規則に縮小)。v2 の P 番号との対応はこの表を正とする。
 
 ## 8. dialogue contract(v3 追加分)
@@ -105,10 +107,13 @@ v2 §8 の 10 契約に加えて:
 12. 過去 turn で述べた事実の再提示・言い換え・訂正が、履歴 + state と突き合わせて回収される(§1 の実会話が regression ケース)。【I2】
 13. provider 有効時、deterministic parser の解釈結果が AI の解釈と競合して適用されることがない(単一解釈)。rules モードは全経路 deterministic で成立する。【I1】
 
-## 9. 既存文書・タスクとの関係
+## 9. Historical document/task relationship
+
+> **Historical mapping as of 2026-07-11; not current queue.** 以下のtask対応はv3移行証拠としてのみ参照する。
 
 - v2 からの変更は §1〜§3・§7 の解釈層のみ。draft-first(仮定合成・preview-first)・taxonomy・goal 語彙・bridge の設計は不変。
 - **capability model への影響**: 「AI と deterministic parser が同一 command 空間を共有する classifier」という §1.1 の指摘は、v3 で「同一 command 空間は維持しつつ、解釈器は AI に一本化(deterministic は fallback)」として解消方針が確定。診断原則 A(意味写像不足)の直し先は今後 AI プロンプト/語彙のみとなる。
 - roadmap: R2 の「parser の対応表現拡大」系タスクは v3 により**新規追加を凍結**(rules fallback の現状維持のみ)。R4 は P2 で先取り済み。
 - backlog: D1(legacy fallback)・D2(非 exam)は従来どおり(P4/P5 が部分消化)。
-\n\nHistorical handling: v4 is the only current DoR; use this document for the v3 production trace and safety-boundary rationale only.\n
+
+> **Historical handling:** v4 is the only current DoR. Use this document for the v3 production trace and safety-boundary rationale only.

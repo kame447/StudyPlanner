@@ -5,7 +5,7 @@ D1〜D7 below retain concrete evidence, priority, start conditions, and reasons 
 
 # weeklyPlanning deferred backlog(タスクmd化を保留した既知問題)
 
-> **現在の扱い。** 本文中の P4、P5、P6、P7、P9 は v3 の段階名であり、新規実装の queue ではない。親設計 v4 の D1〜D3 が完了するまで、ここにある backlog を前倒ししない。D1 / D2 の過去の関連記述は履歴として読む。
+> **Historical wording / current handling.** 本文中のP4、P5、P6、P7、P9、D1〜D7は旧段階名でありcurrent queueではない。当時のD1〜D3系列は現在のDA0a〜DA3cへ再編された。current queueはv4とroadmap冒頭を参照し、ここから直接taskをopenしない。
 
 2026-07-10 の週間計画機能 全体レビュー(実コード・実行検証ベース)で確認したが、**現時点では実装タスクmdに切らない**と判断した項目の記録。再調査せずに参照できるよう、問題の所在と根拠を残す。
 
@@ -21,7 +21,7 @@ D1〜D7 below retain concrete evidence, priority, start conditions, and reasons 
 - **優先度**: Medium(非 exam フローは draftRequest が常に null のため配置への実害はなく、対話品質の問題に留まる)
 - **今触らない理由**: Phase 9.8 TODO として単一境界関数に隔離済みで、R1 の regression set(`weeklyPlanningLegacyFallback.test.ts`)が現挙動を意図的に固定している。いま挙動を変えると R1 で守った通常予定/週間計画ルートの回帰リスクの方が大きい。
 - **着手条件**: R3(進捗単位の一般化)で非 exam フローに draft 生成を許す設計を始めるとき。その時点で「fallback は tasks_or_goals 未充足のときだけ走る」等の縮小を**先に**タスク化する(fallback が constraints 確立後の state を汚染したまま draft 化すると事故になるため)。
-- **2026-07-10 更新(対話設計調査)**: 縮小の第一段(command 由来 tasks の保護 guard + `tasksSource` marker)は対話 Stage 3(`docs/ai/tasks/20260710-weekly-planning-dialogue-stage3-goal-acceptance.md`)が先行消化する。fallback の全面縮小・撤去は引き続き本項の範囲。
+- **2026-07-10 更新(対話設計調査)**: 縮小の第一段(command 由来 tasks の保護 guard + `tasksSource` marker)は対話 Stage 3(`docs/ai/tasks/superseded/20260710-weekly-planning-dialogue-stage3-goal-acceptance.md`（historical path）)が先行消化する。fallback の全面縮小・撤去は引き続き本項の範囲。
 - **関連 Phase**: R3 / roadmap §8「二重化リスク」/ 対話親設計(`docs/architecture/weekly-planning-dialogue-architecture.md`)§3(parser 分類: legacy fallback は rules モード暫定維持)
 
 ## D2. 非 exam フローが draft を作れず dead end になる
@@ -81,4 +81,5 @@ D1〜D7 below retain concrete evidence, priority, start conditions, and reasons 
 - レビュー問題1・2・4(missing 再シード / explicit 上書き / renderer 登録漏れ) → `docs/ai/tasks/20260710-weekly-planning-range-reseed-guard-and-start-date-render.md`
 - レビュー問題3・5・6、slot registry、複合ターン regression → `docs/ai/tasks/20260710-*.md`(索引: `weekly-planning-review-20260710-index.md`)
 - capacity 超過(6等分・1日上限)、実 AI 品質評価、明示 duration / daily target 受理、カレンダー予定の intake 注入 → roadmap §3 R2-S 後続候補・§6 に記録済み(本レビューの新規発見ではないため、ここには重複記載しない)
-\n\nHistorical handling: D1〜D7, P4〜P9, T6, and v3 stages remain historical references only.\n
+
+> **Historical handling:** D1〜D7、P4〜P9、T6、v3 stages remain historical references only.

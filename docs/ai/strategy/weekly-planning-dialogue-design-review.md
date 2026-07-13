@@ -75,7 +75,9 @@ W1〜W7 observations and production path traces below are retained as historical
 - 出力(語彙): 開始 intent・学習目標・修復が表現できない → 理解しても返せない。
 - その結果、「モデルが自然に理解できる発話を、狭い parser と狭い schema の共通部分まで縮めてから捨てている」のが現状の対話。
 
-### 3.3 望ましい分担(到達像)
+### 3.3 Historical recommendation: 望ましい分担（2026-07-10時点）
+
+> **Historical recommendation; superseded by v4.** 以下は調査時点の到達像で、current action/response contractではない。
 
 ```text
 deterministic に固定(最終決定権):
@@ -102,7 +104,9 @@ contract(両者の接続):
 
 これは (a) 学習目標の意味カテゴリ、(b) constraint source の受理(T2/T3 で実装済み・T4 で破棄問題解消)、(c) 受理事実の acknowledgement(renderer は既に対応済み)、(d) 期間質問(W1 の entry)で構成でき、**全文 LLM 生成は不要**である。
 
-## 4. 既存タスク・backlog・roadmap との対応(重複整理)
+## 4. Historical task/backlog mapping（2026-07-10時点）
+
+> **Historical mapping; P4/P5/T6 and Stage paths below are not the current queue.**
 
 本調査の発見のうち、既存管理と重複するものは新規タスク化しない:
 
@@ -118,13 +122,17 @@ contract(両者の接続):
 
 > **2026-07-10 追記**: 本節の発見は同日の追加調査で親設計 `docs/architecture/weekly-planning-dialogue-architecture.md` に統合し、段階実装として発行した。以下の T7/T8 構想は Stage 1/Stage 2 に対応する(名称・スコープは親設計側が正)。
 
+> **Historical task issuance record; not current queue.**
+
 新規にタスク化したもの(親設計 §9 の Stage 1〜3):
 
 - **Stage 1: interpreter への対話 grounding 供給**(W3 + W5 の最小部分)→ `docs/ai/tasks/20260710-weekly-planning-dialogue-stage1-interpreter-grounding.md`
 - **Stage 2: 開始 intent の受理と decision taxonomy 分離**(W1 + W2)→ `docs/ai/tasks/20260710-weekly-planning-dialogue-stage2-entry-intent-decision-taxonomy.md`
-- **Stage 3: 学習目標受理 + legacy fallback 保護**(W4 の目標語彙・D1/D2 の会話レベル slice)→ `docs/ai/tasks/20260710-weekly-planning-dialogue-stage3-goal-acceptance.md`
+- **Stage 3: 学習目標受理 + legacy fallback 保護**(W4 の目標語彙・D1/D2 の会話レベル slice)→ `docs/ai/tasks/superseded/20260710-weekly-planning-dialogue-stage3-goal-acceptance.md`（historical path）
 
-## 5. 推奨順序
+## 5. Historical recommended sequence（2026-07-10時点）
+
+> **Historical sequence; not current queue.** 現在の順序はroadmap冒頭のGate P4 → DA0a → DA0 → DA1 → DA1b → approval → DA2 → DA3a → DA3b → DA3cである。
 
 ```text
 T4(open・小・事例2の破棄問題)
@@ -145,4 +153,5 @@ T4(open・小・事例2の破棄問題)
 capability model §6 の A〜F に、本調査で確認した対話固有の分類を1つ追加することを提案する(次回 capability model 更新時に反映):
 
 > **G. dialogue grounding 不足**: 意味カテゴリも capability も揃っているが、「いま対話がどこにいるか」(現在日時・直前の質問・確認待ちの事項)が interpreter/renderer に構造化供給されておらず、モデルが文脈解釈・修復応答をできない。直し方: 対話状態の deterministic な要約を AI 入力 contract に追加する(履歴の生ログを渡すのではなく)。
-\n\nHistorical handling: current action/state/response/fallback decisions are defined by v4 and the current queue, not by this review.\n
+
+> **Historical handling:** current action/state/response/fallback decisions are defined by v4 and the current queue, not by this review.
