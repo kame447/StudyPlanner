@@ -1,5 +1,5 @@
 import { addDays, startOfWeek } from '../../../lib/date';
-import type { SetExamScopeCommand, SetPendingPlanningRangeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
+import type { BeginWeeklyPlanningCommand, SetExamScopeCommand, SetPendingPlanningRangeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, PendingPlanningRangeClarification, StudyScopeUnit, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import {
   normalizeIntakeText,
@@ -126,7 +126,7 @@ function parsePendingPlanningRange(
   context: WeeklyPlanningIntakeContext,
 ): SetPendingPlanningRangeCommand | undefined {
   const normalizedText = normalizeIntakeText(text);
-  if (!hasOneWeekDuration(normalizedText) && !/来週.*計画/.test(normalizedText)) {
+  if (!hasOneWeekDuration(normalizedText) && !/来週.*(?:計画|予定|スケジュール)/.test(normalizedText)) {
     return undefined;
   }
 
@@ -215,6 +215,29 @@ function parseWeeklyPlanningRange(
   }
 
   return undefined;
+}
+
+export function parseBeginWeeklyPlanningCommand(
+  text: string,
+): BeginWeeklyPlanningCommand | undefined {
+  const normalizedText = normalizeIntakeText(text);
+  if (/(?:消し|削除|変更|変え)/.test(normalizedText)) {
+    return undefined;
+  }
+
+  if (
+    !/(?:予定|計画|スケジュール)/.test(normalizedText)
+    || !/(?:立て|作|組|決め)/.test(normalizedText)
+    || !/(?:たい|よう|ます|て)/.test(normalizedText)
+  ) {
+    return undefined;
+  }
+
+  return {
+    type: 'begin_weekly_planning',
+    sourceText: text,
+    confidence: 'high',
+  };
 }
 
 export function parseSetPendingPlanningRangeCommand(

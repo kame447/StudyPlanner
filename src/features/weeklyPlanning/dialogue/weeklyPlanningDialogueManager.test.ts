@@ -316,6 +316,46 @@ describe('weekly planning dialogue manager', () => {
     expect(decision.shouldSavePlan).toBe(false);
   });
 
+  it('opens a new dialogue when the state has no interpreted facts', () => {
+    const decision = createWeeklyPlanningDialogueDecision({
+      state: createInitialPlanningIntakeState(),
+    });
+
+    expect(decision).toMatchObject({
+      kind: 'open_planning_dialogue',
+      messageKey: 'open_weekly_planning_dialogue',
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    });
+  });
+
+  it('explains the capability gap for non-exam tasks without using contradiction wording', () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      status: 'draft_ready',
+      intent: 'weekly_study_planning',
+      tasks: [{
+        title: '読書',
+        unit: 'chapters',
+        rawText: '読書',
+        requiresTimeEstimate: true,
+      }],
+      missing: [],
+      shouldCreateDraft: true,
+    };
+    const decision = createWeeklyPlanningDialogueDecision({
+      state,
+      draftRequest: null,
+    });
+
+    expect(decision).toMatchObject({
+      kind: 'explain_capability_gap',
+      messageKey: 'explain_weekly_planning_capability_gap',
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    });
+  });
+
   it('is deterministic for the same input', () => {
     const { state, request, remainingWorkItems, dryRun } = createDryRunPipeline();
     const input = {

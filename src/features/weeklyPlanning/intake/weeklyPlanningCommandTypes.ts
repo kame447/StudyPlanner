@@ -25,7 +25,8 @@ export type ParsedWeeklyPlanningCommand =
   | SetUnitRateCommand
   | SetExamScopeCommand
   | SetPlanningRangeCommand
-  | SetPendingPlanningRangeCommand;
+  | SetPendingPlanningRangeCommand
+  | BeginWeeklyPlanningCommand;
 
 /**
  * 「既存の schedule source を計画制約として利用する」という semantic intent。
@@ -188,6 +189,13 @@ export interface SetPlanningRangeCommand {
 export interface SetPendingPlanningRangeCommand {
   type: 'set_pending_planning_range';
   pending: PendingPlanningRangeClarification;
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface BeginWeeklyPlanningCommand {
+  type: 'begin_weekly_planning';
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';

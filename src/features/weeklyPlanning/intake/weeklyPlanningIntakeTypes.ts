@@ -163,6 +163,7 @@ export type PriorityPolicy =
   | { kind: 'unknown' };
 
 export type PlanningIntakeMissing =
+  | 'planning_period'
   | 'planning_start_date'
   | 'tasks_or_goals'
   | 'fixed_events'

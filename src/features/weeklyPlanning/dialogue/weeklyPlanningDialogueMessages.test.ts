@@ -157,6 +157,31 @@ describe('weekly planning dialogue messages', () => {
     expect(message).toContain('作れません');
   });
 
+  it('renders the open planning dialogue message without inventing a period', () => {
+    const message = createWeeklyPlanningDialogueMessage(decision({
+      kind: 'open_planning_dialogue',
+      shouldCreateDraft: false,
+    }));
+
+    expect(message).toContain('どんな計画を作りたいか');
+    expect(message).toContain('対象の期間');
+    expect(message).not.toContain('整合性');
+  });
+
+  it('renders the non-exam capability gap with the supported exam shape', () => {
+    const message = createWeeklyPlanningDialogueMessage(decision({
+      kind: 'explain_capability_gap',
+      shouldCreateDraft: false,
+      summary: {
+        fields: ['読書'],
+      },
+    }));
+
+    expect(message).toContain('自動生成にはまだ対応していません');
+    expect(message).toContain('年度×分野');
+    expect(message).not.toContain('整合性が取れず');
+  });
+
   it('uses a user-facing label for planning_start_date clarification questions', () => {
     const message = createWeeklyPlanningDialogueMessage(decision({
       kind: 'answer_clarification',

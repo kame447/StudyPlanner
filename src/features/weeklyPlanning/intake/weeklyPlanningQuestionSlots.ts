@@ -71,6 +71,24 @@ const resolveMissingCompletionTargetFields = (
   return remainingFields.length > 0 ? remainingFields : undefined;
 };
 
+const planningPeriodSlot: PlanningQuestionSlotDefinition = {
+  missing: ['planning_period'],
+  targetSlot: 'planning_period',
+  intent: 'ask_planning_period',
+  kind: 'missing_slot',
+  previewPolicy: 'assumable',
+  status: 'needs_scope',
+  deterministicQuestion: () => 'いつからいつまでの計画にしますか？',
+  isStateQuestionEligible: (state) => isMissing(state, 'planning_period'),
+  isQuestionPlanEligible: defaultQuestionPlanEligibility,
+  termExplanation:
+    '「計画の期間」は、いつからいつまでの予定を作るかのことです。',
+  clarificationKeywords: [/期間|いつから|いつまで/],
+  vocabularyHint: '計画を作る期間(開始日と終了日)',
+  fallbackQuestion: () => 'いつからいつまでの計画にしますか？',
+  userLabel: '計画の期間',
+};
+
 const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   missing: ['planning_start_date'],
   targetSlot: 'planning_start_date',
@@ -306,6 +324,7 @@ export const QUESTION_SLOT_DEFINITION_BY_MISSING: Record<
   PlanningIntakeMissing,
   PlanningQuestionSlotDefinition
 > = {
+  planning_period: planningPeriodSlot,
   planning_start_date: planningStartDateSlot,
   tasks_or_goals: tasksOrGoalsSlot,
   fixed_events: fixedEventsSlot,
@@ -321,6 +340,7 @@ export const QUESTION_SLOT_DEFINITION_BY_MISSING: Record<
 };
 
 const QUESTION_SLOT_DEFINITIONS: readonly PlanningQuestionSlotDefinition[] = [
+  planningPeriodSlot,
   planningStartDateSlot,
   tasksOrGoalsSlot,
   yearRangeSlot,
@@ -335,6 +355,7 @@ const QUESTION_SLOT_DEFINITIONS: readonly PlanningQuestionSlotDefinition[] = [
 ];
 
 export const STATUS_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
+  planningPeriodSlot,
   planningStartDateSlot,
   tasksOrGoalsSlot,
   completionDirectionSlot,
@@ -350,6 +371,7 @@ export const STATUS_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
 export const QUESTION_PLAN_SLOT_ORDER = QUESTION_SLOT_DEFINITIONS;
 
 const STATE_QUESTION_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
+  planningPeriodSlot,
   planningStartDateSlot,
   tasksOrGoalsSlot,
   yearRangeSlot,
@@ -359,6 +381,7 @@ const STATE_QUESTION_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
 ];
 
 const MESSAGE_KEY_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
+  planningPeriodSlot,
   planningStartDateSlot,
   yearRangeSlot,
   unitDurationEstimateSlot,

@@ -27,6 +27,7 @@ export const KNOWN_COMMAND_TYPES = new Set([
   'set_exam_scope',
   'set_planning_range',
   'set_pending_planning_range',
+  'begin_weekly_planning',
 ]);
 
 const STUDY_SCOPE_UNITS = new Set([
@@ -122,6 +123,8 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
         && typeof command.pending.scope.kind === 'string'
         && typeof command.pending.scope.label === 'string'
         && typeof command.pending.sourceText === 'string';
+    case 'begin_weekly_planning':
+      return true;
     case 'set_priority_policy':
       return isRecord(command.policy) && typeof command.policy.kind === 'string';
     case 'mark_completed_units':

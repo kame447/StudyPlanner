@@ -29,7 +29,9 @@ export type WeeklyPlanningDialogueDecisionKind =
   | 'confirm_draft_conditions'
   | 'offer_dry_run_preview'
   | 'ask_relax_constraints'
-  | 'cannot_create_draft';
+  | 'cannot_create_draft'
+  | 'open_planning_dialogue'
+  | 'explain_capability_gap';
 
 export interface WeeklyPlanningDialogueDecisionSummary {
   yearRange?: {
@@ -294,6 +296,14 @@ export function createWeeklyPlanningDialogueDecision(
   }
 
   if (input.state.shouldCreateDraft && !input.draftRequest && !input.assumedDraft) {
+    if (input.state.tasks.length > 0 && !input.state.examPrepScope) {
+      return createDecision({
+        kind: 'explain_capability_gap',
+        messageKey: 'explain_weekly_planning_capability_gap',
+        summary: createSummary(input),
+      });
+    }
+
     return createDecision({
       kind: 'cannot_create_draft',
       messageKey: 'cannot_create_draft_from_intake',
@@ -336,9 +346,21 @@ export function createWeeklyPlanningDialogueDecision(
     });
   }
 
+  if (
+    input.state.intent === 'unknown'
+    && input.state.tasks.length === 0
+    && !input.state.examPrepScope
+    && missing.length === 0
+  ) {
+    return createDecision({
+      kind: 'open_planning_dialogue',
+      messageKey: 'open_weekly_planning_dialogue',
+    });
+  }
+
   return createDecision({
-    kind: 'cannot_create_draft',
-    messageKey: 'cannot_create_draft_from_intake',
+    kind: 'open_planning_dialogue',
+    messageKey: 'open_weekly_planning_dialogue',
     summary: createSummary(input),
   });
 }

@@ -31,7 +31,7 @@ import {
   removeMissing,
 } from './weeklyPlanningMissingStatus';
 import { parseSetPriorityPolicyCommand } from './weeklyPlanningPriorityParsing';
-import { parseSetExamScopeCommand, parseSetPendingPlanningRangeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
+import { parseBeginWeeklyPlanningCommand, parseSetExamScopeCommand, parseSetPendingPlanningRangeCommand, parseSetPlanningRangeCommand } from './weeklyPlanningScopeParsing';
 import { uniqueList } from './weeklyPlanningTextParsing';
 import {
   parseBareDurationAsUnitRateCommand,
@@ -440,7 +440,7 @@ function applyWeeklyPlanningCommand(
         range: toPlanningRangeFromSetPlanningRangeCommand(command, false),
         pendingPlanningRange: undefined,
         missing: addMissing(
-          removeMissing(state.missing, ['planning_start_date']),
+          removeMissing(state.missing, ['planning_start_date', 'planning_period']),
           deriveMissingForPlanningRange(state),
         ),
       };
@@ -450,8 +450,31 @@ function applyWeeklyPlanningCommand(
         ...state,
         intent: 'weekly_study_planning',
         pendingPlanningRange: command.pending,
-        missing: addMissing(state.missing, ['planning_start_date']),
+        missing: addMissing(
+          removeMissing(state.missing, ['planning_start_date', 'planning_period']),
+          ['planning_start_date'],
+        ),
       };
+    case 'begin_weekly_planning': {
+      const hasPlanningScope = Boolean(state.range || state.pendingPlanningRange);
+      const hasLearningScope = Boolean(state.examPrepScope || state.tasks.length > 0);
+      const missingWithoutPeriod = hasPlanningScope
+        ? removeMissing(state.missing, ['planning_period'])
+        : state.missing;
+      const missing = addMissing(
+        missingWithoutPeriod,
+        [
+          ...(!hasPlanningScope ? ['planning_period' as const] : []),
+          ...(!hasLearningScope ? ['tasks_or_goals' as const] : []),
+        ],
+      );
+
+      return {
+        ...state,
+        intent: state.intent === 'unknown' ? 'weekly_study_planning' : state.intent,
+        missing,
+      };
+    }
     default:
       return state;
   }
@@ -528,6 +551,10 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
     if (pendingPlanningRangeCommand) {
       setupCommands.push(pendingPlanningRangeCommand);
     }
+  }
+  const beginCommand = parseBeginWeeklyPlanningCommand(userText);
+  if (beginCommand) {
+    setupCommands.push(beginCommand);
   }
   const examScopeCommand = parseSetExamScopeCommand(userText, nextState.examPrepScope);
   if (examScopeCommand) {

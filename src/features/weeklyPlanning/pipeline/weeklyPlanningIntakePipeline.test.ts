@@ -215,6 +215,116 @@ describe('weekly planning intake pipeline', () => {
   });
 
 
+  it.each([
+    '予定作りたい',
+    '明日と明後日の予定立てたい',
+  ])('opens the intake with planning period and learning-content questions: %s', (userText) => {
+    const output = runTurn(undefined, userText);
+
+    expect(output.state.intent).toBe('weekly_study_planning');
+    expect(output.state.missing).toEqual(
+      expect.arrayContaining(['planning_period', 'tasks_or_goals']),
+    );
+    expect(output.decision).toMatchObject({
+      kind: 'ask_missing_info',
+      messageKey: 'ask_planning_period',
+      questionPlan: [
+        expect.objectContaining({ targetSlot: 'planning_period', intent: 'ask_planning_period' }),
+        expect.objectContaining({ targetSlot: 'tasks_or_goals', intent: 'ask_tasks_or_goals' }),
+      ],
+    });
+    expect(output.decision.messageKey).not.toContain('cannot_create');
+  });
+
+  it('connects a begin turn to a later period answer without re-asking the begin intent', () => {
+    const started = runTurn(undefined, '予定作りたい');
+    const continued = runTurn(started.state, '来週の計画を立てたい');
+
+    expect(continued.state.pendingPlanningRange?.scope.kind).toBe('next_week');
+    expect(continued.state.missing).not.toContain('planning_period');
+    expect(continued.decision.questionPlan).toEqual([
+      expect.objectContaining({ targetSlot: 'planning_start_date' }),
+      expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
+    ]);
+  });
+
+  it('does not seed redundant begin slots when one turn already includes range and exam scope', () => {
+    const output = runTurn(
+      undefined,
+      '7日間、院試の数学の過去問を計画したい',
+    );
+
+    expect(output.state.range).toBeDefined();
+    expect(output.state.examPrepScope).toBeDefined();
+    expect(output.state.missing).not.toContain('planning_period');
+    expect(output.state.missing).not.toContain('tasks_or_goals');
+    expect(output.decision.questionPlan).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ targetSlot: 'planning_period' }),
+        expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
+      ]),
+    );
+  });
+
+  it('routes a pending next-week start utterance to start-date and learning-content questions', () => {
+    const output = runTurn(undefined, '来週の予定を立てたい');
+
+    expect(output.state.pendingPlanningRange?.scope.kind).toBe('next_week');
+    expect(output.state.missing).toContain('planning_start_date');
+    expect(output.state.missing).toContain('tasks_or_goals');
+    expect(output.state.missing).not.toContain('planning_period');
+    expect(output.decision.questionPlan).toEqual([
+      expect.objectContaining({ targetSlot: 'planning_start_date' }),
+      expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
+    ]);
+    expect(output.decision.messageKey).toBe('ask_planning_start_date');
+  });
+
+  it('classifies an uninterpretable first turn as an open planning dialogue', () => {
+    const output = runTurn(undefined, 'こんにちは');
+
+    expect(output.state.intent).toBe('unknown');
+    expect(output.decision.kind).toBe('open_planning_dialogue');
+    expect(output.decision.messageKey).toBe('open_weekly_planning_dialogue');
+  });
+
+  it('keeps an empty AI candidate result on the same open-dialogue taxonomy without rules fallback', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'こんにちは',
+      interpreter: fakeInterpreter([]),
+    });
+
+    expect(output.interpreterDiagnostics?.accepted).toEqual([]);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
+    expect(output.decision.kind).toBe('open_planning_dialogue');
+    expect(output.state.intent).toBe('unknown');
+  });
+
+  it('applies a provider begin command without requiring deterministic semantic parsing', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'start',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'begin_weekly_planning',
+          sourceText: 'start',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+
+    expect(output.interpreterDiagnostics?.accepted).toEqual([
+      expect.objectContaining({ type: 'begin_weekly_planning' }),
+    ]);
+    expect(output.state.missing).toEqual(
+      expect.arrayContaining(['planning_period', 'tasks_or_goals']),
+    );
+    expect(output.decision.kind).toBe('ask_missing_info');
+  });
+
   describe('legacy fallback via pipeline', () => {
     it('keeps branch A assessment for a first weekly pipeline turn', () => {
       const output = runTurn(undefined, '\u6765\u9031\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593');
@@ -271,7 +381,8 @@ describe('weekly planning intake pipeline', () => {
       expect(output.draftCandidates).toBeNull();
       expect(output.diagnostics).toBeNull();
       expect(output.decision).toMatchObject({
-        kind: 'cannot_create_draft',
+        kind: 'open_planning_dialogue',
+        messageKey: 'open_weekly_planning_dialogue',
         shouldCreateDraft: false,
         shouldSavePlan: false,
       });

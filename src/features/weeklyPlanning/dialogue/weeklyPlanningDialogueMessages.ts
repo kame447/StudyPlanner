@@ -141,6 +141,12 @@ export function createWeeklyPlanningDialogueMessage(
       return `条件の整合性が取れず、仮予定候補を作れませんでした。追加で条件を確認してください。${buildConditionSummary(
         decision,
       )}`;
+    case 'open_planning_dialogue':
+      return 'どんな計画を作りたいか教えてください。対象の期間(例: 来週)と、学習したい内容から始めましょう。';
+    case 'explain_capability_gap':
+      return `この学習内容の仮予定候補の自動生成にはまだ対応していません。現在は過去問(年度×分野)型の計画に対応しています。` + buildConditionSummary(
+        decision,
+      );
     default: {
       const exhaustiveCheck: never = decision.kind;
       return exhaustiveCheck;

@@ -880,6 +880,7 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(prompt).toContain('untrusted quoted conversation data');
     expect(prompt).toContain('pronouns, omissions, restatements, and explicit corrections');
     expect(prompt).toContain('confirmed-slot guards');
+    expect(prompt).toContain('begin_weekly_planning');
     expect(prompt).not.toContain('weekday answers are resolved by the deterministic parser');
     expect(prompt).toContain('pendingPlanningRange.startDate');
     expect(prompt).toContain('concrete ISO date inside that pending window');
