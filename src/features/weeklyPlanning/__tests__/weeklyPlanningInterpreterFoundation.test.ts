@@ -889,4 +889,81 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(prompt).toContain('Never substitute an inferred set_planning_range');
   });
 
+
+  it.each([
+    ['missing title', { goal: {} }, 'invalid-command-shape'],
+    ['empty title', { goal: { title: '   ' } }, 'invalid-command-shape'],
+    ['invalid unit', { goal: { title: 'dollars', unit: 'dollars' } }, 'invalid-unit'],
+    ['negative amount', { goal: { title: 'negative', amount: -1 } }, 'invalid-goal-amount'],
+    ['number sourceText', { goal: { title: '数学' }, sourceText: 42 }, 'invalid-command-shape'],
+    ['object subject', { goal: { title: '数学', subject: {} } }, 'invalid-command-shape'],
+    ['unknown goal property', { goal: { title: '数学', extra: true } }, 'invalid-command-shape'],
+    ['overlong title', { goal: { title: 'a'.repeat(201) } }, 'invalid-command-shape'],
+    ['overlong sourceText', { goal: { title: '数学' }, sourceText: 'a'.repeat(4001) }, 'invalid-command-shape'],
+  ])('rejects set_study_goal with %s', (_label, payload, reason) => {
+    const command = {
+      type: 'set_study_goal',
+      sourceText: 'goal',
+      ...payload,
+      confidence: 'high',
+    } as unknown as ParsedWeeklyPlanningCommand;
+    const result = validateInterpretedCandidates([candidate(command)], baseSummary());
+
+    expect(result.accepted).toEqual([]);
+    expect(result.acceptedWithConfirmation).toEqual([]);
+    expect(result.clarifications).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason }),
+    ]);
+  });
+
+  it('keeps the high-confidence candidate for one normalized goal identity in either order', () => {
+    const high = candidate({
+      type: 'set_study_goal',
+      goal: { title: '数学 演習', subject: 'high' },
+      sourceText: 'high',
+      confidence: 'high',
+    });
+    const medium = candidate({
+      type: 'set_study_goal',
+      goal: { title: '  数学　演習  ', subject: 'medium' },
+      sourceText: 'medium',
+      confidence: 'medium',
+    }, true);
+
+    [[high, medium], [medium, high]].forEach((candidates) => {
+      const result = validateInterpretedCandidates(candidates, baseSummary());
+
+      expect(result.accepted).toEqual([high.command]);
+      expect(result.acceptedWithConfirmation).toEqual([]);
+      expect(result.clarifications).toEqual([]);
+      expect(result.rejected).toEqual([
+        expect.objectContaining({
+          candidate: medium,
+          reason: 'conflicting-slot-lower-confidence',
+        }),
+      ]);
+    });
+  });
+
+  it('keeps different goal identities in their confidence buckets', () => {
+    const high = candidate({
+      type: 'set_study_goal',
+      goal: { title: '数学' },
+      sourceText: '数学',
+      confidence: 'high',
+    });
+    const medium = candidate({
+      type: 'set_study_goal',
+      goal: { title: '英語' },
+      sourceText: '英語',
+      confidence: 'medium',
+    }, true);
+    const result = validateInterpretedCandidates([high, medium], baseSummary());
+
+    expect(result.accepted).toEqual([high.command]);
+    expect(result.acceptedWithConfirmation).toEqual([medium.command]);
+    expect(result.rejected).toEqual([]);
+  });
+
 });

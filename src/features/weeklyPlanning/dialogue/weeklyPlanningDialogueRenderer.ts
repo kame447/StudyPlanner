@@ -27,6 +27,7 @@ export interface DialogueRenderInput {
   constraintSourcesInUse?: string[];
   acceptedFacts: {
     fields?: string[];
+    goals?: string[];
     yearRange?: { startYear: number; endYear: number };
     unitRateMinutes?: number;
     priorityOrder?: string[];
@@ -129,6 +130,9 @@ export function createDialogueRenderInput(params: {
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : undefined;
+  const commandGoalTitles = params.state.tasks
+    .filter((task) => task.source === 'command')
+    .map((task) => task.title);
 
   return {
     planningPeriodLabel: planningPeriodLabel(params.state),
@@ -136,6 +140,7 @@ export function createDialogueRenderInput(params: {
     constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
     acceptedFacts: {
       fields: params.state.examPrepScope?.fields,
+      goals: commandGoalTitles.length > 0 ? commandGoalTitles : undefined,
       yearRange: params.state.examPrepScope?.yearRange
         ? {
             startYear: params.state.examPrepScope.yearRange.startYear,
@@ -202,6 +207,7 @@ export function sanitizeDialogueRenderOutput(
 function formatAcceptedFacts(input: DialogueRenderInput): string | null {
   const facts = [
     input.acceptedFacts.fields?.length ? `分野は${input.acceptedFacts.fields.join('、')}` : null,
+    input.acceptedFacts.goals?.length ? '目標は' + input.acceptedFacts.goals.join('、') : null,
     input.acceptedFacts.yearRange
       ? `対象年度は${input.acceptedFacts.yearRange.startYear}〜${input.acceptedFacts.yearRange.endYear}`
       : null,

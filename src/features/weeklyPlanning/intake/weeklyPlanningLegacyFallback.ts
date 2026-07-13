@@ -10,6 +10,10 @@ import type {
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
 import { addMissing, removeMissing } from './weeklyPlanningMissingStatus';
+import { parseConstraintCommands } from './weeklyPlanningConstraintParsing';
+import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
+import { normalizeIntakeText } from './weeklyPlanningTextParsing';
+import { normalizeStudyTaskTitle } from './weeklyPlanningTaskIdentity';
 
 function mapWeeklyAmountUnit(unit: string): StudyScopeUnit {
   switch (unit) {
@@ -38,7 +42,84 @@ function toPlanningTasks(tasks: SimpleWeeklyTask[]): PlanningIntakeState['tasks'
     amount: task.amount.value,
     rawText: task.sourceText,
     requiresTimeEstimate: task.requiresTimeEstimate,
+    source: 'legacy_fallback',
   }));
+}
+
+function mergeLegacyTasks(
+  currentTasks: PlanningIntakeState['tasks'],
+  parsedLegacyTasks: PlanningIntakeState['tasks'],
+): PlanningIntakeState['tasks'] {
+  const commandTasks = currentTasks.filter((task) => task.source === 'command');
+  const commandIdentities = new Set(
+    commandTasks.map((task) => normalizeStudyTaskTitle(task.title)),
+  );
+  const legacyTasksByIdentity = new Map<string, PlanningIntakeState['tasks'][number]>();
+
+  parsedLegacyTasks.forEach((task) => {
+    const identity = normalizeStudyTaskTitle(task.title);
+    if (!commandIdentities.has(identity)) {
+      legacyTasksByIdentity.set(identity, task);
+    }
+  });
+
+  return [...commandTasks, ...legacyTasksByIdentity.values()];
+}
+
+interface ConsumedConstraintRange {
+  start: number;
+  end: number;
+}
+
+function constraintSourceSegments(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): string[] {
+  const commands = [
+    ...parseConstraintCommands(text, context),
+    ...parseAddUnavailableCommands(text, context),
+  ];
+
+  return commands.map((command) =>
+    ('sourceSegment' in command && typeof command.sourceSegment === 'string'
+      ? command.sourceSegment
+      : command.sourceText),
+  ).filter(Boolean);
+}
+
+function consumedConstraintRanges(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): ConsumedConstraintRange[] {
+  const normalizedText = normalizeIntakeText(text);
+  const ranges: ConsumedConstraintRange[] = [];
+
+  constraintSourceSegments(text, context).forEach((sourceSegment) => {
+    let start = normalizedText.indexOf(sourceSegment);
+    while (start >= 0 && ranges.some((range) => start < range.end && start + sourceSegment.length > range.start)) {
+      start = normalizedText.indexOf(sourceSegment, start + 1);
+    }
+
+    if (start >= 0) {
+      ranges.push({ start, end: start + sourceSegment.length });
+    }
+  });
+
+  return ranges;
+}
+
+function removeConsumedConstraintText(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): string {
+  const normalizedText = normalizeIntakeText(text);
+  return consumedConstraintRanges(text, context)
+    .sort((left, right) => right.start - left.start)
+    .reduce(
+      (remainingText, range) =>
+        remainingText.slice(0, range.start) + remainingText.slice(range.end),
+      normalizedText,
+    );
 }
 
 function shouldApplyFirstAssessFallback(state: PlanningIntakeState, userText: string): boolean {
@@ -61,13 +142,13 @@ function applyFirstAssessFallback(params: {
 }): PlanningIntakeState {
   const assessment = assessWeeklyPlanningRequest({
     selectedDate: params.context.selectedDate,
-    text: params.userText,
+    text: removeConsumedConstraintText(params.userText, params.context),
   });
 
   return {
     ...params.state,
     intent: 'weekly_study_planning',
-    tasks: toPlanningTasks(assessment.tasks),
+    tasks: mergeLegacyTasks(params.state.tasks, toPlanningTasks(assessment.tasks)),
     missing: assessment.kind === 'ready'
       ? params.state.missing
       : addMissing(params.state.missing, ['life_constraints']),
@@ -82,8 +163,11 @@ function applyRevisionMergeFallback(params: {
 }): PlanningIntakeState {
   const revision = mergeWeeklyPlanningRevision({
     selectedDate: params.context.selectedDate,
-    previousText: params.previousState.sourceTurns.join('、'),
-    revisionText: params.userText,
+    previousText: params.previousState.tasks
+      .filter((task) => task.source === 'legacy_fallback')
+      .map((task) => task.rawText)
+      .join('、'),
+    revisionText: removeConsumedConstraintText(params.userText, params.context),
   });
 
   if (revision.tasks.length === 0 || params.state.examPrepScope) {
@@ -92,7 +176,7 @@ function applyRevisionMergeFallback(params: {
 
   return {
     ...params.state,
-    tasks: toPlanningTasks(revision.tasks),
+    tasks: mergeLegacyTasks(params.state.tasks, toPlanningTasks(revision.tasks)),
     missing: removeMissing(params.state.missing, ['tasks_or_goals']),
   };
 }

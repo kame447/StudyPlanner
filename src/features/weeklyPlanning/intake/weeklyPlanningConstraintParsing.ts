@@ -90,10 +90,69 @@ function parseWakeAndStudyAvailableStart(segment: string): LifeConstraint | unde
   };
 }
 
+function parseSleepRangeConstraint(segment: string): LifeConstraint | undefined {
+  const match = segment.match(
+    /睡眠(?:時間)?\s*(?:は|が|:)??\s*(\d{1,2})\s*時(?:\s*(\d{1,2})\s*分)?\s*(?:から|[〜~-])\s*(\d{1,2})\s*時(?:\s*(\d{1,2})\s*分)?/,
+  );
+
+  if (!match) {
+    return undefined;
+  }
+
+  const start = formatParsedClockTime(match[1], match[2]);
+  const end = formatParsedClockTime(match[3], match[4]);
+
+  if (!start || !end) {
+    return undefined;
+  }
+
+  return {
+    kind: 'sleep',
+    start,
+    end,
+    hardness: 'hard',
+    rawText: match[0],
+  };
+}
+
+function parseMealDurationConstraint(segment: string): LifeConstraint | undefined {
+  const match = segment.match(
+    /((?:食事|食事時間)\s*(?:は|が|：|:)\s*(?:各\s*)?\d{1,3}\s*分)/,
+  );
+
+  if (!match) {
+    return undefined;
+  }
+
+  const durationMatch = match[1].match(/\d{1,3}/);
+  const durationMinutes = durationMatch ? Number(durationMatch[0]) : undefined;
+  if (durationMinutes === undefined || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    return undefined;
+  }
+
+  return {
+    kind: 'meal',
+    durationMinutes,
+    hardness: 'soft',
+    rawText: match[1],
+  };
+}
+
 function parseLifeConstraint(segment: string, context: WeeklyPlanningIntakeContext): LifeConstraint[] {
   const constraints: LifeConstraint[] = [];
   const hour = parseHour(segment);
+  const sleepRange = parseSleepRangeConstraint(segment);
+  const mealDuration = parseMealDurationConstraint(segment);
+  const bathSource = segment.match(/(?:お風呂|風呂)(?:\s*(?:は|が)\s*(?:各\s*)?\d{1,3}\s*分)?/)?.[0];
   const wakeAndStudyAvailableStart = parseWakeAndStudyAvailableStart(segment);
+
+  if (sleepRange) {
+    constraints.push(sleepRange);
+  }
+
+  if (mealDuration) {
+    constraints.push(mealDuration);
+  }
 
   if (wakeAndStudyAvailableStart) {
     constraints.push(wakeAndStudyAvailableStart);
@@ -139,14 +198,14 @@ function parseLifeConstraint(segment: string, context: WeeklyPlanningIntakeConte
     });
   }
 
-  if ((/\u98a8\u5442|\u304a\u98a8\u5442/.test(segment)) && !/\u591c\u306b.*(?:\u98a8\u5442|\u304a\u98a8\u5442)/.test(segment)) {
+  if (bathSource && !/\u591c\u306b.*(?:\u98a8\u5442|\u304a\u98a8\u5442)/.test(segment)) {
     constraints.push({
       kind: 'bath',
       date: hour === undefined ? undefined : context.selectedDate,
       start: hour === undefined ? undefined : formatHourTime(hour),
       durationMinutes: 30,
       hardness: hour === undefined ? 'soft' : 'hard',
-      rawText: segment,
+      rawText: bathSource,
     });
   }
 

@@ -9,6 +9,7 @@ import type {
   SetExamScopeCommand,
   SetPlanningRangeCommand,
   SetPendingPlanningRangeCommand,
+  SetStudyGoalCommand,
   SetUnitRateCommand,
   UpdateLifeConstraintCommand,
 } from './weeklyPlanningCommandTypes';
@@ -19,6 +20,7 @@ import type {
   PlanningRange,
   PriorityPolicy,
   StudyProgress,
+  StudyTaskScope,
   UnitRateEstimate,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
@@ -136,6 +138,24 @@ export function normalizeSetPendingPlanningRangeCommand(
       },
       durationDays: command.pending.durationDays ?? 7,
     },
+  };
+}
+
+export function toStudyTaskScopeFromSetStudyGoalCommand(
+  command: SetStudyGoalCommand,
+): StudyTaskScope {
+  const unit = command.goal.unit ?? 'unknown';
+  const amount = command.goal.amount;
+  const isTimeUnit = unit === 'minutes' || unit === 'hours';
+
+  return {
+    title: command.goal.title,
+    subject: command.goal.subject,
+    unit,
+    amount,
+    rawText: command.sourceSegment ?? command.sourceText,
+    requiresTimeEstimate: amount === undefined || !isTimeUnit,
+    source: 'command',
   };
 }
 

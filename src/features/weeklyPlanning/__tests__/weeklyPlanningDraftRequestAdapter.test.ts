@@ -284,6 +284,70 @@ describe('weekly planning draft request adapter', () => {
     expect(state.pendingPlanningRange?.scope.startDate).toBe('2026-07-20');
   });
 
+  it('records a default planning_period assumption only when that slot is seeded and unresolved', () => {
+    const state = createAssumablePreviewState();
+    state.pendingPlanningRange = undefined;
+    state.missing = [
+      'planning_period',
+      'fixed_events',
+      'sleep_cycle',
+      'meal_bath_constraints',
+      'year_range',
+      'progress',
+      'completion_direction',
+      'unit_duration_estimate',
+      'priority_policy',
+      'next_field_after_math',
+      'life_constraints',
+    ];
+
+    const assumed = createAssumedWeeklyDraftRequest(state, {
+      currentDateTime: '2026-07-11T10:00:00',
+    });
+
+    expect(assumed?.assumptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        slot: 'planning_period',
+        source: 'default',
+      }),
+    ]));
+  });
+
+  it.each([
+    ['confirmed range', {
+      range: {
+        startDateTime: '2026-07-10T00:00:00',
+        endDateTime: '2026-07-16T24:00:00',
+        confidence: 'explicit' as const,
+      },
+      pendingPlanningRange: undefined,
+    }],
+    ['pending range', {
+      range: undefined,
+      pendingPlanningRange: {
+        scope: { kind: 'next_week' as const, label: '来週', startDate: '2026-07-13', endDate: '2026-07-19' },
+        durationDays: 7,
+        sourceText: '来週',
+      },
+    }],
+    ['unseeded period', {
+      range: undefined,
+      pendingPlanningRange: undefined,
+    }],
+  ])('does not record planning_period assumption for %s', (_label, overrides) => {
+    const state = createAssumablePreviewState();
+    Object.assign(state, overrides);
+    state.missing = state.missing.filter((slot) => slot !== 'planning_period');
+
+    const assumed = createAssumedWeeklyDraftRequest(state, {
+      currentDateTime: '2026-07-11T10:00:00',
+    });
+
+    expect(assumed?.assumptions ?? []).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ slot: 'planning_period' })]),
+    );
+  });
+
   it('does not synthesize when a preview prerequisite remains blocking', () => {
     const withoutTotalYears = createAssumablePreviewState();
     withoutTotalYears.examPrepScope = {

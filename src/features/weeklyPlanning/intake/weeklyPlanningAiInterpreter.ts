@@ -391,6 +391,26 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
     required: [],
     properties: {},
   }),
+  commandSchema({
+    type: 'set_study_goal',
+    required: ['goal'],
+    properties: {
+      goal: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title'],
+        properties: {
+          title: stringSchema(),
+          subject: stringSchema(),
+          unit: {
+            type: 'string',
+            enum: ['minutes', 'hours', 'pages', 'problems', 'words', 'lessons', 'chapters', 'year_field_chunk', 'topic', 'unknown'],
+          },
+          amount: { type: 'number' },
+        },
+      },
+    },
+  }),
 ];
 
 export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
@@ -503,6 +523,7 @@ export function createSystemPrompt(): string {
     '- add_fixed_event, add_unavailable, update_life_constraint, note_no_fixed_events, note_uncertainty, set_planning_range only when explicit in the current turn.',
     '- set_pending_planning_range: when the user states a future planning scope without a resolvable start date. Set scope.kind to next_week or named_future_period and copy the user-facing label; include durationDays only when stated. Do not fill startDate or endDate unless the user explicitly supplied them: the application computes the next_week window. Never substitute an inferred set_planning_range.',
     '- begin_weekly_planning: emit when the user expresses an intention to create a plan or schedule, even if the period or learning content is not yet specified.',
+    '- set_study_goal: emit when the user states a non-exam learning goal or study subject to work on. Preserve the goal title and optional subject/unit/amount; do not invent amount. Use set_exam_scope for entrance-exam year×field scope instead.',
     '- When stateSummary.pendingPlanningRange exists, resolve weekday or short start-date answers against pendingPlanningRange.startDate, pendingPlanningRange.endDate, and context.currentDateTime to a concrete ISO date inside that pending window, then emit set_planning_range with range.confidence=explicit and high command confidence when certain. The application performs final window validation; if no concrete date can be resolved, emit no range command.',
     '- Resolve relative dates such as today, tomorrow, the day after tomorrow, and next week from context.currentDateTime. Emit ISO YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss values only when the resolution is certain.',
     '- When stateSummary.lastQuestions is present, interpret short replies, corrections, and confirmations as answers to those slots before considering unrelated meanings.',

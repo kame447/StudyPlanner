@@ -17,6 +17,7 @@ import {
   toStudyProgressFromMarkCompletedUnitsCommand,
   toStudyProgressFromMarkCompletionTargetCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
+  toStudyTaskScopeFromSetStudyGoalCommand,
   toUncertaintyFromNoteUncertaintyCommand,
   toUnitRateFromSetUnitRateCommand,
 } from './weeklyPlanningCommandAdapter';
@@ -37,6 +38,7 @@ import {
   parseBareDurationAsUnitRateCommand,
   parseSetUnitRateCommand,
 } from './weeklyPlanningUnitRateParsing';
+import { normalizeStudyTaskTitle } from './weeklyPlanningTaskIdentity';
 import { parseNoteUncertaintyCommand } from './weeklyPlanningUncertaintyParsing';
 import { applyLegacyWeeklyPlanningFallback } from './weeklyPlanningLegacyFallback';
 
@@ -455,6 +457,23 @@ function applyWeeklyPlanningCommand(
           ['planning_start_date'],
         ),
       };
+    case 'set_study_goal': {
+      const task = toStudyTaskScopeFromSetStudyGoalCommand(command);
+      const taskIdentity = normalizeStudyTaskTitle(task.title);
+      const tasks = [
+        ...state.tasks.filter(
+          (existingTask) => normalizeStudyTaskTitle(existingTask.title) !== taskIdentity,
+        ),
+        task,
+      ];
+
+      return {
+        ...state,
+        intent: state.intent === 'unknown' ? 'weekly_study_planning' : state.intent,
+        tasks,
+        missing: removeMissing(state.missing, ['tasks_or_goals']),
+      };
+    }
     case 'begin_weekly_planning': {
       const hasPlanningScope = Boolean(state.range || state.pendingPlanningRange);
       const hasLearningScope = Boolean(state.examPrepScope || state.tasks.length > 0);
