@@ -50,6 +50,34 @@ function plan(overrides: Partial<Plan>): Plan {
   };
 }
 
+async function runProviderFailureWithCommandTask(userText: string) {
+  const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+    ...defaultPipelineInput,
+    userText: '数学のテスト勉強したい',
+    interpreter: fakeInterpreter([{
+      command: {
+        type: 'set_study_goal',
+        goal: { title: '数学', subject: '数学' },
+        sourceText: '数学のテスト勉強したい',
+        confidence: 'high',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+    }]),
+  });
+
+  return runWeeklyPlanningIntakePipelineWithInterpreter({
+    ...defaultPipelineInput,
+    previousState: first.state,
+    userText,
+    interpreter: {
+      async interpretUserTurn() {
+        throw new Error('provider unavailable');
+      },
+    },
+  });
+}
+
 function draftReadyState(): PlanningIntakeState {
   return {
     status: 'draft_ready',
@@ -492,6 +520,91 @@ describe('weekly planning intake pipeline', () => {
     ]);
     expect(second.state.constraints).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'bath', durationMinutes: 30 }),
+    ]));
+  });
+
+  it('keeps the post-meal English task without inferring a meal duration', async () => {
+    const second = await runProviderFailureWithCommandTask(
+      '食事の後に英語を30分やりたい',
+    );
+
+    expect(second.state.tasks).toHaveLength(2);
+    expect(second.state.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+      expect.objectContaining({
+        source: 'legacy_fallback',
+        amount: 30,
+        rawText: expect.stringContaining('英語'),
+      }),
+    ]));
+    expect(second.state.constraints).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'meal' }),
+    ]));
+  });
+
+  it('consumes only the explicit meal duration in a no-comma mixed turn', async () => {
+    const second = await runProviderFailureWithCommandTask(
+      '食事は各30分で英語を2時間やりたい',
+    );
+
+    expect(second.state.tasks).toHaveLength(2);
+    expect(second.state.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+      expect.objectContaining({
+        source: 'legacy_fallback',
+        amount: 120,
+        rawText: expect.stringContaining('英語'),
+      }),
+    ]));
+    expect(second.state.tasks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ rawText: expect.stringContaining('食事') }),
+    ]));
+    expect(second.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'meal', durationMinutes: 30 }),
+    ]));
+  });
+
+  it('consumes only the explicit bath duration in a no-comma mixed turn', async () => {
+    const second = await runProviderFailureWithCommandTask(
+      'お風呂は30分で英語を2時間やりたい',
+    );
+
+    expect(second.state.tasks).toHaveLength(2);
+    expect(second.state.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+      expect.objectContaining({
+        source: 'legacy_fallback',
+        amount: 120,
+        rawText: expect.stringContaining('英語'),
+      }),
+    ]));
+    expect(second.state.tasks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ rawText: expect.stringContaining('風呂') }),
+    ]));
+    expect(second.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'bath', durationMinutes: 30 }),
+    ]));
+  });
+
+  it('consumes only the explicit sleep range in a no-comma mixed turn', async () => {
+    const second = await runProviderFailureWithCommandTask(
+      '睡眠は23時から6時で英語を30分やりたい',
+    );
+
+    expect(second.state.tasks).toHaveLength(2);
+    expect(second.state.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+      expect.objectContaining({
+        source: 'legacy_fallback',
+        amount: 30,
+        rawText: expect.stringContaining('英語'),
+      }),
+    ]));
+    expect(second.state.tasks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ rawText: expect.stringContaining('睡眠') }),
+    ]));
+    expect(second.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'sleep', start: '23:00', end: '06:00' }),
     ]));
   });
 

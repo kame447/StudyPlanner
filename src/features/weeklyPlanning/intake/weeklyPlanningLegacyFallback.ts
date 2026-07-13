@@ -66,7 +66,12 @@ function mergeLegacyTasks(
   return [...commandTasks, ...legacyTasksByIdentity.values()];
 }
 
-function consumedConstraintSourceSegments(
+interface ConsumedConstraintRange {
+  start: number;
+  end: number;
+}
+
+function constraintSourceSegments(
   text: string,
   context: WeeklyPlanningIntakeContext,
 ): string[] {
@@ -75,21 +80,46 @@ function consumedConstraintSourceSegments(
     ...parseAddUnavailableCommands(text, context),
   ];
 
-  return Array.from(new Set(commands.map((command) =>
+  return commands.map((command) =>
     ('sourceSegment' in command && typeof command.sourceSegment === 'string'
       ? command.sourceSegment
       : command.sourceText),
-  ).filter(Boolean)));
+  ).filter(Boolean);
+}
+
+function consumedConstraintRanges(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): ConsumedConstraintRange[] {
+  const normalizedText = normalizeIntakeText(text);
+  const ranges: ConsumedConstraintRange[] = [];
+
+  constraintSourceSegments(text, context).forEach((sourceSegment) => {
+    let start = normalizedText.indexOf(sourceSegment);
+    while (start >= 0 && ranges.some((range) => start < range.end && start + sourceSegment.length > range.start)) {
+      start = normalizedText.indexOf(sourceSegment, start + 1);
+    }
+
+    if (start >= 0) {
+      ranges.push({ start, end: start + sourceSegment.length });
+    }
+  });
+
+  return ranges;
 }
 
 function removeConsumedConstraintText(
   text: string,
   context: WeeklyPlanningIntakeContext,
 ): string {
-  return consumedConstraintSourceSegments(text, context).reduce(
-    (remainingText, sourceSegment) => remainingText.split(sourceSegment).join(''),
-    normalizeIntakeText(text),
-  );
+  const normalizedText = normalizeIntakeText(text);
+  return consumedConstraintRanges(text, context)
+    .sort((left, right) => right.start - left.start)
+    .reduce(
+      (remainingText, range) =>
+        remainingText.slice(0, range.start) + remainingText.slice(range.end),
+      normalizedText,
+    );
 }
 
 function shouldApplyFirstAssessFallback(state: PlanningIntakeState, userText: string): boolean {

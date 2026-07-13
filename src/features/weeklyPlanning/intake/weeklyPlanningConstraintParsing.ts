@@ -111,19 +111,22 @@ function parseSleepRangeConstraint(segment: string): LifeConstraint | undefined 
     start,
     end,
     hardness: 'hard',
-    rawText: segment,
+    rawText: match[0],
   };
 }
 
 function parseMealDurationConstraint(segment: string): LifeConstraint | undefined {
-  const match = segment.match(/(?:食事|食事時間)\D{0,20}?(\d{1,3})\s*分/);
+  const match = segment.match(
+    /((?:食事|食事時間)\s*(?:は|が|：|:)\s*(?:各\s*)?\d{1,3}\s*分)/,
+  );
 
   if (!match) {
     return undefined;
   }
 
-  const durationMinutes = Number(match[1]);
-  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+  const durationMatch = match[1].match(/\d{1,3}/);
+  const durationMinutes = durationMatch ? Number(durationMatch[0]) : undefined;
+  if (durationMinutes === undefined || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
     return undefined;
   }
 
@@ -131,7 +134,7 @@ function parseMealDurationConstraint(segment: string): LifeConstraint | undefine
     kind: 'meal',
     durationMinutes,
     hardness: 'soft',
-    rawText: segment,
+    rawText: match[1],
   };
 }
 
@@ -140,6 +143,7 @@ function parseLifeConstraint(segment: string, context: WeeklyPlanningIntakeConte
   const hour = parseHour(segment);
   const sleepRange = parseSleepRangeConstraint(segment);
   const mealDuration = parseMealDurationConstraint(segment);
+  const bathSource = segment.match(/(?:お風呂|風呂)(?:\s*(?:は|が)\s*(?:各\s*)?\d{1,3}\s*分)?/)?.[0];
   const wakeAndStudyAvailableStart = parseWakeAndStudyAvailableStart(segment);
 
   if (sleepRange) {
@@ -194,14 +198,14 @@ function parseLifeConstraint(segment: string, context: WeeklyPlanningIntakeConte
     });
   }
 
-  if ((/\u98a8\u5442|\u304a\u98a8\u5442/.test(segment)) && !/\u591c\u306b.*(?:\u98a8\u5442|\u304a\u98a8\u5442)/.test(segment)) {
+  if (bathSource && !/\u591c\u306b.*(?:\u98a8\u5442|\u304a\u98a8\u5442)/.test(segment)) {
     constraints.push({
       kind: 'bath',
       date: hour === undefined ? undefined : context.selectedDate,
       start: hour === undefined ? undefined : formatHourTime(hour),
       durationMinutes: 30,
       hardness: hour === undefined ? 'soft' : 'hard',
-      rawText: segment,
+      rawText: bathSource,
     });
   }
 
