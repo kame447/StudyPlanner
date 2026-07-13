@@ -325,6 +325,117 @@ describe('weekly planning intake pipeline', () => {
     expect(output.decision.kind).toBe('ask_missing_info');
   });
 
+  it('accepts a provider set_study_goal and reaches the capability-gap decision', async () => {
+    const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '数学のテスト勉強したい',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学のテスト勉強', subject: '数学' },
+          sourceText: '数学のテスト勉強したい',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+
+    expect(output.state.tasks).toEqual([
+      expect.objectContaining({
+        title: '数学のテスト勉強',
+        subject: '数学',
+        unit: 'unknown',
+        requiresTimeEstimate: true,
+      }),
+    ]);
+    expect(output.state.tasksSource).toBe('command');
+    expect(output.state.missing).not.toContain('tasks_or_goals');
+    expect(output.state.intent).toBe('weekly_study_planning');
+    expect(output.decision).toMatchObject({
+      kind: 'explain_capability_gap',
+      messageKey: 'explain_weekly_planning_capability_gap',
+    });
+  });
+
+  it('recovers a goal from a later provider turn without re-asking tasks_or_goals', async () => {
+    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '数学のテスト勉強したい',
+      interpreter: fakeInterpreter([]),
+    });
+    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: first.state,
+      userText: 'テスト勉強はゴールでしょ？',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学のテスト勉強', subject: '数学' },
+          sourceText: 'テスト勉強はゴールでしょ？',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+
+    expect(first.decision.kind).toBe('open_planning_dialogue');
+    expect(second.state.tasksSource).toBe('command');
+    expect(second.state.tasks).toEqual([
+      expect.objectContaining({ title: '数学のテスト勉強' }),
+    ]);
+    expect(second.state.missing).not.toContain('tasks_or_goals');
+    expect(second.decision.kind).toBe('explain_capability_gap');
+  });
+
+  it('upserts a same-title goal and appends a different-title goal', async () => {
+    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: 'goal one',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学', subject: '数学', unit: 'hours', amount: 2 },
+          sourceText: 'goal one',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: first.state,
+      userText: 'goal two',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学', subject: '数学', unit: 'hours', amount: 3 },
+          sourceText: 'goal two',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }, {
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '英語', subject: '英語' },
+          sourceText: 'goal two',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+
+    expect(second.state.tasks).toHaveLength(2);
+    expect(second.state.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '数学', amount: 3 }),
+      expect.objectContaining({ title: '英語' }),
+    ]));
+  });
+
   describe('legacy fallback via pipeline', () => {
     it('keeps branch A assessment for a first weekly pipeline turn', () => {
       const output = runTurn(undefined, '\u6765\u9031\u3001\u82f1\u8a9e\u30923\u6642\u9593\u3001\u6570\u5b66\u30922\u6642\u9593');

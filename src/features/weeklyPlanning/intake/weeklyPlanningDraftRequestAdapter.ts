@@ -169,6 +169,15 @@ export function createAssumedWeeklyDraftRequest(
   const assumptions: PlanningAssumption[] = [];
   let planningStartDate: string | undefined;
 
+  if (hasMissingSlot(state, 'planning_period') && !state.range && !state.pendingPlanningRange) {
+    addAssumption(
+      assumptions,
+      'planning_period',
+      'default',
+      '期間の指定がないため、既定の期間(選択中の開始日から7日間)で仮の計画を作ります。',
+    );
+  }
+
   if (hasMissingSlot(state, 'planning_start_date')) {
     if (!hasPendingScopeStartDate(state)) {
       return null;

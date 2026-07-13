@@ -17,6 +17,7 @@ import {
   toStudyProgressFromMarkCompletedUnitsCommand,
   toStudyProgressFromMarkCompletionTargetCommand,
   toStudyProgressFromNoteProgressBoundaryCommand,
+  toStudyTaskScopeFromSetStudyGoalCommand,
   toUncertaintyFromNoteUncertaintyCommand,
   toUnitRateFromSetUnitRateCommand,
 } from './weeklyPlanningCommandAdapter';
@@ -455,6 +456,21 @@ function applyWeeklyPlanningCommand(
           ['planning_start_date'],
         ),
       };
+    case 'set_study_goal': {
+      const task = toStudyTaskScopeFromSetStudyGoalCommand(command);
+      const tasks = [
+        ...state.tasks.filter((existingTask) => existingTask.title !== task.title),
+        task,
+      ];
+
+      return {
+        ...state,
+        intent: state.intent === 'unknown' ? 'weekly_study_planning' : state.intent,
+        tasks,
+        tasksSource: 'command',
+        missing: removeMissing(state.missing, ['tasks_or_goals']),
+      };
+    }
     case 'begin_weekly_planning': {
       const hasPlanningScope = Boolean(state.range || state.pendingPlanningRange);
       const hasLearningScope = Boolean(state.examPrepScope || state.tasks.length > 0);

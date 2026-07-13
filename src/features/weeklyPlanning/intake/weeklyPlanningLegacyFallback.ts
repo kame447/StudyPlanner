@@ -68,6 +68,7 @@ function applyFirstAssessFallback(params: {
     ...params.state,
     intent: 'weekly_study_planning',
     tasks: toPlanningTasks(assessment.tasks),
+    tasksSource: 'legacy_fallback',
     missing: assessment.kind === 'ready'
       ? params.state.missing
       : addMissing(params.state.missing, ['life_constraints']),
@@ -93,6 +94,7 @@ function applyRevisionMergeFallback(params: {
   return {
     ...params.state,
     tasks: toPlanningTasks(revision.tasks),
+    tasksSource: 'legacy_fallback',
     missing: removeMissing(params.state.missing, ['tasks_or_goals']),
   };
 }
@@ -105,6 +107,10 @@ export function applyLegacyWeeklyPlanningFallback(params: {
 }): PlanningIntakeState {
   const { previousState, userText, context } = params;
   const nextState = params.state;
+
+  if (nextState.tasksSource === 'command') {
+    return nextState;
+  }
 
   // TODO(Phase 9.8): keep the legacy weekly parser fallback isolated until the normal/weekly route regression set is expanded.
   if (shouldApplyFirstAssessFallback(nextState, userText)) {

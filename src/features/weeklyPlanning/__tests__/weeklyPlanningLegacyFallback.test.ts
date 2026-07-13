@@ -98,6 +98,31 @@ describe('weekly planning legacy fallback regression', () => {
     expect(state.shouldSavePlan).toBe(false);
   });
 
+  it('does not replace command-derived tasks during a later rules fallback turn', () => {
+    const commandTask = {
+      title: '数学のテスト勉強',
+      subject: '数学',
+      unit: 'unknown' as const,
+      rawText: '数学のテスト勉強したい',
+      requiresTimeEstimate: true,
+    };
+    const previous = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      tasks: [commandTask],
+      tasksSource: 'command' as const,
+      sourceTurns: ['数学のテスト勉強したい'],
+    };
+    const next = applyWeeklyPlanningUserTurn(
+      previous,
+      '睡眠は23時から6時、食事は各30分です',
+      context,
+    );
+
+    expect(next.tasks).toEqual([commandTask]);
+    expect(next.tasksSource).toBe('command');
+  });
+
   it('legacy fallback branch B merges revision tasks into an existing weekly planning state', () => {
     const initial = applyWeeklyPlanningUserTurn(
       createInitialPlanningIntakeState(),

@@ -28,6 +28,7 @@ export const KNOWN_COMMAND_TYPES = new Set([
   'set_planning_range',
   'set_pending_planning_range',
   'begin_weekly_planning',
+  'set_study_goal',
 ]);
 
 const STUDY_SCOPE_UNITS = new Set([
@@ -125,6 +126,10 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
         && typeof command.pending.sourceText === 'string';
     case 'begin_weekly_planning':
       return true;
+    case 'set_study_goal':
+      return isRecord(command.goal)
+        && typeof command.goal.title === 'string'
+        && command.goal.title.trim().length > 0;
     case 'set_priority_policy':
       return isRecord(command.policy) && typeof command.policy.kind === 'string';
     case 'mark_completed_units':
@@ -161,6 +166,10 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
     case 'set_pending_planning_range':
       return !PLANNING_TEMPORAL_SCOPE_KINDS.has(command.pending.scope.kind)
         ? 'invalid-planning-temporal-scope-kind' : null;
+    case 'set_study_goal':
+      return command.goal.unit !== undefined && !STUDY_SCOPE_UNITS.has(command.goal.unit)
+        ? 'invalid-unit'
+        : null;
     case 'set_exam_scope':
       return command.scope.unitModel && !STUDY_SCOPE_UNITS.has(command.scope.unitModel)
         ? 'invalid-unit-model'
@@ -223,6 +232,13 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
       }
       return null;
     }
+    case 'set_study_goal':
+      return command.goal.amount === undefined
+        || (typeof command.goal.amount === 'number'
+          && Number.isFinite(command.goal.amount)
+          && command.goal.amount > 0)
+        ? null
+        : 'invalid-goal-amount';
     case 'set_exam_scope': {
       const yearRange = command.scope.yearRange;
       if (yearRange && (!isReasonableYear(yearRange.startYear) || !isReasonableYear(yearRange.endYear))) {

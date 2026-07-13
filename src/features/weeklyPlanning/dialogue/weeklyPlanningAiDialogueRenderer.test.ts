@@ -485,4 +485,49 @@ describe('weekly planning renderer deterministic context', () => {
       ],
     }));
   });
+  it('includes command-derived goal titles in deterministic accepted facts', async () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      tasks: [{
+        title: '数学のテスト勉強',
+        subject: '数学',
+        unit: 'unknown',
+        rawText: '数学のテスト勉強したい',
+        requiresTimeEstimate: true,
+      }],
+      tasksSource: 'command',
+    };
+    const input = createDialogueRenderInput({
+      state,
+      decision: {
+        kind: 'open_planning_dialogue',
+        messageKey: 'open_weekly_planning_dialogue',
+        shouldCreateDraft: false,
+        shouldSavePlan: false,
+      },
+    });
+
+    expect(input.acceptedFacts.goals).toEqual(['数学のテスト勉強']);
+    const message = await renderWeeklyPlanningDialogueMessage({
+      state: {
+        ...state,
+        missing: ['planning_start_date'],
+      },
+      decision: {
+        kind: 'ask_missing_info',
+        messageKey: 'ask_planning_start_date',
+        requiredFields: ['planning_start_date'],
+        questionPlan: [{
+          kind: 'missing_slot',
+          targetSlot: 'planning_start_date',
+          missing: ['planning_start_date'],
+          intent: 'ask_planning_start_date',
+        }],
+        shouldCreateDraft: false,
+        shouldSavePlan: false,
+      },
+    });
+    expect(message).toContain(String.fromCodePoint(0x76ee,0x6a19,0x306f,0x6570,0x5b66,0x306e,0x30c6,0x30b9,0x30c8,0x52c9,0x5f37));
+  });
+
 });

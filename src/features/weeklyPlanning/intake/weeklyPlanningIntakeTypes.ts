@@ -209,6 +209,7 @@ export interface PlanningIntakeState {
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
   sourceTurns: string[];
+  tasksSource?: 'command' | 'legacy_fallback';
 }
 
 export interface WeeklyPlanningIntakeContext {

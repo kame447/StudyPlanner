@@ -889,4 +889,25 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(prompt).toContain('Never substitute an inferred set_planning_range');
   });
 
+
+  it.each([
+    ['missing title', { goal: {} }, 'invalid-command-shape'],
+    ['empty title', { goal: { title: '   ' } }, 'invalid-command-shape'],
+    ['invalid unit', { goal: { title: 'dollars', unit: 'dollars' } }, 'invalid-unit'],
+    ['negative amount', { goal: { title: 'negative', amount: -1 } }, 'invalid-goal-amount'],
+  ])('rejects set_study_goal with %s', (_label, payload, reason) => {
+    const command = {
+      type: 'set_study_goal',
+      ...payload,
+      sourceText: 'goal',
+      confidence: 'high',
+    } as unknown as ParsedWeeklyPlanningCommand;
+    const result = validateInterpretedCandidates([candidate(command)], baseSummary());
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason }),
+    ]);
+  });
+
 });
