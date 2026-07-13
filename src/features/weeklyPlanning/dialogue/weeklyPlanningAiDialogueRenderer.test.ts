@@ -494,8 +494,16 @@ describe('weekly planning renderer deterministic context', () => {
         unit: 'unknown',
         rawText: '数学のテスト勉強したい',
         requiresTimeEstimate: true,
+        source: 'command',
+      }, {
+        title: '英語',
+        subject: '英語',
+        unit: 'minutes',
+        amount: 120,
+        rawText: '英語を2時間',
+        requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       }],
-      tasksSource: 'command',
     };
     const input = createDialogueRenderInput({
       state,

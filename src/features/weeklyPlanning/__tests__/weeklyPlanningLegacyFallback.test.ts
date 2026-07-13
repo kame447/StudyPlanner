@@ -23,6 +23,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 180,
         rawText: '英語を3時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
       {
         title: '数学',
@@ -31,6 +32,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 120,
         rawText: '数学を2時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
     ]);
     expect(state.missing).toEqual(['life_constraints']);
@@ -105,22 +107,21 @@ describe('weekly planning legacy fallback regression', () => {
       unit: 'unknown' as const,
       rawText: '数学のテスト勉強したい',
       requiresTimeEstimate: true,
+      source: 'command' as const,
     };
     const previous = {
       ...createInitialPlanningIntakeState(),
       intent: 'weekly_study_planning' as const,
       tasks: [commandTask],
-      tasksSource: 'command' as const,
       sourceTurns: ['数学のテスト勉強したい'],
     };
     const next = applyWeeklyPlanningUserTurn(
       previous,
-      '睡眠は23時から6時、食事は各30分です',
+      '特に追加はありません',
       context,
     );
 
     expect(next.tasks).toEqual([commandTask]);
-    expect(next.tasksSource).toBe('command');
   });
 
   it('legacy fallback branch B merges revision tasks into an existing weekly planning state', () => {
@@ -140,6 +141,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 180,
         rawText: '英語を3時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
       {
         title: '数学',
@@ -148,6 +150,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 120,
         rawText: '数学を2時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
       // Pinned current behavior: mergeWeeklyPlanningRevision keeps the
       // conjunction prefix, so the extracted title is 'あと物理', not '物理'.
@@ -158,6 +161,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 120,
         rawText: 'あと物理を2時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
     ]);
     expect(revised.missing).toEqual(['life_constraints']);
@@ -193,6 +197,7 @@ describe('weekly planning legacy fallback regression', () => {
           amount: 90,
           rawText: '\u65e2\u5b58\u30bf\u30b9\u30af\u309290\u5206',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback' as const,
         },
       ],
       examPrepScope: {
@@ -218,13 +223,32 @@ describe('weekly planning legacy fallback regression', () => {
   });
 
 
-  it('legacy fallback branch B joins multiple previous source turns with Japanese comma', () => {
+  it('legacy fallback branch B rebuilds previousText from legacy task rawText', () => {
     const previousState = {
       ...createInitialPlanningIntakeState(),
       intent: 'weekly_study_planning' as const,
-      tasks: [],
+      tasks: [
+        {
+          title: '英語',
+          subject: '英語',
+          unit: 'minutes' as const,
+          amount: 180,
+          rawText: '英語を3時間',
+          requiresTimeEstimate: false,
+          source: 'legacy_fallback' as const,
+        },
+        {
+          title: '数学',
+          subject: '数学',
+          unit: 'minutes' as const,
+          amount: 120,
+          rawText: '数学を2時間',
+          requiresTimeEstimate: false,
+          source: 'legacy_fallback' as const,
+        },
+      ],
       missing: ['life_constraints' as const],
-      sourceTurns: ['来週、英語を3時間', '数学を2時間'],
+      sourceTurns: ['command由来なら再投入しない発話'],
     };
 
     const revised = applyWeeklyPlanningUserTurn(previousState, 'あと物理を2時間', context);
@@ -239,6 +263,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 180,
         rawText: '英語を3時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
       {
         title: '数学',
@@ -247,6 +272,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 120,
         rawText: '数学を2時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
       {
         title: 'あと物理',
@@ -255,15 +281,60 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 120,
         rawText: 'あと物理を2時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
     ]);
     expect(revised.missing).toEqual(['life_constraints']);
     expect(revised.sourceTurns).toEqual([
-      '来週、英語を3時間',
-      '数学を2時間',
+      'command由来なら再投入しない発話',
       'あと物理を2時間',
     ]);
     expect(revised.shouldSavePlan).toBe(false);
+  });
+
+
+  it('keeps a command task when a same-title legacy candidate is parsed', () => {
+    const commandTask = {
+      title: '英語',
+      subject: '英語',
+      unit: 'unknown' as const,
+      rawText: '英語を勉強したい',
+      requiresTimeEstimate: true,
+      source: 'command' as const,
+    };
+    const previousState = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      tasks: [commandTask],
+      sourceTurns: ['英語を勉強したい'],
+    };
+
+    const revised = applyWeeklyPlanningUserTurn(previousState, '英語を2時間', context);
+
+    expect(revised.tasks).toEqual([commandTask]);
+  });
+
+  it('keeps command and different-title legacy tasks together', () => {
+    const previousState = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      tasks: [{
+        title: '英語',
+        subject: '英語',
+        unit: 'unknown' as const,
+        rawText: '英語を勉強したい',
+        requiresTimeEstimate: true,
+        source: 'command' as const,
+      }],
+      sourceTurns: ['英語を勉強したい'],
+    };
+
+    const revised = applyWeeklyPlanningUserTurn(previousState, '数学を2時間', context);
+
+    expect(revised.tasks).toEqual([
+      expect.objectContaining({ title: '英語', source: 'command' }),
+      expect.objectContaining({ title: '数学', source: 'legacy_fallback' }),
+    ]);
   });
 
 
@@ -273,12 +344,13 @@ describe('weekly planning legacy fallback regression', () => {
       intent: 'weekly_study_planning' as const,
       tasks: [
         {
-          title: '既存タスク',
-          subject: '既存タスク',
+          title: '英語',
+          subject: '英語',
           unit: 'minutes' as const,
-          amount: 90,
-          rawText: '既存タスクを90分',
+          amount: 180,
+          rawText: '英語を3時間',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback' as const,
         },
       ],
       missing: ['life_constraints' as const],
@@ -297,6 +369,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 180,
         rawText: '英語を3時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
       {
         title: 'あと数学',
@@ -305,6 +378,7 @@ describe('weekly planning legacy fallback regression', () => {
         amount: 120,
         rawText: 'あと数学を2時間',
         requiresTimeEstimate: false,
+        source: 'legacy_fallback',
       },
     ]);
     expect(revised.missing).toEqual(['life_constraints']);

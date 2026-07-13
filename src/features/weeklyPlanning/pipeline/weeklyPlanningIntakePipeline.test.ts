@@ -347,15 +347,47 @@ describe('weekly planning intake pipeline', () => {
         subject: '数学',
         unit: 'unknown',
         requiresTimeEstimate: true,
+        source: 'command',
       }),
     ]);
-    expect(output.state.tasksSource).toBe('command');
     expect(output.state.missing).not.toContain('tasks_or_goals');
     expect(output.state.intent).toBe('weekly_study_planning');
     expect(output.decision).toMatchObject({
       kind: 'explain_capability_gap',
       messageKey: 'explain_weekly_planning_capability_gap',
     });
+  });
+
+  it('adds a legacy task after a command task when the provider throws', async () => {
+    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '数学のテスト勉強したい',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学', subject: '数学' },
+          sourceText: '数学のテスト勉強したい',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: first.state,
+      userText: 'あと英語を2時間',
+      interpreter: {
+        async interpretUserTurn() {
+          throw new Error('provider unavailable');
+        },
+      },
+    });
+
+    expect(second.state.tasks).toEqual([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+      expect.objectContaining({ title: 'あと英語', source: 'legacy_fallback', amount: 120 }),
+    ]);
   });
 
   it('recovers a goal from a later provider turn without re-asking tasks_or_goals', async () => {
@@ -381,9 +413,8 @@ describe('weekly planning intake pipeline', () => {
     });
 
     expect(first.decision.kind).toBe('open_planning_dialogue');
-    expect(second.state.tasksSource).toBe('command');
     expect(second.state.tasks).toEqual([
-      expect.objectContaining({ title: '数学のテスト勉強' }),
+      expect.objectContaining({ title: '数学のテスト勉強', source: 'command' }),
     ]);
     expect(second.state.missing).not.toContain('tasks_or_goals');
     expect(second.decision.kind).toBe('explain_capability_gap');
@@ -450,6 +481,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 180,
           rawText: '\u82f1\u8a9e\u30923\u6642\u9593',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
         {
           title: '\u6570\u5b66',
@@ -458,6 +490,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 120,
           rawText: '\u6570\u5b66\u30922\u6642\u9593',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
       ]);
       expect(output.state.missing).toEqual(['life_constraints']);
@@ -525,6 +558,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 180,
           rawText: '\u82f1\u8a9e\u30923\u6642\u9593',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
         {
           title: '\u6570\u5b66',
@@ -533,6 +567,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 120,
           rawText: '\u6570\u5b66\u30922\u6642\u9593',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
       ]);
       expect(output.state.missing).toEqual([
@@ -625,6 +660,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 180,
           rawText: '英語を3時間',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
         {
           title: '数学',
@@ -633,6 +669,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 120,
           rawText: '数学を2時間',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
         {
           title: 'あと物理',
@@ -641,6 +678,7 @@ describe('weekly planning intake pipeline', () => {
           amount: 120,
           rawText: 'あと物理を2時間',
           requiresTimeEstimate: false,
+          source: 'legacy_fallback',
         },
       ]);
       expect(second.state.missing).toEqual(['life_constraints']);

@@ -155,6 +155,7 @@ export function toStudyTaskScopeFromSetStudyGoalCommand(
     amount,
     rawText: command.sourceSegment ?? command.sourceText,
     requiresTimeEstimate: amount === undefined || !isTimeUnit,
+    source: 'command',
   };
 }
 

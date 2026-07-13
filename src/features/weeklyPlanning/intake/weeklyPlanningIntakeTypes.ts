@@ -57,6 +57,8 @@ export type StudyScopeUnit =
 
 export type ExamPrepStrategyHint = 'field_first' | 'year_first' | 'unknown';
 
+export type StudyTaskSource = 'command' | 'legacy_fallback';
+
 export interface ExamPrepScope {
   examType?: string;
   fields: string[];
@@ -83,6 +85,7 @@ export interface StudyTaskScope {
   amount?: number;
   rawText: string;
   requiresTimeEstimate: boolean;
+  source: StudyTaskSource;
 }
 
 export type StudyProgressAmbiguity =
@@ -209,7 +212,6 @@ export interface PlanningIntakeState {
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
   sourceTurns: string[];
-  tasksSource?: 'command' | 'legacy_fallback';
 }
 
 export interface WeeklyPlanningIntakeContext {

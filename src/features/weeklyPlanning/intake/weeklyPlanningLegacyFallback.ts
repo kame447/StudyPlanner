@@ -10,6 +10,7 @@ import type {
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
 import { addMissing, removeMissing } from './weeklyPlanningMissingStatus';
+import { normalizeStudyTaskTitle } from './weeklyPlanningTaskIdentity';
 
 function mapWeeklyAmountUnit(unit: string): StudyScopeUnit {
   switch (unit) {
@@ -38,7 +39,28 @@ function toPlanningTasks(tasks: SimpleWeeklyTask[]): PlanningIntakeState['tasks'
     amount: task.amount.value,
     rawText: task.sourceText,
     requiresTimeEstimate: task.requiresTimeEstimate,
+    source: 'legacy_fallback',
   }));
+}
+
+function mergeLegacyTasks(
+  currentTasks: PlanningIntakeState['tasks'],
+  parsedLegacyTasks: PlanningIntakeState['tasks'],
+): PlanningIntakeState['tasks'] {
+  const commandTasks = currentTasks.filter((task) => task.source === 'command');
+  const commandIdentities = new Set(
+    commandTasks.map((task) => normalizeStudyTaskTitle(task.title)),
+  );
+  const legacyTasksByIdentity = new Map<string, PlanningIntakeState['tasks'][number]>();
+
+  parsedLegacyTasks.forEach((task) => {
+    const identity = normalizeStudyTaskTitle(task.title);
+    if (!commandIdentities.has(identity)) {
+      legacyTasksByIdentity.set(identity, task);
+    }
+  });
+
+  return [...commandTasks, ...legacyTasksByIdentity.values()];
 }
 
 function shouldApplyFirstAssessFallback(state: PlanningIntakeState, userText: string): boolean {
@@ -67,8 +89,7 @@ function applyFirstAssessFallback(params: {
   return {
     ...params.state,
     intent: 'weekly_study_planning',
-    tasks: toPlanningTasks(assessment.tasks),
-    tasksSource: 'legacy_fallback',
+    tasks: mergeLegacyTasks(params.state.tasks, toPlanningTasks(assessment.tasks)),
     missing: assessment.kind === 'ready'
       ? params.state.missing
       : addMissing(params.state.missing, ['life_constraints']),
@@ -83,7 +104,10 @@ function applyRevisionMergeFallback(params: {
 }): PlanningIntakeState {
   const revision = mergeWeeklyPlanningRevision({
     selectedDate: params.context.selectedDate,
-    previousText: params.previousState.sourceTurns.join('、'),
+    previousText: params.previousState.tasks
+      .filter((task) => task.source === 'legacy_fallback')
+      .map((task) => task.rawText)
+      .join('、'),
     revisionText: params.userText,
   });
 
@@ -93,8 +117,7 @@ function applyRevisionMergeFallback(params: {
 
   return {
     ...params.state,
-    tasks: toPlanningTasks(revision.tasks),
-    tasksSource: 'legacy_fallback',
+    tasks: mergeLegacyTasks(params.state.tasks, toPlanningTasks(revision.tasks)),
     missing: removeMissing(params.state.missing, ['tasks_or_goals']),
   };
 }
@@ -107,10 +130,6 @@ export function applyLegacyWeeklyPlanningFallback(params: {
 }): PlanningIntakeState {
   const { previousState, userText, context } = params;
   const nextState = params.state;
-
-  if (nextState.tasksSource === 'command') {
-    return nextState;
-  }
 
   // TODO(Phase 9.8): keep the legacy weekly parser fallback isolated until the normal/weekly route regression set is expanded.
   if (shouldApplyFirstAssessFallback(nextState, userText)) {

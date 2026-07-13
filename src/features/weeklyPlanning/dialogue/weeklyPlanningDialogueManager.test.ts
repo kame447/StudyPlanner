@@ -339,6 +339,7 @@ describe('weekly planning dialogue manager', () => {
         unit: 'chapters',
         rawText: '読書',
         requiresTimeEstimate: true,
+        source: 'command',
       }],
       missing: [],
       shouldCreateDraft: true,

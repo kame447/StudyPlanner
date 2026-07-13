@@ -4,6 +4,7 @@ import type {
   InterpretedCommandCandidate,
   InterpreterStateSummary,
 } from './weeklyPlanningInterpreterTypes';
+import { studyGoalIdentity } from './weeklyPlanningTaskIdentity';
 
 const CONFIDENCE_RANK = {
   low: 0,
@@ -66,6 +67,14 @@ const LIFE_CONSTRAINT_KINDS = new Set([
 const PLANNING_TEMPORAL_SCOPE_KINDS = new Set(['next_week', 'named_future_period']);
 
 const HARDNESS_VALUES = new Set(['hard', 'soft']);
+const SET_STUDY_GOAL_TEXT_LIMITS = {
+  title: 200,
+  subject: 200,
+  sourceText: 4000,
+  sourceSegment: 1000,
+} as const;
+const SET_STUDY_GOAL_PROPERTIES = new Set(['title', 'subject', 'unit', 'amount']);
+
 const MERGE_MODES = new Set(['replace', 'append']);
 const CONSTRAINT_SOURCE_KINDS = new Set(['timetable', 'existing_plans', 'calendar']);
 const CLARIFICATION_TARGETS = new Set(['referenced_question', 'referenced_term', 'unresolved_slot']);
@@ -78,6 +87,40 @@ const COMPLETION_TARGET_KINDS = new Set([
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isOptionalBoundedString(value: unknown, maxLength: number): boolean {
+  return value === undefined || (typeof value === 'string' && value.length <= maxLength);
+}
+
+function hasValidSetStudyGoalShape(command: Record<string, unknown>): boolean {
+  if (typeof command.sourceText !== 'string'
+    || command.sourceText.length > SET_STUDY_GOAL_TEXT_LIMITS.sourceText
+    || !isOptionalBoundedString(command.sourceSegment, SET_STUDY_GOAL_TEXT_LIMITS.sourceSegment)
+    || !isPlainRecord(command.goal)) {
+    return false;
+  }
+
+  const goal = command.goal;
+  if (Object.keys(goal).some((property) => !SET_STUDY_GOAL_PROPERTIES.has(property))) {
+    return false;
+  }
+
+  return typeof goal.title === 'string'
+    && goal.title.trim().length > 0
+    && goal.title.length <= SET_STUDY_GOAL_TEXT_LIMITS.title
+    && isOptionalBoundedString(goal.subject, SET_STUDY_GOAL_TEXT_LIMITS.subject)
+    && (goal.unit === undefined || typeof goal.unit === 'string')
+    && (goal.amount === undefined || typeof goal.amount === 'number');
 }
 
 function isConfidence(value: unknown): value is ParsedWeeklyPlanningCommand['confidence'] {
@@ -127,9 +170,7 @@ function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningComm
     case 'begin_weekly_planning':
       return true;
     case 'set_study_goal':
-      return isRecord(command.goal)
-        && typeof command.goal.title === 'string'
-        && command.goal.title.trim().length > 0;
+      return hasValidSetStudyGoalShape(command);
     case 'set_priority_policy':
       return isRecord(command.policy) && typeof command.policy.kind === 'string';
     case 'mark_completed_units':
@@ -306,6 +347,8 @@ function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
       return ['fixed_events'];
     case 'update_life_constraint':
       return ['life_constraints'];
+    case 'set_study_goal':
+      return [studyGoalIdentity(command.goal.title)];
     default:
       return [];
   }

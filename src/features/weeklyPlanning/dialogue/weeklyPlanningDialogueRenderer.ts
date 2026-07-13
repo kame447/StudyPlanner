@@ -130,6 +130,9 @@ export function createDialogueRenderInput(params: {
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : undefined;
+  const commandGoalTitles = params.state.tasks
+    .filter((task) => task.source === 'command')
+    .map((task) => task.title);
 
   return {
     planningPeriodLabel: planningPeriodLabel(params.state),
@@ -137,7 +140,7 @@ export function createDialogueRenderInput(params: {
     constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
     acceptedFacts: {
       fields: params.state.examPrepScope?.fields,
-      goals: params.state.tasksSource === 'command' ? params.state.tasks.map((task) => task.title) : undefined,
+      goals: commandGoalTitles.length > 0 ? commandGoalTitles : undefined,
       yearRange: params.state.examPrepScope?.yearRange
         ? {
             startYear: params.state.examPrepScope.yearRange.startYear,

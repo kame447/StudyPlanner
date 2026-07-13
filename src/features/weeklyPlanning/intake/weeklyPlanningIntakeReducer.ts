@@ -38,6 +38,7 @@ import {
   parseBareDurationAsUnitRateCommand,
   parseSetUnitRateCommand,
 } from './weeklyPlanningUnitRateParsing';
+import { normalizeStudyTaskTitle } from './weeklyPlanningTaskIdentity';
 import { parseNoteUncertaintyCommand } from './weeklyPlanningUncertaintyParsing';
 import { applyLegacyWeeklyPlanningFallback } from './weeklyPlanningLegacyFallback';
 
@@ -458,8 +459,11 @@ function applyWeeklyPlanningCommand(
       };
     case 'set_study_goal': {
       const task = toStudyTaskScopeFromSetStudyGoalCommand(command);
+      const taskIdentity = normalizeStudyTaskTitle(task.title);
       const tasks = [
-        ...state.tasks.filter((existingTask) => existingTask.title !== task.title),
+        ...state.tasks.filter(
+          (existingTask) => normalizeStudyTaskTitle(existingTask.title) !== taskIdentity,
+        ),
         task,
       ];
 
@@ -467,7 +471,6 @@ function applyWeeklyPlanningCommand(
         ...state,
         intent: state.intent === 'unknown' ? 'weekly_study_planning' : state.intent,
         tasks,
-        tasksSource: 'command',
         missing: removeMissing(state.missing, ['tasks_or_goals']),
       };
     }
