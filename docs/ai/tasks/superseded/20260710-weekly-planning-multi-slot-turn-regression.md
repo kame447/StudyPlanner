@@ -1,5 +1,7 @@
 # 複合ターン(1発話複数slot・pending割り込み)の regression テストを整備する(テストのみ)
 
+> **ステータス: superseded。** T1〜T5 の回帰を固定するという目的は有効だが、v4 では D3 の conversation eval に統合する。固定 missing slot 順や renderer 文言を主 oracle とする本 task を、今後の新規テスト task として実行しない。
+
 Priority: **Medium**(production code 変更なし。2026-07-10 レビューで確認した「405件 green のまま複数の複数ターン不具合が再現する」というテスト網の穴を塞ぎ、以後の intake 変更の安全網にする)
 
 本mdの範囲外へ進まない。git add / commit / push はしない。**production code は一切変更しない(テストのみ)。**

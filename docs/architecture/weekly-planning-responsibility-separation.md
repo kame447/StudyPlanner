@@ -1,5 +1,7 @@
 # Weekly Planning Responsibility Separation
 
+> **ステータス: 安全境界の基礎記録。** command、domain、scheduler、UI の分離は維持する。Phase 9.x の段階手順、deterministic parser を唯一の自然言語層とする記述、固定 dialogue decision の扱いは [親設計 v4](weekly-planning-dialogue-architecture-v4.md) に置き換えられた。
+
 Phase 9.3 の実装に入る前の調査・設計メモです。目的は、自然言語処理、weekly domain、scheduler、UI の責務を分け、今後の「使わない時間帯・日を避ける」や教材タイプ拡張を重複実装にしないことです。
 
 ## 1. 現状の責任分離

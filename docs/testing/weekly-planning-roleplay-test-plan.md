@@ -1,5 +1,46 @@
 # StudyPlanner 会話ベース・ロールプレイ型テスト設計メモ
 
+> **現在の受け入れ仕様。** 親設計 v4 により、この文書の旧来の「slot を順に埋めてから draft」という前提は通常経路の正ではない。以下の WP-DA-001 を v4 の conversation eval とし、既存の WP-RP-001 は scheduler / domain 回帰の履歴シナリオとして維持する。
++
++## WP-DA-001 メンター型の週間計画対話
++
++このシナリオは golden text ではない。各 turn の action、state、根拠、禁止挙動を評価する。
++
++### 初期条件
++
++- 選択中の日は 2026-07-13。
++- 火曜18:00〜22:00にアルバイト、木曜10:00〜12:00に授業が登録済み。
++- scheduler は既存予定を busy interval として利用できる。
++- 保存済み plan と未承認 preview は AI が変更・保存できない。
++
++### 対話行為
++
++1. 画面を開く。assistant は一週間の計画を一緒に考えることを丁寧に案内し、期間・科目・時間を固定順で尋問しない。
++2. user が「来週、英語の過去問と数学を進めたい。英語を優先したい」と一度に話す。interpreter は受理可能な複数 command を返し、assistant は受理済み内容を短く要約して未確認の一論点だけを聞く。
++3. user が「火曜はバイトの後、帰宅10分して夕食にしたい」と言う。assistant は既知の火曜バイトを再入力させず、相対条件が未確定なら仮定または確認として扱う。時刻展開と衝突判定は deterministic core が行う。
++4. user が所要時間を知らない。assistant は例えば3時間という仮定を理由つきで提案できるが、確定事実として話さず、承認前は hard apply しない。
++5. feasibility が不足を示す。assistant は必要量と空き時間の deterministic summary を根拠に、英語優先か並行かを相談する。
++6. 方針と仮定が十分に揃う。assistant は同内容を再確認せず、preview を提案する。
++
++### 必須 assertion
++
++- 既知のバイト・授業、既に受理した期間・目標・優先を再質問しない。
++- 複数条件は validator が受理した範囲で一 turn に反映する。
++- question topic は原則一論点であり、無関係な質問を詰め込まない。
++- action の factRefs は snapshot 内の event、fact、diagnostic だけを指す。
++- assumption、accepted fact、rejected command を混同しない。
++- feasibility の提案と preview offer は scheduler diagnostics / candidate を根拠にする。
++- provider failure または invalid action では deterministic fallback が次の一問を返す。
++
++### 禁止挙動
++
++- 期間、科目、時間を毎回固定順に質問する。
++- 既存の火曜バイトをもう一度入力させる。
++- 未承認の3時間仮定を確定値として state に書き込む。
++- validator reject を受理済みとして要約する。
++- preview candidate があるのに同じ missing question を反復する。
++
++
 ## 目的
 
 このメモは、実際にユーザーとAIが計画を立てる会話をもとに、StudyPlanner の週間計画入力が再現すべき挙動をテストケース化するための設計メモである。

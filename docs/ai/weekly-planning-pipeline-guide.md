@@ -1,5 +1,7 @@
 # weeklyPlanning パイプライン改善ガイド
 
+> **ステータス: パイプライン境界の運用ガイド。** parser / command / adapter / reducer / scheduler の安全境界は維持する。ただし §3 と §5 の「LLM は抽出・質問文生成に限定」「質問の対象は deterministic が固定する」という通常対話方針は [親設計 v4](../architecture/weekly-planning-dialogue-architecture-v4.md) に superseded された。AI dialogue planner は検証済み snapshot と allowed actions の範囲で対話を主導する。
+
 このドキュメントは、`docs/weekly-planning/weekly-planning-spec.md`(以下 spec)が示す週間学習計画機能の最終方針へ、現在の実装を段階的に近づけるための開発ガイドである。単なる AI 運用ルールではなく、StudyPlanner の週間学習計画機能をどの順番で、どの責務境界を守りながら育てるかを定める。
 
 ## 1. 目的と文書の位置づけ

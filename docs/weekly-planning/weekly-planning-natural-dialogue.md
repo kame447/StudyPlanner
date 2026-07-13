@@ -1,5 +1,7 @@
 # Weekly Planning Natural Dialogue Improvement Spec
 
+> **ステータス: superseded な条件 parser 改善案。** 通常経路を regex と operation の固定順で対話主導する方針は採用しない。時刻抽出など rules fallback の参考記録として残す。週間計画の現在の対話設計は [親設計 v4](../architecture/weekly-planning-dialogue-architecture-v4.md) を参照する。
+
 作成目的
 
 StudyPlanner の週間計画MVPについて、自然な条件変更対話と配置アルゴリズムの信頼性を改善する。

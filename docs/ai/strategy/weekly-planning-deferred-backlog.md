@@ -1,5 +1,7 @@
 # weeklyPlanning deferred backlog(タスクmd化を保留した既知問題)
 
+> **現在の扱い。** 本文中の P4、P5、P6、P7、P9 は v3 の段階名であり、新規実装の queue ではない。親設計 v4 の D1〜D3 が完了するまで、ここにある backlog を前倒ししない。D1 / D2 の過去の関連記述は履歴として読む。
+
 2026-07-10 の週間計画機能 全体レビュー(実コード・実行検証ベース)で確認したが、**現時点では実装タスクmdに切らない**と判断した項目の記録。再調査せずに参照できるよう、問題の所在と根拠を残す。
 
 - 運用: ここの項目を着手する際は、必ずその時点の実コードを再調査してから `docs/ai/tasks/*.md` に切り出す(roadmap §5 の手順)。本文書は方向性の記録であり、Codex に直接渡さない。
@@ -14,7 +16,8 @@
 - **優先度**: Medium(非 exam フローは draftRequest が常に null のため配置への実害はなく、対話品質の問題に留まる)
 - **今触らない理由**: Phase 9.8 TODO として単一境界関数に隔離済みで、R1 の regression set(`weeklyPlanningLegacyFallback.test.ts`)が現挙動を意図的に固定している。いま挙動を変えると R1 で守った通常予定/週間計画ルートの回帰リスクの方が大きい。
 - **着手条件**: R3(進捗単位の一般化)で非 exam フローに draft 生成を許す設計を始めるとき。その時点で「fallback は tasks_or_goals 未充足のときだけ走る」等の縮小を**先に**タスク化する(fallback が constraints 確立後の state を汚染したまま draft 化すると事故になるため)。
-- **関連 Phase**: R3 / roadmap §8「二重化リスク」
+- **2026-07-10 更新(対話設計調査)**: 縮小の第一段(command 由来 tasks の保護 guard + `tasksSource` marker)は対話 Stage 3(`docs/ai/tasks/20260710-weekly-planning-dialogue-stage3-goal-acceptance.md`)が先行消化する。fallback の全面縮小・撤去は引き続き本項の範囲。
+- **関連 Phase**: R3 / roadmap §8「二重化リスク」/ 対話親設計(`docs/architecture/weekly-planning-dialogue-architecture.md`)§3(parser 分類: legacy fallback は rules モード暫定維持)
 
 ## D2. 非 exam フローが draft を作れず dead end になる
 
@@ -22,7 +25,9 @@
 - **優先度**: Medium(機能ギャップとしては大きいが、roadmap に文書化済みの既知スコープ)
 - **今触らない理由**: exam prep 専用であることは roadmap §1・§2 に明記された意図的な現在地であり、単発の修正ではなく R3 の型設計(`unitKind` / `TaskProgressScope`)を要する。
 - **着手条件**: R3 のタスク分解(roadmap §3 Phase R3 の 1→2→3 の順)。あわせて「情報不足と条件矛盾の分類分離」(R2初期-2 の残余: 構造的に draft 化できないフローを「整合性が取れず」と言わない)を R3-3(ready 条件の段階的緩和)に含める。
-- **関連 Phase**: R3 / R2初期-2
+- **2026-07-10 更新(対話設計調査)**: 本項のうち**会話レベルの受理**(目標を state.tasks へ受理し対話を前進させる)は対話 P4(旧 Stage 3)が、**「未対応」の正直な応答**(`explain_capability_gap`)は対話 P3(旧 Stage 2)が先行消化する。
+- **2026-07-11 更新(draft-first 再構成)**: 親設計の **P5(非 exam preview bridge)** が「tasks → 暫定量つき work items → 既存 generator」の最小経路を先行消化する予定(I1・I2・P3・P4 完了後に task md を切る)。**unitKind の本一般化・ready 条件の体系的緩和は引き続き本項 = R3 の範囲**で変更なし。
+- **関連 Phase**: R3 / R2初期-2 / 対話親設計 v3 §7(P5)
 
 ## D3. 外側 PlanningState の message 系が dead code(メッセージ状態の二重定義)
 

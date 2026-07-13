@@ -1,5 +1,10 @@
 # weeklyPlanning 改善ロードマップ
 
+> **現在の roadmap（2026-07-13）**: 週間計画対話の唯一の設計の正は [親設計 v4](../../architecture/weekly-planning-dialogue-architecture-v4.md)。この文書の以下に残る R1〜R8、v3、parser 拡張中心の記述は実装履歴・長期 backlog として読む。
+>
+> **次の新規実装順**: 作業ツリーで進行中の P4 由来差分の検証・状態確定（本 roadmap は完了扱いにしない）→ D1 dialogue action contract → D2 state-grounded dialogue orchestrator → D3 mentor conversation evaluation。D1〜D3 以外の open task は新規の通常経路として実行しない。
+>
+> P4 は superseded な旧 stage、T6 は D3 に統合済みである。既存の command、validator、reducer、scheduler、assumption 基盤は v4 でも再利用する。
 この文書は、`docs/weekly-planning/weekly-planning-spec.md`(以下 spec)の理想仕様と現実装の差分をもとに、weeklyPlanning 機能の改善順序・優先度・リスク・今やらないことを定める上位計画である。
 
 **この文書は Codex に直接実装させるタスクmdではない。** 方向性と優先順位を決める文書であり、ここから Claude/Fable が `docs/ai/tasks/*.md`(Codex が1回で潰せる実装単位)を切り出す。
@@ -278,6 +283,10 @@ R2 初期を最優先とする理由: 実ユーザーの利用で確認済みの
 - **Phase をまたぐ発見**: タスク実装中に見つかった別問題は、そのタスクで直さず、roadmap の該当 Phase に追記するか新規タスク候補として報告する。
 
 直近の到達点(2026-07-08・更新): R1 に加え、R2-AI(interpreter+renderer の基盤・実接続・candidate 契約)と R2-S の correctness 群がすべてクローズ済み。**現在オープンなタスクは3本**(Phase R2-Capability。`constraint-source-capability` / `renderer-deterministic-context` / `clarification-semantic-intent`。依存順は R2-Capability 節を参照)。加えて `completion-target-model` は実装済み stale(verify 後 closed)。設計根拠は `docs/architecture/weekly-planning-nl-capability-model.md`。
+
+> **2026-07-11 更新(現在の主戦場)**: R2-Capability の3本は消化済み。2026-07-10 の全体レビュー(T1〜T6)と対話設計調査を経て、最上位思想を **draft-first / progressive refinement** に再構成した(v2)。同日さらに、**自然言語の意味解釈を AI interpreter の単一責務**とする再構成(v3)を行った: provider 利用時は毎 user turn を AI が解釈し、deterministic parser は normalization / validation / rules モード fallback に限定、会話履歴を interpreter に供給する。現在の設計の正は `docs/architecture/weekly-planning-dialogue-architecture.md`(v3)、成果物索引は `docs/ai/strategy/weekly-planning-review-20260710-index.md`。実装順は v3 §7(**次は I1 → I2 → P3 → P4 → P5〜P9**)。P1(仮定合成)・P2(preview-first decision)は実装・クローズ済み。
+>
+> v3 に伴う本 roadmap への影響: (1) **R2「自然言語入力の対応範囲拡大」の deterministic parser への表現追加は凍結**(意味解釈は AI 側の写像・語彙で拡張する。rules モード fallback は現状維持)。(2) R4(質問計画)の中核は P2 の previewPolicy で先取り済み。(3) R8(capacity/6等分)は preview 品質改善として P 系の後に接続。(4) R3 のうち「非 exam の preview bridge」は P5 が最小 slice を先行(backlog D2 参照)。
 
 ## 6. 最初に切るべきタスク候補
 

@@ -1,5 +1,7 @@
 # R2 設計メモ: AI interpreter + deterministic validation + AI dialogue renderer
 
+> **ステータス: 実装済み R2 の設計記録。** AI interpreter、candidate validator、provider failure fallback の基盤は維持する。AI renderer を固定 questionPlan の言い換えに限定する到達像は [親設計 v4](../../architecture/weekly-planning-dialogue-architecture-v4.md) に superseded された。
+
 R2 を「正規表現 parser を増やして自然言語対応範囲を広げるフェーズ」から「AI interpreter + deterministic validation + AI dialogue renderer を含む入力理解基盤の拡張フェーズ」へ再整理するための設計メモである。**実装タスクmdではない。** ここから個別タスクを切るときは、この設計と切り出し時点の実コードを突き合わせること。
 
 > **状態(2026-07-07 更新): 本メモは全体が実装反映済みの設計記録である。** §2〜§7(interpreter 境界の再設計、candidate validator、escalation、confidence→assumption/ambiguity、renderer 基盤、AI 実接続、テスト二層)は R2-A/R2-B/R2-C として実装・コミット済み。§8 の R2初期と candidate 契約の一連の修正(confidence 必須化・schema union 化・wrapper 簡素化)も closed。interpreter の実 AI 評価も1回完了(`tasks/closed/20260705-weekly-planning-r2c-eval.md`)。

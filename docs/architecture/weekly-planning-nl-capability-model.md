@@ -1,5 +1,7 @@
 # weeklyPlanning: 自然言語層と planner capability の分離モデル(提案)
 
+> **ステータス: 診断・capability inventory の参照記録。** A〜F の問題分類、既存 capability の可視化、command validation の原則は維持する。GoalIntent へ段階移行して deterministic questionPlan を主導する提案は現在の対話設計ではない。通常経路の唯一の正は [親設計 v4](weekly-planning-dialogue-architecture-v4.md) である。
+
 **ステータス: 提案(未実装)。次段階(Post-R2)の設計の正(design of record)。** 2026-07-07 の監査に基づく設計提案であり、`docs/architecture/weekly-planning-responsibility-separation.md`(R1 の command boundary 設計)を置き換えるものではなく、その `ParsedWeeklyPlanningCommand` 設計を実装した後に見えてきた「command 粒度が発話表現に追随して肥大化する」問題を是正するための後続設計。`weekly-planning-r2-ai-interpreter-design.md` の R2 command-candidate architecture(実装済み・有効な中間段階)の次の課題として位置づける。production code は本文書作成・更新時点で変更していない。
 
 > **2026-07-08 更新**: 監査を実コードで再確認し、以下を追記した。§6 診断原則(実使用問題を A〜F に分類する恒久フレーム)、§7 capability inventory(read-only / draft mutation / requires confirmation / destructive の権限区分つき)、§8 semantic intent の最小設計(`use_constraint_source` 等・発話非依存)、§9 vertical slice(fixed events / timetable を最初の縦切りにする理由)、§10 renderer context 契約(「来週→今週」問題の回帰防止を含む)。本文書を次段階 task 群(§4 で再構成)の設計根拠とする。
