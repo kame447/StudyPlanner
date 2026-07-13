@@ -10,6 +10,9 @@ import type {
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
 import { addMissing, removeMissing } from './weeklyPlanningMissingStatus';
+import { parseConstraintCommands } from './weeklyPlanningConstraintParsing';
+import { parseAddUnavailableCommands } from './weeklyPlanningUnavailableParsing';
+import { normalizeIntakeText } from './weeklyPlanningTextParsing';
 import { normalizeStudyTaskTitle } from './weeklyPlanningTaskIdentity';
 
 function mapWeeklyAmountUnit(unit: string): StudyScopeUnit {
@@ -63,6 +66,32 @@ function mergeLegacyTasks(
   return [...commandTasks, ...legacyTasksByIdentity.values()];
 }
 
+function consumedConstraintSourceSegments(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): string[] {
+  const commands = [
+    ...parseConstraintCommands(text, context),
+    ...parseAddUnavailableCommands(text, context),
+  ];
+
+  return Array.from(new Set(commands.map((command) =>
+    ('sourceSegment' in command && typeof command.sourceSegment === 'string'
+      ? command.sourceSegment
+      : command.sourceText),
+  ).filter(Boolean)));
+}
+
+function removeConsumedConstraintText(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): string {
+  return consumedConstraintSourceSegments(text, context).reduce(
+    (remainingText, sourceSegment) => remainingText.split(sourceSegment).join(''),
+    normalizeIntakeText(text),
+  );
+}
+
 function shouldApplyFirstAssessFallback(state: PlanningIntakeState, userText: string): boolean {
   return state.intent === 'unknown' && looksLikeWeeklyPlanningRequest(userText);
 }
@@ -83,7 +112,7 @@ function applyFirstAssessFallback(params: {
 }): PlanningIntakeState {
   const assessment = assessWeeklyPlanningRequest({
     selectedDate: params.context.selectedDate,
-    text: params.userText,
+    text: removeConsumedConstraintText(params.userText, params.context),
   });
 
   return {
@@ -108,7 +137,7 @@ function applyRevisionMergeFallback(params: {
       .filter((task) => task.source === 'legacy_fallback')
       .map((task) => task.rawText)
       .join('、'),
-    revisionText: params.userText,
+    revisionText: removeConsumedConstraintText(params.userText, params.context),
   });
 
   if (revision.tasks.length === 0 || params.state.examPrepScope) {

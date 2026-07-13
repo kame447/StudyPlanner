@@ -390,6 +390,111 @@ describe('weekly planning intake pipeline', () => {
     ]);
   });
 
+  it('does not turn consumed sleep and meal fragments into legacy tasks after provider failure', async () => {
+    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '数学のテスト勉強したい',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学', subject: '数学' },
+          sourceText: '数学のテスト勉強したい',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: first.state,
+      userText: '睡眠は23時から6時、食事は各30分です',
+      interpreter: {
+        async interpretUserTurn() {
+          throw new Error('provider unavailable');
+        },
+      },
+    });
+
+    expect(second.state.tasks).toEqual([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+    ]);
+    expect(second.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'sleep', start: '23:00', end: '06:00' }),
+      expect.objectContaining({ kind: 'meal', durationMinutes: 30 }),
+    ]));
+  });
+
+  it('keeps a valid legacy task in a mixed constraint turn after provider failure', async () => {
+    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '数学のテスト勉強したい',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学', subject: '数学' },
+          sourceText: '数学のテスト勉強したい',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: first.state,
+      userText: '食事は各30分で、英語を2時間やりたい',
+      interpreter: {
+        async interpretUserTurn() {
+          throw new Error('provider unavailable');
+        },
+      },
+    });
+
+    expect(second.state.tasks).toHaveLength(2);
+    expect(second.state.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+      expect.objectContaining({ title: '英語', source: 'legacy_fallback', amount: 120 }),
+    ]));
+    expect(second.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'meal', durationMinutes: 30 }),
+    ]));
+  });
+
+  it('does not turn a bath-only constraint into a legacy task after provider failure', async () => {
+    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      userText: '数学のテスト勉強したい',
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_study_goal',
+          goal: { title: '数学', subject: '数学' },
+          sourceText: '数学のテスト勉強したい',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
+    });
+    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...defaultPipelineInput,
+      previousState: first.state,
+      userText: 'お風呂は30分です',
+      interpreter: {
+        async interpretUserTurn() {
+          throw new Error('provider unavailable');
+        },
+      },
+    });
+
+    expect(second.state.tasks).toEqual([
+      expect.objectContaining({ title: '数学', source: 'command' }),
+    ]);
+    expect(second.state.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'bath', durationMinutes: 30 }),
+    ]));
+  });
+
   it('recovers a goal from a later provider turn without re-asking tasks_or_goals', async () => {
     const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
