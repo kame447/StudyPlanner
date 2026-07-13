@@ -1,47 +1,67 @@
-# Draft approval idempotency: preview から deterministic save へ
+# Draft approval idempotency: previewからdeterministic saveへ
 
-Status: **queued — DA1/DA1b after**
+Status: **queued — DA1b after**
 Priority: High
-Parent: docs/architecture/weekly-planning-dialogue-architecture-v4.md
+Parent: ../../architecture/weekly-planning-dialogue-architecture-v4.md
 Requirement IDs: DA-IDEMPOTENCY-001, DA-PERSISTENCE-001, DA-PREVIEW-001
+Dependencies: DA1b
 
-## 背景・目的
+## Scope / current path / entry / exit
 
-preview approval/save は AI dialogue と別の副作用だが、duplicate click、partial failure、crash retry、source metadata の契約が不足している。approval operation を user/source/revision に束縛し、再試行で重複予定を作らない。
+explicit UI approvalからdraft block repository saveの副作用を、item ledger、source metadata、stale/revision/user/week guard、crash/retryで安全にする。現行preview block、`createPlanDraftFromWeeklyDraftBlock`、`savePlanDraft`、localStorage/repository adapterを再調査する。EntryはDA1b correction/preview contract。Exitはpartial failure/retry/duplicate/crashがitem単位で安全なこと。
 
-## 計画書との対応・対象
+## Exact types / key
 
-- spec: §10、§12、§13
-- 変更: preview/repository adapter、approval operation、UI failure handling
-- テスト: repository fake、failure injection、P4/P5/P6
+```ts
+type WeeklyDraftApprovalItemStatus =
+  | "pending" | "saving" | "saved" | "failed" | "skipped_duplicate";
+type WeeklyDraftApprovalItem = {
+  sourceDraftBlockId: string;
+  status: WeeklyDraftApprovalItemStatus;
+  savedPlanId?: string;
+  attemptCount: number;
+  lastErrorCode?: string;
+  updatedAt: string;
+};
+type WeeklyDraftApprovalOperation = {
+  approvalOperationId: string;
+  userId: string;
+  previewId: string;
+  previewStateRevision: number;
+  startedAt: string;
+  completedAt?: string;
+  status: "pending" | "partially_saved" | "completed" | "failed";
+  items: WeeklyDraftApprovalItem[];
+};
+type ApprovedPlanSource = {
+  sourceType: "weekly_draft";
+  sourceDraftBlockId: string;
+  approvalOperationId: string;
+};
+```
 
-## 現在の処理経路・問題
+idempotency keyは **userId + sourceDraftBlockId**。approvalOperationIdは監査/batch metadataで、keyに含めない。別operation IDでも同じuser/source blockから二件目のplanを作らない。
 
-preview → UI approve → repository save の間に operation ledger と idempotency key がなく、stale preview/他 user/week/途中失敗を安全に区別できない。
+## State / failure / concurrency / persistence / security
 
-## 修正方針・契約
+operationはpending→partially_saved/completed/failed、itemはpending→saving→saved/failed/skipped_duplicate。completed retryはno-op、partial retryは未保存/failedだけ。repository既存sourceはexisting planへdedupeする。stale preview、revision mismatch、他user/week、unauthorized block、missing source metadataは拒否。UI optimistic update後repository failureはsaved扱いにしない。crashはledger/source metadataから再照合。same user/source active saveは一件に直列化する。
 
-WeeklyDraftApprovalOperation は approvalOperationId、userId、sourceDraftBlockIds、startedAt、status=pending|partially_saved|completed|failed。ApprovedPlanSource は sourceType=weekly_draft、sourceDraftBlockId、approvalOperationId。userId + sourceDraftBlockId + approvalOperationId を重複キーにする。completed retry は no-op、partial retry は未保存分のみ、stale/revision mismatch/unauthorized は拒否。AI は operation を起動しない。
+ledgerはversioned、corrupt/unknown/other user/week/size overflowをsafe discard。会話/request/proposalは自動復元・実行しない。title/memo/source textはuntrusted JSON data。AI、scheduler、interpreter、CSS、auto-save、NL approvalはnon-goal。
 
-状態、schema/enum/size/user/week/revision を deterministic に検証し、UI/repository 失敗順序、optimistic rollback、source metadata を記録する。
+## P1〜P7 responsibility
 
-## 失敗・concurrency・security
+| Perspective | Applicability | Owning task | Required assertion |
+| --- | --- | --- | --- |
+| P1 | Covered by another task | DA2 | request/submit lifecycle |
+| P2 | Covered by another task | DA2 | IME/focus/keyboard |
+| P3 | Applicable | approval | hostile/invalid boundary |
+| P4 | Applicable | approval | preview/save/idempotency |
+| P5 | Applicable | approval | migration scope |
+| P6 | Regression only | approval | fallback and exam/non-exam |
+| P7 | Applicable | approval | typed refs/revision/diagnostics trace |
 
-同一 user の active operation を一件にし、二重 click/request は dedupe。crash 後 retry は ledger から再開し、別 user/source は拒否。draft title/memo は untrusted JSON data とし、action/ref/ID に昇格させない。provider fallback は approval を開始しない。
 
-## persistence・migration / 触らない範囲
 
-operation ledger/source metadata の schemaVersion/migration を versioned/idempotent にする。破損/未知/上限超過は安全に破棄。会話/request は復元しない。scheduler、interpreter、AI planner、CSS、無関係 src、auto-save、git write は触らない。
+## Acceptance / tests / commands
 
-## 受け入れ条件
-
-1. duplicate/crash/partial retry で重複予定なし。2. source/user/operation ID が保存に付く。3. stale/unauthorized save を拒否。4. UI/repository failure の rollback/retry 順序を検証。5. 明示 approve のみで保存。
-
-## P1-P7・テスト・リスク
-
-P1 double click/disabled、P2 keyboard submit、P3 forged IDs/stale preview、P4 partial save/idempotency、P5 migration/F5、P6 save/discard/fallback、P7 DA-IDEMPOTENCY-001/DA-PERSISTENCE-001/DA-PREVIEW-001。unit/contract/integration/property を実施し real model は不要。既存 repository API 互換性がリスク。
-
-## Codexへの実装指示
-
-対象を限定し、docs/ai/codex-task-guide.md に従う。npm test/build、diff check、status を報告し、git add/commit/push/reset/restore/checkout/stash は行わない。
-
+unit: key derivation、item/operation transitions、status derivation。contract: source metadata、preview/revision、authorization。integration: repository fake partial failure/crash/UI failure/retry。property/fuzz: duplicate operations、random order、corrupt ledger、untrusted metadata。roleplay: WP-DA turn 12、P4/P5/P6。real-modelはNot applicable。existing tests/build/lint、diff check、docs-only status、Git write禁止。

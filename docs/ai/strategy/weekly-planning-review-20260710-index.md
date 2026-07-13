@@ -1,25 +1,35 @@
 # 週間計画対話レビュー index
 
-Status: **historical index; v4 queue normalized**
+Status: **historical evidence index; v4 queue normalized**
 最終更新: 2026-07-13
 Current DoR: ../../architecture/weekly-planning-dialogue-architecture-v4.md
 
-## Current state
+## Current status note
 
-queue は Gate P4（verification only）→ DA0 open → DA1 → DA1b → Draft approval idempotency → DA2 → DA3a → DA3b → DA3c queued。P4 を closed/adopted/migration complete と表現せず、旧 D1/D2/D3、P5〜P9、T6 を current item としない。
+このindexは2026-07-10〜13の実コード読解・実行再現・対話設計調査の索引である。旧T1〜T6、S1、P1〜P4、v3 stage、D1〜D7はclosed evidenceまたはhistorical backlogであり、current implementation queueではない。
 
 ## Evidence map
 
-| 資料 | 扱い |
-| --- | --- |
-| weekly-planning-spec.md | product goal と §12/§13 の最上位仕様 |
-| weekly-planning-dialogue-architecture-v4.md | state/action/response/turn/preview/queue の DoR |
-| weekly-planning-dialogue-architecture.md | v3 historical/superseded |
-| weekly-planning-dialogue-design-review.md | historical evidence |
-| weekly-planning-deferred-backlog.md | historical backlog |
-| weekly-planning-roleplay-test-plan.md | P1-P7、traceability、strict/rubric |
-| 旧 task 名 | rename explanation または superseded/history の参照だけ |
+| 資料 | 残す証拠 | current判断 |
+| --- | --- | --- |
+| weekly-planning-nl-capability-model.md | A〜G、既存plans/timetable capability、intake非対称、GoalIntent proposal | v4のみをDoR |
+| weekly-planning-dialogue-architecture.md | v3 single interpreter、draft-first、fallbackの移行根拠 | v4へ読み替え |
+| weekly-planning-dialogue-design-review.md | W1〜W7、production trace、generic error、grounding不足 | DA0〜DA3c回帰根拠 |
+| weekly-planning-deferred-backlog.md | D1〜D7と優先度/延期理由 | queueへ戻さない |
+| weekly-planning-roadmap.md | R1〜R8と長期安全境界 | 冒頭current queueだけが正 |
+| weekly-planning-roleplay-test-plan.md | WP-DA-001、WP-RP-001、P1〜P7 | P7 traceabilityの正 |
 
-## 七視点監査で解消した矛盾
+## 旧レビュー対応
 
-action/factRef grounding、assumption/correction、async stale、untrusted strings、approval idempotency、localStorage migration、non-exam preview bridge を v4 と DA0〜DA3c に割り当てた。D1/D2/D3 の名称衝突、P4 next、T6 open、P5〜P9 current の表現を current queue から除去した。
+| 旧項目 | 内容 | current読み替え |
+| --- | --- | --- |
+| T1 | range reseed、explicit上書き、renderer登録漏れ | state/revision evidence |
+| T2 | confirmedSlots silent drop | deterministic transition evidence |
+| T3 | AI range calendarDayCount/pending bypass | normalization evidence |
+| T4 | clarificationがacceptedを破棄 | response/correction orthogonality |
+| T5 | question slot分散 | asked history/allowed topics |
+| T6 | multi-slot regression不足 | WP-DA-001/DA3c |
+| S1/I1/I2 | grounding、single interpreter、history | v4 turn/snapshot |
+| P1/P2/P3/P4 | assumption、preview-first、entry/goal | DA0a/DA0/DA1b |
+
+旧文書に残るcurrent-lookingな文言はhistorical referenceとしてのみ読む。current statusはv4、roadmapのcurrent queue、roleplay P7 tableを同期させる。

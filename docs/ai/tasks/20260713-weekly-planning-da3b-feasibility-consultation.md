@@ -2,40 +2,49 @@
 
 Status: **queued — DA3a after**
 Priority: Medium
-Parent: docs/architecture/weekly-planning-dialogue-architecture-v4.md
-Requirement IDs: DA-FEASIBILITY-001, DA-GOAL-001
+Parent: ../../architecture/weekly-planning-dialogue-architecture-v4.md
+Requirement IDs: DA-FEASIBILITY-001, DA-GOAL-001, DA-PREVIEW-001
+Dependencies: DA3a
 
-## 背景・目的
+## Scope / exact contract / path
 
-capacity不足、unscheduled、priority、分割方針を scheduler の計算根拠で相談する dialogue contract が不足している。AI が容量や配置を独自計算せず、許可された options だけを提示する。
+schedulerのdeterministic outputをfeasibility snapshot、bottleneck、unscheduled task、priority/split/defer optionへ変換する。AIは値を再計算せずdeterministic option IDだけを提示する。現行generator/diagnostics/preview outputを再調査する。
 
-## 計画書との対応・対象
+```ts
+type FeasibilitySummary = {
+  classification: "feasible" | "partially_feasible" | "infeasible" | "unknown";
+  requiredMinutes: number;
+  availableMinutes: number;
+  scheduledMinutes: number;
+  unscheduledMinutes: number;
+  unscheduledTaskRefs: string[];
+  bottleneckFactRefs: string[];
+  conflictFactRefs: string[];
+  deterministicOptionIds: string[];
+  previewEligibility:
+    | "eligible"
+    | "eligible_with_pending_assumption"
+    | "blocked"
+    | "unsupported";
+};
+```
 
-- spec: §2、§5、§6、§12、§13
-- 変更: feasibility snapshot/options adapter、dialogue planner contract
-- テスト: capacity fixtures、P1/P3/P6/P7
+unknown（材料不足）、infeasible（制約で不可能）、unsupported（capability未対応）を分ける。option IDはdeterministic issuer。summary→AllowedDialogueActions→planner response。numeric nonnegative/finite、public/current refs、stateRevision/previewIdをvalidate。pendingはeligible_with_pending_assumption、hard blockerはblocked、staleはdiscard。AI placement/approval/save、scheduler全面改修、UI、migrationはnon-goal。
 
-## 現在の処理経路・問題
+## P1〜P7 responsibility
 
-scheduler は required/available/scheduled/unscheduled/conflicts を計算するが、public fact refs/options と preview eligibility が定義されていない。
+| Perspective | Applicability | Owning task | Required assertion |
+| --- | --- | --- | --- |
+| P1 | Regression only | DA2 | submit/request lifecycle |
+| P2 | Covered by another task | DA2 | IME/keyboard |
+| P3 | Applicable | DA3b | hostile boundary |
+| P4 | Covered by another task | approval | stale/save |
+| P5 | Not applicable | future persistence | no migration |
+| P6 | Applicable | DA3b/DA2 | fallback/exam |
+| P7 | Applicable | DA3b | ref/revision trace |
 
-## 修正方針・契約
 
-diagnostics を snapshot にし、blocking/assumable/deferrable を deterministic に分類する。option IDs は deterministic issuer。keep priority/split/defer/ask user 等の allow-list のみを planner に渡し、feasibility fact と preview candidate がない offer を拒否する。
 
-## 失敗・concurrency・security
+## Acceptance / tests / commands
 
-capacity/placement を AI が変更しない。stale snapshot、unknown option/ref、untrusted title/memo、NaN/negative duration、provider failure は partial apply せず deterministic fallback。active request は一件、追加 AI call なし。
-
-## persistence・migration / 触らない範囲
-
-diagnostic は session-local、draft block localStorage の既存契約だけ維持。approval は別 task。scheduler 全面改造、save/delete、UI/CSS、無関係 src、git write は触らない。
-
-## 受け入れ条件・P1-P7
-
-capacity mismatch、unscheduled、priority option、no-reask、preview gating、fallback、existing schedule coexistence を strict に検証。P1 novice、P2 keyboard、P3 forged options、P4 stale preview、P5 migration/F5、P6 provider/exam/non-exam、P7 DA-FEASIBILITY-001/DA-GOAL-001。unit/contract/integration/property と rubric、real model は DA3c。
-
-## Codexへの実装指示
-
-対象を限定し、docs/ai/codex-task-guide.md に従う。npm test/build、diff check、status を報告し、git add/commit/push/reset/restore/checkout/stash は行わない。
-
+unit numeric/classification/options、contract snapshot/action、integration scheduler→dialogue、property nonnegative/conservation/option determinism、roleplay WP-DA turns7〜11/P3/P6。real modelはwording rubricのみDA3c。値をAIが再計算せず、eligibilityなしpreview offerがないこと。既存scripts、diff check、status、Git write禁止。

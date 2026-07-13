@@ -1,41 +1,33 @@
 # DA3c: mentor conversation evaluation
 
-Status: **queued — DA3a/DA3b after**
+Status: **queued — DA3b after**
 Priority: Medium
-Parent: docs/architecture/weekly-planning-dialogue-architecture-v4.md
-Requirement IDs: DA-EVAL-001, DA-GOAL-001, DA-FALLBACK-001
+Parent: ../../architecture/weekly-planning-dialogue-architecture-v4.md
+Requirement IDs: DA-EVAL-001, DA-GOAL-001, DA-FALLBACK-001, DA-TRACE-001
+Dependencies: DA3b
 
-## 背景・目的
+## Scope / evaluation path
 
-会話品質を golden text で測らず、contract/state/fact と mentor rubric、call/latency/fallback metrics で再現可能に評価する。既存 roleplay の happy path 偏重を解消する。
+WP-DA-001、WP-RP-001、P1〜P7をstrict contract、mentor rubric、metricsで再現可能に評価する。golden textではなくaction/state/fact/ref/side-effectをstrict、自然文をrubricにする。existing fixture/runnerを再調査しproduction codeを評価都合で変えない。
 
-## 計画書との対応・対象
+strict fields: conversation/turn/request/revision、action、factRefs、public field、question/option、proposal lifecycle、correction atomicity、preview/stale、approval item、fallback category、call count、duplicate、accepted/rejected、diagnostics。rubric: 敬体、簡潔、no re-ask、仮定/事実、内部slot非表示、根拠なし値なし、次入力、mentor option、入力無視なし。
 
-- spec: §1、§5、§12、§13
-- 変更: docs/testing/weekly-planning-roleplay-test-plan.md、fixtures/runner、metrics
-- テスト: P1-P7、contract/property/integration/roleplay/real-model
+metrics: opening/normal call budget、p50/p95 latency、provider/planner failure、reject、stale discard、fallback category、no-reask、preview completion、approval duplicate suppression、partial retry completion。fixtureはfixed clock/selected date/IDs、redacted JSON、raw prompt/secret/private IDなし。staleはfallbackでなくdiscard。
 
-## 現在の処理経路・問題
+## P1〜P7 responsibility
 
-既存対話は action/state/factRef、async stale、security、migration、approval、fallback の traceability が不足し、再質問・内部 slot・根拠なし数値・追加 call を見逃す。
+| Perspective | Applicability | Owning task | Required assertion |
+| --- | --- | --- | --- |
+| P1 | Regression only | DA2 | submit/request lifecycle |
+| P2 | Covered by another task | DA2 | IME/keyboard |
+| P3 | Applicable | DA3c/DA1 | hostile boundary |
+| P4 | Applicable | DA3c/approval | stale/save |
+| P5 | Applicable | DA3c/approval/DA2 |
+| P6 | Applicable | DA3c/DA0/DA2 | fallback/exam |
+| P7 | Applicable | DA3c | ref/revision trace |
 
-## 修正方針・契約
 
-P1 novice、P2 keyboard、P3 malicious、P4 integrity、P5 migration、P6 regression、P7 traceability を test layers に割り当てる。strict assertion は action/factRef/field/state/stateRevision/requestId/turnId/proposal/correction/topic/option/preview/stale/fallback/call count/duplicate/accepted/rejected/diagnostics。自然文 rubric は敬体、簡潔、再質問なし、無関係な一括質問なし、内部 slot 非表示、仮定/事実区別、根拠なし値なし、次入力明確、mentor options、入力無視なし。
 
-## 失敗・concurrency・security・persistence
+## Acceptance / tests / commands
 
-fixture/model output は redacted JSON、secret/user string を prompt 命令に連結しない。test run の conversation/turn/request/revision を固定し、遅延 stale を拒否する。metrics/fixtures は versioned、会話 state は自動保存しない。provider failure は no extra call/no merge を strict にする。
-
-## 受け入れ条件
-
-1. P1-P7 matrix と P7 traceability table。2. contract/property/integration/roleplay/real-model の二層採点。3. opening/normal call budget、token、p50/p95 latency、fallback/reject/completion metrics。4. golden exact match なし。5. DA-EVAL-001 と全 v4 IDs が追跡可能。
-
-## テスト・リスク
-
-P1/P2 input and focus、P3 hostile/AI side effect、P4 partial approval、P5 corrupt/emoji/user-week、P6 provider/exam/non-exam/fallback、P7 table を実行。モデル更新で wording が変わるため行為/事実を strict、自然文を rubric に分離する。
-
-## Codexへの実装指示
-
-対象限定、docs/ai/codex-task-guide.md 準拠。real model は redacted corpus、fixed budget、低温度、fallback を記録し、test/build/diff check/status を報告する。git add/commit/push/reset/restore/checkout/stash は行わない。
-
+unit schema/redaction/metric aggregation、contract all v4 IDs、integration full roleplay and failures、property wording-stable scoring/no hidden mutation/duplicate-stale invariants、roleplay P1〜P7。real modelは許可済みredacted corpus/fixed budget/low temperatureの別評価で、deterministic unit gateではない。existing fixture/test/build/lint、diff check、docs-only status、Git write禁止。

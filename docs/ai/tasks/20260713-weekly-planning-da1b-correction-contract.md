@@ -1,54 +1,60 @@
-# DA1b: assumption proposal と correction lifecycle
+# DA1b: assumption decision and correction contract
 
 Status: **queued — DA1 after**
 Priority: High
-Parent: docs/architecture/weekly-planning-dialogue-architecture-v4.md
-Requirement IDs: DA-ASSUMPTION-001, DA-CORRECTION-001
+Parent: ../../architecture/weekly-planning-dialogue-architecture-v4.md
+Requirement IDs: DA-ASSUMPTION-001, DA-CORRECTION-001, DA-PREVIEW-001
+Dependencies: DA1
 
-## 背景・目的
+正式責務名はassumption decision and correction contract。旧来のcorrectionだけのtaskとして扱わない。
 
-仮定の pending/accepted/rejected/superseded/expired と訂正・上書き・削除・復元の監査履歴が欠けている。proposal/correction を stateRevision と source facts に束縛し、暗黙 hard apply、復活、部分適用を禁止する。
+## Scope / exact types
 
-## 計画書との対応
+pending proposalのaccept/reject/modify/expiry/supersede、target resolution、replace/remove/supersede/restore、audit history、preview stale、scheduler triggerを扱う。現行intake adapter/reducerを再調査し、全面置換しない。
 
-- spec: §5、§6、§10、§12、§13
-- 改善テーマ: 七視点監査の assumption/correction lifecycle
+```ts
+type Confidence = "high" | "medium" | "low";
+type AssumptionDecisionCommand = {
+  type: "accept_assumption" | "reject_assumption" | "modify_assumption";
+  proposalId: string;
+  expectedStateRevision: number;
+  value?: AssumptionValue;
+  unit?: AssumptionUnit;
+  confidence: Confidence;
+  sourceText: string;
+};
+type CorrectionOperation = "replace" | "remove" | "supersede" | "restore";
+type CorrectionEnvelope = {
+  correctionId: string;
+  operation: CorrectionOperation;
+  target: CorrectionTarget;
+  replacementCommand?: unknown;
+  sourceText: string;
+  confidence: Confidence;
+  expectedStateRevision: number;
+};
+```
 
-## 対象ファイル
+proposal transitionはpending→accepted/rejected/superseded/expired。modifyは旧をsuperseded、新をpending。CorrectionEnvelope内部はatomic。同turnの複数Envelopeは独立validateし、明確な訂正のaccepted結果を曖昧な訂正で破棄しない。accepted commandとclarificationを直交保持。rejected correctionは元factを壊さない。target非一意はclarification、stale/privateはreject。replaceはaudit、remove/restoreを区別。accepted後はrevisionを進めpreview stale化しscheduler再計算。
 
-- 変更: intake types/adapter/reducer、dialogue contract
-- 新規: proposal/correction validator と diagnostics
-- テスト: lifecycle unit、atomic integration、property、P3/P6
+## Validator / failure / concurrency / persistence / security
 
-## 現在の処理経路・問題
+schema/enum/finite/range/size/status/sourceFactRefs/revision/authorization/target uniquenessをdeterministic検証。duplicate decisionをhidden resurrectionさせない。interpreter/planner/staleはDA1/DA2 categoryへ委譲。active request一件、session-local。sourceText/reason/title/memoはuntrusted JSON data。save/repository/UI/scheduler全面改修はnon-goal。
 
-userText → interpreter candidate → normalize/validate → adapter → reducer には confirmed/pending guard があるが、proposal/correction の独立 lifecycle、target ambiguity、preview stale の再計算が未定義である。
+## P1〜P7 responsibility
 
-## 修正方針・契約
+| Perspective | Applicability | Owning task | Required assertion |
+| --- | --- | --- | --- |
+| P1 | Covered by another task | DA2 | request/submit lifecycle |
+| P2 | Covered by another task | DA2 | IME/focus/keyboard |
+| P3 | Applicable | DA1b | hostile/invalid boundary |
+| P4 | Covered by another task | approval | preview/save/idempotency |
+| P5 | Not applicable or regression only | future persistence / DA2 | migration scope |
+| P6 | Applicable | DA1b | fallback and exam/non-exam |
+| P7 | Applicable | DA1b | typed refs/revision/diagnostics trace |
 
-AssumptionProposalStatus は pending|accepted|rejected|superseded|expired。PendingAssumptionProposal は proposalId、slot、targetRef、proposedValue/unit、reason、source、sourceFactRefs、createdAtTurnId、createdFromStateRevision、status を持つ。accept_assumption/reject_assumption/modify_assumption は proposalId、expectedStateRevision、value/unit、confidence、sourceText を持つ。pending は hard apply しない。reject は復活させず、modify は旧を superseded、新 proposal を作る。
 
-CorrectionOperation は replace|remove|supersede|restore。CorrectionTarget は factId/proposalId/commandId/taskRef/eventRef/slot の union、CorrectionEnvelope は correctionId、operation、target、replacementCommand、sourceText、confidence、expectedStateRevision を持つ。target 非一意は clarification、revision/source mismatch は stale。replace は旧 fact を superseded として履歴化、remove と restore を区別し、複数訂正は atomic に検証する。
 
-状態遷移、schema/enum/range/NaN/Infinity/size/authorization を deterministic に検証し、reject/invalid/stale は partial apply せず accepted/rejected/pending を保持し preview を stale 化する。
+## Acceptance / tests / commands
 
-## 失敗・concurrency・security
-
-provider failure は turn-wide deterministic fallback、追加 AI call なし、rules/AI merge なし。active request は一件、turn/request/revision mismatch は無効。全 sourceText/reason/task/title は untrusted JSON data、prompt/action/ref/option ID に昇格させず escaped text のみ描画。
-
-## persistence・migration / 触らない範囲
-
-proposal/correction/request は当面 session-local。将来 schemaVersion/userId/weekStartDate/pending proposals/stateRevision を versioned/idempotent に移行する。UI/CSS、scheduler 全面改造、save/approval副作用、複雑 recurrence、src の無関係差分、git write は触らない。
-
-## 受け入れ条件
-
-1. lifecycle と audit trail が strict assertion できる。2. rejected/accepted/pending を混同しない。3. invalid/ambiguous/stale/duplicate は atomic reject。4. correction 後 scheduler/preview stale を再計算。5. assumption は hard apply されない。
-
-## P1-P7・テスト・リスク
-
-P1/P2 は明示訂正・IME/submit、P3 は invalid proposal/correction/injection、P4 は stale preview/retry、P5 は migration/emoji、P6 は provider fallback/exam/non-exam、P7 は DA-ASSUMPTION-001/DA-CORRECTION-001 traceability。unit/contract/integration/property/roleplay を行い、real model は DA3c に委譲する。PlanningIntakeState の破壊的変更と旧 preview の回帰がリスクである。
-
-## Codexへの実装指示
-
-対象を限定し、docs/ai/codex-task-guide.md に従う。npm test/build、diff check、status を報告し、git add/commit/push/reset/restore/checkout/stash は行わない。
-
+unit: lifecycle、target、confidence、revision、audit。contract: multiple envelopes independent、clarification orthogonal、preview stale。integration: WP-DA turns 3〜11、scheduler trigger、exam regression。property/fuzz: ambiguity、duplicates、NaN/Infinity、untrusted strings、independent envelope behavior。roleplay: accept/reject/modify、P3/P6。real-modelはcommand fixture replay。既存test/build/lint、diff check、status、Git write禁止。
