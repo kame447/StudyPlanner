@@ -1,6 +1,6 @@
 # 対話P4(旧Stage3): 非 exam の学習目標を command として受理し、legacy fallback から保護する
 
-> **ステータス: superseded（未完了を closed とみなさない）。** 親設計 v4 は本 task を今後の独立 stage として扱わない。現在作業ツリーに本 task 由来と見られる差分があるため、ここで完了扱いにしてはならない。所有者が既存の受け入れ条件を検証してから履歴化する。以後の新規対話実装は D1〜D3 を正とする。
+> **ステータス: superseded（未完了を closed とみなさない）。** 親設計 v4 は本 task を今後の独立 stage として扱わない。現在作業ツリーに本 task 由来と見られる差分があるため、ここで完了扱いにしてはならない。所有者が既存の受け入れ条件を検証してから履歴化する。新規実装の正は v4 の DA0〜DA3c queue（本 task は superseded）。
 
 > **改訂 2026-07-11(親設計 v2 対応)**: v2(draft-first)では、学習目標は preview 生成の **blocking slot を解消する中心語彙**として位置づけが上がる。本タスクの機構(set_study_goal / fallback 保護)は不変だが、目標受理後の接続先が変わる: v1 では「次の質問へ進む」だったが、v2 では **P5(非 exam preview bridge)完了後は暫定量つきの初回 preview へ進む**。P5 完了までは `explain_capability_gap`(P3)が正直な応答を担う。
 >

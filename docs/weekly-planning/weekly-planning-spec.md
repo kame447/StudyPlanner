@@ -373,35 +373,31 @@ AIが作った予定が削除された場合、毎回理由を聞くと負担に
 - 既に別の時間に終わらせた
 - その他
 
-## 12. API使用量を抑える設計
+## 12. AI と deterministic core の責務分離
 
-LLMにすべてを判断させるのではなく、LLMが必要な部分と通常コードで処理する部分を分ける。
+LLM は自然文の意味解釈、複数条件の候補化、仮定・訂正・次の dialogue topic の候補と丁寧な wording を担う。LLM は日付・時刻・容量・配置・fact ID・state revision・承認・保存・削除を決めない。
 
 ### LLMを使う部分
 
-- ユーザーの自然文からタスク候補を抽出する
-- 曖昧なタスクを分割候補へ変換する
-- 質問文を自然な形にする
-- 自由記述の修正理由を分類する
-- ユーザー向けの説明文を生成する
+- single AI interpreter による typed candidate の抽出
+- DialogueStateSnapshot に基づく action、factRefs、questionTopics、assumption/preview offer の選択
+- deterministic fact を参照した接続文、選択肢、短いフィードバック
 
-### 通常コードで処理する部分
+### deterministic core で処理する部分
 
-- 空き時間計算
-- 睡眠や食事時間の除外
-- 予定前後バッファの適用
-- 6等分と再配分
-- 配置スコア計算
-- 休憩挿入
-- 実績時間と進捗率から残り時間を計算
-- 再計画条件の判定
+- normalize、tokenize、clause parsing、AST、IR、compile、validate の staged pipeline
+- schema、enum、range、confirmed/pending/explicit guard、state revision、fact ID、accepted/rejected/assumption/correction/supersede
+- StudyTaskScope → GenericWeeklyWorkItem、existing events、availability、busy interval、required/available/scheduled/unscheduled、scheduler、preview
+- response fact allow-list、stale request/revision 検証、fallback、approval/save/delete、idempotency、localStorage/migration
 
-## 13. この機能の最終方針
+AI interpreter と rules parser を merge しない。provider exception/timeout/parse/schema/semantic failure は turn-wide deterministic fallback とし、追加 AI call をしない。空の候補は正常な解釈結果である。
 
-StudyPlannerの週間学習計画機能は、フォーム入力型ではなく、メンター対話型で設計する。
+## 13. この機能の最終方針（v4 監査修正版）
 
-ただし、対話は聞きすぎない。分からない情報は対話で埋めるが、影響が小さい情報はメモリや初期値から仮置きし、最後にまとめて承認を取る。
+週間計画は、single AI interpreter と、検証済み state/計算結果を根拠に次の一問を選ぶ dialogue planner の二段階で設計する。通常 turn は最大2 AI call、opening は最大1 call とし、deterministic template で十分な opening は AI を呼ばない。
 
-計画は6日で進め、7日目を予備日にする。実行後は、時間だけでなく進捗も記録し、次回以降の見積もりや再計画に反映する。
+受理済み事実、仮定 proposal、訂正履歴、拒否理由、質問済み topic、planning range、既存予定、空き時間、容量不足、preview 可否は構造化 state として保持する。全 user-originated string は untrusted JSON data とし、prompt 命令、action、factRef、option ID に昇格させない。
 
-最終的な予定は、テキストではなく、既存の週表示・日表示に仮予定として可視化し、ユーザーが確認・修正してから確定する。
+preview は stateRevision/previewId に束縛された未承認 draft。stale なら保存不可。承認・保存は userId/sourceDraftBlockId/approvalOperationId を使う deterministic な冪等 operation で、AI は直接起動しない。会話/request/pending proposal は当面 session-local、既存 draft block localStorage は維持し、将来 migration は schemaVersion を持つ。
+
+実装 queue は Gate P4（verification gate）→ DA0 open → DA1 → DA1b → Draft approval idempotency → DA2 → DA3a → DA3b → DA3c queued の順で、一度に一件だけ open とする。試験は P1〜P7 と traceability ID を正とし、golden text 完全一致ではなく strict contract と会話品質 rubric で判定する。
