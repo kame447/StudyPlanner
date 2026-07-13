@@ -62,12 +62,36 @@ type AssumptionProposalStatus =
   | "superseded"
   | "expired";
 
+type AssumptionProposalReasonCode =
+  | "missing_duration"
+  | "missing_quantity"
+  | "missing_planning_period"
+  | "missing_priority"
+  | "missing_completion_target"
+  | "domain_default"
+  | "history_based_estimate"
+  | "first_trial_estimate";
+
+type ProposalResolutionRef =
+  | {
+      kind: "proposal";
+      proposalId: string;
+    }
+  | {
+      kind: "fact";
+      factId: string;
+    }
+  | {
+      kind: "correction";
+      correctionId: string;
+    };
+
 type PendingAssumptionProposalDraft = {
   slot: PlanningAssumptionSlot;
   targetRef: string;
   proposedValue: AssumptionValue;
   proposedUnit?: AssumptionUnit;
-  reasonText?: string;
+  reasonCode: AssumptionProposalReasonCode;
   sourceFactRefs: string[];
 };
 
@@ -78,14 +102,14 @@ type AssumptionProposalRecord = {
   targetRef: string;
   proposedValue: AssumptionValue;
   proposedUnit?: AssumptionUnit;
-  reasonText?: string;
+  reasonCode: AssumptionProposalReasonCode;
   sourceFactRefs: string[];
   createdAtTurnId: string;
   createdFromStateRevision: number;
   status: AssumptionProposalStatus;
   decidedAtTurnId?: string;
   decidedAtStateRevision?: number;
-  supersededByProposalId?: string;
+  resolvedBy?: ProposalResolutionRef;
 };
 
 type PendingAssumptionProposal =
@@ -94,7 +118,7 @@ type PendingAssumptionProposal =
   };
 ~~~
 
-AIが返せるのはPendingAssumptionProposalDraftだけである。proposalId、conversationId、turnId、revision、statusはdeterministic coreが発行し、private/unknown/stale sourceや別user/conversationのsourceはcanonical化しない。
+AIが返せるのはPendingAssumptionProposalDraftだけである。reasonCodeは有限unionで、reasonTextその他の任意理由文はschema rejectする。proposalId、conversationId、turnId、revision、status、resolvedByはdeterministic coreが発行し、private/unknown/stale sourceや別user/conversationのsourceはcanonical化しない。reasonCodeとslotの互換性を検証し、history_based_estimateはpublic sourceFactRefs必須、domain_defaultはcoreが検証したdeterministic policy IDまたはpublic source ref必須、first_trial_estimateは表示時に仮定であることを明示する。
 
 DA0aの責務はdraft validation、canonical status=pending record生成、session-local state保持、後続DA0へproposalRefを渡せる状態までである。DA0aはwork item、candidate generation、preview block、scheduler、表示、save、approvalを扱わない。
 
@@ -104,7 +128,7 @@ lifecycle transitionはDA1bが所有する。
 pending → accepted | rejected | superseded | expired
 ~~~
 
-status変更時も元recordを履歴から失わない。modifyは旧recordをsupersededにし、supersededByProposalIdで新しいpending recordへ結ぶ。rejected/expired/superseded recordを暗黙にpendingへ戻さない。
+status変更時も元recordを履歴から失わない。acceptedはaccept_assumptionでproposal値をaccepted factへ移した状態、rejectedは明示拒否、supersededは同じtarget/slotの明示値または新proposalによる直接置換、expiredはsource fact、target、planning range、task scopeが直接replacementなしに無効化された状態である。modifyは旧recordをsupersededにし、resolvedBy={kind:"proposal", proposalId}で新しいpending recordへ結ぶ。rejected/expired/superseded recordを暗黙にpendingへ戻さず、non-pending recordへのdecisionをrejectする。
 
 ## 3. DA0 bridge、snapshot、feasibility
 
@@ -130,6 +154,26 @@ type GenericWeeklyWorkItem = {
     | "unsupported"
     | "rejected";
 };
+
+type PreviewAssumptionDependency = {
+  proposalId: string;
+  targetRef: string;
+  proposalCreatedFromStateRevision: number;
+};
+
+type WeeklyPreviewApprovalEligibility =
+  | "eligible"
+  | "blocked_pending_assumption"
+  | "blocked_stale"
+  | "blocked_invalid"
+  | "unsupported";
+
+type WeeklyPreviewMetadata = {
+  previewId: string;
+  stateRevision: number;
+  assumptionDependencies: PreviewAssumptionDependency[];
+  approvalEligibility: WeeklyPreviewApprovalEligibility;
+};
 ~~~
 
 validator規則:
@@ -141,8 +185,11 @@ validator規則:
 - eligibility=eligibleではassumptionProposalRefを要求しない。
 - eligibility=rejectedのitemをpreview candidateへ渡さない。
 - invalid item一件で他の明確なitemを失わない。
+- pending assumptionを使用したproposalをassumptionDependenciesへ全件記録する。
+- status=pendingのdependencyが一件でもあればapprovalEligibility=blocked_pending_assumptionとする。
+- rejected/expired/superseded、unknown、private、revision不一致のdependencyを含むpreviewは保存可能にしない。
 
-pending assumptionを使うpreviewはその事実を表示し、hard applyしない。DA0はkeyboard、approval、migration、scheduler全面改修を扱わない。
+pending assumptionを使うpreviewは対話材料として表示し、その事実をユーザーへ明示するが、accepted factとして扱わずhard applyしない。blocked_pending_assumptionではapproval/save operationを開始せず、preview承認をaccept_assumptionへ暗黙変換しない。accept/modifyはstateRevisionを進めて旧previewをstaleにし、accepted factを使って再計算した最新previewだけをeligibleにできる。DA0はmetadataで保存不可を示すところまでを所有し、keyboard、approval operation、migration、scheduler全面改修を扱わない。
 
 ~~~ts
 type AskedTopicRecord = {
@@ -176,15 +223,11 @@ type FeasibilitySummary = {
   bottleneckFactRefs: string[];
   conflictFactRefs: string[];
   deterministicOptionIds: string[];
-  previewEligibility:
-    | "eligible"
-    | "eligible_with_pending_assumption"
-    | "blocked"
-    | "unsupported";
+  previewEligibility: WeeklyPreviewApprovalEligibility;
 };
 ~~~
 
-DialogueStateSnapshotはconversationId、stateRevision、acceptedFacts、rejectedCommands、AssumptionProposalRecord履歴、pendingAssumptionProposals、correctionHistory、planningRange、existingEvents、feasibility、preview、allowedQuestionTopics、askedTopicHistory、activeQuestion、lastResolvedQuestionId、recentHistoryを持つ。
+DialogueStateSnapshotはconversationId、stateRevision、acceptedFacts、rejectedCommands、AssumptionProposalRecord履歴、pendingAssumptionProposals、correctionHistory、planningRange、existingEvents、feasibility、preview、WeeklyPreviewMetadata、allowedQuestionTopics、askedTopicHistory、activeQuestion、lastResolvedQuestionId、recentHistoryを持つ。
 
 allowedQuestionTopicsは今聞いてよいtopic、askedTopicHistoryは質問履歴、activeQuestionは回答待ち質問である。answered済みtopicを理由なく再質問せず、revision変更だけでは再質問しない。activeQuestionへの短答をinterpreter groundingに使う。
 
@@ -343,16 +386,22 @@ text partは事実値の運搬路にしない。DA1はMAX_DIALOGUE_TEXT_PART_COD
 
 通常経路の数値・日時・タイトル・期間はfact partだけからdeterministicに描画する。制限緩和はDA3cの会話品質評価後に別taskで判断する。
 
-### 4.4 action validator
+### 4.4 proposal reason renderer
+
+proposal理由はAI free textでなく、deterministic rendererがreasonCode、slot、proposed value、public sourceFactRefs、targetRefに対応するpublic fact、formatter registryからDialogueResponsePart[]へ変換する。reasonCode自体をユーザーへ表示せず、数値、日時、タイトルはfact partと互換formatterで描画する。rendererはstateを更新せず、DialogueTextPartのfree text validatorを迂回する任意文字列入力を持たない。
+
+duration + missing_duration、quantity + missing_quantity、planning_period + missing_planning_periodは互換であり、duration + missing_priority、priority + missing_durationはreject例である。unknown reasonCode、reasonText field、slot非互換、private/stale source、history_based_estimateのsourceFactRefs欠落、検証済みpolicy/sourceのないdomain_defaultはproposal全体をrejectする。first_trial_estimateはdeterministic phraseで未確定の仮定と明示する。
+
+### 4.5 action validator
 
 | action | 必須 | 禁止 |
 | --- | --- | --- |
 | acknowledge | allowed responseParts | save/approve |
 | summarize_and_ask | allowed question part | answered topicの理由なし再質問 |
 | confirm_reference | public fact part | 空sourceの利用中断定 |
-| propose_assumption | draft/sourceFactRefs | canonical ID/status、hard apply |
+| propose_assumption | draft/reasonCode/sourceFactRefs | reasonText、canonical ID/status、hard apply |
 | explain_feasibility | deterministic facts/options | AI再計算、任意option |
-| offer_preview | previewId、revision一致、stale=false | save/approve、blocker中のeligible |
+| offer_preview | previewId、revision一致、stale=false、WeeklyPreviewMetadata一致 | save/approve、blocked状態のeligible偽装 |
 | answer_clarification | target topic/fact | accepted commandの破棄 |
 | explain_capability_gap | capability fact | unsupported preview |
 | fallback | deterministic partsのみ | proposal、preview、private diagnostic、extra call |
@@ -388,7 +437,7 @@ type AssumptionDecisionCommand =
     };
 ~~~
 
-accept/rejectにreplacementValueを付けず、modifyではreplacementValue必須とする。unknown ID、non-pendingへの重複decision、revision mismatch、別user/conversation/targetはそのdecisionだけrejectする。一件の失敗で同turnの別の明確なcommandを破棄しない。
+accept/rejectにreplacementValueを付けず、modifyではreplacementValue必須とする。accept_assumptionはaccepted factを生成してrecordをacceptedにし、reject_assumptionはrecordをrejectedにする。modify_assumptionは旧recordをsuperseded、新recordをpendingにしてresolvedByのproposal参照で結ぶ。いずれもdecidedAtTurnId/decidedAtStateRevisionを記録しstateRevisionを進める。unknown ID、non-pendingへの重複decision、revision mismatch、別user/conversation/targetはそのdecisionだけrejectする。一件の失敗で同turnの別の明確なcommandを破棄しない。
 
 ### 5.2 CorrectionTargetとtyped replacement
 
@@ -455,7 +504,11 @@ type CorrectionEnvelope =
 
 targetは型上ちょうど一種類であり、空targetと複数targetを禁止する。replacement candidateは既存validateInterpretedCandidates相当を通し、acceptedだけをatomic apply候補にする。acceptedWithConfirmationは確認完了まで適用しない。
 
-一つのCorrectionEnvelope内部はatomicである。同turnの複数Envelopeは独立評価し、accepted correctionとrejected correctionが共存できる。unknown/private/stale/別user target、revision/source mismatchはそのEnvelopeだけreject/clarificationとし、元factを破壊しない。restoreは復元可能なsuperseded targetだけ、remove/supersede/restoreはreplacement禁止。accepted decision/correctionはstateRevisionを進め、previewをstaleにし、必要なscheduler/feasibilityを再計算する。
+一つのCorrectionEnvelope内部はatomicである。同turnの複数Envelopeは独立評価し、accepted correctionとrejected correctionが共存できる。unknown/private/stale/別user target、revision/source mismatchはそのEnvelopeだけreject/clarificationとし、元factを破壊しない。restoreは復元可能なsuperseded targetだけ、remove/supersede/restoreはreplacement禁止。
+
+accepted correctionをapplyする同じdeterministic transitionで、status=pendingかつ同じtarget/slot、または訂正・supersedeされたsourceFactRefsへ依存するproposalを検索する。同じtarget/slotへ明示replacementがacceptedされたproposalはsuperseded、前提・target・scopeだけが直接replacementなしに無効になったproposalはexpiredとする。decidedAtTurnId、decidedAtStateRevision、resolvedByのcorrectionまたはreplacement fact参照を記録し、履歴を削除せずpending viewから除外する。旧proposalへのaccept/reject/modifyはnon-pending decisionとして拒否する。correction applyとproposal resolutionはatomicで、rejected correctionはproposalを変更せず、無関係なproposalは不変とする。
+
+accepted decision/correctionはstateRevisionを進め、proposalに依存するpreviewをstaleにし、assumptionDependenciesを再評価して必要なscheduler/feasibilityを再計算する。
 
 ## 6. relative range、request、stale、fallback
 
@@ -508,18 +561,26 @@ type StalePreviewApprovalAttempt = {
   currentStateRevision: number;
   previewStale: true;
 };
+
+type PendingAssumptionPreviewApprovalAttempt = {
+  kind: "pending_assumption_preview_approval_attempt";
+  previewId: string;
+  previewStateRevision: number;
+  pendingProposalIds: string[];
+};
 ~~~
 
 StaleAsyncResultは無言でdiscardし、state、history、status、previewへ反映せず、その結果由来のfallbackも表示しない。
 
-StalePreviewApprovalAttemptはユーザー操作へのdeterministic rejectionである。saveとapproval operation開始を拒否し、「現在条件と一致せず、そのまま保存できないため、最新条件で再計算または最新案の確認が必要」という意味を表示する。AI callは行わない。両者を同じstale処理にしない。
+StalePreviewApprovalAttemptは古いpreviewに対するユーザー操作へのdeterministic rejectionである。saveとapproval operation開始を拒否し、「現在条件と一致せず、そのまま保存できないため、最新条件で再計算または最新案の確認が必要」という意味を表示する。PendingAssumptionPreviewApprovalAttemptはpreview revisionが現在と一致していてもpending dependencyが残る操作で、仮定確認後に最新案を再計算するよう案内し、saveとapproval operation開始を拒否する。いずれもAI callとledger作成を行わない。古いAI responseをuser-facing messageなしで破棄するStaleAsyncResultを含め、三者を混同しない。
 
 ### 6.4 fallback
 
 - Interpreter failure: provider unavailable/exception/timeout/parse/schema。state適用前でturn-wide rules fallback。追加AI callなし。empty candidatesはfailureでない。
 - Dialogue planner failure: invalid action/ref/field/topic/option/formatter/preview、planner exception/timeout。accepted stateを保持し、rules semantic parserを再実行せずdeterministic renderer fallback。追加AI callなし。
 - StaleAsyncResult/cancelled: silent discard。ユーザー向けfailure/fallbackを返さない。
-- StalePreviewApprovalAttempt: deterministic user-facing rejection。fallbackではない。
+- StalePreviewApprovalAttempt: 古いpreviewへのdeterministic user-facing rejection。fallbackではない。
+- PendingAssumptionPreviewApprovalAttempt: 現在revisionだがpending dependencyを含むpreviewへのdeterministic user-facing rejection。fallbackではない。
 
 会話/request/proposalはsession-local、既存draft block localStorageは維持し、reloadで自動再実行しない。
 
@@ -562,7 +623,7 @@ type ApprovedPlanSource = {
 
 idempotency keyはuserId + sourceDraftBlockIdである。approvalOperationIdは監査/batch metadataでありkeyに含めない。別operation IDでも同じuser/source blockから二件目を保存しない。itemごとにpartial failure/retry/crashを扱い、operation statusはitemsから導出可能にする。AIはoperationを作成・開始しない。
 
-StalePreviewApprovalAttemptはledger作成前に拒否する。
+保存境界ではUI button状態に依存せず、WeeklyPreviewMetadataのrevision、approvalEligibility、assumptionDependenciesをcanonical proposal stateと再照合する。staleはStalePreviewApprovalAttempt、現在revisionでstatus=pendingが残るものはPendingAssumptionPreviewApprovalAttemptとしてledger作成前に拒否する。rejected/expired/superseded、unknown、private、revision不一致dependencyはblocked_invalidまたはblocked_staleとして拒否する。preview承認をassumption承認として扱わず、repository saveを開始しない。assumption accept/modify後は旧previewをstale化し、accepted factで再計算された最新のeligible previewだけがledger開始へ進める。
 
 ## 8. DA2 interaction ownership
 
@@ -572,7 +633,7 @@ IME中に送信しない、multiline入力、button/keyboardの同一turn重複�
 
 ## 9. testとtraceability
 
-strict contractはaction、responseParts、derived used refs/topics/options、field/formatter compatibility、state/revision/request/turn、proposal lifecycle、decision/correction union、preview/stale、fallback、approval ledger、duplicateを検証する。自然文はgolden text完全一致ではなく、敬体、簡潔、no re-ask、仮定/事実の区別、内部slot非表示、次入力の明確さをrubric評価する。
+strict contractはaction、responseParts、derived used refs/topics/options、field/formatter compatibility、reasonCode/reason renderer、state/revision/request/turn、proposal lifecycle/resolvedBy、decision/correction union、WeeklyPreviewMetadata/assumptionDependencies/approvalEligibility、StaleAsyncResult/StalePreviewApprovalAttempt/PendingAssumptionPreviewApprovalAttempt、fallback、approval ledger、duplicateを検証する。自然文はgolden text完全一致ではなく、敬体、簡潔、no re-ask、仮定/事実の区別、pending assumption説明、内部slot/reasonCode非表示、次入力の明確さをrubric評価する。
 
 P1〜P7 caseとRequirement ID単位の正は[roleplay test plan](../testing/weekly-planning-roleplay-test-plan.md)である。各taskのRequirement IDs、Dependencies、Entry/Exit、roleplay参照は同表と同期する。
 

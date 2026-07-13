@@ -11,13 +11,18 @@ Dependencies: DA1 → DA1b
 
 ## Scope / entry / exit
 
-pending proposalのaccept/reject/modify/expiry/supersede、target resolution、replace/remove/supersede/restore、audit history、preview stale、scheduler triggerを扱う。現行command types、candidate validator、intake adapter/reducerを再調査し全面置換しない。
+pending proposalのaccept/reject/modify/expiry/supersede、accepted correctionによる関連pending proposal resolution、target resolution、replace/remove/supersede/restore、audit history、preview stale、scheduler triggerを扱う。現行command types、candidate validator、intake adapter/reducerを再調査し全面置換しない。
 
-EntryはDA1 action/response contract完了。Exitはproposal lifecycle recordが監査可能で、decisionとtargetがdiscriminated unionになり、replacementが具体型で、Envelope atomic・turn内独立がcontract testで固定されること。
+EntryはDA1 action/response contract完了。ExitはreasonCodeを保持するproposal lifecycle recordとresolvedByが監査可能で、decisionとtargetがdiscriminated unionになり、replacementが具体型で、correction applyと関連proposal resolutionのatomicity・Envelope間独立がcontract testで固定されること。
 
 ## Exact types
 
 ~~~ts
+type ProposalResolutionRef =
+  | { kind: "proposal"; proposalId: string }
+  | { kind: "fact"; factId: string }
+  | { kind: "correction"; correctionId: string };
+
 type AssumptionDecisionCommand =
   | {
       type: "accept_assumption";
@@ -85,15 +90,19 @@ type CorrectionEnvelope =
 
 ## Lifecycle / validator / atomicity
 
-proposal transitionはpending → accepted/rejected/superseded/expired。modifyは旧recordをsuperseded、新recordをpendingにし、supersededByProposalId、decidedAtTurnId、decidedAtStateRevisionを記録する。元recordを削除しない。rejected/expiredを暗黙にpendingへ戻さない。
+proposal transitionはpending → accepted/rejected/superseded/expired。acceptedはaccept_assumptionでproposal値をaccepted factへ移した状態、rejectedは明示拒否、supersededは同じtarget/slotの新しい明示値または新proposalによる直接置換、expiredはsource fact、target、planning range、task scopeが直接replacementなしに無効になった状態である。modifyは旧recordをsuperseded、新recordをpendingにし、decidedAtTurnId、decidedAtStateRevision、resolvedBy={kind:"proposal", proposalId}を記録する。reasonCodeを含む元recordを削除せず、rejected/expired/supersededを暗黙にpendingへ戻さない。
 
 accept/rejectにreplacementValue禁止、modifyはreplacementValue必須。unknown proposal ID、non-pending重複decision、revision mismatch、別user/conversation/targetはそのdecisionだけrejectする。
 
 CorrectionTargetは型上ちょうど一種類で、空target・複数targetを禁止する。replaceはreplacement必須。remove/supersede/restoreはreplacement禁止。restoreは復元可能なsuperseded target必須。
 
-一つのCorrectionEnvelope内部はatomic。同turnの複数Envelopeは独立validateし、accepted correctionとrejected correctionを共存可能にする。accepted commandとclarificationを直交保持し、rejected correctionは元factを壊さない。accepted後はrevisionを進めpreviewをstale化しscheduler/feasibilityを再計算する。
+一つのCorrectionEnvelope内部はatomic。同turnの複数Envelopeは独立validateし、accepted correctionとrejected correctionを共存可能にする。accepted commandとclarificationを直交保持し、rejected correctionは元factとproposal statusを壊さない。
 
-schema/enum/finite/range/size/status/sourceFactRefs/revision/authorization/target uniquenessをdeterministic検証する。interpreter/planner/StaleAsyncResultはDA1/DA2 categoryへ委譲。active request一件、session-local。sourceText/reason/title/memoはuntrusted JSON data。save/repository/UI/scheduler全面改修はnon-goalである。
+accepted correctionをapplyする同じdeterministic transitionで、status=pendingかつproposal.targetRef/slotが訂正対象と一致するもの、またはsourceFactRefsのいずれかが訂正・supersedeされたものを検索する。同target/slotへ新しい明示値がacceptedされたproposalはsuperseded、前提・target・scopeだけが直接replacementなしに無効化されたproposalはexpiredとする。decidedAtTurnId、decidedAtStateRevision、resolvedByのcorrection IDまたはreplacement fact IDを記録し、履歴を削除せずpending viewから除外する。old proposalへのaccept/reject/modifyはnon-pending decisionとして拒否する。無関係proposalは不変で、correction applyとproposal resolutionのどちらかだけをcommitしない。
+
+accepted decision/correction後はrevisionを進め、依存previewをstale化し、assumptionDependenciesを再評価してscheduler/feasibilityを再計算する。assumption accept/modify後もaccepted factから最新previewを再計算し、旧previewをeligibleへ戻さない。
+
+schema/enum/finite/range/size/status/reasonCode/sourceFactRefs/revision/authorization/target uniquenessをdeterministic検証する。reasonTextはDA0a/DA1でschema rejectされ、DA1bはvalidated reasonCodeを履歴に保持する。interpreter/planner/StaleAsyncResultはDA1/DA2 categoryへ委譲。active request一件、session-local。sourceText/title/memoはuntrusted JSON data。save/repository/UI/scheduler全面改修はnon-goalである。
 
 ## P1〜P7 responsibility
 
@@ -101,14 +110,14 @@ schema/enum/finite/range/size/status/sourceFactRefs/revision/authorization/targe
 | --- | --- | --- | --- |
 | P1 | Covered by another task | DA2 | request/submit lifecycle |
 | P2 | Covered by another task | DA2 | IME/focus/keyboard |
-| P3 | Applicable | DA1b | decision/target/replacement boundary |
-| P4 | Covered by another task | approval | stale preview approval/idempotency |
+| P3 | Applicable | DA1b | decision/target/replacement、correction-proposal resolution boundary |
+| P4 | Shared transition boundary | DA1b、approval | proposal解決でpreview stale、保存guardはapproval |
 | P5 | Not applicable or regression only | future persistence、DA2 | migration scope |
 | P6 | Applicable | DA1b | fallbackとexam/non-exam |
-| P7 | Applicable | DA1b | lifecycle、target、revision trace |
+| P7 | Applicable | DA1b | lifecycle、reasonCode、resolvedBy、target、revision trace |
 
 ## Acceptance / tests / commands
 
-unitはAssumptionProposalRecord lifecycle、decision union、target union、typed replacement、confidence/revision/audit。contractはmultiple envelopes independent、Envelope atomic、clarification orthogonal、preview stale。integrationはWP-DA turns 3〜6、10、scheduler trigger、exam regression。property/fuzzはinvalid union shapes、unknown/non-pending IDs、duplicates、NaN/Infinity、cross-user/conversation、untrusted strings。
+unitはAssumptionProposalRecord lifecycle、ProposalResolutionRef、superseded/expired分類、decision union、target union、typed replacement、confidence/revision/audit。contractはcorrection apply + related proposal resolution atomic、multiple envelopes independent、old proposal decision拒否、unrelated proposal不変、clarification orthogonal、assumptionDependencies再評価、preview stale。integrationはWP-DA turns 3〜6、10、P3-CORRECTION-SUPERSEDES-PROPOSAL-001、scheduler trigger、exam regression。property/fuzzはinvalid union shapes、unknown/non-pending IDs、duplicates、source invalidation、NaN/Infinity、cross-user/conversation、untrusted strings。
 
-roleplayはturn 5a/5b/5c、turn 6 range correction、turn 10、P3-CORRECTION-TARGET-001、P3-ASSUMPTION-DECISION-001。real-modelはcommand fixture replay。既存test/build/lint、diff check、status、Git write禁止。
+roleplayはturn 5a/5b/5c、turn 6 range correction、turn 10の90分proposal supersede、P3-CORRECTION-TARGET-001、P3-CORRECTION-SUPERSEDES-PROPOSAL-001、P3-ASSUMPTION-DECISION-001。real-modelはcommand fixture replay。既存test/build/lint、diff check、status、Git write禁止。

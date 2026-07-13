@@ -9,9 +9,9 @@ Dependencies: DA0 → DA1
 
 ## Scope / current path / entry / exit
 
-snapshotから有限action、allowed topic/option/fact field、responseParts、preview offerを検証可能にする。現行dialogue renderer、state summary、decision taxonomy、public fact境界を再調査する。
+snapshotから有限action、allowed topic/option/fact field、responseParts、preview offer、proposal reason renderingを検証可能にする。現行dialogue renderer、state summary、decision taxonomy、public fact境界を再調査する。
 
-EntryはDA0 preview contract完了。ExitはresponsePartsだけがAI出力上の使用fact/topic/optionの正になり、coreがused refsを導出し、valid responseだけがpublic factsをrenderし、invalid responseが全体rejectされること。
+EntryはDA0 preview contract完了。ExitはresponsePartsだけがAI出力上の使用fact/topic/optionの正になり、coreがused refsを導出し、reasonCodeからdeterministic proposal explanationを生成し、valid responseだけがpublic factsをrenderし、reasonTextを含むinvalid responseが全体rejectされること。
 
 ## Exact response contract
 
@@ -112,11 +112,17 @@ text part validator:
 
 制限緩和はDA3c評価に基づく別taskとし、DA1初期契約では安全側に固定する。
 
+## Proposal reason renderer
+
+PendingAssumptionProposalDraft/AssumptionProposalRecordの理由入力は有限なAssumptionProposalReasonCodeだけとし、reasonTextその他の自由文fieldはschema rejectする。validatorはreasonCode/slot互換、proposed value/unit、targetRef、public sourceFactRefs、revisionを検証する。duration + missing_duration、quantity + missing_quantity、planning_period + missing_planning_periodはvalid、duration + missing_priority、priority + missing_durationはinvalidである。history_based_estimateはpublic sourceFactRefs必須、domain_defaultはcoreが検証したdeterministic policy IDまたはpublic source ref必須、first_trial_estimateは仮定表示必須とする。
+
+deterministic proposal explanation rendererはreasonCode、slot、proposed value、public source facts、target public fact、formatter registryからDialogueResponsePart[]を生成する。reasonCodeをraw表示せず、数値、日時、タイトルはfact partと互換formatterで描画する。AI free textを理由文へ流用せず、DialogueTextPart validatorを迂回しない。unknown/incompatible reasonCode、reasonText、private/stale source、formatter非互換はproposal/response全体rejectとし、rendererからstateを更新しない。
+
 ## State / validator / failure
 
-accepted/rejected/pending/correction/feasibility/preview snapshotをimmutable入力にする。askedTopicHistory/activeQuestionとallowedQuestionTopicsを別管理する。action、field、formatter、factRef、topic、option、previewId、revisionをallow-list検証する。
+accepted/rejected/pending/correction/feasibility/preview snapshotをimmutable入力にする。askedTopicHistory/activeQuestionとallowedQuestionTopicsを別管理する。action、field、formatter、factRef、topic、option、previewId、revision、reasonCode/slot/sourceFactRefsをallow-list検証する。
 
-offer_previewはpreviewId/stateRevision一致/stale=false、propose_assumptionはdraft/sourceFactRefs、fallbackはproposal/preview/private diagnostic/extra call禁止。unknown/duplicate/private/stale itemはresponse全体reject。response textを再parseしてstateを更新しない。
+offer_previewはpreviewId/stateRevision一致/stale=false、propose_assumptionはdraft/reasonCode/sourceFactRefs、fallbackはproposal/preview/private diagnostic/extra call禁止。reasonText、unknown/incompatible reasonCode、unknown/duplicate/private/stale itemはresponse全体reject。response textまたはproposal理由を再parseしてstateを更新しない。
 
 interpreter failure、planner failure、StaleAsyncResultを別diagnosticにする。active request lifecycleはDA2。contractはsession-local、save/migration/repositoryはnon-goal。stringsはuntrusted JSON dataである。
 
@@ -126,14 +132,14 @@ interpreter failure、planner failure、StaleAsyncResultを別diagnosticにす�
 | --- | --- | --- | --- |
 | P1 | Covered by another task | DA2 | request/submit lifecycle |
 | P2 | Covered by another task | DA2 | IME/focus/keyboard |
-| P3 | Applicable | DA1 | hostile response/grounding boundary |
+| P3 | Applicable | DA1 | hostile response/proposal reason grounding boundary |
 | P4 | Covered by another task | approval | preview/save/idempotency |
 | P5 | Not applicable or regression only | future persistence、DA2 | migration scope |
 | P6 | Applicable | DA1、DA2 | planner fallback、stale分離 |
-| P7 | Applicable | DA1 | responsePartsとderived refs trace |
+| P7 | Applicable | DA1 | responseParts/derived refs、reasonCode/renderer trace |
 
 ## Acceptance / tests / commands
 
-unitはfinite union、formatter registry、field互換、text validator、allow-list、no-reask。contractはaction validator、responseParts-only schema、derived used refs、envelope/revision、invalid全体reject。integrationはsnapshot→planner→validator→deterministic renderer、clarification orthogonality、planning range accepted後no re-ask。property/fuzzはunknown/private IDs、duplicate option、invalid formatter、数字/日時/title leak、oversize。
+unitはfinite union、reasonCode/slot/source validator、reasonText reject、formatter registry、field互換、text validator、allow-list、no-reask。contractはaction validator、responseParts-only schema、derived used refs、proposal reason renderer、envelope/revision、invalid全体reject。integrationはsnapshot→planner→validator→deterministic response/proposal reason renderer、clarification orthogonality、planning range accepted後no re-ask。property/fuzzはunknown/incompatible reasonCode、reasonText、private/stale source、unknown/private IDs、duplicate option、invalid formatter、数字/日時/title leak、oversize。
 
-roleplayはWP-DA turns 1、3〜11、P3-STALE-REF-001、P3-RESPONSE-DUPLICATE-SOURCE-001、P3-TEXT-FACT-LEAK-001、P6-PLANNER-FAILURE-001。real-modelはresponse fixture replay。既存scripts、diff check、status、Git write禁止。
+roleplayはWP-DA turns 1、3〜11、P3-STALE-REF-001、P3-PROPOSAL-REASON-GROUNDING-001、P3-RESPONSE-DUPLICATE-SOURCE-001、P3-TEXT-FACT-LEAK-001、P6-PLANNER-FAILURE-001。real-modelはresponse fixture replay。既存scripts、diff check、status、Git write禁止。
