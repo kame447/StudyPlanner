@@ -4,6 +4,7 @@ import type {
 } from '../types';
 import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
+import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
 
 export interface WeeklyPlanningPreviewBlock {
   id: string;
@@ -170,7 +171,7 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
   userId,
   createdAt,
 }: CreateWeeklyDraftBlocksFromPreviewCandidatesInput): WeeklyPlanDraftBlock[] {
-  return candidates.map((candidate) => {
+  const blocks = candidates.map((candidate) => {
     const behaviorMetadata = behaviorMetadataFromCandidate(candidate, userId);
     return {
       id: candidate.stableKey,
@@ -180,7 +181,7 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
       endTime: candidate.endTime,
       title: candidate.title,
       subject: candidate.field,
-      type: 'study',
+      type: 'study' as const,
       label: candidate.field,
       materialId: null,
       materialName: '',
@@ -190,12 +191,14 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
         `workItemKey: ${candidate.workItemKey}`,
         'source: dry-run preview',
       ].join(' / '),
-      source: 'ai',
-      status: 'draft',
+      source: 'ai' as const,
+      status: 'draft' as const,
       userEdited: false,
       ...(behaviorMetadata ? { behaviorMetadata } : {}),
       createdAt,
       updatedAt: createdAt,
     };
   });
+  recordWeeklyPlanningDraftPromotion({ userId, blocks });
+  return blocks;
 }
