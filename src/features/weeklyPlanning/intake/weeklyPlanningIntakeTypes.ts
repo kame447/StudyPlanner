@@ -1,3 +1,5 @@
+import type { AssumptionProposalRecord } from './weeklyPlanningAssumptionProposals';
+
 export type PlanningIntakeStatus =
   | 'idle'
   | 'needs_scope'
@@ -147,16 +149,8 @@ export interface LifeConstraint {
   rawText?: string;
 }
 
-/**
- * 計画制約として利用できる既存 schedule source の種類。
- * 発話表現(「予定表の通り」「時間割に入っている」等)ではなく、参照対象の種類を表す。
- */
 export type ConstraintSourceKind = 'timetable' | 'existing_plans' | 'calendar';
 
-/**
- * 「既存の schedule source を計画制約として利用する」という semantic intent の参照対象。
- * selector は当面 active(現在有効なもの)のみ。
- */
 export interface ConstraintSourceRef {
   kind: ConstraintSourceKind;
   selector: 'active';
@@ -203,10 +197,6 @@ export interface PlanningIntakeState {
   progress: StudyProgress[];
   unitRates: UnitRateEstimate[];
   constraints: LifeConstraint[];
-  /**
-   * 計画制約として利用中の既存 schedule source(use_constraint_source intent で確定したもの)。
-   * 実データの busy interval 化は generator 側の既存 capability が担う。ここは「どのソースを利用中か」の記録のみ。
-   */
   constraintSourcesInUse?: ConstraintSourceRef[];
   fixedEventsDeclaredNone?: true;
   priorityPolicy: PriorityPolicy;
@@ -218,6 +208,10 @@ export interface PlanningIntakeState {
   shouldSavePlan: false;
   draftGenerationIntent?: PlanningDraftGenerationIntent;
   draftGenerationAuthorizedAtRevision?: number;
+  /**
+   * Session-local proposal ledger. UI stateと一緒に次turnへ渡すが、repository/localStorageへは保存しない。
+   */
+  assumptionProposalRecords?: AssumptionProposalRecord[];
   sourceTurns: string[];
 }
 
