@@ -74,18 +74,20 @@ function firestorePayload<T>(value: T): T {
 export function createFirestoreWeeklyPlanningTraceRepository(
   firestoreDb: Firestore,
 ): WeeklyPlanningTraceRepository {
+  async function upsertSession(session: WeeklyPlanningTraceSession): Promise<void> {
+    await setDoc(
+      doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
+      firestorePayload(session),
+      { merge: true },
+    );
+  }
+
   return {
-    async upsertSession(session) {
-      await setDoc(
-        doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
-        firestorePayload(session),
-        { merge: true },
-      );
-    },
+    upsertSession,
 
     async appendEntries({ session, entries }) {
       if (entries.length === 0) {
-        await this.upsertSession(session);
+        await upsertSession(session);
         return;
       }
       if (entries.some((entry) => entry.userId !== session.userId || entry.sessionId !== session.id)) {
@@ -163,27 +165,31 @@ function writeLocalArray<T>(key: string, values: T[]): void {
 }
 
 export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepository {
+  async function upsertSession(session: WeeklyPlanningTraceSession): Promise<void> {
+    const sessions = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
+    writeLocalArray(LOCAL_SESSIONS_KEY, [
+      ...sessions.filter((item) => item.id !== session.id),
+      sanitizeWeeklyPlanningTraceValue(session).value as WeeklyPlanningTraceSession,
+    ]);
+  }
+
   return {
-    async upsertSession(session) {
-      const sessions = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
-      writeLocalArray(LOCAL_SESSIONS_KEY, [
-        ...sessions.filter((item) => item.id !== session.id),
-        sanitizeWeeklyPlanningTraceValue(session).value as WeeklyPlanningTraceSession,
-      ]);
-    },
+    upsertSession,
 
     async appendEntries({ session, entries }) {
       if (entries.some((entry) => entry.userId !== session.userId || entry.sessionId !== session.id)) {
         throw new Error('trace ownership mismatch');
       }
-      await this.upsertSession(session);
+      await upsertSession(session);
       const current = readLocalArray<WeeklyPlanningTraceEntry>(LOCAL_ENTRIES_KEY);
       const byId = new Map(current.map((entry) => [entry.id, entry]));
       entries.forEach((entry) => {
-        byId.set(
-          entry.id,
-          sanitizeWeeklyPlanningTraceValue(entry).value as WeeklyPlanningTraceEntry,
-        );
+        const sanitized = sanitizeWeeklyPlanningTraceValue(entry).value as WeeklyPlanningTraceEntry;
+        const existing = byId.get(entry.id);
+        if (existing && JSON.stringify(existing) !== JSON.stringify(sanitized)) {
+          throw new Error('append-only trace entry conflict');
+        }
+        byId.set(entry.id, sanitized);
       });
       writeLocalArray(LOCAL_ENTRIES_KEY, Array.from(byId.values()));
     },
@@ -218,6 +224,39 @@ export function createNoopWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRe
   };
 }
 
+function serializeWeeklyPlanningTraceWrites(
+  delegate: WeeklyPlanningTraceRepository,
+): WeeklyPlanningTraceRepository {
+  const queues = new Map<string, Promise<void>>();
+
+  function enqueue(sessionId: string, operation: () => Promise<void>): Promise<void> {
+    const previous = queues.get(sessionId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    queues.set(sessionId, next);
+    return next.finally(() => {
+      if (queues.get(sessionId) === next) queues.delete(sessionId);
+    });
+  }
+
+  return {
+    upsertSession(session) {
+      return enqueue(session.id, () => delegate.upsertSession(session));
+    },
+    appendEntries(params) {
+      return enqueue(params.session.id, () => delegate.appendEntries(params));
+    },
+    listSessions(userId) {
+      return delegate.listSessions(userId);
+    },
+    getSession(userId, sessionId) {
+      return delegate.getSession(userId, sessionId);
+    },
+    listEntries(userId, sessionId) {
+      return delegate.listEntries(userId, sessionId);
+    },
+  };
+}
+
 let repository: WeeklyPlanningTraceRepository | undefined;
 
 export function isWeeklyPlanningTraceEnabled(): boolean {
@@ -231,9 +270,10 @@ export function getWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepositor
     return repository;
   }
   const firestoreDb = getFirestoreDb();
-  repository = firestoreDb
+  const storageRepository = firestoreDb
     ? createFirestoreWeeklyPlanningTraceRepository(firestoreDb)
     : createLocalWeeklyPlanningTraceRepository();
+  repository = serializeWeeklyPlanningTraceWrites(storageRepository);
   return repository;
 }
 
