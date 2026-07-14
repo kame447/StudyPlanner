@@ -1,4 +1,5 @@
 import type { PlanType } from '../../types/domain';
+import type { WeeklyPreviewMetadata } from './planning/weeklyPlanningApprovalTypes';
 
 export type AiInputMode = 'chat' | 'weekly_planning';
 
@@ -23,6 +24,7 @@ export interface WeeklyPlanningBehaviorMetadata {
     schedulerInputSource: 'exam_prep_request';
     candidateSource: 'weekly_exam_prep';
   };
+  previewMetadata?: WeeklyPreviewMetadata;
 }
 
 export interface WeeklyPlanDraftBlock {
