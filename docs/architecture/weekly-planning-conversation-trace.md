@@ -55,10 +55,26 @@ clientから保存したtraceは、debugとevaluation候補のための観測情
 Firestore rulesは次を保証する。
 
 ```text
-認証userは自分のsession／entryのみ作成・参照できる
+認証userは自分のsession／entryだけを作成できる
+通常userはtrace documentをreadできない
+admins/{uid}.enabled == trueの管理者だけが全session／entryをreadできる
 sessionのownerとlogical identityは更新で変更できない
-entryは作成後に変更・削除できない
+entryは作成後に異なる内容へ変更・削除できない
 ```
+
+## Admin read path
+
+viewerは独立したdebug routeではなく、既存の管理者画面へ統合する。
+
+```text
+/admin/weekly-planning-traces
+```
+
+route入口は`AdminApp`、権限境界は`AdminGuard`と`useAdminStatus`である。UIの非表示だけに依存せず、Firestore Rulesでも管理者以外のreadを拒否する。
+
+管理者viewerは全userのsession summaryを取得し、選択されたsessionのentryだけを取得する。user ID、status、error、fallback、previewで絞り込める。
+
+件数増加時はcursor pagination、期間query、summary集計を追加する。現行の全session取得は初期運用向けであり、大規模運用前に置き換える。
 
 ## Redaction
 
@@ -71,10 +87,6 @@ user発話contentは会話再現に必要なため保存対象である。した
 sessionとentryへ`expireAt`を保存する。初期値は最終観測時点から90日である。
 
 Firestore TTL policyの有効化はinfrastructure作業であり、application codeだけでは完結しない。TTL削除は即時ではないため、account deletionは別の明示的なcascade処理を必要とする。
-
-## Read path
-
-開発用viewerはsession summaryを取得し、選択されたsessionのentryだけを取得する。全user横断viewerは提供しない。将来件数が増えた場合はcursor paginationとsummary集計を追加する。
 
 ## Failure behavior
 
