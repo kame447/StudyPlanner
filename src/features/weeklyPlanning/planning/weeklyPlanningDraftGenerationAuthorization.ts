@@ -1,12 +1,7 @@
-import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import type { DraftGenerationIntent } from './weeklyPlanningBehaviorTypes';
-
-declare module '../intake/weeklyPlanningIntakeTypes' {
-  interface PlanningIntakeState {
-    draftGenerationIntent?: DraftGenerationIntent;
-    draftGenerationAuthorizedAtRevision?: number;
-  }
-}
+import type {
+  PlanningDraftGenerationIntent,
+  PlanningIntakeState,
+} from '../intake/weeklyPlanningIntakeTypes';
 
 export interface AuthorizeDraftGenerationCommand {
   type: 'authorize_draft_generation';
@@ -62,16 +57,21 @@ export function validateDraftGenerationAuthorizationCommand(
   };
 }
 
+function resetDraftGenerationIntent(state: PlanningIntakeState): PlanningIntakeState {
+  const draftGenerationIntent: PlanningDraftGenerationIntent = 'not_requested';
+  return {
+    ...state,
+    draftGenerationIntent,
+    draftGenerationAuthorizedAtRevision: undefined,
+  };
+}
+
 export function reduceDraftGenerationAuthorization(
   state: PlanningIntakeState,
   validation: DraftGenerationAuthorizationValidation,
 ): PlanningIntakeState {
   if (!validation.accepted) {
-    return {
-      ...state,
-      draftGenerationIntent: 'not_requested',
-      draftGenerationAuthorizedAtRevision: undefined,
-    };
+    return resetDraftGenerationIntent(state);
   }
 
   const revision = state.sourceTurns.length;
