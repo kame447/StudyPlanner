@@ -62,7 +62,7 @@ describe('weeklyPlanningLifecycleInterpreter', () => {
     });
   });
 
-  it('does not guess when multiple proposals or targets match', async () => {
+  it('keeps an ambiguous assumption unresolved while applying a uniquely named correction', async () => {
     const interpreter = createLifecycleAwareWeeklyPlanningInterpreter({
       interpreter: emptyInterpreter,
       conversationId: 'conversation-1',
@@ -78,6 +78,9 @@ describe('weeklyPlanningLifecycleInterpreter', () => {
     });
     const result = await interpreter.interpretUserTurn(params('それで進めて。英語は外して'));
     expect(result.assumptionDecisions).toBeUndefined();
-    expect(result.correctionEnvelopes).toBeUndefined();
+    expect(result.correctionEnvelopes).toEqual([expect.objectContaining({
+      operation: 'remove',
+      target: { kind: 'task', taskRef: 'task:0' },
+    })]);
   });
 });
