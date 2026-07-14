@@ -23,6 +23,15 @@ export interface WeeklyPlanningPreviewBlock {
   behaviorMetadata?: WeeklyPlanningBehaviorMetadata;
 }
 
+function acceptedDependencies(metadata: BehaviorAwarePreviewMetadata) {
+  return metadata.acceptedAssumptionDependencies?.map((dependency) => ({ ...dependency }))
+    ?? metadata.usedAssumptionProposalRefs.map((proposalId) => ({
+      proposalId,
+      targetRef: metadata.taskRef,
+      proposalCreatedFromStateRevision: metadata.stateRevision,
+    }));
+}
+
 function behaviorMetadataFromCandidate(
   candidate: WeeklyDraftCandidate,
   userId?: string,
@@ -31,19 +40,13 @@ function behaviorMetadataFromCandidate(
     behaviorMetadata?: BehaviorAwarePreviewMetadata;
   }).behaviorMetadata;
   if (!metadata) return undefined;
-
+  const dependencies = acceptedDependencies(metadata);
   const previewMetadata = userId
     ? {
         previewId: `behavior-preview:${metadata.stateRevision}`,
         stateRevision: metadata.stateRevision,
-        assumptionDependencies: metadata.usedAssumptionProposalRefs.map((proposalId) => ({
-          proposalId,
-          targetRef: metadata.taskRef,
-          proposalCreatedFromStateRevision: metadata.stateRevision,
-        })),
-        approvalEligibility: metadata.usedAssumptionProposalRefs.length > 0
-          ? 'blocked_pending_assumption' as const
-          : 'eligible' as const,
+        assumptionDependencies: dependencies,
+        approvalEligibility: 'eligible' as const,
         stale: false,
         authorizedUserId: userId,
       }
@@ -53,6 +56,7 @@ function behaviorMetadataFromCandidate(
     stateRevision: metadata.stateRevision,
     sourceFactRefs: [...metadata.sourceFactRefs],
     usedAssumptionProposalRefs: [...metadata.usedAssumptionProposalRefs],
+    ...(dependencies.length > 0 ? { acceptedAssumptionDependencies: dependencies } : {}),
     taskRef: metadata.taskRef,
     opportunityTags: [...metadata.opportunityTags],
     reasoningKey: metadata.reasoningKey,
@@ -121,14 +125,13 @@ export function createWeeklyPlanningPreviewDisplayBlock(
         previewMetadata: {
           previewId: `behavior-preview:${block.behaviorMetadata.stateRevision}`,
           stateRevision: block.behaviorMetadata.stateRevision,
-          assumptionDependencies: block.behaviorMetadata.usedAssumptionProposalRefs.map((proposalId) => ({
-            proposalId,
-            targetRef: block.behaviorMetadata?.taskRef ?? '',
-            proposalCreatedFromStateRevision: block.behaviorMetadata?.stateRevision ?? 0,
-          })),
-          approvalEligibility: block.behaviorMetadata.usedAssumptionProposalRefs.length > 0
-            ? 'blocked_pending_assumption' as const
-            : 'eligible' as const,
+          assumptionDependencies: block.behaviorMetadata.acceptedAssumptionDependencies?.map((dependency) => ({ ...dependency }))
+            ?? block.behaviorMetadata.usedAssumptionProposalRefs.map((proposalId) => ({
+              proposalId,
+              targetRef: block.behaviorMetadata?.taskRef ?? '',
+              proposalCreatedFromStateRevision: block.behaviorMetadata?.stateRevision ?? 0,
+            })),
+          approvalEligibility: 'eligible' as const,
           stale: false,
           authorizedUserId: userId,
         },
