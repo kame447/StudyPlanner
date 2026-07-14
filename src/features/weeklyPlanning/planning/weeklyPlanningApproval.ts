@@ -44,11 +44,36 @@ function cloneOperation(operation: WeeklyDraftApprovalOperation): WeeklyDraftApp
   return { ...operation, items: operation.items.map(cloneItem) };
 }
 
-function metadataFromBlocks(blocks: readonly WeeklyPlanDraftBlock[]): WeeklyPreviewMetadata | null {
-  if (blocks.length === 0) return null;
-  const first = blocks[0].behaviorMetadata?.previewMetadata;
-  if (!first) return null;
-  const samePreview = blocks.every((block) => {
+function legacyPreviewId(blocks: readonly WeeklyPlanDraftBlock[]): string {
+  let hash = 2166136261;
+  const source = blocks.map((block) => block.id).sort().join('\u001f');
+  for (const character of source) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return `legacy-weekly-preview:${(hash >>> 0).toString(16)}`;
+}
+
+function metadataFromBlocks(params: {
+  blocks: readonly WeeklyPlanDraftBlock[];
+  currentStateRevision: number;
+  userId: string;
+}): WeeklyPreviewMetadata | null {
+  if (params.blocks.length === 0) return null;
+  const first = params.blocks[0].behaviorMetadata?.previewMetadata;
+  const metadataCount = params.blocks.filter((block) => Boolean(block.behaviorMetadata?.previewMetadata)).length;
+  if (!first) {
+    if (metadataCount > 0 || params.blocks.some((block) => block.status !== 'draft')) return null;
+    return {
+      previewId: legacyPreviewId(params.blocks),
+      stateRevision: params.currentStateRevision,
+      assumptionDependencies: [],
+      approvalEligibility: 'eligible',
+      stale: false,
+      authorizedUserId: params.userId,
+    };
+  }
+  const samePreview = params.blocks.every((block) => {
     const metadata = block.behaviorMetadata?.previewMetadata;
     return metadata?.previewId === first.previewId
       && metadata.stateRevision === first.stateRevision
@@ -68,7 +93,7 @@ export function validateWeeklyPreviewApproval(params: {
   userId: string;
   proposalRecords: readonly AssumptionProposalRecord[];
 }): WeeklyPreviewApprovalGuardResult {
-  const metadata = metadataFromBlocks(params.blocks);
+  const metadata = metadataFromBlocks(params);
   if (!metadata) {
     return { allowed: false, attempt: { kind: 'invalid_preview_approval_attempt', reason: 'missing-or-mixed-preview-metadata' } };
   }
@@ -184,12 +209,8 @@ export function deriveApprovalOperationStatus(
   items: readonly WeeklyDraftApprovalItem[],
 ): WeeklyDraftApprovalOperationStatus {
   if (items.length === 0) return 'failed';
-  if (items.every((item) => item.status === 'saved' || item.status === 'skipped_duplicate')) {
-    return 'completed';
-  }
-  if (items.some((item) => item.status === 'saved' || item.status === 'skipped_duplicate')) {
-    return 'partially_saved';
-  }
+  if (items.every((item) => item.status === 'saved' || item.status === 'skipped_duplicate')) return 'completed';
+  if (items.some((item) => item.status === 'saved' || item.status === 'skipped_duplicate')) return 'partially_saved';
   if (items.every((item) => item.status === 'failed')) return 'failed';
   return 'pending';
 }
@@ -242,13 +263,13 @@ export async function executeWeeklyDraftApproval(params: {
       continue;
     }
 
-    operation.items[itemIndex] = {
-      ...currentItem,
+    const savingItem: WeeklyDraftApprovalItem = {
+      sourceDraftBlockId: currentItem.sourceDraftBlockId,
       status: 'saving',
       attemptCount: currentItem.attemptCount + 1,
-      lastErrorCode: undefined,
       updatedAt: params.dependencies.now(),
     };
+    operation.items[itemIndex] = savingItem;
     try {
       const saved = await params.dependencies.saveBlock({
         block,
@@ -259,14 +280,14 @@ export async function executeWeeklyDraftApproval(params: {
         },
       });
       operation.items[itemIndex] = {
-        ...operation.items[itemIndex],
+        ...savingItem,
         status: 'saved',
         savedPlanId: saved.planId,
         updatedAt: params.dependencies.now(),
       };
     } catch (error) {
       operation.items[itemIndex] = {
-        ...operation.items[itemIndex],
+        ...savingItem,
         status: 'failed',
         lastErrorCode: errorCode(error),
         updatedAt: params.dependencies.now(),
@@ -274,13 +295,8 @@ export async function executeWeeklyDraftApproval(params: {
     }
   }
 
-  operation = {
-    ...operation,
-    status: deriveApprovalOperationStatus(operation.items),
-  };
-  if (operation.status === 'completed') {
-    operation.completedAt = params.dependencies.now();
-  }
+  operation = { ...operation, status: deriveApprovalOperationStatus(operation.items) };
+  if (operation.status === 'completed') operation.completedAt = params.dependencies.now();
   return operation;
 }
 
