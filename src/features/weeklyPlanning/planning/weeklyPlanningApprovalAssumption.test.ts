@@ -3,7 +3,10 @@ import type { AssumptionProposalRecord } from '../intake/weeklyPlanningAssumptio
 import type { WeeklyPlanDraftBlock } from '../types';
 import { validateWeeklyPreviewApproval } from './weeklyPlanningApproval';
 
-function proposal(status: AssumptionProposalRecord['status']): AssumptionProposalRecord {
+function proposal(
+  status: AssumptionProposalRecord['status'],
+  createdAtTurnId = 'turn-2',
+): AssumptionProposalRecord {
   return {
     proposalId: 'proposal-accepted',
     conversationId: 'conversation-1',
@@ -13,7 +16,7 @@ function proposal(status: AssumptionProposalRecord['status']): AssumptionProposa
     proposedUnit: 'minutes',
     reasonCode: 'missing_duration',
     sourceFactRefs: ['task:0'],
-    createdAtTurnId: 'turn-2',
+    createdAtTurnId,
     createdFromStateRevision: 2,
     status,
   };
@@ -78,7 +81,16 @@ describe('weeklyPlanningApproval assumption dependency', () => {
     }).allowed).toBe(true);
   });
 
-  it('rejects the same preview when the dependency is pending or superseded', () => {
+  it('allows the save-boundary compatibility record emitted from accepted preview metadata', () => {
+    expect(validateWeeklyPreviewApproval({
+      blocks: [block()],
+      currentStateRevision: 5,
+      userId: 'user-1',
+      proposalRecords: [proposal('pending', 'preview-dependency')],
+    }).allowed).toBe(true);
+  });
+
+  it('rejects an ordinary pending or superseded dependency', () => {
     const pending = validateWeeklyPreviewApproval({
       blocks: [block()],
       currentStateRevision: 5,
