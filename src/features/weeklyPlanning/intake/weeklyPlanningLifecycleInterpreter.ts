@@ -4,6 +4,8 @@ import type {
   WeeklyPlanningIntakeInterpreter,
   WeeklyPlanningInterpreterResult,
 } from './weeklyPlanningInterpreterTypes';
+import { orderCorrectionEnvelopes } from '../planning/weeklyPlanningCorrectionOrdering';
+import type { CorrectionEnvelope } from '../planning/weeklyPlanningAssumptionLifecycle';
 
 export interface LifecycleInterpreterOptions {
   interpreter: WeeklyPlanningIntakeInterpreter;
@@ -95,7 +97,7 @@ function parseCorrectionEnvelopes(params: {
   targets: readonly InterpreterCorrectionTargetSummary[];
   conversationId: string;
   currentStateRevision: number;
-}): unknown[] {
+}): CorrectionEnvelope[] {
   const target = taskTarget(params.text, params.targets);
   if (!target) return [];
   if (/(?:外して|削除して|なしにして|やめる)/.test(params.text)) {
@@ -132,6 +134,17 @@ function parseCorrectionEnvelopes(params: {
   return [];
 }
 
+function isCorrectionEnvelope(value: unknown): value is CorrectionEnvelope {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.correctionId === 'string'
+    && typeof record.conversationId === 'string'
+    && Number.isInteger(record.expectedStateRevision)
+    && ['replace', 'remove', 'supersede', 'restore'].includes(String(record.operation))
+    && typeof record.sourceText === 'string'
+    && Boolean(record.target && typeof record.target === 'object' && !Array.isArray(record.target));
+}
+
 export function createLifecycleAwareWeeklyPlanningInterpreter(
   options: LifecycleInterpreterOptions,
 ): WeeklyPlanningIntakeInterpreter {
@@ -152,15 +165,15 @@ export function createLifecycleAwareWeeklyPlanningInterpreter(
           currentStateRevision: options.currentStateRevision,
         }),
       ];
-      const correctionEnvelopes = [
-        ...(base.correctionEnvelopes ?? []),
+      const correctionEnvelopes = orderCorrectionEnvelopes([
+        ...(base.correctionEnvelopes ?? []).filter(isCorrectionEnvelope),
         ...parseCorrectionEnvelopes({
           text,
           targets: options.correctionTargets,
           conversationId: options.conversationId,
           currentStateRevision: options.currentStateRevision,
         }),
-      ];
+      ]);
       return {
         ...base,
         ...(assumptionDecisions.length > 0 ? { assumptionDecisions } : {}),
