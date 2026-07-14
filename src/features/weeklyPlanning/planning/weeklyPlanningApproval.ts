@@ -87,6 +87,15 @@ function metadataFromBlocks(params: {
     : null;
 }
 
+function isAcceptedPreviewCompatibilityRecord(
+  record: AssumptionProposalRecord,
+  metadata: WeeklyPreviewMetadata,
+): boolean {
+  return metadata.approvalEligibility === 'eligible'
+    && record.status === 'pending'
+    && record.createdAtTurnId === 'preview-dependency';
+}
+
 export function validateWeeklyPreviewApproval(params: {
   blocks: readonly WeeklyPlanDraftBlock[];
   currentStateRevision: number;
@@ -133,7 +142,9 @@ export function validateWeeklyPreviewApproval(params: {
         attempt: { kind: 'invalid_preview_approval_attempt', previewId: metadata.previewId, reason: 'invalid-assumption-dependency' },
       };
     }
-    if (record.status === 'pending') pendingProposalIds.push(record.proposalId);
+    if (record.status === 'pending' && !isAcceptedPreviewCompatibilityRecord(record, metadata)) {
+      pendingProposalIds.push(record.proposalId);
+    }
     if (record.status === 'rejected' || record.status === 'expired' || record.status === 'superseded') {
       return {
         allowed: false,
