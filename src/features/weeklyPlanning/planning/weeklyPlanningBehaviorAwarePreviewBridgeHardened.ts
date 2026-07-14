@@ -11,6 +11,7 @@ import {
   evaluateHardenedPreviewGate,
   hardenPlanningSnapshot,
 } from './weeklyPlanningBehaviorSafety';
+import { applyRelativeConstraintTurn } from './weeklyPlanningRelativeConstraintAdapter';
 
 function minutes(time: string): number {
   const [hour = '0', minute = '0'] = time.split(':');
@@ -25,19 +26,20 @@ function timeFromMinutes(value: number): string {
 
 function stateWithValidatedConstraintSources(
   input: BehaviorAwarePlanningBridgeInput,
+  state: PlanningIntakeState,
 ): PlanningIntakeState {
   const termId = input.timetableTermId ?? 'default';
   const hasTimetable = (input.scheduleTemplates ?? []).some(
     (template) => (template.termId || 'default') === termId,
   );
   const hasExistingPlans = (input.existingPlans ?? []).length > 0;
-  const validated = (input.state.constraintSourcesInUse ?? []).filter((source) =>
+  const validated = (state.constraintSourcesInUse ?? []).filter((source) =>
     (source.kind === 'timetable' && hasTimetable)
     || (source.kind === 'existing_plans' && hasExistingPlans),
   );
 
   return {
-    ...input.state,
+    ...state,
     constraintSourcesInUse: validated.length > 0 ? validated : undefined,
   };
 }
@@ -85,9 +87,14 @@ function stateForScheduling(state: PlanningIntakeState): PlanningIntakeState {
 export function runHardenedBehaviorAwarePlanningPreviewBridge(
   input: BehaviorAwarePlanningBridgeInput,
 ): BehaviorAwarePlanningBridgeResult {
+  const relative = applyRelativeConstraintTurn({
+    state: input.state,
+    userText: input.currentUserText,
+  });
+  const workingState = relative.state;
   const dayStartTime = input.sessionPolicy?.dayStartTime ?? '09:00';
   const dayEndTime = input.sessionPolicy?.dayEndTime ?? '22:00';
-  const availabilityState = stateWithValidatedConstraintSources(input);
+  const availabilityState = stateWithValidatedConstraintSources(input, workingState);
   const canonicalRanges = input.availabilityRanges ?? deriveCanonicalAvailabilityRanges({
     state: availabilityState,
     dayStartTime,
@@ -95,16 +102,16 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
   });
 
   const rawSnapshot = createPlanningHypothesisSnapshot({
-    state: input.state,
+    state: workingState,
     currentUserText: '',
     conversationId: input.conversationId,
     availabilityRanges: canonicalRanges,
   });
-  const completeTaskDurations = input.state.tasks.length > 0 && input.state.tasks.every((task, index) => {
+  const completeTaskDurations = workingState.tasks.length > 0 && workingState.tasks.every((task, index) => {
     if (task.unit === 'minutes' || task.unit === 'hours') {
       return typeof task.amount === 'number' && Number.isFinite(task.amount) && task.amount > 0;
     }
-    const rate = input.state.unitRates.find((candidate) => candidate.unit === task.unit);
+    const rate = workingState.unitRates.find((candidate) => candidate.unit === task.unit);
     const assumption = input.acceptedTaskDurationAssumptions?.find(
       (candidate) => candidate.taskRef === `task:${index}`,
     );
@@ -120,7 +127,7 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
   const hasAvailabilityBasis = canonicalRanges.length > 0;
   const snapshot = hardenPlanningSnapshot({
     snapshot: rawSnapshot,
-    state: input.state,
+    state: workingState,
     hasAvailabilityBasis,
   });
   const actions = createSafeAllowedDialogueActions(snapshot);
@@ -129,11 +136,11 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
     hasExecutionShape,
     hasAvailabilityBasis,
   });
-  const draftRun = gate.allowed && !input.state.examPrepScope
+  const draftRun = gate.allowed && !workingState.examPrepScope
     ? createBehaviorAwareNonExamDraftRun({
       input: {
         ...input,
-        state: stateForScheduling(input.state),
+        state: stateForScheduling(workingState),
         availabilityRanges: canonicalRanges,
       },
       snapshot,
