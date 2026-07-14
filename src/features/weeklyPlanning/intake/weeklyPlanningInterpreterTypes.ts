@@ -71,6 +71,10 @@ export interface InterpreterParseRejection {
 export interface WeeklyPlanningInterpreterResult {
   candidates: InterpretedCommandCandidate[];
   parseRejections: InterpreterParseRejection[];
+  /**
+   * Untrusted AI output kept separate from command candidates until DA0a context exists.
+   */
+  assumptionProposalDrafts?: unknown[];
 }
 
 export interface InterpreterRecentTurn {

@@ -43,6 +43,13 @@ import {
 } from '../intake/weeklyPlanningRemainingWorkItems';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import {
+  canonicalizeAssumptionProposalDrafts,
+  createAssumptionProposalSessionState,
+  type AssumptionProposalCanonicalizationContext,
+  type AssumptionProposalSessionState,
+  type PendingAssumptionProposal,
+} from '../intake/weeklyPlanningAssumptionProposals';
+import {
   createWeeklyDraftCandidatesFromRemainingWorkItems,
   type WeeklyDraftCandidate,
   type WeeklyDraftCandidateDiagnostics,
@@ -51,6 +58,8 @@ import {
 
 export interface WeeklyPlanningIntakePipelineInput {
   previousState?: PlanningIntakeState;
+  previousAssumptionProposalState?: AssumptionProposalSessionState;
+  assumptionProposalContext?: AssumptionProposalCanonicalizationContext;
   userText: string;
   recentTurns?: InterpreterRecentTurn[];
   planningStartDate: string;
@@ -83,6 +92,19 @@ function currentLocalDateTime(): string {
 
 function resolveCurrentDateTime(input: WeeklyPlanningIntakePipelineInput): string {
   return input.currentDateTime ?? currentLocalDateTime();
+}
+
+function initialAssumptionProposalState(
+  input: WeeklyPlanningIntakePipelineInput,
+): AssumptionProposalSessionState | undefined {
+  if (!input.assumptionProposalContext) {
+    return undefined;
+  }
+
+  return createAssumptionProposalSessionState(
+    input.previousAssumptionProposalState?.records
+      ?? input.assumptionProposalContext.existingProposalRecords,
+  );
 }
 
 function minutesFromTime(time: string): number {
@@ -176,6 +198,11 @@ export interface WeeklyPlanningAssumedDraft {
   diagnostics: WeeklyDraftCandidateDiagnostics;
 }
 
+export interface WeeklyPlanningAssumptionProposalDiagnostics {
+  accepted: PendingAssumptionProposal[];
+  rejected: Array<{ draft: unknown; reason: string }>;
+}
+
 export interface WeeklyPlanningIntakePipelineOutput {
   state: PlanningIntakeState;
   draftRequest: WeeklyPlanningDraftRequest | null;
@@ -186,12 +213,18 @@ export interface WeeklyPlanningIntakePipelineOutput {
   assumedDraft?: WeeklyPlanningAssumedDraft;
   decision: WeeklyPlanningDialogueDecision;
   interpreterDiagnostics?: CandidateValidationResult;
+  assumptionProposalState?: AssumptionProposalSessionState;
+  assumptionProposalRefs?: string[];
+  assumptionProposalDiagnostics?: WeeklyPlanningAssumptionProposalDiagnostics;
 }
 
 function buildPipelineOutput(params: {
   input: WeeklyPlanningIntakePipelineInput;
   state: PlanningIntakeState;
   interpreterDiagnostics?: CandidateValidationResult;
+  assumptionProposalState?: AssumptionProposalSessionState;
+  assumptionProposalRefs?: string[];
+  assumptionProposalDiagnostics?: WeeklyPlanningAssumptionProposalDiagnostics;
 }): WeeklyPlanningIntakePipelineOutput {
   const { input, state } = params;
   const draftRequest = createWeeklyDraftRequestFromIntakeState(state);
@@ -248,6 +281,15 @@ function buildPipelineOutput(params: {
     output.interpreterDiagnostics = params.interpreterDiagnostics;
   }
 
+  if (params.assumptionProposalState) {
+    output.assumptionProposalState = params.assumptionProposalState;
+  }
+  if (params.assumptionProposalRefs) {
+    output.assumptionProposalRefs = params.assumptionProposalRefs;
+  }
+  if (params.assumptionProposalDiagnostics) {
+    output.assumptionProposalDiagnostics = params.assumptionProposalDiagnostics;
+  }
   return output;
 }
 
@@ -261,7 +303,11 @@ export function runWeeklyPlanningIntakePipeline(
     currentDateTime: resolveCurrentDateTime(input),
   });
 
-  return buildPipelineOutput({ input, state });
+  return buildPipelineOutput({
+    input,
+    state,
+    assumptionProposalState: initialAssumptionProposalState(input),
+  });
 }
 
 function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
@@ -400,6 +446,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     input.previousState,
   );
   let interpreterResult;
+  const proposalState = initialAssumptionProposalState(input);
 
   try {
     interpreterResult = await input.interpreter.interpretUserTurn({
@@ -415,8 +462,22 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       input.userText,
       context,
     );
-    return buildPipelineOutput({ input, state: fallbackTurn.state });
+    return buildPipelineOutput({
+      input,
+      state: fallbackTurn.state,
+      assumptionProposalState: proposalState,
+    });
   }
+
+  const proposalResult = input.assumptionProposalContext && proposalState
+    ? canonicalizeAssumptionProposalDrafts(
+      interpreterResult.assumptionProposalDrafts ?? [],
+      {
+        ...input.assumptionProposalContext,
+        existingProposalRecords: proposalState.records,
+      },
+    )
+    : undefined;
 
   const resolvedCandidates = resolveConstraintSourceReferences({
     candidates: interpreterResult.candidates,
@@ -458,6 +519,11 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     input,
     state: interpretedState,
     interpreterDiagnostics,
+    assumptionProposalState: proposalResult?.state ?? proposalState,
+    assumptionProposalRefs: proposalResult?.assumptionProposalRefs,
+    assumptionProposalDiagnostics: proposalResult
+      ? { accepted: proposalResult.accepted, rejected: proposalResult.rejected }
+      : undefined,
   });
 
   if (clarificationRequest) {

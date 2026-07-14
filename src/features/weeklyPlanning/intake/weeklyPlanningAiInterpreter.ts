@@ -17,6 +17,7 @@ import type {
 
 interface AiInterpreterResponse {
   candidates: unknown[];
+  assumptionProposalDrafts?: unknown[];
 }
 
 const CONFIDENCE_VALUES = new Set(['high', 'medium', 'low']);
@@ -413,6 +414,40 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
   }),
 ];
 
+const ASSUMPTION_PROPOSAL_DRAFT_SCHEMA: JsonSchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['slot', 'targetRef', 'proposedValue', 'reasonCode', 'sourceFactRefs'],
+  properties: {
+    slot: {
+      type: 'string',
+      enum: ['duration', 'quantity', 'planning_period', 'priority', 'completion_target'],
+    },
+    targetRef: stringSchema(),
+    proposedValue: {
+      anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }],
+    },
+    proposedUnit: {
+      type: 'string',
+      enum: ['minutes', 'hours', 'pages', 'problems', 'words', 'lessons', 'chapters', 'count', 'unknown'],
+    },
+    reasonCode: {
+      type: 'string',
+      enum: [
+        'missing_duration',
+        'missing_priority',
+        'missing_quantity',
+        'missing_planning_period',
+        'missing_completion_target',
+        'domain_default',
+        'history_based_estimate',
+        'first_trial_estimate',
+      ],
+    },
+    sourceFactRefs: stringArraySchema(),
+  },
+};
+
 export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
@@ -428,6 +463,10 @@ export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseForm
           items: {
             anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS,
           },
+        },
+        assumptionProposalDrafts: {
+          type: 'array',
+          items: ASSUMPTION_PROPOSAL_DRAFT_SCHEMA,
         },
       },
     },
@@ -503,7 +542,12 @@ function parseInterpreterResponse(content: string): WeeklyPlanningInterpreterRes
     candidates.push(candidate);
   });
 
-  return { candidates, parseRejections };
+  const result: WeeklyPlanningInterpreterResult = { candidates, parseRejections };
+  if (Array.isArray(response.assumptionProposalDrafts)) {
+    result.assumptionProposalDrafts = response.assumptionProposalDrafts;
+  }
+
+  return result;
 }
 
 export function createSystemPrompt(): string {
@@ -513,6 +557,7 @@ export function createSystemPrompt(): string {
     'You are called for every user turn and are the only semantic interpreter when available. Convert every independent meaning in the current user turn into command candidates; one turn may require multiple commands. The application will validate every command before applying it.',
     'Use only the provided userText, recentConversation, context, and stateSummary. Use ONLY the supplied recentConversation for prior turns; do not assume saved plans, conversation turns, or life-constraint history beyond it.',
     'Prefer no command over an unsafe command. Return an empty candidates array when the turn is not enough.',
+    'Optional assumptionProposalDrafts are draft-only objects with slot, targetRef, proposedValue, proposedUnit, reasonCode, and sourceFactRefs. Never emit proposalId, conversationId, turnId, stateRevision, status, lifecycle fields, reasonText, or unknown properties.',
     'Return all applicable commands from the current turn. If no command applies, return an empty candidates array; do not rely on a rules parser to fill omitted meanings.',
     'Each command must include a confidence field with one of: high, medium, low.',
     'Command types you may emit:',
