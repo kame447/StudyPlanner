@@ -1,123 +1,200 @@
 # DA1b: assumption decision and correction contract
 
-Status: **queued — DA1 after**
-Priority: High
+Status: **ready**
+Priority: highest
 Parent: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
-Requirement IDs: DA-ASSUMPTION-001, DA-CORRECTION-001, DA-PREVIEW-001
+Roadmap: [weekly-planning-roadmap.md](../strategy/weekly-planning-roadmap.md)
 Traceability: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
-Dependencies: DA1 → DA1b
+Requirement IDs: DA-ASSUMPTION-001, DA-CORRECTION-001, DA-PREVIEW-001, DA-SAFE-001
+Dependencies: behavior-aware vertical slice completed
 
-正式責務名はassumption decision and correction contractである。旧来のcorrectionだけのtaskとして扱わない。
+## 1. Purpose
 
-## Scope / entry / exit
+現在のbehavior-aware pipelineへ、pending assumptionの明示decisionと、accepted fact/task/range/constraintのcorrection lifecycleを接続する。
 
-pending proposalのaccept/reject/modify/expiry/supersede、accepted correctionによる関連pending proposal resolution、target resolution、replace/remove/supersede/restore、audit history、preview stale、scheduler triggerを扱う。現行command types、candidate validator、intake adapter/reducerを再調査し全面置換しない。
+```text
+pending proposal
+→ accept / reject / modify
+→ deterministic validation
+→ proposal record transition
+→ accepted fact or replacement proposal
+→ state revision
+→ preview stale / recompute
+```
 
-EntryはDA1 action/response contract完了。ExitはreasonCodeを保持するproposal lifecycle recordとresolvedByが監査可能で、decisionとtargetがdiscriminated unionになり、replacementが具体型で、correction applyと関連proposal resolutionのatomicity・Envelope間独立がcontract testで固定されること。
+AI dialogue responseだけでproposal statusやaccepted factを変更しない。
 
-## Exact types
+## 2. Scope
 
-~~~ts
-type ProposalResolutionRef =
-  | { kind: "proposal"; proposalId: string }
-  | { kind: "fact"; factId: string }
-  | { kind: "correction"; correctionId: string };
+- `accept_assumption`
+- `reject_assumption`
+- `modify_assumption`
+- `replace`
+- `remove`
+- `supersede`
+- `restore`
+- target resolution
+- proposal history / resolvedBy
+- related proposal supersede / expire
+- state revision
+- preview stale / dependency reevaluation
+- `assistant_suggested` canonical transition
+- authorization commandの共通command registry統合
 
-type AssumptionDecisionCommand =
-  | {
-      type: "accept_assumption";
-      proposalId: string;
-      expectedStateRevision: number;
-      confidence: Confidence;
-      sourceText: string;
-    }
-  | {
-      type: "reject_assumption";
-      proposalId: string;
-      expectedStateRevision: number;
-      confidence: Confidence;
-      sourceText: string;
-    }
-  | {
-      type: "modify_assumption";
-      proposalId: string;
-      replacementValue: AssumptionValue;
-      replacementUnit?: AssumptionUnit;
-      expectedStateRevision: number;
-      confidence: Confidence;
-      sourceText: string;
-    };
+## 3. Non-goals
 
-type CorrectionTarget =
-  | { kind: "fact"; factId: string }
-  | { kind: "proposal"; proposalId: string }
-  | { kind: "command"; commandId: string }
-  | { kind: "task"; taskRef: string }
-  | { kind: "event"; eventRef: string }
-  | { kind: "slot"; slot: PlanningAssumptionSlot };
+- approval ledger / repository save
+- scheduler全面改修
+- UI/CSS再設計
+- recurring profile永続化
+- DA2 request orchestration
+- DA3 feasibility dialogue
+- automatic assumption acceptance
 
-type ValidatedCorrectionReplacement = Exclude<
-  ParsedWeeklyPlanningCommand,
-  {
-    type: "begin_weekly_planning" | "request_clarification";
-  }
->;
+## 4. Required boundaries
 
-type CorrectionEnvelopeBase = {
-  correctionId: string;
-  target: CorrectionTarget;
-  sourceText: string;
-  confidence: Confidence;
-  expectedStateRevision: number;
-};
+- decisionとcorrectionはtyped candidateを使う。
+- validator通過前にstateへ適用しない。
+- one correction envelopeはatomic。
+- same turnの複数envelopeは独立評価し、acceptedとrejectedが共存できる。
+- rejected correctionはaccepted factとproposal recordを変更しない。
+- unknown、private、stale、別conversation、revision mismatch targetを適用しない。
+- pendingでないproposalへのdecisionを拒否する。
+- AI free textをreplacement valueやtarget refとして使わない。
 
-type CorrectionEnvelope =
-  | (
-      CorrectionEnvelopeBase & {
-        operation: "replace";
-        replacementCommand: ValidatedCorrectionReplacement;
-      }
-    )
-  | (
-      CorrectionEnvelopeBase & {
-        operation: "remove" | "supersede" | "restore";
-        replacementCommand?: never;
-      }
-    );
-~~~
+## 5. Proposal lifecycle
 
-現行validatorはaccepted commandをParsedWeeklyPlanningCommandとして返すため、そのunionを再利用する。correction replacementではstate mutationでないbegin_weekly_planningとrequest_clarificationを除外する。raw AI JSONやacceptedWithConfirmationをreplacementとしてatomic applyしない。
+```ts
+type AssumptionProposalStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "superseded"
+  | "expired";
+```
 
-## Lifecycle / validator / atomicity
+各recordは最低限次を追跡する。
 
-proposal transitionはpending → accepted/rejected/superseded/expired。acceptedはaccept_assumptionでproposal値をaccepted factへ移した状態、rejectedは明示拒否、supersededは同じtarget/slotの新しい明示値または新proposalによる直接置換、expiredはsource fact、target、planning range、task scopeが直接replacementなしに無効になった状態である。modifyは旧recordをsuperseded、新recordをpendingにし、decidedAtTurnId、decidedAtStateRevision、resolvedBy={kind:"proposal", proposalId}を記録する。reasonCodeを含む元recordを削除せず、rejected/expired/supersededを暗黙にpendingへ戻さない。
+- proposalId
+- conversationId
+- target / slot
+- sourceFactRefs
+- created turn / revision
+- decided turn / revision
+- status
+- resolvedBy
+- replacement proposal ref if modified
 
-accept/rejectにreplacementValue禁止、modifyはreplacementValue必須。unknown proposal ID、non-pending重複decision、revision mismatch、別user/conversation/targetはそのdecisionだけrejectする。
+`modify_assumption`は旧recordをsupersededにし、新しいproposalまたは明示factを生成する。元recordを上書きしない。
 
-CorrectionTargetは型上ちょうど一種類で、空target・複数targetを禁止する。replaceはreplacement必須。remove/supersede/restoreはreplacement禁止。restoreは復元可能なsuperseded target必須。
+## 6. Correction lifecycle
 
-一つのCorrectionEnvelope内部はatomic。同turnの複数Envelopeは独立validateし、accepted correctionとrejected correctionを共存可能にする。accepted commandとclarificationを直交保持し、rejected correctionは元factとproposal statusを壊さない。
+Correction targetはdiscriminated unionとし、ちょうど一種類だけを指定する。
 
-accepted correctionをapplyする同じdeterministic transitionで、status=pendingかつproposal.targetRef/slotが訂正対象と一致するもの、またはsourceFactRefsのいずれかが訂正・supersedeされたものを検索する。同target/slotへ新しい明示値がacceptedされたproposalはsuperseded、前提・target・scopeだけが直接replacementなしに無効化されたproposalはexpiredとする。decidedAtTurnId、decidedAtStateRevision、resolvedByのcorrection IDまたはreplacement fact IDを記録し、履歴を削除せずpending viewから除外する。old proposalへのaccept/reject/modifyはnon-pending decisionとして拒否する。無関係proposalは不変で、correction applyとproposal resolutionのどちらかだけをcommitしない。
+- task
+- planning range
+- constraint
+- priority
+- accepted fact
+- proposal
 
-accepted decision/correction後はrevisionを進め、依存previewをstale化し、assumptionDependenciesを再評価してscheduler/feasibilityを再計算する。assumption accept/modify後もaccepted factから最新previewを再計算し、旧previewをeligibleへ戻さない。
+replaceはvalidator accepted済みreplacement commandを必要とする。remove / supersede / restoreではreplacementを禁止する。
 
-schema/enum/finite/range/size/status/reasonCode/sourceFactRefs/revision/authorization/target uniquenessをdeterministic検証する。reasonTextはDA0a/DA1でschema rejectされ、DA1bはvalidated reasonCodeを履歴に保持する。interpreter/planner/StaleAsyncResultはDA1/DA2 categoryへ委譲。active request一件、session-local。sourceText/title/memoはuntrusted JSON data。save/repository/UI/scheduler全面改修はnon-goalである。
+accepted correctionと同じdeterministic transitionで関連pending proposalを解決する。
 
-## P1〜P7 responsibility
+- explicit replacementが同じtarget / slotを置換した場合: superseded
+- targetや前提だけが無効になった場合: expired
+- unrelated proposal: unchanged
 
-| Perspective | Applicability | Owning task | Required assertion |
-| --- | --- | --- | --- |
-| P1 | Covered by another task | DA2 | request/submit lifecycle |
-| P2 | Covered by another task | DA2 | IME/focus/keyboard |
-| P3 | Applicable | DA1b | decision/target/replacement、correction-proposal resolution boundary |
-| P4 | Shared transition boundary | DA1b、approval | proposal解決でpreview stale、保存guardはapproval |
-| P5 | Not applicable or regression only | future persistence、DA2 | migration scope |
-| P6 | Applicable | DA1b | fallbackとexam/non-exam |
-| P7 | Applicable | DA1b | lifecycle、reasonCode、resolvedBy、target、revision trace |
+## 7. Preview behavior
 
-## Acceptance / tests / commands
+accepted decisionまたはcorrectionはstate revisionを進める。
 
-unitはAssumptionProposalRecord lifecycle、ProposalResolutionRef、superseded/expired分類、decision union、target union、typed replacement、confidence/revision/audit。contractはcorrection apply + related proposal resolution atomic、multiple envelopes independent、old proposal decision拒否、unrelated proposal不変、clarification orthogonal、assumptionDependencies再評価、preview stale。integrationはWP-DA turns 3〜6、10、P3-CORRECTION-SUPERSEDES-PROPOSAL-001、scheduler trigger、exam regression。property/fuzzはinvalid union shapes、unknown/non-pending IDs、duplicates、source invalidation、NaN/Infinity、cross-user/conversation、untrusted strings。
+- old previewをstaleにする
+- behavior metadataとassumption dependenciesを再評価する
+- schedulerが必要な場合だけ再実行する
+- old preview approvalを拒否する
+- preview approvalをassumption acceptanceとして扱わない
+- saveは行わない
 
-roleplayはturn 5a/5b/5c、turn 6 range correction、turn 10の90分proposal supersede、P3-CORRECTION-TARGET-001、P3-CORRECTION-SUPERSEDES-PROPOSAL-001、P3-ASSUMPTION-DECISION-001。real-modelはcommand fixture replay。既存test/build/lint、diff check、status、Git write禁止。
+## 8. Acceptance scenarios
+
+### Accept
+
+```text
+User: その仮定で進めて
+Expected:
+- target pending proposal resolved
+- status=accepted
+- decided turn/revision recorded
+- preview regenerated only through current gate
+```
+
+### Reject
+
+```text
+User: その時間は長すぎる
+Expected:
+- status=rejected
+- accepted goal/task remains
+- same proposal is not implicitly reactivated
+```
+
+### Modify
+
+```text
+User: 英語は90分で
+Expected:
+- old proposal superseded
+- replacement fact or new proposal created
+- resolvedBy connects records
+```
+
+### Mixed correction
+
+```text
+User: 数学は外して。英語は60分にして。夜の分も動かして
+Expected:
+- unambiguous task removal accepted
+- unambiguous English replacement accepted
+- ambiguous night reference rejected or clarified
+- accepted and rejected envelopes coexist
+- preview becomes stale
+```
+
+## 9. Tests
+
+Minimum contract tests:
+
+- accept / reject / modify discriminated union
+- invalid union shape rejected
+- stale revision rejected
+- proposal history preserved
+- resolvedBy recorded
+- correction/proposal resolution atomicity
+- unrelated proposal unchanged
+- mixed accepted/rejected envelopes
+- old decision rejected after supersede
+- preview stale after accepted change
+- assistant_suggested does not generate preview
+- shared authorization command still requires current revision
+- input state is not mutated by validators
+
+Roleplay coverage:
+
+- `WP-DA-001` branches 5a / 5b / 5c
+- correction turns 6 / 10 / 11
+- `WP-BEHAVIOR-001` assistant suggestion → user authorization boundary
+
+## 10. Validation
+
+```bash
+npx vitest run <DA1b targeted tests>
+npx tsc --noEmit
+npm run build
+npm test -- --run
+git diff --check
+git status -sb
+```
+
+Git operations are prohibited unless explicitly requested.
