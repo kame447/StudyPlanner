@@ -1,3 +1,4 @@
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   createBehaviorAwareNonExamDraftRun,
   type BehaviorAwarePlanningBridgeInput,
@@ -10,6 +11,57 @@ import {
   evaluateHardenedPreviewGate,
   hardenPlanningSnapshot,
 } from './weeklyPlanningBehaviorSafety';
+
+function minutes(time: string): number {
+  const [hour = '0', minute = '0'] = time.split(':');
+  return Number(hour) * 60 + Number(minute);
+}
+
+function timeFromMinutes(value: number): string {
+  const hour = Math.floor(value / 60);
+  const minute = value % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function schedulingAvailabilityLowerBound(state: PlanningIntakeState): string | undefined {
+  const lowerBounds = state.constraints.flatMap((constraint) => {
+    if (constraint.studyAvailableStart) return [constraint.studyAvailableStart];
+    if (constraint.kind === 'commute' && constraint.end) return [constraint.end];
+    return [];
+  });
+  const morningAvoided = state.sourceTurns.some((turn) =>
+    /朝(?:は|だと).*(?:続かない|苦手|無理|できない)/.test(turn),
+  );
+  if (morningAvoided) lowerBounds.push('12:00');
+
+  if (lowerBounds.length === 0) {
+    const mealEnd = state.constraints.find((constraint) =>
+      constraint.kind === 'meal' && Boolean(constraint.end),
+    )?.end;
+    if (mealEnd) lowerBounds.push(mealEnd);
+  }
+
+  if (lowerBounds.length === 0) return undefined;
+  return timeFromMinutes(Math.max(...lowerBounds.map(minutes)));
+}
+
+function stateForScheduling(state: PlanningIntakeState): PlanningIntakeState {
+  const lowerBound = schedulingAvailabilityLowerBound(state);
+  if (!lowerBound) return state;
+
+  return {
+    ...state,
+    constraints: [
+      ...state.constraints,
+      {
+        kind: 'buffer',
+        studyAvailableStart: lowerBound,
+        hardness: 'soft',
+        rawText: 'behavior-aware availability lower bound',
+      },
+    ],
+  };
+}
 
 export function runHardenedBehaviorAwarePlanningPreviewBridge(
   input: BehaviorAwarePlanningBridgeInput,
@@ -59,7 +111,11 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
   });
   const draftRun = gate.allowed && !input.state.examPrepScope
     ? createBehaviorAwareNonExamDraftRun({
-      input: { ...input, availabilityRanges: canonicalRanges },
+      input: {
+        ...input,
+        state: stateForScheduling(input.state),
+        availabilityRanges: canonicalRanges,
+      },
       snapshot,
     })
     : null;
