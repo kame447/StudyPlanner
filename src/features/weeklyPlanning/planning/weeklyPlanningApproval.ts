@@ -6,10 +6,12 @@ import type {
   PendingAssumptionPreviewApprovalAttempt,
   StalePreviewApprovalAttempt,
   WeeklyDraftApprovalItem,
+  WeeklyDraftApprovalItemStatus,
   WeeklyDraftApprovalOperation,
   WeeklyDraftApprovalOperationStatus,
   WeeklyPreviewMetadata,
 } from './weeklyPlanningApprovalTypes';
+import { getWeeklyPlanningSessionRuntime } from './weeklyPlanningSessionRuntime';
 
 export const WEEKLY_APPROVAL_LEDGER_VERSION = 1;
 export const WEEKLY_APPROVAL_LEDGER_MAX_ITEMS = 200;
@@ -25,10 +27,28 @@ export interface WeeklyApprovalLedgerEnvelope {
   operations: WeeklyDraftApprovalOperation[];
 }
 
+const ITEM_STATUSES = new Set<WeeklyDraftApprovalItemStatus>([
+  'pending',
+  'saving',
+  'saved',
+  'failed',
+  'skipped_duplicate',
+]);
+const OPERATION_STATUSES = new Set<WeeklyDraftApprovalOperationStatus>([
+  'pending',
+  'partially_saved',
+  'completed',
+  'failed',
+]);
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function nonemptyBoundedString(value: unknown, maxLength = 500): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maxLength;
 }
 
 function errorCode(error: unknown): string {
@@ -76,6 +96,7 @@ function metadataFromBlocks(params: {
   const samePreview = params.blocks.every((block) => {
     const metadata = block.behaviorMetadata?.previewMetadata;
     return metadata?.previewId === first.previewId
+      && metadata.conversationId === first.conversationId
       && metadata.stateRevision === first.stateRevision
       && metadata.authorizedUserId === first.authorizedUserId;
   });
@@ -87,13 +108,15 @@ function metadataFromBlocks(params: {
     : null;
 }
 
-function isAcceptedPreviewCompatibilityRecord(
-  record: AssumptionProposalRecord,
-  metadata: WeeklyPreviewMetadata,
-): boolean {
-  return metadata.approvalEligibility === 'eligible'
-    && record.status === 'pending'
-    && record.createdAtTurnId === 'preview-dependency';
+function invalidAttempt(previewId: string | undefined, reason: string): WeeklyPreviewApprovalGuardResult {
+  return {
+    allowed: false,
+    attempt: {
+      kind: 'invalid_preview_approval_attempt',
+      ...(previewId ? { previewId } : {}),
+      reason,
+    },
+  };
 }
 
 export function validateWeeklyPreviewApproval(params: {
@@ -103,28 +126,38 @@ export function validateWeeklyPreviewApproval(params: {
   proposalRecords: readonly AssumptionProposalRecord[];
 }): WeeklyPreviewApprovalGuardResult {
   const metadata = metadataFromBlocks(params);
-  if (!metadata) {
-    return { allowed: false, attempt: { kind: 'invalid_preview_approval_attempt', reason: 'missing-or-mixed-preview-metadata' } };
-  }
+  if (!metadata) return invalidAttempt(undefined, 'missing-or-mixed-preview-metadata');
+
   if (metadata.authorizedUserId !== params.userId
     || params.blocks.some((block) => block.userId !== params.userId)
     || metadata.approvalEligibility === 'blocked_invalid'
     || metadata.approvalEligibility === 'unsupported') {
-    return {
-      allowed: false,
-      attempt: { kind: 'invalid_preview_approval_attempt', previewId: metadata.previewId, reason: 'unauthorized-or-invalid-preview' },
-    };
+    return invalidAttempt(metadata.previewId, 'unauthorized-or-invalid-preview');
   }
+
+  const runtime = metadata.conversationId ? getWeeklyPlanningSessionRuntime() : null;
+  if (metadata.conversationId && !runtime) {
+    return invalidAttempt(metadata.previewId, 'session-runtime-unavailable');
+  }
+  const effectiveCurrentRevision = runtime?.stateRevision ?? params.currentStateRevision;
+  const effectiveProposalRecords = runtime?.proposalRecords ?? params.proposalRecords;
+  const conversationMismatch = Boolean(
+    metadata.conversationId
+      && runtime
+      && runtime.conversationId !== metadata.conversationId,
+  );
+
   if (metadata.stale
     || metadata.approvalEligibility === 'blocked_stale'
-    || metadata.stateRevision !== params.currentStateRevision) {
+    || conversationMismatch
+    || metadata.stateRevision !== effectiveCurrentRevision) {
     return {
       allowed: false,
       attempt: {
         kind: 'stale_preview_approval_attempt',
         previewId: metadata.previewId,
         previewStateRevision: metadata.stateRevision,
-        currentStateRevision: params.currentStateRevision,
+        currentStateRevision: effectiveCurrentRevision,
         previewStale: true,
       },
     };
@@ -132,24 +165,17 @@ export function validateWeeklyPreviewApproval(params: {
 
   const pendingProposalIds: string[] = [];
   for (const dependency of metadata.assumptionDependencies) {
-    const record = params.proposalRecords.find((candidate) => candidate.proposalId === dependency.proposalId);
+    const record = effectiveProposalRecords.find((candidate) => candidate.proposalId === dependency.proposalId);
     if (!record
       || record.targetRef !== dependency.targetRef
       || record.createdFromStateRevision !== dependency.proposalCreatedFromStateRevision
-      || record.conversationId.trim().length === 0) {
-      return {
-        allowed: false,
-        attempt: { kind: 'invalid_preview_approval_attempt', previewId: metadata.previewId, reason: 'invalid-assumption-dependency' },
-      };
+      || record.conversationId.trim().length === 0
+      || (metadata.conversationId && record.conversationId !== metadata.conversationId)) {
+      return invalidAttempt(metadata.previewId, 'invalid-assumption-dependency');
     }
-    if (record.status === 'pending' && !isAcceptedPreviewCompatibilityRecord(record, metadata)) {
-      pendingProposalIds.push(record.proposalId);
-    }
+    if (record.status === 'pending') pendingProposalIds.push(record.proposalId);
     if (record.status === 'rejected' || record.status === 'expired' || record.status === 'superseded') {
-      return {
-        allowed: false,
-        attempt: { kind: 'invalid_preview_approval_attempt', previewId: metadata.previewId, reason: 'resolved-assumption-dependency-requires-recompute' },
-      };
+      return invalidAttempt(metadata.previewId, 'resolved-assumption-dependency-requires-recompute');
     }
   }
 
@@ -165,10 +191,7 @@ export function validateWeeklyPreviewApproval(params: {
     };
   }
   if (metadata.approvalEligibility !== 'eligible') {
-    return {
-      allowed: false,
-      attempt: { kind: 'invalid_preview_approval_attempt', previewId: metadata.previewId, reason: 'preview-not-eligible' },
-    };
+    return invalidAttempt(metadata.previewId, 'preview-not-eligible');
   }
   return { allowed: true, metadata };
 }
@@ -321,6 +344,40 @@ export function serializeWeeklyApprovalLedger(
   return JSON.stringify(envelope);
 }
 
+function isApprovalItem(value: unknown): value is WeeklyDraftApprovalItem {
+  if (!isPlainObject(value)
+    || !nonemptyBoundedString(value.sourceDraftBlockId, 300)
+    || !ITEM_STATUSES.has(value.status as WeeklyDraftApprovalItemStatus)
+    || !Number.isInteger(value.attemptCount)
+    || Number(value.attemptCount) < 0
+    || !nonemptyBoundedString(value.updatedAt, 100)) {
+    return false;
+  }
+  if (value.savedPlanId !== undefined && !nonemptyBoundedString(value.savedPlanId, 300)) return false;
+  if (value.lastErrorCode !== undefined && !nonemptyBoundedString(value.lastErrorCode, 300)) return false;
+  return true;
+}
+
+function isApprovalOperation(value: unknown): value is WeeklyDraftApprovalOperation {
+  if (!isPlainObject(value)
+    || !nonemptyBoundedString(value.approvalOperationId, 300)
+    || !nonemptyBoundedString(value.userId, 300)
+    || !nonemptyBoundedString(value.previewId, 300)
+    || !Number.isInteger(value.previewStateRevision)
+    || Number(value.previewStateRevision) < 0
+    || !nonemptyBoundedString(value.startedAt, 100)
+    || !OPERATION_STATUSES.has(value.status as WeeklyDraftApprovalOperationStatus)
+    || !Array.isArray(value.items)
+    || value.items.length === 0
+    || value.items.length > WEEKLY_APPROVAL_LEDGER_MAX_ITEMS
+    || !value.items.every(isApprovalItem)) {
+    return false;
+  }
+  if (value.completedAt !== undefined && !nonemptyBoundedString(value.completedAt, 100)) return false;
+  const sourceIds = value.items.map((item) => item.sourceDraftBlockId);
+  return new Set(sourceIds).size === sourceIds.length;
+}
+
 export function parseWeeklyApprovalLedger(value: string): WeeklyApprovalLedgerEnvelope | null {
   if (value.length > 1_000_000) return null;
   try {
@@ -328,19 +385,14 @@ export function parseWeeklyApprovalLedger(value: string): WeeklyApprovalLedgerEn
     if (!isPlainObject(parsed)
       || parsed.version !== WEEKLY_APPROVAL_LEDGER_VERSION
       || !Array.isArray(parsed.operations)
-      || parsed.operations.length > WEEKLY_APPROVAL_LEDGER_MAX_ITEMS) {
+      || parsed.operations.length > WEEKLY_APPROVAL_LEDGER_MAX_ITEMS
+      || !parsed.operations.every(isApprovalOperation)) {
       return null;
     }
-    const operations = parsed.operations.filter((item): item is WeeklyDraftApprovalOperation =>
-      isPlainObject(item)
-      && typeof item.approvalOperationId === 'string'
-      && typeof item.userId === 'string'
-      && typeof item.previewId === 'string'
-      && Number.isInteger(item.previewStateRevision)
-      && Array.isArray(item.items),
-    ).map(cloneOperation);
-    if (operations.length !== parsed.operations.length) return null;
-    return { version: WEEKLY_APPROVAL_LEDGER_VERSION, operations };
+    return {
+      version: WEEKLY_APPROVAL_LEDGER_VERSION,
+      operations: parsed.operations.map(cloneOperation),
+    };
   } catch {
     return null;
   }
