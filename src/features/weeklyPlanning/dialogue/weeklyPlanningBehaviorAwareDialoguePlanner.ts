@@ -6,8 +6,10 @@ import {
 } from '../../../services/ai/openAiCompatibleClient';
 import {
   renderBehaviorAwareDialogueFallback,
-  validateBehaviorAwareDialogueResponse,
 } from '../planning/weeklyPlanningBehaviorPlanner';
+import {
+  validateBehaviorAwareDialogueResponseStrict,
+} from '../planning/weeklyPlanningBehaviorSafety';
 import type {
   AllowedDialogueAction,
   BehaviorAwareDialogueResponse,
@@ -49,11 +51,14 @@ export const WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT: JsonSchemaRespon
         acknowledgement: stringSchema(),
         selectedActionIds: {
           type: 'array',
+          minItems: 1,
           maxItems: 3,
+          uniqueItems: true,
           items: stringSchema(),
         },
         items: {
           type: 'array',
+          minItems: 1,
           maxItems: 3,
           items: {
             type: 'object',
@@ -64,6 +69,7 @@ export const WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT: JsonSchemaRespon
               text: stringSchema(),
               optionIds: {
                 type: 'array',
+                uniqueItems: true,
                 items: stringSchema(),
               },
             },
@@ -82,6 +88,7 @@ function createSystemPrompt(): string {
     'The deterministic application core has already decided every action you may perform.',
     'Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.',
     'Use one or two substantive actions in normal turns and never more than three.',
+    'Every selectedActionId must have exactly one matching items entry.',
     'Briefly acknowledge the latest accepted information, explain a safe planning hypothesis when available, and ask only the highest-impact remaining confirmation.',
     'When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.',
     'Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.',
@@ -168,7 +175,7 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
           responseFormat: WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT,
           purpose: 'weekly_planning_renderer',
         });
-        const response = validateBehaviorAwareDialogueResponse({
+        const response = validateBehaviorAwareDialogueResponseStrict({
           response: parseResponse(content),
           actions: input.allowedActions,
           previewAllowed: input.previewAllowed,
