@@ -5,7 +5,7 @@ Status: **v4 audit test specification**
 Parent: [weekly-planning-dialogue-architecture-v4.md](../architecture/weekly-planning-dialogue-architecture-v4.md)
 Product spec: [weekly-planning-spec.md](../weekly-planning/weekly-planning-spec.md)
 
-golden text完全一致は要求しない。strict assertionはaction、responseParts、derived used refs/topics/options、field/formatter、reasonCode/reason renderer、state、stateRevision、requestId、turnId、proposal/resolvedBy、correction、WeeklyPreviewMetadata/assumptionDependencies/approvalEligibility、StaleAsyncResult/StalePreviewApprovalAttempt/PendingAssumptionPreviewApprovalAttempt、fallback、call count、duplicate、accepted/rejected、diagnosticsを対象とする。自然文は敬体、簡潔、no re-ask、仮定/事実の区別、pending assumption説明、内部slot/reasonCode非表示、次入力の明確さ、入力無視なしをrubricで採点する。
+golden text完全一致は要求しない。strict assertionはaction、responseParts、derived used refs/topics/options、field/formatter、reasonCode/reason renderer、state、stateRevision、requestId、turnId、proposal/resolvedBy、correction、PlanningDimension、PlanningReadinessSnapshot、DraftGenerationIntent、LifeActivityAnchor、TaskExecutionProfile、PlanningOpportunityAnnotation、PlanningHypothesisSnapshot、MissingResolutionOpportunity、WeeklyPreviewMetadata/assumptionDependencies/approvalEligibility、StaleAsyncResult/StalePreviewApprovalAttempt/PendingAssumptionPreviewApprovalAttempt、fallback、call count、duplicate、accepted/rejected、diagnosticsを対象とする。自然文は敬体、簡潔、no re-ask、仮定/事実の区別、pending assumption説明、内部slot/reasonCode非表示、次入力の明確さ、入力無視なしをrubricで採点する。
 
 ## 1. WP-DA-001: non-exam weekly dialogue
 
@@ -59,7 +59,66 @@ golden text完全一致は要求しない。strict assertionはaction、response
 - interpreter failure、planner failure、StaleAsyncResult、StalePreviewApprovalAttempt、PendingAssumptionPreviewApprovalAttemptを別categoryにする。
 - pending assumptionを使用したpreviewはreviewableだが、assumptionDependenciesとblocked_pending_assumptionを持ち、assumptionを別操作で解決して再計算するまでsaveしない。保存境界でもproposal statusを再検証する。
 
-## 2. WP-RP-001: 院試週末計画 regression
+## 2. WP-BEHAVIOR-001: behavior-aware proposal-first weekly planning
+
+自然文の完全一致は要求しない。このscenarioは、英語goal、金曜日のテスト、ワーク量、生活アンカー、実行profile、候補提示、readiness、明示的な仮予定作成許可を内部stateで検証する。
+
+### fixture
+
+| field | value |
+| --- | --- |
+| selected date | 2026-07-12 |
+| planning target week | 2026-07-13〜2026-07-19 |
+| existing plan | 2026-07-14（火）18:00〜22:00 fixed event |
+| life facts | 夕食19:00、帰宅17:30、朝は継続しにくい |
+| initial state revision | 51 |
+| preview | initially empty |
+| persistence | hypothesis、未承認anchor、pending profile、readinessはsession-local。saveなし |
+
+### turn contract
+
+| turn | user input / state transition | strict contract |
+| --- | --- | --- |
+| 1 | 漠然とした「英語をやらないと」 | task candidateまたはexploration state。previewなし。DraftGenerationIntentはuser_authorizedにしない |
+| 2 | 金曜日の英単語小テスト、ワーク10ページ | deadline、workload、task identityを別factとして保持。hard deadlineとpreferred completion byを混同しない |
+| 3 | 1ページ10〜15分 | workload estimate候補。余裕込み時間はpending proposalまたはderived rangeであり、accepted factへ直書きしない |
+| 4 | 夕食19時、帰宅17時30分 | LifeActivityAnchorを生成。既存LifeConstraint/availabilityとannotationを分離し、available minutesを増やさない |
+| 5 | 朝は続かない | current planまたはcurrent week scopeのfact。recurring profileへ自動昇格しない |
+| 6 | 帰宅後と寝る前なら英単語ができる | memorizationのTaskExecutionProfileとafter_commute/before_sleep opportunityを関連付ける |
+| 7 | deterministic coreが仮説を提示 | PlanningHypothesisSnapshot、MissingResolutionOpportunity、readiness、suggestedNextActionを生成。内部slot、reasonCode、readiness scoreは表示しない |
+| 8 | assistantが仮予定作成を提案 | DraftGenerationIntent=assistant_suggested。提案だけではpreviewを生成しない |
+| 9 | ユーザーが「仮で予定を組んでみよう」と同意 | interpreter candidate、validator、deterministic transitionを経てDraftGenerationIntent=user_authorized。readiness条件が全て揃っている場合だけpreviewを初めて生成する |
+| 10 | preview表示 | 使用したpending assumptionとsource refsをmetadataへ記録。saveなし。reasoning summaryはfact refsとdeterministic phraseから描画する |
+
+### WP-BEHAVIOR-001 assertions
+
+- 漠然としたgoal、assistant_suggested、pending proposalだけではpreviewを生成しない。
+- hard required dimensionの未解決、高影響uncertainty、state revision不一致がある限りpreview_readyにしない。
+- LifeActivityAnchorは既存のbusy interval、hard/soft constraint、buffer、timetableを上書きしない。
+- PlanningOpportunityAnnotationはavailable rangeへのannotationであり、availability rangeやavailable minutesを増減させない。
+- TaskExecutionProfileはStudyTaskScopeを置き換えず、activityKind、distributionPolicy、cognitiveLoad、session bounds、spacing、deadlineを根拠付きで持つ。
+- hypothesis、未承認anchor、pending profile、DraftGenerationIntentはrepository/localStorageへ保存しない。
+- readiness evaluator、behavior derivation、hypothesis builderは入力state、facts、constraints、proposalsを変更しない。
+- 矛盾するfact/profileは入力順で一方を採用せず、blockingまたはclarificationへ移る。
+
+### property contract
+
+| property | strict contract | owner |
+| --- | --- | --- |
+| no premature preview | hard required dimension欠落時にoptional dimensionだけでpreview_readyへ遷移しない | DA0r |
+| authorization gate | user_authorizedでなければpreviewを生成しない | DA0r、DA0 |
+| count alone is insufficient | minimumResolvedCountだけでpreview_readyにしない | DA0r |
+| order independence | 同じcanonical fact集合から同じreadiness snapshotを生成する | DA0r |
+| irrelevant fact independence | 無関係factがreadiness、proposal eligibility、preview gateを変えない | DA0r |
+| deterministic hypothesis | 同じstate、policy、revisionから同じhypothesisを生成する | DA0r |
+| proposal-first resolution | propose_default/offer_optionsがあれば自由質問だけを唯一actionにしない | DA0r、DA1 |
+| hard constraint preservation | anchor annotationによる順位付けがhard busy interval等と重複しない | DA0r、DA0 |
+| no availability fabrication | annotationでavailable minutesを増やさない | DA0r |
+| scope isolation | current week factをrecurring profileへ自動昇格しない | DA0r |
+| mutation prohibition | derivation/evaluator/builderが入力stateを変更しない | DA0r |
+| conflict handling | 矛盾を入力順で黙って解決しない | DA0r |
+
+## 3. WP-RP-001: 院試週末計画 regression
 
 v4通常対話のcurrent UXを規定するものではなく、既存exam/domain/scheduler regressionとして維持する。
 
@@ -87,7 +146,7 @@ v4通常対話のcurrent UXを規定するものではなく、既存exam/domain
 8. previewをstale→再計算し、chat発話だけではapproval/saveしない。
 9. UI明示approvalでitem ledgerを開始し、partial failure/retryを検証する。
 
-## 3. P1〜P7 cases
+## 4. P1〜P7 cases
 
 | Case ID | Perspective | Setup/input | strict assertion | rubric | forbidden result | owning task | status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -100,19 +159,19 @@ v4通常対話のcurrent UXを規定するものではなく、既存exam/domain
 | P3-CORRECTION-TARGET-001 | P3 hostile output | 空target、複数target、unknown/private target | union外shape reject、元fact不変、別Envelope独立 | clarificationが対象を明示 | arbitrary target選択 | DA1b | queued |
 | P3-CORRECTION-SUPERSEDES-PROPOSAL-001 | P3 hostile state | same target/slotのpending proposalにexplicit replacement correctionをaccepted | correction applyとproposal status=supersededをatomic化、resolvedBy/decided revision記録、pending view除外、old decision拒否、unrelated proposal不変、preview stale | 明示値が優先されたことが分かる | old proposal pending/後からaccept、unrelated expire、proposal履歴未更新 | DA1b | queued |
 | P3-ASSUMPTION-DECISION-001 | P3 hostile output | accept/rejectにreplacement、modify値なし、unknown/non-pending ID | discriminated union/schema reject、別decision保持 | 仮定状態が明確 | hidden resurrection、全command破棄 | DA1b | queued |
-| P3-PROPOSAL-REASON-GROUNDING-001 | P3 hostile output | reasonText、unknown/incompatible reasonCode、history source欠落、private/stale source | reasonText/unknown/slot非互換/missing-private-stale sourceをproposal全体reject、valid reasonCodeだけcanonicalize、deterministic partsで理由描画 | 理由が自然で仮定と分かる | AI自由文理由、未検証値、private source、reasonTextからstate更新 | DA0a、DA1 | DA0a blocked、DA1 queued |
+| P3-PROPOSAL-REASON-GROUNDING-001 | P3 hostile output | reasonText、unknown/incompatible reasonCode、history source欠落、private/stale source | reasonText/unknown/slot非互換/missing-private-stale sourceをproposal全体reject、valid reasonCodeだけcanonicalize、deterministic partsで理由描画 | 理由が自然で仮定と分かる | AI自由文理由、未検証値、private source、reasonTextからstate更新 | DA0a、DA1 | DA0a complete、DA1 queued |
 | P3-RESPONSE-DUPLICATE-SOURCE-001 | P3 hostile output | responsePartsに加えfactRefs/questionTopicsを出力 | 余剰二重sourceをschema reject、used refsはpartsからのみ導出 | 応答は一貫 | AI申告の片方を採用 | DA1 | queued |
 | P3-TEXT-FACT-LEAK-001 | P3 hostile output | text partに日時、分数、件数、snapshot title | response全体reject、fact partへ分解したfixtureだけpass | 自然な接続文 | free text事実値の表示 | DA1、DA3c | queued |
-| P6-RANGE-RESOLUTION-001 | P6 regression | selected date 2026-07-12、input「来週」 | 2026-07-13〜19へ一意解決、再質問なし | 次の未確認topicへ進む | planning period再質問 | DA0 | blocked — Gate P4とDA0a後 |
+| P6-RANGE-RESOLUTION-001 | P6 regression | selected date 2026-07-12、input「来週」 | 2026-07-13〜19へ一意解決、再質問なし | 次の未確認topicへ進む | planning period再質問 | DA0 | queued — DA0r、DA0a後 |
 | P3-RANGE-AMBIGUOUS-001 | P3 ambiguity | input「その辺の週」 | 一意解決せずclarification、range未変更 | 一問だけ明確に聞く | arbitrary week推定 | DA1、DA2 | queued |
 | P6-STALE-ASYNC-DISCARD-001 | P6 fallback | request/turn/conversation/revision mismatch、cancel/reset/unmount | state/history/status/previewへ反映なし、fallbackなし | 画面を乱さない | stale failure message | DA2 | queued |
 | P4-STALE-PREVIEW-REJECT-001 | P4 integrity | stale=trueまたはpreviewStateRevision不一致でUI承認 | save拒否、deterministic案内、AI call/operation開始なし | 再計算手順が分かる | silent discard、保存開始 | approval | queued |
-| P4-PENDING-ASSUMPTION-SAVE-BLOCK-001 | P4 integrity | 現在revisionだがassumptionDependenciesにstatus=pendingを含むpreviewをUI承認 | PendingAssumptionPreviewApprovalAttempt、blocked_pending_assumption、save/AI call/ledger/repository開始なし、accept_assumptionへ暗黙変換なし | 仮定確認と再計算手順が分かる | preview保存、暗黙assumption承認、stale/async扱い | DA0、approval | DA0 blocked、approval queued |
+| P4-PENDING-ASSUMPTION-SAVE-BLOCK-001 | P4 integrity | 現在revisionだがassumptionDependenciesにstatus=pendingを含むpreviewをUI承認 | PendingAssumptionPreviewApprovalAttempt、blocked_pending_assumption、save/AI call/ledger/repository開始なし、accept_assumptionへ暗黙変換なし | 仮定確認と再計算手順が分かる | preview保存、暗黙assumption承認、stale/async扱い | DA0、approval | DA0 queued、approval queued |
 | P4-PARTIAL-SAVE-001 | P4 integrity | 3 block中2件save後crash | item ledger、未保存だけretry | 追跡可能 | duplicate plan | approval | queued |
 | P5-CORRUPT-STORAGE-001 | P5 migration | corrupt/unknown/other user/week ledger | safe discard、no auto-run | 安全な再起動 | corrupt operation実行 | approval、DA2 | queued |
 | P6-PLANNER-FAILURE-001 | P6 fallback | accepted state後planner timeout | state保持、deterministic renderer、extra callなし | 次操作明確 | semantic parser再実行 | DA1、DA2 | queued |
 | P7-TRACE-001 | P7 trace | WP-DA全turnのredacted record | IDs/revision/diagnosticsを追跡 | 監査可能 | golden textだけでpass | DA3c | queued |
-| P7-REQUIREMENT-MATRIX-001 | P7 trace | 下記Requirement tableをlint/contract検査 | 必須15 IDが各1行、owner/status/task IDsと同期 | 欠落を発見しやすい | duplicate/missing/stale status | DA3c | queued |
+| P7-REQUIREMENT-MATRIX-001 | P7 trace | 下記Requirement tableをlint/contract検査 | 必須18 IDが各1行、owner/status/task IDsと同期 | 欠落を発見しやすい | duplicate/missing/stale status | DA3c | queued |
 
 ### P1/P2 ownership contract
 
@@ -123,29 +182,32 @@ v4通常対話のcurrent UXを規定するものではなく、既存exam/domain
 
 Enter最終bindingはDA2実装時に決定する。決定前は特定キー割当をstrictにせず、IME抑止、button/keyboard重複抑止、multiline、focus restore、Tab順をstrictにする。
 
-## 4. P7 Requirement ID traceability
+## 5. P7 Requirement ID traceability
 
 この表がRequirement ID単位のcanonical traceabilityである。P1〜P7 case表とは別に管理し、各IDを一行だけ持つ。
 
 | Requirement ID | primary spec | v4 section | owning task | test layer | strict assertion / rubric | current status | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DA-GOAL-001 | spec §5–6 | v4 §3、§9 | Gate P4、DA3b、DA3c | integration、roleplay、rubric | goal受理、no re-ask、next unresolved topic、mentor dialogue rubric | Gate P4 active verification gate、DA3b/DA3c queued | superseded Stage3はhistorical evidenceのみ |
-| DA-SAFE-001 | spec §12–13 | v4 §1、§7 | DA1、approval、DA2 | contract、integration | AI state/save/repository action禁止、explicit UI approval | queued | 全task共通不変条件 |
-| DA-INTERPRET-001 | spec §12 | v4 §1–3、§6 | Gate P4、DA0a、DA0 | unit、contract、integration | single interpreter、typed candidate、relative range、一件独立評価 | Gate P4 active verification gate、DA0a/DA0 blocked | rules/AI merge禁止 |
-| DA-ACTION-001 | spec §12–13 | v4 §4 | DA1、DA2 | schema、contract | finite action、allow-list、invalid全体reject | queued | used refsはcore導出 |
-| DA-TURN-001 | spec §13 | v4 §6、§8 | DA2 | contract、race integration | request/turn/conversation/revision一致、StaleAsyncResult silent discard | queued | P1/P2 Applicable |
-| DA-ASSUMPTION-001 | spec §5–6、§13 | v4 §2、§5 | DA0a、DA1b | unit、contract、roleplay | draft/record/pending分離、有限reasonCode/reasonText禁止、lifecycle/resolvedBy、correctionによるsupersede/expire、old decision拒否 | DA0a blocked、DA1b queued | preview生成はDA0 |
-| DA-CORRECTION-001 | spec §10–11 | v4 §5 | DA1b | schema、contract、integration | target union、typed replacement、Envelope atomic、関連pending proposal resolutionとのatomicity、turn内独立 | queued | rejected correctionとunrelated proposalは不変 |
-| DA-RESPONSE-001 | spec §12–13 | v4 §4 | DA1 | schema、contract、fuzz | structured fact rendering、二重source禁止、finite formatter、reasonCodeからのdeterministic proposal理由描画、reasonText grounding迂回禁止 | queued | free text制限緩和はDA3c後 |
-| DA-PREVIEW-001 | spec §10、§13 | v4 §3、§6–7 | DA0、DA1b、approval | integration、contract | WeeklyPreviewMetadata、assumptionDependencies、blocked_pending_assumption、pending preview保存禁止、assumption解決後stale/再計算、pending/stale approval拒否の分離 | DA0 blocked、DA1b/approval queued | DA0aはpreview非所有 |
-| DA-RELATIVE-001 | spec §4、§9 | v4 §6 | DA3a | unit、property、integration | typed anchor、revision、cycle/self拒否、deterministic resolve | queued | complex recurrence対象外 |
-| DA-FEASIBILITY-001 | spec §3、§6、§9 | v4 §3–4 | DA3b | unit、property、roleplay | required/available/scheduled/unscheduled、deterministic options | queued | AI再計算禁止 |
-| DA-PERSISTENCE-001 | spec §10–11 | v4 §6–7 | approval、DA2 | migration、integration | session-local会話、versioned ledger、no auto-run | queued | profile保存は別判断 |
-| DA-IDEMPOTENCY-001 | spec §10 | v4 §7 | approval | unit、repository integration、property | save境界のpending/stale guardをledger前に実施、userId + sourceDraftBlockId、item ledger、crash/retry | queued | PendingAssumptionPreviewApprovalAttemptとStalePreviewApprovalAttemptを区別、operation IDはkeyでない |
-| DA-FALLBACK-001 | spec §12–13 | v4 §6 | Gate P4、DA0、DA1、DA2 | contract、failure injection | interpreter/planner/stale分離、no extra call、no rules/AI merge | Gate P4 active verification gate、DA0 blocked、DA1/DA2 queued | stale previewはfallbackでない |
-| DA-EVAL-001 | spec §5–6、§13 | v4 §9 | DA3c | full roleplay、metrics、real-model rubric | 必須ID全件、strict/rubric分離、redaction、reasonCode rendererの自然さ、pending assumption説明の明確さ、初期free text制限維持 | queued | P7-REQUIREMENT-MATRIX-001で検査 |
+| DA-GOAL-001 | spec §5–6 | v4 §3、§4、§10 | Gate P4、DA3b、DA3c | integration、roleplay、rubric | goal受理、no re-ask、next unresolved topic、mentor dialogue rubric | Gate P4 complete、DA3b/DA3c queued | superseded Stage3はhistorical evidenceのみ |
+| DA-SAFE-001 | spec §12–13 | v4 §1、§8 | DA1、approval、DA2 | contract、integration | AI state/save/repository action禁止、explicit UI approval | queued | 全task共通不変条件 |
+| DA-INTERPRET-001 | spec §12 | v4 §1、§3–4、§7 | Gate P4、DA0a、DA0 | unit、contract、integration | single interpreter、typed candidate、relative range、一件独立評価 | Gate P4 complete、DA0a complete、DA0 queued | rules/AI merge禁止 |
+| DA-ACTION-001 | spec §12–13 | v4 §5 | DA1、DA2 | schema、contract | finite action、allow-list、invalid全体reject | queued | used refsはcore導出 |
+| DA-TURN-001 | spec §13 | v4 §7、§9 | DA2 | contract、race integration | request/turn/conversation/revision一致、StaleAsyncResult silent discard | queued | P1/P2 Applicable |
+| DA-ASSUMPTION-001 | spec §5–6、§13 | v4 §2、§6 | DA0a、DA1b | unit、contract、roleplay | draft/record/pending分離、有限reasonCode/reasonText禁止、lifecycle/resolvedBy、correctionによるsupersede/expire、old decision拒否 | DA0a complete、DA1b queued | preview生成はDA0 |
+| DA-CORRECTION-001 | spec §10–11 | v4 §6 | DA1b | schema、contract、integration | target union、typed replacement、Envelope atomic、関連pending proposal resolutionとのatomicity、turn内独立 | queued | rejected correctionとunrelated proposalは不変 |
+| DA-RESPONSE-001 | spec §12–13 | v4 §5 | DA1 | schema、contract、fuzz | structured fact rendering、二重source禁止、finite formatter、reasonCodeからのdeterministic proposal理由描画、reasonText grounding迂回禁止 | queued | free text制限緩和はDA3c後 |
+| DA-PREVIEW-001 | spec §10、§13 | v4 §4、§7–8 | DA0、DA1b、approval | integration、contract | WeeklyPreviewMetadata、assumptionDependencies、blocked_pending_assumption、pending preview保存禁止、assumption解決後stale/再計算、pending/stale approval拒否の分離 | DA0 queued、DA1b/approval queued | DA0aはpreview非所有 |
+| DA-READINESS-001 | spec §5、§6、§10、§12–13 | v4 §3、§4、§8、§10 | DA0r、DA0 | unit、property、contract、roleplay | hard required/count dimensions、minimumResolvedCount、blocking uncertainty、DraftGenerationIntent、revision一致のdeterministic preview gate | DA0r queued、DA0 queued | resolvedCountだけではpreview_readyにしない |
+| DA-BEHAVIOR-001 | spec §4、§5、§9、§12–13 | v4 §3、§4 | DA0r、DA0、DA3b | unit、property、integration、roleplay | LifeActivityAnchor、TaskExecutionProfile、PlanningOpportunityAnnotationが既存availabilityを変更せず配置適合度を導出 | DA0r queued、DA0/DA3b queued | LifeConstraintと第三のavailability概念は追加しない |
+| DA-RESOLUTION-001 | spec §5–6、§12–13 | v4 §3、§5、§10 | DA0r、DA1 | contract、roleplay、rubric | MissingResolutionModeとimpact/uncertaintyに基づくproposal-first、must_confirm境界、no-reask | DA0r queued、DA1 queued | 内部slot/reasonCode/readiness scoreは表示しない |
+| DA-RELATIVE-001 | spec §4、§9 | v4 §7 | DA3a | unit、property、integration | typed anchor、revision、cycle/self拒否、deterministic resolve | queued | complex recurrence対象外 |
+| DA-FEASIBILITY-001 | spec §3、§6、§9 | v4 §4–5 | DA3b | unit、property、roleplay | required/available/scheduled/unscheduled、deterministic options | queued | AI再計算禁止 |
+| DA-PERSISTENCE-001 | spec §10–11 | v4 §7–8 | approval、DA2 | migration、integration | session-local会話、versioned ledger、no auto-run | queued | profile保存は別判断 |
+| DA-IDEMPOTENCY-001 | spec §10 | v4 §8 | approval | unit、repository integration、property | save境界のpending/stale guardをledger前に実施、userId + sourceDraftBlockId、item ledger、crash/retry | queued | PendingAssumptionPreviewApprovalAttemptとStalePreviewApprovalAttemptを区別、operation IDはkeyでない |
+| DA-FALLBACK-001 | spec §12–13 | v4 §1、§7 | Gate P4、DA0、DA1、DA2 | contract、failure injection | interpreter/planner/stale分離、no extra call、no rules/AI merge | Gate P4 complete、DA0/DA1/DA2 queued | stale previewはfallbackでない |
+| DA-EVAL-001 | spec §5–6、§13 | v4 §10 | DA3c | full roleplay、metrics、real-model rubric | 必須ID全件、strict/rubric分離、redaction、reasonCode rendererの自然さ、pending assumption説明の明確さ、初期free text制限維持 | queued | P7-REQUIREMENT-MATRIX-001で検査 |
 
-## 5. test layers
+## 6. test layers
 
 unitはschema、state transition、reasonCode/slot、proposal reason renderer、proposal/correction/resolvedBy、fact/formatter registry、text validator、WeeklyPreviewMetadata、feasibility、ledger。contractはaction/topic/option/factRef、derived used refs、turn envelope、assumptionDependencies/approvalEligibility、pending/stale/async分類、fallback。integrationはinterpreter→reducer→scheduler→snapshot→planner→validator→renderer、correction-proposal atomic resolution、save-boundary guard、exam/non-exam。property/fuzzはduplicate、revision、NaN/Infinity、bounds、cycle/self、untrusted strings、partial retry。real-modelはredacted fixture replayとrubricに限定する。
 

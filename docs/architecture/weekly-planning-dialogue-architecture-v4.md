@@ -17,16 +17,26 @@ Canonical test and requirement traceability: [weekly-planning-roleplay-test-plan
 - previewは未承認draftであり、explicit UI approvalまでsaveしない。
 - 通常turnはinterpreter + plannerの最大2 call、openingは最大1 call。empty candidatesは正常結果である。
 - user-originated stringはuntrusted JSON dataであり、action、factRef、option ID、formatter ID、prompt命令へ昇格させない。
-- Gate P4完了前にopen implementation taskはない。current queueは本書 §10 とroadmap冒頭だけを正とする。
+- accepted stateから導出したplanning hypothesisはacceptedFacts、constraints、repositoryへ直接書き込まない。
+- readinessとDraftGenerationIntentはdeterministic coreだけが判定し、AIはpreview可否を自己申告しない。
+- Gate P4完了前にopen implementation taskはない。current queueは本書 §11 とroadmap冒頭だけを正とする。
 
 ~~~text
 userText + structured context
   → single AI interpreter → typed candidates
   → normalize / validate / adapter / reducer
-  → scheduler / availability / feasibility / preview
+  → accepted facts / pending proposals
+  → deterministic behavior derivation
+      LifeActivityAnchor / TaskExecutionProfile / PlanningOpportunityAnnotation
+  → PlanningHypothesisSnapshot
+      readiness / resolution opportunities / suggested next action
   → DialogueStateSnapshot + AllowedDialogueActions
   → AI dialogue planner → response validator
   → deterministic fact / question / option rendering → UI
+  → readiness=preview_ready かつ DraftGenerationIntent=user_authorized の場合のみ
+      scheduler / availability / feasibility / preview
+  → explicit assumption decision / correction → latest eligible preview
+  → explicit UI approval → save
 ~~~
 
 ## 2. assumption proposal draft、record、pending subtype
@@ -130,7 +140,315 @@ pending → accepted | rejected | superseded | expired
 
 status変更時も元recordを履歴から失わない。acceptedはaccept_assumptionでproposal値をaccepted factへ移した状態、rejectedは明示拒否、supersededは同じtarget/slotの明示値または新proposalによる直接置換、expiredはsource fact、target、planning range、task scopeが直接replacementなしに無効化された状態である。modifyは旧recordをsupersededにし、resolvedBy={kind:"proposal", proposalId}で新しいpending recordへ結ぶ。rejected/expired/superseded recordを暗黙にpendingへ戻さず、non-pending recordへのdecisionをrejectする。
 
-## 3. DA0 bridge、snapshot、feasibility
+## 3. behavior-aware planning foundation
+
+### 3.1 事実、導出、仮説、仮定の分離
+
+~~~ts
+type PlanningFactOrigin =
+  | "user_explicit"
+  | "deterministic_derived"
+  | "accepted_assumption"
+  | "profile_memory";
+
+type PlanningFactScope =
+  | "current_turn"
+  | "current_plan"
+  | "current_week"
+  | "recurring_profile";
+
+type PlanningConfidence =
+  | "high"
+  | "medium"
+  | "low";
+~~~
+
+temporary hypothesisはaccepted factではない。user explicit fact、deterministically derived fact、internal planning hypothesis、pending assumption proposal、accepted assumption fact、recurring profile memoryを別の証跡として扱う。internal planning hypothesisはacceptedFacts、constraints、repositoryへ直接書き込まない。未承認の仮説・アンカー・profile proposal・readiness関連状態は初期実装ではsession-localとする。
+
+### 3.2 LifeActivityAnchor
+
+~~~ts
+type LifeActivityKind =
+  | "school"
+  | "work"
+  | "commute"
+  | "meal"
+  | "bath"
+  | "sleep"
+  | "rest"
+  | "preparation"
+  | "fixed_event";
+
+type LifeActivityAnchor = {
+  anchorId: string;
+  kind: LifeActivityKind;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  sourceFactRefs: string[];
+  origin: PlanningFactOrigin;
+  scope: PlanningFactScope;
+  confidence: PlanningConfidence;
+};
+~~~
+
+LifeActivityAnchorはbusy intervalの代替ではない。hard/soft constraint、buffer、existing plan、timetableから作られる既存availabilityを維持し、既存availability rangeへ行動上の意味を付与する参照である。移動・準備時間でavailability自体を変える場合は既存constraintまたはbuffer処理を通す。
+
+### 3.3 PlanningOpportunityAnnotation
+
+第三のavailability概念を新設しない。既存available rangeへのannotationとして行動上の意味とタスク適合度を持つ。
+
+~~~ts
+type PlanningOpportunityTag =
+  | "before_meal"
+  | "after_meal"
+  | "after_school"
+  | "after_work"
+  | "after_commute"
+  | "before_sleep"
+  | "after_rest"
+  | "long_contiguous_window"
+  | "short_transition_window"
+  | "low_activation"
+  | "high_continuity";
+
+type StudyActivityKind =
+  | "memorization"
+  | "drill"
+  | "reading"
+  | "writing"
+  | "problem_solving"
+  | "project"
+  | "review"
+  | "unknown";
+
+type OpportunitySuitability = 0 | 1 | 2 | 3;
+
+type PlanningOpportunityAnnotation = {
+  availabilityRangeRef: string;
+  anchorRefs: string[];
+  tags: PlanningOpportunityTag[];
+  suitabilityByActivity: Partial<
+    Record<StudyActivityKind, OpportunitySuitability>
+  >;
+  sourceFactRefs: string[];
+};
+~~~
+
+annotationは利用可能時間を新しく作らず、hard busy intervalを短縮・拡張・上書きしない。候補枠の順位付け、対話上の説明、配置理由にだけ利用する。
+
+### 3.4 TaskExecutionProfile
+
+StudyTaskScopeとは別の計画用profileとして学習タスクの実行特性を表現する。
+
+~~~ts
+type TaskDistributionPolicy =
+  | "single_block"
+  | "contiguous"
+  | "splittable"
+  | "spaced"
+  | "sequential_units";
+
+type CognitiveLoad =
+  | "light"
+  | "medium"
+  | "heavy"
+  | "unknown";
+
+type TaskExecutionProfile = {
+  taskRef: string;
+  activityKind: StudyActivityKind;
+  distributionPolicy: TaskDistributionPolicy;
+  cognitiveLoad: CognitiveLoad;
+  minSessionMinutes?: number;
+  targetSessionMinutes?: number;
+  maxSessionMinutes?: number;
+  repetitionsPerDay?: number;
+  minimumSpacingMinutes?: number;
+  hardDeadline?: string;
+  preferredCompletionBy?: string;
+  sourceFactRefs: string[];
+  confidence: PlanningConfidence;
+  origin:
+    | "user_explicit"
+    | "deterministic_derived"
+    | "pending_proposal"
+    | "accepted_assumption";
+};
+~~~
+
+hardDeadlineとpreferredCompletionByを混同しない。テスト開始前などの境界はhard deadlineになり得るが、安全余裕はユーザーが明示していなければpending proposalである。memorizationやworkbookに固定値を埋め込まず、有限policy registry、public source fact、または過去実績から候補を作る。
+
+StudyTaskScopeは何をどの単位で進めるか、TaskExecutionProfileはそのtaskをどの長さ・分割方針・認知負荷で実行しやすいかを表す。後者は前者を置き換えない。
+
+### 3.5 DraftGenerationIntent
+
+~~~ts
+type DraftGenerationIntent =
+  | "not_requested"
+  | "assistant_suggested"
+  | "user_authorized";
+~~~
+
+漠然としたgoalはnot_requested、アプリが仮予定作成を提案した段階はassistant_suggested、ユーザーが同意した段階はuser_authorizedである。assistant_suggestedだけでpreviewを生成しない。interpreter candidate、validator、deterministic transitionを通してのみ更新し、AI dialogue plannerは直接更新しない。
+
+### 3.6 PlanningDimensionとreadiness
+
+~~~ts
+type PlanningDimension =
+  | "planning_intent"
+  | "planning_range"
+  | "task_identity"
+  | "goal_scope"
+  | "workload"
+  | "deadline"
+  | "task_execution_profile"
+  | "availability_basis"
+  | "routine_anchors";
+
+type PlanningReadinessStage =
+  | "exploration"
+  | "hypothesis_ready"
+  | "proposal_ready"
+  | "preview_ready";
+
+type PlanningReadinessPolicy = {
+  hardRequiredDimensions: PlanningDimension[];
+  countedDimensions: PlanningDimension[];
+  minimumResolvedCount: number;
+  previewRequiredDimensions: PlanningDimension[];
+};
+
+type PlanningReadinessSnapshot = {
+  stage: PlanningReadinessStage;
+  resolvedDimensions: PlanningDimension[];
+  unresolvedDimensions: PlanningDimension[];
+  blockingDimensions: PlanningDimension[];
+  resolvedCount: number;
+  policyId: string;
+  draftGenerationIntent: DraftGenerationIntent;
+  allowedAssumptionSlots: PlanningAssumptionSlot[];
+  stateRevision: number;
+};
+~~~
+
+readiness policyは有限registryで管理し、exam/non-examで別policyを持ってよい。magic numberを複数箇所へ直書きせず、resolvedCountだけでpreview_readyにしない。routine anchorがなくても、ユーザーが明示的な利用可能時間を指定した場合はavailability basisとしてよい。
+
+preview_readyは、hard required dimensionがすべてresolved、各work itemに配置可能なexecution shapeがあり、availability basisがあり、高影響のblocking uncertaintyがなく、DraftGenerationIntent=user_authorizedで、現在state revisionと一致する場合だけ許可する。
+
+### 3.7 MissingResolutionMode
+
+~~~ts
+type MissingResolutionMode =
+  | "derive_deterministically"
+  | "propose_default"
+  | "offer_options"
+  | "must_confirm";
+
+type ResolutionImpact =
+  | "low"
+  | "medium"
+  | "high";
+
+type MissingResolutionOpportunity = {
+  topicId: string;
+  dimension: PlanningDimension;
+  mode: MissingResolutionMode;
+  impact: ResolutionImpact;
+  uncertainty: PlanningConfidence;
+  proposalSlot?: PlanningAssumptionSlot;
+  allowedOptionIds: string[];
+  sourceFactRefs: string[];
+};
+~~~
+
+| 不足内容 | 基本mode |
+| --- | --- |
+| 相対日付の一意解決 | derive_deterministically |
+| 1回の目安時間 | propose_default |
+| 進める量の現実的な候補 | propose_defaultまたはoffer_options |
+| 朝・夕方・夜の候補 | offer_options |
+| 何の試験か | must_confirm |
+| 何を学習するのか | must_confirmまたはoffer_options |
+| ユーザーの目的そのもの | must_confirm |
+| hard deadline | must_confirmまたは明示factからderive |
+| preferred completion buffer | propose_default |
+
+安全な提案候補がある場合は質問よりproposalまたはoptionを優先する。目的そのもの、候補間で予定結果が大きく変わる事項、締切・利用可能時間へ大きな影響がある事項、根拠のない事項、既存factやprofileと矛盾する事項だけはmust_confirmとする。一turnのproposalまたはquestionは原則1〜2件、多くても3件とし、「分からない」には同じ質問を繰り返さず、propose_default、offer_options、first trialのいずれかへ移る。
+
+### 3.8 PlanningHypothesisSnapshotと処理順
+
+~~~ts
+type PlanningHypothesisSnapshot = {
+  conversationId: string;
+  stateRevision: number;
+  taskProfiles: TaskExecutionProfile[];
+  lifeActivityAnchors: LifeActivityAnchor[];
+  opportunityAnnotations: PlanningOpportunityAnnotation[];
+  resolutionOpportunities: MissingResolutionOpportunity[];
+  readiness: PlanningReadinessSnapshot;
+  suggestedNextAction:
+    | "acknowledge"
+    | "propose_resolution"
+    | "offer_options"
+    | "ask_required_fact"
+    | "suggest_draft_generation"
+    | "generate_preview";
+};
+~~~
+
+PlanningHypothesisSnapshotは予定blockを持たず、preview、draft candidate、saved planとして扱わない。repositoryまたはlocalStorageへ永続化せず、同じcanonical state、policy registry、revisionから同じsnapshotを生成する。AIはreadiness、suitability score、deadline、availability、suggestedNextActionを計算せず、deterministic coreがsnapshotとAllowedDialogueActionsを生成し、AI dialogue plannerは許可されたactionから選ぶ。
+
+~~~text
+userText + structured context
+  → single AI interpreter
+  → typed candidates
+  → normalize / validate / adapter / reducer
+  → accepted facts / pending proposals
+  → deterministic behavior derivation
+      LifeActivityAnchor / TaskExecutionProfile / PlanningOpportunityAnnotation
+  → PlanningHypothesisSnapshot
+      readiness / missing resolution opportunities / suggested next action
+  → AllowedDialogueActions
+  → AI dialogue planner
+  → response validator
+  → deterministic renderer
+  → DraftGenerationIntent=user_authorized かつ readiness=preview_ready の場合のみ
+  → scheduler / feasibility / preview
+  → explicit assumption decision / correction
+  → latest eligible preview
+  → explicit UI approval
+  → save
+~~~
+
+hypothesis_ready、proposal_ready、pending proposalの存在だけではpreviewを生成しない。preview生成を提案することと、previewを実際に生成することを分ける。
+
+### 3.9 strict preview gate
+
+~~~ts
+const previewAllowed =
+  readiness.stage === "preview_ready"
+  && readiness.draftGenerationIntent === "user_authorized"
+  && readiness.blockingDimensions.length === 0
+  && readiness.stateRevision === currentStateRevision;
+~~~
+
+上記と意味的に同じ条件をdeterministic coreで保証する。漠然としたgoal、pending proposal一件、optional fieldの件数、assistant_suggested、高影響の未確認事項、AIの自己申告だけでpreviewを生成しない。生活アンカーannotationがhard busy intervalを上書きすること、planning hypothesisをaccepted factとして保存することも禁止する。
+
+### 3.10 profile memoryとsession-local状態
+
+今回のamendmentでは永続profileの保存方式を確定しない。初期実装ではPlanningHypothesisSnapshot、未承認LifeActivityAnchor、pending TaskExecutionProfile proposal、MissingResolutionOpportunity、DraftGenerationIntent、pending assumption proposalをsession-localとする。「朝は続かない」「夕食はだいたい19時」などを一度の発話だけで無期限profileへ保存しない。recurring profileへ昇格する場合は、明示同意、source、confidence、lastConfirmedAt、scope、保持期間、削除方法、矛盾時の優先規則を別taskで設計する。
+
+### 3.11 未決定事項
+
+| topic | options | impact | recommendation |
+| --- | --- | --- | --- |
+| recurring profileの保存 | session-localのみ / 明示同意後にprofile昇格 / 一度の発話で自動保存 | 永続化すると再質問は減るが、誤記憶・削除・矛盾解決・プライバシー責務が増える | MVPはsession-local。明示同意、source、confidence、lastConfirmedAt、scope、保持期間、削除、矛盾時の優先規則を別taskで決めてから昇格する |
+| readiness policyの具体値 | exam/non-exam共通 / policy registryで別管理 / 各taskに直書き | 共通値は単純だが、締切と実行特性の差を吸収しにくい。直書きは変更時に不整合が出る | 有限policy registryで管理し、DA0rでは型・判定境界を実装する。具体値はdomain fixtureと後続評価で決める |
+| schedulerとの統合 | annotation adapter / LifeConstraint migration / 第三のavailability追加 | migrationは既存回帰と実装範囲が大きく、第三概念はavailable minutesの二重計上を招く | annotation adapterを推奨し、既存availability・LifeConstraint・busy intervalを維持する。LifeConstraint migrationは別taskに分離する |
+| TaskExecutionProfileの初期値 | 固定domain default / public policy source / first trialで再見積もり | 固定値は誤適用、外部sourceは鮮度確認、first trialは初回計画の不確実性が増える | 固定値を埋め込まず、検証済みpolicy/sourceまたはpending proposalとして扱い、必要ならfirst trialを使う |
+
+## 4. DA0 bridge、snapshot、feasibility
 
 DA0で初めてpending proposalをwork itemとpreviewへ接続する。
 
@@ -231,7 +549,7 @@ DialogueStateSnapshotはconversationId、stateRevision、acceptedFacts、rejecte
 
 allowedQuestionTopicsは今聞いてよいtopic、askedTopicHistoryは質問履歴、activeQuestionは回答待ち質問である。answered済みtopicを理由なく再質問せず、revision変更だけでは再質問しない。activeQuestionへの短答をinterpreter groundingに使う。
 
-## 4. action、response grounding、formatter
+## 5. action、response grounding、formatter
 
 ### 4.1 AI responseの唯一の情報源
 
@@ -245,6 +563,7 @@ type DialogueActionKind =
   | "propose_assumption"
   | "explain_feasibility"
   | "offer_preview"
+  | "suggest_draft_generation"
   | "answer_clarification"
   | "explain_capability_gap"
   | "fallback";
@@ -401,12 +720,13 @@ duration + missing_duration、quantity + missing_quantity、planning_period + mi
 | confirm_reference | public fact part | 空sourceの利用中断定 |
 | propose_assumption | draft/reasonCode/sourceFactRefs | reasonText、canonical ID/status、hard apply |
 | explain_feasibility | deterministic facts/options | AI再計算、任意option |
-| offer_preview | previewId、revision一致、stale=false、WeeklyPreviewMetadata一致 | save/approve、blocked状態のeligible偽装 |
+| suggest_draft_generation | readinessに基づくdeterministic fact/option | preview生成、save/approve |
+| offer_preview | previewId、revision一致、stale=false、WeeklyPreviewMetadata一致、preview gate | save/approve、blocked状態のeligible偽装 |
 | answer_clarification | target topic/fact | accepted commandの破棄 |
 | explain_capability_gap | capability fact | unsupported preview |
 | fallback | deterministic partsのみ | proposal、preview、private diagnostic、extra call |
 
-## 5. assumption decisionとcorrection
+## 6. assumption decisionとcorrection
 
 ### 5.1 AssumptionDecisionCommand
 
@@ -510,7 +830,7 @@ accepted correctionをapplyする同じdeterministic transitionで、status=pend
 
 accepted decision/correctionはstateRevisionを進め、proposalに依存するpreviewをstaleにし、assumptionDependenciesを再評価して必要なscheduler/feasibilityを再計算する。
 
-## 6. relative range、request、stale、fallback
+## 7. relative range、request、stale、fallback
 
 ### 6.1 relative planning range
 
@@ -584,7 +904,7 @@ StalePreviewApprovalAttemptは古いpreviewに対するユーザー操作へのd
 
 会話/request/proposalはsession-local、既存draft block localStorageは維持し、reloadで自動再実行しない。
 
-## 7. approval ledgerとidempotency
+## 8. approval ledgerとidempotency
 
 ~~~ts
 type WeeklyDraftApprovalItemStatus =
@@ -625,33 +945,55 @@ idempotency keyはuserId + sourceDraftBlockIdである。approvalOperationIdは�
 
 保存境界ではUI button状態に依存せず、WeeklyPreviewMetadataのrevision、approvalEligibility、assumptionDependenciesをcanonical proposal stateと再照合する。staleはStalePreviewApprovalAttempt、現在revisionでstatus=pendingが残るものはPendingAssumptionPreviewApprovalAttemptとしてledger作成前に拒否する。rejected/expired/superseded、unknown、private、revision不一致dependencyはblocked_invalidまたはblocked_staleとして拒否する。preview承認をassumption承認として扱わず、repository saveを開始しない。assumption accept/modify後は旧previewをstale化し、accepted factで再計算された最新のeligible previewだけがledger開始へ進める。
 
-## 8. DA2 interaction ownership
+## 9. DA2 interaction ownership
 
 DA2はopening once、double submit、button + keyboard重複、active request、reset、history clear、unmount、stale/cancel、IME、keyboard binding、multiline、focus restore、Tab orderのownerである。
 
 IME中に送信しない、multiline入力、button/keyboardの同一turn重複抑止、focus restore、Tab順はstrict contractとする。Enter、Shift+Enter、Ctrl/Meta+Enterの最終割当はDA2実装時に決定し、決定前のroleplayで特定bindingをstrictにしない。
 
-## 9. testとtraceability
+## 10. testとtraceability
 
 strict contractはaction、responseParts、derived used refs/topics/options、field/formatter compatibility、reasonCode/reason renderer、state/revision/request/turn、proposal lifecycle/resolvedBy、decision/correction union、WeeklyPreviewMetadata/assumptionDependencies/approvalEligibility、StaleAsyncResult/StalePreviewApprovalAttempt/PendingAssumptionPreviewApprovalAttempt、fallback、approval ledger、duplicateを検証する。自然文はgolden text完全一致ではなく、敬体、簡潔、no re-ask、仮定/事実の区別、pending assumption説明、内部slot/reasonCode非表示、次入力の明確さをrubric評価する。
 
 P1〜P7 caseとRequirement ID単位の正は[roleplay test plan](../testing/weekly-planning-roleplay-test-plan.md)である。各taskのRequirement IDs、Dependencies、Entry/Exit、roleplay参照は同表と同期する。
+新しい必須Requirement IDはDA-READINESS-001、DA-BEHAVIOR-001、DA-RESOLUTION-001であり、同表へ各1行で登録する。
 
-## 10. current queue
+後続implementation taskで、次のpropertyをarchitecture contractとして実装する。
 
-Gate P4完了前にopen implementation taskはない。
+- no premature preview: hard required dimensionが欠けるstateではoptional dimensionだけを追加してもpreview_readyにならない。
+- authorization gate: readiness条件が揃っていてもDraftGenerationIntentがuser_authorizedでなければpreviewを生成しない。
+- count alone is insufficient: minimumResolvedCountを満たしていてもblocking dimensionまたは高影響uncertaintyがあればpreview_readyにならない。
+- order independence: 同じcanonical fact集合へ異なるturn順序で到達しても、矛盾がなければ同じPlanningReadinessSnapshotを生成する。
+- irrelevant fact independence: 無関係factを追加してもreadiness、proposal eligibility、preview gateを変えない。
+- deterministic hypothesis: 同じcanonical state、policy registry、revisionから同じPlanningHypothesisSnapshotを生成する。
+- proposal-first resolution: propose_defaultまたはoffer_optionsがあれば自由回答だけを唯一actionにしない。
+- hard constraint preservation: annotation順位付けはhard busy interval、existing plan、timetableと重複しない。
+- no availability fabrication: annotationを追加してもavailable minutesの総量を増やさない。
+- scope isolation: current weekの習慣factをrecurring profileへ自動昇格しない。
+- mutation prohibition: evaluator、behavior derivation、hypothesis builderは入力state、facts、constraints、proposalsを変更しない。
+- conflict handling: 矛盾するfactやprofileでは入力順で一方を採用せず、blockingまたはclarificationへ移る。
+
+
+## 11. current queue
+
+origin/mainにGate P4の検証対象とDA0aの実装・テストが含まれ、DA0a branchはmainへ統合済みであることを確認した。したがってGate P4とDA0aは完了扱いとし、DA0rを次のfoundationとしてDA0より前へ配置する。
 
 | 順 | item | status | dependency |
 | --- | --- | --- | --- |
-| 0 | Gate P4 | active verification gate | src差分の所有者確認 |
-| 1 | DA0a assumption proposal foundation | blocked — Gate P4 verification後 | Gate P4 |
-| 2 | DA0 non-exam preview bridge | blocked — Gate P4とDA0aの後 | Gate P4、DA0a |
-| 3 | DA1 dialogue action/response contract | queued | DA0 |
-| 4 | DA1b assumption decision and correction contract | queued | DA1 |
-| 5 | Draft approval idempotency | queued | DA1b |
-| 6 | DA2 state-grounded dialogue orchestrator | queued | approval |
-| 7 | DA3a relative constraint domain | queued | DA2 |
-| 8 | DA3b feasibility consultation | queued | DA3a |
-| 9 | DA3c conversation evaluation | queued | DA3b |
+| 0 | Gate P4 | complete — main verification confirmed | src差分の所有者確認 |
+| 1 | DA0a assumption proposal foundation | complete — implemented, tested, and merged into main | Gate P4 |
+| 2 | DA0r behavior-aware planning readiness foundation | queued | Gate P4、DA0a |
+| 3 | DA0 non-exam preview bridge | queued | Gate P4、DA0a、DA0r |
+| 4 | DA1 dialogue action/response contract | queued | DA0、DA0r |
+| 5 | DA1b assumption decision and correction contract | queued | DA1 |
+| 6 | Draft approval idempotency | queued | DA1b |
+| 7 | DA2 state-grounded dialogue orchestrator | queued | approval |
+| 8 | DA3a relative constraint domain | queued | DA2 |
+| 9 | DA3b feasibility consultation | queued | DA3a |
+| 10 | DA3c conversation evaluation | queued | DA3b |
+
+DA0rはPlanningDimension、PlanningReadinessPolicy、PlanningReadinessSnapshot、DraftGenerationIntent、MissingResolutionMode、LifeActivityAnchor、TaskExecutionProfile、PlanningOpportunityAnnotation、PlanningHypothesisSnapshot、preview gate、proposal-first next action policyだけを担当する。preview block生成、scheduler全面改修、AI response rendering、assumption lifecycle、save、approval、profile永続化、UI/CSSは扱わない。
+
+DA0はDA0rのreadinessとbehavior derivationを入力に含め、non-exam preview bridgeを実装する。DA1はPlanningHypothesisSnapshotとAllowedDialogueActionsを入力に含める。DA0r、DA0、DA1、DA1bを一つのvertical sliceとして実装することは許容するが、architecture上の責務、module boundary、test boundaryは分離する。
 
 旧D1〜D7、P4〜P9、T6、v3 stageはhistorical/supersededでありcurrent queueへ戻さない。

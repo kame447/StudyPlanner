@@ -11,26 +11,27 @@ StudyPlannerの週間学習計画機能は、ユーザーが来週やりたい�
 - 予定は最初から完全自動で確定しない
 - 分からない情報は対話で確認する
 - ただし、毎回細かく聞きすぎない
-- 過去に確認した生活サイクルや作業傾向は保持する
+- 会話中と今回の計画では確認済みの生活サイクルや作業傾向を参照する。recurring profileへの昇格・永続化は明示同意を含む別設計とする
 - 最終的には週表示・日表示に仮予定として可視化し、ユーザーが承認してから確定する
 
 ## 2. 全体の流れ
 
 週間学習計画は、次の流れで作成する。
 
-1. 既存予定を取得する
-2. ユーザーから来週やりたいことを聞く
-3. 不足している情報を対話で少しずつ埋める
-4. タスクを予定に入れられる単位へ分割する
-5. 所要時間を見積もる
-6. 過去実績や進捗から見積もりを補正する
-7. まず6日分に均等配分する
-8. 予定が多い日や空き時間が少ない日を調整する
-9. 実際の空き時間帯へ学習ブロックとして配置する
-10. 週表示・日表示に仮予定として表示する
-11. ユーザーが確認・修正する
-12. 承認後に本予定として確定する
-13. 実施後に時間と進捗を記録し、以後の予定を再調整する
+1. 既存予定と生活制約を取得する
+2. ユーザーから今週の計画意図と学習goalを聞く
+3. 現在のfactから生活アンカーとタスク実行特性の仮説を導出する
+4. 不足情報の影響を評価し、安全な候補を先に提示する
+5. 必要なfact、候補、仮定をユーザーの承認・差分修正で具体化する
+6. hard required dimensionとavailability basisが揃ったかdeterministicに判定する
+7. タスクを予定に入れられる単位へ分割し、所要時間と実行profileを見積もる
+8. 過去実績や進捗から見積もりを補正する
+9. まず6日分に均等配分する
+10. 予定が多い日や空き時間が少ない日を調整する
+11. ユーザーが仮予定作成を明示的に許可し、readinessがpreview_readyになった後だけ配置する
+12. 週表示・日表示に仮予定として表示し、assumption metadataを付ける
+13. ユーザーが確認・修正し、explicit UI approval後に本予定として確定する
+14. 実施後に時間と進捗を記録し、以後の予定を再調整する
 
 ## 3. 第1項目: 6等分ベース再配分方式
 
@@ -68,7 +69,7 @@ StudyPlannerの週間学習計画機能は、ユーザーが来週やりたい�
 
 予定の前後にどれくらい余裕が必要かは、人によって大きく違う。たとえば同じ「大学に行く」でも、家から大学に行く場合、大学からカフェに行く場合、すでに大学にいる場合では必要な時間がまったく異なる。
 
-そのため、学習可能時間は次の情報をもとに推定する。
+そのため、学習可能時間は次の情報をもとに推定する。生活イベントはbusy/freeだけでなく、帰宅後、食事前後、就寝前などの行動アンカーとしても参照する。ただし、アンカーは既存availabilityを増減させず、必要なbufferやconstraint変更は既存の仕組みを通す。
 
 - 睡眠時間
 - 食事時間
@@ -89,7 +90,7 @@ StudyPlannerの週間学習計画機能は、ユーザーが来週やりたい�
 前後にどのくらい余裕を見たいですか？
 ```
 
-ただし、毎回聞くと負担になるため、過去に確認した内容はメモリとして保持する。次回以降はその前提で仮置きし、最後にまとめて承認を取る。
+ただし、毎回聞くと負担になるため、同じconversationと今回の計画では確認済み内容を参照し、候補との差分だけを尋ねる。初期実装の仮説、未承認アンカー、pending proposalはsession-localであり、一度の発話から無期限profileへ自動保存しない。recurring profileへ昇格する場合は、明示同意、source、confidence、lastConfirmedAt、scope、保持期間、削除方法、矛盾時の優先規則を別途定める。
 
 例:
 
@@ -99,6 +100,8 @@ StudyPlannerの週間学習計画機能は、ユーザーが来週やりたい�
 ```
 
 ### 保持する生活プロファイルの例
+
+このJSONは将来のprofile表現例であり、今回のMVPで永続保存する契約ではない。
 
 ```json
 {
@@ -171,6 +174,19 @@ StudyPlannerの週間学習計画機能は、ユーザーが来週やりたい�
 
 「分からない」も有効な回答として扱う。分からない場合は無理に決めさせず、仮置きまたは初日の試行予定として扱う。
 
+### 行動文脈・仮説駆動の具体化
+
+この機能では、質問を順番に埋めるだけでなく、現在のfactから次の計画仮説を作り、予定結果への影響が大きい不確実性だけを解決する。
+
+- user explicit fact、deterministically derived fact、internal planning hypothesis、pending assumption proposal、accepted assumption fact、recurring profile memoryを別の証跡として扱う。
+- 生活イベントはLifeActivityAnchorとして行動上の意味を持つが、既存のLifeConstraint、busy interval、buffer、existing plan、timetableを置き換えない。
+- 既存availabilityへのPlanningOpportunityAnnotationで、夕食前の短い課題、夕食後の連続課題、就寝前の復習などの適合度を表す。annotationはavailabilityを新設・増減しない。
+- StudyTaskScopeは何を進めるか、TaskExecutionProfileは暗記・演習・読解・重い課題などをどの分割・認知負荷で実行するかを表す。
+- 安全な候補があれば自由回答の質問よりproposalまたはoptionを先に示し、目的そのもの、締切、候補間の影響が大きい事項だけmust_confirmとする。
+- previewは、hard required dimension、配置可能なexecution shape、availability basis、高影響のblocking uncertainty、ユーザーの明示的な仮予定作成許可、state revision一致が揃ったときだけ生成する。assistantが提案しただけの段階、pending proposalが存在するだけの段階、resolved countだけでは生成しない。
+
+仮説は予定block、preview、saved planではなく、deterministic coreが一時的に作るreviewableな材料である。AIはreadiness、suitability、deadline、availability、次の許可actionを計算せず、許可されたactionから自然な応答を選ぶ。
+
 ## 6. 質問しすぎ防止ルール
 
 この機能では、ユーザーに聞きすぎないことが非常に重要である。
@@ -181,7 +197,7 @@ StudyPlannerの週間学習計画機能は、ユーザーが来週やりたい�
 質問するべき度 = 間違えた時の影響 × 不確実性 - 質問コスト
 ```
 
-たとえば、移動時間が不明な場合は、予定が大きく変わる可能性があるので聞く。一方で、夕食を19:00にするか19:30にするかのような細かい違いは、仮置きして最後に確認すればよい。
+たとえば、移動時間が不明な場合は、予定が大きく変わる可能性があるので聞く。一方で、夕食を19:00にするか19:30にするかのような細かい違いは、仮置きして最後に確認すればよい。MissingResolutionModeはderive_deterministically、propose_default、offer_options、must_confirmの有限分類とし、MissingResolutionOpportunityのimpactとuncertaintyで候補提示か質問かを決める。
 
 ### 質問する条件
 
@@ -338,7 +354,7 @@ AIが提案した予定は、既存予定と見分けられるようにする。
 - 別日に移動
 - チャットで指示する
 
-承認後に本予定として確定する。
+承認後に本予定として確定する。preview表示と保存は別操作であり、pending assumptionを使用したpreviewはreviewableでもsaveできない。仮定のaccept/modify後はstate revisionを進め、最新条件で再計算したpreviewだけを承認対象とする。
 
 ## 11. 再計画
 
@@ -375,13 +391,14 @@ AIが作った予定が削除された場合、毎回理由を聞くと負担に
 
 ## 12. AI と deterministic core の責務分離
 
-LLMは自然文の意味解釈、typed candidate候補、dialogue plannerの有限action/responseParts候補、事実値を含まない短い接続文を担う。LLMは日付・時刻・容量・配置・fact ID・formatter ID・state revision・proposal lifecycle ID/status・proposal理由の自由文・承認・保存・削除を決めない。
+LLMは自然文の意味解釈、typed candidate候補、dialogue plannerの有限action/responseParts候補、事実値を含まない短い接続文を担う。LLMは日付・時刻・容量・配置・fact ID・formatter ID・state revision・proposal lifecycle ID/status・proposal理由の自由文・readiness・suitability score・deadline・availability・承認・保存・削除を決めない。
 
 ### LLMを使う部分
 
 - single AI interpreterによる自然文からのtyped candidate抽出
 - DialogueStateSnapshotとAllowedDialogueActionsに基づく有限actionの選択
 - responsePartsとしてfact/question/option参照を選ぶこと
+- deterministic coreが生成したPlanningHypothesisSnapshotとAllowedDialogueActionsから、proposal-firstまたはrequired questionの許可actionを選ぶこと
 - PendingAssumptionProposalDraftの候補化（有限なAssumptionProposalReasonCodeを含み、reasonTextは含めない）
 - acknowledgement、transition、empathy、instruction、closingに限定した短いfree text
 
@@ -393,6 +410,7 @@ AI responseで使用fact/topic/optionを表す正はresponsePartsだけとし、
 - command AST / IRのshape、enum、値域、source fact、revision検証
 - accepted commandのcompile、adapter、reducer、accepted/rejected/pendingのstate transition
 - PendingAssumptionProposalDraftのreasonCode/slot/sourceを検証してAssumptionProposalRecordを生成し、resolvedByを含むlifecycle historyを保持すること
+- LifeActivityAnchor、TaskExecutionProfile、PlanningOpportunityAnnotation、PlanningReadinessSnapshot、PlanningHypothesisSnapshotの導出
 - StudyTaskScope → GenericWeeklyWorkItem、assumptionProposalRef、existing events、availability、busy interval、required/available/scheduled/unscheduled、scheduler、preview
 - responsePartsのcompile、public fact/formatter registry、action/topic/option/factRef validator
 - responsePartsからusedFactRefs、usedQuestionTopicIds、usedOptionIdsを導出すること
@@ -413,4 +431,8 @@ previewはstateRevision/previewIdに束縛された未承認draftである。pen
 
 current queueはv4とroadmap冒頭Current queueだけが正である。Gate P4（active verification gate）→ DA0a（blocked）→ DA0（blocked）→ DA1 → DA1b → Draft approval idempotency → DA2 → DA3a → DA3b → DA3c（queued）の順である。Gate P4完了前にopen implementation taskはなく、旧P4〜P9、T6、D1〜D7、v3 stageはhistorical/supersededである。
 
-試験はP1〜P7 caseと必須15 Requirement IDのcanonical traceability tableを正とし、golden text完全一致ではなくstrict contractと会話品質rubricで判定する。
+試験はP1〜P7 caseと必須18 Requirement IDのcanonical traceability tableを正とし、golden text完全一致ではなくstrict contractと会話品質rubricで判定する。
+
+### v4 amendmentの最終原則
+
+現在のfactから安全な計画仮説を作り、候補がある不足情報は先に提案する。生活アンカーとタスク実行profileは配置理由を改善するが、既存availabilityやhard constraintを上書きしない。仮説、仮定、仮予定、確定予定を別物として扱い、readinessとuser_authorizedの両方が揃うまでpreviewを生成しない。

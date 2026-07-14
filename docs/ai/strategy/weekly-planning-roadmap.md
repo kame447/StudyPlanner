@@ -8,28 +8,33 @@ Canonical roleplay / P7 traceability: [weekly-planning-roleplay-test-plan.md](..
 
 ## Current queue（この節だけがcurrent statusの正）
 
-Gate P4が完了するまでopen implementation taskはない。Gate P4は実装taskではなく、既存P4由来差分の採否・検証を行うactive verification gateである。
+origin/mainにGate P4の検証対象とDA0aの実装・テストが含まれ、DA0a branchはmainへ統合済みであることを確認した。Gate P4とDA0aは完了扱いとし、次のopen implementation foundationとしてDA0rを置く。
 
 | 順 | item | status | dependency | Requirement IDs |
 | --- | --- | --- | --- | --- |
-| 0 | Gate P4 | active verification gate | src差分の所有者確認 | DA-GOAL-001、DA-INTERPRET-001、DA-FALLBACK-001 |
-| 1 | DA0a assumption proposal foundation | blocked — Gate P4 verification後 | Gate P4 | DA-ASSUMPTION-001、DA-INTERPRET-001 |
-| 2 | DA0 non-exam preview bridge | blocked — Gate P4とDA0aの後 | Gate P4、DA0a | DA-INTERPRET-001、DA-PREVIEW-001、DA-FALLBACK-001 |
-| 3 | DA1 dialogue action/response contract | queued | DA0 | DA-ACTION-001、DA-RESPONSE-001、DA-FALLBACK-001、DA-SAFE-001 |
-| 4 | DA1b assumption decision and correction contract | queued | DA1 | DA-ASSUMPTION-001、DA-CORRECTION-001、DA-PREVIEW-001 |
-| 5 | Draft approval idempotency | queued | DA1b | DA-IDEMPOTENCY-001、DA-PERSISTENCE-001、DA-PREVIEW-001、DA-SAFE-001 |
-| 6 | DA2 state-grounded dialogue orchestrator | queued | approval | DA-TURN-001、DA-ACTION-001、DA-FALLBACK-001、DA-PERSISTENCE-001、DA-SAFE-001 |
-| 7 | DA3a relative constraint domain | queued | DA2 | DA-RELATIVE-001 |
-| 8 | DA3b feasibility consultation | queued | DA3a | DA-FEASIBILITY-001、DA-GOAL-001、DA-PREVIEW-001 |
-| 9 | DA3c conversation evaluation | queued | DA3b | DA-EVAL-001、DA-GOAL-001、DA-FALLBACK-001 |
+| 0 | Gate P4 | complete — main verification confirmed | src差分の所有者確認 | DA-GOAL-001、DA-INTERPRET-001、DA-FALLBACK-001 |
+| 1 | DA0a assumption proposal foundation | complete — implemented, tested, and merged into main | Gate P4 | DA-ASSUMPTION-001、DA-INTERPRET-001 |
+| 2 | DA0r behavior-aware planning readiness foundation | queued | Gate P4、DA0a | DA-READINESS-001、DA-BEHAVIOR-001、DA-RESOLUTION-001 |
+| 3 | DA0 non-exam preview bridge | queued | Gate P4、DA0a、DA0r | DA-INTERPRET-001、DA-PREVIEW-001、DA-FALLBACK-001 |
+| 4 | DA1 dialogue action/response contract | queued | DA0、DA0r | DA-ACTION-001、DA-RESPONSE-001、DA-FALLBACK-001、DA-SAFE-001、DA-RESOLUTION-001 |
+| 5 | DA1b assumption decision and correction contract | queued | DA1 | DA-ASSUMPTION-001、DA-CORRECTION-001、DA-PREVIEW-001 |
+| 6 | Draft approval idempotency | queued | DA1b | DA-IDEMPOTENCY-001、DA-PERSISTENCE-001、DA-PREVIEW-001、DA-SAFE-001 |
+| 7 | DA2 state-grounded dialogue orchestrator | queued | approval | DA-TURN-001、DA-ACTION-001、DA-FALLBACK-001、DA-PERSISTENCE-001、DA-SAFE-001 |
+| 8 | DA3a relative constraint domain | queued | DA2 | DA-RELATIVE-001 |
+| 9 | DA3b feasibility consultation | queued | DA3a | DA-FEASIBILITY-001、DA-GOAL-001、DA-PREVIEW-001 |
+| 10 | DA3c conversation evaluation | queued | DA3b | DA-EVAL-001、DA-GOAL-001、DA-FALLBACK-001 |
 
-このqueueを旧P4〜P9、T6、D1〜D7、v3 stageへ戻さない。Gate P4後に一度に一件だけimplementation taskを進める。
+このqueueを旧P4〜P9、T6、D1〜D7、v3 stageへ戻さない。Gate P4とDA0a完了後は、依存関係に従い一度に一件だけopen implementation taskを進める。
 
-## 1. DA0a / DA0責務境界
+## 1. DA0r / DA0a / DA0責務境界
 
-DA0aはPendingAssumptionProposalDraftのvalidation、deterministic canonicalization、AssumptionProposalRecord status=pending、session-local保持、DA0へのproposalRef handoffまでを所有する。work item、candidate generator、preview、scheduler、表示、save、approvalは所有しない。
+DA0rはPlanningDimension、PlanningReadinessPolicy、PlanningReadinessSnapshot、DraftGenerationIntent、MissingResolutionMode、LifeActivityAnchor、TaskExecutionProfile、PlanningOpportunityAnnotation、PlanningHypothesisSnapshot、preview gate、proposal-first next action policyを所有する。preview block生成、scheduler全面改修、AI response rendering、assumption accept/reject/modify、save、approval、profile永続化、UI/CSSは所有しない。
 
-DA0はStudyTaskScopeとcanonical pending proposalをassumptionProposalRef付きGenericWeeklyWorkItemへ変換し、existing candidate generatorとpreviewへ接続する。eligibility=eligible_with_pending_assumptionでは同じconversation/target/current source revisionのpending proposal参照を必須とする。pending previewの最初のintegration testはDA0に置く。
+DA0aはPendingAssumptionProposalDraftのvalidation、deterministic canonicalization、AssumptionProposalRecord status=pending、session-local保持、DA0へのproposalRef handoffまでを所有し、origin/mainで実装・テスト・merge済みである。work item、candidate generator、preview、scheduler、表示、save、approvalは所有しない。
+
+DA0はStudyTaskScopeとcanonical pending proposalをassumptionProposalRef付きGenericWeeklyWorkItemへ変換し、DA0rのreadinessとbehavior derivationを入力に含めてexisting candidate generatorとpreviewへ接続する。eligibility=eligible_with_pending_assumptionでは同じconversation/target/current source revisionのpending proposal参照を必須とする。pending previewの最初のintegration testはDA0に置く。
+
+DA1はPlanningHypothesisSnapshotとAllowedDialogueActionsを入力に含める。DA0r、DA0、DA1、DA1bを一つのvertical sliceとして実装することは許容するが、architecture上の責務、module boundary、test boundaryは分離して記述する。
 
 ## 2. 文書の役割・安全境界
 
@@ -43,9 +48,9 @@ StaleAsyncResultはsilent discard、StalePreviewApprovalAttemptはdeterministic 
 
 ## 3. Requirement traceability
 
-Requirement ID単位のcanonical表はroleplay test plan §4である。必須IDは次の15件で、各taskのRequirement IDsと本書Current queueを同期する。
+Requirement ID単位のcanonical表はroleplay test plan §4である。必須IDは次の18件で、各taskのRequirement IDsと本書Current queueを同期する。
 
-DA-GOAL-001、DA-SAFE-001、DA-INTERPRET-001、DA-ACTION-001、DA-TURN-001、DA-ASSUMPTION-001、DA-CORRECTION-001、DA-RESPONSE-001、DA-PREVIEW-001、DA-RELATIVE-001、DA-FEASIBILITY-001、DA-PERSISTENCE-001、DA-IDEMPOTENCY-001、DA-FALLBACK-001、DA-EVAL-001。
+DA-GOAL-001、DA-SAFE-001、DA-INTERPRET-001、DA-ACTION-001、DA-TURN-001、DA-ASSUMPTION-001、DA-CORRECTION-001、DA-RESPONSE-001、DA-PREVIEW-001、DA-READINESS-001、DA-BEHAVIOR-001、DA-RESOLUTION-001、DA-RELATIVE-001、DA-FEASIBILITY-001、DA-PERSISTENCE-001、DA-IDEMPOTENCY-001、DA-FALLBACK-001、DA-EVAL-001。
 
 DA-SAFE-001は全task共通の不変条件であり、AI state/save/repository action禁止とexplicit UI approvalを検証する。canonical表でIDの重複、欠落、owner/status不一致をP7-REQUIREMENT-MATRIX-001として検査する。
 
@@ -79,11 +84,11 @@ examのfield×year固定からunitKind（exam_year、page、word_count、problem
 
 ### R4 質問計画
 
-spec §6の影響×不確実性−質問コストをpolicyへ落とし、1 turn 1〜3問、選択肢、分からないassumption、no-reaskを実装する。v4のaskedTopicHistory/activeQuestionは型の先行基盤であり、評価/UI接続は後続。
+DA0rでMissingResolutionMode、PlanningHypothesisSnapshot、proposal-first policyのfoundationを先行する。spec §6の影響×不確実性−質問コストをpolicyへ落とし、1 turn 1〜3問、選択肢、分からないassumption、no-reaskを実装する。v4のaskedTopicHistory/activeQuestionは既存の型基盤として維持し、評価/UI接続は後続。
 
 ### R5 生活profile
 
-睡眠、食事、予定種別buffer、確認履歴をconfidence/lastConfirmedAt/source付きで保持する。保存先、保持期間、会話履歴の扱いはユーザー判断を先に取る。
+睡眠、食事、予定種別buffer、確認履歴をconfidence/lastConfirmedAt/source付きで扱う。今回のamendmentでは初期状態をsession-localとし、recurring profileへの昇格、保存先、保持期間、会話履歴の扱いは明示同意を含む別判断とする。
 
 ### R6 実績・見積もり補正
 
