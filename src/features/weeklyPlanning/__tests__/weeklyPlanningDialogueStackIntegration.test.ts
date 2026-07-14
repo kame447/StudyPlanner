@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningIntakeInterpreter } from '../intake/weeklyPlanningInterpreterTypes';
 import { runWeeklyPlanningBehaviorAwarePipelineWithInterpreter } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 
@@ -9,61 +10,61 @@ const emptyInterpreter: WeeklyPlanningIntakeInterpreter = {
   },
 };
 
-function baseState() {
+function baseState(): PlanningIntakeState {
   return {
     ...createInitialPlanningIntakeState(),
-    intent: 'weekly_study_planning' as const,
+    intent: 'weekly_study_planning',
     range: {
       startDateTime: '2026-07-13T00:00:00',
       endDateTime: '2026-07-19T23:59:00',
       calendarDayCount: 7,
-      confidence: 'explicit' as const,
+      confidence: 'explicit',
       sourceText: '来週',
     },
     tasks: [
       {
         title: '英語',
-        unit: 'pages' as const,
+        unit: 'pages',
         amount: 10,
         rawText: '英語ワーク10ページ',
         requiresTimeEstimate: true,
-        source: 'command' as const,
+        source: 'command',
       },
       {
         title: '数学',
-        unit: 'hours' as const,
+        unit: 'hours',
         amount: 2,
         rawText: '数学2時間',
         requiresTimeEstimate: false,
-        source: 'command' as const,
+        source: 'command',
       },
     ],
     constraints: [{
-      kind: 'fixed_event' as const,
+      kind: 'fixed_event',
       date: '2026-07-14',
       start: '18:00',
       end: '22:00',
-      hardness: 'hard' as const,
+      hardness: 'hard',
       rawText: '火曜のバイト',
     }],
     assumptionProposalRecords: [{
       proposalId: 'proposal-duration-english',
       conversationId: 'conversation-1',
-      slot: 'duration' as const,
+      slot: 'duration',
       targetRef: 'task:0',
       proposedValue: 100,
-      proposedUnit: 'minutes' as const,
-      reasonCode: 'missing_duration' as const,
+      proposedUnit: 'minutes',
+      reasonCode: 'missing_duration',
       sourceFactRefs: ['task:0'],
       createdAtTurnId: 'turn-2',
       createdFromStateRevision: 2,
-      status: 'pending' as const,
+      status: 'pending',
     }],
     sourceTurns: ['来週の計画', '英語と数学を進めたい', '英語は100分くらいで仮置き'],
   };
 }
 
-function input(userText: string, previousState = baseState()) {
+function input(userText: string, previousState: PlanningIntakeState = baseState()) {
   return {
     userText,
     previousState,
@@ -131,28 +132,28 @@ describe('weekly planning dialogue stack integration', () => {
   });
 
   it('records assistant_suggested without generating preview before explicit authorization', async () => {
-    const readyState = {
+    const readyState: PlanningIntakeState = {
       ...createInitialPlanningIntakeState(),
-      intent: 'weekly_study_planning' as const,
+      intent: 'weekly_study_planning',
       range: {
         startDateTime: '2026-07-13T00:00:00',
         endDateTime: '2026-07-19T23:59:00',
         calendarDayCount: 7,
-        confidence: 'explicit' as const,
+        confidence: 'explicit',
         sourceText: '来週',
       },
       tasks: [{
         title: '英単語',
-        unit: 'hours' as const,
+        unit: 'hours',
         amount: 1,
         rawText: '英単語を1時間',
         requiresTimeEstimate: false,
-        source: 'command' as const,
+        source: 'command',
       }],
       constraints: [{
-        kind: 'buffer' as const,
+        kind: 'buffer',
         studyAvailableStart: '17:30',
-        hardness: 'soft' as const,
+        hardness: 'soft',
         rawText: '17時30分以降なら勉強できる',
       }],
       sourceTurns: ['来週の計画', '英単語を1時間', '17時30分以降なら勉強できる'],
