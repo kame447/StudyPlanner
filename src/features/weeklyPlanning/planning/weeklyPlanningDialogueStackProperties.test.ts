@@ -2,10 +2,8 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { AssumptionProposalRecord } from '../intake/weeklyPlanningAssumptionProposals';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
-import {
-  applyCorrectionEnvelopes,
-  type CorrectionEnvelope,
-} from './weeklyPlanningAssumptionLifecycle';
+import type { CorrectionEnvelope } from './weeklyPlanningAssumptionLifecycle';
+import { applyOrderedCorrectionEnvelopes } from './weeklyPlanningCorrectionOrdering';
 import {
   createWeeklyDraftApprovalOperation,
   executeWeeklyDraftApproval,
@@ -32,7 +30,7 @@ function pendingRecord(index: number): AssumptionProposalRecord {
 }
 
 describe('weekly planning dialogue stack properties', () => {
-  it('task removal corrections are order independent for distinct stable source targets', () => {
+  it('task removal corrections are order independent for distinct source targets', () => {
     fc.assert(fc.property(
       fc.uniqueArray(fc.integer({ min: 0, max: 4 }), { minLength: 1, maxLength: 4 }),
       (indexes) => {
@@ -56,7 +54,7 @@ describe('weekly planning dialogue stack properties', () => {
           target: { kind: 'task', taskRef: `task:${index}` },
           sourceText: `task-${index}を外す`,
         }));
-        const apply = (items: CorrectionEnvelope[]) => applyCorrectionEnvelopes({
+        const apply = (items: CorrectionEnvelope[]) => applyOrderedCorrectionEnvelopes({
           state,
           records: Array.from({ length: 5 }, (_, index) => pendingRecord(index)),
           envelopes: items,
