@@ -25,10 +25,17 @@ import type {
   TaskExecutionProfile,
 } from './weeklyPlanningBehaviorTypes';
 
+export interface AcceptedAssumptionDependencyMetadata {
+  proposalId: string;
+  targetRef: string;
+  proposalCreatedFromStateRevision: number;
+}
+
 export interface BehaviorAwarePreviewMetadata {
   stateRevision: number;
   sourceFactRefs: string[];
   usedAssumptionProposalRefs: string[];
+  acceptedAssumptionDependencies?: AcceptedAssumptionDependencyMetadata[];
   taskRef: string;
   opportunityTags: PlanningOpportunityTag[];
   reasoningKey:
@@ -57,6 +64,7 @@ export interface AcceptedTaskDurationAssumption {
   taskRef: string;
   minutes: number;
   proposalRef: string;
+  proposalCreatedFromStateRevision?: number;
   sourceFactRefs: string[];
 }
 
@@ -81,6 +89,7 @@ interface ResolvedTaskDuration {
   minutes: number;
   sourceFactRefs: string[];
   usedAssumptionProposalRefs: string[];
+  acceptedAssumptionDependencies: AcceptedAssumptionDependencyMetadata[];
   reasoningKey: BehaviorAwarePreviewMetadata['reasoningKey'];
 }
 
@@ -108,6 +117,7 @@ function resolveTaskDuration(params: {
       minutes: amount,
       sourceFactRefs: [taskRef],
       usedAssumptionProposalRefs: [],
+      acceptedAssumptionDependencies: [],
       reasoningKey: 'explicit-duration',
     };
   }
@@ -119,6 +129,7 @@ function resolveTaskDuration(params: {
       minutes: amount * 60,
       sourceFactRefs: [taskRef],
       usedAssumptionProposalRefs: [],
+      acceptedAssumptionDependencies: [],
       reasoningKey: 'explicit-duration',
     };
   }
@@ -133,6 +144,7 @@ function resolveTaskDuration(params: {
       minutes: amount * matchingRate.minutesPerUnit,
       sourceFactRefs: [taskRef, `unit-rate:${params.task.unit}`],
       usedAssumptionProposalRefs: [],
+      acceptedAssumptionDependencies: [],
       reasoningKey: 'explicit-unit-rate',
     };
   }
@@ -147,6 +159,11 @@ function resolveTaskDuration(params: {
       minutes: assumption.minutes,
       sourceFactRefs: unique([taskRef, ...assumption.sourceFactRefs]),
       usedAssumptionProposalRefs: [assumption.proposalRef],
+      acceptedAssumptionDependencies: [{
+        proposalId: assumption.proposalRef,
+        targetRef: assumption.taskRef,
+        proposalCreatedFromStateRevision: assumption.proposalCreatedFromStateRevision ?? params.state.sourceTurns.length,
+      }],
       reasoningKey: 'accepted-assumption-duration',
     };
   }
@@ -253,6 +270,9 @@ export function createBehaviorAwareNonExamDraftRun(params: {
         stateRevision: params.snapshot.stateRevision,
         sourceFactRefs: [...item.sourceFactRefs],
         usedAssumptionProposalRefs: [...item.usedAssumptionProposalRefs],
+        ...(item.acceptedAssumptionDependencies.length > 0
+          ? { acceptedAssumptionDependencies: item.acceptedAssumptionDependencies.map((dependency) => ({ ...dependency })) }
+          : {}),
         taskRef: item.taskRef,
         opportunityTags: opportunityTagsForTask(params.snapshot, profile),
         reasoningKey: item.reasoningKey,
