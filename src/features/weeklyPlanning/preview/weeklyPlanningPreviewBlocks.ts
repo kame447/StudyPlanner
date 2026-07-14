@@ -49,23 +49,26 @@ function behaviorMetadataFromCandidate(
 export function createWeeklyPlanningPreviewBlocks(
   draftCandidates: WeeklyDraftCandidate[],
 ): WeeklyPlanningPreviewBlock[] {
-  return draftCandidates.map((candidate) => ({
-    id: candidate.stableKey,
-    stableKey: candidate.stableKey,
-    date: candidate.date,
-    startTime: candidate.startTime,
-    endTime: candidate.endTime,
-    durationMinutes: candidate.durationMinutes,
-    title: candidate.title,
-    field: candidate.field,
-    year: candidate.year,
-    estimatedMinutes: candidate.estimatedMinutes,
-    source: candidate.source,
-    status: 'preview',
-    isSaved: false,
-    workItemKey: candidate.workItemKey,
-    behaviorMetadata: behaviorMetadataFromCandidate(candidate),
-  }));
+  return draftCandidates.map((candidate) => {
+    const behaviorMetadata = behaviorMetadataFromCandidate(candidate);
+    return {
+      id: candidate.stableKey,
+      stableKey: candidate.stableKey,
+      date: candidate.date,
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+      durationMinutes: candidate.durationMinutes,
+      title: candidate.title,
+      field: candidate.field,
+      year: candidate.year,
+      estimatedMinutes: candidate.estimatedMinutes,
+      source: candidate.source,
+      status: 'preview',
+      isSaved: false,
+      workItemKey: candidate.workItemKey,
+      ...(behaviorMetadata ? { behaviorMetadata } : {}),
+    };
+  });
 }
 
 export interface RemoveWeeklyPlanningPreviewBlockInput {
@@ -109,7 +112,7 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     source: 'ai',
     status: 'draft',
     userEdited: false,
-    behaviorMetadata: block.behaviorMetadata,
+    ...(block.behaviorMetadata ? { behaviorMetadata: block.behaviorMetadata } : {}),
     createdAt: deterministicTimestamp,
     updatedAt: deterministicTimestamp,
   };
@@ -126,29 +129,32 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
   userId,
   createdAt,
 }: CreateWeeklyDraftBlocksFromPreviewCandidatesInput): WeeklyPlanDraftBlock[] {
-  return candidates.map((candidate) => ({
-    id: candidate.stableKey,
-    userId,
-    date: candidate.date,
-    startTime: candidate.startTime,
-    endTime: candidate.endTime,
-    title: candidate.title,
-    subject: candidate.field,
-    type: 'study',
-    label: candidate.field,
-    materialId: null,
-    materialName: '',
-    memo: [
-      `year: ${candidate.year}`,
-      `estimatedMinutes: ${candidate.estimatedMinutes}`,
-      `workItemKey: ${candidate.workItemKey}`,
-      'source: dry-run preview',
-    ].join(' / '),
-    source: 'ai',
-    status: 'draft',
-    userEdited: false,
-    behaviorMetadata: behaviorMetadataFromCandidate(candidate),
-    createdAt,
-    updatedAt: createdAt,
-  }));
+  return candidates.map((candidate) => {
+    const behaviorMetadata = behaviorMetadataFromCandidate(candidate);
+    return {
+      id: candidate.stableKey,
+      userId,
+      date: candidate.date,
+      startTime: candidate.startTime,
+      endTime: candidate.endTime,
+      title: candidate.title,
+      subject: candidate.field,
+      type: 'study',
+      label: candidate.field,
+      materialId: null,
+      materialName: '',
+      memo: [
+        `year: ${candidate.year}`,
+        `estimatedMinutes: ${candidate.estimatedMinutes}`,
+        `workItemKey: ${candidate.workItemKey}`,
+        'source: dry-run preview',
+      ].join(' / '),
+      source: 'ai',
+      status: 'draft',
+      userEdited: false,
+      ...(behaviorMetadata ? { behaviorMetadata } : {}),
+      createdAt,
+      updatedAt: createdAt,
+    };
+  });
 }
