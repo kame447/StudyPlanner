@@ -8,8 +8,8 @@ import {
   renderBehaviorAwareDialogueFallback,
 } from '../planning/weeklyPlanningBehaviorPlanner';
 import {
-  validateBehaviorAwareDialogueResponseStrict,
-} from '../planning/weeklyPlanningBehaviorSafety';
+  validateBehaviorAwareDialogueResponseClosed,
+} from './weeklyPlanningBehaviorAwareDialogueValidation';
 import type {
   AllowedDialogueAction,
   BehaviorAwareDialogueResponse,
@@ -175,7 +175,7 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
           responseFormat: WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT,
           purpose: 'weekly_planning_renderer',
         });
-        const response = validateBehaviorAwareDialogueResponseStrict({
+        const response = validateBehaviorAwareDialogueResponseClosed({
           response: parseResponse(content),
           actions: input.allowedActions,
           previewAllowed: input.previewAllowed,
