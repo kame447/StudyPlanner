@@ -23,6 +23,25 @@ function timeFromMinutes(value: number): string {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+function stateWithValidatedConstraintSources(
+  input: BehaviorAwarePlanningBridgeInput,
+): PlanningIntakeState {
+  const termId = input.timetableTermId ?? 'default';
+  const hasTimetable = (input.scheduleTemplates ?? []).some(
+    (template) => (template.termId || 'default') === termId,
+  );
+  const hasExistingPlans = (input.existingPlans ?? []).length > 0;
+  const validated = (input.state.constraintSourcesInUse ?? []).filter((source) =>
+    (source.kind === 'timetable' && hasTimetable)
+    || (source.kind === 'existing_plans' && hasExistingPlans),
+  );
+
+  return {
+    ...input.state,
+    constraintSourcesInUse: validated.length > 0 ? validated : undefined,
+  };
+}
+
 function schedulingAvailabilityLowerBound(state: PlanningIntakeState): string | undefined {
   const lowerBounds = state.constraints.flatMap((constraint) => {
     if (constraint.studyAvailableStart) return [constraint.studyAvailableStart];
@@ -68,8 +87,9 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
 ): BehaviorAwarePlanningBridgeResult {
   const dayStartTime = input.sessionPolicy?.dayStartTime ?? '09:00';
   const dayEndTime = input.sessionPolicy?.dayEndTime ?? '22:00';
+  const availabilityState = stateWithValidatedConstraintSources(input);
   const canonicalRanges = input.availabilityRanges ?? deriveCanonicalAvailabilityRanges({
-    state: input.state,
+    state: availabilityState,
     dayStartTime,
     dayEndTime,
   });
