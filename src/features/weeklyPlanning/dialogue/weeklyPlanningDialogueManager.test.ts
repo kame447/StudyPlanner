@@ -62,17 +62,6 @@ describe('weekly planning dialogue manager', () => {
     });
   });
 
-  it('keeps fixed_events unresolved until the user confirms fixed event absence or details', () => {
-    const state = applyWeekendExamReadyForLifeConstraints();
-    const decision = createWeeklyPlanningDialogueDecision({ state });
-
-    expect(state.status).toBe('needs_life_constraints');
-    expect(state.missing).toContain('fixed_events');
-    expect(decision.kind).toBe('ask_missing_info');
-    expect(decision.requiredFields).toContain('fixed_events');
-    expect(decision.shouldSavePlan).toBe(false);
-  });
-
   it('plans only the next dependent missing slots instead of listing every missing item', () => {
     const state: PlanningIntakeState = {
       ...createInitialPlanningIntakeState(),

@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import {
@@ -7,142 +8,137 @@ import {
   removeWeeklyPlanningPreviewBlock,
 } from './weeklyPlanningPreviewBlocks';
 
-const candidate: WeeklyDraftCandidate = {
-  stableKey: 'candidate:math:2020:2026-06-27:09:00',
-  date: '2026-06-27',
-  startTime: '09:00',
-  endTime: '11:00',
-  durationMinutes: 120,
-  title: '数学・数理系 2020年度',
-  field: '数学・数理系',
-  year: 2020,
-  estimatedMinutes: 120,
-  source: 'weekly_exam_prep',
-  approvalStatus: 'unapproved',
-  workItemKey: '数学・数理系:2020',
-};
+const PROPERTY_SEED = 20260714;
+const PROPERTY_RUNS = 60;
+const CREATED_AT = '2026-06-30T00:00:00.000Z';
 
-describe('weekly planning preview blocks', () => {
-  it('creates unsaved preview blocks from dry-run candidates', () => {
-    const blocks = createWeeklyPlanningPreviewBlocks([candidate]);
+function candidate(year: number, index = 0): WeeklyDraftCandidate {
+  return {
+    stableKey: `candidate:math:${year}:2026-06-27:${String(9 + index).padStart(2, '0')}:00`,
+    date: '2026-06-27',
+    startTime: `${String(9 + index).padStart(2, '0')}:00`,
+    endTime: `${String(10 + index).padStart(2, '0')}:00`,
+    durationMinutes: 60,
+    title: `数学・数理系 ${year}年度`,
+    field: '数学・数理系',
+    year,
+    estimatedMinutes: 60,
+    source: 'weekly_exam_prep',
+    approvalStatus: 'unapproved',
+    workItemKey: `数学・数理系:${year}`,
+  };
+}
 
-    expect(blocks).toEqual([
-      {
-        id: candidate.stableKey,
-        stableKey: candidate.stableKey,
-        date: '2026-06-27',
-        startTime: '09:00',
-        endTime: '11:00',
-        durationMinutes: 120,
-        title: '数学・数理系 2020年度',
-        field: '数学・数理系',
-        year: 2020,
-        estimatedMinutes: 120,
-        source: 'weekly_exam_prep',
-        status: 'preview',
-        isSaved: false,
-        workItemKey: '数学・数理系:2020',
-      },
-    ]);
-  });
+const candidateArrayArbitrary = fc
+  .uniqueArray(fc.integer({ min: 2000, max: 2030 }), { minLength: 0, maxLength: 8 })
+  .map((years) => years.map((year, index) => candidate(year, index)));
 
-  it('promotes dry-run candidates to existing unapproved weekly draft blocks', () => {
+describe('weekly planning preview block contract', () => {
+  it('promotes a preview candidate with draft metadata but without preview-only fields', () => {
+    const source = candidate(2020);
     const [block] = createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: [candidate],
+      candidates: [source],
       userId: 'user-1',
-      createdAt: '2026-06-30T00:00:00.000Z',
+      createdAt: CREATED_AT,
     });
 
     expect(block).toMatchObject({
-      id: candidate.stableKey,
+      id: source.stableKey,
       userId: 'user-1',
-      date: candidate.date,
-      startTime: candidate.startTime,
-      endTime: candidate.endTime,
-      title: candidate.title,
-      subject: candidate.field,
+      date: source.date,
+      startTime: source.startTime,
+      endTime: source.endTime,
+      title: source.title,
+      subject: source.field,
       type: 'study',
-      label: candidate.field,
+      label: source.field,
       materialId: null,
       materialName: '',
       source: 'ai',
       status: 'draft',
       userEdited: false,
-      createdAt: '2026-06-30T00:00:00.000Z',
-      updatedAt: '2026-06-30T00:00:00.000Z',
+      createdAt: CREATED_AT,
+      updatedAt: CREATED_AT,
     });
     expect(block?.memo).toContain('year: 2020');
-    expect(block?.memo).toContain('estimatedMinutes: 120');
-    expect(block?.memo).toContain(`workItemKey: ${candidate.workItemKey}`);
+    expect(block?.memo).toContain('estimatedMinutes: 60');
+    expect(block?.memo).toContain(`workItemKey: ${source.workItemKey}`);
     expect(block?.memo).toContain('dry-run preview');
     expect(block).not.toHaveProperty('isSaved');
     expect(block).not.toHaveProperty('approvalStatus');
   });
+});
 
+describe('weekly planning preview block properties', () => {
+  it('preserves candidate order and stable identity across preview, display, and draft handoff', () => {
+    fc.assert(fc.property(candidateArrayArbitrary, (candidates) => {
+      const original = structuredClone(candidates);
+      const previewBlocks = createWeeklyPlanningPreviewBlocks(candidates);
+      const draftBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
+        candidates,
+        userId: 'user-1',
+        createdAt: CREATED_AT,
+      });
 
-  it('keeps the same block id when promoting preview blocks to drafts', () => {
-    const [previewBlock] = createWeeklyPlanningPreviewBlocks([candidate]);
-    const [draftBlock] = createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: [candidate],
-      userId: 'user-1',
-      createdAt: '2026-06-30T00:00:00.000Z',
-    });
-
-    expect(draftBlock?.id).toBe(previewBlock?.id);
+      expect(previewBlocks.map((block) => block.id)).toEqual(
+        candidates.map((item) => item.stableKey),
+      );
+      expect(draftBlocks.map((block) => block.id)).toEqual(
+        candidates.map((item) => item.stableKey),
+      );
+      previewBlocks.forEach((block, index) => {
+        expect(block).toMatchObject({
+          id: candidates[index].stableKey,
+          stableKey: candidates[index].stableKey,
+          status: 'preview',
+          isSaved: false,
+          source: 'weekly_exam_prep',
+        });
+        expect(createWeeklyPlanningPreviewDisplayBlock(block, 'user-1').id).toBe(
+          draftBlocks[index].id,
+        );
+      });
+      expect(candidates).toEqual(original);
+    }), { seed: PROPERTY_SEED, numRuns: PROPERTY_RUNS });
   });
 
-  it('uses the same stable id for preview display removal and promotion', () => {
-    const [previewBlock] = createWeeklyPlanningPreviewBlocks([candidate]);
-    const [draftBlock] = createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: [candidate],
-      userId: 'user-1',
-      createdAt: '2026-06-30T00:00:00.000Z',
-    });
-    const displayBlock = createWeeklyPlanningPreviewDisplayBlock(
-      previewBlock!,
-      'user-1',
-    );
+  it('removes only the matching stable ID and repeated or unknown removal is stable', () => {
+    fc.assert(fc.property(
+      fc.uniqueArray(fc.integer({ min: 2000, max: 2030 }), {
+        minLength: 1,
+        maxLength: 8,
+      }),
+      fc.nat(),
+      (years, rawIndex) => {
+        const candidates = years.map((year, index) => candidate(year, index));
+        const previewBlocks = createWeeklyPlanningPreviewBlocks(candidates);
+        const originalCandidates = structuredClone(candidates);
+        const originalPreview = structuredClone(previewBlocks);
+        const target = candidates[rawIndex % candidates.length];
+        const result = removeWeeklyPlanningPreviewBlock({
+          previewBlocks,
+          candidates,
+          blockId: target.stableKey,
+        });
+        const repeated = removeWeeklyPlanningPreviewBlock({
+          ...result,
+          blockId: target.stableKey,
+        });
+        const unknown = removeWeeklyPlanningPreviewBlock({
+          ...result,
+          blockId: 'unknown-id',
+        });
+        const expectedIds = candidates
+          .filter((item) => item.stableKey !== target.stableKey)
+          .map((item) => item.stableKey);
 
-    expect(displayBlock.id).toBe(previewBlock?.id);
-    expect(displayBlock.id).toBe(draftBlock?.id);
-  });
-
-  it('removes a local preview block and matching candidate by block id', () => {
-    const secondCandidate: WeeklyDraftCandidate = {
-      ...candidate,
-      stableKey: 'candidate:math:2019:2026-06-27:11:00',
-      year: 2019,
-      title: '数学・数理系 2019年度',
-      workItemKey: '数学・数理系:2019',
-    };
-    const previewBlocks = createWeeklyPlanningPreviewBlocks([candidate, secondCandidate]);
-    const result = removeWeeklyPlanningPreviewBlock({
-      previewBlocks,
-      candidates: [candidate, secondCandidate],
-      blockId: candidate.stableKey,
-    });
-
-    expect(result.previewBlocks.map((block) => block.id)).toEqual([
-      secondCandidate.stableKey,
-    ]);
-    expect(result.candidates.map((item) => item.stableKey)).toEqual([
-      secondCandidate.stableKey,
-    ]);
-  });
-
-  it('returns an empty draft block list for empty candidates', () => {
-    expect(createWeeklyDraftBlocksFromPreviewCandidates({
-      candidates: [],
-      userId: 'user-1',
-      createdAt: '2026-06-30T00:00:00.000Z',
-    })).toEqual([]);
-  });
-
-  it('keeps preview blocks distinguishable from saved plans and approved drafts', () => {
-    const [block] = createWeeklyPlanningPreviewBlocks([candidate]);
-
-    expect(block?.isSaved).toBe(false);
-    expect(block?.status).toBe('preview');
-    expect(block?.source).toBe('weekly_exam_prep');
+        expect(result.previewBlocks.map((block) => block.id)).toEqual(expectedIds);
+        expect(result.candidates.map((item) => item.stableKey)).toEqual(expectedIds);
+        expect(repeated).toEqual(result);
+        expect(unknown).toEqual(result);
+        expect(candidates).toEqual(originalCandidates);
+        expect(previewBlocks).toEqual(originalPreview);
+      },
+    ), { seed: PROPERTY_SEED + 1, numRuns: PROPERTY_RUNS });
   });
 });

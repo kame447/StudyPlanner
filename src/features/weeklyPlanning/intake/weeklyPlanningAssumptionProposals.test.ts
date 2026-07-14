@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   ASSUMPTION_PROPOSAL_LIMITS,
@@ -9,8 +10,13 @@ import {
   getPendingAssumptionProposals,
   validatePendingAssumptionProposalDraft,
   type AssumptionProposalCanonicalizationContext,
+  type AssumptionProposalRecord,
+  type AssumptionProposalSourceFact,
   type PendingAssumptionProposalDraft,
 } from './weeklyPlanningAssumptionProposals';
+
+const PROPERTY_SEED = 20260714;
+const PROPERTY_RUNS = 60;
 
 const baseDraft: PendingAssumptionProposalDraft = {
   slot: 'duration',
@@ -37,7 +43,21 @@ function context(
   };
 }
 
-describe('weekly planning assumption proposal drafts', () => {
+function publicSourceFact(factId: string): AssumptionProposalSourceFact {
+  return {
+    factId,
+    userId: 'user-1',
+    conversationId: 'conversation-1',
+    stateRevision: 4,
+    visibility: 'public',
+  };
+}
+
+const factIdArbitrary = fc
+  .array(fc.constantFrom('a', 'b', 'c', '1', '2'), { minLength: 1, maxLength: 6 })
+  .map((parts) => `fact-${parts.join('')}`);
+
+describe('weekly planning assumption proposal contract', () => {
   it('accepts a safe draft and rejects lifecycle or unknown properties', () => {
     expect(validatePendingAssumptionProposalDraft(baseDraft)).toEqual({
       accepted: true,
@@ -57,107 +77,240 @@ describe('weekly planning assumption proposal drafts', () => {
       'resolvedBy',
       'reasonText',
     ]) {
-      expect(validatePendingAssumptionProposalDraft({ ...baseDraft, [property]: 'forbidden' })).toMatchObject({
+      expect(validatePendingAssumptionProposalDraft({
+        ...baseDraft,
+        [property]: 'forbidden',
+      })).toMatchObject({
         accepted: false,
         reason: 'unknown-draft-property',
       });
     }
   });
 
-  it('enforces runtime value, unit, reason, and bounded string validation', () => {
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, proposedValue: Number.NaN })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, proposedValue: Number.POSITIVE_INFINITY })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, proposedValue: 0 })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, proposedValue: -1 })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, proposedUnit: 'pages' })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, slot: 'priority', reasonCode: 'history_based_estimate', sourceFactRefs: [] })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({ ...baseDraft, sourceFactRefs: ['fact-1'], reasonCode: 'domain_default' })).toMatchObject({ accepted: true });
+  it.each([
+    ['NaN value', { proposedValue: Number.NaN }],
+    ['infinite value', { proposedValue: Number.POSITIVE_INFINITY }],
+    ['zero duration', { proposedValue: 0 }],
+    ['negative duration', { proposedValue: -1 }],
+    ['incompatible duration unit', { proposedUnit: 'pages' }],
+    ['incompatible reason slot', { slot: 'priority', reasonCode: 'history_based_estimate' }],
+    ['overlong target', { targetRef: 'x'.repeat(ASSUMPTION_PROPOSAL_LIMITS.targetRef + 1) }],
+    ['overlong string value', { proposedValue: 'x'.repeat(ASSUMPTION_PROPOSAL_LIMITS.valueString + 1) }],
+    ['too many source refs', {
+      sourceFactRefs: Array.from(
+        { length: ASSUMPTION_PROPOSAL_LIMITS.sourceFactRefs + 1 },
+        (_, index) => `fact-${index}`,
+      ),
+    }],
+  ])('rejects %s at the draft validation boundary', (_label, overrides) => {
     expect(validatePendingAssumptionProposalDraft({
       ...baseDraft,
-      targetRef: 'x'.repeat(ASSUMPTION_PROPOSAL_LIMITS.targetRef + 1),
-    })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({
-      ...baseDraft,
-      proposedValue: 'x'.repeat(ASSUMPTION_PROPOSAL_LIMITS.valueString + 1),
-    })).toMatchObject({ accepted: false });
-    expect(validatePendingAssumptionProposalDraft({
-      ...baseDraft,
-      sourceFactRefs: Array.from({ length: ASSUMPTION_PROPOSAL_LIMITS.sourceFactRefs + 1 }, (_, index) => `fact-${index}`),
+      ...overrides,
     })).toMatchObject({ accepted: false });
   });
 
-  it('normalizes duplicate source references deterministically', () => {
-    expect(validatePendingAssumptionProposalDraft({
-      ...baseDraft,
-      sourceFactRefs: [' fact-b ', 'fact-a', 'fact-b'],
-      reasonCode: 'history_based_estimate',
-    })).toEqual({
-      accepted: true,
-      draft: {
-        ...baseDraft,
-        reasonCode: 'history_based_estimate',
-        sourceFactRefs: ['fact-a', 'fact-b'],
-      },
-    });
-  });
-
-  it('accepts only current public same-scope source facts and approved policies', () => {
-    const sourceFact = {
-      factId: 'fact-1',
-      userId: 'user-1',
-      conversationId: 'conversation-1',
-      stateRevision: 4,
-      visibility: 'public' as const,
-    };
-    const valid = canonicalizeAssumptionProposalDraft({
+  it.each([
+    ['private-source-fact', { visibility: 'private' }],
+    ['cross-user-source-fact', { userId: 'other-user' }],
+    ['cross-conversation-source-fact', { conversationId: 'other-conversation' }],
+    ['stale-source-fact', { stateRevision: 3 }],
+  ])('rejects source facts outside the current scope: %s', (reason, overrides) => {
+    const fact = { ...publicSourceFact('fact-1'), ...overrides } as AssumptionProposalSourceFact;
+    const result = canonicalizeAssumptionProposalDraft({
       ...baseDraft,
       reasonCode: 'history_based_estimate',
       sourceFactRefs: ['fact-1'],
-    }, context({ currentPublicSourceFacts: [sourceFact] }));
-    expect(valid.accepted).toBe(true);
+    }, context({ currentPublicSourceFacts: [fact] }));
 
-    expect(canonicalizeAssumptionProposalDraft({
-      ...baseDraft,
-      reasonCode: 'history_based_estimate',
-      sourceFactRefs: ['fact-private'],
-    }, context({ currentPublicSourceFacts: [{ ...sourceFact, factId: 'fact-private', visibility: 'private' }] }))).toMatchObject({ accepted: false, reason: 'private-source-fact' });
-    expect(canonicalizeAssumptionProposalDraft({
-      ...baseDraft,
-      reasonCode: 'history_based_estimate',
-      sourceFactRefs: ['fact-cross-user'],
-    }, context({ currentPublicSourceFacts: [{ ...sourceFact, factId: 'fact-cross-user', userId: 'other-user' }] }))).toMatchObject({ accepted: false, reason: 'cross-user-source-fact' });
-    expect(canonicalizeAssumptionProposalDraft({
-      ...baseDraft,
-      reasonCode: 'history_based_estimate',
-      sourceFactRefs: ['fact-stale'],
-    }, context({ currentPublicSourceFacts: [{ ...sourceFact, factId: 'fact-stale', stateRevision: 3 }] }))).toMatchObject({ accepted: false, reason: 'stale-source-fact' });
+    expect(result).toMatchObject({ accepted: false, reason });
+  });
+
+  it.each([
+    ['cross-user target', { userId: 'other-user' }],
+    ['cross-conversation target', { conversationId: 'other-conversation' }],
+    ['stale target', { stateRevision: 3 }],
+  ])('rejects target refs outside the current scope: %s', (_label, overrides) => {
+    const target = {
+      targetRef: 'task-1',
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+      stateRevision: 4,
+      ...overrides,
+    };
+    const result = canonicalizeAssumptionProposalDraft(baseDraft, context({ validTargetRefs: [target] }));
+
+    expect(result).toMatchObject({ accepted: false, reason: 'unknown-or-invalid-target-ref' });
+  });
+
+  it('accepts approved deterministic policy sources and rejects unknown source refs', () => {
     expect(canonicalizeAssumptionProposalDraft({
       ...baseDraft,
       reasonCode: 'domain_default',
       sourceFactRefs: ['policy:duration-default'],
-    }, context({ allowedPolicyIds: ['policy:duration-default'] }))).toMatchObject({ accepted: true });
+    }, context({ allowedPolicyIds: ['policy:duration-default'] }))).toMatchObject({
+      accepted: true,
+    });
+    expect(canonicalizeAssumptionProposalDraft({
+      ...baseDraft,
+      reasonCode: 'history_based_estimate',
+      sourceFactRefs: ['fact-unknown'],
+    }, context())).toMatchObject({
+      accepted: false,
+      reason: 'unknown-source-fact',
+    });
   });
 
-  it('creates deterministic pending records, refs, duplicates, and conflicts', () => {
-    const first = canonicalizeAssumptionProposalDraft(baseDraft, context());
-    expect(first.accepted).toBe(true);
-    if (!first.accepted) return;
-    expect(first.record.status).toBe('pending');
-    expect(first.record.decidedAtTurnId).toBeUndefined();
-    expect(first.record.resolvedBy).toBeUndefined();
-    expect(getAssumptionProposalRef(first.record)).toBe(first.record.proposalId);
-    expect(createDeterministicAssumptionProposalId(context(), baseDraft)).toBe(first.record.proposalId);
+  it('creates pending-only lifecycle metadata and exposes the proposal reference', () => {
+    const result = canonicalizeAssumptionProposalDraft(baseDraft, context());
 
-    const duplicate = canonicalizeAssumptionProposalDraft(baseDraft, context({ existingProposalRecords: [first.record] }));
-    expect(duplicate).toMatchObject({ accepted: true, duplicate: true, assumptionProposalRef: first.record.proposalId });
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) return;
+    expect(result.record).toMatchObject({
+      status: 'pending',
+      conversationId: 'conversation-1',
+      createdAtTurnId: 'turn-1',
+      createdFromStateRevision: 4,
+    });
+    expect(result.record.decidedAtTurnId).toBeUndefined();
+    expect(result.record.decidedAtStateRevision).toBeUndefined();
+    expect(result.record.resolvedBy).toBeUndefined();
+    expect(getAssumptionProposalRef(result.record)).toBe(result.record.proposalId);
+    expect(getPendingAssumptionProposals(
+      createAssumptionProposalSessionState([result.record]),
+    )).toEqual([result.record]);
+  });
+});
 
-    const conflicting = canonicalizeAssumptionProposalDraft({ ...baseDraft, proposedValue: 45 }, context({ existingProposalRecords: [first.record] }));
-    expect(conflicting).toMatchObject({ accepted: false, reason: 'pending-proposal-conflict' });
+describe('weekly planning assumption proposal properties', () => {
+  it('normalization is idempotent and does not mutate draft input', () => {
+    fc.assert(fc.property(
+      fc.array(factIdArbitrary, { minLength: 1, maxLength: 4 }),
+      (refs) => {
+        const draft = {
+          ...baseDraft,
+          reasonCode: 'history_based_estimate' as const,
+          sourceFactRefs: refs.flatMap((ref) => [` ${ref} `, ref]),
+        };
+        const original = structuredClone(draft);
+        const first = validatePendingAssumptionProposalDraft(draft);
 
-    const batch = canonicalizeAssumptionProposalDrafts([baseDraft, baseDraft], context());
-    expect(batch.state.records).toHaveLength(1);
-    expect(batch.accepted).toHaveLength(1);
-    expect(batch.assumptionProposalRefs).toEqual([first.record.proposalId]);
-    expect(getPendingAssumptionProposals(createAssumptionProposalSessionState(batch.state.records))).toHaveLength(1);
+        expect(first.accepted).toBe(true);
+        if (!first.accepted) return;
+        const second = validatePendingAssumptionProposalDraft(first.draft);
+
+        expect(second).toEqual(first);
+        expect(draft).toEqual(original);
+      },
+    ), { seed: PROPERTY_SEED, numRuns: PROPERTY_RUNS });
+  });
+
+  it('canonicalization is independent of sourceFactRefs order and does not mutate context', () => {
+    fc.assert(fc.property(
+      fc.uniqueArray(factIdArbitrary, { minLength: 1, maxLength: 5 }),
+      fc.integer({ min: 1, max: 600 }),
+      (refs, duration) => {
+        const currentPublicSourceFacts = refs.map(publicSourceFact);
+        const canonicalContext = context({ currentPublicSourceFacts });
+        const originalContext = structuredClone(canonicalContext);
+        const forward = {
+          ...baseDraft,
+          proposedValue: duration,
+          reasonCode: 'history_based_estimate' as const,
+          sourceFactRefs: refs,
+        };
+        const reverse = { ...forward, sourceFactRefs: [...refs].reverse() };
+        const first = canonicalizeAssumptionProposalDraft(forward, canonicalContext);
+        const second = canonicalizeAssumptionProposalDraft(reverse, canonicalContext);
+
+        expect(first).toEqual(second);
+        expect(canonicalContext).toEqual(originalContext);
+      },
+    ), { seed: PROPERTY_SEED + 1, numRuns: PROPERTY_RUNS });
+  });
+
+  it('reapplying the same draft does not create another record or reference', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 1, max: 600 }),
+      fc.integer({ min: 1, max: 8 }),
+      (duration, repetitions) => {
+        const draft = { ...baseDraft, proposedValue: duration };
+        const result = canonicalizeAssumptionProposalDrafts(
+          Array.from({ length: repetitions }, () => structuredClone(draft)),
+          context(),
+        );
+
+        expect(result.state.records).toHaveLength(1);
+        expect(result.accepted).toHaveLength(1);
+        expect(result.assumptionProposalRefs).toHaveLength(1);
+        expect(result.rejected).toEqual([]);
+      },
+    ), { seed: PROPERTY_SEED + 2, numRuns: PROPERTY_RUNS });
+  });
+
+  it('keeps a valid draft when an invalid draft appears in either order', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 1, max: 600 }),
+      fc.boolean(),
+      (duration, invalidFirst) => {
+        const valid = { ...baseDraft, proposedValue: duration };
+        const invalid = { ...baseDraft, unexpected: true };
+        const drafts = invalidFirst ? [invalid, valid] : [valid, invalid];
+        const result = canonicalizeAssumptionProposalDrafts(drafts, context());
+
+        expect(result.state.records).toHaveLength(1);
+        expect(result.accepted).toHaveLength(1);
+        expect(result.accepted[0].proposedValue).toBe(duration);
+        expect(result.rejected).toEqual([
+          expect.objectContaining({ reason: 'unknown-draft-property' }),
+        ]);
+      },
+    ), { seed: PROPERTY_SEED + 3, numRuns: PROPERTY_RUNS });
+  });
+
+  it('rejects a pending conflict independently of unrelated record order', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 1, max: 600 }),
+      fc.integer({ min: 1, max: 600 }).filter((value) => value !== 30),
+      fc.boolean(),
+      (unrelatedValue, conflictingValue, reverseRecords) => {
+        const existing = canonicalizeAssumptionProposalDraft(baseDraft, context());
+        expect(existing.accepted).toBe(true);
+        if (!existing.accepted) return;
+        const unrelated: AssumptionProposalRecord = {
+          ...existing.record,
+          proposalId: `unrelated:${unrelatedValue}`,
+          targetRef: `other-task-${unrelatedValue}`,
+          proposedValue: unrelatedValue,
+        };
+        const records = reverseRecords
+          ? [unrelated, existing.record]
+          : [existing.record, unrelated];
+        const result = canonicalizeAssumptionProposalDraft({
+          ...baseDraft,
+          proposedValue: conflictingValue,
+        }, context({ existingProposalRecords: records }));
+
+        expect(result).toEqual({
+          accepted: false,
+          reason: 'pending-proposal-conflict',
+        });
+      },
+    ), { seed: PROPERTY_SEED + 4, numRuns: PROPERTY_RUNS });
+  });
+
+  it('produces the same deterministic ID for an already canonical draft', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 1, max: 600 }),
+      (duration) => {
+        const draft = { ...baseDraft, proposedValue: duration };
+        const result = canonicalizeAssumptionProposalDraft(draft, context());
+
+        expect(result.accepted).toBe(true);
+        if (!result.accepted) return;
+        expect(createDeterministicAssumptionProposalId(context(), draft)).toBe(
+          result.record.proposalId,
+        );
+      },
+    ), { seed: PROPERTY_SEED + 5, numRuns: PROPERTY_RUNS });
   });
 });

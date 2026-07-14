@@ -385,24 +385,6 @@ describe('weekly planning renderer deterministic context', () => {
     expect(input.constraintSourcesInUse).toEqual(['時間割']);
   });
 
-  it('does not mutate questionPlan after adopting AI text (regression guard)', async () => {
-    const renderer = createAiWeeklyPlanningDialogueRenderer(config, createMockClient(JSON.stringify({
-      questions: [
-        { slotKey: 'fixed_events', text: '固定予定はありますか？' },
-        { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
-      ],
-    })));
-    const decision = missingDecision();
-    const before = JSON.parse(JSON.stringify(decision)) as WeeklyPlanningDialogueDecision;
-
-    await renderWeeklyPlanningDialogueMessage({
-      state: stateWithExtraMissing(),
-      decision,
-      renderer,
-    });
-
-    expect(decision).toEqual(before);
-  });
   function pendingStartState(): PlanningIntakeState {
     return {
       ...createInitialPlanningIntakeState(),

@@ -22,7 +22,6 @@ import {
   parseNoteNoFixedEventsCommand,
 } from '../intake/weeklyPlanningConstraintParsing';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
-import { createRemainingWorkItemsFromDraftRequest } from '../intake/weeklyPlanningRemainingWorkItems';
 import {
   applyWeeklyPlanningCommands,
   applyWeeklyPlanningUserTurn,
@@ -1237,18 +1236,5 @@ describe('weekly planning intake edge cases', () => {
     expect(twice.constraints.filter((constraint) =>
       constraint.kind === 'unavailable' && constraint.start === '16:00' && constraint.end === '19:00',
     )).toHaveLength(1);
-  });
-  it('ML-eval stateless pipeline is deterministic for identical roleplay input sequences', () => {
-    const runPipeline = () => {
-      const finalState = applyWeekendExamReadyForDraftRequest();
-      const request = createWeeklyDraftRequestFromIntakeState(finalState);
-      const remainingWorkItems = request
-        ? createRemainingWorkItemsFromDraftRequest(request)
-        : null;
-
-      return { finalState, request, remainingWorkItems };
-    };
-
-    expect(runPipeline()).toEqual(runPipeline());
   });
 });

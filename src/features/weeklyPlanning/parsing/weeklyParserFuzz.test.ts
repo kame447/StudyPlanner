@@ -45,12 +45,9 @@ describe('weekly parser fuzz', () => {
     );
   });
 
-  it('does not extract condition-only phrases as study tasks', () => {
-    fc.assert(
-      fc.property(fc.constantFrom(...conditionPhrases), (text) => {
-        expect(extractSimpleWeeklyPlanningTasks(text)).toEqual([]);
-      }),
-      { seed: FUZZ_SEED, numRuns: FUZZ_RUNS },
-    );
+  it('rejects every registered condition-only phrase as a study task', () => {
+    conditionPhrases.forEach((text) => {
+      expect(extractSimpleWeeklyPlanningTasks(text)).toEqual([]);
+    });
   });
 });
