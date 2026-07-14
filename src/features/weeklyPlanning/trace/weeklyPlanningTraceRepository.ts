@@ -71,6 +71,16 @@ function firestorePayload<T>(value: T): T {
   } as T;
 }
 
+function sortSessions(items: WeeklyPlanningTraceSession[]): WeeklyPlanningTraceSession[] {
+  return items.sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+}
+
+function sessionsFromSnapshot(snapshot: Awaited<ReturnType<typeof getDocs>>): WeeklyPlanningTraceSession[] {
+  return sortSessions(snapshot.docs
+    .map((item) => normalizedSession({ ...item.data(), id: item.id }))
+    .filter((item): item is WeeklyPlanningTraceSession => Boolean(item)));
+}
+
 export function createFirestoreWeeklyPlanningTraceRepository(
   firestoreDb: Firestore,
 ): WeeklyPlanningTraceRepository {
@@ -117,10 +127,12 @@ export function createFirestoreWeeklyPlanningTraceRepository(
         collection(firestoreDb, 'weekly_planning_trace_sessions'),
         where('userId', '==', userId),
       ));
-      return snapshot.docs
-        .map((item) => normalizedSession({ ...item.data(), id: item.id }))
-        .filter((item): item is WeeklyPlanningTraceSession => Boolean(item))
-        .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+      return sessionsFromSnapshot(snapshot);
+    },
+
+    async listSessionsForAdmin() {
+      const snapshot = await getDocs(collection(firestoreDb, 'weekly_planning_trace_sessions'));
+      return sessionsFromSnapshot(snapshot);
     },
 
     async getSession(userId, sessionId) {
@@ -195,9 +207,12 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
     },
 
     async listSessions(userId) {
-      return readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY)
-        .filter((session) => session.userId === userId)
-        .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+      return sortSessions(readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY)
+        .filter((session) => session.userId === userId));
+    },
+
+    async listSessionsForAdmin() {
+      return sortSessions(readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY));
     },
 
     async getSession(userId, sessionId) {
@@ -219,6 +234,7 @@ export function createNoopWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRe
     async upsertSession() {},
     async appendEntries() {},
     async listSessions() { return []; },
+    async listSessionsForAdmin() { return []; },
     async getSession() { return null; },
     async listEntries() { return []; },
   };
@@ -247,6 +263,9 @@ function serializeWeeklyPlanningTraceWrites(
     },
     listSessions(userId) {
       return delegate.listSessions(userId);
+    },
+    listSessionsForAdmin() {
+      return delegate.listSessionsForAdmin();
     },
     getSession(userId, sessionId) {
       return delegate.getSession(userId, sessionId);
