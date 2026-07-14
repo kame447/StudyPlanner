@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
@@ -12,6 +12,14 @@ import { RecurringPlanScopeDialog } from './components/RecurringPlanScopeDialog'
 import { StudyPlannerLogo } from './components/StudyPlannerLogo';
 import { UserAvatar } from './components/UserAvatar';
 import { createEmptyDayNoteDraft } from './domain/planner';
+import {
+  createWeeklyDraftApprovalOperation,
+  executeWeeklyDraftApproval,
+  parseWeeklyApprovalLedger,
+  serializeWeeklyApprovalLedger,
+  validateWeeklyPreviewApproval,
+} from './features/weeklyPlanning/planning/weeklyPlanningApproval';
+import type { WeeklyDraftApprovalOperation } from './features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningState } from './features/weeklyPlanning/useWeeklyPlanningState';
 import { createPlanDraftFromWeeklyDraftBlock } from './features/weeklyPlanning/weeklyPlanningTransforms';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
@@ -22,6 +30,14 @@ import {
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
 import { getUserDisplayName } from './lib/userProfile';
+
+const WEEKLY_APPROVAL_LEDGER_KEY = 'studyplanner-weekly-approval-ledger-v1';
+
+function loadWeeklyApprovalOperations(): WeeklyDraftApprovalOperation[] {
+  if (typeof window === 'undefined') return [];
+  const value = window.localStorage.getItem(WEEKLY_APPROVAL_LEDGER_KEY);
+  return value ? parseWeeklyApprovalLedger(value)?.operations ?? [] : [];
+}
 
 const BookshelfView = lazy(() =>
   import('./components/BookshelfView').then((module) => ({
@@ -68,6 +84,8 @@ export default function App() {
   const [appAccessGranted, setAppAccessGranted] = useState(
     () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
   );
+  const [weeklyApprovalOperations, setWeeklyApprovalOperations] =
+    useState<WeeklyDraftApprovalOperation[]>(loadWeeklyApprovalOperations);
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
     useThemePreference();
   const {
@@ -151,33 +169,92 @@ export default function App() {
   const activeTimetableTermId = activeTimetableTerm?.id ?? 'default';
   const currentPath = window.location.pathname;
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      WEEKLY_APPROVAL_LEDGER_KEY,
+      serializeWeeklyApprovalLedger(weeklyApprovalOperations),
+    );
+  }, [weeklyApprovalOperations]);
+
   async function approveWeeklyDraftBlocks() {
-    if (!user || pendingWeeklyDraftBlocks.length === 0) {
-      return;
-    }
-
-    const savedBlockIds: string[] = [];
-
-    try {
-      for (const block of pendingWeeklyDraftBlocks) {
-        await savePlanDraft(createPlanDraftFromWeeklyDraftBlock(block, user.id));
-        savedBlockIds.push(block.id);
-      }
-    } catch (error) {
-      if (savedBlockIds.length > 0) {
-        dispatchPlanningAction({
-          type: 'remove_draft_blocks',
-          blockIds: savedBlockIds,
-        });
-      }
-
-      throw error;
-    }
-
-    dispatchPlanningAction({
-      type: 'remove_draft_blocks',
-      blockIds: savedBlockIds,
+    if (!user || pendingWeeklyDraftBlocks.length === 0) return;
+    const firstMetadata = pendingWeeklyDraftBlocks[0]?.behaviorMetadata?.previewMetadata;
+    const proposalRecords = (firstMetadata?.assumptionDependencies ?? []).map((dependency) => ({
+      proposalId: dependency.proposalId,
+      conversationId: 'weekly-planning-session',
+      slot: 'duration' as const,
+      targetRef: dependency.targetRef,
+      proposedValue: 0,
+      proposedUnit: 'minutes' as const,
+      reasonCode: 'missing_duration' as const,
+      sourceFactRefs: [dependency.targetRef],
+      createdAtTurnId: 'preview-dependency',
+      createdFromStateRevision: dependency.proposalCreatedFromStateRevision,
+      status: 'pending' as const,
+    }));
+    const guard = validateWeeklyPreviewApproval({
+      blocks: pendingWeeklyDraftBlocks,
+      currentStateRevision: firstMetadata?.stateRevision ?? -1,
+      userId: user.id,
+      proposalRecords,
     });
+    if (!guard.allowed) {
+      switch (guard.attempt.kind) {
+        case 'stale_preview_approval_attempt':
+          throw new Error('現在の条件と一致しない仮予定です。最新条件で再計算してください。');
+        case 'pending_assumption_preview_approval_attempt':
+          throw new Error('未確認の仮定があります。仮定を確認してから最新案を再計算してください。');
+        default:
+          throw new Error('この仮予定は保存できません。最新案を作り直してください。');
+      }
+    }
+
+    const existingOperation = weeklyApprovalOperations.find((operation) =>
+      operation.userId === user.id
+      && operation.previewId === guard.metadata.previewId
+      && operation.previewStateRevision === guard.metadata.stateRevision,
+    );
+    const operation = existingOperation ?? createWeeklyDraftApprovalOperation({
+      userId: user.id,
+      metadata: guard.metadata,
+      blocks: pendingWeeklyDraftBlocks,
+      now: new Date().toISOString(),
+    });
+    const result = await executeWeeklyDraftApproval({
+      operation,
+      blocks: pendingWeeklyDraftBlocks,
+      dependencies: {
+        async findExistingPlanId({ sourceDraftBlockId }) {
+          const marker = `[weekly-source:${sourceDraftBlockId}]`;
+          return plans.find((plan) => plan.userId === user.id && plan.memo.includes(marker))?.id;
+        },
+        async saveBlock({ block, source }) {
+          const draft = createPlanDraftFromWeeklyDraftBlock(block, user.id);
+          const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
+          const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
+          await savePlanDraft({
+            ...draft,
+            memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
+          });
+          return { planId: `weekly-plan:${source.sourceDraftBlockId}` };
+        },
+        now: () => new Date().toISOString(),
+      },
+    });
+    setWeeklyApprovalOperations((current) => [
+      ...current.filter((item) => item.approvalOperationId !== result.approvalOperationId),
+      result,
+    ]);
+    const completedBlockIds = result.items
+      .filter((item) => item.status === 'saved' || item.status === 'skipped_duplicate')
+      .map((item) => item.sourceDraftBlockId);
+    if (completedBlockIds.length > 0) {
+      dispatchPlanningAction({ type: 'remove_draft_blocks', blockIds: completedBlockIds });
+    }
+    if (result.status === 'failed' || result.status === 'partially_saved') {
+      throw new Error('一部の仮予定を保存できませんでした。未保存分だけ再試行できます。');
+    }
   }
 
   if (currentPath === '/terms') {
@@ -205,11 +282,7 @@ export default function App() {
         accessGateUnlocked={appAccessGranted}
         onUnlockAccessGate={(key) => {
           const didUnlock = verifyAndStoreAppAccessKey(key);
-
-          if (didUnlock) {
-            setAppAccessGranted(true);
-          }
-
+          if (didUnlock) setAppAccessGranted(true);
           return didUnlock;
         }}
         onSignUpWithPassword={signUpWithPassword}
@@ -224,7 +297,6 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header hero-card print-hide">
         <StudyPlannerLogo />
-
         <div className="header-actions">
           <div className="user-badge header-profile-name">
             {getUserDisplayName(user)}
@@ -252,84 +324,26 @@ export default function App() {
 
       <div className="toolbar panel app-view-switcher print-hide">
         <div className="segmented-control">
-          <button
-            className={viewMode === 'month' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('month')}
-            type="button"
-          >
-            月
-          </button>
-          <button
-            className={viewMode === 'week' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('week')}
-            type="button"
-          >
-            週
-          </button>
-          <button
-            className={viewMode === 'day' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('day')}
-            type="button"
-          >
-            日
-          </button>
-          <button
-            className={viewMode === 'todo' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('todo')}
-            type="button"
-          >
-            Todo
-          </button>
-          <button
-            className={viewMode === 'report' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('report')}
-            type="button"
-          >
-            レポート
-          </button>
-          <button
-            className={viewMode === 'timetable' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('timetable')}
-            type="button"
-          >
-            時間割
-          </button>
-          <button
-            className={viewMode === 'bookshelf' ? 'segment active' : 'segment'}
-            onClick={() => setViewMode('bookshelf')}
-            type="button"
-          >
-            本棚
-          </button>
+          <button className={viewMode === 'month' ? 'segment active' : 'segment'} onClick={() => setViewMode('month')} type="button">月</button>
+          <button className={viewMode === 'week' ? 'segment active' : 'segment'} onClick={() => setViewMode('week')} type="button">週</button>
+          <button className={viewMode === 'day' ? 'segment active' : 'segment'} onClick={() => setViewMode('day')} type="button">日</button>
+          <button className={viewMode === 'todo' ? 'segment active' : 'segment'} onClick={() => setViewMode('todo')} type="button">Todo</button>
+          <button className={viewMode === 'report' ? 'segment active' : 'segment'} onClick={() => setViewMode('report')} type="button">レポート</button>
+          <button className={viewMode === 'timetable' ? 'segment active' : 'segment'} onClick={() => setViewMode('timetable')} type="button">時間割</button>
+          <button className={viewMode === 'bookshelf' ? 'segment active' : 'segment'} onClick={() => setViewMode('bookshelf')} type="button">本棚</button>
         </div>
       </div>
 
       {notice ? (
-        <div
-          className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`}
-          aria-live="polite"
-        >
+        <div className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`} aria-live="polite">
           <div className={`app-notice app-toast ${notice.tone}`}>
             <span>{notice.text}</span>
             {notice.actionLabel && notice.onAction ? (
-              <button
-                className="app-toast-action"
-                onClick={() => {
-                  void notice.onAction?.();
-                }}
-                type="button"
-              >
+              <button className="app-toast-action" onClick={() => { void notice.onAction?.(); }} type="button">
                 {notice.actionLabel}
               </button>
             ) : null}
-            <button
-              className="app-toast-close"
-              onClick={dismissNotice}
-              type="button"
-              aria-label="通知を閉じる"
-            >
-              ×
-            </button>
+            <button className="app-toast-close" onClick={dismissNotice} type="button" aria-label="通知を閉じる">×</button>
           </div>
         </div>
       ) : null}
@@ -358,9 +372,7 @@ export default function App() {
               plans={plans}
               actuals={actuals}
               weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-              onRemoveWeeklyDraftBlock={(blockId) =>
-                dispatchPlanningAction({ type: 'remove_draft_block', blockId })
-              }
+              onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
               onChangeWeek={openWeek}
               onOpenDay={openDay}
             />
@@ -378,9 +390,7 @@ export default function App() {
               scheduleTemplates={scheduleTemplates}
               timetableTermId={activeTimetableTermId}
               weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-              onRemoveWeeklyDraftBlock={(blockId) =>
-                dispatchPlanningAction({ type: 'remove_draft_block', blockId })
-              }
+              onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
               onChangeDay={openDay}
               onEditPlan={openEditPlan}
               onDeletePlan={deletePlan}
@@ -451,16 +461,10 @@ export default function App() {
             />
           ) : null}
         </Suspense>
-
       </main>
 
       {viewMode === 'day' || viewMode === 'todo' ? (
-        <button
-          className="daily-add-fab print-hide"
-          onClick={() => setIsQuickEntryOpen(true)}
-          type="button"
-          aria-label="新規追加"
-        >
+        <button className="daily-add-fab print-hide" onClick={() => setIsQuickEntryOpen(true)} type="button" aria-label="新規追加">
           <span aria-hidden="true">＋</span>
         </button>
       ) : null}
@@ -472,9 +476,7 @@ export default function App() {
         recurringEditMode={Boolean(editingPlan && isRecurringPlanEdit)}
         onChange={setEditorDraft}
         onSubmit={() => {
-          if (editorDraft) {
-            return savePlanDraft(editorDraft);
-          }
+          if (editorDraft) return savePlanDraft(editorDraft);
           return Promise.resolve();
         }}
         onCancel={closePlanEditor}
@@ -484,9 +486,7 @@ export default function App() {
         <RecurringPlanScopeDialog
           action={pendingRecurringPlanAction.kind}
           plan={pendingRecurringPlanAction.plan}
-          onSelect={(scope) => {
-            void confirmRecurringPlanScope(scope);
-          }}
+          onSelect={(scope) => { void confirmRecurringPlanScope(scope); }}
           onClose={cancelRecurringPlanScope}
         />
       ) : null}
@@ -503,15 +503,9 @@ export default function App() {
             scheduleTemplates={scheduleTemplates}
             timetableTermId={activeTimetableTermId}
             weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-            onCreateWeeklyDraftBlocks={(blocks) =>
-              dispatchPlanningAction({ type: 'add_draft_blocks', blocks })
-            }
-            onRemoveWeeklyDraftBlock={(blockId) =>
-              dispatchPlanningAction({ type: 'remove_draft_block', blockId })
-            }
-            onClearWeeklyDraftBlocks={() =>
-              dispatchPlanningAction({ type: 'clear_draft_blocks' })
-            }
+            onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
+            onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+            onClearWeeklyDraftBlocks={() => dispatchPlanningAction({ type: 'clear_draft_blocks' })}
             onApproveWeeklyDraftBlocks={approveWeeklyDraftBlocks}
             onClose={() => setIsQuickEntryOpen(false)}
             onSaveTodo={saveTodo}
