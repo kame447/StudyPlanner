@@ -111,7 +111,7 @@ service cloud.firestore {
     }
 
     match /weekly_planning_trace_sessions/{sessionId} {
-      allow read: if canReadOwnedResource();
+      allow read: if isAdmin();
       allow create: if canCreateOwnedResource()
         && request.resource.data.id == sessionId;
       allow update: if canUpdateOwnedResource()
@@ -124,7 +124,7 @@ service cloud.firestore {
     }
 
     match /weekly_planning_trace_entries/{entryId} {
-      allow read: if canReadOwnedResource();
+      allow read: if isAdmin();
       allow create: if canCreateOwnedResource()
         && request.resource.data.id == entryId;
       allow update: if canUpdateOwnedResource()
