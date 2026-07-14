@@ -440,8 +440,9 @@ export function applyCorrectionEnvelopes(params: {
     state = applyCorrectionToState(state, envelope);
     records = resolveRelatedProposals({ records, envelope, context: params.context });
     if (envelope.target.kind === 'proposal') {
+      const proposalId = envelope.target.proposalId;
       records = records.map((record) =>
-        record.proposalId === envelope.target.proposalId && record.status === 'pending'
+        record.proposalId === proposalId && record.status === 'pending'
           ? resolvedRecord({
               record,
               status: envelope.operation === 'supersede' ? 'superseded' : 'expired',
