@@ -1,4 +1,8 @@
-import type { WeeklyPlanDraftBlock } from '../types';
+import type {
+  WeeklyPlanDraftBlock,
+  WeeklyPlanningBehaviorMetadata,
+} from '../types';
+import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 
 export interface WeeklyPlanningPreviewBlock {
@@ -16,6 +20,30 @@ export interface WeeklyPlanningPreviewBlock {
   status: 'preview';
   isSaved: false;
   workItemKey: string;
+  behaviorMetadata?: WeeklyPlanningBehaviorMetadata;
+}
+
+function behaviorMetadataFromCandidate(
+  candidate: WeeklyDraftCandidate,
+): WeeklyPlanningBehaviorMetadata | undefined {
+  const metadata = (candidate as WeeklyDraftCandidate & {
+    behaviorMetadata?: BehaviorAwarePreviewMetadata;
+  }).behaviorMetadata;
+  if (!metadata) return undefined;
+
+  return {
+    stateRevision: metadata.stateRevision,
+    sourceFactRefs: [...metadata.sourceFactRefs],
+    usedAssumptionProposalRefs: [...metadata.usedAssumptionProposalRefs],
+    taskRef: metadata.taskRef,
+    opportunityTags: [...metadata.opportunityTags],
+    reasoningKey: metadata.reasoningKey,
+    compatibility: {
+      workItemSemantic: 'behavior_aware_task',
+      schedulerInputSource: 'exam_prep_request',
+      candidateSource: 'weekly_exam_prep',
+    },
+  };
 }
 
 export function createWeeklyPlanningPreviewBlocks(
@@ -36,6 +64,7 @@ export function createWeeklyPlanningPreviewBlocks(
     status: 'preview',
     isSaved: false,
     workItemKey: candidate.workItemKey,
+    behaviorMetadata: behaviorMetadataFromCandidate(candidate),
   }));
 }
 
@@ -80,6 +109,7 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     source: 'ai',
     status: 'draft',
     userEdited: false,
+    behaviorMetadata: block.behaviorMetadata,
     createdAt: deterministicTimestamp,
     updatedAt: deterministicTimestamp,
   };
@@ -117,6 +147,7 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
     source: 'ai',
     status: 'draft',
     userEdited: false,
+    behaviorMetadata: behaviorMetadataFromCandidate(candidate),
     createdAt,
     updatedAt: createdAt,
   }));
