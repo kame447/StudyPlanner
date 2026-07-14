@@ -1,4 +1,9 @@
-import type { Firestore, Timestamp } from 'firebase/firestore';
+import type {
+  DocumentData,
+  Firestore,
+  QuerySnapshot,
+  Timestamp,
+} from 'firebase/firestore';
 import {
   collection,
   doc,
@@ -75,7 +80,9 @@ function sortSessions(items: WeeklyPlanningTraceSession[]): WeeklyPlanningTraceS
   return items.sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
 }
 
-function sessionsFromSnapshot(snapshot: Awaited<ReturnType<typeof getDocs>>): WeeklyPlanningTraceSession[] {
+function sessionsFromSnapshot(
+  snapshot: QuerySnapshot<DocumentData>,
+): WeeklyPlanningTraceSession[] {
   return sortSessions(snapshot.docs
     .map((item) => normalizedSession({ ...item.data(), id: item.id }))
     .filter((item): item is WeeklyPlanningTraceSession => Boolean(item)));
