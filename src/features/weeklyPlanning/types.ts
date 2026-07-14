@@ -1,5 +1,8 @@
 import type { PlanType } from '../../types/domain';
-import type { WeeklyPreviewMetadata } from './planning/weeklyPlanningApprovalTypes';
+import type {
+  PreviewAssumptionDependency,
+  WeeklyPreviewMetadata,
+} from './planning/weeklyPlanningApprovalTypes';
 
 export type AiInputMode = 'chat' | 'weekly_planning';
 
@@ -16,6 +19,7 @@ export interface WeeklyPlanningBehaviorMetadata {
   stateRevision: number;
   sourceFactRefs: string[];
   usedAssumptionProposalRefs: string[];
+  acceptedAssumptionDependencies?: PreviewAssumptionDependency[];
   taskRef: string;
   opportunityTags: string[];
   reasoningKey: string;
