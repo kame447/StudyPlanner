@@ -59,10 +59,6 @@ describe('WP-BEHAVIOR-001 behavior-aware roleplay', () => {
             sourceText: '今週',
           },
         }, openingText),
-        source({
-          type: 'set_study_goal',
-          goal: { title: '英語', unit: 'unknown' },
-        }, openingText),
       ]),
     });
 
