@@ -129,4 +129,42 @@ describe('weekly planning dialogue stack integration', () => {
       action.topicId === 'feasibility_basis' || action.topicId === 'feasibility_adjustment',
     )).toBe(true);
   });
+
+  it('records assistant_suggested without generating preview before explicit authorization', async () => {
+    const readyState = {
+      ...createInitialPlanningIntakeState(),
+      intent: 'weekly_study_planning' as const,
+      range: {
+        startDateTime: '2026-07-13T00:00:00',
+        endDateTime: '2026-07-19T23:59:00',
+        calendarDayCount: 7,
+        confidence: 'explicit' as const,
+        sourceText: '来週',
+      },
+      tasks: [{
+        title: '英単語',
+        unit: 'hours' as const,
+        amount: 1,
+        rawText: '英単語を1時間',
+        requiresTimeEstimate: false,
+        source: 'command' as const,
+      }],
+      constraints: [{
+        kind: 'buffer' as const,
+        studyAvailableStart: '17:30',
+        hardness: 'soft' as const,
+        rawText: '17時30分以降なら勉強できる',
+      }],
+      sourceTurns: ['来週の計画', '英単語を1時間', '17時30分以降なら勉強できる'],
+    };
+    const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
+      input('この内容でどう進めるのがよさそう？', readyState),
+      { conversationId: 'conversation-ready', userId: 'user-1' },
+    );
+
+    expect(output.state.draftGenerationIntent).toBe('assistant_suggested');
+    expect(output.behavior.gate.allowed).toBe(false);
+    expect(output.draftCandidates).toBeNull();
+    expect(output.behavior.actions.some((action) => action.kind === 'suggest_draft_generation')).toBe(true);
+  });
 });
