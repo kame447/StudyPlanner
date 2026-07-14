@@ -1,6 +1,5 @@
-import { onAuthStateChanged } from 'firebase/auth';
+import { ArrowLeft } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { getFirebaseAuth } from '../../../lib/firebaseClient';
 import { createWeeklyPlanningTraceExportBundle } from './weeklyPlanningTraceExport';
 import { getWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRepository';
 import type {
@@ -8,6 +7,10 @@ import type {
   WeeklyPlanningTraceSession,
   WeeklyPlanningTraceSessionStatus,
 } from './weeklyPlanningTraceTypes';
+
+interface WeeklyPlanningTraceDebugPageProps {
+  onBack: () => void;
+}
 
 const STATUS_OPTIONS: Array<{ value: '' | WeeklyPlanningTraceSessionStatus; label: string }> = [
   { value: '', label: 'すべて' },
@@ -44,36 +47,24 @@ function formattedDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP');
 }
 
-export function WeeklyPlanningTraceDebugPage() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [authResolved, setAuthResolved] = useState(false);
+export function WeeklyPlanningTraceDebugPage({
+  onBack,
+}: WeeklyPlanningTraceDebugPageProps) {
   const [sessions, setSessions] = useState<WeeklyPlanningTraceSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [entries, setEntries] = useState<WeeklyPlanningTraceEntry[]>([]);
   const [statusFilter, setStatusFilter] = useState<'' | WeeklyPlanningTraceSessionStatus>('');
+  const [userFilter, setUserFilter] = useState('');
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [onlyFallbacks, setOnlyFallbacks] = useState(false);
   const [onlyPreviews, setOnlyPreviews] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const auth = getFirebaseAuth();
-    if (!auth) {
-      setUserId('local-debug-user');
-      setAuthResolved(true);
-      return;
-    }
-    return onAuthStateChanged(auth, (user) => {
-      setUserId(user?.uid ?? null);
-      setAuthResolved(true);
-    });
-  }, []);
-
-  async function loadSessions(nextUserId: string): Promise<void> {
+  async function loadSessions(): Promise<void> {
     setLoading(true);
     try {
-      const nextSessions = await getWeeklyPlanningTraceRepository().listSessions(nextUserId);
+      const nextSessions = await getWeeklyPlanningTraceRepository().listSessionsForAdmin();
       setSessions(nextSessions);
       setSelectedSessionId((current) =>
         current && nextSessions.some((session) => session.id === current)
@@ -89,22 +80,20 @@ export function WeeklyPlanningTraceDebugPage() {
   }
 
   useEffect(() => {
-    if (!userId) {
-      setSessions([]);
-      setSelectedSessionId('');
-      return;
-    }
-    void loadSessions(userId);
-  }, [userId]);
+    void loadSessions();
+  }, []);
+
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
 
   useEffect(() => {
-    if (!userId || !selectedSessionId) {
+    if (!selectedSession) {
       setEntries([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    void getWeeklyPlanningTraceRepository().listEntries(userId, selectedSessionId)
+    void getWeeklyPlanningTraceRepository()
+      .listEntries(selectedSession.userId, selectedSession.id)
       .then((nextEntries) => {
         if (!cancelled) {
           setEntries(nextEntries);
@@ -122,48 +111,35 @@ export function WeeklyPlanningTraceDebugPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSessionId, userId]);
+  }, [selectedSession]);
 
   const visibleSessions = useMemo(() => sessions.filter((session) => {
     if (statusFilter && session.status !== statusFilter) return false;
+    if (userFilter.trim() && !session.userId.toLowerCase().includes(userFilter.trim().toLowerCase())) {
+      return false;
+    }
     if (onlyErrors && !session.hasError) return false;
     if (onlyFallbacks && !session.hasFallback) return false;
     if (onlyPreviews && !session.hasPreview) return false;
     return true;
-  }), [onlyErrors, onlyFallbacks, onlyPreviews, sessions, statusFilter]);
-
-  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
-
-  if (!import.meta.env.DEV && import.meta.env.VITE_WEEKLY_PLANNING_TRACE_DEBUG_VIEWER !== 'true') {
-    return <main className="section-stack"><p>この画面は無効です。</p></main>;
-  }
-
-  if (!authResolved) {
-    return <main className="section-stack"><p>認証状態を確認しています。</p></main>;
-  }
-
-  if (!userId) {
-    return (
-      <main className="section-stack">
-        <h1>週間計画 trace</h1>
-        <p>先に通常画面でログインしてください。</p>
-        <a href="/">通常画面へ戻る</a>
-      </main>
-    );
-  }
+  }), [onlyErrors, onlyFallbacks, onlyPreviews, sessions, statusFilter, userFilter]);
 
   return (
-    <main className="section-stack weekly-planning-trace-debug">
+    <main className="admin-shell weekly-planning-trace-debug">
+      <button className="ghost-button admin-back-button" onClick={onBack} type="button">
+        <ArrowLeft aria-hidden="true" size={18} strokeWidth={2} />
+        ユーザー一覧へ戻る
+      </button>
+
       <header className="panel">
-        <h1>週間計画 trace</h1>
-        <p>保存前にredactionされた会話turn、内部event、state snapshotを時系列で表示します。</p>
+        <h1>週間計画ログ</h1>
+        <p>管理者として、redaction済みの会話turn、内部event、state snapshotを確認します。</p>
         <div className="button-row">
-          <a className="ghost-button" href="/">通常画面へ戻る</a>
           <button
             className="ghost-button"
             type="button"
             disabled={loading}
-            onClick={() => { void loadSessions(userId); }}
+            onClick={() => { void loadSessions(); }}
           >
             再読込
           </button>
@@ -189,6 +165,15 @@ export function WeeklyPlanningTraceDebugPage() {
       <section className="panel">
         <h2>Filter</h2>
         <div className="field-row">
+          <label className="field">
+            <span>User ID</span>
+            <input
+              value={userFilter}
+              onChange={(event) => setUserFilter(event.target.value)}
+              placeholder="uidで絞り込み"
+              type="search"
+            />
+          </label>
           <label className="field">
             <span>Status</span>
             <select
@@ -220,6 +205,7 @@ export function WeeklyPlanningTraceDebugPage() {
               >
                 <strong>{formattedDate(session.startedAt)}</strong>
                 <span>{session.status} / turns {session.turnCount} / entries {session.entryCount}</span>
+                <code>{session.userId}</code>
                 <code>{session.id}</code>
               </button>
             ))}
@@ -230,7 +216,7 @@ export function WeeklyPlanningTraceDebugPage() {
           <h2>Timeline</h2>
           {selectedSession ? (
             <p>
-              {selectedSession.status} / {formattedDate(selectedSession.startedAt)} / {selectedSession.logicalConversationId}
+              user {selectedSession.userId} / {selectedSession.status} / {formattedDate(selectedSession.startedAt)} / {selectedSession.logicalConversationId}
             </p>
           ) : null}
           {entries.length === 0 ? <p>entryはありません。</p> : null}
