@@ -61,7 +61,7 @@ function parseTime(value: string): number | null {
 }
 
 function formatTime(value: number): string {
-  const normalized = Math.max(0, Math.min(24 * 60, Math.round(value)));
+  const normalized = Math.max(0, Math.min(24 * 60 - 1, Math.round(value)));
   const hour = Math.floor(normalized / 60);
   const minute = normalized % 60;
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
@@ -176,7 +176,7 @@ export function resolveRelativeConstraint(
     endMinutes = anchorEnd + constraint.offsetMinutes;
   }
 
-  if (startMinutes < 0 || endMinutes > 24 * 60 || endMinutes <= startMinutes) return null;
+  if (startMinutes < 0 || endMinutes >= 24 * 60 || endMinutes <= startMinutes) return null;
   return {
     relationId: constraint.relationId,
     anchorEventId: anchor.eventId,
