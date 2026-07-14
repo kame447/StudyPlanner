@@ -1,10 +1,12 @@
 import type { PlanningIntakeState, StudyTaskScope } from '../intake/weeklyPlanningIntakeTypes';
 import {
   createAllowedDialogueActions,
+  deriveMissingResolutionOpportunities,
   type AvailabilityRangeReference,
 } from './weeklyPlanningBehaviorPlanner';
 import type {
   AllowedDialogueAction,
+  BehaviorAwareDialogueResponse,
   PlanningDimension,
   PlanningHypothesisSnapshot,
   PreviewGateResult,
@@ -14,6 +16,8 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
 const DEADLINE_SIGNAL = /(?:小テスト|テスト|試験|締切|期限|提出|までに|まで)/;
 const EXPLICIT_DATE = /(?:20\d{2}[年/-])?\d{1,2}[月/-]\d{1,2}日?/;
 const WEEKDAY = /([日月火水木金土])曜(?:日)?/;
+const INTERNAL_TERM = /(?:blockingDimensions|reasonCode|readiness|suitability|sourceFactRefs|proposalRef|slotKey)/i;
+const SAVE_CLAIM = /(?:保存しました|確定しました|登録しました|予定に追加しました)/;
 
 function unique<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -27,13 +31,26 @@ function removeDimension(items: PlanningDimension[], dimension: PlanningDimensio
   return items.filter((item) => item !== dimension);
 }
 
+function taskLabels(task: StudyTaskScope): string[] {
+  const title = task.title.trim();
+  return title ? [title] : [];
+}
+
 function taskDeadlineEvidence(task: StudyTaskScope, state: PlanningIntakeState): string[] {
-  const labels = [task.title, task.subject].filter((label): label is string => Boolean(label?.trim()));
-  const direct = DEADLINE_SIGNAL.test(task.rawText) ? [task.rawText] : [];
-  const linkedTurns = state.sourceTurns.filter((turn) =>
-    DEADLINE_SIGNAL.test(turn) && labels.some((label) => turn.includes(label)),
+  const labels = taskLabels(task);
+  if (labels.length === 0) return [];
+
+  const candidateTexts = unique([task.rawText, ...state.sourceTurns]);
+  return candidateTexts.flatMap((text) =>
+    text
+      .split(/[、。,.\n]/)
+      .map((clause) => clause.trim())
+      .filter((clause) =>
+        Boolean(clause)
+        && DEADLINE_SIGNAL.test(clause)
+        && labels.some((label) => clause.includes(label)),
+      ),
   );
-  return unique([...direct, ...linkedTurns]);
 }
 
 function weekdayFallsInPlanningRange(text: string, state: PlanningIntakeState): boolean {
@@ -72,7 +89,12 @@ export function evaluateDeadlineSafety(state: PlanningIntakeState): {
   };
 }
 
-function range(ref: string, startTime: string, endTime: string, sourceFactRefs: string[]): AvailabilityRangeReference | null {
+function range(
+  ref: string,
+  startTime: string,
+  endTime: string,
+  sourceFactRefs: string[],
+): AvailabilityRangeReference | null {
   if (!startTime || !endTime || startTime >= endTime) return null;
   return { ref, startTime, endTime, sourceFactRefs };
 }
@@ -137,6 +159,20 @@ export function deriveCanonicalAvailabilityRanges(params: {
   });
 }
 
+function suggestedNextAction(params: {
+  blocking: PlanningDimension[];
+  draftGenerationIntent: 'not_requested' | 'user_authorized';
+  fallback: PlanningHypothesisSnapshot['suggestedNextAction'];
+}): PlanningHypothesisSnapshot['suggestedNextAction'] {
+  if (params.blocking.includes('deadline')) return 'ask_required_fact';
+  if (params.blocking.includes('availability_basis')) return 'offer_options';
+  if (params.blocking.length === 0 && params.draftGenerationIntent === 'user_authorized') {
+    return 'generate_preview';
+  }
+  if (params.blocking.length === 0) return 'suggest_draft_generation';
+  return params.fallback;
+}
+
 export function hardenPlanningSnapshot(params: {
   snapshot: PlanningHypothesisSnapshot;
   state: PlanningIntakeState;
@@ -168,7 +204,10 @@ export function hardenPlanningSnapshot(params: {
   const authorizationCurrent = params.state.draftGenerationIntent === 'user_authorized'
     && params.state.draftGenerationAuthorizedAtRevision === params.snapshot.stateRevision;
   const draftGenerationIntent = authorizationCurrent ? 'user_authorized' as const : 'not_requested' as const;
-  const stage = blocking.length > 0
+  const normalizedResolved = unique(resolved);
+  const normalizedUnresolved = unique(unresolved);
+  const normalizedBlocking = unique(blocking);
+  const stage = normalizedBlocking.length > 0
     ? 'hypothesis_ready' as const
     : draftGenerationIntent === 'user_authorized'
       ? 'preview_ready' as const
@@ -177,19 +216,23 @@ export function hardenPlanningSnapshot(params: {
   const readiness = {
     ...params.snapshot.readiness,
     stage,
-    resolvedDimensions: unique(resolved),
-    unresolvedDimensions: unique(unresolved),
-    blockingDimensions: unique(blocking),
-    resolvedCount: unique(resolved).length,
+    resolvedDimensions: normalizedResolved,
+    unresolvedDimensions: normalizedUnresolved,
+    blockingDimensions: normalizedBlocking,
+    resolvedCount: normalizedResolved.length,
     draftGenerationIntent,
   };
+  const resolutionOpportunities = deriveMissingResolutionOpportunities(readiness);
 
   return {
     ...params.snapshot,
     readiness,
-    suggestedNextAction: blocking.includes('deadline')
-      ? 'ask_required_fact'
-      : params.snapshot.suggestedNextAction,
+    resolutionOpportunities,
+    suggestedNextAction: suggestedNextAction({
+      blocking: normalizedBlocking,
+      draftGenerationIntent,
+      fallback: params.snapshot.suggestedNextAction,
+    }),
   };
 }
 
@@ -200,6 +243,74 @@ export function createSafeAllowedDialogueActions(
     ...action,
     allowedProposalRefs: [],
   }));
+}
+
+function isSafeUserVisibleText(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.trim().length > 0
+    && !INTERNAL_TERM.test(value)
+    && !SAVE_CLAIM.test(value);
+}
+
+export function validateBehaviorAwareDialogueResponseStrict(params: {
+  response: unknown;
+  actions: AllowedDialogueAction[];
+  previewAllowed: boolean;
+}): BehaviorAwareDialogueResponse | null {
+  if (!params.response || typeof params.response !== 'object') return null;
+  const response = params.response as Partial<BehaviorAwareDialogueResponse>;
+  if (!Array.isArray(response.selectedActionIds) || !Array.isArray(response.items)) return null;
+  if (response.selectedActionIds.length === 0 || response.selectedActionIds.length > 3) return null;
+  if (response.items.length === 0 || response.items.length > 3) return null;
+  if (new Set(response.selectedActionIds).size !== response.selectedActionIds.length) return null;
+
+  const allowedById = new Map(params.actions.map((action) => [action.actionId, action]));
+  if (response.selectedActionIds.some((id) => typeof id !== 'string' || !allowedById.has(id))) {
+    return null;
+  }
+  if (response.acknowledgement !== undefined && !isSafeUserVisibleText(response.acknowledgement)) {
+    return null;
+  }
+  if (response.reasoningSummary !== undefined && !isSafeUserVisibleText(response.reasoningSummary)) {
+    return null;
+  }
+
+  const itemCounts = new Map<string, number>();
+  const itemActionIds: string[] = [];
+  for (const item of response.items) {
+    if (!item || typeof item.actionId !== 'string' || !isSafeUserVisibleText(item.text)) return null;
+    const action = allowedById.get(item.actionId);
+    if (!action || !response.selectedActionIds.includes(item.actionId)) return null;
+    if (action.kind === 'generate_preview' && !params.previewAllowed) return null;
+    if (item.optionIds !== undefined) {
+      if (!Array.isArray(item.optionIds) || item.optionIds.some((id) => typeof id !== 'string')) return null;
+      if (new Set(item.optionIds).size !== item.optionIds.length) return null;
+      if (item.optionIds.some((id) => !action.allowedOptionIds.includes(id))) return null;
+    }
+    const count = (itemCounts.get(item.actionId) ?? 0) + 1;
+    if (count > action.maxItems) return null;
+    itemCounts.set(item.actionId, count);
+    itemActionIds.push(item.actionId);
+  }
+
+  if (new Set(itemActionIds).size !== itemActionIds.length) return null;
+  if (
+    response.selectedActionIds.length !== itemActionIds.length
+    || response.selectedActionIds.some((id) => !itemActionIds.includes(id))
+  ) {
+    return null;
+  }
+
+  return {
+    acknowledgement: response.acknowledgement,
+    selectedActionIds: [...response.selectedActionIds],
+    items: response.items.map((item) => ({
+      actionId: item.actionId,
+      text: item.text,
+      optionIds: item.optionIds ? [...item.optionIds] : undefined,
+    })),
+    reasoningSummary: response.reasoningSummary,
+  };
 }
 
 export function evaluateHardenedPreviewGate(params: {
