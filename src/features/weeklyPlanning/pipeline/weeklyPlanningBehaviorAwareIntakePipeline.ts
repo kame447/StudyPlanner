@@ -4,11 +4,10 @@ import {
   type BehaviorAwareDialoguePlannerInput,
   type BehaviorAwareDialoguePlannerResult,
 } from '../dialogue/weeklyPlanningBehaviorAwareDialoguePlanner';
-import {
-  createLifecycleAwareWeeklyPlanningInterpreter,
-} from '../intake/weeklyPlanningLifecycleInterpreter';
+import { createLifecycleAwareWeeklyPlanningInterpreter } from '../intake/weeklyPlanningLifecycleInterpreter';
 import {
   createAssumptionProposalSessionState,
+  type AssumptionProposalCanonicalizationContext,
   type AssumptionProposalRecord,
 } from '../intake/weeklyPlanningAssumptionProposals';
 import type {
@@ -17,17 +16,13 @@ import type {
   WeeklyPlanningInterpreterResult,
   WeeklyPlanningIntakeInterpreter,
 } from '../intake/weeklyPlanningInterpreterTypes';
-import {
-  runHardenedBehaviorAwarePlanningPreviewBridge,
-} from '../planning/weeklyPlanningBehaviorAwarePreviewBridgeHardened';
+import { runHardenedBehaviorAwarePlanningPreviewBridge } from '../planning/weeklyPlanningBehaviorAwarePreviewBridgeHardened';
 import type {
   AcceptedTaskDurationAssumption,
   BehaviorAwarePlanningBridgeResult,
 } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
-import {
-  applyDraftGenerationAuthorizationTurn,
-} from '../planning/weeklyPlanningDraftGenerationAuthorization';
+import { applyDraftGenerationAuthorizationTurn } from '../planning/weeklyPlanningDraftGenerationAuthorization';
 import {
   applyAssumptionDecision,
   applyCorrectionEnvelopes,
@@ -55,8 +50,7 @@ export interface WeeklyPlanningLifecycleDiagnostics {
   rejectedCorrections: Array<{ value: unknown; reason: string }>;
 }
 
-export interface WeeklyPlanningBehaviorAwarePipelineOutput
-  extends WeeklyPlanningIntakePipelineOutput {
+export interface WeeklyPlanningBehaviorAwarePipelineOutput extends WeeklyPlanningIntakePipelineOutput {
   behavior: BehaviorAwarePlanningBridgeResult;
   behaviorDialogue: BehaviorAwareDialoguePlannerResult;
   feasibility: FeasibilitySummary;
@@ -69,8 +63,69 @@ export interface BehaviorAwareDialoguePlanner {
 
 export interface WeeklyPlanningBehaviorAwarePipelineOptions {
   conversationId?: string;
+  userId?: string;
   dialoguePlanner?: BehaviorAwareDialoguePlanner;
   useAiDialoguePlanner?: boolean;
+}
+
+function conversationId(options: WeeklyPlanningBehaviorAwarePipelineOptions): string {
+  return options.conversationId?.trim() || 'weekly-planning-session';
+}
+
+function proposalRecords(input: WeeklyPlanningIntakePipelineInput): AssumptionProposalRecord[] {
+  return (input.previousAssumptionProposalState?.records
+    ?? input.previousState?.assumptionProposalRecords
+    ?? input.assumptionProposalContext?.existingProposalRecords
+    ?? []).map((record) => ({
+      ...record,
+      sourceFactRefs: [...record.sourceFactRefs],
+      ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
+    }));
+}
+
+function createSessionProposalContext(
+  input: WeeklyPlanningIntakePipelineInput,
+  options: WeeklyPlanningBehaviorAwarePipelineOptions,
+  records: readonly AssumptionProposalRecord[],
+): AssumptionProposalCanonicalizationContext {
+  const id = conversationId(options);
+  const revision = (input.previousState?.sourceTurns.length ?? 0) + 1;
+  const userId = options.userId?.trim() || 'session-local-user';
+  const taskRefs = (input.previousState?.tasks ?? []).map((_, index) => `task:${index}`);
+  const validTargetRefs = [
+    ...taskRefs,
+    ...(input.previousState?.range ? ['planning-range:current'] : []),
+    ...(input.previousState?.priorityPolicy.kind !== 'unknown' ? ['priority:current'] : []),
+  ];
+  return {
+    authorization: { userId },
+    conversationId: id,
+    turnId: `${id}:turn:${revision}`,
+    stateRevision: revision,
+    validTargetRefs,
+    currentPublicSourceFacts: taskRefs.map((factId) => ({
+      factId,
+      userId,
+      conversationId: id,
+      stateRevision: revision,
+      visibility: 'public',
+    })),
+    allowedPolicyIds: ['domain-default', 'first-trial'],
+    existingProposalRecords: records,
+  };
+}
+
+function withSessionProposalContext<T extends WeeklyPlanningIntakePipelineInput>(
+  input: T,
+  options: WeeklyPlanningBehaviorAwarePipelineOptions,
+): T {
+  const records = proposalRecords(input);
+  return {
+    ...input,
+    previousAssumptionProposalState: createAssumptionProposalSessionState(records),
+    assumptionProposalContext: input.assumptionProposalContext
+      ?? createSessionProposalContext(input, options, records),
+  };
 }
 
 function constraintSummary(output: WeeklyPlanningIntakePipelineOutput): string[] {
@@ -119,9 +174,7 @@ function behaviorDialogueInput(params: {
   };
 }
 
-function selectDialoguePlanner(
-  options: WeeklyPlanningBehaviorAwarePipelineOptions,
-): BehaviorAwareDialoguePlanner {
+function selectDialoguePlanner(options: WeeklyPlanningBehaviorAwarePipelineOptions): BehaviorAwareDialoguePlanner {
   if (options.dialoguePlanner) return options.dialoguePlanner;
   if (options.useAiDialoguePlanner) return createAiBehaviorAwareWeeklyPlanningDialoguePlanner();
   return createDeterministicBehaviorAwareDialoguePlanner();
@@ -136,17 +189,12 @@ function applyNonExamDraftAuthorization(params: {
   }
   return {
     ...params.base,
-    state: applyDraftGenerationAuthorizationTurn({
-      state: params.base.state,
-      userText: params.userText,
-    }),
+    state: applyDraftGenerationAuthorizationTurn({ state: params.base.state, userText: params.userText }),
   };
 }
 
-function acceptedDurationAssumptions(
-  base: WeeklyPlanningIntakePipelineOutput,
-): AcceptedTaskDurationAssumption[] {
-  return (base.assumptionProposalState?.records ?? []).flatMap((record) => {
+function acceptedDurationAssumptions(base: WeeklyPlanningIntakePipelineOutput): AcceptedTaskDurationAssumption[] {
+  return (base.assumptionProposalState?.records ?? base.state.assumptionProposalRecords ?? []).flatMap((record) => {
     if (record.status !== 'accepted' || record.slot !== 'duration' || typeof record.proposedValue !== 'number') {
       return [];
     }
@@ -169,7 +217,7 @@ function runBehavior(params: {
   return runHardenedBehaviorAwarePlanningPreviewBridge({
     state: params.base.state,
     currentUserText: params.input.userText,
-    conversationId: params.options.conversationId,
+    conversationId: conversationId(params.options),
     planningStartDate: params.input.planningStartDate,
     planningDayCount: params.input.planningDayCount,
     sessionPolicy: params.input.sessionPolicy,
@@ -179,16 +227,6 @@ function runBehavior(params: {
     existingPlanBufferMinutes: params.input.existingPlanBufferMinutes,
     acceptedTaskDurationAssumptions: acceptedDurationAssumptions(params.base),
   });
-}
-
-function proposalRecords(input: WeeklyPlanningIntakePipelineInput): AssumptionProposalRecord[] {
-  return (input.previousAssumptionProposalState?.records
-    ?? input.assumptionProposalContext?.existingProposalRecords
-    ?? []).map((record) => ({
-      ...record,
-      sourceFactRefs: [...record.sourceFactRefs],
-      ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
-    }));
 }
 
 function pendingAssumptionSummaries(input: WeeklyPlanningIntakePipelineInput): InterpreterPendingAssumptionSummary[] {
@@ -205,11 +243,7 @@ function correctionTargetSummaries(input: WeeklyPlanningIntakePipelineInput): In
   const state = input.previousState;
   if (!state) return [];
   return [
-    ...state.tasks.map((task, index) => ({
-      kind: 'task' as const,
-      ref: `task:${index}`,
-      label: task.title,
-    })),
+    ...state.tasks.map((task, index) => ({ kind: 'task' as const, ref: `task:${index}`, label: task.title })),
     ...state.constraints.map((constraint, index) => ({
       kind: 'constraint' as const,
       ref: `constraint:${index}`,
@@ -239,28 +273,43 @@ function isCorrectionEnvelope(value: unknown): value is CorrectionEnvelope {
     && Boolean(target && typeof target === 'object' && !Array.isArray(target));
 }
 
+function synchronizeProposalRecords(
+  base: WeeklyPlanningIntakePipelineOutput,
+  records: readonly AssumptionProposalRecord[],
+): WeeklyPlanningIntakePipelineOutput {
+  const clonedRecords = records.map((record) => ({
+    ...record,
+    sourceFactRefs: [...record.sourceFactRefs],
+    ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
+  }));
+  return {
+    ...base,
+    state: {
+      ...base.state,
+      assumptionProposalRecords: clonedRecords,
+    },
+    assumptionProposalState: createAssumptionProposalSessionState(clonedRecords),
+  };
+}
+
 function applyLifecycleResult(params: {
   base: WeeklyPlanningIntakePipelineOutput;
   input: WeeklyPlanningIntakePipelineInput;
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
   result?: WeeklyPlanningInterpreterResult;
 }): WeeklyPlanningIntakePipelineOutput & { lifecycleDiagnostics?: WeeklyPlanningLifecycleDiagnostics } {
-  if (!params.result) return params.base;
-  const conversationId = params.options.conversationId ?? 'weekly-planning-session';
+  let records = (params.base.assumptionProposalState?.records ?? proposalRecords(params.input));
+  if (!params.result) return synchronizeProposalRecords(params.base, records);
+
+  const id = conversationId(params.options);
   const previousRevision = params.input.previousState?.sourceTurns.length ?? 0;
   const context = {
-    conversationId,
-    turnId: `${conversationId}:turn:${previousRevision + 1}`,
+    conversationId: id,
+    turnId: `${id}:turn:${previousRevision + 1}`,
     currentStateRevision: previousRevision,
   };
-  let records = (params.base.assumptionProposalState?.records ?? proposalRecords(params.input)).map((record) => ({
-    ...record,
-    sourceFactRefs: [...record.sourceFactRefs],
-    ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
-  }));
   const rejectedDecisions: Array<{ value: unknown; reason: string }> = [];
   let acceptedDecisionCount = 0;
-
   for (const value of params.result.assumptionDecisions ?? []) {
     const validation = validateAssumptionDecisionCommand(value, records, context);
     if (!validation.accepted) {
@@ -291,18 +340,15 @@ function applyLifecycleResult(params: {
   const state = correctionResult.previewStale
     ? { ...correctionResult.state, sourceTurns: [...params.base.state.sourceTurns] }
     : params.base.state;
-  const diagnostics: WeeklyPlanningLifecycleDiagnostics = {
-    acceptedDecisionCount,
-    rejectedDecisions,
-    acceptedCorrectionCount: correctionResult.accepted.length,
-    rejectedCorrections,
-  };
-
+  const synchronized = synchronizeProposalRecords({ ...params.base, state }, records);
   return {
-    ...params.base,
-    state,
-    assumptionProposalState: createAssumptionProposalSessionState(records),
-    lifecycleDiagnostics: diagnostics,
+    ...synchronized,
+    lifecycleDiagnostics: {
+      acceptedDecisionCount,
+      rejectedDecisions,
+      acceptedCorrectionCount: correctionResult.accepted.length,
+      rejectedCorrections,
+    },
   };
 }
 
@@ -313,7 +359,6 @@ async function finalizeBehaviorAwareOutput(params: {
 }): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
   let currentBase = applyNonExamDraftAuthorization({ base: params.base, userText: params.input.userText });
   let behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
-
   if (!currentBase.state.examPrepScope
     && currentBase.state.draftGenerationIntent !== 'user_authorized'
     && behavior.actions.some((action) => action.kind === 'suggest_draft_generation')) {
@@ -336,7 +381,6 @@ async function finalizeBehaviorAwareOutput(params: {
   const behaviorDialogue = await selectDialoguePlanner(params.options).plan(
     behaviorDialogueInput({ base: currentBase, behavior, actions, input: params.input }),
   );
-
   const common = {
     ...currentBase,
     behavior,
@@ -353,19 +397,21 @@ async function finalizeBehaviorAwareOutput(params: {
 }
 
 export async function runWeeklyPlanningBehaviorAwarePipeline(
-  input: WeeklyPlanningIntakePipelineInput,
+  rawInput: WeeklyPlanningIntakePipelineInput,
   options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
-  const base = runWeeklyPlanningIntakePipeline(input);
+  const input = withSessionProposalContext(rawInput, options);
+  const base = synchronizeProposalRecords(runWeeklyPlanningIntakePipeline(input), proposalRecords(input));
   return finalizeBehaviorAwareOutput({ base, input, options });
 }
 
 export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
-  input: WeeklyPlanningIntakePipelineWithInterpreterInput,
+  rawInput: WeeklyPlanningIntakePipelineWithInterpreterInput,
   options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+  const input = withSessionProposalContext(rawInput, options);
   let capturedResult: WeeklyPlanningInterpreterResult | undefined;
-  const conversationId = options.conversationId ?? 'weekly-planning-session';
+  const id = conversationId(options);
   const lifecycleInterpreter: WeeklyPlanningIntakeInterpreter | undefined = input.interpreter
     ? createLifecycleAwareWeeklyPlanningInterpreter({
         interpreter: {
@@ -375,7 +421,7 @@ export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
             return result;
           },
         },
-        conversationId,
+        conversationId: id,
         currentStateRevision: input.previousState?.sourceTurns.length ?? 0,
         pendingAssumptions: pendingAssumptionSummaries(input),
         correctionTargets: correctionTargetSummaries(input),
