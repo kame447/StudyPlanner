@@ -17,31 +17,32 @@ export interface InterpretedCommandCandidate {
   command: ParsedWeeklyPlanningCommand;
   origin: InterpreterOrigin;
   needsConfirmation: boolean;
-  /**
-   * Resolver が付与する constraint source の参照解決結果。
-   * validator は自然文を再解析せず、この status の enforcement のみを担当する。
-   */
   constraintSourceResolution?: ConstraintSourceReferenceResolution;
 }
 
-/**
- * planner が現在保持している read-only capability の可用性スナップショット。
- * pipeline input(existingPlans / scheduleTemplates / timetableTermId)から deterministic に算出する。
- * 新しい scheduling capability ではなく、既存 capability の可用性を intake/interpreter/validator へ可視化するもの。
- */
 export interface PlannerCapabilitySnapshot {
   hasActiveTimetable: boolean;
   existingPlanCount: number;
 }
 
-/**
- * interpreter / validator が参照する、constraint source の利用可否。
- * calendar は existingPlans と同一のカレンダー予定を指すため existingPlans と同じ可用性で扱う。
- */
 export interface ConstraintSourceAvailability {
   timetable: boolean;
   existingPlans: boolean;
   calendar: boolean;
+}
+
+export interface InterpreterPendingAssumptionSummary {
+  proposalId: string;
+  slot: string;
+  targetRef: string;
+  proposedValue: string | number | boolean;
+  proposedUnit?: string;
+}
+
+export interface InterpreterCorrectionTargetSummary {
+  kind: 'task' | 'planning_range' | 'constraint' | 'priority' | 'proposal';
+  ref: string;
+  label: string;
 }
 
 export interface InterpreterStateSummary {
@@ -57,10 +58,9 @@ export interface InterpreterStateSummary {
     startDate?: string;
     endDate?: string;
   };
-  /**
-   * 利用可能な既存 schedule source。省略時はすべて利用不可として扱う(空ソースを鵜呑みにしない安全側)。
-   */
   availableConstraintSources?: ConstraintSourceAvailability;
+  pendingAssumptionProposals?: InterpreterPendingAssumptionSummary[];
+  correctionTargets?: InterpreterCorrectionTargetSummary[];
 }
 
 export interface InterpreterParseRejection {
@@ -71,10 +71,9 @@ export interface InterpreterParseRejection {
 export interface WeeklyPlanningInterpreterResult {
   candidates: InterpretedCommandCandidate[];
   parseRejections: InterpreterParseRejection[];
-  /**
-   * Untrusted AI output kept separate from command candidates until DA0a context exists.
-   */
   assumptionProposalDrafts?: unknown[];
+  assumptionDecisions?: unknown[];
+  correctionEnvelopes?: unknown[];
 }
 
 export interface InterpreterRecentTurn {
@@ -100,11 +99,6 @@ export interface CandidateValidationResult {
   accepted: ParsedWeeklyPlanningCommand[];
   acceptedWithConfirmation: ParsedWeeklyPlanningCommand[];
   clarifications: InterpretedCommandCandidate[];
-  /**
-   * ユーザーが用語の意味を聞き返した request_clarification intent。
-   * state を進めず(missing を消さず)、用語説明を返して直前の質問を維持するために dialogue 側で使う。
-   * low-confidence candidate を溜める `clarifications` とは別概念。
-   */
   clarificationRequests: ParsedWeeklyPlanningCommand[];
   rejected: CandidateRejection[];
   parseRejections: InterpreterParseRejection[];
