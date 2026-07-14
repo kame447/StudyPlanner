@@ -1,13 +1,8 @@
+import type { AuthorizeDraftGenerationCommand } from '../intake/weeklyPlanningCommandTypes';
 import type {
   PlanningDraftGenerationIntent,
   PlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeTypes';
-
-export interface AuthorizeDraftGenerationCommand {
-  type: 'authorize_draft_generation';
-  sourceText: string;
-  confidence: 'high';
-}
 
 export type DraftGenerationAuthorizationValidation =
   | { accepted: true; command: AuthorizeDraftGenerationCommand }
@@ -41,13 +36,17 @@ export function validateDraftGenerationAuthorizationCommand(
 
   const value = candidate as Record<string, unknown>;
   const keys = Object.keys(value).sort();
-  if (keys.join('|') !== ['confidence', 'sourceText', 'type'].sort().join('|')) {
+  const allowedKeys = ['confidence', 'sourceSegment', 'sourceText', 'type'];
+  if (keys.some((key) => !allowedKeys.includes(key))) {
     return { accepted: false, reason: 'invalid-command' };
   }
   if (value.type !== 'authorize_draft_generation') {
     return { accepted: false, reason: 'unsupported-command' };
   }
-  if (value.confidence !== 'high' || typeof value.sourceText !== 'string' || !value.sourceText.trim()) {
+  if (value.confidence !== 'high'
+    || typeof value.sourceText !== 'string'
+    || !value.sourceText.trim()
+    || (value.sourceSegment !== undefined && typeof value.sourceSegment !== 'string')) {
     return { accepted: false, reason: 'invalid-command' };
   }
 
@@ -70,9 +69,7 @@ export function reduceDraftGenerationAuthorization(
   state: PlanningIntakeState,
   validation: DraftGenerationAuthorizationValidation,
 ): PlanningIntakeState {
-  if (!validation.accepted) {
-    return resetDraftGenerationIntent(state);
-  }
+  if (!validation.accepted) return resetDraftGenerationIntent(state);
 
   const revision = state.sourceTurns.length;
   return {
