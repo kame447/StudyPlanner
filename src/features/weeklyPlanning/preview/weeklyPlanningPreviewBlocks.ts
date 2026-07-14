@@ -25,11 +25,29 @@ export interface WeeklyPlanningPreviewBlock {
 
 function behaviorMetadataFromCandidate(
   candidate: WeeklyDraftCandidate,
+  userId?: string,
 ): WeeklyPlanningBehaviorMetadata | undefined {
   const metadata = (candidate as WeeklyDraftCandidate & {
     behaviorMetadata?: BehaviorAwarePreviewMetadata;
   }).behaviorMetadata;
   if (!metadata) return undefined;
+
+  const previewMetadata = userId
+    ? {
+        previewId: `behavior-preview:${metadata.stateRevision}`,
+        stateRevision: metadata.stateRevision,
+        assumptionDependencies: metadata.usedAssumptionProposalRefs.map((proposalId) => ({
+          proposalId,
+          targetRef: metadata.taskRef,
+          proposalCreatedFromStateRevision: metadata.stateRevision,
+        })),
+        approvalEligibility: metadata.usedAssumptionProposalRefs.length > 0
+          ? 'blocked_pending_assumption' as const
+          : 'eligible' as const,
+        stale: false,
+        authorizedUserId: userId,
+      }
+    : undefined;
 
   return {
     stateRevision: metadata.stateRevision,
@@ -43,6 +61,7 @@ function behaviorMetadataFromCandidate(
       schedulerInputSource: 'exam_prep_request',
       candidateSource: 'weekly_exam_prep',
     },
+    ...(previewMetadata ? { previewMetadata } : {}),
   };
 }
 
@@ -96,6 +115,25 @@ export function createWeeklyPlanningPreviewDisplayBlock(
   userId: string,
 ): WeeklyPlanDraftBlock {
   const deterministicTimestamp = `${block.date}T${block.startTime}:00`;
+  const behaviorMetadata = block.behaviorMetadata
+    ? {
+        ...block.behaviorMetadata,
+        previewMetadata: {
+          previewId: `behavior-preview:${block.behaviorMetadata.stateRevision}`,
+          stateRevision: block.behaviorMetadata.stateRevision,
+          assumptionDependencies: block.behaviorMetadata.usedAssumptionProposalRefs.map((proposalId) => ({
+            proposalId,
+            targetRef: block.behaviorMetadata?.taskRef ?? '',
+            proposalCreatedFromStateRevision: block.behaviorMetadata?.stateRevision ?? 0,
+          })),
+          approvalEligibility: block.behaviorMetadata.usedAssumptionProposalRefs.length > 0
+            ? 'blocked_pending_assumption' as const
+            : 'eligible' as const,
+          stale: false,
+          authorizedUserId: userId,
+        },
+      }
+    : undefined;
 
   return {
     id: block.id,
@@ -112,7 +150,7 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     source: 'ai',
     status: 'draft',
     userEdited: false,
-    ...(block.behaviorMetadata ? { behaviorMetadata: block.behaviorMetadata } : {}),
+    ...(behaviorMetadata ? { behaviorMetadata } : {}),
     createdAt: deterministicTimestamp,
     updatedAt: deterministicTimestamp,
   };
@@ -130,7 +168,7 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
   createdAt,
 }: CreateWeeklyDraftBlocksFromPreviewCandidatesInput): WeeklyPlanDraftBlock[] {
   return candidates.map((candidate) => {
-    const behaviorMetadata = behaviorMetadataFromCandidate(candidate);
+    const behaviorMetadata = behaviorMetadataFromCandidate(candidate, userId);
     return {
       id: candidate.stableKey,
       userId,
