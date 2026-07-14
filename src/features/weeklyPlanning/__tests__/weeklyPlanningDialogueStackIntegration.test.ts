@@ -90,7 +90,7 @@ describe('weekly planning dialogue stack integration', () => {
       proposalId: 'proposal-duration-english',
       status: 'accepted',
     });
-    expect(output.assumptionProposalState?.pending).toHaveLength(0);
+    expect(output.assumptionProposalState?.records.filter((record) => record.status === 'pending')).toHaveLength(0);
   });
 
   it('applies one task correction while preserving unrelated tasks and proposal history', async () => {
