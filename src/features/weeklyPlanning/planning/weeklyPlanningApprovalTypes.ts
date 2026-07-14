@@ -13,6 +13,7 @@ export type WeeklyPreviewApprovalEligibility =
 
 export interface WeeklyPreviewMetadata {
   previewId: string;
+  conversationId?: string;
   stateRevision: number;
   assumptionDependencies: PreviewAssumptionDependency[];
   approvalEligibility: WeeklyPreviewApprovalEligibility;
