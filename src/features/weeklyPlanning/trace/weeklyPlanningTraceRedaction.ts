@@ -1,4 +1,3 @@
-const REDACTED_VALUE = '[REDACTED]';
 const TRUNCATED_VALUE = '[TRUNCATED]';
 const CIRCULAR_VALUE = '[CIRCULAR]';
 
@@ -108,7 +107,6 @@ export function sanitizeWeeklyPlanningTraceValue(
           break;
         }
         if (isForbiddenWeeklyPlanningTraceKey(key)) {
-          result[key] = REDACTED_VALUE;
           continue;
         }
         const sanitized = visit(entryValue, depth + 1);
