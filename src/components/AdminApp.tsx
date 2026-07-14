@@ -1,5 +1,5 @@
 import { onAuthStateChanged } from 'firebase/auth';
-import { ListTree, Users } from 'lucide-react';
+import { ArrowLeft, ListTree, Users } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { WeeklyPlanningTraceDebugPage } from '../features/weeklyPlanning/trace/WeeklyPlanningTraceDebugPage';
 import { useAdminStatus } from '../hooks/useAdminStatus';
@@ -17,6 +17,11 @@ export function AdminApp() {
 
   const navigate = useCallback(
     (path: string, options: { replace?: boolean } = {}) => {
+      if (path !== '/admin' && !path.startsWith('/admin/')) {
+        window.location.assign(path);
+        return;
+      }
+
       if (window.location.pathname !== path) {
         if (options.replace) {
           window.history.replaceState({}, '', path);
@@ -75,6 +80,7 @@ export function AdminApp() {
   }
 
   const isTracePage = currentPath === TRACE_PATH;
+  const showGlobalReturn = currentPath !== '/admin' && currentPath !== '/admin/users';
 
   return (
     <div className="app-shell admin-app-shell">
@@ -96,6 +102,12 @@ export function AdminApp() {
             <ListTree aria-hidden="true" size={17} strokeWidth={2} />
             週間計画ログ
           </button>
+          {showGlobalReturn ? (
+            <a className="ghost-button admin-header-link" href="/">
+              <ArrowLeft aria-hidden="true" size={17} strokeWidth={2} />
+              通常画面へ戻る
+            </a>
+          ) : null}
         </nav>
 
         {isTracePage ? (
