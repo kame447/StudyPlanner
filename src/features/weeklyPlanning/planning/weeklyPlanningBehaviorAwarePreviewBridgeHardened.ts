@@ -12,6 +12,7 @@ import {
   hardenPlanningSnapshot,
 } from './weeklyPlanningBehaviorSafety';
 import { applyRelativeConstraintTurn } from './weeklyPlanningRelativeConstraintAdapter';
+import { publishWeeklyPlanningSessionRuntime } from './weeklyPlanningSessionRuntime';
 
 function minutes(time: string): number {
   const [hour = '0', minute = '0'] = time.split(':');
@@ -92,6 +93,12 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
     userText: input.currentUserText,
   });
   const workingState = relative.state;
+  publishWeeklyPlanningSessionRuntime({
+    conversationId: input.conversationId ?? 'weekly-planning-session',
+    stateRevision: workingState.sourceTurns.length,
+    proposalRecords: workingState.assumptionProposalRecords ?? [],
+  });
+
   const dayStartTime = input.sessionPolicy?.dayStartTime ?? '09:00';
   const dayEndTime = input.sessionPolicy?.dayEndTime ?? '22:00';
   const availabilityState = stateWithValidatedConstraintSources(input, workingState);
