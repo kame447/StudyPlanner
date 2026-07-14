@@ -20,6 +20,11 @@ export type PlanningIntent =
   | 'study_advice'
   | 'unknown';
 
+export type PlanningDraftGenerationIntent =
+  | 'not_requested'
+  | 'assistant_suggested'
+  | 'user_authorized';
+
 export type PlanningRangeConfidence = 'explicit' | 'inferred' | 'missing';
 
 export interface PlanningRange {
@@ -211,6 +216,8 @@ export interface PlanningIntakeState {
   questions: string[];
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
+  draftGenerationIntent?: PlanningDraftGenerationIntent;
+  draftGenerationAuthorizedAtRevision?: number;
   sourceTurns: string[];
 }
 
