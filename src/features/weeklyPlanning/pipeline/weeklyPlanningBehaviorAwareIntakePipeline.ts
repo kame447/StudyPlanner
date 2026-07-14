@@ -68,19 +68,25 @@ export interface WeeklyPlanningBehaviorAwarePipelineOptions {
   useAiDialoguePlanner?: boolean;
 }
 
-function conversationId(options: WeeklyPlanningBehaviorAwarePipelineOptions): string {
+function getConversationId(options: WeeklyPlanningBehaviorAwarePipelineOptions): string {
   return options.conversationId?.trim() || 'weekly-planning-session';
 }
 
+function cloneProposalRecords(records: readonly AssumptionProposalRecord[]): AssumptionProposalRecord[] {
+  return records.map((record) => ({
+    ...record,
+    sourceFactRefs: [...record.sourceFactRefs],
+    ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
+  }));
+}
+
 function proposalRecords(input: WeeklyPlanningIntakePipelineInput): AssumptionProposalRecord[] {
-  return (input.previousAssumptionProposalState?.records
-    ?? input.previousState?.assumptionProposalRecords
-    ?? input.assumptionProposalContext?.existingProposalRecords
-    ?? []).map((record) => ({
-      ...record,
-      sourceFactRefs: [...record.sourceFactRefs],
-      ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
-    }));
+  return cloneProposalRecords(
+    input.previousAssumptionProposalState?.records
+      ?? input.previousState?.assumptionProposalRecords
+      ?? input.assumptionProposalContext?.existingProposalRecords
+      ?? [],
+  );
 }
 
 function createSessionProposalContext(
@@ -88,8 +94,8 @@ function createSessionProposalContext(
   options: WeeklyPlanningBehaviorAwarePipelineOptions,
   records: readonly AssumptionProposalRecord[],
 ): AssumptionProposalCanonicalizationContext {
-  const id = conversationId(options);
-  const revision = (input.previousState?.sourceTurns.length ?? 0) + 1;
+  const conversationId = getConversationId(options);
+  const stateRevision = (input.previousState?.sourceTurns.length ?? 0) + 1;
   const userId = options.userId?.trim() || 'session-local-user';
   const taskRefs = (input.previousState?.tasks ?? []).map((_, index) => `task:${index}`);
   const validTargetRefs = [
@@ -99,19 +105,19 @@ function createSessionProposalContext(
   ];
   return {
     authorization: { userId },
-    conversationId: id,
-    turnId: `${id}:turn:${revision}`,
-    stateRevision: revision,
+    conversationId,
+    turnId: `${conversationId}:turn:${stateRevision}`,
+    stateRevision,
     validTargetRefs,
     currentPublicSourceFacts: taskRefs.map((factId) => ({
       factId,
       userId,
-      conversationId: id,
-      stateRevision: revision,
+      conversationId,
+      stateRevision,
       visibility: 'public',
     })),
     allowedPolicyIds: ['domain-default', 'first-trial'],
-    existingProposalRecords: records,
+    existingProposalRecords: cloneProposalRecords(records),
   };
 }
 
@@ -125,7 +131,7 @@ function withSessionProposalContext<T extends WeeklyPlanningIntakePipelineInput>
     previousAssumptionProposalState: createAssumptionProposalSessionState(records),
     assumptionProposalContext: input.assumptionProposalContext
       ?? createSessionProposalContext(input, options, records),
-  };
+  } as T;
 }
 
 function constraintSummary(output: WeeklyPlanningIntakePipelineOutput): string[] {
@@ -149,7 +155,7 @@ function mergeActions(
   additional: readonly AllowedDialogueAction[],
 ): AllowedDialogueAction[] {
   const byId = new Map<string, AllowedDialogueAction>();
-  [...primary, ...additional].forEach((action) => {
+  [...additional, ...primary].forEach((action) => {
     if (!byId.has(action.actionId)) byId.set(action.actionId, action);
   });
   return Array.from(byId.values()).slice(0, 3);
@@ -194,7 +200,8 @@ function applyNonExamDraftAuthorization(params: {
 }
 
 function acceptedDurationAssumptions(base: WeeklyPlanningIntakePipelineOutput): AcceptedTaskDurationAssumption[] {
-  return (base.assumptionProposalState?.records ?? base.state.assumptionProposalRecords ?? []).flatMap((record) => {
+  const records = base.assumptionProposalState?.records ?? base.state.assumptionProposalRecords ?? [];
+  return records.flatMap((record) => {
     if (record.status !== 'accepted' || record.slot !== 'duration' || typeof record.proposedValue !== 'number') {
       return [];
     }
@@ -204,6 +211,7 @@ function acceptedDurationAssumptions(base: WeeklyPlanningIntakePipelineOutput): 
       taskRef: record.targetRef,
       minutes,
       proposalRef: record.proposalId,
+      proposalCreatedFromStateRevision: record.createdFromStateRevision,
       sourceFactRefs: [...record.sourceFactRefs],
     }];
   });
@@ -217,7 +225,7 @@ function runBehavior(params: {
   return runHardenedBehaviorAwarePlanningPreviewBridge({
     state: params.base.state,
     currentUserText: params.input.userText,
-    conversationId: conversationId(params.options),
+    conversationId: getConversationId(params.options),
     planningStartDate: params.input.planningStartDate,
     planningDayCount: params.input.planningDayCount,
     sessionPolicy: params.input.sessionPolicy,
@@ -277,11 +285,7 @@ function synchronizeProposalRecords(
   base: WeeklyPlanningIntakePipelineOutput,
   records: readonly AssumptionProposalRecord[],
 ): WeeklyPlanningIntakePipelineOutput {
-  const clonedRecords = records.map((record) => ({
-    ...record,
-    sourceFactRefs: [...record.sourceFactRefs],
-    ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
-  }));
+  const clonedRecords = cloneProposalRecords(records);
   return {
     ...base,
     state: {
@@ -298,15 +302,15 @@ function applyLifecycleResult(params: {
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
   result?: WeeklyPlanningInterpreterResult;
 }): WeeklyPlanningIntakePipelineOutput & { lifecycleDiagnostics?: WeeklyPlanningLifecycleDiagnostics } {
-  let records = (params.base.assumptionProposalState?.records ?? proposalRecords(params.input));
+  let records = cloneProposalRecords(params.base.assumptionProposalState?.records ?? proposalRecords(params.input));
   if (!params.result) return synchronizeProposalRecords(params.base, records);
 
-  const id = conversationId(params.options);
-  const previousRevision = params.input.previousState?.sourceTurns.length ?? 0;
+  const conversationId = getConversationId(params.options);
+  const currentStateRevision = params.input.previousState?.sourceTurns.length ?? 0;
   const context = {
-    conversationId: id,
-    turnId: `${id}:turn:${previousRevision + 1}`,
-    currentStateRevision: previousRevision,
+    conversationId,
+    turnId: `${conversationId}:turn:${currentStateRevision + 1}`,
+    currentStateRevision,
   };
   const rejectedDecisions: Array<{ value: unknown; reason: string }> = [];
   let acceptedDecisionCount = 0;
@@ -370,7 +374,7 @@ async function finalizeBehaviorAwareOutput(params: {
     diagnostics: behavior.draftRun?.diagnostics ?? currentBase.diagnostics,
     stateRevision: behavior.snapshot.stateRevision,
     previewId: behavior.draftRun ? `behavior-preview:${behavior.snapshot.stateRevision}` : undefined,
-    pendingAssumption: acceptedDurationAssumptions(currentBase).length > 0,
+    pendingAssumption: false,
     supported: true,
     bottleneckFactRefs: behavior.snapshot.readiness.blockingDimensions.map((dimension) =>
       `planning-dimension:${dimension}`,
@@ -411,21 +415,24 @@ export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
   const input = withSessionProposalContext(rawInput, options);
   let capturedResult: WeeklyPlanningInterpreterResult | undefined;
-  const id = conversationId(options);
+  const conversationId = getConversationId(options);
   const lifecycleInterpreter: WeeklyPlanningIntakeInterpreter | undefined = input.interpreter
-    ? createLifecycleAwareWeeklyPlanningInterpreter({
-        interpreter: {
+    ? (() => {
+        const decorated = createLifecycleAwareWeeklyPlanningInterpreter({
+          interpreter: input.interpreter as WeeklyPlanningIntakeInterpreter,
+          conversationId,
+          currentStateRevision: input.previousState?.sourceTurns.length ?? 0,
+          pendingAssumptions: pendingAssumptionSummaries(input),
+          correctionTargets: correctionTargetSummaries(input),
+        });
+        return {
           async interpretUserTurn(params) {
-            const result = await input.interpreter!.interpretUserTurn(params);
+            const result = await decorated.interpretUserTurn(params);
             capturedResult = result;
             return result;
           },
-        },
-        conversationId: id,
-        currentStateRevision: input.previousState?.sourceTurns.length ?? 0,
-        pendingAssumptions: pendingAssumptionSummaries(input),
-        correctionTargets: correctionTargetSummaries(input),
-      })
+        } satisfies WeeklyPlanningIntakeInterpreter;
+      })()
     : undefined;
   const base = await runWeeklyPlanningIntakePipelineWithInterpreter({
     ...input,
