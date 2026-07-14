@@ -280,7 +280,7 @@ function constraintKindToAnchorKind(constraint: LifeConstraint): LifeActivityKin
 
 function clockFromJapanese(text: string, label: RegExp): string | undefined {
   const match = text.match(
-    new RegExp(`${label.source}[^0-9]{0,8}(\\d{1,2})(?::(\\d{1,2})|時(?:(\\d{1,2})分?)?)`),
+    new RegExp(`(?:${label.source})[^0-9]{0,8}(\\d{1,2})(?::(\\d{1,2})|時(?:(\\d{1,2})分?)?)`),
   );
   if (!match) return undefined;
   const hour = Number(match[1]);
@@ -418,8 +418,9 @@ const TASK_PROFILE_POLICIES: TaskProfilePolicy[] = [
 ];
 
 function profileForTask(task: StudyTaskScope, index: number): TaskExecutionProfile {
-  const normalized = `${task.title} ${task.subject ?? ''} ${task.rawText}`;
-  const policy = TASK_PROFILE_POLICIES.find((candidate) => candidate.matches.test(normalized));
+  const taskText = `${task.title} ${task.subject ?? ''}`;
+  const policy = TASK_PROFILE_POLICIES.find((candidate) => candidate.matches.test(taskText))
+    ?? TASK_PROFILE_POLICIES.find((candidate) => candidate.matches.test(task.rawText));
   const taskRef = `task:${index}`;
 
   if (!policy) {
@@ -851,7 +852,7 @@ export function renderBehaviorAwareDialogueFallback(params: {
       if (profile.activityKind === 'drill') return 'ワークや演習はまとまった時間で進める案';
       return null;
     })
-    .filter((text): text is string => Boolean(text));
+    .filter((text): text is Exclude<typeof text, null> => Boolean(text));
   const lines: string[] = [];
 
   if (profileSummary.length > 0) {

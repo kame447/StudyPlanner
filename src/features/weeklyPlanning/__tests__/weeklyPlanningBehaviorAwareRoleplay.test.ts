@@ -26,20 +26,30 @@ function interpreter(
 ): WeeklyPlanningIntakeInterpreter {
   return {
     async interpretUserTurn() {
-      return { candidates: commands, parseRejections: [] };
+      return {
+        candidates: commands.map((command) => ({
+          command,
+          origin: 'ai_interpreter' as const,
+          needsConfirmation: false,
+        })),
+        parseRejections: [],
+      };
     },
   };
 }
 
-function source<T extends ParsedWeeklyPlanningCommand>(
-  command: Omit<T, 'sourceText' | 'confidence'>,
+type ParsedCommandInput<T extends ParsedWeeklyPlanningCommand = ParsedWeeklyPlanningCommand> =
+  T extends ParsedWeeklyPlanningCommand ? Omit<T, 'sourceText' | 'confidence'> : never;
+
+function source(
+  command: ParsedCommandInput,
   sourceText: string,
-): T {
+): ParsedWeeklyPlanningCommand {
   return {
     ...command,
     sourceText,
     confidence: 'high',
-  } as T;
+  } as ParsedWeeklyPlanningCommand;
 }
 
 describe('WP-BEHAVIOR-001 behavior-aware roleplay', () => {

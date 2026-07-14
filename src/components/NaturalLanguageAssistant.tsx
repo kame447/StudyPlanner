@@ -22,9 +22,9 @@ import { renderWeeklyPlanningDialogueMessage } from '../features/weeklyPlanning/
 import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
 import { createAiWeeklyPlanningInterpreter } from '../features/weeklyPlanning/intake/weeklyPlanningAiInterpreter';
 import {
-  runWeeklyPlanningIntakePipeline,
-  runWeeklyPlanningIntakePipelineWithInterpreter,
-} from '../features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline';
+  runWeeklyPlanningBehaviorAwarePipeline,
+  runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
+} from '../features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
@@ -536,19 +536,24 @@ export function NaturalLanguageAssistant({
       const shouldUseAiInterpreter =
         aiConfig.provider !== 'rules' && !getAiConfigValidationMessage(aiConfig);
       const pipelineOutput = shouldUseAiInterpreter
-        ? await runWeeklyPlanningIntakePipelineWithInterpreter({
+        ? await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
           ...pipelineInput,
           interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
+        }, {
+          useAiDialoguePlanner: true,
         })
-        : runWeeklyPlanningIntakePipeline(pipelineInput);
-      const dialogueRenderer = shouldUseAiInterpreter
+        : await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput);
+      const isExamFlow = Boolean(pipelineOutput.state.examPrepScope);
+      const dialogueRenderer = isExamFlow && shouldUseAiInterpreter
         ? createAiWeeklyPlanningDialogueRenderer(aiConfig)
         : undefined;
-      const message = await renderWeeklyPlanningDialogueMessage({
-        state: pipelineOutput.state,
-        decision: pipelineOutput.decision,
-        renderer: dialogueRenderer,
-      });
+      const message = isExamFlow
+        ? await renderWeeklyPlanningDialogueMessage({
+          state: pipelineOutput.state,
+          decision: pipelineOutput.decision,
+          renderer: dialogueRenderer,
+        })
+        : pipelineOutput.behaviorDialogue.message;
       const nextPreviewCandidates = pipelineOutput.draftCandidates ?? [];
       const nextPreviewBlocks = createWeeklyPlanningPreviewBlocks(
         nextPreviewCandidates,
