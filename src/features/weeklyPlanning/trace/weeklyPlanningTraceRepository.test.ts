@@ -68,6 +68,23 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
     expect(await repository.listEntries('user-2', 'session-1')).toEqual([]);
   });
 
+  it('管理者一覧では複数userのsessionを更新日時順で返す', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    const newerSession: WeeklyPlanningTraceSession = {
+      ...SESSION,
+      id: 'session-2',
+      logicalConversationId: 'conversation-2',
+      userId: 'user-2',
+      lastActivityAt: '2026-07-15T00:00:03.000Z',
+    };
+
+    await repository.upsertSession(SESSION);
+    await repository.upsertSession(newerSession);
+
+    expect((await repository.listSessionsForAdmin()).map((session) => session.id))
+      .toEqual(['session-2', 'session-1']);
+  });
+
   it('同一内容のretryは冪等で、異なる内容の上書きを拒否する', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
 
