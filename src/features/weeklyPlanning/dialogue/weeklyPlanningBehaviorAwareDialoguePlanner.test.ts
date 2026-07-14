@@ -86,15 +86,17 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     const action = plannerInput.allowedActions.find((candidate) =>
       candidate.kind !== 'acknowledge_fact',
     );
-    expect(action).toBeDefined();
+    if (!action) {
+      throw new Error('expected at least one substantive allowed action');
+    }
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => JSON.stringify({
         acknowledgement: '英語ワークを10ページ進める予定ですね。',
-        selectedActionIds: [action?.actionId],
+        selectedActionIds: [action.actionId],
         items: [{
-          actionId: action?.actionId,
+          actionId: action.actionId,
           text: 'まとまった時間で進める案が合いそうです。',
-          optionIds: action?.allowedOptionIds,
+          optionIds: action.allowedOptionIds,
         }],
       })),
     };
@@ -104,7 +106,7 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
 
     expect(result.source).toBe('ai');
     expect(result.message).toContain('英語ワーク');
-    expect(result.response?.selectedActionIds).toEqual([action?.actionId]);
+    expect(result.response?.selectedActionIds).toEqual([action.actionId]);
   });
 
   it('falls back when the AI invents an action', async () => {
