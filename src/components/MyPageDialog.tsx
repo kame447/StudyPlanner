@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { Image, LogOut, User as UserIcon } from 'lucide-react';
+import { Image, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { useAdminStatus } from '../hooks/useAdminStatus';
 import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
 import { AVATAR_OPTIONS, getUserDisplayName } from '../lib/userProfile';
 import type { User, UserProfileDraft } from '../types/domain';
@@ -26,6 +27,7 @@ export function MyPageDialog({
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { isAdmin } = useAdminStatus(open ? user.id : null);
 
   useEffect(() => {
     if (!open) {
@@ -207,6 +209,19 @@ export function MyPageDialog({
             <button className="primary-button" onClick={() => void handleSaveProfile()} type="button">
               プロフィールを保存
             </button>
+            {isAdmin ? (
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  onClose();
+                  window.location.assign('/admin/users');
+                }}
+                type="button"
+              >
+                <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />
+                管理者画面
+              </button>
+            ) : null}
             <button className="ghost-button danger" onClick={() => void onSignOut()} type="button">
               <LogOut aria-hidden="true" size={20} strokeWidth={1.9} />
               ログアウト

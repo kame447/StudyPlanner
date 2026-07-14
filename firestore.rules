@@ -110,6 +110,28 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.userId);
     }
 
+    match /weekly_planning_trace_sessions/{sessionId} {
+      allow read: if isAdmin();
+      allow create: if canCreateOwnedResource()
+        && request.resource.data.id == sessionId;
+      allow update: if canUpdateOwnedResource()
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.logicalConversationId == resource.data.logicalConversationId
+        && request.resource.data.startedAt == resource.data.startedAt
+        && request.resource.data.schemaVersion == resource.data.schemaVersion;
+      allow delete: if false;
+    }
+
+    match /weekly_planning_trace_entries/{entryId} {
+      allow read: if isAdmin();
+      allow create: if canCreateOwnedResource()
+        && request.resource.data.id == entryId;
+      allow update: if canUpdateOwnedResource()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([]);
+      allow delete: if false;
+    }
+
     match /app_catalogs/{catalogId} {
       allow read: if true;
       allow create, update: if false;

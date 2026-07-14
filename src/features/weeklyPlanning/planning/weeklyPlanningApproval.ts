@@ -1,4 +1,5 @@
 import type { AssumptionProposalRecord } from '../intake/weeklyPlanningAssumptionProposals';
+import { recordWeeklyPlanningApprovalTrace } from '../trace/weeklyPlanningTraceRuntime';
 import type { WeeklyPlanDraftBlock } from '../types';
 import type {
   ApprovedPlanSource,
@@ -264,7 +265,24 @@ export async function executeWeeklyDraftApproval(params: {
   dependencies: ExecuteWeeklyDraftApprovalDependencies;
 }): Promise<WeeklyDraftApprovalOperation> {
   let operation = cloneOperation(params.operation);
-  if (operation.status === 'completed') return operation;
+  recordWeeklyPlanningApprovalTrace({
+    userId: operation.userId,
+    phase: 'started',
+    payload: {
+      approvalOperationId: operation.approvalOperationId,
+      previewId: operation.previewId,
+      previewStateRevision: operation.previewStateRevision,
+      itemCount: operation.items.length,
+    },
+  });
+  if (operation.status === 'completed') {
+    recordWeeklyPlanningApprovalTrace({
+      userId: operation.userId,
+      phase: 'completed',
+      payload: operation,
+    });
+    return operation;
+  }
   const blockById = new Map(params.blocks.map((block) => [block.id, block]));
 
   for (const currentItem of operation.items) {
@@ -331,6 +349,12 @@ export async function executeWeeklyDraftApproval(params: {
 
   operation = { ...operation, status: deriveApprovalOperationStatus(operation.items) };
   if (operation.status === 'completed') operation.completedAt = params.dependencies.now();
+  recordWeeklyPlanningApprovalTrace({
+    userId: operation.userId,
+    phase: 'completed',
+    payload: operation,
+    failed: operation.status === 'failed' || operation.status === 'partially_saved',
+  });
   return operation;
 }
 

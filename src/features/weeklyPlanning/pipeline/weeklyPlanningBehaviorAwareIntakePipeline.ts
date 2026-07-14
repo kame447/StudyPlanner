@@ -35,6 +35,7 @@ import {
   createFeasibilitySummary,
   type FeasibilitySummary,
 } from '../planning/weeklyPlanningFeasibility';
+import { recordWeeklyPlanningPipelineTrace } from '../trace/weeklyPlanningTraceRuntime';
 import {
   runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
@@ -406,7 +407,9 @@ export async function runWeeklyPlanningBehaviorAwarePipeline(
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
   const input = withSessionProposalContext(rawInput, options);
   const base = synchronizeProposalRecords(runWeeklyPlanningIntakePipeline(input), proposalRecords(input));
-  return finalizeBehaviorAwareOutput({ base, input, options });
+  const output = await finalizeBehaviorAwareOutput({ base, input, options });
+  recordWeeklyPlanningPipelineTrace({ input, options, output });
+  return output;
 }
 
 export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
@@ -439,7 +442,9 @@ export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
     ...(lifecycleInterpreter ? { interpreter: lifecycleInterpreter } : {}),
   });
   const lifecycleBase = applyLifecycleResult({ base, input, options, result: capturedResult });
-  return finalizeBehaviorAwareOutput({ base: lifecycleBase, input, options });
+  const output = await finalizeBehaviorAwareOutput({ base: lifecycleBase, input, options });
+  recordWeeklyPlanningPipelineTrace({ input, options, output });
+  return output;
 }
 
 export function hasAllowedDialogueAction(

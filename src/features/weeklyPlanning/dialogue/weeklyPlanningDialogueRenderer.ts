@@ -3,6 +3,8 @@ import {
   vocabularyHintForSlot,
 } from '../intake/weeklyPlanningQuestionSlots';
 import type { ConstraintSourceRef, PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import { recordWeeklyPlanningRenderedAssistantTurn } from '../trace/weeklyPlanningTraceRuntime';
+import type { WeeklyPlanningTraceResponseSource } from '../trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningDialogueDecision } from './weeklyPlanningDialogueManager';
 import { createWeeklyPlanningDialogueMessage } from './weeklyPlanningDialogueMessages';
 
@@ -203,7 +205,6 @@ export function sanitizeDialogueRenderOutput(
   };
 }
 
-
 function formatAcceptedFacts(input: DialogueRenderInput): string | null {
   const facts = [
     input.acceptedFacts.fields?.length ? `分野は${input.acceptedFacts.fields.join('、')}` : null,
@@ -259,6 +260,14 @@ function composeRenderedMessage(output: DialogueRenderOutput): string {
   ].filter((part): part is string => Boolean(part)).join('\n');
 }
 
+function tracedMessage(
+  message: string,
+  responseSource: WeeklyPlanningTraceResponseSource,
+): string {
+  recordWeeklyPlanningRenderedAssistantTurn(message, responseSource);
+  return message;
+}
+
 export async function renderWeeklyPlanningDialogueMessage(params: {
   state: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
@@ -272,11 +281,11 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
   const shouldRenderMissingQuestions = params.decision.kind === 'ask_missing_info' && input.nextQuestions.length > 0;
 
   if (!shouldRenderMissingQuestions) {
-    return createWeeklyPlanningDialogueMessage(params.decision);
+    return tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules');
   }
 
   if (!params.renderer) {
-    return renderDeterministicMissingQuestions(input);
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'rules');
   }
 
   try {
@@ -284,11 +293,11 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
     const sanitized = sanitizeDialogueRenderOutput(rendered, input);
 
     if (sanitized) {
-      return composeRenderedMessage(sanitized);
+      return tracedMessage(composeRenderedMessage(sanitized), 'ai');
     }
 
-    return renderDeterministicMissingQuestions(input);
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback');
   } catch {
-    return renderDeterministicMissingQuestions(input);
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback');
   }
 }
