@@ -164,6 +164,7 @@ export function createFeasibilityDialogueActions(
 ): AllowedDialogueAction[] {
   if (summary.classification === 'feasible') return [];
   if (summary.classification === 'unknown') {
+    if (summary.bottleneckFactRefs.length === 0) return [];
     return [{
       actionId: `feasibility:${summary.stateRevision}:clarify`,
       kind: 'ask_required_fact',
