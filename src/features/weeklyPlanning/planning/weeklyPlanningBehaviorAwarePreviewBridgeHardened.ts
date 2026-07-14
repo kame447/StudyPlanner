@@ -24,9 +24,7 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
 
   const rawSnapshot = createPlanningHypothesisSnapshot({
     state: input.state,
-    currentUserText: input.state.draftGenerationIntent === 'user_authorized'
-      ? '仮で予定を組んで'
-      : '',
+    currentUserText: '',
     conversationId: input.conversationId,
     availabilityRanges: canonicalRanges,
   });
@@ -38,11 +36,11 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
     const assumption = input.acceptedTaskDurationAssumptions?.find(
       (candidate) => candidate.taskRef === `task:${index}`,
     );
-    return Boolean(
-      typeof task.amount === 'number'
+    const hasRateDuration = typeof task.amount === 'number'
       && task.amount > 0
-      && ((rate?.minutesPerUnit ?? 0) > 0 || (assumption?.minutes ?? 0) > 0),
-    );
+      && (rate?.minutesPerUnit ?? 0) > 0;
+    const hasAcceptedAssumption = (assumption?.minutes ?? 0) > 0;
+    return hasRateDuration || hasAcceptedAssumption;
   });
   const hasExecutionShape = rawSnapshot.taskProfiles.length > 0
     && rawSnapshot.taskProfiles.every((profile) => profile.activityKind !== 'unknown')
