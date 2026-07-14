@@ -1,6 +1,7 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import { useEffect, useMemo, useState } from 'react';
 import { getFirebaseAuth } from '../../../lib/firebaseClient';
+import { createWeeklyPlanningTraceExportBundle } from './weeklyPlanningTraceExport';
 import { getWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRepository';
 import type {
   WeeklyPlanningTraceEntry,
@@ -172,12 +173,10 @@ export function WeeklyPlanningTraceDebugPage() {
             disabled={!selectedSession}
             onClick={() => {
               if (!selectedSession) return;
-              downloadJson(`weekly-planning-trace-${selectedSession.id}.json`, {
-                exportedAt: new Date().toISOString(),
-                schemaVersion: selectedSession.schemaVersion,
-                session: selectedSession,
-                entries,
-              });
+              downloadJson(
+                `weekly-planning-trace-${selectedSession.id}.json`,
+                createWeeklyPlanningTraceExportBundle(selectedSession, entries),
+              );
             }}
           >
             JSON export
