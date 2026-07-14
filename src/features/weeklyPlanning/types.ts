@@ -11,6 +11,20 @@ export type WeeklyPlanningMode =
 
 export type WeeklyPlanDraftStatus = 'draft' | 'approved' | 'discarded';
 
+export interface WeeklyPlanningBehaviorMetadata {
+  stateRevision: number;
+  sourceFactRefs: string[];
+  usedAssumptionProposalRefs: string[];
+  taskRef: string;
+  opportunityTags: string[];
+  reasoningKey: string;
+  compatibility: {
+    workItemSemantic: 'behavior_aware_task';
+    schedulerInputSource: 'exam_prep_request';
+    candidateSource: 'weekly_exam_prep';
+  };
+}
+
 export interface WeeklyPlanDraftBlock {
   id: string;
   userId: string;
@@ -27,6 +41,7 @@ export interface WeeklyPlanDraftBlock {
   source: 'ai';
   status: WeeklyPlanDraftStatus;
   userEdited: boolean;
+  behaviorMetadata?: WeeklyPlanningBehaviorMetadata;
   createdAt: string;
   updatedAt: string;
 }
