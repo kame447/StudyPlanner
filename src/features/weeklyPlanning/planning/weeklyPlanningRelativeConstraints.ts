@@ -208,7 +208,7 @@ export function resolveRelativeConstraints(params: {
   constraints: readonly RelativeConstraint[];
   anchors: readonly RelativeConstraintAnchor[];
   currentStateRevision: number;
-  busyIntervals?: readonly Array<{ ref: string; date: string; startTime: string; endTime: string }>;
+  busyIntervals?: ReadonlyArray<{ ref: string; date: string; startTime: string; endTime: string }>;
 }): RelativeConstraintResolutionResult {
   const resolved: ResolvedRelativeConstraint[] = [];
   const rejected: Array<{ constraint: RelativeConstraint; reason: string }> = [];
