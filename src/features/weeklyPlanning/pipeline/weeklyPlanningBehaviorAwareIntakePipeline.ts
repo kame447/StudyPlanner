@@ -5,6 +5,19 @@ import {
   type BehaviorAwareDialoguePlannerResult,
 } from '../dialogue/weeklyPlanningBehaviorAwareDialoguePlanner';
 import {
+  createLifecycleAwareWeeklyPlanningInterpreter,
+} from '../intake/weeklyPlanningLifecycleInterpreter';
+import {
+  createAssumptionProposalSessionState,
+  type AssumptionProposalRecord,
+} from '../intake/weeklyPlanningAssumptionProposals';
+import type {
+  InterpreterCorrectionTargetSummary,
+  InterpreterPendingAssumptionSummary,
+  WeeklyPlanningInterpreterResult,
+  WeeklyPlanningIntakeInterpreter,
+} from '../intake/weeklyPlanningInterpreterTypes';
+import {
   runHardenedBehaviorAwarePlanningPreviewBridge,
 } from '../planning/weeklyPlanningBehaviorAwarePreviewBridgeHardened';
 import type {
@@ -15,7 +28,13 @@ import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTy
 import {
   applyDraftGenerationAuthorizationTurn,
 } from '../planning/weeklyPlanningDraftGenerationAuthorization';
-import { markAssistantSuggested } from '../planning/weeklyPlanningAssumptionLifecycle';
+import {
+  applyAssumptionDecision,
+  applyCorrectionEnvelopes,
+  markAssistantSuggested,
+  validateAssumptionDecisionCommand,
+  type CorrectionEnvelope,
+} from '../planning/weeklyPlanningAssumptionLifecycle';
 import {
   createFeasibilityDialogueActions,
   createFeasibilitySummary,
@@ -29,11 +48,19 @@ import {
   type WeeklyPlanningIntakePipelineWithInterpreterInput,
 } from './weeklyPlanningIntakePipeline';
 
+export interface WeeklyPlanningLifecycleDiagnostics {
+  acceptedDecisionCount: number;
+  rejectedDecisions: Array<{ value: unknown; reason: string }>;
+  acceptedCorrectionCount: number;
+  rejectedCorrections: Array<{ value: unknown; reason: string }>;
+}
+
 export interface WeeklyPlanningBehaviorAwarePipelineOutput
   extends WeeklyPlanningIntakePipelineOutput {
   behavior: BehaviorAwarePlanningBridgeResult;
   behaviorDialogue: BehaviorAwareDialoguePlannerResult;
   feasibility: FeasibilitySummary;
+  lifecycleDiagnostics?: WeeklyPlanningLifecycleDiagnostics;
 }
 
 export interface BehaviorAwareDialoguePlanner {
@@ -46,9 +73,7 @@ export interface WeeklyPlanningBehaviorAwarePipelineOptions {
   useAiDialoguePlanner?: boolean;
 }
 
-function constraintSummary(
-  output: WeeklyPlanningIntakePipelineOutput,
-): string[] {
+function constraintSummary(output: WeeklyPlanningIntakePipelineOutput): string[] {
   return output.state.constraints.map((constraint) =>
     [constraint.kind, constraint.date, constraint.start, constraint.end, constraint.studyAvailableStart]
       .filter(Boolean)
@@ -56,9 +81,7 @@ function constraintSummary(
   );
 }
 
-function planningPeriodLabel(
-  output: WeeklyPlanningIntakePipelineOutput,
-): string | undefined {
+function planningPeriodLabel(output: WeeklyPlanningIntakePipelineOutput): string | undefined {
   const source = output.state.range?.sourceText;
   if (source && /来週/.test(source)) return '来週';
   if (source && /今週/.test(source)) return '今週';
@@ -100,9 +123,7 @@ function selectDialoguePlanner(
   options: WeeklyPlanningBehaviorAwarePipelineOptions,
 ): BehaviorAwareDialoguePlanner {
   if (options.dialoguePlanner) return options.dialoguePlanner;
-  if (options.useAiDialoguePlanner) {
-    return createAiBehaviorAwareWeeklyPlanningDialoguePlanner();
-  }
+  if (options.useAiDialoguePlanner) return createAiBehaviorAwareWeeklyPlanningDialoguePlanner();
   return createDeterministicBehaviorAwareDialoguePlanner();
 }
 
@@ -110,7 +131,9 @@ function applyNonExamDraftAuthorization(params: {
   base: WeeklyPlanningIntakePipelineOutput;
   userText: string;
 }): WeeklyPlanningIntakePipelineOutput {
-  if (params.base.state.examPrepScope) return params.base;
+  if (params.base.state.examPrepScope || params.base.state.draftGenerationIntent === 'user_authorized') {
+    return params.base;
+  }
   return {
     ...params.base,
     state: applyDraftGenerationAuthorizationTurn({
@@ -127,9 +150,7 @@ function acceptedDurationAssumptions(
     if (record.status !== 'accepted' || record.slot !== 'duration' || typeof record.proposedValue !== 'number') {
       return [];
     }
-    const minutes = record.proposedUnit === 'hours'
-      ? record.proposedValue * 60
-      : record.proposedValue;
+    const minutes = record.proposedUnit === 'hours' ? record.proposedValue * 60 : record.proposedValue;
     if (!Number.isFinite(minutes) || minutes <= 0 || !/^task:\d+$/.test(record.targetRef)) return [];
     return [{
       taskRef: record.targetRef,
@@ -160,24 +181,143 @@ function runBehavior(params: {
   });
 }
 
-async function finalizeBehaviorAwareOutput(params: {
+function proposalRecords(input: WeeklyPlanningIntakePipelineInput): AssumptionProposalRecord[] {
+  return (input.previousAssumptionProposalState?.records
+    ?? input.assumptionProposalContext?.existingProposalRecords
+    ?? []).map((record) => ({
+      ...record,
+      sourceFactRefs: [...record.sourceFactRefs],
+      ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
+    }));
+}
+
+function pendingAssumptionSummaries(input: WeeklyPlanningIntakePipelineInput): InterpreterPendingAssumptionSummary[] {
+  return proposalRecords(input).filter((record) => record.status === 'pending').map((record) => ({
+    proposalId: record.proposalId,
+    slot: record.slot,
+    targetRef: record.targetRef,
+    proposedValue: record.proposedValue,
+    ...(record.proposedUnit ? { proposedUnit: record.proposedUnit } : {}),
+  }));
+}
+
+function correctionTargetSummaries(input: WeeklyPlanningIntakePipelineInput): InterpreterCorrectionTargetSummary[] {
+  const state = input.previousState;
+  if (!state) return [];
+  return [
+    ...state.tasks.map((task, index) => ({
+      kind: 'task' as const,
+      ref: `task:${index}`,
+      label: task.title,
+    })),
+    ...state.constraints.map((constraint, index) => ({
+      kind: 'constraint' as const,
+      ref: `constraint:${index}`,
+      label: constraint.rawText ?? constraint.kind,
+    })),
+    ...(state.range ? [{ kind: 'planning_range' as const, ref: 'current', label: state.range.sourceText ?? '計画期間' }] : []),
+    ...(state.priorityPolicy.kind !== 'unknown'
+      ? [{ kind: 'priority' as const, ref: 'current', label: '優先順位' }]
+      : []),
+    ...proposalRecords(input).filter((record) => record.status === 'pending').map((record) => ({
+      kind: 'proposal' as const,
+      ref: record.proposalId,
+      label: `${record.slot}:${record.targetRef}`,
+    })),
+  ];
+}
+
+function isCorrectionEnvelope(value: unknown): value is CorrectionEnvelope {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const target = record.target;
+  return typeof record.correctionId === 'string'
+    && typeof record.conversationId === 'string'
+    && Number.isInteger(record.expectedStateRevision)
+    && ['replace', 'remove', 'supersede', 'restore'].includes(String(record.operation))
+    && typeof record.sourceText === 'string'
+    && Boolean(target && typeof target === 'object' && !Array.isArray(target));
+}
+
+function applyLifecycleResult(params: {
   base: WeeklyPlanningIntakePipelineOutput;
   input: WeeklyPlanningIntakePipelineInput;
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
-}): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
-  let currentBase = applyNonExamDraftAuthorization({
-    base: params.base,
-    userText: params.input.userText,
+  result?: WeeklyPlanningInterpreterResult;
+}): WeeklyPlanningIntakePipelineOutput & { lifecycleDiagnostics?: WeeklyPlanningLifecycleDiagnostics } {
+  if (!params.result) return params.base;
+  const conversationId = params.options.conversationId ?? 'weekly-planning-session';
+  const previousRevision = params.input.previousState?.sourceTurns.length ?? 0;
+  const context = {
+    conversationId,
+    turnId: `${conversationId}:turn:${previousRevision + 1}`,
+    currentStateRevision: previousRevision,
+  };
+  let records = (params.base.assumptionProposalState?.records ?? proposalRecords(params.input)).map((record) => ({
+    ...record,
+    sourceFactRefs: [...record.sourceFactRefs],
+    ...(record.resolvedBy ? { resolvedBy: { ...record.resolvedBy } } : {}),
+  }));
+  const rejectedDecisions: Array<{ value: unknown; reason: string }> = [];
+  let acceptedDecisionCount = 0;
+
+  for (const value of params.result.assumptionDecisions ?? []) {
+    const validation = validateAssumptionDecisionCommand(value, records, context);
+    if (!validation.accepted) {
+      rejectedDecisions.push({ value, reason: validation.reason });
+      continue;
+    }
+    const applied = applyAssumptionDecision({ records, validation, context });
+    records = applied.records;
+    acceptedDecisionCount += 1;
+  }
+
+  const correctionValues = params.result.correctionEnvelopes ?? [];
+  const validCorrections = correctionValues.filter(isCorrectionEnvelope);
+  const rejectedCorrections = correctionValues
+    .filter((value) => !isCorrectionEnvelope(value))
+    .map((value) => ({ value, reason: 'invalid-correction-envelope' }));
+  const correctionResult = applyCorrectionEnvelopes({
+    state: params.base.state,
+    records,
+    envelopes: validCorrections,
+    context,
   });
+  records = correctionResult.records;
+  rejectedCorrections.push(...correctionResult.rejected.map((item) => ({
+    value: item.envelope,
+    reason: item.reason,
+  })));
+  const state = correctionResult.previewStale
+    ? { ...correctionResult.state, sourceTurns: [...params.base.state.sourceTurns] }
+    : params.base.state;
+  const diagnostics: WeeklyPlanningLifecycleDiagnostics = {
+    acceptedDecisionCount,
+    rejectedDecisions,
+    acceptedCorrectionCount: correctionResult.accepted.length,
+    rejectedCorrections,
+  };
+
+  return {
+    ...params.base,
+    state,
+    assumptionProposalState: createAssumptionProposalSessionState(records),
+    lifecycleDiagnostics: diagnostics,
+  };
+}
+
+async function finalizeBehaviorAwareOutput(params: {
+  base: WeeklyPlanningIntakePipelineOutput & { lifecycleDiagnostics?: WeeklyPlanningLifecycleDiagnostics };
+  input: WeeklyPlanningIntakePipelineInput;
+  options: WeeklyPlanningBehaviorAwarePipelineOptions;
+}): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+  let currentBase = applyNonExamDraftAuthorization({ base: params.base, userText: params.input.userText });
   let behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
 
   if (!currentBase.state.examPrepScope
     && currentBase.state.draftGenerationIntent !== 'user_authorized'
     && behavior.actions.some((action) => action.kind === 'suggest_draft_generation')) {
-    currentBase = {
-      ...currentBase,
-      state: markAssistantSuggested(currentBase.state),
-    };
+    currentBase = { ...currentBase, state: markAssistantSuggested(currentBase.state) };
     behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
   }
 
@@ -197,17 +337,18 @@ async function finalizeBehaviorAwareOutput(params: {
     behaviorDialogueInput({ base: currentBase, behavior, actions, input: params.input }),
   );
 
-  if (currentBase.state.examPrepScope) {
-    return { ...currentBase, behavior, behaviorDialogue, feasibility };
-  }
-
-  return {
+  const common = {
     ...currentBase,
-    draftCandidates: behavior.draftRun?.candidates ?? null,
-    diagnostics: behavior.draftRun?.diagnostics ?? null,
     behavior,
     behaviorDialogue,
     feasibility,
+    ...(params.base.lifecycleDiagnostics ? { lifecycleDiagnostics: params.base.lifecycleDiagnostics } : {}),
+  };
+  if (currentBase.state.examPrepScope) return common;
+  return {
+    ...common,
+    draftCandidates: behavior.draftRun?.candidates ?? null,
+    diagnostics: behavior.draftRun?.diagnostics ?? null,
   };
 }
 
@@ -223,8 +364,29 @@ export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
   input: WeeklyPlanningIntakePipelineWithInterpreterInput,
   options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
-  const base = await runWeeklyPlanningIntakePipelineWithInterpreter(input);
-  return finalizeBehaviorAwareOutput({ base, input, options });
+  let capturedResult: WeeklyPlanningInterpreterResult | undefined;
+  const conversationId = options.conversationId ?? 'weekly-planning-session';
+  const lifecycleInterpreter: WeeklyPlanningIntakeInterpreter | undefined = input.interpreter
+    ? createLifecycleAwareWeeklyPlanningInterpreter({
+        interpreter: {
+          async interpretUserTurn(params) {
+            const result = await input.interpreter!.interpretUserTurn(params);
+            capturedResult = result;
+            return result;
+          },
+        },
+        conversationId,
+        currentStateRevision: input.previousState?.sourceTurns.length ?? 0,
+        pendingAssumptions: pendingAssumptionSummaries(input),
+        correctionTargets: correctionTargetSummaries(input),
+      })
+    : undefined;
+  const base = await runWeeklyPlanningIntakePipelineWithInterpreter({
+    ...input,
+    ...(lifecycleInterpreter ? { interpreter: lifecycleInterpreter } : {}),
+  });
+  const lifecycleBase = applyLifecycleResult({ base, input, options, result: capturedResult });
+  return finalizeBehaviorAwareOutput({ base: lifecycleBase, input, options });
 }
 
 export function hasAllowedDialogueAction(
