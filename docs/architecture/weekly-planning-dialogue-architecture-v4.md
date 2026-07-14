@@ -49,7 +49,7 @@ userText + structured context
 ### 3.1 AI interpreter
 
 - current user turn、直近会話、structured stateを読む。
-- typed candidateを返す。
+- typed candidate、assumption decision、correction envelopeを返す。
 - state、scheduler、repositoryを直接変更しない。
 
 ### 3.2 validator / adapter / reducer
@@ -57,6 +57,7 @@ userText + structured context
 - candidate shape、enum、値域、source、revision、参照可能性を検証する。
 - accepted candidateだけをcanonical stateへ反映する。
 - rejected candidate、clarification、pending proposalをaccepted factと分離する。
+- proposal historyを削除せず、decision/correctionの`resolvedBy`を保持する。
 
 ### 3.3 deterministic behavior core
 
@@ -73,12 +74,14 @@ userText + structured context
 - `PlanningHypothesisSnapshot`
 - `AllowedDialogueAction`
 - `PreviewGateResult`
+- `FeasibilitySummary`
 
 ### 3.4 AI dialogue planner
 
 - accepted factsの表示用要約、PlanningHypothesisSnapshotの表示可能部分、AllowedDialogueActions、直近会話だけを受け取る。
 - 通常1〜2件、最大3件のactionを選ぶ。
 - 許可されていないaction、option、proposal、deadline、時刻、preview結果を作らない。
+- feasibility値を再計算せず、deterministic option IDだけを提示する。
 
 ### 3.5 response validator / fallback
 
@@ -116,6 +119,22 @@ validated availability basis exists
 
 `hypothesis_ready`、`proposal_ready`、`assistant_suggested`ではschedulerを呼ばない。
 
+### 3.7 approval boundary
+
+- preview metadata、state revision、user、assumption dependencyを保存直前に再検証する。
+- stale previewとpending-assumption previewを別categoryで拒否する。
+- item ledgerのidempotency keyは`userId + sourceDraftBlockId`とする。
+- partial failure時は成功itemを再保存せず、失敗itemだけを再試行する。
+- existing exam draftはbehavior metadataを要求しないcompatibility経路を維持する。
+
+### 3.8 dialogue request orchestrator
+
+- 一conversation一active requestとする。
+- envelopeはconversationId、turnId、requestId、inputStateRevisionを持つ。
+- request、turn、conversation、revision、cancel、reset、unmountの不一致をstale resultとして破棄する。
+- openingは最大1 call、通常turnは最大2 call。
+- IME中は送信せず、Enterは改行、Ctrl/Meta+Enterを送信とする。
+
 ## 4. DraftGenerationIntent
 
 ```ts
@@ -126,12 +145,22 @@ type DraftGenerationIntent =
 ```
 
 - 漠然とした学習goalは`not_requested`。
-- assistantの候補提示だけではpreview不可。
+- assistantの候補提示で`assistant_suggested`へ遷移してもpreview不可。
 - `user_authorized`はtyped authorization command → closed validator → deterministic reducerを通す。
 - authorization revisionとcurrent state revisionが一致する場合だけpreview gateで有効とする。
 - AI dialogue responseだけでintentを変更しない。
 
-## 5. Readiness
+## 5. Assumption decision / correction
+
+- accept / reject / modifyは現在conversation、current revision、status=pendingのproposalだけを対象とする。
+- acceptはaccepted fact refを`resolvedBy`へ記録する。
+- rejectは履歴を削除しない。
+- modifyは旧recordをsupersededにし、新recordをpendingで作る。
+- correction targetはtask、planning range、constraint、priority、accepted fact、proposalのdiscriminated unionとする。
+- correction envelope内部はatomic、複数envelopeは決定的順序で独立評価する。
+- accepted correctionは関連pending proposalをsupersededまたはexpiredにし、previewをstale化する。
+
+## 6. Readiness
 
 minimum resolved countは補助情報であり、単独でstageを決定しない。
 
@@ -147,7 +176,7 @@ non-exam previewでは少なくとも次をblocking判定へ参加させる。
 
 `fixedEventsDeclaredNone`だけではavailability basisにならない。schedule sourceは実データの存在を再検証する。
 
-## 6. Behavior derivation
+## 7. Behavior / relative constraint / feasibility
 
 ### LifeActivityAnchor
 
@@ -161,9 +190,21 @@ non-exam previewでは少なくとも次をblocking判定へ参加させる。
 
 既存available rangeへ`after_commute`、`before_sleep`、`before_meal`、`after_meal`、`long_contiguous_window`等を付加する。available minutesは変更しない。
 
-現行vertical sliceでは、明示された帰宅時刻、studyAvailableStart、朝回避をscheduler入力の下限として狭める。behavior情報によって時間を増やさない。
+### RelativeConstraint
 
-## 7. Deadline
+- public、current revision、一意なanchorだけを参照する。
+- before / after / during-bufferをabsolute intervalへdeterministicに解決する。
+- private、stale、ambiguous、cyclic、out-of-day参照は適用しない。
+- hard busy intervalとの重複はdiagnosticとして返し、部分適用しない。
+
+### FeasibilitySummary
+
+- `requiredMinutes = scheduledMinutes + unscheduledMinutes`を維持する。
+- feasible / partially feasible / infeasible / unknownを区別する。
+- prioritize / split / defer optionはdeterministic IDで発行する。
+- AIは値を再計算しない。
+
+## 8. Deadline
 
 「テスト」「試験」または曜日が存在するだけではdeadlineを解決しない。
 
@@ -173,30 +214,32 @@ non-exam previewでは少なくとも次をblocking判定へ参加させる。
 
 のいずれかを必要とする。別予定の曜日をtask deadlineへ流用しない。
 
-## 8. Preview metadata
+## 9. Preview metadata
 
 behavior-aware previewでは次を追跡可能にする。
 
 - stateRevision
 - sourceFactRefs
 - usedAssumptionProposalRefs
+- acceptedAssumptionDependencies
 - taskRef
 - opportunityTags
 - deterministic reasoning key
+- approval eligibility
 - compatibility adapter metadata
 
 metadataはpreview blockと未承認draft blockのsidecarとして保持し、内部コードをユーザーへ表示しない。個別削除はstable keyでcandidate、preview block、metadataを同時に除去する。
 
-## 9. Fallbackと互換経路
+## 10. Fallbackと互換経路
 
-- exam flowは移行期間中、既存decision / renderer / scheduler contractを維持してよい。
+- exam flowは移行期間中、既存decision / renderer / scheduler contractを維持する。
 - non-exam taskを既存exam-oriented scheduler contractへ渡す場合はcompatibility adapterで明示する。
 - legacy fallbackはrules mode専用の暫定経路とし、新しいsemantic patternを追加し続けない。
-- scheduler全面書換え、save/approval再設計、profile永続化は個別taskで扱う。
+- evaluation fixtureはprompt、token、API key等をredactする。
 
-## 10. 現在の実装状態
+## 11. 現在の実装状態
 
-2026-07-14時点で次は実装・自動検証済みである。
+次は既存branchで自動検証済みである。
 
 - Gate P4
 - DA0a assumption proposal foundation
@@ -211,29 +254,24 @@ metadataはpreview blockと未承認draft blockのsidecarとして保持し、�
 - full tests 825件
 - TypeScript / build / diff check
 
-実ブラウザroleplayは自動ブラウザ環境の中断により未完了である。
+次は`feat/weekly-planning-dialogue-stack-completion`へproduction実装済みで、ローカル検証待ちである。
 
-## 11. Open queue
+- DA1b assumption decision and correction contract
+- Draft approval idempotency
+- DA2 request orchestration and UI policy
+- DA3a relative constraint domain
+- DA3b feasibility consultation
+- DA3c conversation evaluation
 
-実行単位の正は`docs/ai/tasks/`直下の未完了taskだけとする。
+## 12. Open queue
 
-1. DA1b assumption decision and correction contract
-2. Draft approval idempotency
-3. DA2 state-grounded dialogue orchestrator
-4. DA3a relative constraint domain
-5. DA3b feasibility consultation
-6. DA3c conversation evaluation
+実装taskは残っていない。`docs/ai/tasks/`直下の次のverification-only taskだけを実行する。
 
-次の補強は上記taskへ統合して扱う。
+1. `20260714-weekly-planning-dialogue-stack-verification.md`
 
-- `assistant_suggested`のcanonical transition
-- assumption accept / reject / modify lifecycle
-- opportunity annotationのplacement score活用
-- authorization commandの共通command registryへの統合
-- stale / pending preview approval guard
-- manual browser roleplay
+検証成功後にverification taskをclosedへ移し、本章をfully verifiedへ更新する。
 
-## 12. 非目標
+## 13. 非目標
 
 - scheduler全面書換え
 - UI/CSS全面変更
@@ -243,7 +281,7 @@ metadataはpreview blockと未承認draft blockのsidecarとして保持し、�
 - ML/LLMによるstate直接更新
 - 一度の発話からrecurring profileを作ること
 
-## 13. テスト契約
+## 14. テスト契約
 
 自然文の完全一致ではなく、state transition、action、refs、revision、gate、metadata、fallbackをstrictに検証する。
 
@@ -259,6 +297,9 @@ metadataはpreview blockと未承認draft blockのsidecarとして保持し、�
 - scope isolation
 - mutation prohibition
 - conflict handling
+- correction order independence
+- approval duplicate suppression
+- relative constraint bounds
 - preview stable identity / individual deletion
 - provider failure fallback
 
