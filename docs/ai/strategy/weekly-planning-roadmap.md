@@ -8,9 +8,9 @@ Status: **canonical / active**
 - Test contract: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
 - Documentation index: [weekly-planning-docs-index.md](../weekly-planning-docs-index.md)
 
-## 1. Current status
+## 1. Verified baseline
 
-次は実装・自動検証済みである。
+次はローカル自動検証済みである。
 
 | item | status |
 | --- | --- |
@@ -25,7 +25,7 @@ Status: **canonical / active**
 | actual entrypoint connection | complete |
 | test architecture refactor | complete |
 
-検証結果:
+Baseline validation:
 
 - targeted tests: 8 files / 38 tests passed
 - full tests: 62 files / 825 tests passed
@@ -34,49 +34,44 @@ Status: **canonical / active**
 - diff check: passed
 - browser roleplay: automation environment interruptionにより未完了
 
-## 2. Open implementation queue
+## 2. Implemented stack awaiting local verification
 
-`docs/ai/tasks/`直下の未完了taskだけが実行queueの正である。
+`feat/weekly-planning-dialogue-stack-completion`へ次を実装した。
 
-| order | task | dependency | main purpose |
-| --- | --- | --- | --- |
-| 1 | DA1b assumption decision and correction contract | DA1 | accept / reject / modify、correctionとproposal lifecycle |
-| 2 | Draft approval idempotency | DA1b | stale/pending guard、item ledger、duplicate save防止 |
-| 3 | DA2 state-grounded dialogue orchestrator | approval | request ownership、duplicate submit、cancel/reset/IME |
-| 4 | DA3a relative constraint domain | DA2 | relative range / constraintのtyped domain |
-| 5 | DA3b feasibility consultation | DA3a | deterministic feasibilityと修正option |
-| 6 | DA3c conversation evaluation | DA3b | roleplay/rubric/evaluation運用 |
+| item | implementation status |
+| --- | --- |
+| DA1b assumption decision and correction | implemented |
+| Draft approval idempotency | implemented |
+| DA2 request orchestrator and UI policy | implemented |
+| DA3a relative constraint domain | implemented |
+| DA3b feasibility consultation | implemented |
+| DA3c conversation evaluation | implemented |
 
-一度に一件だけopenし、完了後はtask直下から`closed`へ移すか、統合completion recordへ置き換える。
+含まれる主な契約:
 
-## 3. Next-task integration notes
+- assumption accept / reject / modifyとproposal audit history
+- correctionのatomic apply、決定的順序、proposal resolution
+- canonical `assistant_suggested`
+- common authorization command type
+- save-boundary stale/pending guard
+- item ledger、partial retry、duplicate save抑止
+- request / turn / revision ownership
+- IME、multiline、focus、Tab、retry policy
+- relative anchor validationとabsolute interval解決
+- deterministic feasibility値とoption ID
+- requirement matrix、redaction、metrics、property tests
 
-### DA1bへ統合するもの
+## 3. Current queue
 
-- `assistant_suggested`のcanonical transition
-- assumption accept / reject / modify
-- correction適用と関連proposalのsupersede / expire
-- authorization commandの共通command registry統合
-- preview dependency再評価
+production implementation taskは残っていない。`docs/ai/tasks/`直下の次の検証taskだけがcurrent queueである。
 
-### Approval taskへ統合するもの
+1. `20260714-weekly-planning-dialogue-stack-verification.md`
 
-- stale preview approval rejection
-- pending-assumption preview approval rejection
-- userId + sourceDraftBlockId idempotency
-- partial failure / retry / duplicate save guard
-
-### DA2以降へ統合するもの
-
-- active request / requestId / turnId / stateRevision ownership
-- double submit、button + keyboard重複、cancel、reset、unmount
-- manual browser roleplay
-- opportunity annotationのplacement score活用
-- feasibility説明と選択肢
+検証ではコードを変更せず、targeted tests、TypeScript、build、full tests、diff check、browser/manual scenarioを実行する。失敗は原因と再現情報だけを報告し、修正は別のGitHub-side commitとして行う。
 
 ## 4. Long-term direction
 
-次はtask化前に再調査する。旧phase名や旧backlog文書から直接実装を開始しない。
+次は新しいtaskを切る前に実コードを再調査する。
 
 - generic progress unit（page、word、problem、report stage等）
 - recurring life profileと明示同意つき永続化
@@ -85,6 +80,7 @@ Status: **canonical / active**
 - scheduler二系統の整理
 - legacy fallback縮小
 - dead message state / unreachable branchの整理
+- opportunity annotationのplacement score高度化
 
 ## 5. Safety boundaries
 
@@ -92,22 +88,15 @@ Status: **canonical / active**
 - user textはtyped candidateとvalidatorを通す。
 - previewはexplicit authorizationとreadiness gate通過後だけ生成する。
 - previewはexplicit UI approvalまで保存しない。
-- behavior annotationでavailabilityを増やさない。
+- behavior annotationとrelative constraintでavailabilityを増やさない。
 - existing plan、timetable、buffer、hard busy intervalを上書きしない。
 - current-week factをrecurring profileへ無断昇格しない。
 - stale async resultをstateへ適用しない。
+- stale/pending preview approvalでrepository writeを開始しない。
 
 ## 6. Task operation
 
-新しいtask mdには最低限次を含める。
-
-- Status / Priority / Requirement IDs
-- Dependencies / Entry / Exit
-- current production path
-- exact type / state transition / validator
-- failure / stale / persistence / security
-- non-goals
-- acceptance criteria
-- targeted test / full test / build command
-
-実装完了後は、task rootへ完了済みmdを残さない。必要な記録は`docs/ai/tasks/closed/`のcompletion recordとgit historyへ集約する。
+- task rootには未完了taskだけを置く。
+- 実装結果は`docs/ai/tasks/closed/`のcompletion recordへ統合する。
+- 検証前にfully completeと記載しない。
+- 新taskはarchitecture、roadmap、roleplay requirement matrixと同期する。
