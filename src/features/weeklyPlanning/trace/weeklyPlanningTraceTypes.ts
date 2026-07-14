@@ -130,6 +130,7 @@ export interface WeeklyPlanningTraceRepository {
     entries: WeeklyPlanningTraceEntry[];
   }): Promise<void>;
   listSessions(userId: string): Promise<WeeklyPlanningTraceSession[]>;
+  listSessionsForAdmin(): Promise<WeeklyPlanningTraceSession[]>;
   getSession(userId: string, sessionId: string): Promise<WeeklyPlanningTraceSession | null>;
   listEntries(userId: string, sessionId: string): Promise<WeeklyPlanningTraceEntry[]>;
 }
