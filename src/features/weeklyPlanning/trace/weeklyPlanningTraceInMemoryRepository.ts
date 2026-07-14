@@ -16,6 +16,12 @@ function cloneEntry(entry: WeeklyPlanningTraceEntry): WeeklyPlanningTraceEntry {
   return { ...entry, state: structuredClone(entry.state) };
 }
 
+function sortedSessions(sessions: Iterable<WeeklyPlanningTraceSession>): WeeklyPlanningTraceSession[] {
+  return Array.from(sessions)
+    .map(cloneSession)
+    .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+}
+
 export function createInMemoryWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepository {
   const sessions = new Map<string, WeeklyPlanningTraceSession>();
   const entries = new Map<string, WeeklyPlanningTraceEntry>();
@@ -40,10 +46,13 @@ export function createInMemoryWeeklyPlanningTraceRepository(): WeeklyPlanningTra
     },
 
     async listSessions(userId) {
-      return Array.from(sessions.values())
-        .filter((session) => session.userId === userId)
-        .map(cloneSession)
-        .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+      return sortedSessions(
+        Array.from(sessions.values()).filter((session) => session.userId === userId),
+      );
+    },
+
+    async listSessionsForAdmin() {
+      return sortedSessions(sessions.values());
     },
 
     async getSession(userId, sessionId) {
