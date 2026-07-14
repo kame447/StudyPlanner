@@ -5,10 +5,15 @@ import {
   type BehaviorAwareDialoguePlannerResult,
 } from '../dialogue/weeklyPlanningBehaviorAwareDialoguePlanner';
 import {
-  runBehaviorAwarePlanningPreviewBridge,
-  type BehaviorAwarePlanningBridgeResult,
+  runHardenedBehaviorAwarePlanningPreviewBridge,
+} from '../planning/weeklyPlanningBehaviorAwarePreviewBridgeHardened';
+import type {
+  BehaviorAwarePlanningBridgeResult,
 } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
+import {
+  applyDraftGenerationAuthorizationTurn,
+} from '../planning/weeklyPlanningDraftGenerationAuthorization';
 import {
   runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
@@ -56,6 +61,7 @@ function planningPeriodLabel(
 function behaviorDialogueInput(params: {
   base: WeeklyPlanningIntakePipelineOutput;
   behavior: BehaviorAwarePlanningBridgeResult;
+  input: WeeklyPlanningIntakePipelineInput;
 }): BehaviorAwareDialoguePlannerInput {
   return {
     snapshot: params.behavior.snapshot,
@@ -65,6 +71,7 @@ function behaviorDialogueInput(params: {
       planningPeriodLabel: planningPeriodLabel(params.base),
       constraintSummary: constraintSummary(params.base),
     },
+    recentConversation: params.input.recentTurns?.slice(-6),
     previewAllowed: params.behavior.gate.allowed,
   };
 }
@@ -79,13 +86,34 @@ function selectDialoguePlanner(
   return createDeterministicBehaviorAwareDialoguePlanner();
 }
 
+function applyNonExamDraftAuthorization(params: {
+  base: WeeklyPlanningIntakePipelineOutput;
+  userText: string;
+}): WeeklyPlanningIntakePipelineOutput {
+  if (params.base.state.examPrepScope) {
+    return params.base;
+  }
+
+  return {
+    ...params.base,
+    state: applyDraftGenerationAuthorizationTurn({
+      state: params.base.state,
+      userText: params.userText,
+    }),
+  };
+}
+
 async function finalizeBehaviorAwareOutput(params: {
   base: WeeklyPlanningIntakePipelineOutput;
   input: WeeklyPlanningIntakePipelineInput;
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
 }): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
-  const behavior = runBehaviorAwarePlanningPreviewBridge({
-    state: params.base.state,
+  const authorizedBase = applyNonExamDraftAuthorization({
+    base: params.base,
+    userText: params.input.userText,
+  });
+  const behavior = runHardenedBehaviorAwarePlanningPreviewBridge({
+    state: authorizedBase.state,
     currentUserText: params.input.userText,
     conversationId: params.options.conversationId,
     planningStartDate: params.input.planningStartDate,
@@ -97,20 +125,20 @@ async function finalizeBehaviorAwareOutput(params: {
     existingPlanBufferMinutes: params.input.existingPlanBufferMinutes,
   });
   const behaviorDialogue = await selectDialoguePlanner(params.options).plan(
-    behaviorDialogueInput({ base: params.base, behavior }),
+    behaviorDialogueInput({ base: authorizedBase, behavior, input: params.input }),
   );
 
-  if (params.base.state.examPrepScope) {
+  if (authorizedBase.state.examPrepScope) {
     // Exam flow remains on the compatibility path until its policy is migrated.
     return {
-      ...params.base,
+      ...authorizedBase,
       behavior,
       behaviorDialogue,
     };
   }
 
   return {
-    ...params.base,
+    ...authorizedBase,
     draftCandidates: behavior.draftRun?.candidates ?? null,
     diagnostics: behavior.draftRun?.diagnostics ?? null,
     behavior,
