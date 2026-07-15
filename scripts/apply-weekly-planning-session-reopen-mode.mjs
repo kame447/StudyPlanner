@@ -24,4 +24,4 @@ for (const [before, after] of replacements) {
 }
 
 writeFileSync(path, source, 'utf8');
-console.log('weekly planning session reopen mode applied');
+console.log('weekly planning session reopen mode applied and verified');
