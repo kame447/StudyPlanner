@@ -17,14 +17,14 @@ jobs:
         with:
           ref: agent/weekly-planning-trace-full-implementation
           fetch-depth: 0
-      - name: Locate preview and approval correlation
+      - name: Locate pipeline call sites
         shell: bash
         run: |
           grep -R -n --exclude-dir=node_modules --exclude='*.map' \
-            -E 'previewMetadata|behavior-preview:|recordWeeklyPlanningApprovalTrace|recordWeeklyPlanningDraftPromotion|recordWeeklyPlanningRenderedAssistantTurn' \
-            src/features/weeklyPlanning > .agent-trace-correlation.txt || true
+            -E 'runWeeklyPlanningBehaviorAwarePipeline(WithInterpreter)?\(' \
+            src > .agent-trace-correlation.txt || true
           git config user.name "OpenAI Agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .agent-trace-correlation.txt
-          git commit -m "feat: 週間計画trace相関結果を記録"
+          git commit -m "feat: 週間計画pipeline呼出結果を記録"
           git push origin HEAD:agent/weekly-planning-trace-full-implementation
