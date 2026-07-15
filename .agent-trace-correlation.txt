@@ -1,0 +1,34 @@
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts:12:  recordWeeklyPlanningApprovalTrace,
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts:13:  recordWeeklyPlanningDraftPromotion,
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts:178:    recordWeeklyPlanningApprovalTrace({
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts:247:    recordWeeklyPlanningDraftPromotion({
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts:252:          previewMetadata: {
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts:264:    recordWeeklyPlanningApprovalTrace({
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:529:    const previewId = `behavior-preview:${stateRevision}`;
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:684:export function recordWeeklyPlanningRenderedAssistantTurn(params: {
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:729:export function recordWeeklyPlanningDraftPromotion(params: {
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:734:  const metadata = params.blocks[0]?.behaviorMetadata?.previewMetadata;
+src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:801:export function recordWeeklyPlanningApprovalTrace(params: {
+src/features/weeklyPlanning/types.ts:31:  previewMetadata?: WeeklyPreviewMetadata;
+src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts:6:import { recordWeeklyPlanningRenderedAssistantTurn } from '../trace/weeklyPlanningTraceRuntime';
+src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts:268:  recordWeeklyPlanningRenderedAssistantTurn({
+src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts:381:    previewId: behavior.draftRun ? `behavior-preview:${behavior.snapshot.stateRevision}` : undefined,
+src/features/weeklyPlanning/planning/weeklyPlanningApprovalAssumption.test.ts:53:      previewMetadata: {
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:2:import { recordWeeklyPlanningApprovalTrace } from '../trace/weeklyPlanningTraceRuntime';
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:84:  const first = params.blocks[0].behaviorMetadata?.previewMetadata;
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:85:  const metadataCount = params.blocks.filter((block) => Boolean(block.behaviorMetadata?.previewMetadata)).length;
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:98:    const metadata = block.behaviorMetadata?.previewMetadata;
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:268:  recordWeeklyPlanningApprovalTrace({
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:279:    recordWeeklyPlanningApprovalTrace({
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:352:  recordWeeklyPlanningApprovalTrace({
+src/features/weeklyPlanning/planning/weeklyPlanningApprovalRuntime.test.ts:35:      previewMetadata: {
+src/features/weeklyPlanning/planning/weeklyPlanningApprovalRuntime.test.ts:36:        previewId: `behavior-preview:${conversationId}:${stateRevision}`,
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.test.ts:22:function block(id: string, previewMetadata = metadata): WeeklyPlanDraftBlock {
+src/features/weeklyPlanning/planning/weeklyPlanningApproval.test.ts:48:      previewMetadata,
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:7:import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:45:  const previewMetadata = userId
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:47:        previewId: `behavior-preview:${metadata.stateRevision}`,
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:69:    ...(previewMetadata ? { previewMetadata } : {}),
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:126:        previewMetadata: {
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:127:          previewId: `behavior-preview:${block.behaviorMetadata.stateRevision}`,
+src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:202:  recordWeeklyPlanningDraftPromotion({ userId, blocks });
