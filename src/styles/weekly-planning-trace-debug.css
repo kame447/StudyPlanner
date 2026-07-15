@@ -16,7 +16,7 @@
 }
 
 .weekly-planning-trace-debug {
-  width: min(1440px, 100%);
+  width: min(1120px, 100%);
 }
 
 .weekly-planning-trace-debug .button-row,
@@ -27,37 +27,91 @@
   gap: 12px;
 }
 
-.weekly-planning-trace-debug-grid {
-  display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  gap: 16px;
-}
-
-.weekly-planning-trace-session-list,
+.weekly-planning-trace-stream,
 .weekly-planning-trace-entry-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
-.trace-session-card {
+.weekly-planning-trace-stream-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.weekly-planning-trace-stream-heading h2 {
+  margin: 0;
+}
+
+.weekly-planning-trace-stream-heading span {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.trace-session-panel {
   display: grid;
-  gap: 4px;
+  gap: 14px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.trace-session-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   width: 100%;
-  padding: 12px;
+  padding: 18px 20px;
   color: inherit;
   text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-strong);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.trace-session-card.active {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.trace-session-summary:hover {
+  transform: none;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
-.trace-session-card code {
+.trace-session-summary-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trace-session-summary-main span,
+.trace-session-summary-main small,
+.trace-session-summary-main code {
   color: var(--text-muted);
+}
+
+.trace-session-summary-main code {
+  overflow-wrap: anywhere;
+}
+
+.trace-session-detail {
+  display: grid;
+  gap: 14px;
+  padding: 0 20px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.trace-session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.trace-session-actions > span {
+  color: var(--text-muted);
+  font-size: 0.84rem;
   overflow-wrap: anywhere;
 }
 
@@ -101,7 +155,20 @@
     flex: 1 1 0;
   }
 
-  .weekly-planning-trace-debug-grid {
-    grid-template-columns: 1fr;
+  .trace-session-summary,
+  .trace-session-detail {
+    padding-inline: 14px;
+  }
+
+  .trace-session-actions {
+    align-items: stretch;
+  }
+
+  .trace-session-actions .primary-button {
+    width: 100%;
+  }
+
+  .trace-entry header {
+    display: grid;
   }
 }
