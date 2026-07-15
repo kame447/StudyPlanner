@@ -51,7 +51,19 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Weekly planning tests
-        run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx
+        id: tests
+        continue-on-error: true
+        run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx > test-output.log 2>&1
+      - name: Upload test failure log
+        if: steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-test-output
+          path: test-output.log
+          retention-days: 1
+      - name: Stop after test failure
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
       - name: Build
         run: npm run build
       - name: Diff check
