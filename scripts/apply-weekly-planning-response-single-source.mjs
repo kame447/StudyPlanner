@@ -24,3 +24,4 @@ for (const [before, after] of replacements) {
 }
 
 writeFileSync(path, source, 'utf8');
+console.log('weekly planning response single source applied');
