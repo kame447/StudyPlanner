@@ -1,0 +1,22 @@
+name: Agent weekly planning regression
+
+on:
+  push:
+    branches:
+      - agent/fix-weekly-planning-dialogue-path
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts
+      - run: npm run build
