@@ -6,12 +6,14 @@ on:
       - agent/weekly-planning-conversation-hardening
     paths:
       - scripts/apply-weekly-planning-conversation-hardening.mjs
+      - scripts/fix-weekly-planning-apply-script.mjs
       - .github/workflows/apply-weekly-planning-conversation-hardening.yml
   pull_request:
     branches:
       - main
     paths:
       - scripts/apply-weekly-planning-conversation-hardening.mjs
+      - scripts/fix-weekly-planning-apply-script.mjs
       - .github/workflows/apply-weekly-planning-conversation-hardening.yml
 
 permissions:
@@ -27,6 +29,8 @@ jobs:
           ref: agent/weekly-planning-conversation-hardening
           fetch-depth: 1
           show-progress: false
+      - name: Fix generated template literals
+        run: node scripts/fix-weekly-planning-apply-script.mjs
       - name: Apply scoped changes
         id: apply
         continue-on-error: true
@@ -75,7 +79,7 @@ jobs:
           );
           NODE
       - name: Remove temporary automation
-        run: rm scripts/apply-weekly-planning-conversation-hardening.mjs .github/workflows/apply-weekly-planning-conversation-hardening.yml
+        run: rm scripts/apply-weekly-planning-conversation-hardening.mjs scripts/fix-weekly-planning-apply-script.mjs .github/workflows/apply-weekly-planning-conversation-hardening.yml
       - name: Commit verified implementation
         run: |
           git config user.name github-actions[bot]
