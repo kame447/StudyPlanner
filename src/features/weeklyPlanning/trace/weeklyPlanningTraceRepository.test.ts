@@ -85,6 +85,35 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
       .toEqual(['session-2', 'session-1']);
   });
 
+  it('archive後もsessionとentryを保持し、後続upsertでarchive状態を失わない', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    const archivedAt = '2026-07-15T00:05:00.000Z';
+
+    await repository.appendEntries({ session: SESSION, entries: ENTRIES });
+    await repository.archiveSessionForAdmin(SESSION.id, archivedAt);
+    await repository.upsertSession({
+      ...SESSION,
+      lastActivityAt: '2026-07-15T00:06:00.000Z',
+      entryCount: 3,
+    });
+
+    const archivedSession = (await repository.listSessionsForAdmin())
+      .find((session) => session.id === SESSION.id);
+
+    expect(archivedSession?.archivedAt).toBe(archivedAt);
+    expect(archivedSession?.entryCount).toBe(3);
+    expect(await repository.listEntries(SESSION.userId, SESSION.id)).toHaveLength(2);
+  });
+
+  it('存在しないsessionのarchiveを拒否する', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+
+    await expect(repository.archiveSessionForAdmin(
+      'missing-session',
+      '2026-07-15T00:05:00.000Z',
+    )).rejects.toThrow('trace session not found');
+  });
+
   it('同一内容のretryは冪等で、異なる内容の上書きを拒否する', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
 
