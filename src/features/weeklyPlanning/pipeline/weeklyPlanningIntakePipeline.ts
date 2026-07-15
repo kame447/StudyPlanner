@@ -29,6 +29,7 @@ import {
   toPlanningRangeFromSetPlanningRangeCommand,
 } from '../intake/weeklyPlanningCommandAdapter';
 import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
+import { parseRequestClarificationCommand } from '../intake/weeklyPlanningClarificationParsing';
 import type {
   CandidateValidationResult,
   ConstraintSourceAvailability,
@@ -293,21 +294,39 @@ function buildPipelineOutput(params: {
   return output;
 }
 
+function deterministicClarificationRequest(
+  input: WeeklyPlanningIntakePipelineInput,
+  previousState: PlanningIntakeState,
+) {
+  return parseRequestClarificationCommand(input.userText, {
+    hasActiveQuestion: createMissingQuestionPlan(previousState).length > 0,
+  });
+}
+
+function applyClarificationDecision(
+  output: WeeklyPlanningIntakePipelineOutput,
+  request: ReturnType<typeof parseRequestClarificationCommand>,
+): WeeklyPlanningIntakePipelineOutput {
+  if (!request) return output;
+  output.decision = createWeeklyPlanningClarificationDecision({ state: output.state, ref: request.ref });
+  return output;
+}
+
 export function runWeeklyPlanningIntakePipeline(
   input: WeeklyPlanningIntakePipelineInput,
 ): WeeklyPlanningIntakePipelineOutput {
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
+  const clarificationRequest = deterministicClarificationRequest(input, previousState);
   const state = applyWeeklyPlanningUserTurn(previousState, input.userText, {
     selectedDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
     currentDateTime: resolveCurrentDateTime(input),
   });
-
-  return buildPipelineOutput({
+  return applyClarificationDecision(buildPipelineOutput({
     input,
     state,
     assumptionProposalState: initialAssumptionProposalState(input),
-  });
+  }), clarificationRequest);
 }
 
 function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
@@ -437,6 +456,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   }
 
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
+  const deterministicClarification = deterministicClarificationRequest(input, previousState);
   const context = createInterpreterContext(input);
   const preparedState = applyDeterministicWeeklyPlanningUserTurn(
     previousState,
@@ -466,11 +486,11 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       input.userText,
       context,
     );
-    return buildPipelineOutput({
+    return applyClarificationDecision(buildPipelineOutput({
       input,
       state: fallbackTurn.state,
       assumptionProposalState: proposalState,
-    });
+    }), deterministicClarification);
   }
 
   const proposalResult = input.assumptionProposalContext && proposalState
@@ -491,7 +511,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   const interpreterDiagnostics = validateInterpretedCandidates(resolvedCandidates, stateSummary);
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
-  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];
+  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0] ?? deterministicClarification;
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
     ...interpreterDiagnostics.acceptedWithConfirmation.filter((command) =>
