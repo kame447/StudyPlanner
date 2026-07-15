@@ -61,3 +61,21 @@ replaceInFile(
   `describe('weekly planning conversation persistence', () => {\n  beforeEach(() => window.localStorage.clear());`,
   `const storedValues = new Map<string, string>();\nconst localStorageMock = {\n  getItem: (key: string) => storedValues.get(key) ?? null,\n  setItem: (key: string, value: string) => { storedValues.set(key, value); },\n  removeItem: (key: string) => { storedValues.delete(key); },\n  clear: () => { storedValues.clear(); },\n  key: (index: number) => Array.from(storedValues.keys())[index] ?? null,\n  get length() { return storedValues.size; },\n} as Storage;\n\nObject.defineProperty(globalThis, 'window', {\n  configurable: true,\n  value: { localStorage: localStorageMock },\n});\n\ndescribe('weekly planning conversation persistence', () => {\n  beforeEach(() => storedValues.clear());`,
 );
+
+replaceInFile(
+  'src/components/NaturalLanguageAssistant.tsx',
+  `  function clearWeeklyPlanningDrafts() {\n    onClearWeeklyDraftBlocks?.();\n    resetWeeklyPlanningSession();\n  }\n\n`,
+  '',
+);
+
+replaceInFile(
+  'src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts',
+  '    knownFixedEventSummaries: string[];',
+  '    knownFixedEventSummaries?: string[];',
+);
+
+replaceInFile(
+  'src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts',
+  '  const summaries = input.acceptedFacts.knownFixedEventSummaries;',
+  '  const summaries = input.acceptedFacts.knownFixedEventSummaries ?? [];',
+);
