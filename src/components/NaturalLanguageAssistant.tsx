@@ -8,6 +8,7 @@ import {
 } from '../lib/date';
 import { PlanFieldsEditor } from './PlanFieldsEditor';
 import { WeeklyPlanningConversation } from './WeeklyPlanningConversation';
+import { resolveInitialAiInputMode } from './weeklyPlanningConversationMode';
 import {
   generateNaturalLanguageSuggestions,
   getPlannerAiRuntimeInfo,
@@ -256,7 +257,12 @@ export function NaturalLanguageAssistant({
   onApproveWeeklyDraftBlocks,
   embedded = false,
 }: NaturalLanguageAssistantProps) {
-  const [aiInputMode, setAiInputMode] = useState<AiInputMode>('chat');
+  const [aiInputMode, setAiInputMode] = useState<AiInputMode>(() =>
+    resolveInitialAiInputMode({
+      messages: persistedWeeklyPlanningMessages,
+      intakeState: persistedWeeklyPlanningIntakeState,
+    }),
+  );
   const [mode, setMode] = useState<NaturalLanguageMode>('add');
   const [text, setText] = useState('');
   const [error, setError] = useState('');

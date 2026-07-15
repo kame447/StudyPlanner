@@ -18,6 +18,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 - 会話履歴表示の独立component化
 - AI structured outputの任意null propertyを未指定へ正規化
 - preview昇格・承認を含む成功応答の表示元を会話履歴へ一本化
+- 保存済みsessionがある場合はmodal再表示時に週間計画画面から再開
 
 ## 必須確認項目
 
@@ -32,6 +33,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 9. `NaturalLanguageAssistant`から分離したcomponent境界が新しい循環依存を作っていないこと。
 10. 任意項目の`null`だけが除去され、必須項目の欠落や不正配列が修復されていないこと。
 11. preview昇格・承認成功時の文がstatus cardと会話履歴へ重複表示されないこと。
+12. 保存済みsessionがある場合だけ初期タブが週間計画になり、mount後の手動切替をprops更新で上書きしないこと。
 
 ## 実行済み検証
 

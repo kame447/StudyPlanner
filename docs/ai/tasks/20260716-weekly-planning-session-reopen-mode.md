@@ -1,6 +1,7 @@
 # 保存済みの週間計画sessionがある場合は会話画面を再開する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Created: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
@@ -16,8 +17,8 @@ Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 完了条件
 
-- [ ] messagesがある場合は週間計画画面から再開する
-- [ ] intake stateだけがある場合も週間計画画面から再開する
-- [ ] sessionがない場合は相談画面を維持する
-- [ ] mount後の手動タブ切替をprops更新で上書きしない
-- [ ] 純粋関数テスト、週間計画テスト、build、diff checkを通す
+- [x] messagesがある場合は週間計画画面から再開する
+- [x] intake stateだけがある場合も週間計画画面から再開する
+- [x] sessionがない場合は相談画面を維持する
+- [x] mount後の手動タブ切替をprops更新で上書きしない
+- [x] 純粋関数テスト、週間計画テスト、build、diff checkを通す
