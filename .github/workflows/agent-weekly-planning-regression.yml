@@ -14,23 +14,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Run targeted tests and build
+      - name: Fix type guard, run targeted tests and build
         shell: bash
         run: |
           set +e
           mkdir -p .agent-validation
           : > .agent-validation/weekly-planning-output.log
 
+          python <<'PY' >> .agent-validation/weekly-planning-output.log 2>&1
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts')
+          text = path.read_text(encoding='utf-8')
+          old = ".filter((text): text is string => Boolean(text));"
+          new = ".filter((text): text is Exclude<typeof text, null> => text !== null);"
+          if text.count(old) != 1:
+              raise RuntimeError('fallback profile type guard target was not found exactly once')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          patch_status=$?
+
           npm ci >> .agent-validation/weekly-planning-output.log 2>&1
           install_status=$?
           test_status=99
           build_status=99
 
-          if [ "$install_status" -eq 0 ]; then
+          if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ]; then
             npm run test:run -- \
               src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts \
               src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts \
@@ -42,6 +57,7 @@ jobs:
           fi
 
           cat > .agent-validation/weekly-planning-result.txt <<EOF
+          patch_status=$patch_status
           install_status=$install_status
           test_status=$test_status
           build_status=$build_status
@@ -49,10 +65,19 @@ jobs:
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ] \
+            && [ "$test_status" -eq 0 ] && [ "$build_status" -eq 0 ]; then
+            git add src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts
+          else
+            git checkout -- src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts
+          fi
+
           git add .agent-validation/weekly-planning-result.txt .agent-validation/weekly-planning-output.log
-          git commit -m "feat: 週間計画修正の検証結果を記録 [validation-result]"
+          git commit -m "feat: fallback型ガードを修正して検証結果を記録 [validation-result]"
           git push
 
-          if [ "$install_status" -ne 0 ] || [ "$test_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+          if [ "$patch_status" -ne 0 ] || [ "$install_status" -ne 0 ] \
+            || [ "$test_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
             exit 1
           fi
