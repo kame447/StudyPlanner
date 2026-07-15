@@ -14,6 +14,14 @@ const replacements = [
     '`          userId,\\n          existingPlans: plans,\\n})\\n        : pipelineOutput.behaviorDialogue.message;`',
     '`  userId,\\n  existingPlans: plans,\\n})\\n        : pipelineOutput.behaviorDialogue.message;`',
   ],
+  [
+    '`             weeklyDraftBlocks={pendingWeeklyDraftBlocks}\\n             onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: \'add_draft_blocks\', blocks })}`',
+    '`            weeklyDraftBlocks={pendingWeeklyDraftBlocks}\\n            onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: \'add_draft_blocks\', blocks })}`',
+  ],
+  [
+    '`             weeklyDraftBlocks={pendingWeeklyDraftBlocks}\\n             weeklyPlanningMessages={planningState.messages}',
+    '`            weeklyDraftBlocks={pendingWeeklyDraftBlocks}\\n            weeklyPlanningMessages={planningState.messages}',
+  ],
 ];
 
 for (const [before, after] of replacements) {
