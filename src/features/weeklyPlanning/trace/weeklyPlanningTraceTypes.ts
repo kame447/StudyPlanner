@@ -56,6 +56,7 @@ export interface WeeklyPlanningTraceSession {
   startedAt: string;
   lastActivityAt: string;
   endedAt?: string;
+  archivedAt?: string;
   planningRangeStart?: string;
   planningRangeEnd?: string;
   turnCount: number;
@@ -131,6 +132,7 @@ export interface WeeklyPlanningTraceRepository {
   }): Promise<void>;
   listSessions(userId: string): Promise<WeeklyPlanningTraceSession[]>;
   listSessionsForAdmin(): Promise<WeeklyPlanningTraceSession[]>;
+  archiveSessionForAdmin(sessionId: string, archivedAt: string): Promise<void>;
   getSession(userId: string, sessionId: string): Promise<WeeklyPlanningTraceSession | null>;
   listEntries(userId: string, sessionId: string): Promise<WeeklyPlanningTraceEntry[]>;
 }
