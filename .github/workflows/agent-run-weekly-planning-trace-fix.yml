@@ -26,16 +26,46 @@ jobs:
           import textwrap
           import traceback
 
+          error_path = Path('.agent-fix-error.txt')
+          error_path.unlink(missing_ok=True)
           try:
               workflow = Path('.github/workflows/agent-fix-weekly-planning-trace.yml').read_text(encoding='utf-8')
               start_marker = "          python <<'PY'\n"
               end_marker = "          PY\n\n      - name: Commit and push fixes"
               if start_marker not in workflow or end_marker not in workflow:
                   raise RuntimeError('embedded fix script markers not found')
-              script = workflow.split(start_marker, 1)[1].split(end_marker, 1)[0]
-              exec(compile(textwrap.dedent(script), 'agent-fix-weekly-planning-trace.py', 'exec'))
+              script = textwrap.dedent(workflow.split(start_marker, 1)[1].split(end_marker, 1)[0])
+              script = script.replace('import re\n', 'import re\nimport textwrap\n', 1)
+              original_helper = """def replace_once(value, old, new, label):
+              count = value.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one match, got {count}')
+              return value.replace(old, new, 1)
+          """
+              flexible_helper = """def replace_once(value, old, new, label):
+              candidates = [
+                  (old, new),
+                  (textwrap.dedent(old), textwrap.dedent(new)),
+                  (textwrap.dedent(old).strip('\\n'), textwrap.dedent(new).strip('\\n')),
+              ]
+              checked = set()
+              for candidate, replacement in candidates:
+                  if candidate in checked:
+                      continue
+                  checked.add(candidate)
+                  count = value.count(candidate)
+                  if count == 1:
+                      return value.replace(candidate, replacement, 1)
+                  if count > 1:
+                      raise RuntimeError(f'{label}: ambiguous match count {count}')
+              raise RuntimeError(f'{label}: expected one match, got 0')
+          """
+              if original_helper not in script:
+                  raise RuntimeError('replace_once helper source not found')
+              script = script.replace(original_helper, flexible_helper, 1)
+              exec(compile(script, 'agent-fix-weekly-planning-trace.py', 'exec'))
           except Exception:
-              Path('.agent-fix-error.txt').write_text(traceback.format_exc(), encoding='utf-8')
+              error_path.write_text(traceback.format_exc(), encoding='utf-8')
           PY
 
       - name: Commit result
@@ -48,7 +78,7 @@ jobs:
             git reset --hard HEAD
             cp /tmp/agent-fix-error.txt .agent-fix-error.txt
             git add .agent-fix-error.txt
-            git commit -m "feat: 週間計画trace修正エラーを記録"
+            git commit -m "feat: 週間計画trace修正エラーを更新"
             git push origin HEAD:agent/weekly-planning-trace-full-implementation
             exit 0
           fi
