@@ -1,0 +1,103 @@
+name: Apply weekly planning null canonicalization
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-conversation-hardening
+    paths:
+      - scripts/apply-weekly-planning-null-canonicalization.mjs
+      - .github/workflows/apply-weekly-planning-null-canonicalization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 1
+          show-progress: false
+      - name: Apply null canonicalization
+        id: apply
+        continue-on-error: true
+        run: node scripts/apply-weekly-planning-null-canonicalization.mjs > apply-output.log 2>&1
+      - name: Upload apply failure log
+        if: steps.apply.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-null-apply-output
+          path: apply-output.log
+          retention-days: 1
+      - name: Stop after apply failure
+        if: steps.apply.outcome == 'failure'
+        run: exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Weekly planning tests
+        id: tests
+        continue-on-error: true
+        run: npm run test:run -- src/features/weeklyPlanning > test-output.log 2>&1
+      - name: Upload test failure log
+        if: steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-null-test-output
+          path: test-output.log
+          retention-days: 1
+      - name: Stop after test failure
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: npm run build > build-output.log 2>&1
+      - name: Upload build failure log
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-null-build-output
+          path: build-output.log
+          retention-days: 1
+      - name: Stop after build failure
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+      - name: Diff check
+        run: git diff --check
+      - name: Finalize documents
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const taskPath = 'docs/ai/tasks/20260716-weekly-planning-optional-null-canonicalization.md';
+          let task = fs.readFileSync(taskPath, 'utf8');
+          task = task.replace('Status: open', 'Status: closed\nClosed: 2026-07-16');
+          task = task.replaceAll('- [ ]', '- [x]');
+          fs.writeFileSync(taskPath, task);
+
+          const reviewPath = 'docs/ai/tasks/20260716-weekly-planning-conversation-hardening-codex-review.md';
+          let review = fs.readFileSync(reviewPath, 'utf8');
+          review = review.replace(
+            '- 会話履歴表示の独立component化',
+            '- 会話履歴表示の独立component化\n- AI structured outputの任意null propertyを未指定へ正規化',
+          );
+          review = review.replace(
+            '9. `NaturalLanguageAssistant`から分離したcomponent境界が新しい循環依存を作っていないこと。',
+            '9. `NaturalLanguageAssistant`から分離したcomponent境界が新しい循環依存を作っていないこと。\n10. 任意項目の`null`だけが除去され、必須項目の欠落や不正配列が修復されていないこと。',
+          );
+          fs.writeFileSync(reviewPath, review);
+          NODE
+      - name: Remove temporary automation
+        run: rm scripts/apply-weekly-planning-null-canonicalization.mjs .github/workflows/apply-weekly-planning-null-canonicalization.yml
+      - name: Commit verified implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: AI任意項目のnullを未指定として扱う"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
