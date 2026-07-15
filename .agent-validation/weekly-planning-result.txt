@@ -1,5 +1,5 @@
-patch_status=1
+patch_status=0
 install_status=0
-weekly_test_status=99
-build_status=99
-diff_check_status=99
+weekly_test_status=0
+build_status=0
+diff_check_status=2
