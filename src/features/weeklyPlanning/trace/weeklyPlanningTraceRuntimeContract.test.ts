@@ -370,7 +370,7 @@ describe('weekly planning trace runtime contract', () => {
     await waitForTrace(async () => {
       const sessions = await repository.listSessionsForAdmin();
       expect(sessions).toHaveLength(2);
-      expect(new Set(sessions.map((session) => session.logicalConversationId).size).toBe(2));
+      expect(new Set(sessions.map((session) => session.logicalConversationId)).size).toBe(2);
     });
   });
 
