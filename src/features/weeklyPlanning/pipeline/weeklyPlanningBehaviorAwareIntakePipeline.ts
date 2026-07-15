@@ -22,6 +22,7 @@ import type {
   BehaviorAwarePlanningBridgeResult,
 } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
+import { applyRenderedQuestionContext } from './weeklyPlanningRenderedQuestionContext';
 import { applyDraftGenerationAuthorizationTurn } from '../planning/weeklyPlanningDraftGenerationAuthorization';
 import {
   applyAssumptionDecision,
@@ -155,15 +156,63 @@ function planningPeriodLabel(output: WeeklyPlanningIntakePipelineOutput): string
   return output.state.pendingPlanningRange?.scope.label;
 }
 
+function dialogueActionPriority(action: AllowedDialogueAction): number {
+  if (action.kind === 'generate_preview') return 100;
+  if (action.kind === 'report_infeasibility') return 95;
+  if (action.topicId === 'planning-range') return 92;
+  if (action.topicId === 'task-identity') return 91;
+  if (action.kind === 'suggest_draft_generation') return 90;
+  if (action.topicId === 'feasibility_basis') return 85;
+  if (action.kind === 'ask_required_fact' || action.kind === 'show_options') return 70;
+  if (action.kind === 'propose_default') return 65;
+  if (action.kind === 'acknowledge_fact') return 60;
+  return 50;
+}
+
 function mergeActions(
   primary: readonly AllowedDialogueAction[],
   additional: readonly AllowedDialogueAction[],
 ): AllowedDialogueAction[] {
-  const byId = new Map<string, AllowedDialogueAction>();
-  [...additional, ...primary].forEach((action) => {
-    if (!byId.has(action.actionId)) byId.set(action.actionId, action);
+  const hasFoundationalMissing = primary.some((action) =>
+    action.topicId === 'planning-purpose'
+    || action.topicId === 'planning-range'
+    || action.topicId === 'task-identity',
+  );
+  const candidates = [
+    ...primary,
+    ...additional.filter((action) =>
+      !(hasFoundationalMissing && action.topicId === 'feasibility_basis'),
+    ),
+  ];
+  const byId = new Map<string, { action: AllowedDialogueAction; order: number }>();
+  candidates.forEach((action, order) => {
+    if (!byId.has(action.actionId)) byId.set(action.actionId, { action, order });
   });
-  return Array.from(byId.values()).slice(0, 3);
+  return Array.from(byId.values())
+    .sort((left, right) =>
+      dialogueActionPriority(right.action) - dialogueActionPriority(left.action)
+      || left.order - right.order,
+    )
+    .slice(0, 3)
+    .map(({ action }) => action);
+}
+
+function behaviorClarificationRequest(
+  base: WeeklyPlanningIntakePipelineOutput,
+): BehaviorAwareDialoguePlannerInput['clarificationRequest'] {
+  if (base.decision.kind !== 'answer_clarification' || !base.decision.clarification?.explanation) {
+    return undefined;
+  }
+
+  return {
+    explanation: base.decision.clarification.explanation,
+    ...(base.decision.clarification.targetSlot
+      ? { targetSlot: base.decision.clarification.targetSlot }
+      : {}),
+    ...(base.decision.clarification.intent
+      ? { intent: base.decision.clarification.intent }
+      : {}),
+  };
 }
 
 function behaviorDialogueInput(params: {
@@ -172,6 +221,7 @@ function behaviorDialogueInput(params: {
   actions: AllowedDialogueAction[];
   input: WeeklyPlanningIntakePipelineInput;
 }): BehaviorAwareDialoguePlannerInput {
+  const clarificationRequest = behaviorClarificationRequest(params.base);
   return {
     snapshot: params.behavior.snapshot,
     allowedActions: params.actions,
@@ -182,6 +232,7 @@ function behaviorDialogueInput(params: {
     },
     recentConversation: params.input.recentTurns?.slice(-6),
     previewAllowed: params.behavior.gate.allowed,
+    ...(clarificationRequest ? { clarificationRequest } : {}),
   };
 }
 
@@ -414,7 +465,7 @@ export async function runWeeklyPlanningBehaviorAwarePipeline(
   const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
   const input = withSessionProposalContext(rawInput, options);
   const base = synchronizeProposalRecords(runWeeklyPlanningIntakePipeline(input), proposalRecords(input));
-  const output = await finalizeBehaviorAwareOutput({ base, input, options });
+  const output = applyRenderedQuestionContext(await finalizeBehaviorAwareOutput({ base, input, options }));
   recordWeeklyPlanningPipelineTrace({ input, options, output });
   return output;
 }
@@ -450,7 +501,7 @@ export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
     ...(lifecycleInterpreter ? { interpreter: lifecycleInterpreter } : {}),
   });
   const lifecycleBase = applyLifecycleResult({ base, input, options, result: capturedResult });
-  const output = await finalizeBehaviorAwareOutput({ base: lifecycleBase, input, options });
+  const output = applyRenderedQuestionContext(await finalizeBehaviorAwareOutput({ base: lifecycleBase, input, options }));
   recordWeeklyPlanningPipelineTrace({ input, options, output });
   return output;
 }

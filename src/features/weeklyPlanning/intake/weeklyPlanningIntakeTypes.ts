@@ -187,6 +187,26 @@ export interface PlanningAssumption {
 
 export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
 
+export type WeeklyPlanningQuestionContextKind =
+  | 'missing'
+  | 'feasibility_adjustment'
+  | 'options'
+  | 'preview'
+  | 'approval'
+  | 'ambiguity';
+
+/**
+ * 直前に実際にユーザーへ提示した質問の意味的な参照。
+ * missing状態から再計算せず、次turnの短い聞き返しを解釈するためにsession-localで保持する。
+ */
+export interface WeeklyPlanningQuestionContext {
+  kind: WeeklyPlanningQuestionContextKind;
+  targetSlot?: string;
+  intent?: string;
+  topicId?: string;
+  actionId?: string;
+}
+
 export interface PlanningIntakeState {
   status: PlanningIntakeStatus;
   intent: PlanningIntent;
@@ -204,6 +224,7 @@ export interface PlanningIntakeState {
   assumptions: string[];
   uncertainties: PlanningIntakeUncertainty[];
   questions: string[];
+  lastQuestionContext?: WeeklyPlanningQuestionContext;
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
   draftGenerationIntent?: PlanningDraftGenerationIntent;

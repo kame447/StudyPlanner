@@ -6,6 +6,7 @@ import {
   termExplanationForSlot,
   type PlanningQuestionSlotKind,
 } from '../intake/weeklyPlanningQuestionSlots';
+import type { RequestClarificationCommand } from '../intake/weeklyPlanningCommandTypes';
 import type { WeeklyPlanningDraftRequest } from '../intake/weeklyPlanningDraftRequestAdapter';
 import type {
   LifeConstraint,
@@ -13,6 +14,7 @@ import type {
   PlanningIntakeMissing,
   PlanningIntakeState,
   StudyProgressAmbiguity,
+  WeeklyPlanningQuestionContext,
 } from '../intake/weeklyPlanningIntakeTypes';
 import type {
   WeeklyPlanningRemainingWorkItemsResult,
@@ -75,8 +77,12 @@ export interface WeeklyPlanningDialogueDecision {
   questionPlan?: WeeklyPlanningQuestionPlanItem[];
   ambiguities?: string[];
   summary?: WeeklyPlanningDialogueDecisionSummary;
-  /** answer_clarification のときの、用語の deterministic な説明文。 */
-  clarification?: { explanation: string };
+  /** answer_clarification のときの、解決済み対象とdeterministicな説明。 */
+  clarification?: {
+    explanation: string;
+    targetSlot?: string;
+    intent?: string;
+  };
   shouldCreateDraft: boolean;
   shouldSavePlan: false;
 }
@@ -368,43 +374,77 @@ export function createWeeklyPlanningDialogueDecision(
 const GENERIC_CLARIFICATION =
   'この質問は、計画を作るために必要な条件をうかがっているものです。分かる範囲で教えてください。';
 
-function resolveClarificationTermKey(
-  state: PlanningIntakeState,
-  ref: string | undefined,
-): string | undefined {
-  if (ref && termExplanationForSlot(ref)) {
-    return ref;
-  }
+const CONTEXTUAL_CLARIFICATION_EXPLANATIONS: Record<string, string> = {
+  constraint_relaxation:
+    '現在の条件ではすべてを配置できないため、何を優先し、分割し、後へ回すかを確認しています。',
+  availability_basis:
+    '予定を入れられる時間を判断するために、時間割・登録済み予定・直接指定のどれを使うか確認しています。',
+  feasibility_basis:
+    '無理のない予定にするために、実際に勉強へ使える時間の根拠を確認しています。',
+  preview_confirmation:
+    '作成した仮予定をこのまま使うか、条件を直して作り直すかを確認しています。',
+  draft_confirmation:
+    '確認した条件で仮予定を作ってよいかを確認しています。',
+  draft_generation_confirmation:
+    'ここまでの条件を使って仮予定を作り始めてよいかを確認しています。',
+  ambiguity_resolution:
+    '複数の解釈ができる条件について、どちらの意味かを確認しています。',
+  planning_purpose:
+    'どの種類の学習を計画するかを決めるために、試験・宿題・提出物などの目的を確認しています。',
+};
 
-  if (ref) {
-    const termKey = clarificationKeywordTarget(ref);
-    if (termKey) {
-      return termKey;
-    }
-  }
-
-  // ref から解決できないときは、いま尋ねている質問の slot を用語とみなす。
-  return createMissingQuestionPlan(state)[0]?.targetSlot;
+function explicitClarificationTarget(ref: string | undefined): string | undefined {
+  if (!ref) return undefined;
+  if (termExplanationForSlot(ref)) return ref;
+  return clarificationKeywordTarget(ref);
 }
 
-/**
- * 聞き返し(request_clarification)への応答決定を作る。
- * state を進めず(missing を消さず)、用語説明を返し、直前の質問(questionPlan)を維持する。
- */
+function resolveClarificationTarget(params: {
+  target?: RequestClarificationCommand['target'];
+  ref?: string;
+  previousQuestionContext?: WeeklyPlanningQuestionContext;
+}): string | undefined {
+  if (params.target === 'referenced_question') {
+    return params.previousQuestionContext?.targetSlot;
+  }
+  const explicitTarget = explicitClarificationTarget(params.ref);
+  if (explicitTarget) return explicitTarget;
+  if (params.target === 'unresolved_slot' && params.ref) return params.ref;
+  return params.previousQuestionContext?.targetSlot;
+}
+
+function clarificationExplanation(targetSlot: string | undefined): string {
+  if (!targetSlot) return GENERIC_CLARIFICATION;
+  return termExplanationForSlot(targetSlot)
+    ?? CONTEXTUAL_CLARIFICATION_EXPLANATIONS[targetSlot]
+    ?? GENERIC_CLARIFICATION;
+}
+
 export function createWeeklyPlanningClarificationDecision(params: {
   state: PlanningIntakeState;
+  target?: RequestClarificationCommand['target'];
   ref?: string;
+  previousQuestionContext?: WeeklyPlanningQuestionContext;
 }): WeeklyPlanningDialogueDecision {
-  const termKey = resolveClarificationTermKey(params.state, params.ref);
-  const explanation = (termKey && termExplanationForSlot(termKey)) || GENERIC_CLARIFICATION;
-  const questionPlan = createMissingQuestionPlan(params.state);
+  const targetSlot = resolveClarificationTarget(params);
+  const questionPlan = targetSlot
+    ? createMissingQuestionPlan(params.state).filter((question) => question.targetSlot === targetSlot)
+    : [];
+  const previousQuestionContext = params.previousQuestionContext;
+  const intent = targetSlot && previousQuestionContext?.targetSlot === targetSlot
+    ? previousQuestionContext.intent
+    : questionPlan[0]?.intent;
 
   return {
     kind: 'answer_clarification',
     messageKey: 'answer_term_clarification',
-    requiredFields: questionPlan.map((question) => question.targetSlot),
+    requiredFields: targetSlot ? [targetSlot] : undefined,
     questionPlan: questionPlan.length > 0 ? questionPlan : undefined,
-    clarification: { explanation },
+    clarification: {
+      explanation: clarificationExplanation(targetSlot),
+      ...(targetSlot ? { targetSlot } : {}),
+      ...(intent ? { intent } : {}),
+    },
     shouldCreateDraft: false,
     shouldSavePlan: false,
   };
