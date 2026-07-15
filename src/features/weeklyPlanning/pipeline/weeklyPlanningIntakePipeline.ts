@@ -13,7 +13,6 @@ import {
 import {
   applyWeeklyPlanningCommands,
   applyWeeklyPlanningUserTurn,
-  beginWeeklyPlanningUserTurn,
   applyWeeklyPlanningUserTurnWithDiagnostics,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
@@ -438,7 +437,12 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
 
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
   const context = createInterpreterContext(input);
-  const preparedState = beginWeeklyPlanningUserTurn(previousState, input.userText);
+  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
+    previousState,
+    input.userText,
+    context,
+  );
+  const preparedState = deterministicTurn.state;
   const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
   const stateSummary = createInterpreterStateSummary(
     preparedState,
@@ -456,15 +460,10 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       recentTurns: input.recentTurns,
     });
   } catch {
-    // Provider failures switch the whole turn to the existing rules path. Empty AI results do not.
-    const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
-      previousState,
-      input.userText,
-      context,
-    );
+    // Provider failure skips only AI supplementation; deterministic parsing has already been applied.
     return buildPipelineOutput({
       input,
-      state: fallbackTurn.state,
+      state: preparedState,
       assumptionProposalState: proposalState,
     });
   }
