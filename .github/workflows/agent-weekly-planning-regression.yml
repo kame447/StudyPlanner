@@ -6,10 +6,11 @@ on:
       - agent/fix-weekly-planning-dialogue-path
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
+    if: ${{ !contains(github.event.head_commit.message, '[validation-result]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +18,41 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts
-      - run: npm run build
+      - name: Run targeted tests and build
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .agent-validation
+          : > .agent-validation/weekly-planning-output.log
+
+          npm ci >> .agent-validation/weekly-planning-output.log 2>&1
+          install_status=$?
+          test_status=99
+          build_status=99
+
+          if [ "$install_status" -eq 0 ]; then
+            npm run test:run -- \
+              src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts \
+              src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts \
+              >> .agent-validation/weekly-planning-output.log 2>&1
+            test_status=$?
+
+            npm run build >> .agent-validation/weekly-planning-output.log 2>&1
+            build_status=$?
+          fi
+
+          cat > .agent-validation/weekly-planning-result.txt <<EOF
+          install_status=$install_status
+          test_status=$test_status
+          build_status=$build_status
+          EOF
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .agent-validation/weekly-planning-result.txt .agent-validation/weekly-planning-output.log
+          git commit -m "feat: 週間計画修正の検証結果を記録 [validation-result]"
+          git push
+
+          if [ "$install_status" -ne 0 ] || [ "$test_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+            exit 1
+          fi
