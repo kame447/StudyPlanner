@@ -160,10 +160,25 @@ function mergeActions(
   additional: readonly AllowedDialogueAction[],
 ): AllowedDialogueAction[] {
   const byId = new Map<string, AllowedDialogueAction>();
-  [...additional, ...primary].forEach((action) => {
+  [...primary, ...additional].forEach((action) => {
     if (!byId.has(action.actionId)) byId.set(action.actionId, action);
   });
   return Array.from(byId.values()).slice(0, 3);
+}
+
+function behaviorClarificationRequest(
+  base: WeeklyPlanningIntakePipelineOutput,
+): BehaviorAwareDialoguePlannerInput['clarificationRequest'] {
+  if (base.decision.kind !== 'answer_clarification' || !base.decision.clarification?.explanation) {
+    return undefined;
+  }
+
+  const question = base.decision.questionPlan?.[0];
+  return {
+    explanation: base.decision.clarification.explanation,
+    ...(question?.targetSlot ? { targetSlot: question.targetSlot } : {}),
+    ...(question?.intent ? { intent: question.intent } : {}),
+  };
 }
 
 function behaviorDialogueInput(params: {
@@ -172,6 +187,7 @@ function behaviorDialogueInput(params: {
   actions: AllowedDialogueAction[];
   input: WeeklyPlanningIntakePipelineInput;
 }): BehaviorAwareDialoguePlannerInput {
+  const clarificationRequest = behaviorClarificationRequest(params.base);
   return {
     snapshot: params.behavior.snapshot,
     allowedActions: params.actions,
@@ -182,6 +198,7 @@ function behaviorDialogueInput(params: {
     },
     recentConversation: params.input.recentTurns?.slice(-6),
     previewAllowed: params.behavior.gate.allowed,
+    ...(clarificationRequest ? { clarificationRequest } : {}),
   };
 }
 
