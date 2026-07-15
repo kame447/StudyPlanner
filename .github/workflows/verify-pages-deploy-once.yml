@@ -1,4 +1,5 @@
 name: Verify Pages deployment once
+# rerun after production trace enablement
 
 on:
   push:
