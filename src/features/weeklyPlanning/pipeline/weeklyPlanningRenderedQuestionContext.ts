@@ -45,7 +45,6 @@ function contextForAction(
     };
   }
   if (action.kind !== 'show_options' && action.kind !== 'ask_required_fact') return undefined;
-
   const question = matchingDecisionQuestion(output, action);
   let targetSlot = question?.targetSlot;
   if (!targetSlot) {
@@ -92,8 +91,6 @@ export function applyRenderedQuestionContext(
     lastQuestionContext = contextForAction(output, action);
     if (lastQuestionContext) break;
   }
-  return {
-    ...output,
-    state: { ...output.state, lastQuestionContext },
-  };
+  output.state.lastQuestionContext = lastQuestionContext;
+  return output;
 }
