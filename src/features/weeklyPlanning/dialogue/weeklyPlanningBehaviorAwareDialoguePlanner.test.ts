@@ -169,7 +169,7 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     expect(JSON.stringify(plannerInput.allowedActions)).toBe(before);
   });
 
-  it('removes the ungrounded introductory filler from the range-only fallback', async () => {
+  it('asks only for the learning content in the range-only fallback', async () => {
     const value = rangeOnlyState();
     const snapshot = createPlanningHypothesisSnapshot({
       state: value,
@@ -187,9 +187,11 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
       previewAllowed: false,
     });
 
-    expect(result.message).toContain('具体的に何をどこまで進めたいか教えてください。');
+    expect(result.message).toBe('具体的に何をどこまで進めたいか教えてください。');
     expect(result.message).not.toContain('ここまでの内容から');
     expect(result.message).not.toContain('無理のない進め方を整理します');
+    expect(result.message).not.toContain('目安');
+    expect(result.message).not.toContain('使える時間');
   });
 
   it('uses a closed top-level response schema', () => {
