@@ -1,9 +1,0 @@
-{
-  "status": "missing_credentials",
-  "project": "study-planner-d1bc8",
-  "sourceCommit": "37a6c9acffb179924aae4008f0aafd8638092bbb",
-  "authMode": "missing",
-  "installOutcome": "success",
-  "deployOutcome": "skipped",
-  "recordedAt": "2026-07-15T07:51:55Z"
-}
