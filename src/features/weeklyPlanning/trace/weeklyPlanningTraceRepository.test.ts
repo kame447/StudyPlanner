@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInMemoryWeeklyPlanningTraceRepository } from './weeklyPlanningTraceInMemoryRepository';
+import { resolveWeeklyPlanningTraceEnabled } from './weeklyPlanningTraceRepository';
 import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceSession,
@@ -141,5 +142,13 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
 
     await expect(repository.appendEntries({ session: SESSION, entries: [foreignEntry] }))
       .rejects.toThrow('trace ownership mismatch');
+  });
+});
+
+describe('resolveWeeklyPlanningTraceEnabled', () => {
+  it('未設定とtrueは有効、明示falseだけ無効にする', () => {
+    expect(resolveWeeklyPlanningTraceEnabled(undefined)).toBe(true);
+    expect(resolveWeeklyPlanningTraceEnabled('true')).toBe(true);
+    expect(resolveWeeklyPlanningTraceEnabled('false')).toBe(false);
   });
 });

@@ -344,8 +344,16 @@ function serializeWeeklyPlanningTraceWrites(
 
 let repository: WeeklyPlanningTraceRepository | undefined;
 
+export function resolveWeeklyPlanningTraceEnabled(
+  configuredValue: string | undefined,
+): boolean {
+  return configuredValue !== 'false';
+}
+
 export function isWeeklyPlanningTraceEnabled(): boolean {
-  return import.meta.env.DEV || import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED === 'true';
+  return resolveWeeklyPlanningTraceEnabled(
+    import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED,
+  );
 }
 
 export function getWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepository {
