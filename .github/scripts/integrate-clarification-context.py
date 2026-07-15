@@ -12,3 +12,8 @@ script = subprocess.check_output([
 ])
 compiled = compile(script, '/tmp/integrate-clarification-context.py', 'exec')
 exec(compiled, {'__name__': '__main__', '__file__': '/tmp/integrate-clarification-context.py'})
+
+pipeline = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts')
+text = pipeline.read_text()
+text = text.replace('  createMissingQuestionPlan,\n', '', 1)
+pipeline.write_text(text)
