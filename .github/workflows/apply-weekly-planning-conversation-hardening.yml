@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply-weekly-planning-conversation-hardening.mjs
       - scripts/fix-weekly-planning-apply-script.mjs
+      - scripts/update-weekly-planning-hardening-tests.mjs
       - .github/workflows/apply-weekly-planning-conversation-hardening.yml
   pull_request:
     branches:
@@ -14,6 +15,7 @@ on:
     paths:
       - scripts/apply-weekly-planning-conversation-hardening.mjs
       - scripts/fix-weekly-planning-apply-script.mjs
+      - scripts/update-weekly-planning-hardening-tests.mjs
       - .github/workflows/apply-weekly-planning-conversation-hardening.yml
 
 permissions:
@@ -45,6 +47,8 @@ jobs:
       - name: Stop after apply failure
         if: steps.apply.outcome == 'failure'
         run: exit 1
+      - name: Update intentional regression expectations
+        run: node scripts/update-weekly-planning-hardening-tests.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -91,7 +95,7 @@ jobs:
           );
           NODE
       - name: Remove temporary automation
-        run: rm scripts/apply-weekly-planning-conversation-hardening.mjs scripts/fix-weekly-planning-apply-script.mjs .github/workflows/apply-weekly-planning-conversation-hardening.yml
+        run: rm scripts/apply-weekly-planning-conversation-hardening.mjs scripts/fix-weekly-planning-apply-script.mjs scripts/update-weekly-planning-hardening-tests.mjs .github/workflows/apply-weekly-planning-conversation-hardening.yml
       - name: Commit verified implementation
         run: |
           git config user.name github-actions[bot]
