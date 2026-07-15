@@ -108,4 +108,19 @@ describe('behavior-aware dialogue closed validation', () => {
       previewAllowed: false,
     })).toBeNull();
   });
+
+  it('rejects an ungrounded filler acknowledgement even when the question is valid', () => {
+    expect(validateBehaviorAwareDialogueResponseClosed({
+      response: {
+        acknowledgement: 'ここまでの内容から、無理のない進め方を整理します。',
+        selectedActionIds: [taskIdentityAction.actionId],
+        items: [{
+          actionId: taskIdentityAction.actionId,
+          text: 'この期間に何をどこまで進めたいか教えてください。',
+        }],
+      },
+      actions: [taskIdentityAction],
+      previewAllowed: false,
+    })).toBeNull();
+  });
 });
