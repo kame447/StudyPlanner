@@ -11,6 +11,7 @@ import {
   getDocs,
   query,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -47,11 +48,13 @@ function normalizedSession(value: unknown): WeeklyPlanningTraceSession | null {
   }
   const expireAt = dateString(record.expireAt);
   if (!expireAt) return null;
+  const archivedAt = dateString(record.archivedAt);
   return {
     ...(record as unknown as WeeklyPlanningTraceSession),
     expireAt,
     ...(dateString(record.lastActivityAt) ? { lastActivityAt: dateString(record.lastActivityAt) as string } : {}),
     ...(dateString(record.endedAt) ? { endedAt: dateString(record.endedAt) } : {}),
+    ...(archivedAt ? { archivedAt } : {}),
   };
 }
 
@@ -86,6 +89,17 @@ function sessionsFromSnapshot(
   return sortSessions(snapshot.docs
     .map((item) => normalizedSession({ ...item.data(), id: item.id }))
     .filter((item): item is WeeklyPlanningTraceSession => Boolean(item)));
+}
+
+function preserveArchiveState(
+  current: WeeklyPlanningTraceSession | undefined,
+  next: WeeklyPlanningTraceSession,
+): WeeklyPlanningTraceSession {
+  const archivedAt = next.archivedAt ?? current?.archivedAt;
+  return {
+    ...next,
+    ...(archivedAt ? { archivedAt } : {}),
+  };
 }
 
 export function createFirestoreWeeklyPlanningTraceRepository(
@@ -142,6 +156,13 @@ export function createFirestoreWeeklyPlanningTraceRepository(
       return sessionsFromSnapshot(snapshot);
     },
 
+    async archiveSessionForAdmin(sessionId, archivedAt) {
+      await updateDoc(
+        doc(firestoreDb, 'weekly_planning_trace_sessions', sessionId),
+        { archivedAt },
+      );
+    },
+
     async getSession(userId, sessionId) {
       const snapshot = await getDoc(doc(
         firestoreDb,
@@ -186,9 +207,14 @@ function writeLocalArray<T>(key: string, values: T[]): void {
 export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepository {
   async function upsertSession(session: WeeklyPlanningTraceSession): Promise<void> {
     const sessions = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
+    const current = sessions.find((item) => item.id === session.id);
+    const next = preserveArchiveState(
+      current,
+      sanitizeWeeklyPlanningTraceValue(session).value as WeeklyPlanningTraceSession,
+    );
     writeLocalArray(LOCAL_SESSIONS_KEY, [
       ...sessions.filter((item) => item.id !== session.id),
-      sanitizeWeeklyPlanningTraceValue(session).value as WeeklyPlanningTraceSession,
+      next,
     ]);
   }
 
@@ -222,6 +248,16 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
       return sortSessions(readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY));
     },
 
+    async archiveSessionForAdmin(sessionId, archivedAt) {
+      const sessions = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
+      const current = sessions.find((session) => session.id === sessionId);
+      if (!current) {
+        throw new Error('trace session not found');
+      }
+      writeLocalArray(LOCAL_SESSIONS_KEY, sessions.map((session) =>
+        session.id === sessionId ? { ...session, archivedAt } : session));
+    },
+
     async getSession(userId, sessionId) {
       return readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY)
         .find((session) => session.userId === userId && session.id === sessionId) ?? null;
@@ -242,6 +278,7 @@ export function createNoopWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRe
     async appendEntries() {},
     async listSessions() { return []; },
     async listSessionsForAdmin() { return []; },
+    async archiveSessionForAdmin() {},
     async getSession() { return null; },
     async listEntries() { return []; },
   };
@@ -273,6 +310,12 @@ function serializeWeeklyPlanningTraceWrites(
     },
     listSessionsForAdmin() {
       return delegate.listSessionsForAdmin();
+    },
+    archiveSessionForAdmin(sessionId, archivedAt) {
+      return enqueue(
+        sessionId,
+        () => delegate.archiveSessionForAdmin(sessionId, archivedAt),
+      );
     },
     getSession(userId, sessionId) {
       return delegate.getSession(userId, sessionId);
