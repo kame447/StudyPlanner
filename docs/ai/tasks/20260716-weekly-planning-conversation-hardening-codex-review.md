@@ -37,7 +37,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 実行済み検証
 
-- `npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx`
+- `npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx src/components/weeklyPlanningConversationMode.test.ts`
 - `npm run build`
 - `git diff --check`
 
