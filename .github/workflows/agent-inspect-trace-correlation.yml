@@ -1,0 +1,25 @@
+name: Inspect weekly planning trace correlation
+
+on:
+  pull_request:
+    types:
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event.pull_request.head.ref == 'agent/weekly-planning-trace-full-implementation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-trace-full-implementation
+          fetch-depth: 0
+      - name: Locate preview and approval correlation
+        shell: bash
+        run: |
+          grep -R -n --exclude-dir=node_modules --exclude='*.map' \
+            -E 'previewMetadata|behavior-preview:|recordWeeklyPlanningApprovalTrace|recordWeeklyPlanningDraftPromotion|recordWeeklyPlanningRenderedAssistantTurn' \
+            src/features/weeklyPlanning | head -n 400
