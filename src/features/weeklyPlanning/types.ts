@@ -16,6 +16,7 @@ export type WeeklyPlanningMode =
 export type WeeklyPlanDraftStatus = 'draft' | 'approved' | 'discarded';
 
 export interface WeeklyPlanningBehaviorMetadata {
+  conversationId?: string;
   stateRevision: number;
   sourceFactRefs: string[];
   usedAssumptionProposalRefs: string[];

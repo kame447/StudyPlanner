@@ -50,6 +50,7 @@ interface ActiveTraceSession {
 const activeSessions = new Map<string, ActiveTraceSession>();
 const conversationIdByPreviewKey = new Map<string, string>();
 let conversationIdsByState = new WeakMap<object, string>();
+let sessionKeysByState = new WeakMap<object, string>();
 let traceContextByInput = new WeakMap<object, TraceRequestContext>();
 
 function nowIso(): string {
@@ -526,7 +527,7 @@ function pipelineEventEntries(params: {
   const previewCount = output.draftCandidates?.length ?? 0;
   if (previewCount > 0) {
     active.session.hasPreview = true;
-    const previewId = `behavior-preview:${stateRevision}`;
+    const previewId = `behavior-preview:${active.session.logicalConversationId}:${stateRevision}`;
     conversationIdByPreviewKey.set(
       `${active.session.userId}:${previewId}`,
       active.session.logicalConversationId,
@@ -569,14 +570,17 @@ export function recordWeeklyPlanningPipelineTrace(params: {
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
   output: WeeklyPlanningBehaviorAwarePipelineOutput;
 }): void {
-  if (!isWeeklyPlanningTraceEnabled()) return;
-  const userId = resolveTraceUserId(params.options.userId);
-  if (!userId) return;
-  const occurredAt = nowIso();
   const logicalConversationId = resolveLogicalConversationId({
     input: params.input,
     options: params.options,
   });
+  if (params.output.state && typeof params.output.state === 'object') {
+    conversationIdsByState.set(params.output.state, logicalConversationId);
+  }
+  if (!isWeeklyPlanningTraceEnabled()) return;
+  const userId = resolveTraceUserId(params.options.userId);
+  if (!userId) return;
+  const occurredAt = nowIso();
   const active = ensureActiveSession({
     userId,
     logicalConversationId,
@@ -584,11 +588,14 @@ export function recordWeeklyPlanningPipelineTrace(params: {
     planningRangeEnd: params.output.state.range?.endDateTime,
     now: occurredAt,
   });
-  if (params.output.state && typeof params.output.state === 'object') {
-    conversationIdsByState.set(params.output.state, logicalConversationId);
-  }
+    if (params.output.state && typeof params.output.state === 'object') {
+  sessionKeysByState.set(
+    params.output.state,
+    activeSessionKey(userId, logicalConversationId),
+  );
+}
 
-  const stateRevision = params.output.behavior.snapshot.stateRevision;
+const stateRevision = params.output.behavior.snapshot.stateRevision;
     const previousRevision = Math.max(0, stateRevision - 1);
     const requestId = params.options.traceRequestId?.trim() || randomId('weekly-request');
     if (active.requestIds.has(requestId)) return;
@@ -689,13 +696,18 @@ export function recordWeeklyPlanningRenderedAssistantTurn(params: {
   userId?: string;
 }): void {
   if (!isWeeklyPlanningTraceEnabled()) return;
+  const stateSessionKey = params.state ? sessionKeysByState.get(params.state) : undefined;
+  const stateActive = stateSessionKey ? activeSessions.get(stateSessionKey) : undefined;
   const userId = resolveTraceUserId(params.userId);
-  if (!userId) return;
   const stateConversationId = params.state ? conversationIdsByState.get(params.state) : undefined;
-  const candidate = correlatedSession({
-    userId,
-    logicalConversationId: params.logicalConversationId ?? stateConversationId,
-  });
+  const candidate: [string, ActiveTraceSession] | null = stateSessionKey && stateActive
+    ? [stateSessionKey, stateActive]
+    : userId
+      ? correlatedSession({
+          userId,
+          logicalConversationId: params.logicalConversationId ?? stateConversationId,
+        })
+      : null;
   if (!candidate) return;
   const [, active] = candidate;
   if (!active.pendingAssistantRequestId) return;
@@ -846,5 +858,6 @@ export function resetWeeklyPlanningTraceRuntimeForTests(): void {
   activeSessions.clear();
   conversationIdByPreviewKey.clear();
   conversationIdsByState = new WeakMap<object, string>();
+  sessionKeysByState = new WeakMap<object, string>();
   traceContextByInput = new WeakMap<object, TraceRequestContext>();
 }

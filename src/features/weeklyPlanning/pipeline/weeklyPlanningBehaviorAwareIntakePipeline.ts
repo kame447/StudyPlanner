@@ -378,7 +378,9 @@ async function finalizeBehaviorAwareOutput(params: {
   const feasibility = createFeasibilitySummary({
     diagnostics: behavior.draftRun?.diagnostics ?? currentBase.diagnostics,
     stateRevision: behavior.snapshot.stateRevision,
-    previewId: behavior.draftRun ? `behavior-preview:${behavior.snapshot.stateRevision}` : undefined,
+    previewId: behavior.draftRun
+    ? `behavior-preview:${getConversationId(params.options)}:${behavior.snapshot.stateRevision}`
+    : undefined,
     pendingAssumption: false,
     supported: true,
     bottleneckFactRefs: behavior.snapshot.readiness.blockingDimensions.map((dimension) =>

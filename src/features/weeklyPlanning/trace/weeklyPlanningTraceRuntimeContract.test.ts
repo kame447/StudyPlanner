@@ -327,4 +327,51 @@ describe('weekly planning trace runtime contract', () => {
     });
   });
 
+
+  it('明示request IDが同じretryを別input objectでも重複保存しない', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    setWeeklyPlanningTraceRepositoryForTests(repository);
+    const options = {
+      userId: 'user-1',
+      conversationId: 'conversation-retry',
+      traceRequestId: 'request-retry-1',
+      dialoguePlanner,
+    };
+
+    await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput('同じ発話'), options);
+    await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput('同じ発話'), options);
+
+    await waitForTrace(async () => {
+      const [session] = await repository.listSessionsForAdmin();
+      const entries = await repository.listEntries('user-1', session!.id);
+      expect(entries.filter((entry) =>
+        entry.kind === 'internal_event' && entry.eventType === 'user_turn_received'
+      )).toHaveLength(1);
+    });
+  });
+
+  it('runtime reset後の同じ初期発話を新しいconversationとして保存する', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    setWeeklyPlanningTraceRepositoryForTests(repository);
+    await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('同じ発話'),
+      { userId: 'user-1', dialoguePlanner },
+    );
+    await waitForTrace(async () => {
+      expect(await repository.listSessionsForAdmin()).toHaveLength(1);
+    });
+
+    resetWeeklyPlanningTraceRuntimeForTests();
+    await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('同じ発話'),
+      { userId: 'user-1', dialoguePlanner },
+    );
+
+    await waitForTrace(async () => {
+      const sessions = await repository.listSessionsForAdmin();
+      expect(sessions).toHaveLength(2);
+      expect(new Set(sessions.map((session) => session.logicalConversationId).size).toBe(2));
+    });
+  });
+
 });
