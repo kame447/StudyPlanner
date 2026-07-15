@@ -1,6 +1,6 @@
 # 週間計画の対話処理経路に関する課題分割
 
-Status: open
+Status: closed
 Updated: 2026-07-15
 PR: #3
 
@@ -34,18 +34,16 @@ PR #3で扱っている問題を、原因と完了条件が独立する単位へ
 
 core複製とwrapper構成を既存pipelineへ直接統合し、一時helper、trigger、cleanup scriptを削除した。
 
-## Open
-
 ### PRの最終検証と終了処理
 
 `20260715-weekly-planning-dialogue-path-pr-finalization.md`
 
-構造整理後に全テスト、build、diff check、PR差分監査を行い、baseをmainへ戻してPRを最終状態にする。
+週間計画全テスト、build、diff check、PR差分監査を行い、baseを`main`へ戻してPRをmerge可能な最終状態にした。
 
-## Trackerをclosedにする条件
+## 完了確認
 
-- open taskがすべてclosedになっている
-- PRのbaseが`main`である
-- 一時workflow、script、trigger、core複製がPR差分に残っていない
-- 週間計画全テスト、build、diff checkが成功している
-- PR本文が最終差分と一致している
+- [x] open taskがすべてclosedになっている
+- [x] PRのbaseが`main`である
+- [x] 一時workflow、script、trigger、core複製がPR差分に残っていない
+- [x] 週間計画全テスト、build、diff checkが成功している
+- [x] PR本文が最終差分と一致している
