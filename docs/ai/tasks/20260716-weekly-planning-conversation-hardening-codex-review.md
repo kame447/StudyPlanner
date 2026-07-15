@@ -17,6 +17,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 - 送信直後の入力クリア、composer非表示、assistant typing indicator
 - 会話履歴表示の独立component化
 - AI structured outputの任意null propertyを未指定へ正規化
+- preview昇格・承認を含む成功応答の表示元を会話履歴へ一本化
 
 ## 必須確認項目
 
@@ -30,6 +31,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 8. preview生成・個別削除・一括承認の既存経路に回帰がないこと。
 9. `NaturalLanguageAssistant`から分離したcomponent境界が新しい循環依存を作っていないこと。
 10. 任意項目の`null`だけが除去され、必須項目の欠落や不正配列が修復されていないこと。
+11. preview昇格・承認成功時の文がstatus cardと会話履歴へ重複表示されないこと。
 
 ## 実行済み検証
 

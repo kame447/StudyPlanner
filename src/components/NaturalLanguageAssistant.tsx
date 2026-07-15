@@ -634,7 +634,7 @@ export function NaturalLanguageAssistant({
     setWeeklyDraftPreviewMode('overview');
     setError('');
     const message = '仮予定として追加しました。内容を確認して、承認または破棄してください。';
-    setStatus(message);
+    setStatus('');
     appendWeeklyPlanningMessage('assistant', message);
     setText('');
   }
@@ -649,7 +649,7 @@ export function NaturalLanguageAssistant({
       await onApproveWeeklyDraftBlocks();
       setError('');
       const message = `${pendingWeeklyDraftBlocks.length}件の仮予定を通常予定として保存しました。`;
-      setStatus(message);
+      setStatus('');
       appendWeeklyPlanningMessage('assistant', message);
     } catch (error) {
       setError(

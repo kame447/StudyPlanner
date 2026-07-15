@@ -1,6 +1,7 @@
 # 週間計画の成功応答を会話履歴へ一本化する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Created: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
@@ -14,8 +15,8 @@ Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 完了条件
 
-- [ ] preview昇格成功時に同じ文をstatusへ設定しない
-- [ ] 一括承認成功時に同じ文をstatusへ設定しない
-- [ ] assistant messageとして履歴には残す
-- [ ] エラー表示と単発自然言語入力のstatusは変更しない
-- [ ] 週間計画テスト、build、diff checkを通す
+- [x] preview昇格成功時に同じ文をstatusへ設定しない
+- [x] 一括承認成功時に同じ文をstatusへ設定しない
+- [x] assistant messageとして履歴には残す
+- [x] エラー表示と単発自然言語入力のstatusは変更しない
+- [x] 週間計画テスト、build、diff checkを通す
