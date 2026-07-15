@@ -1,5 +1,6 @@
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { hasUnexportedWeeklyPlanningTraceActivity } from './weeklyPlanningTraceArchive';
 import { createWeeklyPlanningTraceExportBundle } from './weeklyPlanningTraceExport';
 import { getWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRepository';
 import type {
@@ -73,10 +74,14 @@ export function WeeklyPlanningTraceDebugPage({
     setLoadingSessions(true);
     try {
       const nextSessions = await getWeeklyPlanningTraceRepository().listSessionsForAdmin();
-      const activeSessions = nextSessions.filter((session) => !session.archivedAt);
-      setSessions(activeSessions);
+      const sessionsWithUnexportedActivity = nextSessions.filter(
+        hasUnexportedWeeklyPlanningTraceActivity,
+      );
+      setSessions(sessionsWithUnexportedActivity);
       setExpandedSessionId((current) =>
-        current && activeSessions.some((session) => session.id === current) ? current : '',
+        current && sessionsWithUnexportedActivity.some((session) => session.id === current)
+          ? current
+          : '',
       );
       setError('');
     } catch (loadError) {
@@ -154,7 +159,7 @@ export function WeeklyPlanningTraceDebugPage({
   }
 
   const visibleSessions = useMemo(() => sessions.filter((session) => {
-    if (session.archivedAt) return false;
+    if (!hasUnexportedWeeklyPlanningTraceActivity(session)) return false;
     if (statusFilter && session.status !== statusFilter) return false;
     if (onlyErrors && !session.hasError) return false;
     if (onlyFallbacks && !session.hasFallback) return false;
@@ -172,8 +177,9 @@ export function WeeklyPlanningTraceDebugPage({
       <header className="panel">
         <h1>週間計画ログ</h1>
         <p>
-          未exportのsessionを新しい順に表示します。JSON export後は一覧から除外しますが、
-          Firestore上のsessionとentryは削除しません。
+          未exportの活動があるsessionを新しい順に表示します。JSON export後は一度一覧から
+          除外しますが、新しいturnが追記された場合は再び表示します。Firestore上のsessionと
+          entryは削除しません。
         </p>
         <div className="button-row">
           <button
@@ -211,7 +217,7 @@ export function WeeklyPlanningTraceDebugPage({
 
       <section className="weekly-planning-trace-stream" aria-label="週間計画ログ一覧">
         <div className="weekly-planning-trace-stream-heading">
-          <h2>未exportのSessions</h2>
+          <h2>未exportの活動があるSessions</h2>
           <span>{visibleSessions.length}件</span>
         </div>
 
@@ -224,7 +230,7 @@ export function WeeklyPlanningTraceDebugPage({
 
         {!loadingSessions && visibleSessions.length === 0 ? (
           <div className="panel admin-state-card">
-            <strong>未exportのsessionはありません</strong>
+            <strong>未exportの活動があるsessionはありません</strong>
           </div>
         ) : null}
 
