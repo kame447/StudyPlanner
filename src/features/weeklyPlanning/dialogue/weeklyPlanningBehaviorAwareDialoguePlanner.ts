@@ -329,7 +329,7 @@ function renderFallback(input: BehaviorAwareDialoguePlannerInput): string {
       if (profile.activityKind === 'drill') return 'ワークや演習はまとまった時間で進める案';
       return null;
     })
-    .filter((text): text is string => Boolean(text));
+    .filter((text): text is Exclude<typeof text, null> => text !== null);
   const lines: string[] = [];
 
   if (profileSummary.length > 0) {
