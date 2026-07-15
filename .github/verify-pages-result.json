@@ -1,0 +1,10 @@
+{
+  "status": "verification_failed",
+  "site": "https://studyplannner.pages.dev",
+  "httpStatus": "200",
+  "bundlePath": "/assets/index-DenxaDDN.js",
+  "hasTraceCollection": false,
+  "hasTraceRoute": true,
+  "sourceCommit": "038d52dcfe79cf371c7ecbfa8b6a7d9e2a9aca2c",
+  "recordedAt": "2026-07-15T07:57:56Z"
+}
