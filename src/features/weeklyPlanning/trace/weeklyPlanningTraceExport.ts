@@ -1,7 +1,9 @@
-import type {
-  WeeklyPlanningTraceEntry,
-  WeeklyPlanningTraceInternalEventEntry,
-  WeeklyPlanningTraceSession,
+import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
+import {
+  isWeeklyPlanningTraceEntry,
+  type WeeklyPlanningTraceEntry,
+  type WeeklyPlanningTraceInternalEventEntry,
+  type WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
 
 export interface WeeklyPlanningEvaluationFixtureCandidate {
@@ -20,7 +22,7 @@ export interface WeeklyPlanningEvaluationFixtureCandidate {
     finalStateRevision: number | null;
   };
   callCount: number;
-  latency: null;
+  latency: number | null;
   fallbackCategory: string | null;
 }
 
@@ -69,31 +71,71 @@ function anonymizeRoleplayText(value: string): string {
     .replace(/(?:\+?81[-\s]?)?0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/g, '[PHONE]');
 }
 
+function finiteLatency(payload: Record<string, unknown>): number | null {
+  for (const key of ['latencyMs', 'latency']) {
+    const value = payload[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+function requirementIdsFromEvents(
+  events: readonly WeeklyPlanningTraceInternalEventEntry[],
+): string[] {
+  const ids = new Set<string>();
+  events.forEach((event) => {
+    const value = eventPayloadRecord(event).requirementIds;
+    if (!Array.isArray(value)) return;
+    value.forEach((item) => {
+      if (typeof item === 'string' && item.trim()) ids.add(item.trim());
+    });
+  });
+  return Array.from(ids).sort();
+}
+
+function sanitizedEntries(entries: readonly WeeklyPlanningTraceEntry[]): WeeklyPlanningTraceEntry[] {
+  return entries.flatMap((entry) => {
+    const value = sanitizeWeeklyPlanningTraceValue(entry).value;
+    return isWeeklyPlanningTraceEntry(value) ? [value] : [];
+  });
+}
+
+function sanitizedSession(session: WeeklyPlanningTraceSession): WeeklyPlanningTraceSession {
+  const value = sanitizeWeeklyPlanningTraceValue(session).value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...session };
+  return value as WeeklyPlanningTraceSession;
+}
+
 export function createWeeklyPlanningEvaluationFixtureCandidate(
   session: WeeklyPlanningTraceSession,
   entries: readonly WeeklyPlanningTraceEntry[],
 ): WeeklyPlanningEvaluationFixtureCandidate {
-  const events = internalEvents(entries);
+  const safeEntries = sanitizedEntries(entries);
+  const events = internalEvents(safeEntries);
   const fallback = events.find((entry) => entry.eventType === 'fallback_used');
-  const finalStateRevision = entries.reduce<number | null>(
+  const finalStateRevision = safeEntries.reduce<number | null>(
     (latest, entry) => typeof entry.stateRevision === 'number'
       ? Math.max(latest ?? entry.stateRevision, entry.stateRevision)
       : latest,
     null,
   );
+  const latencyValues = events
+    .map((event) => finiteLatency(eventPayloadRecord(event)))
+    .filter((value): value is number => value !== null);
 
   return {
     caseId: `trace:${session.id}`,
-    requirementIds: [],
-    turns: entries
+    requirementIds: requirementIdsFromEvents(events),
+    turns: safeEntries
       .filter((entry) => entry.kind === 'turn')
       .map((entry) => ({ role: entry.role, content: entry.content })),
     strictResults: {
       staleAsyncDiscarded: events.some((entry) => entry.eventType === 'stale_async_result_discarded'),
       stalePreviewRejected: events.some((entry) =>
-        entry.eventType === 'preview_gate_evaluated'
-          && eventPayloadRecord(entry).allowed === false
-          && String(eventPayloadRecord(entry).reason ?? '').includes('stale'),
+        entry.eventType === 'preview_rejected_stale'
+          || (entry.eventType === 'preview_gate_evaluated'
+            && eventPayloadRecord(entry).allowed === false
+            && String(eventPayloadRecord(entry).reason ?? '').includes('stale')),
       ),
       previewCompleted: events.some((entry) => entry.eventType === 'preview_generated'),
       duplicateSaveSuppressed: events
@@ -106,7 +148,9 @@ export function createWeeklyPlanningEvaluationFixtureCandidate(
       finalStateRevision,
     },
     callCount: events.filter((entry) => entry.eventType === 'interpreter_completed').length,
-    latency: null,
+    latency: latencyValues.length > 0
+      ? latencyValues.reduce((sum, value) => sum + value, 0)
+      : null,
     fallbackCategory: fallback
       ? String(eventPayloadRecord(fallback).category ?? 'unknown')
       : null,
@@ -117,11 +161,12 @@ export function createWeeklyPlanningRoleplayCandidate(
   session: WeeklyPlanningTraceSession,
   entries: readonly WeeklyPlanningTraceEntry[],
 ): WeeklyPlanningRoleplayCandidate {
+  const safeEntries = sanitizedEntries(entries);
   return {
     candidateId: `roleplay:${session.id}`,
     requiresHumanReview: true,
     sourceSchemaVersion: session.schemaVersion,
-    turns: entries
+    turns: safeEntries
       .filter((entry) => entry.kind === 'turn')
       .map((entry) => ({
         role: entry.role,
@@ -135,12 +180,17 @@ export function createWeeklyPlanningTraceExportBundle(
   entries: readonly WeeklyPlanningTraceEntry[],
   exportedAt = new Date().toISOString(),
 ): WeeklyPlanningTraceExportBundle {
+  const safeSession = sanitizedSession(session);
+  const safeEntries = sanitizedEntries(entries);
   return {
     exportedAt,
-    schemaVersion: session.schemaVersion,
-    session: { ...session },
-    entries: entries.map((entry) => ({ ...entry })),
-    evaluationFixtureCandidate: createWeeklyPlanningEvaluationFixtureCandidate(session, entries),
-    roleplayCandidate: createWeeklyPlanningRoleplayCandidate(session, entries),
+    schemaVersion: safeSession.schemaVersion,
+    session: safeSession,
+    entries: safeEntries,
+    evaluationFixtureCandidate: createWeeklyPlanningEvaluationFixtureCandidate(
+      safeSession,
+      safeEntries,
+    ),
+    roleplayCandidate: createWeeklyPlanningRoleplayCandidate(safeSession, safeEntries),
   };
 }
