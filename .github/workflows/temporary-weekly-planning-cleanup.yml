@@ -1,16 +1,14 @@
 name: Temporary weekly planning cleanup
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:
   contents: write
 
 jobs:
   cleanup:
-    if: github.head_ref == 'agent/fix-weekly-planning-dialogue-path'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
