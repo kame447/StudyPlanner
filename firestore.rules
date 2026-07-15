@@ -114,12 +114,20 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if canCreateOwnedResource()
         && request.resource.data.id == sessionId;
-      allow update: if canUpdateOwnedResource()
-        && request.resource.data.id == resource.data.id
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.logicalConversationId == resource.data.logicalConversationId
-        && request.resource.data.startedAt == resource.data.startedAt
-        && request.resource.data.schemaVersion == resource.data.schemaVersion;
+      allow update: if (
+          canUpdateOwnedResource()
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.logicalConversationId == resource.data.logicalConversationId
+          && request.resource.data.startedAt == resource.data.startedAt
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.get('archivedAt', null) == resource.data.get('archivedAt', null)
+        ) || (
+          isAdmin()
+          && !('archivedAt' in resource.data)
+          && request.resource.data.archivedAt is string
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archivedAt'])
+        );
       allow delete: if false;
     }
 
