@@ -28,7 +28,19 @@ jobs:
           fetch-depth: 1
           show-progress: false
       - name: Apply scoped changes
-        run: node scripts/apply-weekly-planning-conversation-hardening.mjs
+        id: apply
+        continue-on-error: true
+        run: node scripts/apply-weekly-planning-conversation-hardening.mjs > apply-output.log 2>&1
+      - name: Upload apply failure log
+        if: steps.apply.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-apply-output
+          path: apply-output.log
+          retention-days: 1
+      - name: Stop after apply failure
+        if: steps.apply.outcome == 'failure'
+        run: exit 1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
