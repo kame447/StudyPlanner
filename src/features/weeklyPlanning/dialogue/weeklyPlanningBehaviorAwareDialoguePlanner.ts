@@ -101,6 +101,29 @@ function createSystemPrompt(): string {
   ].join('\n');
 }
 
+function prioritizeDialogueInput(
+  input: BehaviorAwareDialoguePlannerInput,
+): BehaviorAwareDialoguePlannerInput {
+  if (input.acceptedFacts.taskLabels.length > 0) {
+    return input;
+  }
+
+  const taskIdentityAction = input.allowedActions.find((action) =>
+    action.kind === 'ask_required_fact' && action.topicId === 'task-identity',
+  );
+  if (!taskIdentityAction) {
+    return input;
+  }
+
+  const acknowledgementActions = input.allowedActions.filter(
+    (action) => action.kind === 'acknowledge_fact',
+  );
+  return {
+    ...input,
+    allowedActions: [...acknowledgementActions, taskIdentityAction],
+  };
+}
+
 function createUserPrompt(input: BehaviorAwareDialoguePlannerInput): string {
   return JSON.stringify({
     acceptedFacts: input.acceptedFacts,
@@ -183,11 +206,12 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
 } {
   return {
     async plan(input) {
+      const effectiveInput = prioritizeDialogueInput(input);
       try {
         const content = await client.createChatCompletion({
           messages: [
             { role: 'system', content: createSystemPrompt() },
-            { role: 'user', content: createUserPrompt(input) },
+            { role: 'user', content: createUserPrompt(effectiveInput) },
           ],
           temperature: 0.2,
           responseFormat: WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT,
@@ -195,8 +219,8 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
         });
         const response = validateBehaviorAwareDialogueResponseClosed({
           response: parseResponse(content),
-          actions: input.allowedActions,
-          previewAllowed: input.previewAllowed,
+          actions: effectiveInput.allowedActions,
+          previewAllowed: effectiveInput.previewAllowed,
         });
 
         if (response) {
@@ -211,7 +235,7 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
       }
 
       return {
-        message: renderFallback(input),
+        message: renderFallback(effectiveInput),
         response: null,
         source: 'deterministic_fallback' as const,
       };
@@ -224,8 +248,9 @@ export function createDeterministicBehaviorAwareDialoguePlanner(): {
 } {
   return {
     async plan(input) {
+      const effectiveInput = prioritizeDialogueInput(input);
       return {
-        message: renderFallback(input),
+        message: renderFallback(effectiveInput),
         response: null,
         source: 'deterministic_fallback',
       };
