@@ -9,6 +9,7 @@ import {
 } from '../planning/weeklyPlanningBehaviorPlanner';
 import {
   createAiBehaviorAwareWeeklyPlanningDialoguePlanner,
+  createDeterministicBehaviorAwareDialoguePlanner,
   WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT,
 } from './weeklyPlanningBehaviorAwareDialoguePlanner';
 
@@ -55,6 +56,32 @@ function state(sourceTurns: string[]): PlanningIntakeState {
     shouldCreateDraft: true,
     shouldSavePlan: false,
     sourceTurns,
+  };
+}
+
+function rangeOnlyState(): PlanningIntakeState {
+  return {
+    status: 'needs_scope',
+    intent: 'weekly_study_planning',
+    range: {
+      startDateTime: '2026-07-15T00:00:00',
+      endDateTime: '2026-07-19T23:59:59',
+      calendarDayCount: 5,
+      confidence: 'explicit',
+      sourceText: '今日から日曜まで',
+    },
+    tasks: [],
+    progress: [],
+    unitRates: [],
+    constraints: [],
+    priorityPolicy: { kind: 'unknown' },
+    missing: ['tasks_or_goals'],
+    assumptions: [],
+    uncertainties: [],
+    questions: [],
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+    sourceTurns: ['今日から日曜までの予定立てたい'],
   };
 }
 
@@ -140,6 +167,29 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
 
     expect(result.source).toBe('deterministic_fallback');
     expect(JSON.stringify(plannerInput.allowedActions)).toBe(before);
+  });
+
+  it('removes the ungrounded introductory filler from the range-only fallback', async () => {
+    const value = rangeOnlyState();
+    const snapshot = createPlanningHypothesisSnapshot({
+      state: value,
+      currentUserText: '今日から日曜までの予定立てたい',
+      conversationId: 'conversation-1',
+    });
+    const result = await createDeterministicBehaviorAwareDialoguePlanner().plan({
+      snapshot,
+      allowedActions: createAllowedDialogueActions(snapshot),
+      acceptedFacts: {
+        taskLabels: [],
+        planningPeriodLabel: '今日から日曜まで',
+        constraintSummary: [],
+      },
+      previewAllowed: false,
+    });
+
+    expect(result.message).toContain('具体的に何をどこまで進めたいか教えてください。');
+    expect(result.message).not.toContain('ここまでの内容から');
+    expect(result.message).not.toContain('無理のない進め方を整理します');
   });
 
   it('uses a closed top-level response schema', () => {
