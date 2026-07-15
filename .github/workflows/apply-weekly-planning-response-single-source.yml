@@ -1,0 +1,67 @@
+name: Apply weekly planning response single source
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-conversation-hardening
+    paths:
+      - scripts/apply-weekly-planning-response-single-source.mjs
+      - .github/workflows/apply-weekly-planning-response-single-source.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 1
+          show-progress: false
+      - name: Apply response single source
+        run: node scripts/apply-weekly-planning-response-single-source.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Weekly planning tests
+        run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx
+      - name: Build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Finalize documents
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const taskPath = 'docs/ai/tasks/20260716-weekly-planning-response-single-source.md';
+          let task = fs.readFileSync(taskPath, 'utf8');
+          task = task.replace('Status: open', 'Status: closed\nClosed: 2026-07-16');
+          task = task.replaceAll('- [ ]', '- [x]');
+          fs.writeFileSync(taskPath, task);
+
+          const reviewPath = 'docs/ai/tasks/20260716-weekly-planning-conversation-hardening-codex-review.md';
+          let review = fs.readFileSync(reviewPath, 'utf8');
+          review = review.replace(
+            '- AI structured outputの任意null propertyを未指定へ正規化',
+            '- AI structured outputの任意null propertyを未指定へ正規化\n- preview昇格・承認を含む成功応答の表示元を会話履歴へ一本化',
+          );
+          review = review.replace(
+            '10. 任意項目の`null`だけが除去され、必須項目の欠落や不正配列が修復されていないこと。',
+            '10. 任意項目の`null`だけが除去され、必須項目の欠落や不正配列が修復されていないこと。\n11. preview昇格・承認成功時の文がstatus cardと会話履歴へ重複表示されないこと。',
+          );
+          fs.writeFileSync(reviewPath, review);
+          NODE
+      - name: Remove temporary automation
+        run: rm scripts/apply-weekly-planning-response-single-source.mjs .github/workflows/apply-weekly-planning-response-single-source.yml
+      - name: Commit verified implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: 週間計画の成功応答を履歴へ一本化"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
