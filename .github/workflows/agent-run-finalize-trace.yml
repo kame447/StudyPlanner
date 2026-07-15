@@ -57,6 +57,9 @@ jobs:
                   if count == 1:
                       return value.replace(candidate, replacement, 1)
                   if count > 1:
+                      if label == 'approval operation conversation id':
+                          position = value.rfind(candidate)
+                          return value[:position] + replacement + value[position + len(candidate):]
                       raise RuntimeError(f'{label}: ambiguous match count {count}')
               normalized_old = textwrap.dedent(old).strip()
               tokens = re.split(r'(\\s+)', normalized_old)
@@ -67,6 +70,10 @@ jobs:
                   replacement = textwrap.dedent(new).strip('\\n')
                   return value[:match.start()] + replacement + value[match.end():]
               if len(matches) > 1:
+                  if label == 'approval operation conversation id':
+                      match = matches[-1]
+                      replacement = textwrap.dedent(new).strip('\\n')
+                      return value[:match.start()] + replacement + value[match.end():]
                   raise RuntimeError(f'{label}: ambiguous normalized match count {len(matches)}')
               raise RuntimeError(f'{label}: expected one match, got 0')
           """
