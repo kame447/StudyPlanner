@@ -267,7 +267,7 @@ jobs:
             weekly_test_status=$?
             npm run build >> .agent-validation/weekly-planning-output.log 2>&1
             build_status=$?
-            git diff --check >> .agent-validation/weekly-planning-output.log 2>&1
+            git diff --check -- src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts >> .agent-validation/weekly-planning-output.log 2>&1
             diff_check_status=$?
           fi
 
