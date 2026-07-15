@@ -24,24 +24,37 @@ jobs:
           python <<'PY'
           from pathlib import Path
           import textwrap
+          import traceback
 
-          workflow = Path('.github/workflows/agent-fix-weekly-planning-trace.yml').read_text(encoding='utf-8')
-          start_marker = "          python <<'PY'\n"
-          end_marker = "          PY\n\n      - name: Commit and push fixes"
-          if start_marker not in workflow or end_marker not in workflow:
-              raise RuntimeError('embedded fix script markers not found')
-          script = workflow.split(start_marker, 1)[1].split(end_marker, 1)[0]
-          exec(compile(textwrap.dedent(script), 'agent-fix-weekly-planning-trace.py', 'exec'))
+          try:
+              workflow = Path('.github/workflows/agent-fix-weekly-planning-trace.yml').read_text(encoding='utf-8')
+              start_marker = "          python <<'PY'\n"
+              end_marker = "          PY\n\n      - name: Commit and push fixes"
+              if start_marker not in workflow or end_marker not in workflow:
+                  raise RuntimeError('embedded fix script markers not found')
+              script = workflow.split(start_marker, 1)[1].split(end_marker, 1)[0]
+              exec(compile(textwrap.dedent(script), 'agent-fix-weekly-planning-trace.py', 'exec'))
+          except Exception:
+              Path('.agent-fix-error.txt').write_text(traceback.format_exc(), encoding='utf-8')
           PY
-          rm -f .github/workflows/agent-run-weekly-planning-trace-fix.yml
 
-      - name: Commit and push fixes
+      - name: Commit result
         shell: bash
         run: |
-          git diff --check
-          git status -sb
           git config user.name "OpenAI Agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f .agent-fix-error.txt ]; then
+            cp .agent-fix-error.txt /tmp/agent-fix-error.txt
+            git reset --hard HEAD
+            cp /tmp/agent-fix-error.txt .agent-fix-error.txt
+            git add .agent-fix-error.txt
+            git commit -m "feat: 週間計画trace修正エラーを記録"
+            git push origin HEAD:agent/weekly-planning-trace-full-implementation
+            exit 0
+          fi
+          rm -f .github/workflows/agent-run-weekly-planning-trace-fix.yml
+          git diff --check
+          git status -sb
           git add -A
           git commit -m "feat: 週間計画traceの会話相関と信頼性を修正"
           git push origin HEAD:agent/weekly-planning-trace-full-implementation
