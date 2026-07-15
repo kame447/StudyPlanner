@@ -1,0 +1,85 @@
+name: Verify Pages deployment once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/verify-pages-deploy-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify production bundle
+        id: verify
+        continue-on-error: true
+        shell: bash
+        run: |
+          site="https://studyplannner.pages.dev"
+          success=false
+          http_status="000"
+          bundle_path=""
+          has_trace_collection=false
+          has_trace_route=false
+
+          for attempt in $(seq 1 12); do
+            http_status=$(curl -L -sS -o /tmp/index.html -w '%{http_code}' "$site/" || true)
+            if [ "$http_status" = "200" ]; then
+              bundle_path=$(grep -oE 'src="[^"]+\.js"' /tmp/index.html | head -n 1 | sed -E 's/^src="|"$//g')
+              if [ -n "$bundle_path" ]; then
+                case "$bundle_path" in
+                  http*) bundle_url="$bundle_path" ;;
+                  /*) bundle_url="$site$bundle_path" ;;
+                  *) bundle_url="$site/$bundle_path" ;;
+                esac
+                if curl -L -fsS "$bundle_url" -o /tmp/app.js; then
+                  grep -q 'weekly_planning_trace_sessions' /tmp/app.js && has_trace_collection=true || true
+                  grep -q 'weekly-planning-traces' /tmp/app.js && has_trace_route=true || true
+                  if [ "$has_trace_collection" = "true" ] && [ "$has_trace_route" = "true" ]; then
+                    success=true
+                    break
+                  fi
+                fi
+              fi
+            fi
+            sleep 15
+          done
+
+          if [ "$success" = "true" ]; then
+            status="success"
+          else
+            status="verification_failed"
+          fi
+
+          cat > .github/verify-pages-result.json <<EOF
+          {
+            "status": "$status",
+            "site": "$site",
+            "httpStatus": "$http_status",
+            "bundlePath": "$bundle_path",
+            "hasTraceCollection": $has_trace_collection,
+            "hasTraceRoute": $has_trace_route,
+            "sourceCommit": "$GITHUB_SHA",
+            "recordedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          if [ "$success" != "true" ]; then
+            exit 1
+          fi
+
+      - name: Record verification result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/verify-pages-result.json
+          git commit -m "feat: Pages本番反映結果を記録"
+          git push origin HEAD:main
