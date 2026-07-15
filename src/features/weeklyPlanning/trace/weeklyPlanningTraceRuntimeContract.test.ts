@@ -4,6 +4,7 @@ import {
   type BehaviorAwareDialoguePlanner,
 } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import type { WeeklyPlanningIntakePipelineInput } from '../pipeline/weeklyPlanningIntakePipeline';
 import { createInMemoryWeeklyPlanningTraceRepository } from './weeklyPlanningTraceInMemoryRepository';
 import { setWeeklyPlanningTraceRepositoryForTests } from './weeklyPlanningTraceRepository';
 import {
@@ -21,7 +22,10 @@ const dialoguePlanner: BehaviorAwareDialoguePlanner = {
   },
 };
 
-function pipelineInput(userText: string, previousState?: PlanningIntakeState) {
+function pipelineInput(
+  userText: string,
+  previousState?: PlanningIntakeState,
+): WeeklyPlanningIntakePipelineInput {
   return {
     ...(previousState ? { previousState } : {}),
     userText,
@@ -165,6 +169,10 @@ describe('weekly planning trace runtime contract', () => {
       pipelineInput('予定を作りたい'),
       { userId: 'user-1', dialoguePlanner },
     );
+    await waitForTrace(async () => {
+      expect(await repository.listSessionsForAdmin()).toHaveLength(1);
+    });
+
     recordWeeklyPlanningApprovalTrace({
       userId: 'user-1',
       phase: 'completed',
