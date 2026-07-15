@@ -1,6 +1,7 @@
 # AI commandの任意項目に含まれるnullを未指定へ正規化する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Created: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
@@ -20,9 +21,9 @@ AI interpreter境界で、objectの値が`null`であるプロパティだけを
 
 ## 完了条件
 
-- [ ] 任意のobject propertyが`null`なら未指定として除去する
-- [ ] 必須項目の`null`は有効な値へ変換せず、既存validatorで拒否する
-- [ ] 配列要素を勝手に削除しない
-- [ ] `set_study_goal.goal.amount: null`を受理し、時間見積もりが必要なtaskとして保持する
-- [ ] 既存interpreter、validator、週間計画テストを壊さない
-- [ ] buildとdiff checkを通す
+- [x] 任意のobject propertyが`null`なら未指定として除去する
+- [x] 必須項目の`null`は有効な値へ変換せず、既存validatorで拒否する
+- [x] 配列要素を勝手に削除しない
+- [x] `set_study_goal.goal.amount: null`を受理し、時間見積もりが必要なtaskとして保持する
+- [x] 既存interpreter、validator、週間計画テストを壊さない
+- [x] buildとdiff checkを通す

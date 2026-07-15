@@ -13,23 +13,23 @@ computing gzip size...
 [2mdist/[22m[32mindex.html                                   [39m[1m[2m  0.42 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
 [2mdist/[22m[2massets/[22m[32mstudyplanner-logo-DbNnCwAb.png        [39m[1m[2m 85.42 kB[22m[1m[22m
 [2mdist/[22m[2massets/[22m[35mindex-C0wxJ9lP.css                    [39m[1m[2m202.50 kB[22m[1m[22m[2m │ gzip:  32.43 kB[22m
-[2mdist/[22m[2massets/[22m[36mbook-open-9bSfjyMY.js                 [39m[1m[2m  0.45 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
-[2mdist/[22m[2massets/[22m[36mtrash-2-BpJjzDNU.js                   [39m[1m[2m  0.90 kB[22m[1m[22m[2m │ gzip:   0.44 kB[22m
-[2mdist/[22m[2massets/[22m[36mtimetableOcrImport-C8zAXWv2.js        [39m[1m[2m  1.63 kB[22m[1m[22m[2m │ gzip:   1.08 kB[22m
-[2mdist/[22m[2massets/[22m[36mquickEntryDrafts-4HMBvIWV.js          [39m[1m[2m  1.70 kB[22m[1m[22m[2m │ gzip:   0.86 kB[22m
-[2mdist/[22m[2massets/[22m[36mTimetableOcrImportDialog-Dlq5f4OG.js  [39m[1m[2m  7.28 kB[22m[1m[22m[2m │ gzip:   2.49 kB[22m
-[2mdist/[22m[2massets/[22m[36msubjectInference-B94R2TFs.js          [39m[1m[2m  7.98 kB[22m[1m[22m[2m │ gzip:   3.56 kB[22m
-[2mdist/[22m[2massets/[22m[36mWeekView-CRooCDAu.js                  [39m[1m[2m  9.40 kB[22m[1m[22m[2m │ gzip:   2.75 kB[22m
-[2mdist/[22m[2massets/[22m[36mTodoView-Dn8QmeUC.js                  [39m[1m[2m 14.45 kB[22m[1m[22m[2m │ gzip:   4.28 kB[22m
-[2mdist/[22m[2massets/[22m[36mTimetableView-D1goXIS6.js             [39m[1m[2m 15.48 kB[22m[1m[22m[2m │ gzip:   5.04 kB[22m
-[2mdist/[22m[2massets/[22m[36mBookshelfView-BzajxawM.js             [39m[1m[2m 15.79 kB[22m[1m[22m[2m │ gzip:   5.35 kB[22m
-[2mdist/[22m[2massets/[22m[36mReportView-Bsa_cP38.js                [39m[1m[2m 16.65 kB[22m[1m[22m[2m │ gzip:   5.36 kB[22m
-[2mdist/[22m[2massets/[22m[36mDayView-PlDzQ7nS.js                   [39m[1m[2m 40.90 kB[22m[1m[22m[2m │ gzip:  11.36 kB[22m
-[2mdist/[22m[2massets/[22m[36mQuickEntryModal-CcBOqWFN.js           [39m[1m[2m321.87 kB[22m[1m[22m[2m │ gzip:  98.05 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-m9F0nfvd.js                     [39m[1m[33m887.02 kB[39m[22m[2m │ gzip: 245.74 kB[22m
+[2mdist/[22m[2massets/[22m[36mbook-open-BB9JkHFC.js                 [39m[1m[2m  0.45 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[2massets/[22m[36mtrash-2-B0pHxl77.js                   [39m[1m[2m  0.90 kB[22m[1m[22m[2m │ gzip:   0.44 kB[22m
+[2mdist/[22m[2massets/[22m[36mtimetableOcrImport-D2MvsKxh.js        [39m[1m[2m  1.63 kB[22m[1m[22m[2m │ gzip:   1.08 kB[22m
+[2mdist/[22m[2massets/[22m[36mquickEntryDrafts-CRaCeWui.js          [39m[1m[2m  1.70 kB[22m[1m[22m[2m │ gzip:   0.86 kB[22m
+[2mdist/[22m[2massets/[22m[36mTimetableOcrImportDialog-mmUjTDnq.js  [39m[1m[2m  7.28 kB[22m[1m[22m[2m │ gzip:   2.49 kB[22m
+[2mdist/[22m[2massets/[22m[36msubjectInference-Ctt3SJFm.js          [39m[1m[2m  7.98 kB[22m[1m[22m[2m │ gzip:   3.56 kB[22m
+[2mdist/[22m[2massets/[22m[36mWeekView-CrBr038C.js                  [39m[1m[2m  9.40 kB[22m[1m[22m[2m │ gzip:   2.75 kB[22m
+[2mdist/[22m[2massets/[22m[36mTodoView-8ZDRgTHj.js                  [39m[1m[2m 14.45 kB[22m[1m[22m[2m │ gzip:   4.28 kB[22m
+[2mdist/[22m[2massets/[22m[36mTimetableView-B9gzXtqT.js             [39m[1m[2m 15.48 kB[22m[1m[22m[2m │ gzip:   5.04 kB[22m
+[2mdist/[22m[2massets/[22m[36mBookshelfView-BflErmgu.js             [39m[1m[2m 15.79 kB[22m[1m[22m[2m │ gzip:   5.35 kB[22m
+[2mdist/[22m[2massets/[22m[36mReportView-D5RfW7W1.js                [39m[1m[2m 16.65 kB[22m[1m[22m[2m │ gzip:   5.36 kB[22m
+[2mdist/[22m[2massets/[22m[36mDayView-CoP2hit3.js                   [39m[1m[2m 40.90 kB[22m[1m[22m[2m │ gzip:  11.37 kB[22m
+[2mdist/[22m[2massets/[22m[36mQuickEntryModal-CcNhyUw6.js           [39m[1m[2m322.04 kB[22m[1m[22m[2m │ gzip:  98.14 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-DnvVXbeO.js                     [39m[1m[33m887.02 kB[39m[22m[2m │ gzip: 245.74 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 5.76s[39m
+[32m✓ built in 6.10s[39m

@@ -16,6 +16,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 - 会話messagesとintake stateのweekly planning stateへの集約とlocalStorage永続化
 - 送信直後の入力クリア、composer非表示、assistant typing indicator
 - 会話履歴表示の独立component化
+- AI structured outputの任意null propertyを未指定へ正規化
 
 ## 必須確認項目
 
@@ -28,6 +29,7 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 7. 送信中にtextareaとユーザー発話が二重表示されないこと。
 8. preview生成・個別削除・一括承認の既存経路に回帰がないこと。
 9. `NaturalLanguageAssistant`から分離したcomponent境界が新しい循環依存を作っていないこと。
+10. 任意項目の`null`だけが除去され、必須項目の欠落や不正配列が修復されていないこと。
 
 ## 実行済み検証
 

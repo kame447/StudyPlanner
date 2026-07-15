@@ -476,6 +476,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function omitNullObjectProperties(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => omitNullObjectProperties(item));
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, propertyValue]) => propertyValue !== null)
+      .map(([key, propertyValue]) => [key, omitNullObjectProperties(propertyValue)]),
+  );
+}
+
 function normalizeConfidence(value: unknown): ParsedWeeklyPlanningCommand['confidence'] {
   return CONFIDENCE_VALUES.has(String(value))
     ? value as ParsedWeeklyPlanningCommand['confidence']
@@ -487,10 +502,12 @@ function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null 
     return null;
   }
 
-  const command = isRecord(candidate.command) ? candidate.command : candidate;
-  if (typeof command.type !== 'string') {
+  const rawCommand = isRecord(candidate.command) ? candidate.command : candidate;
+  const normalizedCommand = omitNullObjectProperties(rawCommand);
+  if (!isRecord(normalizedCommand) || typeof normalizedCommand.type !== 'string') {
     return null;
   }
+  const command = normalizedCommand;
 
   const confidence = normalizeConfidence(command.confidence);
   const wrappedNeedsConfirmation = isRecord(candidate.command) && typeof candidate.needsConfirmation === 'boolean'

@@ -232,6 +232,59 @@ describe('weekly planning AI interpreter', () => {
     ]);
   });
 
+  it('treats null object properties as unspecified without repairing required fields', async () => {
+    const interpreter = createAiWeeklyPlanningInterpreter(config, createMockClient(JSON.stringify({
+      candidates: [
+        {
+          command: {
+            type: 'set_study_goal',
+            goal: {
+              title: '全体を先におさらいする',
+              subject: '院試全体',
+              unit: 'unknown',
+              amount: null,
+            },
+            sourceText: '全体を先におさらいしたい',
+            confidence: 'medium',
+          },
+        },
+        {
+          command: {
+            type: 'set_study_goal',
+            goal: { title: null, amount: null },
+            sourceText: '壊れた必須項目',
+            confidence: 'high',
+          },
+        },
+      ],
+    })));
+
+    const result = await interpreter.interpretUserTurn({
+      userText: '全体を先におさらいしたい',
+      context: { selectedDate: '2030-01-01', planningDayCount: 7 },
+      stateSummary: { knownFields: [], confirmedSlots: [] },
+    });
+    const validation = validateInterpretedCandidates(
+      result.candidates,
+      { knownFields: [], confirmedSlots: [] },
+    );
+
+    expect(result.candidates[0]?.command).toEqual(expect.objectContaining({
+      type: 'set_study_goal',
+      goal: {
+        title: '全体を先におさらいする',
+        subject: '院試全体',
+        unit: 'unknown',
+      },
+    }));
+    expect(validation.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_study_goal' }),
+    ]);
+    expect(validation.rejected).toEqual([
+      expect.objectContaining({ reason: 'invalid-command-shape' }),
+    ]);
+  });
+
   it('defines a closed command schema for every known command type', () => {
     const schemas = commandUnionSchemas();
     const schemaTypes = schemas.map((schema) => schema.properties?.type?.const).sort();
