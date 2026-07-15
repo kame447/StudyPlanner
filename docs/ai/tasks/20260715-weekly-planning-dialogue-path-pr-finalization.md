@@ -1,33 +1,42 @@
 # 週間計画の対話経路PRを最終検証して終了する
 
-Status: open
+Status: closed
 Parent: `20260715-weekly-planning-dialogue-path-issue-breakdown.md`
 Depends on: `20260715-weekly-planning-dialogue-path-implementation-cleanup.md` closed
 
 ## 背景
 
-PR #3は挙動修正の検証を通過しているが、構造整理前の一時構成と検証用baseを使用している。構造整理後の最終差分を基準に、検証とPR終了処理を行う。
+PR #3の構造整理後の最終差分を基準に、検証とPR終了処理を行った。
 
-## 作業範囲
+## 実施内容
 
-- PRのbaseを`main`へ戻す
-- PRタイトルから検証中表記を外す
-- PR本文を最終差分と検証結果へ更新する
-- 変更ファイル一覧からtask外の変更と一時ファイルを除去する
-- 週間計画全テスト、build、diff checkを実行する
-- deterministic baseline、action優先順位、clarification contextの主要回帰を確認する
+- PRのbaseを`main`へ戻した
+- PRタイトルから検証中表記を外した
+- PR本文を最終差分と検証結果へ更新した
+- 変更ファイル一覧からtask外の変更と一時ファイルを除去した
+- 週間計画全テスト、build、diff checkを実行した
+- deterministic baseline、action優先順位、clarification contextの主要回帰を確認した
 
 ## 完了条件
 
-- [ ] PRのbaseが`main`である
-- [ ] PRがmergeableである
-- [ ] 一時workflow、script、trigger、検証artifactがPR差分にない
-- [ ] `npm run test:run -- src/features/weeklyPlanning`が成功する
-- [ ] `npm run build`が成功する
-- [ ] `git diff --check`が成功する
-- [ ] PR本文の変更内容と検証結果が最新である
-- [ ] 親trackerをclosedへ更新できる
+- [x] PRのbaseが`main`である
+- [x] PRがmergeableである
+- [x] 一時workflow、script、trigger、検証artifactがPR差分にない
+- [x] `npm run test:run -- src/features/weeklyPlanning`が成功する
+- [x] `npm run build`が成功する
+- [x] `git diff --check`が成功する
+- [x] PR本文の変更内容と検証結果が最新である
+- [x] 親trackerをclosedへ更新できる
 
-## 終了処理
+## 最終検証結果
 
-完了後、このmdと親trackerの`Status`を`closed`へ変更する。PR自体のmergeまたはcloseは、最終差分の確認後に行う。
+- `npm run test:run -- src/features/weeklyPlanning`: 688 passed、13 skipped、5 todo
+- `npm run build`: passed
+- `git diff --check`: passed
+- PR base: `main`
+- PR mergeable: true
+- PR changed files: 18
+
+## 終了状態
+
+このtaskと親trackerを`closed`へ更新した。PR #3はmerge可能なopen状態で残し、merge自体は別判断とする。
