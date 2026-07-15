@@ -28,13 +28,13 @@ PR #3で扱っている問題を、原因と完了条件が独立する単位へ
 
 説明対象と回答例の不一致、missing以外の質問に対する聞き返し欠落、経路間のclarification decision不一致は完了済み。
 
-## Open
-
 ### 実装構造の整理
 
 `20260715-weekly-planning-dialogue-path-implementation-cleanup.md`
 
-API制約回避のために導入したcore複製とwrapper構成を既存pipelineへ直接統合し、一時helperとtriggerを削除する。
+core複製とwrapper構成を既存pipelineへ直接統合し、一時helper、trigger、cleanup scriptを削除した。
+
+## Open
 
 ### PRの最終検証と終了処理
 
