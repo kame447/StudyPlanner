@@ -25,7 +25,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/weekly-planning-conversation-hardening
-          fetch-depth: 0
+          fetch-depth: 1
+          show-progress: false
       - name: Apply scoped changes
         run: node scripts/apply-weekly-planning-conversation-hardening.mjs
       - uses: actions/setup-node@v4
