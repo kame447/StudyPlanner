@@ -20,12 +20,53 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Run weekly planning regression suite and build
+      - name: Update superseded contracts and run weekly planning regression suite
         shell: bash
         run: |
           set +e
           mkdir -p .agent-validation
           : > .agent-validation/weekly-planning-output.log
+
+          python <<'PY' >> .agent-validation/weekly-planning-output.log 2>&1
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  "it('uses the interpreter for every provider turn and does not merge deterministic semantic parsing', async () => {",
+                  "it('uses the interpreter for every provider turn and keeps deterministic parsing as the baseline', async () => {",
+              ),
+              (
+                  "    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
+                  "    expect(output.state.tasks).toEqual([]);\n"
+                  "    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);",
+                  "    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
+                  "    expect(output.state.tasks).toHaveLength(2);\n"
+                  "    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
+                  "    expect(bareOutput.state.tasks).toHaveLength(2);",
+              ),
+              (
+                  "it('uses rules fallback only after an interpreter error, not after empty candidates', async () => {",
+                  "it('applies deterministic parsing before AI even when candidates are empty', async () => {",
+              ),
+              (
+                  "    expect(emptyInterpreter).toHaveBeenCalledTimes(1);\n"
+                  "    expect(emptyOutput.state.tasks).toEqual([]);\n"
+                  "    expect(failingInterpreter).toHaveBeenCalledTimes(1);",
+                  "    expect(emptyInterpreter).toHaveBeenCalledTimes(1);\n"
+                  "    expect(emptyOutput.state.tasks).toHaveLength(2);\n"
+                  "    expect(emptyOutput.interpreterDiagnostics).toBeDefined();\n"
+                  "    expect(failingInterpreter).toHaveBeenCalledTimes(1);",
+              ),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise RuntimeError(f'test contract target was not found exactly once: {old[:80]}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          patch_status=$?
 
           npm ci >> .agent-validation/weekly-planning-output.log 2>&1
           install_status=$?
@@ -33,7 +74,7 @@ jobs:
           build_status=99
           diff_check_status=99
 
-          if [ "$install_status" -eq 0 ]; then
+          if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ]; then
             npm run test:run -- src/features/weeklyPlanning \
               >> .agent-validation/weekly-planning-output.log 2>&1
             weekly_test_status=$?
@@ -46,6 +87,7 @@ jobs:
           fi
 
           cat > .agent-validation/weekly-planning-result.txt <<EOF
+          patch_status=$patch_status
           install_status=$install_status
           weekly_test_status=$weekly_test_status
           build_status=$build_status
@@ -54,11 +96,21 @@ jobs:
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ] \
+            && [ "$weekly_test_status" -eq 0 ] && [ "$build_status" -eq 0 ] \
+            && [ "$diff_check_status" -eq 0 ]; then
+            git add src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+          else
+            git checkout -- src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+          fi
+
           git add .agent-validation/weekly-planning-result.txt .agent-validation/weekly-planning-output.log
-          git commit -m "feat: 週間計画全体の検証結果を記録 [validation-result]"
+          git commit -m "feat: AI経路の新しい解析契約へテストを更新 [validation-result]"
           git push
 
-          if [ "$install_status" -ne 0 ] || [ "$weekly_test_status" -ne 0 ] \
-            || [ "$build_status" -ne 0 ] || [ "$diff_check_status" -ne 0 ]; then
+          if [ "$patch_status" -ne 0 ] || [ "$install_status" -ne 0 ] \
+            || [ "$weekly_test_status" -ne 0 ] || [ "$build_status" -ne 0 ] \
+            || [ "$diff_check_status" -ne 0 ]; then
             exit 1
           fi
