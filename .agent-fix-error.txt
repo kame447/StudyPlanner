@@ -1,5 +1,5 @@
 Traceback (most recent call last):
-  File "<stdin>", line 12, in <module>
-  File "agent-fix-weekly-planning-trace.py", line 195, in <module>
-  File "agent-fix-weekly-planning-trace.py", line 13, in replace_once
-RuntimeError: runtime preview correlation: expected one match, got 0
+  File "<stdin>", line 42, in <module>
+  File "agent-fix-weekly-planning-trace.py", line 568, in <module>
+  File "agent-fix-weekly-planning-trace.py", line 27, in replace_once
+RuntimeError: entry kind validation: expected one match, got 0
