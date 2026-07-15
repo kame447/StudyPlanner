@@ -22,20 +22,37 @@ function sortedSessions(sessions: Iterable<WeeklyPlanningTraceSession>): WeeklyP
     .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
 }
 
+function preserveArchiveState(
+  current: WeeklyPlanningTraceSession | undefined,
+  next: WeeklyPlanningTraceSession,
+): WeeklyPlanningTraceSession {
+  const archivedAt = next.archivedAt ?? current?.archivedAt;
+  return {
+    ...next,
+    ...(archivedAt ? { archivedAt } : {}),
+  };
+}
+
 export function createInMemoryWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepository {
   const sessions = new Map<string, WeeklyPlanningTraceSession>();
   const entries = new Map<string, WeeklyPlanningTraceEntry>();
 
   return {
     async upsertSession(session) {
-      sessions.set(session.id, cloneSession(session));
+      sessions.set(
+        session.id,
+        cloneSession(preserveArchiveState(sessions.get(session.id), session)),
+      );
     },
 
     async appendEntries({ session, entries: nextEntries }) {
       if (nextEntries.some((entry) => entry.userId !== session.userId || entry.sessionId !== session.id)) {
         throw new Error('trace ownership mismatch');
       }
-      sessions.set(session.id, cloneSession(session));
+      sessions.set(
+        session.id,
+        cloneSession(preserveArchiveState(sessions.get(session.id), session)),
+      );
       nextEntries.forEach((entry) => {
         const current = entries.get(entry.id);
         if (current && JSON.stringify(current) !== JSON.stringify(entry)) {
@@ -53,6 +70,14 @@ export function createInMemoryWeeklyPlanningTraceRepository(): WeeklyPlanningTra
 
     async listSessionsForAdmin() {
       return sortedSessions(sessions.values());
+    },
+
+    async archiveSessionForAdmin(sessionId, archivedAt) {
+      const current = sessions.get(sessionId);
+      if (!current) {
+        throw new Error('trace session not found');
+      }
+      sessions.set(sessionId, { ...current, archivedAt });
     },
 
     async getSession(userId, sessionId) {
