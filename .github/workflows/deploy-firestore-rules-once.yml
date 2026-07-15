@@ -8,7 +8,7 @@ on:
       - .github/workflows/deploy-firestore-rules-once.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy-firestore-rules:
@@ -21,7 +21,10 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: npm ci
 
       - name: Resolve Firebase credentials
         id: firebase-auth
@@ -43,14 +46,51 @@ jobs:
             echo "FIREBASE_TOKEN=$FIREBASE_TOKEN_VALUE" >> "$GITHUB_ENV"
             echo "mode=token" >> "$GITHUB_OUTPUT"
           else
-            echo "Firebase deployment credentials are not configured." >&2
-            exit 2
+            echo "mode=missing" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Deploy Firestore rules with service account
-        if: steps.firebase-auth.outputs.mode == 'service-account'
-        run: npx firebase-tools deploy --only firestore:rules --project study-planner-d1bc8 --non-interactive
+      - name: Deploy Firestore rules
+        id: deploy
+        if: steps.install.outcome == 'success' && steps.firebase-auth.outputs.mode != 'missing'
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ "${{ steps.firebase-auth.outputs.mode }}" = "token" ]; then
+            npx firebase-tools deploy --only firestore:rules --project study-planner-d1bc8 --non-interactive --token "$FIREBASE_TOKEN"
+          else
+            npx firebase-tools deploy --only firestore:rules --project study-planner-d1bc8 --non-interactive
+          fi
 
-      - name: Deploy Firestore rules with token
-        if: steps.firebase-auth.outputs.mode == 'token'
-        run: npx firebase-tools deploy --only firestore:rules --project study-planner-d1bc8 --non-interactive --token "$FIREBASE_TOKEN"
+      - name: Record deployment result
+        if: always()
+        shell: bash
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          AUTH_MODE: ${{ steps.firebase-auth.outputs.mode }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          if [ "$INSTALL_OUTCOME" != "success" ]; then
+            status="install_failed"
+          elif [ "$AUTH_MODE" = "missing" ]; then
+            status="missing_credentials"
+          elif [ "$DEPLOY_OUTCOME" = "success" ]; then
+            status="success"
+          else
+            status="deploy_failed"
+          fi
+          cat > .github/deploy-firestore-result.json <<EOF
+          {
+            "status": "$status",
+            "project": "study-planner-d1bc8",
+            "sourceCommit": "$GITHUB_SHA",
+            "authMode": "$AUTH_MODE",
+            "installOutcome": "$INSTALL_OUTCOME",
+            "deployOutcome": "$DEPLOY_OUTCOME",
+            "recordedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/deploy-firestore-result.json
+          git commit -m "feat: Firestoreデプロイ結果を記録"
+          git push origin HEAD:main
