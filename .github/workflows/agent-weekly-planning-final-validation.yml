@@ -1,0 +1,305 @@
+name: Agent weekly planning final validation
+
+on:
+  push:
+    branches:
+      - agent/fix-weekly-planning-dialogue-path
+    paths:
+      - .github/workflows/agent-weekly-planning-final-validation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply fixes and validate
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .agent-validation
+          : > .agent-validation/weekly-planning-output.log
+
+          python <<'PY' >> .agent-validation/weekly-planning-output.log 2>&1
+          import re
+          from pathlib import Path
+
+          reducer_path = Path('src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts')
+          reducer = reducer_path.read_text(encoding='utf-8')
+          start = reducer.index('export function applyWeeklyPlanningUserTurnWithDiagnostics(')
+          end = reducer.index('\nexport function applyWeeklyPlanningUserTurn(', start)
+          replacement = '''function applyDeterministicWeeklyPlanningUserTurnCore(
+            previousState: PlanningIntakeState | undefined,
+            userText: string,
+            context: WeeklyPlanningIntakeContext,
+          ): { state: PlanningIntakeState; deterministicCommandCount: number } {
+            let deterministicCommandCount = 0;
+            let nextState = beginWeeklyPlanningUserTurn(previousState, userText);
+
+            const setupCommands: ParsedWeeklyPlanningCommand[] = [];
+            const planningRangeCommand = parseSetPlanningRangeCommand(userText, context, nextState.pendingPlanningRange);
+            if (planningRangeCommand) {
+              setupCommands.push(planningRangeCommand);
+            } else {
+              const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(userText, context);
+              if (pendingPlanningRangeCommand) setupCommands.push(pendingPlanningRangeCommand);
+            }
+            const beginCommand = parseBeginWeeklyPlanningCommand(userText);
+            if (beginCommand) setupCommands.push(beginCommand);
+            const examScopeCommand = parseSetExamScopeCommand(userText, nextState.examPrepScope);
+            if (examScopeCommand) setupCommands.push(examScopeCommand);
+
+            deterministicCommandCount += setupCommands.length;
+            nextState = applyWeeklyPlanningCommands(nextState, setupCommands);
+            const fields = nextState.examPrepScope?.fields ?? [];
+            const progressBoundaryCommand = parseNoteProgressBoundaryCommand(userText, fields);
+            if (progressBoundaryCommand) {
+              deterministicCommandCount += 1;
+              nextState = applyWeeklyPlanningCommands(nextState, [progressBoundaryCommand]);
+            }
+
+            const turnCommands = parseWeeklyPlanningCommands({ userText, context, state: nextState });
+            deterministicCommandCount += turnCommands.length;
+            nextState = applyWeeklyPlanningCommands(nextState, turnCommands);
+            return { state: nextState, deterministicCommandCount };
+          }
+
+          export function applyDeterministicWeeklyPlanningUserTurn(
+            previousState: PlanningIntakeState | undefined,
+            userText: string,
+            context: WeeklyPlanningIntakeContext,
+          ): PlanningIntakeState {
+            return finalizeState(
+              applyDeterministicWeeklyPlanningUserTurnCore(previousState, userText, context).state,
+            );
+          }
+
+          export function applyWeeklyPlanningUserTurnWithDiagnostics(
+            previousState: PlanningIntakeState | undefined,
+            userText: string,
+            context: WeeklyPlanningIntakeContext,
+          ): WeeklyPlanningUserTurnDiagnostics {
+            const baseState = previousState ?? createInitialPlanningIntakeState();
+            const missingBefore = [...baseState.missing];
+            let fallbackProgressCount = 0;
+            const deterministicTurn = applyDeterministicWeeklyPlanningUserTurnCore(
+              previousState,
+              userText,
+              context,
+            );
+            let nextState = deterministicTurn.state;
+
+            const tasksBeforeFallback = nextState.tasks.map((task) => [
+              task.title,
+              task.subject ?? '',
+              task.unit,
+              task.amount ?? '',
+              task.rawText,
+            ].join('\\u001f'));
+            nextState = applyLegacyWeeklyPlanningFallback({
+              state: nextState,
+              previousState,
+              userText,
+              context,
+            });
+            const tasksAfterFallback = nextState.tasks.map((task) => [
+              task.title,
+              task.subject ?? '',
+              task.unit,
+              task.amount ?? '',
+              task.rawText,
+            ].join('\\u001f'));
+            if (tasksAfterFallback.length > 0 && tasksAfterFallback.join('\\u001e') !== tasksBeforeFallback.join('\\u001e')) {
+              fallbackProgressCount += 1;
+            }
+
+            const finalizedState = finalizeState(nextState);
+            return {
+              state: finalizedState,
+              deterministicCommandCount: deterministicTurn.deterministicCommandCount,
+              fallbackProgressCount,
+              missingBefore,
+              missingAfter: [...finalizedState.missing],
+            };
+          }
+          '''
+          reducer_path.write_text(reducer[:start] + replacement + reducer[end:], encoding='utf-8')
+
+          pipeline_path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts')
+          pipeline = pipeline_path.read_text(encoding='utf-8')
+          pipeline = pipeline.replace(
+              "import {\n  applyWeeklyPlanningCommands,",
+              "import {\n  applyDeterministicWeeklyPlanningUserTurn,\n  applyWeeklyPlanningCommands,",
+              1,
+          )
+          pipeline, count = re.subn(
+              r"  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics\(\n"
+              r"    previousState,\n    input\.userText,\n    context,\n  \);\n"
+              r"  const preparedState = deterministicTurn\.state;",
+              "  const preparedState = applyDeterministicWeeklyPlanningUserTurn(\n"
+              "    previousState,\n    input.userText,\n    context,\n  );",
+              pipeline,
+          )
+          if count != 1:
+              raise RuntimeError(f'prepared-state replacement count={count}')
+          pipeline, count = re.subn(
+              r"  \} catch \{\n"
+              r"    // Provider failure skips only AI supplementation; deterministic parsing has already been applied\.\n"
+              r"    return buildPipelineOutput\(\{\n"
+              r"      input,\n      state: preparedState,\n      assumptionProposalState: proposalState,\n"
+              r"    \}\);\n  \}",
+              "  } catch {\n"
+              "    // Provider failures keep the established full rules path, including legacy task extraction.\n"
+              "    const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(\n"
+              "      previousState,\n      input.userText,\n      context,\n    );\n"
+              "    return buildPipelineOutput({\n"
+              "      input,\n      state: fallbackTurn.state,\n      assumptionProposalState: proposalState,\n    });\n  }",
+              pipeline,
+          )
+          if count != 1:
+              raise RuntimeError(f'provider-fallback replacement count={count}')
+          pipeline_path.write_text(pipeline, encoding='utf-8')
+
+          behavior_path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts')
+          behavior = behavior_path.read_text(encoding='utf-8')
+          start = behavior.index('function mergeActions(')
+          end = behavior.index('\nfunction behaviorClarificationRequest(', start)
+          merge = '''function dialogueActionPriority(action: AllowedDialogueAction): number {
+            if (action.kind === 'generate_preview') return 100;
+            if (action.kind === 'report_infeasibility') return 95;
+            if (action.topicId === 'planning-range') return 92;
+            if (action.topicId === 'task-identity') return 91;
+            if (action.kind === 'suggest_draft_generation') return 90;
+            if (action.topicId === 'feasibility_basis') return 85;
+            if (action.kind === 'ask_required_fact' || action.kind === 'show_options') return 70;
+            if (action.kind === 'propose_default') return 65;
+            if (action.kind === 'acknowledge_fact') return 60;
+            return 50;
+          }
+
+          function mergeActions(
+            primary: readonly AllowedDialogueAction[],
+            additional: readonly AllowedDialogueAction[],
+          ): AllowedDialogueAction[] {
+            const hasFoundationalMissing = primary.some((action) =>
+              action.topicId === 'planning-purpose'
+              || action.topicId === 'planning-range'
+              || action.topicId === 'task-identity',
+            );
+            const candidates = [
+              ...primary,
+              ...additional.filter((action) =>
+                !(hasFoundationalMissing && action.topicId === 'feasibility_basis'),
+              ),
+            ];
+            const byId = new Map<string, { action: AllowedDialogueAction; order: number }>();
+            candidates.forEach((action, order) => {
+              if (!byId.has(action.actionId)) byId.set(action.actionId, { action, order });
+            });
+            return Array.from(byId.values())
+              .sort((left, right) =>
+                dialogueActionPriority(right.action) - dialogueActionPriority(left.action)
+                || left.order - right.order,
+              )
+              .slice(0, 3)
+              .map(({ action }) => action);
+          }
+          '''
+          behavior_path.write_text(behavior[:start] + merge + behavior[end:], encoding='utf-8')
+
+          test_path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts')
+          test = test_path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  "it('uses the interpreter for every provider turn and does not merge deterministic semantic parsing', async () => {",
+                  "it('uses deterministic command parsing before AI without applying legacy fallback', async () => {",
+              ),
+              (
+                  "    expect(interpretUserTurn).toHaveBeenCalledTimes(3);\n"
+                  "    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
+                  "    expect(output.state.tasks).toEqual([]);\n"
+                  "    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);",
+                  "    expect(interpretUserTurn).toHaveBeenCalledTimes(3);\n"
+                  "    expect(firstOutput.state.range).toBeDefined();\n"
+                  "    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
+                  "    expect(output.state.tasks).toEqual([]);\n"
+                  "    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
+                  "    expect(bareOutput.state.tasks).toEqual([]);",
+              ),
+              (
+                  "it('uses rules fallback only after an interpreter error, not after empty candidates', async () => {",
+                  "it('uses legacy fallback only after an interpreter error while empty AI keeps deterministic parsing', async () => {",
+              ),
+              (
+                  "    expect(emptyInterpreter).toHaveBeenCalledTimes(1);\n"
+                  "    expect(emptyOutput.state.tasks).toEqual([]);\n"
+                  "    expect(failingInterpreter).toHaveBeenCalledTimes(1);",
+                  "    expect(emptyInterpreter).toHaveBeenCalledTimes(1);\n"
+                  "    expect(emptyOutput.state.tasks).toEqual([]);\n"
+                  "    expect(emptyOutput.interpreterDiagnostics).toBeDefined();\n"
+                  "    expect(failingInterpreter).toHaveBeenCalledTimes(1);",
+              ),
+          ]
+          for old, new in replacements:
+              if test.count(old) != 1:
+                  raise RuntimeError(f'test target count={test.count(old)}: {old[:70]}')
+              test = test.replace(old, new, 1)
+          test_path.write_text(test, encoding='utf-8')
+          PY
+          patch_status=$?
+
+          npm ci >> .agent-validation/weekly-planning-output.log 2>&1
+          install_status=$?
+          weekly_test_status=99
+          build_status=99
+          diff_check_status=99
+
+          if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ]; then
+            npm run test:run -- src/features/weeklyPlanning >> .agent-validation/weekly-planning-output.log 2>&1
+            weekly_test_status=$?
+            npm run build >> .agent-validation/weekly-planning-output.log 2>&1
+            build_status=$?
+            git diff --check >> .agent-validation/weekly-planning-output.log 2>&1
+            diff_check_status=$?
+          fi
+
+          cat > .agent-validation/weekly-planning-result.txt <<EOF
+          patch_status=$patch_status
+          install_status=$install_status
+          weekly_test_status=$weekly_test_status
+          build_status=$build_status
+          diff_check_status=$diff_check_status
+          EOF
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          files=(
+            src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts
+            src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts
+            src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts
+            src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+          )
+          if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ] \
+            && [ "$weekly_test_status" -eq 0 ] && [ "$build_status" -eq 0 ] \
+            && [ "$diff_check_status" -eq 0 ]; then
+            git add "${files[@]}"
+          else
+            git checkout -- "${files[@]}"
+          fi
+          git add .agent-validation/weekly-planning-result.txt .agent-validation/weekly-planning-output.log
+          git commit -m "feat: AI経路の確定解析とaction優先度を修正 [validation-result]"
+          git push
+
+          if [ "$patch_status" -ne 0 ] || [ "$install_status" -ne 0 ] \
+            || [ "$weekly_test_status" -ne 0 ] || [ "$build_status" -ne 0 ] \
+            || [ "$diff_check_status" -ne 0 ]; then
+            exit 1
+          fi
