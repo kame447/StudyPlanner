@@ -1,0 +1,160 @@
+name: Enable production trace and test once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/enable-trace-and-test-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  enable-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply production trace enablement
+        id: patch
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          repository_path = Path('src/features/weeklyPlanning/trace/weeklyPlanningTraceRepository.ts')
+          repository = repository_path.read_text(encoding='utf-8')
+          old = """export function isWeeklyPlanningTraceEnabled(): boolean {
+            return import.meta.env.DEV || import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED === 'true';
+          }
+          """
+          new = """export function resolveWeeklyPlanningTraceEnabled(
+            configuredValue: string | undefined,
+          ): boolean {
+            return configuredValue !== 'false';
+          }
+
+          export function isWeeklyPlanningTraceEnabled(): boolean {
+            return resolveWeeklyPlanningTraceEnabled(
+              import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED,
+            );
+          }
+          """
+          if repository.count(old) != 1:
+              raise RuntimeError('trace enablement target was not found exactly once')
+          repository_path.write_text(repository.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('src/features/weeklyPlanning/trace/weeklyPlanningTraceRepository.test.ts')
+          test = test_path.read_text(encoding='utf-8')
+          import_line = "import { createInMemoryWeeklyPlanningTraceRepository } from './weeklyPlanningTraceInMemoryRepository';\n"
+          replacement_import = import_line + "import { resolveWeeklyPlanningTraceEnabled } from './weeklyPlanningTraceRepository';\n"
+          if test.count(import_line) != 1:
+              raise RuntimeError('test import target was not found exactly once')
+          test = test.replace(import_line, replacement_import, 1)
+          addition = """
+
+          describe('resolveWeeklyPlanningTraceEnabled', () => {
+            it('未設定とtrueは有効、明示falseだけ無効にする', () => {
+              expect(resolveWeeklyPlanningTraceEnabled(undefined)).toBe(true);
+              expect(resolveWeeklyPlanningTraceEnabled('true')).toBe(true);
+              expect(resolveWeeklyPlanningTraceEnabled('false')).toBe(false);
+            });
+          });
+          """
+          if "describe('resolveWeeklyPlanningTraceEnabled'" not in test:
+              test = test.rstrip() + addition
+          test_path.write_text(test, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: npm ci
+
+      - name: Trace tests
+        id: trace-tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run test:run -- src/features/weeklyPlanning/trace
+
+      - name: Weekly planning tests
+        id: weekly-tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run test:run -- src/features/weeklyPlanning
+
+      - name: Full tests
+        id: full-tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run test:run
+
+      - name: Build
+        id: build
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run build
+
+      - name: Diff check
+        id: diff-check
+        continue-on-error: true
+        run: git diff --check
+
+      - name: Commit tested change or result
+        if: always()
+        shell: bash
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          TRACE_OUTCOME: ${{ steps.trace-tests.outcome }}
+          WEEKLY_OUTCOME: ${{ steps.weekly-tests.outcome }}
+          FULL_OUTCOME: ${{ steps.full-tests.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          DIFF_OUTCOME: ${{ steps.diff-check.outcome }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$INSTALL_OUTCOME" = "success" ] \
+            && [ "$TRACE_OUTCOME" = "success" ] \
+            && [ "$WEEKLY_OUTCOME" = "success" ] \
+            && [ "$FULL_OUTCOME" = "success" ] \
+            && [ "$BUILD_OUTCOME" = "success" ] \
+            && [ "$DIFF_OUTCOME" = "success" ]; then
+            git add \
+              src/features/weeklyPlanning/trace/weeklyPlanningTraceRepository.ts \
+              src/features/weeklyPlanning/trace/weeklyPlanningTraceRepository.test.ts
+            git commit -m "feat: 週間計画traceを本番で既定有効化"
+            git push origin HEAD:main
+            status="success"
+            change_commit=$(git rev-parse HEAD)
+          else
+            git reset --hard HEAD
+            status="failed"
+            change_commit=""
+          fi
+
+          cat > .github/enable-trace-result.json <<EOF
+          {
+            "status": "$status",
+            "sourceCommit": "$GITHUB_SHA",
+            "changeCommit": "$change_commit",
+            "installOutcome": "$INSTALL_OUTCOME",
+            "traceTestsOutcome": "$TRACE_OUTCOME",
+            "weeklyPlanningTestsOutcome": "$WEEKLY_OUTCOME",
+            "fullTestsOutcome": "$FULL_OUTCOME",
+            "buildOutcome": "$BUILD_OUTCOME",
+            "diffCheckOutcome": "$DIFF_OUTCOME",
+            "recordedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          git add .github/enable-trace-result.json
+          git commit -m "feat: trace本番有効化の検証結果を記録"
+          git push origin HEAD:main
