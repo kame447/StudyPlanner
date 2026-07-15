@@ -58,6 +58,16 @@ jobs:
                       return value.replace(candidate, replacement, 1)
                   if count > 1:
                       raise RuntimeError(f'{label}: ambiguous match count {count}')
+              normalized_old = textwrap.dedent(old).strip()
+              tokens = re.split(r'(\\s+)', normalized_old)
+              pattern = ''.join(r'\\s+' if token.isspace() else re.escape(token) for token in tokens if token)
+              matches = list(re.finditer(pattern, value, flags=re.S))
+              if len(matches) == 1:
+                  match = matches[0]
+                  replacement = textwrap.dedent(new).strip('\\n')
+                  return value[:match.start()] + replacement + value[match.end():]
+              if len(matches) > 1:
+                  raise RuntimeError(f'{label}: ambiguous normalized match count {len(matches)}')
               raise RuntimeError(f'{label}: expected one match, got 0')
           """
               if original_helper not in script:
