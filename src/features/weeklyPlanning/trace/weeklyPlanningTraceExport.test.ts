@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createWeeklyPlanningEvaluationFixtureCandidate,
   createWeeklyPlanningRoleplayCandidate,
+  createWeeklyPlanningTraceExportBundle,
 } from './weeklyPlanningTraceExport';
 import type {
   WeeklyPlanningTraceEntry,
@@ -78,6 +79,7 @@ const entries: WeeklyPlanningTraceEntry[] = [
     kind: 'turn',
     role: 'assistant',
     content: '仮予定を作りました。',
+    responseSource: 'rules',
     turnIndex: 1,
     stateRevision: 1,
   },
@@ -100,5 +102,19 @@ describe('weeklyPlanningTraceExport', () => {
     expect(candidate.requiresHumanReview).toBe(true);
     expect(candidate.turns[0]?.content).toContain('[EMAIL]');
     expect(candidate.turns[0]?.content).toContain('[URL]');
+  });
+
+  it('payload欠落eventをexport bundleから除外する', () => {
+    const malformed = {
+      ...baseEntry(5),
+      kind: 'internal_event',
+      eventType: 'preview_generated',
+      severity: 'info',
+    } as unknown as WeeklyPlanningTraceEntry;
+
+    const bundle = createWeeklyPlanningTraceExportBundle(session, [...entries, malformed]);
+
+    expect(bundle.entries).toHaveLength(entries.length);
+    expect(bundle.entries.some((entry) => entry.id === malformed.id)).toBe(false);
   });
 });

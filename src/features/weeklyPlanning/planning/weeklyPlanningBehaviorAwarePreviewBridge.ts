@@ -32,6 +32,7 @@ export interface AcceptedAssumptionDependencyMetadata {
 }
 
 export interface BehaviorAwarePreviewMetadata {
+  conversationId?: string;
   stateRevision: number;
   sourceFactRefs: string[];
   usedAssumptionProposalRefs: string[];
@@ -267,7 +268,10 @@ export function createBehaviorAwareNonExamDraftRun(params: {
       field: item.task.subject ?? item.task.title,
       year: 0,
       behaviorMetadata: {
-        stateRevision: params.snapshot.stateRevision,
+...(params.input.conversationId
+  ? { conversationId: params.input.conversationId }
+  : {}),
+stateRevision: params.snapshot.stateRevision,
         sourceFactRefs: [...item.sourceFactRefs],
         usedAssumptionProposalRefs: [...item.usedAssumptionProposalRefs],
         ...(item.acceptedAssumptionDependencies.length > 0

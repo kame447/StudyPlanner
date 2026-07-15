@@ -43,9 +43,12 @@ function behaviorMetadataFromCandidate(
   if (!metadata) return undefined;
   const dependencies = acceptedDependencies(metadata);
   const previewMetadata = userId
-    ? {
-        previewId: `behavior-preview:${metadata.stateRevision}`,
-        stateRevision: metadata.stateRevision,
+? {
+    previewId: metadata.conversationId
+      ? `behavior-preview:${metadata.conversationId}:${metadata.stateRevision}`
+      : `behavior-preview:${metadata.stateRevision}`,
+    ...(metadata.conversationId ? { conversationId: metadata.conversationId } : {}),
+    stateRevision: metadata.stateRevision,
         assumptionDependencies: dependencies,
         approvalEligibility: 'eligible' as const,
         stale: false,
@@ -54,7 +57,8 @@ function behaviorMetadataFromCandidate(
     : undefined;
 
   return {
-    stateRevision: metadata.stateRevision,
+...(metadata.conversationId ? { conversationId: metadata.conversationId } : {}),
+stateRevision: metadata.stateRevision,
     sourceFactRefs: [...metadata.sourceFactRefs],
     usedAssumptionProposalRefs: [...metadata.usedAssumptionProposalRefs],
     ...(dependencies.length > 0 ? { acceptedAssumptionDependencies: dependencies } : {}),
@@ -124,8 +128,13 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     ? {
         ...block.behaviorMetadata,
         previewMetadata: {
-          previewId: `behavior-preview:${block.behaviorMetadata.stateRevision}`,
-          stateRevision: block.behaviorMetadata.stateRevision,
+previewId: block.behaviorMetadata.conversationId
+  ? `behavior-preview:${block.behaviorMetadata.conversationId}:${block.behaviorMetadata.stateRevision}`
+  : `behavior-preview:${block.behaviorMetadata.stateRevision}`,
+...(block.behaviorMetadata.conversationId
+  ? { conversationId: block.behaviorMetadata.conversationId }
+  : {}),
+stateRevision: block.behaviorMetadata.stateRevision,
           assumptionDependencies: block.behaviorMetadata.acceptedAssumptionDependencies?.map((dependency) => ({ ...dependency }))
             ?? block.behaviorMetadata.usedAssumptionProposalRefs.map((proposalId) => ({
               proposalId,

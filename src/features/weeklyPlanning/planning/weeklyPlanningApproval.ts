@@ -228,6 +228,9 @@ export function createWeeklyDraftApprovalOperation(params: {
     }),
     userId: params.userId,
     previewId: params.metadata.previewId,
+    ...(params.metadata.conversationId
+      ? { conversationId: params.metadata.conversationId }
+      : {}),
     previewStateRevision: params.metadata.stateRevision,
     startedAt: params.now,
     status: 'pending',
@@ -271,6 +274,9 @@ export async function executeWeeklyDraftApproval(params: {
     payload: {
       approvalOperationId: operation.approvalOperationId,
       previewId: operation.previewId,
+      ...(operation.conversationId
+        ? { conversationId: operation.conversationId }
+        : {}),
       previewStateRevision: operation.previewStateRevision,
       itemCount: operation.items.length,
     },

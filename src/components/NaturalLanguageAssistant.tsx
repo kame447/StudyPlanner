@@ -514,6 +514,9 @@ export function NaturalLanguageAssistant({
     setIsAnalyzing(true);
 
     try {
+      const traceRequestId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `weekly-request-${crypto.randomUUID()}`
+        : `weekly-request-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const pipelineInput = {
         previousState: weeklyPlanningIntakeState ?? undefined,
         recentTurns: weeklyPlanningMessages
@@ -539,10 +542,15 @@ export function NaturalLanguageAssistant({
         ? await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
           ...pipelineInput,
           interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
-        }, {
-          useAiDialoguePlanner: true,
-        })
-        : await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput);
+          }, {
+  useAiDialoguePlanner: true,
+  userId,
+  traceRequestId,
+})
+: await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput, {
+    userId,
+    traceRequestId,
+  });
       const isExamFlow = Boolean(pipelineOutput.state.examPrepScope);
       const dialogueRenderer = isExamFlow && shouldUseAiInterpreter
         ? createAiWeeklyPlanningDialogueRenderer(aiConfig)
@@ -551,8 +559,9 @@ export function NaturalLanguageAssistant({
         ? await renderWeeklyPlanningDialogueMessage({
           state: pipelineOutput.state,
           decision: pipelineOutput.decision,
-          renderer: dialogueRenderer,
-        })
+              renderer: dialogueRenderer,
+  userId,
+})
         : pipelineOutput.behaviorDialogue.message;
       const nextPreviewCandidates = pipelineOutput.draftCandidates ?? [];
       const nextPreviewBlocks = createWeeklyPlanningPreviewBlocks(

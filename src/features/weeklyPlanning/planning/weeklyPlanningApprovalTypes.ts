@@ -68,6 +68,7 @@ export interface WeeklyDraftApprovalOperation {
   approvalOperationId: string;
   userId: string;
   previewId: string;
+  conversationId?: string;
   previewStateRevision: number;
   startedAt: string;
   completedAt?: string;

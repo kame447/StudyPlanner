@@ -1,3 +1,4 @@
+import { isWeeklyPlanningTraceEntry } from './weeklyPlanningTraceTypes';
 import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceRepository,
@@ -87,9 +88,10 @@ export function createInMemoryWeeklyPlanningTraceRepository(): WeeklyPlanningTra
 
     async listEntries(userId, sessionId) {
       return Array.from(entries.values())
-        .filter((entry) => entry.userId === userId && entry.sessionId === sessionId)
-        .map(cloneEntry)
-        .sort((left, right) => left.sequence - right.sequence);
+.filter((entry) => entry.userId === userId && entry.sessionId === sessionId)
+.filter(isWeeklyPlanningTraceEntry)
+.map(cloneEntry)
+.sort((left, right) => left.sequence - right.sequence);
     },
   };
 }

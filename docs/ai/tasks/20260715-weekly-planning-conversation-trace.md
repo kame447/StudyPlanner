@@ -1,11 +1,11 @@
 # 週間計画の会話ログ・時系列行動基盤
 
-Status: implementing
+Status: implemented
 Priority: high
 Repository: `kame447/StudyPlannner`
 Base branch: `main`
-Branch: `feat/weekly-planning-conversation-trace`
-前提コミット: `00969de feat: proposal訂正時のunion narrowingを固定`
+Branch: `agent/weekly-planning-trace-full-implementation`
+前提コミット: `6f3d4aa feat: 学習内容未確定時の質問数を固定`
 
 ## 1. 目的
 
@@ -82,6 +82,7 @@ expireAt
 
 ```text
 user_turn_received
+interpreter_started
 interpreter_completed
 candidate_accepted
 candidate_rejected
@@ -91,17 +92,22 @@ assumption_rejected
 assumption_superseded
 correction_applied
 correction_rejected
+relative_constraint_resolved
+relative_constraint_rejected
 readiness_evaluated
 feasibility_evaluated
 dialogue_planned
 fallback_used
 preview_gate_evaluated
 preview_generated
+preview_rejected_stale
+preview_rejected_pending_assumption
 draft_promoted
 approval_started
 approval_item_saved
 approval_item_failed
 approval_completed
+request_cancelled
 stale_async_result_discarded
 trace_write_failed
 ```
@@ -131,6 +137,8 @@ cookie
 
 文字列長、配列数、object key数、深さ、serialized sizeへ上限を設ける。上限超過時も週間計画処理は継続する。
 
+DB読込時とexport時にもentry contractを再検証し、未知event type、不正snapshot reason、corrupt entryをsafe discardする。
+
 ## 6. 接続位置
 
 次の境界を記録する。
@@ -152,7 +160,10 @@ approval start
 approval item result
 approval completion
 fallback
+trace write failure
 ```
+
+logical conversation IDを呼出側が明示しない場合は初回turnで生成し、返却された`PlanningIntakeState`との対応から次turnへ継続する。同じ初期requestの即時retryは重複保存しない。
 
 ## 7. 管理者viewer
 
@@ -170,21 +181,23 @@ fallback
 
 ```text
 全ユーザーのsession一覧
-user IDによる絞り込み
-status／error／fallback／preview filter
-conversation timeline
-internal events
-state snapshots
+user／conversation IDによる絞り込み
+日時filter
+status／error／fallback／preview／approval failure／stale filter
+Conversation表示
+internal Events表示
+State snapshots表示
+Raw redacted JSON表示
 redacted JSON export
 evaluation fixture候補
 roleplay候補
 ```
 
-Firestore Rulesでは、traceのreadを管理者だけに許可する。通常ユーザーは自分のtraceを書き込めるが、viewerとraw documentのreadは許可しない。
+Firestore Rulesでは、traceのreadを管理者だけに許可する。通常ユーザーは自分のtraceを書き込めるが、viewerとraw documentのreadは許可しない。application repositoryでも認証user IDとownerの不一致を拒否する。
 
 ## 8. Retention
 
-初期保持期間は90日とする。sessionとentryへ`expireAt`を保存し、Firestore TTL policyを別途設定する。
+session、turn、internal eventの保持期間は90日とする。state snapshotは30日とする。各documentへ`expireAt`を保存し、Firestore TTL policyを別途設定する。
 
 TTL policyの作成とaccount deletion時の明示削除はdeploy／運用タスクとして残す。
 
@@ -195,6 +208,7 @@ redaction後に禁止keyが残らない
 payload上限が機能する
 sequence順が安定する
 同一entry IDのretryが冪等になる
+同一requestの重複turnが抑止される
 異なる内容によるentry上書きを拒否する
 user ownership不一致の書き込みを拒否する
 管理者一覧で複数userのsessionを取得できる
@@ -203,6 +217,9 @@ user ownership不一致の書き込みを拒否する
 保存失敗でもpipeline outputが変化しない
 corrupt entryをsafe discardする
 exportがredacted済みである
+fallback sourceを正しく分類する
+approval item結果を個別eventで追跡できる
+retention区分が90日／30日になる
 ```
 
 ## 10. 完了条件
@@ -220,7 +237,9 @@ JSON exportが可能である
 TypeScript、targeted test、full test、buildが成功する
 ```
 
-## 11. Codex検証コマンド
+## 11. 検証結果
+
+Node 22のGitHub Actionsで次を実行し、すべて成功した。
 
 ```sh
 npm run test:run -- src/features/weeklyPlanning/trace
@@ -229,7 +248,9 @@ npm run test:run
 npm run build
 ```
 
-Firestore Emulatorを利用できる場合は、次も確認する。
+検証用workflowは実行結果を確認した後に削除し、製品差分には含めていない。
+
+Firestore Emulatorを利用できる環境では、次を追加確認する。
 
 ```text
 管理者だけがtrace sessionをlistできる
@@ -239,3 +260,30 @@ Firestore Emulatorを利用できる場合は、次も確認する。
 session immutable fieldを変更できない
 entryを異なる内容でupdateできない
 ```
+
+## 12. 実装結果
+
+次を実装した。
+
+```text
+有限event／snapshot契約とruntime decoder
+自動生成conversation identityとpreviousStateによる継続
+同一初期requestの即時retry抑止
+AI dialogue fallbackの正確なsource記録
+trace write failureの後続event化
+turn／event 90日、snapshot 30日のretention
+approval item保存・重複抑止・失敗の個別event
+Firestore repositoryのownership拒否
+export境界の再redactionとDA3c候補拡張
+管理者viewerのfilterと4表示モード
+回帰テスト
+```
+
+Firestore TTL policyの有効化とaccount deletion cascadeは、application codeでは完結しないため実装計画どおりdeploy／運用作業として残す。長期behavior profileの自動導出・適用は今回の非対象である。
+
+
+## 会話相関と予約eventの扱い
+
+conversation lifecycle IDとrequest idempotency keyは別の識別子として扱う。同一文面や短時間という条件だけで別会話を統合しない。approvalとdraft promotionはpreview IDから元のlogical conversationを特定し、rendererは対応するstateからsessionを特定する。相関不能かつ同一userに複数のactive sessionがある場合は、誤ったsessionへ記録せずtrace追加を見送る。
+
+`assumption_superseded`、`relative_constraint_resolved`、`relative_constraint_rejected`、`request_cancelled`、`stale_async_result_discarded`は有限catalog上の予約eventであり、現時点ではすべてにproduction producerがあるわけではない。対応する処理境界を実装するときにproducerと回帰テストを同時追加する。

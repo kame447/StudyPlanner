@@ -43,7 +43,8 @@ function normalizedSession(value: unknown): WeeklyPlanningTraceSession | null {
   if (typeof record.id !== 'string'
     || typeof record.userId !== 'string'
     || typeof record.logicalConversationId !== 'string'
-    || typeof record.startedAt !== 'string') {
+    || typeof record.startedAt !== 'string'
+    || typeof record.lastActivityAt !== 'string') {
     return null;
   }
   const expireAt = dateString(record.expireAt);
@@ -52,7 +53,7 @@ function normalizedSession(value: unknown): WeeklyPlanningTraceSession | null {
   return {
     ...(record as unknown as WeeklyPlanningTraceSession),
     expireAt,
-    ...(dateString(record.lastActivityAt) ? { lastActivityAt: dateString(record.lastActivityAt) as string } : {}),
+    lastActivityAt: dateString(record.lastActivityAt) ?? record.lastActivityAt,
     ...(dateString(record.endedAt) ? { endedAt: dateString(record.endedAt) } : {}),
     ...(archivedAt ? { archivedAt } : {}),
   };
@@ -104,37 +105,32 @@ function preserveArchiveState(
 
 function authenticatedTraceUserId(): string {
   const userId = getFirebaseAuth()?.currentUser?.uid?.trim();
-  if (!userId) {
-    throw new Error('trace auth user is unavailable');
-  }
+  if (!userId) throw new Error('trace auth user is unavailable');
   return userId;
 }
 
-function withAuthenticatedFirestoreOwnership(params: {
+function assertAuthenticatedFirestoreOwnership(params: {
   session: WeeklyPlanningTraceSession;
   entries?: WeeklyPlanningTraceEntry[];
-}): {
-  session: WeeklyPlanningTraceSession;
-  entries: WeeklyPlanningTraceEntry[];
-} {
-  const userId = authenticatedTraceUserId();
-  return {
-    session: params.session.userId === userId
-      ? params.session
-      : { ...params.session, userId },
-    entries: (params.entries ?? []).map((entry) =>
-      entry.userId === userId ? entry : { ...entry, userId }),
-  };
+}): void {
+  const authenticatedUserId = authenticatedTraceUserId();
+  if (params.session.userId !== authenticatedUserId) {
+    throw new Error('trace ownership mismatch');
+  }
+  if ((params.entries ?? []).some((entry) =>
+    entry.userId !== authenticatedUserId || entry.sessionId !== params.session.id)) {
+    throw new Error('trace ownership mismatch');
+  }
 }
 
 export function createFirestoreWeeklyPlanningTraceRepository(
   firestoreDb: Firestore,
 ): WeeklyPlanningTraceRepository {
   async function upsertSession(session: WeeklyPlanningTraceSession): Promise<void> {
-    const owned = withAuthenticatedFirestoreOwnership({ session });
+    assertAuthenticatedFirestoreOwnership({ session });
     await setDoc(
-      doc(firestoreDb, 'weekly_planning_trace_sessions', owned.session.id),
-      firestorePayload(owned.session),
+      doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
+      firestorePayload(session),
       { merge: true },
     );
   }
@@ -147,21 +143,16 @@ export function createFirestoreWeeklyPlanningTraceRepository(
         await upsertSession(session);
         return;
       }
-      if (entries.some((entry) => entry.userId !== session.userId || entry.sessionId !== session.id)) {
-        throw new Error('trace ownership mismatch');
-      }
-      if (entries.length > 450) {
-        throw new Error('trace batch is too large');
-      }
+      if (entries.length > 450) throw new Error('trace batch is too large');
+      assertAuthenticatedFirestoreOwnership({ session, entries });
 
-      const owned = withAuthenticatedFirestoreOwnership({ session, entries });
       const batch = writeBatch(firestoreDb);
       batch.set(
-        doc(firestoreDb, 'weekly_planning_trace_sessions', owned.session.id),
-        firestorePayload(owned.session),
+        doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
+        firestorePayload(session),
         { merge: true },
       );
-      owned.entries.forEach((entry) => {
+      entries.forEach((entry) => {
         batch.set(
           doc(firestoreDb, 'weekly_planning_trace_entries', entry.id),
           firestorePayload(entry),
@@ -278,9 +269,7 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
     async archiveSessionForAdmin(sessionId, archivedAt) {
       const sessions = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
       const current = sessions.find((session) => session.id === sessionId);
-      if (!current) {
-        throw new Error('trace session not found');
-      }
+      if (!current) throw new Error('trace session not found');
       writeLocalArray(LOCAL_SESSIONS_KEY, sessions.map((session) =>
         session.id === sessionId ? { ...session, archivedAt } : session));
     },

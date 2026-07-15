@@ -263,8 +263,15 @@ function composeRenderedMessage(output: DialogueRenderOutput): string {
 function tracedMessage(
   message: string,
   responseSource: WeeklyPlanningTraceResponseSource,
+  state: PlanningIntakeState,
+  userId?: string,
 ): string {
-  recordWeeklyPlanningRenderedAssistantTurn(message, responseSource);
+  recordWeeklyPlanningRenderedAssistantTurn({
+    content: message,
+    responseSource,
+    state,
+    userId,
+  });
   return message;
 }
 
@@ -272,6 +279,7 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
   state: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
   renderer?: WeeklyPlanningDialogueRenderer;
+  userId?: string;
 }): Promise<string> {
   const input = createDialogueRenderInput({
     state: params.state,
@@ -281,11 +289,11 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
   const shouldRenderMissingQuestions = params.decision.kind === 'ask_missing_info' && input.nextQuestions.length > 0;
 
   if (!shouldRenderMissingQuestions) {
-    return tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules');
+    return tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules', params.state, params.userId);
   }
 
   if (!params.renderer) {
-    return tracedMessage(renderDeterministicMissingQuestions(input), 'rules');
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'rules', params.state, params.userId);
   }
 
   try {
@@ -293,11 +301,11 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
     const sanitized = sanitizeDialogueRenderOutput(rendered, input);
 
     if (sanitized) {
-      return tracedMessage(composeRenderedMessage(sanitized), 'ai');
+      return tracedMessage(composeRenderedMessage(sanitized), 'ai', params.state, params.userId);
     }
 
-    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback');
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback', params.state, params.userId);
   } catch {
-    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback');
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback', params.state, params.userId);
   }
 }
