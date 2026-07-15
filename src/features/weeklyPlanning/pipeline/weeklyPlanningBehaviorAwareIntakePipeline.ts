@@ -155,15 +155,45 @@ function planningPeriodLabel(output: WeeklyPlanningIntakePipelineOutput): string
   return output.state.pendingPlanningRange?.scope.label;
 }
 
+function dialogueActionPriority(action: AllowedDialogueAction): number {
+  if (action.kind === 'generate_preview') return 100;
+  if (action.kind === 'report_infeasibility') return 95;
+  if (action.topicId === 'planning-range') return 92;
+  if (action.topicId === 'task-identity') return 91;
+  if (action.kind === 'suggest_draft_generation') return 90;
+  if (action.topicId === 'feasibility_basis') return 85;
+  if (action.kind === 'ask_required_fact' || action.kind === 'show_options') return 70;
+  if (action.kind === 'propose_default') return 65;
+  if (action.kind === 'acknowledge_fact') return 60;
+  return 50;
+}
+
 function mergeActions(
   primary: readonly AllowedDialogueAction[],
   additional: readonly AllowedDialogueAction[],
 ): AllowedDialogueAction[] {
-  const byId = new Map<string, AllowedDialogueAction>();
-  [...primary, ...additional].forEach((action) => {
-    if (!byId.has(action.actionId)) byId.set(action.actionId, action);
+  const hasFoundationalMissing = primary.some((action) =>
+    action.topicId === 'planning-purpose'
+    || action.topicId === 'planning-range'
+    || action.topicId === 'task-identity',
+  );
+  const candidates = [
+    ...primary,
+    ...additional.filter((action) =>
+      !(hasFoundationalMissing && action.topicId === 'feasibility_basis'),
+    ),
+  ];
+  const byId = new Map<string, { action: AllowedDialogueAction; order: number }>();
+  candidates.forEach((action, order) => {
+    if (!byId.has(action.actionId)) byId.set(action.actionId, { action, order });
   });
-  return Array.from(byId.values()).slice(0, 3);
+  return Array.from(byId.values())
+    .sort((left, right) =>
+      dialogueActionPriority(right.action) - dialogueActionPriority(left.action)
+      || left.order - right.order,
+    )
+    .slice(0, 3)
+    .map(({ action }) => action);
 }
 
 function behaviorClarificationRequest(

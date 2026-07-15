@@ -276,7 +276,7 @@ describe('weekly planning AI foundation without real AI', () => {
     ]);
   });
 
-  it('uses the interpreter for every provider turn and does not merge deterministic semantic parsing', async () => {
+  it('uses deterministic command parsing before AI without applying legacy fallback', async () => {
     const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
       candidates: [candidate(unitRateCommand(120, 'high'))],
       parseRejections: [],
@@ -301,12 +301,14 @@ describe('weekly planning AI foundation without real AI', () => {
     });
 
     expect(interpretUserTurn).toHaveBeenCalledTimes(3);
+    expect(firstOutput.state.range).toBeDefined();
     expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);
     expect(output.state.tasks).toEqual([]);
     expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);
+    expect(bareOutput.state.tasks).toEqual([]);
   });
 
-  it('uses rules fallback only after an interpreter error, not after empty candidates', async () => {
+  it('uses legacy fallback only after an interpreter error while empty AI keeps deterministic parsing', async () => {
     const userText = String.fromCodePoint(0x6765,0x9031,0x3001,0x82f1,0x8a9e,0x3092,0x33,0x6642,0x9593,0x3001,0x6570,0x5b66,0x3092,0x32,0x6642,0x9593);
     const emptyInterpreter = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
       candidates: [],
@@ -328,6 +330,7 @@ describe('weekly planning AI foundation without real AI', () => {
 
     expect(emptyInterpreter).toHaveBeenCalledTimes(1);
     expect(emptyOutput.state.tasks).toEqual([]);
+    expect(emptyOutput.interpreterDiagnostics).toBeDefined();
     expect(failingInterpreter).toHaveBeenCalledTimes(1);
     expect(fallbackOutput.state.tasks).toHaveLength(2);
     expect(fallbackOutput.interpreterDiagnostics).toBeUndefined();

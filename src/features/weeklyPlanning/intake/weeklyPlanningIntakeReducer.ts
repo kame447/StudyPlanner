@@ -550,15 +550,12 @@ export function beginWeeklyPlanningUserTurn(
   };
 }
 
-export function applyWeeklyPlanningUserTurnWithDiagnostics(
+function applyDeterministicWeeklyPlanningUserTurnCore(
   previousState: PlanningIntakeState | undefined,
   userText: string,
   context: WeeklyPlanningIntakeContext,
-): WeeklyPlanningUserTurnDiagnostics {
-  const baseState = previousState ?? createInitialPlanningIntakeState();
-  const missingBefore = [...baseState.missing];
+): { state: PlanningIntakeState; deterministicCommandCount: number } {
   let deterministicCommandCount = 0;
-  let fallbackProgressCount = 0;
   let nextState = beginWeeklyPlanningUserTurn(previousState, userText);
 
   const setupCommands: ParsedWeeklyPlanningCommand[] = [];
@@ -567,18 +564,12 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
     setupCommands.push(planningRangeCommand);
   } else {
     const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(userText, context);
-    if (pendingPlanningRangeCommand) {
-      setupCommands.push(pendingPlanningRangeCommand);
-    }
+    if (pendingPlanningRangeCommand) setupCommands.push(pendingPlanningRangeCommand);
   }
   const beginCommand = parseBeginWeeklyPlanningCommand(userText);
-  if (beginCommand) {
-    setupCommands.push(beginCommand);
-  }
+  if (beginCommand) setupCommands.push(beginCommand);
   const examScopeCommand = parseSetExamScopeCommand(userText, nextState.examPrepScope);
-  if (examScopeCommand) {
-    setupCommands.push(examScopeCommand);
-  }
+  if (examScopeCommand) setupCommands.push(examScopeCommand);
 
   deterministicCommandCount += setupCommands.length;
   nextState = applyWeeklyPlanningCommands(nextState, setupCommands);
@@ -591,11 +582,34 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
 
   const turnCommands = parseWeeklyPlanningCommands({ userText, context, state: nextState });
   deterministicCommandCount += turnCommands.length;
-  nextState = applyWeeklyPlanningCommands(
-    nextState,
-    turnCommands,
-  );
+  nextState = applyWeeklyPlanningCommands(nextState, turnCommands);
+  return { state: nextState, deterministicCommandCount };
+}
 
+export function applyDeterministicWeeklyPlanningUserTurn(
+  previousState: PlanningIntakeState | undefined,
+  userText: string,
+  context: WeeklyPlanningIntakeContext,
+): PlanningIntakeState {
+  return finalizeState(
+    applyDeterministicWeeklyPlanningUserTurnCore(previousState, userText, context).state,
+  );
+}
+
+export function applyWeeklyPlanningUserTurnWithDiagnostics(
+  previousState: PlanningIntakeState | undefined,
+  userText: string,
+  context: WeeklyPlanningIntakeContext,
+): WeeklyPlanningUserTurnDiagnostics {
+  const baseState = previousState ?? createInitialPlanningIntakeState();
+  const missingBefore = [...baseState.missing];
+  let fallbackProgressCount = 0;
+  const deterministicTurn = applyDeterministicWeeklyPlanningUserTurnCore(
+    previousState,
+    userText,
+    context,
+  );
+  let nextState = deterministicTurn.state;
 
   const tasksBeforeFallback = nextState.tasks.map((task) => [
     task.title,
@@ -622,10 +636,9 @@ export function applyWeeklyPlanningUserTurnWithDiagnostics(
   }
 
   const finalizedState = finalizeState(nextState);
-
   return {
     state: finalizedState,
-    deterministicCommandCount,
+    deterministicCommandCount: deterministicTurn.deterministicCommandCount,
     fallbackProgressCount,
     missingBefore,
     missingAfter: [...finalizedState.missing],

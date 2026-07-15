@@ -11,6 +11,7 @@ import {
   type WeeklyPlanningDraftRequest,
 } from '../intake/weeklyPlanningDraftRequestAdapter';
 import {
+  applyDeterministicWeeklyPlanningUserTurn,
   applyWeeklyPlanningCommands,
   applyWeeklyPlanningUserTurn,
   applyWeeklyPlanningUserTurnWithDiagnostics,
@@ -437,12 +438,11 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
 
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
   const context = createInterpreterContext(input);
-  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
+  const preparedState = applyDeterministicWeeklyPlanningUserTurn(
     previousState,
     input.userText,
     context,
   );
-  const preparedState = deterministicTurn.state;
   const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
   const stateSummary = createInterpreterStateSummary(
     preparedState,
@@ -460,10 +460,15 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       recentTurns: input.recentTurns,
     });
   } catch {
-    // Provider failure skips only AI supplementation; deterministic parsing has already been applied.
+    // Provider failures keep the established full rules path, including legacy task extraction.
+    const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
+      previousState,
+      input.userText,
+      context,
+    );
     return buildPipelineOutput({
       input,
-      state: preparedState,
+      state: fallbackTurn.state,
       assumptionProposalState: proposalState,
     });
   }

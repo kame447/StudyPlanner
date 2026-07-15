@@ -2,4 +2,4 @@ patch_status=0
 install_status=0
 weekly_test_status=0
 build_status=0
-diff_check_status=2
+diff_check_status=0
