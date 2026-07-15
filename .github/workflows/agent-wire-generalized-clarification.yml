@@ -1,0 +1,177 @@
+name: Wire generalized clarification
+
+on:
+  push:
+    branches: [agent/fix-weekly-planning-dialogue-path]
+    paths: [.github/workflows/agent-wire-generalized-clarification.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - name: Patch and validate
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .agent-validation
+          log=.agent-validation/generalized-clarification.log
+          : > "$log"
+          python <<'PY' >> "$log" 2>&1
+          from pathlib import Path
+
+          p = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts')
+          s = p.read_text()
+          anchor = "import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';\n"
+          s = s.replace(anchor, anchor + "import { parseRequestClarificationCommand } from '../intake/weeklyPlanningClarificationParsing';\n", 1)
+
+          start = s.index('export function runWeeklyPlanningIntakePipeline(\n')
+          end = s.index('\nfunction confirmedSlotsFromState(', start)
+          replacement = '''function deterministicClarificationRequest(
+            input: WeeklyPlanningIntakePipelineInput,
+            previousState: PlanningIntakeState,
+          ) {
+            return parseRequestClarificationCommand(input.userText, {
+              hasActiveQuestion: createMissingQuestionPlan(previousState).length > 0,
+            });
+          }
+
+          function applyClarificationDecision(
+            output: WeeklyPlanningIntakePipelineOutput,
+            request: ReturnType<typeof parseRequestClarificationCommand>,
+          ): WeeklyPlanningIntakePipelineOutput {
+            if (!request) return output;
+            output.decision = createWeeklyPlanningClarificationDecision({
+              state: output.state,
+              ref: request.ref,
+            });
+            return output;
+          }
+
+          export function runWeeklyPlanningIntakePipeline(
+            input: WeeklyPlanningIntakePipelineInput,
+          ): WeeklyPlanningIntakePipelineOutput {
+            const previousState = input.previousState ?? createInitialPlanningIntakeState();
+            const clarificationRequest = deterministicClarificationRequest(input, previousState);
+            const state = applyWeeklyPlanningUserTurn(previousState, input.userText, {
+              selectedDate: input.planningStartDate,
+              planningDayCount: input.planningDayCount,
+              currentDateTime: resolveCurrentDateTime(input),
+            });
+
+            return applyClarificationDecision(buildPipelineOutput({
+              input,
+              state,
+              assumptionProposalState: initialAssumptionProposalState(input),
+            }), clarificationRequest);
+          }
+          '''
+          s = s[:start] + replacement + s[end:]
+
+          old = "  const previousState = input.previousState ?? createInitialPlanningIntakeState();\n  const context = createInterpreterContext(input);"
+          new = "  const previousState = input.previousState ?? createInitialPlanningIntakeState();\n  const deterministicClarification = deterministicClarificationRequest(input, previousState);\n  const context = createInterpreterContext(input);"
+          if s.count(old) != 1: raise RuntimeError('AI previous-state anchor')
+          s = s.replace(old, new, 1)
+
+          old = '''    return buildPipelineOutput({
+              input,
+              state: fallbackTurn.state,
+              assumptionProposalState: proposalState,
+            });'''
+          new = '''    return applyClarificationDecision(buildPipelineOutput({
+              input,
+              state: fallbackTurn.state,
+              assumptionProposalState: proposalState,
+            }), deterministicClarification);'''
+          if s.count(old) != 1: raise RuntimeError('provider fallback anchor')
+          s = s.replace(old, new, 1)
+
+          old = '  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];'
+          new = '  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0] ?? deterministicClarification;'
+          if s.count(old) != 1: raise RuntimeError('AI clarification anchor')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts')
+          s = p.read_text()
+          start = s.index('function interpreterResult(userText: string): WeeklyPlanningInterpreterResult {')
+          end = s.index('\nfunction createInterpreter()', start)
+          fn = '''function interpreterResult(userText: string): WeeklyPlanningInterpreterResult {
+            if (userText !== '来週の予定立てたい') {
+              return { candidates: [], parseRejections: [] };
+            }
+            return {
+              candidates: [{
+                command: {
+                  type: 'begin_weekly_planning',
+                  sourceText: userText,
+                  confidence: 'high',
+                },
+                origin: 'ai_interpreter',
+                needsConfirmation: false,
+              }],
+              parseRejections: [],
+            };
+          }
+          '''
+          s = s[:start] + fn + s[end:]
+          start = s.index("  it('explains the previous question")
+          end = s.index('\n  });\n});', start) + len('\n  });')
+          test = '''  it.each([
+            'どういうこと？',
+            'それってどういう意味？',
+            '何を答えればいいの？',
+            '今の質問がよく分からない',
+            'もう少し詳しく説明して',
+            '具体的には何を入力すればいい？',
+          ])('explains the previous question for clarification phrasing: %s', async (clarificationText) => {
+            const interpreter = createInterpreter();
+            const first = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+              ...baseInput,
+              userText: '来週の予定立てたい',
+              interpreter,
+            });
+            const clarified = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+              ...baseInput,
+              previousState: first.state,
+              userText: clarificationText,
+              interpreter,
+            });
+            expect(clarified.decision.kind).toBe('answer_clarification');
+            expect(clarified.behaviorDialogue.message).toContain('計画を始める日です。');
+            expect(clarified.behaviorDialogue.message).toContain('例えば「来週の月曜日から」');
+            expect(clarified.behaviorDialogue.message).not.toBe(first.behaviorDialogue.message);
+            expect(clarified.behaviorDialogue.message).not.toContain('使える時間は');
+          });'''
+          p.write_text(s[:start] + test + s[end:])
+          PY
+          patch=$?
+          npm ci >> "$log" 2>&1; install=$?
+          tests=99; build=99; diff=99
+          if [ $patch -eq 0 ] && [ $install -eq 0 ]; then
+            npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningClarificationParsing.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts >> "$log" 2>&1
+            tests=$?
+            [ $tests -eq 0 ] && npm run test:run -- src/features/weeklyPlanning >> "$log" 2>&1
+            [ $tests -eq 0 ] && tests=$?
+            npm run build >> "$log" 2>&1; build=$?
+            git diff --check -- src/features/weeklyPlanning >> "$log" 2>&1; diff=$?
+          fi
+          printf 'patch=%s\ninstall=%s\ntests=%s\nbuild=%s\ndiff=%s\n' $patch $install $tests $build $diff > .agent-validation/generalized-clarification-result.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          if [ $patch -eq 0 ] && [ $install -eq 0 ] && [ $tests -eq 0 ] && [ $build -eq 0 ] && [ $diff -eq 0 ]; then
+            git add src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts
+          else
+            git checkout -- src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts
+          fi
+          git add .agent-validation/generalized-clarification*
+          git rm .github/workflows/agent-wire-generalized-clarification.yml
+          git commit -m 'feat: 聞き返し意図を一般化 [validation-result]'
+          git push
+          [ $patch -eq 0 ] && [ $install -eq 0 ] && [ $tests -eq 0 ] && [ $build -eq 0 ] && [ $diff -eq 0 ]
