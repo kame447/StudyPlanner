@@ -1,6 +1,6 @@
 import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
 import type { WeeklyPlanningQuestionContext } from '../intake/weeklyPlanningIntakeTypes';
-import type { WeeklyPlanningBehaviorAwarePipelineOutput } from './weeklyPlanningBehaviorAwareIntakePipelineCore';
+import type { WeeklyPlanningBehaviorAwarePipelineOutput } from './weeklyPlanningBehaviorAwareIntakePipeline';
 
 function matchingDecisionQuestion(
   output: WeeklyPlanningBehaviorAwarePipelineOutput,
