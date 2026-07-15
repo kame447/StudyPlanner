@@ -1,6 +1,7 @@
 # 登録済み予定を根拠に固定予定を確認する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 対象問題
@@ -19,10 +20,10 @@ pipeline inputの`existingPlans`から計画期間内の予定を抽出し、ユ
 
 ## 完了条件
 
-- [ ] 計画期間内の登録済み予定だけをsummaryへ含める
-- [ ] 既知予定がある場合は代表例を示して追加予定を尋ねる
-- [ ] 既知予定がない場合は一般表現で尋ねる
-- [ ] 予定名・日付・時刻を入力データ外から生成しない
-- [ ] deterministic rendererとAI rendererの双方へ同じgroundingを渡す
-- [ ] 固定予定の説明・回答例から個人事情に寄った語を除く
-- [ ] 回帰テストを追加する
+- [x] 計画期間内の登録済み予定だけをsummaryへ含める
+- [x] 既知予定がある場合は代表例を示して追加予定を尋ねる
+- [x] 既知予定がない場合は一般表現で尋ねる
+- [x] 予定名・日付・時刻を入力データ外から生成しない
+- [x] deterministic rendererとAI rendererの双方へ同じgroundingを渡す
+- [x] 固定予定の説明・回答例から個人事情に寄った語を除く
+- [x] 回帰テストを追加する

@@ -26,6 +26,7 @@ export interface BehaviorAwareDialoguePlannerInput {
     taskLabels: string[];
     planningPeriodLabel?: string;
     constraintSummary: string[];
+    knownFixedEventSummaries?: string[];
   };
   recentConversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
   previewAllowed: boolean;
@@ -100,6 +101,7 @@ function createSystemPrompt(): string {
     'Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.',
     'Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.',
     'Do not claim preview generation unless generate_preview is present in allowedActions.',
+    'When acceptedFacts.knownFixedEventSummaries is non-empty, use only those exact saved plans when asking about additional fixed events. Never invent an event.',
     'Keep the tone like a calm, practical tutor. Keep each item concise and easy to correct.',
   ].join('\n');
 }
@@ -255,7 +257,7 @@ function clarificationExample(targetSlot: string | undefined): string {
     case 'unit_duration_estimate':
       return '例えば「1ページ10分くらい」のように、おおよその時間を答えてください。';
     case 'fixed_events':
-      return '例えば「月曜日の18時から20時はバイトです」または「固定の予定はありません」のように答えてください。';
+      return '例えば「土曜日の14時から16時は予定があります」または「ほかにはありません」のように答えてください。';
     case 'sleep_cycle':
       return '例えば「0時に寝て7時に起きます」のように答えてください。';
     case 'meal_bath_constraints':
@@ -287,6 +289,13 @@ function renderClarificationFallback(request: BehaviorAwareClarificationRequest)
   ].filter(Boolean).join('\n');
 }
 
+function groundedAvailabilityQuestion(input: BehaviorAwareDialoguePlannerInput): string {
+  const summaries = input.acceptedFacts.knownFixedEventSummaries ?? [];
+  return summaries.length > 0
+    ? `登録済みの予定は、${summaries.join('、')}です。これ以外に、時間が決まっていて動かせない予定はありますか？`
+    : '時間割・登録済み予定を使うか、ほかに時間が決まっていて動かせない予定があるか教えてください。';
+}
+
 function fallbackTextForAction(
   action: AllowedDialogueAction,
   input: BehaviorAwareDialoguePlannerInput,
@@ -301,7 +310,7 @@ function fallbackTextForAction(
           : '計画期間は、今週・来週・週末のどれにしますか？日付で指定しても構いません。';
       }
       if (action.topicId === 'availability-basis') {
-        return '使える時間は、時間割・登録済み予定を使うか、空いている時間を直接教えてください。';
+        return groundedAvailabilityQuestion(input);
       }
       return action.displayHint ?? '候補から確認したい条件を選んでください。';
     case 'ask_required_fact':
@@ -315,7 +324,7 @@ function fallbackTextForAction(
         return '取り組む量か、かかる時間の目安を教えてください。';
       }
       if (action.topicId === 'availability-basis' || action.topicId === 'feasibility_basis') {
-        return '時間割・登録済み予定を使うか、空いている時間を直接教えてください。';
+        return groundedAvailabilityQuestion(input);
       }
       return action.displayHint ?? '予定へ大きく影響する条件をもう少し確認させてください。';
     case 'report_infeasibility':

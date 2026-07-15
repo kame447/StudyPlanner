@@ -381,7 +381,7 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
   const slots: string[] = [];
 
   if (state.range) slots.push('planning_range');
-  if (state.examPrepScope) slots.push('exam_scope');
+  if ((state.examPrepScope?.fields.length ?? 0) > 0) slots.push('exam_scope');
   if (state.examPrepScope?.yearRange) slots.push('year_range');
   if (state.unitRates.length > 0) slots.push('unit_duration_estimate');
   if (state.priorityPolicy.kind !== 'unknown') slots.push('priority_policy');
@@ -430,6 +430,19 @@ function createInterpreterStateSummary(
 ): InterpreterStateSummary {
   return {
     knownFields: state.examPrepScope?.fields ?? [],
+    examScopeSummary: state.examPrepScope
+      ? {
+        fields: [...state.examPrepScope.fields],
+        ...(state.examPrepScope.yearRange
+          ? {
+            yearRange: {
+              startYear: state.examPrepScope.yearRange.startYear,
+              endYear: state.examPrepScope.yearRange.endYear,
+            },
+          }
+          : {}),
+      }
+      : undefined,
     confirmedSlots: confirmedSlotsFromState(state),
     lastQuestions: previousState?.lastQuestionContext?.targetSlot
       ? [{

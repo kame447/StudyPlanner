@@ -1,6 +1,7 @@
 # 週間計画会話UIの責務を段階的に分離する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 対象問題
@@ -19,9 +20,9 @@ Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 完了条件
 
-- [ ] 会話履歴表示を独立componentへ分離する
-- [ ] typing indicatorを同じ表示componentで扱う
-- [ ] `NaturalLanguageAssistant`がstorage実装へ直接依存しない
-- [ ] `QuickEntryModal`はsession propsの中継だけを行う
-- [ ] preview生成・承認の既存挙動を変更しない
-- [ ] componentの回帰テストまたは純粋関数テストを追加する
+- [x] 会話履歴表示を独立componentへ分離する
+- [x] typing indicatorを同じ表示componentで扱う
+- [x] `NaturalLanguageAssistant`がstorage実装へ直接依存しない
+- [x] `QuickEntryModal`はsession propsの中継だけを行う
+- [x] preview生成・承認の既存挙動を変更しない
+- [x] componentの回帰テストまたは純粋関数テストを追加する

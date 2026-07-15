@@ -38,7 +38,7 @@ describe('weekly planning clarification context', () => {
     expect(output.decision.kind).toBe('answer_clarification');
     expect(output.decision.clarification?.targetSlot).toBe('fixed_events');
     expect(output.behaviorDialogue.message).toContain('「固定の予定」は');
-    expect(output.behaviorDialogue.message).toContain('月曜日の18時から20時はバイトです');
+    expect(output.behaviorDialogue.message).toContain('土曜日の14時から16時は予定があります');
     expect(output.behaviorDialogue.message).not.toContain('来週の月曜日から');
   });
 

@@ -503,7 +503,18 @@ export default function App() {
             scheduleTemplates={scheduleTemplates}
             timetableTermId={activeTimetableTermId}
             weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-            onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
+            weeklyPlanningMessages={planningState.messages}
+             weeklyPlanningIntakeState={planningState.intakeState ?? null}
+             onAppendWeeklyPlanningMessage={(message) =>
+               dispatchPlanningAction({ type: 'append_message', message })
+             }
+             onSetWeeklyPlanningIntakeState={(state) =>
+               dispatchPlanningAction({ type: 'set_intake_state', state })
+             }
+             onClearWeeklyPlanningConversation={() =>
+               dispatchPlanningAction({ type: 'clear_conversation' })
+             }
+             onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
             onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
             onClearWeeklyDraftBlocks={() => dispatchPlanningAction({ type: 'clear_draft_blocks' })}
             onApproveWeeklyDraftBlocks={approveWeeklyDraftBlocks}

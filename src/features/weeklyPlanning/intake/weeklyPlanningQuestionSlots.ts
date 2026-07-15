@@ -16,6 +16,7 @@ export type PlanningQuestionSlotPreviewPolicy =
 interface FallbackQuestionContext {
   planningPeriodLabel?: string;
   options?: string[];
+  knownFixedEventSummaries?: string[];
 }
 
 export interface PlanningQuestionSlotDefinition {
@@ -254,12 +255,14 @@ const fixedEventsSlot: PlanningQuestionSlotDefinition = {
   isStateQuestionEligible: () => false,
   isQuestionPlanEligible: defaultQuestionPlanEligibility,
   termExplanation:
-    '「固定の予定」は、授業・バイト・通院など、時間が決まっていて動かせない予定のことです。',
+    '「固定の予定」は、時間が決まっていて動かせない予定のことです。',
   clarificationKeywords: [/固定|動かせない/],
-  vocabularyHint: '授業・バイト・通院など動かせない予定',
-  fallbackQuestion: () =>
-    '授業・バイト・通院など、動かせない予定があれば教えてください。',
-  userLabel: '授業・バイト・病院・ゼミなどの固定予定の有無',
+  vocabularyHint: '時間が決まっていて動かせない予定',
+  fallbackQuestion: ({ knownFixedEventSummaries }) =>
+    knownFixedEventSummaries && knownFixedEventSummaries.length > 0
+      ? `登録済みの予定は、${knownFixedEventSummaries.join('、')}です。これ以外に、時間が決まっていて動かせない予定はありますか？`
+      : 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
+  userLabel: '時間が決まっていて動かせない予定',
 };
 
 const sleepCycleSlot: PlanningQuestionSlotDefinition = {

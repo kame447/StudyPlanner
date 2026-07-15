@@ -64,13 +64,34 @@ export function deriveMissingForPlanningRange(
 }
 
 function applyPriorityMissingState(state: PlanningIntakeState): PlanningIntakeState {
-  if (
-    state.examPrepScope &&
-    state.unitRates.length > 0 &&
-    state.priorityPolicy.kind === 'unknown' &&
-    !state.missing.includes('year_range') &&
-    !state.missing.includes('completion_direction')
-  ) {
+  const fields = state.examPrepScope?.fields ?? [];
+  const isPriorityStage = Boolean(
+    state.examPrepScope
+    && state.unitRates.length > 0
+    && !state.missing.includes('year_range')
+    && !state.missing.includes('completion_direction'),
+  );
+
+  if (!isPriorityStage) return state;
+
+  if (fields.length <= 1) {
+    const missing = removeMissing(state.missing, [
+      'priority_policy',
+      'next_field_after_math',
+    ]);
+
+    if (fields.length === 1 && state.priorityPolicy.kind === 'unknown') {
+      return {
+        ...state,
+        priorityPolicy: { kind: 'field_first', order: [fields[0]] },
+        missing,
+      };
+    }
+
+    return missing.length === state.missing.length ? state : { ...state, missing };
+  }
+
+  if (state.priorityPolicy.kind === 'unknown') {
     return {
       ...state,
       missing: addMissing(state.missing, [

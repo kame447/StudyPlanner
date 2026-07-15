@@ -1,6 +1,7 @@
 # 週間計画sessionを保持し送信中UIを整理する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 対象問題
@@ -21,12 +22,12 @@ Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 完了条件
 
-- [ ] modalを閉じて再度開いてもmessagesが復元される
-- [ ] intake stateも復元され、次turnが前の文脈を継続する
-- [ ] draftが0件でも会話sessionがstorageに残る
-- [ ] 「履歴をクリア」でmessagesとintake stateを消す
-- [ ] clear操作まで会話を自動削除しない
-- [ ] 送信直後にtextareaから送信済み文が消える
-- [ ] 処理中はtyping indicatorを表示し入力欄を隠す
-- [ ] 成功応答をstatus cardへ重複表示しない
-- [ ] storageとreducerの回帰テストを追加する
+- [x] modalを閉じて再度開いてもmessagesが復元される
+- [x] intake stateも復元され、次turnが前の文脈を継続する
+- [x] draftが0件でも会話sessionがstorageに残る
+- [x] 「履歴をクリア」でmessagesとintake stateを消す
+- [x] clear操作まで会話を自動削除しない
+- [x] 送信直後にtextareaから送信済み文が消える
+- [x] 処理中はtyping indicatorを表示し入力欄を隠す
+- [x] 成功応答をstatus cardへ重複表示しない
+- [x] storageとreducerの回帰テストを追加する

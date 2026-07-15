@@ -93,6 +93,7 @@ function createSystemPrompt(): string {
     'planningPeriodLabel is the planning period (e.g. 来週/今週/週末). If it is present, use exactly that word and never substitute a different period. If it is absent, do not mention or invent any week or period at all.',
     'Each nextQuestions item may include vocabularyHint: a plain user-facing paraphrase. Prefer the vocabularyHint wording over the raw slotKey or intent so the user understands the question. Do not output internal keys like "fixed_events".',
     'constraintSourcesInUse lists schedule sources already used as constraints. Do not ask again about what those sources already cover; you may briefly acknowledge them.',
+    'knownFixedEventSummaries contains exact saved plan summaries. For a fixed_events question, mention only those summaries and ask whether there are any additional immovable events. Never invent another event.',
     'Use a supportive mentor tone, but keep the text short.',
   ].join('\n');
 }
@@ -102,6 +103,7 @@ function createUserPrompt(input: DialogueRenderInput): string {
     planningPeriodLabel: input.planningPeriodLabel,
     targetUnitLabel: input.targetUnitLabel,
     constraintSourcesInUse: input.constraintSourcesInUse,
+    knownFixedEventSummaries: input.knownFixedEventSummaries,
     acceptedFacts: input.acceptedFacts,
     assumptions: input.assumptions,
     nextQuestions: input.nextQuestions.map((question) => ({

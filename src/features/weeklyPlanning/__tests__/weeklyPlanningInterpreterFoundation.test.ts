@@ -508,7 +508,7 @@ describe('weekly planning AI foundation without real AI', () => {
           acknowledgement: '確認しました。',
           questions: [
             { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
-            { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+            { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
           ],
         };
       },
@@ -516,7 +516,7 @@ describe('weekly planning AI foundation without real AI', () => {
 
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe([
       '確認しました。',
-      '固定予定はありますか？',
+      'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
       '睡眠時間はどうしますか？',
     ].join('\n'));
   });

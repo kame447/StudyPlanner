@@ -95,6 +95,21 @@ export function weeklyPlanningReducer(
         messages: [...state.messages, action.message],
       });
 
+    case 'set_intake_state':
+      return withUpdatedAt({
+        ...state,
+        intakeState: action.state ?? undefined,
+      });
+
+    case 'clear_conversation':
+      return withUpdatedAt({
+        ...state,
+        mode: state.draftBlocks.length > 0 ? 'awaiting_approval' : 'idle',
+        messages: [],
+        intakeState: undefined,
+        lastAssistantMessage: undefined,
+      });
+
     case 'set_last_assistant_message':
       return withUpdatedAt({
         ...state,

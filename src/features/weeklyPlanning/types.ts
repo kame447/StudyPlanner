@@ -1,4 +1,5 @@
 import type { PlanType } from '../../types/domain';
+import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import type {
   PreviewAssumptionDependency,
   WeeklyPreviewMetadata,
@@ -65,6 +66,7 @@ export interface PlanningState {
   mode: WeeklyPlanningMode;
   draftBlocks: WeeklyPlanDraftBlock[];
   messages: WeeklyPlanningMessage[];
+  intakeState?: PlanningIntakeState;
   lastAssistantMessage?: string;
   updatedAt: string;
 }
@@ -77,4 +79,6 @@ export type WeeklyPlanningAction =
   | { type: 'clear_draft_blocks' }
   | { type: 'mark_draft_block_user_edited'; blockId: string }
   | { type: 'append_message'; message: WeeklyPlanningMessage }
+  | { type: 'set_intake_state'; state: PlanningIntakeState | null }
+  | { type: 'clear_conversation' }
   | { type: 'set_last_assistant_message'; message: string };

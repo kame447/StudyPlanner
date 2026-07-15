@@ -326,8 +326,12 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
 
 function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
   switch (command.type) {
-    case 'set_exam_scope':
-      return command.scope.yearRange ? ['exam_scope', 'year_range'] : ['exam_scope'];
+    case 'set_exam_scope': {
+      const slots: string[] = [];
+      if (command.scope.fields.length > 0) slots.push('exam_scope');
+      if (command.scope.yearRange) slots.push('year_range');
+      return slots;
+    }
     case 'set_planning_range':
     case 'set_pending_planning_range':
       return ['planning_range'];
@@ -373,6 +377,52 @@ function hasUnknownField(command: ParsedWeeklyPlanningCommand, knownFields: stri
   const references = referencedFields(command);
 
   return knownFields.length > 0 && references.some((field) => !knownFields.includes(field));
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((value) => rightSet.has(value));
+}
+
+function sameYearRange(
+  left: { startYear: number; endYear: number } | undefined,
+  right: { startYear: number; endYear: number } | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  return left.startYear === right.startYear && left.endYear === right.endYear;
+}
+
+function isSafeConfirmedSlotEnrichment(params: {
+  command: ParsedWeeklyPlanningCommand;
+  summary: InterpreterStateSummary;
+  confirmedOverlaps: string[];
+  unconfirmedSlots: string[];
+}): boolean {
+  if (params.command.type !== 'set_exam_scope' || params.unconfirmedSlots.length === 0) {
+    return false;
+  }
+
+  const existing = params.summary.examScopeSummary;
+  if (!existing) return false;
+
+  if (
+    params.confirmedOverlaps.includes('exam_scope')
+    && params.command.scope.fields.length > 0
+    && !sameStringSet(params.command.scope.fields, existing.fields)
+  ) {
+    return false;
+  }
+
+  if (
+    params.confirmedOverlaps.includes('year_range')
+    && params.command.scope.yearRange
+    && !sameYearRange(params.command.scope.yearRange, existing.yearRange)
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function addRejected(
@@ -487,7 +537,17 @@ export function validateInterpretedCandidates(
 
     const slots = commandSlotKeys(command);
 
-    if (slots.some((slot) => summary.confirmedSlots.includes(slot))) {
+    const confirmedOverlaps = slots.filter((slot) => summary.confirmedSlots.includes(slot));
+    const unconfirmedSlots = slots.filter((slot) => !summary.confirmedSlots.includes(slot));
+    if (
+      confirmedOverlaps.length > 0
+      && !isSafeConfirmedSlotEnrichment({
+        command,
+        summary,
+        confirmedOverlaps,
+        unconfirmedSlots,
+      })
+    ) {
       addRejected(result, candidate, 'confirmed-slot-overwrite');
       return;
     }

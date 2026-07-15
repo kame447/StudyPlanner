@@ -49,6 +49,14 @@ export function loadWeeklyPlanningState(
   }
 }
 
+function serializableIntakeState(
+  intakeState: PlanningState['intakeState'],
+): PlanningState['intakeState'] {
+  if (!intakeState) return undefined;
+  const { assumptionProposalRecords: _sessionOnlyRecords, ...serializable } = intakeState;
+  return serializable;
+}
+
 export function saveWeeklyPlanningState(userId: string, state: PlanningState): void {
   if (typeof window === 'undefined') {
     return;
@@ -57,12 +65,17 @@ export function saveWeeklyPlanningState(userId: string, state: PlanningState): v
   const serializableState: PlanningState = {
     ...state,
     draftBlocks: state.draftBlocks.filter((block) => block.status === 'draft'),
+    intakeState: serializableIntakeState(state.intakeState),
   };
 
   try {
     const key = getStorageKey(userId, state.weekStartDate);
 
-    if (serializableState.draftBlocks.length === 0) {
+    if (
+      serializableState.draftBlocks.length === 0
+      && serializableState.messages.length === 0
+      && !serializableState.intakeState
+    ) {
       window.localStorage.removeItem(key);
       return;
     }

@@ -15,7 +15,11 @@ import {
 } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
-import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
+import type {
+  WeeklyPlanDraftBlock,
+  WeeklyPlanningMessage,
+} from '../features/weeklyPlanning/types';
 import type {
   Actual,
   ActualDraft,
@@ -46,6 +50,11 @@ interface QuickEntryModalProps {
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  weeklyPlanningMessages?: WeeklyPlanningMessage[];
+  weeklyPlanningIntakeState?: PlanningIntakeState | null;
+  onAppendWeeklyPlanningMessage?: (message: WeeklyPlanningMessage) => void;
+  onSetWeeklyPlanningIntakeState?: (state: PlanningIntakeState | null) => void;
+  onClearWeeklyPlanningConversation?: () => void;
   onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onClearWeeklyDraftBlocks?: () => void;
@@ -106,6 +115,11 @@ export function QuickEntryModal({
   scheduleTemplates = [],
   timetableTermId,
   weeklyDraftBlocks = [],
+  weeklyPlanningMessages = [],
+  weeklyPlanningIntakeState = null,
+  onAppendWeeklyPlanningMessage,
+  onSetWeeklyPlanningIntakeState,
+  onClearWeeklyPlanningConversation,
   onCreateWeeklyDraftBlocks,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
@@ -595,6 +609,11 @@ export function QuickEntryModal({
                 timetableTermId={timetableTermId}
                 onApplyDraft={onSavePlan}
                 weeklyDraftBlocks={weeklyDraftBlocks}
+                weeklyPlanningMessages={weeklyPlanningMessages}
+                weeklyPlanningIntakeState={weeklyPlanningIntakeState}
+                onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
+                onSetWeeklyPlanningIntakeState={onSetWeeklyPlanningIntakeState}
+                onClearWeeklyPlanningConversation={onClearWeeklyPlanningConversation}
                 onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
                 onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
                 onClearWeeklyDraftBlocks={onClearWeeklyDraftBlocks}

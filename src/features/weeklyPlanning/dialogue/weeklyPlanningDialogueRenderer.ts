@@ -2,7 +2,9 @@ import {
   fallbackQuestionForSlot,
   vocabularyHintForSlot,
 } from '../intake/weeklyPlanningQuestionSlots';
+import type { Plan } from '../../../types/domain';
 import type { ConstraintSourceRef, PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import { createKnownFixedEventSummaries } from './weeklyPlanningKnownFixedEvents';
 import { recordWeeklyPlanningRenderedAssistantTurn } from '../trace/weeklyPlanningTraceRuntime';
 import type { WeeklyPlanningTraceResponseSource } from '../trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningDialogueDecision } from './weeklyPlanningDialogueManager';
@@ -27,6 +29,7 @@ export interface DialogueRenderInput {
   targetUnitLabel?: string;
   /** 既に計画制約として利用中の schedule source の平易ラベル(「時間割」「登録済みの予定」等)。 */
   constraintSourcesInUse?: string[];
+  knownFixedEventSummaries?: string[];
   acceptedFacts: {
     fields?: string[];
     goals?: string[];
@@ -127,6 +130,7 @@ function nextQuestionsFromDecision(
 export function createDialogueRenderInput(params: {
   state: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
+  existingPlans?: Plan[];
 }): DialogueRenderInput {
   const unitRate = params.state.unitRates.find((rate) => typeof rate.minutesPerUnit === 'number');
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
@@ -135,11 +139,18 @@ export function createDialogueRenderInput(params: {
   const commandGoalTitles = params.state.tasks
     .filter((task) => task.source === 'command')
     .map((task) => task.title);
+  const knownFixedEventSummaries = createKnownFixedEventSummaries(
+    params.existingPlans ?? [],
+    params.state.range,
+  );
 
   return {
     planningPeriodLabel: planningPeriodLabel(params.state),
     targetUnitLabel: targetUnitLabel(params.state),
     constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
+    knownFixedEventSummaries: knownFixedEventSummaries.length > 0
+      ? knownFixedEventSummaries
+      : undefined,
     acceptedFacts: {
       fields: params.state.examPrepScope?.fields,
       goals: commandGoalTitles.length > 0 ? commandGoalTitles : undefined,
@@ -194,7 +205,20 @@ export function sanitizeDialogueRenderOutput(
     outputBySlotKey.set(question.slotKey, question);
   }
 
-  const questions = plannedQuestions.map((plannedQuestion) => outputBySlotKey.get(plannedQuestion.slotKey));
+  const questions = plannedQuestions.map((plannedQuestion) => {
+    const renderedQuestion = outputBySlotKey.get(plannedQuestion.slotKey);
+    if (!renderedQuestion) return undefined;
+    return plannedQuestion.slotKey === 'fixed_events'
+      ? {
+        ...renderedQuestion,
+        text: fallbackQuestionText(
+          plannedQuestion,
+          input.planningPeriodLabel,
+          input.knownFixedEventSummaries,
+        ),
+      }
+      : renderedQuestion;
+  });
   if (questions.some((question) => !question)) {
     return null;
   }
@@ -237,10 +261,12 @@ function formatAcceptedFacts(input: DialogueRenderInput): string | null {
 function fallbackQuestionText(
   question: DialogueNextQuestion,
   planningPeriodLabel?: string,
+  knownFixedEventSummaries?: string[],
 ): string {
   return fallbackQuestionForSlot(question.slotKey, {
     planningPeriodLabel,
     options: question.options,
+    knownFixedEventSummaries,
   }) ?? '次に確認したい条件を教えてください。';
 }
 
@@ -248,7 +274,11 @@ function renderDeterministicMissingQuestions(input: DialogueRenderInput): string
   const acknowledgement = formatAcceptedFacts(input) ?? 'ここまでの条件を確認しました。';
   const questions = input.nextQuestions
     .slice(0, input.styleConstraints.maxQuestions)
-    .map((question) => fallbackQuestionText(question, input.planningPeriodLabel));
+    .map((question) => fallbackQuestionText(
+      question,
+      input.planningPeriodLabel,
+      input.knownFixedEventSummaries,
+    ));
 
   return [acknowledgement, ...questions].join('\n');
 }
@@ -280,10 +310,12 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
   decision: WeeklyPlanningDialogueDecision;
   renderer?: WeeklyPlanningDialogueRenderer;
   userId?: string;
+  existingPlans?: Plan[];
 }): Promise<string> {
   const input = createDialogueRenderInput({
     state: params.state,
     decision: params.decision,
+    existingPlans: params.existingPlans,
   });
 
   const shouldRenderMissingQuestions = params.decision.kind === 'ask_missing_info' && input.nextQuestions.length > 0;

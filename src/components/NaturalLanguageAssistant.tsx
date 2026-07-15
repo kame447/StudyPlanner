@@ -7,6 +7,7 @@ import {
   sortByDateTime,
 } from '../lib/date';
 import { PlanFieldsEditor } from './PlanFieldsEditor';
+import { WeeklyPlanningConversation } from './WeeklyPlanningConversation';
 import {
   generateNaturalLanguageSuggestions,
   getPlannerAiRuntimeInfo,
@@ -54,6 +55,11 @@ interface NaturalLanguageAssistantProps {
   timetableTermId?: string;
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
+  weeklyPlanningMessages?: WeeklyPlanningMessage[];
+  weeklyPlanningIntakeState?: PlanningIntakeState | null;
+  onAppendWeeklyPlanningMessage?: (message: WeeklyPlanningMessage) => void;
+  onSetWeeklyPlanningIntakeState?: (state: PlanningIntakeState | null) => void;
+  onClearWeeklyPlanningConversation?: () => void;
   onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onClearWeeklyDraftBlocks?: () => void;
@@ -239,6 +245,11 @@ export function NaturalLanguageAssistant({
   timetableTermId,
   onApplyDraft,
   weeklyDraftBlocks = [],
+  weeklyPlanningMessages: persistedWeeklyPlanningMessages,
+  weeklyPlanningIntakeState: persistedWeeklyPlanningIntakeState,
+  onAppendWeeklyPlanningMessage,
+  onSetWeeklyPlanningIntakeState,
+  onClearWeeklyPlanningConversation,
   onCreateWeeklyDraftBlocks,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
@@ -257,11 +268,16 @@ export function NaturalLanguageAssistant({
     'overview' | 'day'
   >('overview');
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
-  const [weeklyPlanningMessages, setWeeklyPlanningMessages] = useState<
+  const [localWeeklyPlanningMessages, setLocalWeeklyPlanningMessages] = useState<
     WeeklyPlanningMessage[]
   >([]);
-  const [weeklyPlanningIntakeState, setWeeklyPlanningIntakeState] =
+  const [localWeeklyPlanningIntakeState, setLocalWeeklyPlanningIntakeState] =
     useState<PlanningIntakeState | null>(null);
+  const weeklyPlanningMessages = persistedWeeklyPlanningMessages
+    ?? localWeeklyPlanningMessages;
+  const weeklyPlanningIntakeState = persistedWeeklyPlanningIntakeState === undefined
+    ? localWeeklyPlanningIntakeState
+    : persistedWeeklyPlanningIntakeState;
   const [weeklyPlanningPreviewBlocks, setWeeklyPlanningPreviewBlocks] = useState<
     WeeklyPlanningPreviewBlock[]
   >([]);
@@ -370,27 +386,40 @@ export function NaturalLanguageAssistant({
     role: WeeklyPlanningMessage['role'],
     content: string,
   ) {
-    setWeeklyPlanningMessages((current) => [
-      ...current,
-      createWeeklyPlanningMessage(role, content),
-    ].slice(-24));
+    const message = createWeeklyPlanningMessage(role, content);
+    if (onAppendWeeklyPlanningMessage) {
+      onAppendWeeklyPlanningMessage(message);
+      return;
+    }
+    setLocalWeeklyPlanningMessages((current) => [...current, message]);
+  }
+
+  function storeWeeklyPlanningIntakeState(state: PlanningIntakeState | null) {
+    if (onSetWeeklyPlanningIntakeState) {
+      onSetWeeklyPlanningIntakeState(state);
+      return;
+    }
+    setLocalWeeklyPlanningIntakeState(state);
+  }
+
+  function clearWeeklyPlanningConversationState() {
+    if (onClearWeeklyPlanningConversation) {
+      onClearWeeklyPlanningConversation();
+      return;
+    }
+    setLocalWeeklyPlanningMessages([]);
+    setLocalWeeklyPlanningIntakeState(null);
   }
 
   function resetWeeklyPlanningSession() {
-    setWeeklyPlanningIntakeState(null);
+    clearWeeklyPlanningConversationState();
     setWeeklyPlanningPreviewBlocks([]);
     setWeeklyPlanningPreviewCandidates([]);
-    setWeeklyPlanningMessages([]);
     setSelectedWeeklyDraftDate('');
     setWeeklyDraftPreviewMode('overview');
     setError('');
     setStatus('');
     setText('');
-  }
-
-  function clearWeeklyPlanningDrafts() {
-    onClearWeeklyDraftBlocks?.();
-    resetWeeklyPlanningSession();
   }
 
   function clearWeeklyPlanningDraftsOnly() {
@@ -433,22 +462,11 @@ export function NaturalLanguageAssistant({
   }
 
   function renderWeeklyPlanningHistory() {
-    if (weeklyPlanningMessages.length === 0) {
-      return null;
-    }
-
     return (
-      <div className="weekly-planning-chat-log" aria-label="週間計画の会話履歴">
-        {weeklyPlanningMessages.map((message) => (
-          <div
-            className={`weekly-planning-chat-message weekly-planning-chat-message--${message.role}`}
-            key={message.id}
-          >
-            <strong>{message.role === 'user' ? 'あなた' : 'アプリ'}</strong>
-            <p>{message.content}</p>
-          </div>
-        ))}
-      </div>
+      <WeeklyPlanningConversation
+        messages={weeklyPlanningMessages}
+        isAnalyzing={isAnalyzing}
+      />
     );
   }
 
@@ -511,6 +529,9 @@ export function NaturalLanguageAssistant({
     }
 
     appendWeeklyPlanningMessage('user', trimmedText);
+    setText('');
+    setError('');
+    setStatus('');
     setIsAnalyzing(true);
 
     try {
@@ -561,6 +582,7 @@ export function NaturalLanguageAssistant({
           decision: pipelineOutput.decision,
               renderer: dialogueRenderer,
   userId,
+  existingPlans: plans,
 })
         : pipelineOutput.behaviorDialogue.message;
       const nextPreviewCandidates = pipelineOutput.draftCandidates ?? [];
@@ -568,7 +590,7 @@ export function NaturalLanguageAssistant({
         nextPreviewCandidates,
       );
 
-      setWeeklyPlanningIntakeState(pipelineOutput.state);
+      storeWeeklyPlanningIntakeState(pipelineOutput.state);
       setWeeklyPlanningPreviewCandidates(nextPreviewCandidates);
       setWeeklyPlanningPreviewBlocks(nextPreviewBlocks);
       if (nextPreviewBlocks.length > 0) {
@@ -576,7 +598,7 @@ export function NaturalLanguageAssistant({
         setSelectedWeeklyDraftDate('');
       }
       setError('');
-      setStatus(message);
+      setStatus('');
       appendWeeklyPlanningMessage('assistant', message);
       setText('');
     } catch {
@@ -769,7 +791,6 @@ export function NaturalLanguageAssistant({
             setAiInputMode('chat');
             setWeeklyPlanningPreviewBlocks([]);
             setWeeklyPlanningPreviewCandidates([]);
-            setWeeklyPlanningIntakeState(null);
             setError('');
             setStatus('');
             setText('');
@@ -786,7 +807,6 @@ export function NaturalLanguageAssistant({
             setStatus('');
             setSuggestions([]);
             setEditTargetPlanId('');
-            setWeeklyPlanningIntakeState(null);
             setWeeklyPlanningPreviewBlocks([]);
             setWeeklyPlanningPreviewCandidates([]);
             setSelectedWeeklyDraftDate('');
@@ -996,7 +1016,7 @@ export function NaturalLanguageAssistant({
             </div>
           ) : null}
 
-          {hasLocalWeeklyPlanningPreview ? (
+          {hasLocalWeeklyPlanningPreview && !isAnalyzing ? (
             <div className="section-stack">
               <label className="field field-full">
                 <span>条件を修正する</span>
@@ -1344,38 +1364,42 @@ export function NaturalLanguageAssistant({
         <div className="section-stack weekly-planning-assistant">
           {renderWeeklyPlanningHistory()}
 
-          <label className="field field-full">
-            <span>週間計画にしたいこと</span>
-            <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              rows={4}
-              placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
-            />
-            <small className="detail-note">
-              条件確認のあと、「この条件で作成」または「配置できる分だけでいい」でのみ仮予定を作成します。
-            </small>
-          </label>
+          {!isAnalyzing ? (
+            <>
+              <label className="field field-full">
+                <span>週間計画にしたいこと</span>
+                <textarea
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                  rows={4}
+                  placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
+                />
+                <small className="detail-note">
+                  条件確認のあと、「この条件で作成」または「配置できる分だけでいい」でのみ仮予定を作成します。
+                </small>
+              </label>
 
-          <div className="row-actions">
-            <button
-              className="primary-button"
-              onClick={() => void handleCreateWeeklyDrafts()}
-              type="button"
-              disabled={isAnalyzing || !canCreateWeeklyDraft}
-            >
-              {isAnalyzing ? '送信中...' : '送信'}
-            </button>
-            {weeklyPlanningMessages.length > 0 ? (
-              <button
-                className="ghost-button"
-                onClick={clearWeeklyPlanningDrafts}
-                type="button"
-              >
-                履歴をクリア
-              </button>
-            ) : null}
-          </div>
+              <div className="row-actions">
+                <button
+                  className="primary-button"
+                  onClick={() => void handleCreateWeeklyDrafts()}
+                  type="button"
+                  disabled={!canCreateWeeklyDraft}
+                >
+                  送信
+                </button>
+                {weeklyPlanningMessages.length > 0 ? (
+                  <button
+                    className="ghost-button"
+                    onClick={resetWeeklyPlanningSession}
+                    type="button"
+                  >
+                    履歴をクリア
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : null}
 
           {error || status ? (
             <div

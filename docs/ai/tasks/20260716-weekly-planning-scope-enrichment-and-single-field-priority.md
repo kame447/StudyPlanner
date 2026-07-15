@@ -1,6 +1,7 @@
 # exam scopeの部分補完と単一分野priorityを修正する
 
-Status: open
+Status: closed
+Closed: 2026-07-16
 Parent: `20260716-weekly-planning-conversation-hardening.md`
 
 ## 対象問題
@@ -17,9 +18,9 @@ priority missingは、優先選択に意味がある複数分野の場合だけ�
 
 ## 完了条件
 
-- [ ] 既存exam scopeのfieldsが空なら、AIの非空fields補完を拒否しない
-- [ ] 既存年度範囲をAI候補が欠落していても保持する
-- [ ] 既存の確定fieldsを異なるfieldsで置換する候補は拒否する
-- [ ] fieldsが1件ならpriority missingを追加しない
-- [ ] fieldsが2件以上なら現行のpriority確認を維持する
-- [ ] trace相当の回帰テストを追加する
+- [x] 既存exam scopeのfieldsが空なら、AIの非空fields補完を拒否しない
+- [x] 既存年度範囲をAI候補が欠落していても保持する
+- [x] 既存の確定fieldsを異なるfieldsで置換する候補は拒否する
+- [x] fieldsが1件ならpriority missingを追加しない
+- [x] fieldsが2件以上なら現行のpriority確認を維持する
+- [x] trace相当の回帰テストを追加する

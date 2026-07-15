@@ -47,6 +47,13 @@ export interface InterpreterCorrectionTargetSummary {
 
 export interface InterpreterStateSummary {
   knownFields: string[];
+  examScopeSummary?: {
+    fields: string[];
+    yearRange?: {
+      startYear: number;
+      endYear: number;
+    };
+  };
   confirmedSlots: string[];
   planningRangeSummary?: string;
   lastQuestions?: Array<{

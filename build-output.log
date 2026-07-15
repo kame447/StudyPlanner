@@ -1,0 +1,35 @@
+
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 1937 modules transformed.
+rendering chunks...
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) /home/runner/work/StudyPlannner/StudyPlannner/src/data/naturalLanguageCatalog.ts is dynamically imported by /home/runner/work/StudyPlannner/StudyPlannner/src/hooks/usePlannerAppState.ts but also statically imported by /home/runner/work/StudyPlannner/StudyPlannner/src/services/natural-language/catalog.ts, /home/runner/work/StudyPlannner/StudyPlannner/src/services/naturalLanguageRules.ts, dynamic import will not move module into another chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32mindex.html                                   [39m[1m[2m  0.42 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
+[2mdist/[22m[2massets/[22m[32mstudyplanner-logo-DbNnCwAb.png        [39m[1m[2m 85.42 kB[22m[1m[22m
+[2mdist/[22m[2massets/[22m[35mindex-C0wxJ9lP.css                    [39m[1m[2m202.50 kB[22m[1m[22m[2m │ gzip:  32.43 kB[22m
+[2mdist/[22m[2massets/[22m[36mbook-open-9bSfjyMY.js                 [39m[1m[2m  0.45 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[2massets/[22m[36mtrash-2-BpJjzDNU.js                   [39m[1m[2m  0.90 kB[22m[1m[22m[2m │ gzip:   0.44 kB[22m
+[2mdist/[22m[2massets/[22m[36mtimetableOcrImport-C8zAXWv2.js        [39m[1m[2m  1.63 kB[22m[1m[22m[2m │ gzip:   1.08 kB[22m
+[2mdist/[22m[2massets/[22m[36mquickEntryDrafts-4HMBvIWV.js          [39m[1m[2m  1.70 kB[22m[1m[22m[2m │ gzip:   0.86 kB[22m
+[2mdist/[22m[2massets/[22m[36mTimetableOcrImportDialog-Dlq5f4OG.js  [39m[1m[2m  7.28 kB[22m[1m[22m[2m │ gzip:   2.49 kB[22m
+[2mdist/[22m[2massets/[22m[36msubjectInference-B94R2TFs.js          [39m[1m[2m  7.98 kB[22m[1m[22m[2m │ gzip:   3.56 kB[22m
+[2mdist/[22m[2massets/[22m[36mWeekView-CRooCDAu.js                  [39m[1m[2m  9.40 kB[22m[1m[22m[2m │ gzip:   2.75 kB[22m
+[2mdist/[22m[2massets/[22m[36mTodoView-Dn8QmeUC.js                  [39m[1m[2m 14.45 kB[22m[1m[22m[2m │ gzip:   4.28 kB[22m
+[2mdist/[22m[2massets/[22m[36mTimetableView-D1goXIS6.js             [39m[1m[2m 15.48 kB[22m[1m[22m[2m │ gzip:   5.04 kB[22m
+[2mdist/[22m[2massets/[22m[36mBookshelfView-BzajxawM.js             [39m[1m[2m 15.79 kB[22m[1m[22m[2m │ gzip:   5.35 kB[22m
+[2mdist/[22m[2massets/[22m[36mReportView-Bsa_cP38.js                [39m[1m[2m 16.65 kB[22m[1m[22m[2m │ gzip:   5.36 kB[22m
+[2mdist/[22m[2massets/[22m[36mDayView-PlDzQ7nS.js                   [39m[1m[2m 40.90 kB[22m[1m[22m[2m │ gzip:  11.36 kB[22m
+[2mdist/[22m[2massets/[22m[36mQuickEntryModal-CcBOqWFN.js           [39m[1m[2m321.87 kB[22m[1m[22m[2m │ gzip:  98.05 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-m9F0nfvd.js                     [39m[1m[33m887.02 kB[39m[22m[2m │ gzip: 245.74 kB[22m
+[33m
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 5.76s[39m

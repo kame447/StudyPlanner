@@ -61,7 +61,7 @@ function missingDecision(): WeeklyPlanningDialogueDecision {
 function fallbackMessage(): string {
   return [
     'ここまでの条件を確認しました。',
-    '授業・バイト・通院など、動かせない予定があれば教えてください。',
+    'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
     '睡眠時間や、何時から勉強を始められるかを教えてください。',
   ].join('\n');
 }
@@ -84,7 +84,7 @@ describe('weekly planning AI dialogue renderer', () => {
     const renderer = {
       render: vi.fn(async () => ({
         questions: [
-          { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
         ],
       })),
     };
@@ -138,7 +138,7 @@ describe('weekly planning AI dialogue renderer', () => {
       render: vi.fn(async () => ({
         acknowledgement: '条件を受け取りました。',
         questions: [
-          { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
           { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
         ],
       })),
@@ -148,7 +148,7 @@ describe('weekly planning AI dialogue renderer', () => {
       state: stateWithExtraMissing(),
       decision: missingDecision(),
       renderer,
-    })).resolves.toContain('固定予定はありますか？');
+    })).resolves.toContain('すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？');
     expect(renderer.render).toHaveBeenCalledTimes(1);
   });
 
@@ -156,7 +156,7 @@ describe('weekly planning AI dialogue renderer', () => {
     const client = createMockClient(JSON.stringify({
       acknowledgement: '条件を受け取りました。',
       questions: [
-        { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+        { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
         { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
       ],
     }));
@@ -166,7 +166,7 @@ describe('weekly planning AI dialogue renderer', () => {
 
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe([
       '条件を受け取りました。',
-      '固定予定はありますか？',
+      'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
       '睡眠時間はどうしますか？',
     ].join('\n'));
 
@@ -187,7 +187,7 @@ describe('weekly planning AI dialogue renderer', () => {
           slotKey: 'fixed_events',
           intent: 'ask_fixed_events',
           questionKind: 'missing_life_constraint',
-          vocabularyHint: '授業・バイト・通院など動かせない予定',
+          vocabularyHint: '時間が決まっていて動かせない予定',
         },
         {
           slotKey: 'sleep_cycle',
@@ -207,7 +207,7 @@ describe('weekly planning AI dialogue renderer', () => {
       acknowledgement: '確認しました。',
       questions: [
         { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
-        { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+        { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
       ],
     })));
 
@@ -217,7 +217,7 @@ describe('weekly planning AI dialogue renderer', () => {
       renderer,
     })).resolves.toBe([
       '確認しました。',
-      '固定予定はありますか？',
+      'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
       '睡眠時間はどうしますか？',
     ].join('\n'));
   });
@@ -227,7 +227,7 @@ describe('weekly planning AI dialogue renderer', () => {
       'plan outside slot',
       {
         questions: [
-          { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
           { slotKey: 'daily_target', text: '毎日の目標も教えてください。' },
         ],
       },
@@ -236,7 +236,7 @@ describe('weekly planning AI dialogue renderer', () => {
       'missing planned slot',
       {
         questions: [
-          { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
         ],
       },
     ],
@@ -244,7 +244,7 @@ describe('weekly planning AI dialogue renderer', () => {
       'duplicate planned slot',
       {
         questions: [
-          { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
           { slotKey: 'fixed_events', text: '固定予定をもう一度教えてください。' },
         ],
       },
@@ -282,7 +282,7 @@ describe('weekly planning AI dialogue renderer', () => {
   it('does not mutate questionPlan after adopting AI text', async () => {
     const renderer = createAiWeeklyPlanningDialogueRenderer(config, createMockClient(JSON.stringify({
       questions: [
-        { slotKey: 'fixed_events', text: '固定予定はありますか？' },
+        { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
         { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
       ],
     })));
@@ -371,7 +371,7 @@ describe('weekly planning renderer deterministic context', () => {
 
     const fixedEvents = input.nextQuestions.find((question) => question.slotKey === 'fixed_events');
 
-    expect(fixedEvents?.vocabularyHint).toBe('授業・バイト・通院など動かせない予定');
+    expect(fixedEvents?.vocabularyHint).toBe('時間が決まっていて動かせない予定');
   });
 
   it('surfaces constraint sources already in use as plain labels', () => {
