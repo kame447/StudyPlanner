@@ -280,3 +280,10 @@ export境界の再redactionとDA3c候補拡張
 ```
 
 Firestore TTL policyの有効化とaccount deletion cascadeは、application codeでは完結しないため実装計画どおりdeploy／運用作業として残す。長期behavior profileの自動導出・適用は今回の非対象である。
+
+
+## 会話相関と予約eventの扱い
+
+conversation lifecycle IDとrequest idempotency keyは別の識別子として扱う。同一文面や短時間という条件だけで別会話を統合しない。approvalとdraft promotionはpreview IDから元のlogical conversationを特定し、rendererは対応するstateからsessionを特定する。相関不能かつ同一userに複数のactive sessionがある場合は、誤ったsessionへ記録せずtrace追加を見送る。
+
+`assumption_superseded`、`relative_constraint_resolved`、`relative_constraint_rejected`、`request_cancelled`、`stale_async_result_discarded`は有限catalog上の予約eventであり、現時点ではすべてにproduction producerがあるわけではない。対応する処理境界を実装するときにproducerと回帰テストを同時追加する。

@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "<stdin>", line 42, in <module>
-  File "agent-fix-weekly-planning-trace.py", line 568, in <module>
-  File "agent-fix-weekly-planning-trace.py", line 27, in replace_once
-RuntimeError: entry kind validation: expected one match, got 0

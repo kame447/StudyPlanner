@@ -7,8 +7,10 @@ import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningIntakePipelineInput } from '../pipeline/weeklyPlanningIntakePipeline';
 import { createInMemoryWeeklyPlanningTraceRepository } from './weeklyPlanningTraceInMemoryRepository';
 import { setWeeklyPlanningTraceRepositoryForTests } from './weeklyPlanningTraceRepository';
+import type { WeeklyPlanDraftBlock } from '../types';
 import {
   recordWeeklyPlanningApprovalTrace,
+  recordWeeklyPlanningDraftPromotion,
   resetWeeklyPlanningTraceRuntimeForTests,
 } from './weeklyPlanningTraceRuntime';
 
@@ -205,4 +207,124 @@ describe('weekly planning trace runtime contract', () => {
       ]));
     });
   });
+
+  it('同じ初期発話でも別input objectは別conversationとして保存する', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    setWeeklyPlanningTraceRepositoryForTests(repository);
+
+    await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('来週の予定を作りたい'),
+      { userId: 'user-1', dialoguePlanner },
+    );
+    await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('来週の予定を作りたい'),
+      { userId: 'user-1', dialoguePlanner },
+    );
+
+    await waitForTrace(async () => {
+      const sessions = await repository.listSessionsForAdmin();
+      expect(sessions).toHaveLength(2);
+      expect(new Set(sessions.map((session) => session.logicalConversationId)).size).toBe(2);
+    });
+  });
+
+  it('preview相関を使い並行会話AのapprovalをAだけへ記録する', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    setWeeklyPlanningTraceRepositoryForTests(repository);
+
+    await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('会話A'),
+      { userId: 'user-1', conversationId: 'conversation-a', dialoguePlanner },
+    );
+    await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('会話B'),
+      { userId: 'user-1', conversationId: 'conversation-b', dialoguePlanner },
+    );
+    await waitForTrace(async () => {
+      expect(await repository.listSessionsForAdmin()).toHaveLength(2);
+    });
+
+    recordWeeklyPlanningDraftPromotion({
+      userId: 'user-1',
+      blocks: [{
+        id: 'block-a',
+        behaviorMetadata: {
+          previewMetadata: {
+            previewId: 'preview-a',
+            conversationId: 'conversation-a',
+            stateRevision: 1,
+            assumptionDependencies: [],
+            approvalEligibility: 'eligible',
+            stale: false,
+            authorizedUserId: 'user-1',
+          },
+        },
+      } as unknown as WeeklyPlanDraftBlock],
+    });
+    recordWeeklyPlanningApprovalTrace({
+      userId: 'user-1',
+      phase: 'completed',
+      payload: { previewId: 'preview-a', items: [] },
+    });
+
+    await waitForTrace(async () => {
+      const sessions = await repository.listSessionsForAdmin();
+      const sessionA = sessions.find((session) => session.logicalConversationId === 'conversation-a');
+      const sessionB = sessions.find((session) => session.logicalConversationId === 'conversation-b');
+      expect(sessionA?.status).toBe('completed');
+      expect(sessionB?.status).toBe('active');
+      const entriesA = await repository.listEntries('user-1', sessionA!.id);
+      const entriesB = await repository.listEntries('user-1', sessionB!.id);
+      expect(entriesA.some((entry) =>
+        entry.kind === 'internal_event' && entry.eventType === 'approval_completed'
+      )).toBe(true);
+      expect(entriesB.some((entry) =>
+        entry.kind === 'internal_event' && entry.eventType === 'approval_completed'
+      )).toBe(false);
+    });
+  });
+
+  it('遅延write失敗を次の成功writeで一度だけ診断event化する', async () => {
+    const stored = createInMemoryWeeklyPlanningTraceRepository();
+    let appendCallCount = 0;
+    let releaseFirstWrite: (() => void) | undefined;
+    let firstWriteStarted: (() => void) | undefined;
+    const firstWriteStartedPromise = new Promise<void>((resolve) => { firstWriteStarted = resolve; });
+    const firstWriteBlocker = new Promise<void>((resolve) => { releaseFirstWrite = resolve; });
+    setWeeklyPlanningTraceRepositoryForTests({
+      ...stored,
+      async appendEntries(params) {
+        appendCallCount += 1;
+        if (appendCallCount === 1) {
+          firstWriteStarted?.();
+          await firstWriteBlocker;
+          throw new Error('delayed-write-failure');
+        }
+        await stored.appendEntries(params);
+      },
+    });
+
+    const first = await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('予定を作りたい'),
+      { userId: 'user-1', conversationId: 'conversation-write', dialoguePlanner },
+    );
+    await firstWriteStartedPromise;
+    const second = await runWeeklyPlanningBehaviorAwarePipeline(
+      pipelineInput('英語を3時間やりたい', first.state),
+      { userId: 'user-1', conversationId: 'conversation-write', dialoguePlanner },
+    );
+    expect(second.state).toBeDefined();
+    releaseFirstWrite?.();
+
+    await waitForTrace(async () => {
+      const [session] = await stored.listSessionsForAdmin();
+      expect(session?.hasError).toBe(true);
+      const entries = await stored.listEntries('user-1', session!.id);
+      const failures = entries.filter((entry) =>
+        entry.kind === 'internal_event' && entry.eventType === 'trace_write_failed'
+      );
+      expect(failures).toHaveLength(1);
+    });
+  });
+
 });

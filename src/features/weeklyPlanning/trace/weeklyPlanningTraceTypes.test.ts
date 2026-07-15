@@ -44,4 +44,32 @@ describe('isWeeklyPlanningTraceEntry', () => {
       state: {},
     })).toBe(false);
   });
+
+  it('payload欠落eventをsafe discardする', () => {
+    expect(isWeeklyPlanningTraceEntry({
+      ...baseEntry(),
+      kind: 'internal_event',
+      eventType: 'preview_generated',
+      severity: 'info',
+    })).toBe(false);
+  });
+
+  it('state欠落snapshotをsafe discardする', () => {
+    expect(isWeeklyPlanningTraceEntry({
+      ...baseEntry(),
+      kind: 'state_snapshot',
+      snapshotReason: 'turn_completed',
+    })).toBe(false);
+  });
+
+  it('assistant turnではresponse sourceを必須にする', () => {
+    expect(isWeeklyPlanningTraceEntry({
+      ...baseEntry(),
+      kind: 'turn',
+      role: 'assistant',
+      content: '応答',
+      turnIndex: 0,
+    })).toBe(false);
+  });
+
 });

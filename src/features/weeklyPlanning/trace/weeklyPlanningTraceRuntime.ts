@@ -21,12 +21,17 @@ import {
 const SESSION_RETENTION_DAYS = 90;
 const SNAPSHOT_RETENTION_DAYS = 30;
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const INITIAL_REQUEST_REUSE_WINDOW_MS = 2_000;
 const MAX_PENDING_WRITE_FAILURES = 10;
 
 interface PendingWriteFailure {
+  id: string;
   failedAt: string;
   errorCode: string;
+}
+
+interface TraceRequestContext {
+  conversationId: string;
+  requestId: string;
 }
 
 interface ActiveTraceSession {
@@ -36,19 +41,16 @@ interface ActiveTraceSession {
   lastActivityMs: number;
   pendingAssistantRequestId?: string;
   pendingStateRevision?: number;
-  requestFingerprints: Set<string>;
+  requestIds: Set<string>;
   pendingWriteFailures: PendingWriteFailure[];
-}
-
-interface RecentInitialRequest {
-  conversationId: string;
-  createdAtMs: number;
+  nextWriteFailureSequence: number;
+  writeQueue: Promise<void>;
 }
 
 const activeSessions = new Map<string, ActiveTraceSession>();
-const recentInitialRequests = new Map<string, RecentInitialRequest>();
+const conversationIdByPreviewKey = new Map<string, string>();
 let conversationIdsByState = new WeakMap<object, string>();
-let lastActiveSessionKey: string | undefined;
+let traceContextByInput = new WeakMap<object, TraceRequestContext>();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -71,23 +73,16 @@ function resolveTraceUserId(explicitUserId?: string): string | null {
   return import.meta.env.DEV ? 'local-debug-user' : null;
 }
 
-function initialRequestKey(userId: string, input: WeeklyPlanningIntakePipelineInput): string {
-  return [userId, input.planningStartDate, input.planningDayCount, input.userText.trim()].join('\u001f');
-}
-
-function cleanupRecentInitialRequests(nowMs: number): void {
-  recentInitialRequests.forEach((value, key) => {
-    if (nowMs - value.createdAtMs > INITIAL_REQUEST_REUSE_WINDOW_MS) {
-      recentInitialRequests.delete(key);
-    }
-  });
+function correlationUserId(options: WeeklyPlanningBehaviorAwarePipelineOptions): string {
+  return options.userId?.trim()
+    || getFirebaseAuth()?.currentUser?.uid?.trim()
+    || 'session-local-user';
 }
 
 function resolveLogicalConversationId(params: {
-  userId: string;
   input: WeeklyPlanningIntakePipelineInput;
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
-  nowMs: number;
+  cached?: TraceRequestContext;
 }): string {
   const explicit = params.options.conversationId?.trim();
   if (explicit) return explicit;
@@ -98,18 +93,28 @@ function resolveLogicalConversationId(params: {
     if (mapped) return mapped;
   }
 
-  cleanupRecentInitialRequests(params.nowMs);
-  const key = initialRequestKey(params.userId, params.input);
-  const recent = recentInitialRequests.get(key);
-  if (!previousState && recent && params.nowMs - recent.createdAtMs <= INITIAL_REQUEST_REUSE_WINDOW_MS) {
-    return recent.conversationId;
-  }
+  if (params.cached?.conversationId) return params.cached.conversationId;
+  return randomId('weekly-planning-conversation');
+}
 
-  const created = randomId('weekly-planning-conversation');
-  if (!previousState) {
-    recentInitialRequests.set(key, { conversationId: created, createdAtMs: params.nowMs });
+export function prepareWeeklyPlanningTraceOptions(
+  input: WeeklyPlanningIntakePipelineInput,
+  options: WeeklyPlanningBehaviorAwarePipelineOptions,
+): WeeklyPlanningBehaviorAwarePipelineOptions {
+  const cached = input && typeof input === 'object' ? traceContextByInput.get(input) : undefined;
+  const conversationId = resolveLogicalConversationId({ input, options, cached });
+  const explicitRequestId = options.traceRequestId?.trim();
+  const requestId = explicitRequestId
+    || (cached?.conversationId === conversationId ? cached.requestId : randomId('weekly-request'));
+  if (input && typeof input === 'object') {
+    traceContextByInput.set(input, { conversationId, requestId });
   }
-  return created;
+  return {
+    ...options,
+    userId: options.userId?.trim() || correlationUserId(options),
+    conversationId,
+    traceRequestId: requestId,
+  };
 }
 
 function activeSessionKey(userId: string, logicalConversationId: string): string {
@@ -147,8 +152,10 @@ function createSession(params: {
     nextSequence: 0,
     nextTurnIndex: 0,
     lastActivityMs: new Date(params.now).getTime(),
-    requestFingerprints: new Set<string>(),
+    requestIds: new Set<string>(),
     pendingWriteFailures: [],
+    nextWriteFailureSequence: 0,
+    writeQueue: Promise.resolve(),
   };
 }
 
@@ -175,14 +182,12 @@ function ensureActiveSession(params: {
     existing.session.expireAt = expireAt(params.now, SESSION_RETENTION_DAYS);
     if (params.planningRangeStart) existing.session.planningRangeStart = params.planningRangeStart;
     if (params.planningRangeEnd) existing.session.planningRangeEnd = params.planningRangeEnd;
-    lastActiveSessionKey = key;
     return existing;
   }
 
   if (existing) abandonExpiredSession(existing, params.now);
   const created = createSession(params);
   activeSessions.set(key, created);
-  lastActiveSessionKey = key;
   return created;
 }
 
@@ -297,9 +302,10 @@ function finiteErrorCode(error: unknown): string {
 
 function pendingFailureEntries(
   active: ActiveTraceSession,
+  failures: readonly PendingWriteFailure[],
   occurredAt: string,
 ): WeeklyPlanningTraceInternalEventEntry[] {
-  return active.pendingWriteFailures.map((failure) => eventEntry(active, {
+  return failures.map((failure) => eventEntry(active, {
     eventType: 'trace_write_failed',
     payload: failure,
     occurredAt,
@@ -310,31 +316,51 @@ function pendingFailureEntries(
 async function appendBestEffort(
   active: ActiveTraceSession,
   entries: WeeklyPlanningTraceEntry[],
-  requestFingerprint?: string,
+  requestIdForRetry?: string,
 ): Promise<void> {
   if (entries.length === 0) return;
-  const failureEntries = pendingFailureEntries(active, entries[0]?.occurredAt ?? nowIso());
-  const allEntries = [...entries, ...failureEntries];
-  active.session.entryCount = Math.max(active.session.entryCount, active.nextSequence);
-  active.session.lastActivityAt = allEntries[allEntries.length - 1]?.observedAt ?? nowIso();
-  try {
-    await getWeeklyPlanningTraceRepository().appendEntries({
-      session: { ...active.session },
-      entries: allEntries,
-    });
-    active.pendingWriteFailures = [];
-  } catch (error) {
-    active.session.hasError = true;
-    if (requestFingerprint) active.requestFingerprints.delete(requestFingerprint);
-    active.pendingWriteFailures = [
-      ...active.pendingWriteFailures,
-      { failedAt: nowIso(), errorCode: finiteErrorCode(error) },
-    ].slice(-MAX_PENDING_WRITE_FAILURES);
-    console.warn('[WeeklyPlanningTrace] write failed', {
-      sessionId: active.session.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const operation = active.writeQueue.catch(() => undefined).then(async () => {
+    const failuresToReport = [...active.pendingWriteFailures];
+    if (failuresToReport.length > 0) active.session.hasError = true;
+    const failureEntries = pendingFailureEntries(
+      active,
+      failuresToReport,
+      entries[0]?.occurredAt ?? nowIso(),
+    );
+    const allEntries = [...entries, ...failureEntries];
+    active.session.entryCount = Math.max(active.session.entryCount, active.nextSequence);
+    active.session.lastActivityAt = allEntries[allEntries.length - 1]?.observedAt ?? nowIso();
+    try {
+      await getWeeklyPlanningTraceRepository().appendEntries({
+        session: { ...active.session },
+        entries: allEntries,
+      });
+      if (failuresToReport.length > 0) {
+        const persistedFailureIds = new Set(failuresToReport.map((failure) => failure.id));
+        active.pendingWriteFailures = active.pendingWriteFailures.filter(
+          (failure) => !persistedFailureIds.has(failure.id),
+        );
+      }
+    } catch (error) {
+      active.session.hasError = true;
+      if (requestIdForRetry) active.requestIds.delete(requestIdForRetry);
+      const failure: PendingWriteFailure = {
+        id: `${active.session.id}:write-failure:${active.nextWriteFailureSequence++}`,
+        failedAt: nowIso(),
+        errorCode: finiteErrorCode(error),
+      };
+      active.pendingWriteFailures = [
+        ...active.pendingWriteFailures,
+        failure,
+      ].slice(-MAX_PENDING_WRITE_FAILURES);
+      console.warn('[WeeklyPlanningTrace] write failed', {
+        sessionId: active.session.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  active.writeQueue = operation;
+  await operation;
 }
 
 function pipelineEventEntries(params: {
@@ -500,10 +526,15 @@ function pipelineEventEntries(params: {
   const previewCount = output.draftCandidates?.length ?? 0;
   if (previewCount > 0) {
     active.session.hasPreview = true;
+    const previewId = `behavior-preview:${stateRevision}`;
+    conversationIdByPreviewKey.set(
+      `${active.session.userId}:${previewId}`,
+      active.session.logicalConversationId,
+    );
     entries.push(eventEntry(active, {
       eventType: 'preview_generated',
       payload: {
-        previewId: `behavior-preview:${stateRevision}`,
+        previewId,
         candidateCount: previewCount,
         scheduledMinutes: output.feasibility.scheduledMinutes,
         unscheduledMinutes: output.feasibility.unscheduledMinutes,
@@ -542,12 +573,9 @@ export function recordWeeklyPlanningPipelineTrace(params: {
   const userId = resolveTraceUserId(params.options.userId);
   if (!userId) return;
   const occurredAt = nowIso();
-  const nowMs = new Date(occurredAt).getTime();
   const logicalConversationId = resolveLogicalConversationId({
-    userId,
     input: params.input,
     options: params.options,
-    nowMs,
   });
   const active = ensureActiveSession({
     userId,
@@ -561,16 +589,10 @@ export function recordWeeklyPlanningPipelineTrace(params: {
   }
 
   const stateRevision = params.output.behavior.snapshot.stateRevision;
-  const previousRevision = Math.max(0, stateRevision - 1);
-  const requestFingerprint = [
-    logicalConversationId,
-    previousRevision,
-    params.input.userText.trim(),
-  ].join('\u001f');
-  if (active.requestFingerprints.has(requestFingerprint)) return;
-  active.requestFingerprints.add(requestFingerprint);
-
-  const requestId = randomId('weekly-request');
+    const previousRevision = Math.max(0, stateRevision - 1);
+    const requestId = params.options.traceRequestId?.trim() || randomId('weekly-request');
+    if (active.requestIds.has(requestId)) return;
+    active.requestIds.add(requestId);
   const entries: WeeklyPlanningTraceEntry[] = [
     turnEntry(active, {
       role: 'user',
@@ -619,31 +641,79 @@ export function recordWeeklyPlanningPipelineTrace(params: {
     }));
   }
 
-  void appendBestEffort(active, entries, requestFingerprint);
+  void appendBestEffort(active, entries, requestId);
 }
 
-export function recordWeeklyPlanningRenderedAssistantTurn(
-  content: string,
-  responseSource: WeeklyPlanningTraceResponseSource,
-): void {
-  if (!isWeeklyPlanningTraceEnabled() || !lastActiveSessionKey) return;
-  const active = activeSessions.get(lastActiveSessionKey);
-  if (!active?.pendingAssistantRequestId) return;
+function activeSessionForConversation(
+  userId: string,
+  logicalConversationId: string,
+): [string, ActiveTraceSession] | null {
+  const key = activeSessionKey(userId, logicalConversationId);
+  const active = activeSessions.get(key);
+  return active ? [key, active] : null;
+}
+
+function onlyActiveSessionForUser(userId: string): [string, ActiveTraceSession] | null {
+  const candidates = Array.from(activeSessions.entries()).filter(
+    ([, active]) => active.session.userId === userId && active.session.status === 'active',
+  );
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function payloadRecord(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {};
+}
+
+function correlatedSession(params: {
+  userId: string;
+  logicalConversationId?: string;
+  previewId?: string;
+}): [string, ActiveTraceSession] | null {
+  const explicit = params.logicalConversationId?.trim();
+  if (explicit) return activeSessionForConversation(params.userId, explicit);
+  const previewId = params.previewId?.trim();
+  if (previewId) {
+    const mapped = conversationIdByPreviewKey.get(`${params.userId}:${previewId}`);
+    if (mapped) return activeSessionForConversation(params.userId, mapped);
+  }
+  return onlyActiveSessionForUser(params.userId);
+}
+
+export function recordWeeklyPlanningRenderedAssistantTurn(params: {
+  content: string;
+  responseSource: WeeklyPlanningTraceResponseSource;
+  state?: object;
+  logicalConversationId?: string;
+  userId?: string;
+}): void {
+  if (!isWeeklyPlanningTraceEnabled()) return;
+  const userId = resolveTraceUserId(params.userId);
+  if (!userId) return;
+  const stateConversationId = params.state ? conversationIdsByState.get(params.state) : undefined;
+  const candidate = correlatedSession({
+    userId,
+    logicalConversationId: params.logicalConversationId ?? stateConversationId,
+  });
+  if (!candidate) return;
+  const [, active] = candidate;
+  if (!active.pendingAssistantRequestId) return;
   const occurredAt = nowIso();
   const requestId = active.pendingAssistantRequestId;
   const stateRevision = active.pendingStateRevision;
   active.pendingAssistantRequestId = undefined;
   active.pendingStateRevision = undefined;
-  if (responseSource === 'deterministic_fallback') active.session.hasFallback = true;
+  if (params.responseSource === 'deterministic_fallback') active.session.hasFallback = true;
   const entries: WeeklyPlanningTraceEntry[] = [turnEntry(active, {
     role: 'assistant',
-    content,
-    responseSource,
+    content: params.content,
+    responseSource: params.responseSource,
     requestId,
     stateRevision,
     occurredAt,
   })];
-  if (responseSource === 'deterministic_fallback') {
+  if (params.responseSource === 'deterministic_fallback') {
     entries.push(eventEntry(active, {
       eventType: 'fallback_used',
       payload: { category: 'dialogue_renderer_fallback' },
@@ -656,30 +726,33 @@ export function recordWeeklyPlanningRenderedAssistantTurn(
   void appendBestEffort(active, entries);
 }
 
-function latestActiveSessionForUser(userId: string): [string, ActiveTraceSession] | null {
-  const candidate = Array.from(activeSessions.entries())
-    .filter(([, active]) => active.session.userId === userId)
-    .sort(([, left], [, right]) => right.lastActivityMs - left.lastActivityMs)[0];
-  return candidate ?? null;
-}
-
 export function recordWeeklyPlanningDraftPromotion(params: {
   userId: string;
   blocks: WeeklyPlanDraftBlock[];
 }): void {
   if (!isWeeklyPlanningTraceEnabled() || params.blocks.length === 0) return;
-  const candidate = latestActiveSessionForUser(params.userId);
-  if (!candidate) return;
-  const [key, active] = candidate;
-  lastActiveSessionKey = key;
-  const occurredAt = nowIso();
   const metadata = params.blocks[0]?.behaviorMetadata?.previewMetadata;
+  const previewId = metadata?.previewId?.trim();
+  const candidate = correlatedSession({
+    userId: params.userId,
+    logicalConversationId: metadata?.conversationId,
+    previewId,
+  });
+  if (!candidate) return;
+  const [, active] = candidate;
+  if (previewId) {
+    conversationIdByPreviewKey.set(
+      `${params.userId}:${previewId}`,
+      active.session.logicalConversationId,
+    );
+  }
+  const occurredAt = nowIso();
   void appendBestEffort(active, [eventEntry(active, {
     eventType: 'draft_promoted',
     payload: {
       blockCount: params.blocks.length,
       blockIds: params.blocks.map((block) => block.id),
-      previewId: metadata?.previewId,
+      previewId,
     },
     stateRevision: metadata?.stateRevision,
     occurredAt,
@@ -730,12 +803,23 @@ export function recordWeeklyPlanningApprovalTrace(params: {
   phase: 'started' | 'completed';
   payload: unknown;
   failed?: boolean;
+  logicalConversationId?: string;
 }): void {
   if (!isWeeklyPlanningTraceEnabled()) return;
-  const candidate = latestActiveSessionForUser(params.userId);
+  const record = payloadRecord(params.payload);
+  const previewId = typeof record.previewId === 'string' ? record.previewId : undefined;
+  const payloadConversationId = typeof record.logicalConversationId === 'string'
+    ? record.logicalConversationId
+    : typeof record.conversationId === 'string'
+      ? record.conversationId
+      : undefined;
+  const candidate = correlatedSession({
+    userId: params.userId,
+    logicalConversationId: params.logicalConversationId ?? payloadConversationId,
+    previewId,
+  });
   if (!candidate) return;
-  const [key, active] = candidate;
-  lastActiveSessionKey = key;
+  const [, active] = candidate;
   const occurredAt = nowIso();
   const eventType = params.phase === 'started' ? 'approval_started' : 'approval_completed';
   if (params.failed) {
@@ -760,7 +844,7 @@ export function recordWeeklyPlanningApprovalTrace(params: {
 
 export function resetWeeklyPlanningTraceRuntimeForTests(): void {
   activeSessions.clear();
-  recentInitialRequests.clear();
+  conversationIdByPreviewKey.clear();
   conversationIdsByState = new WeakMap<object, string>();
-  lastActiveSessionKey = undefined;
+  traceContextByInput = new WeakMap<object, TraceRequestContext>();
 }

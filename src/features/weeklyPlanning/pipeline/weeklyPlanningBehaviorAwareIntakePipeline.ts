@@ -35,7 +35,10 @@ import {
   createFeasibilitySummary,
   type FeasibilitySummary,
 } from '../planning/weeklyPlanningFeasibility';
-import { recordWeeklyPlanningPipelineTrace } from '../trace/weeklyPlanningTraceRuntime';
+import {
+  prepareWeeklyPlanningTraceOptions,
+  recordWeeklyPlanningPipelineTrace,
+} from '../trace/weeklyPlanningTraceRuntime';
 import {
   runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
@@ -64,6 +67,7 @@ export interface BehaviorAwareDialoguePlanner {
 
 export interface WeeklyPlanningBehaviorAwarePipelineOptions {
   conversationId?: string;
+  traceRequestId?: string;
   userId?: string;
   dialoguePlanner?: BehaviorAwareDialoguePlanner;
   useAiDialoguePlanner?: boolean;
@@ -403,8 +407,9 @@ async function finalizeBehaviorAwareOutput(params: {
 
 export async function runWeeklyPlanningBehaviorAwarePipeline(
   rawInput: WeeklyPlanningIntakePipelineInput,
-  options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
+  rawOptions: WeeklyPlanningBehaviorAwarePipelineOptions = {},
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+  const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
   const input = withSessionProposalContext(rawInput, options);
   const base = synchronizeProposalRecords(runWeeklyPlanningIntakePipeline(input), proposalRecords(input));
   const output = await finalizeBehaviorAwareOutput({ base, input, options });
@@ -414,8 +419,9 @@ export async function runWeeklyPlanningBehaviorAwarePipeline(
 
 export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
   rawInput: WeeklyPlanningIntakePipelineWithInterpreterInput,
-  options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
+  rawOptions: WeeklyPlanningBehaviorAwarePipelineOptions = {},
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+  const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
   const input = withSessionProposalContext(rawInput, options);
   let capturedResult: WeeklyPlanningInterpreterResult | undefined;
   const conversationId = getConversationId(options);

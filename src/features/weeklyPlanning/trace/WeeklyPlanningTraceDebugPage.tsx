@@ -1,6 +1,7 @@
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { hasUnexportedWeeklyPlanningTraceActivity } from './weeklyPlanningTraceArchive';
+import { weeklyPlanningTraceLocalDate } from './weeklyPlanningTraceDate';
 import { createWeeklyPlanningTraceExportBundle } from './weeklyPlanningTraceExport';
 import { getWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRepository';
 import type {
@@ -89,11 +90,6 @@ function entriesForMode(
   return [];
 }
 
-function dateOnly(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
-  return date.toISOString().slice(0, 10);
-}
 
 export function WeeklyPlanningTraceDebugPage({
   onBack,
@@ -224,7 +220,7 @@ export function WeeklyPlanningTraceDebugPage({
     if (normalizedUserFilter
       && !session.userId.toLowerCase().includes(normalizedUserFilter)
       && !session.logicalConversationId.toLowerCase().includes(normalizedUserFilter)) return false;
-    const activityDate = dateOnly(session.lastActivityAt);
+    const activityDate = weeklyPlanningTraceLocalDate(session.lastActivityAt);
     if (dateFrom && activityDate < dateFrom) return false;
     if (dateTo && activityDate > dateTo) return false;
     if (onlyErrors && !session.hasError) return false;

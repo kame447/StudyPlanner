@@ -263,8 +263,13 @@ function composeRenderedMessage(output: DialogueRenderOutput): string {
 function tracedMessage(
   message: string,
   responseSource: WeeklyPlanningTraceResponseSource,
+  state: PlanningIntakeState,
 ): string {
-  recordWeeklyPlanningRenderedAssistantTurn(message, responseSource);
+  recordWeeklyPlanningRenderedAssistantTurn({
+    content: message,
+    responseSource,
+    state,
+  });
   return message;
 }
 
@@ -281,11 +286,11 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
   const shouldRenderMissingQuestions = params.decision.kind === 'ask_missing_info' && input.nextQuestions.length > 0;
 
   if (!shouldRenderMissingQuestions) {
-    return tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules');
+    return tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules', params.state);
   }
 
   if (!params.renderer) {
-    return tracedMessage(renderDeterministicMissingQuestions(input), 'rules');
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'rules', params.state);
   }
 
   try {
@@ -293,11 +298,11 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
     const sanitized = sanitizeDialogueRenderOutput(rendered, input);
 
     if (sanitized) {
-      return tracedMessage(composeRenderedMessage(sanitized), 'ai');
+      return tracedMessage(composeRenderedMessage(sanitized), 'ai', params.state);
     }
 
-    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback');
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback', params.state);
   } catch {
-    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback');
+    return tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback', params.state);
   }
 }
