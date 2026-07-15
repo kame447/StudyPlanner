@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createWeeklyPlanningTraceExportBundle } from './weeklyPlanningTraceExport';
 import { getWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRepository';
@@ -47,35 +47,42 @@ function formattedDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP');
 }
 
+function planningRangeLabel(session: WeeklyPlanningTraceSession): string | null {
+  if (!session.planningRangeStart && !session.planningRangeEnd) return null;
+  return `${session.planningRangeStart ?? '未設定'} - ${session.planningRangeEnd ?? '未設定'}`;
+}
+
 export function WeeklyPlanningTraceDebugPage({
   onBack,
 }: WeeklyPlanningTraceDebugPageProps) {
   const [sessions, setSessions] = useState<WeeklyPlanningTraceSession[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState('');
-  const [entries, setEntries] = useState<WeeklyPlanningTraceEntry[]>([]);
+  const [entriesBySession, setEntriesBySession] = useState<
+    Record<string, WeeklyPlanningTraceEntry[]>
+  >({});
+  const [expandedSessionId, setExpandedSessionId] = useState('');
   const [statusFilter, setStatusFilter] = useState<'' | WeeklyPlanningTraceSessionStatus>('');
-  const [userFilter, setUserFilter] = useState('');
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [onlyFallbacks, setOnlyFallbacks] = useState(false);
   const [onlyPreviews, setOnlyPreviews] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingEntriesSessionId, setLoadingEntriesSessionId] = useState('');
+  const [exportingSessionId, setExportingSessionId] = useState('');
   const [error, setError] = useState('');
 
   async function loadSessions(): Promise<void> {
-    setLoading(true);
+    setLoadingSessions(true);
     try {
       const nextSessions = await getWeeklyPlanningTraceRepository().listSessionsForAdmin();
-      setSessions(nextSessions);
-      setSelectedSessionId((current) =>
-        current && nextSessions.some((session) => session.id === current)
-          ? current
-          : nextSessions[0]?.id ?? '',
+      const activeSessions = nextSessions.filter((session) => !session.archivedAt);
+      setSessions(activeSessions);
+      setExpandedSessionId((current) =>
+        current && activeSessions.some((session) => session.id === current) ? current : '',
       );
       setError('');
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'sessionを取得できませんでした。');
     } finally {
-      setLoading(false);
+      setLoadingSessions(false);
     }
   }
 
@@ -83,46 +90,77 @@ export function WeeklyPlanningTraceDebugPage({
     void loadSessions();
   }, []);
 
-  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
+  async function loadEntries(
+    session: WeeklyPlanningTraceSession,
+  ): Promise<WeeklyPlanningTraceEntry[]> {
+    const cached = entriesBySession[session.id];
+    if (cached) return cached;
 
-  useEffect(() => {
-    if (!selectedSession) {
-      setEntries([]);
+    setLoadingEntriesSessionId(session.id);
+    try {
+      const nextEntries = await getWeeklyPlanningTraceRepository().listEntries(
+        session.userId,
+        session.id,
+      );
+      setEntriesBySession((current) => ({ ...current, [session.id]: nextEntries }));
+      setError('');
+      return nextEntries;
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。');
+      throw loadError;
+    } finally {
+      setLoadingEntriesSessionId((current) => current === session.id ? '' : current);
+    }
+  }
+
+  function toggleSession(session: WeeklyPlanningTraceSession): void {
+    if (expandedSessionId === session.id) {
+      setExpandedSessionId('');
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    void getWeeklyPlanningTraceRepository()
-      .listEntries(selectedSession.userId, selectedSession.id)
-      .then((nextEntries) => {
-        if (!cancelled) {
-          setEntries(nextEntries);
-          setError('');
-        }
-      })
-      .catch((loadError) => {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+    setExpandedSessionId(session.id);
+    void loadEntries(session).catch(() => undefined);
+  }
+
+  async function exportAndArchive(session: WeeklyPlanningTraceSession): Promise<void> {
+    setExportingSessionId(session.id);
+    try {
+      const entries = await loadEntries(session);
+      downloadJson(
+        `weekly-planning-trace-${session.id}.json`,
+        createWeeklyPlanningTraceExportBundle(session, entries),
+      );
+      await getWeeklyPlanningTraceRepository().archiveSessionForAdmin(
+        session.id,
+        new Date().toISOString(),
+      );
+      setSessions((current) => current.filter((item) => item.id !== session.id));
+      setEntriesBySession((current) => {
+        const next = { ...current };
+        delete next[session.id];
+        return next;
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSession]);
+      setExpandedSessionId((current) => current === session.id ? '' : current);
+      setError('');
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : 'exportまたはアーカイブに失敗しました。',
+      );
+    } finally {
+      setExportingSessionId((current) => current === session.id ? '' : current);
+    }
+  }
 
   const visibleSessions = useMemo(() => sessions.filter((session) => {
+    if (session.archivedAt) return false;
     if (statusFilter && session.status !== statusFilter) return false;
-    if (userFilter.trim() && !session.userId.toLowerCase().includes(userFilter.trim().toLowerCase())) {
-      return false;
-    }
     if (onlyErrors && !session.hasError) return false;
     if (onlyFallbacks && !session.hasFallback) return false;
     if (onlyPreviews && !session.hasPreview) return false;
     return true;
-  }), [onlyErrors, onlyFallbacks, onlyPreviews, sessions, statusFilter, userFilter]);
+  }), [onlyErrors, onlyFallbacks, onlyPreviews, sessions, statusFilter]);
 
   return (
     <main className="admin-shell weekly-planning-trace-debug">
@@ -133,29 +171,18 @@ export function WeeklyPlanningTraceDebugPage({
 
       <header className="panel">
         <h1>週間計画ログ</h1>
-        <p>管理者として、redaction済みの会話turn、内部event、state snapshotを確認します。</p>
+        <p>
+          未exportのsessionを新しい順に表示します。JSON export後は一覧から除外しますが、
+          Firestore上のsessionとentryは削除しません。
+        </p>
         <div className="button-row">
           <button
             className="ghost-button"
             type="button"
-            disabled={loading}
+            disabled={loadingSessions}
             onClick={() => { void loadSessions(); }}
           >
-            再読込
-          </button>
-          <button
-            className="primary-button"
-            type="button"
-            disabled={!selectedSession}
-            onClick={() => {
-              if (!selectedSession) return;
-              downloadJson(
-                `weekly-planning-trace-${selectedSession.id}.json`,
-                createWeeklyPlanningTraceExportBundle(selectedSession, entries),
-              );
-            }}
-          >
-            JSON export
+            {loadingSessions ? '読込中...' : '再読込'}
           </button>
         </div>
       </header>
@@ -165,15 +192,6 @@ export function WeeklyPlanningTraceDebugPage({
       <section className="panel">
         <h2>Filter</h2>
         <div className="field-row">
-          <label className="field">
-            <span>User ID</span>
-            <input
-              value={userFilter}
-              onChange={(event) => setUserFilter(event.target.value)}
-              placeholder="uidで絞り込み"
-              type="search"
-            />
-          </label>
           <label className="field">
             <span>Status</span>
             <select
@@ -191,53 +209,94 @@ export function WeeklyPlanningTraceDebugPage({
         </div>
       </section>
 
-      <div className="weekly-planning-trace-debug-grid">
-        <section className="panel">
-          <h2>Sessions</h2>
-          {visibleSessions.length === 0 ? <p>該当sessionはありません。</p> : null}
-          <div className="weekly-planning-trace-session-list">
-            {visibleSessions.map((session) => (
-              <button
-                className={session.id === selectedSessionId ? 'trace-session-card active' : 'trace-session-card'}
-                key={session.id}
-                type="button"
-                onClick={() => setSelectedSessionId(session.id)}
-              >
-                <strong>{formattedDate(session.startedAt)}</strong>
-                <span>{session.status} / turns {session.turnCount} / entries {session.entryCount}</span>
-                <code>{session.userId}</code>
-                <code>{session.id}</code>
-              </button>
-            ))}
-          </div>
-        </section>
+      <section className="weekly-planning-trace-stream" aria-label="週間計画ログ一覧">
+        <div className="weekly-planning-trace-stream-heading">
+          <h2>未exportのSessions</h2>
+          <span>{visibleSessions.length}件</span>
+        </div>
 
-        <section className="panel">
-          <h2>Timeline</h2>
-          {selectedSession ? (
-            <p>
-              user {selectedSession.userId} / {selectedSession.status} / {formattedDate(selectedSession.startedAt)} / {selectedSession.logicalConversationId}
-            </p>
-          ) : null}
-          {entries.length === 0 ? <p>entryはありません。</p> : null}
-          <div className="weekly-planning-trace-entry-list">
-            {entries.map((entry) => (
-              <article className={`trace-entry trace-entry--${entry.kind}`} key={entry.id}>
-                <header>
-                  <strong>#{entry.sequence} {entryTitle(entry)}</strong>
-                  <span>{formattedDate(entry.occurredAt)}</span>
-                </header>
-                <small>
-                  revision {entry.stateRevision ?? '-'} / request {entry.requestId ?? '-'}
-                </small>
-                {entry.kind === 'turn'
-                  ? <p>{entry.content}</p>
-                  : <pre>{JSON.stringify(entryBody(entry), null, 2)}</pre>}
-              </article>
-            ))}
+        {loadingSessions && sessions.length === 0 ? (
+          <div className="panel admin-state-card">
+            <strong>読み込み中</strong>
+            <p>週間計画sessionを取得しています。</p>
           </div>
-        </section>
-      </div>
+        ) : null}
+
+        {!loadingSessions && visibleSessions.length === 0 ? (
+          <div className="panel admin-state-card">
+            <strong>未exportのsessionはありません</strong>
+          </div>
+        ) : null}
+
+        {visibleSessions.map((session) => {
+          const expanded = expandedSessionId === session.id;
+          const entries = entriesBySession[session.id] ?? [];
+          const loadingEntries = loadingEntriesSessionId === session.id;
+          const exporting = exportingSessionId === session.id;
+          const rangeLabel = planningRangeLabel(session);
+
+          return (
+            <article className="panel trace-session-panel" key={session.id}>
+              <button
+                className="trace-session-summary"
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => toggleSession(session)}
+              >
+                <span className="trace-session-summary-main">
+                  <strong>{formattedDate(session.lastActivityAt)}</strong>
+                  <span>
+                    {session.status} / turns {session.turnCount} / entries {session.entryCount}
+                  </span>
+                  <code>{session.userId}</code>
+                  {rangeLabel ? <small>計画範囲 {rangeLabel}</small> : null}
+                </span>
+                {expanded
+                  ? <ChevronUp aria-hidden="true" size={20} strokeWidth={2} />
+                  : <ChevronDown aria-hidden="true" size={20} strokeWidth={2} />}
+              </button>
+
+              {expanded ? (
+                <div className="trace-session-detail">
+                  <div className="trace-session-actions">
+                    <span>
+                      開始 {formattedDate(session.startedAt)} / conversation{' '}
+                      {session.logicalConversationId}
+                    </span>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={exporting || loadingEntries}
+                      onClick={() => { void exportAndArchive(session); }}
+                    >
+                      {exporting ? 'export中...' : 'JSON exportしてアーカイブ'}
+                    </button>
+                  </div>
+
+                  {loadingEntries ? <p>timelineを読み込んでいます...</p> : null}
+                  {!loadingEntries && entries.length === 0 ? <p>entryはありません。</p> : null}
+                  <div className="weekly-planning-trace-entry-list">
+                    {entries.map((entry) => (
+                      <article className={`trace-entry trace-entry--${entry.kind}`} key={entry.id}>
+                        <header>
+                          <strong>#{entry.sequence} {entryTitle(entry)}</strong>
+                          <span>{formattedDate(entry.occurredAt)}</span>
+                        </header>
+                        <small>
+                          revision {entry.stateRevision ?? '-'} / request {entry.requestId ?? '-'}
+                        </small>
+                        {entry.kind === 'turn'
+                          ? <p>{entry.content}</p>
+                          : <pre>{JSON.stringify(entryBody(entry), null, 2)}</pre>}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </section>
     </main>
   );
 }
