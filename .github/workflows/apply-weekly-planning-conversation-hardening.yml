@@ -1,0 +1,66 @@
+name: Apply weekly planning conversation hardening
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-conversation-hardening
+    paths:
+      - scripts/apply-weekly-planning-conversation-hardening.mjs
+      - .github/workflows/apply-weekly-planning-conversation-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply scoped changes
+        run: node scripts/apply-weekly-planning-conversation-hardening.mjs
+      - name: Weekly planning tests
+        run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx
+      - name: Build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Finalize task documents
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const tasks = [
+            'docs/ai/tasks/20260716-weekly-planning-conversation-hardening.md',
+            'docs/ai/tasks/20260716-weekly-planning-scope-enrichment-and-single-field-priority.md',
+            'docs/ai/tasks/20260716-weekly-planning-contextual-fixed-events-question.md',
+            'docs/ai/tasks/20260716-weekly-planning-session-persistence-and-pending-ui.md',
+            'docs/ai/tasks/20260716-weekly-planning-conversation-component-refactor.md',
+          ];
+          for (const path of tasks) {
+            let text = fs.readFileSync(path, 'utf8');
+            text = text.replace('Status: open', 'Status: closed\nClosed: 2026-07-16');
+            text = text.replaceAll('- [ ]', '- [x]');
+            fs.writeFileSync(path, text);
+          }
+          fs.writeFileSync(
+            'docs/ai/tasks/20260716-weekly-planning-conversation-hardening-codex-review.md',
+            `# 週間計画対話改善のCodexレビュー\n\nStatus: open\nCreated: 2026-07-16\nReviews: \`20260716-weekly-planning-conversation-hardening.md\`\n\n## レビュー目的\n\n今回の実装が既存の週間計画機能を壊さず、場当たり的な文言置換ではなく一般化された責務として成立しているか確認する。\n\n## 主な変更\n\n- deterministic parserの部分exam scopeをAIが安全に補完できるvalidator契約\n- 単一分野ではpriority質問を生成しないmissing導出\n- 計画期間内の登録済み予定だけを根拠にしたfixed events質問\n- 会話messagesとintake stateのweekly planning stateへの集約とlocalStorage永続化\n- 送信直後の入力クリア、composer非表示、assistant typing indicator\n- 会話履歴表示の独立component化\n\n## 必須確認項目\n\n1. 複数分野のpriority確認が残っていること。\n2. 既存の確定exam scopeを異なるAI候補が上書きできないこと。\n3. fixed events質問に範囲外予定や入力外予定が混ざらないこと。\n4. modalを閉じて再度開いた際、会話とintake stateが復元されること。\n5. \`assumptionProposalRecords\`がlocalStorageへ保存されないこと。\n6. 履歴クリアがdraft blockを意図せず削除しないこと。\n7. 送信中にtextareaとユーザー発話が二重表示されないこと。\n8. preview生成・個別削除・一括承認の既存経路に回帰がないこと。\n9. \`NaturalLanguageAssistant\`から分離したcomponent境界が新しい循環依存を作っていないこと。\n\n## 実行済み検証\n\n- \`npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx\`\n- \`npm run build\`\n- \`git diff --check\`\n\n## レビュー結果の書き方\n\nBLOCKER、MAJOR、MINORの順で、該当ファイルと再現条件を示す。問題がなければ「採用可」とし、残る設計判断だけを別項目に分離する。\n`,
+          );
+          NODE
+      - name: Remove temporary automation
+        run: rm scripts/apply-weekly-planning-conversation-hardening.mjs .github/workflows/apply-weekly-planning-conversation-hardening.yml
+      - name: Commit verified implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: 週間計画の対話と履歴を改善"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
