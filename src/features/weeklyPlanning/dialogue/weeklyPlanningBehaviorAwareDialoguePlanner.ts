@@ -34,6 +34,8 @@ export interface BehaviorAwareDialoguePlannerResult {
   source: 'ai' | 'deterministic_fallback';
 }
 
+const UNGROUNDED_FALLBACK_LINE = 'ここまでの内容から、無理のない進め方を整理します。';
+
 function stringSchema(): Record<string, unknown> {
   return { type: 'string' };
 }
@@ -89,7 +91,8 @@ function createSystemPrompt(): string {
     'Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.',
     'Use one or two substantive actions in normal turns and never more than three.',
     'Every selectedActionId must have exactly one matching items entry.',
-    'Briefly acknowledge the latest accepted information, explain a safe planning hypothesis when available, and ask only the highest-impact remaining confirmation.',
+    'Briefly acknowledge only concrete accepted information, explain a safe planning hypothesis only when one actually exists, and ask only the highest-impact remaining confirmation.',
+    'Do not add vague filler such as 「ここまでの内容から、無理のない進め方を整理します」 when no concrete planning hypothesis exists.',
     'When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.',
     'Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.',
     'Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.',
@@ -157,6 +160,21 @@ function composeMessage(response: BehaviorAwareDialogueResponse): string {
   ].filter((part): part is string => Boolean(part?.trim())).join('\n');
 }
 
+function removeUngroundedFallbackLine(message: string): string {
+  return message
+    .split('\n')
+    .filter((line) => line.trim() !== UNGROUNDED_FALLBACK_LINE)
+    .join('\n')
+    .trim();
+}
+
+function renderFallback(input: BehaviorAwareDialoguePlannerInput): string {
+  return removeUngroundedFallbackLine(renderBehaviorAwareDialogueFallback({
+    snapshot: input.snapshot,
+    actions: input.allowedActions,
+  }));
+}
+
 export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
   config: AiConfig = getAiConfig(),
   client: OpenAiCompatibleClient = createOpenAiCompatibleClient(config),
@@ -193,10 +211,7 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
       }
 
       return {
-        message: renderBehaviorAwareDialogueFallback({
-          snapshot: input.snapshot,
-          actions: input.allowedActions,
-        }),
+        message: renderFallback(input),
         response: null,
         source: 'deterministic_fallback' as const,
       };
@@ -210,10 +225,7 @@ export function createDeterministicBehaviorAwareDialoguePlanner(): {
   return {
     async plan(input) {
       return {
-        message: renderBehaviorAwareDialogueFallback({
-          snapshot: input.snapshot,
-          actions: input.allowedActions,
-        }),
+        message: renderFallback(input),
         response: null,
         source: 'deterministic_fallback',
       };
