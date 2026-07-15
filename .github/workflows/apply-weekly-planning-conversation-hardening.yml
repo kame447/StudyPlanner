@@ -7,6 +7,12 @@ on:
     paths:
       - scripts/apply-weekly-planning-conversation-hardening.mjs
       - .github/workflows/apply-weekly-planning-conversation-hardening.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/apply-weekly-planning-conversation-hardening.mjs
+      - .github/workflows/apply-weekly-planning-conversation-hardening.yml
 
 permissions:
   contents: write
