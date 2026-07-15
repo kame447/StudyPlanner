@@ -1,0 +1,948 @@
+name: Agent fix weekly planning trace
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-trace-full-implementation
+    paths:
+      - .github/workflows/agent-fix-weekly-planning-trace.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-trace-full-implementation
+          fetch-depth: 0
+
+      - name: Apply trace reliability fixes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, value):
+              Path(path).write_text(value, encoding='utf-8')
+
+          def replace_once(value, old, new, label):
+              count = value.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one match, got {count}')
+              return value.replace(old, new, 1)
+
+          def regex_once(value, pattern, replacement, label):
+              next_value, count = re.subn(pattern, replacement, value, count=1, flags=re.S)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one match, got {count}')
+              return next_value
+
+          runtime_path = 'src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts'
+          runtime = read(runtime_path)
+          runtime = regex_once(
+              runtime,
+              r"const SESSION_RETENTION_DAYS = 90;.*?let lastActiveSessionKey: string \| undefined;\n",
+              """const SESSION_RETENTION_DAYS = 90;
+          const SNAPSHOT_RETENTION_DAYS = 30;
+          const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+          const MAX_PENDING_WRITE_FAILURES = 10;
+
+          interface PendingWriteFailure {
+            id: string;
+            failedAt: string;
+            errorCode: string;
+          }
+
+          interface TraceRequestContext {
+            conversationId: string;
+            requestId: string;
+          }
+
+          interface ActiveTraceSession {
+            session: WeeklyPlanningTraceSession;
+            nextSequence: number;
+            nextTurnIndex: number;
+            lastActivityMs: number;
+            pendingAssistantRequestId?: string;
+            pendingStateRevision?: number;
+            requestIds: Set<string>;
+            pendingWriteFailures: PendingWriteFailure[];
+            nextWriteFailureSequence: number;
+            writeQueue: Promise<void>;
+          }
+
+          const activeSessions = new Map<string, ActiveTraceSession>();
+          const conversationIdByPreviewKey = new Map<string, string>();
+          let conversationIdsByState = new WeakMap<object, string>();
+          let traceContextByInput = new WeakMap<object, TraceRequestContext>();
+          """,
+              'runtime top state',
+          )
+          runtime = regex_once(
+              runtime,
+              r"function initialRequestKey\(.*?\n}\n\nfunction activeSessionKey",
+              """function correlationUserId(options: WeeklyPlanningBehaviorAwarePipelineOptions): string {
+            return options.userId?.trim()
+              || getFirebaseAuth()?.currentUser?.uid?.trim()
+              || 'session-local-user';
+          }
+
+          function resolveLogicalConversationId(params: {
+            input: WeeklyPlanningIntakePipelineInput;
+            options: WeeklyPlanningBehaviorAwarePipelineOptions;
+            cached?: TraceRequestContext;
+          }): string {
+            const explicit = params.options.conversationId?.trim();
+            if (explicit) return explicit;
+
+            const previousState = params.input.previousState;
+            if (previousState && typeof previousState === 'object') {
+              const mapped = conversationIdsByState.get(previousState);
+              if (mapped) return mapped;
+            }
+
+            if (params.cached?.conversationId) return params.cached.conversationId;
+            return randomId('weekly-planning-conversation');
+          }
+
+          export function prepareWeeklyPlanningTraceOptions(
+            input: WeeklyPlanningIntakePipelineInput,
+            options: WeeklyPlanningBehaviorAwarePipelineOptions,
+          ): WeeklyPlanningBehaviorAwarePipelineOptions {
+            const cached = input && typeof input === 'object' ? traceContextByInput.get(input) : undefined;
+            const conversationId = resolveLogicalConversationId({ input, options, cached });
+            const explicitRequestId = options.traceRequestId?.trim();
+            const requestId = explicitRequestId
+              || (cached?.conversationId === conversationId ? cached.requestId : randomId('weekly-request'));
+            if (input && typeof input === 'object') {
+              traceContextByInput.set(input, { conversationId, requestId });
+            }
+            return {
+              ...options,
+              userId: options.userId?.trim() || correlationUserId(options),
+              conversationId,
+              traceRequestId: requestId,
+            };
+          }
+
+          function activeSessionKey""",
+              'runtime correlation resolution',
+          )
+          runtime = replace_once(
+              runtime,
+              """    requestFingerprints: new Set<string>(),
+              pendingWriteFailures: [],
+          """,
+              """    requestIds: new Set<string>(),
+              pendingWriteFailures: [],
+              nextWriteFailureSequence: 0,
+              writeQueue: Promise.resolve(),
+          """,
+              'runtime create session fields',
+          )
+          runtime = runtime.replace('    lastActiveSessionKey = key;\n', '').replace('  lastActiveSessionKey = key;\n', '')
+          runtime = regex_once(
+              runtime,
+              r"function pendingFailureEntries\(.*?\n}\n\nfunction pipelineEventEntries",
+              """function pendingFailureEntries(
+            active: ActiveTraceSession,
+            failures: readonly PendingWriteFailure[],
+            occurredAt: string,
+          ): WeeklyPlanningTraceInternalEventEntry[] {
+            return failures.map((failure) => eventEntry(active, {
+              eventType: 'trace_write_failed',
+              payload: failure,
+              occurredAt,
+              severity: 'error',
+            }));
+          }
+
+          async function appendBestEffort(
+            active: ActiveTraceSession,
+            entries: WeeklyPlanningTraceEntry[],
+            requestIdForRetry?: string,
+          ): Promise<void> {
+            if (entries.length === 0) return;
+            const operation = active.writeQueue.catch(() => undefined).then(async () => {
+              const failuresToReport = [...active.pendingWriteFailures];
+              if (failuresToReport.length > 0) active.session.hasError = true;
+              const failureEntries = pendingFailureEntries(
+                active,
+                failuresToReport,
+                entries[0]?.occurredAt ?? nowIso(),
+              );
+              const allEntries = [...entries, ...failureEntries];
+              active.session.entryCount = Math.max(active.session.entryCount, active.nextSequence);
+              active.session.lastActivityAt = allEntries[allEntries.length - 1]?.observedAt ?? nowIso();
+              try {
+                await getWeeklyPlanningTraceRepository().appendEntries({
+                  session: { ...active.session },
+                  entries: allEntries,
+                });
+                if (failuresToReport.length > 0) {
+                  const persistedFailureIds = new Set(failuresToReport.map((failure) => failure.id));
+                  active.pendingWriteFailures = active.pendingWriteFailures.filter(
+                    (failure) => !persistedFailureIds.has(failure.id),
+                  );
+                }
+              } catch (error) {
+                active.session.hasError = true;
+                if (requestIdForRetry) active.requestIds.delete(requestIdForRetry);
+                const failure: PendingWriteFailure = {
+                  id: `${active.session.id}:write-failure:${active.nextWriteFailureSequence++}`,
+                  failedAt: nowIso(),
+                  errorCode: finiteErrorCode(error),
+                };
+                active.pendingWriteFailures = [
+                  ...active.pendingWriteFailures,
+                  failure,
+                ].slice(-MAX_PENDING_WRITE_FAILURES);
+                console.warn('[WeeklyPlanningTrace] write failed', {
+                  sessionId: active.session.id,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+            });
+            active.writeQueue = operation;
+            await operation;
+          }
+
+          function pipelineEventEntries""",
+              'runtime write queue',
+          )
+          runtime = replace_once(
+              runtime,
+              """  const previewCount = output.draftCandidates?.length ?? 0;
+              if (previewCount > 0) {
+                active.session.hasPreview = true;
+                entries.push(eventEntry(active, {
+                  eventType: 'preview_generated',
+                  payload: {
+                    previewId: `behavior-preview:${stateRevision}`,
+          """,
+              """  const previewCount = output.draftCandidates?.length ?? 0;
+              if (previewCount > 0) {
+                active.session.hasPreview = true;
+                const previewId = `behavior-preview:${stateRevision}`;
+                conversationIdByPreviewKey.set(
+                  `${active.session.userId}:${previewId}`,
+                  active.session.logicalConversationId,
+                );
+                entries.push(eventEntry(active, {
+                  eventType: 'preview_generated',
+                  payload: {
+                    previewId,
+          """,
+              'runtime preview correlation',
+          )
+          runtime = replace_once(runtime, "  const nowMs = new Date(occurredAt).getTime();\n", '', 'runtime remove now ms')
+          runtime = replace_once(
+              runtime,
+              """  const logicalConversationId = resolveLogicalConversationId({
+                userId,
+                input: params.input,
+                options: params.options,
+                nowMs,
+              });
+          """,
+              """  const logicalConversationId = resolveLogicalConversationId({
+                input: params.input,
+                options: params.options,
+              });
+          """,
+              'runtime resolve conversation call',
+          )
+          runtime = regex_once(
+              runtime,
+              r"  const stateRevision = params\.output\.behavior\.snapshot\.stateRevision;\n  const previousRevision = Math\.max\(0, stateRevision - 1\);\n  const requestFingerprint = \[.*?\n  const requestId = randomId\('weekly-request'\);",
+              """  const stateRevision = params.output.behavior.snapshot.stateRevision;
+              const previousRevision = Math.max(0, stateRevision - 1);
+              const requestId = params.options.traceRequestId?.trim() || randomId('weekly-request');
+              if (active.requestIds.has(requestId)) return;
+              active.requestIds.add(requestId);""",
+              'runtime request idempotency',
+          )
+          runtime = replace_once(
+              runtime,
+              '  void appendBestEffort(active, entries, requestFingerprint);',
+              '  void appendBestEffort(active, entries, requestId);',
+              'runtime append request id',
+          )
+          runtime = regex_once(
+              runtime,
+              r"export function recordWeeklyPlanningRenderedAssistantTurn\(.*?\n}\n\nfunction latestActiveSessionForUser.*?\n}\n\nexport function recordWeeklyPlanningDraftPromotion",
+              """function activeSessionForConversation(
+            userId: string,
+            logicalConversationId: string,
+          ): [string, ActiveTraceSession] | null {
+            const key = activeSessionKey(userId, logicalConversationId);
+            const active = activeSessions.get(key);
+            return active ? [key, active] : null;
+          }
+
+          function onlyActiveSessionForUser(userId: string): [string, ActiveTraceSession] | null {
+            const candidates = Array.from(activeSessions.entries()).filter(
+              ([, active]) => active.session.userId === userId && active.session.status === 'active',
+            );
+            return candidates.length === 1 ? candidates[0] : null;
+          }
+
+          function payloadRecord(payload: unknown): Record<string, unknown> {
+            return payload && typeof payload === 'object' && !Array.isArray(payload)
+              ? payload as Record<string, unknown>
+              : {};
+          }
+
+          function correlatedSession(params: {
+            userId: string;
+            logicalConversationId?: string;
+            previewId?: string;
+          }): [string, ActiveTraceSession] | null {
+            const explicit = params.logicalConversationId?.trim();
+            if (explicit) return activeSessionForConversation(params.userId, explicit);
+            const previewId = params.previewId?.trim();
+            if (previewId) {
+              const mapped = conversationIdByPreviewKey.get(`${params.userId}:${previewId}`);
+              if (mapped) return activeSessionForConversation(params.userId, mapped);
+            }
+            return onlyActiveSessionForUser(params.userId);
+          }
+
+          export function recordWeeklyPlanningRenderedAssistantTurn(params: {
+            content: string;
+            responseSource: WeeklyPlanningTraceResponseSource;
+            state?: object;
+            logicalConversationId?: string;
+            userId?: string;
+          }): void {
+            if (!isWeeklyPlanningTraceEnabled()) return;
+            const userId = resolveTraceUserId(params.userId);
+            if (!userId) return;
+            const stateConversationId = params.state ? conversationIdsByState.get(params.state) : undefined;
+            const candidate = correlatedSession({
+              userId,
+              logicalConversationId: params.logicalConversationId ?? stateConversationId,
+            });
+            if (!candidate) return;
+            const [, active] = candidate;
+            if (!active.pendingAssistantRequestId) return;
+            const occurredAt = nowIso();
+            const requestId = active.pendingAssistantRequestId;
+            const stateRevision = active.pendingStateRevision;
+            active.pendingAssistantRequestId = undefined;
+            active.pendingStateRevision = undefined;
+            if (params.responseSource === 'deterministic_fallback') active.session.hasFallback = true;
+            const entries: WeeklyPlanningTraceEntry[] = [turnEntry(active, {
+              role: 'assistant',
+              content: params.content,
+              responseSource: params.responseSource,
+              requestId,
+              stateRevision,
+              occurredAt,
+            })];
+            if (params.responseSource === 'deterministic_fallback') {
+              entries.push(eventEntry(active, {
+                eventType: 'fallback_used',
+                payload: { category: 'dialogue_renderer_fallback' },
+                requestId,
+                stateRevision,
+                occurredAt,
+                severity: 'warn',
+              }));
+            }
+            void appendBestEffort(active, entries);
+          }
+
+          export function recordWeeklyPlanningDraftPromotion""",
+              'runtime renderer correlation',
+          )
+          runtime = regex_once(
+              runtime,
+              r"export function recordWeeklyPlanningDraftPromotion\(params: \{.*?\n}\n\nfunction approvalItemEntries",
+              """export function recordWeeklyPlanningDraftPromotion(params: {
+            userId: string;
+            blocks: WeeklyPlanDraftBlock[];
+          }): void {
+            if (!isWeeklyPlanningTraceEnabled() || params.blocks.length === 0) return;
+            const metadata = params.blocks[0]?.behaviorMetadata?.previewMetadata;
+            const previewId = metadata?.previewId?.trim();
+            const candidate = correlatedSession({
+              userId: params.userId,
+              logicalConversationId: metadata?.conversationId,
+              previewId,
+            });
+            if (!candidate) return;
+            const [, active] = candidate;
+            if (previewId) {
+              conversationIdByPreviewKey.set(
+                `${params.userId}:${previewId}`,
+                active.session.logicalConversationId,
+              );
+            }
+            const occurredAt = nowIso();
+            void appendBestEffort(active, [eventEntry(active, {
+              eventType: 'draft_promoted',
+              payload: {
+                blockCount: params.blocks.length,
+                blockIds: params.blocks.map((block) => block.id),
+                previewId,
+              },
+              stateRevision: metadata?.stateRevision,
+              occurredAt,
+            })]);
+          }
+
+          function approvalItemEntries""",
+              'runtime draft correlation',
+          )
+          runtime = regex_once(
+              runtime,
+              r"export function recordWeeklyPlanningApprovalTrace\(params: \{.*?\n}\n\nexport function resetWeeklyPlanningTraceRuntimeForTests",
+              """export function recordWeeklyPlanningApprovalTrace(params: {
+            userId: string;
+            phase: 'started' | 'completed';
+            payload: unknown;
+            failed?: boolean;
+            logicalConversationId?: string;
+          }): void {
+            if (!isWeeklyPlanningTraceEnabled()) return;
+            const record = payloadRecord(params.payload);
+            const previewId = typeof record.previewId === 'string' ? record.previewId : undefined;
+            const payloadConversationId = typeof record.logicalConversationId === 'string'
+              ? record.logicalConversationId
+              : typeof record.conversationId === 'string'
+                ? record.conversationId
+                : undefined;
+            const candidate = correlatedSession({
+              userId: params.userId,
+              logicalConversationId: params.logicalConversationId ?? payloadConversationId,
+              previewId,
+            });
+            if (!candidate) return;
+            const [, active] = candidate;
+            const occurredAt = nowIso();
+            const eventType = params.phase === 'started' ? 'approval_started' : 'approval_completed';
+            if (params.failed) {
+              active.session.hasApprovalFailure = true;
+              active.session.hasError = true;
+            }
+            if (params.phase === 'completed' && !params.failed) {
+              active.session.status = 'completed';
+              active.session.endedAt = occurredAt;
+            }
+            const entries: WeeklyPlanningTraceEntry[] = [eventEntry(active, {
+              eventType,
+              payload: params.payload,
+              occurredAt,
+              severity: params.failed ? 'error' : 'info',
+            })];
+            if (params.phase === 'completed') {
+              entries.push(...approvalItemEntries(active, params.payload, occurredAt));
+            }
+            void appendBestEffort(active, entries);
+          }
+
+          export function resetWeeklyPlanningTraceRuntimeForTests""",
+              'runtime approval correlation',
+          )
+          runtime = regex_once(
+              runtime,
+              r"export function resetWeeklyPlanningTraceRuntimeForTests\(\): void \{.*?\n}",
+              """export function resetWeeklyPlanningTraceRuntimeForTests(): void {
+            activeSessions.clear();
+            conversationIdByPreviewKey.clear();
+            conversationIdsByState = new WeakMap<object, string>();
+            traceContextByInput = new WeakMap<object, TraceRequestContext>();
+          }""",
+              'runtime reset',
+          )
+          if 'requestFingerprints' in runtime or 'recentInitialRequests' in runtime or 'lastActiveSessionKey' in runtime:
+              raise RuntimeError('obsolete runtime correlation state remains')
+          write(runtime_path, runtime)
+
+          pipeline_path = 'src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts'
+          pipeline = read(pipeline_path)
+          pipeline = replace_once(
+              pipeline,
+              "import { recordWeeklyPlanningPipelineTrace } from '../trace/weeklyPlanningTraceRuntime';",
+              "import {\n  prepareWeeklyPlanningTraceOptions,\n  recordWeeklyPlanningPipelineTrace,\n} from '../trace/weeklyPlanningTraceRuntime';",
+              'pipeline trace import',
+          )
+          pipeline = replace_once(
+              pipeline,
+              """export interface WeeklyPlanningBehaviorAwarePipelineOptions {
+            conversationId?: string;
+            userId?: string;
+            dialoguePlanner?: BehaviorAwareDialoguePlanner;
+            useAiDialoguePlanner?: boolean;
+          }
+          """,
+              """export interface WeeklyPlanningBehaviorAwarePipelineOptions {
+            conversationId?: string;
+            traceRequestId?: string;
+            userId?: string;
+            dialoguePlanner?: BehaviorAwareDialoguePlanner;
+            useAiDialoguePlanner?: boolean;
+          }
+          """,
+              'pipeline options',
+          )
+          pipeline = replace_once(
+              pipeline,
+              """export async function runWeeklyPlanningBehaviorAwarePipeline(
+            rawInput: WeeklyPlanningIntakePipelineInput,
+            options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
+          ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+            const input = withSessionProposalContext(rawInput, options);
+          """,
+              """export async function runWeeklyPlanningBehaviorAwarePipeline(
+            rawInput: WeeklyPlanningIntakePipelineInput,
+            rawOptions: WeeklyPlanningBehaviorAwarePipelineOptions = {},
+          ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+            const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
+            const input = withSessionProposalContext(rawInput, options);
+          """,
+              'pipeline sync prepare',
+          )
+          pipeline = replace_once(
+              pipeline,
+              """export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
+            rawInput: WeeklyPlanningIntakePipelineWithInterpreterInput,
+            options: WeeklyPlanningBehaviorAwarePipelineOptions = {},
+          ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+            const input = withSessionProposalContext(rawInput, options);
+          """,
+              """export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
+            rawInput: WeeklyPlanningIntakePipelineWithInterpreterInput,
+            rawOptions: WeeklyPlanningBehaviorAwarePipelineOptions = {},
+          ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
+            const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
+            const input = withSessionProposalContext(rawInput, options);
+          """,
+              'pipeline async prepare',
+          )
+          write(pipeline_path, pipeline)
+
+          dialogue_path = 'src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts'
+          dialogue = read(dialogue_path)
+          dialogue = replace_once(
+              dialogue,
+              """function tracedMessage(
+            message: string,
+            responseSource: WeeklyPlanningTraceResponseSource,
+          ): string {
+            recordWeeklyPlanningRenderedAssistantTurn(message, responseSource);
+            return message;
+          }
+          """,
+              """function tracedMessage(
+            message: string,
+            responseSource: WeeklyPlanningTraceResponseSource,
+            state: PlanningIntakeState,
+          ): string {
+            recordWeeklyPlanningRenderedAssistantTurn({
+              content: message,
+              responseSource,
+              state,
+            });
+            return message;
+          }
+          """,
+              'dialogue traced message',
+          )
+          dialogue = dialogue.replace(
+              "tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules')",
+              "tracedMessage(createWeeklyPlanningDialogueMessage(params.decision), 'rules', params.state)",
+          )
+          dialogue = dialogue.replace(
+              "tracedMessage(renderDeterministicMissingQuestions(input), 'rules')",
+              "tracedMessage(renderDeterministicMissingQuestions(input), 'rules', params.state)",
+          )
+          dialogue = dialogue.replace(
+              "tracedMessage(composeRenderedMessage(sanitized), 'ai')",
+              "tracedMessage(composeRenderedMessage(sanitized), 'ai', params.state)",
+          )
+          dialogue = dialogue.replace(
+              "tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback')",
+              "tracedMessage(renderDeterministicMissingQuestions(input), 'deterministic_fallback', params.state)",
+          )
+          write(dialogue_path, dialogue)
+
+          types_path = 'src/features/weeklyPlanning/trace/weeklyPlanningTraceTypes.ts'
+          types = read(types_path)
+          types = replace_once(
+              types,
+              """  if (record.kind === 'turn') {
+            return (record.role === 'user' || record.role === 'assistant')
+              && typeof record.content === 'string'
+              && Number.isInteger(record.turnIndex)
+              && (
+                record.responseSource === undefined
+                || record.responseSource === 'ai'
+                || record.responseSource === 'deterministic_fallback'
+                || record.responseSource === 'rules'
+                || record.responseSource === 'system'
+              );
+          }
+
+          if (record.kind === 'internal_event') {
+            return typeof record.eventType === 'string'
+              && EVENT_TYPES.has(record.eventType as WeeklyPlanningTraceEventType)
+              && (record.severity === 'debug'
+                || record.severity === 'info'
+                || record.severity === 'warn'
+                || record.severity === 'error');
+          }
+
+          if (record.kind === 'state_snapshot') {
+            return typeof record.snapshotReason === 'string'
+              && SNAPSHOT_REASONS.has(record.snapshotReason as WeeklyPlanningTraceSnapshotReason);
+          }
+          """,
+              """  if (record.kind === 'turn') {
+            const validSource = record.responseSource === 'ai'
+              || record.responseSource === 'deterministic_fallback'
+              || record.responseSource === 'rules'
+              || record.responseSource === 'system';
+            return (record.role === 'user' || record.role === 'assistant')
+              && typeof record.content === 'string'
+              && Number.isInteger(record.turnIndex)
+              && Number(record.turnIndex) >= 0
+              && (record.role === 'assistant' ? validSource : record.responseSource === undefined);
+          }
+
+          if (record.kind === 'internal_event') {
+            return Object.prototype.hasOwnProperty.call(record, 'payload')
+              && record.payload !== undefined
+              && typeof record.eventType === 'string'
+              && EVENT_TYPES.has(record.eventType as WeeklyPlanningTraceEventType)
+              && (record.severity === 'debug'
+                || record.severity === 'info'
+                || record.severity === 'warn'
+                || record.severity === 'error');
+          }
+
+          if (record.kind === 'state_snapshot') {
+            return Object.prototype.hasOwnProperty.call(record, 'state')
+              && record.state !== undefined
+              && typeof record.snapshotReason === 'string'
+              && SNAPSHOT_REASONS.has(record.snapshotReason as WeeklyPlanningTraceSnapshotReason);
+          }
+          """,
+              'entry kind validation',
+          )
+          write(types_path, types)
+
+          memory_path = 'src/features/weeklyPlanning/trace/weeklyPlanningTraceInMemoryRepository.ts'
+          memory = read(memory_path)
+          memory = replace_once(
+              memory,
+              """import type {
+            WeeklyPlanningTraceEntry,
+            WeeklyPlanningTraceRepository,
+            WeeklyPlanningTraceSession,
+          } from './weeklyPlanningTraceTypes';
+          """,
+              """import { isWeeklyPlanningTraceEntry } from './weeklyPlanningTraceTypes';
+          import type {
+            WeeklyPlanningTraceEntry,
+            WeeklyPlanningTraceRepository,
+            WeeklyPlanningTraceSession,
+          } from './weeklyPlanningTraceTypes';
+          """,
+              'memory validator import',
+          )
+          memory = replace_once(
+              memory,
+              """      return Array.from(entries.values())
+                .filter((entry) => entry.userId === userId && entry.sessionId === sessionId)
+                .map(cloneEntry)
+                .sort((left, right) => left.sequence - right.sequence);
+          """,
+              """      return Array.from(entries.values())
+                .filter((entry) => entry.userId === userId && entry.sessionId === sessionId)
+                .filter(isWeeklyPlanningTraceEntry)
+                .map(cloneEntry)
+                .sort((left, right) => left.sequence - right.sequence);
+          """,
+              'memory read validation',
+          )
+          write(memory_path, memory)
+
+          date_path = Path('src/features/weeklyPlanning/trace/weeklyPlanningTraceDate.ts')
+          date_path.write_text("""export function weeklyPlanningTraceLocalDate(
+            value: string,
+            timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ): string {
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+            const parts = new Intl.DateTimeFormat('en-CA', {
+              timeZone,
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).formatToParts(date);
+            const part = (type: Intl.DateTimeFormatPartTypes) =>
+              parts.find((item) => item.type === type)?.value ?? '';
+            return `${part('year')}-${part('month')}-${part('day')}`;
+          }
+          """, encoding='utf-8')
+
+          debug_path = 'src/features/weeklyPlanning/trace/WeeklyPlanningTraceDebugPage.tsx'
+          debug = read(debug_path)
+          debug = replace_once(
+              debug,
+              "import { hasUnexportedWeeklyPlanningTraceActivity } from './weeklyPlanningTraceArchive';",
+              "import { hasUnexportedWeeklyPlanningTraceActivity } from './weeklyPlanningTraceArchive';\nimport { weeklyPlanningTraceLocalDate } from './weeklyPlanningTraceDate';",
+              'debug date import',
+          )
+          debug = regex_once(
+              debug,
+              r"\nfunction dateOnly\(value: string\): string \{.*?\n}\n",
+              '\n',
+              'debug remove UTC date helper',
+          )
+          debug = replace_once(
+              debug,
+              '    const activityDate = dateOnly(session.lastActivityAt);',
+              '    const activityDate = weeklyPlanningTraceLocalDate(session.lastActivityAt);',
+              'debug local date use',
+          )
+          write(debug_path, debug)
+
+          date_test_path = Path('src/features/weeklyPlanning/trace/weeklyPlanningTraceDate.test.ts')
+          date_test_path.write_text("""import { describe, expect, it } from 'vitest';
+          import { weeklyPlanningTraceLocalDate } from './weeklyPlanningTraceDate';
+
+          describe('weeklyPlanningTraceLocalDate', () => {
+            it('UTCでは前日でもJSTの表示日でfilterできる', () => {
+              expect(weeklyPlanningTraceLocalDate(
+                '2026-07-14T15:30:00.000Z',
+                'Asia/Tokyo',
+              )).toBe('2026-07-15');
+            });
+
+            it('JSTの日付境界直前を前日として扱う', () => {
+              expect(weeklyPlanningTraceLocalDate(
+                '2026-07-14T14:59:59.999Z',
+                'Asia/Tokyo',
+              )).toBe('2026-07-14');
+            });
+          });
+          """, encoding='utf-8')
+
+          types_test_path = 'src/features/weeklyPlanning/trace/weeklyPlanningTraceTypes.test.ts'
+          types_test = read(types_test_path)
+          insertion = """
+
+            it('payload欠落eventをsafe discardする', () => {
+              expect(isWeeklyPlanningTraceEntry({
+                ...baseEntry(),
+                kind: 'internal_event',
+                eventType: 'preview_generated',
+                severity: 'info',
+              })).toBe(false);
+            });
+
+            it('state欠落snapshotをsafe discardする', () => {
+              expect(isWeeklyPlanningTraceEntry({
+                ...baseEntry(),
+                kind: 'state_snapshot',
+                snapshotReason: 'turn_completed',
+              })).toBe(false);
+            });
+
+            it('assistant turnではresponse sourceを必須にする', () => {
+              expect(isWeeklyPlanningTraceEntry({
+                ...baseEntry(),
+                kind: 'turn',
+                role: 'assistant',
+                content: '応答',
+                turnIndex: 0,
+              })).toBe(false);
+            });
+          """
+          if insertion.strip() not in types_test:
+              types_test = types_test.rsplit('\n});', 1)[0] + insertion + '\n});\n'
+          write(types_test_path, types_test)
+
+          runtime_test_path = 'src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts'
+          runtime_test = read(runtime_test_path)
+          runtime_test = replace_once(
+              runtime_test,
+              """import {
+            recordWeeklyPlanningApprovalTrace,
+            resetWeeklyPlanningTraceRuntimeForTests,
+          } from './weeklyPlanningTraceRuntime';
+          """,
+              """import type { WeeklyPlanDraftBlock } from '../types';
+          import {
+            recordWeeklyPlanningApprovalTrace,
+            recordWeeklyPlanningDraftPromotion,
+            resetWeeklyPlanningTraceRuntimeForTests,
+          } from './weeklyPlanningTraceRuntime';
+          """,
+              'runtime test imports',
+          )
+          runtime_insertion = """
+
+            it('同じ初期発話でも別input objectは別conversationとして保存する', async () => {
+              const repository = createInMemoryWeeklyPlanningTraceRepository();
+              setWeeklyPlanningTraceRepositoryForTests(repository);
+
+              await runWeeklyPlanningBehaviorAwarePipeline(
+                pipelineInput('来週の予定を作りたい'),
+                { userId: 'user-1', dialoguePlanner },
+              );
+              await runWeeklyPlanningBehaviorAwarePipeline(
+                pipelineInput('来週の予定を作りたい'),
+                { userId: 'user-1', dialoguePlanner },
+              );
+
+              await waitForTrace(async () => {
+                const sessions = await repository.listSessionsForAdmin();
+                expect(sessions).toHaveLength(2);
+                expect(new Set(sessions.map((session) => session.logicalConversationId)).size).toBe(2);
+              });
+            });
+
+            it('preview相関を使い並行会話AのapprovalをAだけへ記録する', async () => {
+              const repository = createInMemoryWeeklyPlanningTraceRepository();
+              setWeeklyPlanningTraceRepositoryForTests(repository);
+
+              await runWeeklyPlanningBehaviorAwarePipeline(
+                pipelineInput('会話A'),
+                { userId: 'user-1', conversationId: 'conversation-a', dialoguePlanner },
+              );
+              await runWeeklyPlanningBehaviorAwarePipeline(
+                pipelineInput('会話B'),
+                { userId: 'user-1', conversationId: 'conversation-b', dialoguePlanner },
+              );
+              await waitForTrace(async () => {
+                expect(await repository.listSessionsForAdmin()).toHaveLength(2);
+              });
+
+              recordWeeklyPlanningDraftPromotion({
+                userId: 'user-1',
+                blocks: [{
+                  id: 'block-a',
+                  behaviorMetadata: {
+                    previewMetadata: {
+                      previewId: 'preview-a',
+                      conversationId: 'conversation-a',
+                      stateRevision: 1,
+                      assumptionDependencies: [],
+                      approvalEligibility: 'eligible',
+                      stale: false,
+                      authorizedUserId: 'user-1',
+                    },
+                  },
+                } as unknown as WeeklyPlanDraftBlock],
+              });
+              recordWeeklyPlanningApprovalTrace({
+                userId: 'user-1',
+                phase: 'completed',
+                payload: { previewId: 'preview-a', items: [] },
+              });
+
+              await waitForTrace(async () => {
+                const sessions = await repository.listSessionsForAdmin();
+                const sessionA = sessions.find((session) => session.logicalConversationId === 'conversation-a');
+                const sessionB = sessions.find((session) => session.logicalConversationId === 'conversation-b');
+                expect(sessionA?.status).toBe('completed');
+                expect(sessionB?.status).toBe('active');
+                const entriesA = await repository.listEntries('user-1', sessionA!.id);
+                const entriesB = await repository.listEntries('user-1', sessionB!.id);
+                expect(entriesA.some((entry) =>
+                  entry.kind === 'internal_event' && entry.eventType === 'approval_completed'
+                )).toBe(true);
+                expect(entriesB.some((entry) =>
+                  entry.kind === 'internal_event' && entry.eventType === 'approval_completed'
+                )).toBe(false);
+              });
+            });
+
+            it('遅延write失敗を次の成功writeで一度だけ診断event化する', async () => {
+              const stored = createInMemoryWeeklyPlanningTraceRepository();
+              let appendCallCount = 0;
+              let releaseFirstWrite: (() => void) | undefined;
+              let firstWriteStarted: (() => void) | undefined;
+              const firstWriteStartedPromise = new Promise<void>((resolve) => { firstWriteStarted = resolve; });
+              const firstWriteBlocker = new Promise<void>((resolve) => { releaseFirstWrite = resolve; });
+              setWeeklyPlanningTraceRepositoryForTests({
+                ...stored,
+                async appendEntries(params) {
+                  appendCallCount += 1;
+                  if (appendCallCount === 1) {
+                    firstWriteStarted?.();
+                    await firstWriteBlocker;
+                    throw new Error('delayed-write-failure');
+                  }
+                  await stored.appendEntries(params);
+                },
+              });
+
+              const first = await runWeeklyPlanningBehaviorAwarePipeline(
+                pipelineInput('予定を作りたい'),
+                { userId: 'user-1', conversationId: 'conversation-write', dialoguePlanner },
+              );
+              await firstWriteStartedPromise;
+              const second = await runWeeklyPlanningBehaviorAwarePipeline(
+                pipelineInput('英語を3時間やりたい', first.state),
+                { userId: 'user-1', conversationId: 'conversation-write', dialoguePlanner },
+              );
+              expect(second.state).toBeDefined();
+              releaseFirstWrite?.();
+
+              await waitForTrace(async () => {
+                const [session] = await stored.listSessionsForAdmin();
+                expect(session?.hasError).toBe(true);
+                const entries = await stored.listEntries('user-1', session!.id);
+                const failures = entries.filter((entry) =>
+                  entry.kind === 'internal_event' && entry.eventType === 'trace_write_failed'
+                );
+                expect(failures).toHaveLength(1);
+              });
+            });
+          """
+          if runtime_insertion.strip() not in runtime_test:
+              runtime_test = runtime_test.rsplit('\n});', 1)[0] + runtime_insertion + '\n});\n'
+          write(runtime_test_path, runtime_test)
+
+          for doc_path in [
+              'docs/ai/tasks/20260715-weekly-planning-conversation-trace.md',
+              'docs/architecture/weekly-planning-conversation-trace.md',
+          ]:
+              doc = read(doc_path)
+              note = """
+
+          ## 会話相関と予約eventの扱い
+
+          conversation lifecycle IDとrequest idempotency keyは別の識別子として扱う。同一文面や短時間という条件だけで別会話を統合しない。approvalとdraft promotionはpreview IDから元のlogical conversationを特定し、rendererは対応するstateからsessionを特定する。相関不能かつ同一userに複数のactive sessionがある場合は、誤ったsessionへ記録せずtrace追加を見送る。
+
+          `assumption_superseded`、`relative_constraint_resolved`、`relative_constraint_rejected`、`request_cancelled`、`stale_async_result_discarded`は有限catalog上の予約eventであり、現時点ではすべてにproduction producerがあるわけではない。対応する処理境界を実装するときにproducerと回帰テストを同時追加する。
+          """
+              if '## 会話相関と予約eventの扱い' not in doc:
+                  doc += note
+              write(doc_path, doc)
+
+          Path('.github/workflows/agent-fix-weekly-planning-trace.yml').unlink()
+          PY
+
+      - name: Commit and push fixes
+        shell: bash
+        run: |
+          git diff --check
+          git status -sb
+          git config user.name "OpenAI Agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: 週間計画traceの会話相関と信頼性を修正"
+          git push origin HEAD:agent/weekly-planning-trace-full-implementation
