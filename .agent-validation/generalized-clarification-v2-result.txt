@@ -1,5 +1,0 @@
-patch=0
-install=0
-tests=1
-build=0
-diff=0
