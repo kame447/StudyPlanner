@@ -1,6 +1,6 @@
 Traceback (most recent call last):
-  File "<stdin>", line 141, in <module>
-RuntimeError: AI deterministic baseline target was not found exactly once
+  File "<stdin>", line 160, in <module>
+RuntimeError: AI provider failure target was not found exactly once
 
 added 200 packages, and audited 201 packages in 7s
 
