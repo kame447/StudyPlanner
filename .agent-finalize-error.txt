@@ -1,5 +1,5 @@
 Traceback (most recent call last):
-  File "<stdin>", line 14, in <module>
-  File "agent-finalize-weekly-planning-trace.py", line 73, in <module>
-  File "agent-finalize-weekly-planning-trace.py", line 12, in replace_once
-RuntimeError: runtime map state to exact session: expected one match, got 0
+  File "<stdin>", line 52, in <module>
+  File "agent-finalize-weekly-planning-trace.py", line 264, in <module>
+  File "agent-finalize-weekly-planning-trace.py", line 26, in replace_once
+RuntimeError: approval operation conversation id: ambiguous match count 3
