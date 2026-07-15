@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Update superseded contracts and run weekly planning regression suite
+      - name: Apply deterministic-only baseline and run weekly planning regression suite
         shell: bash
         run: |
           set +e
@@ -30,41 +30,266 @@ jobs:
           python <<'PY' >> .agent-validation/weekly-planning-output.log 2>&1
           from pathlib import Path
 
-          path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts')
-          text = path.read_text(encoding='utf-8')
-          replacements = [
+          reducer_path = Path('src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts')
+          reducer = reducer_path.read_text(encoding='utf-8')
+          start = reducer.index('export function applyWeeklyPlanningUserTurnWithDiagnostics(')
+          end = reducer.index('\nexport function applyWeeklyPlanningUserTurn(', start)
+          replacement = '''function applyDeterministicWeeklyPlanningUserTurnCore(
+            previousState: PlanningIntakeState | undefined,
+            userText: string,
+            context: WeeklyPlanningIntakeContext,
+          ): { state: PlanningIntakeState; deterministicCommandCount: number } {
+            let deterministicCommandCount = 0;
+            let nextState = beginWeeklyPlanningUserTurn(previousState, userText);
+
+            const setupCommands: ParsedWeeklyPlanningCommand[] = [];
+            const planningRangeCommand = parseSetPlanningRangeCommand(userText, context, nextState.pendingPlanningRange);
+            if (planningRangeCommand) {
+              setupCommands.push(planningRangeCommand);
+            } else {
+              const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(userText, context);
+              if (pendingPlanningRangeCommand) {
+                setupCommands.push(pendingPlanningRangeCommand);
+              }
+            }
+            const beginCommand = parseBeginWeeklyPlanningCommand(userText);
+            if (beginCommand) {
+              setupCommands.push(beginCommand);
+            }
+            const examScopeCommand = parseSetExamScopeCommand(userText, nextState.examPrepScope);
+            if (examScopeCommand) {
+              setupCommands.push(examScopeCommand);
+            }
+
+            deterministicCommandCount += setupCommands.length;
+            nextState = applyWeeklyPlanningCommands(nextState, setupCommands);
+            const fields = nextState.examPrepScope?.fields ?? [];
+            const progressBoundaryCommand = parseNoteProgressBoundaryCommand(userText, fields);
+            if (progressBoundaryCommand) {
+              deterministicCommandCount += 1;
+              nextState = applyWeeklyPlanningCommands(nextState, [progressBoundaryCommand]);
+            }
+
+            const turnCommands = parseWeeklyPlanningCommands({ userText, context, state: nextState });
+            deterministicCommandCount += turnCommands.length;
+            nextState = applyWeeklyPlanningCommands(nextState, turnCommands);
+
+            return { state: nextState, deterministicCommandCount };
+          }
+
+          export function applyDeterministicWeeklyPlanningUserTurn(
+            previousState: PlanningIntakeState | undefined,
+            userText: string,
+            context: WeeklyPlanningIntakeContext,
+          ): PlanningIntakeState {
+            return finalizeState(
+              applyDeterministicWeeklyPlanningUserTurnCore(previousState, userText, context).state,
+            );
+          }
+
+          export function applyWeeklyPlanningUserTurnWithDiagnostics(
+            previousState: PlanningIntakeState | undefined,
+            userText: string,
+            context: WeeklyPlanningIntakeContext,
+          ): WeeklyPlanningUserTurnDiagnostics {
+            const baseState = previousState ?? createInitialPlanningIntakeState();
+            const missingBefore = [...baseState.missing];
+            let fallbackProgressCount = 0;
+            const deterministicTurn = applyDeterministicWeeklyPlanningUserTurnCore(
+              previousState,
+              userText,
+              context,
+            );
+            let nextState = deterministicTurn.state;
+
+            const tasksBeforeFallback = nextState.tasks.map((task) => [
+              task.title,
+              task.subject ?? '',
+              task.unit,
+              task.amount ?? '',
+              task.rawText,
+            ].join('\\u001f'));
+            nextState = applyLegacyWeeklyPlanningFallback({
+              state: nextState,
+              previousState,
+              userText,
+              context,
+            });
+            const tasksAfterFallback = nextState.tasks.map((task) => [
+              task.title,
+              task.subject ?? '',
+              task.unit,
+              task.amount ?? '',
+              task.rawText,
+            ].join('\\u001f'));
+            if (tasksAfterFallback.length > 0 && tasksAfterFallback.join('\\u001e') !== tasksBeforeFallback.join('\\u001e')) {
+              fallbackProgressCount += 1;
+            }
+
+            const finalizedState = finalizeState(nextState);
+
+            return {
+              state: finalizedState,
+              deterministicCommandCount: deterministicTurn.deterministicCommandCount,
+              fallbackProgressCount,
+              missingBefore,
+              missingAfter: [...finalizedState.missing],
+            };
+          }
+          '''
+          reducer_path.write_text(reducer[:start] + replacement + reducer[end:], encoding='utf-8')
+
+          pipeline_path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts')
+          pipeline = pipeline_path.read_text(encoding='utf-8')
+          import_old = '''  applyWeeklyPlanningCommands,
+            applyWeeklyPlanningUserTurn,
+            applyWeeklyPlanningUserTurnWithDiagnostics,
+            createInitialPlanningIntakeState,
+          } from '../intake/weeklyPlanningIntakeReducer';'''
+          import_new = '''  applyDeterministicWeeklyPlanningUserTurn,
+            applyWeeklyPlanningCommands,
+            applyWeeklyPlanningUserTurn,
+            applyWeeklyPlanningUserTurnWithDiagnostics,
+            createInitialPlanningIntakeState,
+          } from '../intake/weeklyPlanningIntakeReducer';'''
+          if pipeline.count(import_old) != 1:
+              raise RuntimeError('pipeline reducer import target was not found exactly once')
+          pipeline = pipeline.replace(import_old, import_new, 1)
+
+          prepared_old = '''  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
+            previousState,
+            input.userText,
+            context,
+          );
+          const preparedState = deterministicTurn.state;'''
+          prepared_new = '''  const preparedState = applyDeterministicWeeklyPlanningUserTurn(
+            previousState,
+            input.userText,
+            context,
+          );'''
+          if pipeline.count(prepared_old) != 1:
+              raise RuntimeError('AI deterministic baseline target was not found exactly once')
+          pipeline = pipeline.replace(prepared_old, prepared_new, 1)
+
+          catch_old = '''  } catch {
+            // Provider failure skips only AI supplementation; deterministic parsing has already been applied.
+            return buildPipelineOutput({
+              input,
+              state: preparedState,
+              assumptionProposalState: proposalState,
+            });
+          }'''
+          catch_new = '''  } catch {
+            // Provider failures keep the established full rules path, including legacy task extraction.
+            const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
+              previousState,
+              input.userText,
+              context,
+            );
+            return buildPipelineOutput({
+              input,
+              state: fallbackTurn.state,
+              assumptionProposalState: proposalState,
+            });
+          }'''
+          if pipeline.count(catch_old) != 1:
+              raise RuntimeError('AI provider failure target was not found exactly once')
+          pipeline_path.write_text(pipeline.replace(catch_old, catch_new, 1), encoding='utf-8')
+
+          behavior_path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts')
+          behavior = behavior_path.read_text(encoding='utf-8')
+          merge_old = '''function mergeActions(
+            primary: readonly AllowedDialogueAction[],
+            additional: readonly AllowedDialogueAction[],
+          ): AllowedDialogueAction[] {
+            const byId = new Map<string, AllowedDialogueAction>();
+            [...primary, ...additional].forEach((action) => {
+              if (!byId.has(action.actionId)) byId.set(action.actionId, action);
+            });
+            return Array.from(byId.values()).slice(0, 3);
+          }'''
+          merge_new = '''function dialogueActionPriority(action: AllowedDialogueAction): number {
+            if (action.kind === 'generate_preview') return 100;
+            if (action.kind === 'report_infeasibility') return 95;
+            if (action.topicId === 'planning-range') return 92;
+            if (action.topicId === 'task-identity') return 91;
+            if (action.kind === 'suggest_draft_generation') return 90;
+            if (action.topicId === 'feasibility_basis') return 85;
+            if (action.kind === 'ask_required_fact' || action.kind === 'show_options') return 70;
+            if (action.kind === 'propose_default') return 65;
+            if (action.kind === 'acknowledge_fact') return 60;
+            return 50;
+          }
+
+          function mergeActions(
+            primary: readonly AllowedDialogueAction[],
+            additional: readonly AllowedDialogueAction[],
+          ): AllowedDialogueAction[] {
+            const hasFoundationalMissing = primary.some((action) =>
+              action.topicId === 'planning-purpose'
+              || action.topicId === 'planning-range'
+              || action.topicId === 'task-identity',
+            );
+            const candidates = [
+              ...primary,
+              ...additional.filter((action) =>
+                !(hasFoundationalMissing && action.topicId === 'feasibility_basis'),
+              ),
+            ];
+            const byId = new Map<string, { action: AllowedDialogueAction; order: number }>();
+            candidates.forEach((action, order) => {
+              if (!byId.has(action.actionId)) byId.set(action.actionId, { action, order });
+            });
+            return Array.from(byId.values())
+              .sort((left, right) =>
+                dialogueActionPriority(right.action) - dialogueActionPriority(left.action)
+                || left.order - right.order,
+              )
+              .slice(0, 3)
+              .map(({ action }) => action);
+          }'''
+          if behavior.count(merge_old) != 1:
+              raise RuntimeError('mergeActions target was not found exactly once')
+          behavior_path.write_text(behavior.replace(merge_old, merge_new, 1), encoding='utf-8')
+
+          test_path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts')
+          test = test_path.read_text(encoding='utf-8')
+          test_replacements = [
               (
                   "it('uses the interpreter for every provider turn and does not merge deterministic semantic parsing', async () => {",
-                  "it('uses the interpreter for every provider turn and keeps deterministic parsing as the baseline', async () => {",
+                  "it('uses deterministic command parsing before AI without applying legacy fallback', async () => {",
               ),
               (
+                  "    expect(interpretUserTurn).toHaveBeenCalledTimes(3);\n"
                   "    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
                   "    expect(output.state.tasks).toEqual([]);\n"
                   "    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);",
+                  "    expect(interpretUserTurn).toHaveBeenCalledTimes(3);\n"
+                  "    expect(firstOutput.state.range).toBeDefined();\n"
                   "    expect(output.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
-                  "    expect(output.state.tasks).toHaveLength(2);\n"
+                  "    expect(output.state.tasks).toEqual([]);\n"
                   "    expect(bareOutput.state.unitRates).toEqual([expect.objectContaining({ minutesPerUnit: 120 })]);\n"
-                  "    expect(bareOutput.state.tasks).toHaveLength(2);",
+                  "    expect(bareOutput.state.tasks).toEqual([]);",
               ),
               (
                   "it('uses rules fallback only after an interpreter error, not after empty candidates', async () => {",
-                  "it('applies deterministic parsing before AI even when candidates are empty', async () => {",
+                  "it('uses legacy fallback only after an interpreter error while empty AI keeps deterministic parsing', async () => {",
               ),
               (
                   "    expect(emptyInterpreter).toHaveBeenCalledTimes(1);\n"
                   "    expect(emptyOutput.state.tasks).toEqual([]);\n"
                   "    expect(failingInterpreter).toHaveBeenCalledTimes(1);",
                   "    expect(emptyInterpreter).toHaveBeenCalledTimes(1);\n"
-                  "    expect(emptyOutput.state.tasks).toHaveLength(2);\n"
+                  "    expect(emptyOutput.state.tasks).toEqual([]);\n"
                   "    expect(emptyOutput.interpreterDiagnostics).toBeDefined();\n"
                   "    expect(failingInterpreter).toHaveBeenCalledTimes(1);",
               ),
           ]
-          for old, new in replacements:
-              if text.count(old) != 1:
+          for old, new in test_replacements:
+              if test.count(old) != 1:
                   raise RuntimeError(f'test contract target was not found exactly once: {old[:80]}')
-              text = text.replace(old, new, 1)
-          path.write_text(text, encoding='utf-8')
+              test = test.replace(old, new, 1)
+          test_path.write_text(test, encoding='utf-8')
           PY
           patch_status=$?
 
@@ -97,16 +322,22 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
+          source_files=(
+            src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts
+            src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts
+            src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts
+            src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+          )
           if [ "$patch_status" -eq 0 ] && [ "$install_status" -eq 0 ] \
             && [ "$weekly_test_status" -eq 0 ] && [ "$build_status" -eq 0 ] \
             && [ "$diff_check_status" -eq 0 ]; then
-            git add src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+            git add "${source_files[@]}"
           else
-            git checkout -- src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+            git checkout -- "${source_files[@]}"
           fi
 
           git add .agent-validation/weekly-planning-result.txt .agent-validation/weekly-planning-output.log
-          git commit -m "feat: AI経路の新しい解析契約へテストを更新 [validation-result]"
+          git commit -m "feat: AI経路の確定解析とaction優先度を修正 [validation-result]"
           git push
 
           if [ "$patch_status" -ne 0 ] || [ "$install_status" -ne 0 ] \
