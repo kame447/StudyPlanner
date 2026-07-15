@@ -1,0 +1,780 @@
+name: Fix clarification context
+
+on:
+  push:
+    branches:
+      - agent/fix-weekly-planning-dialogue-path
+    paths:
+      - .github/workflows/agent-fix-clarification-context.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-weekly-planning-dialogue-path
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply clarification context fix
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise RuntimeError(f'anchor not found: {path}\n{old[:160]}')
+              file.write_text(text.replace(old, new, 1))
+
+          intake_types = 'src/features/weeklyPlanning/intake/weeklyPlanningIntakeTypes.ts'
+          replace_once(
+              intake_types,
+              "export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';\n\nexport interface PlanningIntakeState {",
+              """export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
+
+export type WeeklyPlanningQuestionContextKind =
+  | 'missing'
+  | 'feasibility_adjustment'
+  | 'options'
+  | 'preview'
+  | 'approval'
+  | 'ambiguity';
+
+/**
+ * 直前に実際にユーザーへ提示した質問の意味的な参照。
+ * missing状態から再計算せず、次turnの短い聞き返しを解釈するためにsession-localで保持する。
+ */
+export interface WeeklyPlanningQuestionContext {
+  kind: WeeklyPlanningQuestionContextKind;
+  targetSlot?: string;
+  intent?: string;
+  topicId?: string;
+  actionId?: string;
+}
+
+export interface PlanningIntakeState {""",
+          )
+          replace_once(
+              intake_types,
+              "  questions: string[];\n  shouldCreateDraft: boolean;",
+              "  questions: string[];\n  lastQuestionContext?: WeeklyPlanningQuestionContext;\n  shouldCreateDraft: boolean;",
+          )
+
+          dialogue_manager = 'src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueManager.ts'
+          replace_once(
+              dialogue_manager,
+              "} from '../intake/weeklyPlanningQuestionSlots';\nimport type { WeeklyPlanningDraftRequest }",
+              "} from '../intake/weeklyPlanningQuestionSlots';\nimport type { RequestClarificationCommand } from '../intake/weeklyPlanningCommandTypes';\nimport type { WeeklyPlanningDraftRequest }",
+          )
+          replace_once(
+              dialogue_manager,
+              "  PlanningIntakeState,\n  StudyProgressAmbiguity,",
+              "  PlanningIntakeState,\n  StudyProgressAmbiguity,\n  WeeklyPlanningQuestionContext,",
+          )
+          replace_once(
+              dialogue_manager,
+              "  /** answer_clarification のときの、用語の deterministic な説明文。 */\n  clarification?: { explanation: string };",
+              """  /** answer_clarification のときの、解決済み対象とdeterministicな説明。 */
+  clarification?: {
+    explanation: string;
+    targetSlot?: string;
+    intent?: string;
+  };""",
+          )
+          old_tail = """const GENERIC_CLARIFICATION =
+  'この質問は、計画を作るために必要な条件をうかがっているものです。分かる範囲で教えてください。';
+
+function resolveClarificationTermKey(
+  state: PlanningIntakeState,
+  ref: string | undefined,
+): string | undefined {
+  if (ref && termExplanationForSlot(ref)) {
+    return ref;
+  }
+
+  if (ref) {
+    const termKey = clarificationKeywordTarget(ref);
+    if (termKey) {
+      return termKey;
+    }
+  }
+
+  // ref から解決できないときは、いま尋ねている質問の slot を用語とみなす。
+  return createMissingQuestionPlan(state)[0]?.targetSlot;
+}
+
+/**
+ * 聞き返し(request_clarification)への応答決定を作る。
+ * state を進めず(missing を消さず)、用語説明を返し、直前の質問(questionPlan)を維持する。
+ */
+export function createWeeklyPlanningClarificationDecision(params: {
+  state: PlanningIntakeState;
+  ref?: string;
+}): WeeklyPlanningDialogueDecision {
+  const termKey = resolveClarificationTermKey(params.state, params.ref);
+  const explanation = (termKey && termExplanationForSlot(termKey)) || GENERIC_CLARIFICATION;
+  const questionPlan = createMissingQuestionPlan(params.state);
+
+  return {
+    kind: 'answer_clarification',
+    messageKey: 'answer_term_clarification',
+    requiredFields: questionPlan.map((question) => question.targetSlot),
+    questionPlan: questionPlan.length > 0 ? questionPlan : undefined,
+    clarification: { explanation },
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+  };
+}
+"""
+          new_tail = """const GENERIC_CLARIFICATION =
+  'この質問は、計画を作るために必要な条件をうかがっているものです。分かる範囲で教えてください。';
+
+const CONTEXTUAL_CLARIFICATION_EXPLANATIONS: Record<string, string> = {
+  constraint_relaxation:
+    '現在の条件ではすべてを配置できないため、何を優先し、分割し、後へ回すかを確認しています。',
+  availability_basis:
+    '予定を入れられる時間を判断するために、時間割・登録済み予定・直接指定のどれを使うか確認しています。',
+  feasibility_basis:
+    '無理のない予定にするために、実際に勉強へ使える時間の根拠を確認しています。',
+  preview_confirmation:
+    '作成した仮予定をこのまま使うか、条件を直して作り直すかを確認しています。',
+  draft_confirmation:
+    '確認した条件で仮予定を作ってよいかを確認しています。',
+  draft_generation_confirmation:
+    'ここまでの条件を使って仮予定を作り始めてよいかを確認しています。',
+  ambiguity_resolution:
+    '複数の解釈ができる条件について、どちらの意味かを確認しています。',
+  planning_purpose:
+    'どの種類の学習を計画するかを決めるために、試験・宿題・提出物などの目的を確認しています。',
+};
+
+function resolveExplicitClarificationTermKey(ref: string | undefined): string | undefined {
+  if (!ref) return undefined;
+  if (termExplanationForSlot(ref)) return ref;
+  return clarificationKeywordTarget(ref);
+}
+
+function resolveClarificationTargetSlot(params: {
+  target?: RequestClarificationCommand['target'];
+  ref?: string;
+  previousQuestionContext?: WeeklyPlanningQuestionContext;
+}): string | undefined {
+  if (params.target === 'referenced_question') {
+    return params.previousQuestionContext?.targetSlot;
+  }
+
+  const explicitTermKey = resolveExplicitClarificationTermKey(params.ref);
+  if (explicitTermKey) return explicitTermKey;
+
+  if (params.target === 'unresolved_slot' && params.ref) {
+    return params.ref;
+  }
+
+  return params.previousQuestionContext?.targetSlot;
+}
+
+function clarificationExplanation(targetSlot: string | undefined): string {
+  if (!targetSlot) return GENERIC_CLARIFICATION;
+  return termExplanationForSlot(targetSlot)
+    ?? CONTEXTUAL_CLARIFICATION_EXPLANATIONS[targetSlot]
+    ?? GENERIC_CLARIFICATION;
+}
+
+/**
+ * 聞き返し(request_clarification)への応答決定を作る。
+ * command targetに従って明示用語または直前の実質問を解決し、同じtargetをrendererまで伝播する。
+ */
+export function createWeeklyPlanningClarificationDecision(params: {
+  state: PlanningIntakeState;
+  target?: RequestClarificationCommand['target'];
+  ref?: string;
+  previousQuestionContext?: WeeklyPlanningQuestionContext;
+}): WeeklyPlanningDialogueDecision {
+  const targetSlot = resolveClarificationTargetSlot(params);
+  const explanation = clarificationExplanation(targetSlot);
+  const questionPlan = targetSlot
+    ? createMissingQuestionPlan(params.state).filter((question) => question.targetSlot === targetSlot)
+    : [];
+  const intent = params.previousQuestionContext?.targetSlot === targetSlot
+    ? params.previousQuestionContext.intent
+    : questionPlan[0]?.intent;
+
+  return {
+    kind: 'answer_clarification',
+    messageKey: 'answer_term_clarification',
+    requiredFields: targetSlot ? [targetSlot] : undefined,
+    questionPlan: questionPlan.length > 0 ? questionPlan : undefined,
+    clarification: {
+      explanation,
+      ...(targetSlot ? { targetSlot } : {}),
+      ...(intent ? { intent } : {}),
+    },
+    shouldCreateDraft: false,
+    shouldSavePlan: false,
+  };
+}
+"""
+          replace_once(dialogue_manager, old_tail, new_tail)
+
+          intake_pipeline = 'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts'
+          replace_once(
+              intake_pipeline,
+              "import type { PlanningIntakeState, PlanningRange, WeeklyPlanningIntakeContext } from '../intake/weeklyPlanningIntakeTypes';",
+              """import type {
+  PlanningIntakeState,
+  PlanningRange,
+  WeeklyPlanningIntakeContext,
+  WeeklyPlanningQuestionContext,
+} from '../intake/weeklyPlanningIntakeTypes';""",
+          )
+          replace_once(
+              intake_pipeline,
+              "function buildPipelineOutput(params: {",
+              """function questionContextFromDecision(
+  decision: WeeklyPlanningDialogueDecision,
+): WeeklyPlanningQuestionContext | undefined {
+  const question = decision.questionPlan?.[0];
+  if (question) {
+    return {
+      kind: decision.kind === 'offer_dry_run_preview' ? 'preview' : 'missing',
+      targetSlot: question.targetSlot,
+      intent: question.intent,
+    };
+  }
+
+  switch (decision.kind) {
+    case 'ask_relax_constraints':
+      return {
+        kind: 'feasibility_adjustment',
+        targetSlot: 'constraint_relaxation',
+        intent: 'ask_constraint_relaxation',
+        topicId: 'feasibility-adjustment',
+      };
+    case 'confirm_ambiguity':
+      return {
+        kind: 'ambiguity',
+        targetSlot: 'ambiguity_resolution',
+        intent: 'confirm_ambiguity',
+      };
+    case 'confirm_draft_conditions':
+      return {
+        kind: 'approval',
+        targetSlot: 'draft_confirmation',
+        intent: 'confirm_draft_conditions',
+      };
+    case 'offer_dry_run_preview':
+      return {
+        kind: 'preview',
+        targetSlot: 'preview_confirmation',
+        intent: 'confirm_preview',
+      };
+    default:
+      return undefined;
+  }
+}
+
+function buildPipelineOutput(params: {""",
+          )
+          replace_once(
+              intake_pipeline,
+              """  const output: WeeklyPlanningIntakePipelineOutput = {
+    state,
+    draftRequest,""",
+              """  const outputState: PlanningIntakeState = {
+    ...state,
+    lastQuestionContext: questionContextFromDecision(decision),
+  };
+  const output: WeeklyPlanningIntakePipelineOutput = {
+    state: outputState,
+    draftRequest,""",
+          )
+          replace_once(
+              intake_pipeline,
+              """function deterministicClarificationRequest(
+  input: WeeklyPlanningIntakePipelineInput,
+  previousState: PlanningIntakeState,
+) {
+  return parseRequestClarificationCommand(input.userText, {
+    hasActiveQuestion: createMissingQuestionPlan(previousState).length > 0,
+  });
+}
+
+function applyClarificationDecision(
+  output: WeeklyPlanningIntakePipelineOutput,
+  request: ReturnType<typeof parseRequestClarificationCommand>,
+): WeeklyPlanningIntakePipelineOutput {
+  if (!request) return output;
+  output.decision = createWeeklyPlanningClarificationDecision({ state: output.state, ref: request.ref });
+  return output;
+}""",
+              """function deterministicClarificationRequest(
+  input: WeeklyPlanningIntakePipelineInput,
+  previousState: PlanningIntakeState,
+) {
+  return parseRequestClarificationCommand(input.userText, {
+    hasActiveQuestion: Boolean(previousState.lastQuestionContext),
+  });
+}
+
+function applyClarificationDecision(
+  output: WeeklyPlanningIntakePipelineOutput,
+  request: ReturnType<typeof parseRequestClarificationCommand>,
+  previousQuestionContext: WeeklyPlanningQuestionContext | undefined,
+): WeeklyPlanningIntakePipelineOutput {
+  if (!request) return output;
+  const decision = createWeeklyPlanningClarificationDecision({
+    state: output.state,
+    target: request.target,
+    ref: request.ref,
+    previousQuestionContext,
+  });
+  const targetSlot = decision.clarification?.targetSlot;
+  const nextQuestionContext = request.target === 'referenced_question' && previousQuestionContext
+    ? previousQuestionContext
+    : targetSlot
+      ? {
+          kind: 'options' as const,
+          targetSlot,
+          intent: decision.clarification?.intent,
+        }
+      : previousQuestionContext;
+  output.decision = decision;
+  output.state = { ...output.state, lastQuestionContext: nextQuestionContext };
+  return output;
+}""",
+          )
+          replace_once(
+              intake_pipeline,
+              "  }), clarificationRequest);",
+              "  }), clarificationRequest, previousState.lastQuestionContext);",
+          )
+          replace_once(
+              intake_pipeline,
+              """    lastQuestions: previousState
+      ? createMissingQuestionPlan(previousState).map((question) => ({
+          slotKey: question.targetSlot,
+          intent: question.intent,
+        }))
+      : undefined,""",
+              """    lastQuestions: previousState?.lastQuestionContext?.targetSlot
+      ? [{
+          slotKey: previousState.lastQuestionContext.targetSlot,
+          intent: previousState.lastQuestionContext.intent ?? 'clarify_previous_question',
+        }]
+      : undefined,""",
+          )
+          replace_once(
+              intake_pipeline,
+              "    }), deterministicClarification);",
+              "    }), deterministicClarification, previousState.lastQuestionContext);",
+          )
+          replace_once(
+              intake_pipeline,
+              """    output.decision = createWeeklyPlanningClarificationDecision({
+      state: interpretedState,
+      ref,
+    });""",
+              """    output.decision = createWeeklyPlanningClarificationDecision({
+      state: interpretedState,
+      target: clarificationRequest.type === 'request_clarification'
+        ? clarificationRequest.target
+        : undefined,
+      ref,
+      previousQuestionContext: previousState.lastQuestionContext,
+    });
+    const targetSlot = output.decision.clarification?.targetSlot;
+    output.state = {
+      ...output.state,
+      lastQuestionContext: clarificationRequest.type === 'request_clarification'
+        && clarificationRequest.target === 'referenced_question'
+        && previousState.lastQuestionContext
+        ? previousState.lastQuestionContext
+        : targetSlot
+          ? {
+              kind: 'options',
+              targetSlot,
+              intent: output.decision.clarification?.intent,
+            }
+          : previousState.lastQuestionContext,
+    };""",
+          )
+
+          behavior_pipeline = 'src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts'
+          replace_once(
+              behavior_pipeline,
+              "import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';",
+              """import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
+import type { WeeklyPlanningQuestionContext } from '../intake/weeklyPlanningIntakeTypes';""",
+          )
+          replace_once(
+              behavior_pipeline,
+              """  const question = base.decision.questionPlan?.[0];
+  return {
+    explanation: base.decision.clarification.explanation,
+    ...(question?.targetSlot ? { targetSlot: question.targetSlot } : {}),
+    ...(question?.intent ? { intent: question.intent } : {}),
+  };""",
+              """  return {
+    explanation: base.decision.clarification.explanation,
+    ...(base.decision.clarification.targetSlot
+      ? { targetSlot: base.decision.clarification.targetSlot }
+      : {}),
+    ...(base.decision.clarification.intent
+      ? { intent: base.decision.clarification.intent }
+      : {}),
+  };""",
+          )
+          insertion_anchor = """function selectDialoguePlanner(options: WeeklyPlanningBehaviorAwarePipelineOptions): BehaviorAwareDialoguePlanner {
+  if (options.dialoguePlanner) return options.dialoguePlanner;
+  if (options.useAiDialoguePlanner) return createAiBehaviorAwareWeeklyPlanningDialoguePlanner();
+  return createDeterministicBehaviorAwareDialoguePlanner();
+}
+"""
+          insertion = """function isQuestionBearingAction(action: AllowedDialogueAction): boolean {
+  return action.kind === 'show_options'
+    || action.kind === 'ask_required_fact'
+    || action.kind === 'report_infeasibility'
+    || action.kind === 'suggest_draft_generation';
+}
+
+function questionContextForAction(params: {
+  action: AllowedDialogueAction;
+  base: WeeklyPlanningIntakePipelineOutput;
+}): WeeklyPlanningQuestionContext | undefined {
+  const { action, base } = params;
+  if (action.kind === 'report_infeasibility') {
+    return {
+      kind: 'feasibility_adjustment',
+      targetSlot: 'constraint_relaxation',
+      intent: 'ask_constraint_relaxation',
+      topicId: action.topicId,
+      actionId: action.actionId,
+    };
+  }
+  if (action.kind === 'suggest_draft_generation') {
+    return {
+      kind: 'approval',
+      targetSlot: 'draft_generation_confirmation',
+      intent: 'confirm_draft_generation',
+      topicId: action.topicId,
+      actionId: action.actionId,
+    };
+  }
+
+  const matchingQuestion = base.decision.questionPlan?.find((question) => {
+    if (action.topicId === 'planning-range') {
+      return question.targetSlot === 'planning_start_date' || question.targetSlot === 'planning_period';
+    }
+    if (action.topicId === 'task-identity') return question.targetSlot === 'tasks_or_goals';
+    if (action.topicId === 'workload-estimate') {
+      return question.targetSlot === 'unit_rate' || question.targetSlot === 'unit_duration_estimate';
+    }
+    if (action.topicId === 'availability-basis') {
+      return ['fixed_events', 'sleep_cycle', 'meal_bath_constraints', 'life_constraints']
+        .includes(question.targetSlot);
+    }
+    return false;
+  });
+
+  let targetSlot = matchingQuestion?.targetSlot;
+  if (!targetSlot) {
+    if (action.topicId === 'planning-range') {
+      targetSlot = base.state.pendingPlanningRange ? 'planning_start_date' : 'planning_period';
+    } else if (action.topicId === 'task-identity') {
+      targetSlot = 'tasks_or_goals';
+    } else if (action.topicId === 'workload-estimate') {
+      targetSlot = 'unit_duration_estimate';
+    } else if (action.topicId === 'availability-basis') {
+      targetSlot = 'availability_basis';
+    } else if (action.topicId === 'feasibility_basis') {
+      targetSlot = 'feasibility_basis';
+    } else if (action.topicId === 'planning-purpose') {
+      targetSlot = 'planning_purpose';
+    }
+  }
+  if (!targetSlot) return undefined;
+
+  return {
+    kind: action.kind === 'show_options' ? 'options' : 'missing',
+    targetSlot,
+    intent: matchingQuestion?.intent ?? `clarify_${action.topicId}`,
+    topicId: action.topicId,
+    actionId: action.actionId,
+  };
+}
+
+function questionContextForRenderedDialogue(params: {
+  base: WeeklyPlanningIntakePipelineOutput;
+  behavior: BehaviorAwarePlanningBridgeResult;
+  behaviorDialogue: BehaviorAwareDialoguePlannerResult;
+}): WeeklyPlanningQuestionContext | undefined {
+  if (params.base.decision.kind === 'answer_clarification') {
+    return params.base.state.lastQuestionContext;
+  }
+  const selectedIds = params.behaviorDialogue.response?.selectedActionIds
+    ?? params.behavior.actions
+      .filter((action) => action.kind !== 'acknowledge_fact')
+      .slice(0, 2)
+      .map((action) => action.actionId);
+  const selectedActions = selectedIds.flatMap((actionId) => {
+    const action = params.behavior.actions.find((candidate) => candidate.actionId === actionId);
+    return action ? [action] : [];
+  });
+  for (const action of selectedActions) {
+    if (!isQuestionBearingAction(action)) continue;
+    const context = questionContextForAction({ action, base: params.base });
+    if (context) return context;
+  }
+  return undefined;
+}
+
+""" + insertion_anchor
+          replace_once(behavior_pipeline, insertion_anchor, insertion)
+          replace_once(
+              behavior_pipeline,
+              """  const behaviorDialogue = await selectDialoguePlanner(params.options).plan(
+    behaviorDialogueInput({ base: currentBase, behavior, actions, input: params.input }),
+  );
+  const common = {
+    ...currentBase,
+    behavior,""",
+              """  const behaviorDialogue = await selectDialoguePlanner(params.options).plan(
+    behaviorDialogueInput({ base: currentBase, behavior, actions, input: params.input }),
+  );
+  const lastQuestionContext = questionContextForRenderedDialogue({
+    base: currentBase,
+    behavior,
+    behaviorDialogue,
+  });
+  const common = {
+    ...currentBase,
+    state: { ...currentBase.state, lastQuestionContext },
+    behavior,""",
+          )
+
+          behavior_planner = 'src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts'
+          old_examples = """    case 'fixed_events':
+    case 'sleep_cycle':
+    case 'meal_bath_constraints':
+    case 'life_constraints':
+      return '例えば「時間割を使う」または「平日は20時以降」のように答えてください。';
+    default:
+      return '分かる範囲で、具体例を1つ挙げて答えてください。';"""
+          new_examples = """    case 'fixed_events':
+      return '例えば「月曜日の18時から20時はバイトです」または「固定の予定はありません」のように答えてください。';
+    case 'sleep_cycle':
+      return '例えば「0時に寝て7時に起きます」のように答えてください。';
+    case 'meal_bath_constraints':
+      return '例えば「夕食は19時、お風呂は22時ごろです」のように答えてください。';
+    case 'life_constraints':
+    case 'availability_basis':
+    case 'feasibility_basis':
+      return '例えば「時間割を使う」または「平日は20時以降なら空いています」のように答えてください。';
+    case 'constraint_relaxation':
+      return '例えば「英語を優先して、数学は翌日に回す」または「長い課題を2回に分ける」のように答えてください。';
+    case 'draft_generation_confirmation':
+    case 'draft_confirmation':
+      return '例えば「その条件で仮予定を作って」のように答えてください。';
+    case 'preview_confirmation':
+      return '例えば「このままで大丈夫」または「火曜日だけ直して」のように答えてください。';
+    case 'ambiguity_resolution':
+      return '提示された選択肢のうち、意図に近い方を答えてください。';
+    case 'planning_purpose':
+      return '例えば「試験勉強」または「数学の宿題」のように答えてください。';
+    default:
+      return '分かる範囲で、具体例を1つ挙げて答えてください。';"""
+          replace_once(behavior_planner, old_examples, new_examples)
+
+          regression = 'src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts'
+          replace_once(
+              regression,
+              """import {
+  runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
+} from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';""",
+              """import {
+  runWeeklyPlanningBehaviorAwarePipeline,
+  runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
+} from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';""",
+          )
+          extra_tests = r'''
+
+  it('keeps an explicit term target aligned with its explanation and answer example', async () => {
+    const interpreter = createInterpreter();
+    const first = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+      interpreter,
+    });
+    const clarified = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      previousState: first.state,
+      userText: '固定の予定って何ですか？',
+      interpreter,
+    });
+
+    expect(clarified.decision.kind).toBe('answer_clarification');
+    expect(clarified.decision.clarification?.targetSlot).toBe('fixed_events');
+    expect(clarified.behaviorDialogue.message).toContain('「固定の予定」は');
+    expect(clarified.behaviorDialogue.message).toContain('月曜日の18時から20時はバイトです');
+    expect(clarified.behaviorDialogue.message).not.toContain('来週の月曜日から');
+  });
+
+  it('uses the persisted non-missing question context for a short clarification', async () => {
+    const interpreter = createInterpreter();
+    const first = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+      interpreter,
+    });
+    const previousState = {
+      ...first.state,
+      lastQuestionContext: {
+        kind: 'feasibility_adjustment' as const,
+        targetSlot: 'constraint_relaxation',
+        intent: 'ask_constraint_relaxation',
+        topicId: 'feasibility-adjustment',
+      },
+    };
+    const clarified = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      previousState,
+      userText: 'よく分からない',
+      interpreter,
+    });
+
+    expect(clarified.decision.kind).toBe('answer_clarification');
+    expect(clarified.decision.clarification?.targetSlot).toBe('constraint_relaxation');
+    expect(clarified.behaviorDialogue.message).toContain('何を優先し、分割し、後へ回すか');
+    expect(clarified.behaviorDialogue.message).toContain('英語を優先して、数学は翌日に回す');
+  });
+
+  it('does not treat a bare confusion phrase as clarification after a non-question turn', async () => {
+    const interpreter = createInterpreter();
+    const first = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+      interpreter,
+    });
+    const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      previousState: { ...first.state, lastQuestionContext: undefined },
+      userText: 'よく分からない',
+      interpreter,
+    });
+
+    expect(output.decision.kind).not.toBe('answer_clarification');
+  });
+
+  it('supports clarification on the rules-only path', async () => {
+    const first = await runWeeklyPlanningBehaviorAwarePipeline({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+    });
+    const clarified = await runWeeklyPlanningBehaviorAwarePipeline({
+      ...baseInput,
+      previousState: first.state,
+      userText: 'よく分からない',
+    });
+
+    expect(clarified.decision.kind).toBe('answer_clarification');
+    expect(clarified.decision.clarification?.targetSlot).toBe(first.state.lastQuestionContext?.targetSlot);
+  });
+
+  it('supports clarification when the interpreter provider fails', async () => {
+    const first = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+      interpreter: createInterpreter(),
+    });
+    const failingInterpreter: WeeklyPlanningIntakeInterpreter = {
+      async interpretUserTurn() {
+        throw new Error('provider unavailable');
+      },
+    };
+    const clarified = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      previousState: first.state,
+      userText: 'よく分からない',
+      interpreter: failingInterpreter,
+    });
+
+    expect(clarified.decision.kind).toBe('answer_clarification');
+    expect(clarified.decision.clarification?.targetSlot).toBe(first.state.lastQuestionContext?.targetSlot);
+  });
+'''
+          test_text = Path(regression).read_text()
+          if not test_text.rstrip().endswith('});'):
+              raise RuntimeError('unexpected regression test ending')
+          Path(regression).write_text(test_text.rstrip()[:-3] + extra_tests + '\n});\n')
+
+          md_path = Path('docs/ai/tasks/20260715-weekly-planning-clarification-context-generalization.md')
+          md_path.parent.mkdir(parents=True, exist_ok=True)
+          md_path.write_text('''# 週間計画の聞き返し対象と直前質問コンテキストの一般化
+
+## 背景
+
+PR #3で聞き返しを`request_clarification`へ統合したが、active questionを`createMissingQuestionPlan(previousState)`の有無から推測していた。このため、実現可能性の調整、選択肢提示、preview確認、承認など、missingではない質問の直後に「よく分からない」と入力すると聞き返しとして扱えなかった。
+
+また、用語説明の対象は`ref`から解決していた一方、回答例は`questionPlan[0]`から選んでいた。そのため「固定の予定って何ですか？」に固定予定の説明と計画開始日の回答例が混在する問題があった。
+
+## 修正方針
+
+`PlanningIntakeState.lastQuestionContext`へ、直前に実際に描画された質問の`targetSlot`、`intent`、`topicId`、`actionId`をsession-localで保持する。次turnではmissingを再計算せず、このコンテキストの有無を文脈依存の聞き返し判定に使用する。
+
+clarification targetはcommandの`target`に従って解決する。
+
+- `referenced_question`: `lastQuestionContext.targetSlot`
+- `referenced_term`: `ref`から解決した用語slot
+- `unresolved_slot`: `ref`のslot
+
+解決済みの`targetSlot`を`WeeklyPlanningDialogueDecision.clarification`からbehavior-aware rendererまで伝播し、説明と回答例を必ず同じslotから生成する。
+
+## 責務境界
+
+- clarification parser: 発話を`request_clarification`へ正規化する
+- intake pipeline: 直前質問コンテキストを使い、command targetをclarification decisionへ渡す
+- dialogue manager: clarification target slotを解決し、説明文を決定する
+- behavior-aware pipeline: 実際に描画されたactionから次turn用の質問コンテキストを保存する
+- behavior-aware dialogue planner: 解決済みtarget slotに対応する回答例を描画する
+
+## 回帰条件
+
+- 明示用語と先頭missing slotが異なっても説明と回答例が一致する
+- missing以外の質問後でも文脈依存の聞き返しを処理できる
+- 非質問後の「よく分からない」を聞き返しと断定しない
+- AI command、AI空応答、rules-only、provider失敗で同じclarification decisionへ到達する
+- 特定の一文の完全一致を追加せず、意味カテゴリと質問コンテキストで処理する
+''')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run weekly planning tests
+        run: npm run test:run -- src/features/weeklyPlanning
+
+      - name: Build
+        run: npm run build
+
+      - name: Check diff
+        run: git diff --check
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "OpenAI Agent"
+          git config user.email "agent@openai.com"
+          git add src/features/weeklyPlanning docs/ai/tasks/20260715-weekly-planning-clarification-context-generalization.md
+          git commit -m "feat: 聞き返し対象と直前質問の文脈を明示化"
+          git push origin HEAD:agent/fix-weekly-planning-dialogue-path
