@@ -1,0 +1,56 @@
+name: Deploy Firestore rules once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/deploy-firestore-rules-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-firestore-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve Firebase credentials
+        id: firebase-auth
+        shell: bash
+        env:
+          FIREBASE_TOKEN_VALUE: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_VALUE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_SERVICE_ACCOUNT_VALUE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STUDY_PLANNER_D1BC8 }}
+          FIREBASE_COMPACT_SERVICE_ACCOUNT_VALUE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STUDYPLANNER }}
+          GOOGLE_CREDENTIALS_JSON_VALUE: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          GCP_SA_KEY_VALUE: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          service_account="${FIREBASE_PROJECT_SERVICE_ACCOUNT_VALUE:-${FIREBASE_SERVICE_ACCOUNT_VALUE:-${FIREBASE_COMPACT_SERVICE_ACCOUNT_VALUE:-${GOOGLE_CREDENTIALS_JSON_VALUE:-${GCP_SA_KEY_VALUE:-}}}}}"
+          if [ -n "$service_account" ]; then
+            printf '%s' "$service_account" > "$RUNNER_TEMP/firebase-service-account.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+            echo "mode=service-account" >> "$GITHUB_OUTPUT"
+          elif [ -n "$FIREBASE_TOKEN_VALUE" ]; then
+            echo "FIREBASE_TOKEN=$FIREBASE_TOKEN_VALUE" >> "$GITHUB_ENV"
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+          else
+            echo "Firebase deployment credentials are not configured." >&2
+            exit 2
+          fi
+
+      - name: Deploy Firestore rules with service account
+        if: steps.firebase-auth.outputs.mode == 'service-account'
+        run: npx firebase-tools deploy --only firestore:rules --project study-planner-d1bc8 --non-interactive
+
+      - name: Deploy Firestore rules with token
+        if: steps.firebase-auth.outputs.mode == 'token'
+        run: npx firebase-tools deploy --only firestore:rules --project study-planner-d1bc8 --non-interactive --token "$FIREBASE_TOKEN"
