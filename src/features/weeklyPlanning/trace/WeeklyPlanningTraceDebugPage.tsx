@@ -13,12 +13,21 @@ interface WeeklyPlanningTraceDebugPageProps {
   onBack: () => void;
 }
 
+type TraceViewMode = 'conversation' | 'events' | 'snapshots' | 'raw';
+
 const STATUS_OPTIONS: Array<{ value: '' | WeeklyPlanningTraceSessionStatus; label: string }> = [
   { value: '', label: 'すべて' },
   { value: 'active', label: 'active' },
   { value: 'completed', label: 'completed' },
   { value: 'abandoned', label: 'abandoned' },
   { value: 'failed', label: 'failed' },
+];
+
+const VIEW_MODES: Array<{ value: TraceViewMode; label: string }> = [
+  { value: 'conversation', label: 'Conversation' },
+  { value: 'events', label: 'Events' },
+  { value: 'snapshots', label: 'State snapshots' },
+  { value: 'raw', label: 'Raw redacted JSON' },
 ];
 
 function downloadJson(filename: string, value: unknown): void {
@@ -43,6 +52,14 @@ function entryBody(entry: WeeklyPlanningTraceEntry): unknown {
   return entry.state;
 }
 
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return JSON.stringify({ errorCode: 'trace-payload-not-serializable' }, null, 2);
+  }
+}
+
 function formattedDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP');
@@ -53,6 +70,31 @@ function planningRangeLabel(session: WeeklyPlanningTraceSession): string | null 
   return `${session.planningRangeStart ?? '未設定'} - ${session.planningRangeEnd ?? '未設定'}`;
 }
 
+function includesStaleEvent(entries: readonly WeeklyPlanningTraceEntry[]): boolean {
+  return entries.some((entry) => entry.kind === 'internal_event' && (
+    entry.eventType === 'stale_async_result_discarded'
+    || entry.eventType === 'preview_rejected_stale'
+    || (entry.eventType === 'preview_gate_evaluated'
+      && safeJson(entry.payload).toLowerCase().includes('stale'))
+  ));
+}
+
+function entriesForMode(
+  entries: readonly WeeklyPlanningTraceEntry[],
+  mode: TraceViewMode,
+): WeeklyPlanningTraceEntry[] {
+  if (mode === 'conversation') return entries.filter((entry) => entry.kind === 'turn');
+  if (mode === 'events') return entries.filter((entry) => entry.kind === 'internal_event');
+  if (mode === 'snapshots') return entries.filter((entry) => entry.kind === 'state_snapshot');
+  return [];
+}
+
+function dateOnly(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
 export function WeeklyPlanningTraceDebugPage({
   onBack,
 }: WeeklyPlanningTraceDebugPageProps) {
@@ -61,10 +103,16 @@ export function WeeklyPlanningTraceDebugPage({
     Record<string, WeeklyPlanningTraceEntry[]>
   >({});
   const [expandedSessionId, setExpandedSessionId] = useState('');
+  const [viewMode, setViewMode] = useState<TraceViewMode>('conversation');
   const [statusFilter, setStatusFilter] = useState<'' | WeeklyPlanningTraceSessionStatus>('');
+  const [userFilter, setUserFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [onlyFallbacks, setOnlyFallbacks] = useState(false);
   const [onlyPreviews, setOnlyPreviews] = useState(false);
+  const [onlyApprovalFailures, setOnlyApprovalFailures] = useState(false);
+  const [onlyStale, setOnlyStale] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingEntriesSessionId, setLoadingEntriesSessionId] = useState('');
   const [exportingSessionId, setExportingSessionId] = useState('');
@@ -124,7 +172,18 @@ export function WeeklyPlanningTraceDebugPage({
       return;
     }
     setExpandedSessionId(session.id);
+    setViewMode('conversation');
     void loadEntries(session).catch(() => undefined);
+  }
+
+  async function enableStaleFilter(checked: boolean): Promise<void> {
+    setOnlyStale(checked);
+    if (!checked) return;
+    try {
+      await Promise.all(sessions.map((session) => loadEntries(session)));
+    } catch {
+      // loadEntries already exposes a finite UI error.
+    }
   }
 
   async function exportAndArchive(session: WeeklyPlanningTraceSession): Promise<void> {
@@ -161,11 +220,32 @@ export function WeeklyPlanningTraceDebugPage({
   const visibleSessions = useMemo(() => sessions.filter((session) => {
     if (!hasUnexportedWeeklyPlanningTraceActivity(session)) return false;
     if (statusFilter && session.status !== statusFilter) return false;
+    const normalizedUserFilter = userFilter.trim().toLowerCase();
+    if (normalizedUserFilter
+      && !session.userId.toLowerCase().includes(normalizedUserFilter)
+      && !session.logicalConversationId.toLowerCase().includes(normalizedUserFilter)) return false;
+    const activityDate = dateOnly(session.lastActivityAt);
+    if (dateFrom && activityDate < dateFrom) return false;
+    if (dateTo && activityDate > dateTo) return false;
     if (onlyErrors && !session.hasError) return false;
     if (onlyFallbacks && !session.hasFallback) return false;
     if (onlyPreviews && !session.hasPreview) return false;
+    if (onlyApprovalFailures && !session.hasApprovalFailure) return false;
+    if (onlyStale && !includesStaleEvent(entriesBySession[session.id] ?? [])) return false;
     return true;
-  }), [onlyErrors, onlyFallbacks, onlyPreviews, sessions, statusFilter]);
+  }), [
+    dateFrom,
+    dateTo,
+    entriesBySession,
+    onlyApprovalFailures,
+    onlyErrors,
+    onlyFallbacks,
+    onlyPreviews,
+    onlyStale,
+    sessions,
+    statusFilter,
+    userFilter,
+  ]);
 
   return (
     <main className="admin-shell weekly-planning-trace-debug">
@@ -199,6 +279,14 @@ export function WeeklyPlanningTraceDebugPage({
         <h2>Filter</h2>
         <div className="field-row">
           <label className="field">
+            <span>User／conversation</span>
+            <input
+              value={userFilter}
+              onChange={(event) => setUserFilter(event.target.value)}
+              placeholder="user IDまたはconversation ID"
+            />
+          </label>
+          <label className="field">
             <span>Status</span>
             <select
               value={statusFilter}
@@ -209,9 +297,21 @@ export function WeeklyPlanningTraceDebugPage({
               ))}
             </select>
           </label>
+          <label className="field">
+            <span>From</span>
+            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>To</span>
+            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          </label>
+        </div>
+        <div className="field-row">
           <label><input type="checkbox" checked={onlyErrors} onChange={(event) => setOnlyErrors(event.target.checked)} /> errorあり</label>
           <label><input type="checkbox" checked={onlyFallbacks} onChange={(event) => setOnlyFallbacks(event.target.checked)} /> fallbackあり</label>
           <label><input type="checkbox" checked={onlyPreviews} onChange={(event) => setOnlyPreviews(event.target.checked)} /> previewあり</label>
+          <label><input type="checkbox" checked={onlyApprovalFailures} onChange={(event) => setOnlyApprovalFailures(event.target.checked)} /> approval失敗あり</label>
+          <label><input type="checkbox" checked={onlyStale} onChange={(event) => { void enableStaleFilter(event.target.checked); }} /> stale resultあり</label>
         </div>
       </section>
 
@@ -230,7 +330,7 @@ export function WeeklyPlanningTraceDebugPage({
 
         {!loadingSessions && visibleSessions.length === 0 ? (
           <div className="panel admin-state-card">
-            <strong>未exportの活動があるsessionはありません</strong>
+            <strong>条件に一致するsessionはありません</strong>
           </div>
         ) : null}
 
@@ -240,6 +340,7 @@ export function WeeklyPlanningTraceDebugPage({
           const loadingEntries = loadingEntriesSessionId === session.id;
           const exporting = exportingSessionId === session.id;
           const rangeLabel = planningRangeLabel(session);
+          const visibleEntries = entriesForMode(entries, viewMode);
 
           return (
             <article className="panel trace-session-panel" key={session.id}>
@@ -255,6 +356,7 @@ export function WeeklyPlanningTraceDebugPage({
                     {session.status} / turns {session.turnCount} / entries {session.entryCount}
                   </span>
                   <code>{session.userId}</code>
+                  <small>conversation {session.logicalConversationId}</small>
                   {rangeLabel ? <small>計画範囲 {rangeLabel}</small> : null}
                 </span>
                 {expanded
@@ -265,10 +367,7 @@ export function WeeklyPlanningTraceDebugPage({
               {expanded ? (
                 <div className="trace-session-detail">
                   <div className="trace-session-actions">
-                    <span>
-                      開始 {formattedDate(session.startedAt)} / conversation{' '}
-                      {session.logicalConversationId}
-                    </span>
+                    <span>開始 {formattedDate(session.startedAt)}</span>
                     <button
                       className="primary-button"
                       type="button"
@@ -279,24 +378,44 @@ export function WeeklyPlanningTraceDebugPage({
                     </button>
                   </div>
 
-                  {loadingEntries ? <p>timelineを読み込んでいます...</p> : null}
-                  {!loadingEntries && entries.length === 0 ? <p>entryはありません。</p> : null}
-                  <div className="weekly-planning-trace-entry-list">
-                    {entries.map((entry) => (
-                      <article className={`trace-entry trace-entry--${entry.kind}`} key={entry.id}>
-                        <header>
-                          <strong>#{entry.sequence} {entryTitle(entry)}</strong>
-                          <span>{formattedDate(entry.occurredAt)}</span>
-                        </header>
-                        <small>
-                          revision {entry.stateRevision ?? '-'} / request {entry.requestId ?? '-'}
-                        </small>
-                        {entry.kind === 'turn'
-                          ? <p>{entry.content}</p>
-                          : <pre>{JSON.stringify(entryBody(entry), null, 2)}</pre>}
-                      </article>
+                  <div className="segmented-control" aria-label="trace表示モード">
+                    {VIEW_MODES.map((mode) => (
+                      <button
+                        key={mode.value}
+                        className={viewMode === mode.value ? 'segment active' : 'segment'}
+                        type="button"
+                        onClick={() => setViewMode(mode.value)}
+                      >
+                        {mode.label}
+                      </button>
                     ))}
                   </div>
+
+                  {loadingEntries ? <p>timelineを読み込んでいます...</p> : null}
+                  {!loadingEntries && entries.length === 0 ? <p>entryはありません。</p> : null}
+
+                  {viewMode === 'raw' && !loadingEntries ? (
+                    <pre className="trace-entry">
+                      {safeJson(createWeeklyPlanningTraceExportBundle(session, entries))}
+                    </pre>
+                  ) : (
+                    <div className="weekly-planning-trace-entry-list">
+                      {visibleEntries.map((entry) => (
+                        <article className={`trace-entry trace-entry--${entry.kind}`} key={entry.id}>
+                          <header>
+                            <strong>#{entry.sequence} {entryTitle(entry)}</strong>
+                            <span>{formattedDate(entry.occurredAt)}</span>
+                          </header>
+                          <small>
+                            revision {entry.stateRevision ?? '-'} / request {entry.requestId ?? '-'}
+                          </small>
+                          {entry.kind === 'turn'
+                            ? <p>{entry.content}</p>
+                            : <pre>{safeJson(entryBody(entry))}</pre>}
+                        </article>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : null}
             </article>
