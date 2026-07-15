@@ -124,7 +124,6 @@ service cloud.firestore {
           && request.resource.data.get('archivedAt', null) == resource.data.get('archivedAt', null)
         ) || (
           isAdmin()
-          && !('archivedAt' in resource.data)
           && request.resource.data.archivedAt is string
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archivedAt'])
         );
