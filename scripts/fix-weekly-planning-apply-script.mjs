@@ -6,6 +6,14 @@ let source = readFileSync(path, 'utf8');
 const replacements = [
   ['${Number(month)}', '\\${Number(month)}'],
   ['${formatDate(plan.date)}', '\\${formatDate(plan.date)}'],
+  [
+    '`          userId,\\n})\\n        : pipelineOutput.behaviorDialogue.message;`',
+    '`  userId,\\n})\\n        : pipelineOutput.behaviorDialogue.message;`',
+  ],
+  [
+    '`          userId,\\n          existingPlans: plans,\\n})\\n        : pipelineOutput.behaviorDialogue.message;`',
+    '`  userId,\\n  existingPlans: plans,\\n})\\n        : pipelineOutput.behaviorDialogue.message;`',
+  ],
 ];
 
 for (const [before, after] of replacements) {
