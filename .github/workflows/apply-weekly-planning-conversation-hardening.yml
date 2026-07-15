@@ -26,13 +26,13 @@ jobs:
         with:
           ref: agent/weekly-planning-conversation-hardening
           fetch-depth: 0
+      - name: Apply scoped changes
+        run: node scripts/apply-weekly-planning-conversation-hardening.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply scoped changes
-        run: node scripts/apply-weekly-planning-conversation-hardening.mjs
       - name: Weekly planning tests
         run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx
       - name: Build
