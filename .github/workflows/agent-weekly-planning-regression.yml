@@ -28,6 +28,7 @@ jobs:
           : > .agent-validation/weekly-planning-output.log
 
           python <<'PY' >> .agent-validation/weekly-planning-output.log 2>&1
+          import re
           from pathlib import Path
 
           reducer_path = Path('src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts')
@@ -141,35 +142,28 @@ jobs:
 
           pipeline_path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts')
           pipeline = pipeline_path.read_text(encoding='utf-8')
-          import_old = '''  applyWeeklyPlanningCommands,
-            applyWeeklyPlanningUserTurn,
-            applyWeeklyPlanningUserTurnWithDiagnostics,
-            createInitialPlanningIntakeState,
-          } from '../intake/weeklyPlanningIntakeReducer';'''
-          import_new = '''  applyDeterministicWeeklyPlanningUserTurn,
-            applyWeeklyPlanningCommands,
-            applyWeeklyPlanningUserTurn,
-            applyWeeklyPlanningUserTurnWithDiagnostics,
-            createInitialPlanningIntakeState,
-          } from '../intake/weeklyPlanningIntakeReducer';'''
+          import_old = "import {\n  applyWeeklyPlanningCommands,"
+          import_new = "import {\n  applyDeterministicWeeklyPlanningUserTurn,\n  applyWeeklyPlanningCommands,"
           if pipeline.count(import_old) != 1:
               raise RuntimeError('pipeline reducer import target was not found exactly once')
           pipeline = pipeline.replace(import_old, import_new, 1)
 
-          prepared_old = '''  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
-            previousState,
-            input.userText,
-            context,
-          );
-          const preparedState = deterministicTurn.state;'''
-          prepared_new = '''  const preparedState = applyDeterministicWeeklyPlanningUserTurn(
-            previousState,
-            input.userText,
-            context,
-          );'''
-          if pipeline.count(prepared_old) != 1:
-              raise RuntimeError('AI deterministic baseline target was not found exactly once')
-          pipeline = pipeline.replace(prepared_old, prepared_new, 1)
+          pipeline, prepared_count = re.subn(
+              r"  const deterministicTurn = applyWeeklyPlanningUserTurnWithDiagnostics\(\n"
+              r"    previousState,\n"
+              r"    input\.userText,\n"
+              r"    context,\n"
+              r"  \);\n"
+              r"  const preparedState = deterministicTurn\.state;",
+              "  const preparedState = applyDeterministicWeeklyPlanningUserTurn(\n"
+              "    previousState,\n"
+              "    input.userText,\n"
+              "    context,\n"
+              "  );",
+              pipeline,
+          )
+          if prepared_count != 1:
+              raise RuntimeError(f'AI deterministic baseline target count: {prepared_count}')
 
           catch_old = '''  } catch {
             // Provider failure skips only AI supplementation; deterministic parsing has already been applied.
