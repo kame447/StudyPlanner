@@ -1,0 +1,36 @@
+
+added 200 packages, and audited 201 packages in 7s
+
+24 packages are looking for funding
+  run `npm fund` for details
+
+8 vulnerabilities (1 low, 3 moderate, 2 high, 2 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
+
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m7 passed[39m[22m[90m (7)[39m
+[2m   Start at [22m 10:06:15
+[2m   Duration [22m 2.36s[2m (transform 1.03s, setup 0ms, collect 1.65s, tests 49ms, environment 0ms, prepare 243ms)[22m
+
+
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
+
+src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.ts(332,29): error TS2677: A type predicate's type must be assignable to its parameter's type.
+  Type 'string' is not assignable to type '"暗記は短く分けて進める案" | "ワークや演習はまとまった時間で進める案" | null'.
