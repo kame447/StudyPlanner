@@ -15,7 +15,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { getFirestoreDb } from '../../../lib/firebaseClient';
+import { getFirebaseAuth, getFirestoreDb } from '../../../lib/firebaseClient';
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
 import {
   isWeeklyPlanningTraceEntry,
@@ -102,13 +102,39 @@ function preserveArchiveState(
   };
 }
 
+function authenticatedTraceUserId(): string {
+  const userId = getFirebaseAuth()?.currentUser?.uid?.trim();
+  if (!userId) {
+    throw new Error('trace auth user is unavailable');
+  }
+  return userId;
+}
+
+function withAuthenticatedFirestoreOwnership(params: {
+  session: WeeklyPlanningTraceSession;
+  entries?: WeeklyPlanningTraceEntry[];
+}): {
+  session: WeeklyPlanningTraceSession;
+  entries: WeeklyPlanningTraceEntry[];
+} {
+  const userId = authenticatedTraceUserId();
+  return {
+    session: params.session.userId === userId
+      ? params.session
+      : { ...params.session, userId },
+    entries: (params.entries ?? []).map((entry) =>
+      entry.userId === userId ? entry : { ...entry, userId }),
+  };
+}
+
 export function createFirestoreWeeklyPlanningTraceRepository(
   firestoreDb: Firestore,
 ): WeeklyPlanningTraceRepository {
   async function upsertSession(session: WeeklyPlanningTraceSession): Promise<void> {
+    const owned = withAuthenticatedFirestoreOwnership({ session });
     await setDoc(
-      doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
-      firestorePayload(session),
+      doc(firestoreDb, 'weekly_planning_trace_sessions', owned.session.id),
+      firestorePayload(owned.session),
       { merge: true },
     );
   }
@@ -128,13 +154,14 @@ export function createFirestoreWeeklyPlanningTraceRepository(
         throw new Error('trace batch is too large');
       }
 
+      const owned = withAuthenticatedFirestoreOwnership({ session, entries });
       const batch = writeBatch(firestoreDb);
       batch.set(
-        doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
-        firestorePayload(session),
+        doc(firestoreDb, 'weekly_planning_trace_sessions', owned.session.id),
+        firestorePayload(owned.session),
         { merge: true },
       );
-      entries.forEach((entry) => {
+      owned.entries.forEach((entry) => {
         batch.set(
           doc(firestoreDb, 'weekly_planning_trace_entries', entry.id),
           firestorePayload(entry),
