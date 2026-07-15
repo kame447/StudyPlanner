@@ -21,13 +21,13 @@ for (const path of [
     path,
     '固定予定はありますか？',
     genericFixedEventQuestion,
-    { all: true },
+    { all: true, optional: true },
   );
   replaceInFile(
     path,
     '授業・バイト・通院など、動かせない予定があれば教えてください。',
     genericFixedEventQuestion,
-    { all: true },
+    { all: true, optional: true },
   );
   replaceInFile(
     path,
