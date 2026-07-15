@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseRequestClarificationCommand } from './weeklyPlanningClarificationParsing';
 
+const renderedQuestionContext = {
+  hasActiveQuestion: true,
+  activeQuestionSource: 'rendered' as const,
+};
+
 describe('parseRequestClarificationCommand', () => {
   it.each([
     'どういうこと？',
@@ -10,7 +15,7 @@ describe('parseRequestClarificationCommand', () => {
     '具体的には何を入力すればいい？',
     '固定の予定って何ですか？',
   ])('maps clarification phrasing to one command intent: %s', (userText) => {
-    expect(parseRequestClarificationCommand(userText, { hasActiveQuestion: true })).toMatchObject({
+    expect(parseRequestClarificationCommand(userText, renderedQuestionContext)).toMatchObject({
       type: 'request_clarification',
       confidence: 'high',
     });
@@ -19,9 +24,10 @@ describe('parseRequestClarificationCommand', () => {
   it.each([
     'もう少し詳しく説明して',
     'よく分からない',
-  ])('accepts context-dependent follow-up only while a question is active: %s', (userText) => {
+  ])('accepts contextual follow-up only after an actually rendered question: %s', (userText) => {
     expect(parseRequestClarificationCommand(userText)).toBeUndefined();
-    expect(parseRequestClarificationCommand(userText, { hasActiveQuestion: true })?.type)
+    expect(parseRequestClarificationCommand(userText, { hasActiveQuestion: true })).toBeUndefined();
+    expect(parseRequestClarificationCommand(userText, renderedQuestionContext)?.type)
       .toBe('request_clarification');
   });
 
@@ -30,6 +36,6 @@ describe('parseRequestClarificationCommand', () => {
     '数学を詳しく勉強したい',
     '来週の予定を立てたい',
   ])('does not misclassify information or planning turns: %s', (userText) => {
-    expect(parseRequestClarificationCommand(userText, { hasActiveQuestion: true })).toBeUndefined();
+    expect(parseRequestClarificationCommand(userText, renderedQuestionContext)).toBeUndefined();
   });
 });
