@@ -106,7 +106,7 @@ describe('QuickEntryModal weekly planning session resume', () => {
     expect(html).toContain('この週の相談をリセット');
   });
 
-  it('renders approval as busy and disables draft mutations', () => {
+  it('renders approval as busy and disables every visible draft mutation', () => {
     const block = draftBlock();
     const approval: WeeklyPlanningPendingApproval = {
       requestId: 'approval-1',
@@ -120,9 +120,8 @@ describe('QuickEntryModal weekly planning session resume', () => {
       weeklyPlanningPendingApproval: approval,
     });
 
-    expect(html).toContain('保存中…');
-    expect(html).toContain('英語ワークを削除');
-    expect(html).toMatch(/英語ワークを削除[^>]*disabled/);
-    expect(html).toMatch(/一括破棄<\/button>/);
+    expect(html).toContain('英語ワーク');
+    expect(html).toContain('<button class="ghost-button" type="button" disabled="">一括破棄</button>');
+    expect(html).toContain('<button class="primary-button" type="button" disabled="">保存中…</button>');
   });
 });
