@@ -5,6 +5,7 @@ import type {
   MarkCompletionTargetCommand,
   NoteProgressBoundaryCommand,
   NoteUncertaintyCommand,
+  NormalizedSetPendingPlanningRangeCommand,
   SetPriorityPolicyCommand,
   SetExamScopeCommand,
   SetPlanningRangeCommand,
@@ -116,9 +117,13 @@ export function toStudyProgressFromNoteProgressBoundaryCommand(
 export function normalizeSetPendingPlanningRangeCommand(
   command: SetPendingPlanningRangeCommand,
   context: WeeklyPlanningIntakeContext,
-): SetPendingPlanningRangeCommand {
+): NormalizedSetPendingPlanningRangeCommand {
+  const durationDays = command.pending.durationDays ?? 7;
   if (command.pending.scope.kind !== 'next_week') {
-    return command;
+    return {
+      ...command,
+      pending: { ...command.pending, durationDays },
+    };
   }
 
   const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;
@@ -136,7 +141,7 @@ export function normalizeSetPendingPlanningRangeCommand(
         startDate: command.pending.scope.startDate ?? normalizedScope.startDate,
         endDate: command.pending.scope.endDate ?? normalizedScope.endDate,
       },
-      durationDays: command.pending.durationDays ?? 7,
+      durationDays,
     },
   };
 }

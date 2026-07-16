@@ -4,6 +4,7 @@ import {
   type JsonSchemaResponseFormat,
   type OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
+import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
 import {
   canonicalizeOptionalCommandNulls,
@@ -478,7 +479,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null {
+function parseCandidate(
+  candidate: unknown,
+  context: WeeklyPlanningIntakeContext,
+): InterpretedCommandCandidate | null {
   if (!isRecord(candidate)) {
     return null;
   }
@@ -490,12 +494,16 @@ function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null 
     || !isValidWeeklyPlanningCommand(normalizedCommand)) {
     return null;
   }
+  const parsedCommand: ParsedWeeklyPlanningCommand =
+    normalizedCommand.type === 'set_pending_planning_range'
+      ? normalizeSetPendingPlanningRangeCommand(normalizedCommand, context)
+      : normalizedCommand;
   const wrappedNeedsConfirmation = isRecord(candidate.command) && typeof candidate.needsConfirmation === 'boolean'
     ? candidate.needsConfirmation
     : undefined;
 
   return {
-    command: normalizedCommand as unknown as ParsedWeeklyPlanningCommand,
+    command: parsedCommand,
     origin: 'ai_interpreter',
     needsConfirmation: wrappedNeedsConfirmation ?? normalizedCommand.confidence === 'medium',
   };
@@ -508,7 +516,10 @@ function emptyInterpreterResult(): WeeklyPlanningInterpreterResult {
   };
 }
 
-function parseInterpreterResponse(content: string): WeeklyPlanningInterpreterResult {
+function parseInterpreterResponse(
+  content: string,
+  context: WeeklyPlanningIntakeContext,
+): WeeklyPlanningInterpreterResult {
   let parsed: unknown;
 
   try {
@@ -526,7 +537,7 @@ function parseInterpreterResponse(content: string): WeeklyPlanningInterpreterRes
   const parseRejections: InterpreterParseRejection[] = [];
 
   response.candidates.forEach((rawCandidate) => {
-    const candidate = parseCandidate(rawCandidate);
+    const candidate = parseCandidate(rawCandidate, context);
 
     if (!candidate) {
       parseRejections.push({ rawCandidate, reason: 'invalid-candidate-shape' });
@@ -610,7 +621,7 @@ export function createAiWeeklyPlanningInterpreter(
         purpose: 'weekly_planning_interpreter',
       });
 
-      return parseInterpreterResponse(content);
+      return parseInterpreterResponse(content, context);
     },
   };
 }

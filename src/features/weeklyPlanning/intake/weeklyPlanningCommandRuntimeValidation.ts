@@ -1,4 +1,4 @@
-import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
+import type { WeeklyPlanningCommandPayload } from './weeklyPlanningCommandTypes';
 
 const CONFIDENCE_VALUES = new Set(['high', 'medium', 'low']);
 const STUDY_SCOPE_UNITS = new Set([
@@ -129,7 +129,7 @@ function validateStudyGoal(command: Record<string, unknown>): boolean {
     && isOptionalFiniteNumber(goal.amount);
 }
 
-export function isValidWeeklyPlanningCommand(value: unknown): value is ParsedWeeklyPlanningCommand {
+export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPlanningCommandPayload {
   if (!isRecord(value) || !hasValidCommonShape(value)) return false;
 
   switch (value.type) {
@@ -229,9 +229,11 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is ParsedWee
         || !isRecord(pending.scope)
         || typeof pending.sourceText !== 'string'
         || (pending.durationDays !== undefined
-          && (typeof pending.durationDays !== 'number' || !Number.isInteger(pending.durationDays)))) return false;
+          && (typeof pending.durationDays !== 'number'
+            || !Number.isInteger(pending.durationDays)
+            || pending.durationDays <= 0))) return false;
       return hasOnlyKeys(pending.scope, ['kind', 'label', 'startDate', 'endDate'])
-        && typeof pending.scope.kind === 'string'
+        && (pending.scope.kind === 'next_week' || pending.scope.kind === 'named_future_period')
         && typeof pending.scope.label === 'string'
         && isOptionalString(pending.scope.startDate)
         && isOptionalString(pending.scope.endDate);

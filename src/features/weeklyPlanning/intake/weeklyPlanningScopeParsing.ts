@@ -1,5 +1,5 @@
 import { addDays, startOfWeek } from '../../../lib/date';
-import type { BeginWeeklyPlanningCommand, SetExamScopeCommand, SetPendingPlanningRangeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
+import type { BeginWeeklyPlanningCommand, NormalizedSetPendingPlanningRangeCommand, SetExamScopeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, PendingPlanningRangeClarification, StudyScopeUnit, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import {
   normalizeIntakeText,
@@ -124,7 +124,7 @@ function resolveWeekdayInScope(
 function parsePendingPlanningRange(
   text: string,
   context: WeeklyPlanningIntakeContext,
-): SetPendingPlanningRangeCommand | undefined {
+): NormalizedSetPendingPlanningRangeCommand | undefined {
   const normalizedText = normalizeIntakeText(text);
   if (!hasOneWeekDuration(normalizedText) && !/来週.*(?:計画|予定|スケジュール)/.test(normalizedText)) {
     return undefined;
@@ -243,7 +243,7 @@ export function parseBeginWeeklyPlanningCommand(
 export function parseSetPendingPlanningRangeCommand(
   text: string,
   context: WeeklyPlanningIntakeContext,
-): SetPendingPlanningRangeCommand | undefined {
+): NormalizedSetPendingPlanningRangeCommand | undefined {
   const range = parseWeeklyPlanningRange(text, context);
   return range ? undefined : parsePendingPlanningRange(text, context);
 }

@@ -25,10 +25,14 @@ export type ParsedWeeklyPlanningCommand =
   | SetUnitRateCommand
   | SetExamScopeCommand
   | SetPlanningRangeCommand
-  | SetPendingPlanningRangeCommand
+  | NormalizedSetPendingPlanningRangeCommand
   | BeginWeeklyPlanningCommand
   | AuthorizeDraftGenerationCommand
   | SetStudyGoalCommand;
+
+export type WeeklyPlanningCommandPayload =
+  | Exclude<ParsedWeeklyPlanningCommand, { type: 'set_pending_planning_range' }>
+  | SetPendingPlanningRangeCommand;
 
 export interface UseConstraintSourceCommand {
   type: 'use_constraint_source';
