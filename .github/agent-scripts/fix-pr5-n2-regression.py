@@ -25,6 +25,23 @@ replace_once(
     "  let parsedCommand: ParsedWeeklyPlanningCommand;\n  if (normalizedCommand.type === 'set_pending_planning_range') {\n    const normalizedPendingCommand = normalizeSetPendingPlanningRangeCommand(\n      normalizedCommand,\n      context,\n    );\n    if (!normalizedPendingCommand) {\n      return null;\n    }\n    parsedCommand = normalizedPendingCommand;\n  } else {\n    parsedCommand = normalizedCommand;\n  }\n",
 )
 replace_once(
+    'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts',
+    "import {\n  normalizeSetPendingPlanningRangeCommand,\n  toPlanningRangeFromSetPlanningRangeCommand,\n} from '../intake/weeklyPlanningCommandAdapter';\n",
+    "import {\n  normalizeSetPendingPlanningRangeCommand,\n  toPlanningRangeFromSetPlanningRangeCommand,\n} from '../intake/weeklyPlanningCommandAdapter';\n"
+    "import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts',
+    "    return command;\n  });\n  const unavailableSourceCount = interpreterDiagnostics.rejected.filter(\n",
+    "    return command;\n  }).filter((command): command is ParsedWeeklyPlanningCommand => command !== undefined);\n"
+    "  const unavailableSourceCount = interpreterDiagnostics.rejected.filter(\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts',
+    "    expect(normalized.pending).toEqual({\n",
+    "    expect(normalized).toBeDefined();\n    if (!normalized) throw new Error('missing normalized pending range');\n    expect(normalized.pending).toEqual({\n",
+)
+replace_once(
     'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts',
     "    expect(normalizeSetPendingPlanningRangeCommand(command, {\n      selectedDate: '2026-07-10',\n      currentDateTime: '2026-07-10T15:30:00',\n    })).toBe(command);\n",
     "    expect(normalizeSetPendingPlanningRangeCommand(command, {\n      selectedDate: '2026-07-10',\n      currentDateTime: '2026-07-10T15:30:00',\n    })).toBeUndefined();\n",
@@ -41,6 +58,11 @@ replace_once(
 )
 replace_once(
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
+    "    expect(normalized.pending.durationDays).toBe(7);\n    expect(normalized.pending.scope.startDate).toBeDefined();\n    expect(normalized.pending.scope.endDate).toBeDefined();\n",
+    "    expect(normalized).toBeDefined();\n    if (!normalized) throw new Error('missing normalized pending range');\n    expect(normalized.pending.durationDays).toBe(7);\n    expect(normalized.pending.scope.startDate).toBeDefined();\n    expect(normalized.pending.scope.endDate).toBeDefined();\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
     "  it('normalizes an omitted duration for named future periods as well', () => {\n    const normalized = normalizeSetPendingPlanningRangeCommand(\n      commandWithoutDuration('named_future_period'),\n      { selectedDate: '2026-07-16' },\n    );\n    expect(normalized.pending.durationDays).toBe(7);\n  });\n",
     "  it('does not infer an omitted duration for named future periods', () => {\n    const normalized = normalizeSetPendingPlanningRangeCommand(\n      commandWithoutDuration('named_future_period'),\n      { selectedDate: '2026-07-16' },\n    );\n    expect(normalized).toBeUndefined();\n  });\n",
 )
@@ -50,13 +72,16 @@ subprocess.run([
     'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
     'src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts',
+    'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts',
 ], cwd=ROOT, check=True)
 subprocess.run(['npm', 'run', 'build'], cwd=ROOT, check=True)
 subprocess.run(['git', 'rm', '-f', 'docs/ai/tasks/20260716-weekly-planning-pr5-full-test-error.log'], cwd=ROOT, check=False)
+subprocess.run(['git', 'rm', '-f', 'docs/ai/tasks/20260716-weekly-planning-pr5-n2-regression-error.log'], cwd=ROOT, check=False)
 subprocess.run([
     'git', 'add',
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandAdapter.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts',
     'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
 ], cwd=ROOT, check=True)
