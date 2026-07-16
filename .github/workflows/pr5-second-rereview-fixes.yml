@@ -27,7 +27,10 @@ jobs:
         run: npm ci
 
       - name: Apply source and test fixes
-        run: node scripts/apply-pr5-second-rereview-fixes.mjs
+        run: |
+          sed -i "s/'available_evening'/'long_contiguous_window'/g" scripts/apply-pr5-second-rereview-fixes.mjs
+          sed -i "/const WEEK_START = '2026-07-13';/d" scripts/apply-pr5-second-rereview-fixes.mjs
+          node scripts/apply-pr5-second-rereview-fixes.mjs
 
       - name: Add lifecycle test dependency
         run: npm install --save-dev react-test-renderer@18.3.1 @types/react-test-renderer@^18.3.0
