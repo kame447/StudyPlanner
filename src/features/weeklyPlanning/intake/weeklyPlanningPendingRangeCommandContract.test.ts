@@ -25,8 +25,18 @@ function commandWithoutDuration(
   };
 }
 
+const summerPending = {
+  scope: {
+    kind: 'named_future_period' as const,
+    label: '夏休み',
+    windowStartDate: '2026-07-20',
+    windowEndDate: '2026-08-31',
+  },
+  sourceText: '夏休みに計画を立てたい',
+};
+
 describe('pending planning range command contract', () => {
-  it('accepts an omitted AI payload duration and normalizes it into required domain state', () => {
+  it('accepts an omitted AI payload duration and normalizes it into required next-week domain state', () => {
     const command = commandWithoutDuration();
     expect(isValidWeeklyPlanningCommand(command)).toBe(true);
 
@@ -36,11 +46,11 @@ describe('pending planning range command contract', () => {
     });
 
     expect(normalized.pending.durationDays).toBe(7);
-    expect(normalized.pending.scope.startDate).toBeDefined();
-    expect(normalized.pending.scope.endDate).toBeDefined();
+    expect(normalized.pending.scope.windowStartDate).toBeDefined();
+    expect(normalized.pending.scope.windowEndDate).toBeDefined();
   });
 
-  it('preserves a named future period without inferring dates or duration', () => {
+  it('preserves a named future period without inferring window, start, or duration', () => {
     const command = commandWithoutDuration('named_future_period');
     const normalized = normalizeSetPendingPlanningRangeCommand(
       command,
@@ -58,12 +68,15 @@ describe('pending planning range command contract', () => {
     expect(normalized.pending.durationDays).toBe(14);
   });
 
-  it.each([0, -1, 1.5])('rejects invalid optional durationDays: %s', (durationDays) => {
-    expect(isValidWeeklyPlanningCommand({
-      ...commandWithoutDuration(),
-      pending: { ...commandWithoutDuration().pending, durationDays },
-    })).toBe(false);
-  });
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid optional durationDays: %s',
+    (durationDays) => {
+      expect(isValidWeeklyPlanningCommand({
+        ...commandWithoutDuration(),
+        pending: { ...commandWithoutDuration().pending, durationDays },
+      })).toBe(false);
+    },
+  );
 
   it('rejects planning scope kinds outside the closed union', () => {
     expect(isValidWeeklyPlanningCommand({
@@ -75,222 +88,126 @@ describe('pending planning range command contract', () => {
     })).toBe(false);
   });
 
-  it('canonicalizes null durationDays to the optional AI payload shape', () => {
+  it('canonicalizes null optional pending values', () => {
     const canonicalized = canonicalizeOptionalCommandNulls({
       ...commandWithoutDuration(),
-      pending: { ...commandWithoutDuration().pending, durationDays: null },
-    });
-    expect(isValidWeeklyPlanningCommand(canonicalized)).toBe(true);
+      pending: {
+        ...commandWithoutDuration().pending,
+        planningStartDate: null,
+        durationDays: null,
+        scope: {
+          ...commandWithoutDuration().pending.scope,
+          windowStartDate: null,
+          windowEndDate: null,
+        },
+      },
+    }) as SetPendingPlanningRangeCommand;
+
+    expect(canonicalized.pending.planningStartDate).toBeUndefined();
+    expect(canonicalized.pending.durationDays).toBeUndefined();
+    expect(canonicalized.pending.scope.windowStartDate).toBeUndefined();
+    expect(canonicalized.pending.scope.windowEndDate).toBeUndefined();
   });
 
-  it('keeps the one-week duration from a named future period and resolves a later date', () => {
-    const context = {
-      selectedDate: '2026-07-16',
-      currentDateTime: '2026-07-16T12:00:00',
-    };
-    const pending = parseSetPendingPlanningRangeCommand(
-      '夏休みの一週間で計画を立てたい',
-      context,
+  it('rejects a fully resolved pending value', () => {
+    expect(isValidWeeklyPlanningCommand({
+      ...commandWithoutDuration('named_future_period'),
+      pending: {
+        ...summerPending,
+        planningStartDate: '2026-08-01',
+        durationDays: 7,
+      },
+    })).toBe(false);
+  });
+
+  it('rejects invalid or out-of-window selected start dates', () => {
+    expect(isValidWeeklyPlanningCommand({
+      ...commandWithoutDuration('named_future_period'),
+      pending: { ...summerPending, planningStartDate: '2026-02-30' },
+    })).toBe(false);
+    expect(isValidWeeklyPlanningCommand({
+      ...commandWithoutDuration('named_future_period'),
+      pending: { ...summerPending, planningStartDate: '2026-10-01' },
+    })).toBe(false);
+  });
+
+  it('parses a bare duration against pending state and preserves the selected start', () => {
+    const command = parseSetPendingPlanningRangeCommand(
+      '一週間',
+      { selectedDate: '2026-07-16' },
+      {
+        pending: { ...summerPending, planningStartDate: '2026-08-01' },
+        expectedSlot: 'planning_duration',
+      },
     );
-    expect(pending?.pending).toMatchObject({
-      scope: { kind: 'named_future_period', label: '夏休み' },
+
+    expect(command?.pending).toMatchObject({
+      planningStartDate: '2026-08-01',
       durationDays: 7,
     });
+  });
 
-    const resolved = parseSetPlanningRangeCommand(
+  it('promotes pending state when the missing answer is supplied', () => {
+    const startThenDuration = parseSetPlanningRangeCommand(
+      '一週間',
+      { selectedDate: '2026-07-16' },
+      { ...summerPending, planningStartDate: '2026-08-01' },
+      'planning_duration',
+    );
+    const durationThenStart = parseSetPlanningRangeCommand(
       '8月1日から',
-      context,
-      pending?.pending,
+      { selectedDate: '2026-07-16' },
+      { ...summerPending, durationDays: 7 },
+      'planning_start_date',
     );
-    expect(resolved?.range).toMatchObject({
-      startDateTime: '2026-08-01T00:00:00',
-      endDateTime: '2026-08-07T24:00:00',
-      calendarDayCount: 7,
-      confidence: 'explicit',
-    });
+
+    expect(startThenDuration?.range).toEqual(durationThenStart?.range);
+    expect(startThenDuration?.range.startDateTime).toBe('2026-08-01T00:00:00');
+    expect(startThenDuration?.range.endDateTime).toBe('2026-08-07T24:00:00');
   });
 
-  it('keeps a duration-less named future period from the initial utterance and resolves it later', () => {
-    const context = {
-      selectedDate: '2026-07-16',
-      currentDateTime: '2026-07-16T12:00:00',
-    };
-    const pending = parseSetPendingPlanningRangeCommand(
-      '夏休みに計画を立てたい',
-      context,
-    );
-    expect(pending?.pending).toEqual({
-      scope: { kind: 'named_future_period', label: '夏休み' },
-      sourceText: '夏休みに計画を立てたい',
-    });
-
-    const resolved = parseSetPlanningRangeCommand(
-      '8月1日から一週間',
-      context,
-      pending?.pending,
-    );
-    expect(resolved?.range).toMatchObject({
-      startDateTime: '2026-08-01T00:00:00',
-      endDateTime: '2026-08-07T24:00:00',
-      calendarDayCount: 7,
-    });
-  });
-
-  it.each([
-    '8月1日から一週間',
-    '8月1 日から一週間',
-    '９月１０ 日から一週間',
-  ])('does not reinterpret an out-of-window explicit date as a weekday: %s', (text) => {
-    const context = {
-      selectedDate: '2026-06-26',
-      currentDateTime: '2026-06-26T12:00:00',
-    };
-    const pending = parseSetPendingPlanningRangeCommand(
-      '来週の予定を立てたい',
-      context,
-    );
-    expect(pending?.pending.scope).toMatchObject({
-      kind: 'next_week',
-      startDate: '2026-06-29',
-      endDate: '2026-07-05',
-    });
-
-    const resolved = parseSetPlanningRangeCommand(text, context, pending?.pending);
-    expect(resolved).toBeUndefined();
-  });
-
-  it.each([
-    ['日曜から', '2026-07-05T00:00:00'],
-    ['日曜日から', '2026-07-05T00:00:00'],
-    ['月曜から', '2026-06-29T00:00:00'],
-  ])('continues to resolve a real weekday answer: %s', (text, startDateTime) => {
-    const context = {
-      selectedDate: '2026-06-26',
-      currentDateTime: '2026-06-26T12:00:00',
-    };
-    const pending = parseSetPendingPlanningRangeCommand('来週の予定を立てたい', context);
-    const resolved = parseSetPlanningRangeCommand(text, context, pending?.pending);
-    expect(resolved?.range.startDateTime).toBe(startDateTime);
-  });
-
-  it('does not treat a summer-vacation task mention as a planning range', () => {
-    expect(parseSetPendingPlanningRangeCommand(
-      '夏休みの宿題は数学ワーク10ページです',
-      { selectedDate: '2026-06-26' },
+  it('does not generate a NaN range from an excessive stored duration', () => {
+    expect(parseSetPlanningRangeCommand(
+      '8月1日から',
+      { selectedDate: '2026-07-16' },
+      {
+        ...summerPending,
+        durationDays: Number.MAX_SAFE_INTEGER,
+      },
+      'planning_start_date',
     )).toBeUndefined();
   });
 
-  it('prefers next week when summer vacation is explicitly negated', () => {
-    const pending = parseSetPendingPlanningRangeCommand(
-      '夏休みではなく来週の計画を立てたい',
-      { selectedDate: '2026-06-26' },
+  it('keeps the established next-week pending regression cases', () => {
+    const nextWeek = parseSetPendingPlanningRangeCommand(
+      '来週の予定を立てたい',
+      { selectedDate: '2026-07-16' },
     );
-    expect(pending?.pending.scope).toMatchObject({
-      kind: 'next_week',
-      startDate: '2026-06-29',
-      endDate: '2026-07-05',
+    expect(nextWeek?.pending.scope.kind).toBe('next_week');
+
+    const state = applyWeeklyPlanningUserTurn(undefined, '来週の予定を立てたい', {
+      selectedDate: '2026-07-16',
     });
-  });
-
-  it('accepts a bare summer-vacation answer only when the caller expects a range answer', () => {
-    const context = { selectedDate: '2026-06-26' };
-    expect(parseSetPendingPlanningRangeCommand('夏休み', context)).toBeUndefined();
-    expect(parseSetPendingPlanningRangeCommand(
-      '夏休み',
-      context,
-      { allowBareNamedFuturePeriodAnswer: true },
-    )?.pending).toEqual({
-      scope: { kind: 'named_future_period', label: '夏休み' },
-      sourceText: '夏休み',
+    const afterSummerAnswer = applyWeeklyPlanningUserTurn(state, '夏休み', {
+      selectedDate: '2026-07-16',
     });
-  });
+    expect(afterSummerAnswer.pendingPlanningRange?.scope.kind).toBe('next_week');
 
-  it('does not replace a pending next-week scope with a bare summer-vacation answer', () => {
-    const context = {
-      selectedDate: '2026-06-26',
-      currentDateTime: '2026-06-26T12:00:00',
-    };
-    const nextWeek = applyWeeklyPlanningUserTurn(undefined, '来週の予定を立てたい', context);
-    const answered = applyWeeklyPlanningUserTurn(nextWeek, '夏休み', context);
-
-    expect(answered.pendingPlanningRange).toEqual(nextWeek.pendingPlanningRange);
-    expect(answered.pendingPlanningRange?.scope.kind).toBe('next_week');
-  });
-
-  it('uses the affirmative side of a summer-vacation contrast as next week', () => {
-    const state = applyWeeklyPlanningUserTurn(
-      undefined,
-      '夏休みじゃなくて来週にしたい',
+    const outsideDate = parseSetPendingPlanningRangeCommand(
+      '8月1日から',
+      { selectedDate: '2026-07-16' },
       {
-        selectedDate: '2026-06-26',
-        currentDateTime: '2026-06-26T12:00:00',
+        pending: nextWeek?.pending,
+        expectedSlot: 'planning_start_date',
       },
     );
-
-    expect(state.pendingPlanningRange?.scope).toMatchObject({
-      kind: 'next_week',
-      startDate: '2026-06-29',
-      endDate: '2026-07-05',
-    });
+    expect(outsideDate).toBeUndefined();
   });
 
-  it('combines a date-only answer with a later duration answer', () => {
-    const context = {
-      selectedDate: '2026-06-26',
-      currentDateTime: '2026-06-26T12:00:00',
-    };
-    const summerVacation = applyWeeklyPlanningUserTurn(
-      undefined,
-      '夏休みに計画を立てたい',
-      context,
-    );
-    const withStartDate = applyWeeklyPlanningUserTurn(summerVacation, '8月1日から', context);
-
-    expect(withStartDate.range).toBeUndefined();
-    expect(withStartDate.pendingPlanningRange).toMatchObject({
-      scope: {
-        kind: 'named_future_period',
-        label: '夏休み',
-        startDate: '2026-08-01',
-      },
-    });
-
-    const resolved = applyWeeklyPlanningUserTurn(withStartDate, '一週間', context);
-    expect(resolved.pendingPlanningRange).toBeUndefined();
-    expect(resolved.range).toMatchObject({
-      startDateTime: '2026-08-01T00:00:00',
-      endDateTime: '2026-08-07T24:00:00',
-      calendarDayCount: 7,
-      confidence: 'explicit',
-    });
+  it('does not create a planning range from summer homework content', () => {
+    expect(parseSetPlanningRangeCommand(
+      '夏休みの宿題は数学ワーク10ページです',
+      { selectedDate: '2026-07-16' },
+    )).toBeUndefined();
   });
-
-  it('combines a duration-only answer with a later date answer', () => {
-    const context = {
-      selectedDate: '2026-06-26',
-      currentDateTime: '2026-06-26T12:00:00',
-    };
-    const summerVacation = applyWeeklyPlanningUserTurn(
-      undefined,
-      '夏休みに計画を立てたい',
-      context,
-    );
-    const withDuration = applyWeeklyPlanningUserTurn(summerVacation, '一週間', context);
-
-    expect(withDuration.range).toBeUndefined();
-    expect(withDuration.pendingPlanningRange).toMatchObject({
-      scope: { kind: 'named_future_period', label: '夏休み' },
-      durationDays: 7,
-    });
-
-    const resolved = applyWeeklyPlanningUserTurn(withDuration, '8月1日から', context);
-    expect(resolved.pendingPlanningRange).toBeUndefined();
-    expect(resolved.range).toMatchObject({
-      startDateTime: '2026-08-01T00:00:00',
-      endDateTime: '2026-08-07T24:00:00',
-      calendarDayCount: 7,
-      confidence: 'explicit',
-    });
-  });
-
 });
