@@ -5,6 +5,10 @@ import {
   isValidWeeklyPlanningCommand,
 } from './weeklyPlanningCommandRuntimeValidation';
 import type { SetPendingPlanningRangeCommand } from './weeklyPlanningCommandTypes';
+import {
+  parseSetPendingPlanningRangeCommand,
+  parseSetPlanningRangeCommand,
+} from './weeklyPlanningScopeParsing';
 
 function commandWithoutDuration(
   kind: 'next_week' | 'named_future_period' = 'next_week',
@@ -76,5 +80,48 @@ describe('pending planning range command contract', () => {
       pending: { ...commandWithoutDuration().pending, durationDays: null },
     });
     expect(isValidWeeklyPlanningCommand(canonicalized)).toBe(true);
+  });
+
+  it('keeps the one-week duration from a named future period and resolves a later date', () => {
+    const context = {
+      selectedDate: '2026-07-16',
+      currentDateTime: '2026-07-16T12:00:00',
+    };
+    const pending = parseSetPendingPlanningRangeCommand(
+      '夏休みの一週間で計画を立てたい',
+      context,
+    );
+    expect(pending?.pending).toMatchObject({
+      scope: { kind: 'named_future_period', label: '夏休み' },
+      durationDays: 7,
+    });
+
+    const resolved = parseSetPlanningRangeCommand(
+      '8月1日から',
+      context,
+      pending?.pending,
+    );
+    expect(resolved?.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
+      confidence: 'explicit',
+    });
+  });
+
+  it('uses a date and duration supplied together to resolve an unresolved named future period', () => {
+    const resolved = parseSetPlanningRangeCommand(
+      '8月1日から一週間',
+      { selectedDate: '2026-07-16', currentDateTime: '2026-07-16T12:00:00' },
+      {
+        scope: { kind: 'named_future_period', label: '夏休み' },
+        sourceText: '夏休みに計画を立てたい',
+      },
+    );
+    expect(resolved?.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
+    });
   });
 });

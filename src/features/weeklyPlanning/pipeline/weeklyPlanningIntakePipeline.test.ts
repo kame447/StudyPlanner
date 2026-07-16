@@ -2039,7 +2039,7 @@ describe('confirmed slots and AI planning range integration', () => {
     expect(resolved.state.range?.startDateTime).toBe('2026-07-15T00:00:00');
   });
 
-  it('keeps named future periods unresolved until an explicit range is supplied', async () => {
+  it('resolves a named future period when the provider supplies a complete explicit range', async () => {
     const pending = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       userText: 'summer break plan',
@@ -2056,22 +2056,40 @@ describe('confirmed slots and AI planning range integration', () => {
     expect(pending.state.pendingPlanningRange?.scope.startDate).toBeUndefined();
     expect(pending.state.pendingPlanningRange?.scope.endDate).toBeUndefined();
 
-    const unresolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
+    const resolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       previousState: pending.state,
-      userText: 'August 1',
+      userText: 'August 1 for one week',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
-      interpreter: fakeInterpreter([
-        planningRangeCandidate('explicit'),
-      ]),
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_planning_range',
+          range: {
+            startDateTime: '2026-08-01T00:00:00',
+            endDateTime: '2026-08-07T24:00:00',
+            sourceText: 'August 1 for one week',
+            calendarDayCount: 7,
+            confidence: 'explicit',
+          },
+          sourceText: 'August 1 for one week',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
     });
 
-    expect(unresolved.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
+    expect(resolved.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([]);
+    expect(resolved.interpreterDiagnostics?.accepted).toEqual([
       expect.objectContaining({ type: 'set_planning_range' }),
     ]);
-    expect(unresolved.state.range).toBeUndefined();
-    expect(unresolved.state.pendingPlanningRange).toBeDefined();
+    expect(resolved.state.pendingPlanningRange).toBeUndefined();
+    expect(resolved.state.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
+    });
   });
 
   it('rejects provider pending creation after a planning range is confirmed', async () => {

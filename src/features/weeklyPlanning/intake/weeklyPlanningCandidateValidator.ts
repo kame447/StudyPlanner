@@ -382,25 +382,22 @@ export function validateInterpretedCandidates(
     }
 
     if (command.type === 'set_planning_range' && summary.pendingPlanningRange) {
-      if (command.range.confidence !== 'explicit') {
+      const rangeStartDate = command.range.startDateTime?.slice(0, 10);
+      const rangeEndDate = command.range.endDateTime?.slice(0, 10);
+      if (command.range.confidence !== 'explicit' || !rangeStartDate || !rangeEndDate) {
         addRejected(result, candidate, 'pending-range-clarification');
         return;
       }
 
       const pendingStartDate = summary.pendingPlanningRange.startDate;
       const pendingEndDate = summary.pendingPlanningRange.endDate;
-      const rangeStartDate = command.range.startDateTime?.slice(0, 10);
-      const isWithinPendingWindow = Boolean(
-        pendingStartDate
-        && pendingEndDate
-        && rangeStartDate
-        && rangeStartDate >= pendingStartDate
-        && rangeStartDate <= pendingEndDate,
-      );
-
-      if (!isWithinPendingWindow) {
-        result.acceptedWithConfirmation.push(command);
-        return;
+      if (pendingStartDate && pendingEndDate) {
+        const isWithinPendingWindow = rangeStartDate >= pendingStartDate
+          && rangeStartDate <= pendingEndDate;
+        if (!isWithinPendingWindow) {
+          result.acceptedWithConfirmation.push(command);
+          return;
+        }
       }
     }
 

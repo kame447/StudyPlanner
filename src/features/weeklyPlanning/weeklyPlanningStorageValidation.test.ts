@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialPlanningIntakeState } from './intake/weeklyPlanningIntakeReducer';
+import type { BehaviorAwarePreviewMetadata } from './planning/weeklyPlanningBehaviorAwarePreviewBridge';
+import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanDraftBlock } from './types';
 import { createInitialPlanningState, weeklyPlanningReducer } from './weeklyPlanningReducer';
 import { loadWeeklyPlanningState, saveWeeklyPlanningState } from './weeklyPlanningStorage';
@@ -40,6 +42,34 @@ function validDraftBlock(): WeeklyPlanDraftBlock {
     userEdited: false,
     createdAt: NOW,
     updatedAt: NOW,
+  };
+}
+
+function behaviorAwarePreviewCandidate(): WeeklyDraftCandidate & {
+  behaviorMetadata: BehaviorAwarePreviewMetadata;
+} {
+  return {
+    stableKey: 'behavior-preview-1',
+    date: '2026-07-16',
+    startTime: '19:00',
+    endTime: '20:00',
+    durationMinutes: 60,
+    title: 'レポート作成',
+    field: '情報学',
+    year: 0,
+    estimatedMinutes: 60,
+    source: 'weekly_exam_prep',
+    approvalStatus: 'unapproved',
+    workItemKey: 'task:report',
+    behaviorMetadata: {
+      conversationId: 'conversation-1',
+      stateRevision: 3,
+      sourceFactRefs: ['task:report'],
+      usedAssumptionProposalRefs: [],
+      taskRef: 'task:report',
+      opportunityTags: ['long_contiguous_window'],
+      reasoningKey: 'explicit-duration',
+    },
   };
 }
 
@@ -138,6 +168,33 @@ describe('weekly planning storage validation', () => {
     expectRejectedSession();
   });
 
+  it('round-trips a valid behavior-aware preview with its conversation and intake state', () => {
+    const state = {
+      ...createInitialPlanningState(WEEK_START),
+      revision: 3,
+      mode: 'draft_created' as const,
+      previewCandidates: [behaviorAwarePreviewCandidate()],
+      messages: [{
+        id: 'message-1',
+        role: 'assistant' as const,
+        content: '仮予定を作成しました。',
+        createdAt: NOW,
+      }],
+      intakeState: {
+        ...createInitialPlanningIntakeState(),
+        sourceTurns: ['レポートを1時間進めたい'],
+      },
+    };
+
+    saveWeeklyPlanningState(USER_ID, state);
+    const loaded = loadWeeklyPlanningState(USER_ID, WEEK_START);
+
+    expect(loaded.revision).toBe(3);
+    expect(loaded.messages).toEqual(state.messages);
+    expect(loaded.intakeState?.sourceTurns).toEqual(['レポートを1時間進めたい']);
+    expect(loaded.previewCandidates).toEqual([behaviorAwarePreviewCandidate()]);
+  });
+
   it('restores a named future period whose duration is still unresolved', () => {
     const intakeState = {
       ...createInitialPlanningIntakeState(),
@@ -173,6 +230,13 @@ describe('weekly planning storage validation', () => {
         requestId: 'stale-request',
         weekStartDate: WEEK_START,
         baseRevision: 1,
+        startedAt: NOW,
+      },
+      pendingApproval: {
+        requestId: 'stale-approval',
+        weekStartDate: WEEK_START,
+        baseRevision: 1,
+        blockIds: ['draft-1'],
         startedAt: NOW,
       },
     };

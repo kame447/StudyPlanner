@@ -176,6 +176,28 @@ function isBehaviorMetadata(value: unknown): value is WeeklyPlanningBehaviorMeta
     && (value.previewMetadata === undefined || isPreviewMetadata(value.previewMetadata));
 }
 
+function isBehaviorAwarePreviewMetadata(value: unknown): boolean {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, [
+      'conversationId', 'stateRevision', 'sourceFactRefs', 'usedAssumptionProposalRefs',
+      'acceptedAssumptionDependencies', 'taskRef', 'opportunityTags', 'reasoningKey',
+    ])) {
+    return false;
+  }
+  return isOptionalString(value.conversationId)
+    && isNonNegativeInteger(value.stateRevision)
+    && isStringArray(value.sourceFactRefs)
+    && isStringArray(value.usedAssumptionProposalRefs)
+    && (value.acceptedAssumptionDependencies === undefined
+      || (Array.isArray(value.acceptedAssumptionDependencies)
+        && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
+    && typeof value.taskRef === 'string'
+    && isStringArray(value.opportunityTags)
+    && (value.reasoningKey === 'explicit-duration'
+      || value.reasoningKey === 'explicit-unit-rate'
+      || value.reasoningKey === 'accepted-assumption-duration');
+}
+
 function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
@@ -225,7 +247,8 @@ function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
     && value.source === 'weekly_exam_prep'
     && value.approvalStatus === 'unapproved'
     && typeof value.workItemKey === 'string'
-    && (value.behaviorMetadata === undefined || isBehaviorMetadata(value.behaviorMetadata));
+    && (value.behaviorMetadata === undefined
+      || isBehaviorAwarePreviewMetadata(value.behaviorMetadata));
 }
 
 function isPlanningRange(value: unknown): boolean {
