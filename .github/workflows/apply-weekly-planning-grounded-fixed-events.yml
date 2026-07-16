@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply-weekly-planning-grounded-fixed-events.mjs
       - scripts/adjust-fixed-event-grounding-tests.mjs
+      - scripts/adjust-fixed-event-build-types.mjs
       - .github/workflows/apply-weekly-planning-grounded-fixed-events.yml
 
 permissions:
@@ -21,10 +22,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
-      - name: Apply grounded fixed event fixes
+      - name: Apply fixes
         run: |
           node scripts/apply-weekly-planning-grounded-fixed-events.mjs
           node scripts/adjust-fixed-event-grounding-tests.mjs
+          node scripts/adjust-fixed-event-build-types.mjs
       - name: Diff check
         run: git diff --check
       - uses: actions/setup-node@v4
@@ -48,8 +50,8 @@ jobs:
           content = content.replaceAll('- [ ]', '- [x]');
           fs.writeFileSync(path, content);
           NODE
-      - name: Remove temporary automation
-        run: rm scripts/apply-weekly-planning-grounded-fixed-events.mjs scripts/adjust-fixed-event-grounding-tests.mjs .github/workflows/apply-weekly-planning-grounded-fixed-events.yml .github/workflows/debug-fixed-event-tests.yml fixed-event-test-output.log
+      - name: Remove temporary implementation files
+        run: rm scripts/apply-weekly-planning-grounded-fixed-events.mjs scripts/adjust-fixed-event-grounding-tests.mjs scripts/adjust-fixed-event-build-types.mjs .github/workflows/apply-weekly-planning-grounded-fixed-events.yml
       - name: Commit verified fixes
         run: |
           git config user.name github-actions[bot]
