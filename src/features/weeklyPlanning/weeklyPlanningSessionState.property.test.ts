@@ -126,10 +126,11 @@ describe('weekly planning session reducer properties', () => {
     fc.assert(fc.property(fc.array(draftMutationArbitrary, { maxLength: 25 }), (actions) => {
       const withDrafts = weeklyPlanningReducer(
         createInitialPlanningState('2026-07-13'),
-        { type: 'set_draft_blocks', draftBlocks: [draftBlock('draft-1'), draftBlock('draft-2')] },
+        { type: 'add_draft_blocks', blocks: [draftBlock('draft-1'), draftBlock('draft-2')] },
       );
       const approval = pendingApproval(withDrafts.revision);
       const begun = weeklyPlanningReducer(withDrafts, { type: 'begin_approval', pending: approval });
+      expect(begun.pendingApproval).toEqual(approval);
       const reduced = actions.reduce(weeklyPlanningReducer, begun);
       expect(reduced.draftBlocks).toEqual(begun.draftBlocks);
       expect(reduced.pendingApproval).toEqual(approval);
