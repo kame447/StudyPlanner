@@ -49,20 +49,19 @@ jobs:
               path = ROOT / relative_path
               text = path.read_text(encoding="utf-8")
               count = text.count(old)
-              if count == 1:
+              if count >= 1:
                   path.write_text(text.replace(old, new, 1), encoding="utf-8")
                   return
-              if count == 0:
-                  lines = old.splitlines()
-                  pattern = r"\\n".join(
-                      r"[ \\t]*" + re.escape(line.strip())
-                      for line in lines
-                  )
-                  matches = list(re.finditer(pattern, text))
-                  if len(matches) == 1:
-                      match = matches[0]
-                      path.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8")
-                      return
+              lines = old.splitlines()
+              pattern = r"\\n".join(
+                  r"[ \\t]*" + re.escape(line.strip())
+                  for line in lines
+              )
+              matches = list(re.finditer(pattern, text))
+              if len(matches) == 1:
+                  match = matches[0]
+                  path.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8")
+                  return
               raise RuntimeError(f"{relative_path}: expected one match, found {count}")
           '''
           if old not in text:
