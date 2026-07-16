@@ -1,0 +1,41 @@
+name: validate-pr5-final
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check diff whitespace
+        run: git diff --check origin/main...HEAD
+      - name: Run full test suite
+        run: |
+          set +e
+          npm run test:run > /tmp/full-test.log 2>&1
+          status=$?
+          tail -n 40 /tmp/full-test.log
+          exit "$status"
+      - name: Run production build
+        run: |
+          set +e
+          npm run build > /tmp/build.log 2>&1
+          status=$?
+          tail -n 40 /tmp/build.log
+          exit "$status"
