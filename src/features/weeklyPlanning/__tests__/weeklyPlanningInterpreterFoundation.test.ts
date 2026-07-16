@@ -647,7 +647,7 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(normalizeSetPendingPlanningRangeCommand(command, {
       selectedDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
-    })).toBe(command);
+    })).toEqual(command);
   });
 
   it('accepts a valid pending command and protects a confirmed planning range', () => {
@@ -673,7 +673,7 @@ describe('weekly planning AI foundation without real AI', () => {
     [
       'invalid kind',
       { scope: { kind: 'other', label: 'other' }, sourceText: 'other' },
-      'invalid-planning-temporal-scope-kind',
+      'invalid-command-shape',
     ],
     [
       'missing label',
@@ -688,7 +688,7 @@ describe('weekly planning AI foundation without real AI', () => {
     [
       'zero duration',
       { scope: { kind: 'next_week', label: 'next week' }, durationDays: 0, sourceText: 'next week' },
-      'invalid-duration-days',
+      'invalid-command-shape',
     ],
   ])('rejects a pending command with %s', (_label, pending, reason) => {
     const result = validateInterpretedCandidates([

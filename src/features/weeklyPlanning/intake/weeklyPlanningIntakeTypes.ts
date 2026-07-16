@@ -46,7 +46,7 @@ export interface PendingPlanningRangeClarification {
     startDate?: string;
     endDate?: string;
   };
-  durationDays: number;
+  durationDays?: number;
   sourceText: string;
 }
 

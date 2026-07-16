@@ -138,6 +138,27 @@ describe('weekly planning storage validation', () => {
     expectRejectedSession();
   });
 
+  it('restores a named future period whose duration is still unresolved', () => {
+    const intakeState = {
+      ...createInitialPlanningIntakeState(),
+      pendingPlanningRange: {
+        scope: { kind: 'named_future_period' as const, label: '夏休み' },
+        sourceText: '夏休みの予定',
+      },
+    };
+    storeV2({
+      ...createInitialPlanningState(WEEK_START),
+      revision: 1,
+      intakeState,
+    });
+
+    const loaded = loadWeeklyPlanningState(USER_ID, WEEK_START);
+    expect(loaded.revision).toBe(1);
+    expect(loaded.intakeState?.pendingPlanningRange).toEqual(
+      intakeState.pendingPlanningRange,
+    );
+  });
+
   it.each(['v2', 'legacy'])('removes session-local proposal records while loading %s data', (format) => {
     const intakeState = {
       ...createInitialPlanningIntakeState(),

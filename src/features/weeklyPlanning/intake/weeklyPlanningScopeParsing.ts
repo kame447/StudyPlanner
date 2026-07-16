@@ -135,7 +135,6 @@ function parsePendingPlanningRange(
       type: 'set_pending_planning_range',
       pending: {
         scope: { kind: 'named_future_period', label: '夏休み' },
-        durationDays: 7,
         sourceText: text,
       },
       sourceText: text,
@@ -173,18 +172,24 @@ function parseWeeklyPlanningRange(
   pending?: PendingPlanningRangeClarification,
 ): SetPlanningRangeCommand['range'] | undefined {
   const normalizedText = normalizeIntakeText(text);
-  const durationDays = hasOneWeekDuration(normalizedText) || pending ? 7 : undefined;
-  if (!durationDays) return undefined;
 
   if (pending) {
+    if (!pending.durationDays) return undefined;
     const weekdayIndex = parseWeekdayStart(normalizedText);
     const startDate = weekdayIndex === undefined
       ? parseExplicitDate(normalizedText, context)
       : resolveWeekdayInScope(weekdayIndex, pending.scope);
     return startDate
-      ? rangeFromStartDate({ startDate, durationDays: pending.durationDays, sourceText: text })
+      ? rangeFromStartDate({
+          startDate,
+          durationDays: pending.durationDays,
+          sourceText: text,
+        })
       : undefined;
   }
+
+  const durationDays = hasOneWeekDuration(normalizedText) ? 7 : undefined;
+  if (!durationDays) return undefined;
 
   const explicitDate = parseExplicitDate(normalizedText, context);
   if (explicitDate) {

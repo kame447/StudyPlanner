@@ -118,11 +118,13 @@ export function normalizeSetPendingPlanningRangeCommand(
   command: SetPendingPlanningRangeCommand,
   context: WeeklyPlanningIntakeContext,
 ): NormalizedSetPendingPlanningRangeCommand {
-  const durationDays = command.pending.durationDays ?? 7;
-  if (command.pending.scope.kind !== 'next_week') {
+  if (command.pending.scope.kind === 'named_future_period') {
     return {
       ...command,
-      pending: { ...command.pending, durationDays },
+      pending: {
+        ...command.pending,
+        scope: { ...command.pending.scope },
+      },
     };
   }
 
@@ -141,7 +143,7 @@ export function normalizeSetPendingPlanningRangeCommand(
         startDate: command.pending.scope.startDate ?? normalizedScope.startDate,
         endDate: command.pending.scope.endDate ?? normalizedScope.endDate,
       },
-      durationDays,
+      durationDays: command.pending.durationDays ?? 7,
     },
   };
 }

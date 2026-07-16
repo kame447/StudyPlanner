@@ -35,12 +35,22 @@ describe('pending planning range command contract', () => {
     expect(normalized.pending.scope.endDate).toBeDefined();
   });
 
-  it('normalizes an omitted duration for named future periods as well', () => {
+  it('preserves a named future period without inferring dates or duration', () => {
+    const command = commandWithoutDuration('named_future_period');
     const normalized = normalizeSetPendingPlanningRangeCommand(
-      commandWithoutDuration('named_future_period'),
+      command,
       { selectedDate: '2026-07-16' },
     );
-    expect(normalized.pending.durationDays).toBe(7);
+    expect(normalized.pending).toEqual(command.pending);
+  });
+
+  it('preserves an explicit named-future duration', () => {
+    const command = commandWithoutDuration('named_future_period');
+    const normalized = normalizeSetPendingPlanningRangeCommand({
+      ...command,
+      pending: { ...command.pending, durationDays: 14 },
+    }, { selectedDate: '2026-07-16' });
+    expect(normalized.pending.durationDays).toBe(14);
   });
 
   it.each([0, -1, 1.5])('rejects invalid optional durationDays: %s', (durationDays) => {

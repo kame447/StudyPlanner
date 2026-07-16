@@ -251,12 +251,18 @@ function isPendingPlanningRange(value: unknown): boolean {
     || !hasOnlyKeys(value.scope, ['kind', 'label', 'startDate', 'endDate'])) {
     return false;
   }
-  return (value.scope.kind === 'next_week' || value.scope.kind === 'named_future_period')
-    && typeof value.scope.label === 'string'
+  const commonFieldsAreValid = typeof value.scope.label === 'string'
     && isOptionalString(value.scope.startDate)
     && isOptionalString(value.scope.endDate)
-    && isPositiveInteger(value.durationDays)
     && typeof value.sourceText === 'string';
+  if (!commonFieldsAreValid) return false;
+  if (value.scope.kind === 'next_week') {
+    return isPositiveInteger(value.durationDays);
+  }
+  if (value.scope.kind === 'named_future_period') {
+    return value.durationDays === undefined || isPositiveInteger(value.durationDays);
+  }
+  return false;
 }
 
 function isYearRange(value: unknown): boolean {
