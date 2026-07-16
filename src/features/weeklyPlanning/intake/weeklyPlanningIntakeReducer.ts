@@ -564,7 +564,15 @@ function applyDeterministicWeeklyPlanningUserTurnCore(
   if (planningRangeCommand) {
     setupCommands.push(planningRangeCommand);
   } else {
-    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(userText, context);
+    const allowBareNamedFuturePeriodAnswer = Boolean(
+      previousState?.missing.includes('planning_period')
+      || previousState?.missing.includes('planning_start_date'),
+    );
+    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(
+      userText,
+      context,
+      { allowBareNamedFuturePeriodAnswer },
+    );
     if (pendingPlanningRangeCommand) setupCommands.push(pendingPlanningRangeCommand);
   }
   const beginCommand = parseBeginWeeklyPlanningCommand(userText);

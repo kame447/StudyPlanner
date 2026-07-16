@@ -186,6 +186,38 @@ describe('weekly planning storage validation', () => {
     expectRejectedSession();
   });
 
+  it('rejects a promoted draft with an unknown planning opportunity tag', () => {
+    const candidate = behaviorAwarePreviewCandidate();
+    storeV2({
+      ...createInitialPlanningState(WEEK_START),
+      revision: 10,
+      mode: 'awaiting_approval',
+      draftBlocks: [{
+        ...validDraftBlock(),
+        behaviorMetadata: {
+          ...candidate.behaviorMetadata,
+          opportunityTags: ['not_a_planning_opportunity'],
+          compatibility: {
+            workItemSemantic: 'behavior_aware_task',
+            schedulerInputSource: 'exam_prep_request',
+            candidateSource: 'weekly_exam_prep',
+          },
+          previewMetadata: {
+            previewId: 'preview-1',
+            conversationId: 'conversation-1',
+            stateRevision: 3,
+            assumptionDependencies: [],
+            approvalEligibility: 'eligible',
+            stale: false,
+            authorizedUserId: USER_ID,
+          },
+        },
+      }],
+    });
+
+    expectRejectedSession();
+  });
+
   it('round-trips a valid behavior-aware preview with its conversation and intake state', () => {
     const state = {
       ...createInitialPlanningState(WEEK_START),

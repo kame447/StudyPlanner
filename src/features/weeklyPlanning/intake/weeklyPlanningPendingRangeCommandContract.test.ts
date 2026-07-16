@@ -135,7 +135,11 @@ describe('pending planning range command contract', () => {
     });
   });
 
-  it('does not resolve a next-week pending range with an explicit date outside its window', () => {
+  it.each([
+    '8月1日から一週間',
+    '8月1 日から一週間',
+    '９月１０ 日から一週間',
+  ])('does not reinterpret an out-of-window explicit date as a weekday: %s', (text) => {
     const context = {
       selectedDate: '2026-06-26',
       currentDateTime: '2026-06-26T12:00:00',
@@ -150,11 +154,53 @@ describe('pending planning range command contract', () => {
       endDate: '2026-07-05',
     });
 
-    const resolved = parseSetPlanningRangeCommand(
-      '8月1日から一週間',
-      context,
-      pending?.pending,
-    );
+    const resolved = parseSetPlanningRangeCommand(text, context, pending?.pending);
     expect(resolved).toBeUndefined();
+  });
+
+  it.each([
+    ['日曜から', '2026-07-05T00:00:00'],
+    ['日曜日から', '2026-07-05T00:00:00'],
+    ['月曜から', '2026-06-29T00:00:00'],
+  ])('continues to resolve a real weekday answer: %s', (text, startDateTime) => {
+    const context = {
+      selectedDate: '2026-06-26',
+      currentDateTime: '2026-06-26T12:00:00',
+    };
+    const pending = parseSetPendingPlanningRangeCommand('来週の予定を立てたい', context);
+    const resolved = parseSetPlanningRangeCommand(text, context, pending?.pending);
+    expect(resolved?.range.startDateTime).toBe(startDateTime);
+  });
+
+  it('does not treat a summer-vacation task mention as a planning range', () => {
+    expect(parseSetPendingPlanningRangeCommand(
+      '夏休みの宿題は数学ワーク10ページです',
+      { selectedDate: '2026-06-26' },
+    )).toBeUndefined();
+  });
+
+  it('prefers next week when summer vacation is explicitly negated', () => {
+    const pending = parseSetPendingPlanningRangeCommand(
+      '夏休みではなく来週の計画を立てたい',
+      { selectedDate: '2026-06-26' },
+    );
+    expect(pending?.pending.scope).toMatchObject({
+      kind: 'next_week',
+      startDate: '2026-06-29',
+      endDate: '2026-07-05',
+    });
+  });
+
+  it('accepts a bare summer-vacation answer only when the caller expects a range answer', () => {
+    const context = { selectedDate: '2026-06-26' };
+    expect(parseSetPendingPlanningRangeCommand('夏休み', context)).toBeUndefined();
+    expect(parseSetPendingPlanningRangeCommand(
+      '夏休み',
+      context,
+      { allowBareNamedFuturePeriodAnswer: true },
+    )?.pending).toEqual({
+      scope: { kind: 'named_future_period', label: '夏休み' },
+      sourceText: '夏休み',
+    });
   });
 });

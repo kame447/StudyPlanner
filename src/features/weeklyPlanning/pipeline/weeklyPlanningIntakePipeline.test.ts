@@ -2650,4 +2650,25 @@ describe('preview policy Stage 2', () => {
     expect(unresolved.state.missing).toContain('planning_start_date');
   });
 
+
+  it('keeps an existing resolved range when a later task mentions summer vacation', () => {
+    const ranged = runTurn(undefined, '今日から一週間の計画を立てたい');
+    expect(ranged.state.range).toBeDefined();
+    expect(ranged.state.pendingPlanningRange).toBeUndefined();
+
+    const taskTurn = runTurn(ranged.state, '夏休みの宿題は数学ワーク10ページです');
+    expect(taskTurn.state.range).toEqual(ranged.state.range);
+    expect(taskTurn.state.pendingPlanningRange).toBeUndefined();
+    expect(taskTurn.state.missing).not.toContain('planning_start_date');
+  });
+
+  it('keeps next week instead of a negated summer-vacation period', () => {
+    const result = runTurn(undefined, '夏休みではなく来週の計画を立てたい');
+    expect(result.state.pendingPlanningRange?.scope).toMatchObject({
+      kind: 'next_week',
+      startDate: '2026-06-29',
+      endDate: '2026-07-05',
+    });
+  });
+
 });

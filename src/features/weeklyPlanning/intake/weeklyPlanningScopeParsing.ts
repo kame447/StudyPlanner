@@ -78,6 +78,33 @@ function hasOneWeekDuration(text: string): boolean {
   return /(?:一|1)\s*週間|7\s*日間?/.test(normalizeIntakeText(text));
 }
 
+function hasPlanningRequestSignal(text: string): boolean {
+  const normalizedText = normalizeIntakeText(text);
+  return /(?:予定|計画|スケジュール)/.test(normalizedText)
+    && /(?:立て|作|組|決め|したい|お願い)/.test(normalizedText);
+}
+
+function isSummerVacationNegated(text: string): boolean {
+  return /夏休み\s*(?:ではなく|じゃなく|でなく|ではない|じゃない)/.test(
+    normalizeIntakeText(text),
+  );
+}
+
+function hasSummerVacationPlanningRangeIntent(text: string): boolean {
+  const normalizedText = normalizeIntakeText(text);
+  return !isSummerVacationNegated(normalizedText)
+    && hasPlanningRequestSignal(normalizedText)
+    && /夏休み(?:の(?:(?:一|1)\s*週間|予定|計画|スケジュール)|中|期間|に|で|から)/.test(
+      normalizedText,
+    );
+}
+
+function isBareSummerVacationRangeAnswer(text: string): boolean {
+  return /^夏休み(?:の(?:一|1)\s*週間)?(?:です|でお願いします)?$/.test(
+    normalizeIntakeText(text).trim(),
+  );
+}
+
 function parseExplicitDate(text: string, context: WeeklyPlanningIntakeContext): string | undefined {
   const match = normalizeIntakeText(text).match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*から)?/);
   if (!match) return undefined;
@@ -102,7 +129,12 @@ export function nextWeekScope(context: WeeklyPlanningIntakeContext): PendingPlan
 }
 
 function parseWeekdayStart(text: string): number | undefined {
-  const match = normalizeIntakeText(text).match(/(?:^|[^0-9])([月火水木金土日])(?:曜(?:日)?)?\s*から/);
+  const normalizedText = normalizeIntakeText(text);
+  const withoutExplicitMonthDays = normalizedText.replace(
+    /\d{1,2}\s*月\s*\d{1,2}\s*日/g,
+    '',
+  );
+  const match = withoutExplicitMonthDays.match(/([月火水木金土日])(?:曜(?:日)?)?\s*から/);
   return match ? WEEKDAY_INDEX[match[1]] : undefined;
 }
 
@@ -124,10 +156,14 @@ function resolveWeekdayInScope(
 function parsePendingPlanningRange(
   text: string,
   context: WeeklyPlanningIntakeContext,
+  options?: { allowBareNamedFuturePeriodAnswer?: boolean },
 ): NormalizedSetPendingPlanningRangeCommand | undefined {
   const normalizedText = normalizeIntakeText(text);
+  const acceptsSummerVacation = hasSummerVacationPlanningRangeIntent(normalizedText)
+    || (options?.allowBareNamedFuturePeriodAnswer === true
+      && isBareSummerVacationRangeAnswer(normalizedText));
 
-  if (/夏休み/.test(normalizedText)) {
+  if (acceptsSummerVacation) {
     const durationDays = hasOneWeekDuration(normalizedText) ? 7 : undefined;
     return {
       type: 'set_pending_planning_range',
@@ -179,20 +215,28 @@ function parseWeeklyPlanningRange(
   if (pending) {
     const durationDays = hasOneWeekDuration(normalizedText) ? 7 : pending.durationDays;
     const explicitDate = parseExplicitDate(normalizedText, context);
-    const explicitDateAllowed = Boolean(
-      explicitDate
-      && (pending.scope.kind !== 'next_week'
-        || (pending.scope.startDate
+
+    if (explicitDate) {
+      const explicitDateAllowed = pending.scope.kind !== 'next_week'
+        || Boolean(
+          pending.scope.startDate
           && pending.scope.endDate
           && explicitDate >= pending.scope.startDate
-          && explicitDate <= pending.scope.endDate)),
-    );
+          && explicitDate <= pending.scope.endDate,
+        );
+      return explicitDateAllowed && durationDays
+        ? rangeFromStartDate({
+            startDate: explicitDate,
+            durationDays,
+            sourceText: text,
+          })
+        : undefined;
+    }
+
     const weekdayIndex = parseWeekdayStart(normalizedText);
-    const startDate = explicitDateAllowed
-      ? explicitDate
-      : weekdayIndex === undefined
-        ? undefined
-        : resolveWeekdayInScope(weekdayIndex, pending.scope);
+    const startDate = weekdayIndex === undefined
+      ? undefined
+      : resolveWeekdayInScope(weekdayIndex, pending.scope);
     return startDate && durationDays
       ? rangeFromStartDate({
           startDate,
@@ -262,9 +306,10 @@ export function parseBeginWeeklyPlanningCommand(
 export function parseSetPendingPlanningRangeCommand(
   text: string,
   context: WeeklyPlanningIntakeContext,
+  options?: { allowBareNamedFuturePeriodAnswer?: boolean },
 ): NormalizedSetPendingPlanningRangeCommand | undefined {
   const range = parseWeeklyPlanningRange(text, context);
-  return range ? undefined : parsePendingPlanningRange(text, context);
+  return range ? undefined : parsePendingPlanningRange(text, context, options);
 }
 
 export function parseSetPlanningRangeCommand(
