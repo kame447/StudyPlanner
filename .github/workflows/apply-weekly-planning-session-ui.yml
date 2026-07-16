@@ -20,7 +20,18 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
       - name: Apply UI ownership changes
-        run: node scripts/apply-weekly-planning-session-ui.mjs
+        id: apply
+        continue-on-error: true
+        run: node scripts/apply-weekly-planning-session-ui.mjs > session-ui-script.log 2>&1
+      - name: Save script failure
+        if: ${{ steps.apply.outcome == 'failure' }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -f session-ui-script.log
+          git commit -m "feat: session UI script失敗内容を記録"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          exit 1
       - run: git diff --check
       - uses: actions/setup-node@v4
         with:
@@ -36,6 +47,7 @@ jobs:
       - name: Commit verified UI ownership changes
         run: |
           rm scripts/apply-weekly-planning-session-ui.mjs .github/workflows/apply-weekly-planning-session-ui.yml
+          rm -f session-ui-script.log
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
