@@ -26,8 +26,6 @@ import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
   createWeeklyPlanningPreviewDisplayBlock,
-  removeWeeklyPlanningPreviewBlock,
-  type WeeklyPlanningPreviewBlock,
 } from '../features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
 import type {
@@ -48,6 +46,7 @@ interface NaturalLanguageAssistantProps {
   subjects?: StudySubject[];
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   weeklyDraftBlocks: WeeklyPlanDraftBlock[];
+  weeklyPlanningPreviewCandidates?: WeeklyDraftCandidate[];
   weeklyPlanningMessages: WeeklyPlanningMessage[];
   weeklyPlanningIntakeState: PlanningIntakeState | null;
   weeklyPlanningWeekStartDate: string;
@@ -58,6 +57,7 @@ interface NaturalLanguageAssistantProps {
   onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
   onResetWeeklyPlanningSession: () => void;
   onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
+  onRemoveWeeklyPlanningPreviewCandidate?: (candidateId: string) => void;
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onClearWeeklyDraftBlocks?: () => void;
   onApproveWeeklyDraftBlocks?: () => Promise<void>;
@@ -226,6 +226,7 @@ export function NaturalLanguageAssistant({
   subjects = [],
   onApplyDraft,
   weeklyDraftBlocks,
+  weeklyPlanningPreviewCandidates = [],
   weeklyPlanningMessages,
   weeklyPlanningIntakeState,
   weeklyPlanningWeekStartDate,
@@ -236,6 +237,7 @@ export function NaturalLanguageAssistant({
   onAppendWeeklyPlanningMessage,
   onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
+  onRemoveWeeklyPlanningPreviewCandidate,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
   onApproveWeeklyDraftBlocks,
@@ -261,11 +263,6 @@ export function NaturalLanguageAssistant({
     'overview' | 'day'
   >('overview');
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
-  const [weeklyPlanningPreviewBlocks, setWeeklyPlanningPreviewBlocks] = useState<
-    WeeklyPlanningPreviewBlock[]
-  >([]);
-  const [weeklyPlanningPreviewCandidates, setWeeklyPlanningPreviewCandidates] =
-    useState<WeeklyDraftCandidate[]>([]);
   const runtimeInfo = getPlannerAiRuntimeInfo();
   const isWeeklyPlanningBusy = Boolean(weeklyPlanningPendingTurn || weeklyPlanningPendingApproval);
   void weeklyPlanningWeekStartDate;
@@ -299,6 +296,9 @@ export function NaturalLanguageAssistant({
   );
   const pendingWeeklyDraftBlocks = weeklyDraftBlocks.filter(
     (block) => block.status === 'draft',
+  );
+  const weeklyPlanningPreviewBlocks = createWeeklyPlanningPreviewBlocks(
+    weeklyPlanningPreviewCandidates,
   );
   const localWeeklyPlanningPreviewDraftBlocks = weeklyPlanningPreviewBlocks.map(
     (block) => createWeeklyPlanningPreviewDisplayBlock(block, userId),
@@ -382,8 +382,6 @@ export function NaturalLanguageAssistant({
 
   function resetWeeklyPlanningSession() {
     onResetWeeklyPlanningSession();
-    setWeeklyPlanningPreviewBlocks([]);
-    setWeeklyPlanningPreviewCandidates([]);
     setSelectedWeeklyDraftDate('');
     setWeeklyDraftPreviewMode('overview');
     setError('');
@@ -393,8 +391,6 @@ export function NaturalLanguageAssistant({
 
   function clearWeeklyPlanningDraftsOnly() {
     onClearWeeklyDraftBlocks?.();
-    setWeeklyPlanningPreviewBlocks([]);
-    setWeeklyPlanningPreviewCandidates([]);
     setSelectedWeeklyDraftDate('');
     setWeeklyDraftPreviewMode('overview');
     setError('');
@@ -402,18 +398,11 @@ export function NaturalLanguageAssistant({
   }
 
   function removeLocalWeeklyPlanningPreviewBlock(blockId: string) {
-    const nextPreview = removeWeeklyPlanningPreviewBlock({
-      previewBlocks: weeklyPlanningPreviewBlocks,
-      candidates: weeklyPlanningPreviewCandidates,
-      blockId,
-    });
-    const nextDates = Array.from(
-      new Set(nextPreview.previewBlocks.map((block) => block.date)),
-    ).sort();
+    onRemoveWeeklyPlanningPreviewCandidate?.(blockId);
+    const nextBlocks = weeklyPlanningPreviewBlocks.filter((block) => block.id !== blockId);
+    const nextDates = Array.from(new Set(nextBlocks.map((block) => block.date))).sort();
 
-    setWeeklyPlanningPreviewBlocks(nextPreview.previewBlocks);
-    setWeeklyPlanningPreviewCandidates(nextPreview.candidates);
-    if (nextPreview.previewBlocks.length === 0) {
+    if (nextBlocks.length === 0) {
       setSelectedWeeklyDraftDate('');
       setWeeklyDraftPreviewMode('overview');
     } else if (!nextDates.includes(selectedWeeklyDraftDate)) {
@@ -501,10 +490,7 @@ export function NaturalLanguageAssistant({
     try {
       const result = await onSubmitWeeklyPlanningTurn(trimmedText);
       if (!result.accepted) return;
-      const nextPreviewBlocks = createWeeklyPlanningPreviewBlocks(result.draftCandidates);
-      setWeeklyPlanningPreviewCandidates(result.draftCandidates);
-      setWeeklyPlanningPreviewBlocks(nextPreviewBlocks);
-      if (nextPreviewBlocks.length > 0) {
+      if (result.draftCandidates.length > 0) {
         setWeeklyDraftPreviewMode('overview');
         setSelectedWeeklyDraftDate('');
       }
@@ -529,8 +515,6 @@ export function NaturalLanguageAssistant({
     }
 
     onCreateWeeklyDraftBlocks(blocks);
-    setWeeklyPlanningPreviewCandidates([]);
-    setWeeklyPlanningPreviewBlocks([]);
     setSelectedWeeklyDraftDate('');
     setWeeklyDraftPreviewMode('overview');
     setError('');
@@ -679,8 +663,6 @@ export function NaturalLanguageAssistant({
           className={aiInputMode === 'chat' ? 'segment active' : 'segment'}
           onClick={() => {
             setAiInputMode('chat');
-            setWeeklyPlanningPreviewBlocks([]);
-            setWeeklyPlanningPreviewCandidates([]);
             setError('');
             setStatus('');
             setText('');
@@ -697,8 +679,6 @@ export function NaturalLanguageAssistant({
             setStatus('');
             setSuggestions([]);
             setEditTargetPlanId('');
-            setWeeklyPlanningPreviewBlocks([]);
-            setWeeklyPlanningPreviewCandidates([]);
             setSelectedWeeklyDraftDate('');
             setWeeklyDraftPreviewMode('overview');
             setText('');

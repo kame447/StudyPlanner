@@ -17,6 +17,7 @@ export function createInitialPlanningState(weekStartDate: string): PlanningState
     revision: 0,
     mode: 'idle',
     draftBlocks: [],
+    previewCandidates: [],
     messages: [],
     updatedAt: nowIso(),
   };
@@ -131,7 +132,9 @@ export function weeklyPlanningReducer(
       return withMutation(state, {
         ...state,
         ...appendAssistantMessage(state, action.assistantMessage),
+        mode: (action.draftCandidates?.length ?? 0) > 0 ? 'draft_created' : state.mode,
         intakeState: action.intakeState,
+        previewCandidates: action.draftCandidates ?? [],
         pendingTurn: undefined,
       });
 
@@ -194,6 +197,7 @@ export function weeklyPlanningReducer(
         ...state,
         mode: 'awaiting_approval',
         draftBlocks: [...getPendingDraftBlocks(state.draftBlocks), ...action.blocks],
+        previewCandidates: [],
       });
     }
 
@@ -218,12 +222,34 @@ export function weeklyPlanningReducer(
       });
     }
 
+    case 'remove_preview_candidate': {
+      const currentCandidates = state.previewCandidates ?? [];
+      const nextCandidates = currentCandidates.filter(
+        (candidate) => candidate.stableKey !== action.candidateId,
+      );
+      if (nextCandidates.length === currentCandidates.length) return state;
+      return withMutation(state, {
+        ...state,
+        previewCandidates: nextCandidates,
+        mode: nextCandidates.length > 0
+          ? 'draft_created'
+          : state.draftBlocks.length > 0
+            ? 'awaiting_approval'
+            : state.messages.length > 0 || state.intakeState
+              ? 'collecting_tasks'
+              : 'idle',
+      });
+    }
+
     case 'clear_draft_blocks':
-      if (state.draftBlocks.length === 0) return state;
+      if (state.draftBlocks.length === 0 && (state.previewCandidates?.length ?? 0) === 0) {
+        return state;
+      }
       return withMutation(state, {
         ...state,
         draftBlocks: [],
-        mode: 'idle',
+        previewCandidates: [],
+        mode: state.messages.length > 0 || state.intakeState ? 'collecting_tasks' : 'idle',
       });
 
     case 'mark_draft_block_user_edited': {
@@ -255,7 +281,11 @@ export function weeklyPlanningReducer(
     case 'clear_conversation':
       return withMutation(state, {
         ...state,
-        mode: state.draftBlocks.length > 0 ? 'awaiting_approval' : 'idle',
+        mode: state.draftBlocks.length > 0
+          ? 'awaiting_approval'
+          : (state.previewCandidates?.length ?? 0) > 0
+            ? 'draft_created'
+            : 'idle',
         messages: [],
         intakeState: undefined,
         pendingTurn: undefined,
@@ -267,6 +297,7 @@ export function weeklyPlanningReducer(
         ...state,
         mode: 'idle',
         draftBlocks: [],
+        previewCandidates: [],
         messages: [],
         intakeState: undefined,
         pendingTurn: undefined,

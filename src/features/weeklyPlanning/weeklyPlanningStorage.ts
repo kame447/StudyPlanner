@@ -84,6 +84,7 @@ function isPlanningState(value: unknown): value is PlanningState {
     && MODES.has(String(value.mode))
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.every(isDraftBlock)
+    && (value.previewCandidates === undefined || Array.isArray(value.previewCandidates))
     && Array.isArray(value.messages)
     && value.messages.every(isMessage)
     && (value.intakeState === undefined || isPlanningIntakeState(value.intakeState))
@@ -133,8 +134,10 @@ export function loadWeeklyPlanningState(
       ...storedState,
       weekStartDate,
       pendingTurn: undefined,
-      pendingApproval: undefined,
-      draftBlocks: storedState.draftBlocks.filter((block) => block.status === 'draft'),
+       pendingApproval: undefined,
+       draftBlocks: storedState.draftBlocks.filter((block) => block.status === 'draft'),
+       previewCandidates: storedState.previewCandidates ?? [],
+
     };
   } catch {
     return createInitialPlanningState(weekStartDate);
@@ -148,8 +151,10 @@ export function saveWeeklyPlanningState(userId: string, state: PlanningState): v
   try {
     const key = getStorageKey(userId, state.weekStartDate);
     if (
-      serializableState.draftBlocks.length === 0
-      && serializableState.messages.length === 0
+       serializableState.draftBlocks.length === 0
+       && (serializableState.previewCandidates?.length ?? 0) === 0
+       && serializableState.messages.length === 0
+
       && !serializableState.intakeState
     ) {
       window.localStorage.removeItem(key);

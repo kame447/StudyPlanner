@@ -1,5 +1,6 @@
 import type { PlanType } from '../../types/domain';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PreviewAssumptionDependency,
   WeeklyPreviewMetadata,
@@ -81,6 +82,7 @@ export interface PlanningState {
   revision: number;
   mode: WeeklyPlanningMode;
   draftBlocks: WeeklyPlanDraftBlock[];
+  previewCandidates?: WeeklyDraftCandidate[];
   messages: WeeklyPlanningMessage[];
   intakeState?: PlanningIntakeState;
   pendingTurn?: WeeklyPlanningPendingTurn;
@@ -95,6 +97,7 @@ export type WeeklyPlanningAction =
   | { type: 'remove_draft_block'; blockId: string }
   | { type: 'remove_draft_blocks'; blockIds: string[] }
   | { type: 'clear_draft_blocks' }
+  | { type: 'remove_preview_candidate'; candidateId: string }
   | { type: 'mark_draft_block_user_edited'; blockId: string }
   | { type: 'append_message'; message: WeeklyPlanningMessage }
   | { type: 'set_intake_state'; state: PlanningIntakeState | null }
@@ -111,6 +114,7 @@ export type WeeklyPlanningAction =
       pending: WeeklyPlanningPendingTurn;
       intakeState: PlanningIntakeState;
       assistantMessage: WeeklyPlanningMessage;
+      draftCandidates?: WeeklyDraftCandidate[];
     }
   | {
       type: 'fail_turn';

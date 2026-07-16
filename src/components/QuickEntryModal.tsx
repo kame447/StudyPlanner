@@ -23,6 +23,7 @@ import type {
   WeeklyPlanningPendingTurn,
 } from '../features/weeklyPlanning/types';
 import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
+import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
 import { resolveInitialQuickEntryInputMethod } from './weeklyPlanningConversationMode';
 import type {
   Actual,
@@ -51,6 +52,7 @@ interface QuickEntryModalProps {
   materials: StudyMaterial[];
   subjects: StudySubject[];
   weeklyDraftBlocks: WeeklyPlanDraftBlock[];
+  weeklyPlanningPreviewCandidates?: WeeklyDraftCandidate[];
   weeklyPlanningMessages: WeeklyPlanningMessage[];
   weeklyPlanningIntakeState: PlanningIntakeState | null;
   weeklyPlanningWeekStartDate: string;
@@ -61,6 +63,7 @@ interface QuickEntryModalProps {
   onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
   onResetWeeklyPlanningSession: () => void;
   onCreateWeeklyDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
+  onRemoveWeeklyPlanningPreviewCandidate?: (candidateId: string) => void;
   onRemoveWeeklyDraftBlock: (blockId: string) => void;
   onClearWeeklyDraftBlocks: () => void;
   onApproveWeeklyDraftBlocks: () => Promise<void>;
@@ -118,6 +121,7 @@ export function QuickEntryModal({
   materials,
   subjects,
   weeklyDraftBlocks,
+  weeklyPlanningPreviewCandidates = [],
   weeklyPlanningMessages,
   weeklyPlanningIntakeState,
   weeklyPlanningWeekStartDate,
@@ -128,6 +132,7 @@ export function QuickEntryModal({
   onAppendWeeklyPlanningMessage,
   onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
+  onRemoveWeeklyPlanningPreviewCandidate,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
   onApproveWeeklyDraftBlocks,
@@ -621,8 +626,10 @@ export function QuickEntryModal({
                 materials={availableMaterials}
                 subjects={availableSubjects}
                 onApplyDraft={onSavePlan}
-                weeklyDraftBlocks={weeklyDraftBlocks}
-                weeklyPlanningMessages={weeklyPlanningMessages}
+                 weeklyDraftBlocks={weeklyDraftBlocks}
+                 weeklyPlanningPreviewCandidates={weeklyPlanningPreviewCandidates}
+                 weeklyPlanningMessages={weeklyPlanningMessages}
+
                  weeklyPlanningIntakeState={weeklyPlanningIntakeState}
                  weeklyPlanningWeekStartDate={weeklyPlanningWeekStartDate}
                  weeklyPlanningRevision={weeklyPlanningRevision}
@@ -631,8 +638,10 @@ export function QuickEntryModal({
                  onSubmitWeeklyPlanningTurn={onSubmitWeeklyPlanningTurn}
                  onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
                  onResetWeeklyPlanningSession={onResetWeeklyPlanningSession}
-                 onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
-                onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+                  onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
+                 onRemoveWeeklyPlanningPreviewCandidate={onRemoveWeeklyPlanningPreviewCandidate}
+                 onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+
                 onClearWeeklyDraftBlocks={onClearWeeklyDraftBlocks}
                 onApproveWeeklyDraftBlocks={onApproveWeeklyDraftBlocks}
                 embedded

@@ -242,6 +242,7 @@ export default function App() {
         pending,
         intakeState: result.state,
         assistantMessage,
+        draftCandidates: result.draftCandidates,
       });
       const accepted = committed.messages.some((message) => message.id === assistantMessage.id)
         && committed.pendingTurn === undefined
@@ -615,8 +616,10 @@ export default function App() {
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
-            weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-            weeklyPlanningMessages={planningState.messages}
+             weeklyDraftBlocks={pendingWeeklyDraftBlocks}
+             weeklyPlanningPreviewCandidates={planningState.previewCandidates ?? []}
+             weeklyPlanningMessages={planningState.messages}
+
               weeklyPlanningIntakeState={planningState.intakeState ?? null}
               weeklyPlanningWeekStartDate={planningState.weekStartDate}
               weeklyPlanningRevision={planningState.revision}
@@ -629,8 +632,12 @@ export default function App() {
               onResetWeeklyPlanningSession={() =>
                 dispatchPlanningAction({ type: 'reset_session' })
               }
-              onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
-            onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+               onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
+             onRemoveWeeklyPlanningPreviewCandidate={(candidateId) =>
+               dispatchPlanningAction({ type: 'remove_preview_candidate', candidateId })
+             }
+             onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+
             onClearWeeklyDraftBlocks={() => dispatchPlanningAction({ type: 'clear_draft_blocks' })}
             onApproveWeeklyDraftBlocks={approveWeeklyDraftBlocks}
             onClose={() => setIsQuickEntryOpen(false)}
