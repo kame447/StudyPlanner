@@ -59,9 +59,12 @@ export interface InterpreterStateSummary {
     intent: string;
   }>;
   pendingPlanningRange?: {
+    kind: 'next_week' | 'named_future_period';
     label: string;
-    startDate?: string;
-    endDate?: string;
+    windowStartDate?: string;
+    windowEndDate?: string;
+    planningStartDate?: string;
+    durationDays?: number;
   };
   availableConstraintSources?: ConstraintSourceAvailability;
   pendingAssumptionProposals?: InterpreterPendingAssumptionSummary[];
