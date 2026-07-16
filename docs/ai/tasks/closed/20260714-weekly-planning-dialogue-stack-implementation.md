@@ -1,9 +1,9 @@
 # weeklyPlanning dialogue stack implementation
 
-Status: **implemented / local verification pending**
+Status: **implemented modules / verification pending**
 Date: 2026-07-14
-Branch: `feat/weekly-planning-dialogue-stack-completion`
-Parent branch: `feat/weekly-planning-behavior-aware-dialogue`
+Original branch: `feat/weekly-planning-dialogue-stack-completion`
+Current branch containing the modules: `main`
 
 ## Consolidated tasks
 
@@ -14,12 +14,12 @@ Parent branch: `feat/weekly-planning-behavior-aware-dialogue`
 - DA3b feasibility consultation
 - DA3c conversation evaluation
 
-## Implemented production contracts
+## Implemented modules and contracts
 
 ### DA1b
 
 - typed assumption accept / reject / modify commands
-- closed validation against current conversation, revision and pending status
+- closed validation against current conversation、revision、pending status
 - immutable proposal history with accepted / rejected / superseded / expired
 - `resolvedBy` audit references
 - independent correction envelopes
@@ -57,6 +57,8 @@ Parent branch: `feat/weekly-planning-behavior-aware-dialogue`
 - logical Tab order contract
 - retry with a new request/turn identity
 
+DA2についてはmoduleとcontractの実装を記録する。実際の週間計画UI entrypointがこれらを利用しているかは、本記録だけでは接続済みと判定しない。`20260714-weekly-planning-dialogue-stack-verification.md`で静的接続とbrowser behaviorを確認する。
+
 ### DA3a
 
 - typed relative constraints and anchors
@@ -83,7 +85,7 @@ Parent branch: `feat/weekly-planning-behavior-aware-dialogue`
 - duplicate / missing / unknown ID validation
 - strict contract and mentor rubric separation
 - redacted replay helper
-- pass/fail, fallback, stale, preview, duplicate, retry and latency metrics
+- pass/fail、fallback、stale、preview、duplicate、retry、latency metrics
 - fixed-seed bounded property tests
 
 ## Added test layers
@@ -100,14 +102,25 @@ Parent branch: `feat/weekly-planning-behavior-aware-dialogue`
 
 ## Safety boundaries retained
 
-- AI does not apply state, scheduler or save mutations directly.
+- AI does not apply state、scheduler、save mutations directly.
 - Assumption and correction outputs are validated before deterministic application.
 - Preview remains unsaved until explicit UI approval.
 - Stale and pending-assumption approvals do not start repository writes.
-- Existing plans, timetable, buffers and hard constraints remain authoritative.
+- Existing plans、timetable、buffers、hard constraints remain authoritative.
 - Relative constraints do not fabricate availability.
 - Evaluation fixtures redact private prompt and credential-like data.
 
 ## Verification status
 
-GitHub-side static review is complete. Local execution has not yet been performed for this stack. The root queue contains one verification-only task. Do not mark this record fully verified until targeted tests, TypeScript, build, full tests and manual/browser checks pass.
+GitHub-side static review of the implementation branch was completed. The modules are now present on`main`。
+
+次は別々に判定する。
+
+```text
+module implemented
+automated verification passed
+production connected
+browser verified
+```
+
+本記録はmodule implementationのcompletion recordであり、DA2のproduction entrypoint connectionやbrowser verificationを保証しない。検証結果はrootのverification taskで更新し、失敗修正は別taskへ分離する。
