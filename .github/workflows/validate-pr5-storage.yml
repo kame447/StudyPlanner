@@ -9,6 +9,9 @@ on:
       - synchronize
       - reopened
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     if: github.actor != 'github-actions[bot]'
@@ -23,4 +26,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:run -- src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx
-      - run: npm run build
+      - run: |
+          git config user.name "studyplanner-fix-bot"
+          git config user.email "studyplanner-fix-bot@users.noreply.github.com"
+          set +e
+          npm run build > /tmp/pr5-storage-build.log 2>&1
+          status=$?
+          cat /tmp/pr5-storage-build.log
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/pr5-storage-build.log docs/ai/tasks/20260716-weekly-planning-pr5-storage-build-error.log
+            git add docs/ai/tasks/20260716-weekly-planning-pr5-storage-build-error.log
+            git commit -m "feat: storage build失敗ログを保存"
+            git push origin HEAD:agent/weekly-planning-conversation-hardening
+            exit "$status"
+          fi
