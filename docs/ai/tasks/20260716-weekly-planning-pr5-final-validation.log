@@ -1,5 +1,0 @@
-diff whitespace: passed
- Test Files  104 passed | 1 skipped (105)
-      Tests  1003 passed | 13 skipped | 5 todo (1021)
-   Duration  47.47s (transform 2.86s, setup 0ms, collect 15.09s, tests 5.63s, environment 37ms, prepare 11.88s)
-production build: passed
