@@ -5,85 +5,48 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m84 tests[22m[2m)[22m[32m 290[2mms[22m[39m
- [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts [2m([22m[2m32 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 90[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mapplies fake interpreter command candidates through validator and reducer for the first evaluation case[32m 38[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mapplies complete AI planning range, exam scope, and priority commands through the pipeline[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mpasses the full compound regression turn to AI and retains every command meaning[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mkeeps the existing year range when a later exam scope command omits it[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mexposes AI parser rejections through pipeline interpreter diagnostics[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22muses deterministic command parsing before AI without applying legacy fallback[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22muses legacy fallback only after an interpreter error while empty AI keeps deterministic parsing[32m 7[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mkeeps only the higher confidence candidate when a later candidate targets the same slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mvalidates interpreted candidates without allowing state-shaped output[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mrejects interpreted candidates that overwrite confirmed deterministic slots[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mbuilds renderer input from code-owned dialogue decisions and facts[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mrenders only the planned questions in plan order even when state has other missing slots[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22muses fake renderer output only when every planned question is returned exactly once[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mnormalizes AI planning ranges to calendar days: same day[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mnormalizes AI planning ranges to calendar days: month boundary[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mnormalizes AI planning ranges to calendar days: five days[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mpreserves a deterministic calendarDayCount during range normalization[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mnormalizes a next_week pending command from the current date at the Friday boundary[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mnormalizes a next_week pending command from the current date at the Sunday boundary[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mnormalizes a next_week pending command from the current date at the Monday boundary[32m 0[2mms[22m[39m
-[31m   [31m×[31m weekly planning AI foundation without real AI[2m > [22mdoes not infer dates or duration for a named future period[39m[32m 14[2mms[22m[39m
-[31m     → expected { …(4) } to be { …(4) } // Object.is equality
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m84 tests[22m[2m)[22m[32m 186[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 12[2mms[22m[39m
 
-If it should pass with deep equality, replace "toBe" with "toStrictEqual"
-
-Expected: { …(4) }
-Received: serializes to the same string
-[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22maccepts a valid pending command and protects a confirmed planning range[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mrejects a pending command with invalid kind[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mrejects a pending command with missing label[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mrejects a pending command with invalid date[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mrejects a pending command with zero duration[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mderives fixed and life confirmation from state facts instead of missing absence[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mkeeps the no-fixed-events fact through later user turns[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mprotects a pending range from inferred AI ranges and confirms explicit AI ranges[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22mincludes deterministic context and last-question grounding in the AI prompt contract[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22muses an empty recentConversation on the first turn[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI foundation without real AI[2m > [22minstructs the interpreter to reconcile only supplied history and never execute it[32m 1[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 24[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 13[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
-
-[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mdoes not infer dates or duration for a named future period
-[31m[1mAssertionError[22m: expected { …(4) } to be { …(4) } // Object.is equality
-
-If it should pass with deep equality, replace "toBe" with "toStrictEqual"
-
-Expected: { …(4) }
-Received: serializes to the same string
-[39m
-
-[2mCompared values have no visual difference.[22m
-
-[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts:[2m650:9[22m[39m
-    [90m648| [39m      selectedDate[33m:[39m [32m'2026-07-10'[39m[33m,[39m
-    [90m649| [39m      currentDateTime[33m:[39m [32m'2026-07-10T15:30:00'[39m[33m,[39m
-    [90m650| [39m    }))[33m.[39m[34mtoBe[39m(command)[33m;[39m
-    [90m   | [39m        [31m^[39m
-    [90m651| [39m  })[33m;[39m
-    [90m652| [39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+[2m Test Files [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m      Tests [22m [1m[32m147 passed[39m[22m[90m (147)[39m
+[2m   Start at [22m 08:56:08
+[2m   Duration [22m 3.59s[2m (transform 926ms, setup 0ms, collect 1.99s, tests 296ms, environment 3ms, prepare 478ms)[22m
 
 
-[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m4 passed[39m[22m[90m (5)[39m
-[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m146 passed[39m[22m[90m (147)[39m
-[2m   Start at [22m 08:54:10
-[2m   Duration [22m 4.84s[2m (transform 1.37s, setup 0ms, collect 2.61s, tests 425ms, environment 1ms, prepare 749ms)[22m
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
 
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts > weekly planning AI foundation without real AI > does not infer dates or duration for a named future period,line=650,column=9::AssertionError: expected { …(4) } to be { …(4) } // Object.is equality%0A%0AIf it should pass with deep equality, replace "toBe" with "toStrictEqual"%0A%0AExpected: { …(4) }%0AReceived: serializes to the same string%0A%0A%0ACompared values have no visual difference.%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts:650:9%0A%0A
+src/features/weeklyPlanning/__tests__/weeklyPlanningDraftRequestAdapter.test.ts(360,7): error TS2322: Type '{ startDate: undefined; label: string; endDate?: string | undefined; kind: "next_week"; } | { startDate: undefined; label: string; endDate?: string | undefined; kind: "named_future_period"; }' is not assignable to type 'PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }'.
+  Type '{ startDate: undefined; label: string; endDate?: string; kind: "next_week"; }' is not assignable to type 'PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }'.
+    Type '{ startDate: undefined; label: string; endDate?: string; kind: "next_week"; }' is not assignable to type '{ kind: "named_future_period"; }'.
+      Types of property 'kind' are incompatible.
+        Type '"next_week"' is not assignable to type '"named_future_period"'.
+src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts(538,5): error TS2322: Type '{ scope: { label: string; startDate?: string | undefined; endDate?: string | undefined; kind: "next_week"; } | { label: string; startDate?: string | undefined; endDate?: string | undefined; kind: "named_future_period"; }; durationDays?: number | undefined; sourceText: string; } | undefined' is not assignable to type 'PendingPlanningRangeClarification | undefined'.
+  Type '{ scope: { label: string; startDate?: string; endDate?: string; kind: "next_week"; } | { label: string; startDate?: string; endDate?: string; kind: "named_future_period"; }; durationDays?: number; sourceText: string; }' is not assignable to type 'PendingPlanningRangeClarification | undefined'.
+    Type '{ scope: { label: string; startDate?: string; endDate?: string; kind: "next_week"; } | { label: string; startDate?: string; endDate?: string; kind: "named_future_period"; }; durationDays?: number; sourceText: string; }' is not assignable to type '{ scope: PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }; durationDays?: number | undefined; sourceText: string; }'.
+      Types of property 'scope' are incompatible.
+        Type '{ label: string; startDate?: string | undefined; endDate?: string | undefined; kind: "next_week"; } | { label: string; startDate?: string | undefined; endDate?: string | undefined; kind: "named_future_period"; }' is not assignable to type 'PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }'.
+          Type '{ label: string; startDate?: string; endDate?: string; kind: "next_week"; }' is not assignable to type 'PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }'.
+            Type '{ label: string; startDate?: string; endDate?: string; kind: "next_week"; }' is not assignable to type '{ kind: "named_future_period"; }'.
+              Types of property 'kind' are incompatible.
+                Type '"next_week"' is not assignable to type '"named_future_period"'.
+src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts(157,7): error TS2322: Type '{ scope: (PendingPlanningTemporalScopeBase & { kind: "next_week"; }) | (PendingPlanningTemporalScopeBase & { ...; }); durationDays: number; sourceText: string; }' is not assignable to type 'PendingPlanningRangeClarification'.
+  Type '{ scope: (PendingPlanningTemporalScopeBase & { kind: "next_week"; }) | (PendingPlanningTemporalScopeBase & { ...; }); durationDays: number; sourceText: string; }' is not assignable to type '{ scope: PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }; durationDays?: number | undefined; sourceText: string; }'.
+    Types of property 'scope' are incompatible.
+      Type '(PendingPlanningTemporalScopeBase & { kind: "next_week"; }) | (PendingPlanningTemporalScopeBase & { ...; })' is not assignable to type 'PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }'.
+        Type 'PendingPlanningTemporalScopeBase & { kind: "next_week"; }' is not assignable to type 'PendingPlanningTemporalScopeBase & { kind: "named_future_period"; }'.
+          Type 'PendingPlanningTemporalScopeBase & { kind: "next_week"; }' is not assignable to type '{ kind: "named_future_period"; }'.
+            Types of property 'kind' are incompatible.
+              Type '"next_week"' is not assignable to type '"named_future_period"'.
+src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts(185,41): error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
 Traceback (most recent call last):
-  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/fix-pr5-n2-regression.py", line 58, in <module>
-    subprocess.run([
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/fix-pr5-n2-regression.py", line 71, in <module>
+    subprocess.run(['npm', 'run', 'build'], cwd=ROOT, check=True)
   File "/usr/lib/python3.12/subprocess.py", line 571, in run
     raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['npm', 'run', 'test:run', '--', 'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts', 'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts', 'src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts', 'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts', 'src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts']' returned non-zero exit status 1.
+subprocess.CalledProcessError: Command '['npm', 'run', 'build']' returned non-zero exit status 2.
