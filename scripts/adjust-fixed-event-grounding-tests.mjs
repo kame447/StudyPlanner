@@ -7,10 +7,16 @@ function replace(path, before, after) {
   writeFileSync(path, source.replace(before, after), 'utf8');
 }
 
+const plannerTestPath = 'src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts';
 replace(
-  'src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts',
+  plannerTestPath,
   `    const value = rangeOnlyState();\n    value.missing = ['fixed_events'];`,
   `    const value = state(['英語ワークを進めたい']);\n    value.fixedEventsDeclaredNone = undefined;\n    value.missing = ['fixed_events'];`,
+);
+replace(
+  plannerTestPath,
+  `    const snapshot = createPlanningHypothesisSnapshot({ state: value });\n    const allowedActions = createAllowedDialogueActions(snapshot);\n    const client: OpenAiCompatibleClient = {\n      createChatCompletion: vi.fn(async () => JSON.stringify({`,
+  `    const snapshot = createPlanningHypothesisSnapshot({ state: value });\n    const allowedActions = [{\n      actionId: 'ask-required-fixed-events',\n      kind: 'ask_required_fact' as const,\n      topicId: 'availability-basis',\n      sourceFactRefs: [],\n      allowedProposalRefs: [],\n      allowedOptionIds: [],\n      maxItems: 1,\n      displayHint: 'availability-basis',\n    }];\n    const client: OpenAiCompatibleClient = {\n      createChatCompletion: vi.fn(async () => JSON.stringify({`,
 );
 
 replace(
