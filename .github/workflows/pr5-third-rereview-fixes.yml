@@ -30,12 +30,28 @@ jobs:
         run: node scripts/apply-pr5-third-rereview-fixes.mjs
 
       - name: Run focused tests
+        id: focused
+        continue-on-error: true
         run: >-
           npm run test:run --
           src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts
           src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts
           src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts
           src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx
+          > focused-tests.log 2>&1
+
+      - name: Upload focused test log
+        if: steps.focused.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr5-third-rereview-focused-log
+          path: focused-tests.log
+
+      - name: Report focused test failure
+        if: steps.focused.outcome == 'failure'
+        run: |
+          tail -n 160 focused-tests.log
+          exit 1
 
       - name: Run weekly planning suite
         run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx src/components/weeklyPlanningConversationMode.test.ts
