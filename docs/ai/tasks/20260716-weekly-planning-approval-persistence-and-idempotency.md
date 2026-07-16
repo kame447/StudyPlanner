@@ -37,7 +37,7 @@ approval operationをserver-sideの永続境界でclaimし、partial failure、c
 ## 6. 受け入れ条件
 
 - staleまたはpending-assumption previewではoperation claimを作らない。
--同じ`userId + sourceDraftBlockId`を複数端末から承認してもplanは一件だけ保存される。
+- 同じ`userId + sourceDraftBlockId`を複数端末から承認してもplanは一件だけ保存される。
 - partial failure後は未保存itemだけをretryする。
 - storage消去後も重複保存を防止する。
 - transaction failureとrepository failureを区別して再試行できる。
