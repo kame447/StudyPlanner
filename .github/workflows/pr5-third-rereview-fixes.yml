@@ -27,7 +27,9 @@ jobs:
         run: npm ci
 
       - name: Apply source and test fixes
-        run: node scripts/apply-pr5-third-rereview-fixes.mjs
+        run: |
+          node scripts/apply-pr5-third-rereview-fixes.mjs
+          node scripts/apply-pr5-third-rereview-followup.mjs
 
       - name: Run focused tests
         id: focused
@@ -66,7 +68,7 @@ jobs:
         run: git diff --check
 
       - name: Remove temporary automation files
-        run: rm scripts/apply-pr5-third-rereview-fixes.mjs .github/workflows/pr5-third-rereview-fixes.yml
+        run: rm scripts/apply-pr5-third-rereview-fixes.mjs scripts/apply-pr5-third-rereview-followup.mjs .github/workflows/pr5-third-rereview-fixes.yml
 
       - name: Commit verified changes
         env:
@@ -82,6 +84,7 @@ jobs:
             src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts \
             src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx \
             scripts/apply-pr5-third-rereview-fixes.mjs \
+            scripts/apply-pr5-third-rereview-followup.mjs \
             .github/workflows/pr5-third-rereview-fixes.yml
           git commit -m "feat: PR5三回目再レビュー指摘を修正"
           git push origin HEAD:agent/weekly-planning-conversation-hardening
