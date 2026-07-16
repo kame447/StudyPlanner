@@ -1,29 +1,6 @@
-
-> studyplanner-app@0.1.0 test:run
-> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts
-
-
-[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
-
- [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 19[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
-
-[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
-[2m      Tests [22m [1m[32m19 passed[39m[22m[90m (19)[39m
-[2m   Start at [22m 08:22:41
-[2m   Duration [22m 1.15s[2m (transform 376ms, setup 0ms, collect 547ms, tests 23ms, environment 0ms, prepare 222ms)[22m
-
-
-> studyplanner-app@0.1.0 build
-> tsc --noEmit && vite build --config vite.config.mjs
-
-src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts(455,9): error TS2322: Type 'PendingPlanningRangeCommandPayload' is not assignable to type 'PendingPlanningRangeClarification'.
-  Types of property 'durationDays' are incompatible.
-    Type 'number | undefined' is not assignable to type 'number'.
-      Type 'undefined' is not assignable to type 'number'.
 Traceback (most recent call last):
-  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-n2-duration-contract.py", line 110, in <module>
-    subprocess.run(['npm', 'run', 'build'], cwd=ROOT, check=True)
-  File "/usr/lib/python3.12/subprocess.py", line 571, in run
-    raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['npm', 'run', 'build']' returned non-zero exit status 2.
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-n2-duration-contract.py", line 108, in <module>
+    replace_once(
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-n2-duration-contract.py", line 12, in replace_once
+    raise RuntimeError(f'{path}: replacement count={text.count(old)}')
+RuntimeError: src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts: replacement count=2
