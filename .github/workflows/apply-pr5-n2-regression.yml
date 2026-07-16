@@ -1,0 +1,32 @@
+name: apply-pr5-n2-regression
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: |
+          git config user.name "studyplanner-fix-bot"
+          git config user.email "studyplanner-fix-bot@users.noreply.github.com"
+          python .github/agent-scripts/fix-pr5-n2-regression.py
