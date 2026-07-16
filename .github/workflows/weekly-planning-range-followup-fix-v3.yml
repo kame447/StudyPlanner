@@ -1,0 +1,393 @@
+name: Apply and verify weekly planning range follow-up fixes v3
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-conversation-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Apply implementation and tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent, indent
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, got {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def replace_region(path: Path, start_marker: str, end_marker: str, replacement: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+
+          scope = Path('src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts')
+          reducer = Path('src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts')
+          contract = Path('src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts')
+          storage_test = Path('src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts')
+
+          helper_anchor = 'function hasSummerVacationPlanningRangeIntent(text: string): boolean {'
+          helper = dedent('''
+          function hasNextWeekPlanningRangeIntent(text: string): boolean {
+            const normalizedText = normalizeIntakeText(text);
+            return /来週.*(?:計画|予定|スケジュール)/.test(normalizedText)
+              || (isSummerVacationNegated(normalizedText)
+                && /来週(?:\\s*(?:に|へ))?\\s*(?:したい|する|します|でお願いします)/.test(
+                  normalizedText,
+                ));
+          }
+
+          ''').lstrip('\n')
+          scope_text = scope.read_text(encoding='utf-8')
+          if helper_anchor not in scope_text or 'function hasNextWeekPlanningRangeIntent' in scope_text:
+              raise RuntimeError('unexpected next-week helper state')
+          scope.write_text(scope_text.replace(helper_anchor, helper + helper_anchor, 1), encoding='utf-8')
+
+          pending_function = dedent('''
+          function parsePendingPlanningRange(
+            text: string,
+            context: WeeklyPlanningIntakeContext,
+            options?: {
+              allowBareNamedFuturePeriodAnswer?: boolean;
+              pending?: PendingPlanningRangeClarification;
+            },
+          ): NormalizedSetPendingPlanningRangeCommand | undefined {
+            const normalizedText = normalizeIntakeText(text);
+            const currentPending = options?.pending;
+
+            if (currentPending) {
+              const explicitDate = parseExplicitDate(normalizedText, context);
+              if (explicitDate) {
+                const explicitDateAllowed = currentPending.scope.kind !== 'next_week'
+                  || Boolean(
+                    currentPending.scope.startDate
+                    && currentPending.scope.endDate
+                    && explicitDate >= currentPending.scope.startDate
+                    && explicitDate <= currentPending.scope.endDate,
+                  );
+
+                if (!explicitDateAllowed) {
+                  return undefined;
+                }
+
+                if (currentPending.durationDays === undefined) {
+                  return {
+                    type: 'set_pending_planning_range',
+                    pending: {
+                      ...currentPending,
+                      scope: {
+                        ...currentPending.scope,
+                        startDate: explicitDate,
+                      },
+                      sourceText: text,
+                    },
+                    sourceText: text,
+                    confidence: 'high',
+                  };
+                }
+              }
+
+              if (hasOneWeekDuration(normalizedText) && currentPending.durationDays === undefined) {
+                return {
+                  type: 'set_pending_planning_range',
+                  pending: {
+                    ...currentPending,
+                    durationDays: 7,
+                    sourceText: text,
+                  },
+                  sourceText: text,
+                  confidence: 'high',
+                };
+              }
+            }
+
+            const acceptsSummerVacation = hasSummerVacationPlanningRangeIntent(normalizedText)
+              || (options?.allowBareNamedFuturePeriodAnswer === true
+                && currentPending === undefined
+                && isBareSummerVacationRangeAnswer(normalizedText));
+
+            if (acceptsSummerVacation) {
+              const durationDays = hasOneWeekDuration(normalizedText) ? 7 : undefined;
+              return {
+                type: 'set_pending_planning_range',
+                pending: {
+                  scope: { kind: 'named_future_period', label: '夏休み' },
+                  ...(durationDays ? { durationDays } : {}),
+                  sourceText: text,
+                },
+                sourceText: text,
+                confidence: 'high',
+              };
+            }
+
+            if (!hasOneWeekDuration(normalizedText) && !hasNextWeekPlanningRangeIntent(normalizedText)) {
+              return undefined;
+            }
+
+            if (/来週/.test(normalizedText)) {
+              const scope = nextWeekScope(context);
+              const weekdayIndex = parseWeekdayStart(normalizedText);
+              const startDate = weekdayIndex === undefined ? undefined : resolveWeekdayInScope(weekdayIndex, scope);
+
+              if (startDate) {
+                return undefined;
+              }
+
+              return {
+                type: 'set_pending_planning_range',
+                pending: {
+                  scope,
+                  durationDays: 7,
+                  sourceText: text,
+                },
+                sourceText: text,
+                confidence: 'high',
+              };
+            }
+
+            return undefined;
+          }
+
+          ''').lstrip('\n')
+          replace_region(scope, 'function parsePendingPlanningRange(', 'function parseWeeklyPlanningRange(', pending_function)
+
+          old_weekday = (
+              "    const weekdayIndex = parseWeekdayStart(normalizedText);\n"
+              "    const startDate = weekdayIndex === undefined\n"
+              "      ? undefined\n"
+              "      : resolveWeekdayInScope(weekdayIndex, pending.scope);\n"
+              "    return startDate && durationDays\n"
+          )
+          new_weekday = (
+              "    const weekdayIndex = parseWeekdayStart(normalizedText);\n"
+              "    const weekdayStartDate = weekdayIndex === undefined\n"
+              "      ? undefined\n"
+              "      : resolveWeekdayInScope(weekdayIndex, pending.scope);\n"
+              "    const storedStartDate = pending.scope.kind === 'named_future_period'\n"
+              "      ? pending.scope.startDate\n"
+              "      : undefined;\n"
+              "    const startDate = weekdayStartDate ?? storedStartDate;\n"
+              "    return startDate && durationDays\n"
+          )
+          replace_once(scope, old_weekday, new_weekday)
+
+          exported_pending = dedent('''
+          export function parseSetPendingPlanningRangeCommand(
+            text: string,
+            context: WeeklyPlanningIntakeContext,
+            options?: {
+              allowBareNamedFuturePeriodAnswer?: boolean;
+              pending?: PendingPlanningRangeClarification;
+            },
+          ): NormalizedSetPendingPlanningRangeCommand | undefined {
+            const range = parseWeeklyPlanningRange(text, context, options?.pending);
+            return range ? undefined : parsePendingPlanningRange(text, context, options);
+          }
+
+          ''').lstrip('\n')
+          replace_region(
+              scope,
+              'export function parseSetPendingPlanningRangeCommand(',
+              'export function parseSetPlanningRangeCommand(',
+              exported_pending,
+          )
+
+          old_reducer = (
+              "    const allowBareNamedFuturePeriodAnswer = Boolean(\n"
+              "      previousState?.missing.includes('planning_period')\n"
+              "      || previousState?.missing.includes('planning_start_date'),\n"
+              "    );\n"
+              "    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(\n"
+              "      userText,\n"
+              "      context,\n"
+              "      { allowBareNamedFuturePeriodAnswer },\n"
+              "    );\n"
+          )
+          new_reducer = (
+              "    const allowBareNamedFuturePeriodAnswer = Boolean(\n"
+              "      previousState?.missing.includes('planning_period')\n"
+              "      && !previousState.pendingPlanningRange,\n"
+              "    );\n"
+              "    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(\n"
+              "      userText,\n"
+              "      context,\n"
+              "      {\n"
+              "        allowBareNamedFuturePeriodAnswer,\n"
+              "        pending: nextState.pendingPlanningRange,\n"
+              "      },\n"
+              "    );\n"
+          )
+          replace_once(reducer, old_reducer, new_reducer)
+
+          replace_once(
+              contract,
+              "import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';\n",
+              "import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';\n"
+              "import { applyWeeklyPlanningUserTurn } from './weeklyPlanningIntakeReducer';\n",
+          )
+
+          tests = dedent('''
+          it('does not replace a pending next-week scope with a bare summer-vacation answer', () => {
+            const context = {
+              selectedDate: '2026-06-26',
+              currentDateTime: '2026-06-26T12:00:00',
+            };
+            const nextWeek = applyWeeklyPlanningUserTurn(undefined, '来週の予定を立てたい', context);
+            const answered = applyWeeklyPlanningUserTurn(nextWeek, '夏休み', context);
+
+            expect(answered.pendingPlanningRange).toEqual(nextWeek.pendingPlanningRange);
+            expect(answered.pendingPlanningRange?.scope.kind).toBe('next_week');
+          });
+
+          it('uses the affirmative side of a summer-vacation contrast as next week', () => {
+            const state = applyWeeklyPlanningUserTurn(
+              undefined,
+              '夏休みじゃなくて来週にしたい',
+              {
+                selectedDate: '2026-06-26',
+                currentDateTime: '2026-06-26T12:00:00',
+              },
+            );
+
+            expect(state.pendingPlanningRange?.scope).toMatchObject({
+              kind: 'next_week',
+              startDate: '2026-06-29',
+              endDate: '2026-07-05',
+            });
+          });
+
+          it('combines a date-only answer with a later duration answer', () => {
+            const context = {
+              selectedDate: '2026-06-26',
+              currentDateTime: '2026-06-26T12:00:00',
+            };
+            const summerVacation = applyWeeklyPlanningUserTurn(
+              undefined,
+              '夏休みに計画を立てたい',
+              context,
+            );
+            const withStartDate = applyWeeklyPlanningUserTurn(summerVacation, '8月1日から', context);
+
+            expect(withStartDate.range).toBeUndefined();
+            expect(withStartDate.pendingPlanningRange).toMatchObject({
+              scope: {
+                kind: 'named_future_period',
+                label: '夏休み',
+                startDate: '2026-08-01',
+              },
+            });
+
+            const resolved = applyWeeklyPlanningUserTurn(withStartDate, '一週間', context);
+            expect(resolved.pendingPlanningRange).toBeUndefined();
+            expect(resolved.range).toMatchObject({
+              startDateTime: '2026-08-01T00:00:00',
+              endDateTime: '2026-08-07T24:00:00',
+              calendarDayCount: 7,
+              confidence: 'explicit',
+            });
+          });
+
+          it('combines a duration-only answer with a later date answer', () => {
+            const context = {
+              selectedDate: '2026-06-26',
+              currentDateTime: '2026-06-26T12:00:00',
+            };
+            const summerVacation = applyWeeklyPlanningUserTurn(
+              undefined,
+              '夏休みに計画を立てたい',
+              context,
+            );
+            const withDuration = applyWeeklyPlanningUserTurn(summerVacation, '一週間', context);
+
+            expect(withDuration.range).toBeUndefined();
+            expect(withDuration.pendingPlanningRange).toMatchObject({
+              scope: { kind: 'named_future_period', label: '夏休み' },
+              durationDays: 7,
+            });
+
+            const resolved = applyWeeklyPlanningUserTurn(withDuration, '8月1日から', context);
+            expect(resolved.pendingPlanningRange).toBeUndefined();
+            expect(resolved.range).toMatchObject({
+              startDateTime: '2026-08-01T00:00:00',
+              endDateTime: '2026-08-07T24:00:00',
+              calendarDayCount: 7,
+              confidence: 'explicit',
+            });
+          });
+          ''').strip('\n')
+          tests = '\n\n' + indent(tests, '  ') + '\n'
+          contract_text = contract.read_text(encoding='utf-8')
+          marker = '\n});\n'
+          position = contract_text.rfind(marker)
+          if position < 0:
+              raise RuntimeError('contract test describe terminator not found')
+          contract.write_text(contract_text[:position] + tests + contract_text[position:], encoding='utf-8')
+
+          old_storage = (
+              "      pendingPlanningRange: {\n"
+              "        scope: { kind: 'named_future_period' as const, label: '夏休み' },\n"
+              "        sourceText: '夏休みの予定',\n"
+              "      },\n"
+          )
+          new_storage = (
+              "      pendingPlanningRange: {\n"
+              "        scope: {\n"
+              "          kind: 'named_future_period' as const,\n"
+              "          label: '夏休み',\n"
+              "          startDate: '2026-08-01',\n"
+              "        },\n"
+              "        sourceText: '8月1日から',\n"
+              "      },\n"
+          )
+          replace_once(storage_test, old_storage, new_storage)
+          PY
+
+      - name: Focused tests
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts
+      - name: Weekly planning tests
+        run: npm run test:run -- src/features/weeklyPlanning src/components/WeeklyPlanningConversation.test.tsx src/components/weeklyPlanningConversationMode.test.ts
+      - name: All tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          rm .github/workflows/weekly-planning-range-followup-fix.yml
+          rm .github/workflows/weekly-planning-range-followup-fix-v2.yml
+          rm .github/workflows/weekly-planning-range-followup-fix-v3.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts \
+            src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts \
+            .github/workflows/weekly-planning-range-followup-fix.yml \
+            .github/workflows/weekly-planning-range-followup-fix-v2.yml \
+            .github/workflows/weekly-planning-range-followup-fix-v3.yml
+          git commit -m "feat: 週間計画の期間指定を複数ターンで補完"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
