@@ -17,19 +17,30 @@ def replace_once(path: str, old: str, new: str) -> None:
 replace_once(
     'src/features/weeklyPlanning/intake/weeklyPlanningIntakeTypes.ts',
     "export interface PendingPlanningRangeClarification {\n  scope: {\n    kind: PlanningTemporalScopeKind;\n    label: string;\n    startDate?: string;\n    endDate?: string;\n  };\n  durationDays: number;\n  sourceText: string;\n}\n",
-    "interface PendingPlanningTemporalScopeBase {\n  label: string;\n  startDate?: string;\n  endDate?: string;\n}\n\nexport type PendingPlanningRangeClarification =\n  | {\n      scope: PendingPlanningTemporalScopeBase & { kind: 'next_week' };\n      durationDays: number;\n      sourceText: string;\n    }\n  | {\n      scope: PendingPlanningTemporalScopeBase & { kind: 'named_future_period' };\n      durationDays?: number;\n      sourceText: string;\n    };\n",
+    "export interface PendingPlanningRangeClarification {\n  scope: {\n    kind: PlanningTemporalScopeKind;\n    label: string;\n    startDate?: string;\n    endDate?: string;\n  };\n  durationDays?: number;\n  sourceText: string;\n}\n",
 )
 
 replace_once(
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandAdapter.ts',
     "export function normalizeSetPendingPlanningRangeCommand(\n  command: SetPendingPlanningRangeCommand,\n  context: WeeklyPlanningIntakeContext,\n): NormalizedSetPendingPlanningRangeCommand {\n  const durationDays = command.pending.durationDays ?? 7;\n  if (command.pending.scope.kind !== 'next_week') {\n    return {\n      ...command,\n      pending: { ...command.pending, durationDays },\n    };\n  }\n\n  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;\n  const normalizedScope = nextWeekScope({\n    ...context,\n    selectedDate: referenceDate,\n  });\n\n  return {\n    ...command,\n    pending: {\n      ...command.pending,\n      scope: {\n        ...command.pending.scope,\n        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,\n        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,\n      },\n      durationDays,\n    },\n  };\n}\n",
-    "export function normalizeSetPendingPlanningRangeCommand(\n  command: SetPendingPlanningRangeCommand,\n  context: WeeklyPlanningIntakeContext,\n): NormalizedSetPendingPlanningRangeCommand {\n  if (command.pending.scope.kind === 'named_future_period') {\n    return {\n      ...command,\n      pending: {\n        ...command.pending,\n        scope: { ...command.pending.scope },\n      },\n    };\n  }\n\n  const durationDays = command.pending.durationDays ?? 7;\n  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;\n  const normalizedScope = nextWeekScope({\n    ...context,\n    selectedDate: referenceDate,\n  });\n\n  return {\n    ...command,\n    pending: {\n      ...command.pending,\n      scope: {\n        ...command.pending.scope,\n        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,\n        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,\n      },\n      durationDays,\n    },\n  };\n}\n",
+    "export function normalizeSetPendingPlanningRangeCommand(\n  command: SetPendingPlanningRangeCommand,\n  context: WeeklyPlanningIntakeContext,\n): NormalizedSetPendingPlanningRangeCommand {\n  if (command.pending.scope.kind === 'named_future_period') {\n    return {\n      ...command,\n      pending: {\n        ...command.pending,\n        scope: { ...command.pending.scope },\n      },\n    };\n  }\n\n  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;\n  const normalizedScope = nextWeekScope({\n    ...context,\n    selectedDate: referenceDate,\n  });\n\n  return {\n    ...command,\n    pending: {\n      ...command.pending,\n      scope: {\n        ...command.pending.scope,\n        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,\n        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,\n      },\n      durationDays: command.pending.durationDays ?? 7,\n    },\n  };\n}\n",
 )
 
 replace_once(
     'src/features/weeklyPlanning/weeklyPlanningStorage.ts',
     "  return (value.scope.kind === 'next_week' || value.scope.kind === 'named_future_period')\n    && typeof value.scope.label === 'string'\n    && isOptionalString(value.scope.startDate)\n    && isOptionalString(value.scope.endDate)\n    && isPositiveInteger(value.durationDays)\n    && typeof value.sourceText === 'string';\n",
     "  const commonFieldsAreValid = typeof value.scope.label === 'string'\n    && isOptionalString(value.scope.startDate)\n    && isOptionalString(value.scope.endDate)\n    && typeof value.sourceText === 'string';\n  if (!commonFieldsAreValid) return false;\n  if (value.scope.kind === 'next_week') {\n    return isPositiveInteger(value.durationDays);\n  }\n  if (value.scope.kind === 'named_future_period') {\n    return value.durationDays === undefined || isPositiveInteger(value.durationDays);\n  }\n  return false;\n",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+    "        scope: { kind: 'named_future_period', label: '夏休み' },\n        durationDays: 7,\n        sourceText: text,\n",
+    "        scope: { kind: 'named_future_period', label: '夏休み' },\n        sourceText: text,\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+    "  const normalizedText = normalizeIntakeText(text);\n  const durationDays = hasOneWeekDuration(normalizedText) || pending ? 7 : undefined;\n  if (!durationDays) return undefined;\n\n  if (pending) {\n    const weekdayIndex = parseWeekdayStart(normalizedText);\n    const startDate = weekdayIndex === undefined\n      ? parseExplicitDate(normalizedText, context)\n      : resolveWeekdayInScope(weekdayIndex, pending.scope);\n    return startDate\n      ? rangeFromStartDate({ startDate, durationDays: pending.durationDays, sourceText: text })\n      : undefined;\n  }\n",
+    "  const normalizedText = normalizeIntakeText(text);\n\n  if (pending) {\n    if (!pending.durationDays) return undefined;\n    const weekdayIndex = parseWeekdayStart(normalizedText);\n    const startDate = weekdayIndex === undefined\n      ? parseExplicitDate(normalizedText, context)\n      : resolveWeekdayInScope(weekdayIndex, pending.scope);\n    return startDate\n      ? rangeFromStartDate({\n          startDate,\n          durationDays: pending.durationDays,\n          sourceText: text,\n        })\n      : undefined;\n  }\n\n  const durationDays = hasOneWeekDuration(normalizedText) ? 7 : undefined;\n  if (!durationDays) return undefined;\n",
 )
 
 replace_once(
@@ -67,6 +78,8 @@ subprocess.run([
     'src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts',
     'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts',
     'src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts',
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.test.ts',
+    'src/features/weeklyPlanning/intake/weeklyPlanningDraftRequestAdapter.test.ts',
 ], cwd=ROOT, check=True)
 subprocess.run(['npm', 'run', 'build'], cwd=ROOT, check=True)
 subprocess.run(['git', 'rm', '-f', 'docs/ai/tasks/20260716-weekly-planning-pr5-full-test-error.log'], cwd=ROOT, check=False)
@@ -76,9 +89,10 @@ subprocess.run([
     'src/features/weeklyPlanning/intake/weeklyPlanningIntakeTypes.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandAdapter.ts',
     'src/features/weeklyPlanning/weeklyPlanningStorage.ts',
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
     'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
     'src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts',
 ], cwd=ROOT, check=True)
-subprocess.run(['git', 'commit', '-m', 'feat: pending rangeを判別共用体へ修正'], cwd=ROOT, check=True)
+subprocess.run(['git', 'commit', '-m', 'feat: pending rangeの日数未確定状態を型へ反映'], cwd=ROOT, check=True)
 subprocess.run(['git', 'push', 'origin', f'HEAD:{BRANCH}'], cwd=ROOT, check=True)
