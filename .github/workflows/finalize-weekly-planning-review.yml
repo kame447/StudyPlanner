@@ -28,9 +28,19 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Focused session and property tests
+        id: focused
+        continue-on-error: true
         run: |
           set -o pipefail
           npm run test:run -- src/components/QuickEntryModalSessionResume.test.tsx src/components/weeklyPlanningConversationMode.test.ts src/components/WeeklyPlanningConversation.test.tsx src/features/weeklyPlanning/weeklyPlanningReducer.test.ts src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts 2>&1 | tee weekly-planning-focused.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weekly-planning-focused-diagnostic
+          path: weekly-planning-focused.log
+      - name: Require focused tests
+        if: ${{ steps.focused.outcome == 'failure' }}
+        run: exit 1
       - name: Full test suite
         run: |
           set -o pipefail
@@ -43,24 +53,15 @@ jobs:
         run: |
           python - <<'PY'
           import pathlib, re, subprocess
-
           base = 'origin/main'
-          changed = subprocess.check_output(
-              ['git', 'diff', '--name-only', f'{base}...HEAD'], text=True
-          ).splitlines()
+          changed = subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines()
           tests = [p for p in changed if re.search(r'\.(test|spec)\.(ts|tsx)$', p)]
-
           def content_at(ref, path):
               try:
                   return subprocess.check_output(['git', 'show', f'{ref}:{path}'], text=True)
               except subprocess.CalledProcessError:
                   return ''
-
-          lines = [
-              '# Weekly planning test structure audit', '',
-              '| file | base lines | head lines | delta | base cases | head cases | property checks |',
-              '|---|---:|---:|---:|---:|---:|---:|',
-          ]
+          lines = ['# Weekly planning test structure audit', '', '| file | base lines | head lines | delta | base cases | head cases | property checks |', '|---|---:|---:|---:|---:|---:|---:|']
           for path in sorted(tests):
               head = pathlib.Path(path).read_text() if pathlib.Path(path).exists() else ''
               old = content_at(base, path)
@@ -69,10 +70,7 @@ jobs:
               old_cases = len(re.findall(r'\b(?:it|test)\s*\(', old)) + len(re.findall(r'\bit\.each\s*\(', old))
               head_cases = len(re.findall(r'\b(?:it|test)\s*\(', head)) + len(re.findall(r'\bit\.each\s*\(', head))
               properties = len(re.findall(r'fc\.assert\s*\(', head))
-              lines.append(
-                  f'| `{path}` | {old_lines} | {head_lines} | {head_lines-old_lines:+d} | '
-                  f'{old_cases} | {head_cases} | {properties} |'
-              )
+              lines.append(f'| `{path}` | {old_lines} | {head_lines} | {head_lines-old_lines:+d} | {old_cases} | {head_cases} | {properties} |')
           lines.extend(['', f'Changed test files: {len(tests)}'])
           pathlib.Path('weekly-planning-test-structure.md').write_text('\n'.join(lines) + '\n')
           PY
