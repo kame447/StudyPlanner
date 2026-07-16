@@ -1,5 +1,4 @@
 import { type CSSProperties, useState } from 'react';
-import { getAiConfig, getAiConfigValidationMessage } from '../lib/aiConfig';
 import {
   formatMinutes,
   minutesBetween,
@@ -17,16 +16,12 @@ import type {
   AiInputMode,
   WeeklyPlanDraftBlock,
   WeeklyPlanningMessage,
+  WeeklyPlanningPendingApproval,
+  WeeklyPlanningPendingTurn,
 } from '../features/weeklyPlanning/types';
+import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
 import { looksLikeWeeklyPlanningRequest } from '../features/weeklyPlanning/weeklyPlanningTransforms';
-import { createAiWeeklyPlanningDialogueRenderer } from '../features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer';
-import { renderWeeklyPlanningDialogueMessage } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer';
 import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
-import { createAiWeeklyPlanningInterpreter } from '../features/weeklyPlanning/intake/weeklyPlanningAiInterpreter';
-import {
-  runWeeklyPlanningBehaviorAwarePipeline,
-  runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
-} from '../features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
@@ -55,20 +50,22 @@ interface NaturalLanguageAssistantProps {
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
-  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
-  weeklyPlanningMessages?: WeeklyPlanningMessage[];
-  weeklyPlanningIntakeState?: PlanningIntakeState | null;
-  onAppendWeeklyPlanningMessage?: (message: WeeklyPlanningMessage) => void;
-  onSetWeeklyPlanningIntakeState?: (state: PlanningIntakeState | null) => void;
-  onClearWeeklyPlanningConversation?: () => void;
+  weeklyDraftBlocks: WeeklyPlanDraftBlock[];
+  weeklyPlanningMessages: WeeklyPlanningMessage[];
+  weeklyPlanningIntakeState: PlanningIntakeState | null;
+  weeklyPlanningWeekStartDate: string;
+  weeklyPlanningRevision: number;
+  weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
+  weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
+  onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
+  onResetWeeklyPlanningSession: () => void;
   onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onClearWeeklyDraftBlocks?: () => void;
   onApproveWeeklyDraftBlocks?: () => Promise<void>;
   embedded?: boolean;
 }
-
-const WEEKLY_PLANNING_RECENT_TURN_LIMIT = 6;
 
 const FIELD_LABELS: Record<SuggestionField, string> = {
   targetPlan: '修正対象',
@@ -224,18 +221,6 @@ function getExistingPlanPreviewSizeClass(plan: Plan): string {
   return '';
 }
 
-function createWeeklyPlanningMessage(
-  role: WeeklyPlanningMessage['role'],
-  content: string,
-): WeeklyPlanningMessage {
-  return {
-    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    role,
-    content,
-    createdAt: new Date().toISOString(),
-  };
-}
-
 export function NaturalLanguageAssistant({
   selectedDate,
   userId,
@@ -245,12 +230,16 @@ export function NaturalLanguageAssistant({
   scheduleTemplates = [],
   timetableTermId,
   onApplyDraft,
-  weeklyDraftBlocks = [],
-  weeklyPlanningMessages: persistedWeeklyPlanningMessages,
-  weeklyPlanningIntakeState: persistedWeeklyPlanningIntakeState,
+  weeklyDraftBlocks,
+  weeklyPlanningMessages,
+  weeklyPlanningIntakeState,
+  weeklyPlanningWeekStartDate,
+  weeklyPlanningRevision,
+  weeklyPlanningPendingTurn,
+  weeklyPlanningPendingApproval,
+  onSubmitWeeklyPlanningTurn,
   onAppendWeeklyPlanningMessage,
-  onSetWeeklyPlanningIntakeState,
-  onClearWeeklyPlanningConversation,
+  onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
@@ -259,8 +248,11 @@ export function NaturalLanguageAssistant({
 }: NaturalLanguageAssistantProps) {
   const [aiInputMode, setAiInputMode] = useState<AiInputMode>(() =>
     resolveInitialAiInputMode({
-      messages: persistedWeeklyPlanningMessages,
-      intakeState: persistedWeeklyPlanningIntakeState,
+      messages: weeklyPlanningMessages,
+      intakeState: weeklyPlanningIntakeState,
+      draftBlockCount: weeklyDraftBlocks.length,
+      pendingTurn: weeklyPlanningPendingTurn,
+      pendingApproval: weeklyPlanningPendingApproval,
     }),
   );
   const [mode, setMode] = useState<NaturalLanguageMode>('add');
@@ -274,22 +266,29 @@ export function NaturalLanguageAssistant({
     'overview' | 'day'
   >('overview');
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
-  const [localWeeklyPlanningMessages, setLocalWeeklyPlanningMessages] = useState<
-    WeeklyPlanningMessage[]
-  >([]);
-  const [localWeeklyPlanningIntakeState, setLocalWeeklyPlanningIntakeState] =
-    useState<PlanningIntakeState | null>(null);
-  const weeklyPlanningMessages = persistedWeeklyPlanningMessages
-    ?? localWeeklyPlanningMessages;
-  const weeklyPlanningIntakeState = persistedWeeklyPlanningIntakeState === undefined
-    ? localWeeklyPlanningIntakeState
-    : persistedWeeklyPlanningIntakeState;
   const [weeklyPlanningPreviewBlocks, setWeeklyPlanningPreviewBlocks] = useState<
     WeeklyPlanningPreviewBlock[]
   >([]);
   const [weeklyPlanningPreviewCandidates, setWeeklyPlanningPreviewCandidates] =
     useState<WeeklyDraftCandidate[]>([]);
   const runtimeInfo = getPlannerAiRuntimeInfo();
+  const isWeeklyPlanningBusy = Boolean(weeklyPlanningPendingTurn || weeklyPlanningPendingApproval);
+  void weeklyPlanningWeekStartDate;
+  void weeklyPlanningRevision;
+  void scheduleTemplates;
+  void timetableTermId;
+
+  function appendWeeklyPlanningMessage(
+    role: WeeklyPlanningMessage['role'],
+    content: string,
+  ) {
+    onAppendWeeklyPlanningMessage({
+      id: `weekly-${role}-message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role,
+      content,
+      createdAt: new Date().toISOString(),
+    });
+  }
 
   const nearbyPlans = plans.filter((plan) => {
     const deltaDays =
@@ -388,37 +387,8 @@ export function NaturalLanguageAssistant({
   } as CSSProperties;
   const canCreateWeeklyDraft = text.trim().length > 0;
 
-  function appendWeeklyPlanningMessage(
-    role: WeeklyPlanningMessage['role'],
-    content: string,
-  ) {
-    const message = createWeeklyPlanningMessage(role, content);
-    if (onAppendWeeklyPlanningMessage) {
-      onAppendWeeklyPlanningMessage(message);
-      return;
-    }
-    setLocalWeeklyPlanningMessages((current) => [...current, message]);
-  }
-
-  function storeWeeklyPlanningIntakeState(state: PlanningIntakeState | null) {
-    if (onSetWeeklyPlanningIntakeState) {
-      onSetWeeklyPlanningIntakeState(state);
-      return;
-    }
-    setLocalWeeklyPlanningIntakeState(state);
-  }
-
-  function clearWeeklyPlanningConversationState() {
-    if (onClearWeeklyPlanningConversation) {
-      onClearWeeklyPlanningConversation();
-      return;
-    }
-    setLocalWeeklyPlanningMessages([]);
-    setLocalWeeklyPlanningIntakeState(null);
-  }
-
   function resetWeeklyPlanningSession() {
-    clearWeeklyPlanningConversationState();
+    onResetWeeklyPlanningSession();
     setWeeklyPlanningPreviewBlocks([]);
     setWeeklyPlanningPreviewCandidates([]);
     setSelectedWeeklyDraftDate('');
@@ -471,7 +441,7 @@ export function NaturalLanguageAssistant({
     return (
       <WeeklyPlanningConversation
         messages={weeklyPlanningMessages}
-        isAnalyzing={isAnalyzing}
+        isAnalyzing={Boolean(weeklyPlanningPendingTurn)}
       />
     );
   }
@@ -528,93 +498,25 @@ export function NaturalLanguageAssistant({
 
   async function handleCreateWeeklyDrafts() {
     const trimmedText = text.trim();
-
-    if (!trimmedText) {
-      setError('週間計画にしたい内容を入力してください。');
+    if (!trimmedText || isWeeklyPlanningBusy) {
+      if (!trimmedText) setError('週間計画にしたい内容を入力してください。');
       return;
     }
-
-    appendWeeklyPlanningMessage('user', trimmedText);
     setText('');
     setError('');
     setStatus('');
-    setIsAnalyzing(true);
-
     try {
-      const traceRequestId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? `weekly-request-${crypto.randomUUID()}`
-        : `weekly-request-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const pipelineInput = {
-        previousState: weeklyPlanningIntakeState ?? undefined,
-        recentTurns: weeklyPlanningMessages
-          .slice(-WEEKLY_PLANNING_RECENT_TURN_LIMIT)
-          .map(({ role, content }) => ({ role, content })),
-        userText: trimmedText,
-        planningStartDate: selectedDate,
-        planningDayCount: 7,
-        sessionPolicy: {
-          firstDayStartTime: '09:00',
-          dayStartTime: '09:00',
-          dayEndTime: '22:00',
-          breakMinutes: 10,
-        },
-        existingPlans: plans,
-        scheduleTemplates,
-        timetableTermId,
-      };
-      const aiConfig = getAiConfig();
-      const shouldUseAiInterpreter =
-        aiConfig.provider !== 'rules' && !getAiConfigValidationMessage(aiConfig);
-      const pipelineOutput = shouldUseAiInterpreter
-        ? await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
-          ...pipelineInput,
-          interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
-          }, {
-  useAiDialoguePlanner: true,
-  userId,
-  traceRequestId,
-})
-: await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput, {
-    userId,
-    traceRequestId,
-  });
-      const isExamFlow = Boolean(pipelineOutput.state.examPrepScope);
-      const dialogueRenderer = isExamFlow && shouldUseAiInterpreter
-        ? createAiWeeklyPlanningDialogueRenderer(aiConfig)
-        : undefined;
-      const message = isExamFlow
-        ? await renderWeeklyPlanningDialogueMessage({
-          state: pipelineOutput.state,
-          decision: pipelineOutput.decision,
-              renderer: dialogueRenderer,
-  userId,
-  existingPlans: plans,
-})
-        : pipelineOutput.behaviorDialogue.message;
-      const nextPreviewCandidates = pipelineOutput.draftCandidates ?? [];
-      const nextPreviewBlocks = createWeeklyPlanningPreviewBlocks(
-        nextPreviewCandidates,
-      );
-
-      storeWeeklyPlanningIntakeState(pipelineOutput.state);
-      setWeeklyPlanningPreviewCandidates(nextPreviewCandidates);
+      const result = await onSubmitWeeklyPlanningTurn(trimmedText);
+      if (!result.accepted) return;
+      const nextPreviewBlocks = createWeeklyPlanningPreviewBlocks(result.draftCandidates);
+      setWeeklyPlanningPreviewCandidates(result.draftCandidates);
       setWeeklyPlanningPreviewBlocks(nextPreviewBlocks);
       if (nextPreviewBlocks.length > 0) {
         setWeeklyDraftPreviewMode('overview');
         setSelectedWeeklyDraftDate('');
       }
-      setError('');
-      setStatus('');
-      appendWeeklyPlanningMessage('assistant', message);
-      setText('');
-    } catch {
-      const message = '週間計画の会話状態を更新できませんでした。';
-      setError(message);
-      setStatus('');
-      appendWeeklyPlanningMessage('assistant', message);
-      setText('');
-    } finally {
-      setIsAnalyzing(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '週間計画の会話状態を更新できませんでした。');
     }
   }
 
@@ -646,23 +548,12 @@ export function NaturalLanguageAssistant({
   }
 
   async function handleApproveWeeklyDrafts() {
-    if (!onApproveWeeklyDraftBlocks || pendingWeeklyDraftBlocks.length === 0) {
-      return;
-    }
-
-    setIsAnalyzing(true);
+    if (!onApproveWeeklyDraftBlocks || pendingWeeklyDraftBlocks.length === 0 || isWeeklyPlanningBusy) return;
+    setError('');
     try {
       await onApproveWeeklyDraftBlocks();
-      setError('');
-      const message = `${pendingWeeklyDraftBlocks.length}件の仮予定を通常予定として保存しました。`;
-      setStatus('');
-      appendWeeklyPlanningMessage('assistant', message);
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : '仮予定の承認に失敗しました。',
-      );
-    } finally {
-      setIsAnalyzing(false);
+      setError(error instanceof Error ? error.message : '仮予定の承認に失敗しました。');
     }
   }
 
@@ -1331,6 +1222,7 @@ export function NaturalLanguageAssistant({
                                   className="weekly-draft-preview-remove"
                                   onClick={() => removeVisibleWeeklyDraftBlock(block.id)}
                                   type="button"
+                                  disabled={Boolean(weeklyPlanningPendingApproval)}
                                 >
                                   ×
                                 </button>
@@ -1349,6 +1241,7 @@ export function NaturalLanguageAssistant({
                     className="ghost-button"
                     onClick={clearWeeklyPlanningDraftsOnly}
                     type="button"
+                    disabled={Boolean(weeklyPlanningPendingApproval)}
                   >
                     一括破棄
                   </button>
@@ -1358,9 +1251,9 @@ export function NaturalLanguageAssistant({
                     className="primary-button"
                     onClick={() => void handleApproveWeeklyDrafts()}
                     type="button"
-                    disabled={isAnalyzing}
+                    disabled={isWeeklyPlanningBusy}
                   >
-                    一括承認して保存
+                    {weeklyPlanningPendingApproval ? '保存中…' : '一括承認して保存'}
                   </button>
                 ) : null}
               </div>
@@ -1370,7 +1263,7 @@ export function NaturalLanguageAssistant({
         <div className="section-stack weekly-planning-assistant">
           {renderWeeklyPlanningHistory()}
 
-          {!isAnalyzing ? (
+          {!isWeeklyPlanningBusy ? (
             <>
               <label className="field field-full">
                 <span>週間計画にしたいこと</span>
@@ -1394,13 +1287,16 @@ export function NaturalLanguageAssistant({
                 >
                   送信
                 </button>
-                {weeklyPlanningMessages.length > 0 ? (
+                {weeklyPlanningMessages.length > 0
+                   || weeklyPlanningIntakeState
+                   || weeklyDraftBlocks.length > 0
+                   || weeklyPlanningPreviewBlocks.length > 0 ? (
                   <button
                     className="ghost-button"
                     onClick={resetWeeklyPlanningSession}
                     type="button"
                   >
-                    履歴をクリア
+                    この週の相談をリセット
                   </button>
                 ) : null}
               </div>

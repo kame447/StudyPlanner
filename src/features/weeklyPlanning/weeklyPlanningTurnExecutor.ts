@@ -31,6 +31,11 @@ export interface WeeklyPlanningTurnExecutionResult {
   draftCandidates: WeeklyDraftCandidate[];
 }
 
+export interface WeeklyPlanningTurnSubmissionResult {
+  accepted: boolean;
+  draftCandidates: WeeklyDraftCandidate[];
+}
+
 export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {

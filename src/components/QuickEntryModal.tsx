@@ -19,7 +19,11 @@ import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/week
 import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningMessage,
+  WeeklyPlanningPendingApproval,
+  WeeklyPlanningPendingTurn,
 } from '../features/weeklyPlanning/types';
+import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
+import { resolveInitialQuickEntryInputMethod } from './weeklyPlanningConversationMode';
 import type {
   Actual,
   ActualDraft,
@@ -49,16 +53,20 @@ interface QuickEntryModalProps {
   subjects: StudySubject[];
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
-  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
-  weeklyPlanningMessages?: WeeklyPlanningMessage[];
-  weeklyPlanningIntakeState?: PlanningIntakeState | null;
-  onAppendWeeklyPlanningMessage?: (message: WeeklyPlanningMessage) => void;
-  onSetWeeklyPlanningIntakeState?: (state: PlanningIntakeState | null) => void;
-  onClearWeeklyPlanningConversation?: () => void;
-  onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
-  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
-  onClearWeeklyDraftBlocks?: () => void;
-  onApproveWeeklyDraftBlocks?: () => Promise<void>;
+  weeklyDraftBlocks: WeeklyPlanDraftBlock[];
+  weeklyPlanningMessages: WeeklyPlanningMessage[];
+  weeklyPlanningIntakeState: PlanningIntakeState | null;
+  weeklyPlanningWeekStartDate: string;
+  weeklyPlanningRevision: number;
+  weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
+  weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
+  onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
+  onResetWeeklyPlanningSession: () => void;
+  onCreateWeeklyDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
+  onRemoveWeeklyDraftBlock: (blockId: string) => void;
+  onClearWeeklyDraftBlocks: () => void;
+  onApproveWeeklyDraftBlocks: () => Promise<void>;
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -114,12 +122,16 @@ export function QuickEntryModal({
   subjects,
   scheduleTemplates = [],
   timetableTermId,
-  weeklyDraftBlocks = [],
-  weeklyPlanningMessages = [],
-  weeklyPlanningIntakeState = null,
+  weeklyDraftBlocks,
+  weeklyPlanningMessages,
+  weeklyPlanningIntakeState,
+  weeklyPlanningWeekStartDate,
+  weeklyPlanningRevision,
+  weeklyPlanningPendingTurn,
+  weeklyPlanningPendingApproval,
+  onSubmitWeeklyPlanningTurn,
   onAppendWeeklyPlanningMessage,
-  onSetWeeklyPlanningIntakeState,
-  onClearWeeklyPlanningConversation,
+  onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
@@ -131,7 +143,15 @@ export function QuickEntryModal({
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
-  const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>('manual');
+  const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>(() =>
+    resolveInitialQuickEntryInputMethod({
+      messages: weeklyPlanningMessages,
+      intakeState: weeklyPlanningIntakeState,
+      draftBlockCount: weeklyDraftBlocks.length,
+      pendingTurn: weeklyPlanningPendingTurn,
+      pendingApproval: weeklyPlanningPendingApproval,
+    }),
+  );
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
@@ -610,11 +630,15 @@ export function QuickEntryModal({
                 onApplyDraft={onSavePlan}
                 weeklyDraftBlocks={weeklyDraftBlocks}
                 weeklyPlanningMessages={weeklyPlanningMessages}
-                weeklyPlanningIntakeState={weeklyPlanningIntakeState}
-                onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
-                onSetWeeklyPlanningIntakeState={onSetWeeklyPlanningIntakeState}
-                onClearWeeklyPlanningConversation={onClearWeeklyPlanningConversation}
-                onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
+                 weeklyPlanningIntakeState={weeklyPlanningIntakeState}
+                 weeklyPlanningWeekStartDate={weeklyPlanningWeekStartDate}
+                 weeklyPlanningRevision={weeklyPlanningRevision}
+                 weeklyPlanningPendingTurn={weeklyPlanningPendingTurn}
+                 weeklyPlanningPendingApproval={weeklyPlanningPendingApproval}
+                 onSubmitWeeklyPlanningTurn={onSubmitWeeklyPlanningTurn}
+                 onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
+                 onResetWeeklyPlanningSession={onResetWeeklyPlanningSession}
+                 onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
                 onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
                 onClearWeeklyDraftBlocks={onClearWeeklyDraftBlocks}
                 onApproveWeeklyDraftBlocks={onApproveWeeklyDraftBlocks}
