@@ -1,3 +1,10 @@
+import {
+  isDateWithinWindow,
+  isIsoCalendarDate,
+  isOrderedPlanningDateTimeRange,
+  isValidDateWindow,
+  isValidPlanningDurationDays,
+} from './weeklyPlanningDateValidation';
 import type { WeeklyPlanningCommandPayload } from './weeklyPlanningCommandTypes';
 
 const CONFIDENCE_VALUES = new Set(['high', 'medium', 'low']);
@@ -218,6 +225,8 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
       return hasOnlyKeys(range, ['startDateTime', 'endDateTime', 'sourceText', 'calendarDayCount', 'confidence'])
         && isOptionalString(range.startDateTime)
         && isOptionalString(range.endDateTime)
+        && ((range.startDateTime === undefined && range.endDateTime === undefined)
+          || isOrderedPlanningDateTimeRange(range))
         && isOptionalString(range.sourceText)
         && isOptionalPositiveInteger(range.calendarDayCount)
         && (range.confidence === 'explicit' || range.confidence === 'inferred' || range.confidence === 'missing');
@@ -225,18 +234,29 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
     case 'set_pending_planning_range': {
       if (!hasCommandKeys(value, ['pending']) || !isRecord(value.pending)) return false;
       const pending = value.pending;
-      if (!hasOnlyKeys(pending, ['scope', 'durationDays', 'sourceText'])
+      if (!hasOnlyKeys(pending, ['scope', 'planningStartDate', 'durationDays', 'sourceText'])
         || !isRecord(pending.scope)
-        || typeof pending.sourceText !== 'string'
+        || !hasOnlyKeys(pending.scope, ['kind', 'label', 'windowStartDate', 'windowEndDate'])
+        || (pending.scope.kind !== 'next_week' && pending.scope.kind !== 'named_future_period')
+        || typeof pending.scope.label !== 'string'
+        || !isOptionalString(pending.scope.windowStartDate)
+        || !isOptionalString(pending.scope.windowEndDate)
+        || !isValidDateWindow(pending.scope)
+        || !isOptionalString(pending.planningStartDate)
         || (pending.durationDays !== undefined
-          && (typeof pending.durationDays !== 'number'
-            || !Number.isInteger(pending.durationDays)
-            || pending.durationDays <= 0))) return false;
-      return hasOnlyKeys(pending.scope, ['kind', 'label', 'startDate', 'endDate'])
-        && (pending.scope.kind === 'next_week' || pending.scope.kind === 'named_future_period')
-        && typeof pending.scope.label === 'string'
-        && isOptionalString(pending.scope.startDate)
-        && isOptionalString(pending.scope.endDate);
+          && !isValidPlanningDurationDays(pending.durationDays))
+        || typeof pending.sourceText !== 'string') return false;
+      if (pending.planningStartDate !== undefined
+        && !isIsoCalendarDate(pending.planningStartDate)) return false;
+      if (pending.planningStartDate !== undefined
+        && pending.durationDays !== undefined) return false;
+      if (pending.scope.kind === 'next_week'
+        && (!pending.scope.windowStartDate || !pending.scope.windowEndDate)) {
+        return true;
+      }
+      const planningStartDate = pending.planningStartDate;
+      return typeof planningStartDate !== 'string'
+        || isDateWithinWindow(planningStartDate, pending.scope);
     }
     case 'begin_weekly_planning':
       return hasCommandKeys(value, []);
@@ -308,9 +328,9 @@ export function canonicalizeOptionalCommandNulls(value: unknown): unknown {
     case 'set_pending_planning_range': {
       const pending = copyNested(command, 'pending');
       if (pending) {
-        removeNull(pending, 'durationDays');
+        ['planningStartDate', 'durationDays'].forEach((key) => removeNull(pending, key));
         const scope = copyNested(pending, 'scope');
-        if (scope) ['startDate', 'endDate'].forEach((key) => removeNull(scope, key));
+        if (scope) ['windowStartDate', 'windowEndDate'].forEach((key) => removeNull(scope, key));
       }
       break;
     }
