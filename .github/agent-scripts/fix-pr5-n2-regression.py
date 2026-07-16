@@ -42,6 +42,11 @@ replace_once(
     "      'invalid-duration-days',\n",
     "      'invalid-command-shape',\n",
 )
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts',
+    "    })).toBe(command);\n",
+    "    })).toEqual(command);\n",
+)
 
 replace_once(
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
