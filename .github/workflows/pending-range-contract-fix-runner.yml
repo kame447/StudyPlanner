@@ -1,28 +1,34 @@
 name: Pending range contract fix runner
 
 on:
+  issues:
+    types: [opened]
   pull_request_target:
     types: [opened, reopened, synchronize]
     branches: [main]
 
 permissions:
   contents: write
+  issues: read
   pull-requests: read
 
 env:
   BASE_COMMIT: 74185277d68b5dee37560a9c0a79356f837bc5f2
   TASK_DOC: docs/ai/tasks/20260717-weekly-planning-pending-range-contract-fix.md
+  TARGET_BRANCH: agent/weekly-planning-conversation-hardening
 
 jobs:
   apply-test-review:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/weekly-planning-conversation-hardening'
+    if: >-
+      (github.event_name == 'issues' && github.event.issue.title == '[automation] pending range contract fix') ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/weekly-planning-conversation-hardening')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.repository }}
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -138,4 +144,4 @@ EOF
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
           git commit -m 'feat: 週間計画のpending range契約を修正'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:${TARGET_BRANCH}
