@@ -46,8 +46,8 @@ replaceOnce(
 );
 replaceOnce(
   'src/components/QuickEntryModal.tsx',
-  `                 scheduleTemplates={scheduleTemplates}\n                 timetableTermId={timetableTermId}\n                 onApplyDraft={onSavePlan}`,
-  `                 onApplyDraft={onSavePlan}`,
+  `scheduleTemplates={scheduleTemplates}\n                 timetableTermId={timetableTermId}\n                 onApplyDraft={onSavePlan}`,
+  `onApplyDraft={onSavePlan}`,
 );
 
 replaceOnce(
