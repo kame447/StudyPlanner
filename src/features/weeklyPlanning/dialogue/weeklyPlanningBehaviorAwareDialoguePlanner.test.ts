@@ -100,7 +100,7 @@ function input(value: PlanningIntakeState) {
     acceptedFacts: {
       taskLabels: value.tasks.map((task) => task.title),
       planningPeriodLabel: '今週',
-      constraintSummary: ['夕食 19:00-20:00'],
+      constraintSummary: ['meal 19:00 20:00'],
     },
     previewAllowed: gate.allowed,
   };
@@ -111,8 +111,8 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     const value = state(['英語ワークを進めたい']);
     const plannerInput = input(value);
     const action = plannerInput.allowedActions.find((candidate) =>
-      candidate.kind !== 'acknowledge_fact',
-    );
+      candidate.kind === 'suggest_draft_generation',
+    ) ?? plannerInput.allowedActions.find((candidate) => candidate.kind !== 'acknowledge_fact');
     if (!action) {
       throw new Error('expected at least one substantive allowed action');
     }
@@ -134,6 +134,36 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     expect(result.source).toBe('ai');
     expect(result.message).toContain('英語ワーク');
     expect(result.response?.selectedActionIds).toEqual([action.actionId]);
+  });
+
+  it('uses a deterministic repetition for accepted facts and ignores an ungrounded AI acknowledgement', async () => {
+    const value = state(['今週、英語ワークを進めたい。夕食は19時です']);
+    const plannerInput = {
+      ...input(value),
+      recentConversation: [
+        { role: 'assistant' as const, content: '何を進めますか？' },
+        { role: 'user' as const, content: '今週、英語ワークを進めたい。夕食は19時です' },
+      ],
+    };
+    const action = plannerInput.allowedActions.find((candidate) =>
+      candidate.kind === 'suggest_draft_generation',
+    );
+    if (!action) throw new Error('expected draft suggestion action');
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        acknowledgement: '数学を20ページですね。',
+        selectedActionIds: [action.actionId],
+        items: [{ actionId: action.actionId, text: '仮予定を組む準備ができています。' }],
+      })),
+    };
+
+    const result = await createAiBehaviorAwareWeeklyPlanningDialoguePlanner(config, client).plan(plannerInput);
+
+    expect(result.source).toBe('ai');
+    expect(result.message).toContain('計画期間は今週');
+    expect(result.message).toContain('学習内容は「英語ワーク」');
+    expect(result.message).toContain('食事 19:00〜20:00');
+    expect(result.message).not.toContain('数学');
   });
 
   it('falls back when the AI invents an action', async () => {
@@ -192,6 +222,15 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     expect(result.message).not.toContain('無理のない進め方を整理します');
     expect(result.message).not.toContain('目安');
     expect(result.message).not.toContain('使える時間');
+  });
+
+  it('passes over a non-blocking deadline instead of asking on every turn', async () => {
+    const value = state(['英語ワークを進めたい']);
+    const result = await createDeterministicBehaviorAwareDialoguePlanner().plan(input(value));
+
+    expect(result.message).toContain('仮の予定');
+    expect(result.message).not.toContain('締切');
+    expect(result.message).not.toContain('期限');
   });
 
   it('does not call or display AI-authored event claims for availability actions', async () => {
