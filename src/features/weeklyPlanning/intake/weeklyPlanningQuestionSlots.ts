@@ -115,6 +115,30 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   userLabel: '計画の開始日',
 };
 
+const planningDurationSlot: PlanningQuestionSlotDefinition = {
+  missing: ['planning_duration'],
+  targetSlot: 'planning_duration',
+  intent: 'ask_planning_duration',
+  kind: 'missing_slot',
+  previewPolicy: 'assumable',
+  previewQuestionPriority: 2,
+  status: 'needs_scope',
+  deterministicQuestion: (state) => {
+    const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
+    return `${scopeLabel}の計画は、開始日から何日間にしますか？`;
+  },
+  isStateQuestionEligible: (state) => isMissing(state, 'planning_duration'),
+  isQuestionPlanEligible: defaultQuestionPlanEligibility,
+  dependsOn: ['planning_start_date'],
+  termExplanation:
+    '計画を続ける日数です。開始日を1日目として、何日間の計画にするか教えてください。',
+  clarificationKeywords: [/何日間|期間の長さ|日数/],
+  vocabularyHint: '計画の日数',
+  fallbackQuestion: ({ planningPeriodLabel }) =>
+    `${planningPeriodLabel ?? 'その期間'}の計画は何日間にしますか？`,
+  userLabel: '計画の日数',
+};
+
 const tasksOrGoalsSlot: PlanningQuestionSlotDefinition = {
   missing: ['tasks_or_goals'],
   targetSlot: 'tasks_or_goals',
@@ -329,6 +353,7 @@ export const QUESTION_SLOT_DEFINITION_BY_MISSING: Record<
 > = {
   planning_period: planningPeriodSlot,
   planning_start_date: planningStartDateSlot,
+  planning_duration: planningDurationSlot,
   tasks_or_goals: tasksOrGoalsSlot,
   fixed_events: fixedEventsSlot,
   sleep_cycle: sleepCycleSlot,
@@ -345,6 +370,7 @@ export const QUESTION_SLOT_DEFINITION_BY_MISSING: Record<
 const QUESTION_SLOT_DEFINITIONS: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   tasksOrGoalsSlot,
   yearRangeSlot,
   completionDirectionSlot,
@@ -360,6 +386,7 @@ const QUESTION_SLOT_DEFINITIONS: readonly PlanningQuestionSlotDefinition[] = [
 export const STATUS_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   tasksOrGoalsSlot,
   completionDirectionSlot,
   yearRangeSlot,
@@ -376,6 +403,7 @@ export const QUESTION_PLAN_SLOT_ORDER = QUESTION_SLOT_DEFINITIONS;
 const STATE_QUESTION_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   tasksOrGoalsSlot,
   yearRangeSlot,
   completionDirectionSlot,
@@ -386,6 +414,7 @@ const STATE_QUESTION_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
 const MESSAGE_KEY_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   yearRangeSlot,
   unitDurationEstimateSlot,
   priorityPolicySlot,
@@ -430,8 +459,12 @@ export function statusForMissing(
 export function deterministicQuestionsForState(
   state: PlanningIntakeState,
 ): string[] {
+  const missing = new Set(state.missing);
   return STATE_QUESTION_SLOT_ORDER.flatMap((definition) =>
     definition.isStateQuestionEligible(state)
+      && !(definition.dependsOn ?? []).some((dependency) =>
+        missing.has(dependency),
+      )
       ? [definition.deterministicQuestion(state)].filter(
           (question): question is string => Boolean(question),
         )
