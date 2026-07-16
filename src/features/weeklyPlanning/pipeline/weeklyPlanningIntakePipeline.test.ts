@@ -1478,7 +1478,7 @@ describe('constraint source capability (use_constraint_source)', () => {
       ...defaultPipelineInput,
       previousState: stateWithFixedEventsMissing(),
       userText: '登録済みの予定を考慮して',
-      existingPlans: [plan({ date: '2026-06-30' })],
+      existingPlans: [plan({ date: '2026-06-27' })],
       interpreter: fakeInterpreter([
         useConstraintSourceCandidate({ kind: 'existing_plans', sourceText: '登録済みの予定を考慮して' }),
       ]),
@@ -1498,7 +1498,7 @@ describe('constraint source capability (use_constraint_source)', () => {
       ...defaultPipelineInput,
       previousState,
       userText: '入れてあるやつをそのまま考慮して',
-      existingPlans: [plan({ date: '2026-06-30' })],
+      existingPlans: [plan({ date: '2026-06-27' })],
       scheduleTemplates: [timetableTemplate()],
       interpreter: fakeInterpreter([
         useConstraintSourceCandidate({
@@ -1528,7 +1528,7 @@ describe('constraint source capability (use_constraint_source)', () => {
       ...defaultPipelineInput,
       previousState: stateWithFixedEventsMissing(),
       userText: 'カレンダーに入ってる予定を使って',
-      existingPlans: [plan({ date: '2026-06-30' })],
+      existingPlans: [plan({ date: '2026-06-27' })],
       scheduleTemplates: [timetableTemplate()],
       interpreter: fakeInterpreter([
         useConstraintSourceCandidate({

@@ -47,6 +47,7 @@ import {
   type WeeklyPlanningRemainingWorkItemsResult,
 } from '../intake/weeklyPlanningRemainingWorkItems';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import { createKnownFixedEventOccurrences } from '../dialogue/weeklyPlanningKnownFixedEvents';
 import {
   canonicalizeAssumptionProposalDrafts,
   createAssumptionProposalSessionState,
@@ -396,6 +397,7 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
 
 function createPlannerCapabilitySnapshot(
   input: WeeklyPlanningIntakePipelineInput,
+  state: PlanningIntakeState,
 ): PlannerCapabilitySnapshot {
   const termId = input.timetableTermId ?? 'default';
   const hasActiveTimetable = (input.scheduleTemplates ?? []).some(
@@ -404,7 +406,10 @@ function createPlannerCapabilitySnapshot(
 
   return {
     hasActiveTimetable,
-    existingPlanCount: (input.existingPlans ?? []).length,
+    existingPlanCount: createKnownFixedEventOccurrences(
+      input.existingPlans ?? [],
+      state.range,
+    ).length,
   };
 }
 
@@ -521,7 +526,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     input.userText,
     context,
   );
-  const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
+  const capabilitySnapshot = createPlannerCapabilitySnapshot(input, preparedState);
   const stateSummary = createInterpreterStateSummary(
     preparedState,
     capabilitySnapshot,

@@ -194,6 +194,47 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     expect(result.message).not.toContain('使える時間');
   });
 
+  it('does not call or display AI-authored event claims for availability actions', async () => {
+    const value = state(['英語ワークを進めたい']);
+    value.fixedEventsDeclaredNone = undefined;
+    value.missing = ['fixed_events'];
+    const snapshot = createPlanningHypothesisSnapshot({ state: value });
+    const allowedActions = [{
+      actionId: 'ask-required-fixed-events',
+      kind: 'ask_required_fact' as const,
+      topicId: 'availability-basis',
+      sourceFactRefs: [],
+      allowedProposalRefs: [],
+      allowedOptionIds: [],
+      maxItems: 1,
+      displayHint: 'availability-basis',
+    }];
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        acknowledgement: '火曜の通院予定を確認しました。',
+        selectedActionIds: [allowedActions[0]?.actionId],
+        items: [{ actionId: allowedActions[0]?.actionId, text: '火曜の通院予定以外にありますか？' }],
+      })),
+    };
+    const planner = createAiBehaviorAwareWeeklyPlanningDialoguePlanner(config, client);
+    const result = await planner.plan({
+      snapshot,
+      allowedActions,
+      acceptedFacts: {
+        taskLabels: ['英語'],
+        planningPeriodLabel: '今週',
+        constraintSummary: [],
+        knownFixedEventSummaries: ['7/16 13:00〜14:00「授業」'],
+      },
+      previewAllowed: false,
+    });
+
+    expect(client.createChatCompletion).not.toHaveBeenCalled();
+    expect(result.source).toBe('deterministic_fallback');
+    expect(result.message).toContain('7/16 13:00〜14:00「授業」');
+    expect(result.message).not.toContain('通院');
+  });
+
   it('uses a closed top-level response schema', () => {
     const schema = WEEKLY_PLANNING_BEHAVIOR_DIALOGUE_RESPONSE_FORMAT.json_schema.schema as any;
     expect(schema.additionalProperties).toBe(false);

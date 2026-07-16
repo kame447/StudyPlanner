@@ -339,6 +339,13 @@ function fallbackTextForAction(
   }
 }
 
+function hasGroundedAvailabilityAction(input: BehaviorAwareDialoguePlannerInput): boolean {
+  return input.allowedActions.some((action) =>
+    action.topicId === 'availability-basis'
+    || action.topicId === 'feasibility_basis',
+  );
+}
+
 function renderFallback(input: BehaviorAwareDialoguePlannerInput): string {
   if (input.clarificationRequest) {
     return renderClarificationFallback(input.clarificationRequest);
@@ -378,7 +385,7 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
   return {
     async plan(input) {
       const effectiveInput = prioritizeDialogueInput(input);
-      if (effectiveInput.clarificationRequest) {
+      if (effectiveInput.clarificationRequest || hasGroundedAvailabilityAction(effectiveInput)) {
         return {
           message: renderFallback(effectiveInput),
           response: null,
