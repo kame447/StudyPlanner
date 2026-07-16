@@ -1,6 +1,52 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx src/components/QuickEntryModalSessionResume.test.tsx src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
+
+ [32m✓[39m src/components/QuickEntryModalSessionResume.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 27[2mms[22m[39m
+[31m   [31m×[31m weekly planning preview session lifecycle[2m > [22mrestores a preview committed after the modal was unmounted[39m[32m 26[2mms[22m[39m
+[31m     → Cannot read properties of undefined (reading 'getItem')[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx[2m > [22mweekly planning preview session lifecycle[2m > [22mrestores a preview committed after the modal was unmounted
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'getItem')[39m
+[36m [2m❯[22m readStoredAiConfig src/lib/aiConfig.ts:[2m84:37[22m[39m
+    [90m 82| [39m  }
+    [90m 83| [39m
+    [90m 84| [39m  [35mconst[39m raw [33m=[39m window[33m.[39msessionStorage[33m.[39m[34mgetItem[39m([33mAI_RUNTIME_STORAGE_KEY[39m)[33m;[39m
+    [90m   | [39m                                    [31m^[39m
+    [90m 85| [39m
+    [90m 86| [39m  [35mif[39m ([33m![39mraw) {
+[90m [2m❯[22m Module.getAiConfig src/lib/aiConfig.ts:[2m138:28[22m[39m
+[90m [2m❯[22m Module.getPlannerAiRuntimeInfo src/services/naturalLanguagePlanner.ts:[2m3246:22[22m[39m
+[90m [2m❯[22m NaturalLanguageAssistant src/components/NaturalLanguageAssistant.tsx:[2m266:23[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:[2m5662:16[22m[39m
+[90m [2m❯[22m renderIndeterminateComponent node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:[2m5736:15[22m[39m
+[90m [2m❯[22m renderElement node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:[2m5961:7[22m[39m
+[90m [2m❯[22m renderNodeDestructiveImpl node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:[2m6119:11[22m[39m
+[90m [2m❯[22m renderNodeDestructive node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:[2m6091:14[22m[39m
+[90m [2m❯[22m retryTask node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:[2m6543:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 07:54:41
+[2m   Duration [22m 3.17s[2m (transform 1.23s, setup 0ms, collect 1.80s, tests 82ms, environment 1ms, prepare 737ms)[22m
+
+
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/lib/aiConfig.ts,title=src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx > weekly planning preview session lifecycle > restores a preview committed after the modal was unmounted,line=84,column=37::TypeError: Cannot read properties of undefined (reading 'getItem')%0A ❯ readStoredAiConfig src/lib/aiConfig.ts:84:37%0A ❯ Module.getAiConfig src/lib/aiConfig.ts:138:28%0A ❯ Module.getPlannerAiRuntimeInfo src/services/naturalLanguagePlanner.ts:3246:22%0A ❯ NaturalLanguageAssistant src/components/NaturalLanguageAssistant.tsx:266:23%0A ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5662:16%0A ❯ renderIndeterminateComponent node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5736:15%0A ❯ renderElement node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5961:7%0A ❯ renderNodeDestructiveImpl node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6119:11%0A ❯ renderNodeDestructive node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6091:14%0A ❯ retryTask node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6543:5%0A%0A
 Traceback (most recent call last):
-  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-b1-preview-session.py", line 271, in <module>
-    replace_once(
-  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-b1-preview-session.py", line 34, in replace_once
-    raise RuntimeError(f"{relative_path}: expected one match, found {count}")
-RuntimeError: src/components/NaturalLanguageAssistant.tsx: expected one match, found 2
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-b1-preview-session.py", line 454, in <module>
+    run(
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-b1-preview-session.py", line 11, in run
+    subprocess.run(args, cwd=ROOT, check=True)
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '('npm', 'run', 'test:run', '--', 'src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx', 'src/components/QuickEntryModalSessionResume.test.tsx', 'src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts')' returned non-zero exit status 1.
