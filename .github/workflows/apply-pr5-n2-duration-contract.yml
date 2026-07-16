@@ -29,6 +29,27 @@ jobs:
       - run: |
           git config user.name "studyplanner-fix-bot"
           git config user.email "studyplanner-fix-bot@users.noreply.github.com"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/agent-scripts/apply-pr5-n2-duration-contract.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''replace_once(
+              'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+              "): SetPendingPlanningRangeCommand | undefined {\\n",
+              "): NormalizedSetPendingPlanningRangeCommand | undefined {\\n",
+          )
+          '''
+          new = '''replace_once(
+              'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+              "function parsePendingPlanningRange(\\n  text: string,\\n  context: WeeklyPlanningIntakeContext,\\n): SetPendingPlanningRangeCommand | undefined {\\n",
+              "function parsePendingPlanningRange(\\n  text: string,\\n  context: WeeklyPlanningIntakeContext,\\n): NormalizedSetPendingPlanningRangeCommand | undefined {\\n",
+          )
+          '''
+          if text.count(old) != 1:
+              raise RuntimeError('scope parser replacement block did not match')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
           set +e
           python .github/agent-scripts/apply-pr5-n2-duration-contract.py > /tmp/pr5-n2.log 2>&1
           status=$?
