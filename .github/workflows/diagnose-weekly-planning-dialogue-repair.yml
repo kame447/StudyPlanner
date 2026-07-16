@@ -20,20 +20,21 @@ jobs:
       - name: Run dialogue repair tests
         shell: bash
         run: |
-          set +e
+          set -o pipefail
           npm run test:run -- \
             src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRepairPolicy.test.ts \
             src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts \
-            > dialogue-repair-tests.log 2>&1
-          echo $? > dialogue-repair-tests.exit
-          exit 0
+            2>&1 | tee dialogue-repair-tests.log
       - name: Run full test suite
         shell: bash
         run: |
-          set +e
-          npm run test:run > full-tests.log 2>&1
-          echo $? > full-tests.exit
-          exit 0
+          set -o pipefail
+          npm run test:run 2>&1 | tee full-tests.log
+      - name: Run production build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee production-build.log
       - name: Upload diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -41,6 +42,5 @@ jobs:
           name: weekly-planning-dialogue-repair-diagnostics
           path: |
             dialogue-repair-tests.log
-            dialogue-repair-tests.exit
             full-tests.log
-            full-tests.exit
+            production-build.log
