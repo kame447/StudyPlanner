@@ -1,33 +1,136 @@
 
 > studyplanner-app@0.1.0 test:run
-> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts
 
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m84 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 296[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps the async interpreter entrypoint identical when no interpreter is injected[32m 17[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mopens the intake with planning period and learning-content questions: 予定作りたい[32m 3[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mopens the intake with planning period and learning-content questions: 明日と明後日の予定立てたい[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mconnects a begin turn to a later period answer without re-asking the begin intent[32m 3[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not seed redundant begin slots when one turn already includes range and exam scope[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mroutes a pending next-week start utterance to start-date and learning-content questions[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mclassifies an uninterpretable first turn as an open planning dialogue[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps an empty AI candidate result on the same open-dialogue taxonomy without rules fallback[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mapplies a provider begin command without requiring deterministic semantic parsing[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22maccepts a provider set_study_goal and reaches the capability-gap decision[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22madds a legacy task after a command task when the provider throws[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not turn consumed sleep and meal fragments into legacy tasks after provider failure[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps a valid legacy task in a mixed constraint turn after provider failure[32m 3[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not turn a bath-only constraint into a legacy task after provider failure[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps the post-meal English task without inferring a meal duration[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mconsumes only the explicit meal duration in a no-comma mixed turn[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mconsumes only the explicit bath duration in a no-comma mixed turn[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mconsumes only the explicit sleep range in a no-comma mixed turn[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mrecovers a goal from a later provider turn without re-asking tasks_or_goals[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mupserts a same-title goal and appends a different-title goal[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mkeeps branch A assessment for a first weekly pipeline turn[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mkeeps branch A inactive for first pipeline turns without a weekly keyword[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mdocuments the first-turn pipeline truthiness difference for setup-command legacy fallback[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mlegacy fallback removes tasks_or_goals missing after branch B fills first-turn setup tasks[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mdoes not ask fixed events or sleep again after a compound turn fills both slots[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mlegacy fallback merges a second pipeline turn into the previous weekly state[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mreturns ask_missing_info for an under-specified first utterance[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mreturns confirm_ambiguity when fieldless completedYears would otherwise reach planning[32m 9[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mpasses existing plans to the new intake dry-run generator as hard busy intervals[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mruns the WP-RP-001 sequence through dry-run preview without saving[32m 5[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps draftRequest null while fixed events are still unconfirmed[32m 5[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mmoves zero-progress exam prep past cannot_create_draft in the pipeline[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mcreates draftRequest after explicit no-fixed-events confirmation[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mreturns ask_relax_constraints when dry-run leaves unscheduled items[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mupdates remaining work items and dry-run candidates after a preview-stage completed year revision[32m 5[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not turn fieldless completed year revisions into draft changes[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22madds a fixed event revision after preview and regenerates dry-run candidates without saving[32m 8[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mupdates an existing life constraint after preview without duplicating the same kind[32m 6[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mupdates field-first priority after preview and regenerates remaining work item order[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22madds unavailable time constraints after preview and regenerates candidates without scheduling inside the blocked range[32m 5[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22madds unavailable whole-day constraints after preview and keeps draft generation unsaved[32m 4[2mms[22m[39m
+   [32m✓[39m weekly planning intake pipeline[2m > [22mis deterministic for the same input sequence[32m 22[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22msatisfies fixed_events when timetable is non-empty (use_constraint_source)[32m 31[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mmaps every timetable phrasing to the same intent and the same resulting state[32m 7[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mdoes not satisfy fixed_events and falls to confirmation when the timetable is empty[32m 5[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22msatisfies fixed_events via the existing add_fixed_event capability for a time-explicit part-time job[32m 4[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mresolves existing_plans source against the existing plan count[32m 4[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mclarifies ambiguous constraint source references before hard applying nano-style candidates[32m 7[2mms[22m[39m
+   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mclarifies ambiguous calendar wording when multiple constraint sources are active[32m 13[2mms[22m[39m
+   [32m✓[39m planning range reseed and confidence guards[2m > [22mdoes not reseed answered scope when a pending range becomes explicit[32m 2[2mms[22m[39m
+   [32m✓[39m planning range reseed and confidence guards[2m > [22mdoes not reseed fixed events collected while the planning range is pending[32m 1[2mms[22m[39m
+   [32m✓[39m planning range reseed and confidence guards[2m > [22mkeeps an explicit range when a later turn only yields an inferred range[32m 1[2mms[22m[39m
+   [32m✓[39m planning range reseed and confidence guards[2m > [22mallows an explicit range to replace an existing explicit range[32m 1[2mms[22m[39m
+   [32m✓[39m planning range reseed and confidence guards[2m > [22mkeeps a future scope pending when one-week wording is repeated without a start day[32m 1[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22manswers a term clarification without advancing state (missing unchanged)[32m 4[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mmaps every clarification phrasing to the same intent and keeps state intact[32m 4[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mdoes not map a clarification to note_uncertainty or any answer command[32m 6[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mkeeps future weekly scope pending until a start day is clarified[32m 1[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22muses resolved planning range as the scheduler window and first-day lower bound[32m 0[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mapplies accepted fixed events before returning a term clarification[32m 3[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mkeeps confirmation assumptions while answering a clarification in the same turn[32m 3[2mms[22m[39m
+   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mdoes not apply low-confidence candidates without a clarification request[32m 5[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mapplies an explicit AI range whose start is inside the pending window[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mapplies a provider pending next_week command through deterministic normalization[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22maccepts an explicit provider range after a normalized pending next_week command[32m 1[2mms[22m[39m
+[31m   [31m×[31m confirmed slots and AI planning range integration[2m > [22mkeeps named future periods unresolved until an explicit range is supplied[39m[32m 18[2mms[22m[39m
+[31m     → expected [] to deeply equal [ ObjectContaining{…} ][39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mrejects provider pending creation after a planning range is confirmed[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22maccepts a timetable source while range is pending and keeps it after range resolution[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mstill rejects AI fixed events after a hard fixed event was recorded[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mtreats a no-fixed-events declaration as confirmed on later turns[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps existing confirmed-slot derivation while ignoring missing proxies[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mnormalizes an AI planning range and schedules from its first date[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps pending clarification for inferred AI ranges and exposes pending summary[32m 1[2mms[22m[39m
+   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps explicit AI ranges in confirmation without applying over pending scope[32m 1[2mms[22m[39m
+   [32m✓[39m Stage 1 interpreter grounding[2m > [22msupplies previous-state unit-rate questions as lastQuestions[32m 3[2mms[22m[39m
+   [32m✓[39m Stage 1 interpreter grounding[2m > [22momits lastQuestions on the first interpreter turn[32m 0[2mms[22m[39m
+   [32m✓[39m Stage 1 interpreter grounding[2m > [22mapplies an explicit tomorrow-and-day-after range returned by the interpreter[32m 1[2mms[22m[39m
+   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mforwards chronological recent turns separately from a short current answer[32m 2[2mms[22m[39m
+   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mre-emits a missing prior priority fact from recent turns through validator and reducer[32m 1[2mms[22m[39m
+   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mkeeps a fact accepted several turns ago when history suggests an explicit correction[32m 0[2mms[22m[39m
+   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mdoes not hard apply an ambiguous pronoun reference from recent turns[32m 0[2mms[22m[39m
+   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mignores recent turns in rules mode[32m 1[2mms[22m[39m
+   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mignores recent turns when an interpreter exception switches the whole turn to rules fallback[32m 1[2mms[22m[39m
+   [32m✓[39m preview policy Stage 2[2m > [22mpromotes an assumed preview and replaces the unit-rate assumption through the next normal turn[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 70[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 24[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 12[2mms[22m[39m
 
-[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
-[2m      Tests [22m [1m[32m51 passed[39m[22m[90m (51)[39m
-[2m   Start at [22m 08:46:18
-[2m   Duration [22m 2.21s[2m (transform 792ms, setup 0ms, collect 1.24s, tests 88ms, environment 1ms, prepare 361ms)[22m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts[2m > [22mconfirmed slots and AI planning range integration[2m > [22mkeeps named future periods unresolved until an explicit range is supplied
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_planning_range",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts:[2m2070:73[22m[39m
+    [90m2068| [39m    })[33m;[39m
+    [90m2069| [39m
+    [90m2070| [39m    expect(unresolved.interpreterDiagnostics?.acceptedWithConfirmation…
+    [90m   | [39m                                                                        [31m^[39m
+    [90m2071| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_planning_range'[39m })[33m,[39m
+    [90m2072| [39m    ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
 
 
-> studyplanner-app@0.1.0 build
-> tsc --noEmit && vite build --config vite.config.mjs
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (4)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m134 passed[39m[22m[90m (135)[39m
+[2m   Start at [22m 08:48:47
+[2m   Duration [22m 4.03s[2m (transform 1.25s, setup 0ms, collect 2.25s, tests 401ms, environment 1ms, prepare 533ms)[22m
 
-src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts(629,12): error TS18048: 'normalized' is possibly 'undefined'.
-src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts(33,12): error TS18048: 'normalized' is possibly 'undefined'.
-src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts(34,12): error TS18048: 'normalized' is possibly 'undefined'.
-src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts(35,12): error TS18048: 'normalized' is possibly 'undefined'.
-src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts(599,50): error TS2345: Argument of type '(AddUnavailableCommand | AddFixedEventCommand | UpdateLifeConstraintCommand | UseConstraintSourceCommand | ... 14 more ... | undefined)[]' is not assignable to parameter of type 'ParsedWeeklyPlanningCommand[]'.
-  Type 'AddUnavailableCommand | AddFixedEventCommand | UpdateLifeConstraintCommand | UseConstraintSourceCommand | ... 14 more ... | undefined' is not assignable to type 'ParsedWeeklyPlanningCommand'.
-    Type 'undefined' is not assignable to type 'ParsedWeeklyPlanningCommand'.
+
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts,title=src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts > confirmed slots and AI planning range integration > keeps named future periods unresolved until an explicit range is supplied,line=2070,column=73::AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   ObjectContaining {%0A-     "type": "set_planning_range",%0A-   },%0A- ]%0A+ []%0A%0A ❯ src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts:2070:73%0A%0A
 Traceback (most recent call last):
-  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/fix-pr5-n2-regression.py", line 54, in <module>
-    subprocess.run(['npm', 'run', 'build'], cwd=ROOT, check=True)
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/fix-pr5-n2-regression.py", line 70, in <module>
+    subprocess.run([
   File "/usr/lib/python3.12/subprocess.py", line 571, in run
     raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['npm', 'run', 'build']' returned non-zero exit status 2.
+subprocess.CalledProcessError: Command '['npm', 'run', 'test:run', '--', 'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts', 'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts', 'src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts', 'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts']' returned non-zero exit status 1.
