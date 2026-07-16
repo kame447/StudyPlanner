@@ -1,0 +1,9 @@
+
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
+
+src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts(156,10): error TS6133: 'hasRequiredShape' is declared but its value is never read.
+src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts(398,10): error TS6133: 'isSafeConfirmedSlotEnrichment' is declared but its value is never read.
+src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts(553,11): error TS6133: 'unconfirmedSlots' is declared but its value is never read.
+src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts(31,9): error TS2741: Property 'sourceText' is missing in type '{ startYear: number; endYear: number; }' but required in type '{ startYear: number; endYear: number; sourceText: string; }'.
+src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts(48,7): error TS2741: Property 'rawText' is missing in type '{ fields: string[]; }' but required in type 'ExamPrepScope'.
