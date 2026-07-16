@@ -27,8 +27,14 @@ jobs:
           fetch-depth: 1
       - name: Apply core fixes
         run: |
-          node scripts/apply-weekly-planning-review-fixes-core.mjs
-          node scripts/patch-weekly-planning-review-core-v2.mjs
+          set -o pipefail
+          { node scripts/apply-weekly-planning-review-fixes-core.mjs; node scripts/patch-weekly-planning-review-core-v2.mjs; } 2>&1 | tee core-apply-output.log
+      - name: Upload core apply log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-core-apply-log
+          path: core-apply-output.log
       - uses: actions/setup-node@v4
         with:
           node-version: 22
