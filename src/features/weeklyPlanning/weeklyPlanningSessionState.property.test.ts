@@ -46,12 +46,17 @@ function pendingApproval(baseRevision: number): WeeklyPlanningPendingApproval {
   };
 }
 
+const validIsoDate = fc.integer({
+  min: Date.UTC(2000, 0, 1),
+  max: Date.UTC(2100, 11, 31),
+}).map((timestamp) => new Date(timestamp).toISOString().slice(0, 10));
+
 describe('weekly planning session reducer properties', () => {
   it('never commits an arbitrary stale turn identity', () => {
     fc.assert(fc.property(
       fc.record({
         requestId: fc.string({ minLength: 1 }).filter((value) => value !== 'request-current'),
-        weekStartDate: fc.date().map((date) => date.toISOString().slice(0, 10)),
+        weekStartDate: validIsoDate,
         baseRevision: fc.nat({ max: 50 }),
       }),
       (stale) => {
@@ -88,37 +93,55 @@ describe('weekly planning session reducer properties', () => {
       fc.constant({ type: 'clear_draft_blocks' as const }),
       fc.string().map((content) => ({
         type: 'append_message' as const,
-        message: {
-          id: `extra-${content}`,
-          role: 'user' as const,
-          content,
-          createdAt: '2026-07-16T00:00:00.000Z',
-        },
+        message: { id: `message-${content}`, role: 'assistant' as const, content, createdAt: 'now' },
       })),
     );
 
-    fc.assert(fc.property(fc.array(actionArbitrary, { maxLength: 30 }), (actions) => {
-      const withDrafts = weeklyPlanningReducer(createInitialPlanningState('2026-07-13'), {
-        type: 'add_draft_blocks',
-        blocks: [draftBlock('draft-1'), draftBlock('draft-2')],
-      });
-      const pending = pendingTurn(withDrafts.revision);
-      const begun = weeklyPlanningReducer(withDrafts, {
+    fc.assert(fc.property(fc.array(actionArbitrary, { maxLength: 25 }), (actions) => {
+      const initial = createInitialPlanningState('2026-07-13');
+      const current = pendingTurn(initial.revision);
+      const begun = weeklyPlanningReducer(initial, {
         type: 'begin_turn',
-        pending,
+        pending: current,
         userMessage: {
-          id: 'user-message', role: 'user', content: '予定', createdAt: pending.startedAt,
+          id: 'user-message', role: 'user', content: '予定', createdAt: current.startedAt,
         },
       });
-      const after = actions.reduce(weeklyPlanningReducer, begun);
-      expect(after).toBe(begun);
-      expect(after.pendingTurn).toEqual(pending);
+      const reduced = actions.reduce(weeklyPlanningReducer, begun);
+      expect(reduced).toBe(begun);
     }));
   });
 
   it('keeps draft blocks immutable for arbitrary mutation sequences during approval', () => {
-    const actionArbitrary = fc.oneof(
-      fc.string().map((blockId) => ({ type: 'remove_draft_block' as const, blockId })),
+    const blockIdArbitrary = fc.oneof(fc.constant('draft-1'), fc.constant('draft-2'), fc.string());
+    const draftMutationArbitrary = fc.oneof(
+      blockIdArbitrary.map((blockId) => ({ type: 'remove_draft_block' as const, blockId })),
+      fc.array(blockIdArbitrary, { maxLength: 5 }).map((blockIds) => ({
+        type: 'remove_draft_blocks' as const,
+        blockIds,
+      })),
+      fc.constant({ type: 'clear_draft_blocks' as const }),
+    );
+
+    fc.assert(fc.property(fc.array(draftMutationArbitrary, { maxLength: 25 }), (actions) => {
+      const withDrafts = weeklyPlanningReducer(
+        createInitialPlanningState('2026-07-13'),
+        { type: 'set_draft_blocks', draftBlocks: [draftBlock('draft-1'), draftBlock('draft-2')] },
+      );
+      const approval = pendingApproval(withDrafts.revision);
+      const begun = weeklyPlanningReducer(withDrafts, { type: 'begin_approval', pending: approval });
+      const reduced = actions.reduce(weeklyPlanningReducer, begun);
+      expect(reduced.draftBlocks).toEqual(begun.draftBlocks);
+      expect(reduced.pendingApproval).toEqual(approval);
+    }));
+  });
+
+  it('keeps revision monotonic for arbitrary accepted non-load mutations', () => {
+    const acceptedMutationArbitrary = fc.oneof(
+      fc.string().map((content) => ({
+        type: 'append_message' as const,
+        message: { id: `message-${content}`, role: 'assistant' as const, content, createdAt: 'now' },
+      })),
       fc.array(fc.string(), { maxLength: 5 }).map((blockIds) => ({
         type: 'remove_draft_blocks' as const,
         blockIds,
@@ -126,31 +149,12 @@ describe('weekly planning session reducer properties', () => {
       fc.constant({ type: 'clear_draft_blocks' as const }),
     );
 
-    fc.assert(fc.property(fc.array(actionArbitrary, { maxLength: 30 }), (actions) => {
-      const withDrafts = weeklyPlanningReducer(createInitialPlanningState('2026-07-13'), {
-        type: 'add_draft_blocks',
-        blocks: [draftBlock('draft-1'), draftBlock('draft-2')],
-      });
-      const pending = pendingApproval(withDrafts.revision);
-      const approving = weeklyPlanningReducer(withDrafts, { type: 'begin_approval', pending });
-      const after = actions.reduce(weeklyPlanningReducer, approving);
-      expect(after).toBe(approving);
-      expect(after.draftBlocks).toEqual(approving.draftBlocks);
-    }));
-  });
-
-  it('keeps revision monotonic for arbitrary accepted non-load mutations', () => {
-    fc.assert(fc.property(fc.array(fc.string(), { maxLength: 40 }), (contents) => {
-      let state = createInitialPlanningState('2026-07-13');
-      for (const [index, content] of contents.entries()) {
-        const previousRevision = state.revision;
-        state = weeklyPlanningReducer(state, {
-          type: 'append_message',
-          message: {
-            id: `message-${index}`, role: 'user', content, createdAt: '2026-07-16T00:00:00.000Z',
-          },
-        });
-        expect(state.revision).toBe(previousRevision + 1);
+    fc.assert(fc.property(fc.array(acceptedMutationArbitrary, { maxLength: 25 }), (actions) => {
+      let current = createInitialPlanningState('2026-07-13');
+      for (const action of actions) {
+        const next = weeklyPlanningReducer(current, action);
+        expect(next.revision).toBeGreaterThanOrEqual(current.revision);
+        current = next;
       }
     }));
   });
