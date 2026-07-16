@@ -37,15 +37,23 @@ export interface PlanningRange {
   confidence: PlanningRangeConfidence;
 }
 
-export type PlanningTemporalScopeKind = 'next_week' | 'named_future_period';
+export type PendingPlanningRangeScope =
+  | {
+      kind: 'next_week';
+      label: string;
+      windowStartDate: string;
+      windowEndDate: string;
+    }
+  | {
+      kind: 'named_future_period';
+      label: string;
+      windowStartDate?: string;
+      windowEndDate?: string;
+    };
 
 export interface PendingPlanningRangeClarification {
-  scope: {
-    kind: PlanningTemporalScopeKind;
-    label: string;
-    startDate?: string;
-    endDate?: string;
-  };
+  scope: PendingPlanningRangeScope;
+  planningStartDate?: string;
   durationDays?: number;
   sourceText: string;
 }
@@ -167,6 +175,7 @@ export type PriorityPolicy =
 export type PlanningIntakeMissing =
   | 'planning_period'
   | 'planning_start_date'
+  | 'planning_duration'
   | 'tasks_or_goals'
   | 'fixed_events'
   | 'sleep_cycle'
