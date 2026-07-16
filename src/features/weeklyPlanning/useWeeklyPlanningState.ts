@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { startOfWeek } from '../../lib/date';
+import type { PlanningState, WeeklyPlanningAction } from './types';
 import {
   loadWeeklyPlanningState,
   saveWeeklyPlanningState,
@@ -11,29 +12,38 @@ import {
 
 export function useWeeklyPlanningState(userId: string, selectedDate: string) {
   const weekStartDate = useMemo(() => startOfWeek(selectedDate), [selectedDate]);
-  const [planningState, dispatchPlanningAction] = useReducer(
-    weeklyPlanningReducer,
-    weekStartDate,
-    createInitialPlanningState,
+  const [planningState, setPlanningState] = useState<PlanningState>(() =>
+    createInitialPlanningState(weekStartDate),
   );
+  const planningStateRef = useRef(planningState);
+
+  const replacePlanningState = useCallback((nextState: PlanningState) => {
+    planningStateRef.current = nextState;
+    setPlanningState(nextState);
+    return nextState;
+  }, []);
+
+  const dispatchPlanningAction = useCallback((action: WeeklyPlanningAction) => {
+    const current = planningStateRef.current;
+    const next = weeklyPlanningReducer(current, action);
+    if (next !== current) replacePlanningState(next);
+    return next;
+  }, [replacePlanningState]);
+
+  const getPlanningState = useCallback(() => planningStateRef.current, []);
 
   useEffect(() => {
-    dispatchPlanningAction({
-      type: 'load_state',
-      state: loadWeeklyPlanningState(userId, weekStartDate),
-    });
-  }, [userId, weekStartDate]);
+    replacePlanningState(loadWeeklyPlanningState(userId, weekStartDate));
+  }, [replacePlanningState, userId, weekStartDate]);
 
   useEffect(() => {
-    if (planningState.weekStartDate !== weekStartDate) {
-      return;
-    }
-
+    if (planningState.weekStartDate !== weekStartDate) return;
     saveWeeklyPlanningState(userId, planningState);
   }, [planningState, userId, weekStartDate]);
 
   return {
     planningState,
     dispatchPlanningAction,
+    getPlanningState,
   };
 }

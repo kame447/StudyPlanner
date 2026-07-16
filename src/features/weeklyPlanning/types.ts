@@ -61,12 +61,30 @@ export interface WeeklyPlanningMessage {
   createdAt: string;
 }
 
+export interface WeeklyPlanningPendingTurn {
+  requestId: string;
+  weekStartDate: string;
+  baseRevision: number;
+  startedAt: string;
+}
+
+export interface WeeklyPlanningPendingApproval {
+  requestId: string;
+  weekStartDate: string;
+  baseRevision: number;
+  blockIds: string[];
+  startedAt: string;
+}
+
 export interface PlanningState {
   weekStartDate: string;
+  revision: number;
   mode: WeeklyPlanningMode;
   draftBlocks: WeeklyPlanDraftBlock[];
   messages: WeeklyPlanningMessage[];
   intakeState?: PlanningIntakeState;
+  pendingTurn?: WeeklyPlanningPendingTurn;
+  pendingApproval?: WeeklyPlanningPendingApproval;
   lastAssistantMessage?: string;
   updatedAt: string;
 }
@@ -81,4 +99,30 @@ export type WeeklyPlanningAction =
   | { type: 'append_message'; message: WeeklyPlanningMessage }
   | { type: 'set_intake_state'; state: PlanningIntakeState | null }
   | { type: 'clear_conversation' }
-  | { type: 'set_last_assistant_message'; message: string };
+  | { type: 'reset_session' }
+  | { type: 'set_last_assistant_message'; message: string }
+  | {
+      type: 'begin_turn';
+      pending: WeeklyPlanningPendingTurn;
+      userMessage: WeeklyPlanningMessage;
+    }
+  | {
+      type: 'commit_turn';
+      pending: WeeklyPlanningPendingTurn;
+      intakeState: PlanningIntakeState;
+      assistantMessage: WeeklyPlanningMessage;
+    }
+  | {
+      type: 'fail_turn';
+      pending: WeeklyPlanningPendingTurn;
+      assistantMessage: WeeklyPlanningMessage;
+    }
+  | { type: 'cancel_turn'; pending: WeeklyPlanningPendingTurn }
+  | { type: 'begin_approval'; pending: WeeklyPlanningPendingApproval }
+  | {
+      type: 'complete_approval';
+      pending: WeeklyPlanningPendingApproval;
+      completedBlockIds: string[];
+      assistantMessage: WeeklyPlanningMessage;
+    }
+  | { type: 'fail_approval'; pending: WeeklyPlanningPendingApproval };
