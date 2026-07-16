@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply-weekly-planning-session-ui.mjs
       - scripts/adjust-weekly-planning-session-ui-script.mjs
+      - scripts/finalize-weekly-planning-session-ui.mjs
       - .github/workflows/apply-weekly-planning-session-ui.yml
 
 permissions:
@@ -22,6 +23,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
       - run: node scripts/adjust-weekly-planning-session-ui-script.mjs
       - run: node scripts/apply-weekly-planning-session-ui.mjs
+      - run: node scripts/finalize-weekly-planning-session-ui.mjs
       - run: git diff --check
       - uses: actions/setup-node@v4
         with:
@@ -33,20 +35,10 @@ jobs:
       - name: Full tests
         run: npm run test:run
       - name: Production build
-        id: build
-        continue-on-error: true
-        run: npm run build > session-ui-build.log 2>&1
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: session-ui-build-log
-          path: session-ui-build.log
-      - name: Require production build
-        if: steps.build.outcome == 'failure'
-        run: exit 1
+        run: npm run build
       - name: Commit verified UI ownership changes
         run: |
-          rm scripts/apply-weekly-planning-session-ui.mjs scripts/adjust-weekly-planning-session-ui-script.mjs .github/workflows/apply-weekly-planning-session-ui.yml
+          rm scripts/apply-weekly-planning-session-ui.mjs scripts/adjust-weekly-planning-session-ui-script.mjs scripts/finalize-weekly-planning-session-ui.mjs .github/workflows/apply-weekly-planning-session-ui.yml
           rm -f session-ui-script.log session-ui-targeted.log session-ui-build.log
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
