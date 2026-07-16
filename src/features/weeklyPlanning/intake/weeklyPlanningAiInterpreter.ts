@@ -5,6 +5,10 @@ import {
   type OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
+import {
+  canonicalizeOptionalCommandNulls,
+  isValidWeeklyPlanningCommand,
+} from './weeklyPlanningCommandRuntimeValidation';
 import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import type {
   InterpretedCommandCandidate,
@@ -19,8 +23,6 @@ interface AiInterpreterResponse {
   candidates: unknown[];
   assumptionProposalDrafts?: unknown[];
 }
-
-const CONFIDENCE_VALUES = new Set(['high', 'medium', 'low']);
 
 type JsonSchemaObject = Record<string, unknown>;
 
@@ -476,51 +478,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function omitNullObjectProperties(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => omitNullObjectProperties(item));
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, propertyValue]) => propertyValue !== null)
-      .map(([key, propertyValue]) => [key, omitNullObjectProperties(propertyValue)]),
-  );
-}
-
-function normalizeConfidence(value: unknown): ParsedWeeklyPlanningCommand['confidence'] {
-  return CONFIDENCE_VALUES.has(String(value))
-    ? value as ParsedWeeklyPlanningCommand['confidence']
-    : 'low';
-}
-
 function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null {
   if (!isRecord(candidate)) {
     return null;
   }
 
   const rawCommand = isRecord(candidate.command) ? candidate.command : candidate;
-  const normalizedCommand = omitNullObjectProperties(rawCommand);
-  if (!isRecord(normalizedCommand) || typeof normalizedCommand.type !== 'string') {
+  const normalizedCommand = canonicalizeOptionalCommandNulls(rawCommand);
+  if (!isRecord(normalizedCommand)
+    || typeof normalizedCommand.type !== 'string'
+    || !isValidWeeklyPlanningCommand(normalizedCommand)) {
     return null;
   }
-  const command = normalizedCommand;
-
-  const confidence = normalizeConfidence(command.confidence);
   const wrappedNeedsConfirmation = isRecord(candidate.command) && typeof candidate.needsConfirmation === 'boolean'
     ? candidate.needsConfirmation
     : undefined;
 
   return {
-    command: {
-      ...command,
-      confidence,
-    } as unknown as ParsedWeeklyPlanningCommand,
+    command: normalizedCommand as unknown as ParsedWeeklyPlanningCommand,
     origin: 'ai_interpreter',
-    needsConfirmation: wrappedNeedsConfirmation ?? confidence === 'medium',
+    needsConfirmation: wrappedNeedsConfirmation ?? normalizedCommand.confidence === 'medium',
   };
 }
 

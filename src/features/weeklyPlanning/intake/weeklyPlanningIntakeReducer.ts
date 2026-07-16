@@ -111,7 +111,7 @@ function mergeExamPrepScopeForCommand(
   const totalFields = commandScope.totalFields ?? previousScope?.totalFields;
   const totalYears = commandScope.totalYears ?? previousScope?.totalYears;
   const fields = commandScope.fields.length > 0
-    ? commandScope.fields
+    ? uniqueList(commandScope.fields.map((field) => field.trim()).filter(Boolean))
     : previousScope?.fields ?? [];
 
   return {
@@ -363,6 +363,7 @@ function applyWeeklyPlanningCommand(
       return {
         ...state,
         priorityPolicy: toPriorityPolicyFromSetPriorityPolicyCommand(command),
+        priorityPolicySource: 'user',
         missing: removeMissing(state.missing, [
           'priority_policy',
           'next_field_after_math',

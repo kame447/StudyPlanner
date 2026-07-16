@@ -1,8 +1,0 @@
-
-> studyplanner-app@0.1.0 build
-> tsc --noEmit && vite build --config vite.config.mjs
-
-src/features/weeklyPlanning/intake/weeklyPlanningExamScopeEnrichment.ts(45,66): error TS2345: Argument of type '{ startYear: number; endYear: number; sourceText?: string | undefined; }' is not assignable to parameter of type '{ startYear: number; endYear: number; sourceText: string; }'.
-  Types of property 'sourceText' are incompatible.
-    Type 'string | undefined' is not assignable to type 'string'.
-      Type 'undefined' is not assignable to type 'string'.

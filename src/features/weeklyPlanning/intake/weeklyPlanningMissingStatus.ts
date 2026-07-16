@@ -46,62 +46,54 @@ export function deriveMissingForPlanningRange(
   state: PlanningIntakeState,
 ): PlanningIntakeMissing[] {
   const missing: PlanningIntakeMissing[] = [];
-
-  if (!state.examPrepScope && state.tasks.length === 0) {
-    missing.push('tasks_or_goals');
-  }
-  if (!hasConfirmedFixedEvents(state)) {
-    missing.push('fixed_events');
-  }
-  if (!hasConfirmedSleepCycle(state)) {
-    missing.push('sleep_cycle');
-  }
-  if (!hasConfirmedMealBathConstraints(state)) {
-    missing.push('meal_bath_constraints');
-  }
-
+  if (!state.examPrepScope && state.tasks.length === 0) missing.push('tasks_or_goals');
+  if (!hasConfirmedFixedEvents(state)) missing.push('fixed_events');
+  if (!hasConfirmedSleepCycle(state)) missing.push('sleep_cycle');
+  if (!hasConfirmedMealBathConstraints(state)) missing.push('meal_bath_constraints');
   return missing;
 }
 
 function applyPriorityMissingState(state: PlanningIntakeState): PlanningIntakeState {
-  const fields = state.examPrepScope?.fields ?? [];
+  const fields = uniqueList((state.examPrepScope?.fields ?? []).map((field) => field.trim()).filter(Boolean));
+  const totalFields = state.examPrepScope?.totalFields;
   const isPriorityStage = Boolean(
     state.examPrepScope
     && state.unitRates.length > 0
     && !state.missing.includes('year_range')
     && !state.missing.includes('completion_direction'),
   );
-
   if (!isPriorityStage) return state;
 
-  if (fields.length <= 1) {
-    const missing = removeMissing(state.missing, [
-      'priority_policy',
-      'next_field_after_math',
-    ]);
-
-    if (fields.length === 1 && state.priorityPolicy.kind === 'unknown') {
-      return {
-        ...state,
-        priorityPolicy: { kind: 'field_first', order: [fields[0]] },
-        missing,
-      };
-    }
-
-    return missing.length === state.missing.length ? state : { ...state, missing };
-  }
-
-  if (state.priorityPolicy.kind === 'unknown') {
-    return {
+  const isKnownSingleField = fields.length === 1 && (totalFields === undefined || totalFields === 1);
+  let nextState = state;
+  if (!isKnownSingleField && state.priorityPolicySource === 'derived_single_field') {
+    nextState = {
       ...state,
-      missing: addMissing(state.missing, [
-        'priority_policy',
-        'next_field_after_math',
-      ]),
+      priorityPolicy: { kind: 'unknown' },
+      priorityPolicySource: undefined,
     };
   }
 
-  return state;
+  if (isKnownSingleField) {
+    const missing = removeMissing(nextState.missing, ['priority_policy', 'next_field_after_math']);
+    if (nextState.priorityPolicy.kind === 'unknown') {
+      return {
+        ...nextState,
+        priorityPolicy: { kind: 'field_first', order: [fields[0]] },
+        priorityPolicySource: 'derived_single_field',
+        missing,
+      };
+    }
+    return missing.length === nextState.missing.length ? nextState : { ...nextState, missing };
+  }
+
+  if (nextState.priorityPolicy.kind === 'unknown') {
+    return {
+      ...nextState,
+      missing: addMissing(nextState.missing, ['priority_policy', 'next_field_after_math']),
+    };
+  }
+  return nextState;
 }
 
 function resolveQuestions(state: PlanningIntakeState): string[] {
@@ -110,11 +102,7 @@ function resolveQuestions(state: PlanningIntakeState): string[] {
 
 function resolveStatus(state: PlanningIntakeState): PlanningIntakeStatus {
   const missingStatus = statusForMissing(state.missing);
-
-  if (missingStatus) {
-    return missingStatus;
-  }
-
+  if (missingStatus) return missingStatus;
   return state.tasks.length > 0 || state.examPrepScope ? 'draft_ready' : 'idle';
 }
 
@@ -129,7 +117,6 @@ export function finalizeState(state: PlanningIntakeState): PlanningIntakeState {
     uncertainties: uniqueList(stateWithPriorityMissing.uncertainties),
   };
   const shouldCreateDraft = status === 'draft_ready' && nextState.missing.length === 0;
-
   return {
     ...nextState,
     questions: resolveQuestions(nextState),

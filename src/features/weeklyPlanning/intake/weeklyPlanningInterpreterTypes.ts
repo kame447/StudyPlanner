@@ -1,5 +1,5 @@
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
-import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
+import type { ExamPrepScope, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 
 export type InterpreterOrigin = 'ai_interpreter';
 
@@ -47,12 +47,10 @@ export interface InterpreterCorrectionTargetSummary {
 
 export interface InterpreterStateSummary {
   knownFields: string[];
-  examScopeSummary?: {
+  examScopeSummary?: Omit<Partial<ExamPrepScope>, 'fields' | 'yearRange'> & {
     fields: string[];
-    yearRange?: {
-      startYear: number;
-      endYear: number;
-    };
+    rawText?: string[];
+    yearRange?: { startYear: number; endYear: number; sourceText?: string };
   };
   confirmedSlots: string[];
   planningRangeSummary?: string;

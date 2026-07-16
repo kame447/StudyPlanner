@@ -109,7 +109,7 @@ describe('weekly planning AI interpreter', () => {
     expect(request.messages[1].content).toContain('2030-01-01');
   });
 
-  it('keeps valid candidate units when one AI candidate has an invalid shape and defaults missing confidence to low', async () => {
+  it('rejects candidate units with invalid shape or missing required confidence', async () => {
     const client = createMockClient(JSON.stringify({
       candidates: [
         { command: 'not-an-object', needsConfirmation: false },
@@ -133,20 +133,22 @@ describe('weekly planning AI interpreter', () => {
 
     expect(result.parseRejections).toEqual([
       { rawCandidate: { command: 'not-an-object', needsConfirmation: false }, reason: 'invalid-candidate-shape' },
-    ]);
-    expect(result.candidates).toEqual([
       {
-        command: expect.objectContaining({
-          type: 'set_priority_policy',
-          confidence: 'low',
-        }),
-        origin: 'ai_interpreter',
-        needsConfirmation: false,
+        rawCandidate: {
+          command: {
+            type: 'set_priority_policy',
+            policy: { kind: 'field_first', order: ['数学', 'OS'] },
+            sourceText: '数学からOS',
+          },
+          needsConfirmation: false,
+        },
+        reason: 'invalid-candidate-shape',
       },
     ]);
+    expect(result.candidates).toEqual([]);
   });
 
-  it('captures the real smoke response shape with missing confidence and invalid field-year unitModel', async () => {
+  it('rejects the real smoke response when required confidence is missing', async () => {
     const client = createMockClient(JSON.stringify(
       WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.smokeResponseWithoutConfidence,
     ));
@@ -159,16 +161,11 @@ describe('weekly planning AI interpreter', () => {
     });
     const validation = validateInterpretedCandidates(result.candidates, { knownFields: [], confirmedSlots: [] });
 
-    expect(result.parseRejections).toEqual([]);
-    expect(result.candidates.map((candidate) => candidate.command.confidence)).toEqual(['low', 'low']);
-    expect(validation.rejected).toEqual([
-      expect.objectContaining({ reason: 'invalid-unit-model' }),
-    ]);
-    expect(validation.clarifications).toEqual([
-      expect.objectContaining({
-        command: expect.objectContaining({ type: 'set_priority_policy' }),
-      }),
-    ]);
+    expect(result.candidates).toEqual([]);
+    expect(result.parseRejections).toHaveLength(2);
+    expect(result.parseRejections.every((item) => item.reason === 'invalid-candidate-shape')).toBe(true);
+    expect(validation.rejected).toEqual([]);
+    expect(validation.clarifications).toEqual([]);
   });
 
   it('accepts the simplified bare command array response and derives needsConfirmation from confidence', async () => {
@@ -280,8 +277,9 @@ describe('weekly planning AI interpreter', () => {
     expect(validation.acceptedWithConfirmation).toEqual([
       expect.objectContaining({ type: 'set_study_goal' }),
     ]);
-    expect(validation.rejected).toEqual([
-      expect.objectContaining({ reason: 'invalid-command-shape' }),
+    expect(validation.rejected).toEqual([]);
+    expect(result.parseRejections).toEqual([
+      expect.objectContaining({ reason: 'invalid-candidate-shape' }),
     ]);
   });
 
@@ -347,7 +345,7 @@ describe('weekly planning AI interpreter', () => {
     expect(validation.rejected).toEqual([]);
   });
 
-  it('shrinks invalid JSON to an empty result and defaults missing confidence in candidate-shaped data', async () => {
+  it('shrinks invalid JSON and rejects candidate-shaped data missing required fields', async () => {
     const invalidJsonInterpreter = createAiWeeklyPlanningInterpreter(config, createMockClient('not json'));
     const invalidShapeInterpreter = createAiWeeklyPlanningInterpreter(config, createMockClient(JSON.stringify({
       candidates: [
@@ -364,7 +362,10 @@ describe('weekly planning AI interpreter', () => {
       userText: '数学から始めたい',
       context: { selectedDate: '2026-07-06' },
       stateSummary,
-    })).resolves.toEqual({ candidates: [expect.objectContaining({ command: expect.objectContaining({ confidence: 'low' }) })], parseRejections: [] });
+    })).resolves.toEqual({
+      candidates: [],
+      parseRejections: [expect.objectContaining({ reason: 'invalid-candidate-shape' })],
+    });
   });
 
   it('keeps ambiguous constraint source resolution outside the validator natural-language boundary', () => {

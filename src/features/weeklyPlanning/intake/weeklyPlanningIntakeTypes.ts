@@ -220,6 +220,7 @@ export interface PlanningIntakeState {
   constraintSourcesInUse?: ConstraintSourceRef[];
   fixedEventsDeclaredNone?: true;
   priorityPolicy: PriorityPolicy;
+  priorityPolicySource?: 'user' | 'derived_single_field';
   missing: PlanningIntakeMissing[];
   assumptions: string[];
   uncertainties: PlanningIntakeUncertainty[];

@@ -1,7 +1,7 @@
 # 週間計画対話の文脈・永続化・送信UIを堅牢化する
 
-Status: closed
-Closed: 2026-07-16
+Status: open
+Reopened: 2026-07-16
 Created: 2026-07-16
 
 ## 目的

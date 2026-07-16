@@ -432,16 +432,13 @@ function createInterpreterStateSummary(
     knownFields: state.examPrepScope?.fields ?? [],
     examScopeSummary: state.examPrepScope
       ? {
-        fields: [...state.examPrepScope.fields],
-        ...(state.examPrepScope.yearRange
-          ? {
-            yearRange: {
-              startYear: state.examPrepScope.yearRange.startYear,
-              endYear: state.examPrepScope.yearRange.endYear,
-            },
-          }
-          : {}),
-      }
+          ...state.examPrepScope,
+          fields: [...state.examPrepScope.fields],
+          rawText: [...state.examPrepScope.rawText],
+          ...(state.examPrepScope.yearRange
+            ? { yearRange: { ...state.examPrepScope.yearRange } }
+            : {}),
+        }
       : undefined,
     confirmedSlots: confirmedSlotsFromState(state),
     lastQuestions: previousState?.lastQuestionContext?.targetSlot
