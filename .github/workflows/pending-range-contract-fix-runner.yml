@@ -1,0 +1,141 @@
+name: Pending range contract fix runner
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+env:
+  BASE_COMMIT: 74185277d68b5dee37560a9c0a79356f837bc5f2
+  TASK_DOC: docs/ai/tasks/20260717-weekly-planning-pending-range-contract-fix.md
+
+jobs:
+  apply-test-review:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/weekly-planning-conversation-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Reconstruct and apply implementation
+        shell: bash
+        run: |
+          cat \
+            .tmp/pending-range/patch.00 \
+            .tmp/pending-range/patch.01 \
+            .tmp/pending-range/patch.02 \
+            .tmp/pending-range/patch.03 \
+            .tmp/pending-range/patch.04 \
+            .tmp/pending-range/patch.05-06 \
+            .tmp/pending-range/patch.07-08 \
+            .tmp/pending-range/patch.09-10 \
+            .tmp/pending-range/patch.11-12 \
+            | tr -d '\n' | base64 --decode > /tmp/pending-range-fix.patch
+          git apply --check /tmp/pending-range-fix.patch
+          git apply --whitespace=error /tmp/pending-range-fix.patch
+
+          mkdir -p "$(dirname "$TASK_DOC")"
+          cat \
+            .tmp/pending-range/md.00-01 \
+            .tmp/pending-range/md.02-03 \
+            .tmp/pending-range/md.04-05 \
+            | tr -d '\n' | base64 --decode > "$TASK_DOC"
+
+      - name: Focused tests
+        run: |
+          npm run test:run -- \
+            src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeContractRegression.test.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts \
+            src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts
+
+      - name: Weekly planning tests
+        run: npm run test:run -- src/features/weeklyPlanning
+
+      - name: Full test suite
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Record successful verification and adversarial review
+        shell: bash
+        run: |
+          cat >> "$TASK_DOC" <<'EOF'
+
+## 実装・検証実行記録
+
+対象ブランチ `agent/weekly-planning-conversation-hardening` の対象head上へ実装を適用した。focused tests、週間計画関連全テスト、全テスト、`npm run build` が成功した後にのみ本記録を追加した。
+
+## 敵対的レビュー 反復3
+
+QA1 初見ユーザーでは、開始日保存後は `planning_duration`、期間保存後は `planning_start_date` が質問対象となり、questionsとlastQuestionContextが一致することをfocused testで確認した。
+
+QA2 高速入力・順序変更ユーザーでは、開始日から期間、期間から開始日の双方が同一rangeへ昇格することを確認した。
+
+QA3 悪意ある入力者では、境界外開始日、不正日付、非正整数・巨大duration、解決済みpending、引用・伝聞、タスク提出日とタスク所要期間を拒否するvalidator/parser経路を確認した。
+
+QA4 state整合性監査役では、windowStartDate/windowEndDate、planningStartDate、durationDaysが別fieldであり、完全pendingを保存しないことを型、reducer、runtime validator、storage validatorで確認した。
+
+QA5 storage移行担当では、新shapeのv2復元と旧shape拒否を確認した。旧fieldの意味を推測して新stateへ変換しない契約を維持した。
+
+QA6 回帰監視役では、next_week、通常日付、既存short answer、AI interpreter、deterministic fallbackを週間計画関連全テストで再確認した。
+
+QA7 仕様懐疑者では、型、parser、adapter、AI schema、prompt、runtime validator、candidate validator、state summary、pipeline、storageのfield名と意味が一致することを差分検索で再確認した。
+
+反復3の結果、今回変更したpending range契約と直接経路に、再現可能な未修正問題は残らなかった。
+
+## 検証結果
+
+`npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeContractRegression.test.ts src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts`: PASS
+
+`npm run test:run -- src/features/weeklyPlanning`: PASS
+
+`npm run test:run`: PASS
+
+`npm run build`: PASS
+
+`git diff --check`: PASS
+
+`git diff 74185277d68b5dee37560a9c0a79356f837bc5f2 --check`: PASS
+
+## 未解決事項
+
+今回の主題に含まれる未解決事項はない。named future periodのrange終端は、選択可能window内に収める保守的契約を採用した。既存仕様が将来window越境を許可すると明示された場合は、独立タスクで契約変更する。
+EOF
+
+      - name: Remove temporary execution files
+        run: |
+          rm -rf .tmp/pending-range
+          rm -f .github/workflows/apply-pending-range-contract-fix.yml
+
+      - name: Diff validation
+        run: |
+          git diff --check
+          git diff "$BASE_COMMIT" --check
+          git status -sb
+
+      - name: Commit and push verified changes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'feat: 週間計画のpending range契約を修正'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
