@@ -1,0 +1,235 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/dialogue/weeklyPlanningKnownFixedEvents.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
+
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m84 tests[22m[2m)[22m[33m 355[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 27[2mms[22m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22maccepts only allowed action ids and returns natural structured output[32m 8[2mms[22m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22mfalls back when the AI invents an action[32m 2[2mms[22m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22mfalls back on provider failure without changing allowed actions[32m 1[2mms[22m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22masks only for the learning content in the range-only fallback[32m 1[2mms[22m[39m
+[31m   [31m×[31m behavior-aware weekly planning AI dialogue planner[2m > [22mdoes not call or display AI-authored event claims for availability actions[39m[32m 14[2mms[22m[39m
+[31m     → expected "spy" to not be called at all, but actually been called 1 times[90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m    Array [
+      Object {
+        "messages": Array [
+          Object {
+            "content": "You are the Japanese dialogue planner for a study-planning application.
+    Return only JSON matching the response schema.
+    The deterministic application core has already decided every action you may perform.
+    Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.
+    Use one or two substantive actions in normal turns and never more than three.
+    Every selectedActionId must have exactly one matching items entry.
+    Briefly acknowledge only concrete accepted information, explain a safe planning hypothesis only when one actually exists, and ask only the highest-impact remaining confirmation.
+    Do not add vague filler such as 「ここまでの内容から、無理のない進め方を整理します」 when no concrete planning hypothesis exists.
+    When clarificationRequest is present, explain the previous question, give one concrete answer example, and re-ask only that target. Do not repeat unrelated readiness or feasibility questions.
+    When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.
+    Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.
+    Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.
+    Do not claim preview generation unless generate_preview is present in allowedActions.
+    When acceptedFacts.knownFixedEventSummaries is non-empty, use only those exact saved plans when asking about additional fixed events. Never invent an event.
+    Keep the tone like a calm, practical tutor. Keep each item concise and easy to correct.",
+            "role": "system",
+          },
+          Object {
+            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[{"taskRef":"task:0","activityKind":"drill","distributionPolicy":"sequential_units","cognitiveLoad":"medium"}],"lifeActivityAnchors":[{"anchorId":"constraint-anchor-0","kind":"meal","startTime":"19:00","endTime":"20:00"}],"opportunityAnnotations":[],"suggestedNextAction":"ask_required_fact"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:deadline:1","kind":"ask_required_fact","topicId":"deadline","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"deadline"},{"actionId":"suggest-draft:1","kind":"suggest_draft_generation","topicId":"draft-generation","allowedProposalRefs":[],"allowedOptionIds":["create-preview","revise-conditions"],"maxItems":1}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",
+            "role": "user",
+          },
+        ],
+        "purpose": "weekly_planning_renderer",
+        "responseFormat": Object {
+          "json_schema": Object {
+            "name": "weekly_planning_behavior_dialogue",
+            "schema": Object {
+              "additionalProperties": false,
+              "properties": Object {
+                "acknowledgement": Object {
+                  "type": "string",
+                },
+                "items": Object {
+                  "items": Object {
+                    "additionalProperties": false,
+                    "properties": Object {
+                      "actionId": Object {
+                        "type": "string",
+                      },
+                      "optionIds": Object {
+                        "items": [Object],
+                        "type": "array",
+                        "uniqueItems": true,
+                      },
+                      "text": Object {
+                        "type": "string",
+                      },
+                    },
+                    "required": Array [
+                      "actionId",
+                      "text",
+                    ],
+                    "type": "object",
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                },
+                "reasoningSummary": Object {
+                  "type": "string",
+                },
+                "selectedActionIds": Object {
+                  "items": Object {
+                    "type": "string",
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true,
+                },
+              },
+              "required": Array [
+                "selectedActionIds",
+                "items",
+              ],
+              "type": "object",
+            },
+            "strict": false,
+          },
+          "type": "json_schema",
+        },
+        "temperature": 0.2,
+      },
+    ]
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22muses a closed top-level response schema[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningKnownFixedEvents.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts[2m > [22mbehavior-aware weekly planning AI dialogue planner[2m > [22mdoes not call or display AI-authored event claims for availability actions
+[31m[1mAssertionError[22m[39m: expected "spy" to not be called at all, but actually been called 1 times[90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m    Array [
+      Object {
+        "messages": Array [
+          Object {
+            "content": "You are the Japanese dialogue planner for a study-planning application.
+    Return only JSON matching the response schema.
+    The deterministic application core has already decided every action you may perform.
+    Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.
+    Use one or two substantive actions in normal turns and never more than three.
+    Every selectedActionId must have exactly one matching items entry.
+    Briefly acknowledge only concrete accepted information, explain a safe planning hypothesis only when one actually exists, and ask only the highest-impact remaining confirmation.
+    Do not add vague filler such as 「ここまでの内容から、無理のない進め方を整理します」 when no concrete planning hypothesis exists.
+    When clarificationRequest is present, explain the previous question, give one concrete answer example, and re-ask only that target. Do not repeat unrelated readiness or feasibility questions.
+    When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.
+    Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.
+    Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.
+    Do not claim preview generation unless generate_preview is present in allowedActions.
+    When acceptedFacts.knownFixedEventSummaries is non-empty, use only those exact saved plans when asking about additional fixed events. Never invent an event.
+    Keep the tone like a calm, practical tutor. Keep each item concise and easy to correct.",
+            "role": "system",
+          },
+          Object {
+            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[{"taskRef":"task:0","activityKind":"drill","distributionPolicy":"sequential_units","cognitiveLoad":"medium"}],"lifeActivityAnchors":[{"anchorId":"constraint-anchor-0","kind":"meal","startTime":"19:00","endTime":"20:00"}],"opportunityAnnotations":[],"suggestedNextAction":"ask_required_fact"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:deadline:1","kind":"ask_required_fact","topicId":"deadline","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"deadline"},{"actionId":"suggest-draft:1","kind":"suggest_draft_generation","topicId":"draft-generation","allowedProposalRefs":[],"allowedOptionIds":["create-preview","revise-conditions"],"maxItems":1}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",
+            "role": "user",
+          },
+        ],
+        "purpose": "weekly_planning_renderer",
+        "responseFormat": Object {
+          "json_schema": Object {
+            "name": "weekly_planning_behavior_dialogue",
+            "schema": Object {
+              "additionalProperties": false,
+              "properties": Object {
+                "acknowledgement": Object {
+                  "type": "string",
+                },
+                "items": Object {
+                  "items": Object {
+                    "additionalProperties": false,
+                    "properties": Object {
+                      "actionId": Object {
+                        "type": "string",
+                      },
+                      "optionIds": Object {
+                        "items": [Object],
+                        "type": "array",
+                        "uniqueItems": true,
+                      },
+                      "text": Object {
+                        "type": "string",
+                      },
+                    },
+                    "required": Array [
+                      "actionId",
+                      "text",
+                    ],
+                    "type": "object",
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                },
+                "reasoningSummary": Object {
+                  "type": "string",
+                },
+                "selectedActionIds": Object {
+                  "items": Object {
+                    "type": "string",
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true,
+                },
+              },
+              "required": Array [
+                "selectedActionIds",
+                "items",
+              ],
+              "type": "object",
+            },
+            "strict": false,
+          },
+          "type": "json_schema",
+        },
+        "temperature": 0.2,
+      },
+    ]
+[39m[90m
+
+Number of calls: [1m1[22m
+[39m
+[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts:[2m223:45[22m[39m
+    [90m221| [39m    })[33m;[39m
+    [90m222| [39m
+    [90m223| [39m    [34mexpect[39m(client[33m.[39mcreateChatCompletion)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+    [90m   | [39m                                            [31m^[39m
+    [90m224| [39m    [34mexpect[39m(result[33m.[39msource)[33m.[39m[34mtoBe[39m([32m'deterministic_fallback'[39m)[33m;[39m
+    [90m225| [39m    [34mexpect[39m(result[33m.[39mmessage)[33m.[39m[34mtoContain[39m([32m'7/16 13:00〜14:00「授業」'[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (4)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m95 passed[39m[22m[90m (96)[39m
+[2m   Start at [22m 04:44:01
+[2m   Duration [22m 4.24s[2m (transform 1.19s, setup 0ms, collect 2.11s, tests 427ms, environment 3ms, prepare 691ms)[22m
+
+
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts > behavior-aware weekly planning AI dialogue planner > does not call or display AI-authored event claims for availability actions,line=223,column=45::AssertionError: expected "spy" to not be called at all, but actually been called 1 times%0A%0AReceived: %0A%0A  1st spy call:%0A%0A    Array [%0A      Object {%0A        "messages": Array [%0A          Object {%0A            "content": "You are the Japanese dialogue planner for a study-planning application.%0A    Return only JSON matching the response schema.%0A    The deterministic application core has already decided every action you may perform.%0A    Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.%0A    Use one or two substantive actions in normal turns and never more than three.%0A    Every selectedActionId must have exactly one matching items entry.%0A    Briefly acknowledge only concrete accepted information, explain a safe planning hypothesis only when one actually exists, and ask only the highest-impact remaining confirmation.%0A    Do not add vague filler such as 「ここまでの内容から、無理のない進め方を整理します」 when no concrete planning hypothesis exists.%0A    When clarificationRequest is present, explain the previous question, give one concrete answer example, and re-ask only that target. Do not repeat unrelated readiness or feasibility questions.%0A    When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.%0A    Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.%0A    Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.%0A    Do not claim preview generation unless generate_preview is present in allowedActions.%0A    When acceptedFacts.knownFixedEventSummaries is non-empty, use only those exact saved plans when asking about additional fixed events. Never invent an event.%0A    Keep the tone like a calm, practical tutor. Keep each item concise and easy to correct.",%0A            "role": "system",%0A          },%0A          Object {%0A            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[{"taskRef":"task:0","activityKind":"drill","distributionPolicy":"sequential_units","cognitiveLoad":"medium"}],"lifeActivityAnchors":[{"anchorId":"constraint-anchor-0","kind":"meal","startTime":"19:00","endTime":"20:00"}],"opportunityAnnotations":[],"suggestedNextAction":"ask_required_fact"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:deadline:1","kind":"ask_required_fact","topicId":"deadline","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"deadline"},{"actionId":"suggest-draft:1","kind":"suggest_draft_generation","topicId":"draft-generation","allowedProposalRefs":[],"allowedOptionIds":["create-preview","revise-conditions"],"maxItems":1}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",%0A            "role": "user",%0A          },%0A        ],%0A        "purpose": "weekly_planning_renderer",%0A        "responseFormat": Object {%0A          "json_schema": Object {%0A            "name": "weekly_planning_behavior_dialogue",%0A            "schema": Object {%0A              "additionalProperties": false,%0A              "properties": Object {%0A                "acknowledgement": Object {%0A                  "type": "string",%0A                },%0A                "items": Object {%0A                  "items": Object {%0A                    "additionalProperties": false,%0A                    "properties": Object {%0A                      "actionId": Object {%0A                        "type": "string",%0A                      },%0A                      "optionIds": Object {%0A                        "items": [Object],%0A                        "type": "array",%0A                        "uniqueItems": true,%0A                      },%0A                      "text": Object {%0A                        "type": "string",%0A                      },%0A                    },%0A                    "required": Array [%0A                      "actionId",%0A                      "text",%0A                    ],%0A                    "type": "object",%0A                  },%0A                  "maxItems": 3,%0A                  "minItems": 1,%0A                  "type": "array",%0A                },%0A                "reasoningSummary": Object {%0A                  "type": "string",%0A                },%0A                "selectedActionIds": Object {%0A                  "items": Object {%0A                    "type": "string",%0A                  },%0A                  "maxItems": 3,%0A                  "minItems": 1,%0A                  "type": "array",%0A                  "uniqueItems": true,%0A                },%0A              },%0A              "required": Array [%0A                "selectedActionIds",%0A                "items",%0A              ],%0A              "type": "object",%0A            },%0A            "strict": false,%0A          },%0A          "type": "json_schema",%0A        },%0A        "temperature": 0.2,%0A      },%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts:223:45%0A%0A
