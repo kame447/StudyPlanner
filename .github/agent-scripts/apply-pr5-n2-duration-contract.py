@@ -14,6 +14,20 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 
 replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningCommandTypes.ts',
+    "  | SetPlanningRangeCommand\n  | SetPendingPlanningRangeCommand\n  | BeginWeeklyPlanningCommand\n",
+    "  | SetPlanningRangeCommand\n  | NormalizedSetPendingPlanningRangeCommand\n  | BeginWeeklyPlanningCommand\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningCommandTypes.ts',
+    "  | AuthorizeDraftGenerationCommand\n  | SetStudyGoalCommand;\n\n",
+    "  | AuthorizeDraftGenerationCommand\n  | SetStudyGoalCommand;\n\n"
+    "export type WeeklyPlanningCommandPayload =\n"
+    "  | Exclude<ParsedWeeklyPlanningCommand, { type: 'set_pending_planning_range' }>\n"
+    "  | SetPendingPlanningRangeCommand;\n\n",
+)
+
+replace_once(
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandAdapter.ts',
     "  NoteUncertaintyCommand,\n  SetPriorityPolicyCommand,\n",
     "  NoteUncertaintyCommand,\n  NormalizedSetPendingPlanningRangeCommand,\n  SetPriorityPolicyCommand,\n",
@@ -23,10 +37,86 @@ replace_once(
     "export function normalizeSetPendingPlanningRangeCommand(\n  command: SetPendingPlanningRangeCommand,\n  context: WeeklyPlanningIntakeContext,\n): SetPendingPlanningRangeCommand {\n  if (command.pending.scope.kind !== 'next_week') {\n    return command;\n  }\n\n  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;\n  const normalizedScope = nextWeekScope({\n    ...context,\n    selectedDate: referenceDate,\n  });\n\n  return {\n    ...command,\n    pending: {\n      ...command.pending,\n      scope: {\n        ...command.pending.scope,\n        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,\n        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,\n      },\n      durationDays: command.pending.durationDays ?? 7,\n    },\n  };\n}\n",
     "export function normalizeSetPendingPlanningRangeCommand(\n  command: SetPendingPlanningRangeCommand,\n  context: WeeklyPlanningIntakeContext,\n): NormalizedSetPendingPlanningRangeCommand {\n  const durationDays = command.pending.durationDays ?? 7;\n  if (command.pending.scope.kind !== 'next_week') {\n    return {\n      ...command,\n      pending: { ...command.pending, durationDays },\n    };\n  }\n\n  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;\n  const normalizedScope = nextWeekScope({\n    ...context,\n    selectedDate: referenceDate,\n  });\n\n  return {\n    ...command,\n    pending: {\n      ...command.pending,\n      scope: {\n        ...command.pending.scope,\n        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,\n        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,\n      },\n      durationDays,\n    },\n  };\n}\n",
 )
+
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.ts',
+    "import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';\n",
+    "import type { WeeklyPlanningCommandPayload } from './weeklyPlanningCommandTypes';\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.ts',
+    "export function isValidWeeklyPlanningCommand(value: unknown): value is ParsedWeeklyPlanningCommand {\n",
+    "export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPlanningCommandPayload {\n",
+)
 replace_once(
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.ts',
     "        || (pending.durationDays !== undefined\n          && (typeof pending.durationDays !== 'number' || !Number.isInteger(pending.durationDays)))) return false;\n      return hasOnlyKeys(pending.scope, ['kind', 'label', 'startDate', 'endDate'])\n        && typeof pending.scope.kind === 'string'\n",
     "        || (pending.durationDays !== undefined\n          && (typeof pending.durationDays !== 'number'\n            || !Number.isInteger(pending.durationDays)\n            || pending.durationDays <= 0))) return false;\n      return hasOnlyKeys(pending.scope, ['kind', 'label', 'startDate', 'endDate'])\n        && (pending.scope.kind === 'next_week' || pending.scope.kind === 'named_future_period')\n",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    "import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';\n",
+    "import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';\n"
+    "import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    "function parseCandidate(candidate: unknown): InterpretedCommandCandidate | null {\n",
+    "function parseCandidate(\n"
+    "  candidate: unknown,\n"
+    "  context: WeeklyPlanningIntakeContext,\n"
+    "): InterpretedCommandCandidate | null {\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    "  const wrappedNeedsConfirmation = isRecord(candidate.command) && typeof candidate.needsConfirmation === 'boolean'\n    ? candidate.needsConfirmation\n    : undefined;\n\n  return {\n    command: normalizedCommand as unknown as ParsedWeeklyPlanningCommand,\n",
+    "  const parsedCommand: ParsedWeeklyPlanningCommand =\n"
+    "    normalizedCommand.type === 'set_pending_planning_range'\n"
+    "      ? normalizeSetPendingPlanningRangeCommand(normalizedCommand, context)\n"
+    "      : normalizedCommand;\n"
+    "  const wrappedNeedsConfirmation = isRecord(candidate.command) && typeof candidate.needsConfirmation === 'boolean'\n"
+    "    ? candidate.needsConfirmation\n"
+    "    : undefined;\n\n"
+    "  return {\n"
+    "    command: parsedCommand,\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    "function parseInterpreterResponse(content: string): WeeklyPlanningInterpreterResult {\n",
+    "function parseInterpreterResponse(\n"
+    "  content: string,\n"
+    "  context: WeeklyPlanningIntakeContext,\n"
+    "): WeeklyPlanningInterpreterResult {\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    "    const candidate = parseCandidate(rawCandidate);\n",
+    "    const candidate = parseCandidate(rawCandidate, context);\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    "      return parseInterpreterResponse(content);\n",
+    "      return parseInterpreterResponse(content, context);\n",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+    "import type { BeginWeeklyPlanningCommand, SetExamScopeCommand, SetPendingPlanningRangeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';\n",
+    "import type { BeginWeeklyPlanningCommand, NormalizedSetPendingPlanningRangeCommand, SetExamScopeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+    "): SetPendingPlanningRangeCommand | undefined {\n",
+    "): NormalizedSetPendingPlanningRangeCommand | undefined {\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
+    "export function parseSetPendingPlanningRangeCommand(\n  text: string,\n  context: WeeklyPlanningIntakeContext,\n): SetPendingPlanningRangeCommand | undefined {\n",
+    "export function parseSetPendingPlanningRangeCommand(\n"
+    "  text: string,\n"
+    "  context: WeeklyPlanningIntakeContext,\n"
+    "): NormalizedSetPendingPlanningRangeCommand | undefined {\n",
 )
 
 (ROOT / 'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts').write_text("""import { describe, expect, it } from 'vitest';
@@ -106,12 +196,19 @@ subprocess.run([
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.test.ts',
     'src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts',
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.test.ts',
 ], cwd=ROOT, check=True)
 subprocess.run(['npm', 'run', 'build'], cwd=ROOT, check=True)
 subprocess.run([
+    'git', 'rm', '-f', 'docs/ai/tasks/20260716-weekly-planning-pr5-n2-error.log',
+], cwd=ROOT, check=False)
+subprocess.run([
     'git', 'add',
+    'src/features/weeklyPlanning/intake/weeklyPlanningCommandTypes.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandAdapter.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.ts',
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts',
+    'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts',
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts',
 ], cwd=ROOT, check=True)
 subprocess.run(['git', 'commit', '-m', 'feat: planning range commandの型契約を統一'], cwd=ROOT, check=True)
