@@ -3,6 +3,7 @@ import type {
   ConstraintSourceKind,
   ExamPrepScope,
   PendingPlanningRangeClarification,
+  PendingPlanningRangeScope,
   PlanningRange,
   PlanningIntakeUncertainty,
   LifeConstraintKind,
@@ -180,8 +181,18 @@ export interface SetPlanningRangeCommand {
   confidence: 'high' | 'medium' | 'low';
 }
 
+export type PendingPlanningRangeCommandScope =
+  | {
+      kind: 'next_week';
+      label: string;
+      windowStartDate?: string;
+      windowEndDate?: string;
+    }
+  | Extract<PendingPlanningRangeScope, { kind: 'named_future_period' }>;
+
 export interface PendingPlanningRangeCommandPayload {
-  scope: PendingPlanningRangeClarification['scope'];
+  scope: PendingPlanningRangeCommandScope;
+  planningStartDate?: string;
   durationDays?: number;
   sourceText: string;
 }
