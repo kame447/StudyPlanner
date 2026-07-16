@@ -50,7 +50,7 @@ Recorded baseline validation:
 | DA3a relative constraint domain | implemented | local integration |
 | DA3b feasibility consultation | implemented | local integration / roleplay |
 | DA3c conversation evaluation | implemented | local full validation / requirement status sync |
-| conversation trace | implemented | production TTL / privacy / lifecycle / scalability |
+| conversation trace | implemented | privacy product decision recorded / production TTL・deletion・access control・scalability未実装 |
 
 含まれる主なcontract:
 
@@ -80,8 +80,9 @@ Recorded baseline validation:
    - conversation、turn、request、revision、selected week、reset/close/unmountのownershipをproduction entrypointへ統一する。
 
 3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
-   - opt-in、raw content、redaction、TTL、account deletion、admin accessをproduct decision後に同期する。
-   - decision未確定の間はblockedである。
+   - product decisionは記録済み。
+   - rotating HMAC subject token、本文sampling/redaction、content 30日、metadata 90日のTTL、account deletion、限定admin accessを実装・検証する。
+   - privacy/legal reviewをdeploy前条件として残す。
 
 4. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
    - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
@@ -99,7 +100,7 @@ Recorded baseline validation:
 
 ## 4. Decision gates
 
-次は文書整理だけでは決めない。決定時にproduct spec、architecture、test contract、AI prompt、runtime testを同じ変更で同期する。
+未決定事項は、決定時にproduct spec、architecture、test contract、AI prompt、runtime testを同じ変更で同期する。
 
 ### 4.1 AIとdeterministic parserの責務
 
@@ -121,18 +122,19 @@ Recorded baseline validation:
 
 決定前は`P6-RANGE-RESOLUTION-001`を固定pass/fail条件にしない。
 
-### 4.3 conversation trace privacy
+### 4.3 conversation trace privacy — decision recorded
 
-次を決定する。
+2026-07-16に次を決定した。
 
-- productionで有効にするか
-- opt-inまたはopt-out
-- metadata-onlyを既定にするか
-- 発話全文を保存するか
-- turn本文へ保存前redactionを適用するか
-- retention、account deletion、admin access、exportをどう説明するか
+- 毎conversationの同意ではなく、初回利用時の利用規約・privacy noticeと設定画面で説明・停止を扱う。
+- raw user IDを保存せず、server-side rotating HMAC subject tokenを使用する。
+- 暗号化を匿名化の代替として扱わない。
+- structured metadataを基本とし、本文は調査価値の高いsessionと少量sampleへ限定する。
+- 保存前redactionを適用する。
+- redacted本文とstate snapshotは30日、metadataは90日、unlinkable aggregateだけ最大12か月保持する。
+- account deletion、利用者からの削除要求、限定admin access、閲覧auditを実装する。
 
-決定前はproduction enablementを完了扱いにしない。
+詳細は`20260716-weekly-planning-trace-privacy-and-lifecycle.md`を正とする。production enablementは実装・運用・privacy/legal review完了後に判定する。
 
 ## 5. Deferred backlog
 
