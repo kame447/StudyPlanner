@@ -36,7 +36,7 @@ jobs:
           name: session-followup-focused-log
           path: session-followup-focused.log
       - name: Require focused tests
-        if: steps.focused.outcome == 'failure'
+        if: ${{ steps.focused.outcome == 'failure' }}
         run: exit 1
       - name: Full tests
         run: npm run test:run
