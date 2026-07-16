@@ -1,0 +1,42 @@
+name: Apply weekly planning session followup
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - scripts/apply-weekly-planning-session-followup.mjs
+      - .github/workflows/apply-weekly-planning-session-followup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-build:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - run: node scripts/apply-weekly-planning-session-followup.mjs
+      - run: git diff --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Focused session tests
+        run: npm run test:run -- src/components/QuickEntryModalSessionResume.test.tsx src/components/weeklyPlanningConversationMode.test.ts src/components/WeeklyPlanningConversation.test.tsx src/features/weeklyPlanning/weeklyPlanningReducer.test.ts src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts
+      - name: Full tests
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Commit verified followup
+        run: |
+          rm scripts/apply-weekly-planning-session-followup.mjs .github/workflows/apply-weekly-planning-session-followup.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: 週間計画sessionの責務と回帰境界を整理"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
