@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - .github/workflows/debug-fixed-event-tests.yml
+      - scripts/adjust-fixed-event-grounding-tests.mjs
 
 permissions:
   contents: write
@@ -17,7 +18,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-      - run: node scripts/apply-weekly-planning-grounded-fixed-events.mjs
+      - run: |
+          node scripts/apply-weekly-planning-grounded-fixed-events.mjs
+          node scripts/adjust-fixed-event-grounding-tests.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 22
