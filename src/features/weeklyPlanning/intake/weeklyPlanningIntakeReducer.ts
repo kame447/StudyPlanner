@@ -566,12 +566,15 @@ function applyDeterministicWeeklyPlanningUserTurnCore(
   } else {
     const allowBareNamedFuturePeriodAnswer = Boolean(
       previousState?.missing.includes('planning_period')
-      || previousState?.missing.includes('planning_start_date'),
+      && !previousState.pendingPlanningRange,
     );
     const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(
       userText,
       context,
-      { allowBareNamedFuturePeriodAnswer },
+      {
+        allowBareNamedFuturePeriodAnswer,
+        pending: nextState.pendingPlanningRange,
+      },
     );
     if (pendingPlanningRangeCommand) setupCommands.push(pendingPlanningRangeCommand);
   }

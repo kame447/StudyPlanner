@@ -90,6 +90,15 @@ function isSummerVacationNegated(text: string): boolean {
   );
 }
 
+function hasNextWeekPlanningRangeIntent(text: string): boolean {
+  const normalizedText = normalizeIntakeText(text);
+  return /来週.*(?:計画|予定|スケジュール)/.test(normalizedText)
+    || (isSummerVacationNegated(normalizedText)
+      && /来週(?:\s*(?:に|へ))?\s*(?:したい|する|します|でお願いします)/.test(
+        normalizedText,
+      ));
+}
+
 function hasSummerVacationPlanningRangeIntent(text: string): boolean {
   const normalizedText = normalizeIntakeText(text);
   return !isSummerVacationNegated(normalizedText)
@@ -156,11 +165,63 @@ function resolveWeekdayInScope(
 function parsePendingPlanningRange(
   text: string,
   context: WeeklyPlanningIntakeContext,
-  options?: { allowBareNamedFuturePeriodAnswer?: boolean },
+  options?: {
+    allowBareNamedFuturePeriodAnswer?: boolean;
+    pending?: PendingPlanningRangeClarification;
+  },
 ): NormalizedSetPendingPlanningRangeCommand | undefined {
   const normalizedText = normalizeIntakeText(text);
+  const currentPending = options?.pending;
+
+  if (currentPending) {
+    const explicitDate = parseExplicitDate(normalizedText, context);
+    if (explicitDate) {
+      const explicitDateAllowed = currentPending.scope.kind !== 'next_week'
+        || Boolean(
+          currentPending.scope.startDate
+          && currentPending.scope.endDate
+          && explicitDate >= currentPending.scope.startDate
+          && explicitDate <= currentPending.scope.endDate,
+        );
+
+      if (!explicitDateAllowed) {
+        return undefined;
+      }
+
+      if (currentPending.durationDays === undefined) {
+        return {
+          type: 'set_pending_planning_range',
+          pending: {
+            ...currentPending,
+            scope: {
+              ...currentPending.scope,
+              startDate: explicitDate,
+            },
+            sourceText: text,
+          },
+          sourceText: text,
+          confidence: 'high',
+        };
+      }
+    }
+
+    if (hasOneWeekDuration(normalizedText) && currentPending.durationDays === undefined) {
+      return {
+        type: 'set_pending_planning_range',
+        pending: {
+          ...currentPending,
+          durationDays: 7,
+          sourceText: text,
+        },
+        sourceText: text,
+        confidence: 'high',
+      };
+    }
+  }
+
   const acceptsSummerVacation = hasSummerVacationPlanningRangeIntent(normalizedText)
     || (options?.allowBareNamedFuturePeriodAnswer === true
+      && currentPending === undefined
       && isBareSummerVacationRangeAnswer(normalizedText));
 
   if (acceptsSummerVacation) {
@@ -177,7 +238,7 @@ function parsePendingPlanningRange(
     };
   }
 
-  if (!hasOneWeekDuration(normalizedText) && !/来週.*(?:計画|予定|スケジュール)/.test(normalizedText)) {
+  if (!hasOneWeekDuration(normalizedText) && !hasNextWeekPlanningRangeIntent(normalizedText)) {
     return undefined;
   }
 
@@ -234,9 +295,13 @@ function parseWeeklyPlanningRange(
     }
 
     const weekdayIndex = parseWeekdayStart(normalizedText);
-    const startDate = weekdayIndex === undefined
+    const weekdayStartDate = weekdayIndex === undefined
       ? undefined
       : resolveWeekdayInScope(weekdayIndex, pending.scope);
+    const storedStartDate = pending.scope.kind === 'named_future_period'
+      ? pending.scope.startDate
+      : undefined;
+    const startDate = weekdayStartDate ?? storedStartDate;
     return startDate && durationDays
       ? rangeFromStartDate({
           startDate,
@@ -306,9 +371,12 @@ export function parseBeginWeeklyPlanningCommand(
 export function parseSetPendingPlanningRangeCommand(
   text: string,
   context: WeeklyPlanningIntakeContext,
-  options?: { allowBareNamedFuturePeriodAnswer?: boolean },
+  options?: {
+    allowBareNamedFuturePeriodAnswer?: boolean;
+    pending?: PendingPlanningRangeClarification;
+  },
 ): NormalizedSetPendingPlanningRangeCommand | undefined {
-  const range = parseWeeklyPlanningRange(text, context);
+  const range = parseWeeklyPlanningRange(text, context, options?.pending);
   return range ? undefined : parsePendingPlanningRange(text, context, options);
 }
 

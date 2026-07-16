@@ -249,8 +249,12 @@ describe('weekly planning storage validation', () => {
     const intakeState = {
       ...createInitialPlanningIntakeState(),
       pendingPlanningRange: {
-        scope: { kind: 'named_future_period' as const, label: '夏休み' },
-        sourceText: '夏休みの予定',
+        scope: {
+          kind: 'named_future_period' as const,
+          label: '夏休み',
+          startDate: '2026-08-01',
+        },
+        sourceText: '8月1日から',
       },
     };
     storeV2({
