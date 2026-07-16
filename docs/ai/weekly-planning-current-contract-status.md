@@ -42,13 +42,18 @@ queueはroadmapだけを正とする。spec、architecture、roleplay内の古�
 
 ## 4. conversation trace privacy
 
-trace module、Firestore repository、admin viewer、exportは実装済みである。ただし、productionでの有効化、opt-in、本文保存、redaction、retention、account deletion、admin accessのproduct contractは未決定である。
+product decisionは2026-07-16に確定した。実装契約は`docs/ai/tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md`を正とする。
 
-決定まではdialogue architectureの無断永続化禁止を上位境界として扱う。
+- 毎conversationではなく、初回利用時の利用規約・privacy noticeで目的、収集範囲、保存期間、削除方法を説明する。
+- raw Firebase UID、メール、表示名をtraceへ保存しない。
+- server-side HMACの期間限定subject tokenを使い、30日単位でrotationする。
+- 暗号化は安全管理措置であり、匿名化の代替として扱わない。
+- 全sessionではstructured metadataを保存し、本文はerror、fallback、明示的修復、低confidence等と少量sampleへ限定する。
+- redacted本文とstate snapshotは30日、structured metadataは90日、個別sessionへ戻れない集計だけ最大12か月保持する。
+- account deletionと品質改善data削除要求で、保持中tokenに紐づくtraceをcascade deleteする。
+- 本文閲覧は限定権限とaudit logを必須とする。
 
-- production enablementを完了扱いにしない。
-- raw user/assistant content保存を既定contractとして扱わない。
-- privacy/lifecycle task完了前に長期profileやevaluation fixtureへ自動利用しない。
+これはproduct decisionの確定であり、production implementation、TTL policy、account deletion処理、privacy/legal reviewが完了した意味ではない。実装完了まではproduction enablementを完了扱いにせず、traceをprofileやevaluation fixtureへ自動転用しない。
 
 ## 5. 実装statusの読み方
 
