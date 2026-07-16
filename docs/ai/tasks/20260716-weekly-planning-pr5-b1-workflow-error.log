@@ -1,0 +1,68 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx src/components/QuickEntryModalSessionResume.test.tsx src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
+
+ [32m✓[39m src/components/QuickEntryModalSessionResume.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 07:56:16
+[2m   Duration [22m 4.00s[2m (transform 1.24s, setup 0ms, collect 2.80s, tests 90ms, environment 3ms, prepare 456ms)[22m
+
+
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 1942 modules transformed.
+rendering chunks...
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) /home/runner/work/StudyPlannner/StudyPlannner/src/data/naturalLanguageCatalog.ts is dynamically imported by /home/runner/work/StudyPlannner/StudyPlannner/src/hooks/usePlannerAppState.ts but also statically imported by /home/runner/work/StudyPlannner/StudyPlannner/src/services/natural-language/catalog.ts, /home/runner/work/StudyPlannner/StudyPlannner/src/services/naturalLanguageRules.ts, dynamic import will not move module into another chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32mindex.html                                   [39m[1m[2m    0.42 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
+[2mdist/[22m[2massets/[22m[32mstudyplanner-logo-DbNnCwAb.png        [39m[1m[2m   85.42 kB[22m[1m[22m
+[2mdist/[22m[2massets/[22m[35mindex-C0wxJ9lP.css                    [39m[1m[2m  202.50 kB[22m[1m[22m[2m │ gzip:  32.43 kB[22m
+[2mdist/[22m[2massets/[22m[36mbook-open-DdzRa8pl.js                 [39m[1m[2m    0.45 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[2massets/[22m[36mtrash-2-Mts6qYM5.js                   [39m[1m[2m    0.90 kB[22m[1m[22m[2m │ gzip:   0.44 kB[22m
+[2mdist/[22m[2massets/[22m[36mtimetableOcrImport-mXGRLrhM.js        [39m[1m[2m    1.63 kB[22m[1m[22m[2m │ gzip:   1.08 kB[22m
+[2mdist/[22m[2massets/[22m[36mquickEntryDrafts-DtdJSXyf.js          [39m[1m[2m    1.70 kB[22m[1m[22m[2m │ gzip:   0.86 kB[22m
+[2mdist/[22m[2massets/[22m[36msubjectInference-DFuPnkj6.js          [39m[1m[2m    5.48 kB[22m[1m[22m[2m │ gzip:   2.60 kB[22m
+[2mdist/[22m[2massets/[22m[36mTimetableOcrImportDialog-Co6XMdjs.js  [39m[1m[2m    7.28 kB[22m[1m[22m[2m │ gzip:   2.49 kB[22m
+[2mdist/[22m[2massets/[22m[36mWeekView-CW00Xb7j.js                  [39m[1m[2m    9.40 kB[22m[1m[22m[2m │ gzip:   2.75 kB[22m
+[2mdist/[22m[2massets/[22m[36mTodoView-DVRHn0ho.js                  [39m[1m[2m   14.45 kB[22m[1m[22m[2m │ gzip:   4.28 kB[22m
+[2mdist/[22m[2massets/[22m[36mTimetableView-CikF_u9o.js             [39m[1m[2m   15.48 kB[22m[1m[22m[2m │ gzip:   5.04 kB[22m
+[2mdist/[22m[2massets/[22m[36mBookshelfView-CJlucq4u.js             [39m[1m[2m   15.79 kB[22m[1m[22m[2m │ gzip:   5.35 kB[22m
+[2mdist/[22m[2massets/[22m[36mReportView-C-BVWsMY.js                [39m[1m[2m   16.65 kB[22m[1m[22m[2m │ gzip:   5.36 kB[22m
+[2mdist/[22m[2massets/[22m[36mDayView-sxGDs8_d.js                   [39m[1m[2m   40.90 kB[22m[1m[22m[2m │ gzip:  11.36 kB[22m
+[2mdist/[22m[2massets/[22m[36mQuickEntryModal-DPov-HNo.js           [39m[1m[2m  135.05 kB[22m[1m[22m[2m │ gzip:  40.76 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-BgFlhw56.js                     [39m[1m[33m1,096.34 kB[39m[22m[2m │ gzip: 309.37 kB[22m
+[33m
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 6.16s[39m
+[agent/weekly-planning-conversation-hardening a0e86e4] feat: 週間計画previewをsession所有に移行
+ 8 files changed, 191 insertions(+), 99 deletions(-)
+ delete mode 100644 docs/ai/tasks/20260716-weekly-planning-pr5-b1-workflow-error.log
+ create mode 100644 src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx
+To https://github.com/kame447/StudyPlannner
+   917167f..a0e86e4  HEAD -> agent/weekly-planning-conversation-hardening
+error: the following file has local modifications:
+    .github/agent-scripts/apply-pr5-b1-preview-session.py
+(use --cached to keep the file, or -f to force removal)
+Traceback (most recent call last):
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-b1-preview-session.py", line 477, in <module>
+    run("git", "rm", ".github/agent-scripts/apply-pr5-b1-preview-session.py")
+  File "/home/runner/work/StudyPlannner/StudyPlannner/.github/agent-scripts/apply-pr5-b1-preview-session.py", line 11, in run
+    subprocess.run(args, cwd=ROOT, check=True)
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '('git', 'rm', '.github/agent-scripts/apply-pr5-b1-preview-session.py')' returned non-zero exit status 1.
