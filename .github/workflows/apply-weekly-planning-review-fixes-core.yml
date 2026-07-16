@@ -32,7 +32,15 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Core review tests
-        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningReviewCoreFixes.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningSingleFieldPriority.test.ts src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts
+        run: |
+          set -o pipefail
+          npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningReviewCoreFixes.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningSingleFieldPriority.test.ts src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts 2>&1 | tee core-test-output.log
+      - name: Upload core test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-core-test-log
+          path: core-test-output.log
       - name: Weekly planning tests
         run: npm run test:run -- src/features/weeklyPlanning
       - name: Build
