@@ -1,12 +1,23 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { createInitialPlanningIntakeState } from './intake/weeklyPlanningIntakeReducer';
+import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
+  PlanningState,
   WeeklyPlanDraftBlock,
+  WeeklyPlanningAction,
+  WeeklyPlanningMessage,
   WeeklyPlanningPendingApproval,
   WeeklyPlanningPendingTurn,
 } from './types';
 import { createInitialPlanningState, weeklyPlanningReducer } from './weeklyPlanningReducer';
+
+const NOW = '2026-07-16T00:00:00.000Z';
+const WEEK_START = '2026-07-13';
+
+function message(id: string, role: WeeklyPlanningMessage['role'] = 'assistant'): WeeklyPlanningMessage {
+  return { id, role, content: id, createdAt: NOW };
+}
 
 function draftBlock(id: string): WeeklyPlanDraftBlock {
   return {
@@ -22,141 +33,237 @@ function draftBlock(id: string): WeeklyPlanDraftBlock {
     source: 'ai',
     status: 'draft',
     userEdited: false,
-    createdAt: '2026-07-16T00:00:00.000Z',
-    updatedAt: '2026-07-16T00:00:00.000Z',
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+}
+
+function previewCandidate(id = 'preview-1'): WeeklyDraftCandidate {
+  return {
+    stableKey: id,
+    date: '2026-07-16',
+    startTime: '18:00',
+    endTime: '19:00',
+    durationMinutes: 60,
+    title: id,
+    field: '英語',
+    year: 1,
+    estimatedMinutes: 60,
+    source: 'weekly_exam_prep',
+    approvalStatus: 'unapproved',
+    workItemKey: `英語:${id}`,
   };
 }
 
 function pendingTurn(baseRevision = 0): WeeklyPlanningPendingTurn {
   return {
     requestId: 'request-current',
-    weekStartDate: '2026-07-13',
+    weekStartDate: WEEK_START,
     baseRevision,
-    startedAt: '2026-07-16T00:00:00.000Z',
+    startedAt: NOW,
   };
 }
 
 function pendingApproval(baseRevision: number): WeeklyPlanningPendingApproval {
   return {
     requestId: 'approval-current',
-    weekStartDate: '2026-07-13',
+    weekStartDate: WEEK_START,
     baseRevision,
     blockIds: ['draft-1', 'draft-2'],
-    startedAt: '2026-07-16T00:00:00.000Z',
+    startedAt: NOW,
   };
 }
 
-const validIsoDate = fc.integer({
-  min: Date.UTC(2000, 0, 1),
-  max: Date.UTC(2100, 11, 31),
-}).map((timestamp) => new Date(timestamp).toISOString().slice(0, 10));
+function stateWithDrafts(): PlanningState {
+  return weeklyPlanningReducer(
+    createInitialPlanningState(WEEK_START),
+    { type: 'add_draft_blocks', blocks: [draftBlock('draft-1'), draftBlock('draft-2')] },
+  );
+}
+
+function stateWithPendingTurn(): PlanningState {
+  const initial = createInitialPlanningState(WEEK_START);
+  const pending = pendingTurn(initial.revision);
+  return weeklyPlanningReducer(initial, {
+    type: 'begin_turn',
+    pending,
+    userMessage: message('user-message', 'user'),
+  });
+}
+
+function stateWithPendingApproval(): PlanningState {
+  const withDrafts = stateWithDrafts();
+  return weeklyPlanningReducer(withDrafts, {
+    type: 'begin_approval',
+    pending: pendingApproval(withDrafts.revision),
+  });
+}
+
+function actionsForState(state: PlanningState): WeeklyPlanningAction[] {
+  const turn = state.pendingTurn ?? pendingTurn(state.revision);
+  const approval = state.pendingApproval ?? pendingApproval(state.revision);
+  return [
+    { type: 'add_draft_blocks', blocks: [draftBlock('draft-added')] },
+    { type: 'remove_draft_block', blockId: 'draft-1' },
+    { type: 'remove_draft_blocks', blockIds: ['draft-1', 'draft-2'] },
+    { type: 'clear_draft_blocks' },
+    { type: 'remove_preview_candidate', candidateId: 'preview-1' },
+    { type: 'mark_draft_block_user_edited', blockId: 'draft-1' },
+    { type: 'append_message', message: message('appended-message') },
+    { type: 'set_intake_state', state: createInitialPlanningIntakeState() },
+    { type: 'set_intake_state', state: null },
+    { type: 'clear_conversation' },
+    { type: 'reset_session' },
+    { type: 'set_last_assistant_message', message: 'latest message' },
+    { type: 'begin_turn', pending: turn, userMessage: message('begin-user', 'user') },
+    {
+      type: 'commit_turn',
+      pending: turn,
+      intakeState: createInitialPlanningIntakeState(),
+      assistantMessage: message('commit-assistant'),
+      draftCandidates: [previewCandidate()],
+    },
+    { type: 'fail_turn', pending: turn, assistantMessage: message('fail-assistant') },
+    { type: 'cancel_turn', pending: turn },
+    { type: 'begin_approval', pending: approval },
+    {
+      type: 'complete_approval',
+      pending: approval,
+      completedBlockIds: ['draft-1'],
+      assistantMessage: message('approval-complete'),
+    },
+    { type: 'fail_approval', pending: approval },
+  ];
+}
+
+const identityMasks = fc.constantFrom(
+  [false, true, true] as const,
+  [true, false, true] as const,
+  [true, true, false] as const,
+  [false, false, true] as const,
+  [false, true, false] as const,
+  [true, false, false] as const,
+  [false, false, false] as const,
+);
 
 describe('weekly planning session reducer properties', () => {
-  it('never commits an arbitrary stale turn identity', () => {
+  it('rejects turn results when any identity component is stale', () => {
     fc.assert(fc.property(
-      fc.record({
-        requestId: fc.string({ minLength: 1 }).filter((value) => value !== 'request-current'),
-        weekStartDate: validIsoDate,
-        baseRevision: fc.nat({ max: 50 }),
-      }),
-      (stale) => {
-        const initial = createInitialPlanningState('2026-07-13');
-        const current = pendingTurn(initial.revision);
-        const begun = weeklyPlanningReducer(initial, {
-          type: 'begin_turn',
-          pending: current,
-          userMessage: {
-            id: 'user-message', role: 'user', content: '予定', createdAt: current.startedAt,
-          },
-        });
-        const stalePending = { ...current, ...stale };
-        const committed = weeklyPlanningReducer(begun, {
-          type: 'commit_turn',
-          pending: stalePending,
-          intakeState: createInitialPlanningIntakeState(),
-          assistantMessage: {
-            id: 'assistant-message', role: 'assistant', content: '古い結果', createdAt: current.startedAt,
-          },
-        });
-        expect(committed).toBe(begun);
+      identityMasks,
+      fc.constantFrom('commit', 'fail', 'cancel'),
+      ([requestMatches, weekMatches, revisionMatches], terminalKind) => {
+        const begun = stateWithPendingTurn();
+        const current = begun.pendingTurn as WeeklyPlanningPendingTurn;
+        const stalePending: WeeklyPlanningPendingTurn = {
+          ...current,
+          requestId: requestMatches ? current.requestId : `${current.requestId}-stale`,
+          weekStartDate: weekMatches ? current.weekStartDate : '2026-07-20',
+          baseRevision: revisionMatches ? current.baseRevision : current.baseRevision + 1,
+        };
+        const action: WeeklyPlanningAction = terminalKind === 'commit'
+          ? {
+              type: 'commit_turn',
+              pending: stalePending,
+              intakeState: createInitialPlanningIntakeState(),
+              assistantMessage: message('stale-commit'),
+              draftCandidates: [previewCandidate()],
+            }
+          : terminalKind === 'fail'
+            ? { type: 'fail_turn', pending: stalePending, assistantMessage: message('stale-fail') }
+            : { type: 'cancel_turn', pending: stalePending };
+
+        expect(weeklyPlanningReducer(begun, action)).toBe(begun);
       },
     ));
   });
 
-  it('keeps the whole session immutable for arbitrary mutations during a pending turn', () => {
-    const actionArbitrary = fc.oneof(
-      fc.string().map((blockId) => ({ type: 'remove_draft_block' as const, blockId })),
-      fc.array(fc.string(), { maxLength: 5 }).map((blockIds) => ({
-        type: 'remove_draft_blocks' as const,
-        blockIds,
-      })),
-      fc.constant({ type: 'clear_draft_blocks' as const }),
-      fc.string().map((content) => ({
-        type: 'append_message' as const,
-        message: { id: `message-${content}`, role: 'assistant' as const, content, createdAt: 'now' },
-      })),
-    );
+  it('rejects approval results when any identity component is stale', () => {
+    fc.assert(fc.property(
+      identityMasks,
+      fc.constantFrom('complete', 'fail'),
+      ([requestMatches, weekMatches, revisionMatches], terminalKind) => {
+        const begun = stateWithPendingApproval();
+        const current = begun.pendingApproval as WeeklyPlanningPendingApproval;
+        const stalePending: WeeklyPlanningPendingApproval = {
+          ...current,
+          requestId: requestMatches ? current.requestId : `${current.requestId}-stale`,
+          weekStartDate: weekMatches ? current.weekStartDate : '2026-07-20',
+          baseRevision: revisionMatches ? current.baseRevision : current.baseRevision + 1,
+        };
+        const action: WeeklyPlanningAction = terminalKind === 'complete'
+          ? {
+              type: 'complete_approval',
+              pending: stalePending,
+              completedBlockIds: ['draft-1'],
+              assistantMessage: message('stale-approval'),
+            }
+          : { type: 'fail_approval', pending: stalePending };
 
-    fc.assert(fc.property(fc.array(actionArbitrary, { maxLength: 25 }), (actions) => {
-      const initial = createInitialPlanningState('2026-07-13');
-      const current = pendingTurn(initial.revision);
-      const begun = weeklyPlanningReducer(initial, {
-        type: 'begin_turn',
-        pending: current,
-        userMessage: {
-          id: 'user-message', role: 'user', content: '予定', createdAt: current.startedAt,
-        },
-      });
-      const reduced = actions.reduce(weeklyPlanningReducer, begun);
-      expect(reduced).toBe(begun);
-    }));
+        expect(weeklyPlanningReducer(begun, action)).toBe(begun);
+      },
+    ));
   });
 
-  it('keeps draft blocks immutable for arbitrary mutation sequences during approval', () => {
-    const blockIdArbitrary = fc.oneof(fc.constant('draft-1'), fc.constant('draft-2'), fc.string());
-    const draftMutationArbitrary = fc.oneof(
-      blockIdArbitrary.map((blockId) => ({ type: 'remove_draft_block' as const, blockId })),
-      fc.array(blockIdArbitrary, { maxLength: 5 }).map((blockIds) => ({
-        type: 'remove_draft_blocks' as const,
-        blockIds,
-      })),
-      fc.constant({ type: 'clear_draft_blocks' as const }),
+  it('keeps the entire session immutable for arbitrary non-terminal actions during a pending turn', () => {
+    const begun = stateWithPendingTurn();
+    const blockedActions = actionsForState(begun).filter(
+      (action) => action.type !== 'commit_turn'
+        && action.type !== 'fail_turn'
+        && action.type !== 'cancel_turn',
     );
 
-    fc.assert(fc.property(fc.array(draftMutationArbitrary, { maxLength: 25 }), (actions) => {
-      const withDrafts = weeklyPlanningReducer(
-        createInitialPlanningState('2026-07-13'),
-        { type: 'add_draft_blocks', blocks: [draftBlock('draft-1'), draftBlock('draft-2')] },
-      );
-      const approval = pendingApproval(withDrafts.revision);
-      const begun = weeklyPlanningReducer(withDrafts, { type: 'begin_approval', pending: approval });
-      expect(begun.pendingApproval).toEqual(approval);
-      const reduced = actions.reduce(weeklyPlanningReducer, begun);
-      expect(reduced.draftBlocks).toEqual(begun.draftBlocks);
-      expect(reduced.pendingApproval).toEqual(approval);
-    }));
+    fc.assert(fc.property(
+      fc.array(fc.integer({ min: 0, max: blockedActions.length - 1 }), { maxLength: 40 }),
+      (indexes) => {
+        const reduced = indexes.reduce(
+          (state, index) => weeklyPlanningReducer(state, blockedActions[index]),
+          begun,
+        );
+        expect(reduced).toBe(begun);
+      },
+    ));
   });
 
-  it('keeps revision monotonic for arbitrary accepted non-load mutations', () => {
-    const acceptedMutationArbitrary = fc.oneof(
-      fc.string().map((content) => ({
-        type: 'append_message' as const,
-        message: { id: `message-${content}`, role: 'assistant' as const, content, createdAt: 'now' },
-      })),
-      fc.array(fc.string(), { maxLength: 5 }).map((blockIds) => ({
-        type: 'remove_draft_blocks' as const,
-        blockIds,
-      })),
-      fc.constant({ type: 'clear_draft_blocks' as const }),
+  it('keeps the entire session immutable for arbitrary non-terminal actions during approval', () => {
+    const begun = stateWithPendingApproval();
+    const blockedActions = actionsForState(begun).filter(
+      (action) => action.type !== 'complete_approval' && action.type !== 'fail_approval',
     );
 
-    fc.assert(fc.property(fc.array(acceptedMutationArbitrary, { maxLength: 25 }), (actions) => {
-      let current = createInitialPlanningState('2026-07-13');
-      for (const action of actions) {
+    fc.assert(fc.property(
+      fc.array(fc.integer({ min: 0, max: blockedActions.length - 1 }), { maxLength: 40 }),
+      (indexes) => {
+        const reduced = indexes.reduce(
+          (state, index) => weeklyPlanningReducer(state, blockedActions[index]),
+          begun,
+        );
+        expect(reduced).toBe(begun);
+      },
+    ));
+  });
+
+  it('increments revision by exactly one for accepted mutations and preserves identity for rejected ones', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 0, max: 3 }),
+      fc.nat(),
+      (stateIndex, actionIndex) => {
+        const states = [
+          createInitialPlanningState(WEEK_START),
+          stateWithDrafts(),
+          stateWithPendingTurn(),
+          stateWithPendingApproval(),
+        ];
+        const current = states[stateIndex];
+        const actions = actionsForState(current);
+        const action = actions[actionIndex % actions.length];
         const next = weeklyPlanningReducer(current, action);
-        expect(next.revision).toBeGreaterThanOrEqual(current.revision);
-        current = next;
-      }
-    }));
+
+        if (next === current) {
+          expect(next.revision).toBe(current.revision);
+        } else {
+          expect(next.revision).toBe(current.revision + 1);
+        }
+      },
+    ));
   });
 });
