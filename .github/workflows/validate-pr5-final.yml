@@ -30,19 +30,11 @@ jobs:
         run: git diff --check origin/main...HEAD
       - name: Run full test suite
         run: |
-          git config user.name "studyplanner-fix-bot"
-          git config user.email "studyplanner-fix-bot@users.noreply.github.com"
           set +e
           npm run test:run > /tmp/full-test.log 2>&1
           status=$?
           tail -n 80 /tmp/full-test.log
-          if [ "$status" -ne 0 ]; then
-            cp /tmp/full-test.log docs/ai/tasks/20260716-weekly-planning-pr5-full-test-error.log
-            git add docs/ai/tasks/20260716-weekly-planning-pr5-full-test-error.log
-            git commit -m "feat: PR5全テスト失敗ログを保存"
-            git push origin HEAD:agent/weekly-planning-conversation-hardening
-            exit "$status"
-          fi
+          exit "$status"
       - name: Run production build
         run: |
           set +e
@@ -50,3 +42,17 @@ jobs:
           status=$?
           tail -n 40 /tmp/build.log
           exit "$status"
+      - name: Record validation summary
+        run: |
+          git config user.name "studyplanner-fix-bot"
+          git config user.email "studyplanner-fix-bot@users.noreply.github.com"
+          {
+            echo "diff whitespace: passed"
+            sed -r 's/\x1B\[[0-9;]*[mK]//g' /tmp/full-test.log \
+              | grep -E 'Test Files|Tests|Duration' \
+              | tail -n 3
+            echo "production build: passed"
+          } > docs/ai/tasks/20260716-weekly-planning-pr5-final-validation.log
+          git add docs/ai/tasks/20260716-weekly-planning-pr5-final-validation.log
+          git commit -m "feat: PR5最終検証結果を記録"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
