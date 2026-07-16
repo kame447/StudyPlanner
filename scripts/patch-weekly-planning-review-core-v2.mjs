@@ -18,6 +18,15 @@ function replaceOnce(path, before, after) {
   write(path, source.slice(0, index) + after + source.slice(index + before.length));
 }
 
+function replaceAllRequired(path, before, after, expectedCount) {
+  const source = read(path);
+  const count = source.split(before).length - 1;
+  if (count !== expectedCount) {
+    throw new Error(`unexpected anchor count in ${path}: expected ${expectedCount}, got ${count}`);
+  }
+  write(path, source.split(before).join(after));
+}
+
 const runtimePath = 'src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.ts';
 replaceOnce(
   runtimePath,
@@ -41,20 +50,11 @@ replaceOnce(
   `  error?: 'confirmed-exam-scope-attribute-overwrite';`,
   `  error?: 'confirmed-slot-overwrite';`,
 );
-replaceOnce(
+replaceAllRequired(
   enrichmentPath,
   `    return { error: 'confirmed-exam-scope-attribute-overwrite' };`,
   `    return { error: 'confirmed-slot-overwrite' };`,
-);
-replaceOnce(
-  enrichmentPath,
-  `    return { error: 'confirmed-exam-scope-attribute-overwrite' };`,
-  `    return { error: 'confirmed-slot-overwrite' };`,
-);
-replaceOnce(
-  enrichmentPath,
-  `    return { error: 'confirmed-exam-scope-attribute-overwrite' };`,
-  `    return { error: 'confirmed-slot-overwrite' };`,
+  3,
 );
 replaceOnce(
   enrichmentPath,
