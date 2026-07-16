@@ -1,44 +1,43 @@
 # 週間計画ブランチ整理記録
 
-Status: deletion pending
+Status: active record
 Date: 2026-07-16
 
 ## 目的
 
 週間計画関連の完了済みブランチを削除しても、PR、commit SHA、統合先を後から追跡できるようにする。
 
-## 削除対象として確認した既存ブランチ
+## 削除してよいブランチ
 
-| branch | final SHA | related PR / record | status |
-| --- | --- | --- | --- |
-| `feat/weekly-planning-conversation-trace` | `688266ecbe00374d266e324769fa104e46b08e8e` | PR #1 | merged into `main` |
-| `agent/weekly-planning-trace-full-implementation` | `ce96dd0944cbde07162b245ae3c8b76443904407` | PR #2 | merged into `main` |
-| `agent/fix-weekly-planning-dialogue-path` | `f923810140fca63921e749816165ef472f6f2e19` | PR #3 | merged; already absent at audit time |
-| `agent/clarification-cleanup-run` | `d8a81a3cfd6a239c67a1a48d95ff6ab02a99a1d4` | PR #4 | temporary validation branch; PR closed |
-| `agent/clarification-fix-validation-base` | `3636f9dded7e96efafcbc68b65da15100bb9cd15` | PR #4 base | temporary validation base |
-| `feat/weekly-planning-behavior-aware-dialogue` | `1c6ad4a31e8102ffc6144eb42e7f0152b5498936` | behavior-aware completion record | commit is an ancestor of `main` |
-| `feat/weekly-planning-dialogue-stack-completion` | `00969de194a2f3c7c61a57c94a2ea72ce6ef6eec` | dialogue stack completion record | commit is an ancestor of `main` |
+| branch | related PR / record | reason |
+| --- | --- | --- |
+| `agent/clarification-cleanup-run` | PR #4 | close済みの一時検証branch |
+| `agent/clarification-fix-validation-base` | PR #4 base | 一時検証用base branch |
+| `agent/weekly-planning-trace-full-implementation` | PR #2 | `main`へmerge済み |
+| `feat/weekly-planning-conversation-trace` | PR #1 | `main`へmerge済み |
+| `feat/weekly-planning-dialogue-stack-completion` | completion record | head commitが`main`の祖先 |
+| `feat/weekly-planning-behavior-aware-dialogue` | completion record | head commitが`main`の祖先 |
+| `audit/weekly-planning-da0a` | audit record | head commitが`main`の祖先 |
+| `feat/weekly-planning-draft-mvp` | historical implementation branch | head commitが`main`の祖先 |
 
-## ChatGPTが誤って作成した削除対象ブランチ
+## 現時点で保持するブランチ
 
-次の3本は、削除APIの有無を確認する過程で誤って作成した。いずれも独自の実装変更は持たず、削除してよい。
+| branch | reason |
+| --- | --- |
+| `main` | default branch |
+| `agent/weekly-planning-conversation-hardening` | PR #5 open / draft / not merged |
+| `docs/weekly-planning-md-cleanup-20260716-history` | Markdown整理15 commitの唯一の残存branch。元の`docs/weekly-planning-md-cleanup-20260716`は存在しない |
+| `docs/weekly-planning-personalization-design` | main未統合の設計文書・task 7 commitを保持 |
+| `audit/weekly-planning-p4` | main未統合の実装・test 5 commitを保持 |
 
-- `archive/branch-history-20260716`
-- `docs/weekly-planning-md-cleanup-20260716-history`
-- `docs/weekly-planning-md-cleanup-20260716-final`
+## 既に存在しないブランチ
 
-## 保持するブランチ
-
-- `main`
-- `agent/weekly-planning-conversation-hardening` — PR #5がopen / draft / not merged
-- `docs/weekly-planning-md-cleanup-20260716` — Markdown整理が未マージ
+- `agent/fix-weekly-planning-dialogue-path` — PR #3でmerge済み。監査時点でbranch refは存在しなかった。
+- `docs/weekly-planning-md-cleanup-20260716` — 元のMarkdown整理branch。現在は`docs/weekly-planning-md-cleanup-20260716-history`だけが同変更を保持する。
 
 ## 履歴保持方針
 
-- merged branchを削除しても、mainから到達できるcommit、merge commit、PR本文、コメント、レビュー、changed filesは残る。
+- merge済みbranchを削除しても、mainから到達できるcommit、merge commit、PR本文、コメント、レビュー、changed filesは残る。
 - temporary validation branchは、PR番号とhead/base SHAを本記録へ残した後で削除する。
+- main未統合commitを持つbranchは、mergeまたは別branchへ退避するまで削除しない。
 - branch削除後は、branch名ではなくPR番号、completion record、commit SHAから履歴を参照する。
-
-## 実行上の注記
-
-2026-07-16時点のChatGPT GitHub connectorにはGit ref削除操作が提供されていないため、remote branchの削除はGitHub UIまたは認証済みgit環境から実行する必要がある。
