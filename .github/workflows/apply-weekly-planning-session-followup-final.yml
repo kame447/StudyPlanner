@@ -27,7 +27,17 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Focused session tests
-        run: npm run test:run -- src/components/QuickEntryModalSessionResume.test.tsx src/components/weeklyPlanningConversationMode.test.ts src/components/WeeklyPlanningConversation.test.tsx src/features/weeklyPlanning/weeklyPlanningReducer.test.ts src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts
+        id: focused
+        continue-on-error: true
+        run: npm run test:run -- src/components/QuickEntryModalSessionResume.test.tsx src/components/weeklyPlanningConversationMode.test.ts src/components/WeeklyPlanningConversation.test.tsx src/features/weeklyPlanning/weeklyPlanningReducer.test.ts src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts > session-followup-focused.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: session-followup-focused-log
+          path: session-followup-focused.log
+      - name: Require focused tests
+        if: steps.focused.outcome == 'failure'
+        run: exit 1
       - name: Full tests
         run: npm run test:run
       - name: Production build
@@ -38,7 +48,7 @@ jobs:
           rm scripts/adjust-weekly-planning-session-followup.mjs
           rm .github/workflows/apply-weekly-planning-session-followup.yml
           rm .github/workflows/apply-weekly-planning-session-followup-final.yml
-          rm -f session-followup-script.log
+          rm -f session-followup-script.log session-followup-focused.log
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
