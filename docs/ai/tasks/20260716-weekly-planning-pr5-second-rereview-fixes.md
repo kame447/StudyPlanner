@@ -65,3 +65,5 @@ AIが完全な明示期間を返した場合も、日付枠が未確定の未来
 - `npm run build`: passed
 - `git diff --check`: passed
 - 一時検証workflowと適用scriptはPR差分から削除済み
+
+検証は、実装差分を適用した同一checkout上で、focused tests、週間計画関連suite、全テスト、production build、diff checkの順に実行した。すべて成功した場合だけ実装差分をbranchへ反映した。
