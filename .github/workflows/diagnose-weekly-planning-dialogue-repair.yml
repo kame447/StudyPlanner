@@ -1,0 +1,46 @@
+name: Diagnose weekly planning dialogue repair
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run dialogue repair tests
+        shell: bash
+        run: |
+          set +e
+          npm run test:run -- \
+            src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRepairPolicy.test.ts \
+            src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts \
+            > dialogue-repair-tests.log 2>&1
+          echo $? > dialogue-repair-tests.exit
+          exit 0
+      - name: Run full test suite
+        shell: bash
+        run: |
+          set +e
+          npm run test:run > full-tests.log 2>&1
+          echo $? > full-tests.exit
+          exit 0
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-dialogue-repair-diagnostics
+          path: |
+            dialogue-repair-tests.log
+            dialogue-repair-tests.exit
+            full-tests.log
+            full-tests.exit
