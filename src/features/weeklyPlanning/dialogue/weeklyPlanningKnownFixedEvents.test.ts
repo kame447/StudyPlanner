@@ -46,6 +46,26 @@ describe('known fixed event occurrences', () => {
     expect(occurrences.map((item) => item.id)).toEqual(['overlap-start', 'inside', 'overlap-end']);
   });
 
+  it('includes a one-off event that starts on the previous day and overlaps the range', () => {
+    const occurrences = createKnownFixedEventOccurrences([
+      plan('overnight', '2026-07-15', '23:00', '13:00', '夜間作業'),
+    ], range);
+
+    expect(occurrences.map((item) => item.id)).toEqual(['overnight']);
+  });
+
+  it('includes a recurring event occurrence that starts on the previous day', () => {
+    const recurring = {
+      ...plan('weekly-overnight', '2026-07-08', '23:00', '13:00', '毎週の夜間予定'),
+      repeat: 'weekly' as const,
+      repeatUntil: '2026-08-31',
+    };
+
+    expect(createKnownFixedEventSummaries([recurring], range)).toEqual([
+      '7/15 23:00〜13:00「毎週の夜間予定」',
+    ]);
+  });
+
   it('expands weekly recurring plans into the planning range', () => {
     const recurring = {
       ...plan('weekly', '2026-07-09', '14:00', '15:00', '毎週の授業'),
