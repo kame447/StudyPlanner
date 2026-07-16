@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 function replaceOnce(path, before, after) {
   const source = readFileSync(path, 'utf8');
   const count = source.split(before).length - 1;
-  if (count !== 1) throw new Error(`${path}: expected one anchor, got ${count}`);
+  if (count !== 1) throw new Error(`${path}: expected one anchor, got ${count}; anchor=${JSON.stringify(before.slice(0, 100))}`);
   writeFileSync(path, source.replace(before, after), 'utf8');
 }
 
@@ -25,8 +25,8 @@ replaceOnce(
 
 replaceOnce(
   'src/App.tsx',
-  `             scheduleTemplates={scheduleTemplates}\n             timetableTermId={activeTimetableTermId}\n             weeklyDraftBlocks={pendingWeeklyDraftBlocks}`,
-  `             weeklyDraftBlocks={pendingWeeklyDraftBlocks}`,
+  `            scheduleTemplates={scheduleTemplates}\n            timetableTermId={activeTimetableTermId}\n            weeklyDraftBlocks={pendingWeeklyDraftBlocks}`,
+  `            weeklyDraftBlocks={pendingWeeklyDraftBlocks}`,
 );
 
 replaceOnce(
