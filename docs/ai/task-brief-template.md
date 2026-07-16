@@ -1,67 +1,117 @@
-# タスクmdテンプレート(Codex 向け実装ブリーフ)
+# タスクmdテンプレート（Codex向け実装ブリーフ）
 
-Claude/Fable が `docs/ai/tasks/` に実装タスクmdを作るときのテンプレート。1タスクmd = Codex が1回の中規模作業で潰せる単位にする(分割方針は `docs/ai/weekly-planning-pipeline-guide.md` §6)。
+`docs/ai/tasks/`に未完了taskを作るときのテンプレートである。1 taskは、単一の主原因、責務境界、完了条件を持つ中規模作業にする。分割とlifecycleは`docs/ai/weekly-planning-pipeline-guide.md`のtask設計・運用規則に従う。
 
-- ファイル名: `docs/ai/tasks/YYYYMMDD-<slug>.md`(例: `20260702-unavailable-daypart-parsing.md`)
-- 以下のセクションはすべて必須。書くことがない場合も「なし」と明記する。
+- ファイル名: `docs/ai/tasks/YYYYMMDD-<slug>.md`
+- rootには未完了taskだけを置く。
+- 完了後は必要な結果だけを`docs/ai/tasks/closed/`のcompletion recordへ統合する。
+- 以下のsectionは必須である。書くことがない場合も「なし」と明記する。
 
 ---
 
 ```markdown
-# <タスクタイトル(1行で変更内容が分かるもの)>
+# <タスクタイトル>
 
-## 背景
+Status: planned
+Priority: P0 | P1 | P2
+Requirement IDs: <該当ID。無ければ none>
 
-<!-- なぜこのタスクが必要か。現状の何が問題で、どの文脈から出てきたか。2〜5文。 -->
+## 1. 背景
 
-## 目的
+<!-- なぜ必要か。観測事実と推測を分ける。 -->
 
-<!-- このタスクが完了したとき、何ができるようになる/どう良くなるか。1〜3文。 -->
+## 2. 目的
 
-## 計画書との対応
+<!-- 完了時に成立する状態。 -->
 
-<!-- weekly-planning-spec.md のどの章(§n)、pipeline-guide のどの改善テーマに対応するか。 -->
+## 3. 計画書との対応
 
-- spec: §
-- 改善テーマ:
+- product spec:
+- architecture:
+- roadmap:
+- test contract / Requirement ID:
 
-## 対象ファイル
+## 4. Entry conditions
 
-<!-- 変更・新規作成するファイルを列挙する。テストファイルも含める。ここに無いファイルは触らない前提になる。 -->
+<!-- 着手前に必要な実装、branch、設計決定、検証済み条件。 -->
+
+## 5. 対象ファイル
 
 - 変更:
 - 新規:
 - テスト:
 
-## 現在の処理経路
+<!-- ここに無いfileへ変更が必要なら、実装を広げず報告する。 -->
 
-<!-- 対象の入力・データが今どう流れているか。parser → command → adapter → reducer → scheduler のどこを通り、どこで止まる/漏れるかを関数名つきで書く。 -->
+## 6. 現在の処理経路
 
-## 問題点
+<!-- input → parser/interpreter → validator → adapter → reducer → scheduler/dialogue/UI の実経路を関数名つきで記載する。 -->
 
-<!-- 現在の経路の何が仕様・責務境界に反するか、何が未対応かを箇条書きで具体的に。 -->
+## 7. 確認済みの事実
 
-## 修正方針
+<!-- code、test、trace、再現結果から確認できた事項。 -->
 
-<!-- どの層に何を足す/移すか。責務境界(parser だけが自然言語を読む、adapter は入力文を見ない、reducer に解釈を増やさない、scheduler に parsing を入れない)に沿って書く。実装の細部は Codex に任せてよいが、層の選択は指定する。 -->
+## 8. 未確認事項
 
-## 触らない範囲
+<!-- 推測、実AI未再現、browser未確認、外部環境依存。 -->
 
-<!-- テストを通すためであっても変更してはいけないファイル・挙動。UI / CSS / save / approval / scheduler 本体は明示的に対象にしない限りここに入れる。shouldSavePlan: false 維持など不変条件もここに書く。 -->
+## 9. 問題点
 
-## 受け入れ条件
+<!-- 仕様または責務境界へ反する点。 -->
 
-<!-- 完了判定できる具体的な条件を箇条書きで。「〜という入力が〜という command になる」「既存テストがすべて green のまま」のように検証可能な形にする。 -->
+## 10. 修正方針
 
-## テスト観点
+<!-- どの層で直すか。自然言語解釈、normalization、validation、state transition、scheduling、renderingを混ぜない。 -->
 
-<!-- 追加・更新するテストと、その対象ファイル。正常系・境界・曖昧入力(hard 確定しないこと)・regression の観点を挙げる。 -->
+## 11. 触らない範囲
 
-## リスク
+<!-- UI、CSS、save、approval、scheduler、fallback等、明示的に対象外とするもの。 -->
 
-<!-- 壊れうる既存挙動、fallback 経路への影響、曖昧さが残る箇所。「なし」なら理由も一言。 -->
+## 12. 受け入れ条件
 
-## Codexへの実装指示
+<!-- 入力、事前state、期待state/decision/outputを検証可能な形で書く。 -->
 
-<!-- 実装順序の指定、参照すべき既存実装(関数名・ファイル)、守るべきルールの再掲。最後に必ず docs/ai/codex-task-guide.md に従うこと(スコープ外に広げない、git 操作しない、報告項目)を書く。 -->
+## 13. テスト観点
+
+- unit:
+- integration:
+- browser/manual:
+- regression:
+- property/fuzz（必要な場合）:
+
+## 14. リスク
+
+<!-- 既存経路、fallback、migration、cost、latency、privacyへの影響。 -->
+
+## 15. Dependencies
+
+<!-- 先行taskと、並行変更してはいけない対象。 -->
+
+## 16. Exit conditions
+
+<!-- test、build、diff、browser、document sync、completion recordの条件。 -->
+
+## 17. 実装担当への指示
+
+1. `docs/ai/weekly-planning-docs-index.md`から現行文書を確認する。
+2. `docs/ai/codex-task-guide.md`と`docs/ai/weekly-planning-pipeline-guide.md`に従う。
+3. scope外へ広げず、必要なら停止条件として報告する。
+4. test結果、変更file、未確認事項を最終報告へ残す。
+5. git操作はユーザーから明示された場合だけ行う。
 ```
+
+## completion recordへの移行
+
+完了時は元taskをrootへ残さない。closed側には次だけを残す。
+
+```text
+Status / Completed date / commit or PR
+目的
+実装結果
+維持した安全境界
+検証結果
+未完了の後続事項
+参照すべきcanonical文書
+```
+
+長い実装指示や古いbranch前提を、completion recordでcurrent instructionとして再掲しない。
