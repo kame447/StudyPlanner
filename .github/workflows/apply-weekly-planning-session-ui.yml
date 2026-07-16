@@ -19,6 +19,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+      - name: Adjust duplicate App anchor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-weekly-planning-session-ui.mjs')
+          source = path.read_text()
+          before = """  if (count !== 1) throw new Error(`${path}: expected one anchor, got ${count}`);
+          writeFileSync(path, source.replace(before, after), 'utf8');"""
+          after = """  if (count !== 1) {
+            if (path === 'src/App.tsx' && before.includes('onRemoveWeeklyDraftBlock')) {
+              if (count === 2) {
+                writeFileSync(path, source.split(before).join(after), 'utf8');
+                return;
+              }
+              if (count === 0) return;
+            }
+            throw new Error(`${path}: expected one anchor, got ${count}`);
+          }
+          writeFileSync(path, source.replace(before, after), 'utf8');"""
+          if source.count(before) != 1:
+              raise SystemExit('replaceOnce helper anchor mismatch')
+          path.write_text(source.replace(before, after))
+          PY
       - name: Apply UI ownership changes
         id: apply
         continue-on-error: true
