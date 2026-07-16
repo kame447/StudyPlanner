@@ -1,0 +1,29 @@
+name: apply-pr5-b1-preview-session
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-conversation-hardening
+    paths:
+      - .github/workflows/apply-pr5-b1-preview-session.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: |
+          git config user.name "studyplanner-fix-bot"
+          git config user.email "studyplanner-fix-bot@users.noreply.github.com"
+          python .github/agent-scripts/apply-pr5-b1-preview-session.py
