@@ -176,12 +176,23 @@ export interface SetPlanningRangeCommand {
   confidence: 'high' | 'medium' | 'low';
 }
 
+export interface PendingPlanningRangeCommandPayload {
+  scope: PendingPlanningRangeClarification['scope'];
+  durationDays?: number;
+  sourceText: string;
+}
+
 export interface SetPendingPlanningRangeCommand {
   type: 'set_pending_planning_range';
-  pending: PendingPlanningRangeClarification;
+  pending: PendingPlanningRangeCommandPayload;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NormalizedSetPendingPlanningRangeCommand
+  extends Omit<SetPendingPlanningRangeCommand, 'pending'> {
+  pending: PendingPlanningRangeClarification;
 }
 
 export interface BeginWeeklyPlanningCommand {
