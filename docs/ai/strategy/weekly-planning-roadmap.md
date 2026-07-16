@@ -50,7 +50,8 @@ Recorded baseline validation:
 | DA3a relative constraint domain | implemented | local integration |
 | DA3b feasibility consultation | implemented | local integration / roleplay |
 | DA3c conversation evaluation | implemented | local full validation / requirement status sync |
-| conversation trace | implemented | privacy product decision recorded / production TTL・deletion・access control・scalability未実装 |
+| conversation trace | implemented | privacy decision recorded / production TTL・deletion・access control・scalability未実装 |
+| longitudinal personalization profile | not implemented | product decision recorded / schema・profile update・correction・deletion・terms gate未実装 |
 
 含まれる主なcontract:
 
@@ -81,18 +82,23 @@ Recorded baseline validation:
 
 3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
    - product decisionは記録済み。
-   - rotating HMAC subject token、本文sampling/redaction、content 30日、metadata 90日のTTL、account deletion、限定admin accessを実装・検証する。
+   - rotating HMAC subject token、全session本文の保存前redaction、本文・snapshot・metadataの180日TTL、account deletion、限定admin accessを実装・検証する。
    - privacy/legal reviewをdeploy前条件として残す。
 
-4. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
+4. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
+   - account-linked profile schema、profile factのorigin/confidence/scope、原履歴180日TTL、profile訂正、account deletion、初回acceptance gateを実装する。
+   - 週の始まり、学習時間見積り、session構成、修正傾向、実績差、修復方針を次回計画へ反映する。
+   - 個別最適化データの収集を週間計画機能の利用条件とし、収集だけを停止した継続利用modeは設けない。
+
+5. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
    - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
 
 ### P2
 
-5. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+6. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
    - pagination、query cost、index、archive、schemaVersion decoderを設計する。
 
-6. `20260716-weekly-planning-controller-ui-responsibility-split.md`
+7. `20260716-weekly-planning-controller-ui-responsibility-split.md`
    - conversation controller、preview controller、view componentへ責務を分離する。
    - entrypoint ownership taskの結果とPR #5の状態を先に確認する。
 
@@ -100,49 +106,65 @@ Recorded baseline validation:
 
 ## 4. Decision gates
 
-未決定事項は、決定時にproduct spec、architecture、test contract、AI prompt、runtime testを同じ変更で同期する。
+決定済みcontractは`weekly-planning-current-contract-status.md`を正とし、product spec、architecture、test contract、AI prompt、runtime testを順次同期する。
 
-### 4.1 AIとdeterministic parserの責務
+### 4.1 AIとdeterministic parserの責務 — decision recorded
 
-現在の実装は、legacy fallbackを含まないdeterministic baselineを先に適用し、AI commandを補完的に適用する。一方、一部canonical文書は通常provider経路でsemantic resultをmergeしないと記載する。
+2026-07-16に次を決定した。
 
-次のどちらを正とするか決定する。
+- deterministic baseline + AI semantic補完を採用する。
+- 高信頼でないAI解釈は、影響と質問コストに応じて明示的修復またはやり過ごしへ分類する。
+- previewを止める不確実性だけを一度に一件確認する。
+- accepted stateに根拠がある事項だけを短い反復でacknowledgeする。
 
-- deterministic baseline + AI補完
-- AI single semantic interpreter + deterministic normalization / validation only
+明示的修復・やり過ごし・grounded acknowledgementの実装はPR #5にあり、merge前は`main`実装済みと扱わない。
 
-決定前は`weekly-planning-current-contract-status.md`の読み方に従い、旧文書だけを根拠にruntimeを変更しない。
+### 4.2 「来週」と週の始まり — decision recorded
 
-### 4.2 「来週」の意味論
+2026-07-16に次を決定した。
 
-次のどちらをproduct contractとするか決定する。
+- 初回だけ月曜始まりまたは日曜始まりを確認する。
+- 選択をaccount-linked personalization profileへ保存する。
+- 以後の「今週」「来週」は保存設定に従って一意解決する。
+- 今回発話の具体的な日付・曜日範囲をprofile設定より優先する。
+- profileが未設定、破損、競合している場合だけ明示的修復へ入る。
 
-- 翌週月曜から日曜へ一意解決し、開始日を再質問しない
-- `来週`scopeを保持し、その週の開始日を必要に応じて確認する
-
-決定前は`P6-RANGE-RESOLUTION-001`を固定pass/fail条件にしない。
+profile schemaとrange resolutionは未実装である。
 
 ### 4.3 conversation trace privacy — decision recorded
 
 2026-07-16に次を決定した。
 
-- 毎conversationの同意ではなく、初回利用時の利用規約・privacy noticeと設定画面で説明・停止を扱う。
-- raw user IDを保存せず、server-side rotating HMAC subject tokenを使用する。
+- 毎conversationの同意ではなく、初回利用前の利用規約・privacy noticeで収集目的、必須性、保持期間、削除方法を説明する。
+- quality traceとaccount-linked personalization profileを別schema、別repository、別権限で管理する。
+- traceではraw user IDを保存せず、server-side rotating HMAC subject tokenを使用する。
 - 暗号化を匿名化の代替として扱わない。
-- structured metadataを基本とし、本文は調査価値の高いsessionと少量sampleへ限定する。
-- 保存前redactionを適用する。
-- redacted本文とstate snapshotは30日、metadataは90日、unlinkable aggregateだけ最大12か月保持する。
-- account deletion、利用者からの削除要求、限定admin access、閲覧auditを実装する。
+- 全sessionのredacted本文、state snapshot、structured metadataを180日保持する。
+- unlinkable aggregateだけ最大24か月保持する。
+- account deletion、限定admin access、閲覧auditを実装する。
 
-詳細は`20260716-weekly-planning-trace-privacy-and-lifecycle.md`を正とする。production enablementは実装・運用・privacy/legal review完了後に判定する。
+詳細は`20260716-weekly-planning-trace-privacy-and-lifecycle.md`を正とする。
+
+### 4.4 longitudinal personalization data — decision recorded
+
+2026-07-16に次を決定した。
+
+- 長期個別最適化データの収集・利用を週間計画機能の中核契約とする。
+- 収集を拒否したまま同じ週間計画機能を利用するmodeは提供しない。
+- user / assistant本文とstate snapshotは180日保持する。
+- 必要な情報だけをorigin、confidence、scope、confirmedAt付きprofile factへ昇格する。
+- 構造化profileはアカウント存続中保持する。
+- account deletion後はprimary storageから30日以内、backupから最大90日以内に消去する。
+- traceをそのままprofileへ転用せず、専用profile update boundaryを通す。
+- 医療等の要配慮情報を含む自由記述は不要な詳細を長期保持せず、必要な生活制約へ一般化する。
+
+詳細は`20260716-weekly-planning-longitudinal-personalization-data-governance.md`を正とする。
 
 ## 5. Deferred backlog
 
 次はactive root taskへまだ昇格させない。実コードを再調査し、単一の責務と受け入れ条件を持てる場合だけtask化する。
 
 - generic progress unit（page、word、problem、report stage等）
-- recurring life profileと明示同意つき永続化
-- actual resultによるestimate補正
 - deterministic replanning trigger
 - scheduler二系統の整理
 - legacy fallback semanticsとretirement条件
@@ -163,6 +185,8 @@ mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履
 - behavior annotationとrelative constraintでavailabilityを増やさない。
 - existing plan、timetable、buffer、hard busy intervalを上書きしない。
 - current-week factをrecurring profileへ無断昇格しない。
+- profile factはorigin、confidence、scope、confirmedAtを持つ。
+- trace documentを直接longitudinal profileとして参照しない。
 - stale async resultをstateへ適用しない。
 - stale/pending preview approvalでrepository writeを開始しない。
 - trace保存はplanning処理の成功条件にしない。
