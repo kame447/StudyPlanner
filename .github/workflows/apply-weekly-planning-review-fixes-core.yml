@@ -38,12 +38,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Build
+        run: npm run build
       - name: Core review tests
         run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningReviewCoreFixes.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningSingleFieldPriority.test.ts src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts
       - name: Weekly planning tests
         run: npm run test:run -- src/features/weeklyPlanning
-      - name: Build
-        run: npm run build
       - name: Diff check
         run: git diff --check
       - name: Finalize task docs
