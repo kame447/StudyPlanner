@@ -1,95 +1,157 @@
+import {
+  isDateWithinWindow,
+  isIsoCalendarDate,
+  isOrderedPlanningDateTimeRange,
+  isValidDateWindow,
+  isValidPlanningDurationDays,
+} from './intake/weeklyPlanningDateValidation';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
-  WeeklyPlanningBehaviorMetadata,
   WeeklyPlanningMessage,
-} from './types';
-import { createInitialPlanningState } from './weeklyPlanningReducer';
+} from './weeklyPlanningSessionTypes';
+import { createInitialPlanningState } from './weeklyPlanningSessionTypes';
 
+const STORAGE_PREFIX = 'study-planner:weekly-planning:v2';
 const STORAGE_VERSION = 2;
-const MODES = new Set(['idle', 'collecting_tasks', 'draft_created', 'awaiting_approval', 'confirmed']);
-const PLAN_TYPES = new Set(['study', 'mock-exam', 'school-event', 'cram-school', 'deadline', 'other']);
-const INTAKE_STATUSES = new Set([
-  'idle', 'needs_scope', 'range_collected', 'scope_collected', 'needs_exam_info',
-  'needs_year_range', 'needs_progress_clarification', 'needs_unit_rate',
-  'needs_priority_policy', 'needs_life_constraints', 'draft_ready',
-  'revision_pending', 'approved',
-]);
-const INTAKE_INTENTS = new Set([
-  'weekly_study_planning', 'exam_prep_planning', 'regular_schedule', 'study_advice', 'unknown',
-]);
-const STUDY_SCOPE_UNITS = new Set([
-  'minutes', 'hours', 'pages', 'problems', 'words', 'lessons', 'chapters',
-  'year_field_chunk', 'topic', 'unknown',
-]);
-const MISSING_SLOTS = new Set([
-  'planning_period', 'planning_start_date', 'tasks_or_goals', 'fixed_events', 'sleep_cycle',
-  'meal_bath_constraints', 'year_range', 'progress', 'completion_direction',
-  'unit_duration_estimate', 'priority_policy', 'next_field_after_math', 'life_constraints',
-]);
-const LIFE_CONSTRAINT_KINDS = new Set([
-  'sleep', 'meal', 'bath', 'commute', 'club', 'cram_school', 'fixed_event',
-  'unavailable', 'buffer',
-]);
-const QUESTION_CONTEXT_KINDS = new Set([
-  'missing', 'feasibility_adjustment', 'options', 'preview', 'approval', 'ambiguity',
-]);
-const PREVIEW_ELIGIBILITY = new Set([
-  'eligible', 'blocked_pending_assumption', 'blocked_stale', 'blocked_invalid', 'unsupported',
-]);
-const PLANNING_OPPORTUNITY_TAGS = new Set([
-  'before_meal', 'after_meal', 'after_school', 'after_work', 'after_commute',
-  'before_sleep', 'after_rest', 'long_contiguous_window', 'short_transition_window',
-  'low_activation', 'high_continuity',
-]);
 
 interface StoredPlanningStateV2 {
-  version: 2;
+  version: typeof STORAGE_VERSION;
   state: PlanningState;
 }
 
+const MODES = new Set<PlanningState['mode']>(['idle', 'editing', 'preview', 'approval', 'applied']);
+const DRAFT_BLOCK_STATUSES = new Set<WeeklyPlanDraftBlock['status']>([
+  'draft',
+  'applied',
+  'cancelled',
+]);
+const MESSAGE_ROLES = new Set<WeeklyPlanningMessage['role']>(['user', 'assistant']);
+const INTAKE_STATUSES = new Set<PlanningIntakeState['status']>([
+  'idle',
+  'needs_scope',
+  'range_collected',
+  'scope_collected',
+  'needs_exam_info',
+  'needs_year_range',
+  'needs_progress_clarification',
+  'needs_unit_rate',
+  'needs_priority_policy',
+  'needs_life_constraints',
+  'draft_ready',
+  'revision_pending',
+  'approved',
+]);
+const INTAKE_INTENTS = new Set<PlanningIntakeState['intent']>([
+  'weekly_study_planning',
+  'exam_prep_planning',
+  'regular_schedule',
+  'study_advice',
+  'unknown',
+]);
+const MISSING_SLOTS = new Set<PlanningIntakeState['missing'][number]>([
+  'planning_period',
+  'planning_start_date',
+  'planning_duration',
+  'tasks_or_goals',
+  'fixed_events',
+  'sleep_cycle',
+  'meal_bath_constraints',
+  'year_range',
+  'progress',
+  'completion_direction',
+  'unit_duration_estimate',
+  'priority_policy',
+  'next_field_after_math',
+  'life_constraints',
+]);
+const UNCERTAINTIES = new Set<PlanningIntakeState['uncertainties'][number]>([
+  'unknown_fields_may_take_longer',
+]);
+const TASK_UNITS = new Set<PlanningIntakeState['tasks'][number]['unit']>([
+  'minutes',
+  'hours',
+  'pages',
+  'problems',
+  'words',
+  'lessons',
+  'chapters',
+  'year_field_chunk',
+  'topic',
+  'unknown',
+]);
+const TASK_SOURCES = new Set<PlanningIntakeState['tasks'][number]['source']>([
+  'command',
+  'legacy_fallback',
+]);
+const PROGRESS_AMBIGUITIES = new Set<PlanningIntakeState['progress'][number]['ambiguity']>([
+  'completion_direction',
+  'year_range',
+  'field_scope',
+  'scope_range',
+  'none',
+]);
+const COMPLETION_TARGET_KINDS = new Set(['all', 'latest_n_years', 'up_to_reachable', 'year_range']);
+const RATE_SOURCES = new Set<PlanningIntakeState['unitRates'][number]['source']>([
+  'user',
+  'assumption',
+  'default',
+]);
+const RATE_UNCERTAINTIES = new Set(['low', 'medium', 'high']);
+const CONSTRAINT_KINDS = new Set<PlanningIntakeState['constraints'][number]['kind']>([
+  'sleep',
+  'meal',
+  'bath',
+  'commute',
+  'club',
+  'cram_school',
+  'fixed_event',
+  'unavailable',
+  'buffer',
+]);
+const HARDNESS_VALUES = new Set<PlanningIntakeState['constraints'][number]['hardness']>([
+  'hard',
+  'soft',
+]);
+const PRIORITY_KINDS = new Set<PlanningIntakeState['priorityPolicy']['kind']>([
+  'field_first',
+  'deadline_first',
+  'weakness_first',
+  'score_weight_first',
+  'balanced',
+  'unknown',
+]);
+const CONSTRAINT_SOURCE_KINDS = new Set(['timetable', 'existing_plans', 'calendar']);
+const DRAFT_INTENTS = new Set(['not_requested', 'assistant_suggested', 'user_authorized']);
+const QUESTION_CONTEXT_KINDS = new Set([
+  'missing',
+  'feasibility_adjustment',
+  'options',
+  'preview',
+  'approval',
+  'ambiguity',
+]);
+
 function getStorageKey(userId: string, weekStartDate: string): string {
-  return `studyplanner.weeklyPlanning.${userId}.${weekStartDate}`;
+  return `${STORAGE_PREFIX}:${userId}:${weekStartDate}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
-  const allowedKeys = new Set(allowed);
-  return Object.keys(value).every((key) => allowedKeys.has(key));
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'number' && Number.isFinite(item));
 }
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(isString);
-}
-
-function isPlanningOpportunityTagArray(value: unknown): value is string[] {
-  return Array.isArray(value)
-    && value.every((item) => typeof item === 'string' && PLANNING_OPPORTUNITY_TAGS.has(item));
-}
-
-function isInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value);
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return isInteger(value) && value >= 0;
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return isInteger(value) && value > 0;
 }
 
 function isOptionalFiniteNumber(value: unknown): value is number | undefined {
@@ -97,413 +159,237 @@ function isOptionalFiniteNumber(value: unknown): value is number | undefined {
 }
 
 function isOptionalPositiveInteger(value: unknown): value is number | undefined {
-  return value === undefined || isPositiveInteger(value);
+  return value === undefined || (Number.isInteger(value) && Number(value) > 0);
 }
 
-function isOptionalStringOrNull(value: unknown): value is string | null | undefined {
-  return value === undefined || value === null || typeof value === 'string';
-}
-
-function isDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-function isTime(value: unknown): value is string {
-  return typeof value === 'string'
-    && (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) || value === '24:00');
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 0;
 }
 
 function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function isMessage(value: unknown): value is WeeklyPlanningMessage {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['id', 'role', 'content', 'createdAt'])) return false;
-  return typeof value.id === 'string'
-    && (value.role === 'user' || value.role === 'assistant')
-    && typeof value.content === 'string'
-    && isTimestamp(value.createdAt);
+function isSessionTime(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) return true;
+  const match = value.match(/^24:([0-5]\d)$/);
+  return Boolean(match && Number(match[1]) === 0);
 }
 
-function isAssumptionDependency(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, ['proposalId', 'targetRef', 'proposalCreatedFromStateRevision'])) {
-    return false;
-  }
-  return typeof value.proposalId === 'string'
-    && typeof value.targetRef === 'string'
-    && isNonNegativeInteger(value.proposalCreatedFromStateRevision);
-}
-
-function isPreviewMetadata(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'previewId', 'conversationId', 'stateRevision', 'assumptionDependencies',
-      'approvalEligibility', 'stale', 'authorizedUserId',
-    ])) {
-    return false;
-  }
-  return typeof value.previewId === 'string'
-    && isOptionalString(value.conversationId)
-    && isNonNegativeInteger(value.stateRevision)
-    && Array.isArray(value.assumptionDependencies)
-    && value.assumptionDependencies.every(isAssumptionDependency)
-    && PREVIEW_ELIGIBILITY.has(String(value.approvalEligibility))
-    && typeof value.stale === 'boolean'
-    && typeof value.authorizedUserId === 'string';
-}
-
-function isBehaviorMetadata(value: unknown): value is WeeklyPlanningBehaviorMetadata {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'conversationId', 'stateRevision', 'sourceFactRefs', 'usedAssumptionProposalRefs',
-      'acceptedAssumptionDependencies', 'taskRef', 'opportunityTags', 'reasoningKey',
-      'compatibility', 'previewMetadata',
-    ])) {
-    return false;
-  }
-  if (!isRecord(value.compatibility)
-    || !hasOnlyKeys(value.compatibility, [
-      'workItemSemantic', 'schedulerInputSource', 'candidateSource',
-    ])) {
-    return false;
-  }
-  return isOptionalString(value.conversationId)
-    && isNonNegativeInteger(value.stateRevision)
-    && isStringArray(value.sourceFactRefs)
-    && isStringArray(value.usedAssumptionProposalRefs)
-    && (value.acceptedAssumptionDependencies === undefined
-      || (Array.isArray(value.acceptedAssumptionDependencies)
-        && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
-    && typeof value.taskRef === 'string'
-    && isPlanningOpportunityTagArray(value.opportunityTags)
-    && typeof value.reasoningKey === 'string'
-    && value.compatibility.workItemSemantic === 'behavior_aware_task'
-    && value.compatibility.schedulerInputSource === 'exam_prep_request'
-    && value.compatibility.candidateSource === 'weekly_exam_prep'
-    && (value.previewMetadata === undefined || isPreviewMetadata(value.previewMetadata));
-}
-
-function isBehaviorAwarePreviewMetadata(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'conversationId', 'stateRevision', 'sourceFactRefs', 'usedAssumptionProposalRefs',
-      'acceptedAssumptionDependencies', 'taskRef', 'opportunityTags', 'reasoningKey',
-    ])) {
-    return false;
-  }
-  return isOptionalString(value.conversationId)
-    && isNonNegativeInteger(value.stateRevision)
-    && isStringArray(value.sourceFactRefs)
-    && isStringArray(value.usedAssumptionProposalRefs)
-    && (value.acceptedAssumptionDependencies === undefined
-      || (Array.isArray(value.acceptedAssumptionDependencies)
-        && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
-    && typeof value.taskRef === 'string'
-    && isPlanningOpportunityTagArray(value.opportunityTags)
-    && (value.reasoningKey === 'explicit-duration'
-      || value.reasoningKey === 'explicit-unit-rate'
-      || value.reasoningKey === 'accepted-assumption-duration');
-}
-
-function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'id', 'userId', 'date', 'startTime', 'endTime', 'title', 'subject', 'type', 'label',
-      'materialId', 'materialName', 'memo', 'source', 'status', 'userEdited',
-      'behaviorMetadata', 'createdAt', 'updatedAt',
-    ])) {
-    return false;
-  }
-  return typeof value.id === 'string'
-    && typeof value.userId === 'string'
-    && isDate(value.date)
-    && isTime(value.startTime)
-    && isTime(value.endTime)
-    && typeof value.title === 'string'
-    && typeof value.subject === 'string'
-    && PLAN_TYPES.has(String(value.type))
-    && typeof value.label === 'string'
-    && isOptionalStringOrNull(value.materialId)
-    && isOptionalString(value.materialName)
-    && isOptionalString(value.memo)
-    && value.source === 'ai'
-    && value.status === 'draft'
-    && typeof value.userEdited === 'boolean'
-    && (value.behaviorMetadata === undefined || isBehaviorMetadata(value.behaviorMetadata))
-    && isTimestamp(value.createdAt)
-    && isTimestamp(value.updatedAt);
-}
-
-function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'stableKey', 'date', 'startTime', 'endTime', 'durationMinutes', 'title', 'field',
-      'year', 'estimatedMinutes', 'source', 'approvalStatus', 'workItemKey', 'behaviorMetadata',
-    ])) {
-    return false;
-  }
-  return typeof value.stableKey === 'string'
-    && isDate(value.date)
-    && isTime(value.startTime)
-    && isTime(value.endTime)
-    && isPositiveInteger(value.durationMinutes)
-    && typeof value.title === 'string'
-    && typeof value.field === 'string'
-    && isInteger(value.year)
-    && isPositiveInteger(value.estimatedMinutes)
-    && value.source === 'weekly_exam_prep'
-    && value.approvalStatus === 'unapproved'
-    && typeof value.workItemKey === 'string'
-    && (value.behaviorMetadata === undefined
-      || isBehaviorAwarePreviewMetadata(value.behaviorMetadata));
-}
-
-function isPlanningRange(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'startDateTime', 'endDateTime', 'sourceText', 'calendarDayCount', 'confidence',
-    ])) {
-    return false;
-  }
-  return isOptionalString(value.startDateTime)
-    && isOptionalString(value.endDateTime)
-    && isOptionalString(value.sourceText)
-    && isOptionalPositiveInteger(value.calendarDayCount)
-    && (value.confidence === 'explicit'
-      || value.confidence === 'inferred'
-      || value.confidence === 'missing');
-}
-
-function isPendingPlanningRange(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, ['scope', 'durationDays', 'sourceText'])
-    || !isRecord(value.scope)
-    || !hasOnlyKeys(value.scope, ['kind', 'label', 'startDate', 'endDate'])) {
-    return false;
-  }
-  const commonFieldsAreValid = typeof value.scope.label === 'string'
-    && isOptionalString(value.scope.startDate)
-    && isOptionalString(value.scope.endDate)
-    && typeof value.sourceText === 'string';
-  if (!commonFieldsAreValid) return false;
-  if (value.scope.kind === 'next_week') {
-    return isPositiveInteger(value.durationDays);
-  }
-  if (value.scope.kind === 'named_future_period') {
-    return value.durationDays === undefined || isPositiveInteger(value.durationDays);
-  }
-  return false;
-}
-
-function isYearRange(value: unknown): boolean {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['startYear', 'endYear', 'sourceText'])) {
-    return false;
-  }
-  return isInteger(value.startYear)
-    && isInteger(value.endYear)
-    && typeof value.sourceText === 'string';
-}
-
-function isExamPrepScope(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'examType', 'fields', 'totalFields', 'totalYears', 'yearRange', 'strategyHint',
-      'unitModel', 'unitCountHint', 'rawText',
-    ])) {
-    return false;
-  }
-  return isOptionalString(value.examType)
-    && isStringArray(value.fields)
-    && isOptionalPositiveInteger(value.totalFields)
-    && isOptionalPositiveInteger(value.totalYears)
-    && (value.yearRange === undefined || isYearRange(value.yearRange))
-    && (value.strategyHint === undefined
-      || value.strategyHint === 'field_first'
-      || value.strategyHint === 'year_first'
-      || value.strategyHint === 'unknown')
-    && (value.unitModel === undefined || STUDY_SCOPE_UNITS.has(String(value.unitModel)))
-    && isOptionalPositiveInteger(value.unitCountHint)
-    && isStringArray(value.rawText);
-}
-
-function isTask(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'title', 'subject', 'examType', 'field', 'year', 'unit', 'amount', 'rawText',
-      'requiresTimeEstimate', 'source',
-    ])) {
-    return false;
-  }
-  return typeof value.title === 'string'
-    && isOptionalString(value.subject)
-    && isOptionalString(value.examType)
-    && isOptionalString(value.field)
-    && (value.year === undefined || isInteger(value.year))
-    && STUDY_SCOPE_UNITS.has(String(value.unit))
-    && isOptionalFiniteNumber(value.amount)
-    && typeof value.rawText === 'string'
-    && typeof value.requiresTimeEstimate === 'boolean'
-    && (value.source === 'command' || value.source === 'legacy_fallback');
-}
-
-function isCompletionTarget(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.kind !== 'string') return false;
-  switch (value.kind) {
-    case 'all':
-    case 'up_to_reachable':
-      return hasOnlyKeys(value, ['kind', 'rawText']) && typeof value.rawText === 'string';
-    case 'latest_n_years':
-      return hasOnlyKeys(value, ['kind', 'count', 'rawText'])
-        && isPositiveInteger(value.count)
-        && typeof value.rawText === 'string';
-    case 'year_range':
-      return hasOnlyKeys(value, ['kind', 'startYear', 'endYear', 'rawText'])
-        && isInteger(value.startYear)
-        && isInteger(value.endYear)
-        && typeof value.rawText === 'string';
-    default:
-      return false;
-  }
-}
-
-function isProgress(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'field', 'completedYears', 'completionTarget', 'completionBoundaryYear', 'current',
-      'incomplete', 'ambiguity', 'rawText',
-    ])) {
-    return false;
-  }
-  return isOptionalString(value.field)
-    && (value.completedYears === undefined
-      || (Array.isArray(value.completedYears) && value.completedYears.every(isInteger)))
-    && (value.completionTarget === undefined || isCompletionTarget(value.completionTarget))
-    && (value.completionBoundaryYear === undefined || isInteger(value.completionBoundaryYear))
-    && isOptionalString(value.current)
-    && (value.incomplete === undefined || isStringArray(value.incomplete))
-    && (value.ambiguity === 'completion_direction'
-      || value.ambiguity === 'year_range'
-      || value.ambiguity === 'field_scope'
-      || value.ambiguity === 'scope_range'
-      || value.ambiguity === 'none')
-    && typeof value.rawText === 'string';
-}
-
-function isUnitRate(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, ['unit', 'minutesPerUnit', 'source', 'uncertainty', 'rawText'])) {
-    return false;
-  }
-  return STUDY_SCOPE_UNITS.has(String(value.unit))
-    && isOptionalFiniteNumber(value.minutesPerUnit)
-    && (value.source === 'user' || value.source === 'assumption' || value.source === 'default')
-    && (value.uncertainty === undefined
-      || value.uncertainty === 'low'
-      || value.uncertainty === 'medium'
-      || value.uncertainty === 'high')
-    && isOptionalString(value.rawText);
-}
-
-function isLifeConstraint(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'kind', 'date', 'start', 'end', 'durationMinutes', 'studyAvailableStart',
-      'hardness', 'rawText',
-    ])) {
-    return false;
-  }
-  return LIFE_CONSTRAINT_KINDS.has(String(value.kind))
-    && isOptionalString(value.date)
-    && isOptionalString(value.start)
-    && isOptionalString(value.end)
-    && isOptionalFiniteNumber(value.durationMinutes)
-    && isOptionalString(value.studyAvailableStart)
-    && (value.hardness === 'hard' || value.hardness === 'soft')
-    && isOptionalString(value.rawText);
-}
-
-function isConstraintSource(value: unknown): boolean {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['kind', 'selector'])) return false;
-  return (value.kind === 'timetable'
-      || value.kind === 'existing_plans'
-      || value.kind === 'calendar')
-    && value.selector === 'active';
-}
-
-function isPriorityPolicy(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.kind !== 'string') return false;
-  if (value.kind === 'field_first') {
-    return hasOnlyKeys(value, ['kind', 'order']) && isStringArray(value.order);
-  }
-  return hasOnlyKeys(value, ['kind'])
-    && (value.kind === 'deadline_first'
-      || value.kind === 'weakness_first'
-      || value.kind === 'score_weight_first'
-      || value.kind === 'balanced'
-      || value.kind === 'unknown');
+function isSessionWindow(value: unknown): boolean {
+  return isRecord(value)
+    && isSessionTime(value.start)
+    && isSessionTime(value.end);
 }
 
 function isQuestionContext(value: unknown): boolean {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, ['kind', 'targetSlot', 'intent', 'topicId', 'actionId'])) {
-    return false;
-  }
-  return QUESTION_CONTEXT_KINDS.has(String(value.kind))
+  return isRecord(value)
+    && QUESTION_CONTEXT_KINDS.has(String(value.kind))
     && isOptionalString(value.targetSlot)
     && isOptionalString(value.intent)
     && isOptionalString(value.topicId)
     && isOptionalString(value.actionId);
 }
 
-function isPlanningIntakeState(value: unknown): value is PlanningIntakeState {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'status', 'intent', 'range', 'pendingPlanningRange', 'examPrepScope', 'tasks',
-      'progress', 'unitRates', 'constraints', 'constraintSourcesInUse',
-      'fixedEventsDeclaredNone', 'priorityPolicy', 'priorityPolicySource', 'missing',
-      'assumptions', 'uncertainties', 'questions', 'lastQuestionContext',
-      'shouldCreateDraft', 'shouldSavePlan', 'draftGenerationIntent',
-      'draftGenerationAuthorizedAtRevision', 'sourceTurns',
-    ])) {
+function isMessage(value: unknown): value is WeeklyPlanningMessage {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && MESSAGE_ROLES.has(String(value.role) as WeeklyPlanningMessage['role'])
+    && typeof value.content === 'string'
+    && isTimestamp(value.createdAt);
+}
+
+function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.summary === 'string'
+    && DRAFT_BLOCK_STATUSES.has(String(value.status) as WeeklyPlanDraftBlock['status'])
+    && isTimestamp(value.createdAt)
+    && (value.payload === undefined || isRecord(value.payload));
+}
+
+function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.sourceRef === 'string'
+    && typeof value.title === 'string'
+    && typeof value.startDateTime === 'string'
+    && typeof value.endDateTime === 'string'
+    && typeof value.estimatedMinutes === 'number'
+    && Number.isFinite(value.estimatedMinutes)
+    && typeof value.ordinal === 'number'
+    && Number.isInteger(value.ordinal)
+    && typeof value.field === 'string'
+    && typeof value.year === 'number'
+    && Number.isInteger(value.year)
+    && typeof value.status === 'string'
+    && value.status === 'preview';
+}
+
+function isPendingPlanningRange(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value.scope)) return false;
+  const scope = value.scope;
+  if ((scope.kind !== 'next_week' && scope.kind !== 'named_future_period')
+    || typeof scope.label !== 'string'
+    || !isOptionalString(scope.windowStartDate)
+    || !isOptionalString(scope.windowEndDate)
+    || !isValidDateWindow(scope)
+    || !isOptionalString(value.planningStartDate)
+    || (value.durationDays !== undefined && !isValidPlanningDurationDays(value.durationDays))
+    || typeof value.sourceText !== 'string') {
     return false;
   }
-  return INTAKE_STATUSES.has(String(value.status))
-    && INTAKE_INTENTS.has(String(value.intent))
+  if (scope.kind === 'next_week'
+    && (!scope.windowStartDate || !scope.windowEndDate)) {
+    return false;
+  }
+  if (value.planningStartDate !== undefined
+    && (!isIsoCalendarDate(value.planningStartDate)
+      || !isDateWithinWindow(value.planningStartDate, scope))) {
+    return false;
+  }
+  return !(value.planningStartDate !== undefined
+    && value.durationDays !== undefined);
+}
+
+function isCompletionTarget(value: unknown): boolean {
+  if (!isRecord(value) || !COMPLETION_TARGET_KINDS.has(String(value.kind))) return false;
+  if ((value.kind === 'all' || value.kind === 'up_to_reachable') && typeof value.rawText === 'string') {
+    return true;
+  }
+  if (value.kind === 'latest_n_years') {
+    return Number.isInteger(value.count) && Number(value.count) > 0 && typeof value.rawText === 'string';
+  }
+  return value.kind === 'year_range'
+    && Number.isInteger(value.startYear)
+    && Number.isInteger(value.endYear)
+    && typeof value.rawText === 'string';
+}
+
+function isTask(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.title === 'string'
+    && isOptionalString(value.subject)
+    && isOptionalString(value.examType)
+    && isOptionalString(value.field)
+    && (value.year === undefined || Number.isInteger(value.year))
+    && TASK_UNITS.has(String(value.unit) as PlanningIntakeState['tasks'][number]['unit'])
+    && isOptionalFiniteNumber(value.amount)
+    && typeof value.rawText === 'string'
+    && typeof value.requiresTimeEstimate === 'boolean'
+    && TASK_SOURCES.has(String(value.source) as PlanningIntakeState['tasks'][number]['source']);
+}
+
+function isProgress(value: unknown): boolean {
+  return isRecord(value)
+    && isOptionalString(value.field)
+    && (value.completedYears === undefined || isNumberArray(value.completedYears))
+    && (value.completionTarget === undefined || isCompletionTarget(value.completionTarget))
+    && (value.completionBoundaryYear === undefined || Number.isInteger(value.completionBoundaryYear))
+    && isOptionalString(value.current)
+    && (value.incomplete === undefined || isStringArray(value.incomplete))
+    && PROGRESS_AMBIGUITIES.has(String(value.ambiguity) as PlanningIntakeState['progress'][number]['ambiguity'])
+    && typeof value.rawText === 'string';
+}
+
+function isUnitRate(value: unknown): boolean {
+  return isRecord(value)
+    && TASK_UNITS.has(String(value.unit) as PlanningIntakeState['unitRates'][number]['unit'])
+    && isOptionalFiniteNumber(value.minutesPerUnit)
+    && RATE_SOURCES.has(String(value.source) as PlanningIntakeState['unitRates'][number]['source'])
+    && (value.uncertainty === undefined || RATE_UNCERTAINTIES.has(String(value.uncertainty)))
+    && isOptionalString(value.rawText);
+}
+
+function isConstraint(value: unknown): boolean {
+  return isRecord(value)
+    && CONSTRAINT_KINDS.has(String(value.kind) as PlanningIntakeState['constraints'][number]['kind'])
+    && isOptionalString(value.date)
+    && isOptionalString(value.start)
+    && isOptionalString(value.end)
+    && isOptionalFiniteNumber(value.durationMinutes)
+    && isOptionalString(value.studyAvailableStart)
+    && HARDNESS_VALUES.has(String(value.hardness) as PlanningIntakeState['constraints'][number]['hardness'])
+    && isOptionalString(value.rawText);
+}
+
+function isPriorityPolicy(value: unknown): boolean {
+  if (!isRecord(value) || !PRIORITY_KINDS.has(String(value.kind) as PlanningIntakeState['priorityPolicy']['kind'])) {
+    return false;
+  }
+  return value.kind !== 'field_first' || isStringArray(value.order);
+}
+
+function isExamScope(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.fields) || !value.fields.every((field) => typeof field === 'string')) {
+    return false;
+  }
+  if (!isOptionalString(value.examType)
+    || !isOptionalPositiveInteger(value.totalFields)
+    || !isOptionalPositiveInteger(value.totalYears)
+    || !isOptionalPositiveInteger(value.unitCountHint)
+    || !isStringArray(value.rawText)) {
+    return false;
+  }
+  if (value.yearRange !== undefined) {
+    if (!isRecord(value.yearRange)
+      || !Number.isInteger(value.yearRange.startYear)
+      || !Number.isInteger(value.yearRange.endYear)
+      || typeof value.yearRange.sourceText !== 'string') {
+      return false;
+    }
+  }
+  return value.strategyHint === undefined
+    || value.strategyHint === 'field_first'
+    || value.strategyHint === 'year_first'
+    || value.strategyHint === 'unknown';
+}
+
+function isPlanningRange(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return isOptionalString(value.startDateTime)
+    && isOptionalString(value.endDateTime)
+    && ((value.startDateTime === undefined && value.endDateTime === undefined)
+      || isOrderedPlanningDateTimeRange(value))
+    && isOptionalString(value.sourceText)
+    && isOptionalPositiveInteger(value.calendarDayCount)
+    && (value.confidence === 'explicit' || value.confidence === 'inferred' || value.confidence === 'missing');
+}
+
+function isPlanningIntakeState(value: unknown): value is PlanningIntakeState {
+  if (!isRecord(value)) return false;
+  return INTAKE_STATUSES.has(String(value.status) as PlanningIntakeState['status'])
+    && INTAKE_INTENTS.has(String(value.intent) as PlanningIntakeState['intent'])
     && (value.range === undefined || isPlanningRange(value.range))
     && (value.pendingPlanningRange === undefined || isPendingPlanningRange(value.pendingPlanningRange))
-    && (value.examPrepScope === undefined || isExamPrepScope(value.examPrepScope))
-    && Array.isArray(value.tasks)
-    && value.tasks.every(isTask)
-    && Array.isArray(value.progress)
-    && value.progress.every(isProgress)
-    && Array.isArray(value.unitRates)
-    && value.unitRates.every(isUnitRate)
-    && Array.isArray(value.constraints)
-    && value.constraints.every(isLifeConstraint)
+    && (value.examPrepScope === undefined || isExamScope(value.examPrepScope))
+    && Array.isArray(value.tasks) && value.tasks.every(isTask)
+    && Array.isArray(value.progress) && value.progress.every(isProgress)
+    && Array.isArray(value.unitRates) && value.unitRates.every(isUnitRate)
+    && Array.isArray(value.constraints) && value.constraints.every(isConstraint)
     && (value.constraintSourcesInUse === undefined
       || (Array.isArray(value.constraintSourcesInUse)
-        && value.constraintSourcesInUse.every(isConstraintSource)))
+        && value.constraintSourcesInUse.every((source) =>
+          isRecord(source)
+          && CONSTRAINT_SOURCE_KINDS.has(String(source.kind))
+          && source.selector === 'active')))
     && (value.fixedEventsDeclaredNone === undefined || value.fixedEventsDeclaredNone === true)
     && isPriorityPolicy(value.priorityPolicy)
     && (value.priorityPolicySource === undefined
       || value.priorityPolicySource === 'user'
       || value.priorityPolicySource === 'derived_single_field')
     && Array.isArray(value.missing)
-    && value.missing.every((item) => MISSING_SLOTS.has(String(item)))
+    && value.missing.every((slot) => MISSING_SLOTS.has(slot as PlanningIntakeState['missing'][number]))
     && isStringArray(value.assumptions)
     && Array.isArray(value.uncertainties)
-    && value.uncertainties.every((item) => item === 'unknown_fields_may_take_longer')
+    && value.uncertainties.every((uncertainty) =>
+      UNCERTAINTIES.has(uncertainty as PlanningIntakeState['uncertainties'][number]))
     && isStringArray(value.questions)
     && (value.lastQuestionContext === undefined || isQuestionContext(value.lastQuestionContext))
     && typeof value.shouldCreateDraft === 'boolean'
     && value.shouldSavePlan === false
-    && (value.draftGenerationIntent === undefined
-      || value.draftGenerationIntent === 'not_requested'
-      || value.draftGenerationIntent === 'assistant_suggested'
-      || value.draftGenerationIntent === 'user_authorized')
+    && (value.draftGenerationIntent === undefined || DRAFT_INTENTS.has(String(value.draftGenerationIntent)))
     && (value.draftGenerationAuthorizedAtRevision === undefined
       || isNonNegativeInteger(value.draftGenerationAuthorizedAtRevision))
     && isStringArray(value.sourceTurns);
@@ -511,37 +397,25 @@ function isPlanningIntakeState(value: unknown): value is PlanningIntakeState {
 
 function sanitizeStoredIntakeState(value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const { assumptionProposalRecords: _sessionOnlyRecords, ...sanitized } = value;
+  const sanitized = { ...value };
+  delete sanitized.assumptionProposalRecords;
   return sanitized;
 }
 
 function sanitizeStoredPlanningState(value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const {
-    pendingTurn: _pendingTurn,
-    pendingApproval: _pendingApproval,
-    ...sanitized
-  } = value;
-  return {
-    ...sanitized,
-    previewCandidates: sanitized.previewCandidates ?? [],
-    intakeState: sanitized.intakeState === undefined
-      ? undefined
-      : sanitizeStoredIntakeState(sanitized.intakeState),
-  };
+  const sanitized = { ...value };
+  delete sanitized.pendingTurn;
+  delete sanitized.pendingApproval;
+  sanitized.intakeState = sanitizeStoredIntakeState(sanitized.intakeState);
+  return sanitized;
 }
 
 function isPlanningState(value: unknown): value is PlanningState {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, [
-      'weekStartDate', 'revision', 'mode', 'draftBlocks', 'previewCandidates', 'messages',
-      'intakeState', 'lastAssistantMessage', 'updatedAt',
-    ])) {
-    return false;
-  }
+  if (!isRecord(value)) return false;
   return typeof value.weekStartDate === 'string'
     && isNonNegativeInteger(value.revision)
-    && MODES.has(String(value.mode))
+    && MODES.has(String(value.mode) as PlanningState['mode'])
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.every(isDraftBlock)
     && Array.isArray(value.previewCandidates)
