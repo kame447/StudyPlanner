@@ -6,19 +6,22 @@ Requirement IDs: P7-TRACE-001
 
 ## 1. 背景
 
-conversation trace基盤は実装済みだが、productionでの有効化、発話本文保存、利用者への説明、retention、account deletion、admin accessのproduct contractが未確定だった。
+conversation trace基盤は実装済みだが、productionでの有効化、発話本文保存、利用者への説明、retention、account deletion、admin accessの実装と運用が未完了である。
 
 暗号化は漏えい時の安全性を高めるが、復号鍵を運営者が持つ場合は匿名化ではない。また、user IDを削除しても、発話本文、日時、学校・仕事・生活予定の組合せから個人を推測できる可能性がある。そのため、暗号化、仮名化、redaction、保存最小化を別々の対策として実装する。
 
+長期個別最適化に必要なaccount-linked profileはtraceとは別のデータ区分とする。詳細は`20260716-weekly-planning-longitudinal-personalization-data-governance.md`を正とする。
+
 ## 2. Product decision
 
-### 2.1 利用者への説明
+### 2.1 利用者への説明と利用条件
 
 - 毎conversationで同意を求めない。
-- 初回利用時の利用規約・privacy noticeで、品質改善と不具合調査のために短期traceを保存することを明示する。
-- 規約本文へ埋めるだけで終わらせず、収集対象、利用目的、保存期間、管理者閲覧、削除方法を短い要約でも表示する。
-- 設定画面から品質改善用の本文収集を停止できるようにする。
-- 法令上の適法性は公開前に別途確認し、本product decisionだけで法的判断を完了扱いにしない。
+- 初回利用前の利用規約・privacy noticeで、個別最適化、品質改善、不具合調査のためにデータを保存することを明示する。
+- 規約本文へ埋めるだけで終わらせず、収集対象、利用目的、保存期間、管理者閲覧、削除方法、収集を受け入れない場合は週間計画機能を利用できないことを短い要約でも表示する。
+- traceおよび個別最適化データの必須収集だけを停止して、同じ週間計画サービスを継続するopt-out modeは提供しない。
+- 利用者が利用停止・削除を求めた場合は、週間計画機能またはアカウントの終了と関連データ削除へ移る。
+- 法令上の適法性、要配慮個人情報、未成年者、国外利用は公開前に別途確認し、本product decisionだけで法的判断を完了扱いにしない。
 
 ### 2.2 収集範囲
 
@@ -31,41 +34,45 @@ conversation trace基盤は実装済みだが、productionでの有効化、発�
 - latency
 - error category
 - model/provider version
+- user / assistant turn本文
+- state snapshot
+- previewと修正前後の差分
 
-本文を含むtrace:
+品質改善traceは全sessionを対象とする。ただし、分析exportではraw account identifierを除外し、本文は保存前redactionを通す。
 
-- error、fallback、明示的修復、低confidence、保存失敗など調査価値が高いsession
-- 上記以外は少量のrandom sample
-- user/assistant本文を全sessionで恒常的に保存しない
+個別最適化用の構造化profileはtraceから直接参照せず、専用のprofile update boundaryを通して作成する。
 
 ### 2.3 個人との分離
 
 - raw Firebase UID、メールアドレス、表示名をtrace documentへ保存しない。
 - server-side HMACで`traceSubjectToken = HMAC(epochSecret, userId)`を生成する。
-- tokenは30日単位でrotationし、異なる期間のtraceを恒久的に連結しない。
-- epoch secretはtrace dataと別の権限境界で管理し、対象期間の削除要求に対応できる期間だけ保持する。
+- trace tokenは30日単位でrotationし、quality traceだけから恒久的な利用者追跡を行わない。
+- epoch secretはtrace dataと別の権限境界で管理し、削除要求へ対応できる期間だけ保持する。
 - 発話本文は保存前にメール、電話番号、URL query、明示名、識別子候補をredactする。
 - Firestore標準暗号化またはCMEKは追加の安全管理措置として使うが、匿名化の代替とは扱わない。
+- account-linked personalization profileとtrace subject tokenを同じ識別子へ統合しない。
 
-この方式は完全匿名化ではなく、限定linkabilityを持つ仮名化として扱う。
+traceは完全匿名化ではなく、限定linkabilityを持つ仮名化データとして扱う。
 
 ### 2.4 Retention
 
 | data | retention | reason |
 | --- | ---: | --- |
-| redacted user/assistant本文 | 30日 | 週間計画を約4周期確認でき、改善後の古い本文を残し続けない |
-| state snapshot | 30日 | 本文と同じ調査単位で削除する |
-| structured event metadata | 90日 | regression、release比較、失敗率の確認に使用する |
-| subject tokenを除去した集計値 | 最大12か月 | 季節変動とrelease比較。個別sessionへ戻れない形だけ保持する |
+| redacted user / assistant本文 | 180日 | 半年間の利用変化、複数release、学期・試験期を比較する |
+| state snapshot、preview、修正差分 | 180日 | 本文と同じsession単位で原因分析する |
+| structured event metadata | 180日 | regression、release比較、失敗率の確認に使用する |
+| subject tokenを除去した集計値 | 最大24か月 | 季節変動とrelease比較。個別sessionへ戻れない形だけ保持する |
 
-必要性が確認できなければ短縮する。延長を既定にしない。
+180日を超えて必要な情報は原文のまま延長せず、個別最適化profileの派生値または個人へ戻せない集計へ変換する。利用目的との関係で合理的な必要性がなくなったデータは、期限前でも削除できるようにする。
 
 ### 2.5 削除
 
 - Firestore TTL policyをsession、entryの両collectionへ実際に設定する。`expireAt`保存だけで完了扱いにしない。
 - account deletion時は、保持中epochの`traceSubjectToken`を再計算して関連session・entryをcascade deleteする。
-- 設定画面から品質改善データの削除を要求できるようにする。
+- account deletionまたは週間計画機能終了時は、primary storage上の関連traceを30日以内に削除する。
+- backup上の削除済みデータは最大90日以内のrotationで消去する。
 - export済みfixtureは自動生成せず、採用時に別IDへ変換し、元traceとの対応を破棄する。
+- 削除対象のtraceを新しいprofile update、evaluation fixture、学習データへ投入しない。
 
 ### 2.6 閲覧権限
 
@@ -79,32 +86,33 @@ conversation trace基盤は実装済みだが、productionでの有効化、発�
 - metadata/contentのcollectionまたはfield-level分離
 - server-side subject token発行
 - epoch secret rotation
-- sampling policy
 - 保存前redaction
-- content 30日、metadata 90日のTTL
+- content、snapshot、metadataの180日TTL
 - account deletion cascade
-- privacy noticeと設定画面
+- privacy notice、利用規約、初回acceptance gate
 - admin access audit
 - export時の再redactionとunlink
+- personalization profile storageとの責務分離
 
 ## 4. 触らない範囲
 
 - planning結果の計算
 - scheduler
 - dialogue action選択
-- traceをuser profileや学習傾向memoryへ自動転用すること
+- trace documentをそのままuser profileへ利用すること
 - client eventを監査証跡として利用すること
 
 ## 5. 受け入れ条件
 
+- 同意前にproduction traceを作成しない。
+- 同意しない利用者は個別最適化を前提とする週間計画を開始できない。
 - raw user IDをtrace documentへ保存しない。
-- 同じ利用者でもepochが異なればsubject tokenが一致しない。
+- 同じ利用者でもepochが異なればtrace subject tokenが一致しない。
 - account deletion時に保持期間内のtokenを解決して削除できる。
-- 本文を保存しないsessionでも品質指標を集計できる。
-- 本文は30日、metadataは90日でTTL削除される。
-- 本文収集停止後、新規本文traceを作成しない。
+- 本文、snapshot、structured metadataは180日でTTL削除される。
 - 非権限者のreadを拒否し、権限者の閲覧をauditできる。
 - exportからraw token、直接識別子、secretを除去する。
+- traceとaccount-linked personalization profileが別schema、別repository、別権限で管理される。
 - product spec、dialogue architecture、trace architecture、Firestore運用文書、UI説明が同期する。
 
 ## 6. Exit conditions
