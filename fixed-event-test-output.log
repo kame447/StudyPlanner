@@ -5,99 +5,13 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [31m❯[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m84 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 229[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps the async interpreter entrypoint identical when no interpreter is injected[32m 13[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mopens the intake with planning period and learning-content questions: 予定作りたい[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mopens the intake with planning period and learning-content questions: 明日と明後日の予定立てたい[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mconnects a begin turn to a later period answer without re-asking the begin intent[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not seed redundant begin slots when one turn already includes range and exam scope[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mroutes a pending next-week start utterance to start-date and learning-content questions[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mclassifies an uninterpretable first turn as an open planning dialogue[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps an empty AI candidate result on the same open-dialogue taxonomy without rules fallback[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mapplies a provider begin command without requiring deterministic semantic parsing[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22maccepts a provider set_study_goal and reaches the capability-gap decision[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22madds a legacy task after a command task when the provider throws[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not turn consumed sleep and meal fragments into legacy tasks after provider failure[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps a valid legacy task in a mixed constraint turn after provider failure[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not turn a bath-only constraint into a legacy task after provider failure[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps the post-meal English task without inferring a meal duration[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mconsumes only the explicit meal duration in a no-comma mixed turn[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mconsumes only the explicit bath duration in a no-comma mixed turn[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mconsumes only the explicit sleep range in a no-comma mixed turn[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mrecovers a goal from a later provider turn without re-asking tasks_or_goals[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mupserts a same-title goal and appends a different-title goal[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mkeeps branch A assessment for a first weekly pipeline turn[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mkeeps branch A inactive for first pipeline turns without a weekly keyword[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mdocuments the first-turn pipeline truthiness difference for setup-command legacy fallback[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mlegacy fallback removes tasks_or_goals missing after branch B fills first-turn setup tasks[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mdoes not ask fixed events or sleep again after a compound turn fills both slots[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mlegacy fallback via pipeline[2m > [22mlegacy fallback merges a second pipeline turn into the previous weekly state[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mreturns ask_missing_info for an under-specified first utterance[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mreturns confirm_ambiguity when fieldless completedYears would otherwise reach planning[32m 8[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mpasses existing plans to the new intake dry-run generator as hard busy intervals[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mruns the WP-RP-001 sequence through dry-run preview without saving[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mkeeps draftRequest null while fixed events are still unconfirmed[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mmoves zero-progress exam prep past cannot_create_draft in the pipeline[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mcreates draftRequest after explicit no-fixed-events confirmation[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mreturns ask_relax_constraints when dry-run leaves unscheduled items[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mupdates remaining work items and dry-run candidates after a preview-stage completed year revision[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mdoes not turn fieldless completed year revisions into draft changes[32m 5[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22madds a fixed event revision after preview and regenerates dry-run candidates without saving[32m 6[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mupdates an existing life constraint after preview without duplicating the same kind[32m 3[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mupdates field-first priority after preview and regenerates remaining work item order[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22madds unavailable time constraints after preview and regenerates candidates without scheduling inside the blocked range[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22madds unavailable whole-day constraints after preview and keeps draft generation unsaved[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning intake pipeline[2m > [22mis deterministic for the same input sequence[32m 12[2mms[22m[39m
-   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22msatisfies fixed_events when timetable is non-empty (use_constraint_source)[32m 18[2mms[22m[39m
-   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mmaps every timetable phrasing to the same intent and the same resulting state[32m 9[2mms[22m[39m
-   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mdoes not satisfy fixed_events and falls to confirmation when the timetable is empty[32m 5[2mms[22m[39m
-   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22msatisfies fixed_events via the existing add_fixed_event capability for a time-explicit part-time job[32m 4[2mms[22m[39m
-[31m   [31m×[31m constraint source capability (use_constraint_source)[2m > [22mresolves existing_plans source against the existing plan count[39m[32m 20[2mms[22m[39m
-[31m     → expected [ 'fixed_events' ] to not include 'fixed_events'[39m
-[31m   [31m×[31m constraint source capability (use_constraint_source)[2m > [22mclarifies ambiguous constraint source references before hard applying nano-style candidates[39m[32m 19[2mms[22m[39m
-[31m     → expected [ { candidate: { …(4) }, …(1) } ] to deeply equal [ ObjectContaining{…} ][39m
-   [32m✓[39m constraint source capability (use_constraint_source)[2m > [22mclarifies ambiguous calendar wording when multiple constraint sources are active[32m 3[2mms[22m[39m
-   [32m✓[39m planning range reseed and confidence guards[2m > [22mdoes not reseed answered scope when a pending range becomes explicit[32m 1[2mms[22m[39m
-   [32m✓[39m planning range reseed and confidence guards[2m > [22mdoes not reseed fixed events collected while the planning range is pending[32m 1[2mms[22m[39m
-   [32m✓[39m planning range reseed and confidence guards[2m > [22mkeeps an explicit range when a later turn only yields an inferred range[32m 1[2mms[22m[39m
-   [32m✓[39m planning range reseed and confidence guards[2m > [22mallows an explicit range to replace an existing explicit range[32m 1[2mms[22m[39m
-   [32m✓[39m planning range reseed and confidence guards[2m > [22mkeeps a future scope pending when one-week wording is repeated without a start day[32m 0[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22manswers a term clarification without advancing state (missing unchanged)[32m 2[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mmaps every clarification phrasing to the same intent and keeps state intact[32m 3[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mdoes not map a clarification to note_uncertainty or any answer command[32m 4[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mkeeps future weekly scope pending until a start day is clarified[32m 1[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22muses resolved planning range as the scheduler window and first-day lower bound[32m 0[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mapplies accepted fixed events before returning a term clarification[32m 2[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mkeeps confirmation assumptions while answering a clarification in the same turn[32m 2[2mms[22m[39m
-   [32m✓[39m clarification semantic intent (request_clarification)[2m > [22mdoes not apply low-confidence candidates without a clarification request[32m 2[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mapplies an explicit AI range whose start is inside the pending window[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mapplies a provider pending next_week command through deterministic normalization[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22maccepts an explicit provider range after a normalized pending next_week command[32m 0[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps named future periods unresolved until an explicit range is supplied[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mrejects provider pending creation after a planning range is confirmed[32m 0[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22maccepts a timetable source while range is pending and keeps it after range resolution[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mstill rejects AI fixed events after a hard fixed event was recorded[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mtreats a no-fixed-events declaration as confirmed on later turns[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps existing confirmed-slot derivation while ignoring missing proxies[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mnormalizes an AI planning range and schedules from its first date[32m 0[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps pending clarification for inferred AI ranges and exposes pending summary[32m 1[2mms[22m[39m
-   [32m✓[39m confirmed slots and AI planning range integration[2m > [22mkeeps explicit AI ranges in confirmation without applying over pending scope[32m 1[2mms[22m[39m
-   [32m✓[39m Stage 1 interpreter grounding[2m > [22msupplies previous-state unit-rate questions as lastQuestions[32m 1[2mms[22m[39m
-   [32m✓[39m Stage 1 interpreter grounding[2m > [22momits lastQuestions on the first interpreter turn[32m 0[2mms[22m[39m
-   [32m✓[39m Stage 1 interpreter grounding[2m > [22mapplies an explicit tomorrow-and-day-after range returned by the interpreter[32m 0[2mms[22m[39m
-   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mforwards chronological recent turns separately from a short current answer[32m 0[2mms[22m[39m
-   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mre-emits a missing prior priority fact from recent turns through validator and reducer[32m 1[2mms[22m[39m
-   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mkeeps a fact accepted several turns ago when history suggests an explicit correction[32m 0[2mms[22m[39m
-   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mdoes not hard apply an ambiguous pronoun reference from recent turns[32m 0[2mms[22m[39m
-   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mignores recent turns in rules mode[32m 1[2mms[22m[39m
-   [32m✓[39m Stage 2 bounded conversation grounding[2m > [22mignores recent turns when an interpreter exception switches the whole turn to rules fallback[32m 1[2mms[22m[39m
-   [32m✓[39m preview policy Stage 2[2m > [22mpromotes an assumed preview and replaces the unit-rate assumption through the next normal turn[32m 1[2mms[22m[39m
- [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 18[2mms[22m[39m
-   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22maccepts only allowed action ids and returns natural structured output[32m 6[2mms[22m[39m
-   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22mfalls back when the AI invents an action[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m84 tests[22m[2m)[22m[32m 215[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 29[2mms[22m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22maccepts only allowed action ids and returns natural structured output[32m 17[2mms[22m[39m
+   [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22mfalls back when the AI invents an action[32m 2[2mms[22m[39m
    [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22mfalls back on provider failure without changing allowed actions[32m 1[2mms[22m[39m
    [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22masks only for the learning content in the range-only fallback[32m 1[2mms[22m[39m
-[31m   [31m×[31m behavior-aware weekly planning AI dialogue planner[2m > [22mdoes not call or display AI-authored event claims for availability actions[39m[32m 9[2mms[22m[39m
+[31m   [31m×[31m behavior-aware weekly planning AI dialogue planner[2m > [22mdoes not call or display AI-authored event claims for availability actions[39m[32m 8[2mms[22m[39m
 [31m     → expected "spy" to not be called at all, but actually been called 1 times[90m
 
 Received: 
@@ -126,7 +40,7 @@ Received:
             "role": "system",
           },
           Object {
-            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[],"lifeActivityAnchors":[],"opportunityAnnotations":[],"suggestedNextAction":"propose_resolution"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:task-identity:1","kind":"ask_required_fact","topicId":"task-identity","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"task-identity"},{"actionId":"propose_default:workload-estimate:1","kind":"propose_default","topicId":"workload-estimate","allowedProposalRefs":["unit_duration_estimate"],"allowedOptionIds":["short-trial","rough-estimate","enter-own-estimate"],"maxItems":1,"displayHint":"workload-estimate"}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",
+            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[{"taskRef":"task:0","activityKind":"drill","distributionPolicy":"sequential_units","cognitiveLoad":"medium"}],"lifeActivityAnchors":[{"anchorId":"constraint-anchor-0","kind":"meal","startTime":"19:00","endTime":"20:00"}],"opportunityAnnotations":[],"suggestedNextAction":"ask_required_fact"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:deadline:1","kind":"ask_required_fact","topicId":"deadline","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"deadline"},{"actionId":"suggest-draft:1","kind":"suggest_draft_generation","topicId":"draft-generation","allowedProposalRefs":[],"allowedOptionIds":["create-preview","revise-conditions"],"maxItems":1}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",
             "role": "user",
           },
         ],
@@ -197,13 +111,10 @@ Received:
 Number of calls: [1m1[22m
 [31m[39m
    [32m✓[39m behavior-aware weekly planning AI dialogue planner[2m > [22muses a closed top-level response schema[32m 0[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningKnownFixedEvents.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 17[2mms[22m[39m
- [31m❯[39m src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 23[2mms[22m[39m
-   [32m✓[39m fixed event source availability[2m > [22mdoes not expose existing_plans when every plan is outside the active range[32m 14[2mms[22m[39m
-[31m   [31m×[31m fixed event source availability[2m > [22mexposes existing_plans when a recurring occurrence overlaps the active range[39m[32m 8[2mms[22m[39m
-[31m     → expected false to be true // Object.is equality[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningKnownFixedEvents.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 17[2mms[22m[39m
 
-[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
 [41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts[2m > [22mbehavior-aware weekly planning AI dialogue planner[2m > [22mdoes not call or display AI-authored event claims for availability actions
 [31m[1mAssertionError[22m[39m: expected "spy" to not be called at all, but actually been called 1 times[90m
@@ -234,7 +145,7 @@ Received:
             "role": "system",
           },
           Object {
-            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[],"lifeActivityAnchors":[],"opportunityAnnotations":[],"suggestedNextAction":"propose_resolution"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:task-identity:1","kind":"ask_required_fact","topicId":"task-identity","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"task-identity"},{"actionId":"propose_default:workload-estimate:1","kind":"propose_default","topicId":"workload-estimate","allowedProposalRefs":["unit_duration_estimate"],"allowedOptionIds":["short-trial","rough-estimate","enter-own-estimate"],"maxItems":1,"displayHint":"workload-estimate"}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",
+            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[{"taskRef":"task:0","activityKind":"drill","distributionPolicy":"sequential_units","cognitiveLoad":"medium"}],"lifeActivityAnchors":[{"anchorId":"constraint-anchor-0","kind":"meal","startTime":"19:00","endTime":"20:00"}],"opportunityAnnotations":[],"suggestedNextAction":"ask_required_fact"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:deadline:1","kind":"ask_required_fact","topicId":"deadline","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"deadline"},{"actionId":"suggest-draft:1","kind":"suggest_draft_generation","topicId":"draft-generation","allowedProposalRefs":[],"allowedOptionIds":["create-preview","revise-conditions"],"maxItems":1}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",
             "role": "user",
           },
         ],
@@ -304,110 +215,21 @@ Received:
 
 Number of calls: [1m1[22m
 [39m
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts:[2m222:45[22m[39m
-    [90m220| [39m    })[33m;[39m
-    [90m221| [39m
-    [90m222| [39m    [34mexpect[39m(client[33m.[39mcreateChatCompletion)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts:[2m223:45[22m[39m
+    [90m221| [39m    })[33m;[39m
+    [90m222| [39m
+    [90m223| [39m    [34mexpect[39m(client[33m.[39mcreateChatCompletion)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
     [90m   | [39m                                            [31m^[39m
-    [90m223| [39m    [34mexpect[39m(result[33m.[39msource)[33m.[39m[34mtoBe[39m([32m'deterministic_fallback'[39m)[33m;[39m
-    [90m224| [39m    [34mexpect[39m(result[33m.[39mmessage)[33m.[39m[34mtoContain[39m([32m'7/16 13:00〜14:00「授業」'[39m)[33m;[39m
+    [90m224| [39m    [34mexpect[39m(result[33m.[39msource)[33m.[39m[34mtoBe[39m([32m'deterministic_fallback'[39m)[33m;[39m
+    [90m225| [39m    [34mexpect[39m(result[33m.[39mmessage)[33m.[39m[34mtoContain[39m([32m'7/16 13:00〜14:00「授業」'[39m)[33m;[39m
 
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts[2m > [22mfixed event source availability[2m > [22mexposes existing_plans when a recurring occurrence overlaps the active range
-[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[32m- true[39m
-[31m+ false[39m
-
-[36m [2m❯[22m src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts:[2m56:23[22m[39m
-    [90m 54| [39m      planningDayCount[33m:[39m [34m4[39m[33m,[39m existingPlans[33m:[39m [recurring][33m,[39m interpreter[33m,[39m
-    [90m 55| [39m    })[33m;[39m
-    [90m 56| [39m    [34mexpect[39m(available)[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
-    [90m   | [39m                      [31m^[39m
-    [90m 57| [39m  })[33m;[39m
-    [90m 58| [39m})[33m;[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts[2m > [22mconstraint source capability (use_constraint_source)[2m > [22mresolves existing_plans source against the existing plan count
-[31m[1mAssertionError[22m: expected [ 'fixed_events' ] to not include 'fixed_events'[39m
-[36m [2m❯[22m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts:[2m1487:38[22m[39m
-    [90m1485| [39m    })[33m;[39m
-    [90m1486| [39m
-    [90m1487| [39m    [34mexpect[39m(output[33m.[39mstate[33m.[39mmissing)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'fixed_events'[39m)[33m;[39m
-    [90m   | [39m                                     [31m^[39m
-    [90m1488| [39m    [34mexpect[39m(output[33m.[39mstate[33m.[39mconstraintSourcesInUse)[33m.[39m[34mtoEqual[39m([
-    [90m1489| [39m      { kind[33m:[39m [32m'existing_plans'[39m[33m,[39m selector[33m:[39m [32m'active'[39m }[33m,[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts[2m > [22mconstraint source capability (use_constraint_source)[2m > [22mclarifies ambiguous constraint source references before hard applying nano-style candidates
-[31m[1mAssertionError[22m: expected [ { candidate: { …(4) }, …(1) } ] to deeply equal [ ObjectContaining{…} ][39m
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[2m  [[22m
-[32m-   ObjectContaining {[39m
-[32m-     "reason": "constraint-source-reference-multiple",[39m
-[31m+   {[39m
-[31m+     "candidate": {[39m
-[31m+       "command": {[39m
-[31m+         "confidence": "high",[39m
-[31m+         "source": {[39m
-[31m+           "kind": "existing_plans",[39m
-[31m+           "selector": "active",[39m
-[31m+         },[39m
-[31m+         "sourceText": "入れてあるやつをそのまま考慮して",[39m
-[31m+         "type": "use_constraint_source",[39m
-[31m+       },[39m
-[31m+       "constraintSourceResolution": {[39m
-[31m+         "candidateKinds": [[39m
-[31m+           "timetable",[39m
-[31m+         ],[39m
-[31m+         "clarificationRequest": {[39m
-[31m+           "confidence": "high",[39m
-[31m+           "ref": "constraint_source",[39m
-[31m+           "sourceSegment": undefined,[39m
-[31m+           "sourceText": "入れてあるやつをそのまま考慮して",[39m
-[31m+           "target": "unresolved_slot",[39m
-[31m+           "type": "request_clarification",[39m
-[31m+         },[39m
-[31m+         "reason": "no-source-evidence",[39m
-[31m+         "status": "unresolved",[39m
-[31m+       },[39m
-[31m+       "needsConfirmation": false,[39m
-[31m+       "origin": "ai_interpreter",[39m
-[31m+     },[39m
-[31m+     "reason": "constraint-source-reference-unresolved",[39m
-[2m    },[22m
-[2m  ][22m
-
-[36m [2m❯[22m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts:[2m1521:53[22m[39m
-    [90m1519| [39m      })[33m,[39m
-    [90m1520| [39m    ])[33m;[39m
-    [90m1521| [39m    [34mexpect[39m(output[33m.[39minterpreterDiagnostics[33m?.[39mrejected)[33m.[39m[34mtoEqual[39m([
-    [90m   | [39m                                                    [31m^[39m
-    [90m1522| [39m      expect.objectContaining({ reason: 'constraint-source-reference-m…
-    [90m1523| [39m    ])[33m;[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
 
 
-[2m Test Files [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (4)[39m
-[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m92 passed[39m[22m[90m (96)[39m
-[2m   Start at [22m 04:36:27
-[2m   Duration [22m 2.84s[2m (transform 828ms, setup 0ms, collect 1.44s, tests 287ms, environment 1ms, prepare 442ms)[22m
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (4)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m95 passed[39m[22m[90m (96)[39m
+[2m   Start at [22m 04:38:49
+[2m   Duration [22m 2.74s[2m (transform 783ms, setup 0ms, collect 1.33s, tests 274ms, environment 3ms, prepare 524ms)[22m
 
 
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts > behavior-aware weekly planning AI dialogue planner > does not call or display AI-authored event claims for availability actions,line=222,column=45::AssertionError: expected "spy" to not be called at all, but actually been called 1 times%0A%0AReceived: %0A%0A  1st spy call:%0A%0A    Array [%0A      Object {%0A        "messages": Array [%0A          Object {%0A            "content": "You are the Japanese dialogue planner for a study-planning application.%0A    Return only JSON matching the response schema.%0A    The deterministic application core has already decided every action you may perform.%0A    Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.%0A    Use one or two substantive actions in normal turns and never more than three.%0A    Every selectedActionId must have exactly one matching items entry.%0A    Briefly acknowledge only concrete accepted information, explain a safe planning hypothesis only when one actually exists, and ask only the highest-impact remaining confirmation.%0A    Do not add vague filler such as 「ここまでの内容から、無理のない進め方を整理します」 when no concrete planning hypothesis exists.%0A    When clarificationRequest is present, explain the previous question, give one concrete answer example, and re-ask only that target. Do not repeat unrelated readiness or feasibility questions.%0A    When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.%0A    Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.%0A    Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.%0A    Do not claim preview generation unless generate_preview is present in allowedActions.%0A    When acceptedFacts.knownFixedEventSummaries is non-empty, use only those exact saved plans when asking about additional fixed events. Never invent an event.%0A    Keep the tone like a calm, practical tutor. Keep each item concise and easy to correct.",%0A            "role": "system",%0A          },%0A          Object {%0A            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[],"lifeActivityAnchors":[],"opportunityAnnotations":[],"suggestedNextAction":"propose_resolution"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:task-identity:1","kind":"ask_required_fact","topicId":"task-identity","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"task-identity"},{"actionId":"propose_default:workload-estimate:1","kind":"propose_default","topicId":"workload-estimate","allowedProposalRefs":["unit_duration_estimate"],"allowedOptionIds":["short-trial","rough-estimate","enter-own-estimate"],"maxItems":1,"displayHint":"workload-estimate"}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",%0A            "role": "user",%0A          },%0A        ],%0A        "purpose": "weekly_planning_renderer",%0A        "responseFormat": Object {%0A          "json_schema": Object {%0A            "name": "weekly_planning_behavior_dialogue",%0A            "schema": Object {%0A              "additionalProperties": false,%0A              "properties": Object {%0A                "acknowledgement": Object {%0A                  "type": "string",%0A                },%0A                "items": Object {%0A                  "items": Object {%0A                    "additionalProperties": false,%0A                    "properties": Object {%0A                      "actionId": Object {%0A                        "type": "string",%0A                      },%0A                      "optionIds": Object {%0A                        "items": [Object],%0A                        "type": "array",%0A                        "uniqueItems": true,%0A                      },%0A                      "text": Object {%0A                        "type": "string",%0A                      },%0A                    },%0A                    "required": Array [%0A                      "actionId",%0A                      "text",%0A                    ],%0A                    "type": "object",%0A                  },%0A                  "maxItems": 3,%0A                  "minItems": 1,%0A                  "type": "array",%0A                },%0A                "reasoningSummary": Object {%0A                  "type": "string",%0A                },%0A                "selectedActionIds": Object {%0A                  "items": Object {%0A                    "type": "string",%0A                  },%0A                  "maxItems": 3,%0A                  "minItems": 1,%0A                  "type": "array",%0A                  "uniqueItems": true,%0A                },%0A              },%0A              "required": Array [%0A                "selectedActionIds",%0A                "items",%0A              ],%0A              "type": "object",%0A            },%0A            "strict": false,%0A          },%0A          "type": "json_schema",%0A        },%0A        "temperature": 0.2,%0A      },%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts:222:45%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts,title=src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts > fixed event source availability > exposes existing_plans when a recurring occurrence overlaps the active range,line=56,column=23::AssertionError: expected false to be true // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- true%0A+ false%0A%0A ❯ src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts:56:23%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts,title=src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts > constraint source capability (use_constraint_source) > resolves existing_plans source against the existing plan count,line=1487,column=38::AssertionError: expected [ 'fixed_events' ] to not include 'fixed_events'%0A ❯ src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts:1487:38%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts,title=src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts > constraint source capability (use_constraint_source) > clarifies ambiguous constraint source references before hard applying nano-style candidates,line=1521,column=53::AssertionError: expected [ { candidate: { …(4) }, …(1) } ] to deeply equal [ ObjectContaining{…} ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A-   ObjectContaining {%0A-     "reason": "constraint-source-reference-multiple",%0A+   {%0A+     "candidate": {%0A+       "command": {%0A+         "confidence": "high",%0A+         "source": {%0A+           "kind": "existing_plans",%0A+           "selector": "active",%0A+         },%0A+         "sourceText": "入れてあるやつをそのまま考慮して",%0A+         "type": "use_constraint_source",%0A+       },%0A+       "constraintSourceResolution": {%0A+         "candidateKinds": [%0A+           "timetable",%0A+         ],%0A+         "clarificationRequest": {%0A+           "confidence": "high",%0A+           "ref": "constraint_source",%0A+           "sourceSegment": undefined,%0A+           "sourceText": "入れてあるやつをそのまま考慮して",%0A+           "target": "unresolved_slot",%0A+           "type": "request_clarification",%0A+         },%0A+         "reason": "no-source-evidence",%0A+         "status": "unresolved",%0A+       },%0A+       "needsConfirmation": false,%0A+       "origin": "ai_interpreter",%0A+     },%0A+     "reason": "constraint-source-reference-unresolved",%0A    },%0A  ]%0A%0A ❯ src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts:1521:53%0A%0A
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts > behavior-aware weekly planning AI dialogue planner > does not call or display AI-authored event claims for availability actions,line=223,column=45::AssertionError: expected "spy" to not be called at all, but actually been called 1 times%0A%0AReceived: %0A%0A  1st spy call:%0A%0A    Array [%0A      Object {%0A        "messages": Array [%0A          Object {%0A            "content": "You are the Japanese dialogue planner for a study-planning application.%0A    Return only JSON matching the response schema.%0A    The deterministic application core has already decided every action you may perform.%0A    Select only actionId values in allowedActions. Never invent an action, option, fact, deadline, time, proposal, or scheduling result.%0A    Use one or two substantive actions in normal turns and never more than three.%0A    Every selectedActionId must have exactly one matching items entry.%0A    Briefly acknowledge only concrete accepted information, explain a safe planning hypothesis only when one actually exists, and ask only the highest-impact remaining confirmation.%0A    Do not add vague filler such as 「ここまでの内容から、無理のない進め方を整理します」 when no concrete planning hypothesis exists.%0A    When clarificationRequest is present, explain the previous question, give one concrete answer example, and re-ask only that target. Do not repeat unrelated readiness or feasibility questions.%0A    When a safe default or finite options are allowed, present those before asking an unrestricted free-answer question.%0A    Do not expose internal names such as readiness, blockingDimensions, reasonCode, suitability, sourceFactRefs, proposalRef, or slotKey.%0A    Do not claim that a plan was saved, confirmed, registered, or added. A preview is not a saved plan.%0A    Do not claim preview generation unless generate_preview is present in allowedActions.%0A    When acceptedFacts.knownFixedEventSummaries is non-empty, use only those exact saved plans when asking about additional fixed events. Never invent an event.%0A    Keep the tone like a calm, practical tutor. Keep each item concise and easy to correct.",%0A            "role": "system",%0A          },%0A          Object {%0A            "content": "{"acceptedFacts":{"taskLabels":["英語"],"planningPeriodLabel":"今週","constraintSummary":[],"knownFixedEventSummaries":["7/16 13:00〜14:00「授業」"]},"planningHypothesis":{"taskProfiles":[{"taskRef":"task:0","activityKind":"drill","distributionPolicy":"sequential_units","cognitiveLoad":"medium"}],"lifeActivityAnchors":[{"anchorId":"constraint-anchor-0","kind":"meal","startTime":"19:00","endTime":"20:00"}],"opportunityAnnotations":[],"suggestedNextAction":"ask_required_fact"},"allowedActions":[{"actionId":"acknowledge:1","kind":"acknowledge_fact","topicId":"current-facts","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1},{"actionId":"ask_required_fact:deadline:1","kind":"ask_required_fact","topicId":"deadline","allowedProposalRefs":[],"allowedOptionIds":[],"maxItems":1,"displayHint":"deadline"},{"actionId":"suggest-draft:1","kind":"suggest_draft_generation","topicId":"draft-generation","allowedProposalRefs":[],"allowedOptionIds":["create-preview","revise-conditions"],"maxItems":1}],"previewAllowed":false,"styleConstraints":{"language":"ja","tone":"practical_tutor","maxItems":3,"preferredItems":2}}",%0A            "role": "user",%0A          },%0A        ],%0A        "purpose": "weekly_planning_renderer",%0A        "responseFormat": Object {%0A          "json_schema": Object {%0A            "name": "weekly_planning_behavior_dialogue",%0A            "schema": Object {%0A              "additionalProperties": false,%0A              "properties": Object {%0A                "acknowledgement": Object {%0A                  "type": "string",%0A                },%0A                "items": Object {%0A                  "items": Object {%0A                    "additionalProperties": false,%0A                    "properties": Object {%0A                      "actionId": Object {%0A                        "type": "string",%0A                      },%0A                      "optionIds": Object {%0A                        "items": [Object],%0A                        "type": "array",%0A                        "uniqueItems": true,%0A                      },%0A                      "text": Object {%0A                        "type": "string",%0A                      },%0A                    },%0A                    "required": Array [%0A                      "actionId",%0A                      "text",%0A                    ],%0A                    "type": "object",%0A                  },%0A                  "maxItems": 3,%0A                  "minItems": 1,%0A                  "type": "array",%0A                },%0A                "reasoningSummary": Object {%0A                  "type": "string",%0A                },%0A                "selectedActionIds": Object {%0A                  "items": Object {%0A                    "type": "string",%0A                  },%0A                  "maxItems": 3,%0A                  "minItems": 1,%0A                  "type": "array",%0A                  "uniqueItems": true,%0A                },%0A              },%0A              "required": Array [%0A                "selectedActionIds",%0A                "items",%0A              ],%0A              "type": "object",%0A            },%0A            "strict": false,%0A          },%0A          "type": "json_schema",%0A        },%0A        "temperature": 0.2,%0A      },%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts:223:45%0A%0A
