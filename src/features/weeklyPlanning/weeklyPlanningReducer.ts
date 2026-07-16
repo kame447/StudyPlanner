@@ -96,6 +96,16 @@ export function weeklyPlanningReducer(
     return state;
   }
 
+  if (
+    state.pendingTurn
+    && action.type !== 'load_state'
+    && action.type !== 'commit_turn'
+    && action.type !== 'fail_turn'
+    && action.type !== 'cancel_turn'
+  ) {
+    return state;
+  }
+
   switch (action.type) {
     case 'load_state':
       return action.state;

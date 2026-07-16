@@ -78,6 +78,44 @@ describe('weekly planning session reducer properties', () => {
     ));
   });
 
+  it('keeps the whole session immutable for arbitrary mutations during a pending turn', () => {
+    const actionArbitrary = fc.oneof(
+      fc.string().map((blockId) => ({ type: 'remove_draft_block' as const, blockId })),
+      fc.array(fc.string(), { maxLength: 5 }).map((blockIds) => ({
+        type: 'remove_draft_blocks' as const,
+        blockIds,
+      })),
+      fc.constant({ type: 'clear_draft_blocks' as const }),
+      fc.string().map((content) => ({
+        type: 'append_message' as const,
+        message: {
+          id: `extra-${content}`,
+          role: 'user' as const,
+          content,
+          createdAt: '2026-07-16T00:00:00.000Z',
+        },
+      })),
+    );
+
+    fc.assert(fc.property(fc.array(actionArbitrary, { maxLength: 30 }), (actions) => {
+      const withDrafts = weeklyPlanningReducer(createInitialPlanningState('2026-07-13'), {
+        type: 'add_draft_blocks',
+        blocks: [draftBlock('draft-1'), draftBlock('draft-2')],
+      });
+      const pending = pendingTurn(withDrafts.revision);
+      const begun = weeklyPlanningReducer(withDrafts, {
+        type: 'begin_turn',
+        pending,
+        userMessage: {
+          id: 'user-message', role: 'user', content: '予定', createdAt: pending.startedAt,
+        },
+      });
+      const after = actions.reduce(weeklyPlanningReducer, begun);
+      expect(after).toBe(begun);
+      expect(after.pendingTurn).toEqual(pending);
+    }));
+  });
+
   it('keeps draft blocks immutable for arbitrary mutation sequences during approval', () => {
     const actionArbitrary = fc.oneof(
       fc.string().map((blockId) => ({ type: 'remove_draft_block' as const, blockId })),

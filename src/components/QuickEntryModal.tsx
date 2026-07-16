@@ -31,7 +31,6 @@ import type {
   PlanDraft,
   PlanType,
   RecurrenceWeekday,
-  ScheduleTemplate,
   StudyMaterial,
   StudySubject,
   TodoTaskDraft,
@@ -51,8 +50,6 @@ interface QuickEntryModalProps {
   actuals: Actual[];
   materials: StudyMaterial[];
   subjects: StudySubject[];
-  scheduleTemplates?: ScheduleTemplate[];
-  timetableTermId?: string;
   weeklyDraftBlocks: WeeklyPlanDraftBlock[];
   weeklyPlanningMessages: WeeklyPlanningMessage[];
   weeklyPlanningIntakeState: PlanningIntakeState | null;
@@ -120,8 +117,6 @@ export function QuickEntryModal({
   actuals,
   materials,
   subjects,
-  scheduleTemplates = [],
-  timetableTermId,
   weeklyDraftBlocks,
   weeklyPlanningMessages,
   weeklyPlanningIntakeState,
@@ -625,8 +620,6 @@ export function QuickEntryModal({
                 plans={plans}
                 materials={availableMaterials}
                 subjects={availableSubjects}
-                scheduleTemplates={scheduleTemplates}
-                timetableTermId={timetableTermId}
                 onApplyDraft={onSavePlan}
                 weeklyDraftBlocks={weeklyDraftBlocks}
                 weeklyPlanningMessages={weeklyPlanningMessages}

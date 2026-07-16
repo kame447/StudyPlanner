@@ -483,7 +483,7 @@ export default function App() {
               plans={plans}
               actuals={actuals}
               weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-              onRemoveWeeklyDraftBlock={planningState.pendingApproval
+              onRemoveWeeklyDraftBlock={planningState.pendingTurn || planningState.pendingApproval
                 ? undefined
                 : (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
               onChangeWeek={openWeek}
@@ -503,7 +503,7 @@ export default function App() {
               scheduleTemplates={scheduleTemplates}
               timetableTermId={activeTimetableTermId}
               weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-              onRemoveWeeklyDraftBlock={planningState.pendingApproval
+              onRemoveWeeklyDraftBlock={planningState.pendingTurn || planningState.pendingApproval
                 ? undefined
                 : (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
               onChangeDay={openDay}
@@ -615,8 +615,6 @@ export default function App() {
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
-            scheduleTemplates={scheduleTemplates}
-            timetableTermId={activeTimetableTermId}
             weeklyDraftBlocks={pendingWeeklyDraftBlocks}
             weeklyPlanningMessages={planningState.messages}
               weeklyPlanningIntakeState={planningState.intakeState ?? null}

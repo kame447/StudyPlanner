@@ -36,7 +36,6 @@ import type {
   Plan,
   PlanDraft,
   SuggestionField,
-  ScheduleTemplate,
   StudyMaterial,
   StudySubject,
 } from '../types/domain';
@@ -47,8 +46,6 @@ interface NaturalLanguageAssistantProps {
   plans: Plan[];
   materials?: StudyMaterial[];
   subjects?: StudySubject[];
-  scheduleTemplates?: ScheduleTemplate[];
-  timetableTermId?: string;
   onApplyDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   weeklyDraftBlocks: WeeklyPlanDraftBlock[];
   weeklyPlanningMessages: WeeklyPlanningMessage[];
@@ -227,8 +224,6 @@ export function NaturalLanguageAssistant({
   plans,
   materials = [],
   subjects = [],
-  scheduleTemplates = [],
-  timetableTermId,
   onApplyDraft,
   weeklyDraftBlocks,
   weeklyPlanningMessages,
@@ -275,8 +270,6 @@ export function NaturalLanguageAssistant({
   const isWeeklyPlanningBusy = Boolean(weeklyPlanningPendingTurn || weeklyPlanningPendingApproval);
   void weeklyPlanningWeekStartDate;
   void weeklyPlanningRevision;
-  void scheduleTemplates;
-  void timetableTermId;
 
   function appendWeeklyPlanningMessage(
     role: WeeklyPlanningMessage['role'],
