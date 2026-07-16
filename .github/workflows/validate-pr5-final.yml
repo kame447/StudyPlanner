@@ -9,6 +9,9 @@ on:
       - synchronize
       - reopened
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     if: github.actor != 'github-actions[bot]'
@@ -27,11 +30,19 @@ jobs:
         run: git diff --check origin/main...HEAD
       - name: Run full test suite
         run: |
+          git config user.name "studyplanner-fix-bot"
+          git config user.email "studyplanner-fix-bot@users.noreply.github.com"
           set +e
           npm run test:run > /tmp/full-test.log 2>&1
           status=$?
-          tail -n 40 /tmp/full-test.log
-          exit "$status"
+          tail -n 80 /tmp/full-test.log
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/full-test.log docs/ai/tasks/20260716-weekly-planning-pr5-full-test-error.log
+            git add docs/ai/tasks/20260716-weekly-planning-pr5-full-test-error.log
+            git commit -m "feat: PR5全テスト失敗ログを保存"
+            git push origin HEAD:agent/weekly-planning-conversation-hardening
+            exit "$status"
+          fi
       - name: Run production build
         run: |
           set +e
