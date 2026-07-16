@@ -1,3 +1,10 @@
+import {
+  isDateWithinWindow,
+  isIsoCalendarDate,
+  isOrderedPlanningDateTimeRange,
+  isValidDateWindow,
+  isValidPlanningDurationDays,
+} from './weeklyPlanningDateValidation';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
 import type {
   CandidateValidationResult,
@@ -150,7 +157,6 @@ function constraintSourceAvailable(
 ): boolean {
   const availability = summary.availableConstraintSources;
 
-  // 可用性が不明なときは利用不可として扱う(空/不明なソースを鵜呑みにしない安全側)。
   if (!availability) {
     return false;
   }
@@ -169,12 +175,29 @@ function constraintSourceAvailable(
 
 function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null {
   switch (command.type) {
+    case 'set_planning_range':
+      return (command.range.startDateTime === undefined
+        && command.range.endDateTime === undefined)
+        || isOrderedPlanningDateTimeRange(command.range)
+        ? null
+        : 'invalid-planning-range';
     case 'set_pending_planning_range': {
-      const { scope, durationDays } = command.pending;
-      if (scope.startDate !== undefined && !isDate(scope.startDate)) return 'invalid-date';
-      if (scope.endDate !== undefined && !isDate(scope.endDate)) return 'invalid-date';
-      if (durationDays !== undefined && (!Number.isInteger(durationDays) || durationDays <= 0)) {
+      const { scope, planningStartDate, durationDays } = command.pending;
+      if (!isValidDateWindow(scope)) return 'invalid-pending-planning-range';
+      if (scope.kind === 'next_week'
+        && (!scope.windowStartDate || !scope.windowEndDate)) {
+        return 'invalid-pending-planning-range';
+      }
+      if (planningStartDate !== undefined
+        && (!isIsoCalendarDate(planningStartDate)
+          || !isDateWithinWindow(planningStartDate, scope))) {
+        return 'invalid-pending-planning-range';
+      }
+      if (durationDays !== undefined && !isValidPlanningDurationDays(durationDays)) {
         return 'invalid-duration-days';
+      }
+      if (planningStartDate !== undefined && durationDays !== undefined) {
+        return 'resolved-pending-planning-range';
       }
       return null;
     }
@@ -367,15 +390,12 @@ export function validateInterpretedCandidates(
         return;
       }
 
-      // planner decision: 参照した schedule source が実際に非空かを capability snapshot で検証する。
-      // 空なら fixed_events を勝手に充足せず、rejected として残す(pipeline が確認へ倒す)。
       if (!constraintSourceAvailable(command.source, summary)) {
         addRejected(result, candidate, 'constraint-source-unavailable');
         return;
       }
     }
 
-    // 聞き返しは state を進めない対話イベント。slot を占有させず専用バケットへ振り分ける。
     if (command.type === 'request_clarification') {
       result.clarificationRequests.push(command);
       return;
@@ -389,13 +409,13 @@ export function validateInterpretedCandidates(
         return;
       }
 
-      const pendingStartDate = summary.pendingPlanningRange.startDate;
-      const pendingEndDate = summary.pendingPlanningRange.endDate;
+      const pendingStartDate = summary.pendingPlanningRange.windowStartDate;
+      const pendingEndDate = summary.pendingPlanningRange.windowEndDate;
       if (pendingStartDate && pendingEndDate) {
-        const isWithinPendingWindow = rangeStartDate >= pendingStartDate
+        const startIsWithinPendingWindow = rangeStartDate >= pendingStartDate
           && rangeStartDate <= pendingEndDate;
-        if (!isWithinPendingWindow) {
-          result.acceptedWithConfirmation.push(command);
+        if (!startIsWithinPendingWindow) {
+          addRejected(result, candidate, 'pending-range-outside-window');
           return;
         }
       }
