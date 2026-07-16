@@ -109,10 +109,6 @@ function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function isOptionalTimestamp(value: unknown): value is string | undefined {
-  return value === undefined || isTimestamp(value);
-}
-
 function isMessage(value: unknown): value is WeeklyPlanningMessage {
   if (!isRecord(value) || !hasOnlyKeys(value, ['id', 'role', 'content', 'createdAt'])) return false;
   return typeof value.id === 'string'

@@ -1,5 +1,0 @@
-
-> studyplanner-app@0.1.0 build
-> tsc --noEmit && vite build --config vite.config.mjs
-
-src/features/weeklyPlanning/weeklyPlanningStorage.ts(112,10): error TS6133: 'isOptionalTimestamp' is declared but its value is never read.
