@@ -457,9 +457,12 @@ function createInterpreterStateSummary(
       : undefined,
     pendingPlanningRange: state.pendingPlanningRange
       ? {
+          kind: state.pendingPlanningRange.scope.kind,
           label: state.pendingPlanningRange.scope.label,
-          startDate: state.pendingPlanningRange.scope.startDate,
-          endDate: state.pendingPlanningRange.scope.endDate,
+          windowStartDate: state.pendingPlanningRange.scope.windowStartDate,
+          windowEndDate: state.pendingPlanningRange.scope.windowEndDate,
+          planningStartDate: state.pendingPlanningRange.planningStartDate,
+          durationDays: state.pendingPlanningRange.durationDays,
         }
       : undefined,
     availableConstraintSources: toConstraintSourceAvailability(snapshot),
@@ -543,7 +546,6 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       recentTurns: input.recentTurns,
     });
   } catch {
-    // Provider failures keep the established full rules path, including legacy task extraction.
     const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
       previousState,
       input.userText,
