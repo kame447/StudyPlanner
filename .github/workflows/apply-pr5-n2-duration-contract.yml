@@ -29,4 +29,15 @@ jobs:
       - run: |
           git config user.name "studyplanner-fix-bot"
           git config user.email "studyplanner-fix-bot@users.noreply.github.com"
-          python .github/agent-scripts/apply-pr5-n2-duration-contract.py
+          set +e
+          python .github/agent-scripts/apply-pr5-n2-duration-contract.py > /tmp/pr5-n2.log 2>&1
+          status=$?
+          cat /tmp/pr5-n2.log
+          if [ "$status" -ne 0 ]; then
+            git reset --hard HEAD
+            cp /tmp/pr5-n2.log docs/ai/tasks/20260716-weekly-planning-pr5-n2-error.log
+            git add docs/ai/tasks/20260716-weekly-planning-pr5-n2-error.log
+            git commit -m "feat: N2修正workflowの失敗ログを保存"
+            git push origin HEAD:agent/weekly-planning-conversation-hardening
+            exit "$status"
+          fi
