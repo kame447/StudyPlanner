@@ -140,8 +140,8 @@ export function normalizeSetPendingPlanningRangeCommand(
       ...command.pending,
       scope: {
         ...command.pending.scope,
-        startDate: command.pending.scope.startDate ?? normalizedScope.startDate,
-        endDate: command.pending.scope.endDate ?? normalizedScope.endDate,
+        windowStartDate: command.pending.scope.windowStartDate ?? normalizedScope.windowStartDate,
+        windowEndDate: command.pending.scope.windowEndDate ?? normalizedScope.windowEndDate,
       },
       durationDays: command.pending.durationDays ?? 7,
     },
