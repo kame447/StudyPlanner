@@ -12,6 +12,7 @@ on:
       - scripts/apply-weekly-planning-review-fixes-core.mjs
       - scripts/patch-weekly-planning-review-core-v2.mjs
       - scripts/patch-weekly-planning-review-core-v3.mjs
+      - scripts/patch-weekly-planning-review-core-v4.mjs
       - .github/workflows/apply-weekly-planning-review-fixes-core.yml
 
 permissions:
@@ -28,29 +29,17 @@ jobs:
           fetch-depth: 1
       - name: Apply core fixes
         run: |
-          set -o pipefail
-          { node scripts/apply-weekly-planning-review-fixes-core.mjs; node scripts/patch-weekly-planning-review-core-v2.mjs; node scripts/patch-weekly-planning-review-core-v3.mjs; } 2>&1 | tee core-apply-output.log
-      - name: Upload core apply log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: weekly-planning-core-apply-log
-          path: core-apply-output.log
+          node scripts/apply-weekly-planning-review-fixes-core.mjs
+          node scripts/patch-weekly-planning-review-core-v2.mjs
+          node scripts/patch-weekly-planning-review-core-v3.mjs
+          node scripts/patch-weekly-planning-review-core-v4.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - name: Core review tests
-        run: |
-          set -o pipefail
-          npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningReviewCoreFixes.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningSingleFieldPriority.test.ts src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts 2>&1 | tee core-test-output.log
-      - name: Upload core test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: weekly-planning-core-test-log
-          path: core-test-output.log
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningReviewCoreFixes.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningSingleFieldPriority.test.ts src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts
       - name: Weekly planning tests
         run: npm run test:run -- src/features/weeklyPlanning
       - name: Build
@@ -72,7 +61,7 @@ jobs:
           }
           NODE
       - name: Remove temporary automation
-        run: rm scripts/apply-weekly-planning-review-fixes-core.mjs scripts/patch-weekly-planning-review-core-v2.mjs scripts/patch-weekly-planning-review-core-v3.mjs .github/workflows/apply-weekly-planning-review-fixes-core.yml
+        run: rm scripts/apply-weekly-planning-review-fixes-core.mjs scripts/patch-weekly-planning-review-core-v2.mjs scripts/patch-weekly-planning-review-core-v3.mjs scripts/patch-weekly-planning-review-core-v4.mjs .github/workflows/apply-weekly-planning-review-fixes-core.yml .github/workflows/debug-weekly-core-full.yml
       - name: Commit verified core fixes
         run: |
           git config user.name github-actions[bot]
