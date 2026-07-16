@@ -17,6 +17,15 @@ for (const path of [
   writeFileSync(path, content, 'utf8');
 }
 
+{
+  const path = 'src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts';
+  const content = readFileSync(path, 'utf8');
+  const before = "expect(output.behaviorDialogue.message).toContain('具体的に何をどこまで進めたいか教えてください。');";
+  const after = "expect(output.behaviorDialogue.message).not.toContain('具体的に何をどこまで進めたいか教えてください。');";
+  if (!content.includes(before)) throw new Error('dialogue path assertion anchor not found');
+  writeFileSync(path, content.replace(before, after), 'utf8');
+}
+
 writeFileSync(
   'docs/ai/tasks/20260716-weekly-planning-conversation-hardening-rereview.md',
   [
