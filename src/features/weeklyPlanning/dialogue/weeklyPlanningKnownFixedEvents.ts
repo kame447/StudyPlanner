@@ -60,7 +60,8 @@ export function createKnownFixedEventOccurrences(
   const endDate = dateOnly(end);
   if (!start || !end || !startDate || !endDate || end <= start) return [];
 
-  return expandPlansForDateRange([...plans], startDate, endDate)
+  const expansionStartDate = addDays(startDate, -1);
+  return expandPlansForDateRange([...plans], expansionStartDate, endDate)
     .filter((plan) => overlapsRange(plan, start, end))
     .sort(sortOccurrences);
 }
