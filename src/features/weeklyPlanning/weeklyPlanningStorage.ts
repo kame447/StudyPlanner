@@ -39,6 +39,11 @@ const QUESTION_CONTEXT_KINDS = new Set([
 const PREVIEW_ELIGIBILITY = new Set([
   'eligible', 'blocked_pending_assumption', 'blocked_stale', 'blocked_invalid', 'unsupported',
 ]);
+const PLANNING_OPPORTUNITY_TAGS = new Set([
+  'before_meal', 'after_meal', 'after_school', 'after_work', 'after_commute',
+  'before_sleep', 'after_rest', 'long_contiguous_window', 'short_transition_window',
+  'low_activation', 'high_continuity',
+]);
 
 interface StoredPlanningStateV2 {
   version: 2;
@@ -68,6 +73,11 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
+}
+
+function isPlanningOpportunityTagArray(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.every((item) => typeof item === 'string' && PLANNING_OPPORTUNITY_TAGS.has(item));
 }
 
 function isInteger(value: unknown): value is number {
@@ -168,7 +178,7 @@ function isBehaviorMetadata(value: unknown): value is WeeklyPlanningBehaviorMeta
       || (Array.isArray(value.acceptedAssumptionDependencies)
         && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
     && typeof value.taskRef === 'string'
-    && isStringArray(value.opportunityTags)
+    && isPlanningOpportunityTagArray(value.opportunityTags)
     && typeof value.reasoningKey === 'string'
     && value.compatibility.workItemSemantic === 'behavior_aware_task'
     && value.compatibility.schedulerInputSource === 'exam_prep_request'
@@ -192,7 +202,7 @@ function isBehaviorAwarePreviewMetadata(value: unknown): boolean {
       || (Array.isArray(value.acceptedAssumptionDependencies)
         && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
     && typeof value.taskRef === 'string'
-    && isStringArray(value.opportunityTags)
+    && isPlanningOpportunityTagArray(value.opportunityTags)
     && (value.reasoningKey === 'explicit-duration'
       || value.reasoningKey === 'explicit-unit-rate'
       || value.reasoningKey === 'accepted-assumption-duration');

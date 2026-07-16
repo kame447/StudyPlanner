@@ -2617,4 +2617,37 @@ describe('preview policy Stage 2', () => {
     expect(secondOutput.draftCandidates?.[0]?.estimatedMinutes).toBe(180);
   });
 
+
+  it('keeps a duration-less named future period from the first turn and resolves it on the next turn', () => {
+    const pending = runTurn(undefined, '夏休みに計画を立てたい');
+    expect(pending.state.pendingPlanningRange).toEqual({
+      scope: { kind: 'named_future_period', label: '夏休み' },
+      sourceText: '夏休みに計画を立てたい',
+    });
+    expect(pending.state.missing).not.toContain('planning_period');
+
+    const resolved = runTurn(pending.state, '8月1日から一週間');
+    expect(resolved.state.pendingPlanningRange).toBeUndefined();
+    expect(resolved.state.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
+      confidence: 'explicit',
+    });
+  });
+
+  it('keeps the next-week pending range when a deterministic absolute date is outside the window', () => {
+    const pending = runTurn(undefined, '来週の予定を立てたい');
+    expect(pending.state.pendingPlanningRange?.scope).toMatchObject({
+      kind: 'next_week',
+      startDate: '2026-06-29',
+      endDate: '2026-07-05',
+    });
+
+    const unresolved = runTurn(pending.state, '8月1日から一週間');
+    expect(unresolved.state.range).toBeUndefined();
+    expect(unresolved.state.pendingPlanningRange).toEqual(pending.state.pendingPlanningRange);
+    expect(unresolved.state.missing).toContain('planning_start_date');
+  });
+
 });

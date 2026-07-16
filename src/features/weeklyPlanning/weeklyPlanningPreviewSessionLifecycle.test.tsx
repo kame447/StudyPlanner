@@ -2,6 +2,7 @@ import {
   createRef,
   forwardRef,
   useImperativeHandle,
+  useRef,
   useState,
 } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -81,15 +82,16 @@ interface TurnResult {
 }
 
 interface SessionOwnerHandle {
-  submit(text: string): Promise<void>;
   setModalOpen(open: boolean): void;
   getState(): PlanningState;
+  getSubmission(): Promise<void> | undefined;
 }
 
 const SessionOwnerHarness = forwardRef<SessionOwnerHandle, {
   turnResult: Promise<TurnResult>;
 }>(function SessionOwnerHarness({ turnResult }, ref) {
   const [modalOpen, setModalOpen] = useState(true);
+  const submissionRef = useRef<Promise<void>>();
   const {
     planningState,
     dispatchPlanningAction,
@@ -132,9 +134,9 @@ const SessionOwnerHarness = forwardRef<SessionOwnerHandle, {
   }
 
   useImperativeHandle(ref, () => ({
-    submit,
     setModalOpen,
     getState: getPlanningState,
+    getSubmission: () => submissionRef.current,
   }));
 
   if (!modalOpen) return null;
@@ -154,7 +156,9 @@ const SessionOwnerHarness = forwardRef<SessionOwnerHandle, {
       weeklyPlanningPendingTurn={planningState.pendingTurn}
       weeklyPlanningPendingApproval={planningState.pendingApproval}
       onSubmitWeeklyPlanningTurn={async (text) => {
-        await submit(text);
+        const submission = submit(text);
+        submissionRef.current = submission;
+        await submission!;
         const latest = getPlanningState();
         return {
           accepted: latest.pendingTurn === undefined,
@@ -195,11 +199,25 @@ describe('weekly planning preview session lifecycle', () => {
       );
     });
 
-    let submission!: Promise<void>;
     await act(async () => {
-      submission = ownerRef.current!.submit('レポートを1時間進めたい');
+      const weeklyPlanningButton = renderer.root.findAllByType('button').find(
+        (button) => button.children.join('') === '週間計画',
+      );
+      expect(weeklyPlanningButton).toBeDefined();
+      weeklyPlanningButton!.props.onClick();
+    });
+    const textarea = renderer.root.findByType('textarea');
+    act(() => textarea.props.onChange({ target: { value: 'レポートを1時間進めたい' } }));
+    await act(async () => {
+      const sendButton = renderer.root.findAllByType('button').find(
+        (button) => button.children.join('') === '送信',
+      );
+      expect(sendButton).toBeDefined();
+      sendButton!.props.onClick();
       await Promise.resolve();
     });
+    const submission = ownerRef.current!.getSubmission();
+    expect(submission).toBeDefined();
     expect(ownerRef.current!.getState().pendingTurn).toBeDefined();
 
     act(() => ownerRef.current!.setModalOpen(false));
@@ -222,6 +240,8 @@ describe('weekly planning preview session lifecycle', () => {
 
     act(() => ownerRef.current!.setModalOpen(true));
     const rendered = JSON.stringify(renderer.toJSON());
+    expect(rendered).toContain('レポートを1時間進めたい');
+    expect(rendered).toContain('仮予定を作成しました。');
     expect(rendered).toContain('レポート作成');
     expect(rendered).toContain('この内容で仮予定にする');
 

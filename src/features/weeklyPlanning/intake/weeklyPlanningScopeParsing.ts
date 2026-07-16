@@ -102,7 +102,7 @@ export function nextWeekScope(context: WeeklyPlanningIntakeContext): PendingPlan
 }
 
 function parseWeekdayStart(text: string): number | undefined {
-  const match = normalizeIntakeText(text).match(/([月火水木金土日])(?:曜(?:日)?)?\s*から/);
+  const match = normalizeIntakeText(text).match(/(?:^|[^0-9])([月火水木金土日])(?:曜(?:日)?)?\s*から/);
   return match ? WEEKDAY_INDEX[match[1]] : undefined;
 }
 
@@ -126,9 +126,6 @@ function parsePendingPlanningRange(
   context: WeeklyPlanningIntakeContext,
 ): NormalizedSetPendingPlanningRangeCommand | undefined {
   const normalizedText = normalizeIntakeText(text);
-  if (!hasOneWeekDuration(normalizedText) && !/来週.*(?:計画|予定|スケジュール)/.test(normalizedText)) {
-    return undefined;
-  }
 
   if (/夏休み/.test(normalizedText)) {
     const durationDays = hasOneWeekDuration(normalizedText) ? 7 : undefined;
@@ -142,6 +139,10 @@ function parsePendingPlanningRange(
       sourceText: text,
       confidence: 'high',
     };
+  }
+
+  if (!hasOneWeekDuration(normalizedText) && !/来週.*(?:計画|予定|スケジュール)/.test(normalizedText)) {
+    return undefined;
   }
 
   if (/来週/.test(normalizedText)) {
@@ -178,10 +179,20 @@ function parseWeeklyPlanningRange(
   if (pending) {
     const durationDays = hasOneWeekDuration(normalizedText) ? 7 : pending.durationDays;
     const explicitDate = parseExplicitDate(normalizedText, context);
+    const explicitDateAllowed = Boolean(
+      explicitDate
+      && (pending.scope.kind !== 'next_week'
+        || (pending.scope.startDate
+          && pending.scope.endDate
+          && explicitDate >= pending.scope.startDate
+          && explicitDate <= pending.scope.endDate)),
+    );
     const weekdayIndex = parseWeekdayStart(normalizedText);
-    const startDate = explicitDate ?? (weekdayIndex === undefined
-      ? undefined
-      : resolveWeekdayInScope(weekdayIndex, pending.scope));
+    const startDate = explicitDateAllowed
+      ? explicitDate
+      : weekdayIndex === undefined
+        ? undefined
+        : resolveWeekdayInScope(weekdayIndex, pending.scope);
     return startDate && durationDays
       ? rangeFromStartDate({
           startDate,

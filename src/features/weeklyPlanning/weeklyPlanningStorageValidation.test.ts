@@ -168,6 +168,24 @@ describe('weekly planning storage validation', () => {
     expectRejectedSession();
   });
 
+  it('rejects a behavior-aware preview with an unknown planning opportunity tag', () => {
+    const candidate = behaviorAwarePreviewCandidate();
+    storeV2({
+      ...createInitialPlanningState(WEEK_START),
+      revision: 9,
+      mode: 'draft_created',
+      previewCandidates: [{
+        ...candidate,
+        behaviorMetadata: {
+          ...candidate.behaviorMetadata,
+          opportunityTags: ['not_a_planning_opportunity'],
+        },
+      }],
+    });
+
+    expectRejectedSession();
+  });
+
   it('round-trips a valid behavior-aware preview with its conversation and intake state', () => {
     const state = {
       ...createInitialPlanningState(WEEK_START),
@@ -222,9 +240,16 @@ describe('weekly planning storage validation', () => {
       sourceTurns: ['保存済みturn'],
       assumptionProposalRecords: [{ proposalId: 'stale-proposal' }] as never,
     };
+    const messages = [{
+      id: 'persisted-message',
+      role: 'assistant' as const,
+      content: '保存済みの会話です。',
+      createdAt: NOW,
+    }];
     const state = {
       ...createInitialPlanningState(WEEK_START),
       revision: 2,
+      messages,
       intakeState,
       pendingTurn: {
         requestId: 'stale-request',
@@ -247,6 +272,7 @@ describe('weekly planning storage validation', () => {
 
     const loaded = loadWeeklyPlanningState(USER_ID, WEEK_START);
     expect(loaded.revision).toBe(2);
+    expect(loaded.messages).toEqual(messages);
     expect(loaded.intakeState?.sourceTurns).toEqual(['保存済みturn']);
     expect(loaded.intakeState?.assumptionProposalRecords).toBeUndefined();
     expect(loaded.pendingTurn).toBeUndefined();
