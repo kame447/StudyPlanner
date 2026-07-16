@@ -17,7 +17,7 @@ PR #5 の head `068e728` に対する再レビューを実装とテストに照�
 - M3: property testがrequestId、weekStartDate、baseRevisionの不一致を独立に生成せず、pending中のnon-load actionとrevision契約も十分に固定していない。
 - N1: range開始前日に始まりrange内まで継続する予定がoccurrence展開対象へ入らない。
 - N2: domain stateではdurationDays必須だが、AI command schema/runtimeでは任意であり、型契約が実際のcanonicalization経路を表していない。
-- N3:責務別testとcatch-all review testに同一契約の重複がある。
+- N3: 責務別testとcatch-all review testに同一契約の重複がある。
 
 ## 確定方針
 
@@ -53,13 +53,19 @@ scope enrichmentとsingle-field priorityの詳細contractは責務別testへ残�
 
 ## 修正順序
 
-1. B1 preview lifecycle
+1. B1 preview lifecycle（完了）
 2. M1・M2 storage validation/sanitization
 3. M3 property-based tests
 4. N1 fixed-event overlap
 5. N2 durationDays type contract
 6. N3 test duplication
 7. focused tests、full suite、build
+
+## 実施状況
+
+B1はcommit `a0e86e4`で修正した。preview候補をPlanningStateへ移し、`commit_turn`でintake state・assistant message・preview候補を原子的にcommitする。個別削除・全破棄・draft昇格・resetもreducer経由へ統一した。modalが存在しない間にturnをcommitし、localStorageから再読込した後にpreviewと「この内容で仮予定にする」操作が表示される回帰テストを追加した。
+
+B1 focused testsは3 files、6 testsが成功し、`npm run build`も成功した。既存のdynamic/static import重複警告と500kB超chunk警告のみである。
 
 ## 完了条件
 
