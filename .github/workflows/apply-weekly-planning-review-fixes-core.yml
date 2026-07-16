@@ -11,6 +11,7 @@ on:
       - scripts/patch-weekly-planning-review-core-v4.mjs
       - scripts/cleanup-weekly-planning-core-validator.mjs
       - scripts/patch-weekly-planning-exam-scope-summary-type.mjs
+      - scripts/patch-weekly-planning-exam-scope-year-range-type.mjs
       - .github/workflows/apply-weekly-planning-review-fixes-core.yml
 
 permissions:
@@ -33,6 +34,7 @@ jobs:
           node scripts/patch-weekly-planning-review-core-v4.mjs
           node scripts/cleanup-weekly-planning-core-validator.mjs
           node scripts/patch-weekly-planning-exam-scope-summary-type.mjs
+          node scripts/patch-weekly-planning-exam-scope-year-range-type.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -74,7 +76,7 @@ jobs:
           }
           NODE
       - name: Remove temporary automation
-        run: rm scripts/apply-weekly-planning-review-fixes-core.mjs scripts/patch-weekly-planning-review-core-v2.mjs scripts/patch-weekly-planning-review-core-v3.mjs scripts/patch-weekly-planning-review-core-v4.mjs scripts/cleanup-weekly-planning-core-validator.mjs scripts/patch-weekly-planning-exam-scope-summary-type.mjs .github/workflows/apply-weekly-planning-review-fixes-core.yml .github/workflows/debug-weekly-core-full.yml weekly-planning-core-build-output.log
+        run: rm scripts/apply-weekly-planning-review-fixes-core.mjs scripts/patch-weekly-planning-review-core-v2.mjs scripts/patch-weekly-planning-review-core-v3.mjs scripts/patch-weekly-planning-review-core-v4.mjs scripts/cleanup-weekly-planning-core-validator.mjs scripts/patch-weekly-planning-exam-scope-summary-type.mjs scripts/patch-weekly-planning-exam-scope-year-range-type.mjs .github/workflows/apply-weekly-planning-review-fixes-core.yml .github/workflows/debug-weekly-core-full.yml weekly-planning-core-build-output.log
       - name: Commit verified core fixes
         run: |
           git config user.name github-actions[bot]
