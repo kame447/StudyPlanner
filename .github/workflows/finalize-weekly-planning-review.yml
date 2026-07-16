@@ -33,18 +33,22 @@ jobs:
         run: |
           set -o pipefail
           npm run test:run -- src/components/QuickEntryModalSessionResume.test.tsx src/components/weeklyPlanningConversationMode.test.ts src/components/WeeklyPlanningConversation.test.tsx src/features/weeklyPlanning/weeklyPlanningReducer.test.ts src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts 2>&1 | tee weekly-planning-focused.log
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: weekly-planning-focused-diagnostic
-          path: weekly-planning-focused.log
-      - name: Require focused tests
-        if: ${{ steps.focused.outcome == 'failure' }}
-        run: exit 1
       - name: Full test suite
+        id: full
+        continue-on-error: true
         run: |
           set -o pipefail
           npm run test:run 2>&1 | tee weekly-planning-full.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weekly-planning-test-diagnostics
+          path: |
+            weekly-planning-focused.log
+            weekly-planning-full.log
+      - name: Require focused and full tests
+        if: ${{ steps.focused.outcome == 'failure' || steps.full.outcome == 'failure' }}
+        run: exit 1
       - name: Production build
         run: |
           set -o pipefail
