@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createInitialPlanningIntakeState } from './intake/weeklyPlanningIntakeReducer';
+import type { WeeklyPlanDraftBlock } from './types';
 import { createInitialPlanningState, weeklyPlanningReducer } from './weeklyPlanningReducer';
 import { loadWeeklyPlanningState, saveWeeklyPlanningState } from './weeklyPlanningStorage';
 
@@ -19,7 +21,39 @@ Object.defineProperty(globalThis, 'window', {
 
 const USER_ID = 'user';
 const WEEK_START = '2026-07-13';
+const NOW = '2026-07-16T00:00:00.000Z';
 const STORAGE_KEY = `studyplanner.weeklyPlanning.${USER_ID}.${WEEK_START}`;
+
+function validDraftBlock(): WeeklyPlanDraftBlock {
+  return {
+    id: 'draft-1',
+    userId: USER_ID,
+    date: '2026-07-16',
+    startTime: '19:00',
+    endTime: '20:00',
+    title: '英語ワーク',
+    subject: '英語',
+    type: 'study',
+    label: '英語',
+    source: 'ai',
+    status: 'draft',
+    userEdited: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+}
+
+function storeV2(state: unknown): void {
+  storedValues.set(STORAGE_KEY, JSON.stringify({ version: 2, state }));
+}
+
+function expectRejectedSession(): void {
+  const loaded = loadWeeklyPlanningState(USER_ID, WEEK_START);
+  expect(loaded.revision).toBe(0);
+  expect(loaded.intakeState).toBeUndefined();
+  expect(loaded.draftBlocks).toEqual([]);
+  expect(loaded.previewCandidates).toEqual([]);
+}
 
 describe('weekly planning storage validation', () => {
   beforeEach(() => storedValues.clear());
@@ -37,33 +71,101 @@ describe('weekly planning storage validation', () => {
       },
     }));
 
-    const loaded = loadWeeklyPlanningState(USER_ID, WEEK_START);
-    expect(loaded.revision).toBe(0);
-    expect(loaded.messages).toEqual([]);
-    expect(loaded.draftBlocks).toEqual([]);
+    expectRejectedSession();
   });
 
-  it('rejects malformed persisted intake state as a whole', () => {
-    storedValues.set(STORAGE_KEY, JSON.stringify({
-      version: 2,
-      state: {
-        weekStartDate: WEEK_START,
-        revision: 1,
-        mode: 'collecting_tasks',
-        draftBlocks: [],
-        messages: [],
-        intakeState: {
-          status: 'draft_ready',
-          intent: 'exam_prep_planning',
-          missing: 'not-an-array',
-        },
-        updatedAt: '2026-07-16T00:00:00.000Z',
+  it.each([
+    ['null task', { tasks: [null] }],
+    ['numeric progress', { progress: [1] }],
+    ['empty constraint object', { constraints: [{}] }],
+    ['invalid priority union', { priorityPolicy: { kind: 'invalid' } }],
+  ])('rejects malformed nested intake state: %s', (_label, patch) => {
+    const state = {
+      ...createInitialPlanningState(WEEK_START),
+      revision: 1,
+      intakeState: {
+        ...createInitialPlanningIntakeState(),
+        ...patch,
       },
-    }));
+    };
+    storeV2(state);
+
+    expectRejectedSession();
+  });
+
+  it('rejects malformed draft fields and behavior metadata as a whole session', () => {
+    const baseState = createInitialPlanningState(WEEK_START);
+    const baseDraft = validDraftBlock();
+    const malformedDrafts = [
+      { ...baseDraft, type: 'invalid' },
+      { ...baseDraft, materialId: 123 },
+      { ...baseDraft, behaviorMetadata: { stateRevision: 'invalid' } },
+    ];
+
+    malformedDrafts.forEach((draft) => {
+      storedValues.clear();
+      storeV2({
+        ...baseState,
+        revision: 1,
+        mode: 'awaiting_approval',
+        draftBlocks: [draft],
+      });
+      expectRejectedSession();
+    });
+  });
+
+  it('rejects malformed preview candidates as a whole session', () => {
+    storeV2({
+      ...createInitialPlanningState(WEEK_START),
+      revision: 1,
+      mode: 'draft_created',
+      previewCandidates: [{
+        stableKey: 'candidate-1',
+        date: '2026-07-16',
+        startTime: '19:00',
+        endTime: '20:00',
+        durationMinutes: 60,
+        title: '英語ワーク',
+        field: '英語',
+        year: 1,
+        estimatedMinutes: 60,
+        source: 'invalid',
+        approvalStatus: 'unapproved',
+        workItemKey: '英語:1',
+      }],
+    });
+
+    expectRejectedSession();
+  });
+
+  it.each(['v2', 'legacy'])('removes session-local proposal records while loading %s data', (format) => {
+    const intakeState = {
+      ...createInitialPlanningIntakeState(),
+      sourceTurns: ['保存済みturn'],
+      assumptionProposalRecords: [{ proposalId: 'stale-proposal' }] as never,
+    };
+    const state = {
+      ...createInitialPlanningState(WEEK_START),
+      revision: 2,
+      intakeState,
+      pendingTurn: {
+        requestId: 'stale-request',
+        weekStartDate: WEEK_START,
+        baseRevision: 1,
+        startedAt: NOW,
+      },
+    };
+    storedValues.set(
+      STORAGE_KEY,
+      JSON.stringify(format === 'v2' ? { version: 2, state } : state),
+    );
 
     const loaded = loadWeeklyPlanningState(USER_ID, WEEK_START);
-    expect(loaded.revision).toBe(0);
-    expect(loaded.intakeState).toBeUndefined();
+    expect(loaded.revision).toBe(2);
+    expect(loaded.intakeState?.sourceTurns).toEqual(['保存済みturn']);
+    expect(loaded.intakeState?.assumptionProposalRecords).toBeUndefined();
+    expect(loaded.pendingTurn).toBeUndefined();
+    expect(loaded.pendingApproval).toBeUndefined();
   });
 
   it('never persists in-flight request ownership', () => {
@@ -72,7 +174,7 @@ describe('weekly planning storage validation', () => {
       requestId: 'request-1',
       weekStartDate: WEEK_START,
       baseRevision: initial.revision,
-      startedAt: '2026-07-16T00:00:00.000Z',
+      startedAt: NOW,
     };
     const state = weeklyPlanningReducer(initial, {
       type: 'begin_turn',
