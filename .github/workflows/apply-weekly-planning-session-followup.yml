@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - scripts/apply-weekly-planning-session-followup.mjs
+      - scripts/adjust-weekly-planning-session-followup.mjs
       - .github/workflows/apply-weekly-planning-session-followup.yml
 
 permissions:
@@ -19,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+      - run: node scripts/adjust-weekly-planning-session-followup.mjs
       - name: Apply followup
         id: apply
         continue-on-error: true
@@ -45,7 +47,7 @@ jobs:
         run: npm run build
       - name: Commit verified followup
         run: |
-          rm scripts/apply-weekly-planning-session-followup.mjs .github/workflows/apply-weekly-planning-session-followup.yml
+          rm scripts/apply-weekly-planning-session-followup.mjs scripts/adjust-weekly-planning-session-followup.mjs .github/workflows/apply-weekly-planning-session-followup.yml
           rm -f session-followup-script.log
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
