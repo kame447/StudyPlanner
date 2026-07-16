@@ -1,10 +1,10 @@
-file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-session-ui.mjs:14
+file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-session-ui.mjs:20
     throw new Error(`${path}: expected one anchor, got ${count}`);
           ^
 
-Error: src/App.tsx: expected one anchor, got 0
-    at replaceOnce (file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-session-ui.mjs:14:11)
-    at file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-session-ui.mjs:66:1
+Error: src/components/QuickEntryModal.tsx: expected one anchor, got 0
+    at replaceOnce (file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-session-ui.mjs:20:11)
+    at file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-session-ui.mjs:98:1
     at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
