@@ -50,7 +50,7 @@ const clarificationPhrasings = [
 ] as const;
 
 describe('weekly planning dialogue path regressions', () => {
-  it('keeps the deterministic next-week range when the AI returns only begin_weekly_planning', async () => {
+  it('keeps the deterministic next-week range and asks only one explicit-repair question', async () => {
     const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
       ...baseInput,
       userText: '来週の予定立てたい',
@@ -68,7 +68,7 @@ describe('weekly planning dialogue path regressions', () => {
     ]));
     expect(output.behavior.actions.some((action) => action.actionId.startsWith('feasibility:'))).toBe(false);
     expect(output.behaviorDialogue.message).toContain('来週のどの日から計画を始めますか？');
-    expect(output.behaviorDialogue.message).toContain('具体的に何をどこまで進めたいか教えてください。');
+    expect(output.behaviorDialogue.message).not.toContain('具体的に何をどこまで進めたいか教えてください。');
     expect(output.behaviorDialogue.message).not.toContain('使える時間は');
   });
 
