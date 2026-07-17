@@ -19,41 +19,26 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - name: Apply migration
+      - name: Finalize AI interpreter
         id: migrate
         continue-on-error: true
         run: |
           set -o pipefail
-          python - <<'PY'
-          from pathlib import Path
+          python .github/scripts/pr5_finalize_ai_interpreter.py 2>&1 | tee /tmp/migrate.log
 
-          path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts')
-          text = path.read_text()
-          old_pair = "        startDate: '2026-07-13',\n        endDate: '2026-07-19',"
-          new_pair = "        windowStartDate: '2026-07-13',\n        windowEndDate: '2026-07-19',"
-          if text.count(old_pair) == 2:
-              text = text.replace(old_pair, new_pair, 1)
-
-          old_summary = "      expect(params.stateSummary.pendingPlanningRange).toEqual({\n        label: '来週',\n        startDate: '2026-07-13',\n        endDate: '2026-07-19',\n      });"
-          new_summary = "      expect(params.stateSummary.pendingPlanningRange).toEqual({\n        kind: 'next_week',\n        label: '来週',\n        windowStartDate: '2026-07-13',\n        windowEndDate: '2026-07-19',\n        planningStartDate: undefined,\n        durationDays: 7,\n      });"
-          if old_summary in text:
-              text = text.replace(old_summary, new_summary, 1)
-          path.write_text(text)
-          PY
-          python .github/scripts/pr5_migrate_pending_range_tests.py 2>&1 | tee /tmp/migrate.log
-
-      - name: Commit migrated expectations
+      - name: Commit finalized interpreter
         if: steps.migrate.outcome == 'success'
         run: |
           if git diff --quiet; then
-            echo 'No migration changes required.'
+            echo 'No interpreter changes required.'
             exit 0
           fi
           git diff --check
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/features/weeklyPlanning
-          git commit -m "feat: pending rangeの既存テスト契約を更新"
+          git add src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreterCore.ts
+          git commit -m "feat: AI interpreterの重複実装を解消"
           git push origin HEAD:agent/weekly-planning-conversation-hardening
 
       - name: Report migration result
@@ -69,9 +54,9 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: 20,
-              body: `migration outcome: ${{ steps.migrate.outcome }}\nhead: ${context.sha}\n\n\`\`\`text\n${log}\n\`\`\``,
+              body: `interpreter finalization: ${{ steps.migrate.outcome }}\nhead: ${context.sha}\n\n\`\`\`text\n${log}\n\`\`\``,
             });
 
-      - name: Fail on migration error
+      - name: Fail on finalization error
         if: steps.migrate.outcome != 'success'
         run: exit 1
