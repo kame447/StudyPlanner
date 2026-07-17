@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateInterpretedCandidates } from './weeklyPlanningCandidateValidator';
 import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';
 import type { SetPendingPlanningRangeCommand } from './weeklyPlanningCommandTypes';
+import type { InterpretedCommandCandidate } from './weeklyPlanningInterpreterTypes';
 import { createInitialPlanningIntakeState } from './weeklyPlanningIntakeReducer';
 import { finalizeState } from './weeklyPlanningMissingStatus';
 import {
