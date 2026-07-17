@@ -9,6 +9,7 @@ import {
   QUESTION_PLAN_SLOT_ORDER,
   QUESTION_SLOT_DEFINITION_BY_MISSING,
   statusForMissing,
+  vocabularyHintForSlot,
 } from './weeklyPlanningQuestionSlots';
 
 const ALL_MISSING_SLOTS: PlanningIntakeMissing[] = [
@@ -90,6 +91,33 @@ describe('weekly planning question slot registry', () => {
       '来週の計画は、いつから始めますか？',
       '週末で優先する分野や進める順番を教えてください。',
     ]);
+  });
+
+  it('uses controlled vocabulary for target years and exam unit-rate questions', () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      examPrepScope: {
+        fields: ['OSnetwork'],
+        unitModel: 'year_field_chunk',
+        rawText: ['OSnetwork'],
+      },
+      missing: ['unit_duration_estimate'],
+    };
+    const yearRangeDefinition = QUESTION_SLOT_DEFINITION_BY_MISSING.year_range;
+    const unitRateDefinition = QUESTION_SLOT_DEFINITION_BY_MISSING.unit_duration_estimate;
+
+    expect(yearRangeDefinition.deterministicQuestion(state)).toBe(
+      '対象年度は何年から何年までですか？',
+    );
+    expect(unitRateDefinition.deterministicQuestion(state)).toBe(
+      '1年分・1分野あたりの目安時間を教えてください。',
+    );
+    expect(unitRateDefinition.fallbackQuestion({
+      unitRateBasisLabel: '1年分・1分野あたり',
+    })).toBe('1年分・1分野あたりの目安時間を教えてください。');
+    expect(vocabularyHintForSlot('unit_rate', {
+      unitRateBasisLabel: '1年分・1分野あたり',
+    })).toBe('1年分・1分野あたりの目安時間');
   });
 
   it('classifies every missing slot for preview synthesis', () => {

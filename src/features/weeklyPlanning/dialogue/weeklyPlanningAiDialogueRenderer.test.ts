@@ -176,6 +176,81 @@ describe('weekly planning AI dialogue renderer', () => {
     ].join('\n'));
   });
 
+  it('replaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary', async () => {
+    const state: PlanningIntakeState = {
+      ...stateWithExtraMissing(),
+      examPrepScope: {
+        fields: ['OSnetwork'],
+        totalFields: 1,
+        unitModel: 'year_field_chunk',
+        rawText: ['OSnetwork'],
+      },
+    };
+    const renderer = {
+      render: vi.fn(async () => ({
+        acknowledgement: '年度の計画ですね。',
+        questions: [
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
+          { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
+        ],
+      })),
+    };
+
+    const message = await renderWeeklyPlanningDialogueMessage({
+      state,
+      decision: missingDecision(),
+      renderer,
+    });
+
+    expect(message).toContain('対象分野はOSnetworkで受け取りました。');
+    expect(message).not.toContain('年度の計画');
+  });
+
+  it('passes the canonical exam unit-rate basis to the AI question renderer', async () => {
+    const client = createMockClient(JSON.stringify({
+      questions: [
+        { slotKey: 'unit_rate', text: '1年分・1分野あたり、どれくらいかかりますか？' },
+      ],
+    }));
+    const renderer = createAiWeeklyPlanningDialogueRenderer(config, client);
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      examPrepScope: {
+        fields: ['OSnetwork'],
+        totalFields: 1,
+        unitModel: 'year_field_chunk',
+        rawText: ['OSnetwork'],
+      },
+      missing: ['unit_duration_estimate'],
+    };
+    const decision: WeeklyPlanningDialogueDecision = {
+      kind: 'ask_missing_info',
+      messageKey: 'ask_unit_rate',
+      questionPlan: [{
+        kind: 'missing_slot',
+        targetSlot: 'unit_rate',
+        missing: ['unit_duration_estimate'],
+        intent: 'ask_unit_rate',
+      }],
+      shouldCreateDraft: false,
+      shouldSavePlan: false,
+    };
+
+    await renderWeeklyPlanningDialogueMessage({ state, decision, renderer });
+
+    const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    const userPayload = JSON.parse(request.messages[1].content) as {
+      unitRateBasisLabel?: string;
+      nextQuestions: Array<{ vocabularyHint?: string }>;
+      targetUnitLabel?: string;
+    };
+    expect(userPayload.unitRateBasisLabel).toBe('1年分・1分野あたり');
+    expect(userPayload.nextQuestions[0].vocabularyHint).toBe(
+      '1年分・1分野あたりの目安時間',
+    );
+    expect(userPayload.targetUnitLabel).toBeUndefined();
+  });
+
   it('falls back when two planned questions render as the same visible text', async () => {
     const duplicate = 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？';
     const renderer = {
@@ -207,7 +282,6 @@ describe('weekly planning AI dialogue renderer', () => {
     const decision = missingDecision();
 
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe([
-      '条件を受け取りました。',
       'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
       '睡眠時間はどうしますか？',
     ].join('\n'));
@@ -258,7 +332,6 @@ describe('weekly planning AI dialogue renderer', () => {
       decision: missingDecision(),
       renderer,
     })).resolves.toBe([
-      '確認しました。',
       'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
       '睡眠時間はどうしますか？',
     ].join('\n'));

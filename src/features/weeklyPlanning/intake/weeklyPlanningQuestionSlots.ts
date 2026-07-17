@@ -17,6 +17,7 @@ interface FallbackQuestionContext {
   planningPeriodLabel?: string;
   options?: string[];
   knownFixedEventSummaries?: string[];
+  unitRateBasisLabel?: string;
 }
 
 export interface PlanningQuestionSlotDefinition {
@@ -166,7 +167,7 @@ const yearRangeSlot: PlanningQuestionSlotDefinition = {
   kind: 'missing_slot',
   previewPolicy: 'assumable',
   status: 'needs_year_range',
-  deterministicQuestion: () => '7年分は何年から何年までですか？',
+  deterministicQuestion: () => '対象年度は何年から何年までですか？',
   isStateQuestionEligible: (state) => isMissing(state, 'year_range'),
   isQuestionPlanEligible: defaultQuestionPlanEligibility,
   dependsOn: ['tasks_or_goals'],
@@ -229,19 +230,21 @@ const unitDurationEstimateSlot: PlanningQuestionSlotDefinition = {
   previewPolicy: 'assumable',
   previewQuestionPriority: 1,
   status: 'needs_unit_rate',
-  deterministicQuestion: () =>
-    '1つの年度×分野にだいたい何分かかりますか？',
+  deterministicQuestion: (state) =>
+    state.examPrepScope?.unitModel === 'year_field_chunk'
+      ? '1年分・1分野あたりの目安時間を教えてください。'
+      : '1単位あたりの目安時間を教えてください。',
   isStateQuestionEligible: (state) =>
     isMissing(state, 'unit_duration_estimate'),
   isQuestionPlanEligible: defaultQuestionPlanEligibility,
   dependsOn: ['tasks_or_goals', 'year_range', 'completion_direction'],
   termExplanation:
-    '「目安時間」は、1年分(1単位)にだいたい何分かかるかのことです。',
+    '「目安時間」は、過去問なら1年分・1分野あたり、その他の学習なら1単位あたりにかかる時間のことです。',
   clarificationKeywords: [/目安|単位/],
-  vocabularyHint: '1年分(1単位)あたりの目安時間',
-  fallbackQuestion: () =>
-    '1年分または1単位あたりの目安時間を教えてください。',
-  userLabel: '1年分または1単位あたりの目安時間',
+  vocabularyHint: '1単位あたりの目安時間',
+  fallbackQuestion: ({ unitRateBasisLabel }) =>
+    `${unitRateBasisLabel ?? '1単位あたり'}の目安時間を教えてください。`,
+  userLabel: '1単位あたりの目安時間',
 };
 
 const priorityPolicySlot: PlanningQuestionSlotDefinition = {
@@ -494,7 +497,13 @@ export function questionSlotDefinitionForTargetSlot(
   );
 }
 
-export function vocabularyHintForSlot(slotKey: string): string | undefined {
+export function vocabularyHintForSlot(
+  slotKey: string,
+  context: Pick<FallbackQuestionContext, 'unitRateBasisLabel'> = {},
+): string | undefined {
+  if (slotKey === 'unit_rate' && context.unitRateBasisLabel) {
+    return `${context.unitRateBasisLabel}の目安時間`;
+  }
   return questionSlotDefinitionForTargetSlot(slotKey)?.vocabularyHint;
 }
 

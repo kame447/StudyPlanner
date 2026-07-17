@@ -29,8 +29,8 @@ export interface DialogueRenderInput {
    * ユーザー発話由来のときだけ設定する。不明なときは undefined のままにし、AI に週を捏造させない。
    */
   planningPeriodLabel?: string;
-  /** 対象単位(exam prep なら「年度」)。質問文の語彙に使う。 */
-  targetUnitLabel?: string;
+  /** 目安時間の基準単位。過去問なら「1年分・1分野あたり」。 */
+  unitRateBasisLabel?: string;
   /** 既に計画制約として利用中の schedule source の平易ラベル(「時間割」「登録済みの予定」等)。 */
   constraintSourcesInUse?: string[];
   knownFixedEventSummaries?: string[];
@@ -73,8 +73,10 @@ function planningPeriodLabel(state: PlanningIntakeState): string | undefined {
   return undefined;
 }
 
-function targetUnitLabel(state: PlanningIntakeState): string | undefined {
-  return state.examPrepScope?.unitModel === 'year_field_chunk' ? '年度' : undefined;
+function unitRateBasisLabel(state: PlanningIntakeState): string | undefined {
+  return state.examPrepScope?.unitModel === 'year_field_chunk'
+    ? '1年分・1分野あたり'
+    : undefined;
 }
 
 function constraintSourcesInUseLabels(state: PlanningIntakeState): string[] | undefined {
@@ -109,6 +111,7 @@ function constraintSummary(state: PlanningIntakeState): string[] | undefined {
 function nextQuestionsFromDecision(
   decision: WeeklyPlanningDialogueDecision,
   maxQuestions: number,
+  unitRateBasis?: string,
 ): DialogueNextQuestion[] {
   if (decision.questionPlan?.length) {
     return decision.questionPlan
@@ -118,7 +121,9 @@ function nextQuestionsFromDecision(
         intent: question.intent,
         questionKind: question.kind,
         options: question.targetFields,
-        vocabularyHint: vocabularyHintForSlot(question.targetSlot),
+        vocabularyHint: vocabularyHintForSlot(question.targetSlot, {
+          unitRateBasisLabel: unitRateBasis,
+        }),
       }));
   }
 
@@ -127,7 +132,9 @@ function nextQuestionsFromDecision(
     .map((field) => ({
       slotKey: field,
       intent: decision.messageKey,
-      vocabularyHint: vocabularyHintForSlot(field),
+      vocabularyHint: vocabularyHintForSlot(field, {
+        unitRateBasisLabel: unitRateBasis,
+      }),
     }));
 }
 
@@ -150,7 +157,7 @@ export function createDialogueRenderInput(params: {
 
   return {
     planningPeriodLabel: planningPeriodLabel(params.state),
-    targetUnitLabel: targetUnitLabel(params.state),
+    unitRateBasisLabel: unitRateBasisLabel(params.state),
     constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
     knownFixedEventSummaries: knownFixedEventSummaries.length > 0
       ? knownFixedEventSummaries
@@ -169,7 +176,11 @@ export function createDialogueRenderInput(params: {
       constraintSummary: constraintSummary(params.state),
     },
     assumptions: [...params.state.assumptions],
-    nextQuestions: nextQuestionsFromDecision(params.decision, 2),
+    nextQuestions: nextQuestionsFromDecision(
+      params.decision,
+      2,
+      unitRateBasisLabel(params.state),
+    ),
     styleConstraints: { tone: 'mentor', maxQuestions: 2 },
   };
 }
@@ -218,6 +229,7 @@ export function sanitizeDialogueRenderOutput(
         plannedQuestion,
         input.planningPeriodLabel,
         input.knownFixedEventSummaries,
+        input.unitRateBasisLabel,
       )
       : stripGenericAcknowledgementPrefix(renderedQuestion.text);
     return text ? { ...renderedQuestion, text } : undefined;
@@ -232,24 +244,23 @@ export function sanitizeDialogueRenderOutput(
     return null;
   }
 
-  const acknowledgement = output.acknowledgement
-    ? stripGenericAcknowledgementPrefix(output.acknowledgement)
-    : undefined;
   return {
-    acknowledgement: acknowledgement || undefined,
+    acknowledgement: formatAcceptedFacts(input) ?? undefined,
     questions: questions as Array<{ slotKey: string; text: string }>,
   };
 }
 
 function formatAcceptedFacts(input: DialogueRenderInput): string | null {
   const facts = [
-    input.acceptedFacts.fields?.length ? `分野は${input.acceptedFacts.fields.join('、')}` : null,
+    input.acceptedFacts.fields?.length
+      ? `対象分野は${input.acceptedFacts.fields.join('、')}`
+      : null,
     input.acceptedFacts.goals?.length ? '目標は' + input.acceptedFacts.goals.join('、') : null,
     input.acceptedFacts.yearRange
       ? `対象年度は${input.acceptedFacts.yearRange.startYear}〜${input.acceptedFacts.yearRange.endYear}`
       : null,
     typeof input.acceptedFacts.unitRateMinutes === 'number'
-      ? `目安時間は${input.acceptedFacts.unitRateMinutes}分`
+      ? `${input.unitRateBasisLabel ?? '1単位あたり'}の目安時間は${input.acceptedFacts.unitRateMinutes}分`
       : null,
     input.acceptedFacts.priorityOrder?.length
       ? `優先順は${input.acceptedFacts.priorityOrder.join('、')}`
@@ -274,11 +285,13 @@ function fallbackQuestionText(
   question: DialogueNextQuestion,
   planningPeriodLabel?: string,
   knownFixedEventSummaries?: string[],
+  unitRateBasis?: string,
 ): string {
   return fallbackQuestionForSlot(question.slotKey, {
     planningPeriodLabel,
     options: question.options,
     knownFixedEventSummaries,
+    unitRateBasisLabel: unitRateBasis,
   }) ?? '次に確認したい条件を教えてください。';
 }
 
@@ -290,6 +303,7 @@ function renderDeterministicMissingQuestions(input: DialogueRenderInput): string
       question,
       input.planningPeriodLabel,
       input.knownFixedEventSummaries,
+      input.unitRateBasisLabel,
     ));
 
   return [acknowledgement, ...questions].join('\n');
