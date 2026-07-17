@@ -2640,8 +2640,8 @@ describe('preview policy Stage 2', () => {
     const pending = runTurn(undefined, '来週の予定を立てたい');
     expect(pending.state.pendingPlanningRange?.scope).toMatchObject({
       kind: 'next_week',
-      startDate: '2026-06-29',
-      endDate: '2026-07-05',
+      windowStartDate: '2026-06-29',
+      windowEndDate: '2026-07-05',
     });
 
     const unresolved = runTurn(pending.state, '8月1日から一週間');
@@ -2666,8 +2666,8 @@ describe('preview policy Stage 2', () => {
     const result = runTurn(undefined, '夏休みではなく来週の計画を立てたい');
     expect(result.state.pendingPlanningRange?.scope).toMatchObject({
       kind: 'next_week',
-      startDate: '2026-06-29',
-      endDate: '2026-07-05',
+      windowStartDate: '2026-06-29',
+      windowEndDate: '2026-07-05',
     });
   });
 

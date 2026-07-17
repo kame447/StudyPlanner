@@ -252,8 +252,8 @@ describe('weekly planning storage validation', () => {
         scope: {
           kind: 'named_future_period' as const,
           label: '夏休み',
-          startDate: '2026-08-01',
         },
+        planningStartDate: '2026-08-01',
         sourceText: '8月1日から',
       },
     };
