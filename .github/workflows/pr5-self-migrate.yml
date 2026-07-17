@@ -28,11 +28,17 @@ jobs:
           from pathlib import Path
 
           path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts')
-          old = "        startDate: '2026-07-13',\n        endDate: '2026-07-19',"
-          new = "        windowStartDate: '2026-07-13',\n        windowEndDate: '2026-07-19',"
           text = path.read_text()
-          if text.count(old) == 2:
-              path.write_text(text.replace(old, new, 1))
+          old_pair = "        startDate: '2026-07-13',\n        endDate: '2026-07-19',"
+          new_pair = "        windowStartDate: '2026-07-13',\n        windowEndDate: '2026-07-19',"
+          if text.count(old_pair) == 2:
+              text = text.replace(old_pair, new_pair, 1)
+
+          old_summary = "      expect(params.stateSummary.pendingPlanningRange).toEqual({\n        label: '来週',\n        startDate: '2026-07-13',\n        endDate: '2026-07-19',\n      });"
+          new_summary = "      expect(params.stateSummary.pendingPlanningRange).toEqual({\n        kind: 'next_week',\n        label: '来週',\n        windowStartDate: '2026-07-13',\n        windowEndDate: '2026-07-19',\n        planningStartDate: undefined,\n        durationDays: 7,\n      });"
+          if old_summary in text:
+              text = text.replace(old_summary, new_summary, 1)
+          path.write_text(text)
           PY
           python .github/scripts/pr5_migrate_pending_range_tests.py 2>&1 | tee /tmp/migrate.log
 
