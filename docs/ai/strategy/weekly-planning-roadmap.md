@@ -2,10 +2,11 @@
 
 Status: canonical / active
 最終更新: 2026-07-17
-Current main baseline: `55f8e32c68cfd057494fadec0ed208cba267db12`
+Current main baseline: `bb39e968d7b4923a159a11380fe914d8ed2eb5e7`
 
 - Current contract status: [weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
+- PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](../tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
 - Architecture: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
 - Product spec: [weekly-planning-spec.md](../../weekly-planning/weekly-planning-spec.md)
 - Test scenarios: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
@@ -54,6 +55,21 @@ PR #5は2026-07-17にsquash mergeされ、`main` merge commitは`55f8e32`であ�
 
 これらは記録時点の結果であり、現在`main` HEADを別環境で再実行したこと、browser verified、operationally deployedを意味しない。
 
+### 1.3 PR #24 recorded validation
+
+PR #24は2026-07-17にsquash mergeされ、`main` merge commitは`bb39e96`である。Issue #23の期間短答再質問ループと、`日曜日まで`の終了境界契約を修正した。
+
+GitHub Actions run `29577182656`でPR merge refを対象に次を実行し、すべて成功した。
+
+- `npm ci`: passed
+- `git diff --check origin/main...HEAD`: passed
+- focused regression: passed
+- `src/features/weeklyPlanning` suite: passed
+- full tests: passed
+- production build: passed
+
+一時検証workflowは検証後に削除した。Cloudflare Pages deployもsquash merge前の最終branch headで成功した。これはautomated verifiedを意味するが、browser verifiedまたは自然言語入力の完全網羅を意味しない。
+
 ## 2. Implemented modules and contracts on `main`
 
 次のmoduleとcontractは`main`に存在する。ただし、module実装、production entrypoint接続、自動検証、browser検証、production運用を同じ意味で扱わない。
@@ -64,7 +80,7 @@ PR #5は2026-07-17にsquash mergeされ、`main` merge commitは`55f8e32`であ�
 | deterministic baseline + AI semantic補完 | merged to `main` | long-form spec/architecture/test planの旧no-merge記述同期 |
 | explicit repair / pass-over / grounded acknowledgement | merged to `main` | browser roleplay、real-model rubric |
 | contextual fixed-event question | merged to `main` | browser rendering、range edge cases |
-| planning range pending contract | merged to `main` | Issue #21、week-start profile |
+| planning range pending contract | PR #24までmerged / automated verified | Issue #21、week-start profile、browser roleplay |
 | session-owned preview lifecycle | merged to `main` | browser close-resume、reload semantics |
 | closed storage validation | merged to `main` | current main round-trip再実行 |
 | DA1b assumption decision and correction | implemented | local integration / browser |
@@ -95,6 +111,15 @@ PR #5で追加・強化された主なcontract:
 - relative anchor validationとabsolute interval解決
 - deterministic feasibility値とoption ID
 - requirement matrix、redaction、metrics、property tests
+
+PR #24で追加・強化されたplanning range contract:
+
+- active `planning_period` questionに対する`今週`、`来週`、`週末`の自然な短答受理
+- `日曜日まで`の終了境界だけをpendingへ保持する状態
+- `今すぐ`、相対時間、今日・明日、月日、曜日、時刻による任意開始日時
+- 開始と終了が揃った時点でのcanonical range昇格
+- 終了後開始候補、引用、例文、第三者発話、教材・説明文脈の拒否
+- 片側date window、runtime validator、AI candidate validator、storage復元のclosed contract統一
 
 ## 3. Current queue
 
@@ -165,7 +190,7 @@ product spec、architecture、roleplay test planに残る`single interpreter / n
 - 今回発話の具体的な日付・曜日範囲をprofile設定より優先する。
 - profileが未設定、破損、競合している場合だけ明示的修復へ入る。
 
-profile schemaとprofile-based range resolutionは未実装である。現在`main`はPR #5のpending planning range契約を使用する。漢数字絶対日付の誤認はP0 taskで修正する。
+profile schemaとprofile-based range resolutionは未実装である。現在`main`はPR #24までのpending planning range契約を使用する。漢数字絶対日付の誤認はP0 taskで修正する。
 
 ### 4.3 conversation trace privacy — decision recorded / production controls not implemented
 
