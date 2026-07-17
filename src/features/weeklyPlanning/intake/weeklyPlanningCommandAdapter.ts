@@ -128,11 +128,7 @@ export function normalizeSetPendingPlanningRangeCommand(
     };
   }
 
-  const referenceDate = context.currentDateTime?.slice(0, 10) || context.selectedDate;
-  const normalizedScope = nextWeekScope({
-    ...context,
-    selectedDate: referenceDate,
-  });
+  const normalizedScope = nextWeekScope(context);
 
   return {
     ...command,
