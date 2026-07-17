@@ -575,7 +575,11 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     userText: input.userText,
     stateSummary,
   });
-  const interpreterDiagnostics = validateInterpretedCandidates(resolvedCandidates, stateSummary);
+  const interpreterDiagnostics = validateInterpretedCandidates(
+    resolvedCandidates,
+    stateSummary,
+    context,
+  );
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
   const clarificationRequest = interpreterDiagnostics.clarificationRequests[0] ?? deterministicClarification;

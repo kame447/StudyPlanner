@@ -15,6 +15,8 @@ import type {
 import { studyGoalIdentity } from './weeklyPlanningTaskIdentity';
 import { isValidWeeklyPlanningCommand } from './weeklyPlanningCommandRuntimeValidation';
 import { normalizeExamScopeEnrichment } from './weeklyPlanningExamScopeEnrichment';
+import { isPlanningRangeConsistentWithAbsoluteDateSource } from './weeklyPlanningAbsoluteDate';
+import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 
 const CONFIDENCE_RANK = {
   low: 0,
@@ -350,6 +352,7 @@ function removeCandidateFromAcceptedResults(
 export function validateInterpretedCandidates(
   candidates: InterpretedCommandCandidate[],
   summary: InterpreterStateSummary,
+  context?: WeeklyPlanningIntakeContext,
 ): CandidateValidationResult {
   const result: CandidateValidationResult = {
     accepted: [],
@@ -398,6 +401,19 @@ export function validateInterpretedCandidates(
 
     if (valueError) {
       addRejected(result, effectiveCandidate, valueError);
+      return;
+    }
+
+    if (
+      command.type === 'set_planning_range'
+      && context
+      && !isPlanningRangeConsistentWithAbsoluteDateSource({
+        sourceText: command.sourceSegment ?? command.sourceText,
+        selectedDate: context.selectedDate,
+        startDateTime: command.range.startDateTime,
+      })
+    ) {
+      addRejected(result, effectiveCandidate, 'planning-range-absolute-date-mismatch');
       return;
     }
 

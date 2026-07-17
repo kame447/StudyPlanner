@@ -14,6 +14,11 @@ import {
   splitIntakeSegments,
   uniqueList,
 } from './weeklyPlanningTextParsing';
+import {
+  hasAbsoluteMonthDayToken,
+  resolveAbsoluteMonthDayDate,
+  stripAbsoluteMonthDayTokens,
+} from './weeklyPlanningAbsoluteDate';
 
 const WEEKDAY_INDEX: Record<string, number> = {
   月: 0,
@@ -278,10 +283,14 @@ function parsePlanningStartDateTime(
 
   const dayMatch = normalizedText.match(/^(?:明後日|明日|今日)/)
     ?? normalizedText.match(/(?:^|\s)(今日|明日|明後日)/);
-  const weekdayMatch = normalizedText.match(
-    /([月火水木金土日])(?:曜(?:日)?)?(?:の(朝|昼|夜))?\s*から/,
-  );
+  const containsAbsoluteMonthDay = hasAbsoluteMonthDayToken(normalizedText);
+  const weekdayMatch = containsAbsoluteMonthDay
+    ? undefined
+    : normalizedText.match(
+      /([月火水木金土日])(?:曜(?:日)?)?(?:の(朝|昼|夜))?\s*から/,
+    );
   const explicitDate = parseExplicitDate(normalizedText, context);
+  if (containsAbsoluteMonthDay && !explicitDate) return undefined;
   let date: string | undefined;
 
   if (dayMatch) {
@@ -446,9 +455,11 @@ function blocksDurationAnswer(text: string): boolean {
 }
 
 function isBareStartDateAnswer(text: string): boolean {
-  return /^\s*\d{1,2}\s*月\s*\d{1,2}\s*日(?:\s*から)?(?:\s*です)?\s*$/.test(
-    normalizeIntakeText(text),
-  );
+  const normalizedText = normalizeIntakeText(text);
+  return hasAbsoluteMonthDayToken(normalizedText)
+    && /^\s*(?:から)?(?:\s*です)?\s*$/.test(
+      stripAbsoluteMonthDayTokens(normalizedText),
+    );
 }
 
 function isBareDurationAnswer(text: string): boolean {
@@ -458,13 +469,15 @@ function isBareDurationAnswer(text: string): boolean {
 }
 
 function isCombinedStartAndDurationAnswer(text: string): boolean {
-  return /^\s*\d{1,2}\s*月\s*\d{1,2}\s*日(?:\s*から)?\s*(?:(?:一|1)\s*週間|7\s*日間?)(?:\s*です)?\s*$/.test(
-    normalizeIntakeText(text),
-  );
+  const normalizedText = normalizeIntakeText(text);
+  return hasAbsoluteMonthDayToken(normalizedText)
+    && /^\s*(?:から)?\s*(?:(?:一|1)\s*週間|7\s*日間?)(?:\s*です)?\s*$/.test(
+      stripAbsoluteMonthDayTokens(normalizedText),
+    );
 }
 
 function isBareWeekdayStartAnswer(text: string): boolean {
-  return /^\s*[月火水木金土日](?:曜(?:日)?)?\s*から(?:\s*です)?\s*$/.test(
+  return /^\s*(?:来週の?)?[月火水木金土日](?:曜(?:日)?)?\s*から(?:\s*(?:(?:一|1)\s*週間|7\s*日間?))?(?:\s*です)?\s*$/.test(
     normalizeIntakeText(text),
   );
 }
@@ -476,7 +489,8 @@ function acceptsStartDateAnswer(text: string, expectedSlot?: string): boolean {
     || isBareWeekdayStartAnswer(text)
     || (
       expectedSlot === 'planning_start_date'
-      && /(?:計画|予定).*(?:開始|始め).*\d{1,2}\s*月\s*\d{1,2}\s*日/.test(
+      && hasAbsoluteMonthDayToken(text)
+      && /(?:計画|予定).*(?:開始|始め)|(?:開始|始め).*(?:計画|予定)/.test(
         normalizeIntakeText(text),
       )
     );
@@ -542,19 +556,7 @@ function parseExplicitDate(
   text: string,
   context: WeeklyPlanningIntakeContext,
 ): string | undefined {
-  const match = normalizeIntakeText(text).match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*から)?/);
-  if (!match) return undefined;
-
-  const selectedYear = Number(context.selectedDate.slice(0, 4));
-  const month = Number(match[1]);
-  const day = Number(match[2]);
-  const dateForYear = (year: number) =>
-    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const thisYear = dateForYear(selectedYear);
-  const candidate = thisYear < context.selectedDate
-    ? dateForYear(selectedYear + 1)
-    : thisYear;
-  return isIsoCalendarDate(candidate) ? candidate : undefined;
+  return resolveAbsoluteMonthDayDate(text, context.selectedDate);
 }
 
 export function nextWeekScope(
@@ -570,11 +572,7 @@ export function nextWeekScope(
 }
 
 function parseWeekdayStart(text: string): number | undefined {
-  const normalizedText = normalizeIntakeText(text);
-  const withoutExplicitMonthDays = normalizedText.replace(
-    /\d{1,2}\s*月\s*\d{1,2}\s*日/g,
-    '',
-  );
+  const withoutExplicitMonthDays = stripAbsoluteMonthDayTokens(text);
   const match = withoutExplicitMonthDays.match(/([月火水木金土日])(?:曜(?:日)?)?\s*から/);
   return match ? WEEKDAY_INDEX[match[1]] : undefined;
 }
@@ -614,9 +612,11 @@ function parsePendingPlanningRange(
   if (sundayPending) return sundayPending;
 
   if (currentPending) {
+    const containsAbsoluteMonthDay = hasAbsoluteMonthDayToken(normalizedText);
     const explicitDate = acceptsStartDateAnswer(text, options?.expectedSlot)
       ? parseExplicitDate(normalizedText, context)
       : undefined;
+    if (containsAbsoluteMonthDay && !explicitDate) return undefined;
     if (explicitDate) {
       const explicitDateAllowed = isDateWithinWindow(explicitDate, currentPending.scope);
 
@@ -741,10 +741,13 @@ function parseWeeklyPlanningRange(
       && hasOneWeekDuration(normalizedText)
       ? 7
       : pending.durationDays;
+    const containsAbsoluteMonthDay = hasAbsoluteMonthDayToken(normalizedText);
     const explicitDate = acceptsStartDateAnswer(text, expectedSlot)
       ? parseExplicitDate(normalizedText, context)
       : undefined;
+    if (containsAbsoluteMonthDay && !explicitDate) return undefined;
     const weekdayIndex = acceptsStartDateAnswer(text, expectedSlot)
+      && !containsAbsoluteMonthDay
       ? parseWeekdayStart(normalizedText)
       : undefined;
     const weekdayStartDate = weekdayIndex === undefined
@@ -768,10 +771,12 @@ function parseWeeklyPlanningRange(
   const durationDays = hasOneWeekDuration(normalizedText) ? 7 : undefined;
   if (!durationDays) return undefined;
 
+  const containsAbsoluteMonthDay = hasAbsoluteMonthDayToken(normalizedText);
   const explicitDate = parseExplicitDate(normalizedText, context);
   if (explicitDate) {
     return rangeFromStartDate({ startDate: explicitDate, durationDays, sourceText: text });
   }
+  if (containsAbsoluteMonthDay) return undefined;
 
   if (/来週/.test(normalizedText)) {
     const scope = nextWeekScope(context);
