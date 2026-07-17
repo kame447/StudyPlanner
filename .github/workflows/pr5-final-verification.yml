@@ -27,22 +27,34 @@ jobs:
         run: npm ci --silent
 
       - name: Focused pending range tests
+        id: focused
+        continue-on-error: true
         run: |
           npm run test:run -- \
             src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts \
             src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeAdversarialRegression.test.ts \
             src/features/weeklyPlanning/pipeline/weeklyPlanningPendingRangeContract.test.ts \
             src/features/weeklyPlanning/weeklyPlanningPendingRangeStorageContract.test.ts \
-            > /tmp/focused.log 2>&1 || {
-              tail -n 160 /tmp/focused.log
-              exit 1
-            }
-          tail -n 25 /tmp/focused.log
+            > /tmp/focused.log 2>&1
 
       - name: Weekly planning tests
+        id: weekly
+        continue-on-error: true
+        run: npm run test:run -- src/features/weeklyPlanning > /tmp/weekly.log 2>&1
+
+      - name: Upload verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr5-weekly-verification-logs
+          path: |
+            /tmp/focused.log
+            /tmp/weekly.log
+          if-no-files-found: error
+
+      - name: Fail on test failure
+        if: steps.focused.outcome != 'success' || steps.weekly.outcome != 'success'
         run: |
-          npm run test:run -- src/features/weeklyPlanning > /tmp/weekly.log 2>&1 || {
-            tail -n 220 /tmp/weekly.log
-            exit 1
-          }
-          tail -n 35 /tmp/weekly.log
+          echo "focused=${{ steps.focused.outcome }}"
+          echo "weekly=${{ steps.weekly.outcome }}"
+          exit 1
