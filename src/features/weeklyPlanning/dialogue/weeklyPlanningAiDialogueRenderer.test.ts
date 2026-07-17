@@ -426,7 +426,8 @@ describe('weekly planning renderer deterministic context', () => {
     });
 
     expect(message).toContain('来週');
-    expect(message).toContain('どの日から計画を始め');
+    expect(message).toContain('計画は、いつから始め');
+    expect(message).not.toContain('どの日から');
     expect(message).not.toContain('次に確認したい条件を教えてください。');
   });
 
@@ -451,12 +452,14 @@ describe('weekly planning renderer deterministic context', () => {
       }],
     }));
 
-    await renderWeeklyPlanningDialogueMessage({
+    const message = await renderWeeklyPlanningDialogueMessage({
       state: pendingStartState(),
       decision: askPlanningStartDateDecision(),
       renderer: { render },
     });
 
+    expect(message).toContain('来週の計画は、いつから始めますか？');
+    expect(message).not.toContain('どの日から');
     expect(render).toHaveBeenCalledWith(expect.objectContaining({
       planningPeriodLabel: '来週',
       nextQuestions: [

@@ -40,7 +40,7 @@ describe('pending planning range contract', () => {
       '夏休みの計画は、開始日から何日間にしますか？',
     );
     expect(second.state.questions).not.toContain(
-      '夏休みのどの日から計画を始めますか？',
+      '夏休みの計画は、いつから始めますか？',
     );
     expect(second.state.lastQuestionContext?.targetSlot).toBe('planning_duration');
   });
@@ -54,7 +54,7 @@ describe('pending planning range contract', () => {
     expect(second.state.missing).toContain('planning_start_date');
     expect(second.state.missing).not.toContain('planning_duration');
     expect(second.state.questions).toContain(
-      '夏休みのどの日から計画を始めますか？',
+      '夏休みの計画は、いつから始めますか？',
     );
     expect(second.state.lastQuestionContext?.targetSlot).toBe('planning_start_date');
   });
