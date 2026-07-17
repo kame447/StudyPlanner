@@ -17,6 +17,11 @@ export type WeeklyPlanningMode =
 
 export type WeeklyPlanDraftStatus = 'draft' | 'approved' | 'discarded';
 
+export type WeeklyPlanningReasoningKey =
+  | 'explicit-duration'
+  | 'explicit-unit-rate'
+  | 'accepted-assumption-duration';
+
 export interface WeeklyPlanningBehaviorMetadata {
   conversationId?: string;
   stateRevision: number;
@@ -25,7 +30,7 @@ export interface WeeklyPlanningBehaviorMetadata {
   acceptedAssumptionDependencies?: PreviewAssumptionDependency[];
   taskRef: string;
   opportunityTags: string[];
-  reasoningKey: string;
+  reasoningKey: WeeklyPlanningReasoningKey;
   compatibility: {
     workItemSemantic: 'behavior_aware_task';
     schedulerInputSource: 'exam_prep_request';
