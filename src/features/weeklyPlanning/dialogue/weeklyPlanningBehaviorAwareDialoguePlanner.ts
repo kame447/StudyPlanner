@@ -44,6 +44,8 @@ export interface BehaviorAwareDialoguePlannerResult {
   message: string;
   response: BehaviorAwareDialogueResponse | null;
   source: 'ai' | 'deterministic_fallback';
+  /** 実際にユーザーへ表示した質問・確認action。候補actionから推測しない。 */
+  renderedActionIds?: string[];
 }
 
 function stringSchema(): Record<string, unknown> {
@@ -405,17 +407,25 @@ function hasGroundedAvailabilityAction(input: BehaviorAwareDialoguePlannerInput)
   );
 }
 
+interface DeterministicDialogueFallback {
+  message: string;
+  renderedActionIds: string[];
+}
+
 function renderFallback(
   input: BehaviorAwareDialoguePlannerInput,
   policy: DialogueRepairPolicy,
-): string {
-  const lines: string[] = [];
+): DeterministicDialogueFallback {
+  const lines: Array<{ text: string; actionId?: string }> = [];
   const acknowledgement = groundedAcknowledgement(input);
-  if (acknowledgement) lines.push(acknowledgement);
+  if (acknowledgement) lines.push({ text: acknowledgement });
 
   if (input.clarificationRequest) {
-    lines.push(renderClarificationFallback(input.clarificationRequest));
-    return lines.join('\n');
+    lines.push({ text: renderClarificationFallback(input.clarificationRequest) });
+    return {
+      message: lines.map((line) => line.text).join('\n'),
+      renderedActionIds: [],
+    };
   }
 
   const selected = input.allowedActions
@@ -431,18 +441,24 @@ function renderFallback(
     .filter((text): text is Exclude<typeof text, null> => text !== null);
 
   if (profileSummary.length > 0 && policy.mode !== 'explicit_repair') {
-    lines.push(`${Array.from(new Set(profileSummary)).join('、')}が合いそうです。`);
+    lines.push({ text: `${Array.from(new Set(profileSummary)).join('、')}が合いそうです。` });
   }
 
   for (const action of selected) {
     const text = fallbackTextForAction(action, input);
-    if (text) lines.push(text);
+    if (text) lines.push({ text, actionId: action.actionId });
   }
 
   if (lines.length === 0) {
-    lines.push('追加確認が必要になるまでは、この条件で進めます。');
+    lines.push({ text: '追加確認が必要になるまでは、この条件で進めます。' });
   }
-  return lines.slice(0, 3).join('\n');
+  const renderedLines = lines.slice(0, 3);
+  return {
+    message: renderedLines.map((line) => line.text).join('\n'),
+    renderedActionIds: renderedLines
+      .map((line) => line.actionId)
+      .filter((actionId): actionId is string => Boolean(actionId)),
+  };
 }
 
 export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
@@ -463,10 +479,12 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
         || hasGroundedAvailabilityAction(effectiveInput)
         || substantiveActions.length === 0
       ) {
+        const fallback = renderFallback(effectiveInput, policy);
         return {
-          message: renderFallback(effectiveInput, policy),
+          message: fallback.message,
           response: null,
           source: 'deterministic_fallback' as const,
+          renderedActionIds: fallback.renderedActionIds,
         };
       }
 
@@ -491,16 +509,19 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
             message: composeMessage(response, effectiveInput),
             response,
             source: 'ai' as const,
+            renderedActionIds: response.items.map((item) => item.actionId),
           };
         }
       } catch {
         // Provider and parsing failures use the same deterministic action-aware fallback.
       }
 
+      const fallback = renderFallback(effectiveInput, policy);
       return {
-        message: renderFallback(effectiveInput, policy),
+        message: fallback.message,
         response: null,
         source: 'deterministic_fallback' as const,
+        renderedActionIds: fallback.renderedActionIds,
       };
     },
   };
@@ -513,10 +534,12 @@ export function createDeterministicBehaviorAwareDialoguePlanner(): {
     async plan(input) {
       const policy = repairPolicyForInput(input);
       const effectiveInput = prioritizeDialogueInput(input, policy);
+      const fallback = renderFallback(effectiveInput, policy);
       return {
-        message: renderFallback(effectiveInput, policy),
+        message: fallback.message,
         response: null,
         source: 'deterministic_fallback',
+        renderedActionIds: fallback.renderedActionIds,
       };
     },
   };

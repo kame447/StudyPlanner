@@ -134,6 +134,7 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     expect(result.source).toBe('ai');
     expect(result.message).toContain('英語ワーク');
     expect(result.response?.selectedActionIds).toEqual([action.actionId]);
+    expect(result.renderedActionIds).toEqual([action.actionId]);
   });
 
   it('uses a deterministic repetition for accepted facts and ignores an ungrounded AI acknowledgement', async () => {
@@ -218,6 +219,7 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     });
 
     expect(result.message).toBe('具体的に何をどこまで進めたいか教えてください。');
+    expect(result.renderedActionIds).toHaveLength(1);
     expect(result.message).not.toContain('ここまでの内容から');
     expect(result.message).not.toContain('無理のない進め方を整理します');
     expect(result.message).not.toContain('目安');
