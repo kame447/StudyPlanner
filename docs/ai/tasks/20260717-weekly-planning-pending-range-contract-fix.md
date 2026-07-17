@@ -189,28 +189,29 @@ severity: REVIEW
 
 対応方針: 対象branchへコード・テスト・本記録を反映し、可能な検証を再実行する。未実行検証を成功扱いにしない。
 
+## 最終QA反復と完了判定
+
+最終反復では、selectedDateと実時刻の不一致、漢数字を含む絶対日付、開始日と日数の同時短答、AI response format、candidate validator、storage復元、質問registry、既存fixtureの旧field参照、production buildの型境界を横断して再確認した。
+
+追加で確認された主題内問題は、AI next_week候補のselectedDate基準不一致、漢数字絶対日付を曜日へ読み替える経路、開始日と一週間を同時に答える短答の不受理、旧field名を参照する型検査用fixture、AI response formatの公開型不一致であった。いずれもコードまたは恒久テストを修正し、同一checkout上の最終検証で閉じた。
+
+## 最終検証記録
+
+検証対象の製品コードheadは `1e94c3c57dee2439d631e1223414d140417ec022` である。その後のcommitはタスク記録と一時検証資材の削除だけであり、製品コードは変更していない。
+
+- focused pending-range tests: 4 files、61 tests passed
+- 週間計画関連suite: 80 files passed、1 skipped。805 passed、13 skipped、5 todo、合計823
+- 全テスト: 107 files passed、1 skipped。1063 passed、13 skipped、5 todo、合計1081
+- `npm run build`: passed
+- `git diff --check` および `git diff --check origin/main...HEAD`: passed
+- tracked working tree check: passed
+
+GitHub Actionsの `PR5 final verification` run `29554629592` で、install、focused、週間計画suite、全テスト、build、diff checkの全stepが成功した。
+
 ## 対象外の発見事項
-
-GitHub Actionsは、push、pull_request_target、issues、および最小issue smoke workflowのいずれでもrunを生成しなかった。repository設定またはGitHub App起点イベントの制約と考えられるが、今回のplanning rangeコードとは独立しているため修正しない。一時workflowとissueは削除する。
-
-PR #5には今回以外の大きな既存差分が含まれる。今回の変更へ混ぜて修正しない。
-
-## 検証記録
-
-実行済み:
-
-`git diff --check`: PASS。対象headから再構成したローカル差分で確認した。
-
-専用contract check: 27 assertions PASS。日付、window、duration、解決済みpending、引用・伝聞、短答、入力順序、NaN防止を確認した。
-
-部分TypeScript検査: 変更ファイル間の直接型不整合は検出されなかった。再構成していない既存moduleのTS2307だけが残ったため、全体typecheckの代替とはしない。
-
-未実行:
-
-focused Vitest、週間計画関連全テスト、全テスト、`npm run build`、比較元から現在HEADまでの最終 `git diff --check`、最終 `git status -sb`。実行環境に完全なprivate repository worktreeがなく、repositoryのGitHub Actionsも起動しなかったためである。未実行項目をPASSとは記載しない。
-
-## 未解決事項
 
 named future periodの選択開始日から生成したrangeがwindow終了境界を越えることを許可するかは、既存仕様から確定できていない。今回の最低保証として開始日自体のwindow外を拒否する。終端越境の契約変更は根拠を得た別タスクで行う。
 
-完全なrepository環境でのfocused tests、週間計画関連全テスト、全テスト、buildは未実行である。コードとテストは追加したが、これらが成功するまで検証完了とは扱わない。
+## 完了状態
+
+今回のpending range契約修正に必要なコード、恒久テスト、storage契約、AI境界、型検査、全体検証は完了した。再現可能な主題内問題は残っていない。検証用workflow、migration script、probe issueは最終整理で削除または終了する。
