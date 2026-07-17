@@ -1,0 +1,39 @@
+name: Agent rendered question context
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - agent/weekly-planning-rendered-question-context
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export source snapshot
+        run: tar -czf /tmp/studyplanner-source.tgz --exclude=.git --exclude=node_modules --exclude=dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: studyplanner-source
+          path: /tmp/studyplanner-source.tgz
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: npm
+      - run: npm ci
+      - name: Focused dialogue tests
+        run: npm run test:run -- src/features/weeklyPlanning/dialogue src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts
+      - name: TypeScript
+        run: npx tsc -b
+      - name: Weekly planning suite
+        run: npm run test:run -- src/features/weeklyPlanning
+      - name: Full tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
