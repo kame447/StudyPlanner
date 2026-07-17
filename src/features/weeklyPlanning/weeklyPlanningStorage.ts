@@ -12,6 +12,7 @@ import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningBehaviorMetadata,
   WeeklyPlanningMessage,
+  WeeklyPlanningReasoningKey,
 } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
 
@@ -163,6 +164,12 @@ function isPreviewMetadata(value: unknown): boolean {
     && typeof value.authorizedUserId === 'string';
 }
 
+function isReasoningKey(value: unknown): value is WeeklyPlanningReasoningKey {
+  return value === 'explicit-duration'
+    || value === 'explicit-unit-rate'
+    || value === 'accepted-assumption-duration';
+}
+
 function isBehaviorMetadata(value: unknown): value is WeeklyPlanningBehaviorMetadata {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
@@ -187,7 +194,7 @@ function isBehaviorMetadata(value: unknown): value is WeeklyPlanningBehaviorMeta
         && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
     && typeof value.taskRef === 'string'
     && isPlanningOpportunityTagArray(value.opportunityTags)
-    && typeof value.reasoningKey === 'string'
+    && isReasoningKey(value.reasoningKey)
     && value.compatibility.workItemSemantic === 'behavior_aware_task'
     && value.compatibility.schedulerInputSource === 'exam_prep_request'
     && value.compatibility.candidateSource === 'weekly_exam_prep'
@@ -211,9 +218,7 @@ function isBehaviorAwarePreviewMetadata(value: unknown): boolean {
         && value.acceptedAssumptionDependencies.every(isAssumptionDependency)))
     && typeof value.taskRef === 'string'
     && isPlanningOpportunityTagArray(value.opportunityTags)
-    && (value.reasoningKey === 'explicit-duration'
-      || value.reasoningKey === 'explicit-unit-rate'
-      || value.reasoningKey === 'accepted-assumption-duration');
+    && isReasoningKey(value.reasoningKey);
 }
 
 function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {

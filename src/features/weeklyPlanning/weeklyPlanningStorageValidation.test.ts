@@ -218,6 +218,29 @@ describe('weekly planning storage validation', () => {
     expectRejectedSession();
   });
 
+  it('rejects a promoted draft with an unknown reasoning key', () => {
+    const candidate = behaviorAwarePreviewCandidate();
+    storeV2({
+      ...createInitialPlanningState(WEEK_START),
+      revision: 11,
+      mode: 'awaiting_approval',
+      draftBlocks: [{
+        ...validDraftBlock(),
+        behaviorMetadata: {
+          ...candidate.behaviorMetadata,
+          reasoningKey: 'not_a_reasoning_key',
+          compatibility: {
+            workItemSemantic: 'behavior_aware_task',
+            schedulerInputSource: 'exam_prep_request',
+            candidateSource: 'weekly_exam_prep',
+          },
+        },
+      }],
+    });
+
+    expectRejectedSession();
+  });
+
   it('round-trips a valid behavior-aware preview with its conversation and intake state', () => {
     const state = {
       ...createInitialPlanningState(WEEK_START),
