@@ -1,24 +1,25 @@
 name: Apply kanji absolute date guard
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-kanji-absolute-date-guard
-    paths:
-      - .github/workflows/apply-kanji-absolute-date-guard.yml
-      - .github/scripts/apply-kanji-absolute-date-guard.py
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-test-and-commit:
+  apply-test-and-export:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/fix-kanji-absolute-date-guard
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -37,12 +38,17 @@ jobs:
         run: npm run test:run
       - name: Production build
         run: npm run build
-      - name: Commit verified implementation
+      - name: Stage verified files
         run: |
-          rm .github/scripts/apply-kanji-absolute-date-guard.py
-          rm .github/workflows/apply-kanji-absolute-date-guard.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: 漢数字の絶対日付誤認を修正"
-          git push origin HEAD:agent/fix-kanji-absolute-date-guard
+          mkdir -p verified-files/src/features/weeklyPlanning/intake
+          mkdir -p verified-files/src/features/weeklyPlanning/pipeline
+          cp src/features/weeklyPlanning/intake/weeklyPlanningAbsoluteDate.ts verified-files/src/features/weeklyPlanning/intake/
+          cp src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts verified-files/src/features/weeklyPlanning/intake/
+          cp src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts verified-files/src/features/weeklyPlanning/intake/
+          cp src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts verified-files/src/features/weeklyPlanning/intake/
+          cp src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts verified-files/src/features/weeklyPlanning/pipeline/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kanji-absolute-date-verified-files
+          path: verified-files
+          if-no-files-found: error
