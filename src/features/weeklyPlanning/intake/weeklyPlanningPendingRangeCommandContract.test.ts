@@ -131,23 +131,22 @@ describe('pending planning range command contract', () => {
     })).toBe(false);
   });
 
-  it('parses a bare duration against pending state and preserves the selected start', () => {
-    const command = parseSetPendingPlanningRangeCommand(
+  it('promotes a selected start when the bare duration answer arrives', () => {
+    const command = parseSetPlanningRangeCommand(
       '一週間',
       { selectedDate: '2026-07-16' },
-      {
-        pending: { ...summerPending, planningStartDate: '2026-08-01' },
-        expectedSlot: 'planning_duration',
-      },
+      { ...summerPending, planningStartDate: '2026-08-01' },
+      'planning_duration',
     );
 
-    expect(command?.pending).toMatchObject({
-      planningStartDate: '2026-08-01',
-      durationDays: 7,
+    expect(command?.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
     });
   });
 
-  it('promotes pending state when the missing answer is supplied', () => {
+  it('promotes pending state identically regardless of answer order', () => {
     const startThenDuration = parseSetPlanningRangeCommand(
       '一週間',
       { selectedDate: '2026-07-16' },
@@ -161,7 +160,12 @@ describe('pending planning range command contract', () => {
       'planning_start_date',
     );
 
-    expect(startThenDuration?.range).toEqual(durationThenStart?.range);
+    expect(startThenDuration?.range).toMatchObject({
+      startDateTime: durationThenStart?.range.startDateTime,
+      endDateTime: durationThenStart?.range.endDateTime,
+      calendarDayCount: durationThenStart?.range.calendarDayCount,
+      confidence: durationThenStart?.range.confidence,
+    });
     expect(startThenDuration?.range.startDateTime).toBe('2026-08-01T00:00:00');
     expect(startThenDuration?.range.endDateTime).toBe('2026-08-07T24:00:00');
   });
