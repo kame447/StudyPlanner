@@ -21,7 +21,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: Apply documentation synchronization
-        run: python3 .github/scripts/close-kanji-absolute-date-task.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/close-kanji-absolute-date-task.py 2>&1 | tee docs-sync.log
       - name: Verify links and whitespace
         run: |
           git diff --check
@@ -34,8 +37,15 @@ jobs:
         run: |
           rm .github/scripts/close-kanji-absolute-date-task.py
           rm .github/workflows/close-kanji-absolute-date-task.yml
+          rm -f docs-sync.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "feat: 漢数字絶対日付taskの完了記録を同期"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kanji-task-doc-sync-log
+          path: docs-sync.log
+          if-no-files-found: warn
