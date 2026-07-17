@@ -41,6 +41,12 @@ function sundayPending(): PlanningIntakeState {
   );
 }
 
+function calendarDayCountThroughSunday(startDateTime: string): number {
+  const startDate = Date.parse(startDateTime.slice(0, 10) + 'T00:00:00Z');
+  const sunday = Date.parse('2026-07-19T00:00:00Z');
+  return Math.floor((sunday - startDate) / (24 * 60 * 60 * 1000)) + 1;
+}
+
 function expectSundayRange(
   state: PlanningIntakeState,
   startDateTime: string,
@@ -48,7 +54,7 @@ function expectSundayRange(
   expect(state.range).toMatchObject({
     startDateTime,
     endDateTime: '2026-07-19T24:00:00',
-    calendarDayCount: 3,
+    calendarDayCount: calendarDayCountThroughSunday(startDateTime),
     confidence: 'explicit',
   });
   expect(state.pendingPlanningRange).toBeUndefined();
