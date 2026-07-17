@@ -1,24 +1,6 @@
-export function normalizeIntakeText(text: string): string {
-  return text
-    .replace(/[０-９]/g, (char) =>
-      String.fromCharCode(char.charCodeAt(0) - 0xfee0),
-    )
-    .replace(/[〜～−―–—]/g, '〜')
-    .replace(/[　]/g, ' ');
-}
-
-export function splitIntakeSegments(text: string): string[] {
-  return normalizeIntakeText(text)
-    .split(/\r?\n|。|、|けど|ただ|あと|それと|でも/)
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-}
-
-export function parseSmallInteger(text: string): number | undefined {
-  const normalizedText = normalizeIntakeText(text).trim();
-
-  if (/^\d+$/.test(normalizedText)) {
-    return Number(normalizedText);
+function parseJapaneseIntegerRaw(text: string): number | undefined {
+  if (/^\d+$/.test(text)) {
+    return Number(text);
   }
 
   const digitValues: Record<string, number> = {
@@ -33,21 +15,53 @@ export function parseSmallInteger(text: string): number | undefined {
     九: 9,
   };
 
-  if (normalizedText === '十') {
+  if (text === '十') {
     return 10;
   }
 
-  const tenIndex = normalizedText.indexOf('十');
+  const tenIndex = text.indexOf('十');
   if (tenIndex >= 0) {
-    const tensText = normalizedText.slice(0, tenIndex);
-    const onesText = normalizedText.slice(tenIndex + 1);
+    const tensText = text.slice(0, tenIndex);
+    const onesText = text.slice(tenIndex + 1);
     const tens = tensText ? digitValues[tensText] : 1;
     const ones = onesText ? digitValues[onesText] : 0;
-
     return tens && ones !== undefined ? tens * 10 + ones : undefined;
   }
 
-  return digitValues[normalizedText];
+  return digitValues[text];
+}
+
+function normalizeJapaneseMonthDay(text: string): string {
+  return text.replace(
+    /([0-9一二三四五六七八九十]+)\s*月\s*([0-9一二三四五六七八九十]+)\s*日/g,
+    (matched, monthText: string, dayText: string) => {
+      const month = parseJapaneseIntegerRaw(monthText);
+      const day = parseJapaneseIntegerRaw(dayText);
+      return month && day ? `${month}月${day}日` : matched;
+    },
+  );
+}
+
+export function normalizeIntakeText(text: string): string {
+  const normalizedWidth = text
+    .replace(/[０-９]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0),
+    )
+    .replace(/[〜～−―–—]/g, '〜')
+    .replace(/[　]/g, ' ');
+
+  return normalizeJapaneseMonthDay(normalizedWidth);
+}
+
+export function splitIntakeSegments(text: string): string[] {
+  return normalizeIntakeText(text)
+    .split(/\r?\n|。|、|けど|ただ|あと|それと|でも/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+export function parseSmallInteger(text: string): number | undefined {
+  return parseJapaneseIntegerRaw(normalizeIntakeText(text).trim());
 }
 
 export function uniqueList<T>(items: T[]): T[] {
