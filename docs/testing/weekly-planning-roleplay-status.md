@@ -21,7 +21,7 @@ roleplay test planのscenario IDとstrict assertionを維持する。ただし�
 | explicit repair / pass-over / grounded acknowledgement | yes | dialogue pathへ接続記録あり | tests recorded | not complete | real-model rubricも必要 |
 | session-owned preview lifecycle | yes | App/session pathへ接続 | reducer/property/component tests recorded | not complete | modal close後のreopenをbrowser確認する |
 | closed storage validation | yes | localStorage load/save pathへ接続 | v2/legacy/malformed round-trip tests recorded | not complete | merge後main再実行待ち |
-| pending planning range | yes | intake pathへ接続 | focused tests recorded | not complete | Issue #21がopen、week-start profile未実装 |
+| pending planning range | yes | intake pathへ接続 | PR #24・#26 focused/full tests passed | not complete | Issue #21完了。week-start profileとbrowser roleplayは未実装 |
 | DA0r | yes | behavior pipelineに接続 | passed at recorded baseline | not complete | readinessとauthorization gate |
 | DA0a | yes | assumption draft/canonicalization pipelineに接続 | tests recorded | not complete | proposal lifecycle全体はDA1bも参照 |
 | DA0 | yes | non-exam preview bridge接続済み記録あり | tests recorded | not complete | pending/stale save guardはapprovalと分離 |
@@ -53,11 +53,9 @@ roleplay test planのscenario IDとstrict assertionを維持する。ただし�
 
 ## 4. Current verification queue
 
-1. `docs/ai/tasks/20260717-weekly-planning-kanji-absolute-date-guard.md`
-   - 算用数字、漢数字、混在日付と曜日を区別する。
-2. `docs/ai/tasks/20260714-weekly-planning-dialogue-stack-verification.md`
+1. `docs/ai/tasks/20260714-weekly-planning-dialogue-stack-verification.md`
    - current `main`でmodule、entrypoint、自動検証、browser behaviorを再分類する。
-3. `docs/ai/tasks/20260716-weekly-planning-entrypoint-request-ownership.md`
+2. `docs/ai/tasks/20260716-weekly-planning-entrypoint-request-ownership.md`
    - DA2のproduction ownershipとrace/keyboard契約をcontrollerへ統一する。
 
 ## 5. 必須browser scenario
