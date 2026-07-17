@@ -8,6 +8,7 @@ Current main baseline: `10c40296dc6655343d4d36d04ceb63abb9c07f8e`
 - PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
 - PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](../tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
 - PR #26 completion record: [20260717-weekly-planning-kanji-absolute-date-guard.md](../tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
+- Current main verification: [20260714-weekly-planning-dialogue-stack-verification.md](../tasks/closed/20260714-weekly-planning-dialogue-stack-verification.md)
 - Architecture: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
 - Product spec: [weekly-planning-spec.md](../../weekly-planning/weekly-planning-spec.md)
 - Test scenarios: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
@@ -86,6 +87,18 @@ GitHub Actions run `29581399006`で実装適用後のworktreeを対象に次を�
 
 検証済みworktreeからhelperを除去して実装commitを作成し、最終branch headのCloudflare Pages deployも成功した。automated verifiedであり、browser verifiedを意味しない。
 
+### 1.5 Current main dialogue-stack verification
+
+`main` `2af1a5e`をGitHub Actions run `29582279740`で再検証した。
+
+- targeted dialogue-stack tests: 48 files / 423 tests passed、1 file / 1 test skipped
+- full tests: 109 files / 1118 tests passed、1 file / 13 tests skipped、5 todo
+- TypeScript: passed
+- production build: passed
+- diff check: passed
+
+production entrypointの静的確認ではsession/preview/storage/approvalは接続済みである。request ownershipはpartialであり、conversation/turn identity、explicit cancel、clear-conversation UI、keyboard/IME/focusは未接続である。browser roleplayは未検証であり、entrypoint ownership taskへ引き継ぐ。
+
 ## 2. Implemented modules and contracts on `main`
 
 次のmoduleとcontractは`main`に存在する。ただし、module実装、production entrypoint接続、自動検証、browser検証、production運用を同じ意味で扱わない。
@@ -141,36 +154,29 @@ PR #24で追加・強化されたplanning range contract:
 
 `docs/ai/tasks/`直下には、未完了または追加確認が必要なtaskだけを置く。現在のqueueは次である。
 
-### P0
-
-1. `20260714-weekly-planning-dialogue-stack-verification.md`
-   - current `main`でtargeted tests、TypeScript、build、full tests、production entrypoint、browser behaviorを再分類する。
-   - PR #5のclose-resume契約、session reset/stale契約、IME、focusを分けて検証する。
-   - 失敗時はtask内で修正せず、原因と再現情報を別taskへ切り出す。
-
 ### P1
 
-2. `20260716-weekly-planning-entrypoint-request-ownership.md`
+1. `20260716-weekly-planning-entrypoint-request-ownership.md`
    - conversation、turn、request、revision、selected week、reset、explicit cancel、retryのownershipをproduction controllerへ統一する。
    - modal close/presentation unmountをsession cancelとして扱わない。
 
-3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
+2. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
    - rotating HMAC subject token、全session本文の保存前redaction、本文・snapshot・metadataの180日TTL、account deletion、限定admin accessを実装・検証する。
    - privacy/legal reviewをdeploy前条件として残す。
 
-4. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
+3. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
    - account-linked profile schema、profile factのorigin/confidence/scope、原履歴180日TTL、profile訂正、account deletion、初回acceptance gateを実装する。
    - 週の始まり、学習時間見積り、session構成、修正傾向、実績差、修復方針を次回計画へ反映する。
 
-5. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
+4. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
    - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
 
 ### P2
 
-6. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+5. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
    - pagination、query cost、index、archive、schemaVersion decoderを設計する。
 
-7. `20260716-weekly-planning-controller-ui-responsibility-split.md`
+6. `20260716-weekly-planning-controller-ui-responsibility-split.md`
    - conversation controller、preview controller、view componentへ責務を分離する。
    - PR #5 post-merge stateとentrypoint ownership taskの結果を前提にする。
 

@@ -2,10 +2,11 @@
 
 Status: canonical / active status overlay
 Updated: 2026-07-17
-Current main merge baseline: `10c40296dc6655343d4d36d04ceb63abb9c07f8e`
+Current main verified baseline: `2af1a5ed8af181a1d7e847e72a44a9a1626249d9`
 Post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
 PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
 PR #26 completion record: [20260717-weekly-planning-kanji-absolute-date-guard.md](tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
+Current main verification: [20260714-weekly-planning-dialogue-stack-verification.md](tasks/closed/20260714-weekly-planning-dialogue-stack-verification.md)
 
 ## 1. 役割
 
@@ -94,7 +95,9 @@ browser reload中の未完了request
   → network requestは再開しない。保存sessionから一時ownershipを除去する
 ```
 
-architecture、verification task、roleplay planに残る「closeまたはpresentation unmountだけでactive requestを無効化する」という記述はcurrent contractではない。
+architecture、roleplay planに残る「closeまたはpresentation unmountだけでactive requestを無効化する」という記述はcurrent contractではない。
+
+Current main `2af1a5e`に対するGitHub Actions run `29582279740`では、targeted 423 tests、full 1118 tests、TypeScript、production build、diff checkが成功した。静的確認ではsession/preview/storage/approvalはproduction接続済みである。一方、request envelopeのconversation/turn identity、explicit cancel、clear-conversation UI、Ctrl/Meta+Enter、IME guard、focus restorationは未接続であり、entrypoint ownership taskで実装する。browser roleplayは未検証である。
 
 ## 5. previewとapproval
 

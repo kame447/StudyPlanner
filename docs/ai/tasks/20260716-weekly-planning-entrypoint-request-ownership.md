@@ -4,7 +4,7 @@ Status: planned
 Priority: P1
 Requirement IDs: DA-TURN-001
 Updated: 2026-07-17
-Depends on: `20260714-weekly-planning-dialogue-stack-verification.md`
+Depends on: `closed/20260714-weekly-planning-dialogue-stack-verification.md`
 Post-merge status: `docs/ai/weekly-planning-pr5-post-merge-status.md`
 
 ## 1. 背景
@@ -38,18 +38,34 @@ browser reload
 
 presentation componentがunmountしたというReact上の事実だけで、domain sessionをcancelしない。
 
-## 3. 目的
+## 3. Current main verification findings
+
+Current main `2af1a5e`の検証で次を確認した。
+
+- `App.tsx`がPlanningStateとactive Promiseを所有し、request ID、selected week、base revisionを生成する。
+- modal closeは表示stateだけを閉じるため、presentation unmountだけではrequestをcancelしない。
+- `commit_turn`はassistant message、intake、preview candidatesをatomicにReducerへ渡す。
+- Reducerはrequest/week/revision mismatchとpending中のnon-terminal mutationを拒否する。
+- storageはmessages、intake、preview、draftを保持し、pending turn/approvalをload時にsanitizeする。
+- request envelopeにconversation IDとturn IDがない。
+- production UIにexplicit cancellationと履歴だけを消す`clear_conversation`が接続されていない。
+- 週間計画textareaにCtrl/Meta+Enter、IME guard、focus restorationがない。
+- targeted 423 tests、full 1118 tests、TypeScript、buildはpassed。browser roleplayは未検証。
+
+このtaskでは、既存のclose-resume構造を壊さず、未接続責務だけをcontrollerへ移す。
+
+## 4. 目的
 
 週間計画の一requestに対する所有者をapplication controllerへ一本化し、有効なclose-resume resultを失わず、意味的にinvalidatedされたstale resultと二重送信をproduction entrypointで防止する。
 
-## 4. Entry conditions
+## 5. Entry conditions
 
-- `20260714-weekly-planning-dialogue-stack-verification.md`のentrypoint調査結果を先に確認する。
+- `closed/20260714-weekly-planning-dialogue-stack-verification.md`のentrypoint調査結果を先に確認する。
 - PR #5 merge後の`main`を対象にstate ownershipとcallback経路を再調査する。
 - Issue #21の日付parser修正とrequest ownership refactorを同じPRへ混ぜない。
 - browser close-resume scenarioをcharacterization testとして固定してからownerを移す。
 
-## 5. 対象責務
+## 6. 対象責務
 
 - conversation IDとsession lifecycle
 - turn ID、request ID、input state revision
@@ -64,7 +80,7 @@ presentation componentがunmountしたというReact上の事実だけで、doma
 - stale resultのstate、history、status、previewへの適用禁止
 - request完了時のmessages、intake、preview candidateのatomic commit
 
-## 6. 触らない範囲
+## 7. 触らない範囲
 
 - schedulerの配置判断
 - AI promptの意味解釈規則
@@ -74,7 +90,7 @@ presentation componentがunmountしたというReact上の事実だけで、doma
 - UIデザイン全面変更
 - server-side request再開
 
-## 7. 受け入れ条件
+## 8. 受け入れ条件
 
 ### Controller ownership
 
@@ -117,7 +133,7 @@ presentation componentがunmountしたというReact上の事実だけで、doma
 - component testでclose/unmount/remountを実UI操作から確認する。
 - browser scenarioでclose-resume、selected week変更、reset、IME、focusを確認する。
 
-## 8. Exit conditions
+## 9. Exit conditions
 
 - module implemented、production connected、automated verified、browser verifiedを別々に記録する。
 - App、NaturalLanguageAssistant、QuickEntryModalのどこがrequest lifecycleを所有するか一意に説明できる。
