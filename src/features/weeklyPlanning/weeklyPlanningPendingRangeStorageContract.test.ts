@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runWeeklyPlanningIntakePipeline } from './pipeline/weeklyPlanningIntakePipeline';
 import { loadWeeklyPlanningState } from './weeklyPlanningStorage';
-import type { PlanningState } from './weeklyPlanningSessionTypes';
+import type { PlanningState } from './types';
 
 class MemoryStorage implements Storage {
   private data = new Map<string, string>();
@@ -33,7 +33,7 @@ class MemoryStorage implements Storage {
 
 const userId = 'pending-range-storage-user';
 const weekStartDate = '2026-07-13';
-const storageKey = `study-planner:weekly-planning:v2:${userId}:${weekStartDate}`;
+const storageKey = `studyplanner.weeklyPlanning.${userId}.${weekStartDate}`;
 
 const summerScope = {
   kind: 'named_future_period' as const,
