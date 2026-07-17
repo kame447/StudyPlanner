@@ -128,6 +128,12 @@ function isBareDurationAnswer(text: string): boolean {
   );
 }
 
+function isCombinedStartAndDurationAnswer(text: string): boolean {
+  return /^\s*\d{1,2}\s*月\s*\d{1,2}\s*日(?:\s*から)?\s*(?:(?:一|1)\s*週間|7\s*日間?)(?:\s*です)?\s*$/.test(
+    normalizeIntakeText(text),
+  );
+}
+
 function isBareWeekdayStartAnswer(text: string): boolean {
   return /^\s*[月火水木金土日](?:曜(?:日)?)?\s*から(?:\s*です)?\s*$/.test(
     normalizeIntakeText(text),
@@ -137,6 +143,7 @@ function isBareWeekdayStartAnswer(text: string): boolean {
 function acceptsStartDateAnswer(text: string, expectedSlot?: string): boolean {
   if (blocksStartDateAnswer(text)) return false;
   return isBareStartDateAnswer(text)
+    || isCombinedStartAndDurationAnswer(text)
     || isBareWeekdayStartAnswer(text)
     || (
       expectedSlot === 'planning_start_date'
@@ -149,6 +156,7 @@ function acceptsStartDateAnswer(text: string, expectedSlot?: string): boolean {
 function acceptsDurationAnswer(text: string, expectedSlot?: string): boolean {
   if (blocksDurationAnswer(text)) return false;
   return isBareDurationAnswer(text)
+    || isCombinedStartAndDurationAnswer(text)
     || (
       expectedSlot === 'planning_duration'
       && /(?:計画|予定).*(?:(?:一|1)\s*週間|7\s*日間?)/.test(
