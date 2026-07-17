@@ -1,0 +1,48 @@
+name: Apply kanji absolute date guard
+
+on:
+  push:
+    branches:
+      - agent/fix-kanji-absolute-date-guard
+    paths:
+      - .github/workflows/apply-kanji-absolute-date-guard.yml
+      - .github/scripts/apply-kanji-absolute-date-guard.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-kanji-absolute-date-guard
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.0'
+          cache: npm
+      - run: npm ci
+      - name: Apply implementation
+        run: python3 .github/scripts/apply-kanji-absolute-date-guard.py
+      - name: Diff check
+        run: git diff --check
+      - name: Focused regression
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts
+      - name: Weekly planning suite
+        run: npm run test:run -- src/features/weeklyPlanning
+      - name: Full test suite
+        run: npm run test:run
+      - name: Production build
+        run: npm run build
+      - name: Commit verified implementation
+        run: |
+          rm .github/scripts/apply-kanji-absolute-date-guard.py
+          rm .github/workflows/apply-kanji-absolute-date-guard.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: 漢数字の絶対日付誤認を修正"
+          git push origin HEAD:agent/fix-kanji-absolute-date-guard
