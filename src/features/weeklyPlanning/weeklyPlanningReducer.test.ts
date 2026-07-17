@@ -31,6 +31,15 @@ function draftBlock(
   };
 }
 
+function assistantMessage(id: string, content: string) {
+  return {
+    id,
+    role: 'assistant' as const,
+    content,
+    createdAt: '2026-06-19T00:00:00.000Z',
+  };
+}
+
 describe('weeklyPlanningReducer', () => {
   it('adds draft blocks without saving them as plans', () => {
     const state = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
@@ -117,6 +126,35 @@ describe('weeklyPlanningReducer', () => {
     expect(blockIdsApprovedFromCurrentState).toEqual([remaining.id]);
     expect(afterBulkApprovalRemoval.draftBlocks).toEqual([]);
     expect(afterBulkApprovalRemoval.mode).toBe('idle');
+  });
+
+  it('ignores a consecutive duplicate assistant message even when ids differ', () => {
+    const initial = createInitialPlanningState('2026-06-22');
+    const first = weeklyPlanningReducer(initial, {
+      type: 'append_message',
+      message: assistantMessage('assistant-1', '了解です。\n対象分野を教えてください。'),
+    });
+    const second = weeklyPlanningReducer(first, {
+      type: 'append_message',
+      message: assistantMessage('assistant-2', '了解です。  対象分野を教えてください。'),
+    });
+
+    expect(second).toBe(first);
+    expect(second.messages).toHaveLength(1);
+  });
+
+  it('does not append the same last assistant message twice', () => {
+    const first = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
+      type: 'set_last_assistant_message',
+      message: '対象分野を教えてください。',
+    });
+    const second = weeklyPlanningReducer(first, {
+      type: 'set_last_assistant_message',
+      message: '対象分野を教えてください。',
+    });
+
+    expect(second).toBe(first);
+    expect(second.messages).toHaveLength(1);
   });
 
   it('keeps bulk discard behavior intact after an individual removal', () => {

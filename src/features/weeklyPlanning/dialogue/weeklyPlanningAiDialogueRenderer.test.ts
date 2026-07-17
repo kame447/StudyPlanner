@@ -152,6 +152,48 @@ describe('weekly planning AI dialogue renderer', () => {
     expect(renderer.render).toHaveBeenCalledTimes(1);
   });
 
+  it('omits a generic acknowledgement from renderer output', async () => {
+    const renderer = {
+      render: vi.fn(async () => ({
+        acknowledgement: '了解です。',
+        questions: [
+          { slotKey: 'fixed_events', text: 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？' },
+          { slotKey: 'sleep_cycle', text: '睡眠時間はどうしますか？' },
+        ],
+      })),
+    };
+
+    const message = await renderWeeklyPlanningDialogueMessage({
+      state: stateWithExtraMissing(),
+      decision: missingDecision(),
+      renderer,
+    });
+
+    expect(message).not.toContain('了解です');
+    expect(message).toBe([
+      'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
+      '睡眠時間はどうしますか？',
+    ].join('\n'));
+  });
+
+  it('falls back when two planned questions render as the same visible text', async () => {
+    const duplicate = 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？';
+    const renderer = {
+      render: vi.fn(async () => ({
+        questions: [
+          { slotKey: 'fixed_events', text: duplicate },
+          { slotKey: 'sleep_cycle', text: duplicate },
+        ],
+      })),
+    };
+
+    await expect(renderWeeklyPlanningDialogueMessage({
+      state: stateWithExtraMissing(),
+      decision: missingDecision(),
+      renderer,
+    })).resolves.toBe(fallbackMessage());
+  });
+
   it('uses the existing OpenAI-compatible client with structured response format and renderer-only input', async () => {
     const client = createMockClient(JSON.stringify({
       acknowledgement: '条件を受け取りました。',

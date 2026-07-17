@@ -8,6 +8,11 @@ import {
   validateBehaviorAwareDialogueResponseClosed,
 } from './weeklyPlanningBehaviorAwareDialogueValidation';
 import {
+  composeUniqueDialogueMessage,
+  dialogueTextLines,
+  normalizeDialogueText,
+} from './weeklyPlanningDialogueText';
+import {
   decideDialogueRepairPolicy,
   deriveGroundedAcknowledgementSummaries,
   isAcknowledgementGrounded,
@@ -295,15 +300,56 @@ function groundedAcknowledgement(
     : undefined;
 }
 
-function composeMessage(
+interface ComposedBehaviorAwareResponse {
+  message: string;
+  renderedActionIds: string[];
+}
+
+function appendUniqueDialogueLines(params: {
+  target: string[];
+  seen: Set<string>;
+  text: string | undefined;
+}): boolean {
+  let appended = false;
+  for (const line of dialogueTextLines(params.text)) {
+    const key = normalizeDialogueText(line);
+    if (!key || params.seen.has(key)) continue;
+    params.seen.add(key);
+    params.target.push(line);
+    appended = true;
+  }
+  return appended;
+}
+
+function composeResponse(
   response: BehaviorAwareDialogueResponse,
   input: BehaviorAwareDialoguePlannerInput,
-): string {
-  return [
-    groundedAcknowledgement(input, response),
-    ...response.items.map((item) => item.text),
-    response.reasoningSummary,
-  ].filter((part): part is string => Boolean(part?.trim())).join('\n');
+): ComposedBehaviorAwareResponse | null {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  const renderedActionIds: string[] = [];
+
+  appendUniqueDialogueLines({
+    target: lines,
+    seen,
+    text: groundedAcknowledgement(input, response),
+  });
+
+  for (const item of response.items) {
+    if (!appendUniqueDialogueLines({ target: lines, seen, text: item.text })) {
+      return null;
+    }
+    renderedActionIds.push(item.actionId);
+  }
+
+  appendUniqueDialogueLines({
+    target: lines,
+    seen,
+    text: response.reasoningSummary,
+  });
+
+  if (renderedActionIds.length === 0) return null;
+  return { message: lines.join('\n'), renderedActionIds };
 }
 
 function clarificationExample(targetSlot: string | undefined): string {
@@ -423,7 +469,7 @@ function renderFallback(
   if (input.clarificationRequest) {
     lines.push({ text: renderClarificationFallback(input.clarificationRequest) });
     return {
-      message: lines.map((line) => line.text).join('\n'),
+      message: composeUniqueDialogueMessage(lines.map((line) => line.text)),
       renderedActionIds: [],
     };
   }
@@ -452,9 +498,18 @@ function renderFallback(
   if (lines.length === 0) {
     lines.push({ text: '追加確認が必要になるまでは、この条件で進めます。' });
   }
-  const renderedLines = lines.slice(0, 3);
+  const renderedLines: Array<{ text: string; actionId?: string }> = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const sanitized = composeUniqueDialogueMessage([line.text]);
+    const key = normalizeDialogueText(sanitized);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    renderedLines.push({ ...line, text: sanitized });
+    if (renderedLines.length >= 3) break;
+  }
   return {
-    message: renderedLines.map((line) => line.text).join('\n'),
+    message: composeUniqueDialogueMessage(renderedLines.map((line) => line.text)),
     renderedActionIds: renderedLines
       .map((line) => line.actionId)
       .filter((actionId): actionId is string => Boolean(actionId)),
@@ -505,12 +560,15 @@ export function createAiBehaviorAwareWeeklyPlanningDialoguePlanner(
         });
 
         if (response) {
-          return {
-            message: composeMessage(response, effectiveInput),
-            response,
-            source: 'ai' as const,
-            renderedActionIds: response.items.map((item) => item.actionId),
-          };
+          const composed = composeResponse(response, effectiveInput);
+          if (composed) {
+            return {
+              message: composed.message,
+              response,
+              source: 'ai' as const,
+              renderedActionIds: composed.renderedActionIds,
+            };
+          }
         }
       } catch {
         // Provider and parsing failures use the same deterministic action-aware fallback.
