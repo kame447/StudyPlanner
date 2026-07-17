@@ -33,6 +33,48 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/apply-entrypoint-request-ownership.py')
           text = path.read_text(encoding='utf-8')
+          reset_old = ''.join([
+              'replace_once(reducer,\n',
+              '"""        pendingTurn: undefined,\n',
+              '        lastAssistantMessage: undefined,\n',
+              '      });\n',
+              '""",\n',
+              '"""        pendingTurn: undefined,\n',
+              '        pendingApproval: undefined,\n',
+              '        lastAssistantMessage: undefined,\n',
+              '      });\n',
+              '""",\n',
+              "'reset pending ownership')",
+          ])
+          reset_new = ''.join([
+              'replace_once(reducer,\n',
+              '"""    case \'reset_session\':\n',
+              '      return withMutation(state, {\n',
+              '        ...state,\n',
+              "        mode: 'idle',\n",
+              '        draftBlocks: [],\n',
+              '        previewCandidates: [],\n',
+              '        messages: [],\n',
+              '        intakeState: undefined,\n',
+              '        pendingTurn: undefined,\n',
+              '        lastAssistantMessage: undefined,\n',
+              '      });\n',
+              '""",\n',
+              '"""    case \'reset_session\':\n',
+              '      return withMutation(state, {\n',
+              '        ...state,\n',
+              "        mode: 'idle',\n",
+              '        draftBlocks: [],\n',
+              '        previewCandidates: [],\n',
+              '        messages: [],\n',
+              '        intakeState: undefined,\n',
+              '        pendingTurn: undefined,\n',
+              '        pendingApproval: undefined,\n',
+              '        lastAssistantMessage: undefined,\n',
+              '      });\n',
+              '""",\n',
+              "'reset pending ownership')",
+          ])
           replacements = [
               (
                   '\n""",\n""",\n\'remove duplicate pending matcher\')',
@@ -44,6 +86,7 @@ jobs:
                   '                  onKeyDown={handleWeeklyPlanningKeyDown}\n"""\n)',
                   'textarea replacement terminator',
               ),
+              (reset_old, reset_new, 'reset session specific anchor'),
           ]
           for old, new, label in replacements:
               if text.count(old) != 1:
