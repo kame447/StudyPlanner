@@ -21,7 +21,10 @@ jobs:
           ref: agent/weekly-planning-response-dedup
       - name: Apply implementation patch
         run: |
-          cat .github/patches/response-dedup.patch.b64.* | base64 --decode > /tmp/response-dedup.patch
+          : > /tmp/response-dedup.patch
+          for file in .github/patches/response-dedup.patch.b64.*; do
+            base64 --decode "$file" >> /tmp/response-dedup.patch
+          done
           git apply --check /tmp/response-dedup.patch
           git apply /tmp/response-dedup.patch
       - uses: actions/setup-node@v4
