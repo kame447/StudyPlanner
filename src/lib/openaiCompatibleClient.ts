@@ -4,20 +4,11 @@ import {
 } from '../services/ai/openAiCompatibleClient';
 import type {
   ChatMessage,
-  JsonSchemaResponseFormat as ServiceJsonSchemaResponseFormat,
+  JsonSchemaResponseFormat,
   OpenAiCompatibleClientConfig,
 } from '../services/ai/openAiCompatibleClient';
 
-export interface FlatJsonSchemaResponseFormat {
-  type: 'json_schema';
-  name: string;
-  schema: Record<string, unknown>;
-  strict?: boolean;
-}
-
-export type JsonSchemaResponseFormat =
-  | ServiceJsonSchemaResponseFormat
-  | FlatJsonSchemaResponseFormat;
+export type { JsonSchemaResponseFormat };
 
 export interface OpenAiCompatibleClient {
   createChatCompletion(input: {
@@ -28,38 +19,8 @@ export interface OpenAiCompatibleClient {
   }): Promise<string>;
 }
 
-function normalizeResponseFormat(
-  responseFormat: JsonSchemaResponseFormat | undefined,
-): ServiceJsonSchemaResponseFormat | undefined {
-  if (!responseFormat) {
-    return undefined;
-  }
-
-  if ('json_schema' in responseFormat) {
-    return responseFormat;
-  }
-
-  return {
-    type: 'json_schema',
-    json_schema: {
-      name: responseFormat.name,
-      schema: responseFormat.schema,
-      strict: responseFormat.strict,
-    },
-  };
-}
-
 export function createOpenAiCompatibleClient(
   config: OpenAiCompatibleClientConfig,
 ): OpenAiCompatibleClient {
-  const client = createServiceOpenAiCompatibleClient(config);
-
-  return {
-    createChatCompletion(input) {
-      return client.createChatCompletion({
-        ...input,
-        responseFormat: normalizeResponseFormat(input.responseFormat),
-      });
-    },
-  };
+  return createServiceOpenAiCompatibleClient(config);
 }
