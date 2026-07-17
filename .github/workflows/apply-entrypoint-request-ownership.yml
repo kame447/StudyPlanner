@@ -32,12 +32,12 @@ jobs:
             python3 - <<'PY'
           from pathlib import Path
           path = Path('.github/scripts/apply-entrypoint-request-ownership.py')
-          lines = path.read_text(encoding='utf-8').splitlines()
-          index = 423
-          if len(lines) <= index or lines[index].strip() != '""",':
-              raise SystemExit(f'expected malformed empty replacement at line 424, got: {lines[index] if len(lines) > index else "<missing>"}')
-          lines[index] = "'' ,".replace(' ', '')
-          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          text = path.read_text(encoding='utf-8')
+          old = '\n""",\n""",\n\'remove duplicate pending matcher\')'
+          new = '\n""",\n\'\',\n\'remove duplicate pending matcher\')'
+          if text.count(old) != 1:
+              raise SystemExit(f'empty replacement syntax pattern count: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
             python3 -m py_compile .github/scripts/apply-entrypoint-request-ownership.py
             python3 .github/scripts/instrument-entrypoint-request-ownership.py
