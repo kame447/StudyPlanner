@@ -82,5 +82,5 @@ export function isOrderedPlanningDateTimeRange(value: {
   }
   const start = parsePlanningDateTime(value.startDateTime);
   const end = parsePlanningDateTime(value.endDateTime);
-  return start !== undefined && end !== undefined && start <= end;
+  return start !== undefined && end !== undefined && start < end;
 }
