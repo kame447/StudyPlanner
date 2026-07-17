@@ -16,6 +16,8 @@ jobs:
   verify-main:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      OUT: ${{ runner.temp }}/dialogue-stack-main-verification
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,6 +27,8 @@ jobs:
         with:
           node-version: '22.23.0'
           cache: npm
+      - name: Prepare output directory
+        run: mkdir -p "$OUT"
       - name: Record repository state
         run: |
           {
@@ -33,53 +37,50 @@ jobs:
             echo "branch=$(git branch --show-current)"
             git status -sb
             git log -1 --oneline
-          } | tee repository-state.txt
+          } | tee "$OUT/repository-state.txt"
       - run: npm ci
       - name: Enumerate current tests
         run: |
-          find src/features/weeklyPlanning -type f -name '*.test.ts' | sort > weekly-planning-test-files.txt
+          find src/features/weeklyPlanning -type f -name '*.test.ts' | sort > "$OUT/weekly-planning-test-files.txt"
           python3 - <<'PY'
+          import os
           from pathlib import Path
+          out = Path(os.environ['OUT'])
           terms = (
               'assumption', 'approval', 'dialogue', 'relative', 'feasibility',
               'behavior', 'conversation', 'storage', 'preview', 'turn', 'reducer',
               'property', 'range', 'period', 'fixed', 'candidate', 'interpreter',
               'acknowledgement', 'session', 'lifecycle', 'orchestrator', 'ui',
           )
-          files = [line.strip() for line in Path('weekly-planning-test-files.txt').read_text().splitlines()]
+          files = [line.strip() for line in (out / 'weekly-planning-test-files.txt').read_text().splitlines()]
           selected = [path for path in files if any(term in path.lower() for term in terms)]
           if not selected:
               raise SystemExit('no targeted weekly-planning tests found')
-          Path('targeted-test-files.txt').write_text('\n'.join(selected) + '\n')
+          (out / 'targeted-test-files.txt').write_text('\n'.join(selected) + '\n')
           print(f'selected {len(selected)} targeted files from {len(files)} weekly-planning test files')
           PY
-          cat targeted-test-files.txt
+          cat "$OUT/targeted-test-files.txt"
       - name: Targeted dialogue-stack tests
         shell: bash
         run: |
           set -o pipefail
-          mapfile -t files < targeted-test-files.txt
-          npm run test:run -- "${files[@]}" 2>&1 | tee targeted-tests.log
+          mapfile -t files < "$OUT/targeted-test-files.txt"
+          npm run test:run -- "${files[@]}" 2>&1 | tee "$OUT/targeted-tests.log"
       - name: TypeScript
         shell: bash
         run: |
           set -o pipefail
-          npx tsc --noEmit 2>&1 | tee typescript.log
+          npx tsc --noEmit 2>&1 | tee "$OUT/typescript.log"
       - name: Production build
         shell: bash
         run: |
           set -o pipefail
-          npm run build 2>&1 | tee build.log
+          npm run build 2>&1 | tee "$OUT/build.log"
       - name: Full test suite
         shell: bash
         run: |
           set -o pipefail
-          npm run test:run 2>&1 | tee full-tests.log
-      - name: Diff and final repository state
-        run: |
-          git diff --check
-          git status -sb | tee final-repository-state.txt
-          test -z "$(git status --porcelain)"
+          npm run test:run 2>&1 | tee "$OUT/full-tests.log"
       - name: Production entrypoint evidence
         shell: bash
         run: |
@@ -88,37 +89,31 @@ jobs:
             rg -n --glob '*.ts' --glob '*.tsx' \
               'pendingTurn|pendingApproval|requestId|baseRevision|weekStartDate|clear_conversation|reset_session|isComposing|ctrlKey|metaKey|\.focus\(|previewCandidates|approvalEligibility|sourceDraftBlockId|sanitize|stale' \
               src/App.tsx src/components src/features/weeklyPlanning || true
-          } > entrypoint-evidence.txt
-          test -s entrypoint-evidence.txt
+          } > "$OUT/entrypoint-evidence.txt"
+          test -s "$OUT/entrypoint-evidence.txt"
       - name: Built application smoke
         shell: bash
         run: |
-          npm run preview:vite -- --port 4173 > preview-server.log 2>&1 &
+          npm run preview:vite -- --port 4173 > "$OUT/preview-server.log" 2>&1 &
           server_pid=$!
           cleanup() { kill "$server_pid" 2>/dev/null || true; }
           trap cleanup EXIT
           for attempt in {1..30}; do
-            if curl -fsS http://127.0.0.1:4173/ > built-index.html; then
+            if curl -fsS http://127.0.0.1:4173/ > "$OUT/built-index.html"; then
               break
             fi
             sleep 1
           done
-          test -s built-index.html
-          grep -q '<div id="root"></div>' built-index.html
+          test -s "$OUT/built-index.html"
+          grep -q '<div id="root"></div>' "$OUT/built-index.html"
+      - name: Diff and final repository state
+        run: |
+          git diff --check
+          git status -sb | tee "$OUT/final-repository-state.txt"
+          test -z "$(git status --porcelain)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: dialogue-stack-main-verification
-          path: |
-            repository-state.txt
-            final-repository-state.txt
-            weekly-planning-test-files.txt
-            targeted-test-files.txt
-            targeted-tests.log
-            typescript.log
-            build.log
-            full-tests.log
-            entrypoint-evidence.txt
-            preview-server.log
-            built-index.html
-          if-no-files-found: warn
+          path: ${{ runner.temp }}/dialogue-stack-main-verification
+          if-no-files-found: error
