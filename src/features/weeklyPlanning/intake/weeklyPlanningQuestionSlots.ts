@@ -99,10 +99,10 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   previewQuestionPriority: 2,
   status: 'needs_scope',
   deterministicQuestion: (state) => {
-    const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
-    return state.pendingPlanningRange?.planningEndDateTime
-      ? scopeLabel + 'の終了時刻より前のいつから計画を始めますか？'
-      : scopeLabel + 'のどの日から計画を始めますか？';
+    const scopeLabel = state.pendingPlanningRange?.scope.label;
+    return scopeLabel
+      ? `${scopeLabel}の計画は、いつから始めますか？`
+      : '計画はいつから始めますか？';
   },
   isStateQuestionEligible: (state) => isMissing(state, 'planning_start_date'),
   isQuestionPlanEligible: defaultQuestionPlanEligibility,
@@ -112,8 +112,8 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   vocabularyHint: '計画を始める日(質問中の期間内の曜日や日付)',
   fallbackQuestion: ({ planningPeriodLabel }) =>
     planningPeriodLabel
-      ? `${planningPeriodLabel}のどの日から計画を始めますか？`
-      : 'どの日から計画を始めますか？',
+      ? `${planningPeriodLabel}の計画は、いつから始めますか？`
+      : '計画はいつから始めますか？',
   userLabel: '計画の開始日',
 };
 

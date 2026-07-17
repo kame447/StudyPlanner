@@ -87,7 +87,7 @@ describe('weekly planning question slot registry', () => {
     };
 
     expect(deterministicQuestionsForState(state)).toEqual([
-      '来週のどの日から計画を始めますか？',
+      '来週の計画は、いつから始めますか？',
       '週末で優先する分野や進める順番を教えてください。',
     ]);
   });

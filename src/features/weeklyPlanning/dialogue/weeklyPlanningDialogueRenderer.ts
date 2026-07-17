@@ -209,6 +209,7 @@ export function sanitizeDialogueRenderOutput(
     const renderedQuestion = outputBySlotKey.get(plannedQuestion.slotKey);
     if (!renderedQuestion) return undefined;
     return plannedQuestion.slotKey === 'fixed_events'
+      || plannedQuestion.slotKey === 'planning_start_date'
       ? {
         ...renderedQuestion,
         text: fallbackQuestionText(

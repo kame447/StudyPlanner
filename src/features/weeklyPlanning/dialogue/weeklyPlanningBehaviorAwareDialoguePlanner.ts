@@ -367,7 +367,7 @@ function fallbackTextForAction(
     case 'show_options':
       if (action.topicId === 'planning-range') {
         return input.acceptedFacts.planningPeriodLabel
-          ? `${input.acceptedFacts.planningPeriodLabel}のどの日から計画を始めますか？`
+          ? `${input.acceptedFacts.planningPeriodLabel}の計画は、いつから始めますか？`
           : '計画期間は、今週・来週・週末のどれにしますか？日付で指定しても構いません。';
       }
       if (action.topicId === 'availability-basis') {

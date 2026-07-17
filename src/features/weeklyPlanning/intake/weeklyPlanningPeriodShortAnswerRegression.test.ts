@@ -109,7 +109,7 @@ describe('weekly planning period short-answer regression', () => {
     expect(state.missing).not.toContain('planning_period');
     expect(state.missing).not.toContain('planning_duration');
     expect(state.questions).toContain(
-      '日曜日までの終了時刻より前のいつから計画を始めますか？',
+      '日曜日までの計画は、いつから始めますか？',
     );
   });
 
@@ -164,7 +164,7 @@ describe('weekly planning period short-answer regression', () => {
     expect(state.missing).toContain('planning_start_date');
     expect(state.missing).not.toContain('planning_duration');
     expect(state.questions).toContain(
-      '日曜日までの終了時刻より前のいつから計画を始めますか？',
+      '日曜日までの計画は、いつから始めますか？',
     );
   });
 

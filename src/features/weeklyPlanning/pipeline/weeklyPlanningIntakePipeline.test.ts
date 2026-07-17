@@ -1782,7 +1782,7 @@ describe('clarification semantic intent (request_clarification)', () => {
       durationDays: 7,
     });
     expect(firstOutput.state.missing).toContain('planning_start_date');
-    expect(firstOutput.state.questions).toContain('来週のどの日から計画を始めますか？');
+    expect(firstOutput.state.questions).toContain('来週の計画は、いつから始めますか？');
     expect(firstOutput.decision).toMatchObject({
       kind: 'ask_missing_info',
       messageKey: 'ask_planning_start_date',
