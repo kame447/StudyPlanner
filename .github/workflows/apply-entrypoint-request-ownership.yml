@@ -28,10 +28,21 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 .github/scripts/fix-entrypoint-request-script-syntax.py
-          python3 -m py_compile .github/scripts/apply-entrypoint-request-ownership.py
-          python3 .github/scripts/instrument-entrypoint-request-ownership.py
-          python3 .github/scripts/apply-entrypoint-request-ownership.py 2>&1 | tee entrypoint-apply.log
+          {
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply-entrypoint-request-ownership.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          index = 423
+          if len(lines) <= index or lines[index].strip() != '""",':
+              raise SystemExit(f'expected malformed empty replacement at line 424, got: {lines[index] if len(lines) > index else "<missing>"}')
+          lines[index] = "'' ,".replace(' ', '')
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+            python3 -m py_compile .github/scripts/apply-entrypoint-request-ownership.py
+            python3 .github/scripts/instrument-entrypoint-request-ownership.py
+            python3 .github/scripts/apply-entrypoint-request-ownership.py
+          } 2>&1 | tee entrypoint-apply.log
       - name: Diff check
         run: git diff --check
       - name: Focused request ownership tests
