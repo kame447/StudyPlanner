@@ -276,13 +276,7 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
         && (pending.durationDays !== undefined || pending.planningEndDateTime !== undefined)) {
         return false;
       }
-      if (pending.scope.kind === 'next_week'
-        && (!pending.scope.windowStartDate || !pending.scope.windowEndDate)) {
-        return true;
-      }
-      const planningStartDate = pending.planningStartDate;
-      return typeof planningStartDate !== 'string'
-        || isDateWithinWindow(planningStartDate, pending.scope);
+      return true;
     }
     case 'begin_weekly_planning':
       return hasCommandKeys(value, []);
