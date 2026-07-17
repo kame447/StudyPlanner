@@ -25,7 +25,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply implementation
-        run: python3 .github/scripts/apply-entrypoint-request-ownership.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/instrument-entrypoint-request-ownership.py
+          python3 .github/scripts/apply-entrypoint-request-ownership.py 2>&1 | tee entrypoint-apply.log
       - name: Diff check
         run: git diff --check
       - name: Focused request ownership tests
@@ -39,9 +43,10 @@ jobs:
             src/features/weeklyPlanning/weeklyPlanningReducer.test.ts \
             src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts \
             src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts \
-            src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts
+            src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts 2>&1 | tee focused-request-ownership.log
       - name: TypeScript
-        run: npx tsc --noEmit
+        shell: bash
+        run: npx tsc --noEmit 2>&1 | tee typescript.log
       - name: Weekly planning suite
         run: npm run test:run -- src/features/weeklyPlanning
       - name: Full test suite
@@ -51,9 +56,20 @@ jobs:
       - name: Commit verified implementation
         run: |
           rm .github/scripts/apply-entrypoint-request-ownership.py
+          rm .github/scripts/instrument-entrypoint-request-ownership.py
           rm .github/workflows/apply-entrypoint-request-ownership.yml
+          rm -f entrypoint-apply.log focused-request-ownership.log typescript.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "feat: 週間計画のrequest ownershipをentrypointへ接続"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: entrypoint-request-ownership-logs
+          path: |
+            entrypoint-apply.log
+            focused-request-ownership.log
+            typescript.log
+          if-no-files-found: warn
