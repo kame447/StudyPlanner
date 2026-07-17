@@ -24,6 +24,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          python3 .github/scripts/patch-close-kanji-doc-script.py
           python3 .github/scripts/close-kanji-absolute-date-task.py 2>&1 | tee docs-sync.log
       - name: Verify links and whitespace
         run: |
@@ -36,6 +37,7 @@ jobs:
       - name: Commit synchronized documentation
         run: |
           rm .github/scripts/close-kanji-absolute-date-task.py
+          rm .github/scripts/patch-close-kanji-doc-script.py
           rm .github/workflows/close-kanji-absolute-date-task.yml
           rm -f docs-sync.log
           git config user.name "github-actions[bot]"
