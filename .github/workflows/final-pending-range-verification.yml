@@ -105,13 +105,19 @@ jobs:
               if (outcome === 'success') continue;
               const path = `/tmp/${name}.log`;
               if (!fs.existsSync(path)) continue;
-              const tail = fs.readFileSync(path, 'utf8').split('\n').slice(-80).join('\n');
-              details.push(`\n<details><summary>${name} log tail</summary>\n\n\`\`\`text\n${tail}\n\`\`\`\n</details>`);
+              const tail = fs.readFileSync(path, 'utf8').split('\n').slice(-55).join('\n');
+              details.push(`\n## ${name} log tail\n\n\`\`\`text\n${tail}\n\`\`\``);
             }
-            await github.rest.issues.createComment({
+            const body = [
+              `final verification: ${ok ? 'PASS' : 'FAIL'}`,
+              ...lines,
+              `target head: ${process.env.TARGET_HEAD}`,
+              ...details,
+            ].join('\n').slice(0, 60000);
+            await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: [`final verification: ${ok ? 'PASS' : 'FAIL'}`, ...lines, `target head: ${process.env.TARGET_HEAD}`, ...details].join('\n'),
+              body,
             });
             if (!ok) core.setFailed('Final verification failed');
