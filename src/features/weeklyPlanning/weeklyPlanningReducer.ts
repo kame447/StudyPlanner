@@ -41,6 +41,8 @@ function samePendingTurn(
 ): boolean {
   return Boolean(
     current
+      && current.conversationId === expected.conversationId
+      && current.turnId === expected.turnId
       && current.requestId === expected.requestId
       && current.weekStartDate === expected.weekStartDate
       && current.baseRevision === expected.baseRevision,
@@ -115,6 +117,7 @@ export function weeklyPlanningReducer(
     && action.type !== 'load_state'
     && action.type !== 'complete_approval'
     && action.type !== 'fail_approval'
+    && action.type !== 'reset_session'
   ) {
     return state;
   }
@@ -125,6 +128,7 @@ export function weeklyPlanningReducer(
     && action.type !== 'commit_turn'
     && action.type !== 'fail_turn'
     && action.type !== 'cancel_turn'
+    && action.type !== 'reset_session'
   ) {
     return state;
   }
@@ -324,6 +328,7 @@ export function weeklyPlanningReducer(
         messages: [],
         intakeState: undefined,
         pendingTurn: undefined,
+        pendingApproval: undefined,
         lastAssistantMessage: undefined,
       });
 

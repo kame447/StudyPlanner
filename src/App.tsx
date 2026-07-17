@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
@@ -23,13 +23,20 @@ import type { WeeklyDraftApprovalOperation } from './features/weeklyPlanning/pla
 import type {
   WeeklyPlanningMessage,
   WeeklyPlanningPendingApproval,
-  WeeklyPlanningPendingTurn,
 } from './features/weeklyPlanning/types';
 import { useWeeklyPlanningState } from './features/weeklyPlanning/useWeeklyPlanningState';
 import {
   executeWeeklyPlanningTurn,
   type WeeklyPlanningTurnSubmissionResult,
 } from './features/weeklyPlanning/weeklyPlanningTurnExecutor';
+import {
+  cancelWeeklyPlanningControlledTurn,
+  clearWeeklyPlanningControlledConversation,
+  createWeeklyPlanningControllerSession,
+  resetWeeklyPlanningControlledSession,
+  submitWeeklyPlanningControlledTurn,
+  type WeeklyPlanningControllerSession,
+} from './features/weeklyPlanning/weeklyPlanningTurnController';
 import { createPlanDraftFromWeeklyDraftBlock } from './features/weeklyPlanning/weeklyPlanningTransforms';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
@@ -182,6 +189,13 @@ export default function App() {
     planningUserId,
     selectedDate,
   );
+  const weeklyPlanningControllerSessionRef = useRef<WeeklyPlanningControllerSession | null>(null);
+  if (!weeklyPlanningControllerSessionRef.current) {
+    weeklyPlanningControllerSessionRef.current = createWeeklyPlanningControllerSession(
+      planningUserId,
+      planningState.weekStartDate,
+    );
+  }
   const pendingWeeklyDraftBlocks = useMemo(
     () => planningState.draftBlocks.filter((block) => block.status === 'draft'),
     [planningState.draftBlocks],
@@ -207,59 +221,56 @@ export default function App() {
   async function submitWeeklyPlanningTurn(
     userText: string,
   ): Promise<WeeklyPlanningTurnSubmissionResult> {
-    const snapshot = getPlanningState();
-    if (!user || snapshot.pendingTurn || snapshot.pendingApproval) {
+    const session = weeklyPlanningControllerSessionRef.current;
+    if (!user || !session) {
       return { accepted: false, draftCandidates: [] };
     }
 
-    const pending: WeeklyPlanningPendingTurn = {
-      requestId: createWeeklyPlanningRequestId('weekly-turn'),
-      weekStartDate: snapshot.weekStartDate,
-      baseRevision: snapshot.revision,
-      startedAt: new Date().toISOString(),
-    };
-    const userMessage = createWeeklyPlanningMessage('user', userText);
-    const begun = dispatchPlanningAction({ type: 'begin_turn', pending, userMessage });
-    if (begun.pendingTurn?.requestId !== pending.requestId) {
-      return { accepted: false, draftCandidates: [] };
-    }
+    return submitWeeklyPlanningControlledTurn({
+      session,
+      ownerId: user.id,
+      userText,
+      getState: getPlanningState,
+      dispatch: dispatchPlanningAction,
+      async execute({ snapshot, pending, userText: controlledUserText }) {
+        return executeWeeklyPlanningTurn({
+          previousState: snapshot.intakeState,
+          messages: snapshot.messages,
+          userText: controlledUserText,
+          selectedDate,
+          userId: user.id,
+          plans,
+          scheduleTemplates,
+          timetableTermId: activeTimetableTermId,
+          traceRequestId: pending.requestId,
+        });
+      },
+    });
+  }
 
-    try {
-      const result = await executeWeeklyPlanningTurn({
-        previousState: snapshot.intakeState,
-        messages: snapshot.messages,
-        userText,
-        selectedDate,
-        userId: user.id,
-        plans,
-        scheduleTemplates,
-        timetableTermId: activeTimetableTermId,
-        traceRequestId: pending.requestId,
-      });
-      const assistantMessage = createWeeklyPlanningMessage('assistant', result.message);
-      const committed = dispatchPlanningAction({
-        type: 'commit_turn',
-        pending,
-        intakeState: result.state,
-        assistantMessage,
-        draftCandidates: result.draftCandidates,
-      });
-      const accepted = committed.messages.some((message) => message.id === assistantMessage.id)
-        && committed.pendingTurn === undefined
-        && committed.weekStartDate === pending.weekStartDate;
-      return {
-        accepted,
-        draftCandidates: accepted ? result.draftCandidates : [],
-      };
-    } catch {
-      const message = '週間計画の会話状態を更新できませんでした。';
-      dispatchPlanningAction({
-        type: 'fail_turn',
-        pending,
-        assistantMessage: createWeeklyPlanningMessage('assistant', message),
-      });
-      throw new Error(message);
-    }
+  function cancelWeeklyPlanningTurn(): boolean {
+    return cancelWeeklyPlanningControlledTurn({
+      getState: getPlanningState,
+      dispatch: dispatchPlanningAction,
+    });
+  }
+
+  function clearWeeklyPlanningConversation(): boolean {
+    return clearWeeklyPlanningControlledConversation({
+      getState: getPlanningState,
+      dispatch: dispatchPlanningAction,
+    });
+  }
+
+  function resetWeeklyPlanningSession(): void {
+    const session = weeklyPlanningControllerSessionRef.current;
+    if (!session) return;
+    resetWeeklyPlanningControlledSession({
+      session,
+      ownerId: planningUserId,
+      getState: getPlanningState,
+      dispatch: dispatchPlanningAction,
+    });
   }
 
   async function approveWeeklyDraftBlocks() {
@@ -626,12 +637,12 @@ export default function App() {
               weeklyPlanningPendingTurn={planningState.pendingTurn}
               weeklyPlanningPendingApproval={planningState.pendingApproval}
               onSubmitWeeklyPlanningTurn={submitWeeklyPlanningTurn}
+              onCancelWeeklyPlanningTurn={cancelWeeklyPlanningTurn}
+              onClearWeeklyPlanningConversation={clearWeeklyPlanningConversation}
               onAppendWeeklyPlanningMessage={(message) =>
                 dispatchPlanningAction({ type: 'append_message', message })
               }
-              onResetWeeklyPlanningSession={() =>
-                dispatchPlanningAction({ type: 'reset_session' })
-              }
+              onResetWeeklyPlanningSession={resetWeeklyPlanningSession}
                onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
              onRemoveWeeklyPlanningPreviewCandidate={(candidateId) =>
                dispatchPlanningAction({ type: 'remove_preview_candidate', candidateId })

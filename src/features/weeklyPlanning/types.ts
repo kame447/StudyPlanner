@@ -68,6 +68,8 @@ export interface WeeklyPlanningMessage {
 }
 
 export interface WeeklyPlanningPendingTurn {
+  conversationId: string;
+  turnId: string;
   requestId: string;
   weekStartDate: string;
   baseRevision: number;

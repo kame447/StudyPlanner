@@ -1,9 +1,9 @@
 # 週間計画entrypointのrequest ownershipを統一する
 
-Status: planned
+Status: implemented / browser verification pending
 Priority: P1
 Requirement IDs: DA-TURN-001
-Updated: 2026-07-17
+Updated: 2026-07-18
 Depends on: `closed/20260714-weekly-planning-dialogue-stack-verification.md`
 Post-merge status: `docs/ai/weekly-planning-pr5-post-merge-status.md`
 
@@ -139,3 +139,27 @@ Current main `2af1a5e`の検証で次を確認した。
 - App、NaturalLanguageAssistant、QuickEntryModalのどこがrequest lifecycleを所有するか一意に説明できる。
 - modal closeとsession cancelが別operationとしてcode、test、docsで一致する。
 - 未接続箇所またはbrowser未検証が残る場合はfully completeとしない。
+
+## 10. 2026-07-18 implementation record
+
+- module implemented: completed
+- production connected: completed
+- automated verified: completed
+- browser verified: pending
+- request owner: `weeklyPlanningTurnController.ts`を介して`App.tsx`がapplication lifecycleを所有する
+- modal close: presentationだけを閉じ、active requestは維持する
+- invalidation: selected week変更、session reset、explicit cancellation後のresultを黙って破棄する
+- UI policy: Enter改行、Ctrl/Meta+Enter送信、IME/keyCode 229 guard、focus restorationを接続した
+
+Automated verification:
+
+- focused tests: 4 files / 23 tests passed
+- weekly planning suite: 84 files passed、1 skipped / 887 passed、13 skipped、5 todo
+- full suite: 112 files passed、1 skipped / 1147 passed、13 skipped、5 todo
+- TypeScript and production build: passed
+- `git diff --check`: passed
+
+Remaining verification:
+
+- 実ブラウザでclose-resume、selected week変更、session reset、explicit cancellation、IME、focus restorationを確認する
+- browser verificationが完了するまで本taskをfully completeとは扱わない

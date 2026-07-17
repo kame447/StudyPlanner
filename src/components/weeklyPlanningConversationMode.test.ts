@@ -6,6 +6,8 @@ import {
 } from './weeklyPlanningConversationMode';
 
 const pendingTurn = {
+  conversationId: 'conversation-1',
+  turnId: 'conversation-1:turn:1',
   requestId: 'request-1',
   weekStartDate: '2026-07-13',
   baseRevision: 0,

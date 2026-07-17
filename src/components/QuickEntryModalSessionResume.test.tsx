@@ -22,6 +22,8 @@ function message(content: string): WeeklyPlanningMessage {
 
 function pendingTurn(): WeeklyPlanningPendingTurn {
   return {
+    conversationId: 'conversation-1',
+    turnId: 'conversation-1:turn:1',
     requestId: 'turn-1',
     weekStartDate: '2026-07-13',
     baseRevision: 0,
@@ -66,6 +68,8 @@ function renderModal(overrides: Partial<Parameters<typeof QuickEntryModal>[0]> =
         accepted: true,
         draftCandidates: [],
       }))}
+      onCancelWeeklyPlanningTurn={vi.fn(() => false)}
+      onClearWeeklyPlanningConversation={vi.fn(() => false)}
       onAppendWeeklyPlanningMessage={vi.fn()}
       onResetWeeklyPlanningSession={vi.fn()}
       onCreateWeeklyDraftBlocks={vi.fn()}

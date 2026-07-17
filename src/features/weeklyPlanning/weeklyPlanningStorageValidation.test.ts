@@ -341,6 +341,8 @@ describe('weekly planning storage validation', () => {
   it('never persists in-flight request ownership', () => {
     const initial = createInitialPlanningState(WEEK_START);
     const pending = {
+      conversationId: 'conversation-1',
+      turnId: 'conversation-1:turn:1',
       requestId: 'request-1',
       weekStartDate: WEEK_START,
       baseRevision: initial.revision,

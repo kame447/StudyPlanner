@@ -57,6 +57,8 @@ function previewCandidate(id = 'preview-1'): WeeklyDraftCandidate {
 
 function pendingTurn(baseRevision = 0): WeeklyPlanningPendingTurn {
   return {
+    conversationId: 'conversation-current',
+    turnId: 'conversation-current:turn:1',
     requestId: 'request-current',
     weekStartDate: WEEK_START,
     baseRevision,
@@ -209,7 +211,8 @@ describe('weekly planning session reducer properties', () => {
     const blockedActions = actionsForState(begun).filter(
       (action) => action.type !== 'commit_turn'
         && action.type !== 'fail_turn'
-        && action.type !== 'cancel_turn',
+        && action.type !== 'cancel_turn'
+        && action.type !== 'reset_session',
     );
 
     fc.assert(fc.property(
@@ -227,7 +230,9 @@ describe('weekly planning session reducer properties', () => {
   it('keeps the entire session immutable for arbitrary non-terminal actions during approval', () => {
     const begun = stateWithPendingApproval();
     const blockedActions = actionsForState(begun).filter(
-      (action) => action.type !== 'complete_approval' && action.type !== 'fail_approval',
+      (action) => action.type !== 'complete_approval'
+        && action.type !== 'fail_approval'
+        && action.type !== 'reset_session',
     );
 
     fc.assert(fc.property(

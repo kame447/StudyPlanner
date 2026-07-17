@@ -229,6 +229,7 @@ export interface DialogueKeyboardEventLike {
   ctrlKey?: boolean;
   metaKey?: boolean;
   isComposing?: boolean;
+  keyCode?: number;
 }
 
 export type DialogueKeyboardDecision = 'submit' | 'newline' | 'ignore';
@@ -236,7 +237,7 @@ export type DialogueKeyboardDecision = 'submit' | 'newline' | 'ignore';
 export function decideDialogueKeyboardAction(
   event: DialogueKeyboardEventLike,
 ): DialogueKeyboardDecision {
-  if (event.isComposing) return 'ignore';
+  if (event.isComposing || event.keyCode === 229) return 'ignore';
   if (event.key !== 'Enter') return 'ignore';
   if (event.ctrlKey || event.metaKey) return 'submit';
   return 'newline';

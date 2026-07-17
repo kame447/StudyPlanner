@@ -60,6 +60,8 @@ interface QuickEntryModalProps {
   weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
   weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
   onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onCancelWeeklyPlanningTurn: () => boolean;
+  onClearWeeklyPlanningConversation: () => boolean;
   onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
   onResetWeeklyPlanningSession: () => void;
   onCreateWeeklyDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
@@ -129,6 +131,8 @@ export function QuickEntryModal({
   weeklyPlanningPendingTurn,
   weeklyPlanningPendingApproval,
   onSubmitWeeklyPlanningTurn,
+  onCancelWeeklyPlanningTurn,
+  onClearWeeklyPlanningConversation,
   onAppendWeeklyPlanningMessage,
   onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
@@ -636,6 +640,8 @@ export function QuickEntryModal({
                  weeklyPlanningPendingTurn={weeklyPlanningPendingTurn}
                  weeklyPlanningPendingApproval={weeklyPlanningPendingApproval}
                  onSubmitWeeklyPlanningTurn={onSubmitWeeklyPlanningTurn}
+                 onCancelWeeklyPlanningTurn={onCancelWeeklyPlanningTurn}
+                 onClearWeeklyPlanningConversation={onClearWeeklyPlanningConversation}
                  onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
                  onResetWeeklyPlanningSession={onResetWeeklyPlanningSession}
                   onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
