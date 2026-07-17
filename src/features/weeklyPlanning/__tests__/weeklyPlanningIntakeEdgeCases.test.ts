@@ -380,6 +380,7 @@ describe('weekly planning intake edge cases', () => {
     ['3時間です', 'low'],
     ['3時間', 'low'],
     ['3時間くらい', 'medium'],
+    ['だいたい3時間ぐらいかな', 'medium'],
   ] as const)('R2 slot filling accepts short unit-rate answer while unit duration is missing: %s', (text, uncertainty) => {
     const state = applyWeeklyPlanningUserTurn(
       applyWeekendExamReadyForUnitRateQuestion(),
@@ -397,6 +398,27 @@ describe('weekly planning intake edge cases', () => {
     ]);
     expect(state.missing).not.toContain('unit_duration_estimate');
     expect(state.questions).not.toContain('1つの年度×分野にだいたい何分かかりますか？');
+  });
+
+  it('accepts no fixed events and a short unit rate from one multi-line answer', () => {
+    const state = applyWeeklyPlanningUserTurn(
+      applyWeekendExamReadyForUnitRateQuestion(),
+      'いや特に予定はないかな\nだいたい3時間ぐらいかな',
+      context,
+    );
+
+    expect(state.unitRates).toEqual([
+      expect.objectContaining({
+        unit: 'year_field_chunk',
+        minutesPerUnit: 180,
+        source: 'user',
+        uncertainty: 'medium',
+      }),
+    ]);
+    expect(state.missing).not.toContain('unit_duration_estimate');
+    expect(state.missing).not.toContain('fixed_events');
+    expect(state.questions.join('\n')).not.toMatch(/年度×分野|目安時間/);
+    expect(state.questions.join('\n')).not.toContain('動かせない予定');
   });
 
   it('R2 slot filling does not hijack short duration answers when unit-rate slot is closed', () => {
