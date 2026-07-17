@@ -167,6 +167,74 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     expect(result.message).not.toContain('数学');
   });
 
+  it('removes a generic acknowledgement prefix from an AI-authored question', async () => {
+    const plannerInput = input(rangeOnlyState());
+    const action = plannerInput.allowedActions.find((candidate) =>
+      candidate.kind === 'ask_required_fact' && candidate.topicId === 'task-identity',
+    );
+    if (!action) throw new Error('expected task identity action');
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        selectedActionIds: [action.actionId],
+        items: [{
+          actionId: action.actionId,
+          text: '了解です。具体的に何をどこまで進めたいか教えてください。',
+        }],
+      })),
+    };
+
+    const result = await createAiBehaviorAwareWeeklyPlanningDialoguePlanner(config, client)
+      .plan(plannerInput);
+
+    expect(result.source).toBe('ai');
+    expect(result.message).toBe('具体的に何をどこまで進めたいか教えてください。');
+    expect(result.message).not.toContain('了解です');
+    expect(result.renderedActionIds).toEqual([action.actionId]);
+  });
+
+  it('falls back when an AI item contains only a generic acknowledgement', async () => {
+    const plannerInput = input(rangeOnlyState());
+    const action = plannerInput.allowedActions.find((candidate) =>
+      candidate.kind === 'ask_required_fact' && candidate.topicId === 'task-identity',
+    );
+    if (!action) throw new Error('expected task identity action');
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        selectedActionIds: [action.actionId],
+        items: [{ actionId: action.actionId, text: '了解です。' }],
+      })),
+    };
+
+    const result = await createAiBehaviorAwareWeeklyPlanningDialoguePlanner(config, client)
+      .plan(plannerInput);
+
+    expect(result.source).toBe('deterministic_fallback');
+    expect(result.message).toBe('具体的に何をどこまで進めたいか教えてください。');
+    expect(result.message).not.toContain('了解です');
+  });
+
+  it('does not repeat an item when the reasoning summary is identical', async () => {
+    const plannerInput = input(rangeOnlyState());
+    const action = plannerInput.allowedActions.find((candidate) =>
+      candidate.kind === 'ask_required_fact' && candidate.topicId === 'task-identity',
+    );
+    if (!action) throw new Error('expected task identity action');
+    const question = '具体的に何をどこまで進めたいか教えてください。';
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        selectedActionIds: [action.actionId],
+        items: [{ actionId: action.actionId, text: question }],
+        reasoningSummary: question,
+      })),
+    };
+
+    const result = await createAiBehaviorAwareWeeklyPlanningDialoguePlanner(config, client)
+      .plan(plannerInput);
+
+    expect(result.source).toBe('ai');
+    expect(result.message).toBe(question);
+  });
+
   it('falls back when the AI invents an action', async () => {
     const value = state(['英語ワークを進めたい']);
     const client: OpenAiCompatibleClient = {

@@ -9,6 +9,10 @@ import { recordWeeklyPlanningRenderedAssistantTurn } from '../trace/weeklyPlanni
 import type { WeeklyPlanningTraceResponseSource } from '../trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningDialogueDecision } from './weeklyPlanningDialogueManager';
 import { createWeeklyPlanningDialogueMessage } from './weeklyPlanningDialogueMessages';
+import {
+  composeUniqueDialogueMessage,
+  stripGenericAcknowledgementPrefix,
+} from './weeklyPlanningDialogueText';
 
 export interface DialogueNextQuestion {
   slotKey: string;
@@ -208,24 +212,31 @@ export function sanitizeDialogueRenderOutput(
   const questions = plannedQuestions.map((plannedQuestion) => {
     const renderedQuestion = outputBySlotKey.get(plannedQuestion.slotKey);
     if (!renderedQuestion) return undefined;
-    return plannedQuestion.slotKey === 'fixed_events'
+    const text = plannedQuestion.slotKey === 'fixed_events'
       || plannedQuestion.slotKey === 'planning_start_date'
-      ? {
-        ...renderedQuestion,
-        text: fallbackQuestionText(
-          plannedQuestion,
-          input.planningPeriodLabel,
-          input.knownFixedEventSummaries,
-        ),
-      }
-      : renderedQuestion;
+      ? fallbackQuestionText(
+        plannedQuestion,
+        input.planningPeriodLabel,
+        input.knownFixedEventSummaries,
+      )
+      : stripGenericAcknowledgementPrefix(renderedQuestion.text);
+    return text ? { ...renderedQuestion, text } : undefined;
   });
   if (questions.some((question) => !question)) {
     return null;
   }
+  const normalizedQuestionTexts = questions.map((question) =>
+    question ? question.text.replace(/\s+/g, ' ').trim() : '',
+  );
+  if (new Set(normalizedQuestionTexts).size !== normalizedQuestionTexts.length) {
+    return null;
+  }
 
+  const acknowledgement = output.acknowledgement
+    ? stripGenericAcknowledgementPrefix(output.acknowledgement)
+    : undefined;
   return {
-    acknowledgement: output.acknowledgement,
+    acknowledgement: acknowledgement || undefined,
     questions: questions as Array<{ slotKey: string; text: string }>,
   };
 }
@@ -285,10 +296,10 @@ function renderDeterministicMissingQuestions(input: DialogueRenderInput): string
 }
 
 function composeRenderedMessage(output: DialogueRenderOutput): string {
-  return [
+  return composeUniqueDialogueMessage([
     output.acknowledgement,
     ...output.questions.map((question) => question.text),
-  ].filter((part): part is string => Boolean(part)).join('\n');
+  ]);
 }
 
 function tracedMessage(

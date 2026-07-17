@@ -74,10 +74,32 @@ function canCommitApproval(
     && state.revision === pending.baseRevision + 1;
 }
 
+function normalizedMessageContent(content: string): string {
+  return content.replace(/\s+/g, ' ').trim();
+}
+
+function isConsecutiveDuplicateMessage(
+  state: PlanningState,
+  message: WeeklyPlanningMessage,
+): boolean {
+  const previous = state.messages[state.messages.length - 1];
+  return Boolean(
+    previous
+      && previous.role === message.role
+      && normalizedMessageContent(previous.content) === normalizedMessageContent(message.content),
+  );
+}
+
 function appendAssistantMessage(
   state: PlanningState,
   message: WeeklyPlanningMessage,
 ): Pick<PlanningState, 'messages' | 'lastAssistantMessage'> {
+  if (isConsecutiveDuplicateMessage(state, message)) {
+    return {
+      messages: state.messages,
+      lastAssistantMessage: state.messages[state.messages.length - 1]?.content,
+    };
+  }
   return {
     messages: [...state.messages, message],
     lastAssistantMessage: message.content,
@@ -266,6 +288,7 @@ export function weeklyPlanningReducer(
     }
 
     case 'append_message':
+      if (isConsecutiveDuplicateMessage(state, action.message)) return state;
       return withMutation(state, {
         ...state,
         mode: state.mode === 'idle' ? 'collecting_tasks' : state.mode,
@@ -304,16 +327,19 @@ export function weeklyPlanningReducer(
         lastAssistantMessage: undefined,
       });
 
-    case 'set_last_assistant_message':
+    case 'set_last_assistant_message': {
+      const message: WeeklyPlanningMessage = {
+        id: `weekly-planning-message-${Date.now()}`,
+        role: 'assistant',
+        content: action.message,
+        createdAt: nowIso(),
+      };
+      if (isConsecutiveDuplicateMessage(state, message)) return state;
       return withMutation(state, {
         ...state,
-        ...appendAssistantMessage(state, {
-          id: `weekly-planning-message-${Date.now()}`,
-          role: 'assistant',
-          content: action.message,
-          createdAt: nowIso(),
-        }),
+        ...appendAssistantMessage(state, message),
       });
+    }
 
     default:
       return state;
