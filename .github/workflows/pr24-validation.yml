@@ -1,0 +1,27 @@
+name: PR 24 validation
+
+on:
+  push:
+    branches:
+      - agent/fix-weekly-planning-period-short-answer
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Focused regression
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningPeriodShortAnswerRegression.test.ts src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.test.ts
+      - name: Weekly planning suite
+        run: npm run test:run -- src/features/weeklyPlanning
+      - name: Production build
+        run: npm run build
