@@ -1,0 +1,110 @@
+--- a/src/features/weeklyPlanning/intake/weeklyPlanningUnitRateParsing.ts
++++ b/src/features/weeklyPlanning/intake/weeklyPlanningUnitRateParsing.ts
+@@ -24,37 +24,40 @@
+ export function parseBareDurationAsUnitRateCommand(
+   text: string,
+ ): SetUnitRateCommand | undefined {
+-  const segment = normalizeIntakeText(text).trim();
+-  const match = segment.match(
+-    /^(?:だいたい\s*)?([0-9]+|[一二三四五六七八九十]+)\s*時間\s*(?:くらい|ぐらい)?\s*(?:です)?$/,
+-  );
+-
+-  if (!match) {
+-    return undefined;
+-  }
+-
+-  const hours = parseSmallInteger(match[1]);
+-
+-  if (!hours) {
+-    return undefined;
++  for (const segment of splitIntakeSegments(text)) {
++    const match = segment.match(
++      /^(?:だいたい\s*)?([0-9]+|[一二三四五六七八九十]+)\s*時間\s*(?:くらい|ぐらい)?\s*(?:です|かな|だね|ですね)?$/,
++    );
++
++    if (!match) {
++      continue;
++    }
++
++    const hours = parseSmallInteger(match[1]);
++
++    if (!hours) {
++      continue;
++    }
++
++    const uncertainty = /くらい|ぐらい|だいたい|かな/.test(segment) ? 'medium' : 'low';
++    const unitRate: UnitRateEstimate = {
++      unit: 'year_field_chunk',
++      minutesPerUnit: hours * 60,
++      source: 'user',
++      uncertainty,
++      rawText: match[0],
++    };
++
++    return {
++      type: 'set_unit_rate',
++      unitRate,
++      sourceText: text,
++      sourceSegment: unitRate.rawText,
++      confidence: uncertainty === 'medium' ? 'medium' : 'high',
++    };
+   }
+ 
+-  const uncertainty = /くらい|ぐらい|だいたい/.test(segment) ? 'medium' : 'low';
+-  const unitRate: UnitRateEstimate = {
+-    unit: 'year_field_chunk',
+-    minutesPerUnit: hours * 60,
+-    source: 'user',
+-    uncertainty,
+-    rawText: match[0],
+-  };
+-
+-  return {
+-    type: 'set_unit_rate',
+-    unitRate,
+-    sourceText: text,
+-    sourceSegment: unitRate.rawText,
+-    confidence: uncertainty === 'medium' ? 'medium' : 'high',
+-  };
++  return undefined;
+ }
+ 
+ export function parseUnitRate(
+--- a/src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts
++++ b/src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts
+@@ -380,6 +380,7 @@
+     ['3時間です', 'low'],
+     ['3時間', 'low'],
+     ['3時間くらい', 'medium'],
++    ['だいたい3時間ぐらいかな', 'medium'],
+   ] as const)('R2 slot filling accepts short unit-rate answer while unit duration is missing: %s', (text, uncertainty) => {
+     const state = applyWeeklyPlanningUserTurn(
+       applyWeekendExamReadyForUnitRateQuestion(),
+@@ -399,6 +400,27 @@
+     expect(state.questions).not.toContain('1つの年度×分野にだいたい何分かかりますか？');
+   });
+ 
++  it('accepts no fixed events and a short unit rate from one multi-line answer', () => {
++    const state = applyWeeklyPlanningUserTurn(
++      applyWeekendExamReadyForUnitRateQuestion(),
++      'いや特に予定はないかな\nだいたい3時間ぐらいかな',
++      context,
++    );
++
++    expect(state.unitRates).toEqual([
++      expect.objectContaining({
++        unit: 'year_field_chunk',
++        minutesPerUnit: 180,
++        source: 'user',
++        uncertainty: 'medium',
++      }),
++    ]);
++    expect(state.missing).not.toContain('unit_duration_estimate');
++    expect(state.missing).not.toContain('fixed_events');
++    expect(state.questions.join('\n')).not.toMatch(/年度×分野|目安時間/);
++    expect(state.questions.join('\n')).not.toContain('動かせない予定');
++  });
++
+   it('R2 slot filling does not hijack short duration answers when unit-rate slot is closed', () => {
+     const state = applyWeeklyPlanningUserTurn(
+       undefined,
