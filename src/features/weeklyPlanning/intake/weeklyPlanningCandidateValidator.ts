@@ -184,10 +184,6 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
     case 'set_pending_planning_range': {
       const { scope, planningStartDate, durationDays } = command.pending;
       if (!isValidDateWindow(scope)) return 'invalid-pending-planning-range';
-      if (scope.kind === 'next_week'
-        && (!scope.windowStartDate || !scope.windowEndDate)) {
-        return 'invalid-pending-planning-range';
-      }
       if (planningStartDate !== undefined
         && (!isIsoCalendarDate(planningStartDate)
           || !isDateWithinWindow(planningStartDate, scope))) {
