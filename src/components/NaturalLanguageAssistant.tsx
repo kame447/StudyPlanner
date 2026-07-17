@@ -1,4 +1,4 @@
-import { type CSSProperties, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   formatMinutes,
   minutesBetween,
@@ -21,6 +21,7 @@ import type {
 } from '../features/weeklyPlanning/types';
 import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
 import { looksLikeWeeklyPlanningRequest } from '../features/weeklyPlanning/weeklyPlanningTransforms';
+import { decideDialogueKeyboardAction } from '../features/weeklyPlanning/dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
 import {
   createWeeklyDraftBlocksFromPreviewCandidates,
@@ -54,6 +55,8 @@ interface NaturalLanguageAssistantProps {
   weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
   weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
   onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onCancelWeeklyPlanningTurn: () => boolean;
+  onClearWeeklyPlanningConversation: () => boolean;
   onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
   onResetWeeklyPlanningSession: () => void;
   onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
@@ -234,6 +237,8 @@ export function NaturalLanguageAssistant({
   weeklyPlanningPendingTurn,
   weeklyPlanningPendingApproval,
   onSubmitWeeklyPlanningTurn,
+  onCancelWeeklyPlanningTurn,
+  onClearWeeklyPlanningConversation,
   onAppendWeeklyPlanningMessage,
   onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
@@ -265,8 +270,27 @@ export function NaturalLanguageAssistant({
   const [selectedWeeklyDraftDate, setSelectedWeeklyDraftDate] = useState('');
   const runtimeInfo = getPlannerAiRuntimeInfo();
   const isWeeklyPlanningBusy = Boolean(weeklyPlanningPendingTurn || weeklyPlanningPendingApproval);
+  const weeklyPlanningInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const wasWeeklyPlanningBusyRef = useRef(isWeeklyPlanningBusy);
   void weeklyPlanningWeekStartDate;
   void weeklyPlanningRevision;
+
+  function scheduleWeeklyPlanningInputFocus() {
+    const focus = () => weeklyPlanningInputRef.current?.focus();
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(focus);
+    } else {
+      setTimeout(focus, 0);
+    }
+  }
+
+  useEffect(() => {
+    const wasBusy = wasWeeklyPlanningBusyRef.current;
+    wasWeeklyPlanningBusyRef.current = isWeeklyPlanningBusy;
+    if (wasBusy && !isWeeklyPlanningBusy) {
+      scheduleWeeklyPlanningInputFocus();
+    }
+  }, [isWeeklyPlanningBusy]);
 
   function appendWeeklyPlanningMessage(
     role: WeeklyPlanningMessage['role'],
@@ -378,7 +402,7 @@ export function NaturalLanguageAssistant({
     '--weekly-draft-preview-hour-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT}px`,
     '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT / 6}px`,
   } as CSSProperties;
-  const canCreateWeeklyDraft = text.trim().length > 0;
+  const canCreateWeeklyDraft = text.trim().length > 0 && !isWeeklyPlanningBusy;
 
   function resetWeeklyPlanningSession() {
     onResetWeeklyPlanningSession();
@@ -387,6 +411,21 @@ export function NaturalLanguageAssistant({
     setError('');
     setStatus('');
     setText('');
+    scheduleWeeklyPlanningInputFocus();
+  }
+
+  function cancelWeeklyPlanningTurn() {
+    if (!onCancelWeeklyPlanningTurn()) return;
+    setError('');
+    setStatus('');
+    scheduleWeeklyPlanningInputFocus();
+  }
+
+  function clearWeeklyPlanningConversationOnly() {
+    if (!onClearWeeklyPlanningConversation()) return;
+    setError('');
+    setStatus('');
+    scheduleWeeklyPlanningInputFocus();
   }
 
   function clearWeeklyPlanningDraftsOnly() {
@@ -478,6 +517,20 @@ export function NaturalLanguageAssistant({
     }
   }
 
+  function handleWeeklyPlanningKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    const decision = decideDialogueKeyboardAction({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      isComposing: event.nativeEvent.isComposing,
+      keyCode: event.nativeEvent.keyCode,
+    });
+    if (decision !== 'submit') return;
+    event.preventDefault();
+    if (!isWeeklyPlanningBusy) void handleCreateWeeklyDrafts();
+  }
+
   async function handleCreateWeeklyDrafts() {
     const trimmedText = text.trim();
     if (!trimmedText || isWeeklyPlanningBusy) {
@@ -496,6 +549,8 @@ export function NaturalLanguageAssistant({
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : '週間計画の会話状態を更新できませんでした。');
+    } finally {
+      scheduleWeeklyPlanningInputFocus();
     }
   }
 
@@ -873,6 +928,18 @@ export function NaturalLanguageAssistant({
 
           {renderWeeklyPlanningHistory()}
 
+          {weeklyPlanningPendingTurn ? (
+            <div className="row-actions">
+              <button
+                className="ghost-button"
+                onClick={cancelWeeklyPlanningTurn}
+                type="button"
+              >
+                処理をキャンセル
+              </button>
+            </div>
+          ) : null}
+
           {error || status ? (
             <div
               className={
@@ -886,13 +953,15 @@ export function NaturalLanguageAssistant({
             </div>
           ) : null}
 
-          {hasLocalWeeklyPlanningPreview && !isAnalyzing ? (
+          {hasLocalWeeklyPlanningPreview && !isWeeklyPlanningBusy ? (
             <div className="section-stack">
               <label className="field field-full">
                 <span>条件を修正する</span>
                 <textarea
+                  ref={weeklyPlanningInputRef}
                   value={text}
                   onChange={(event) => setText(event.target.value)}
+                  onKeyDown={handleWeeklyPlanningKeyDown}
                   rows={3}
                   placeholder="例: 風呂を21時にして、固定予定はなし"
                 />
@@ -915,9 +984,9 @@ export function NaturalLanguageAssistant({
                   className="primary-button"
                   onClick={() => void handleCreateWeeklyDrafts()}
                   type="button"
-                  disabled={isAnalyzing || !canCreateWeeklyDraft}
+                  disabled={!canCreateWeeklyDraft}
                 >
-                  {isAnalyzing ? '送信中...' : '条件を送信'}
+                  {isWeeklyPlanningBusy ? '送信中...' : '条件を送信'}
                 </button>
                 <button
                   className="ghost-button"
@@ -1241,8 +1310,10 @@ export function NaturalLanguageAssistant({
               <label className="field field-full">
                 <span>週間計画にしたいこと</span>
                 <textarea
+                  ref={weeklyPlanningInputRef}
                   value={text}
                   onChange={(event) => setText(event.target.value)}
+                  onKeyDown={handleWeeklyPlanningKeyDown}
                   rows={4}
                   placeholder="例: 来週、計算理論と英語を少しずつ進めたい"
                 />
@@ -1260,6 +1331,15 @@ export function NaturalLanguageAssistant({
                 >
                   送信
                 </button>
+                {weeklyPlanningMessages.length > 0 || weeklyPlanningIntakeState ? (
+                  <button
+                    className="ghost-button"
+                    onClick={clearWeeklyPlanningConversationOnly}
+                    type="button"
+                  >
+                    会話履歴だけ消す
+                  </button>
+                ) : null}
                 {weeklyPlanningMessages.length > 0
                    || weeklyPlanningIntakeState
                    || weeklyDraftBlocks.length > 0
@@ -1274,6 +1354,16 @@ export function NaturalLanguageAssistant({
                 ) : null}
               </div>
             </>
+          ) : weeklyPlanningPendingTurn ? (
+            <div className="row-actions">
+              <button
+                className="ghost-button"
+                onClick={cancelWeeklyPlanningTurn}
+                type="button"
+              >
+                処理をキャンセル
+              </button>
+            </div>
           ) : null}
 
           {error || status ? (

@@ -157,6 +157,83 @@ describe('weeklyPlanningReducer', () => {
     expect(second.messages).toHaveLength(1);
   });
 
+  it('requires the full conversation and turn identity before committing a turn', () => {
+    const initial = createInitialPlanningState('2026-06-22');
+    const pending = {
+      conversationId: 'conversation-1',
+      turnId: 'conversation-1:turn:1',
+      requestId: 'conversation-1:request:1',
+      weekStartDate: initial.weekStartDate,
+      baseRevision: initial.revision,
+      startedAt: '2026-06-19T00:00:00.000Z',
+    };
+    const begun = weeklyPlanningReducer(initial, {
+      type: 'begin_turn',
+      pending,
+      userMessage: {
+        id: 'user-1',
+        role: 'user',
+        content: '予定を作りたい',
+        createdAt: '2026-06-19T00:00:00.000Z',
+      },
+    });
+    const mismatched = weeklyPlanningReducer(begun, {
+      type: 'commit_turn',
+      pending: { ...pending, turnId: 'conversation-1:turn:2' },
+      intakeState: {} as never,
+      assistantMessage: assistantMessage('assistant-1', '確認しました。'),
+    });
+
+    expect(mismatched).toBe(begun);
+  });
+
+  it('allows session reset to invalidate an active turn', () => {
+    const initial = createInitialPlanningState('2026-06-22');
+    const pending = {
+      conversationId: 'conversation-1',
+      turnId: 'conversation-1:turn:1',
+      requestId: 'conversation-1:request:1',
+      weekStartDate: initial.weekStartDate,
+      baseRevision: initial.revision,
+      startedAt: '2026-06-19T00:00:00.000Z',
+    };
+    const begun = weeklyPlanningReducer(initial, {
+      type: 'begin_turn',
+      pending,
+      userMessage: {
+        id: 'user-1',
+        role: 'user',
+        content: '予定を作りたい',
+        createdAt: '2026-06-19T00:00:00.000Z',
+      },
+    });
+    const reset = weeklyPlanningReducer(begun, { type: 'reset_session' });
+
+    expect(reset.pendingTurn).toBeUndefined();
+    expect(reset.messages).toEqual([]);
+    expect(reset.mode).toBe('idle');
+  });
+
+  it('allows session reset to invalidate an active approval', () => {
+    const withDraft = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
+      type: 'add_draft_blocks',
+      blocks: [draftBlock('draft-1')],
+    });
+    const pending = {
+      requestId: 'approval-1',
+      weekStartDate: withDraft.weekStartDate,
+      baseRevision: withDraft.revision,
+      blockIds: ['draft-1'],
+      startedAt: '2026-06-19T00:00:00.000Z',
+    };
+    const begun = weeklyPlanningReducer(withDraft, { type: 'begin_approval', pending });
+    const reset = weeklyPlanningReducer(begun, { type: 'reset_session' });
+
+    expect(reset.pendingApproval).toBeUndefined();
+    expect(reset.draftBlocks).toEqual([]);
+    expect(reset.mode).toBe('idle');
+  });
+
   it('keeps bulk discard behavior intact after an individual removal', () => {
     const state = weeklyPlanningReducer(createInitialPlanningState('2026-06-22'), {
       type: 'add_draft_blocks',

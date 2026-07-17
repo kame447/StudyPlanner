@@ -93,6 +93,7 @@ describe('weeklyPlanningDialogueOrchestrator', () => {
 
   it('uses Ctrl or Meta Enter for submit and never submits while composing', () => {
     expect(decideDialogueKeyboardAction({ key: 'Enter', isComposing: true, ctrlKey: true })).toBe('ignore');
+    expect(decideDialogueKeyboardAction({ key: 'Enter', keyCode: 229, ctrlKey: true })).toBe('ignore');
     expect(decideDialogueKeyboardAction({ key: 'Enter' })).toBe('newline');
     expect(decideDialogueKeyboardAction({ key: 'Enter', shiftKey: true })).toBe('newline');
     expect(decideDialogueKeyboardAction({ key: 'Enter', ctrlKey: true })).toBe('submit');

@@ -101,6 +101,8 @@ const SessionOwnerHarness = forwardRef<SessionOwnerHandle, {
   async function submit(text: string): Promise<void> {
     const snapshot = getPlanningState();
     const pending: WeeklyPlanningPendingTurn = {
+      conversationId: 'conversation-1',
+      turnId: 'conversation-1:turn:1',
       requestId: 'turn-1',
       weekStartDate: snapshot.weekStartDate,
       baseRevision: snapshot.revision,
@@ -165,6 +167,8 @@ const SessionOwnerHarness = forwardRef<SessionOwnerHandle, {
           draftCandidates: latest.previewCandidates ?? [],
         };
       }}
+      onCancelWeeklyPlanningTurn={() => false}
+      onClearWeeklyPlanningConversation={() => false}
       onAppendWeeklyPlanningMessage={(message) => {
         dispatchPlanningAction({ type: 'append_message', message });
       }}
