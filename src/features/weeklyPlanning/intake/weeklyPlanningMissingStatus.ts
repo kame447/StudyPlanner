@@ -1,5 +1,8 @@
 import type { PlanningIntakeMissing, PlanningIntakeState, PlanningIntakeStatus } from './weeklyPlanningIntakeTypes';
-import { deterministicQuestionsForState, statusForMissing } from './weeklyPlanningQuestionSlots';
+import {
+  QUESTION_SLOT_DEFINITION_BY_MISSING,
+  statusForMissing,
+} from './weeklyPlanningQuestionSlots';
 import { uniqueList } from './weeklyPlanningTextParsing';
 
 export function addMissing(
@@ -96,8 +99,27 @@ function applyPriorityMissingState(state: PlanningIntakeState): PlanningIntakeSt
   return nextState;
 }
 
+const STATE_QUESTION_MISSING_ORDER: readonly PlanningIntakeMissing[] = [
+  'planning_period',
+  'planning_start_date',
+  'planning_duration',
+  'tasks_or_goals',
+  'year_range',
+  'completion_direction',
+  'unit_duration_estimate',
+  'priority_policy',
+];
+
 function resolveQuestions(state: PlanningIntakeState): string[] {
-  return deterministicQuestionsForState(state);
+  return STATE_QUESTION_MISSING_ORDER.flatMap((missing) => {
+    const definition = QUESTION_SLOT_DEFINITION_BY_MISSING[missing];
+    if (!definition.isStateQuestionEligible(state)) return [];
+    if (missing === 'planning_duration' && state.missing.includes('planning_start_date')) {
+      return [];
+    }
+    const question = definition.deterministicQuestion(state);
+    return question ? [question] : [];
+  });
 }
 
 function resolveStatus(state: PlanningIntakeState): PlanningIntakeStatus {
