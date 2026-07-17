@@ -27,11 +27,17 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply implementation
-        run: python3 .github/scripts/apply-kanji-absolute-date-guard.py
+        run: |
+          python3 .github/scripts/apply-kanji-absolute-date-guard.py
+          python3 .github/scripts/patch-kanji-date-weekday-regression.py
       - name: Diff check
         run: git diff --check
       - name: Focused regression
-        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts
+        id: focused
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts 2>&1 | tee focused-regression.log
       - name: Weekly planning suite
         run: npm run test:run -- src/features/weeklyPlanning
       - name: Full test suite
@@ -39,6 +45,7 @@ jobs:
       - name: Production build
         run: npm run build
       - name: Stage verified files
+        if: success()
         run: |
           mkdir -p verified-files/src/features/weeklyPlanning/intake
           mkdir -p verified-files/src/features/weeklyPlanning/pipeline
@@ -48,7 +55,10 @@ jobs:
           cp src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts verified-files/src/features/weeklyPlanning/intake/
           cp src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts verified-files/src/features/weeklyPlanning/pipeline/
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: kanji-absolute-date-verified-files
-          path: verified-files
-          if-no-files-found: error
+          name: kanji-absolute-date-run-output
+          path: |
+            focused-regression.log
+            verified-files
+          if-no-files-found: warn
