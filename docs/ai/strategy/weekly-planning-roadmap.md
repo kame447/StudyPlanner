@@ -2,11 +2,12 @@
 
 Status: canonical / active
 最終更新: 2026-07-17
-Current main baseline: `bb39e968d7b4923a159a11380fe914d8ed2eb5e7`
+Current main baseline: `10c40296dc6655343d4d36d04ceb63abb9c07f8e`
 
 - Current contract status: [weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
 - PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](../tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
+- PR #26 completion record: [20260717-weekly-planning-kanji-absolute-date-guard.md](../tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
 - Architecture: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
 - Product spec: [weekly-planning-spec.md](../../weekly-planning/weekly-planning-spec.md)
 - Test scenarios: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
@@ -70,6 +71,21 @@ GitHub Actions run `29577182656`でPR merge refを対象に次を実行し、す
 
 一時検証workflowは検証後に削除した。Cloudflare Pages deployもsquash merge前の最終branch headで成功した。これはautomated verifiedを意味するが、browser verifiedまたは自然言語入力の完全網羅を意味しない。
 
+### 1.4 PR #26 recorded validation
+
+PR #26は2026-07-17にsquash mergeされ、`main` merge commitは`10c4029`である。Issue #21の漢数字絶対日付と曜日の誤認を修正した。
+
+GitHub Actions run `29581399006`で実装適用後のworktreeを対象に次を実行し、すべて成功した。
+
+- `npm ci`: passed
+- `git diff --check`: passed
+- focused regression: 19 passed
+- `src/features/weeklyPlanning` suite: passed
+- full tests: passed
+- production build: passed
+
+検証済みworktreeからhelperを除去して実装commitを作成し、最終branch headのCloudflare Pages deployも成功した。automated verifiedであり、browser verifiedを意味しない。
+
 ## 2. Implemented modules and contracts on `main`
 
 次のmoduleとcontractは`main`に存在する。ただし、module実装、production entrypoint接続、自動検証、browser検証、production運用を同じ意味で扱わない。
@@ -80,7 +96,7 @@ GitHub Actions run `29577182656`でPR merge refを対象に次を実行し、す
 | deterministic baseline + AI semantic補完 | merged to `main` | long-form spec/architecture/test planの旧no-merge記述同期 |
 | explicit repair / pass-over / grounded acknowledgement | merged to `main` | browser roleplay、real-model rubric |
 | contextual fixed-event question | merged to `main` | browser rendering、range edge cases |
-| planning range pending contract | PR #24までmerged / automated verified | Issue #21、week-start profile、browser roleplay |
+| planning range pending contract | PR #26までmerged / automated verified | week-start profile、browser roleplay |
 | session-owned preview lifecycle | merged to `main` | browser close-resume、reload semantics |
 | closed storage validation | merged to `main` | current main round-trip再実行 |
 | DA1b assumption decision and correction | implemented | local integration / browser |
@@ -127,39 +143,34 @@ PR #24で追加・強化されたplanning range contract:
 
 ### P0
 
-1. `20260717-weekly-planning-kanji-absolute-date-guard.md`
-   - Issue #21を修正する。
-   - `八月一日`、`8月一日`等を絶対日付として扱い、日曜日へ誤変換しない。
-   - deterministic経路とAI candidate経路のrange guardを統一する。
-
-2. `20260714-weekly-planning-dialogue-stack-verification.md`
+1. `20260714-weekly-planning-dialogue-stack-verification.md`
    - current `main`でtargeted tests、TypeScript、build、full tests、production entrypoint、browser behaviorを再分類する。
    - PR #5のclose-resume契約、session reset/stale契約、IME、focusを分けて検証する。
    - 失敗時はtask内で修正せず、原因と再現情報を別taskへ切り出す。
 
 ### P1
 
-3. `20260716-weekly-planning-entrypoint-request-ownership.md`
+2. `20260716-weekly-planning-entrypoint-request-ownership.md`
    - conversation、turn、request、revision、selected week、reset、explicit cancel、retryのownershipをproduction controllerへ統一する。
    - modal close/presentation unmountをsession cancelとして扱わない。
 
-4. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
+3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
    - rotating HMAC subject token、全session本文の保存前redaction、本文・snapshot・metadataの180日TTL、account deletion、限定admin accessを実装・検証する。
    - privacy/legal reviewをdeploy前条件として残す。
 
-5. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
+4. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
    - account-linked profile schema、profile factのorigin/confidence/scope、原履歴180日TTL、profile訂正、account deletion、初回acceptance gateを実装する。
    - 週の始まり、学習時間見積り、session構成、修正傾向、実績差、修復方針を次回計画へ反映する。
 
-6. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
+5. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
    - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
 
 ### P2
 
-7. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+6. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
    - pagination、query cost、index、archive、schemaVersion decoderを設計する。
 
-8. `20260716-weekly-planning-controller-ui-responsibility-split.md`
+7. `20260716-weekly-planning-controller-ui-responsibility-split.md`
    - conversation controller、preview controller、view componentへ責務を分離する。
    - PR #5 post-merge stateとentrypoint ownership taskの結果を前提にする。
 

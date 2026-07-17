@@ -5,7 +5,7 @@ Updated: 2026-07-17
 Target branch: `main`
 Target merge commit: `55f8e32c68cfd057494fadec0ed208cba267db12`
 Related PR: `#5 feat: 週間計画の対話と履歴を改善`
-Known functional bug: Issue `#21`
+Resolved functional bug: Issue `#21` / PR `#26`
 
 ## 1. この文書の役割
 
@@ -130,7 +130,7 @@ browser reload中の未完了network request
 - pending `来週`の候補範囲はselected dateを基準に扱い、実行時current dateで上書きしない。
 - pending範囲外の明示日付を無条件に採用しない。
 
-ただし、漢数字を含む絶対日付についてIssue #21が残る。
+PR #26で、算用数字・漢数字・混在表記の月日tokenizer、絶対日付token内の曜日除外、解決失敗時のfallback禁止、AI candidate整合性guardを実装した。Issue #21は完了済みである。
 
 ### 3.8 preview lifecycle
 
@@ -150,29 +150,19 @@ browser reload中の未完了network request
 - 保存すべきmessagesと入力済み条件は保持する。
 - 正常なbehavior-aware previewと昇格済みdraftのround-tripを維持する。
 
-## 4. 現在確認済みの機能バグ
+## 4. 完了した機能バグ
 
 ### P0-1. 漢数字の絶対日付を曜日として誤解釈する
 
-Tracking:
+Issue #21はPR #26で完了した。
 
-- GitHub Issue #21
-- `docs/ai/tasks/20260717-weekly-planning-kanji-absolute-date-guard.md`
+- 共通月日tokenizerで算用数字・漢数字・混在表記を扱う。
+- 絶対日付token内の`日`を曜日候補から除外する。
+- 無効日付またはpending range外日付を日曜日へfallbackしない。
+- deterministic parserとAI candidate validatorを同じselected-date基準のguardへ通す。
+- focused regression 19件、週間計画suite、全テスト、production build、diff checkがGitHub Actions run `29581399006`で成功した。
 
-問題:
-
-- `parseExplicitDate`は主に算用数字の日付を認識する。
-- 曜日抽出側の除外条件がASCII数字を前提としている。
-- `八月一日から一週間`または`8月一日から`の`日`を日曜日として拾う可能性がある。
-- pending `来週`を範囲内の日曜日へ誤確定する可能性がある。
-
-必要な対応:
-
-- 算用数字、漢数字、混在表記を絶対日付として先にtokenizeする。
-- 日付token内の`日`を曜日候補から除外する。
-- 絶対日付を解決できない場合も、曜日としてfallbackしない。
-- `八月一日`、`8月一日`、`8月1日`、`日曜日`の回帰testを追加する。
-- deterministic経路とAI候補経路のrange guardを同じ契約へ通す。
+browser roleplayとweek-start profileは別taskとして残る。
 
 ## 5. 検証が未完了の項目
 

@@ -2,9 +2,10 @@
 
 Status: canonical / active status overlay
 Updated: 2026-07-17
-Current main merge baseline: `bb39e968d7b4923a159a11380fe914d8ed2eb5e7`
+Current main merge baseline: `10c40296dc6655343d4d36d04ceb63abb9c07f8e`
 Post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
 PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
+PR #26 completion record: [20260717-weekly-planning-kanji-absolute-date-guard.md](tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
 
 ## 1. 役割
 
@@ -67,7 +68,7 @@ PR #24では次を追加し、Issue #23を完了した。
 
 PR #24のmerge refに対し、focused regression、週間計画suite、全テスト、production build、diff checkがGitHub Actions run `29577182656`で成功している。これはautomated verifiedを意味するが、browser verifiedまたは全自然言語表現の網羅を意味しない。
 
-既知の機能バグとして、漢数字を含む絶対日付の`日`を日曜日として誤解釈する可能性がある。Issue #21と`20260717-weekly-planning-kanji-absolute-date-guard.md`をP0として扱う。
+PR #26で、算用数字・漢数字・混在表記の月日を共通tokenizerへ通し、絶対日付token内の`日`を曜日へfallbackしない契約を実装した。deterministic parserとAI candidate validatorは同じselected-date基準のguardを使用する。Issue #21は完了済みであり、残課題はaccount-linked week-start profileとbrowser roleplayである。
 
 ## 4. sessionと非同期lifecycle
 
