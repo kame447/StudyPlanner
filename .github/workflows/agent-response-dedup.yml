@@ -1,63 +1,25 @@
-name: Agent response dedup
+name: Agent response dedup source export
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches:
       - agent/weekly-planning-response-dedup
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-and-commit:
+  export-source:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/weekly-planning-response-dedup
           show-progress: false
-      - name: Apply implementation patch
-        run: |
-          : > /tmp/response-dedup.patch
-          for file in .github/patches/response-dedup.patch.b64.*; do
-            base64 --decode "$file" >> /tmp/response-dedup.patch
-          done
-          if ! git apply --check /tmp/response-dedup.patch > /tmp/patch-error.txt 2>&1; then
-            cp /tmp/patch-error.txt .github/response-dedup-patch-error.txt
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .github/response-dedup-patch-error.txt
-            git commit -m "chore: 応答重複防止パッチの診断結果を保存"
-            git push origin HEAD:agent/weekly-planning-response-dedup
-            exit 1
-          fi
-          git apply /tmp/response-dedup.patch
-      - uses: actions/setup-node@v4
+      - name: Export source snapshot
+        run: tar -czf /tmp/studyplanner-response-dedup-source.tgz --exclude=.git --exclude=node_modules --exclude=dist .
+      - uses: actions/upload-artifact@v4
         with:
-          node-version: 22.23.0
-          cache: npm
-      - run: npm ci
-      - name: Focused response tests
-        run: npm run test:run -- src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueText.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts src/features/weeklyPlanning/weeklyPlanningReducer.test.ts
-      - name: TypeScript
-        run: npx tsc -b
-      - name: Weekly planning suite
-        run: npm run test:run -- src/features/weeklyPlanning
-      - name: Full tests
-        run: npm run test:run
-      - name: Build
-        run: npm run build
-      - name: Commit verified implementation
-        run: |
-          git rm .github/patches/response-dedup.patch.b64.*
-          git rm .github/workflows/agent-response-dedup.yml
-          git rm -f .github/response-dedup-patch-error.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/features/weeklyPlanning
-          git commit -m "feat: 不要な了解と重複応答を防止する"
-          git push origin HEAD:agent/weekly-planning-response-dedup
+          name: studyplanner-response-dedup-source
+          path: /tmp/studyplanner-response-dedup-source.tgz
