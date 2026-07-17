@@ -30,7 +30,11 @@ replace_exact(
     'src/features/weeklyPlanning/intake/weeklyPlanningDraftRequestAdapter.ts',
     'state.pendingPlanningRange.scope.startDate',
     'state.pendingPlanningRange.scope.windowStartDate',
-    expected=2,
+)
+replace_exact(
+    'src/features/weeklyPlanning/intake/weeklyPlanningDraftRequestAdapter.ts',
+    'state.pendingPlanningRange?.scope.startDate',
+    'state.pendingPlanningRange?.scope.windowStartDate',
 )
 
 replace_exact(
@@ -75,7 +79,7 @@ replace_exact(
 
 replace_exact(
     'src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeAdversarialRegression.test.ts',
-    '        command,\n        origin: \'ai_interpreter\',',
+    "        command,\n        origin: 'ai_interpreter',",
     "        command: command as unknown as InterpretedCommandCandidate['command'],\n        origin: 'ai_interpreter',",
 )
 
