@@ -11,15 +11,16 @@ on:
       - ready_for_review
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  apply-test-and-export:
+  apply-test-and-commit:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -33,32 +34,21 @@ jobs:
       - name: Diff check
         run: git diff --check
       - name: Focused regression
-        id: focused
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts 2>&1 | tee focused-regression.log
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts
       - name: Weekly planning suite
         run: npm run test:run -- src/features/weeklyPlanning
       - name: Full test suite
         run: npm run test:run
       - name: Production build
         run: npm run build
-      - name: Stage verified files
-        if: success()
+      - name: Commit verified implementation
         run: |
-          mkdir -p verified-files/src/features/weeklyPlanning/intake
-          mkdir -p verified-files/src/features/weeklyPlanning/pipeline
-          cp src/features/weeklyPlanning/intake/weeklyPlanningAbsoluteDate.ts verified-files/src/features/weeklyPlanning/intake/
-          cp src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts verified-files/src/features/weeklyPlanning/intake/
-          cp src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts verified-files/src/features/weeklyPlanning/intake/
-          cp src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts verified-files/src/features/weeklyPlanning/intake/
-          cp src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.ts verified-files/src/features/weeklyPlanning/pipeline/
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: kanji-absolute-date-run-output
-          path: |
-            focused-regression.log
-            verified-files
-          if-no-files-found: warn
+          rm .github/scripts/apply-kanji-absolute-date-guard.py
+          rm .github/scripts/patch-kanji-date-weekday-regression.py
+          rm .github/workflows/apply-kanji-absolute-date-guard.yml
+          rm -f .github/workflows/pr-kanji-absolute-date-validation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: 漢数字の絶対日付誤認を修正"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
