@@ -100,7 +100,9 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
   status: 'needs_scope',
   deterministicQuestion: (state) => {
     const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
-    return `${scopeLabel}のどの日から計画を始めますか？`;
+    return state.pendingPlanningRange?.planningEndDateTime
+      ? scopeLabel + 'の終了時刻より前のいつから計画を始めますか？'
+      : scopeLabel + 'のどの日から計画を始めますか？';
   },
   isStateQuestionEligible: (state) => isMissing(state, 'planning_start_date'),
   isQuestionPlanEligible: defaultQuestionPlanEligibility,

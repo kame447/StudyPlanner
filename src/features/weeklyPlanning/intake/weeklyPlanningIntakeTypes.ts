@@ -56,7 +56,9 @@ export type PendingPlanningRangeScope =
 export interface PendingPlanningRangeClarification {
   scope: PendingPlanningRangeScope;
   planningStartDate?: string;
+  planningStartDateTime?: string;
   durationDays?: number;
+  planningEndDateTime?: string;
   sourceText: string;
 }
 

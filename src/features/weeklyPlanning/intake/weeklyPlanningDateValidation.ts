@@ -28,25 +28,30 @@ export function isValidDateWindow(value: {
   windowStartDate?: string;
   windowEndDate?: string;
 }): boolean {
-  if (!hasCompleteDateWindow(value)) {
+  if (value.windowStartDate !== undefined
+    && !isIsoCalendarDate(value.windowStartDate)) {
     return false;
   }
-  if (!value.windowStartDate || !value.windowEndDate) {
-    return true;
+  if (value.windowEndDate !== undefined
+    && !isIsoCalendarDate(value.windowEndDate)) {
+    return false;
   }
-  return isIsoCalendarDate(value.windowStartDate)
-    && isIsoCalendarDate(value.windowEndDate)
-    && value.windowStartDate <= value.windowEndDate;
+  return value.windowStartDate === undefined
+    || value.windowEndDate === undefined
+    || value.windowStartDate <= value.windowEndDate;
 }
 
 export function isDateWithinWindow(
   date: string,
   window: { windowStartDate?: string; windowEndDate?: string },
 ): boolean {
-  if (!window.windowStartDate || !window.windowEndDate) {
-    return true;
+  if (window.windowStartDate && date < window.windowStartDate) {
+    return false;
   }
-  return date >= window.windowStartDate && date <= window.windowEndDate;
+  if (window.windowEndDate && date > window.windowEndDate) {
+    return false;
+  }
+  return true;
 }
 
 function parsePlanningDateTime(value: string): number | undefined {

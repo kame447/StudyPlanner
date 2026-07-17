@@ -462,7 +462,9 @@ function createInterpreterStateSummary(
           windowStartDate: state.pendingPlanningRange.scope.windowStartDate,
           windowEndDate: state.pendingPlanningRange.scope.windowEndDate,
           planningStartDate: state.pendingPlanningRange.planningStartDate,
+          planningStartDateTime: state.pendingPlanningRange.planningStartDateTime,
           durationDays: state.pendingPlanningRange.durationDays,
+          planningEndDateTime: state.pendingPlanningRange.planningEndDateTime,
         }
       : undefined,
     availableConstraintSources: toConstraintSourceAvailability(snapshot),
