@@ -5,7 +5,7 @@ on:
     types: [opened, reopened]
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 jobs:
@@ -105,176 +105,13 @@ jobs:
               if (outcome === 'success') continue;
               const path = `/tmp/${name}.log`;
               if (!fs.existsSync(path)) continue;
-              const tail = fs.readFileSync(path, 'utf8').split('\n').slice(-55).join('\n');
-              details.push(`\n## ${name} log tail\n\n\`\`\`text\n${tail}\n\`\`\``);
+              const tail = fs.readFileSync(path, 'utf8').split('\n').slice(-80).join('\n');
+              details.push(`\n<details><summary>${name} log tail</summary>\n\n\`\`\`text\n${tail}\n\`\`\`\n</details>`);
             }
-            const body = [
-              `final verification: ${ok ? 'PASS' : 'FAIL'}`,
-              ...lines,
-              `target head: ${process.env.TARGET_HEAD}`,
-              ...details,
-            ].join('\n').slice(0, 60000);
-            await github.rest.issues.update({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body,
+              body: [`final verification: ${ok ? 'PASS' : 'FAIL'}`, ...lines, `target head: ${process.env.TARGET_HEAD}`, ...details].join('\n'),
             });
             if (!ok) core.setFailed('Final verification failed');
-
-  apply_followup:
-    if: github.event.issue.title == '[automation] apply pending range followup'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/weekly-planning-conversation-hardening
-          fetch-depth: 0
-          token: ${{ github.token }}
-
-      - name: Apply follow-up contract fixes
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}: {old[:80]!r}')
-              p.write_text(text.replace(old, new))
-
-          scope_path = 'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts'
-          old_duration = (
-              "function isBareDurationAnswer(text: string): boolean {\n"
-              "  return /^\\s*(?:(?:一|1)\\s*週間|7\\s*日間?)(?:\\s*です)?\\s*$/.test(\n"
-              "    normalizeIntakeText(text),\n"
-              "  );\n"
-              "}\n"
-          )
-          new_duration = old_duration + (
-              "\nfunction isCombinedStartAndDurationAnswer(text: string): boolean {\n"
-              "  return /^\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日(?:\\s*から)?\\s*(?:(?:一|1)\\s*週間|7\\s*日間?)(?:\\s*です)?\\s*$/.test(\n"
-              "    normalizeIntakeText(text),\n"
-              "  );\n"
-              "}\n"
-          )
-          replace_once(scope_path, old_duration, new_duration)
-          replace_once(
-              scope_path,
-              "  return isBareStartDateAnswer(text)\n    || isBareWeekdayStartAnswer(text)",
-              "  return isBareStartDateAnswer(text)\n    || isCombinedStartAndDurationAnswer(text)\n    || isBareWeekdayStartAnswer(text)",
-          )
-          replace_once(
-              scope_path,
-              "  return isBareDurationAnswer(text)\n    || (",
-              "  return isBareDurationAnswer(text)\n    || isCombinedStartAndDurationAnswer(text)\n    || (",
-          )
-
-          ai_path = Path('src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts')
-          text = ai_path.read_text()
-          old_import = "import type { OpenAiCompatibleClient } from '../../../lib/openaiCompatibleClient';"
-          if text.count(old_import) != 1:
-              raise SystemExit(f'AI import count: {text.count(old_import)}')
-          text = text.replace(
-              old_import,
-              "import type { JsonSchemaResponseFormat, OpenAiCompatibleClient } from '../../../lib/openaiCompatibleClient';",
-          )
-          pattern = re.compile(
-              r"export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT = \{.*?\n\};\n\nfunction isRecord",
-              re.S,
-          )
-          response_format = """export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'weekly_planning_interpreted_commands',
-    strict: false,
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['candidates'],
-      properties: {
-        candidates: {
-          type: 'array',
-          items: { anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS },
-        },
-        assumptionProposalDrafts: {
-          type: 'array',
-          items: ASSUMPTION_PROPOSAL_DRAFT_SCHEMA,
-        },
-      },
-    },
-  },
-};
-
-function isRecord"""
-          text, count = pattern.subn(response_format, text, count=1)
-          if count != 1:
-              raise SystemExit(f'AI response format count: {count}')
-          old_relative = "- Resolve relative dates such as today, tomorrow, the day after tomorrow, and next week from context.currentDateTime. Emit ISO YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss values only when the resolution is certain."
-          new_relative = "- Resolve today, tomorrow, and the day after tomorrow from context.currentDateTime. Resolve a planning next_week window from context.selectedDate so deterministic and AI paths use the same selected week. Emit ISO values only when the resolution is certain."
-          if text.count(old_relative) != 1:
-              raise SystemExit(f'AI relative prompt count: {text.count(old_relative)}')
-          text = text.replace(old_relative, new_relative)
-          old_line = "    '- Emit set_planning_range only when both pending.planningStartDate and pending.durationDays are known and the selected start date satisfies the pending window. Never persist a fully resolved pending object.',"
-          if text.count(old_line) != 1:
-              raise SystemExit(f'AI promotion prompt count: {text.count(old_line)}')
-          text = text.replace(
-              old_line,
-              old_line + "\n    '- Never substitute an inferred set_planning_range for an unresolved pending range.',",
-          )
-          ai_path.write_text(text)
-
-          replace_once(
-              'src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts',
-              "scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },",
-              "scope: {\n          kind: 'next_week',\n          label: '来週',\n          windowStartDate: '2026-07-13',\n          windowEndDate: '2026-07-19',\n        },",
-          )
-
-          foundation = 'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts'
-          replace_once(
-              foundation,
-              "  it.each([\n    ['Friday', '2026-07-10T15:30:00', '2026-07-13', '2026-07-19'],\n    ['Sunday', '2026-07-12T15:30:00', '2026-07-13', '2026-07-19'],\n    ['Monday', '2026-07-13T15:30:00', '2026-07-20', '2026-07-26'],\n  ])('normalizes a next_week pending command from the current date at the %s boundary', (",
-              "  it.each([\n    ['Friday current time', '2026-07-10T15:30:00', '2020-01-06', '2020-01-12'],\n    ['Sunday current time', '2026-07-12T15:30:00', '2020-01-06', '2020-01-12'],\n    ['Monday current time', '2026-07-13T15:30:00', '2020-01-06', '2020-01-12'],\n  ])('normalizes a next_week pending command from selectedDate at the %s boundary', (",
-          )
-          replace_once(
-              foundation,
-              "        startDate: expectedStartDate,\n        endDate: expectedEndDate,",
-              "        windowStartDate: expectedStartDate,\n        windowEndDate: expectedEndDate,",
-          )
-          replace_once(
-              foundation,
-              "{ scope: { kind: 'next_week', label: 'next week', startDate: 'not-a-date' }, sourceText: 'next week' },\n      'invalid-date',",
-              "{ scope: { kind: 'next_week', label: 'next week', windowStartDate: 'not-a-date', windowEndDate: '2026-07-19' }, sourceText: 'next week' },\n      'invalid-command-shape',",
-          )
-          replace_once(foundation, "expect(prompt).toContain('pendingPlanningRange.startDate');", "expect(prompt).toContain('pending.planningStartDate');")
-          replace_once(foundation, "expect(prompt).toContain('concrete ISO date inside that pending window');", "expect(prompt).toContain('selected start date satisfies the pending window');")
-          replace_once(foundation, "expect(prompt).toContain('the application computes the next_week window');", "expect(prompt).toContain('planning next_week window from context.selectedDate');")
-          PY
-
-      - name: Commit follow-up
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts \
-            src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts \
-            src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts \
-            src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
-          git diff --cached --check
-          git commit -m "feat: pending rangeの既存契約を追補"
-          git push origin HEAD:agent/weekly-planning-conversation-hardening
-
-      - name: Report follow-up result
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: 'follow-up applied',
-              state: 'closed',
-              state_reason: 'completed',
-            });
