@@ -5,6 +5,7 @@ import type {
 } from '../intake/weeklyPlanningInterpreterTypes';
 import {
   runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
+  type BehaviorAwareDialoguePlanner,
 } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 
 function interpreterResult(userText: string): WeeklyPlanningInterpreterResult {
@@ -70,6 +71,64 @@ describe('weekly planning dialogue path regressions', () => {
     expect(output.behaviorDialogue.message).toContain('来週のどの日から計画を始めますか？');
     expect(output.behaviorDialogue.message).not.toContain('具体的に何をどこまで進めたいか教えてください。');
     expect(output.behaviorDialogue.message).not.toContain('使える時間は');
+    expect(output.behaviorDialogue.renderedActionIds).toEqual([
+      output.state.lastQuestionContext?.actionId,
+    ]);
+    expect(output.state.lastQuestionContext).toMatchObject({
+      targetSlot: 'planning_start_date',
+      topicId: 'planning-range',
+    });
+  });
+
+  it('stores context for the action actually rendered instead of the first planner candidate', async () => {
+    const dialoguePlanner: BehaviorAwareDialoguePlanner = {
+      async plan(input) {
+        const taskAction = input.allowedActions.find((action) =>
+          action.kind === 'ask_required_fact' && action.topicId === 'task-identity',
+        );
+        if (!taskAction) throw new Error('expected task identity action');
+        return {
+          message: '具体的に何をどこまで進めたいか教えてください。',
+          response: null,
+          source: 'deterministic_fallback',
+          renderedActionIds: [taskAction.actionId],
+        };
+      },
+    };
+
+    const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+      interpreter: createInterpreter(),
+    }, { dialoguePlanner });
+
+    expect(output.behavior.actions.some((action) => action.topicId === 'planning-range')).toBe(true);
+    expect(output.behaviorDialogue.message).toBe('具体的に何をどこまで進めたいか教えてください。');
+    expect(output.state.lastQuestionContext).toMatchObject({
+      targetSlot: 'tasks_or_goals',
+      topicId: 'task-identity',
+      actionId: output.behaviorDialogue.renderedActionIds?.[0],
+    });
+  });
+
+  it('does not invent a question context when a custom renderer supplies no rendered action ids', async () => {
+    const dialoguePlanner: BehaviorAwareDialoguePlanner = {
+      async plan() {
+        return {
+          message: '確認しました。',
+          response: null,
+          source: 'deterministic_fallback',
+        };
+      },
+    };
+
+    const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+      ...baseInput,
+      userText: '来週の予定立てたい',
+      interpreter: createInterpreter(),
+    }, { dialoguePlanner });
+
+    expect(output.state.lastQuestionContext).toBeUndefined();
   });
 
   it.each(clarificationPhrasings)(

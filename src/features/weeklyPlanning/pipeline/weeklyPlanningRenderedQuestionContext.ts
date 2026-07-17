@@ -72,12 +72,10 @@ function contextForAction(
   };
 }
 
-function selectedActionIds(output: WeeklyPlanningBehaviorAwarePipelineOutput): string[] {
-  return output.behaviorDialogue.response?.selectedActionIds
-    ?? output.behavior.actions
-      .filter((action) => action.kind !== 'acknowledge_fact')
-      .slice(0, 2)
-      .map((action) => action.actionId);
+function renderedActionIds(output: WeeklyPlanningBehaviorAwarePipelineOutput): string[] {
+  return output.behaviorDialogue.renderedActionIds
+    ?? output.behaviorDialogue.response?.items.map((item) => item.actionId)
+    ?? [];
 }
 
 export function applyRenderedQuestionContext(
@@ -85,7 +83,7 @@ export function applyRenderedQuestionContext(
 ): WeeklyPlanningBehaviorAwarePipelineOutput {
   if (output.decision.kind === 'answer_clarification') return output;
   let lastQuestionContext: WeeklyPlanningQuestionContext | undefined;
-  for (const actionId of selectedActionIds(output)) {
+  for (const actionId of renderedActionIds(output)) {
     const action = output.behavior.actions.find((candidate) => candidate.actionId === actionId);
     if (!action) continue;
     lastQuestionContext = contextForAction(output, action);

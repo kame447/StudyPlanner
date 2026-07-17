@@ -484,6 +484,9 @@ function pipelineEventEntries(params: {
     eventType: 'dialogue_planned',
     payload: {
       actionIds: output.behavior.actions.map((action) => action.actionId),
+      renderedActionIds: output.behaviorDialogue.renderedActionIds
+        ?? output.behaviorDialogue.response?.items.map((item) => item.actionId)
+        ?? [],
       decisionKind: output.decision.kind,
       responseSource: output.behaviorDialogue.source,
     },
