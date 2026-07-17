@@ -26,7 +26,6 @@ export const WEEKLY_PLANNING_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSchemaRespon
       additionalProperties: false,
       required: ['questions'],
       properties: {
-        acknowledgement: stringSchema(),
         questions: {
           type: 'array',
           items: {
@@ -74,10 +73,7 @@ function parseRendererResponse(content: string): DialogueRenderOutput {
     return { questions: [] };
   }
 
-  return {
-    acknowledgement: typeof parsed.acknowledgement === 'string' ? parsed.acknowledgement : undefined,
-    questions,
-  };
+  return { questions };
 }
 
 function createSystemPrompt(): string {
@@ -85,6 +81,7 @@ function createSystemPrompt(): string {
     'You are a Japanese dialogue renderer for a study-planning app.',
     'Return only JSON that matches the response schema. Do not return prose outside JSON.',
     'The application has already decided what to ask. You must only rewrite each planned question in natural concise Japanese.',
+    'Do not return an acknowledgement. The application renders accepted facts with controlled vocabulary.',
     'Do not change the question targets, question count, question order, slot identity, or question kind.',
     'Do not add new questions, omit planned questions, merge slots, split slots, or ask about unplanned slots.',
     'Do not infer missing state or scheduling details. Use only the provided renderer input.',
@@ -101,7 +98,7 @@ function createSystemPrompt(): string {
 function createUserPrompt(input: DialogueRenderInput): string {
   return JSON.stringify({
     planningPeriodLabel: input.planningPeriodLabel,
-    targetUnitLabel: input.targetUnitLabel,
+    unitRateBasisLabel: input.unitRateBasisLabel,
     constraintSourcesInUse: input.constraintSourcesInUse,
     knownFixedEventSummaries: input.knownFixedEventSummaries,
     acceptedFacts: input.acceptedFacts,

@@ -129,6 +129,6 @@ describe('pending range adversarial regression', () => {
     expect(state.questions).toContain('計画はいつから始めますか？');
     expect(state.questions).not.toContain('その期間の計画は、開始日から何日間にしますか？');
     expect(state.questions).toContain('計画したい学習内容や目標を教えてください。');
-    expect(state.questions).toContain('7年分は何年から何年までですか？');
+    expect(state.questions).toContain('対象年度は何年から何年までですか？');
   });
 });

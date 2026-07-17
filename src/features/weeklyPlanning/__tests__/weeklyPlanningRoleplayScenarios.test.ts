@@ -89,7 +89,7 @@ describe('weekly planning roleplay scenarios', () => {
         'unit_duration_estimate',
       ]),
     );
-    expect(state.questions.join('\n')).toContain('7年分は何年から何年までですか');
+    expect(state.questions.join('\n')).toContain('対象年度は何年から何年までですか');
     expect(state.questions.join('\n')).toContain('2021まで完了');
     expect(state.shouldCreateDraft).toBe(false);
   });

@@ -515,7 +515,6 @@ describe('weekly planning AI foundation without real AI', () => {
     };
 
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe([
-      '確認しました。',
       'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
       '睡眠時間はどうしますか？',
     ].join('\n'));
@@ -558,13 +557,12 @@ describe('weekly planning AI foundation without real AI', () => {
       },
     };
 
-    await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe([
-      '条件を確認しました。',
+    await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer })).resolves.toBe(
       '1年分は何時間くらいですか？',
-    ].join('\n'));
+    );
     const deterministicFallback = [
       'ここまでの条件を確認しました。',
-      '1年分または1単位あたりの目安時間を教えてください。',
+      '1単位あたりの目安時間を教えてください。',
     ].join('\n');
 
     await expect(renderWeeklyPlanningDialogueMessage({ state, decision, renderer: outsidePlanRenderer })).resolves.toBe(
