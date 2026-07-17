@@ -1,8 +1,10 @@
 # 週間計画対話改善のCodexレビュー
 
-Status: open
+Status: closed / historical review instruction
 Created: 2026-07-16
+Closed: 2026-07-17
 Reviews: `20260716-weekly-planning-conversation-hardening.md`
+Outcome: 初回レビュー後に複数回の修正・再レビューを経てPR #5へ統合し、merge commit `55f8e32`で完了した。
 
 ## レビュー目的
 
@@ -41,6 +43,6 @@ Reviews: `20260716-weekly-planning-conversation-hardening.md`
 - `npm run build`
 - `git diff --check`
 
-## レビュー結果の書き方
+## 履歴上の扱い
 
-BLOCKER、MAJOR、MINORの順で、該当ファイルと再現条件を示す。問題がなければ「採用可」とし、残る設計判断だけを別項目に分離する。
+この文書は初回レビュー指示の記録であり、現在の実装taskとして再実行しない。現在statusは`docs/ai/weekly-planning-pr5-post-merge-status.md`を参照する。
