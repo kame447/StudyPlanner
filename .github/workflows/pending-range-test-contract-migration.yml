@@ -1,0 +1,80 @@
+name: Pending range test contract migration
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  migrate:
+    if: github.event.issue.title == '[automation] migrate pending range tests'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Migrate old pending range expectations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          storage = Path('src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts')
+          text = storage.read_text()
+          old = """        scope: {
+                    kind: 'named_future_period' as const,
+                    label: '夏休み',
+                    startDate: '2026-08-01',
+                  },
+                  sourceText: '8月1日から',"""
+          new = """        scope: {
+                    kind: 'named_future_period' as const,
+                    label: '夏休み',
+                  },
+                  planningStartDate: '2026-08-01',
+                  sourceText: '8月1日から',"""
+          if text.count(old) != 1:
+              raise SystemExit(f'unexpected storage replacement count: {text.count(old)}')
+          storage.write_text(text.replace(old, new))
+
+          pipeline = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts')
+          text = pipeline.read_text()
+          replacements = {
+              "      startDate: '2026-06-29',\n      endDate: '2026-07-05',":
+              "      windowStartDate: '2026-06-29',\n      windowEndDate: '2026-07-05',",
+          }
+          count = text.count(next(iter(replacements)))
+          if count < 2:
+              raise SystemExit(f'unexpected pipeline replacement count: {count}')
+          for old_text, new_text in replacements.items():
+              text = text.replace(old_text, new_text)
+          pipeline.write_text(text)
+          PY
+
+      - name: Commit migration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts \
+            src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts
+          git diff --cached --check
+          git commit -m "feat: pending rangeの既存テストを新契約へ移行"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
+
+      - name: Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `migration complete\nhead: ${process.env.GITHUB_SHA}`,
+              state: 'closed',
+              state_reason: 'completed',
+            });
