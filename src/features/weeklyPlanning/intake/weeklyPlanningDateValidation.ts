@@ -28,15 +28,17 @@ export function isValidDateWindow(value: {
   windowStartDate?: string;
   windowEndDate?: string;
 }): boolean {
-  if (!hasCompleteDateWindow(value)) {
+  if (value.windowStartDate !== undefined
+    && !isIsoCalendarDate(value.windowStartDate)) {
     return false;
   }
-  if (!value.windowStartDate || !value.windowEndDate) {
-    return true;
+  if (value.windowEndDate !== undefined
+    && !isIsoCalendarDate(value.windowEndDate)) {
+    return false;
   }
-  return isIsoCalendarDate(value.windowStartDate)
-    && isIsoCalendarDate(value.windowEndDate)
-    && value.windowStartDate <= value.windowEndDate;
+  return value.windowStartDate === undefined
+    || value.windowEndDate === undefined
+    || value.windowStartDate <= value.windowEndDate;
 }
 
 export function isDateWithinWindow(
