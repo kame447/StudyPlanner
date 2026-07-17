@@ -42,6 +42,14 @@ function normalizeJapaneseMonthDay(text: string): string {
   );
 }
 
+function normalizeThirdPartyHopeReport(text: string): string {
+  const subject = '(?:先生|友達|母|父|弟|妹|兄|姉|彼|彼女|第三者|[^、。\\s]+(?:さん|くん|ちゃん))';
+  return text.replace(
+    new RegExp(`(${subject})の希望は`, 'g'),
+    '$1が希望している内容は',
+  );
+}
+
 export function normalizeIntakeText(text: string): string {
   const normalizedWidth = text
     .replace(/[０-９]/g, (char) =>
@@ -50,7 +58,7 @@ export function normalizeIntakeText(text: string): string {
     .replace(/[〜～−―–—]/g, '〜')
     .replace(/[　]/g, ' ');
 
-  return normalizeJapaneseMonthDay(normalizedWidth);
+  return normalizeThirdPartyHopeReport(normalizeJapaneseMonthDay(normalizedWidth));
 }
 
 export function splitIntakeSegments(text: string): string[] {
