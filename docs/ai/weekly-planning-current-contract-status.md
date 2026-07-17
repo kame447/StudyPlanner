@@ -2,8 +2,9 @@
 
 Status: canonical / active status overlay
 Updated: 2026-07-17
-Current main merge baseline: `55f8e32c68cfd057494fadec0ed208cba267db12`
+Current main merge baseline: `bb39e968d7b4923a159a11380fe914d8ed2eb5e7`
 Post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
+PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
 
 ## 1. 役割
 
@@ -55,6 +56,16 @@ Product decisionは2026-07-16に確定した。
 - profileが未設定、破損、競合している場合だけ明示的修復へ入る。
 
 現在の`main`にはaccount-linked week-start profileは未実装である。PR #5では、期間名、具体的な開始日、日数を分離したpending planning range契約を実装し、`next_week`を7日へcanonicalizeした。期間名だけの未来期間は、開始日・日数未確定のまま保持できる。
+
+PR #24では次を追加し、Issue #23を完了した。
+
+- active `planning_period` questionに対する`今週`、`来週`、`週末`の自然な短答を受理する。
+- `日曜日まで`は開始日時を推測せず、終了境界だけをpending planning rangeへ保持する。
+- `今すぐ`、相対時間、今日・明日、月日、曜日、時刻を開始地点として受理し、終了境界と揃った時点でcanonical rangeへ昇格する。
+- 終了日時より後の開始候補、引用、例文、第三者発話、教材・説明文脈を誤採用しない。
+- 片側date window、command runtime validation、AI candidate validation、storage復元を同じclosed contractで扱う。
+
+PR #24のmerge refに対し、focused regression、週間計画suite、全テスト、production build、diff checkがGitHub Actions run `29577182656`で成功している。これはautomated verifiedを意味するが、browser verifiedまたは全自然言語表現の網羅を意味しない。
 
 既知の機能バグとして、漢数字を含む絶対日付の`日`を日曜日として誤解釈する可能性がある。Issue #21と`20260717-weekly-planning-kanji-absolute-date-guard.md`をP0として扱う。
 
