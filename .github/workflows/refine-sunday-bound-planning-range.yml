@@ -1,0 +1,57 @@
+name: Refine Sunday-bound planning range
+
+on:
+  push:
+    branches:
+      - agent/fix-weekly-planning-period-short-answer
+    paths:
+      - .github/scripts/refine_sunday_bound_planning_range.py
+      - .github/workflows/refine-sunday-bound-planning-range.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-weekly-planning-period-short-answer
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply contract refinement
+        run: python3 .github/scripts/refine_sunday_bound_planning_range.py
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Focused regression
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningPeriodShortAnswerRegression.test.ts
+
+      - name: Weekly planning tests
+        run: npm run test:run -- src/features/weeklyPlanning
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit verified implementation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm .github/scripts/refine_sunday_bound_planning_range.py
+          rm .github/workflows/refine-sunday-bound-planning-range.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: 日曜日終端と任意開始日時の計画期間を修正"
+          git push origin HEAD:agent/fix-weekly-planning-period-short-answer
