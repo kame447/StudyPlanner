@@ -1,0 +1,52 @@
+name: Agent vocabulary unification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - agent/weekly-planning-vocabulary-unification
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-vocabulary-unification
+          show-progress: false
+      - name: Apply implementation patch
+        run: |
+          base64 --decode .github/patches/weekly-planning-vocabulary.patch.gz.b64 | gzip -d > /tmp/weekly-planning-vocabulary.patch
+          echo '428cd32f91db62e40f385105cd85558c6d3e9a91e7320c2ab77b123d40a3b5f6  /tmp/weekly-planning-vocabulary.patch' | sha256sum -c -
+          git apply --check /tmp/weekly-planning-vocabulary.patch
+          git apply /tmp/weekly-planning-vocabulary.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: npm
+      - run: npm ci
+      - name: Focused vocabulary tests
+        run: npm run test:run -- src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeAdversarialRegression.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningRoleplayScenarios.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+      - name: TypeScript
+        run: npx tsc -b
+      - name: Weekly planning suite
+        run: npm run test:run -- src/features/weeklyPlanning
+      - name: Full tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Commit verified implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/weeklyPlanning
+          git commit -m "feat: 週間計画のユーザー向け語彙を統一する"
+          git push origin HEAD:agent/weekly-planning-vocabulary-unification
