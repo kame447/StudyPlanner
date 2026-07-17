@@ -31,11 +31,10 @@ function errorMessage(error: unknown): string {
 
 export function useWeeklyPlanningTracePolicy(
   userId: string,
-  client: WeeklyPlanningTraceApiClient = useMemo(
-    () => createWeeklyPlanningTraceApiClient(),
-    [],
-  ),
+  injectedClient?: WeeklyPlanningTraceApiClient,
 ): WeeklyPlanningTracePolicyState {
+  const defaultClient = useMemo(() => createWeeklyPlanningTraceApiClient(), []);
+  const client = injectedClient ?? defaultClient;
   const enabled = isWeeklyPlanningTraceEnabled();
   const proxyConfigured = Boolean(getCloudflareAiProxyUrl().trim());
   const [status, setStatus] = useState<WeeklyPlanningTraceConsentStatus>(
