@@ -1,0 +1,182 @@
+name: Pending range contract follow-up
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  fix:
+    if: github.event.issue.title == '[automation] pending range contract follow-up'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-conversation-hardening
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Apply exact contract fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_exact(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} matches, found {actual}')
+              p.write_text(text.replace(old, new))
+
+          scope = 'src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts'
+          old_duration = """function isBareDurationAnswer(text: string): boolean {
+            return /^\\s*(?:(?:一|1)\\s*週間|7\\s*日間?)(?:\\s*です)?\\s*$/.test(
+              normalizeIntakeText(text),
+            );
+          }
+          """
+          new_duration = old_duration + """
+          function isCombinedStartAndDurationAnswer(text: string): boolean {
+            return /^\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日(?:\\s*から)?\\s*(?:(?:一|1)\\s*週間|7\\s*日間?)(?:\\s*です)?\\s*$/.test(
+              normalizeIntakeText(text),
+            );
+          }
+          """
+          replace_exact(scope, old_duration, new_duration)
+          replace_exact(
+              scope,
+              """  return isBareStartDateAnswer(text)
+                || isBareWeekdayStartAnswer(text)
+          """,
+              """  return isBareStartDateAnswer(text)
+                || isCombinedStartAndDurationAnswer(text)
+                || isBareWeekdayStartAnswer(text)
+          """,
+          )
+          replace_exact(
+              scope,
+              """  return isBareDurationAnswer(text)
+                || (
+          """,
+              """  return isBareDurationAnswer(text)
+                || isCombinedStartAndDurationAnswer(text)
+                || (
+          """,
+          )
+
+          ai = Path('src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts')
+          text = ai.read_text()
+          text = text.replace(
+              "import type { OpenAiCompatibleClient } from '../../../lib/openaiCompatibleClient';",
+              "import type { JsonSchemaResponseFormat, OpenAiCompatibleClient } from '../../../lib/openaiCompatibleClient';",
+          )
+          pattern = re.compile(
+              r"export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT = \{.*?\n\};\n\nfunction isRecord",
+              re.S,
+          )
+          replacement = """export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+            type: 'json_schema',
+            json_schema: {
+              name: 'weekly_planning_interpreted_commands',
+              strict: false,
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['candidates'],
+                properties: {
+                  candidates: {
+                    type: 'array',
+                    items: {
+                      anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS,
+                    },
+                  },
+                  assumptionProposalDrafts: {
+                    type: 'array',
+                    items: ASSUMPTION_PROPOSAL_DRAFT_SCHEMA,
+                  },
+                },
+              },
+            },
+          };
+
+          function isRecord"""
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'AI response format replacement count: {count}')
+          old_relative = "- Resolve relative dates such as today, tomorrow, the day after tomorrow, and next week from context.currentDateTime. Emit ISO YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss values only when the resolution is certain."
+          new_relative = "- Resolve today, tomorrow, and the day after tomorrow from context.currentDateTime. Resolve a planning next_week window from context.selectedDate so deterministic and AI paths use the same selected week. Emit ISO values only when the resolution is certain."
+          if text.count(old_relative) != 1:
+              raise SystemExit('AI relative-date prompt line not found exactly once')
+          text = text.replace(old_relative, new_relative)
+          marker = "- Emit set_planning_range only when both pending.planningStartDate and pending.durationDays are known and the selected start date satisfies the pending window. Never persist a fully resolved pending object."
+          if text.count(marker) != 1:
+              raise SystemExit('AI promotion prompt line not found exactly once')
+          text = text.replace(marker, marker + "\n    '- Never substitute an inferred set_planning_range for an unresolved pending range.',")
+          ai.write_text(text)
+
+          edge = 'src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts'
+          replace_exact(
+              edge,
+              "scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },",
+              "scope: {\n          kind: 'next_week',\n          label: '来週',\n          windowStartDate: '2026-07-13',\n          windowEndDate: '2026-07-19',\n        },",
+          )
+
+          foundation = 'src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts'
+          replace_exact(
+              foundation,
+              """  it.each([
+              ['Friday', '2026-07-10T15:30:00', '2026-07-13', '2026-07-19'],
+              ['Sunday', '2026-07-12T15:30:00', '2026-07-13', '2026-07-19'],
+              ['Monday', '2026-07-13T15:30:00', '2026-07-20', '2026-07-26'],
+            ])('normalizes a next_week pending command from the current date at the %s boundary', (
+          """,
+              """  it.each([
+              ['Friday current time', '2026-07-10T15:30:00', '2020-01-06', '2020-01-12'],
+              ['Sunday current time', '2026-07-12T15:30:00', '2020-01-06', '2020-01-12'],
+              ['Monday current time', '2026-07-13T15:30:00', '2020-01-06', '2020-01-12'],
+            ])('normalizes a next_week pending command from selectedDate at the %s boundary', (
+          """,
+          )
+          replace_exact(foundation, "        startDate: expectedStartDate,\n        endDate: expectedEndDate,", "        windowStartDate: expectedStartDate,\n        windowEndDate: expectedEndDate,")
+          replace_exact(
+              foundation,
+              "{ scope: { kind: 'next_week', label: 'next week', startDate: 'not-a-date' }, sourceText: 'next week' },\n      'invalid-date',",
+              "{ scope: { kind: 'next_week', label: 'next week', windowStartDate: 'not-a-date', windowEndDate: '2026-07-19' }, sourceText: 'next week' },\n      'invalid-command-shape',",
+          )
+          replace_exact(foundation, "expect(prompt).toContain('pendingPlanningRange.startDate');", "expect(prompt).toContain('pending.planningStartDate');")
+          replace_exact(foundation, "expect(prompt).toContain('concrete ISO date inside that pending window');", "expect(prompt).toContain('selected start date satisfies the pending window');")
+          replace_exact(foundation, "expect(prompt).toContain('the application computes the next_week window');", "expect(prompt).toContain('planning next_week window from context.selectedDate');")
+
+          PY
+
+      - name: Commit exact fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
+          git diff --cached --check
+          git commit -m "feat: pending rangeの既存契約を追補"
+          git push origin HEAD:agent/weekly-planning-conversation-hardening
+
+      - name: Report
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ok = '${{ job.status }}' === 'success';
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `follow-up migration: ${ok ? 'PASS' : 'FAIL'}`,
+              state: ok ? 'closed' : 'open',
+              state_reason: ok ? 'completed' : undefined,
+            });
