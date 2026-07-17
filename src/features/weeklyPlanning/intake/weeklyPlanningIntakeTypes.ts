@@ -51,6 +51,8 @@ export type PendingPlanningRangeScope =
       windowEndDate?: string;
     };
 
+export type PlanningTemporalScopeKind = PendingPlanningRangeScope['kind'];
+
 export interface PendingPlanningRangeClarification {
   scope: PendingPlanningRangeScope;
   planningStartDate?: string;
@@ -90,6 +92,12 @@ export interface ExamPrepScope {
   rawText: string[];
 }
 
+export type CompletionTarget =
+  | { kind: 'all'; rawText: string }
+  | { kind: 'latest_n_years'; count: number; rawText: string }
+  | { kind: 'up_to_reachable'; rawText: string }
+  | { kind: 'year_range'; startYear: number; endYear: number; rawText: string };
+
 export interface StudyTaskScope {
   title: string;
   subject?: string;
@@ -103,19 +111,6 @@ export interface StudyTaskScope {
   source: StudyTaskSource;
 }
 
-export type StudyProgressAmbiguity =
-  | 'completion_direction'
-  | 'year_range'
-  | 'field_scope'
-  | 'scope_range'
-  | 'none';
-
-export type CompletionTarget =
-  | { kind: 'all'; rawText: string }
-  | { kind: 'latest_n_years'; count: number; rawText: string }
-  | { kind: 'up_to_reachable'; rawText: string }
-  | { kind: 'year_range'; startYear: number; endYear: number; rawText: string };
-
 export interface StudyProgress {
   field?: string;
   completedYears?: number[];
@@ -123,7 +118,7 @@ export interface StudyProgress {
   completionBoundaryYear?: number;
   current?: string;
   incomplete?: string[];
-  ambiguity: StudyProgressAmbiguity;
+  ambiguity: 'completion_direction' | 'year_range' | 'field_scope' | 'scope_range' | 'none';
   rawText: string;
 }
 
@@ -172,6 +167,8 @@ export type PriorityPolicy =
   | { kind: 'balanced' }
   | { kind: 'unknown' };
 
+export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
+
 export type PlanningIntakeMissing =
   | 'planning_period'
   | 'planning_start_date'
@@ -188,28 +185,8 @@ export type PlanningIntakeMissing =
   | 'next_field_after_math'
   | 'life_constraints';
 
-export interface PlanningAssumption {
-  slot: PlanningIntakeMissing;
-  source: 'default' | 'derived';
-  description: string;
-}
-
-export type PlanningIntakeUncertainty = 'unknown_fields_may_take_longer';
-
-export type WeeklyPlanningQuestionContextKind =
-  | 'missing'
-  | 'feasibility_adjustment'
-  | 'options'
-  | 'preview'
-  | 'approval'
-  | 'ambiguity';
-
-/**
- * 直前に実際にユーザーへ提示した質問の意味的な参照。
- * missing状態から再計算せず、次turnの短い聞き返しを解釈するためにsession-localで保持する。
- */
 export interface WeeklyPlanningQuestionContext {
-  kind: WeeklyPlanningQuestionContextKind;
+  kind: 'missing' | 'feasibility_adjustment' | 'options' | 'preview' | 'approval' | 'ambiguity';
   targetSlot?: string;
   intent?: string;
   topicId?: string;
@@ -239,15 +216,13 @@ export interface PlanningIntakeState {
   shouldSavePlan: false;
   draftGenerationIntent?: PlanningDraftGenerationIntent;
   draftGenerationAuthorizedAtRevision?: number;
-  /**
-   * Session-local proposal ledger. UI stateと一緒に次turnへ渡すが、repository/localStorageへは保存しない。
-   */
-  assumptionProposalRecords?: AssumptionProposalRecord[];
   sourceTurns: string[];
+  assumptionProposalRecords?: AssumptionProposalRecord[];
 }
 
 export interface WeeklyPlanningIntakeContext {
   selectedDate: string;
-  planningDayCount?: number;
   currentDateTime?: string;
+  planningStartDate?: string;
+  planningDayCount?: number;
 }
