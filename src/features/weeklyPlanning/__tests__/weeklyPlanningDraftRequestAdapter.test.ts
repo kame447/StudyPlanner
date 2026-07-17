@@ -73,8 +73,8 @@ function createAssumablePreviewState(): PlanningIntakeState {
       scope: {
         kind: 'next_week',
         label: '来週',
-        startDate: '2026-07-20',
-        endDate: '2026-07-26',
+        windowStartDate: '2026-07-20',
+        windowEndDate: '2026-07-26',
       },
       durationDays: 7,
       sourceText: '来週',
@@ -281,7 +281,7 @@ describe('weekly planning draft request adapter', () => {
     );
     expect(state).toEqual(before);
     expect(state.range).toBeUndefined();
-    expect(state.pendingPlanningRange?.scope.startDate).toBe('2026-07-20');
+    expect(state.pendingPlanningRange?.scope.windowStartDate).toBe('2026-07-20');
   });
 
   it('records a default planning_period assumption only when that slot is seeded and unresolved', () => {
@@ -325,7 +325,12 @@ describe('weekly planning draft request adapter', () => {
     ['pending range', {
       range: undefined,
       pendingPlanningRange: {
-        scope: { kind: 'next_week' as const, label: '来週', startDate: '2026-07-13', endDate: '2026-07-19' },
+        scope: {
+          kind: 'next_week' as const,
+          label: '来週',
+          windowStartDate: '2026-07-13',
+          windowEndDate: '2026-07-19',
+        },
         durationDays: 7,
         sourceText: '来週',
       },
@@ -358,8 +363,8 @@ describe('weekly planning draft request adapter', () => {
     withoutScopeStartDate.pendingPlanningRange = {
       ...withoutScopeStartDate.pendingPlanningRange!,
       scope: {
-        ...withoutScopeStartDate.pendingPlanningRange!.scope,
-        startDate: undefined,
+        kind: 'named_future_period',
+        label: '夏休み',
       },
     };
     const withoutGoal = createAssumablePreviewState();

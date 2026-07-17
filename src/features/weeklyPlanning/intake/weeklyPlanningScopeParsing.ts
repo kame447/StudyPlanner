@@ -228,7 +228,9 @@ function parseExplicitDate(
   return isIsoCalendarDate(candidate) ? candidate : undefined;
 }
 
-export function nextWeekScope(context: WeeklyPlanningIntakeContext): PendingPlanningRangeClarification['scope'] {
+export function nextWeekScope(
+  context: WeeklyPlanningIntakeContext,
+): Extract<PendingPlanningRangeClarification['scope'], { kind: 'next_week' }> {
   const nextWeekStart = addDays(startOfWeek(context.selectedDate), 7);
   return {
     kind: 'next_week',

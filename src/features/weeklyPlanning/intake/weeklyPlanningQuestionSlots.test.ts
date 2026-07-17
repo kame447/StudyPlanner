@@ -77,7 +77,12 @@ describe('weekly planning question slot registry', () => {
       pendingPlanningRange: {
         durationDays: 7,
         sourceText: '来週',
-        scope: { kind: 'next_week', label: '来週' },
+        scope: {
+          kind: 'next_week',
+          label: '来週',
+          windowStartDate: '2026-07-13',
+          windowEndDate: '2026-07-19',
+        },
       },
     };
 

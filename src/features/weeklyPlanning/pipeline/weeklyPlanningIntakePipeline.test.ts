@@ -188,8 +188,8 @@ function assumablePreviewState(): PlanningIntakeState {
       scope: {
         kind: 'next_week',
         label: '来週',
-        startDate: '2026-07-20',
-        endDate: '2026-07-26',
+        windowStartDate: '2026-07-20',
+        windowEndDate: '2026-07-26',
       },
       durationDays: 7,
       sourceText: '来週',
@@ -2058,8 +2058,8 @@ describe('confirmed slots and AI planning range integration', () => {
       ]),
     });
 
-    expect(pending.state.pendingPlanningRange?.scope.startDate).toBeUndefined();
-    expect(pending.state.pendingPlanningRange?.scope.endDate).toBeUndefined();
+    expect(pending.state.pendingPlanningRange?.scope.windowStartDate).toBeUndefined();
+    expect(pending.state.pendingPlanningRange?.scope.windowEndDate).toBeUndefined();
 
     const resolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,

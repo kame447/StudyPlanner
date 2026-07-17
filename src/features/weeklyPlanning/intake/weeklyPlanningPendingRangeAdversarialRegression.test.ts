@@ -57,7 +57,7 @@ describe('pending range adversarial regression', () => {
     const command = aiNextWeekCommand();
     const result = validateInterpretedCandidates([
       {
-        command,
+        command: command as unknown as InterpretedCommandCandidate['command'],
         origin: 'ai_interpreter',
         needsConfirmation: false,
       },

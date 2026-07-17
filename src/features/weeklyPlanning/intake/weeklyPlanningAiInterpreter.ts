@@ -72,9 +72,6 @@ function stringArraySchema(): JsonSchemaObject {
   return { type: 'array', items: stringSchema() };
 }
 
-function integerArraySchema(): JsonSchemaObject {
-  return { type: 'array', items: integerSchema() };
-}
 
 function commandSchema(params: {
   type: string;

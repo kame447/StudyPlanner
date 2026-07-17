@@ -766,9 +766,11 @@ describe('weekly planning AI foundation without real AI', () => {
   it('protects a pending range from inferred AI ranges and confirms explicit AI ranges', () => {
     const summary = baseSummary({
       pendingPlanningRange: {
+        kind: 'next_week',
         label: '来週',
-        startDate: '2026-07-13',
-        endDate: '2026-07-19',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
+        durationDays: 7,
       },
     });
     const rangeCandidate = (
