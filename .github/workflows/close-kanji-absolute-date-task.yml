@@ -1,0 +1,41 @@
+name: Close kanji absolute date task
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Apply documentation synchronization
+        run: python3 .github/scripts/close-kanji-absolute-date-task.py
+      - name: Verify links and whitespace
+        run: |
+          git diff --check
+          test -f docs/ai/tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md
+          test ! -f docs/ai/tasks/20260717-weekly-planning-kanji-absolute-date-guard.md
+          grep -q 'PR #26 completion record' docs/ai/weekly-planning-current-contract-status.md
+          grep -q 'PR #26 recorded validation' docs/ai/strategy/weekly-planning-roadmap.md
+          grep -q 'Issue #21完了' docs/testing/weekly-planning-roleplay-status.md
+      - name: Commit synchronized documentation
+        run: |
+          rm .github/scripts/close-kanji-absolute-date-task.py
+          rm .github/workflows/close-kanji-absolute-date-task.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: 漢数字絶対日付taskの完了記録を同期"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
