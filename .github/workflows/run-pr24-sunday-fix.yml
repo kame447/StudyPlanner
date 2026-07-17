@@ -49,4 +49,4 @@ jobs:
           git commit -m "feat: 一時PR24修正workflowを削除"
           git push origin main
 
-# registered
+# ready for PR edited event
