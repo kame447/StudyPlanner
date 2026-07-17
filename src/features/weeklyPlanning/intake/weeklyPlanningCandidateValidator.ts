@@ -1,3 +1,10 @@
+import {
+  isDateWithinWindow,
+  isIsoCalendarDate,
+  isOrderedPlanningDateTimeRange,
+  isValidDateWindow,
+  isValidPlanningDurationDays,
+} from './weeklyPlanningDateValidation';
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
 import type {
   CandidateValidationResult,
@@ -5,6 +12,8 @@ import type {
   InterpreterStateSummary,
 } from './weeklyPlanningInterpreterTypes';
 import { studyGoalIdentity } from './weeklyPlanningTaskIdentity';
+import { isValidWeeklyPlanningCommand } from './weeklyPlanningCommandRuntimeValidation';
+import { normalizeExamScopeEnrichment } from './weeklyPlanningExamScopeEnrichment';
 
 const CONFIDENCE_RANK = {
   low: 0,
@@ -67,14 +76,6 @@ const LIFE_CONSTRAINT_KINDS = new Set([
 const PLANNING_TEMPORAL_SCOPE_KINDS = new Set(['next_week', 'named_future_period']);
 
 const HARDNESS_VALUES = new Set(['hard', 'soft']);
-const SET_STUDY_GOAL_TEXT_LIMITS = {
-  title: 200,
-  subject: 200,
-  sourceText: 4000,
-  sourceSegment: 1000,
-} as const;
-const SET_STUDY_GOAL_PROPERTIES = new Set(['title', 'subject', 'unit', 'amount']);
-
 const MERGE_MODES = new Set(['replace', 'append']);
 const CONSTRAINT_SOURCE_KINDS = new Set(['timetable', 'existing_plans', 'calendar']);
 const CLARIFICATION_TARGETS = new Set(['referenced_question', 'referenced_term', 'unresolved_slot']);
@@ -87,44 +88,6 @@ const COMPLETION_TARGET_KINDS = new Set([
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || Array.isArray(value)) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function isOptionalBoundedString(value: unknown, maxLength: number): boolean {
-  return value === undefined || (typeof value === 'string' && value.length <= maxLength);
-}
-
-function hasValidSetStudyGoalShape(command: Record<string, unknown>): boolean {
-  if (typeof command.sourceText !== 'string'
-    || command.sourceText.length > SET_STUDY_GOAL_TEXT_LIMITS.sourceText
-    || !isOptionalBoundedString(command.sourceSegment, SET_STUDY_GOAL_TEXT_LIMITS.sourceSegment)
-    || !isPlainRecord(command.goal)) {
-    return false;
-  }
-
-  const goal = command.goal;
-  if (Object.keys(goal).some((property) => !SET_STUDY_GOAL_PROPERTIES.has(property))) {
-    return false;
-  }
-
-  return typeof goal.title === 'string'
-    && goal.title.trim().length > 0
-    && goal.title.length <= SET_STUDY_GOAL_TEXT_LIMITS.title
-    && isOptionalBoundedString(goal.subject, SET_STUDY_GOAL_TEXT_LIMITS.subject)
-    && (goal.unit === undefined || typeof goal.unit === 'string')
-    && (goal.amount === undefined || typeof goal.amount === 'number');
-}
-
-function isConfidence(value: unknown): value is ParsedWeeklyPlanningCommand['confidence'] {
-  return value === 'high' || value === 'medium' || value === 'low';
 }
 
 function isTime(value: unknown): boolean {
@@ -149,57 +112,6 @@ function isReasonableMinutes(minutes: unknown): boolean {
 
 function commandType(command: unknown): string | undefined {
   return isRecord(command) && typeof command.type === 'string' ? command.type : undefined;
-}
-
-function hasRequiredShape(command: unknown): command is ParsedWeeklyPlanningCommand {
-  if (!isRecord(command) || !isConfidence(command.confidence)) {
-    return false;
-  }
-
-  switch (command.type) {
-    case 'set_exam_scope':
-      return isRecord(command.scope) && Array.isArray(command.scope.fields) && Array.isArray(command.scope.rawText);
-    case 'set_planning_range':
-      return isRecord(command.range) && typeof command.range.confidence === 'string';
-    case 'set_pending_planning_range':
-      return isRecord(command.pending)
-        && isRecord(command.pending.scope)
-        && typeof command.pending.scope.kind === 'string'
-        && typeof command.pending.scope.label === 'string'
-        && typeof command.pending.sourceText === 'string';
-    case 'begin_weekly_planning':
-      return true;
-    case 'set_study_goal':
-      return hasValidSetStudyGoalShape(command);
-    case 'set_priority_policy':
-      return isRecord(command.policy) && typeof command.policy.kind === 'string';
-    case 'mark_completed_units':
-      return typeof command.field === 'string' && Array.isArray(command.completedYears) && typeof command.mergeMode === 'string';
-    case 'mark_completion_target':
-      return isRecord(command.target) && typeof command.target.kind === 'string';
-    case 'note_progress_boundary':
-      return typeof command.boundaryYear === 'number' && command.ambiguity === 'completion_direction';
-    case 'set_unit_rate':
-      return isRecord(command.unitRate) && typeof command.unitRate.unit === 'string';
-    case 'add_unavailable':
-      return isRecord(command.range) && isTime(command.range.start) && isTime(command.range.end);
-    case 'add_fixed_event':
-      return isRecord(command.event);
-    case 'update_life_constraint':
-      return typeof command.kind === 'string' && isRecord(command.constraint);
-    case 'use_constraint_source':
-      return isRecord(command.source)
-        && typeof command.source.kind === 'string'
-        && command.source.selector === 'active';
-    case 'request_clarification':
-      return typeof command.target === 'string'
-        && (command.ref === undefined || typeof command.ref === 'string');
-    case 'note_no_fixed_events':
-    case 'note_uncertainty':
-      return true;
-    default:
-      return false;
-  }
 }
 
 function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | null {
@@ -245,7 +157,6 @@ function constraintSourceAvailable(
 ): boolean {
   const availability = summary.availableConstraintSources;
 
-  // 可用性が不明なときは利用不可として扱う(空/不明なソースを鵜呑みにしない安全側)。
   if (!availability) {
     return false;
   }
@@ -264,12 +175,25 @@ function constraintSourceAvailable(
 
 function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null {
   switch (command.type) {
+    case 'set_planning_range':
+      return (command.range.startDateTime === undefined
+        && command.range.endDateTime === undefined)
+        || isOrderedPlanningDateTimeRange(command.range)
+        ? null
+        : 'invalid-planning-range';
     case 'set_pending_planning_range': {
-      const { scope, durationDays } = command.pending;
-      if (scope.startDate !== undefined && !isDate(scope.startDate)) return 'invalid-date';
-      if (scope.endDate !== undefined && !isDate(scope.endDate)) return 'invalid-date';
-      if (durationDays !== undefined && (!Number.isInteger(durationDays) || durationDays <= 0)) {
+      const { scope, planningStartDate, durationDays } = command.pending;
+      if (!isValidDateWindow(scope)) return 'invalid-pending-planning-range';
+      if (planningStartDate !== undefined
+        && (!isIsoCalendarDate(planningStartDate)
+          || !isDateWithinWindow(planningStartDate, scope))) {
+        return 'invalid-pending-planning-range';
+      }
+      if (durationDays !== undefined && !isValidPlanningDurationDays(durationDays)) {
         return 'invalid-duration-days';
+      }
+      if (planningStartDate !== undefined && durationDays !== undefined) {
+        return 'resolved-pending-planning-range';
       }
       return null;
     }
@@ -326,8 +250,12 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
 
 function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
   switch (command.type) {
-    case 'set_exam_scope':
-      return command.scope.yearRange ? ['exam_scope', 'year_range'] : ['exam_scope'];
+    case 'set_exam_scope': {
+      const slots: string[] = [];
+      if (command.scope.fields.length > 0) slots.push('exam_scope');
+      if (command.scope.yearRange) slots.push('year_range');
+      return slots;
+    }
     case 'set_planning_range':
     case 'set_pending_planning_range':
       return ['planning_range'];
@@ -418,23 +346,33 @@ export function validateInterpretedCandidates(
       return;
     }
 
-    if (!hasRequiredShape(rawCommand)) {
+    if (!isValidWeeklyPlanningCommand(rawCommand)) {
       addRejected(result, candidate, 'invalid-command-shape');
       return;
     }
 
-    const command = rawCommand;
+    let command = rawCommand;
+    let effectiveCandidate = candidate;
+    if (command.type === 'set_exam_scope') {
+      const enrichment = normalizeExamScopeEnrichment(command, summary.examScopeSummary);
+      if (!enrichment.command) {
+        addRejected(result, candidate, enrichment.error ?? 'confirmed-slot-overwrite');
+        return;
+      }
+      command = enrichment.command;
+      effectiveCandidate = command === candidate.command ? candidate : { ...candidate, command };
+    }
     const enumError = validateEnumVocabulary(command);
 
     if (enumError) {
-      addRejected(result, candidate, enumError);
+      addRejected(result, effectiveCandidate, enumError);
       return;
     }
 
     const valueError = validateValueRange(command);
 
     if (valueError) {
-      addRejected(result, candidate, valueError);
+      addRejected(result, effectiveCandidate, valueError);
       return;
     }
 
@@ -448,47 +386,45 @@ export function validateInterpretedCandidates(
         return;
       }
 
-      // planner decision: 参照した schedule source が実際に非空かを capability snapshot で検証する。
-      // 空なら fixed_events を勝手に充足せず、rejected として残す(pipeline が確認へ倒す)。
       if (!constraintSourceAvailable(command.source, summary)) {
         addRejected(result, candidate, 'constraint-source-unavailable');
         return;
       }
     }
 
-    // 聞き返しは state を進めない対話イベント。slot を占有させず専用バケットへ振り分ける。
     if (command.type === 'request_clarification') {
       result.clarificationRequests.push(command);
       return;
     }
 
     if (command.type === 'set_planning_range' && summary.pendingPlanningRange) {
-      if (command.range.confidence !== 'explicit') {
+      const rangeStartDate = command.range.startDateTime?.slice(0, 10);
+      const rangeEndDate = command.range.endDateTime?.slice(0, 10);
+      if (command.range.confidence !== 'explicit' || !rangeStartDate || !rangeEndDate) {
         addRejected(result, candidate, 'pending-range-clarification');
         return;
       }
 
-      const pendingStartDate = summary.pendingPlanningRange.startDate;
-      const pendingEndDate = summary.pendingPlanningRange.endDate;
-      const rangeStartDate = command.range.startDateTime?.slice(0, 10);
-      const isWithinPendingWindow = Boolean(
-        pendingStartDate
-        && pendingEndDate
-        && rangeStartDate
-        && rangeStartDate >= pendingStartDate
-        && rangeStartDate <= pendingEndDate,
-      );
-
-      if (!isWithinPendingWindow) {
-        result.acceptedWithConfirmation.push(command);
-        return;
+      const pendingStartDate = summary.pendingPlanningRange.windowStartDate;
+      const pendingEndDate = summary.pendingPlanningRange.windowEndDate;
+      if (pendingStartDate && pendingEndDate) {
+        const startIsWithinPendingWindow = rangeStartDate >= pendingStartDate
+          && rangeStartDate <= pendingEndDate;
+        if (!startIsWithinPendingWindow) {
+          addRejected(result, candidate, 'pending-range-outside-window');
+          return;
+        }
       }
     }
 
     const slots = commandSlotKeys(command);
 
-    if (slots.some((slot) => summary.confirmedSlots.includes(slot))) {
-      addRejected(result, candidate, 'confirmed-slot-overwrite');
+    const confirmedOverlaps = slots.filter((slot) => summary.confirmedSlots.includes(slot));
+    if (
+      confirmedOverlaps.length > 0
+      && command.type !== 'set_exam_scope'
+    ) {
+      addRejected(result, effectiveCandidate, 'confirmed-slot-overwrite');
       return;
     }
 
@@ -498,7 +434,7 @@ export function validateInterpretedCandidates(
     if (conflictingSlot) {
       const existing = occupiedSlots.get(conflictingSlot);
       if (existing && existing.rank >= rank) {
-        addRejected(result, candidate, 'conflicting-slot-lower-confidence');
+        addRejected(result, effectiveCandidate, 'conflicting-slot-lower-confidence');
         return;
       }
 
@@ -513,10 +449,10 @@ export function validateInterpretedCandidates(
       }
     }
 
-    slots.forEach((slot) => occupiedSlots.set(slot, { rank, candidate }));
+    slots.forEach((slot) => occupiedSlots.set(slot, { rank, candidate: effectiveCandidate }));
 
     if (command.confidence === 'low') {
-      result.clarifications.push(candidate);
+      result.clarifications.push(effectiveCandidate);
       return;
     }
 

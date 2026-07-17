@@ -188,8 +188,8 @@ function assumablePreviewState(): PlanningIntakeState {
       scope: {
         kind: 'next_week',
         label: '来週',
-        startDate: '2026-07-20',
-        endDate: '2026-07-26',
+        windowStartDate: '2026-07-20',
+        windowEndDate: '2026-07-26',
       },
       durationDays: 7,
       sourceText: '来週',
@@ -1478,7 +1478,7 @@ describe('constraint source capability (use_constraint_source)', () => {
       ...defaultPipelineInput,
       previousState: stateWithFixedEventsMissing(),
       userText: '登録済みの予定を考慮して',
-      existingPlans: [plan({ date: '2026-06-30' })],
+      existingPlans: [plan({ date: '2026-06-27' })],
       interpreter: fakeInterpreter([
         useConstraintSourceCandidate({ kind: 'existing_plans', sourceText: '登録済みの予定を考慮して' }),
       ]),
@@ -1498,7 +1498,7 @@ describe('constraint source capability (use_constraint_source)', () => {
       ...defaultPipelineInput,
       previousState,
       userText: '入れてあるやつをそのまま考慮して',
-      existingPlans: [plan({ date: '2026-06-30' })],
+      existingPlans: [plan({ date: '2026-06-27' })],
       scheduleTemplates: [timetableTemplate()],
       interpreter: fakeInterpreter([
         useConstraintSourceCandidate({
@@ -1528,7 +1528,7 @@ describe('constraint source capability (use_constraint_source)', () => {
       ...defaultPipelineInput,
       previousState: stateWithFixedEventsMissing(),
       userText: 'カレンダーに入ってる予定を使って',
-      existingPlans: [plan({ date: '2026-06-30' })],
+      existingPlans: [plan({ date: '2026-06-27' })],
       scheduleTemplates: [timetableTemplate()],
       interpreter: fakeInterpreter([
         useConstraintSourceCandidate({
@@ -1773,7 +1773,12 @@ describe('clarification semantic intent (request_clarification)', () => {
 
     expect(firstOutput.state.range).toBeUndefined();
     expect(firstOutput.state.pendingPlanningRange).toMatchObject({
-      scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },
+      scope: {
+        kind: 'next_week',
+        label: '来週',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
+      },
       durationDays: 7,
     });
     expect(firstOutput.state.missing).toContain('planning_start_date');
@@ -1990,8 +1995,8 @@ describe('confirmed slots and AI planning range integration', () => {
     expect(output.state.pendingPlanningRange).toMatchObject({
       scope: {
         kind: 'next_week',
-        startDate: '2026-07-13',
-        endDate: '2026-07-19',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
       },
       durationDays: 7,
     });
@@ -2039,7 +2044,7 @@ describe('confirmed slots and AI planning range integration', () => {
     expect(resolved.state.range?.startDateTime).toBe('2026-07-15T00:00:00');
   });
 
-  it('keeps named future periods unresolved until an explicit range is supplied', async () => {
+  it('resolves a named future period when the provider supplies a complete explicit range', async () => {
     const pending = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       userText: 'summer break plan',
@@ -2053,25 +2058,43 @@ describe('confirmed slots and AI planning range integration', () => {
       ]),
     });
 
-    expect(pending.state.pendingPlanningRange?.scope.startDate).toBeUndefined();
-    expect(pending.state.pendingPlanningRange?.scope.endDate).toBeUndefined();
+    expect(pending.state.pendingPlanningRange?.scope.windowStartDate).toBeUndefined();
+    expect(pending.state.pendingPlanningRange?.scope.windowEndDate).toBeUndefined();
 
-    const unresolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
+    const resolved = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       previousState: pending.state,
-      userText: 'August 1',
+      userText: 'August 1 for one week',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
-      interpreter: fakeInterpreter([
-        planningRangeCandidate('explicit'),
-      ]),
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_planning_range',
+          range: {
+            startDateTime: '2026-08-01T00:00:00',
+            endDateTime: '2026-08-07T24:00:00',
+            sourceText: 'August 1 for one week',
+            calendarDayCount: 7,
+            confidence: 'explicit',
+          },
+          sourceText: 'August 1 for one week',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }]),
     });
 
-    expect(unresolved.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
+    expect(resolved.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([]);
+    expect(resolved.interpreterDiagnostics?.accepted).toEqual([
       expect.objectContaining({ type: 'set_planning_range' }),
     ]);
-    expect(unresolved.state.range).toBeUndefined();
-    expect(unresolved.state.pendingPlanningRange).toBeDefined();
+    expect(resolved.state.pendingPlanningRange).toBeUndefined();
+    expect(resolved.state.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
+    });
   });
 
   it('rejects provider pending creation after a planning range is confirmed', async () => {
@@ -2256,9 +2279,12 @@ describe('confirmed slots and AI planning range integration', () => {
   it('keeps pending clarification for inferred AI ranges and exposes pending summary', async () => {
     const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
       expect(params.stateSummary.pendingPlanningRange).toEqual({
+        kind: 'next_week',
         label: '来週',
-        startDate: '2026-07-13',
-        endDate: '2026-07-19',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
+        planningStartDate: undefined,
+        durationDays: 7,
       });
       return {
         candidates: [planningRangeCandidate('inferred')],
@@ -2289,7 +2315,21 @@ describe('confirmed slots and AI planning range integration', () => {
       userText: '開始日は別に指定したいです',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
-      interpreter: fakeInterpreter([planningRangeCandidate('explicit')]),
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_planning_range',
+          range: {
+            startDateTime: '2026-07-15T00:00:00',
+            endDateTime: '2026-07-19T24:00:00',
+            sourceText: '来週の水曜日から日曜日',
+            confidence: 'explicit',
+          },
+          sourceText: '来週の水曜日から日曜日',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: true,
+      }]),
     });
 
     expect(output.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
@@ -2460,9 +2500,8 @@ describe('Stage 2 bounded conversation grounding', () => {
     });
 
     expect(output.state.priorityPolicy).toEqual({ kind: 'field_first', order: ['hardware'] });
-    expect(output.interpreterDiagnostics?.accepted).toEqual([
-      expect.objectContaining({ type: 'set_priority_policy' }),
-    ]);
+    expect(output.interpreterDiagnostics?.accepted).toEqual([]);
+    expect(output.state.missing).not.toContain('priority_policy');
   });
 
   it('keeps a fact accepted several turns ago when history suggests an explicit correction', async () => {
@@ -2598,6 +2637,60 @@ describe('preview policy Stage 2', () => {
     );
     expect(secondOutput.draftCandidates?.length).toBeGreaterThan(0);
     expect(secondOutput.draftCandidates?.[0]?.estimatedMinutes).toBe(180);
+  });
+
+
+  it('keeps a duration-less named future period from the first turn and resolves it on the next turn', () => {
+    const pending = runTurn(undefined, '夏休みに計画を立てたい');
+    expect(pending.state.pendingPlanningRange).toEqual({
+      scope: { kind: 'named_future_period', label: '夏休み' },
+      sourceText: '夏休みに計画を立てたい',
+    });
+    expect(pending.state.missing).not.toContain('planning_period');
+
+    const resolved = runTurn(pending.state, '8月1日から一週間');
+    expect(resolved.state.pendingPlanningRange).toBeUndefined();
+    expect(resolved.state.range).toMatchObject({
+      startDateTime: '2026-08-01T00:00:00',
+      endDateTime: '2026-08-07T24:00:00',
+      calendarDayCount: 7,
+      confidence: 'explicit',
+    });
+  });
+
+  it('keeps the next-week pending range when a deterministic absolute date is outside the window', () => {
+    const pending = runTurn(undefined, '来週の予定を立てたい');
+    expect(pending.state.pendingPlanningRange?.scope).toMatchObject({
+      kind: 'next_week',
+      windowStartDate: '2026-06-29',
+      windowEndDate: '2026-07-05',
+    });
+
+    const unresolved = runTurn(pending.state, '8月1日から一週間');
+    expect(unresolved.state.range).toBeUndefined();
+    expect(unresolved.state.pendingPlanningRange).toEqual(pending.state.pendingPlanningRange);
+    expect(unresolved.state.missing).toContain('planning_start_date');
+  });
+
+
+  it('keeps an existing resolved range when a later task mentions summer vacation', () => {
+    const ranged = runTurn(undefined, '今日から一週間の計画を立てたい');
+    expect(ranged.state.range).toBeDefined();
+    expect(ranged.state.pendingPlanningRange).toBeUndefined();
+
+    const taskTurn = runTurn(ranged.state, '夏休みの宿題は数学ワーク10ページです');
+    expect(taskTurn.state.range).toEqual(ranged.state.range);
+    expect(taskTurn.state.pendingPlanningRange).toBeUndefined();
+    expect(taskTurn.state.missing).not.toContain('planning_start_date');
+  });
+
+  it('keeps next week instead of a negated summer-vacation period', () => {
+    const result = runTurn(undefined, '夏休みではなく来週の計画を立てたい');
+    expect(result.state.pendingPlanningRange?.scope).toMatchObject({
+      kind: 'next_week',
+      windowStartDate: '2026-06-29',
+      windowEndDate: '2026-07-05',
+    });
   });
 
 });

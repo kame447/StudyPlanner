@@ -22,6 +22,7 @@ import type {
   BehaviorAwarePlanningBridgeResult,
 } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
+import { createKnownFixedEventSummaries } from '../dialogue/weeklyPlanningKnownFixedEvents';
 import { applyRenderedQuestionContext } from './weeklyPlanningRenderedQuestionContext';
 import { applyDraftGenerationAuthorizationTurn } from '../planning/weeklyPlanningDraftGenerationAuthorization';
 import {
@@ -229,6 +230,10 @@ function behaviorDialogueInput(params: {
       taskLabels: params.base.state.tasks.map((task) => task.title),
       planningPeriodLabel: planningPeriodLabel(params.base),
       constraintSummary: constraintSummary(params.base),
+      knownFixedEventSummaries: createKnownFixedEventSummaries(
+        params.input.existingPlans ?? [],
+        params.base.state.range,
+      ),
     },
     recentConversation: params.input.recentTurns?.slice(-6),
     previewAllowed: params.behavior.gate.allowed,

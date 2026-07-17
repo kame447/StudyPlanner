@@ -20,7 +20,16 @@ import {
   validateWeeklyPreviewApproval,
 } from './features/weeklyPlanning/planning/weeklyPlanningApproval';
 import type { WeeklyDraftApprovalOperation } from './features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
+import type {
+  WeeklyPlanningMessage,
+  WeeklyPlanningPendingApproval,
+  WeeklyPlanningPendingTurn,
+} from './features/weeklyPlanning/types';
 import { useWeeklyPlanningState } from './features/weeklyPlanning/useWeeklyPlanningState';
+import {
+  executeWeeklyPlanningTurn,
+  type WeeklyPlanningTurnSubmissionResult,
+} from './features/weeklyPlanning/weeklyPlanningTurnExecutor';
 import { createPlanDraftFromWeeklyDraftBlock } from './features/weeklyPlanning/weeklyPlanningTransforms';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useThemePreference } from './hooks/useThemePreference';
@@ -37,6 +46,24 @@ function loadWeeklyApprovalOperations(): WeeklyDraftApprovalOperation[] {
   if (typeof window === 'undefined') return [];
   const value = window.localStorage.getItem(WEEKLY_APPROVAL_LEDGER_KEY);
   return value ? parseWeeklyApprovalLedger(value)?.operations ?? [] : [];
+}
+
+function createWeeklyPlanningRequestId(prefix: string): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? `${prefix}-${crypto.randomUUID()}`
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createWeeklyPlanningMessage(
+  role: WeeklyPlanningMessage['role'],
+  content: string,
+): WeeklyPlanningMessage {
+  return {
+    id: createWeeklyPlanningRequestId(`weekly-${role}-message`),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 const BookshelfView = lazy(() =>
@@ -151,7 +178,7 @@ export default function App() {
     currentDayNote,
   } = usePlannerAppState();
   const planningUserId = user?.id ?? 'anonymous';
-  const { planningState, dispatchPlanningAction } = useWeeklyPlanningState(
+  const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
     planningUserId,
     selectedDate,
   );
@@ -177,83 +204,168 @@ export default function App() {
     );
   }, [weeklyApprovalOperations]);
 
-  async function approveWeeklyDraftBlocks() {
-    if (!user || pendingWeeklyDraftBlocks.length === 0) return;
-    const firstMetadata = pendingWeeklyDraftBlocks[0]?.behaviorMetadata?.previewMetadata;
-    const proposalRecords = (firstMetadata?.assumptionDependencies ?? []).map((dependency) => ({
-      proposalId: dependency.proposalId,
-      conversationId: 'weekly-planning-session',
-      slot: 'duration' as const,
-      targetRef: dependency.targetRef,
-      proposedValue: 0,
-      proposedUnit: 'minutes' as const,
-      reasonCode: 'missing_duration' as const,
-      sourceFactRefs: [dependency.targetRef],
-      createdAtTurnId: 'preview-dependency',
-      createdFromStateRevision: dependency.proposalCreatedFromStateRevision,
-      status: 'pending' as const,
-    }));
-    const guard = validateWeeklyPreviewApproval({
-      blocks: pendingWeeklyDraftBlocks,
-      currentStateRevision: firstMetadata?.stateRevision ?? -1,
-      userId: user.id,
-      proposalRecords,
-    });
-    if (!guard.allowed) {
-      switch (guard.attempt.kind) {
-        case 'stale_preview_approval_attempt':
-          throw new Error('現在の条件と一致しない仮予定です。最新条件で再計算してください。');
-        case 'pending_assumption_preview_approval_attempt':
-          throw new Error('未確認の仮定があります。仮定を確認してから最新案を再計算してください。');
-        default:
-          throw new Error('この仮予定は保存できません。最新案を作り直してください。');
-      }
+  async function submitWeeklyPlanningTurn(
+    userText: string,
+  ): Promise<WeeklyPlanningTurnSubmissionResult> {
+    const snapshot = getPlanningState();
+    if (!user || snapshot.pendingTurn || snapshot.pendingApproval) {
+      return { accepted: false, draftCandidates: [] };
     }
 
-    const existingOperation = weeklyApprovalOperations.find((operation) =>
-      operation.userId === user.id
-      && operation.previewId === guard.metadata.previewId
-      && operation.previewStateRevision === guard.metadata.stateRevision,
-    );
-    const operation = existingOperation ?? createWeeklyDraftApprovalOperation({
-      userId: user.id,
-      metadata: guard.metadata,
-      blocks: pendingWeeklyDraftBlocks,
-      now: new Date().toISOString(),
-    });
-    const result = await executeWeeklyDraftApproval({
-      operation,
-      blocks: pendingWeeklyDraftBlocks,
-      dependencies: {
-        async findExistingPlanId({ sourceDraftBlockId }) {
-          const marker = `[weekly-source:${sourceDraftBlockId}]`;
-          return plans.find((plan) => plan.userId === user.id && plan.memo.includes(marker))?.id;
-        },
-        async saveBlock({ block, source }) {
-          const draft = createPlanDraftFromWeeklyDraftBlock(block, user.id);
-          const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
-          const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
-          await savePlanDraft({
-            ...draft,
-            memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
-          });
-          return { planId: `weekly-plan:${source.sourceDraftBlockId}` };
-        },
-        now: () => new Date().toISOString(),
-      },
-    });
-    setWeeklyApprovalOperations((current) => [
-      ...current.filter((item) => item.approvalOperationId !== result.approvalOperationId),
-      result,
-    ]);
-    const completedBlockIds = result.items
-      .filter((item) => item.status === 'saved' || item.status === 'skipped_duplicate')
-      .map((item) => item.sourceDraftBlockId);
-    if (completedBlockIds.length > 0) {
-      dispatchPlanningAction({ type: 'remove_draft_blocks', blockIds: completedBlockIds });
+    const pending: WeeklyPlanningPendingTurn = {
+      requestId: createWeeklyPlanningRequestId('weekly-turn'),
+      weekStartDate: snapshot.weekStartDate,
+      baseRevision: snapshot.revision,
+      startedAt: new Date().toISOString(),
+    };
+    const userMessage = createWeeklyPlanningMessage('user', userText);
+    const begun = dispatchPlanningAction({ type: 'begin_turn', pending, userMessage });
+    if (begun.pendingTurn?.requestId !== pending.requestId) {
+      return { accepted: false, draftCandidates: [] };
     }
-    if (result.status === 'failed' || result.status === 'partially_saved') {
-      throw new Error('一部の仮予定を保存できませんでした。未保存分だけ再試行できます。');
+
+    try {
+      const result = await executeWeeklyPlanningTurn({
+        previousState: snapshot.intakeState,
+        messages: snapshot.messages,
+        userText,
+        selectedDate,
+        userId: user.id,
+        plans,
+        scheduleTemplates,
+        timetableTermId: activeTimetableTermId,
+        traceRequestId: pending.requestId,
+      });
+      const assistantMessage = createWeeklyPlanningMessage('assistant', result.message);
+      const committed = dispatchPlanningAction({
+        type: 'commit_turn',
+        pending,
+        intakeState: result.state,
+        assistantMessage,
+        draftCandidates: result.draftCandidates,
+      });
+      const accepted = committed.messages.some((message) => message.id === assistantMessage.id)
+        && committed.pendingTurn === undefined
+        && committed.weekStartDate === pending.weekStartDate;
+      return {
+        accepted,
+        draftCandidates: accepted ? result.draftCandidates : [],
+      };
+    } catch {
+      const message = '週間計画の会話状態を更新できませんでした。';
+      dispatchPlanningAction({
+        type: 'fail_turn',
+        pending,
+        assistantMessage: createWeeklyPlanningMessage('assistant', message),
+      });
+      throw new Error(message);
+    }
+  }
+
+  async function approveWeeklyDraftBlocks() {
+    if (!user) return;
+    const snapshot = getPlanningState();
+    const blocks = snapshot.draftBlocks.filter((block) => block.status === 'draft');
+    if (blocks.length === 0 || snapshot.pendingTurn || snapshot.pendingApproval) return;
+
+    const pending: WeeklyPlanningPendingApproval = {
+      requestId: createWeeklyPlanningRequestId('weekly-approval'),
+      weekStartDate: snapshot.weekStartDate,
+      baseRevision: snapshot.revision,
+      blockIds: blocks.map((block) => block.id),
+      startedAt: new Date().toISOString(),
+    };
+    const begun = dispatchPlanningAction({ type: 'begin_approval', pending });
+    if (begun.pendingApproval?.requestId !== pending.requestId) return;
+
+    try {
+      const firstMetadata = blocks[0]?.behaviorMetadata?.previewMetadata;
+      const proposalRecords = (firstMetadata?.assumptionDependencies ?? []).map((dependency) => ({
+        proposalId: dependency.proposalId,
+        conversationId: 'weekly-planning-session',
+        slot: 'duration' as const,
+        targetRef: dependency.targetRef,
+        proposedValue: 0,
+        proposedUnit: 'minutes' as const,
+        reasonCode: 'missing_duration' as const,
+        sourceFactRefs: [dependency.targetRef],
+        createdAtTurnId: 'preview-dependency',
+        createdFromStateRevision: dependency.proposalCreatedFromStateRevision,
+        status: 'pending' as const,
+      }));
+      const guard = validateWeeklyPreviewApproval({
+        blocks,
+        currentStateRevision: firstMetadata?.stateRevision ?? -1,
+        userId: user.id,
+        proposalRecords,
+      });
+      if (!guard.allowed) {
+        switch (guard.attempt.kind) {
+          case 'stale_preview_approval_attempt':
+            throw new Error('現在の条件と一致しない仮予定です。最新条件で再計算してください。');
+          case 'pending_assumption_preview_approval_attempt':
+            throw new Error('未確認の仮定があります。仮定を確認してから最新案を再計算してください。');
+          default:
+            throw new Error('この仮予定は保存できません。最新案を作り直してください。');
+        }
+      }
+
+      const existingOperation = weeklyApprovalOperations.find((operation) =>
+        operation.userId === user.id
+        && operation.previewId === guard.metadata.previewId
+        && operation.previewStateRevision === guard.metadata.stateRevision,
+      );
+      const operation = existingOperation ?? createWeeklyDraftApprovalOperation({
+        userId: user.id,
+        metadata: guard.metadata,
+        blocks,
+        now: new Date().toISOString(),
+      });
+      const result = await executeWeeklyDraftApproval({
+        operation,
+        blocks,
+        dependencies: {
+          async findExistingPlanId({ sourceDraftBlockId }) {
+            const marker = `[weekly-source:${sourceDraftBlockId}]`;
+            return plans.find((plan) => plan.userId === user.id && plan.memo.includes(marker))?.id;
+          },
+          async saveBlock({ block, source }) {
+            const draft = createPlanDraftFromWeeklyDraftBlock(block, user.id);
+            const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
+            const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
+            await savePlanDraft({
+              ...draft,
+              memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
+            });
+            return { planId: `weekly-plan:${source.sourceDraftBlockId}` };
+          },
+          now: () => new Date().toISOString(),
+        },
+      });
+      setWeeklyApprovalOperations((current) => [
+        ...current.filter((item) => item.approvalOperationId !== result.approvalOperationId),
+        result,
+      ]);
+      const completedBlockIds = result.items
+        .filter((item) => item.status === 'saved' || item.status === 'skipped_duplicate')
+        .map((item) => item.sourceDraftBlockId);
+      const failed = result.status === 'failed' || result.status === 'partially_saved';
+      const message = failed
+        ? '一部の仮予定を保存できませんでした。未保存分だけ再試行できます。'
+        : `${completedBlockIds.length}件の仮予定を通常予定として保存しました。`;
+      dispatchPlanningAction({
+        type: 'complete_approval',
+        pending,
+        completedBlockIds,
+        assistantMessage: createWeeklyPlanningMessage('assistant', message),
+      });
+      if (failed) throw new Error(message);
+    } catch (error) {
+      const current = getPlanningState();
+      if (current.pendingApproval?.requestId === pending.requestId) {
+        dispatchPlanningAction({ type: 'fail_approval', pending });
+      }
+      throw error;
     }
   }
 
@@ -372,7 +484,9 @@ export default function App() {
               plans={plans}
               actuals={actuals}
               weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-              onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+              onRemoveWeeklyDraftBlock={planningState.pendingTurn || planningState.pendingApproval
+                ? undefined
+                : (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
               onChangeWeek={openWeek}
               onOpenDay={openDay}
             />
@@ -390,7 +504,9 @@ export default function App() {
               scheduleTemplates={scheduleTemplates}
               timetableTermId={activeTimetableTermId}
               weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-              onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+              onRemoveWeeklyDraftBlock={planningState.pendingTurn || planningState.pendingApproval
+                ? undefined
+                : (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
               onChangeDay={openDay}
               onEditPlan={openEditPlan}
               onDeletePlan={deletePlan}
@@ -500,11 +616,28 @@ export default function App() {
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
-            scheduleTemplates={scheduleTemplates}
-            timetableTermId={activeTimetableTermId}
-            weeklyDraftBlocks={pendingWeeklyDraftBlocks}
-            onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
-            onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+             weeklyDraftBlocks={pendingWeeklyDraftBlocks}
+             weeklyPlanningPreviewCandidates={planningState.previewCandidates ?? []}
+             weeklyPlanningMessages={planningState.messages}
+
+              weeklyPlanningIntakeState={planningState.intakeState ?? null}
+              weeklyPlanningWeekStartDate={planningState.weekStartDate}
+              weeklyPlanningRevision={planningState.revision}
+              weeklyPlanningPendingTurn={planningState.pendingTurn}
+              weeklyPlanningPendingApproval={planningState.pendingApproval}
+              onSubmitWeeklyPlanningTurn={submitWeeklyPlanningTurn}
+              onAppendWeeklyPlanningMessage={(message) =>
+                dispatchPlanningAction({ type: 'append_message', message })
+              }
+              onResetWeeklyPlanningSession={() =>
+                dispatchPlanningAction({ type: 'reset_session' })
+              }
+               onCreateWeeklyDraftBlocks={(blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks })}
+             onRemoveWeeklyPlanningPreviewCandidate={(candidateId) =>
+               dispatchPlanningAction({ type: 'remove_preview_candidate', candidateId })
+             }
+             onRemoveWeeklyDraftBlock={(blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}
+
             onClearWeeklyDraftBlocks={() => dispatchPlanningAction({ type: 'clear_draft_blocks' })}
             onApproveWeeklyDraftBlocks={approveWeeklyDraftBlocks}
             onClose={() => setIsQuickEntryOpen(false)}

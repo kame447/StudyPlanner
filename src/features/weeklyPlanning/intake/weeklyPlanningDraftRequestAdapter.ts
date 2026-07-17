@@ -145,7 +145,7 @@ function isUsableTotalYears(value: number | undefined): value is number {
 
 function hasPendingScopeStartDate(state: PlanningIntakeState): boolean {
   return state.pendingPlanningRange?.scope.kind === 'next_week'
-    && Boolean(state.pendingPlanningRange.scope.startDate);
+    && Boolean(state.pendingPlanningRange.scope.windowStartDate);
 }
 
 /**
@@ -183,7 +183,7 @@ export function createAssumedWeeklyDraftRequest(
       return null;
     }
 
-    planningStartDate = state.pendingPlanningRange?.scope.startDate;
+    planningStartDate = state.pendingPlanningRange?.scope.windowStartDate;
     addAssumption(
       assumptions,
       'planning_start_date',

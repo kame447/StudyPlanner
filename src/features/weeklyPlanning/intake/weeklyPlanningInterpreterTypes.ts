@@ -1,5 +1,5 @@
 import type { ParsedWeeklyPlanningCommand } from './weeklyPlanningCommandTypes';
-import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
+import type { ExamPrepScope, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 
 export type InterpreterOrigin = 'ai_interpreter';
 
@@ -47,6 +47,11 @@ export interface InterpreterCorrectionTargetSummary {
 
 export interface InterpreterStateSummary {
   knownFields: string[];
+  examScopeSummary?: Omit<Partial<ExamPrepScope>, 'fields' | 'yearRange'> & {
+    fields: string[];
+    rawText?: string[];
+    yearRange?: { startYear: number; endYear: number; sourceText?: string };
+  };
   confirmedSlots: string[];
   planningRangeSummary?: string;
   lastQuestions?: Array<{
@@ -54,9 +59,12 @@ export interface InterpreterStateSummary {
     intent: string;
   }>;
   pendingPlanningRange?: {
+    kind: 'next_week' | 'named_future_period';
     label: string;
-    startDate?: string;
-    endDate?: string;
+    windowStartDate?: string;
+    windowEndDate?: string;
+    planningStartDate?: string;
+    durationDays?: number;
   };
   availableConstraintSources?: ConstraintSourceAvailability;
   pendingAssumptionProposals?: InterpreterPendingAssumptionSummary[];

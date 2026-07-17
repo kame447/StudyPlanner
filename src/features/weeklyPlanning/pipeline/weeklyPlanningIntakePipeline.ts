@@ -47,6 +47,7 @@ import {
   type WeeklyPlanningRemainingWorkItemsResult,
 } from '../intake/weeklyPlanningRemainingWorkItems';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import { createKnownFixedEventOccurrences } from '../dialogue/weeklyPlanningKnownFixedEvents';
 import {
   canonicalizeAssumptionProposalDrafts,
   createAssumptionProposalSessionState,
@@ -381,7 +382,7 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
   const slots: string[] = [];
 
   if (state.range) slots.push('planning_range');
-  if (state.examPrepScope) slots.push('exam_scope');
+  if ((state.examPrepScope?.fields.length ?? 0) > 0) slots.push('exam_scope');
   if (state.examPrepScope?.yearRange) slots.push('year_range');
   if (state.unitRates.length > 0) slots.push('unit_duration_estimate');
   if (state.priorityPolicy.kind !== 'unknown') slots.push('priority_policy');
@@ -396,6 +397,7 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
 
 function createPlannerCapabilitySnapshot(
   input: WeeklyPlanningIntakePipelineInput,
+  state: PlanningIntakeState,
 ): PlannerCapabilitySnapshot {
   const termId = input.timetableTermId ?? 'default';
   const hasActiveTimetable = (input.scheduleTemplates ?? []).some(
@@ -404,7 +406,10 @@ function createPlannerCapabilitySnapshot(
 
   return {
     hasActiveTimetable,
-    existingPlanCount: (input.existingPlans ?? []).length,
+    existingPlanCount: createKnownFixedEventOccurrences(
+      input.existingPlans ?? [],
+      state.range,
+    ).length,
   };
 }
 
@@ -430,6 +435,16 @@ function createInterpreterStateSummary(
 ): InterpreterStateSummary {
   return {
     knownFields: state.examPrepScope?.fields ?? [],
+    examScopeSummary: state.examPrepScope
+      ? {
+          ...state.examPrepScope,
+          fields: [...state.examPrepScope.fields],
+          rawText: [...state.examPrepScope.rawText],
+          ...(state.examPrepScope.yearRange
+            ? { yearRange: { ...state.examPrepScope.yearRange } }
+            : {}),
+        }
+      : undefined,
     confirmedSlots: confirmedSlotsFromState(state),
     lastQuestions: previousState?.lastQuestionContext?.targetSlot
       ? [{
@@ -442,9 +457,12 @@ function createInterpreterStateSummary(
       : undefined,
     pendingPlanningRange: state.pendingPlanningRange
       ? {
+          kind: state.pendingPlanningRange.scope.kind,
           label: state.pendingPlanningRange.scope.label,
-          startDate: state.pendingPlanningRange.scope.startDate,
-          endDate: state.pendingPlanningRange.scope.endDate,
+          windowStartDate: state.pendingPlanningRange.scope.windowStartDate,
+          windowEndDate: state.pendingPlanningRange.scope.windowEndDate,
+          planningStartDate: state.pendingPlanningRange.planningStartDate,
+          durationDays: state.pendingPlanningRange.durationDays,
         }
       : undefined,
     availableConstraintSources: toConstraintSourceAvailability(snapshot),
@@ -511,7 +529,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     input.userText,
     context,
   );
-  const capabilitySnapshot = createPlannerCapabilitySnapshot(input);
+  const capabilitySnapshot = createPlannerCapabilitySnapshot(input, preparedState);
   const stateSummary = createInterpreterStateSummary(
     preparedState,
     capabilitySnapshot,
@@ -528,7 +546,6 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       recentTurns: input.recentTurns,
     });
   } catch {
-    // Provider failures keep the established full rules path, including legacy task extraction.
     const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
       previousState,
       input.userText,

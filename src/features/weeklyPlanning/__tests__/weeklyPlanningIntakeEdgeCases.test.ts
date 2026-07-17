@@ -907,7 +907,12 @@ describe('weekly planning intake edge cases', () => {
       .toMatchObject({
         type: 'set_pending_planning_range',
         pending: {
-          scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },
+          scope: {
+            kind: 'next_week',
+            label: '来週',
+            windowStartDate: '2026-07-13',
+            windowEndDate: '2026-07-19',
+          },
           durationDays: 7,
         },
       });

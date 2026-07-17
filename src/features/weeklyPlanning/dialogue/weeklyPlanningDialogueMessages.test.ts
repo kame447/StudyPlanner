@@ -34,7 +34,7 @@ describe('weekly planning dialogue messages', () => {
       shouldCreateDraft: false,
     }));
 
-    expect(message).toContain('固定予定');
+    expect(message).toContain('時間が決まっていて動かせない予定');
     expect(message).toContain('睡眠時間');
     expect(message).not.toContain('対象年度');
     expect(message).not.toContain('目安時間');

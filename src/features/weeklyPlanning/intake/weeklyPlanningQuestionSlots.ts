@@ -16,6 +16,7 @@ export type PlanningQuestionSlotPreviewPolicy =
 interface FallbackQuestionContext {
   planningPeriodLabel?: string;
   options?: string[];
+  knownFixedEventSummaries?: string[];
 }
 
 export interface PlanningQuestionSlotDefinition {
@@ -112,6 +113,30 @@ const planningStartDateSlot: PlanningQuestionSlotDefinition = {
       ? `${planningPeriodLabel}のどの日から計画を始めますか？`
       : 'どの日から計画を始めますか？',
   userLabel: '計画の開始日',
+};
+
+const planningDurationSlot: PlanningQuestionSlotDefinition = {
+  missing: ['planning_duration'],
+  targetSlot: 'planning_duration',
+  intent: 'ask_planning_duration',
+  kind: 'missing_slot',
+  previewPolicy: 'assumable',
+  previewQuestionPriority: 2,
+  status: 'needs_scope',
+  deterministicQuestion: (state) => {
+    const scopeLabel = state.pendingPlanningRange?.scope.label ?? 'その期間';
+    return `${scopeLabel}の計画は、開始日から何日間にしますか？`;
+  },
+  isStateQuestionEligible: (state) => isMissing(state, 'planning_duration'),
+  isQuestionPlanEligible: defaultQuestionPlanEligibility,
+  dependsOn: ['planning_start_date'],
+  termExplanation:
+    '計画を続ける日数です。開始日を1日目として、何日間の計画にするか教えてください。',
+  clarificationKeywords: [/何日間|期間の長さ|日数/],
+  vocabularyHint: '計画の日数',
+  fallbackQuestion: ({ planningPeriodLabel }) =>
+    `${planningPeriodLabel ?? 'その期間'}の計画は何日間にしますか？`,
+  userLabel: '計画の日数',
 };
 
 const tasksOrGoalsSlot: PlanningQuestionSlotDefinition = {
@@ -254,12 +279,14 @@ const fixedEventsSlot: PlanningQuestionSlotDefinition = {
   isStateQuestionEligible: () => false,
   isQuestionPlanEligible: defaultQuestionPlanEligibility,
   termExplanation:
-    '「固定の予定」は、授業・バイト・通院など、時間が決まっていて動かせない予定のことです。',
+    '「固定の予定」は、時間が決まっていて動かせない予定のことです。',
   clarificationKeywords: [/固定|動かせない/],
-  vocabularyHint: '授業・バイト・通院など動かせない予定',
-  fallbackQuestion: () =>
-    '授業・バイト・通院など、動かせない予定があれば教えてください。',
-  userLabel: '授業・バイト・病院・ゼミなどの固定予定の有無',
+  vocabularyHint: '時間が決まっていて動かせない予定',
+  fallbackQuestion: ({ knownFixedEventSummaries }) =>
+    knownFixedEventSummaries && knownFixedEventSummaries.length > 0
+      ? `登録済みの予定は、${knownFixedEventSummaries.join('、')}です。これ以外に、時間が決まっていて動かせない予定はありますか？`
+      : 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？',
+  userLabel: '時間が決まっていて動かせない予定',
 };
 
 const sleepCycleSlot: PlanningQuestionSlotDefinition = {
@@ -326,6 +353,7 @@ export const QUESTION_SLOT_DEFINITION_BY_MISSING: Record<
 > = {
   planning_period: planningPeriodSlot,
   planning_start_date: planningStartDateSlot,
+  planning_duration: planningDurationSlot,
   tasks_or_goals: tasksOrGoalsSlot,
   fixed_events: fixedEventsSlot,
   sleep_cycle: sleepCycleSlot,
@@ -342,6 +370,7 @@ export const QUESTION_SLOT_DEFINITION_BY_MISSING: Record<
 const QUESTION_SLOT_DEFINITIONS: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   tasksOrGoalsSlot,
   yearRangeSlot,
   completionDirectionSlot,
@@ -357,6 +386,7 @@ const QUESTION_SLOT_DEFINITIONS: readonly PlanningQuestionSlotDefinition[] = [
 export const STATUS_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   tasksOrGoalsSlot,
   completionDirectionSlot,
   yearRangeSlot,
@@ -373,6 +403,7 @@ export const QUESTION_PLAN_SLOT_ORDER = QUESTION_SLOT_DEFINITIONS;
 const STATE_QUESTION_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   tasksOrGoalsSlot,
   yearRangeSlot,
   completionDirectionSlot,
@@ -383,6 +414,7 @@ const STATE_QUESTION_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
 const MESSAGE_KEY_SLOT_ORDER: readonly PlanningQuestionSlotDefinition[] = [
   planningPeriodSlot,
   planningStartDateSlot,
+  planningDurationSlot,
   yearRangeSlot,
   unitDurationEstimateSlot,
   priorityPolicySlot,
@@ -427,8 +459,12 @@ export function statusForMissing(
 export function deterministicQuestionsForState(
   state: PlanningIntakeState,
 ): string[] {
+  const missing = new Set(state.missing);
   return STATE_QUESTION_SLOT_ORDER.flatMap((definition) =>
     definition.isStateQuestionEligible(state)
+      && !(definition.dependsOn ?? []).some((dependency) =>
+        missing.has(dependency),
+      )
       ? [definition.deterministicQuestion(state)].filter(
           (question): question is string => Boolean(question),
         )

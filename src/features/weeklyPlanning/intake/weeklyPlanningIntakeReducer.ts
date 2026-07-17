@@ -111,7 +111,7 @@ function mergeExamPrepScopeForCommand(
   const totalFields = commandScope.totalFields ?? previousScope?.totalFields;
   const totalYears = commandScope.totalYears ?? previousScope?.totalYears;
   const fields = commandScope.fields.length > 0
-    ? commandScope.fields
+    ? uniqueList(commandScope.fields.map((field) => field.trim()).filter(Boolean))
     : previousScope?.fields ?? [];
 
   return {
@@ -314,8 +314,6 @@ function applyUseConstraintSourceCommand(
   state: PlanningIntakeState,
   command: Extract<ParsedWeeklyPlanningCommand, { type: 'use_constraint_source' }>,
 ): PlanningIntakeState {
-  // ソースの利用可否検証は validator(capability snapshot 参照)で済んでいる前提。
-  // ここでは「どのソースを利用中か」を記録し、fixed_events を充足するだけ。
   const ref = { kind: command.source.kind, selector: command.source.selector };
   const inUse = state.constraintSourcesInUse ?? [];
   const alreadyInUse = inUse.some((source) => source.kind === ref.kind && source.selector === ref.selector);
@@ -363,6 +361,7 @@ function applyWeeklyPlanningCommand(
       return {
         ...state,
         priorityPolicy: toPriorityPolicyFromSetPriorityPolicyCommand(command),
+        priorityPolicySource: 'user',
         missing: removeMissing(state.missing, [
           'priority_policy',
           'next_field_after_math',
@@ -442,21 +441,38 @@ function applyWeeklyPlanningCommand(
         range: toPlanningRangeFromSetPlanningRangeCommand(command, false),
         pendingPlanningRange: undefined,
         missing: addMissing(
-          removeMissing(state.missing, ['planning_start_date', 'planning_period']),
+          removeMissing(state.missing, [
+            'planning_start_date',
+            'planning_duration',
+            'planning_period',
+          ]),
           deriveMissingForPlanningRange(state),
         ),
       };
     }
-    case 'set_pending_planning_range':
+    case 'set_pending_planning_range': {
+      const pendingMissing = [
+        ...(!command.pending.planningStartDate
+          ? ['planning_start_date' as const]
+          : []),
+        ...(command.pending.durationDays === undefined
+          ? ['planning_duration' as const]
+          : []),
+      ];
       return {
         ...state,
         intent: 'weekly_study_planning',
         pendingPlanningRange: command.pending,
         missing: addMissing(
-          removeMissing(state.missing, ['planning_start_date', 'planning_period']),
-          ['planning_start_date'],
+          removeMissing(state.missing, [
+            'planning_start_date',
+            'planning_duration',
+            'planning_period',
+          ]),
+          pendingMissing,
         ),
       };
+    }
     case 'set_study_goal': {
       const task = toStudyTaskScopeFromSetStudyGoalCommand(command);
       const taskIdentity = normalizeStudyTaskTitle(task.title);
@@ -559,11 +575,29 @@ function applyDeterministicWeeklyPlanningUserTurnCore(
   let nextState = beginWeeklyPlanningUserTurn(previousState, userText);
 
   const setupCommands: ParsedWeeklyPlanningCommand[] = [];
-  const planningRangeCommand = parseSetPlanningRangeCommand(userText, context, nextState.pendingPlanningRange);
+  const expectedSlot = previousState?.lastQuestionContext?.targetSlot;
+  const planningRangeCommand = parseSetPlanningRangeCommand(
+    userText,
+    context,
+    nextState.pendingPlanningRange,
+    expectedSlot,
+  );
   if (planningRangeCommand) {
     setupCommands.push(planningRangeCommand);
   } else {
-    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(userText, context);
+    const allowBareNamedFuturePeriodAnswer = Boolean(
+      previousState?.missing.includes('planning_period')
+      && !previousState.pendingPlanningRange,
+    );
+    const pendingPlanningRangeCommand = parseSetPendingPlanningRangeCommand(
+      userText,
+      context,
+      {
+        allowBareNamedFuturePeriodAnswer,
+        pending: nextState.pendingPlanningRange,
+        expectedSlot,
+      },
+    );
     if (pendingPlanningRangeCommand) setupCommands.push(pendingPlanningRangeCommand);
   }
   const beginCommand = parseBeginWeeklyPlanningCommand(userText);

@@ -3,6 +3,7 @@ import type {
   ConstraintSourceKind,
   ExamPrepScope,
   PendingPlanningRangeClarification,
+  PendingPlanningRangeScope,
   PlanningRange,
   PlanningIntakeUncertainty,
   LifeConstraintKind,
@@ -25,10 +26,14 @@ export type ParsedWeeklyPlanningCommand =
   | SetUnitRateCommand
   | SetExamScopeCommand
   | SetPlanningRangeCommand
-  | SetPendingPlanningRangeCommand
+  | NormalizedSetPendingPlanningRangeCommand
   | BeginWeeklyPlanningCommand
   | AuthorizeDraftGenerationCommand
   | SetStudyGoalCommand;
+
+export type WeeklyPlanningCommandPayload =
+  | Exclude<ParsedWeeklyPlanningCommand, { type: 'set_pending_planning_range' }>
+  | SetPendingPlanningRangeCommand;
 
 export interface UseConstraintSourceCommand {
   type: 'use_constraint_source';
@@ -176,12 +181,33 @@ export interface SetPlanningRangeCommand {
   confidence: 'high' | 'medium' | 'low';
 }
 
+export type PendingPlanningRangeCommandScope =
+  | {
+      kind: 'next_week';
+      label: string;
+      windowStartDate?: string;
+      windowEndDate?: string;
+    }
+  | Extract<PendingPlanningRangeScope, { kind: 'named_future_period' }>;
+
+export interface PendingPlanningRangeCommandPayload {
+  scope: PendingPlanningRangeCommandScope;
+  planningStartDate?: string;
+  durationDays?: number;
+  sourceText: string;
+}
+
 export interface SetPendingPlanningRangeCommand {
   type: 'set_pending_planning_range';
-  pending: PendingPlanningRangeClarification;
+  pending: PendingPlanningRangeCommandPayload;
   sourceText: string;
   sourceSegment?: string;
   confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NormalizedSetPendingPlanningRangeCommand
+  extends Omit<SetPendingPlanningRangeCommand, 'pending'> {
+  pending: PendingPlanningRangeClarification;
 }
 
 export interface BeginWeeklyPlanningCommand {

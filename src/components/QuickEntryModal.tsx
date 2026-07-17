@@ -15,7 +15,16 @@ import {
 } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS } from '../lib/plans';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
-import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
+import type {
+  WeeklyPlanDraftBlock,
+  WeeklyPlanningMessage,
+  WeeklyPlanningPendingApproval,
+  WeeklyPlanningPendingTurn,
+} from '../features/weeklyPlanning/types';
+import type { WeeklyPlanningTurnSubmissionResult } from '../features/weeklyPlanning/weeklyPlanningTurnExecutor';
+import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
+import { resolveInitialQuickEntryInputMethod } from './weeklyPlanningConversationMode';
 import type {
   Actual,
   ActualDraft,
@@ -23,7 +32,6 @@ import type {
   PlanDraft,
   PlanType,
   RecurrenceWeekday,
-  ScheduleTemplate,
   StudyMaterial,
   StudySubject,
   TodoTaskDraft,
@@ -43,13 +51,22 @@ interface QuickEntryModalProps {
   actuals: Actual[];
   materials: StudyMaterial[];
   subjects: StudySubject[];
-  scheduleTemplates?: ScheduleTemplate[];
-  timetableTermId?: string;
-  weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
-  onCreateWeeklyDraftBlocks?: (blocks: WeeklyPlanDraftBlock[]) => void;
-  onRemoveWeeklyDraftBlock?: (blockId: string) => void;
-  onClearWeeklyDraftBlocks?: () => void;
-  onApproveWeeklyDraftBlocks?: () => Promise<void>;
+  weeklyDraftBlocks: WeeklyPlanDraftBlock[];
+  weeklyPlanningPreviewCandidates?: WeeklyDraftCandidate[];
+  weeklyPlanningMessages: WeeklyPlanningMessage[];
+  weeklyPlanningIntakeState: PlanningIntakeState | null;
+  weeklyPlanningWeekStartDate: string;
+  weeklyPlanningRevision: number;
+  weeklyPlanningPendingTurn?: WeeklyPlanningPendingTurn;
+  weeklyPlanningPendingApproval?: WeeklyPlanningPendingApproval;
+  onSubmitWeeklyPlanningTurn: (text: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
+  onAppendWeeklyPlanningMessage: (message: WeeklyPlanningMessage) => void;
+  onResetWeeklyPlanningSession: () => void;
+  onCreateWeeklyDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
+  onRemoveWeeklyPlanningPreviewCandidate?: (candidateId: string) => void;
+  onRemoveWeeklyDraftBlock: (blockId: string) => void;
+  onClearWeeklyDraftBlocks: () => void;
+  onApproveWeeklyDraftBlocks: () => Promise<void>;
   onClose: () => void;
   onSaveTodo: (draft: TodoTaskDraft) => Promise<void>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -103,10 +120,19 @@ export function QuickEntryModal({
   actuals,
   materials,
   subjects,
-  scheduleTemplates = [],
-  timetableTermId,
-  weeklyDraftBlocks = [],
+  weeklyDraftBlocks,
+  weeklyPlanningPreviewCandidates = [],
+  weeklyPlanningMessages,
+  weeklyPlanningIntakeState,
+  weeklyPlanningWeekStartDate,
+  weeklyPlanningRevision,
+  weeklyPlanningPendingTurn,
+  weeklyPlanningPendingApproval,
+  onSubmitWeeklyPlanningTurn,
+  onAppendWeeklyPlanningMessage,
+  onResetWeeklyPlanningSession,
   onCreateWeeklyDraftBlocks,
+  onRemoveWeeklyPlanningPreviewCandidate,
   onRemoveWeeklyDraftBlock,
   onClearWeeklyDraftBlocks,
   onApproveWeeklyDraftBlocks,
@@ -117,7 +143,15 @@ export function QuickEntryModal({
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
-  const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>('manual');
+  const [inputMethod, setInputMethod] = useState<QuickEntryInputMethod>(() =>
+    resolveInitialQuickEntryInputMethod({
+      messages: weeklyPlanningMessages,
+      intakeState: weeklyPlanningIntakeState,
+      draftBlockCount: weeklyDraftBlocks.length,
+      pendingTurn: weeklyPlanningPendingTurn,
+      pendingApproval: weeklyPlanningPendingApproval,
+    }),
+  );
   const [mode, setMode] = useState<QuickEntryMode>('later');
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
@@ -591,12 +625,23 @@ export function QuickEntryModal({
                 plans={plans}
                 materials={availableMaterials}
                 subjects={availableSubjects}
-                scheduleTemplates={scheduleTemplates}
-                timetableTermId={timetableTermId}
                 onApplyDraft={onSavePlan}
-                weeklyDraftBlocks={weeklyDraftBlocks}
-                onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
-                onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+                 weeklyDraftBlocks={weeklyDraftBlocks}
+                 weeklyPlanningPreviewCandidates={weeklyPlanningPreviewCandidates}
+                 weeklyPlanningMessages={weeklyPlanningMessages}
+
+                 weeklyPlanningIntakeState={weeklyPlanningIntakeState}
+                 weeklyPlanningWeekStartDate={weeklyPlanningWeekStartDate}
+                 weeklyPlanningRevision={weeklyPlanningRevision}
+                 weeklyPlanningPendingTurn={weeklyPlanningPendingTurn}
+                 weeklyPlanningPendingApproval={weeklyPlanningPendingApproval}
+                 onSubmitWeeklyPlanningTurn={onSubmitWeeklyPlanningTurn}
+                 onAppendWeeklyPlanningMessage={onAppendWeeklyPlanningMessage}
+                 onResetWeeklyPlanningSession={onResetWeeklyPlanningSession}
+                  onCreateWeeklyDraftBlocks={onCreateWeeklyDraftBlocks}
+                 onRemoveWeeklyPlanningPreviewCandidate={onRemoveWeeklyPlanningPreviewCandidate}
+                 onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
+
                 onClearWeeklyDraftBlocks={onClearWeeklyDraftBlocks}
                 onApproveWeeklyDraftBlocks={onApproveWeeklyDraftBlocks}
                 embedded
