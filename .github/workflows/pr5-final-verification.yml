@@ -12,7 +12,7 @@ jobs:
   verify:
     if: github.event.pull_request.number == 5
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,10 +24,13 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci --silent
+        id: install
+        continue-on-error: true
+        run: npm ci --silent > /tmp/install.log 2>&1
 
       - name: Focused pending range tests
         id: focused
+        if: steps.install.outcome == 'success'
         continue-on-error: true
         run: |
           npm run test:run -- \
@@ -39,22 +42,66 @@ jobs:
 
       - name: Weekly planning tests
         id: weekly
+        if: steps.install.outcome == 'success'
         continue-on-error: true
         run: npm run test:run -- src/features/weeklyPlanning > /tmp/weekly.log 2>&1
+
+      - name: Full test suite
+        id: full
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run test:run > /tmp/full.log 2>&1
+
+      - name: Build
+        id: build
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run build > /tmp/build.log 2>&1
+
+      - name: Diff checks
+        id: diff
+        continue-on-error: true
+        run: |
+          {
+            git diff --check
+            git diff --check origin/main...HEAD
+            test -z "$(git status --short --untracked-files=no)"
+          } > /tmp/diff.log 2>&1
+
+      - name: Write result summary
+        if: always()
+        run: |
+          cat > /tmp/result.txt <<EOF
+          install=${{ steps.install.outcome }}
+          focused=${{ steps.focused.outcome }}
+          weekly=${{ steps.weekly.outcome }}
+          full=${{ steps.full.outcome }}
+          build=${{ steps.build.outcome }}
+          diff=${{ steps.diff.outcome }}
+          head=${{ github.event.pull_request.head.sha }}
+          EOF
 
       - name: Upload verification logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr5-weekly-verification-logs
+          name: pr5-final-verification-logs
           path: |
+            /tmp/result.txt
+            /tmp/install.log
             /tmp/focused.log
             /tmp/weekly.log
-          if-no-files-found: error
+            /tmp/full.log
+            /tmp/build.log
+            /tmp/diff.log
+          if-no-files-found: warn
 
-      - name: Fail on test failure
-        if: steps.focused.outcome != 'success' || steps.weekly.outcome != 'success'
-        run: |
-          echo "focused=${{ steps.focused.outcome }}"
-          echo "weekly=${{ steps.weekly.outcome }}"
-          exit 1
+      - name: Fail on verification error
+        if: |
+          steps.install.outcome != 'success' ||
+          steps.focused.outcome != 'success' ||
+          steps.weekly.outcome != 'success' ||
+          steps.full.outcome != 'success' ||
+          steps.build.outcome != 'success' ||
+          steps.diff.outcome != 'success'
+        run: cat /tmp/result.txt && exit 1
