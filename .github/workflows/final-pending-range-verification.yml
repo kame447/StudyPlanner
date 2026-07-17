@@ -2,7 +2,7 @@ name: Final pending range verification
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   contents: read
