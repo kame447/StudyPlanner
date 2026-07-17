@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { validateInterpretedCandidates } from './weeklyPlanningCandidateValidator';
 import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';
+import type { SetPendingPlanningRangeCommand } from './weeklyPlanningCommandTypes';
+import { createInitialPlanningIntakeState } from './weeklyPlanningIntakeReducer';
+import { finalizeState } from './weeklyPlanningMissingStatus';
 import {
   parseSetPendingPlanningRangeCommand,
   parseSetPlanningRangeCommand,
 } from './weeklyPlanningScopeParsing';
-import type { SetPendingPlanningRangeCommand } from './weeklyPlanningCommandTypes';
 
 const selectedDateContext = {
   selectedDate: '2026-06-26',
@@ -22,20 +25,22 @@ const nextWeekPending = {
   sourceText: '来週の予定を立てたい',
 };
 
+function aiNextWeekCommand(): SetPendingPlanningRangeCommand {
+  return {
+    type: 'set_pending_planning_range',
+    pending: {
+      scope: { kind: 'next_week', label: '来週' },
+      sourceText: '来週の予定を立てたい',
+    },
+    sourceText: '来週の予定を立てたい',
+    confidence: 'high',
+  };
+}
+
 describe('pending range adversarial regression', () => {
   it('normalizes an AI next-week payload from selectedDate, not currentDateTime', () => {
-    const command: SetPendingPlanningRangeCommand = {
-      type: 'set_pending_planning_range',
-      pending: {
-        scope: { kind: 'next_week', label: '来週' },
-        sourceText: '来週の予定を立てたい',
-      },
-      sourceText: '来週の予定を立てたい',
-      confidence: 'high',
-    };
-
     const normalized = normalizeSetPendingPlanningRangeCommand(
-      command,
+      aiNextWeekCommand(),
       selectedDateContext,
     );
 
@@ -46,6 +51,23 @@ describe('pending range adversarial regression', () => {
       windowEndDate: '2026-07-05',
     });
     expect(normalized.pending.durationDays).toBe(7);
+  });
+
+  it('accepts an AI next-week payload before adapter window completion', () => {
+    const command = aiNextWeekCommand();
+    const result = validateInterpretedCandidates([
+      {
+        command,
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      },
+    ], {
+      knownFields: [],
+      confirmedSlots: [],
+    });
+
+    expect(result.rejected).toEqual([]);
+    expect(result.accepted).toEqual([command]);
   });
 
   it.each([
@@ -90,5 +112,22 @@ describe('pending range adversarial regression', () => {
       '第三者の希望は夏休みではなく来週の計画です',
       selectedDateContext,
     )).toBeUndefined();
+  });
+
+  it('hides only duration while start is missing and keeps unrelated questions visible', () => {
+    const state = finalizeState({
+      ...createInitialPlanningIntakeState(),
+      missing: [
+        'planning_start_date',
+        'planning_duration',
+        'tasks_or_goals',
+        'year_range',
+      ],
+    });
+
+    expect(state.questions).toContain('その期間のどの日から計画を始めますか？');
+    expect(state.questions).not.toContain('その期間の計画は、開始日から何日間にしますか？');
+    expect(state.questions).toContain('計画したい学習内容や目標を教えてください。');
+    expect(state.questions).toContain('7年分は何年から何年までですか？');
   });
 });
