@@ -607,10 +607,10 @@ describe('weekly planning AI foundation without real AI', () => {
   });
 
   it.each([
-    ['Friday', '2026-07-10T15:30:00', '2026-07-13', '2026-07-19'],
-    ['Sunday', '2026-07-12T15:30:00', '2026-07-13', '2026-07-19'],
-    ['Monday', '2026-07-13T15:30:00', '2026-07-20', '2026-07-26'],
-  ])('normalizes a next_week pending command from the current date at the %s boundary', (
+    ['Friday current time', '2026-07-10T15:30:00', '2020-01-06', '2020-01-12'],
+    ['Sunday current time', '2026-07-12T15:30:00', '2020-01-06', '2020-01-12'],
+    ['Monday current time', '2026-07-13T15:30:00', '2020-01-06', '2020-01-12'],
+  ])('normalizes a next_week pending command from selectedDate at the %s boundary', (
     _label,
     currentDateTime,
     expectedStartDate,
@@ -630,8 +630,8 @@ describe('weekly planning AI foundation without real AI', () => {
       scope: {
         kind: 'next_week',
         label: 'next week',
-        startDate: expectedStartDate,
-        endDate: expectedEndDate,
+        windowStartDate: expectedStartDate,
+        windowEndDate: expectedEndDate,
       },
       durationDays: 7,
       sourceText: 'next week',
@@ -682,8 +682,8 @@ describe('weekly planning AI foundation without real AI', () => {
     ],
     [
       'invalid date',
-      { scope: { kind: 'next_week', label: 'next week', startDate: 'not-a-date' }, sourceText: 'next week' },
-      'invalid-date',
+      { scope: { kind: 'next_week', label: 'next week', windowStartDate: 'not-a-date', windowEndDate: '2026-07-19' }, sourceText: 'next week' },
+      'invalid-command-shape',
     ],
     [
       'zero duration',
@@ -874,10 +874,10 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(prompt).toContain('confirmed-slot guards');
     expect(prompt).toContain('begin_weekly_planning');
     expect(prompt).not.toContain('weekday answers are resolved by the deterministic parser');
-    expect(prompt).toContain('pendingPlanningRange.startDate');
-    expect(prompt).toContain('concrete ISO date inside that pending window');
+    expect(prompt).toContain('pending.planningStartDate');
+    expect(prompt).toContain('selected start date satisfies the pending window');
     expect(prompt).toContain('set_pending_planning_range');
-    expect(prompt).toContain('the application computes the next_week window');
+    expect(prompt).toContain('planning next_week window from context.selectedDate');
     expect(prompt).toContain('Never substitute an inferred set_planning_range');
   });
 });

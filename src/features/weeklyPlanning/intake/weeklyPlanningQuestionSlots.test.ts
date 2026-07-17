@@ -14,6 +14,7 @@ import {
 const ALL_MISSING_SLOTS: PlanningIntakeMissing[] = [
   'planning_period',
   'planning_start_date',
+  'planning_duration',
   'tasks_or_goals',
   'fixed_events',
   'sleep_cycle',
@@ -55,6 +56,7 @@ describe('weekly planning question slot registry', () => {
     expect(QUESTION_PLAN_SLOT_ORDER.map((definition) => definition.targetSlot)).toEqual([
       'planning_period',
       'planning_start_date',
+      'planning_duration',
       'tasks_or_goals',
       'year_range',
       'completion_direction',
@@ -96,6 +98,7 @@ describe('weekly planning question slot registry', () => {
     ).toEqual({
       planning_period: 'assumable',
       planning_start_date: 'assumable',
+      planning_duration: 'assumable',
       tasks_or_goals: 'blocking',
       fixed_events: 'assumable',
       sleep_cycle: 'assumable',

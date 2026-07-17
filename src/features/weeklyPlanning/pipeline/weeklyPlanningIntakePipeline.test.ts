@@ -1773,7 +1773,12 @@ describe('clarification semantic intent (request_clarification)', () => {
 
     expect(firstOutput.state.range).toBeUndefined();
     expect(firstOutput.state.pendingPlanningRange).toMatchObject({
-      scope: { kind: 'next_week', label: '来週', startDate: '2026-07-13' },
+      scope: {
+        kind: 'next_week',
+        label: '来週',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
+      },
       durationDays: 7,
     });
     expect(firstOutput.state.missing).toContain('planning_start_date');
@@ -1990,8 +1995,8 @@ describe('confirmed slots and AI planning range integration', () => {
     expect(output.state.pendingPlanningRange).toMatchObject({
       scope: {
         kind: 'next_week',
-        startDate: '2026-07-13',
-        endDate: '2026-07-19',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
       },
       durationDays: 7,
     });
@@ -2274,9 +2279,12 @@ describe('confirmed slots and AI planning range integration', () => {
   it('keeps pending clarification for inferred AI ranges and exposes pending summary', async () => {
     const interpretUserTurn: WeeklyPlanningIntakeInterpreter['interpretUserTurn'] = async (params) => {
       expect(params.stateSummary.pendingPlanningRange).toEqual({
+        kind: 'next_week',
         label: '来週',
-        startDate: '2026-07-13',
-        endDate: '2026-07-19',
+        windowStartDate: '2026-07-13',
+        windowEndDate: '2026-07-19',
+        planningStartDate: undefined,
+        durationDays: 7,
       });
       return {
         candidates: [planningRangeCandidate('inferred')],
@@ -2307,7 +2315,21 @@ describe('confirmed slots and AI planning range integration', () => {
       userText: '開始日は別に指定したいです',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
-      interpreter: fakeInterpreter([planningRangeCandidate('explicit')]),
+      interpreter: fakeInterpreter([{
+        command: {
+          type: 'set_planning_range',
+          range: {
+            startDateTime: '2026-07-15T00:00:00',
+            endDateTime: '2026-07-19T24:00:00',
+            sourceText: '来週の水曜日から日曜日',
+            confidence: 'explicit',
+          },
+          sourceText: '来週の水曜日から日曜日',
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: true,
+      }]),
     });
 
     expect(output.interpreterDiagnostics?.acceptedWithConfirmation).toEqual([
