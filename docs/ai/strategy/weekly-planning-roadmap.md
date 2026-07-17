@@ -1,9 +1,11 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / active
-最終更新: 2026-07-16
+最終更新: 2026-07-17
+Current main baseline: `55f8e32c68cfd057494fadec0ed208cba267db12`
 
 - Current contract status: [weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
+- PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
 - Architecture: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
 - Product spec: [weekly-planning-spec.md](../../weekly-planning/weekly-planning-spec.md)
 - Test scenarios: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
@@ -11,6 +13,8 @@ Status: canonical / active
 - Documentation index: [weekly-planning-docs-index.md](../weekly-planning-docs-index.md)
 
 ## 1. Verified baseline
+
+### 1.1 Historical dialogue-stack baseline
 
 次は記録済みのローカル自動検証を持つ。
 
@@ -27,7 +31,7 @@ Status: canonical / active
 | behavior-aware entrypoint connection | complete |
 | test architecture refactor | complete |
 
-Recorded baseline validation:
+Historical recorded validation:
 
 - targeted tests: 8 files / 38 tests passed
 - full tests: 62 files / 825 tests passed
@@ -36,33 +40,58 @@ Recorded baseline validation:
 - diff check: passed
 - browser roleplay: automation environment interruptionにより未完了
 
-これは記録時点の結果であり、現在の`main` HEADに対する再実行を意味しない。
+### 1.2 PR #5 recorded validation
 
-## 2. Implemented modules on `main`
+PR #5最終head `052d7f0`には次の記録がある。
+
+- `git diff --check origin/main...HEAD`: passed
+- 104 test files passed、1 skipped
+- 1003 tests passed、13 skipped、5 todo
+- production build: passed
+- 既知警告: dynamic/static import重複、500kB超chunk
+
+PR #5は2026-07-17にsquash mergeされ、`main` merge commitは`55f8e32`である。
+
+これらは記録時点の結果であり、現在`main` HEADを別環境で再実行したこと、browser verified、operationally deployedを意味しない。
+
+## 2. Implemented modules and contracts on `main`
 
 次のmoduleとcontractは`main`に存在する。ただし、module実装、production entrypoint接続、自動検証、browser検証、production運用を同じ意味で扱わない。
 
-| item | module status | remaining verification / decision |
+| item | module / connection status | remaining verification / decision |
 | --- | --- | --- |
+| PR #5 conversation/session hardening | merged to `main` | merge後main再検証、browser close-resume、IME、focus |
+| deterministic baseline + AI semantic補完 | merged to `main` | long-form spec/architecture/test planの旧no-merge記述同期 |
+| explicit repair / pass-over / grounded acknowledgement | merged to `main` | browser roleplay、real-model rubric |
+| contextual fixed-event question | merged to `main` | browser rendering、range edge cases |
+| planning range pending contract | merged to `main` | Issue #21、week-start profile |
+| session-owned preview lifecycle | merged to `main` | browser close-resume、reload semantics |
+| closed storage validation | merged to `main` | current main round-trip再実行 |
 | DA1b assumption decision and correction | implemented | local integration / browser |
-| Draft approval idempotency | implemented and App approval path connected | local integration / retry / persistent multi-device design |
-| DA2 request orchestrator and UI policy | implemented | actual assistant entrypoint connection / browser race and IME |
+| Draft approval idempotency | implemented and App approval path connected | retry / persistent multi-device design |
+| DA2 request orchestrator and UI policy | implemented | controller ownership統一 / browser race and IME |
 | DA3a relative constraint domain | implemented | local integration |
 | DA3b feasibility consultation | implemented | local integration / roleplay |
 | DA3c conversation evaluation | implemented | local full validation / requirement status sync |
-| conversation trace | implemented | privacy decision recorded / production TTL・deletion・access control・scalability未実装 |
-| longitudinal personalization profile | not implemented | product decision recorded / schema・profile update・correction・deletion・terms gate未実装 |
+| conversation trace | implemented | production privacy、TTL、deletion、access control、scalability |
+| longitudinal personalization profile | not implemented | schema、profile update、correction、deletion、terms gate |
 
-含まれる主なcontract:
+PR #5で追加・強化された主なcontract:
 
-- assumption accept / reject / modifyとproposal audit history
-- correctionのatomic apply、決定的順序、proposal resolution
-- canonical `assistant_suggested`
-- common authorization command type
+- messagesとintake stateのsession ownership
+- modal close後のconversation/preview再開
+- preview candidateのstate ownership、個別削除、全破棄、draft昇格
+- request ID、対象週、base revision guard
+- pending turn / approval中のnon-terminal mutation拒否
+- deterministic exam scopeとAI属性補完
+- single-field priority自動導出
+- known fixed-event groundingと跨日event抽出
+- explicit repair、pass-over、grounded acknowledgement
+- optional null canonicalizationとclosed command validation
+- pending planning rangeのscope/start/duration分離
+- closed storage validatorとlegacy/v2 sanitize
 - save-boundary stale/pending guard
 - item ledger、partial retry、duplicate save抑止
-- request / turn / revision ownership module
-- IME、multiline、focus、Tab、retry policy module
 - relative anchor validationとabsolute interval解決
 - deterministic feasibility値とoption ID
 - requirement matrix、redaction、metrics、property tests
@@ -71,55 +100,62 @@ Recorded baseline validation:
 
 `docs/ai/tasks/`直下には、未完了または追加確認が必要なtaskだけを置く。現在のqueueは次である。
 
-### P1
+### P0
 
-1. `20260714-weekly-planning-dialogue-stack-verification.md`
+1. `20260717-weekly-planning-kanji-absolute-date-guard.md`
+   - Issue #21を修正する。
+   - `八月一日`、`8月一日`等を絶対日付として扱い、日曜日へ誤変換しない。
+   - deterministic経路とAI candidate経路のrange guardを統一する。
+
+2. `20260714-weekly-planning-dialogue-stack-verification.md`
    - current `main`でtargeted tests、TypeScript、build、full tests、production entrypoint、browser behaviorを再分類する。
+   - PR #5のclose-resume契約、session reset/stale契約、IME、focusを分けて検証する。
    - 失敗時はtask内で修正せず、原因と再現情報を別taskへ切り出す。
 
-2. `20260716-weekly-planning-entrypoint-request-ownership.md`
-   - conversation、turn、request、revision、selected week、reset/close/unmountのownershipをproduction entrypointへ統一する。
+### P1
 
-3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
-   - product decisionは記録済み。
+3. `20260716-weekly-planning-entrypoint-request-ownership.md`
+   - conversation、turn、request、revision、selected week、reset、explicit cancel、retryのownershipをproduction controllerへ統一する。
+   - modal close/presentation unmountをsession cancelとして扱わない。
+
+4. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
    - rotating HMAC subject token、全session本文の保存前redaction、本文・snapshot・metadataの180日TTL、account deletion、限定admin accessを実装・検証する。
    - privacy/legal reviewをdeploy前条件として残す。
 
-4. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
+5. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
    - account-linked profile schema、profile factのorigin/confidence/scope、原履歴180日TTL、profile訂正、account deletion、初回acceptance gateを実装する。
    - 週の始まり、学習時間見積り、session構成、修正傾向、実績差、修復方針を次回計画へ反映する。
-   - 個別最適化データの収集を週間計画機能の利用条件とし、収集だけを停止した継続利用modeは設けない。
 
-5. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
+6. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
    - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
 
 ### P2
 
-6. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+7. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
    - pagination、query cost、index、archive、schemaVersion decoderを設計する。
 
-7. `20260716-weekly-planning-controller-ui-responsibility-split.md`
+8. `20260716-weekly-planning-controller-ui-responsibility-split.md`
    - conversation controller、preview controller、view componentへ責務を分離する。
-   - entrypoint ownership taskの結果とPR #5の状態を先に確認する。
+   - PR #5 post-merge stateとentrypoint ownership taskの結果を前提にする。
 
-完了済みのPR #3関連task、conversation trace実装task、cross-cutting trackerは`docs/ai/tasks/closed/`のcompletion recordへ統合済みである。
+構造監査の全項目は`weekly-planning-pr5-post-merge-status.md`と`tasks/closed/20260717-codebase-maintainability-review.md`を参照する。個別実装へ進める際は、一つの主原因と受け入れ条件を持つtaskへ分ける。
 
 ## 4. Decision gates
 
 決定済みcontractは`weekly-planning-current-contract-status.md`を正とし、product spec、architecture、test contract、AI prompt、runtime testを順次同期する。
 
-### 4.1 AIとdeterministic parserの責務 — decision recorded
+### 4.1 AIとdeterministic parserの責務 — decided and implemented
 
-2026-07-16に次を決定した。
+2026-07-16に次を決定し、PR #5で`main`へ実装した。
 
 - deterministic baseline + AI semantic補完を採用する。
 - 高信頼でないAI解釈は、影響と質問コストに応じて明示的修復またはやり過ごしへ分類する。
 - previewを止める不確実性だけを一度に一件確認する。
 - accepted stateに根拠がある事項だけを短い反復でacknowledgeする。
 
-明示的修復・やり過ごし・grounded acknowledgementの実装はPR #5にあり、merge前は`main`実装済みと扱わない。
+product spec、architecture、roleplay test planに残る`single interpreter / no merge`はhistorical contractであり、current implementation指示として使用しない。
 
-### 4.2 「来週」と週の始まり — decision recorded
+### 4.2 「来週」と週の始まり — decision recorded / profile not implemented
 
 2026-07-16に次を決定した。
 
@@ -129,9 +165,9 @@ Recorded baseline validation:
 - 今回発話の具体的な日付・曜日範囲をprofile設定より優先する。
 - profileが未設定、破損、競合している場合だけ明示的修復へ入る。
 
-profile schemaとrange resolutionは未実装である。
+profile schemaとprofile-based range resolutionは未実装である。現在`main`はPR #5のpending planning range契約を使用する。漢数字絶対日付の誤認はP0 taskで修正する。
 
-### 4.3 conversation trace privacy — decision recorded
+### 4.3 conversation trace privacy — decision recorded / production controls not implemented
 
 2026-07-16に次を決定した。
 
@@ -145,7 +181,7 @@ profile schemaとrange resolutionは未実装である。
 
 詳細は`20260716-weekly-planning-trace-privacy-and-lifecycle.md`を正とする。
 
-### 4.4 longitudinal personalization data — decision recorded
+### 4.4 longitudinal personalization data — decision recorded / not implemented
 
 2026-07-16に次を決定した。
 
@@ -173,6 +209,8 @@ profile schemaとrange resolutionは未実装である。
 - 時刻不定の生活制約
 - dead message state / unreachable branch / renderer不要callの整理
 - opportunity annotationのplacement score高度化
+- lint、format、feature boundary、cycle、bundle budget
+- test architectureとtask metadataの再編
 
 mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履歴化し、current queueから除外した。
 
@@ -180,6 +218,7 @@ mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履
 
 - AIはstate、readiness、available minutes、hard constraint、scheduler、save、approve、deleteを決定しない。
 - user textとAI outputはtyped candidateとruntime validatorを通す。
+- deterministic baselineとAI補完のmergeはclosed attribute contractを通す。
 - previewはexplicit authorizationとreadiness gate通過後だけ生成する。
 - previewはexplicit UI approvalまで保存しない。
 - behavior annotationとrelative constraintでavailabilityを増やさない。
@@ -187,7 +226,8 @@ mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履
 - current-week factをrecurring profileへ無断昇格しない。
 - profile factはorigin、confidence、scope、confirmedAtを持つ。
 - trace documentを直接longitudinal profileとして参照しない。
-- stale async resultをstateへ適用しない。
+- selected week変更、session reset、explicit cancel、revision不一致後のstale async resultをstateへ適用しない。
+- modal closeまたはpresentation unmountだけで有効session resultを失わない。
 - stale/pending preview approvalでrepository writeを開始しない。
 - trace保存はplanning処理の成功条件にしない。
 - client生成traceを監査、課金、security判定の根拠にしない。
@@ -198,6 +238,6 @@ mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履
 - 一taskは一つの主原因、責務境界、完了条件を持つ。
 - 実装結果は`docs/ai/tasks/closed/`のcompletion recordへ統合する。
 - `implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
-- 検証前にfully completeと記載しない。
-- 新taskはarchitecture、roadmap、roleplay statusと同期する。
+- PR本文のtest結果を現在`main`へ自動継承しない。
+- 新taskはcurrent contract、post-merge status、roadmap、roleplay statusと同期する。
 - historical / closed / superseded文書をcurrent instructionとして直接実行しない。
