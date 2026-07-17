@@ -46,7 +46,7 @@ function storedState(pendingPlanningRange: Record<string, unknown>): PlanningSta
   return {
     weekStartDate,
     revision: 1,
-    mode: 'editing',
+    mode: 'collecting_tasks',
     draftBlocks: [],
     previewCandidates: [],
     messages: [],
