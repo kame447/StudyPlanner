@@ -1,5 +1,13 @@
 --- a/src/features/weeklyPlanning/intake/weeklyPlanningUnitRateParsing.ts
 +++ b/src/features/weeklyPlanning/intake/weeklyPlanningUnitRateParsing.ts
+@@ -1,6 +1,6 @@
+ import type { SetUnitRateCommand } from './weeklyPlanningCommandTypes';
+ import type { ExamPrepScope, UnitRateEstimate } from './weeklyPlanningIntakeTypes';
+-import { normalizeIntakeText, parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
++import { parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
+ 
+ function buildYearFieldUnitRate(
+   match: RegExpMatchArray,
 @@ -24,37 +24,40 @@
  export function parseBareDurationAsUnitRateCommand(
    text: string,
