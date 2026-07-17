@@ -1,6 +1,8 @@
 name: Agent response dedup
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - agent/weekly-planning-response-dedup
@@ -15,6 +17,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-response-dedup
       - name: Apply implementation patch
         run: |
           cat .github/patches/response-dedup.patch.b64.* | base64 --decode > /tmp/response-dedup.patch
