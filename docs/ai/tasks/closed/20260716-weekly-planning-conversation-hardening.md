@@ -1,8 +1,11 @@
 # 週間計画対話の文脈・永続化・送信UIを堅牢化する
 
-Status: open
-Reopened: 2026-07-16
+Status: closed / completed
 Created: 2026-07-16
+Reopened: 2026-07-16
+Closed: 2026-07-17
+Merged by: PR #5 / `55f8e32`
+Current status: `docs/ai/weekly-planning-pr5-post-merge-status.md`
 
 ## 目的
 
@@ -77,3 +80,7 @@ traceではdeterministic parserが年度範囲だけを持つ部分scopeを作�
 - [x] 成功応答を履歴とstatus cardへ重複表示しない
 - [x] 関連テスト、build、diff checkが通る
 - [x] 本mdをclosedにし、Codex確認用mdを作成する
+
+## 完了後の扱い
+
+この親task以降に、async preview、storage境界、pending range、追加レビュー指摘が修正された。現在の実装事実と残課題はpost-merge statusを正とする。
