@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   apply-verify-cleanup:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ !contains(github.event.head_commit.message, '一時PR24修正workflowを削除') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,5 +51,3 @@ jobs:
           git add -A
           git commit -m "feat: 一時PR24修正workflowを削除"
           git push origin main
-
-# trigger after registration
