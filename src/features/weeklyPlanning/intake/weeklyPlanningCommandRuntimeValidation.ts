@@ -3,6 +3,7 @@ import {
   isIsoCalendarDate,
   isOrderedPlanningDateTimeRange,
   isValidDateWindow,
+  isValidPlanningDateTime,
   isValidPlanningDurationDays,
 } from './weeklyPlanningDateValidation';
 import type { WeeklyPlanningCommandPayload } from './weeklyPlanningCommandTypes';
@@ -234,7 +235,7 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
     case 'set_pending_planning_range': {
       if (!hasCommandKeys(value, ['pending']) || !isRecord(value.pending)) return false;
       const pending = value.pending;
-      if (!hasOnlyKeys(pending, ['scope', 'planningStartDate', 'durationDays', 'sourceText'])
+      if (!hasOnlyKeys(pending, ['scope', 'planningStartDate', 'planningStartDateTime', 'durationDays', 'planningEndDateTime', 'sourceText'])
         || !isRecord(pending.scope)
         || !hasOnlyKeys(pending.scope, ['kind', 'label', 'windowStartDate', 'windowEndDate'])
         || (pending.scope.kind !== 'next_week' && pending.scope.kind !== 'named_future_period')
@@ -243,13 +244,38 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
         || !isOptionalString(pending.scope.windowEndDate)
         || !isValidDateWindow(pending.scope)
         || !isOptionalString(pending.planningStartDate)
+        || !isOptionalString(pending.planningStartDateTime)
+        || !isOptionalString(pending.planningEndDateTime)
         || (pending.durationDays !== undefined
           && !isValidPlanningDurationDays(pending.durationDays))
         || typeof pending.sourceText !== 'string') return false;
       if (pending.planningStartDate !== undefined
         && !isIsoCalendarDate(pending.planningStartDate)) return false;
-      if (pending.planningStartDate !== undefined
-        && pending.durationDays !== undefined) return false;
+      if (pending.planningStartDateTime !== undefined
+        && (!isValidPlanningDateTime(pending.planningStartDateTime)
+          || pending.planningStartDate === undefined
+          || pending.planningStartDateTime.slice(0, 10) !== pending.planningStartDate)) {
+        return false;
+      }
+      if (pending.planningEndDateTime !== undefined
+        && (!isValidPlanningDateTime(pending.planningEndDateTime)
+          || pending.scope.windowEndDate === undefined
+          || pending.planningEndDateTime.slice(0, 10) !== pending.scope.windowEndDate)) {
+        return false;
+      }
+      if (pending.durationDays !== undefined && pending.planningEndDateTime !== undefined) {
+        return false;
+      }
+      const planningStartDate = pending.planningStartDateTime?.slice(0, 10)
+        ?? pending.planningStartDate;
+      if (planningStartDate !== undefined
+        && !isDateWithinWindow(planningStartDate, pending.scope)) {
+        return false;
+      }
+      if (planningStartDate !== undefined
+        && (pending.durationDays !== undefined || pending.planningEndDateTime !== undefined)) {
+        return false;
+      }
       if (pending.scope.kind === 'next_week'
         && (!pending.scope.windowStartDate || !pending.scope.windowEndDate)) {
         return true;
@@ -328,7 +354,7 @@ export function canonicalizeOptionalCommandNulls(value: unknown): unknown {
     case 'set_pending_planning_range': {
       const pending = copyNested(command, 'pending');
       if (pending) {
-        ['planningStartDate', 'durationDays'].forEach((key) => removeNull(pending, key));
+        ['planningStartDate', 'planningStartDateTime', 'durationDays', 'planningEndDateTime'].forEach((key) => removeNull(pending, key));
         const scope = copyNested(pending, 'scope');
         if (scope) ['windowStartDate', 'windowEndDate'].forEach((key) => removeNull(scope, key));
       }

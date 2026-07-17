@@ -452,10 +452,10 @@ function applyWeeklyPlanningCommand(
     }
     case 'set_pending_planning_range': {
       const pendingMissing = [
-        ...(!command.pending.planningStartDate
+        ...(!command.pending.planningStartDate && !command.pending.planningStartDateTime
           ? ['planning_start_date' as const]
           : []),
-        ...(command.pending.durationDays === undefined
+        ...(command.pending.durationDays === undefined && !command.pending.planningEndDateTime
           ? ['planning_duration' as const]
           : []),
       ];

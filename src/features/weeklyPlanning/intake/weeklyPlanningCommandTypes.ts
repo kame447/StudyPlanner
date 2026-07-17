@@ -193,7 +193,9 @@ export type PendingPlanningRangeCommandScope =
 export interface PendingPlanningRangeCommandPayload {
   scope: PendingPlanningRangeCommandScope;
   planningStartDate?: string;
+  planningStartDateTime?: string;
   durationDays?: number;
+  planningEndDateTime?: string;
   sourceText: string;
 }
 

@@ -139,7 +139,7 @@ export function normalizeSetPendingPlanningRangeCommand(
         windowStartDate: command.pending.scope.windowStartDate ?? normalizedScope.windowStartDate,
         windowEndDate: command.pending.scope.windowEndDate ?? normalizedScope.windowEndDate,
       },
-      durationDays: command.pending.durationDays ?? 7,
+      durationDays: command.pending.durationDays ?? (command.pending.planningEndDateTime ? undefined : 7),
     },
   };
 }

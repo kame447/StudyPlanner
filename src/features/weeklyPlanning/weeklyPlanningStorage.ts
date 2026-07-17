@@ -2,6 +2,7 @@ import {
   isDateWithinWindow,
   isOrderedPlanningDateTimeRange,
   isValidDateWindow,
+  isValidPlanningDateTime,
   isValidPlanningDurationDays,
   isIsoCalendarDate,
 } from './intake/weeklyPlanningDateValidation';
@@ -294,7 +295,10 @@ function isPlanningRange(value: unknown): boolean {
 
 function isPendingPlanningRange(value: unknown): boolean {
   if (!isRecord(value)
-    || !hasOnlyKeys(value, ['scope', 'planningStartDate', 'durationDays', 'sourceText'])
+    || !hasOnlyKeys(value, [
+      'scope', 'planningStartDate', 'planningStartDateTime', 'durationDays',
+      'planningEndDateTime', 'sourceText',
+    ])
     || !isRecord(value.scope)
     || !hasOnlyKeys(value.scope, [
       'kind', 'label', 'windowStartDate', 'windowEndDate',
@@ -308,6 +312,8 @@ function isPendingPlanningRange(value: unknown): boolean {
     || !isOptionalString(scope.windowEndDate)
     || !isValidDateWindow(scope)
     || !isOptionalString(value.planningStartDate)
+    || !isOptionalString(value.planningStartDateTime)
+    || !isOptionalString(value.planningEndDateTime)
     || (value.durationDays !== undefined && !isValidPlanningDurationDays(value.durationDays))
     || typeof value.sourceText !== 'string') {
     return false;
@@ -317,12 +323,32 @@ function isPendingPlanningRange(value: unknown): boolean {
     return false;
   }
   if (value.planningStartDate !== undefined
-    && (!isIsoCalendarDate(value.planningStartDate)
-      || !isDateWithinWindow(value.planningStartDate, scope))) {
+    && !isIsoCalendarDate(value.planningStartDate)) {
     return false;
   }
-  return !(value.planningStartDate !== undefined
-    && value.durationDays !== undefined);
+  if (value.planningStartDateTime !== undefined
+    && (!isValidPlanningDateTime(value.planningStartDateTime)
+      || value.planningStartDate === undefined
+      || value.planningStartDateTime.slice(0, 10) !== value.planningStartDate)) {
+    return false;
+  }
+  if (value.planningEndDateTime !== undefined
+    && (!isValidPlanningDateTime(value.planningEndDateTime)
+      || scope.windowEndDate === undefined
+      || value.planningEndDateTime.slice(0, 10) !== scope.windowEndDate)) {
+    return false;
+  }
+  if (value.durationDays !== undefined && value.planningEndDateTime !== undefined) {
+    return false;
+  }
+  const planningStartDate = value.planningStartDateTime?.slice(0, 10)
+    ?? value.planningStartDate;
+  if (planningStartDate !== undefined
+    && !isDateWithinWindow(planningStartDate, scope)) {
+    return false;
+  }
+  return !(planningStartDate !== undefined
+    && (value.durationDays !== undefined || value.planningEndDateTime !== undefined));
 }
 
 function isYearRange(value: unknown): boolean {

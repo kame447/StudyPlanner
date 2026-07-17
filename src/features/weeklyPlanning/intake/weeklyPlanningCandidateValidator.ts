@@ -2,6 +2,7 @@ import {
   isDateWithinWindow,
   isIsoCalendarDate,
   isOrderedPlanningDateTimeRange,
+  isValidPlanningDateTime,
   isValidDateWindow,
   isValidPlanningDurationDays,
 } from './weeklyPlanningDateValidation';
@@ -182,17 +183,41 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
         ? null
         : 'invalid-planning-range';
     case 'set_pending_planning_range': {
-      const { scope, planningStartDate, durationDays } = command.pending;
+      const {
+        scope,
+        planningStartDate,
+        planningStartDateTime,
+        durationDays,
+        planningEndDateTime,
+      } = command.pending;
       if (!isValidDateWindow(scope)) return 'invalid-pending-planning-range';
-      if (planningStartDate !== undefined
-        && (!isIsoCalendarDate(planningStartDate)
-          || !isDateWithinWindow(planningStartDate, scope))) {
+      if (planningStartDate !== undefined && !isIsoCalendarDate(planningStartDate)) {
+        return 'invalid-pending-planning-range';
+      }
+      if (planningStartDateTime !== undefined
+        && (!isValidPlanningDateTime(planningStartDateTime)
+          || planningStartDate === undefined
+          || planningStartDateTime.slice(0, 10) !== planningStartDate)) {
+        return 'invalid-pending-planning-range';
+      }
+      if (planningEndDateTime !== undefined
+        && (!isValidPlanningDateTime(planningEndDateTime)
+          || scope.windowEndDate === undefined
+          || planningEndDateTime.slice(0, 10) !== scope.windowEndDate)) {
         return 'invalid-pending-planning-range';
       }
       if (durationDays !== undefined && !isValidPlanningDurationDays(durationDays)) {
         return 'invalid-duration-days';
       }
-      if (planningStartDate !== undefined && durationDays !== undefined) {
+      if (durationDays !== undefined && planningEndDateTime !== undefined) {
+        return 'invalid-pending-planning-range';
+      }
+      const resolvedStartDate = planningStartDateTime?.slice(0, 10) ?? planningStartDate;
+      if (resolvedStartDate !== undefined && !isDateWithinWindow(resolvedStartDate, scope)) {
+        return 'invalid-pending-planning-range';
+      }
+      if (resolvedStartDate !== undefined
+        && (durationDays !== undefined || planningEndDateTime !== undefined)) {
         return 'resolved-pending-planning-range';
       }
       return null;
@@ -407,13 +432,17 @@ export function validateInterpretedCandidates(
 
       const pendingStartDate = summary.pendingPlanningRange.windowStartDate;
       const pendingEndDate = summary.pendingPlanningRange.windowEndDate;
-      if (pendingStartDate && pendingEndDate) {
-        const startIsWithinPendingWindow = rangeStartDate >= pendingStartDate
-          && rangeStartDate <= pendingEndDate;
-        if (!startIsWithinPendingWindow) {
-          addRejected(result, candidate, 'pending-range-outside-window');
-          return;
-        }
+      if ((pendingStartDate && rangeStartDate < pendingStartDate)
+        || (pendingEndDate && rangeStartDate > pendingEndDate)) {
+        addRejected(result, candidate, 'pending-range-outside-window');
+        return;
+      }
+      if (
+        summary.pendingPlanningRange.planningEndDateTime
+        && command.range.endDateTime !== summary.pendingPlanningRange.planningEndDateTime
+      ) {
+        addRejected(result, candidate, 'pending-range-end-mismatch');
+        return;
       }
     }
 

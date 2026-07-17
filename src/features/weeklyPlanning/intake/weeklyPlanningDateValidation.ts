@@ -43,10 +43,13 @@ export function isDateWithinWindow(
   date: string,
   window: { windowStartDate?: string; windowEndDate?: string },
 ): boolean {
-  if (!window.windowStartDate || !window.windowEndDate) {
-    return true;
+  if (window.windowStartDate && date < window.windowStartDate) {
+    return false;
   }
-  return date >= window.windowStartDate && date <= window.windowEndDate;
+  if (window.windowEndDate && date > window.windowEndDate) {
+    return false;
+  }
+  return true;
 }
 
 function parsePlanningDateTime(value: string): number | undefined {

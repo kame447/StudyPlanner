@@ -64,7 +64,9 @@ export interface InterpreterStateSummary {
     windowStartDate?: string;
     windowEndDate?: string;
     planningStartDate?: string;
+    planningStartDateTime?: string;
     durationDays?: number;
+    planningEndDateTime?: string;
   };
   availableConstraintSources?: ConstraintSourceAvailability;
   pendingAssumptionProposals?: InterpreterPendingAssumptionSummary[];
