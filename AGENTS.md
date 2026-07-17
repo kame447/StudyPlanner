@@ -183,6 +183,63 @@ AI must:
 - Keep files reasonably scoped
 - Follow existing project conventions once established
 
+## GitHub workflow policy
+
+This section is mandatory for every agent performing Git or GitHub work in this repository.
+
+### Mandatory pre-flight check
+
+Before creating or modifying an Issue, branch, commit, or pull request, the agent must:
+
+1. Read this `AGENTS.md`, including this entire GitHub workflow policy.
+2. Inspect the current repository state and relevant diff.
+3. Search existing open and closed Issues, pull requests, and branches for the same logical task.
+4. Classify the work as investigation/backlog, active implementation, or a reviewable change.
+5. Reuse the existing Issue, branch, and pull request whenever they already represent the same logical task.
+
+The agent must not perform a GitHub write action until this pre-flight check is complete.
+
+### Issue, branch, and pull request roles
+
+- Use an Issue for bugs, investigation, design decisions, backlog, verification tracking, operational work, and tasks that are not yet implementation-ready.
+- Create a branch only when active implementation begins.
+- Create a pull request only when there is a coherent, reviewable diff that is intended to be merged.
+- A draft pull request is allowed only when early collaboration or review of a real implementation diff is necessary. Do not use draft pull requests as execution logs, retry records, or placeholders.
+- Verification-only work should normally stay in an Issue checklist or GitHub Actions run. Do not create a pull request solely to run tests.
+- Create a documentation pull request only when canonical repository documentation actually needs to change.
+
+### One logical task, one branch, one pull request
+
+- One logical task should use at most one active Issue, one active branch, and one active pull request.
+- Continue fixes, review responses, CI repairs, and implementation retries on the same branch and pull request.
+- Do not create `-v2`, `-v3`, `-retry`, `-fix`, or equivalent replacement branches or pull requests for the same task merely because an attempt failed.
+- If replacement is exceptionally necessary because the original branch is corrupted, unsafe, or based on the wrong history, close the old pull request, delete the old branch, link the replacement from the Issue, and state why replacement was unavoidable.
+- Before opening a new pull request, explicitly confirm that an existing Issue or pull request cannot represent the work.
+
+### Pull request granularity
+
+- Keep pull requests small enough to review, but group changes that share the same root cause, acceptance criteria, and release unit.
+- Do not split every wording change, assertion, test adjustment, or retry into a separate pull request.
+- Do not combine unrelated product changes merely to reduce the pull request count.
+- Prefer one complete pull request over a chain of partial, superseded pull requests.
+
+### Branch lifecycle
+
+- Use stable, descriptive branch names tied to the task, without version suffixes for retries.
+- After a pull request is merged, delete its head branch.
+- When work is abandoned, close the pull request, update the Issue with the outcome, and delete the branch.
+- Do not keep temporary verification, patch-application, or superseded branches after they are no longer needed.
+- Keep the repository limited to `main`, currently active implementation branches, and explicitly justified long-lived branches.
+
+### Required reporting
+
+When finishing GitHub-related work, report:
+
+- which existing Issue, branch, and pull request were reused
+- whether any new Issue, branch, or pull request was created and why it was necessary
+- which branches should be deleted or were deleted
+- any remaining work that belongs in an Issue rather than another pull request
+
 ## Git operation policy
 
 Codex must not perform Git write operations.
