@@ -166,19 +166,19 @@ browser roleplayとweek-start profileは別taskとして残る。
 
 ## 5. 検証が未完了の項目
 
-### P0-2. merge後`main`の再検証
+### P0-2. merge後`main`の再検証 — completed
 
-PR #5最終headの記録はあるが、merge後`main`で次を再実行してcurrent statusへ更新する必要がある。
+Current main `2af1a5e`をGitHub Actions run `29582279740`で再検証した。
 
-- focused tests
-- TypeScript
-- full tests
-- production build
-- diff check
-- production entrypoint静的確認
-- browser roleplay
+- targeted dialogue-stack tests: 48 files / 423 tests passed、1 file / 1 test skipped
+- full tests: 109 files / 1118 tests passed、1 file / 13 tests skipped、5 todo
+- TypeScript: passed
+- production build: passed
+- diff check: passed
 
-### P0-3. browser interaction
+静的確認ではsession、preview、storage、approvalはproduction接続済みである。request ownershipはpartialであり、conversation/turn identity、explicit cancel、clear-conversation UI、keyboard/IME/focusは未接続である。
+
+### P0-3. browser interaction — not verified / P1へ引継ぎ
 
 特に次が未完了である。
 

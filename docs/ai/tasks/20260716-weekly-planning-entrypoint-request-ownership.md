@@ -38,7 +38,23 @@ browser reload
 
 presentation componentがunmountしたというReact上の事実だけで、domain sessionをcancelしない。
 
-## 3. 目的
+## 3. Current main verification findings
+
+Current main `2af1a5e`の検証で次を確認した。
+
+- `App.tsx`がPlanningStateとactive Promiseを所有し、request ID、selected week、base revisionを生成する。
+- modal closeは表示stateだけを閉じるため、presentation unmountだけではrequestをcancelしない。
+- `commit_turn`はassistant message、intake、preview candidatesをatomicにReducerへ渡す。
+- Reducerはrequest/week/revision mismatchとpending中のnon-terminal mutationを拒否する。
+- storageはmessages、intake、preview、draftを保持し、pending turn/approvalをload時にsanitizeする。
+- request envelopeにconversation IDとturn IDがない。
+- production UIにexplicit cancellationと履歴だけを消す`clear_conversation`が接続されていない。
+- 週間計画textareaにCtrl/Meta+Enter、IME guard、focus restorationがない。
+- targeted 423 tests、full 1118 tests、TypeScript、buildはpassed。browser roleplayは未検証。
+
+このtaskでは、既存のclose-resume構造を壊さず、未接続責務だけをcontrollerへ移す。
+
+## 9. 目的
 
 週間計画の一requestに対する所有者をapplication controllerへ一本化し、有効なclose-resume resultを失わず、意味的にinvalidatedされたstale resultと二重送信をproduction entrypointで防止する。
 

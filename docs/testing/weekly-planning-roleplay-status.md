@@ -16,19 +16,19 @@ roleplay test planのscenario IDとstrict assertionを維持する。ただし�
 | owner / slice | module implemented | production connected | automated verification | browser verification | notes |
 | --- | --- | --- | --- | --- | --- |
 | Gate P4 | yes | behavior-aware entrypoint connected | passed at recorded baseline | not complete | historical gate nameを新task名へ再利用しない |
-| PR #5 conversation/session hardening | yes | `main`へmerge | 104 files / 1003 tests recorded on PR head | not complete | close-resume、storage、range、dialogue hardening |
+| PR #5 conversation/session hardening | yes | `main`へmerge | current main: targeted 423 / full 1118 tests passed | not complete | close-resumeのbrowser操作は未検証 |
 | deterministic baseline + AI semantic補完 | yes | production intake pathへ接続記録あり | parser/validator/integration tests recorded | not complete | old no-merge assertionは非current |
 | explicit repair / pass-over / grounded acknowledgement | yes | dialogue pathへ接続記録あり | tests recorded | not complete | real-model rubricも必要 |
-| session-owned preview lifecycle | yes | App/session pathへ接続 | reducer/property/component tests recorded | not complete | modal close後のreopenをbrowser確認する |
-| closed storage validation | yes | localStorage load/save pathへ接続 | v2/legacy/malformed round-trip tests recorded | not complete | merge後main再実行待ち |
+| session-owned preview lifecycle | yes | App/session pathへ接続 | current main targeted/full tests passed | not complete | modal close後のreopenをbrowser確認する |
+| closed storage validation | yes | localStorage load/save pathへ接続 | current main targeted/full tests passed | not complete | browser reload操作は未検証 |
 | pending planning range | yes | intake pathへ接続 | PR #24・#26 focused/full tests passed | not complete | Issue #21完了。week-start profileとbrowser roleplayは未実装 |
 | DA0r | yes | behavior pipelineに接続 | passed at recorded baseline | not complete | readinessとauthorization gate |
 | DA0a | yes | assumption draft/canonicalization pipelineに接続 | tests recorded | not complete | proposal lifecycle全体はDA1bも参照 |
 | DA0 | yes | non-exam preview bridge接続済み記録あり | tests recorded | not complete | pending/stale save guardはapprovalと分離 |
 | DA1 | yes | behavior dialogue pipelineへ接続 | tests recorded | not complete | exact browser coverageはverification taskで確認 |
 | DA1b | yes | not fully verified | module/integration tests recorded | not complete | correctionとproposal resolution |
-| approval | yes | `App.tsx` approval path connected | tests recorded | retry scenario not complete | persistent multi-device idempotencyは別task |
-| DA2 | yes | partial / PR #5 ownership path connected | module/property/component tests recorded | not complete | controller統一、IME、focus、reset/cancel |
+| approval | yes | `App.tsx` approval path connected | current main targeted/full tests passed | retry scenario not complete | persistent multi-device idempotencyは別task |
+| DA2 | yes | partial / App owns current request envelope | current main targeted/full tests passed | not complete | conversation/turn identity、explicit cancel、clear UI、IME、focus |
 | DA3a | yes | integration not fully verified | module tests recorded | not complete | relative constraint domain |
 | DA3b | yes | integration not fully verified | module tests recorded | not complete | feasibility roleplay待ち |
 | DA3c | yes | evaluation tooling exists | module/property tests recorded | not applicable to all items | requirement status sync継続 |
@@ -51,12 +51,10 @@ roleplay test planのscenario IDとstrict assertionを維持する。ただし�
 
 曖昧入力を勝手に確定しない、accepted factを失わない、invalidated stale resultを適用しない、AIがsaveを起動しない等の安全境界は継続する。
 
-## 4. Current verification queue
+## 4. Current implementation queue
 
-1. `docs/ai/tasks/20260714-weekly-planning-dialogue-stack-verification.md`
-   - current `main`でmodule、entrypoint、自動検証、browser behaviorを再分類する。
-2. `docs/ai/tasks/20260716-weekly-planning-entrypoint-request-ownership.md`
-   - DA2のproduction ownershipとrace/keyboard契約をcontrollerへ統一する。
+1. `docs/ai/tasks/20260716-weekly-planning-entrypoint-request-ownership.md`
+   - production request ownerをcontrollerへ統一し、conversation/turn identity、explicit cancel、clear UI、keyboard/IME/focusを実装する。
 
 ## 5. 必須browser scenario
 
