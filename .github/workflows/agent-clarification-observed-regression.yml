@@ -1,0 +1,45 @@
+name: Agent clarification observed regression
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-clarification-observed-regression
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply regression patch
+        run: |
+          git apply --check .github/patches/clarification-observed-regression.patch
+          git apply .github/patches/clarification-observed-regression.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: npm
+      - run: npm ci
+      - name: Focused clarification tests
+        run: npm run test:run -- src/features/weeklyPlanning/intake/weeklyPlanningClarificationParsing.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningClarificationContext.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts
+      - name: TypeScript
+        run: npx tsc -b
+      - name: Weekly planning suite
+        run: npm run test:run -- src/features/weeklyPlanning
+      - name: Full tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
+      - name: Commit verified regression
+        run: |
+          git rm .github/patches/clarification-observed-regression.patch
+          git rm .github/workflows/agent-clarification-observed-regression.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/weeklyPlanning
+          git commit -m "test: 実トレースの聞き返し回帰を固定する"
+          git push origin HEAD:agent/weekly-planning-clarification-observed-regression
