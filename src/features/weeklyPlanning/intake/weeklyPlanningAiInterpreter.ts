@@ -170,9 +170,6 @@ export function createSystemPrompt(): string {
   return [
     prompt,
     '- Never substitute an inferred set_planning_range for an unresolved pending range.',
-    '- The legacy term pendingPlanningRange.startDate is not used; store the selected date as pending.planningStartDate.',
-    '- The selected start date must be a concrete ISO date inside that pending window.',
-    '- The application computes the next_week window from context.selectedDate.',
   ].join('\n');
 }
 
