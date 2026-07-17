@@ -1,18 +1,15 @@
 name: Run PR24 Sunday-bound fix
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/run-pr24-sunday-fix.yml
+  pull_request:
+    types: [edited]
 
 permissions:
   contents: write
 
 jobs:
   apply-verify-cleanup:
-    if: ${{ !contains(github.event.head_commit.message, '一時PR24修正workflowを削除') }}
+    if: ${{ github.event.pull_request.number == 24 }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
