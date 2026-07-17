@@ -15,6 +15,23 @@ describe('weekly planning command runtime validation', () => {
     })).toBe(false);
   });
 
+  it('accepts a pending planning range with only an end boundary', () => {
+    expect(isValidWeeklyPlanningCommand({
+      type: 'set_pending_planning_range',
+      pending: {
+        scope: {
+          kind: 'named_future_period',
+          label: '日曜日まで',
+          windowEndDate: '2026-07-19',
+        },
+        planningEndDateTime: '2026-07-19T24:00:00',
+        sourceText: '日曜日までの予定を立てて',
+      },
+      sourceText: '日曜日までの予定を立てて',
+      confidence: 'high',
+    })).toBe(true);
+  });
+
   it.each([
     {
       type: 'set_priority_policy',
