@@ -24,6 +24,16 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts')
+          old = "        startDate: '2026-07-13',\n        endDate: '2026-07-19',"
+          new = "        windowStartDate: '2026-07-13',\n        windowEndDate: '2026-07-19',"
+          text = path.read_text()
+          if text.count(old) == 2:
+              path.write_text(text.replace(old, new, 1))
+          PY
           python .github/scripts/pr5_migrate_pending_range_tests.py 2>&1 | tee /tmp/migrate.log
 
       - name: Commit migrated expectations
