@@ -1,300 +1,414 @@
 # Study Planning Support App
 
 ## 概要
-勉強計画と実績を月・週・日単位で管理し、AIが入力補助と振り返り支援を行うWebアプリです。
 
-このアプリの目的は、予定入力の面倒さを減らし、計画と実績のズレを見える化しながら、継続しやすい学習習慣を作ることです。
+Study Planning Support Appは、学習予定と実績を月・週・日単位で管理し、自然言語入力と対話型の週間計画作成を支援するWebアプリです。
 
-最初は個別利用をメインとし、将来的には共有機能にも対応できる構成を想定しています。
+単に予定を自動生成するのではなく、利用者から得た条件、既存予定、固定予定、利用可能時間を区別して扱い、仮予定を確認してから通常予定へ保存する設計を採用しています。
 
-## コンセプト
-既存の予定アプリは入力が面倒で続かないことが多いため、このアプリでは以下を重視します。
+現在は個人利用を中心としたMVPです。共有機能、複数端末をまたぐ厳密な承認制御、長期的な個別最適化などは後続実装です。
 
-- なるべく少ない入力で予定を作れること
-- 月 → 週 → 日 の順に掘って見られること
-- 予定と実績を比較しやすいこと
-- AIが自然言語入力を補助してくれること
-- AIが継続や達成度を評価して、改善提案を返せること
+## 現在の到達点
 
-## MVPで実装する範囲
-最初のバージョンでは、以下を対象とします。
+2026年7月18日時点の`main`では、次の基本経路が接続されています。
 
-### 1. 認証
+```text
+自然言語で計画条件を入力
+  → 条件を解析・検証
+  → 不足情報や高影響の曖昧さを対話で確認
+  → 利用可能時間と制約を計算
+  → 仮予定を生成
+  → 利用者が内容を確認
+  → 明示的な承認後に通常予定として保存
+```
+
+同一ブラウザ内での通常利用については、会話状態、仮予定、承認、部分失敗後の再試行まで自動テストされています。
+
+一方、別端末や複数タブからの同時承認をサーバー側で一意化する処理、長期個別最適化、週間計画専用画面、本番環境での会話記録運用は未完了です。
+
+## 主な機能
+
+### 認証
+
 - Firebase Authentication
-- メールアドレス + パスワード
-- 初回のみメール確認
+- メールアドレスとパスワード
+- メール確認
 - Googleログイン
+- Firebase未設定時のlocalStorageフォールバック
+- 週間計画の会話記録を利用する場合の初回同意画面
 
-### 2. 予定管理
+### 予定管理
+
 - 予定の作成、編集、削除
-- 月・週・日単位での表示
-- 重要予定の登録
-  - 例: 模試、学校行事、塾、締切
-- 最低限の予定情報で入力可能
+- 月・週・日単位の表示
+- 重要予定、学校行事、塾、締切などの登録
+- FirestoreまたはlocalStorageへの保存
 
-### 3. 実績管理
-- 予定に対して実際にやった内容を記録できる
-- 予定と実績を比較できる
-- まずは 1予定に対して1実績 を基本とする
+### 実績管理
 
-### 4. AI入力補助
-- 自然言語から予定を追加できる
-- 自然言語で既存予定を修正できる
-- AIが入力内容を推定して、ユーザーが確認・修正して反映する
-### 自然言語予定解析パイプラインの現状
-- 自然言語予定解析は `src/services/natural-language/` に段階分割したパイプラインとして整理している
-- 処理は以下の責務に分かれている
-  - normalize
-  - tokenizer
-  - clause-parser
-  - build-ast
-  - lower-ir
-  - compile
-  - validate
-- 解析結果は途中段階ごとに確認できるようにし、`assumptions / diagnostics / unresolvedFields` を保持する
-- 現在のパイプラインで対応済みの主な内容
-  - time-only attach
-  - override
-  - relative ordering
-  - enumeration
-  - relative date
-  - 複数独立イベント
-- 既存 planner との接続は段階的に進める前提で、旧実装の fallback を急に削除しない
-- なお、内部パーサの対応範囲が広がっていても、MVPとしての複雑な繰り返し予定 UI を実装済みという意味ではない
+- 予定に対する実績記録
+- 予定と実績の比較
+- 現在は1予定に対して1実績を基本とする
 
-### 5. AI評価
-- 達成度
-- 継続度
-- 計画の現実性
+### 自然言語による単発予定入力
 
-スコアだけでなく、短い改善コメントも返す
+- 自然言語から予定候補を生成
+- 自然言語による既存予定の修正候補
+- AIまたはルールベース解析
+- 利用者確認後に反映
+
+### 対話型の週間計画
+
+- 学習対象、範囲、所要時間、期限、固定予定などを会話で収集
+- 「今週」「来週」「週末」「日曜日まで」などの期間表現
+- 「今すぐ」「1時間後」「今日20時」「明日」などの開始表現
+- 複数の質問に対する一括回答
+- 仮予定の生成、表示、個別削除、全破棄
+- 明示承認後の通常予定への保存
+- 部分失敗時の失敗項目だけの再試行
+- 再読み込み後の古い仮予定を再計算必須として表示
+
+## 週間計画の内部処理
+
+週間計画は、AIへ全判断を任せる構成ではありません。自然言語の意味補完にはAIを利用しますが、状態更新、制約判定、仮予定生成の可否、保存可否は決定的な処理で管理します。
+
+### 1. 入力と会話状態の所有
+
+一つの週間計画セッションは、次の識別子を持ちます。
+
+- `conversationId`
+- `turnId`
+- `requestId`
+- 対象ユーザー
+- 対象週
+- 入力開始時のrevision
+
+処理中に対象週が変わった場合、セッションがリセットされた場合、利用者が明示的に中止した場合は、後から返ってきた古い結果を現在の状態へ適用しません。
+
+モーダルを閉じただけではセッションを中止しません。同じJavaScriptセッション内で開き直した場合は、完了した会話結果や仮予定を復元できます。
+
+### 2. deterministic baseline
+
+明示的で機械的に判定できる情報は、AIより先に決定的なparserで取得します。
+
+主な対象は次のとおりです。
+
+- 日付、曜日、時刻
+- 所要時間、件数、年度範囲
+- 「今週」「来週」「週末」などの期間短答
+- 現在表示している質問に対する短い回答
+- 明示的な訂正
+- 確定済み情報の保護
+
+たとえば、絶対日付に含まれる「日」を日曜日として誤認しないよう、算用数字、漢数字、混在表記を共通の日付tokenとして処理します。
+
+### 3. AIによるsemantic補完
+
+AIは、deterministic parserだけでは判断しづらい意味関係を補完します。
+
+- 曖昧な言い換え
+- 複数文の関係
+- どの情報を訂正しているか
+- 学習タスクの種類
+- 優先関係
+- 利用者の意図した制約
+
+AI出力はtyped candidateとして受け取り、そのまま状態へ反映しません。
+
+### 4. closed validationとstate更新
+
+AI候補とparser結果は、型、値域、参照元、revision、現在の質問文脈を検証します。
+
+確定済みの情報を、根拠の弱いAI候補で破壊的に上書きしません。拒否された候補、確認待ちの仮定、受理済みの事実は別の状態として保持します。
+
+表示した質問だけを次の回答解釈の文脈として保存するため、内部で候補になっただけの質問へ利用者の短答を誤接続しません。
+
+### 5. readiness判定
+
+仮予定を生成できるかどうかは、単純な入力項目数ではなく、計画に必要な条件が実際に解決しているかで判定します。
+
+主な確認対象は次のとおりです。
+
+- 計画期間
+- 学習タスクの識別
+- 作業量
+- 1単位あたりの所要時間
+- タスクの実行形状
+- 利用可能時間の根拠
+- 高影響の期限不確実性
+- 現在revisionに対する仮予定生成の許可
+
+仮予定を止める高影響の不確実性だけを質問し、計画を止めない不確実性は未解決topicとして保持します。
+
+### 6. 学習タスクの実行形状
+
+学習内容から、暗記、演習、読解、執筆、問題解決、プロジェクト、復習などの実行特性を導出します。
+
+この情報は、長い連続時間が必要か、短い時間へ分割しやすいかなどを判断するための補助情報です。現在の発話から得た一時的な条件を、利用者の永続的な習慣として自動保存することはありません。
+
+### 7. 利用可能時間とhard constraint
+
+既存予定、固定予定、時間割、必要なbufferを利用不可時間として扱います。
+
+hard constraintは、行動傾向やAIの提案より常に優先されます。AIが都合のよい空き時間を新しく作ることはありません。
+
+既存の空き時間には、次のようなannotationを付与できます。
+
+- 帰宅後
+- 食事前
+- 食事後
+- 就寝前
+- 長い連続空き時間
+
+annotationは配置判断の補助であり、利用可能時間そのものを増減させません。
+
+### 8. 相対制約の解決
+
+「夕食の前」「帰宅後」「寝る前」のような条件は、参照先となる予定や生活イベントが一意に特定できる場合だけ、絶対時刻の区間へ変換します。
+
+参照先が曖昧、古い、循環している、同日の範囲外である場合は適用しません。固定予定と衝突する場合も、制約の一部分だけを勝手に採用しません。
+
+### 9. 仮予定生成
+
+次の条件を満たした場合だけschedulerを呼び出します。
+
+```text
+readinessがpreview可能
+かつ
+利用者が仮予定作成を明示的に許可
+かつ
+blocking conditionがない
+かつ
+revisionが現在状態と一致
+かつ
+全タスクに実行形状がある
+かつ
+利用可能時間の根拠が検証済み
+```
+
+schedulerは、計画期間内の利用可能区間へ作業単位を配置し、配置できた時間と配置できなかった時間を分けて返します。
+
+実現可能性は次の状態で扱います。
+
+- `feasible`
+- `partially_feasible`
+- `infeasible`
+- `unknown`
+
+必要に応じて、優先する、分割する、後ろへ回すといった選択肢を決定的なIDで提示します。AIは必要時間や空き時間を再計算しません。
+
+### 10. previewと承認
+
+生成結果は未保存のpreviewです。AIが「作成します」と述べただけでは保存もpreview生成も行いません。
+
+previewには、生成元のrevision、参照した事実、仮定への依存、タスク参照、配置理由などのmetadataを保持します。
+
+保存直前に次を再確認します。
+
+- 同じ利用者の仮予定か
+- 同じconversationから生成されたか
+- revisionが古くないか
+- 未確認の仮定へ依存していないか
+- すでに保存済みの項目ではないか
+
+### 11. 保存と再試行
+
+週間計画の承認には、手動編集画面用の保存関数を流用しません。専用の保存処理を利用し、保存中に表示中の日付、月、表示モード、編集画面を変更しないようにしています。
+
+一部の予定だけ保存に失敗した場合は、成功済み項目を再保存せず、失敗項目だけを再試行します。
+
+承認中に週変更やリセットでセッションの所有権を失った場合は、次の項目の検索や保存を開始しません。ただし、すでに送信済みのrepository writeを通信途中で取り消す処理は未実装です。
+
+### 12. 保存状態のユーザー分離
+
+週間計画stateは、`version + ownerId + payload`のenvelopeとして保存します。
+
+所有者が一致しない状態、別ユーザーのlegacy draft、壊れたpayloadは読み込みません。承認履歴もユーザー単位のkeyへ分離しています。
+
+## 単発予定の自然言語解析パイプライン
+
+単発予定の自然言語解析は`src/services/natural-language/`に分割されています。
+
+```text
+normalize
+  → tokenizer
+  → clause-parser
+  → build-ast
+  → lower-ir
+  → compile
+  → validate
+```
+
+各段階の結果を確認できるようにし、`assumptions`、`diagnostics`、`unresolvedFields`を保持します。
+
+現在対応している主な内容は次のとおりです。
+
+- time-only attach
+- override
+- relative ordering
+- enumeration
+- relative date
+- 複数独立イベント
+
+旧実装のfallbackは段階的に残しています。内部parserが表現を解析できても、複雑な繰り返し予定UIまで完成していることを意味しません。
+
+## 実装状況
+
+### 実装済み
+
+- 月、週、日ビュー
+- 予定と実績の基本CRUD
+- Firebase Authentication
+- FirestoreとlocalStorageの保存切り替え
+- 自然言語による単発予定候補
+- deterministic parserとAI semantic補完
+- 週間計画の対話stateと質問管理
+- planning rangeのpending state
+- 仮予定生成の明示許可gate
+- 仮予定の個別削除、全破棄、承認
+- stale async resultの破棄
+- 二重送信防止
+- 日本語IME中の送信防止
+- 部分失敗後の承認再試行
+- 承認保存による画面遷移副作用の分離
+- reload後の仮予定を再計算必須として表示
+- 週間計画stateと承認履歴のユーザー分離
+- 会話記録の同意画面、匿名化、redaction、TTL用の削除日時
+- 全体テスト、週間計画テスト、TypeScript、production buildを実行するCI
+
+### 部分実装または追加検証が必要
+
+- ブラウザ上でのclose/reopen、週変更、reset、cancel、IME、focus restoration
+- 会話記録保護の本番用secret、Firestore TTL、Rules、Workerの適用
+- 管理者限定閲覧と削除処理の実環境確認
+- 週間計画と単発AI入力が同じ汎用画面内に残っている状態
+- behavior annotationを利用した配置改善
+- legacy fallbackと新pipelineの段階的移行
+- 既存schedulerの配置品質に対する実利用roleplay
+
+### 実装予定
+
+- Firestore上のserver-side claim
+- 複数タブ、複数端末、crash retryを含むexact-onceに近い承認
+- 週間計画専用の会話・preview・承認画面
+- account-linked personalization profile
+- 月曜始まり、日曜始まりの利用者設定
+- 学習内容ごとの所要時間補正
+- 継続しやすい学習時間と分割方法の学習
+- 提案の採用、修正、拒否傾向の反映
+- 計画と実績の差分を用いた安全な個別最適化
+- traceのpagination、index、archive、schema migration
+- 通知とリマインド
+- 複雑な繰り返し予定
+- 共有機能
+- 複数実績
+- スマホアプリ
+
+## 現在保証していないこと
+
+- AI出力だけで予定が自動保存されること
+- すべての自然言語表現を正しく解釈できること
+- 別端末から同時承認しても重複が絶対に発生しないこと
+- browser reload後のbehavior-aware仮予定をそのまま承認できること
+- 利用者の習慣を自動学習して次回計画へ反映すること
+- 本番環境で会話記録のTTL削除がすでに稼働していること
 
 ## 画面構成
+
 ### 月ビュー
-- 月全体を一覧表示
-- 各日セルには以下を表示
-  - 目標勉強時間
-  - 主な予定
-- 横または上部から第1週、第2週…を選択できる
+
+月全体の予定と目標勉強時間を確認します。
 
 ### 週ビュー
-- 週間の予定と実績を比較しやすいUI
-- 予定はベースのブロックとして表示
-- 実績は重ねて見える形で表示
-- 勉強の流れやズレが一目で分かることを重視
+
+週間の予定と実績を比較します。予定を基準ブロックとして表示し、実績との差を確認できる構成です。
 
 ### 日ビュー
-- その日の予定詳細
-- 実績入力
-- AIによる自然言語修正入力欄
-- AI評価や簡単なコメント表示
 
-## データの考え方
-### 予定
-最小限の情報で始める
+その日の予定詳細、実績入力、自然言語修正、AI評価を扱います。
 
-候補項目
+## データとrepository
 
-- id
-- user_id
-- title
-- subject
-- date
-- start_time
-- end_time
-- type
-- memo
+Firebase設定がある場合はFirestoreを使用し、未設定の場合はlocalStorageへフォールバックします。
 
-### 実績
-予定にひもづく形で管理する
+主なcollectionは次のとおりです。
 
-候補項目
+- `profiles`
+- `plans`
+- `actuals`
+- `day_notes`
+- `month_events`
+- `app_catalogs / natural_language_v1`
 
-- id
-- plan_id
-- actual_start_time
-- actual_end_time
-- subject
-- note
+データアクセスはstorage gatewayとrepositoryへ分離し、repository生成は`src/repositories/index.ts`へ集約しています。
 
-## 繰り返し予定
-MVPでは複雑な繰り返しはまだ入れず、将来的に対応する前提で設計だけ余白を残します。
+週間計画の会話記録と長期個別最適化profileは、通常予定や互いの保存責務から分離する方針です。
 
-## 想定ユーザー
-- 学生
-- 勉強計画を立てたい人
-- 勉強した実績を可視化したい人
-- 手入力の多さで予定アプリが続かなかった人
+## 会話記録とprivacy
 
-## 技術方針
-### フロントエンド
-- Reactベース
-- TypeScript
-- レスポンシブ対応を前提とし、PCとスマホの両方でUIが崩れにくいことを重視
+週間計画の会話記録について、次の境界を実装しています。
 
-### バックエンド
-- 認証は Firebase Authentication
-- データ保存は Firestore
-- OpenAI の API キー保護は Cloudflare Workers
-- データアクセスは抽象化レイヤーを設ける
+- 初回利用前の同意
+- Firebase UIDをtraceへ直接保存しない
+- サーバー側HMACによる期間限定subject token
+- メールアドレス、電話番号、URL内識別情報、認証情報候補のredaction
+- 会話本文、snapshot、metadataへの180日後の削除日時
+- 一般利用者と通常管理者からの本文直接閲覧の拒否
+- 限定閲覧操作のaudit log
+- 本番での明示feature flag
 
-## 現在の技術スタック
-- フロントエンド: React + TypeScript + Vite
+コード上の境界は実装済みですが、本番用secret、Firestore TTL policy、Rules、Worker、法務・privacy確認は別途必要です。
+
+## 技術スタック
+
+- フロントエンド: React、TypeScript、Vite
 - 認証: Firebase Authentication
 - データベース: Cloud Firestore
-- AIプロキシ: Cloudflare Workers
-- ローカルAI: Ollama (`llama3.2:3b`)
-- デプロイ想定:
-  - フロント: Cloudflare Pages など静的ホスティング
-  - 認証/DB: Firebase
-  - AIキー保護: Cloudflare Workers Secrets
+- AI proxy: Cloudflare Workers
+- ローカルAI: Ollama
+- デプロイ先: Cloudflare Pagesを想定
+- テスト: Vitestを中心としたunit、integration、component、property test
 
-## 本番移行で必要なもの
-- Firebase プロジェクト
-  - Authentication の `メール / パスワード` と `Google` を有効化
-  - Firestore Database を作成
-  - `Authorized domains` に本番ドメインを追加
-- Firestore rules の反映
-  - `npm run deploy:firestore-rules`
-- Cloudflare Workers
-  - `workers/ai-proxy/wrangler.jsonc` の `FIREBASE_WEB_API_KEY` と `ALLOWED_ORIGIN` を本番値へ更新
-  - `OPENAI_API_KEY` を Worker secret に保存
-  - `npm run deploy:worker`
-- フロントの本番ホスティング
-  - Cloudflare Pages などに `dist` を deploy
-  - `VITE_CLOUDFLARE_AI_PROXY_URL` を本番 Worker URL に設定
-- 環境変数
-  - `VITE_FIREBASE_*`
-  - `VITE_CLOUDFLARE_AI_PROXY_URL`
-  - 必要なら `VITE_APP_ACCESS_KEY`
+## 関連ドキュメント
 
-## 限定公開キー
-- ログイン画面の前に、共有キーを1回だけ入力する軽い制限を入れられます
-- `.env` / `.env.local` / Pages の環境変数に `VITE_APP_ACCESS_KEY` を設定すると有効になります
-- 通過後はブラウザの `localStorage` に保持するので、毎回入力は不要です
-- これはあくまで弱いアクセス制限です
-  - 本格的な秘匿や招待制ではありません
-  - 共有先が少人数で、URL直打ち対策をしたい程度の用途向けです
+週間計画の詳細は次を参照してください。
 
-## 将来的にやりたいこと
-- 共有機能
-- 繰り返し予定の強化
-- AIによるより詳細な学習分析
-- スマホアプリ展開
-- 通知やリマインド
-- 複数実績対応
-- 教材や科目ごとの分析
+- `docs/ai/weekly-planning-current-contract-status.md`
+- `docs/ai/strategy/weekly-planning-roadmap.md`
+- `docs/architecture/weekly-planning-dialogue-architecture-v4.md`
+- `docs/weekly-planning/weekly-planning-spec.md`
+- `docs/testing/weekly-planning-roleplay-test-plan.md`
+- `docs/testing/weekly-planning-roleplay-status.md`
 
-## 実装メモ
-### このMVPでの認証
-- Firebase Authentication を使う
-- 初回登録時は確認メールを送り、以後はメールアドレス + パスワード、または Google でログインする
-- Firebase 環境変数が無い場合だけ localStorage のフォールバックを使う
+READMEは機能の概観を示します。実装契約や未完了taskの優先順位は、current contract statusとroadmapを正とします。
 
-### このMVPでのデータ保存
-- Firebase 設定がある場合は Firestore に保存する
-- Firestore では `profiles / plans / actuals / day_notes / month_events` を使う
-- 自然言語解析の教材辞書は `app_catalogs / natural_language_v1` で管理する
-- データアクセス層は `storage gateway -> repository` の構成に分離してある
-- Firebase 設定が無い場合だけ localStorage のフォールバックで動く
-- repository の生成は `src/repositories/index.ts` に集約してあり、保存先の切り替え箇所を1か所にしている
+## 開発環境
 
-### 保守性のための整理
-- 予定・実績・日次メモの生成処理は `src/domain/planner.ts` に集約
-- 画面全体の状態管理は `src/hooks/usePlannerAppState.ts` にまとめ、`App.tsx` は描画中心にしている
-- 自然言語解析の辞書は Firestore を優先し、repo 内 JSON は fallback と seed 元として管理している
+### 必要なもの
 
-### このMVPでのAI機能
-- 自然言語入力はUIから分離した service で叩き台を生成
-- AI評価も service 側でスコア算出と短いコメント生成を行う
-- どちらも必ずユーザー確認を挟む前提
-- 自然言語入力は OpenAI 互換クライアント経由で Ollama / OpenAI互換API を切り替えられる
-- Ollama が使えない場合はルールベース解析にフォールバックする
-- ルールベース解析で使う科目・予定種別の辞書は JSON で管理する
+- Node.js
+- npm
+- Firebaseプロジェクト
+- Cloudflareアカウント
+- 必要に応じてOllama
 
-### AI接続の考え方
-- AI接続設定は画面上から切り替えられる
-- OpenAI の APIキーは UI から入力すると `sessionStorage` にだけ保存される
-- そのため、キーをこのリポジトリの `.env` や `.env.local` に置かなければ、作業中のコード参照からは見えない
-- ただし、フロントエンドから直接 OpenAI API を呼ぶ方式は個人ローカル利用向け
-- 公開Webアプリとして使う場合は Cloudflare Workers 経由を使う
-
-### Ollamaで自然言語入力補助を使う
-1. Ollama を起動
-2. 使うモデルを取得
+### 起動
 
 ```bash
-ollama pull llama3.2:3b
+npm install --cache .npm-cache
+npm run dev
 ```
 
-3. 必要なら `.env.example` を元に `.env.local` または `.env` を作成
+### 確認
 
 ```bash
-VITE_AI_PROVIDER=ollama
-VITE_AI_BASE_URL=http://127.0.0.1:11434/v1
-VITE_AI_MODEL=llama3.2:3b
-VITE_AI_API_KEY=ollama
+npm run test:run
+npm run build
 ```
 
-4. アプリ起動後、AI入力補助の `AI接続` から `Ollama / OpenAI互換 / ルールのみ` を切り替える
+### Firebase設定
 
-補足
-
-- 現在の Ollama 利用は `llama3.2:3b` 固定
-- 追加プリセットやカスタムモデル入力は UI に出さない
-
-### OpenAI互換APIを個人利用で使う
-1. `npm run dev`
-2. AI入力補助の `AI接続` を開く
-3. `OpenAI互換` を選ぶ
-4. `接続先URL` を `https://api.openai.com/v1` にする
-5. `モデル名` を使いたいモデルにする
-6. APIキーを画面で入力して `設定を反映` する
-
-補足
-
-- この入力方法なら、APIキーはこの会話にも repo にも出ない
-- ただしブラウザ実行環境には入るので、公開用途ではそのまま使わない
-- 既に `.env` を git 管理している場合は、秘密情報を入れないこと
-
-### OpenAIをCloudflare Workers経由で使う
-1. Cloudflare で Worker を作成するか、この repo の `workers/ai-proxy` を deploy する
-2. Worker の secret に `OPENAI_API_KEY` を保存する
-3. Worker の vars に `FIREBASE_WEB_API_KEY` と `ALLOWED_ORIGIN` を設定する
-4. deploy 後の Worker URL を `.env.local` または `.env` の `VITE_CLOUDFLARE_AI_PROXY_URL` に入れる
-5. Firebase 設定を入れた状態で `npm run dev` を再起動する
-6. AI入力補助の `AI接続` で `OpenAI互換` を選び、モデル名だけ設定して使う
-
-補足
-
-- `VITE_CLOUDFLARE_AI_PROXY_URL` があるとき、`OpenAI互換` は Cloudflare Workers 経由で OpenAI を呼ぶ
-- この場合、OpenAI の secret key はブラウザに出ない
-- Worker では Firebase ID token を Google の `accounts:lookup` で検証してから OpenAI を呼ぶ
-- AI補助の既定値は OpenAI (`gpt-5.4-mini`)
-
-### スマホ実機確認で HTTPS 警告を出さない
-`@vitejs/plugin-basic-ssl` だけだと自己署名証明書のため、スマホでは `ERR_CERT_AUTHORITY_INVALID` が出ます。警告を消したい場合は、信頼済みローカル証明書を使います。
-
-1. `mkcert` をインストール
-2. このリポジトリで証明書を生成
-
-```bash
-npm run cert:dev -- 192.168.0.5
-```
-
-補足
-
-- `192.168.0.5` の部分は、スマホから開くときの PC の LAN IP に置き換える
-- 生成された証明書は `.cert/` に保存され、Vite が自動で優先使用する
-- iPhone / Android では、`mkcert` のローカル CA を端末側でも信頼する必要がある
-- 証明書生成後は `npm run dev` を再起動する
-
-### Firebaseを使う
-1. Firebase プロジェクトを作成
-2. Authentication で `メール / パスワード` と `Google` を有効化
-3. Firestore Database を作成
-4. `firestore.rules` を Firebase に反映する
-4. `.env.example` を参考に `.env.local` または `.env` へ以下を設定
+`.env.local`または`.env`へ設定します。
 
 ```bash
 VITE_FIREBASE_API_KEY=your-api-key
@@ -308,40 +422,63 @@ VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
 VITE_APP_ACCESS_KEY=shared-preview-key
 ```
 
-5. `npm run dev` を再起動
+Firebaseの必須項目が未設定の場合はlocalStorageで動作します。
 
-補足
+### Cloudflare Workers
 
-- 上の必須4項目が設定されている場合は Firebase を使う
-- 未設定の場合は localStorage のフォールバックで動く
-- Firestore は `profiles / plans / actuals / day_notes / month_events` を使う
-- 教材・教科辞書は `app_catalogs / natural_language_v1` を使う
-- 初回サインイン後、自動で fallback JSON を Firestore に seed する
-- repo 側の catalog version が新しい場合は、サインイン時に Firestore catalog を自動更新する
-- Firestore rules は `npm run deploy:firestore-rules` でも反映できる
-- `VITE_APP_ACCESS_KEY` を入れると、ログイン画面の前に共有キー入力が追加される
-
-### Cloudflare Workers を使う
-1. Cloudflare にログインして Workers を有効化する
-2. `workers/ai-proxy/wrangler.jsonc` の `FIREBASE_WEB_API_KEY` と `ALLOWED_ORIGIN` を自分の環境に合わせる
-3. `npx wrangler login`
-4. `npx wrangler secret put OPENAI_API_KEY --config workers/ai-proxy/wrangler.jsonc`
-5. `npm run deploy:worker`
-6. deploy 後の URL を `.env` の `VITE_CLOUDFLARE_AI_PROXY_URL` に入れる
-
-補足
-
-- `ALLOWED_ORIGIN` は本番のフロント URL に合わせる
-- ローカル確認だけなら一時的に `http://localhost:5173` や `https://192.168.x.x:4173` にしてよい
-- Worker は Firebase の ID token を検証するので、ログイン済みユーザーだけが AI を使える
-
-## 起動方法
 ```bash
-npm install --cache .npm-cache
-npm run dev
+npx wrangler login
+npx wrangler secret put OPENAI_API_KEY --config workers/ai-proxy/wrangler.jsonc
+npm run deploy:worker
 ```
 
-## 確認方法
+`workers/ai-proxy/wrangler.jsonc`の`FIREBASE_WEB_API_KEY`と`ALLOWED_ORIGIN`を環境に合わせて設定します。
+
+WorkerはFirebase ID tokenを検証してからAI APIを呼び出します。
+
+### Ollama
+
 ```bash
-npm run build
+ollama pull llama3.2:3b
 ```
+
+必要に応じて次を設定します。
+
+```bash
+VITE_AI_PROVIDER=ollama
+VITE_AI_BASE_URL=http://127.0.0.1:11434/v1
+VITE_AI_MODEL=llama3.2:3b
+VITE_AI_API_KEY=ollama
+```
+
+アプリの`AI接続`から、Ollama、OpenAI互換、ルールのみを切り替えられます。
+
+### OpenAI互換API
+
+個人ローカル利用では、画面から接続先URL、モデル名、APIキーを設定できます。APIキーは`sessionStorage`にのみ保持します。
+
+公開WebアプリではCloudflare Workers経由を使用してください。フロントエンドへsecret keyを埋め込まないでください。
+
+### Firestore Rules
+
+```bash
+npm run deploy:firestore-rules
+```
+
+### スマホ実機用のローカル証明書
+
+```bash
+npm run cert:dev -- 192.168.0.5
+```
+
+IPアドレスは開発PCのLAN IPへ置き換えます。生成された証明書は`.cert/`へ保存されます。
+
+## 限定公開キー
+
+`VITE_APP_ACCESS_KEY`を設定すると、ログイン画面の前に共有キー入力を追加できます。
+
+これは少人数向けの軽いアクセス制限であり、正式な招待制や強い認可ではありません。
+
+## ライセンス
+
+現時点では個人開発中です。公開範囲とライセンスは今後整理します。
