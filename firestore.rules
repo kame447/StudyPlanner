@@ -36,7 +36,16 @@ service cloud.firestore {
 
     match /profiles/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && !request.resource.data.keys().hasAny(['weeklyPlanningTracePolicy']);
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'id',
+          'email',
+          'username',
+          'avatar',
+          'createdAt'
+        ]);
       allow delete: if false;
     }
 
