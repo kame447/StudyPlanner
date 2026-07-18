@@ -1,9 +1,9 @@
 import type { Plan, PlanDraft } from '../../../types/domain';
 import {
   createWeeklyDraftApprovalOperation,
-  executeWeeklyDraftApproval,
   validateWeeklyPreviewApproval,
 } from '../planning/weeklyPlanningApproval';
+import { executeInterruptibleWeeklyDraftApproval } from '../planning/weeklyPlanningInterruptibleApproval';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import type {
   PlanningState,
@@ -37,6 +37,21 @@ function approvalErrorMessage(kind: string): string {
   }
 }
 
+function ownsPendingApproval(
+  state: PlanningState,
+  pending: WeeklyPlanningPendingApproval,
+): boolean {
+  const current = state.pendingApproval;
+  return Boolean(
+    current
+      && current.requestId === pending.requestId
+      && current.weekStartDate === pending.weekStartDate
+      && current.baseRevision === pending.baseRevision
+      && current.blockIds.length === pending.blockIds.length
+      && current.blockIds.every((blockId, index) => blockId === pending.blockIds[index]),
+  );
+}
+
 export async function approveWeeklyPlanningDraftBlocks({
   userId,
   plans,
@@ -61,7 +76,7 @@ export async function approveWeeklyPlanningDraftBlocks({
     startedAt: new Date().toISOString(),
   };
   const begun = dispatch({ type: 'begin_approval', pending });
-  if (begun.pendingApproval?.requestId !== pending.requestId) return;
+  if (!ownsPendingApproval(begun, pending)) return;
 
   try {
     const guard = validateWeeklyPreviewApproval({
@@ -83,9 +98,10 @@ export async function approveWeeklyPlanningDraftBlocks({
       blocks,
       now: new Date().toISOString(),
     });
-    const result = await executeWeeklyDraftApproval({
+    const result = await executeInterruptibleWeeklyDraftApproval({
       operation,
       blocks,
+      shouldContinue: () => ownsPendingApproval(getState(), pending),
       dependencies: {
         async findExistingPlanId({ sourceDraftBlockId }) {
           const marker = `[weekly-source:${sourceDraftBlockId}]`;
@@ -106,6 +122,8 @@ export async function approveWeeklyPlanningDraftBlocks({
     });
     onOperationCompleted(result);
 
+    if (!ownsPendingApproval(getState(), pending)) return;
+
     const completedBlockIds = result.items
       .filter((item) => item.status === 'saved' || item.status === 'skipped_duplicate')
       .map((item) => item.sourceDraftBlockId);
@@ -122,7 +140,7 @@ export async function approveWeeklyPlanningDraftBlocks({
     if (failed) throw new Error(message);
   } catch (error) {
     const current = getState();
-    if (current.pendingApproval?.requestId === pending.requestId) {
+    if (ownsPendingApproval(current, pending)) {
       dispatch({ type: 'fail_approval', pending });
     }
     throw error;
