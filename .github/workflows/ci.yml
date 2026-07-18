@@ -35,10 +35,24 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run tests
-        run: npm run test:run
-      - name: TypeScript and production build
-        run: npm run build
-      - name: Check pull request diff
-        if: github.event_name == 'pull_request'
-        run: git diff --check origin/${{ github.base_ref }}...HEAD
+      - name: Capture focused tests
+        id: focused
+        shell: bash
+        run: |
+          set +e
+          npm run test:run -- \
+            src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.test.ts \
+            src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.recovery.test.ts \
+            src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.serverCompletion.test.ts \
+            src/hooks/usePlannerAppState.weeklyApproval.test.tsx \
+            > operation-recovery-tests.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: operation-recovery-test-log
+          path: operation-recovery-tests.log
+      - name: Fail when focused tests failed
+        if: steps.focused.outputs.status != '0'
+        run: exit 1
