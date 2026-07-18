@@ -9,6 +9,7 @@ import { normalizePlanRecord } from '../../../repositories/repositoryUtils';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import {
+  buildWeeklyPlanningPlanSourceId,
   parseWeeklyPlanningPlanSourceId,
   WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
 } from '../planning/weeklyPlanningPlanProvenance';
@@ -172,6 +173,43 @@ function resolveDraftIdentity(draft: PlanDraft): ResolvedIdentity {
   };
 }
 
+function resolveOperationItemIdentity(params: {
+  userId: string;
+  approvalOperationId: string;
+  sourceDraftBlockId: string;
+}): ResolvedIdentity {
+  const userId = requireNonempty(params.userId, '利用者');
+  const approvalOperationId = requireNonempty(
+    params.approvalOperationId,
+    '承認操作',
+  );
+  const sourceDraftBlockId = requireNonempty(
+    params.sourceDraftBlockId,
+    '仮予定',
+  );
+  const sourceId = buildWeeklyPlanningPlanSourceId({
+    approvalOperationId,
+    sourceDraftBlockId,
+  });
+  const operationDocumentId = safeDocumentId(
+    'weekly-approval',
+    `${userId}\u001f${approvalOperationId}`,
+  );
+  const itemDocumentId = safeDocumentId('item', sourceDraftBlockId);
+  return {
+    userId,
+    approvalOperationId,
+    sourceDraftBlockId,
+    operationDocumentId,
+    itemDocumentId,
+    itemStorageKey: `${operationDocumentId}/${itemDocumentId}`,
+    planId: safeDocumentId(
+      'weekly-plan',
+      `${userId}\u001f${sourceId}`,
+    ),
+  };
+}
+
 function retentionExpiry(now: Date): Date {
   return new Date(now.getTime() + OPERATION_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 }
@@ -317,25 +355,20 @@ function resolveCompletion(params: {
   operation: StoredApprovalOperation | null;
   userId: string;
   approvalOperationId: string;
+  durableItemCount: number;
   expectedItemCount: number;
   now: Date;
 }): StoredApprovalOperation {
   const operation = params.operation;
-  if (!operation) {
-    throw new WeeklyPlanningApprovalPersistenceError(
-      'operation_missing',
-      '保存済み承認操作が見つかりません。',
-      true,
-    );
-  }
-  if (operation.userId !== params.userId
-    || operation.approvalOperationId !== params.approvalOperationId) {
+  if (operation
+    && (operation.userId !== params.userId
+      || operation.approvalOperationId !== params.approvalOperationId)) {
     throw new WeeklyPlanningApprovalPersistenceError(
       'ownership_mismatch',
       '承認操作の所有者が一致しません。',
     );
   }
-  if (operation.savedItemCount < params.expectedItemCount) {
+  if (params.durableItemCount < params.expectedItemCount) {
     throw new WeeklyPlanningApprovalPersistenceError(
       'incomplete_operation',
       '未保存の承認項目が残っています。',
@@ -344,11 +377,15 @@ function resolveCompletion(params: {
   }
   const timestamp = params.now.toISOString();
   return {
-    ...operation,
+    schemaVersion: RECORD_SCHEMA_VERSION,
+    userId: params.userId,
+    approvalOperationId: params.approvalOperationId,
     status: 'completed',
+    savedItemCount: params.durableItemCount,
     expectedItemCount: params.expectedItemCount,
+    createdAt: operation?.createdAt ?? timestamp,
     updatedAt: timestamp,
-    completedAt: operation.completedAt ?? timestamp,
+    completedAt: operation?.completedAt ?? timestamp,
     expiresAt: retentionExpiry(params.now),
   };
 }
@@ -422,119 +459,57 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
     },
 
     async completeOperation(operation) {
-        const expectedItemCount = operation.items.filter(
-          (item) => item.status === 'saved',
-        ).length;
-        if (expectedItemCount === 0) return;
-        const userId = requireNonempty(operation.userId, '利用者');
+      const serverItems = operation.items.filter(
+        (item) => item.status === 'saved',
+      );
+      if (serverItems.length === 0) return;
+      const userId = requireNonempty(operation.userId, '利用者');
       const approvalOperationId = requireNonempty(
         operation.approvalOperationId,
         '承認操作',
       );
-      const operationDocumentId = safeDocumentId(
-        'weekly-approval',
-        `${userId}\u001f${approvalOperationId}`,
-      );
-      const operationRef = doc(
-        firestore,
-        OPERATION_COLLECTION,
-        operationDocumentId,
-      );
-      try {
-        await runTransaction(firestore, async (transaction) => {
-          const snapshot = await transaction.get(operationRef);
-          const completed = resolveCompletion({
-            operation: snapshot.exists() ? parseOperation(snapshot.data()) : null,
-            userId,
-            approvalOperationId,
-            expectedItemCount,
-            now: new Date(),
-          });
-          transaction.set(operationRef, completed, { merge: false });
-        });
-      } catch (error) {
-        mapPersistenceError(error);
-      }
-    },
-  };
-}
-
-export function createWeeklyPlanningApprovalMemoryState(): WeeklyPlanningApprovalMemoryState {
-  const plans = new Map<string, Plan>();
-  const operations = new Map<string, StoredApprovalOperation>();
-  const items = new Map<string, StoredApprovalItem>();
-  const metrics = { planWrites: 0, itemWrites: 0, operationWrites: 0 };
-  let queue: Promise<void> = Promise.resolve();
-  return {
-    plans,
-    operations,
-    items,
-    metrics,
-    async runExclusive<T>(task: () => Promise<T> | T): Promise<T> {
-      const previous = queue;
-      let release!: () => void;
-      queue = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      await previous;
-      try {
-        return await task();
-      } finally {
-        release();
-      }
-    },
-  };
-}
-
-export function createMemoryWeeklyPlanningApprovalPlanRepository(
-  state: WeeklyPlanningApprovalMemoryState,
-): WeeklyPlanningApprovalPlanRepository {
-  return {
-    async saveApprovedPlan(draft) {
-      const identity = resolveDraftIdentity(draft);
-      return state.runExclusive(() => {
-        const resolution = resolveAtomicSave({
-          draft,
-          identity,
-          snapshot: {
-            operation: state.operations.get(identity.operationDocumentId) ?? null,
-            item: state.items.get(identity.itemStorageKey) ?? null,
-            plan: state.plans.get(identity.planId) ?? null,
-          },
-          now: new Date(),
-        });
-        state.operations.set(identity.operationDocumentId, resolution.operation);
-        state.items.set(identity.itemStorageKey, resolution.item);
-        state.metrics.operationWrites += 1;
-        state.metrics.itemWrites += 1;
-        if (resolution.writePlan) {
-          state.plans.set(identity.planId, resolution.plan);
-          state.metrics.planWrites += 1;
-        }
-        return resolution.plan;
-      });
-    },
-
-    async completeOperation(operation) {
-        const expectedItemCount = operation.items.filter(
-          (item) => item.status === 'saved',
-        ).length;
-        if (expectedItemCount === 0) return;
-        const userId = requireNonempty(operation.userId, '利用者');
-      const approvalOperationId = requireNonempty(
-        operation.approvalOperationId,
-        '承認操作',
-      );
-      const operationDocumentId = safeDocumentId(
-        'weekly-approval',
-        `${userId}\u001f${approvalOperationId}`,
+      const identities = serverItems.map((item) =>
+        resolveOperationItemIdentity({
+          userId,
+          approvalOperationId,
+          sourceDraftBlockId: item.sourceDraftBlockId,
+        }),
       );
       await state.runExclusive(() => {
+        identities.forEach((identity) => {
+          const item = state.items.get(identity.itemStorageKey);
+          if (!item) {
+            throw new WeeklyPlanningApprovalPersistenceError(
+              'incomplete_operation',
+              '未保存の承認項目が残っています。',
+              true,
+            );
+          }
+          validateItemOwnership(item, identity);
+          const plan = state.plans.get(item.savedPlanId);
+          if (!plan) {
+            throw new WeeklyPlanningApprovalPersistenceError(
+              'saved_plan_missing',
+              '保存済み承認項目に対応する予定が見つかりません。',
+            );
+          }
+          if (plan.userId !== identity.userId
+            || plan.sourceType !== WEEKLY_PLANNING_PLAN_SOURCE_TYPE
+            || plan.sourceId !== buildWeeklyPlanningPlanSourceId(identity)
+            || plan.id !== identity.planId) {
+            throw new WeeklyPlanningApprovalPersistenceError(
+              'source_conflict',
+              '承認項目に別の予定が関連付けられています。',
+            );
+          }
+        });
+        const operationDocumentId = identities[0].operationDocumentId;
         const completed = resolveCompletion({
           operation: state.operations.get(operationDocumentId) ?? null,
           userId,
           approvalOperationId,
-          expectedItemCount,
+          durableItemCount: identities.length,
+          expectedItemCount: identities.length,
           now: new Date(),
         });
         state.operations.set(operationDocumentId, completed);
