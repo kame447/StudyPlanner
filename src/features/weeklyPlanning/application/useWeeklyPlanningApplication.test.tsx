@@ -11,6 +11,10 @@ import type { Plan, PlanDraft } from '../../../types/domain';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
 import {
+  clearWeeklyPlanningSessionRuntime,
+  publishWeeklyPlanningSessionRuntime,
+} from '../planning/weeklyPlanningSessionRuntime';
+import {
   createDeferred,
   createMemoryStorageHarness,
   createWeeklyPlanningTestDraftBlock,
@@ -115,9 +119,11 @@ describe('useWeeklyPlanningApplication', () => {
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     executeWeeklyPlanningTurnMock.mockReset();
+    clearWeeklyPlanningSessionRuntime();
   });
 
   afterEach(() => {
+    clearWeeklyPlanningSessionRuntime();
     restoreWindow();
   });
 
@@ -263,5 +269,54 @@ describe('useWeeklyPlanningApplication', () => {
       '1件の仮予定を通常予定として保存しました。',
     );
     await secondHarness.unmount();
+  });
+
+  it('keeps a restored behavior draft visible but requires recomputation after runtime loss', async () => {
+    const previewMetadata: WeeklyPreviewMetadata = {
+      previewId: 'preview-restored-round-trip',
+      conversationId: 'conversation-restored-round-trip',
+      stateRevision: 0,
+      assumptionDependencies: [],
+      approvalEligibility: 'eligible',
+      stale: false,
+      authorizedUserId: 'user-1',
+    };
+    const block = createWeeklyPlanningTestDraftBlock({
+      id: 'restored-block',
+      previewMetadata,
+    });
+    publishWeeklyPlanningSessionRuntime({
+      conversationId: 'conversation-restored-round-trip',
+      stateRevision: 0,
+      proposalRecords: [],
+    });
+    const firstHarness = await renderApplicationHarness();
+
+    await act(async () => {
+      firstHarness.ref.current!.createDraftBlocks([block]);
+    });
+    expect(firstHarness.ref.current!.approvalAvailability.kind).toBe('eligible');
+    await firstHarness.unmount();
+
+    clearWeeklyPlanningSessionRuntime();
+    const save = vi.fn(async (draft: PlanDraft) => persistedPlan(draft, 'unexpected-plan'));
+    const restoredHarness = await renderApplicationHarness({ saveWeeklyApprovedPlan: save });
+
+    expect(restoredHarness.ref.current!.pendingDraftBlocks.map((item) => item.id)).toEqual([
+      'restored-block',
+    ]);
+    expect(restoredHarness.ref.current!.approvalAvailability).toEqual({
+      kind: 'recompute_required',
+      reason: 'session_runtime_unavailable',
+      message: '再読み込み前の仮予定です。最新条件で作り直してください。',
+    });
+    await act(async () => {
+      await expect(restoredHarness.ref.current!.approveDraftBlocks()).rejects.toThrow(
+        '現在の条件と一致しない仮予定です',
+      );
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(restoredHarness.ref.current!.pendingDraftBlocks).toHaveLength(1);
+    await restoredHarness.unmount();
   });
 });
