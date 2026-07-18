@@ -1,0 +1,47 @@
+name: Apply weekly planning server repository import fix
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-server-idempotency
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-server-idempotency
+          fetch-depth: 0
+      - name: Patch repository import
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts')
+          text = path.read_text()
+          old_import = "import { plannerRepository } from '../../../repositories';\n"
+          if old_import not in text:
+              raise SystemExit('static plannerRepository import not found')
+          text = text.replace(old_import, '', 1)
+          old = """    async saveApprovedPlan(draft) {
+                  const identity = resolveDraftIdentity(draft);
+                  const existing = (await plannerRepository.getPlans(identity.userId)).find("""
+          new = """    async saveApprovedPlan(draft) {
+                  const identity = resolveDraftIdentity(draft);
+                  const { plannerRepository } = await import('../../../repositories');
+                  const existing = (await plannerRepository.getPlans(identity.userId)).find("""
+          if old not in text:
+              raise SystemExit('planner-backed save pattern not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
+          git commit -m "feat: 承認repositoryをブラウザ初期化から分離"
+          git push origin HEAD:agent/weekly-planning-server-idempotency
