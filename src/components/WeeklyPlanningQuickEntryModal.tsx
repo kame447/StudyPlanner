@@ -45,6 +45,7 @@ export function WeeklyPlanningQuickEntryModal({
     pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
       ? approvalAvailability
       : null;
+  const lastMessage = state.messages[state.messages.length - 1];
   const weeklyPlanningMessages = unavailableApproval
     ? [
         ...state.messages,
@@ -52,7 +53,7 @@ export function WeeklyPlanningQuickEntryModal({
           id: 'weekly-planning-approval-unavailable',
           role: 'assistant' as const,
           content: unavailableApproval.message,
-          createdAt: state.messages.at(-1)?.createdAt ?? '1970-01-01T00:00:00.000Z',
+          createdAt: lastMessage?.createdAt ?? '1970-01-01T00:00:00.000Z',
         },
       ]
     : state.messages;
