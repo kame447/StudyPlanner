@@ -35,27 +35,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Capture focused test result
-        id: focused
-        shell: bash
-        run: |
-          set +e
-          npm run test:run -- \
-            src/features/weeklyPlanning/application/useWeeklyPlanningApplication.test.tsx \
-            src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.test.ts \
-            > focused-test.log 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload focused test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: focused-test-log
-          path: focused-test.log
-      - name: Fail when focused tests failed
-        if: steps.focused.outputs.status != '0'
-        run: exit 1
+      - name: Run tests
+        run: npm run test:run
       - name: TypeScript and production build
         run: npm run build
       - name: Check pull request diff
