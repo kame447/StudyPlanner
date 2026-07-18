@@ -7,109 +7,120 @@ Updated: 2026-07-18
 
 ## 1. 背景
 
-2026-07-18の全体監査で、承認実行中(保存await中)にセッション初期化や週変更が起きても、残りitemの保存が続行されることを確認した。
+2026-07-18の監査で、承認実行中にsession resetまたは週変更が起きても、approval domainが残りitemの保存を続行することを確認した。
 
 観測事実:
 
-- reducerは`reset_session`を`pendingApproval`中でも許可する(`src/features/weeklyPlanning/weeklyPlanningReducer.ts:115-122`)。resetは`pendingApproval`を消し、draftBlocksを破棄する。
-- `executeWeeklyDraftApproval`(`src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:294-354`)はitemループ中に外部状態を再確認せず、全itemの保存を完了まで続行する。
-- `useWeeklyPlanningState`は週変更・ユーザー変更で状態を丸ごとロードし直し、`pendingApproval`はload時にstripされる。承認application層はこれを検知しない。
-- 結果、ユーザーが「破棄」または週移動した後も、破棄済みの仮予定がFirestoreへ通常予定として保存される。`complete_approval`はrequestId不一致でno-opになるため完了メッセージは出ず、ユーザーは保存に気づかない。
-- ledgerには`onOperationCompleted`で記録されるため、後から再承認しても重複はしない。問題は保存自体がユーザー意図に反することと、無通知であること。
+- reducerは`pendingApproval`中でも`reset_session`を許可し、draftとpending ownershipを破棄する。
+- `executeWeeklyDraftApproval`はitem loop中にapplication stateを再確認しない。
+- 週変更時は別週stateがloadされ、旧`pendingApproval`は失われる。
+- 保存処理は継続するが、完了actionはrequest mismatchでno-opとなるため、ユーザーへ通知されない。
 
 ## 2. 目的
 
-承認開始後に`pendingApproval`の所有権が失われた場合(reset、週変更、状態ロードし直し)、未保存itemの保存を行わない。保存済み分の記録は失わない。
+承認開始時のownershipが失われた後は、新しいitemの重複確認・保存を開始しない。既に完了したitemはoperationへ残し、失われたstateへ成功・失敗messageを適用しない。
 
 ## 3. 計画書との対応
 
-- product spec: `docs/weekly-planning/weekly-planning-spec.md`(破棄操作のUX)
-- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`(request invalidation)
+- product spec: `docs/weekly-planning/weekly-planning-spec.md`のreviewable applyと破棄
+- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`のrequest invalidation
 - roadmap: `docs/ai/strategy/weekly-planning-roadmap.md` §3
 - test contract / Requirement ID: DA-PREVIEW-001
 
 ## 4. Entry conditions
 
-- `main` 37b1146以降で、`approveWeeklyPlanningDraftBlocks`→`executeWeeklyDraftApproval`のitemループと`dispatch`/`getState`の受け渡しを再調査する。
-- `executeWeeklyDraftApproval`はdomain層であり、React stateを直接参照させない設計を維持できるか確認する(継続判定callbackの注入で対応する)。
+- `20260718-weekly-planning-approval-save-side-effect-isolation.md`を先に実施し、保存自身が週変更を起こす主要因を除去する。
+- application test harnessでdeferred saveとreset/week rerenderを制御できることを確認する。
+- repository write開始後の単一itemは現行APIではcancelできないため、保証範囲を「次のitemを開始しない」と明記する。
 
 ## 5. 対象ファイル
 
 - 変更:
-  - `src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts`(`ExecuteWeeklyDraftApprovalDependencies`へ継続判定`shouldContinue(): boolean`等を追加。未指定時は現行挙動)
-  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`(`getState().pendingApproval`の同一性を継続判定として注入。中断時のoperation status確定とledger記録)
+  - `src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts`
+  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`
 - 新規: なし
 - テスト:
-  - `src/features/weeklyPlanning/planning/weeklyPlanningApproval.test.ts`(中断時に残りitemが保存されない)
-  - application層の挙動テスト(reset競合。`20260718-weekly-planning-application-behavior-tests.md`のharnessを利用)
+  - approval domainの継続判定test
+  - application層のreset・週変更競合test
 
 ## 6. 現在の処理経路
 
 ```text
-approveDraftBlocks
-→ begin_approval(pendingApproval設定)
-→ executeWeeklyDraftApproval(itemごとにfindExistingPlanId → saveBlock)
-   ← この間のreset_session / 週変更 / load_stateを検知しない
-→ onOperationCompleted → complete_approval(requestId不一致ならno-op)
+begin_approval
+→ executeWeeklyDraftApproval
+  → findExistingPlanId
+  → saveBlock
+  → 次itemへ継続
+← reset / week loadを監視しない
+→ onOperationCompleted
+→ complete_approvalまたはfail_approval(request mismatchならno-op)
 ```
 
 ## 7. 確認済みの事実
 
-- reducer単体・controller単体のテストは存在するが、承認application層との競合(reset中のin-flight保存)を検証するテストはない。
-- cancel操作は`pendingTurn`のみを対象とし、承認には中断導線がない(UI仕様として承認中の破棄ボタンは無効化されている)。
+- pending ownershipは`requestId`、`weekStartDate`、`baseRevision`を持つ。
+- reducerは古いcomplete/fail actionを拒否するが、repository write自体は止めない。
+- 現在のUIではapproval中の一部操作がdisabledでも、hook/API、週変更、副作用によってownership喪失は起こり得る。
+- 既に開始したrepository upsertをAbortSignalで停止する契約はない。
 
 ## 8. 未確認事項
 
-- 中断時にoperationを`partially_saved`として記録した場合の、既存retry UI文言との整合。
-- 週変更が承認中に起きる主要因は保存副作用(`20260718-weekly-planning-approval-save-side-effect-isolation.md`)であり、同taskの完了後にこの競合の発生頻度がどこまで残るか。
+- 中断時のoperationをlocal ledgerへどの時点で書くか。item単位の永続化はserver-side idempotency taskと調整する。
+- reset操作をapproval中UIで許可するかというUX判断。本taskはdomain safetyだけを扱う。
 
 ## 9. 問題点
 
-- ユーザーの「破棄」操作後にバックグラウンドで保存が続くのは、AI behavior rules(destructive changes without confirmationの回避、reviewable apply)の精神に反する。
-- 保存が無通知で行われるため、画面上の状態とFirestoreの実データが乖離する。
+state上は破棄済みの仮予定が無通知で永続化され、ユーザーの破棄意図とrepository内容が一致しない。
 
 ## 10. 修正方針
 
-- domain層(`executeWeeklyDraftApproval`)には継続判定callbackだけを追加し、判定自体はapplication層が注入する。状態遷移・保存規則は変えない。
-- application層は各itemの保存前に`getState().pendingApproval?.requestId === pending.requestId`を確認し、失われていれば以降のitemを保存せず、その時点までの結果でoperationを確定してledgerへ記録する。
-- 中断されたoperationは`partially_saved`または`pending`として残し、既存のretry経路(existingOperation再利用)で再開可能にする。
+- approval domainへapplication非依存の継続判定callbackを注入する。
+- 継続判定は少なくとも各itemの開始前と、非同期`findExistingPlanId`完了後の`saveBlock`直前に実行する。lookup中にownershipを失った場合も保存を開始しない。
+- application側は開始時pendingと現在のpendingについて、requestId、weekStartDate、baseRevision、blockIdsの同一性を確認する。
+- ownershipを失った場合、現在までのitem結果からoperationを確定して`onOperationCompleted`へ渡す。
+- execute完了後にもownershipを再確認し、失われていれば`complete_approval`、`fail_approval`、成功/失敗message生成を行わずreturnする。
+- 既に`saveBlock`へ入ったitemの完了は受け入れ、次itemを開始しない。cancel可能repositoryへの拡張は本taskの範囲外とする。
 
 ## 11. 触らない範囲
 
-- 承認中UIへの中断ボタン追加(UX変更は別判断)
-- reducerの遷移規則(`reset_session`の許可自体は維持する)
-- server-side永続化(`20260716-weekly-planning-approval-persistence-and-idempotency.md`の範囲)
+- approval中断ボタンの追加
+- `reset_session`自体の禁止
+- repository writeへのAbortSignal導入
+- server-side claim、item単位永続ledger
 - scheduler、preview生成
 
 ## 12. 受け入れ条件
 
-- 承認開始→1item保存完了→reset_session→残りitemが保存されない。
-- 中断時点までに保存されたitemはledgerへ`saved`として記録され、再承認時に`skipped_duplicate`または既存operation再利用で重複しない。
-- 中断が発生しない通常経路(全成功、部分失敗、全失敗)の挙動が変わらない。
-- 中断時に`complete_approval`/`fail_approval`の誤適用が起きない(requestId同一性ガードを維持)。
+- 1件目の保存待ち中にresetし、1件目完了後に2件目以降のlookup/saveを開始しない。
+- `findExistingPlanId`待ち中にownershipを失った場合、そのitemの`saveBlock`を呼ばない。
+- 週変更でも同じ中断契約が成立する。
+- 中断前にsaved/skippedとなったitemはoperationに保持される。
+- ownership喪失後に旧stateへcomplete/fail messageをdispatchしない。
+- 中断しない全成功、部分失敗、全失敗、retryの挙動を維持する。
 
 ## 13. テスト観点
 
-- unit: `shouldContinue`がfalseを返した時点で残りitemが`pending`のまま保存されない。
-- integration: 実reducer + fake保存関数で、保存await中にreset→保存回数と最終状態を検証。
-- browser/manual: 承認直後に破棄を連打しても、破棄後の予定が週表示・日表示に現れない。
-- regression: 部分失敗→再試行、二重クリック防止。
+- unit: loop開始前とlookup後の継続判定、残りitemの未実行。
+- integration: deferred save中のresetと週変更、保存回数、dispatch、ledger callback。
+- browser/manual: approval直後にsessionを破棄しても、破棄後に残りplanが現れない。
+- regression: partial retry、duplicate skip、二重approval拒否。
 - property/fuzz: 不要。
 
 ## 14. リスク
 
-- 中断判定の追加により、保存とledger記録の間の失敗窓が変わる。ledger記録は中断確定時に必ず行うこと。
-- `20260718-weekly-planning-approval-save-side-effect-isolation.md`と同一ファイルを変更するため、直列に実施する。
+- callbackをitem先頭だけで確認するとlookup中resetを取りこぼすため、save直前の再確認が必須である。
+- 中断operationのstatusが`pending`または`partially_saved`になり得る。applicationが`pending`を成功完了として扱わないtestを追加する。
 
 ## 15. Dependencies
 
-- 先行推奨: `20260718-weekly-planning-approval-save-side-effect-isolation.md`(週変更由来の競合の主要因を先に除去)。
-- 並行変更禁止: `weeklyPlanningApprovalApplication.ts`、`weeklyPlanningApproval.ts`を触る他task。
+- 先行: `20260718-weekly-planning-application-behavior-tests.md`、`20260718-weekly-planning-approval-save-side-effect-isolation.md`。
+- 関連: `20260716-weekly-planning-approval-persistence-and-idempotency.md`。
+- 並行変更禁止: `weeklyPlanningApprovalApplication.ts`を触る他の承認task。
 
 ## 16. Exit conditions
 
 - focused test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
-- 中断時のoperation statusとretry再開の仕様を文書化する。
+- cancel可能範囲と中断operation statusを最終報告へ記載する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
 
 ## 17. 実装担当への指示
