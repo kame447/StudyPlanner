@@ -6,7 +6,8 @@ import {
 } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlanDraft } from '../../../types/domain';
+import { createPlanFromDraft } from '../../../domain/planner';
+import type { Plan, PlanDraft } from '../../../types/domain';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
 import {
@@ -54,6 +55,13 @@ interface RenderedApplicationHarness {
   unmount(): Promise<void>;
 }
 
+function persistedPlan(draft: PlanDraft, id = 'persisted-plan'): Plan {
+  return {
+    ...createPlanFromDraft(draft),
+    id,
+  };
+}
+
 async function renderApplicationHarness(
   overrides: Partial<UseWeeklyPlanningApplicationInput> = {},
 ): Promise<RenderedApplicationHarness> {
@@ -63,7 +71,7 @@ async function renderApplicationHarness(
     selectedDate: '2026-07-14',
     plans: [],
     scheduleTemplates: [],
-    savePlanDraft: async () => undefined,
+    saveWeeklyApprovedPlan: async (draft) => persistedPlan(draft),
     ...overrides,
   };
   let renderer!: ReactTestRenderer;
@@ -224,8 +232,8 @@ describe('useWeeklyPlanningApplication', () => {
       id: 'ledger-block',
       previewMetadata,
     });
-    const firstSave = vi.fn(async (_draft: PlanDraft) => undefined);
-    const firstHarness = await renderApplicationHarness({ savePlanDraft: firstSave });
+    const firstSave = vi.fn(async (draft: PlanDraft) => persistedPlan(draft, 'persisted-ledger-plan'));
+    const firstHarness = await renderApplicationHarness({ saveWeeklyApprovedPlan: firstSave });
 
     await act(async () => {
       firstHarness.ref.current!.createDraftBlocks([block]);
@@ -235,13 +243,13 @@ describe('useWeeklyPlanningApplication', () => {
     });
 
     expect(firstSave).toHaveBeenCalledTimes(1);
-    expect(storageHarness.values.get('studyplanner-weekly-approval-ledger-v1')).toContain(
-      'preview-ledger-round-trip',
-    );
+    const storedLedger = storageHarness.values.get('studyplanner-weekly-approval-ledger-v1');
+    expect(storedLedger).toContain('preview-ledger-round-trip');
+    expect(storedLedger).toContain('persisted-ledger-plan');
     await firstHarness.unmount();
 
-    const secondSave = vi.fn(async (_draft: PlanDraft) => undefined);
-    const secondHarness = await renderApplicationHarness({ savePlanDraft: secondSave });
+    const secondSave = vi.fn(async (draft: PlanDraft) => persistedPlan(draft, 'unexpected-plan'));
+    const secondHarness = await renderApplicationHarness({ saveWeeklyApprovedPlan: secondSave });
     await act(async () => {
       secondHarness.ref.current!.createDraftBlocks([block]);
     });
