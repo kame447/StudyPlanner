@@ -9,6 +9,7 @@ import type {
 } from '../types/domain';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { QuickEntryModal } from './QuickEntryModal';
+import './WeeklyPlanningQuickEntryModal.css';
 
 interface WeeklyPlanningQuickEntryModalProps {
   application: WeeklyPlanningApplication;
@@ -39,39 +40,60 @@ export function WeeklyPlanningQuickEntryModal({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: WeeklyPlanningQuickEntryModalProps) {
-  const { state } = application;
+  const { state, approvalAvailability, pendingDraftBlocks } = application;
+  const unavailableApproval =
+    pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
+      ? approvalAvailability
+      : null;
+  const lastMessage = state.messages[state.messages.length - 1];
+  const weeklyPlanningMessages = unavailableApproval
+    ? [
+        ...state.messages,
+        {
+          id: 'weekly-planning-approval-unavailable',
+          role: 'assistant' as const,
+          content: unavailableApproval.message,
+          createdAt: lastMessage?.createdAt ?? '1970-01-01T00:00:00.000Z',
+        },
+      ]
+    : state.messages;
 
   return (
-    <QuickEntryModal
-      userId={userId}
-      selectedDate={selectedDate}
-      plans={plans}
-      actuals={actuals}
-      materials={materials}
-      subjects={subjects}
-      weeklyDraftBlocks={application.pendingDraftBlocks}
-      weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
-      weeklyPlanningMessages={state.messages}
-      weeklyPlanningIntakeState={state.intakeState ?? null}
-      weeklyPlanningWeekStartDate={state.weekStartDate}
-      weeklyPlanningRevision={state.revision}
-      weeklyPlanningPendingTurn={state.pendingTurn}
-      weeklyPlanningPendingApproval={state.pendingApproval}
-      onSubmitWeeklyPlanningTurn={application.submitTurn}
-      onCancelWeeklyPlanningTurn={application.cancelTurn}
-      onClearWeeklyPlanningConversation={application.clearConversation}
-      onAppendWeeklyPlanningMessage={application.appendMessage}
-      onResetWeeklyPlanningSession={application.resetSession}
-      onCreateWeeklyDraftBlocks={application.createDraftBlocks}
-      onRemoveWeeklyPlanningPreviewCandidate={application.removePreviewCandidate}
-      onRemoveWeeklyDraftBlock={application.removeDraftBlock}
-      onClearWeeklyDraftBlocks={application.clearDraftBlocks}
-      onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
-      onClose={onClose}
-      onSaveTodo={onSaveTodo}
-      onSavePlan={onSavePlan}
-      onSaveStandaloneActual={onSaveStandaloneActual}
-      onSaveLinkedActual={onSaveLinkedActual}
-    />
+    <div
+      className={unavailableApproval ? 'weekly-planning-approval-unavailable' : undefined}
+      data-weekly-approval-availability={approvalAvailability.kind}
+    >
+      <QuickEntryModal
+        userId={userId}
+        selectedDate={selectedDate}
+        plans={plans}
+        actuals={actuals}
+        materials={materials}
+        subjects={subjects}
+        weeklyDraftBlocks={pendingDraftBlocks}
+        weeklyPlanningPreviewCandidates={state.previewCandidates ?? []}
+        weeklyPlanningMessages={weeklyPlanningMessages}
+        weeklyPlanningIntakeState={state.intakeState ?? null}
+        weeklyPlanningWeekStartDate={state.weekStartDate}
+        weeklyPlanningRevision={state.revision}
+        weeklyPlanningPendingTurn={state.pendingTurn}
+        weeklyPlanningPendingApproval={state.pendingApproval}
+        onSubmitWeeklyPlanningTurn={application.submitTurn}
+        onCancelWeeklyPlanningTurn={application.cancelTurn}
+        onClearWeeklyPlanningConversation={application.clearConversation}
+        onAppendWeeklyPlanningMessage={application.appendMessage}
+        onResetWeeklyPlanningSession={application.resetSession}
+        onCreateWeeklyDraftBlocks={application.createDraftBlocks}
+        onRemoveWeeklyPlanningPreviewCandidate={application.removePreviewCandidate}
+        onRemoveWeeklyDraftBlock={application.removeDraftBlock}
+        onClearWeeklyDraftBlocks={application.clearDraftBlocks}
+        onApproveWeeklyDraftBlocks={application.approveDraftBlocks}
+        onClose={onClose}
+        onSaveTodo={onSaveTodo}
+        onSavePlan={onSavePlan}
+        onSaveStandaloneActual={onSaveStandaloneActual}
+        onSaveLinkedActual={onSaveLinkedActual}
+      />
+    </div>
   );
 }
