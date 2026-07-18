@@ -45,13 +45,17 @@ describe('weekly planning trace privacy boundary', () => {
   });
 
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {
-    const start = new Date('2026-07-18T00:00:00.000Z');
-    const beforeRotation = new Date(start.getTime() + 29 * 24 * 60 * 60 * 1000);
-    const afterRotation = new Date(start.getTime() + 31 * 24 * 60 * 60 * 1000);
+    const epochMs = 30 * 24 * 60 * 60 * 1000;
+    const reference = new Date('2026-07-18T00:00:00.000Z');
+    const epochStart = new Date(Math.floor(reference.getTime() / epochMs) * epochMs);
+    const beforeRotation = new Date(epochStart.getTime() + 29 * 24 * 60 * 60 * 1000);
+    const afterRotation = new Date(epochStart.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    expect(resolveWeeklyPlanningTraceEpoch(start)).toBe(resolveWeeklyPlanningTraceEpoch(beforeRotation));
-    expect(resolveWeeklyPlanningTraceEpoch(start)).not.toBe(resolveWeeklyPlanningTraceEpoch(afterRotation));
-    expect(weeklyPlanningTraceExpireAt(start)).toBe('2027-01-14T00:00:00.000Z');
+    expect(resolveWeeklyPlanningTraceEpoch(epochStart))
+      .toBe(resolveWeeklyPlanningTraceEpoch(beforeRotation));
+    expect(resolveWeeklyPlanningTraceEpoch(epochStart))
+      .not.toBe(resolveWeeklyPlanningTraceEpoch(afterRotation));
+    expect(weeklyPlanningTraceExpireAt(reference)).toBe('2027-01-14T00:00:00.000Z');
   });
 
   it('removes identity keys and redacts common identifiers in nested content', () => {
