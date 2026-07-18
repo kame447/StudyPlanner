@@ -36,7 +36,8 @@ export function createMemoryStorageHarness(): MemoryStorageHarness {
   return { storage, values };
 }
 
-export function installWeeklyPlanningTestStorage(storage: Storage): void {
+export function installWeeklyPlanningTestStorage(storage: Storage): () => void {
+  const previousWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
@@ -44,6 +45,14 @@ export function installWeeklyPlanningTestStorage(storage: Storage): void {
       sessionStorage: storage,
     },
   });
+
+  return () => {
+    if (previousWindowDescriptor) {
+      Object.defineProperty(globalThis, 'window', previousWindowDescriptor);
+      return;
+    }
+    Reflect.deleteProperty(globalThis, 'window');
+  };
 }
 
 export interface DeferredPlanDraftSaveCall {
