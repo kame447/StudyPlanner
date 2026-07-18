@@ -1,0 +1,45 @@
+name: Remove duplicate operation identity helper
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-server-idempotency
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-server-idempotency
+          fetch-depth: 0
+      - name: Remove duplicate helper
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts')
+          text = path.read_text()
+          pattern = re.compile(
+              r"\nfunction resolveOperationItemIdentity\(params: \{.*?\n\}\n\nfunction retentionExpiry",
+              re.DOTALL,
+          )
+          matches = list(pattern.finditer(text))
+          if len(matches) != 1:
+              raise SystemExit(f'duplicate helper region count was {len(matches)}')
+          start, end = matches[0].span()
+          replacement = '\nfunction retentionExpiry'
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
+          git commit -m "feat: 承認repositoryのidentity helperを統合"
+          git push origin HEAD:agent/weekly-planning-server-idempotency
