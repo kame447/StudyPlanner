@@ -1,7 +1,7 @@
 # 週間計画storageのユーザー境界書き込みを保護する
 
 Status: planned
-Priority: P1
+Priority: P2
 Requirement IDs: none
 Updated: 2026-07-18
 
@@ -74,7 +74,7 @@ ledger
 ## 9. 問題点
 
 - state内容と保存先identityが別々に管理され、effect順序によるcross-user writeが可能である。
-- ledgerをkeyだけuser別化しても、hook stateをuser変更時に入れ替えなければ旧user operationを新keyへ保存する競合が残る。
+- ledgerをkeyだけuser別化しても、hook stateをuser変更時に入れ替えなければ旧user operationを新user keyへ保存する競合が残る。
 
 ## 10. 修正方針
 
