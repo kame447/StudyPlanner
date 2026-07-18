@@ -1,0 +1,87 @@
+name: Weekly planning privacy verification
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-trace-privacy
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused tests
+        run: >-
+          npm run test:run --
+          src/components/InitialPrivacyConsentScreen.test.tsx
+          src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.test.ts
+          workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts
+
+      - name: Run trace tests
+        run: npm run test:run -- src/features/weeklyPlanning/trace
+
+      - name: Run full test suite
+        run: npm run test:run
+
+      - name: Build production app
+        run: npm run build
+
+      - name: Validate Worker bundle
+        run: npx --yes wrangler@4.57.0 deploy --dry-run --config workers/ai-proxy/wrangler.jsonc
+
+      - name: Report result to pull request
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- weekly-trace-privacy-verification -->';
+            const status = '${{ job.status }}';
+            const symbol = status === 'success' ? '✅' : '❌';
+            const body = `${marker}\n## 初回同意・会話記録保護の自動検証\n\n${symbol} 結果: **${status}**\n\n- 初回同意画面の操作テスト\n- 会話記録の個人情報除去テスト\n- 週間計画の会話記録テスト一式\n- 全自動テスト\n- 本番用ビルド\n- Cloudflare Workerの構成確認`;
+            const pulls = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:agent/weekly-planning-trace-privacy`,
+            });
+            const pull = pulls.data[0];
+            if (!pull) return;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pull.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull.number,
+                body,
+              });
+            }
