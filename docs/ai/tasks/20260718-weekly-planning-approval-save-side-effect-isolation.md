@@ -67,6 +67,7 @@ approveDraftBlocks
 - 同一週内の日付ではstate keyが変わらないため、主要な自壊は週外日付で発生する。
 - 保存済みplan自体はrepositoryへ入るため、画面上の失敗と永続データが乖離する。
 - `Plan.id`はrepository upsert前にclient側で確定する現行設計であり、保存専用関数から返却できる。
+- 現行`savePlanDraft`の失敗rollbackはrender時closureで捕捉した`previousPlans`全体へ戻す。複数itemを同一renderで連続保存すると、後続itemの失敗が先行itemのoptimistic entryまで画面上から除去し得る。
 - 監査基準`37b1146`の既存testは保存依存を純粋mockにしており、この副作用を再現しない。
 
 ## 8. 未確認事項
@@ -82,6 +83,7 @@ approveDraftBlocks
 
 - `usePlannerDataState`に、週間承認専用のcreate保存契約を公開する。契約は概ね`(draft: PlanDraft) => Promise<Plan>`または`Promise<{ planId: string }>`とし、targetPlanIdやeditingPlanIdを受け取らない。
 - この保存関数は入力検証、Plan生成、optimistic `setPlans`、repository upsert、失敗時rollbackだけを担当する。
+- rollbackは`setPlans(current => ...)`のfunctional updateで失敗した当該Plan IDだけを除去する。render時closureで捕捉した配列全体へ復元せず、同じ承認operation内で先に保存成功したitemのoptimistic entryを維持する。
 - `selectedDate`、`monthDate`、editor close、recurring scope dialog、noticeを変更しない。
 - `usePlannerAppState`を通じてAppへ公開し、Appは週間計画applicationへこの関数を渡す。
 - application側の依存名を`savePlanDraft`のまま流用せず、画面副作用なしの契約であることが分かる名前へ変更する。
@@ -103,12 +105,14 @@ approveDraftBlocks
 - 保存成功後に`complete_approval`が適用され、保存済みblockがdraft一覧から除去される。
 - editorが開いている場合やrecurring plan編集中でも、週間承認はeditor対象を上書きせずscope dialogを開かない。
 - ledgerの`savedPlanId`が永続化された`Plan.id`と一致する。
-- 保存失敗時のoptimistic rollbackと部分再試行を維持する。
+- 後続itemの保存失敗時、rollbackは失敗したitemのoptimistic entryだけを除去し、先行して保存成功したitemを`plans`から消さない。
+- 保存失敗時の部分再試行を維持する。
 - per-item noticeを出さず、週間計画側の集約メッセージだけを表示する。
 
 ## 13. テスト観点
 
 - unit: 保存専用関数が画面stateとeditor stateを変更せず、永続Plan IDを返す。
+- unit: item失敗のfunctional rollbackが、同一承認内の先行itemのoptimistic entryへ影響しない。
 - integration: next-week相当の複数block承認でstate key、pending ownership、完了messageを確認する。
 - browser/manual: 現在週から来週の仮予定を承認し、画面が飛ばず、来週へ移動すると保存planが存在する。
 - regression: 同一週承認、保存失敗rollback、部分再試行、二重承認拒否。
@@ -117,6 +121,7 @@ approveDraftBlocks
 ## 14. リスク
 
 - 保存処理を複製するとrollbackやvalidationが分岐するため、可能なら副作用なしcoreを共有し、UI副作用を手動保存側で後置する。
+- closureで捕捉した`previousPlans`全体へのrollbackを共有coreへ持ち込むと、複数item承認で永続データと画面stateが乖離する。
 - `Plan.id`返却契約は後続server-side idempotency taskが利用するため、擬似IDへ戻さない。
 
 ## 15. Dependencies
