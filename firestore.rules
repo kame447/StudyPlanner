@@ -119,6 +119,45 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.userId);
     }
 
+    match /weekly_planning_approval_operations/{operationId} {
+      allow read: if canReadOwnedResource();
+      allow create: if canCreateOwnedResource()
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.status == 'active'
+        && request.resource.data.savedItemCount >= 1;
+      allow update: if canUpdateOwnedResource()
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && request.resource.data.approvalOperationId == resource.data.approvalOperationId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'savedItemCount',
+          'expectedItemCount',
+          'updatedAt',
+          'completedAt',
+          'expiresAt'
+        ]);
+      allow delete: if isOwner(resource.data.userId);
+
+      match /items/{itemId} {
+        allow read: if canReadOwnedResource();
+        allow create: if canCreateOwnedResource()
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.status == 'saved';
+        allow update: if canUpdateOwnedResource()
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.approvalOperationId == resource.data.approvalOperationId
+          && request.resource.data.sourceDraftBlockId == resource.data.sourceDraftBlockId
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'savedPlanId',
+            'updatedAt'
+          ]);
+        allow delete: if isOwner(resource.data.userId);
+      }
+    }
+
     match /weekly_planning_trace_sessions/{sessionId} {
       allow read, write: if false;
     }
