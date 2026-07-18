@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
 import type { Plan, PlanDraft } from '../../../types/domain';
+import {
+  parseWeeklyPlanningPlanSourceId,
+  WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
+} from '../planning/weeklyPlanningPlanProvenance';
 import type {
   WeeklyDraftApprovalOperation,
   WeeklyPreviewMetadata,
@@ -49,9 +53,10 @@ function deferred<T>() {
 }
 
 function readSourceBlockId(draft: PlanDraft): string {
-  const match = draft.memo.match(/\[weekly-source:([^\]]+)\]/);
-  if (!match) throw new Error('weekly source marker was not added');
-  return match[1];
+  expect(draft.sourceType).toBe(WEEKLY_PLANNING_PLAN_SOURCE_TYPE);
+  const identity = parseWeeklyPlanningPlanSourceId(draft.sourceId);
+  if (!identity) throw new Error('weekly planning source identity was not added');
+  return identity.sourceDraftBlockId;
 }
 
 function persistedPlan(draft: PlanDraft, id: string): Plan {
