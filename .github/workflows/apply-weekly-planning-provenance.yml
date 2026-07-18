@@ -1,0 +1,58 @@
+name: Apply weekly planning provenance
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-plan-provenance
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-planning-plan-provenance
+          fetch-depth: 0
+      - name: Apply narrow provenance patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          domain = Path('src/types/domain.ts')
+          text = domain.read_text()
+          old = "export type PlanSourceType = 'manual' | 'todo' | 'timetable';"
+          new = "export type PlanSourceType = 'manual' | 'todo' | 'timetable' | 'weekly-planning';"
+          if old not in text:
+              raise SystemExit('PlanSourceType pattern not found')
+          domain.write_text(text.replace(old, new, 1))
+
+          utils = Path('src/repositories/repositoryUtils.ts')
+          text = utils.read_text()
+          old = """function normalizePlanSourceType(value: unknown): PlanSourceType | undefined {
+            return value === 'manual' || value === 'todo' || value === 'timetable'
+              ? value
+              : undefined;
+          }"""
+          new = """function normalizePlanSourceType(value: unknown): PlanSourceType | undefined {
+            return value === 'manual' ||
+              value === 'todo' ||
+              value === 'timetable' ||
+              value === 'weekly-planning'
+              ? value
+              : undefined;
+          }"""
+          if old not in text:
+              raise SystemExit('normalizePlanSourceType pattern not found')
+          utils.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/types/domain.ts src/repositories/repositoryUtils.ts
+          git commit -m "feat: 週間計画Planのsource typeを追加"
+          git push origin HEAD:agent/weekly-planning-plan-provenance
