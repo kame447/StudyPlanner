@@ -146,7 +146,10 @@ function normalizePlanType(value: unknown): PlanType {
 }
 
 function normalizePlanSourceType(value: unknown): PlanSourceType | undefined {
-  return value === 'manual' || value === 'todo' || value === 'timetable'
+  return value === 'manual' ||
+    value === 'todo' ||
+    value === 'timetable' ||
+    value === 'weekly-planning'
     ? value
     : undefined;
 }
