@@ -13,6 +13,7 @@ describe('weekly planning application boundary', () => {
     expect(app).toContain('WeeklyPlanningQuickEntryModal');
     expect(app).not.toContain('submitWeeklyPlanningControlledTurn');
     expect(app).not.toContain('executeWeeklyDraftApproval');
+    expect(app).not.toContain('executeInterruptibleWeeklyDraftApproval');
     expect(app).not.toContain('validateWeeklyPreviewApproval');
     expect(app).not.toContain('serializeWeeklyApprovalLedger');
     expect(app).not.toContain('weeklyPlanningPendingTurn=');
@@ -33,7 +34,7 @@ describe('weekly planning application boundary', () => {
 
     expect(application).toContain('submitWeeklyPlanningControlledTurn');
     expect(application).toContain('approveWeeklyPlanningDraftBlocks');
-    expect(approval).toContain('executeWeeklyDraftApproval');
+    expect(approval).toContain('executeInterruptibleWeeklyDraftApproval');
     expect(approval).toContain('validateWeeklyPreviewApproval');
   });
 });
