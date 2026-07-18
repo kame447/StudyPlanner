@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -31,7 +31,6 @@ jobs:
           ref: agent/weekly-planning-server-idempotency
           fetch-depth: 0
       - name: Remove duplicate identity helper
-        if: github.actor != 'github-actions[bot]'
         run: |
           python - <<'PY'
           import re
@@ -47,11 +46,10 @@ jobs:
           retention_start = text.index('function retentionExpiry', second_start)
           path.write_text(text[:second_start] + text[retention_start:])
           PY
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
-          git commit -m "feat: 承認repositoryのidentity helperを統合"
-          git push origin HEAD:agent/weekly-planning-server-idempotency
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patched-approval-repository
+          path: src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
       - uses: actions/setup-node@v4
         with:
           node-version: 22
