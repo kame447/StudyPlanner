@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -28,129 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/weekly-planning-server-idempotency
           fetch-depth: 0
-      - name: Restore identity helpers once
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts')
-          text = path.read_text()
-          operation_marker = 'function resolveOperationItemIdentity(params: {'
-          draft_marker = 'function resolveDraftIdentity(draft: PlanDraft): ResolvedIdentity {'
-          count = text.count(operation_marker)
-          if count > 1:
-            raise SystemExit(f'identity helper count was {count}')
-          if count == 0:
-            insertion = r'''function resolveOperationItemIdentity(params: {
-              userId: string;
-              approvalOperationId: string;
-              sourceDraftBlockId: string;
-            }): ResolvedIdentity {
-              const userId = requireNonempty(params.userId, '利用者');
-              const approvalOperationId = requireNonempty(
-                params.approvalOperationId,
-                '承認操作',
-              );
-              const sourceDraftBlockId = requireNonempty(
-                params.sourceDraftBlockId,
-                '仮予定',
-              );
-              const sourceId = buildWeeklyPlanningPlanSourceId({
-                approvalOperationId,
-                sourceDraftBlockId,
-              });
-              const operationDocumentId = safeDocumentId(
-                'weekly-approval',
-                `${userId}\u001f${approvalOperationId}`,
-              );
-              const itemDocumentId = safeDocumentId('item', sourceDraftBlockId);
-              const planId = safeDocumentId(
-                'weekly-plan',
-                `${userId}\u001f${sourceId}`,
-              );
-              return {
-                userId,
-                approvalOperationId,
-                sourceDraftBlockId,
-                sourceId,
-                operationDocumentId,
-                itemDocumentId,
-                itemStorageKey: `${operationDocumentId}/${itemDocumentId}`,
-                planId,
-              };
-            }
-
-            function resolveDraftIdentity(draft: PlanDraft): ResolvedIdentity {
-              const userId = requireNonempty(draft.userId, '利用者');
-              if (draft.sourceType !== WEEKLY_PLANNING_PLAN_SOURCE_TYPE) {
-                throw new WeeklyPlanningApprovalPersistenceError(
-                  'invalid_request',
-                  '週間計画由来ではない予定を承認保存できません。',
-                );
-              }
-              const parsed = parseWeeklyPlanningPlanSourceId(draft.sourceId);
-              if (!parsed) {
-                throw new WeeklyPlanningApprovalPersistenceError(
-                  'invalid_request',
-                  '週間計画の保存元を確認できませんでした。',
-                );
-              }
-              const identity = resolveOperationItemIdentity({
-                userId,
-                approvalOperationId: parsed.approvalOperationId,
-                sourceDraftBlockId: parsed.sourceDraftBlockId,
-              });
-              if (identity.sourceId !== draft.sourceId) {
-                throw new WeeklyPlanningApprovalPersistenceError(
-                  'invalid_request',
-                  '週間計画の保存元形式が一致しません。',
-                );
-              }
-              return identity;
-            }
-
-            '''
-            marker = 'function retentionExpiry(now: Date): Date {'
-            if marker not in text:
-              raise SystemExit('retention helper marker not found')
-            text = text.replace(marker, insertion + marker, 1)
-            path.write_text(text)
-          elif draft_marker not in text:
-            raise SystemExit('resolveDraftIdentity is missing')
-          PY
-          if ! git diff --quiet; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
-            git commit -m "feat: 承認repositoryのidentity helperを復元"
-            git push origin HEAD:agent/weekly-planning-server-idempotency
-          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Capture focused tests
-        id: focused
-        shell: bash
-        run: |
-          set +e
-          npm run test:run -- \
-            src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.test.ts \
-            src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.recovery.test.ts \
-            src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.serverCompletion.test.ts \
-            src/hooks/usePlannerAppState.weeklyApproval.test.tsx \
-            > operation-recovery-tests.log 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: operation-recovery-test-log
-          path: operation-recovery-tests.log
-      - name: Fail when focused tests failed
-        if: steps.focused.outputs.status != '0'
-        run: exit 1
+      - name: Run tests
+        run: npm run test:run
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Check pull request diff
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/${{ github.base_ref }}...HEAD
