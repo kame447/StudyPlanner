@@ -5,7 +5,7 @@ import {
   type RefObject,
 } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanDraft } from '../../../types/domain';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
@@ -101,11 +101,16 @@ function turnResult(sourceTurn: string): WeeklyPlanningTurnExecutionResult {
 
 describe('useWeeklyPlanningApplication', () => {
   let storageHarness: MemoryStorageHarness;
+  let restoreWindow: () => void;
 
   beforeEach(() => {
     storageHarness = createMemoryStorageHarness();
-    installWeeklyPlanningTestStorage(storageHarness.storage);
+    restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     executeWeeklyPlanningTurnMock.mockReset();
+  });
+
+  afterEach(() => {
+    restoreWindow();
   });
 
   it('rejects a second submission while the first turn is active', async () => {
