@@ -35,6 +35,10 @@ const FORBIDDEN_IDENTITY_KEYS = new Set([
   'secret',
   'apikey',
   'cookie',
+  'tracesubjecttoken',
+  'tracesubjectepoch',
+  'actortoken',
+  'actorepoch',
 ]);
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
