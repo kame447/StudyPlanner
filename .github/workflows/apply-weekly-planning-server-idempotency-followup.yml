@@ -20,56 +20,45 @@ jobs:
       - name: Apply follow-up patches
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
 
           app = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts')
           text = app.read_text()
-          old = """        async findExistingPlanId({ sourceDraftBlockId }) {
-                    const sourceId = buildWeeklyPlanningPlanSourceId({
-                      approvalOperationId: operation.approvalOperationId,
-                      sourceDraftBlockId,
-                    });
-                    const structuredMatch = plans.find((plan) =>
-                      plan.userId === authenticatedUserId
-                      && plan.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE
-                      && plan.sourceId === sourceId,
-                    );
-                    if (structuredMatch) return structuredMatch.id;
-
-                    const legacyMarker = `[weekly-source:${sourceDraftBlockId}]`;
-                    return plans.find((plan) =>
-                      plan.userId === authenticatedUserId
-                      && plan.memo.includes(legacyMarker),
-                    )?.id;
-                  },"""
-          new = """        async findExistingPlanId({ sourceDraftBlockId }) {
+          pattern = re.compile(
+              r"        async findExistingPlanId\(\{ sourceDraftBlockId \}\) \{.*?        \},\n        async saveBlock",
+              re.DOTALL,
+          )
+          replacement = """        async findExistingPlanId({ sourceDraftBlockId }) {
                     const legacyMarker = `[weekly-source:${sourceDraftBlockId}]`;
                     return plans.find((plan) =>
                       plan.userId === authenticatedUserId
                       && plan.sourceType !== WEEKLY_PLANNING_PLAN_SOURCE_TYPE
                       && plan.memo.includes(legacyMarker),
                     )?.id;
-                  },"""
-          if old not in text:
-              raise SystemExit('application duplicate lookup pattern not found')
-          app.write_text(text.replace(old, new, 1))
+                  },
+                  async saveBlock"""
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'application duplicate lookup replacement count was {count}')
+          app.write_text(text)
 
           repository = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts')
           text = repository.read_text()
-          old = """    async completeOperation(operation) {
-                  const userId = requireNonempty(operation.userId, '利用者');"""
-          new = """    async completeOperation(operation) {
+          marker = "    async completeOperation(operation) {\n      const userId = requireNonempty(operation.userId, '利用者');"
+          replacement = """    async completeOperation(operation) {
                   const expectedItemCount = operation.items.filter(
                     (item) => item.status === 'saved',
                   ).length;
                   if (expectedItemCount === 0) return;
                   const userId = requireNonempty(operation.userId, '利用者');"""
-          if text.count(old) != 2:
-              raise SystemExit(f'completeOperation pattern count was {text.count(old)}')
-          text = text.replace(old, new)
+          count = text.count(marker)
+          if count != 2:
+              raise SystemExit(f'completeOperation marker count was {count}')
+          text = text.replace(marker, replacement)
           text = text.replace(
-              "expectedItemCount: operation.items.length,",
-              "expectedItemCount,",
+              'expectedItemCount: operation.items.length,',
+              'expectedItemCount,',
           )
           repository.write_text(text)
           PY
