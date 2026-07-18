@@ -21,6 +21,10 @@ import {
 } from '../weeklyPlanningTurnController';
 import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplication';
 import {
+  classifyWeeklyPlanningApprovalAvailability,
+  type WeeklyPlanningApprovalAvailability,
+} from './weeklyPlanningApprovalAvailability';
+import {
   loadWeeklyPlanningApprovalOperations,
   saveWeeklyPlanningApprovalOperations,
 } from './weeklyPlanningApprovalLedgerStorage';
@@ -37,6 +41,7 @@ export interface UseWeeklyPlanningApplicationInput {
 export interface WeeklyPlanningApplication {
   state: PlanningState;
   pendingDraftBlocks: WeeklyPlanDraftBlock[];
+  approvalAvailability: WeeklyPlanningApprovalAvailability;
   canEditDraftBlocks: boolean;
   submitTurn: (userText: string) => Promise<WeeklyPlanningTurnSubmissionResult>;
   cancelTurn: () => boolean;
@@ -83,6 +88,10 @@ export function useWeeklyPlanningApplication({
     () => planningState.draftBlocks.filter((block) => block.status === 'draft'),
     [planningState.draftBlocks],
   );
+  const approvalAvailability = classifyWeeklyPlanningApprovalAvailability({
+    blocks: pendingDraftBlocks,
+    userId: ownerId,
+  });
   const canEditDraftBlocks = !planningState.pendingTurn && !planningState.pendingApproval;
 
   async function submitTurn(userText: string): Promise<WeeklyPlanningTurnSubmissionResult> {
@@ -126,6 +135,7 @@ export function useWeeklyPlanningApplication({
   return {
     state: planningState,
     pendingDraftBlocks,
+    approvalAvailability,
     canEditDraftBlocks,
     submitTurn,
     cancelTurn: () => cancelWeeklyPlanningControlledTurn({
