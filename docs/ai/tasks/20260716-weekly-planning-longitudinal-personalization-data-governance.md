@@ -3,6 +3,7 @@
 Status: planned / product decision recorded
 Priority: P1
 Requirement IDs: P7-PERSONALIZATION-001
+Updated: 2026-07-18
 
 ## 1. 背景
 
@@ -97,6 +98,7 @@ StudyPlannerは、単発の予定生成ではなく、利用者ごとの学習�
 - admin access controlとaudit log
 - traceとpersonalization storageの責務分離
 - sensitive free-textの一般化・redaction policy
+- week-start profile変更時の週間計画storage key移行、または旧keyからの互換読み替え。`studyplanner.weeklyPlanning.<userId>.<weekStartDate>`に保存済みの会話・仮予定を設定変更だけで不可視にしない。
 
 ## 4. 受け入れ条件
 
@@ -106,6 +108,7 @@ StudyPlannerは、単発の予定生成ではなく、利用者ごとの学習�
 - profile factは出典、信頼度、scope、最終確認日を持つ。
 - 一時的な週の条件をrecurring profileへ無断昇格しない。
 - profile訂正が次回計画へ反映される。
+- 週の始まり設定を変更しても、既存の週間計画会話・仮予定が旧storage keyへ取り残されない。移行または互換読み替えは中断・再実行に耐える。
 - account deletionで関連データをprimary storageから30日以内に削除する。
 - 通常管理者が会話原文・要配慮情報を閲覧できない。
 - 利用規約だけでなく、初回画面上で利用目的と必須性を短く表示する。
@@ -114,5 +117,6 @@ StudyPlannerは、単発の予定生成ではなく、利用者ごとの学習�
 ## 5. Exit conditions
 
 - emulatorでprofile ownership、権限、TTL、訂正、account deletionを検証する。
+- week-start変更前後のstorage migrationまたは互換読み替えを、既存会話・仮予定を保持したfixtureで検証する。
 - privacy/legal reviewで、利用目的の明示、要配慮個人情報、未成年者、国外利用、委託先・第三者提供を確認する。
 - production deploy checklistへ規約version、acceptance timestamp、schema version、TTL policyを追加する。

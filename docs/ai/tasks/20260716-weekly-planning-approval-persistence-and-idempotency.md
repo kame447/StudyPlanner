@@ -39,6 +39,7 @@ approval operation ledgerはlocalStorageにあり、duplicate検索は各tabが�
 - `20260718-weekly-planning-approval-save-side-effect-isolation.md`を完了し、保存関数が永続`Plan.id`を返すこと。
 - Firestore transactionまたはdeterministic document IDで、claimとPlan writeをどこまで原子的に扱えるか確認する。
 - legacy exam previewとbehavior-aware previewのoperation identityを列挙する。
+- 着手時に変更規模を見積もり、`PlanSourceType`、`sourceId`、decoder、既存Plan migrationからなるprovenance schema移行がserver claim実装と独立して検証可能なら、先行subtaskへ分割する。分割しない場合は同一PRである必要性をEntry reportに記録する。
 
 ## 5. 対象ファイル
 
@@ -144,6 +145,7 @@ Plan write成功
 
 - claimとPlan writeを別transactionにすると新しいcrash windowを作る。原子性またはrecovery手順を必須とする。
 - `PlanSourceType`変更はrepository decoder、admin/report画面、既存test fixtureへ波及する。
+- provenance schema移行とserver claimを同一PRへ詰め込むとreview範囲が過大化する。独立検証可能なら先行subtaskへ分割する。
 - semantic fingerprintを安易に採用すると、ユーザーが意図した同時刻・同内容の別予定を誤って拒否する。
 - retentionとaccount deletionは個人データ方針と整合させる。
 

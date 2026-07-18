@@ -128,7 +128,7 @@ saveWeeklyPlanningState
 
 ## 16. Exit conditions
 
-- current contract statusへreload後behavior previewは再計算必須であることを記録する。
+- reload後behavior previewを再計算必須とするproduct decisionは`docs/ai/weekly-planning-current-contract-status.md` §5.1へ記録済みである。実装結果と齟齬が生じた場合だけ同節を更新する。
 - focused test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
 - Issue #43のbrowser scenarioへreload表示・再計算を同期する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
