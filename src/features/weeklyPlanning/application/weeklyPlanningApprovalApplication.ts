@@ -25,6 +25,7 @@ interface WeeklyPlanningApprovalApplicationInput {
   plans: Plan[];
   approvalOperations: readonly WeeklyDraftApprovalOperation[];
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
+  completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   getState: () => PlanningState;
   dispatch: (action: WeeklyPlanningAction) => PlanningState;
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
@@ -64,6 +65,7 @@ export async function approveWeeklyPlanningDraftBlocks({
   plans,
   approvalOperations,
   saveWeeklyApprovedPlan,
+  completeWeeklyApprovalOperation,
   getState,
   dispatch,
   onOperationCompleted,
@@ -114,20 +116,10 @@ export async function approveWeeklyPlanningDraftBlocks({
       shouldContinue: () => ownsPendingApproval(getState(), pending),
       dependencies: {
         async findExistingPlanId({ sourceDraftBlockId }) {
-          const sourceId = buildWeeklyPlanningPlanSourceId({
-            approvalOperationId: operation.approvalOperationId,
-            sourceDraftBlockId,
-          });
-          const structuredMatch = plans.find((plan) =>
-            plan.userId === authenticatedUserId
-            && plan.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE
-            && plan.sourceId === sourceId,
-          );
-          if (structuredMatch) return structuredMatch.id;
-
           const legacyMarker = `[weekly-source:${sourceDraftBlockId}]`;
           return plans.find((plan) =>
             plan.userId === authenticatedUserId
+            && plan.sourceType !== WEEKLY_PLANNING_PLAN_SOURCE_TYPE
             && plan.memo.includes(legacyMarker),
           )?.id;
         },
@@ -151,6 +143,9 @@ export async function approveWeeklyPlanningDraftBlocks({
       },
     });
     onOperationCompleted(result);
+    if (result.status === 'completed' && completeWeeklyApprovalOperation) {
+      await completeWeeklyApprovalOperation(result);
+    }
 
     if (!ownsPendingApproval(getState(), pending)) return;
 

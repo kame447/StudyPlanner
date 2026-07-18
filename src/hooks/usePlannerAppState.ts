@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPlanFromDraft } from '../domain/planner';
 import { upsertByKey } from '../lib/collections';
 import { minutesBetween, sortByDateTime } from '../lib/date';
-import { plannerRepository } from '../repositories';
+import {
+  getWeeklyPlanningApprovalPlanRepository,
+} from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
+import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
@@ -72,6 +75,7 @@ interface PlannerAppState {
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
+  completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -118,6 +122,8 @@ interface PlannerAppState {
 
 export function usePlannerAppState(): PlannerAppState {
   const { notice, showNotice, dismissNotice } = useNoticeState();
+  const weeklyPlanningApprovalPlanRepository =
+    getWeeklyPlanningApprovalPlanRepository();
   const {
     booting,
     user,
@@ -253,6 +259,10 @@ export function usePlannerAppState(): PlannerAppState {
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    if (draft.userId !== user.id) {
+      throw new Error('承認予定の所有者が一致しません。');
+    }
+
     if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
       throw new Error('終了時刻は開始時刻より後にしてください。');
     }
@@ -263,7 +273,7 @@ export function usePlannerAppState(): PlannerAppState {
     );
 
     try {
-      const savedPlan = await plannerRepository.upsertPlan(nextPlan);
+      const savedPlan = await weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft);
       setWeeklyApprovedPlanOverlay((current) =>
         sortByDateTime(
           upsertByKey(
@@ -284,6 +294,15 @@ export function usePlannerAppState(): PlannerAppState {
       );
       throw error;
     }
+  }
+
+  async function completeWeeklyApprovalOperation(
+    operation: WeeklyDraftApprovalOperation,
+  ): Promise<void> {
+    if (!user?.id || operation.userId !== user.id) {
+      throw new Error('承認操作の所有者が一致しません。');
+    }
+    await weeklyPlanningApprovalPlanRepository.completeOperation(operation);
   }
 
   return {
@@ -321,6 +340,7 @@ export function usePlannerAppState(): PlannerAppState {
     closePlanEditor,
     savePlanDraft,
     saveWeeklyApprovedPlan,
+    completeWeeklyApprovalOperation,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
