@@ -22,6 +22,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
+  conversationId: string;
   traceRequestId: string;
 }
 
@@ -67,10 +68,12 @@ export async function executeWeeklyPlanningTurn(
     }, {
       useAiDialoguePlanner: true,
       userId: input.userId,
+      conversationId: input.conversationId,
       traceRequestId: input.traceRequestId,
     })
     : await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput, {
       userId: input.userId,
+      conversationId: input.conversationId,
       traceRequestId: input.traceRequestId,
     });
   const isExamFlow = Boolean(pipelineOutput.state.examPrepScope);
