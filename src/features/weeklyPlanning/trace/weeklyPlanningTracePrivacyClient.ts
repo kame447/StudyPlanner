@@ -27,7 +27,7 @@ export interface WeeklyPlanningTraceApiClient {
 
 function traceApiBaseUrl(): string {
   const configured = getCloudflareAiProxyUrl().trim();
-  if (!configured) throw new Error('週間計画traceのserver URLが設定されていません。');
+  if (!configured) throw new Error('週間計画の会話記録用サーバーが設定されていません。');
   return configured
     .replace(/\/chat\/completions\/?$/, '')
     .replace(/\/$/, '');
@@ -38,7 +38,7 @@ async function authenticatedTraceRequest(
   init: RequestInit = {},
 ): Promise<TraceApiEnvelope> {
   const currentUser = getFirebaseAuth()?.currentUser;
-  if (!currentUser) throw new Error('ログイン済みユーザーのFirebaseセッションが見つかりません。');
+  if (!currentUser) throw new Error('ログイン状態を確認できませんでした。もう一度ログインしてください。');
   const idToken = await currentUser.getIdToken();
   const response = await fetch(`${traceApiBaseUrl()}${path}`, {
     ...init,
@@ -58,7 +58,7 @@ async function authenticatedTraceRequest(
     throw new Error(
       typeof payload.error === 'string' && payload.error.trim()
         ? payload.error.trim()
-        : `週間計画trace APIがstatus ${response.status}を返しました。`,
+        : `週間計画の会話記録を処理できませんでした（${response.status}）。`,
     );
   }
   return payload;
