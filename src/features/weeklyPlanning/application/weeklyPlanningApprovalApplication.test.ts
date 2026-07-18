@@ -161,6 +161,7 @@ describe('weeklyPlanningApprovalApplication', () => {
     const store = createStore();
     const firstSave = deferred<Plan>();
     const savedSourceIds: string[] = [];
+    let firstDraft: PlanDraft | undefined;
     let completedOperation: WeeklyDraftApprovalOperation | undefined;
 
     const approval = approveWeeklyPlanningDraftBlocks({
@@ -170,7 +171,10 @@ describe('weeklyPlanningApprovalApplication', () => {
       async saveWeeklyApprovedPlan(draft) {
         const sourceBlockId = readSourceBlockId(draft);
         savedSourceIds.push(sourceBlockId);
-        if (sourceBlockId === 'block-1') return firstSave.promise;
+        if (sourceBlockId === 'block-1') {
+          firstDraft = draft;
+          return firstSave.promise;
+        }
         return persistedPlan(draft, `persisted-plan-${sourceBlockId}`);
       },
       getState: store.getState,
@@ -182,8 +186,55 @@ describe('weeklyPlanningApprovalApplication', () => {
 
     await vi.waitFor(() => expect(savedSourceIds).toEqual(['block-1']));
     store.dispatch({ type: 'reset_session' });
-    firstSave.resolve(persistedPlan({
-      ...createPlanFromDraft as never,
-    } as never, 'unused'));
+    firstSave.resolve(persistedPlan(firstDraft!, 'persisted-plan-block-1'));
+    await expect(approval).resolves.toBeUndefined();
+
+    expect(savedSourceIds).toEqual(['block-1']);
+    expect(completedOperation?.status).toBe('partially_saved');
+    expect(completedOperation?.items.map((item) => item.status)).toEqual(['saved', 'pending']);
+    expect(store.getState().pendingApproval).toBeUndefined();
+    expect(store.getState().lastAssistantMessage).toBeUndefined();
+  });
+
+  it('stops before the second save after the selected week is replaced', async () => {
+    const store = createStore();
+    const firstSave = deferred<Plan>();
+    const savedSourceIds: string[] = [];
+    let firstDraft: PlanDraft | undefined;
+    let completedOperation: WeeklyDraftApprovalOperation | undefined;
+
+    const approval = approveWeeklyPlanningDraftBlocks({
+      userId: 'user-1',
+      plans: [],
+      approvalOperations: [],
+      async saveWeeklyApprovedPlan(draft) {
+        const sourceBlockId = readSourceBlockId(draft);
+        savedSourceIds.push(sourceBlockId);
+        if (sourceBlockId === 'block-1') {
+          firstDraft = draft;
+          return firstSave.promise;
+        }
+        return persistedPlan(draft, `persisted-plan-${sourceBlockId}`);
+      },
+      getState: store.getState,
+      dispatch: store.dispatch,
+      onOperationCompleted(operation) {
+        completedOperation = operation;
+      },
+    });
+
+    await vi.waitFor(() => expect(savedSourceIds).toEqual(['block-1']));
+    store.dispatch({
+      type: 'load_state',
+      state: createInitialPlanningState('2026-07-20'),
+    });
+    firstSave.resolve(persistedPlan(firstDraft!, 'persisted-plan-block-1'));
+    await expect(approval).resolves.toBeUndefined();
+
+    expect(savedSourceIds).toEqual(['block-1']);
+    expect(completedOperation?.status).toBe('partially_saved');
+    expect(store.getState().weekStartDate).toBe('2026-07-20');
+    expect(store.getState().pendingApproval).toBeUndefined();
+    expect(store.getState().lastAssistantMessage).toBeUndefined();
   });
 });
