@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Plan, PlanDraft, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
+import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
@@ -71,9 +72,11 @@ export function useWeeklyPlanningApplication({
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
   const ownerId = userId?.trim() || 'anonymous';
+  const { weekStartsOn } = useWeeklyPlanningPersonalization();
   const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
+    weekStartsOn,
   );
   const controllerSessionRef = useRef<WeeklyPlanningControllerSession | null>(null);
   const [approvalLedger, setApprovalLedger] = useState<ApprovalLedgerState>(() => ({
@@ -136,6 +139,7 @@ export function useWeeklyPlanningApplication({
           timetableTermId,
           conversationId: pending.conversationId,
           traceRequestId: pending.requestId,
+          weekStartsOn,
         });
       },
     });

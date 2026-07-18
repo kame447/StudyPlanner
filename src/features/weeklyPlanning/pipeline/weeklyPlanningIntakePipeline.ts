@@ -72,6 +72,7 @@ export interface WeeklyPlanningIntakePipelineInput {
   planningDayCount: number;
   sessionPolicy?: Partial<WeeklyDraftCandidateSessionPolicy>;
   currentDateTime?: string;
+  weekStartsOn?: WeeklyPlanningIntakeContext['weekStartsOn'];
   existingPlans?: Plan[];
   scheduleTemplates?: ScheduleTemplate[];
   timetableTermId?: string;
@@ -370,6 +371,7 @@ export function runWeeklyPlanningIntakePipeline(
     selectedDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
     currentDateTime: resolveCurrentDateTime(input),
+    weekStartsOn: input.weekStartsOn,
   });
   return applyClarificationDecision(buildPipelineOutput({
     input,
@@ -476,6 +478,7 @@ function createInterpreterContext(input: WeeklyPlanningIntakePipelineInput): Wee
     selectedDate: input.planningStartDate,
     planningDayCount: input.planningDayCount,
     currentDateTime: resolveCurrentDateTime(input),
+    weekStartsOn: input.weekStartsOn,
   };
 }
 

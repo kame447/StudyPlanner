@@ -15,6 +15,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasAcceptedWeeklyPlanningPolicy() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/profiles/$(request.auth.uid))
+          .data.weeklyPlanningTracePolicy.version == '2026-07-18-v1';
+    }
+
     function canReadOwnedResource() {
       return isOwner(resource.data.userId) || isAdmin();
     }
@@ -117,6 +124,11 @@ service cloud.firestore {
       allow create: if canCreateOwnedResource();
       allow update: if canUpdateOwnedResource();
       allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /weekly_planning_personalization_profiles/{userId} {
+      allow read, create, update, delete: if isOwner(userId)
+        && hasAcceptedWeeklyPlanningPolicy();
     }
 
     match /weekly_planning_approval_operations/{operationId} {

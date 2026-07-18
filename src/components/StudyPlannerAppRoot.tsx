@@ -2,11 +2,16 @@ import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { useEffect, useMemo, useState } from 'react';
 import App from '../App';
 import {
+  WeeklyPlanningPersonalizationProvider,
+} from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
+import { useWeeklyPlanningPersonalizationProfile } from '../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile';
+import {
   isWeeklyPlanningTraceFeatureEnabled,
 } from '../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository';
 import { useWeeklyPlanningTracePolicy } from '../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
+import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { SplashScreen } from './SplashScreen';
 
 function isPasswordUserWaitingForVerification(user: {
@@ -17,11 +22,47 @@ function isPasswordUserWaitingForVerification(user: {
     && user.providerData.some((provider) => provider.providerId === 'password');
 }
 
+function ConsentedStudyPlannerApp({ userId }: { userId: string }) {
+  const personalization = useWeeklyPlanningPersonalizationProfile(userId);
+  const auth = getFirebaseAuth();
+
+  if (personalization.loading) {
+    return <SplashScreen />;
+  }
+
+  if (!personalization.profile?.weekStartsOn) {
+    return (
+      <InitialWeekStartPreferenceScreen
+        error={personalization.error}
+        onSave={personalization.setWeekStartsOn}
+        onRetry={personalization.refresh}
+        onSignOut={async () => {
+          if (auth) await firebaseSignOut(auth);
+        }}
+      />
+    );
+  }
+
+  return (
+    <WeeklyPlanningPersonalizationProvider
+      profile={personalization.profile}
+      setWeekStartsOn={personalization.setWeekStartsOn}
+      resetProfile={personalization.resetProfile}
+    >
+      <App />
+    </WeeklyPlanningPersonalizationProvider>
+  );
+}
+
 function AuthenticatedStudyPlannerApp({ userId }: { userId: string }) {
   const policy = useWeeklyPlanningTracePolicy(userId);
   const auth = getFirebaseAuth();
 
-  if (policy.status === 'accepted' || policy.status === 'disabled') {
+  if (policy.status === 'accepted') {
+    return <ConsentedStudyPlannerApp userId={userId} />;
+  }
+
+  if (policy.status === 'disabled') {
     return <App />;
   }
 

@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
+  CalendarDays,
   ChevronRight,
   FileText,
   Info,
   Mail,
   Palette,
+  RotateCcw,
   ShieldCheck,
   SunMoon,
 } from 'lucide-react';
+import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import {
   THEME_PALETTE_OPTIONS,
   type ThemeMode,
@@ -36,6 +39,11 @@ export function AppSettingsDialog({
 }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
   const [isThemePaletteSectionOpen, setIsThemePaletteSectionOpen] = useState(false);
+  const {
+    weekStartsOn,
+    setWeekStartsOn,
+    resetProfile: resetWeeklyPlanningPersonalization,
+  } = useWeeklyPlanningPersonalization();
   const selectedThemePalette =
     THEME_PALETTE_OPTIONS.find((palette) => palette.id === themePalette) ??
     THEME_PALETTE_OPTIONS[0];
@@ -171,6 +179,46 @@ export function AppSettingsDialog({
                     </div>
                   ) : null}
                 </div>
+              </section>
+
+              <section className="assistant-settings-card">
+                <div className="field">
+                  <span className="settings-field-label">
+                    <CalendarDays aria-hidden="true" size={20} strokeWidth={1.9} />
+                    週の始まり
+                  </span>
+                  <div className="segmented-control">
+                    <button
+                      className={weekStartsOn === 'monday' ? 'segment active' : 'segment'}
+                      onClick={() => void setWeekStartsOn('monday')}
+                      type="button"
+                    >
+                      月曜日
+                    </button>
+                    <button
+                      className={weekStartsOn === 'sunday' ? 'segment active' : 'segment'}
+                      onClick={() => void setWeekStartsOn('sunday')}
+                      type="button"
+                    >
+                      日曜日
+                    </button>
+                  </div>
+                  <p className="detail-note">
+                    「今週」「来週」の解釈と週間計画の保存単位に反映されます。
+                  </p>
+                </div>
+                <button
+                  className="ghost-button"
+                  onClick={() => {
+                    if (window.confirm('学習設定を初期化しますか？')) {
+                      void resetWeeklyPlanningPersonalization();
+                    }
+                  }}
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" size={18} strokeWidth={1.9} />
+                  学習設定を初期化
+                </button>
               </section>
 
               <section className="assistant-settings-card app-settings-placeholder">
