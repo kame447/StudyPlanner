@@ -177,10 +177,12 @@ describe('useWeeklyPlanningApplication', () => {
     await harness.unmount();
   });
 
-  it('rotates controller conversation scope after user and week changes', async () => {
+  it('passes the pending conversationId and rotates it after user and week changes', async () => {
+    const conversationIds: string[] = [];
     const traceRequestIds: string[] = [];
     executeWeeklyPlanningTurnMock.mockImplementation(
       async (input: WeeklyPlanningTurnExecutionInput) => {
+        conversationIds.push(input.conversationId);
         traceRequestIds.push(input.traceRequestId);
         return turnResult(input.userText);
       },
@@ -199,9 +201,13 @@ describe('useWeeklyPlanningApplication', () => {
       await harness.ref.current!.submitTurn('別週の送信');
     });
 
+    expect(conversationIds).toHaveLength(3);
+    expect(new Set(conversationIds).size).toBe(3);
+    expect(conversationIds.every((conversationId) => conversationId.startsWith('weekly-conversation-'))).toBe(true);
     expect(traceRequestIds).toHaveLength(3);
-    expect(new Set(traceRequestIds).size).toBe(3);
-    expect(traceRequestIds.every((requestId) => requestId.endsWith(':request:1'))).toBe(true);
+    expect(traceRequestIds.every((requestId, index) =>
+      requestId === `${conversationIds[index]}:request:1`,
+    )).toBe(true);
     await harness.unmount();
   });
 
