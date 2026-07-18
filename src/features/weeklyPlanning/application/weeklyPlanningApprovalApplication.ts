@@ -26,7 +26,10 @@ interface WeeklyPlanningApprovalApplicationInput {
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
 }
 
-function approvalErrorMessage(kind: string): string {
+function approvalErrorMessage(kind: string, reason?: string): string {
+  if (reason === 'session-runtime-unavailable') {
+    return '再読み込み前の仮予定です。最新条件で作り直してください。';
+  }
   switch (kind) {
     case 'stale_preview_approval_attempt':
       return '現在の条件と一致しない仮予定です。最新条件で再計算してください。';
@@ -85,7 +88,10 @@ export async function approveWeeklyPlanningDraftBlocks({
       userId: authenticatedUserId,
       proposalRecords: snapshot.intakeState?.assumptionProposalRecords ?? [],
     });
-    if (!guard.allowed) throw new Error(approvalErrorMessage(guard.attempt.kind));
+    if (!guard.allowed) {
+      const reason = 'reason' in guard.attempt ? guard.attempt.reason : undefined;
+      throw new Error(approvalErrorMessage(guard.attempt.kind, reason));
+    }
 
     const existingOperation = approvalOperations.find((operation) =>
       operation.userId === authenticatedUserId
