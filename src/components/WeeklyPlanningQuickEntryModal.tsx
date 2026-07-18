@@ -41,15 +41,17 @@ export function WeeklyPlanningQuickEntryModal({
   onSaveLinkedActual,
 }: WeeklyPlanningQuickEntryModalProps) {
   const { state, approvalAvailability, pendingDraftBlocks } = application;
-  const approvalUnavailable =
-    pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible';
-  const weeklyPlanningMessages = approvalUnavailable
+  const unavailableApproval =
+    pendingDraftBlocks.length > 0 && approvalAvailability.kind !== 'eligible'
+      ? approvalAvailability
+      : null;
+  const weeklyPlanningMessages = unavailableApproval
     ? [
         ...state.messages,
         {
           id: 'weekly-planning-approval-unavailable',
           role: 'assistant' as const,
-          content: approvalAvailability.message,
+          content: unavailableApproval.message,
           createdAt: state.messages.at(-1)?.createdAt ?? '1970-01-01T00:00:00.000Z',
         },
       ]
@@ -57,7 +59,7 @@ export function WeeklyPlanningQuickEntryModal({
 
   return (
     <div
-      className={approvalUnavailable ? 'weekly-planning-approval-unavailable' : undefined}
+      className={unavailableApproval ? 'weekly-planning-approval-unavailable' : undefined}
       data-weekly-approval-availability={approvalAvailability.kind}
     >
       <QuickEntryModal
