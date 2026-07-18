@@ -245,10 +245,10 @@ export function AuthScreen({
                 </button>
 
                 <p className="auth-legal-note">
-                  ログインまたは新規登録を行うことで、
-                  <br />
                   <a href="/terms">利用規約</a>および
-                  <a href="/privacy">プライバシーポリシー</a>に同意したものとみなします。
+                  <a href="/privacy">プライバシーポリシー</a>を確認できます。
+                  <br />
+                  データ保存への同意は、初回ログイン後に一度だけ確認します。
                 </p>
 
                 {intent === 'sign-in' ? (
