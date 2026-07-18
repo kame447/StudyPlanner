@@ -105,6 +105,7 @@ export function useWeeklyPlanningApplication({
           plans,
           scheduleTemplates,
           timetableTermId,
+          conversationId: pending.conversationId,
           traceRequestId: pending.requestId,
         });
       },
@@ -143,7 +144,7 @@ export function useWeeklyPlanningApplication({
     removeDraftBlock: (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId }),
     clearDraftBlocks: () => dispatchPlanningAction({ type: 'clear_draft_blocks' }),
     approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({
-      userId: ownerId,
+      userId,
       plans,
       approvalOperations,
       savePlanDraft,
