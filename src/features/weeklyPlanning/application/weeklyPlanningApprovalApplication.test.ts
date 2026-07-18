@@ -11,7 +11,7 @@ import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplic
 
 const metadata: WeeklyPreviewMetadata = {
   previewId: 'preview-partial-retry',
-  stateRevision: 7,
+  stateRevision: 0,
   assumptionDependencies: [],
   approvalEligibility: 'eligible',
   stale: false,
