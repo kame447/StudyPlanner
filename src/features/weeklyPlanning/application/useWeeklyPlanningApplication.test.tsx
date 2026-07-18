@@ -225,6 +225,34 @@ describe('useWeeklyPlanningApplication', () => {
     await harness.unmount();
   });
 
+  it('does not copy user A planning state into user B storage during account switch', async () => {
+    const harness = await renderApplicationHarness({ userId: 'user-a' });
+    const userABlock = createWeeklyPlanningTestDraftBlock({
+      id: 'user-a-draft',
+      userId: 'user-a',
+    });
+
+    await act(async () => {
+      harness.ref.current!.createDraftBlocks([userABlock]);
+    });
+    const userAKey = 'studyplanner.weeklyPlanning.user-a.2026-07-13';
+    const userBKey = 'studyplanner.weeklyPlanning.user-b.2026-07-13';
+    expect(storageHarness.values.get(userAKey)).toContain('user-a-draft');
+
+    await harness.update({ userId: 'user-b' });
+
+    expect(harness.ref.current!.pendingDraftBlocks).toEqual([]);
+    expect(storageHarness.values.has(userBKey)).toBe(false);
+    expect(storageHarness.values.get(userAKey)).toContain('user-a-draft');
+
+    await harness.update({ userId: 'user-a' });
+
+    expect(harness.ref.current!.pendingDraftBlocks.map((block) => block.id)).toEqual([
+      'user-a-draft',
+    ]);
+    await harness.unmount();
+  });
+
   it('loads the approval ledger after remount and skips an already completed operation', async () => {
     const previewMetadata: WeeklyPreviewMetadata = {
       previewId: 'preview-ledger-round-trip',
@@ -249,7 +277,9 @@ describe('useWeeklyPlanningApplication', () => {
     });
 
     expect(firstSave).toHaveBeenCalledTimes(1);
-    const storedLedger = storageHarness.values.get('studyplanner-weekly-approval-ledger-v1');
+    const storedLedger = storageHarness.values.get(
+      'studyplanner-weekly-approval-ledger-v2.user-1',
+    );
     expect(storedLedger).toContain('preview-ledger-round-trip');
     expect(storedLedger).toContain('persisted-ledger-plan');
     await firstHarness.unmount();
