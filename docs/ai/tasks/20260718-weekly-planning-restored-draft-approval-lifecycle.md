@@ -1,119 +1,136 @@
-# リロード後に復元した仮予定の承認lifecycleを定義する
+# リロード後に復元した仮予定を再計算必須として扱う
 
 Status: planned
 Priority: P1
 Requirement IDs: DA-PREVIEW-001
 Updated: 2026-07-18
 Depends on: `20260718-weekly-planning-approval-validation-session-binding.md`
+Product decision: browser reload後のbehavior-aware仮予定は承認不可とし、再計算を必須にする。
 
 ## 1. 背景
 
-2026-07-18の全体監査で、リロード後に復元された仮予定が恒久的に承認不能であることを確認した。
+2026-07-18の監査で、behavior-aware仮予定はlocalStorageから表示復元される一方、承認に必要なsession runtimeとassumption proposal recordsがreloadで失われることを確認した。
 
 観測事実:
 
-- 仮予定と`previewMetadata`(conversationId含む)はlocalStorageへ永続化される(`src/features/weeklyPlanning/weeklyPlanningStorage.ts:631-639`)。
-- 承認検証が参照するsession runtimeはmoduleレベルsingletonで揮発する(`src/features/weeklyPlanning/planning/weeklyPlanningSessionRuntime.ts:10`)。
-- リロード後、`metadata.conversationId`が存在するのにruntimeがnullのため、`validateWeeklyPreviewApproval`は必ず`session-runtime-unavailable`のinvalid扱いになる(`src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts:139-141`)。表示メッセージは「この仮予定は保存できません。最新案を作り直してください。」。
-- intakeStateの`assumptionProposalRecords`はsession-onlyとして保存時にstripされるため、リロード後にruntimeを正しく再構築する材料も現状はない(`weeklyPlanningStorage.ts:565-569`)。
-- つまり、仮予定を復元して表示する一方で、承認だけは必ず失敗する。close-resume契約(modal閉→再表示で復元)と実質矛盾している。
-- Issue #43(実ブラウザでの非同期操作確認)の「処理中に画面を閉じて再表示した場合の復元」はまさにこの領域で未検証。
+- draft blockとpreviewMetadataはlocalStorageへ保存される。
+- `pendingTurn`、`pendingApproval`、`assumptionProposalRecords`はsession-onlyとしてload時に除去される。
+- session runtimeはmodule singletonでありreload後はnullになる。
+- conversationId付きpreviewはruntime不在時に`session-runtime-unavailable`でfail-closedになる。
+- modal close/reopenは同一JavaScript session内なのでruntimeを維持できるが、browser reloadは別契約である。
 
 ## 2. 目的
 
-リロード後の仮予定について「承認できる」か「再計算が必要と明示する」のどちらかへproduct decisionを確定し、実装と表示を一致させる。復元表示されるのに承認だけ黙って失敗する状態を解消する。
+browser reload後のbehavior-aware仮予定を「参考表示はできるが、そのまま承認できない復元案」として明示し、承認操作を出さず、最新条件での再計算を案内する。
 
 ## 3. 計画書との対応
 
-- product spec: `docs/weekly-planning/weekly-planning-spec.md`(reviewable approval)
-- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`(reload時のsanitize、preview authorization)
+- product spec: `docs/weekly-planning/weekly-planning-spec.md`のreviewable apply
+- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`のreload sanitizeとpreview authorization
+- current contract: `docs/ai/weekly-planning-current-contract-status.md` §4–5
 - roadmap: `docs/ai/strategy/weekly-planning-roadmap.md` §3
-- test contract / Requirement ID: DA-PREVIEW-001(reload系scenarioの追加が必要)
+- test contract / Requirement ID: DA-PREVIEW-001
 
 ## 4. Entry conditions
 
-- product decisionを先に確定する(下記10章の選択肢A/B)。決定はcurrent contract statusへ記録する。
-- `20260718-weekly-planning-approval-validation-session-binding.md`の完了後に着手する(conversationIdが実値になってから復元仕様を決める)。
-- 復元時に必要な検証材料(stateRevision、仮定の解決状態)の最小集合を確認する。
+- validation session binding taskを完了し、実conversationIdでruntime availabilityを判定できるようにする。
+- UIがapproval applicationと別の簡易判定を再実装しないよう、application層でapproval availabilityを分類する入口を決める。
+- legacy metadataなしblockは現行互換経路を維持する。
 
 ## 5. 対象ファイル
 
-- 変更(選択肢により変動。実装を広げず、決定した側だけを変更する):
-  - A案: `src/features/weeklyPlanning/weeklyPlanningStorage.ts`(runtime要点の永続化とload時再構築)、`weeklyPlanningSessionRuntime.ts`(再構築入口)
-  - B案: `src/components/NaturalLanguageAssistant.tsx`(復元blockの「再計算が必要」表示と承認ボタン非表示)、`useWeeklyPlanningApplication.ts`(復元判定の公開)
-- 新規: なし
-- テスト: 保存→リロード(runtimeクリア)→承認の経路テスト。storage round-trip検証。
+- 変更候補:
+  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`
+  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`またはapproval availability用pure helper
+  - `src/components/NaturalLanguageAssistant.tsx`
+  - 必要なら`src/components/WeeklyPlanningQuickEntryModal.tsx`
+  - storage/load test
+- 新規: 必要ならapproval availability型とpure classifier
+- テスト: save→reload相当runtime clear→表示/承認可否、close/reopen回帰
 
 ## 6. 現在の処理経路
 
 ```text
-保存: saveWeeklyPlanningState(draftBlocks + previewMetadata永続化、proposalRecordsはstrip)
-リロード: loadWeeklyPlanningState(pendingTurn/pendingApproval除去、blocks復元)
-承認: validateWeeklyPreviewApproval → conversationIdあり && runtime null
-→ session-runtime-unavailable → 常に拒否
+saveWeeklyPlanningState
+→ draftBlocks + previewMetadataを保存
+→ reload
+→ loadWeeklyPlanningStateでsession-only情報を除去
+→ draftは表示
+→ approve click
+→ runtime unavailable
+→ generic errorで拒否
 ```
 
 ## 7. 確認済みの事実
 
-- リロード後に新しいturnを送信するとruntimeは再publishされるが、conversationId/stateRevisionは新会話のものであり、復元blockのmetadataとは一致しないため、いずれにせよ承認不能のまま。
-- behaviorMetadataを持たないlegacy blockは`legacyPreviewId`経路で承認可能(こちらはruntime不要)。挙動が復元経路によって非対称。
+- localStorageへproposal recordsを保存しないことは現行の明示的なsecurity boundaryである。
+- runtimeをlocalStorageから再構築するには、改ざん耐性とserver-side trustを含む追加設計が必要である。
+- 現行のserver-side idempotency taskは未実装であり、reload後承認を安全に許可する根拠がない。
+- legacy metadataなしblockはruntime不要で承認できるため、本taskで一律禁止しない。
 
 ## 8. 未確認事項
 
-- 実ブラウザでの再現(Issue #43)。
-- 復元後の仮定(assumption)の有効性をどこまで保証すべきかというproduct判断。
+- 「最新条件で作り直す」を専用buttonにするか、既存入力欄と明示文だけで再依頼させるか。
+- 復元案を個別削除できる既存UIとの文言配置。
 
 ## 9. 問題点
 
-- 「復元して見せるが承認は必ず失敗し、理由も再計算誘導も文脈なしに表示される」は、progressive disclosure・reviewable applyのUX原則に反する。
-- fail-closed自体は安全側だが、失敗が恒久的であることをUIが伝えない。
+現在は承認不能であることを事前表示せず、押下後のgeneric errorで初めて伝えるため、復元表示と操作可能性が一致しない。
 
 ## 10. 修正方針
 
-いずれかをproduct decisionとして確定してから実装する。
-
-- A案(承認可能にする): runtime snapshotの要点(conversationId、stateRevision、仮定提案の解決状態)を週間計画状態と同じ保存境界へ永続化し、load時にruntimeを再構築する。保存材料の改ざん・不整合はfail-closedを維持する。
-- B案(再計算必須と明示する): 復元blockを「再計算が必要」stateとしてUIに明示し、承認ボタンを出さず、再計算導線を提示する。検証ロジックは変えない。
-
-推奨はB案先行(小さく安全)+A案は`20260716-weekly-planning-approval-persistence-and-idempotency.md`のserver-side設計と合わせて再検討。
+- product decisionとしてB案を採用する。runtime snapshotとproposal recordsをlocalStorageへ追加保存しない。
+- application層はdraft群のapproval availabilityを少なくとも`eligible`、`recompute_required`、`blocked`へ分類し、reasonをUIへ公開する。
+- behavior metadataにconversationIdがあり、対応runtimeが存在しない、またはconversation/revisionが一致しない復元案は`recompute_required`とする。
+- `recompute_required`では承認buttonを非表示またはdisabledにし、「再読み込み前の仮予定です。最新条件で作り直してください。」等の明示文を表示する。
+- approval function側のfail-closed guardは維持し、UI判定だけに依存しない。
+- 再計算は既存の会話入力・仮予定生成経路を再利用する。自動でAI requestを開始しない。
+- modal close/reopenだけでは`recompute_required`へ変更しない。
 
 ## 11. 触らない範囲
 
-- 承認検証の判定規則(fail-closed方針を弱めない)
-- server-side永続化
-- preview生成、scheduler
-- 決定しなかった側の案の実装
+- runtime/proposal recordsのlocalStorage永続化
+- server-side runtime snapshot
+- 自動再計算
+- legacy metadataなしblockの承認互換
+- schedulerとpreview生成条件
 
 ## 12. 受け入れ条件
 
-- リロード後の仮予定に対し、UIの表示と承認可否が一致する(承認できないなら承認導線が出ない、または明示的な再計算誘導が出る)。
-- 復元→再計算→新しい仮予定→承認のhappy pathが通る。
-- legacy block(behaviorMetadataなし)の承認経路の挙動を変えない。
-- fail-closed境界(改ざんデータ、他ユーザーmetadata)を弱めない。
+- behavior-aware仮予定を作成しbrowser reload相当のloadを行うと、案は参考表示されるが承認buttonは操作できない。
+- UIに再計算が必要な理由と次の操作が表示される。
+- approval functionを直接呼んでもfail-closedで保存されない。
+- 同一session内のmodal close/reopenでは承認可能状態を維持する。
+- 復元案を破棄し、同じ会話条件から新previewを生成した後は承認できる。
+- legacy metadataなしblockの承認経路を変更しない。
+- 改ざんmetadata、別user、conversation mismatchを承認可能へ昇格しない。
 
 ## 13. テスト観点
 
-- unit: load後のruntime有無と承認可否判定。
-- integration: 保存→load(runtimeクリア)→承認試行→期待動作(A案: 承認成功 / B案: 導線非表示と誘導表示)。
-- browser/manual: 仮予定作成→リロード→表示と操作の一致を確認(Issue #43と統合)。
-- regression: storage round-trip、close-resume(リロードなし)の既存契約。
-- property/fuzz: storage validationの既存propertyテストを維持。
+- unit: approval availability classifierのruntime unavailable/mismatch/eligible分岐。
+- integration: state保存→runtime clear→load→UI propsと直接approval拒否。
+- component: 承認button非表示またはdisabled、再計算案内表示。
+- browser/manual: 作成→reload→案内→再作成→承認。
+- regression: modal close/reopen、legacy block、個別削除。
+- property/fuzz: storage validatorの既存property testを維持する。
 
 ## 14. リスク
 
-- A案はlocalStorageへ仮定状態を置くため、改ざんによる承認バイパスを防ぐ検証が必要。
-- B案は再計算頻度が上がり、AI呼び出しコストが増える。
+- UIだけで判定すると直接callback経路から保存できるため、domain guardを維持する。
+- reloadとmodal closeを混同するとPR #5のclose-resume改善を退行させる。
+- 再計算によりAI呼出し回数は増えるが、信頼できないlocal snapshotから承認可能runtimeを復元するより安全性を優先する。
 
 ## 15. Dependencies
 
 - 先行: `20260718-weekly-planning-approval-validation-session-binding.md`。
-- 関連: `20260716-weekly-planning-approval-persistence-and-idempotency.md`(A案の恒久解はserver-side設計に含める)。
+- 関連: `20260716-weekly-planning-approval-persistence-and-idempotency.md`。将来server-side snapshotを導入する場合だけ承認可能化を再検討する。
+- component fileを変更するcontroller/UI split taskとは直列に統合する。
 
 ## 16. Exit conditions
 
-- product decisionをcurrent contract statusへ記録する。
+- current contract statusへreload後behavior previewは再計算必須であることを記録する。
 - focused test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
-- browser確認の残項目をIssue #43へ同期する。
+- Issue #43のbrowser scenarioへreload表示・再計算を同期する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
 
 ## 17. 実装担当への指示

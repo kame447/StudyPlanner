@@ -1,8 +1,9 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-17
-Current main verified baseline: `2af1a5ed8af181a1d7e847e72a44a9a1626249d9`
+Updated: 2026-07-18
+Current code audit baseline: `37b1146a56139c28b52624b11ff0e705a69a5544`
+Task docs audit input: `2d6b482e5610a91895dd7f57c33aa967214c84cb`
 Post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
 PR #24 completion record: [20260717-weekly-planning-period-short-answer-and-sunday-boundary.md](tasks/closed/20260717-weekly-planning-period-short-answer-and-sunday-boundary.md)
 PR #26 completion record: [20260717-weekly-planning-kanji-absolute-date-guard.md](tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
@@ -73,14 +74,15 @@ PR #26で、算用数字・漢数字・混在表記の月日を共通tokenizer�
 
 ## 4. sessionと非同期lifecycle
 
-PR #5 merge後のcurrent contractは次である。
+current contractは次である。
 
 - 会話messages、intake state、preview候補、draftは`PlanningState`をsession ownerとする。
 - 保存対象sessionはclosed storage validatorを通す。
 - `pendingTurn`、`pendingApproval`、session-local proposal recordはload時に除去する。
-- request ID、対象週、開始revisionの不一致はstale resultとして扱う。
+- conversation ID、turn ID、request ID、対象週、開始revisionの不一致はstale resultとして扱う。
 - pending turnまたはapproval中の許可されていないmutationを拒否する。
 - `clear_conversation`と`reset_session`を別操作として扱う。
+- retryは新しいturn IDとrequest IDを持つ。
 
 表示上modalを閉じることと、session cancelは同じではない。
 
@@ -88,7 +90,7 @@ PR #5 merge後のcurrent contractは次である。
 modal close / presentation component unmount
   → sessionを維持する。完了resultはsessionへcommitできる
 
-selected week変更 / session reset / explicit cancellation / revision不一致
+selected week変更 / session reset / explicit cancellation / ownership不一致
   → 旧resultを現在stateへ適用しない
 
 browser reload中の未完了request
@@ -97,7 +99,7 @@ browser reload中の未完了request
 
 architecture、roleplay planに残る「closeまたはpresentation unmountだけでactive requestを無効化する」という記述はcurrent contractではない。
 
-Current main `2af1a5e`に対するGitHub Actions run `29582279740`では、targeted 423 tests、full 1118 tests、TypeScript、production build、diff checkが成功した。静的確認ではsession/preview/storage/approvalはproduction接続済みである。一方、request envelopeのconversation/turn identity、explicit cancel、clear-conversation UI、Ctrl/Meta+Enter、IME guard、focus restorationは未接続であり、entrypoint ownership taskで実装する。browser roleplayは未検証である。
+2026-07-18のentrypoint ownership実装では、controller sessionがconversation/turn/request identityを発行し、production entrypointへexplicit cancellation、clear conversation、Ctrl/Meta+Enter、IME guard、focus restorationを接続した。focused 23 tests、週間計画887 tests、full 1147 tests、TypeScript、production build、diff checkが成功した記録がある。実ブラウザでのclose-resume、週変更、reset、explicit cancellation、IME、focus restorationは未検証である。
 
 ## 5. previewとapproval
 
@@ -107,8 +109,33 @@ Current main `2af1a5e`に対するGitHub Actions run `29582279740`では、targe
 - preview候補はsession stateで所有し、個別削除、全破棄、draft昇格を扱う。
 - stale previewとpending-assumption previewを保存前に拒否する。
 - item ledgerは`userId + sourceDraftBlockId`をkeyにpartial retryと同一browser内のduplicate抑止を行う。
+- behavior-aware previewのrevisionはintake stateのrevision domainであり、`PlanningState.revision`と直接比較しない。
+- preview authorizationには当該turnの実conversationIdを用い、fallback定数をproduction identityとして扱わない。
 
 現行ledgerはlocalStorage境界であり、multi-tab、別端末、storage消去後の重複保存を完全には防げない。server-side persistence taskをP1として扱う。
+
+2026-07-18の監査で、現行codeには次の未修正問題があることを確認した。
+
+- 週間承認が手動editor用`savePlanDraft`を利用し、週外日付保存でselected weekとapproval stateを変更し得る。
+- controllerの実conversationIdがexecutor/pipelineへ渡らず、behavior preview/runtimeがfallback定数を使う。
+- approval applicationがpreview自身のrevisionとfake proposal recordsをfallback検証入力へ渡す。
+- resetまたは週変更でapproval ownershipを失っても、残りitemの保存処理が継続する。
+- approval operationは全item処理後にlocalStorageへ一括保存され、途中crashと複数clientのexact-onceを保証しない。
+
+これらはroadmapの承認系active taskを正とし、現行実装を安全完成扱いしない。
+
+### 5.1 browser reload後の復元仮予定
+
+2026-07-18に次をproduct decisionとして確定した。
+
+- modal close/reopenは同一JavaScript session内のpresentation lifecycleであり、runtimeが維持される限り承認可能状態を保つ。
+- browser reload後はsession runtimeとsession-only proposal recordsを信頼可能に復元できないため、復元されたbehavior-aware仮予定をそのまま承認しない。
+- 復元案は参考表示できるが、承認buttonを非表示またはdisabledとし、最新条件での再計算を明示する。
+- approval domainのfail-closed guardは維持し、UI判定だけへ依存しない。
+- legacy metadataなしblockの互換経路は変更しない。
+- 将来server-sideで信頼できるruntime snapshotを導入した場合だけ、reload後承認可能化を再検討する。
+
+実装taskは`docs/ai/tasks/20260718-weekly-planning-restored-draft-approval-lifecycle.md`を正とする。
 
 ## 6. conversation traceと長期個別最適化データ
 

@@ -4,109 +4,125 @@ Status: planned
 Priority: P1
 Requirement IDs: DA-TURN-001, DA-PREVIEW-001
 Updated: 2026-07-18
-Depends on: `20260718-weekly-planning-app-orchestration-extraction.md`(completed)
+Depends on: `closed/20260718-weekly-planning-app-orchestration-extraction-completion.md`
 
 ## 1. 背景
 
-2026-07-18の全体監査で、App分離時に追加された唯一のテスト`weeklyPlanningAppOrchestrationArchitecture.test.ts`がソース文字列の`toContain`検査のみであることを確認した。
+2026-07-18の監査で、App分離時に追加された`weeklyPlanningAppOrchestrationArchitecture.test.ts`が主にソース文字列の配置を検査しており、application層の結合挙動を固定していないことを確認した。
 
 観測事実:
 
-- `useWeeklyPlanningApplication.ts`と`weeklyPlanningApprovalApplication.ts`を対象とする挙動テストが存在しない(`grep`で確認。importするテストは文字列検査のみ)。
-- 下層(reducer、turn controller、approval domain、storage)には単体テストがあるが、application層の結合部で起きる問題 — 保存副作用による週切替、reset競合、userId非対称、捏造検証入力 — はすべてテストの隙間に落ちており、監査で見つかったMAJOR問題は既存1163テストで1件も検出されない。
-- 既存テストは`savePlanDraft`を副作用のない純粋mockで代替しており、実物の副作用(selectedDate変更等)を再現しない。
+- `useWeeklyPlanningApplication.ts`と`weeklyPlanningApprovalApplication.ts`を実行する結合テストがない。
+- reducer、turn controller、approval domain、storageには単体テストがあるが、hookで依存を組み立てた後の競合は検出できない。
+- 既存approvalテストは保存関数を副作用のないmockへ置き換えるため、選択週変更、reset競合、user切替、ledger保存境界を再現しない。
+- 2026-07-18監査で見つかった承認系MAJORは、既存1163テストでは検出されなかった。
 
 ## 2. 目的
 
-application層の結合挙動(実reducer + 実storage(mock localStorage) + 副作用を再現するfake保存関数)を検証するテストharnessが存在し、20260718系の各修正taskがこのharness上で受け入れ条件を検証できる。
+実reducer、実storage境界、制御可能な非同期依存を組み合わせたapplication層テストharnessを追加し、会話・承認・user境界の回帰を挙動として検出できるようにする。
+
+既知バグの壊れた出力を正解として固定しない。M1、M3、M4、M5に対応する回帰assertionは、各修正taskと同じ変更でgreenにする。
 
 ## 3. 計画書との対応
 
-- product spec: none(テスト整備)
-- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`(module ownership)
+- product spec: none(テスト基盤)
+- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`のmodule ownership
 - roadmap: `docs/ai/strategy/weekly-planning-roadmap.md` §3
 - test contract / Requirement ID: DA-TURN-001, DA-PREVIEW-001
 
 ## 4. Entry conditions
 
-- 既存のテスト基盤(`weeklyPlanningPreviewSessionLifecycle.test.tsx`のreact-test-renderer + localStorage mockパターン)を流用できるか確認する。
-- 20260718系修正taskとの順序を決める(harness先行が望ましいが、各taskへ最低限のテストを含める形でも可)。
+- `closed/20260718-weekly-planning-app-orchestration-extraction-completion.md`を確認する。
+- `weeklyPlanningPreviewSessionLifecycle.test.tsx`等の既存React test harnessを再利用できるか確認する。
+- deferred Promise、mock localStorage、user/week rerenderを決定的に制御できる構成を先に作る。
 
 ## 5. 対象ファイル
 
-- 変更: なし(production codeを変更しない)
+- 変更: 既存の構造tripwire testは削除しない。
 - 新規:
   - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.test.tsx`
   - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.test.ts`
-  - 必要なら`src/features/weeklyPlanning/testUtils/`へfake保存関数・localStorage harness
-- テスト: 上記そのもの
+  - 必要なら`src/features/weeklyPlanning/testUtils/`の共通harness
+- テスト: 上記
 
 ## 6. 現在の処理経路
 
 ```text
-App → useWeeklyPlanningApplication
-→ useWeeklyPlanningState(実reducer + localStorage)
+App
+→ useWeeklyPlanningApplication
+→ useWeeklyPlanningState(real reducer + localStorage)
 → submitWeeklyPlanningControlledTurn / approveWeeklyPlanningDraftBlocks
-→ savePlanDraft(注入)
+→ injected async dependencies
+→ approval ledger state / localStorage
 ```
 
 ## 7. 確認済みの事実
 
-- 現状の文字列検査テストはimportの別名・再輸出で無力化され、挙動退行を検出しない(tripwireとしては残す価値がある)。
-- 全テスト1163件・production buildは37b1146で成功。
+- controllerとreducerはref経由で同期的に二重送信を拒否する。
+- application hookはcontroller、state hook、approval application、ledger storageを結合する。
+- 現在の構造テストは責務の逆流を検出するtripwireとしては残す価値があるが、挙動保証にはならない。
+- 監査基準`37b1146`では全テスト1163件とproduction buildが成功している。
 
 ## 8. 未確認事項
 
-- react-test-rendererの継続利用可否(React versionとの整合)。
+- 現行React versionで`react-test-renderer`を継続利用するか、既存の別component test基盤を使うか。
+- localStorage eventを利用するmulti-tab再現は本taskへ含めず、server-side idempotency taskへ委譲できるか。
 
 ## 9. 問題点
 
-- 責務分離の受け入れ条件が「文字列がどのファイルにあるか」でしか固定されておらず、分離後のglue層が無防備。
+責務分離の受け入れ条件が「実装文字列がどのfileにあるか」へ偏っており、application層の依存組み立てと非同期競合が無防備である。
 
 ## 10. 修正方針
 
-テストのみを追加する。最低限、次のシナリオを固定する。
+まず共通harnessを作り、現行で成立すべき次の挙動をpassing testとして固定する。
 
-1. 二重送信: `submitTurn`連打で2回目が`accepted: false`になり、状態が1turn分しか進まない。
-2. 週変更中のstale result: 送信中に`selectedDate`を別週へ変更→完了resultが破棄され、旧週の状態が汚染されない。
-3. 承認の部分失敗→再試行: 1item失敗→再承認で失敗分のみ保存され、成功済みは`skipped_duplicate`または既存operation再利用になる。
-4. 承認中reset競合: 保存await中の`resetSession`後の状態(現行挙動をcharacterizationとして固定し、`20260718-weekly-planning-approval-inflight-interruption.md`の修正時に期待値を更新する)。
-5. 保存関数の副作用: `savePlanDraft`相当のfakeが`selectedDate`変更を再現し、週切替時の現行挙動を固定する(同様にcharacterization)。
-6. userId切替: userId変更後に旧userの状態・sessionが引き継がれない。
-7. ledger round-trip: `onOperationCompleted`→localStorage保存→再mountでの読み込み。
+1. 二重送信: 同一render中の連打でも2回目は`accepted: false`となる。
+2. stale turn: 送信中の週変更後に旧resultが新週へcommitされない。
+3. 部分失敗再試行: 成功済みitemを再保存せず、失敗分だけを再試行する。
+4. controller scope: userIdまたは週が変わった後の次turnは新conversationとして開始する。
+5. ledger round-trip: operation保存後のremountで同一userのoperationを復元する。
+6. test utility: 保存中にreset、週変更、user変更を差し込めるdeferred saveを提供する。
+
+M1とM5の現行不具合について、壊れた最終状態をpassing assertionとして固定しない。修正taskより先に再現testを置く必要がある場合は、対応task名を付けた`test.todo`等とし、通常suiteの成功条件へ壊れた挙動を組み込まない。利用中のVitestで期待失敗APIを確認せず`test.fails`へ依存しない。
 
 ## 11. 触らない範囲
 
-- production code全般(バグを見つけても修正せず、対応する修正taskへ報告する)
-- 既存テストの削除・書き換え(文字列検査テストは残す)
+- production codeのバグ修正
+- server-side idempotency
+- UI文言・CSS
+- 既存構造tripwire testの削除
 
 ## 12. 受け入れ条件
 
-- 上記シナリオ1〜7がテストとして存在し、現行mainで全て成功する(characterizationは現行挙動を固定)。
-- 各テストがmock文字列検査ではなく、実reducer・実storage経由の状態遷移を検証している。
-- テスト実行時間が既存suiteを著しく悪化させない(目安: application層テスト合計で数秒以内)。
+- application層を実行するunit/integration testと共通harnessが追加される。
+- 上記1〜5が現行契約に対するpassing testになる。
+- M1/M5の壊れた挙動を正解としてassertするtestが存在しない。
+- 後続taskがdeferred save、user/week rerender、localStorageを再実装せず利用できる。
+- testは実reducerまたは実storage境界を通り、ソース文字列検査だけで完了しない。
 
 ## 13. テスト観点
 
-- unit: approval application(fake依存注入、React不使用)。
-- integration: hook全体(react-test-renderer + localStorage mock)。
-- browser/manual: なし(Issue #43が担当)。
-- regression: 本harness自体が回帰網になる。
-- property/fuzz: 不要(既存のsession state propertyテストを維持)。
+- unit: approval applicationへの依存注入とoperation更新。
+- integration: hook全体、user/week rerender、localStorage round-trip。
+- browser/manual: なし。Issue #43が担当する。
+- regression: 二重送信、stale discard、partial retry、user scope。
+- property/fuzz: 不要。既存session property testを維持する。
 
 ## 14. リスク
 
-- characterizationテストが現行バグを「正」として固定するため、各修正taskで期待値更新を忘れない。テスト内へ対応するtask名をコメントで残す。
+- React effect順序へ依存するtestは、単なるmock呼出し順ではなく保存keyとstate identityをassertする必要がある。
+- test utilityがproduction型を緩めないよう、テスト専用fileに閉じる。
 
 ## 15. Dependencies
 
-- 先行: なし。20260718系修正taskより先に着手することを推奨する(修正の受け皿になる)。
-- 並行変更禁止: なし(テストのみ)。
+- 先行: なし。20260718系のproduction修正より先にharnessを作ることを推奨する。
+- browser verification pendingのentrypoint taskは、本test基盤着手のblockerではない。
+- 並行変更禁止: なし。後続taskが同じtest fileを変更する場合は直列に統合する。
 
 ## 16. Exit conditions
 
-- 全test、TypeScript、production build、`git diff --check`が成功する。
-- 追加したシナリオ一覧と、characterizationとして固定した現行バグの一覧を最終報告へ記載する。
+- targeted test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
+- 新規harnessの利用方法と、後続taskへ委譲した回帰caseを最終報告へ記載する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
 
 ## 17. 実装担当への指示

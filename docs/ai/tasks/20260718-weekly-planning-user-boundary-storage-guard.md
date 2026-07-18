@@ -7,98 +7,127 @@ Updated: 2026-07-18
 
 ## 1. 背景
 
-2026-07-18の全体監査で、ユーザー境界をまたぐlocalStorage書き込みの窓を2件確認した。
+2026-07-18の監査で、userId変更直後に旧userの週間計画stateを新user keyへ書き得るeffect順序と、全user共通のapproval ledger keyを確認した。
 
 観測事実:
 
-- `useWeeklyPlanningState`(`src/features/weeklyPlanning/useWeeklyPlanningState.ts:35-42`)は、load effect(宣言順1番目)とsave effect(2番目)が同一commitで実行される。userId変更直後のcommitでは、load effectが新userの状態をsetした後、save effectが旧render closureの`planningState`(旧userの内容)を新userのkeyへ書き込む。直後の再renderで正しい状態に上書きされるため過渡的だが、その間にタブが終了すると旧userの会話・仮予定が新userのkeyへ残る。
-- trace有効構成では`StudyPlannerAppRoot`が認証変化でAppをremountするため発生しないが、trace無効構成(`isWeeklyPlanningTraceFeatureEnabled()`がfalse、またはauth未初期化)ではAppがmountされたままuserIdが変わり得る。
-- 承認ledgerは全ユーザー共通の単一key `studyplanner-weekly-approval-ledger-v1`で保存される(`src/features/weeklyPlanning/application/weeklyPlanningApprovalLedgerStorage.ts:7`)。判定時は`userId`でfilterしているため誤動作はないが、同一ブラウザの別ユーザーに操作履歴(previewId、時刻、item数)が残る。
+- `useWeeklyPlanningState`はload effectの後にsave effectを宣言している。
+- userId変更renderではload effectが新user stateをsetするが、同じcommitのsave effectは旧render closureの`planningState`を新user keyへ保存する。
+- 次renderで正しいstateへ上書きされるが、その間にtab終了等が起きると旧user dataが残る。
+- approval ledgerは`studyplanner-weekly-approval-ledger-v1`の単一keyに全user operationを保存する。
+- application hookのledger stateはlazy initializerでmount時に1回だけ読み込まれ、userId変更時のreload契約がない。
 
 ## 2. 目的
 
-旧userの週間計画状態が新userのstorage keyへ書き込まれる窓がなくなる。承認ledgerがユーザー別keyで保存される。
+stateと保存先identityを同一snapshotとして扱い、旧user/weekのstateを新identity keyへ書かない。approval ledgerはuser別にload/saveし、user切替時に旧user operationを新user keyへ書かない。
 
 ## 3. 計画書との対応
 
 - product spec: none
-- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`(storage boundary)
+- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`のstorage boundary
 - roadmap: `docs/ai/strategy/weekly-planning-roadmap.md` §3
 - test contract / Requirement ID: none
 
 ## 4. Entry conditions
 
-- effect実行順とclosureの関係を、React 18のcommit順序で再確認する。
-- ledgerのkey分割に伴う既存データのmigration(旧keyからuserId別keyへの振り分け、または読み捨て)方針を決める。
+- React effect順序だけでなく、各renderがcaptureしたstate identityをtestで確認する。
+- legacy共通ledger内に複数userのoperationが混在する前提でmigrationを設計する。
+- trace featureのremount有無に依存せず安全なhook契約にする。
 
 ## 5. 対象ファイル
 
 - 変更:
-  - `src/features/weeklyPlanning/useWeeklyPlanningState.ts`(save effectへ「直近loadを完了したuserId/week」ガードを追加)
-  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalLedgerStorage.ts`(userId別key化とmigration)
-  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`(ledger load/saveへownerIdを渡す)
-- 新規: なし
-- テスト: userId切替時の書き込み先検証。ledger key分割とmigration。
+  - `src/features/weeklyPlanning/useWeeklyPlanningState.ts`
+  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalLedgerStorage.ts`
+  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`
+- 新規: 必要ならstorage identity型またはmigration helper
+- テスト:
+  - user/week rerender時の保存key
+  - ledger user分離
+  - legacy migrationの中断・再実行
 
 ## 6. 現在の処理経路
 
 ```text
-userId変更render
-→ effect1: loadWeeklyPlanningState(newUser) → replacePlanningState
-→ effect2: saveWeeklyPlanningState(newUserId, 旧planningState closure)  ← 窓
-→ 再render → effect2: 正しい状態を保存(修復)
+render(new userId, old planningState closure)
+→ load effect: new user stateをset
+→ save effect: old planningStateをnew user keyへ保存
+→ next render: new stateで上書き
+
+ledger
+→ mount時に共通keyを1回load
+→ user変更後も同じReact stateを保持
+→ 共通keyへ全operationを保存
 ```
 
 ## 7. 確認済みの事実
 
-- 最終的なstorage状態は自己修復するため、通常操作では顕在化しない。
-- `saveWeeklyPlanningState`は`weekStartDate`不一致時に書き込みをskipするガードを既に持つが、userId不一致のガードはない。
+- `planningState.weekStartDate !== weekStartDate` guardは週不一致を一部防ぐが、同じ週開始日の別userを区別しない。
+- load effectでidentity refを先に新値へ更新し、後続save effectでrefだけを比較する案では不十分である。同じcommitのsave effectが旧state closureを持つため、refは新identityでもstateは旧userのままになる。
+- ledger operation自体はuserIdを持つため、legacy keyをuser別にpartitionできる。
 
 ## 8. 未確認事項
 
-- anonymous(未ログイン)→ログインの遷移で、'anonymous' keyに実データが載る経路が本当に存在しないか(現状UIは未ログインで週間計画へ到達不能)。
+- anonymous keyに実operationが保存済みの既存利用者がいるか。
+- userIdをそのままlocalStorage keyへ含める既存規約と、encode/hashの必要性。
 
 ## 9. 問題点
 
-- ユーザー境界のデータ混入は量が少なくても privacy incident として扱いが重い。窓の狭さに依存せず構造的に塞ぐべきである。
+- state内容と保存先identityが別々に管理され、effect順序によるcross-user writeが可能である。
+- ledgerをkeyだけuser別化しても、hook stateをuser変更時に入れ替えなければ旧user operationを新user keyへ保存する競合が残る。
 
 ## 10. 修正方針
 
-- `useWeeklyPlanningState`にloadを完了したidentity(userId + weekStartDate)をrefで記録し、save effectはidentity一致時のみ書き込む。
-- ledgerは`studyplanner-weekly-approval-ledger-v1.<userId>`等のユーザー別keyへ移し、初回loadで旧keyから当該userの分だけを引き継ぐ。旧keyは移行完了後に削除する。
+- `useWeeklyPlanningState`ではplanning stateと、そのstateをloadした`userId + weekStartDate` identityを同じReact state snapshotとして保持する。例として`{ identity, planningState }`を単一stateにする。
+- save effectはrender時にcaptureしたsnapshot.identityと現在propsから導出したidentityが一致する場合だけ保存する。先行load effectがmutationしたrefだけを根拠にしない。
+- reducer dispatchは現在snapshotのplanningStateを更新し、identityを維持する。identity切替中に旧stateへactionを適用しないtestを追加する。
+- approval ledger APIはuserIdを必須引数にし、user別keyを選択する。
+- application hookは`approvalOperations`とownerIdを同じsnapshotとして保持し、owner変更renderでは旧owner operationsを新owner keyへ保存しない。新owner ledgerをloadしてから保存可能にする。
+- legacy共通key migrationはoperationをuserIdごとにpartitionする。current user分だけ移す場合は、残りuser分をlegacy keyへ書き戻し、空になるまで削除しない。全groupを一括移行する場合は、全user keyへのmerge成功後だけlegacy keyを削除する。
+- migrationは既存per-user operationとapprovalOperationIdでmergeし、再実行しても重複しない。
 
 ## 11. 触らない範囲
 
-- 状態のschema、storage validation規則
-- 承認判定ロジック
-- trace storage
+- planning state schema自体の変更
+- approval判定規則
+- server-side ledger
+- trace repository
+- account deletion全体
 
 ## 12. 受け入れ条件
 
-- userId変更直後のcommitで、旧userの状態が新userのkeyへ書き込まれない(effect順を再現するテストで固定)。
-- ledgerがユーザー別keyへ保存され、別userのoperationが読み込まれない。
-- 既存の単一key ledgerからのmigrationが1回だけ実行され、既存の重複防止(existingOperation再利用)が引き続き機能する。
+- 同一週開始日のuser A→user B切替renderで、AのstateをB keyへ一度も書かない。
+- 週切替でも旧週stateを新週keyへ書かない。
+- load完了前のidentityへsaveしない。
+- user Aのledger stateをuser B keyへ書かず、user Bへ切替後はBのoperationだけを返す。
+- legacy共通keyにA/B両方のoperationがある場合、Aの初回migration後もBのoperationを失わない。
+- migration中断後の再実行でoperationが重複せず、既存duplicate preventionが維持される。
+- trace feature flagによるApp remountの有無にかかわらずtestが通る。
 
 ## 13. テスト観点
 
-- unit: save effectガード。ledger key選択とmigration。
-- integration: userId切替シナリオ(`20260718-weekly-planning-application-behavior-tests.md`のharnessを利用)。
-- browser/manual: 同一ブラウザで2アカウントを切り替え、localStorageのkey内容を目視確認。
-- regression: 通常の保存・復元round-trip、部分失敗再試行。
+- unit: identity snapshot比較、ledger key、partition/merge migration。
+- integration: hook rerenderでuser/week切替、同一commit中のsetItem呼出し内容を検証する。
+- browser/manual: 同一ブラウザで2accountを切り替え、各key内容と復元stateを確認する。
+- regression: 通常save/load、approval partial retry、sign-out→sign-in。
+- property/fuzz: legacy ledgerをuserIdでpartitionし、operation集合が欠落・重複しないproperty testを検討する。
 
 ## 14. リスク
 
-- ledger migrationの失敗は重複保存防止の弱体化につながる。migration失敗時は旧key読み取りへフォールバックし、fail-openにしない。
+- refだけのguardは監査対象bugを直さないため採用しない。
+- migration途中でlegacy keyを先に削除すると他user dataを失う。copy/merge完了後に削除または残余を書き戻す。
+- raw userIdをkeyへ含める場合、ログ・スクリーンショットへの露出を既存storage key規約と合わせる。
 
 ## 15. Dependencies
 
-- 先行: なし。
-- 関連: `20260716-weekly-planning-approval-persistence-and-idempotency.md`(server-side化の際にledger keyの再設計と合流する)。
+- 先行推奨: `20260718-weekly-planning-application-behavior-tests.md`のuser rerender harness。
+- 関連: `20260716-weekly-planning-approval-persistence-and-idempotency.md`。
+- approval ledger APIを変更するtaskとは直列に実施する。
 
 ## 16. Exit conditions
 
-- 全test、TypeScript、production build、`git diff --check`が成功する。
-- migration手順と旧keyの扱いを文書化する。
+- targeted test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
+- migration手順、crash時挙動、legacy key削除条件を最終報告へ記載する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
 
 ## 17. 実装担当への指示

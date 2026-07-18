@@ -1,8 +1,9 @@
 # weeklyPlanning documentation index
 
 Status: canonical / active
-最終更新: 2026-07-17
-Current main baseline: `55f8e32c68cfd057494fadec0ed208cba267db12`
+最終更新: 2026-07-18
+Current code audit baseline: `37b1146a56139c28b52624b11ff0e705a69a5544`
+Task docs audit input: `2d6b482e5610a91895dd7f57c33aa967214c84cb`
 
 ## Active documents
 
@@ -36,54 +37,59 @@ weekly-planning-current-contract-status.md
 
 ## Current queue
 
-現在のroot taskは14件である(うち1件はcompleted record化待ち)。2026-07-18の全体監査(main 37b1146)で20260718系taskを追加した。
-
-### P0
-
-1. [20260717-weekly-planning-kanji-absolute-date-guard.md](tasks/20260717-weekly-planning-kanji-absolute-date-guard.md)
-   - 漢数字を含む絶対日付を曜日として誤解釈しない。
-2. [20260714-weekly-planning-dialogue-stack-verification.md](tasks/20260714-weekly-planning-dialogue-stack-verification.md)
-   - `main`上のmodule、自動検証、production entrypoint、browser behaviorを区別して確認する。
+`docs/ai/tasks/`直下のroot taskは12件である。完了済みtaskはrootに含めない。2026-07-18の承認application監査で追加・再設計したtaskを含む。
 
 ### P1
 
-3. [20260716-weekly-planning-entrypoint-request-ownership.md](tasks/20260716-weekly-planning-entrypoint-request-ownership.md)
-   - conversation、turn、request、revision、selected week、reset、explicit cancel、retryのownershipを統一する。
-4. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
+1. [20260716-weekly-planning-entrypoint-request-ownership.md](tasks/20260716-weekly-planning-entrypoint-request-ownership.md)
+   - controller/envelopeの実装は完了し、browser verificationが残る。
+2. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
    - trace subject token、全session本文のredaction、180日TTL、account deletion、限定admin accessを実装する。
-5. [20260716-weekly-planning-longitudinal-personalization-data-governance.md](tasks/20260716-weekly-planning-longitudinal-personalization-data-governance.md)
+3. [20260716-weekly-planning-longitudinal-personalization-data-governance.md](tasks/20260716-weekly-planning-longitudinal-personalization-data-governance.md)
    - account-linked profile、原履歴180日、profile訂正、account deletion、初回利用条件を実装する。
-6. [20260716-weekly-planning-approval-persistence-and-idempotency.md](tasks/20260716-weekly-planning-approval-persistence-and-idempotency.md)
-   - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。単一端末クラッシュ変種とdedupe脆弱性を2026-07-18に追加。
-7. [20260718-weekly-planning-application-behavior-tests.md](tasks/20260718-weekly-planning-application-behavior-tests.md)
-   - application層の結合挙動テストharnessを整備する。20260718系修正taskの受け皿として先行推奨。
-8. [20260718-weekly-planning-approval-save-side-effect-isolation.md](tasks/20260718-weekly-planning-approval-save-side-effect-isolation.md)
-   - 承認保存を画面副作用から分離し、週外日付承認での状態自壊を解消する。
-9. [20260718-weekly-planning-approval-validation-session-binding.md](tasks/20260718-weekly-planning-approval-validation-session-binding.md)
-   - 承認前検証をフォールバック定数・捏造値から実セッション値へ接続する。
-10. [20260718-weekly-planning-approval-inflight-interruption.md](tasks/20260718-weekly-planning-approval-inflight-interruption.md)
-    - 承認実行中のreset・週変更で未保存itemの保存を中断する。
-11. [20260718-weekly-planning-restored-draft-approval-lifecycle.md](tasks/20260718-weekly-planning-restored-draft-approval-lifecycle.md)
-    - リロード後に復元した仮予定の承認lifecycleを確定する。
+4. [20260716-weekly-planning-approval-persistence-and-idempotency.md](tasks/20260716-weekly-planning-approval-persistence-and-idempotency.md)
+   - server-side claim、item単位progress、実Plan ID、構造化provenanceによりmulti-tab・multi-device・crash retryを一意化する。
+5. [20260718-weekly-planning-application-behavior-tests.md](tasks/20260718-weekly-planning-application-behavior-tests.md)
+   - application層の実reducer・storage・非同期競合を検証する共通harnessを整備する。
+6. [20260718-weekly-planning-approval-save-side-effect-isolation.md](tasks/20260718-weekly-planning-approval-save-side-effect-isolation.md)
+   - 週間承認をeditor・画面遷移・notice副作用のない保存関数へ分離し、実Plan IDを返す。
+7. [20260718-weekly-planning-approval-validation-session-binding.md](tasks/20260718-weekly-planning-approval-validation-session-binding.md)
+   - pending conversationId、intake revision、実proposal recordsをpreview/runtime/approvalへ接続する。
+8. [20260718-weekly-planning-approval-inflight-interruption.md](tasks/20260718-weekly-planning-approval-inflight-interruption.md)
+   - ownership喪失後に次itemのlookup・保存を開始せず、古いstateへ完了messageを適用しない。
+9. [20260718-weekly-planning-restored-draft-approval-lifecycle.md](tasks/20260718-weekly-planning-restored-draft-approval-lifecycle.md)
+   - browser reload後のbehavior-aware仮予定は再計算必須とし、承認導線と表示を一致させる。
 
 ### P2
 
-12. [20260716-weekly-planning-trace-scalability-and-schema-migration.md](tasks/20260716-weekly-planning-trace-scalability-and-schema-migration.md)
+10. [20260716-weekly-planning-trace-scalability-and-schema-migration.md](tasks/20260716-weekly-planning-trace-scalability-and-schema-migration.md)
     - pagination、query cost、index、archive、versioned decoderを設計する。
-13. [20260716-weekly-planning-controller-ui-responsibility-split.md](tasks/20260716-weekly-planning-controller-ui-responsibility-split.md)
+11. [20260716-weekly-planning-controller-ui-responsibility-split.md](tasks/20260716-weekly-planning-controller-ui-responsibility-split.md)
     - conversation controller、preview controller、view componentの責務を分離する。
-14. [20260718-weekly-planning-user-boundary-storage-guard.md](tasks/20260718-weekly-planning-user-boundary-storage-guard.md)
-    - userId切替時のstorage書き込み窓と承認ledgerのユーザー別key化。
+12. [20260718-weekly-planning-user-boundary-storage-guard.md](tasks/20260718-weekly-planning-user-boundary-storage-guard.md)
+    - stateとowner identityを同一snapshotとして保存し、ledgerをuser別keyへ安全にmigrationする。
 
-### Completed record化待ち
+### Approval stream execution order
 
-- [20260718-weekly-planning-app-orchestration-extraction.md](tasks/20260718-weekly-planning-app-orchestration-extraction.md)
-  - Status: completed。運用規則に従い`tasks/closed/`のcompletion recordへ統合してrootから閉じる。
+roadmapの番号はpriority内の一覧であり、承認系taskの着手順は各taskのDependenciesを正とする。推奨順は次である。
 
-AI/rules統合方式、「来週」と週の始まり、trace privacy、長期個別最適化データはproduct decision済みである。実装契約はcurrent contract status、post-merge status、roadmap、対応するroot taskを正とする。
+```text
+application behavior test harness
+→ validation session binding / save side-effect isolation
+→ in-flight interruption
+→ reload-restored draft lifecycle
+→ server-side persistence and idempotency
+```
+
+`validation session binding`と`save side-effect isolation`は独立した主原因を持つが、同じapplication fileを変更するため並行実装しない。user-boundary storage guardはledger API変更と競合する場合、server-side persistenceより先に統合する。
+
+AI/rules統合方式、「来週」と週の始まり、trace privacy、長期個別最適化データはproduct decision済みである。browser reload後のbehavior-aware仮予定は、server-sideで信頼できるruntime snapshotを導入するまでは再計算必須とする。
 
 ## Implemented records
 
+- [20260718-weekly-planning-app-orchestration-extraction-completion.md](tasks/closed/20260718-weekly-planning-app-orchestration-extraction-completion.md)
+- [20260717-weekly-planning-kanji-absolute-date-guard.md](tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
+- [20260714-weekly-planning-dialogue-stack-verification.md](tasks/closed/20260714-weekly-planning-dialogue-stack-verification.md)
 - [20260714-weekly-planning-behavior-aware-vertical-slice-completion.md](tasks/closed/20260714-weekly-planning-behavior-aware-vertical-slice-completion.md)
 - [20260714-weekly-planning-dialogue-stack-implementation.md](tasks/closed/20260714-weekly-planning-dialogue-stack-implementation.md)
 - [20260715-weekly-planning-dialogue-path-fix-completion.md](tasks/closed/20260715-weekly-planning-dialogue-path-fix-completion.md)

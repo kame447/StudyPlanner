@@ -4,127 +4,142 @@ Status: planned
 Priority: P1
 Requirement IDs: DA-TURN-001, DA-PREVIEW-001
 Updated: 2026-07-18
-Depends on: `20260716-weekly-planning-entrypoint-request-ownership.md`
+Depends on: `20260716-weekly-planning-entrypoint-request-ownership.md`のimplemented部分
 
 ## 1. 背景
 
-2026-07-18の全体監査で、`validateWeeklyPreviewApproval`へ渡る入力が実セッション値に接続されていないことを確認した。
+2026-07-18の監査で、turn controllerが発行したconversation identityがpreviewとapprovalまで伝播せず、承認applicationが検証入力を捏造していることを確認した。
 
 観測事実:
 
-- `weeklyPlanningTurnExecutor.ts`はpipelineへconversationIdを渡していない。pipelineとpreview bridgeは定数`'weekly-planning-session'`へフォールバックする(`src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts:79`)。全ユーザー・全会話・全週で同一値になるため、`validateWeeklyPreviewApproval`の`conversationMismatch`は決して発火しない。
-- controller sessionは`weekly-conversation-<uuid>`を発行するが(`weeklyPlanningTurnController.ts`)、previewMetadata・session runtimeのconversationIdとは別系統で、接続されていない。
-- 承認application層は`currentStateRevision: firstMetadata?.stateRevision ?? -1`を渡す(`src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts:80`)。これはpreview自身のrevisionを「現在値」とする自己比較であり、runtime不在経路ではstale判定が恒真で素通りする。
-- 同application層は全assumptionDependencyを`status: 'pending'`で捏造した`proposalRecords`を渡す(同:65-77)。runtime不在経路では依存があると常に「未確認の仮定」で拒否される。
-- staleness防御の実体は、module singletonのsession runtime(`weeklyPlanningSessionRuntime.ts`)の`stateRevision`(= `sourceTurns.length`)との数値一致のみである。別会話・別週のruntimeと偶然一致すればstale previewが承認を通過し得る。
-- 承認経路のuserガードが分離時に弱まった。旧`App.tsx`は`if (!user) return;`だったが、現行`useWeeklyPlanningApplication.approveDraftBlocks`は`ownerId`('anonymous'フォールバック)で実行し得る。`submitTurn`は`!userId`で拒否しており非対称。
+- controller sessionは`weekly-conversation-<uuid>`を発行する。
+- `useWeeklyPlanningApplication`のexecute callbackは`pending.conversationId`を受け取るが、`executeWeeklyPlanningTurn`へ渡していない。
+- executorはpipeline optionsへconversationIdを渡さず、pipelineは`weekly-planning-session`へfallbackする。
+- previewMetadataとmodule singleton runtimeが同じ定数conversationIdを使うため、conversation mismatch検証が形骸化する。
+- approval applicationはpreview自身のstateRevisionをcurrent値として渡し、assumption dependencyを全てpendingのfake recordへ変換する。
+- approval経路は未ログイン時にも`anonymous` ownerで開始できる。
 
 ## 2. 目的
 
-previewの承認可否が、実際の会話ID・実際の状態revision・実際の仮定提案の状態に基づいて判定される。フォールバック定数と捏造値がproduction承認経路から消える。
+turn envelope、pipeline、previewMetadata、runtime、approvalが同一の実conversationIdを使用する。承認検証は同じrevision単位と実proposal recordを使い、application層からfake値を排除する。
 
 ## 3. 計画書との対応
 
-- product spec: `docs/weekly-planning/weekly-planning-spec.md`(仮定確認と承認ゲート)
-- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`(preview authorization、request ownership)
+- product spec: `docs/weekly-planning/weekly-planning-spec.md`の仮定確認と承認gate
+- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`のpreview authorizationとrequest ownership
 - roadmap: `docs/ai/strategy/weekly-planning-roadmap.md` §3
 - test contract / Requirement ID: DA-TURN-001, DA-PREVIEW-001
 
 ## 4. Entry conditions
 
-- entrypoint request ownership task(implemented / browser pending)のenvelope設計を確認する。
-- conversationIdをexecutor→pipeline→bridge→previewMetadata→runtimeへ通す配線点を列挙する。
-- 既存の保存済み仮予定(定数conversationId入りpreviewMetadata)との互換方針を決める(拒否か、legacy扱いか)。
+- `20260716-weekly-planning-entrypoint-request-ownership.md`のimplementation recordを確認する。browser verification pendingは本taskのblockerではない。
+- conversationIdはmutableなcontroller session refから読み直さず、当該turnの`pending.conversationId`を正として渡す。
+- preview `stateRevision`が`PlanningState.revision`ではなくintakeの`sourceTurns.length`系であることを確認する。
+- legacy metadataなしblockとbehavior metadataありblockの検証契約を分けて確認する。
 
 ## 5. 対象ファイル
 
 - 変更:
-  - `src/features/weeklyPlanning/weeklyPlanningTurnExecutor.ts`(controller sessionのconversationIdを受け取りpipelineへ渡す)
-  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`(executorへconversationIdを渡す。approve時のuserガード追加)
-  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`(実revision・実proposalRecordsの受け渡し。捏造recordの削除)
-  - `src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts`(フォールバック定数の扱い整理)
+  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`
+  - `src/features/weeklyPlanning/weeklyPlanningTurnExecutor.ts`
+  - `src/features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts`
+  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`
+  - 必要なら`src/features/weeklyPlanning/planning/weeklyPlanningApproval.ts`の引数名・型
 - 新規: なし
 - テスト:
-  - `weeklyPlanningApproval`系の既存テストへ、会話不一致・revision不一致・実proposalRecordsのケースを追加
+  - executor→pipeline conversationId伝播
+  - conversation mismatch
+  - intake revision mismatch
+  - actual proposal status
+  - 未ログインguard
 
 ## 6. 現在の処理経路
 
 ```text
-submitTurn(useWeeklyPlanningApplication)
-→ submitWeeklyPlanningControlledTurn(session.conversationId = weekly-conversation-<uuid>)
-→ executeWeeklyPlanningTurn(conversationIdを渡していない)
-→ pipeline(getConversationId → 'weekly-planning-session')
-→ runHardenedBehaviorAwarePlanningPreviewBridge
-→ publishWeeklyPlanningSessionRuntime(定数conversationId)
-→ previewMetadata.conversationId = 定数
+submitWeeklyPlanningControlledTurn
+→ pending.conversationId = weekly-conversation-<uuid>
+→ execute callback
+→ executeWeeklyPlanningTurn(conversationIdなし)
+→ behavior pipeline fallback = weekly-planning-session
+→ previewMetadata/runtime = fallback定数
 
 approveDraftBlocks
-→ validateWeeklyPreviewApproval(捏造proposalRecords、自己比較revision)
-→ runtime存在時のみruntime値で上書き
+→ current revision = preview自身のrevision
+→ proposalRecords = fake pending records
+→ runtimeが存在する場合だけ実値へ上書き
 ```
 
 ## 7. 確認済みの事実
 
-- runtimeが存在する通常経路では、staleness判定はruntime.stateRevisionとの一致で機能している(定数conversationIdのため会話別の判定はない)。
-- `authorizedUserId`とblockごとの`userId`一致チェックは機能しており、別ユーザーのblock承認は拒否される。
-- 全テスト1163件はこの状態で成功しており、既存テストは定数conversationIdを前提にしたfixtureを使っている。
+- preview/runtimeのrevisionはintake stateの`sourceTurns.length`を基準にしている。
+- `PlanningState.revision`はreducer actionごとに進む別のrevision domainであり、そのままpreview revisionと比較できない。
+- runtimeがある通常経路ではruntime側のrevision/proposal recordsが使用されるが、conversationIdが定数のため会話別所有権を保証しない。
+- block userIdとauthorizedUserIdの一致検証は既に存在する。
+- storageはsession-only proposal recordsを除去するため、reload後のbehavior previewはruntimeなしでfail-closedになる。
 
 ## 8. 未確認事項
 
-- 実AI interpreter経路(`runWeeklyPlanningBehaviorAwarePipelineWithInterpreter`)でのconversationId伝播に追加の分岐がないか。
-- trace系(`logicalConversationId`)との相関付けへの影響。
+- traceの`logicalConversationId`とcontroller conversationIdを同一値にするか、相関IDとして別に維持するか。
+- deterministic/legacy exam previewでmetadataがない場合のcurrent intake revision fixture。
 
 ## 9. 問題点
 
-- 会話所有権の統一(コミット83238cf、entrypoint request ownership task)がpreview/approval層まで届いておらず、検証契約が名目化している。
-- application層がdomain検証の入力を捏造しており、検証の実効性が呼び出し側の作り方に依存する。
+- request ownershipのidentityがpreview authorization境界へ届いていない。
+- revision単位が明記されておらず、`PlanningState.revision`を渡す誤修正が起こり得る。
+- domain validatorのfallback入力をapplication層が捏造している。
 
 ## 10. 修正方針
 
-- 配線の修正であり、検証ロジック自体の意味は変えない。
-  1. controller sessionのconversationIdをexecutor経由でpipeline optionsへ渡す。previewMetadata・runtime・turn envelopeが同一のconversationIdを持つ。
-  2. 承認application層は、reducerの現在stateから実際のrevisionと実際の`assumptionProposalRecords`(intakeState由来。session-onlyであることに留意)を渡す。渡せない場合はruntime必須へ契約を明確化し、捏造recordを削除する。
-  3. `approveDraftBlocks`冒頭に`if (!userId) return;`相当のガードを追加し、`submitTurn`と対称にする。
-- 互換: 既存localStorage内の定数conversationId付き仮予定は、restored-draft lifecycle task(別task)の方針に従い、ここでは「stale扱いで再計算を促す」以上の特別対応をしない。
+1. `WeeklyPlanningTurnExecutionInput`へconversationIdを追加し、`useWeeklyPlanningApplication`はexecute callbackの`pending.conversationId`を渡す。
+2. executorはAI/rules両pipeline optionsへconversationIdを渡す。
+3. production entrypointではpipelineのfallback定数を使用しない。低レベルunit test向けdefaultを残す場合も、production callが必ず実IDを渡すtestを追加する。
+4. behavior metadataありpreviewはruntimeとのconversationId、intake revision、proposal records一致を必須とする。
+5. applicationからfake proposal record生成を削除し、`snapshot.intakeState?.assumptionProposalRecords ?? []`を渡す。
+6. current revision fallbackが必要なlegacy経路では、`snapshot.intakeState?.sourceTurns.length ?? 0`を用いる。`snapshot.revision`は使用しない。
+7. 引数名を変更できる場合は`currentStateRevision`を`currentIntakeRevision`等へ改め、revision domainを型と名称で明示する。
+8. `approveDraftBlocks`冒頭で`!userId`を拒否し、`anonymous` fallbackでapprovalを実行しない。
 
 ## 11. 触らない範囲
 
-- `validateWeeklyPreviewApproval`の判定規則そのもの
-- session runtimeの永続化(`20260718-weekly-planning-restored-draft-approval-lifecycle.md`の範囲)
-- scheduler、preview生成条件、保存境界
-- trace privacy
+- runtime snapshotの永続化
+- restored draftのUI方針
+- approval判定規則のfail-closed緩和
+- scheduler、保存primitive、trace privacy
 
 ## 12. 受け入れ条件
 
-- 会話Aで生成した仮予定を、会話B(reset後の新session)のruntime下で承認しようとすると`stale_preview_approval_attempt`で拒否される。
-- previewMetadata.conversationId、runtime.conversationId、turn envelopeのconversationIdが同一sessionで一致する。
-- 承認前検証へ渡るproposalRecordsが、intakeStateの実際の提案状態を反映する。pending提案が実際に残っている場合のみ「未確認の仮定」で拒否される。
-- `currentStateRevision`の自己比較(`?? -1`フォールバック含む)がproduction経路から消える。
-- 未ログイン状態で`approveDraftBlocks`が実行されない。
-- 既存の正常承認・部分失敗再試行・legacy exam previewの経路が通る。
+- 同一turnのpending envelope、executor input、pipeline options、previewMetadata、runtimeが同じconversationIdを持つ。
+- 会話Aのpreviewを会話Bのruntime下で承認するとstaleとして拒否される。
+- intakeのturn数が変わったpreviewはrevision mismatchで拒否される。
+- `PlanningState.revision`とpreview revisionを直接比較するproduction codeがない。
+- actual proposal recordがacceptedならpending扱いされず、実際にpendingの場合だけ承認を拒否する。
+- fake `weekly-planning-session`、fake duration record、preview自身とのrevision自己比較がapproval production pathから消える。
+- 未ログイン状態ではapproval operationを開始しない。
+- legacy metadataなしblockの互換経路を維持する。
 
 ## 13. テスト観点
 
-- unit: executor→pipelineのconversationId伝播。approvalへの実revision/実record受け渡し。
-- integration: reset→新会話→旧仮予定の承認拒否。pending提案あり/解決済みでの承認可否。
-- browser/manual: 会話リセット後に古い仮予定を承認できないこと、エラーメッセージが再計算を促すこと。
-- regression: 通常の生成→昇格→承認→保存のhappy path。legacy previewId経路。
+- unit: pending.conversationIdのexecutor/pipeline伝播、revision domain、proposal record入力。
+- integration: reset後の新会話runtimeで旧preview承認拒否、accepted/pending proposalの分岐。
+- browser/manual: reset後の旧previewが保存されず、再計算案内になる。
+- regression: 通常生成→draft昇格→承認、部分失敗再試行、legacy exam preview。
 - property/fuzz: 不要。
 
 ## 14. リスク
 
-- conversationIdの一致要求を強めることで、既存ユーザーのlocalStorage内仮予定が承認不能になる(意図的なfail-closed)。メッセージが再計算導線を示すことを確認する。
-- 実proposalRecordsはstorage保存時にstripされる(session-only)。リロード後経路の扱いはrestored-draft taskへ委譲し、本taskでfail-openにしない。
+- 実conversationIdを必須化すると、旧localStorageの定数ID付きbehavior previewは承認不能になる。これはfail-closedとし、restored draft lifecycle taskでUIを一致させる。
+- `PlanningState.revision`とintake revisionの混同をtest fixtureにも持ち込まない。
 
 ## 15. Dependencies
 
-- 先行: `20260716-weekly-planning-entrypoint-request-ownership.md`(envelope設計)。
-- 並行変更禁止: `weeklyPlanningApprovalApplication.ts`を触る他の20260718系taskと直列にする。
+- 先行契約: `20260716-weekly-planning-entrypoint-request-ownership.md`のcontroller/envelope implementation。browser確認完了は不要。
+- 後続: `20260718-weekly-planning-restored-draft-approval-lifecycle.md`、`20260716-weekly-planning-approval-persistence-and-idempotency.md`。
+- 並行変更禁止: `weeklyPlanningApprovalApplication.ts`を触るsave isolation、inflight interruption taskとは直列に実施する。
 
 ## 16. Exit conditions
 
 - focused test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
-- conversationIdの流れ(controller→executor→pipeline→preview→runtime→approval)を1つの図で説明できる。
+- conversationIdとintake revisionの流れを最終報告で説明する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
 
 ## 17. 実装担当への指示

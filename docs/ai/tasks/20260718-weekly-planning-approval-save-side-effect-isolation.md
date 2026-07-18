@@ -4,119 +4,131 @@ Status: planned
 Priority: P1
 Requirement IDs: DA-PREVIEW-001
 Updated: 2026-07-18
-Depends on: `20260718-weekly-planning-app-orchestration-extraction.md`(completed)
+Depends on: `closed/20260718-weekly-planning-app-orchestration-extraction-completion.md`
 
 ## 1. 背景
 
-2026-07-18の全体監査で、仮予定承認が`usePlannerDataState.ts`の`savePlanDraft`を保存プリミティブとして使っていることによる実バグを確認した。
+2026-07-18の監査で、仮予定承認が手動編集用の`savePlanDraft`を保存プリミティブとして利用し、保存と無関係な画面副作用を発生させることを確認した。
 
 観測事実:
 
-- `savePlanDraft`は保存のたびに`setSelectedDate(nextPlan.date)`、`setMonthDate(...)`、`closePlanEditor()`を実行する(`src/hooks/usePlannerDataState.ts:924-929`)。
-- `useWeeklyPlanningState`は`selectedDate`から導出した`weekStartDate`をkeyに状態をロードし直す(`src/features/weeklyPlanning/useWeeklyPlanningState.ts:35-37`)。
-- 仮予定の日付が選択週の外にある場合(「来週の計画」フロー。`pendingPlanningRange`の`next_week` scopeが存在する)、承認1件目の保存でselectedDateが別週へ移動し、承認中の週間計画状態が別週の状態へ差し替わる。`pendingApproval`は消滅し、`complete_approval`はno-opになる。
-- 結果、planは保存されるが、仮予定は旧週のlocalStorageへ未承認のまま残り、成功メッセージも表示されない。
-- `savePlanDraft`は`targetPlanId ?? editingPlanId`へフォールバックする(`src/hooks/usePlannerDataState.ts:917`)。編集セッションと無関係な承認保存が、編集中planの上書きやrecurring編集の早期return(保存せず成功扱い)へ化ける潜在経路がある。現状はPlanEditorPanelがフルオーバーレイのため実質到達不能だが、契約として危険である。
-- `saveBlock`は実planIdを返せず、擬似ID `weekly-plan:<sourceDraftBlockId>` をledgerへ記録している(`src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts:113`)。
+- `savePlanDraft`は`setSelectedDate`、`setMonthDate`、`closePlanEditor`、notice表示を実行する。
+- 週外日付の1件目を保存すると`selectedDate`が別週へ移り、`useWeeklyPlanningState`が別週stateをloadする。
+- 承認開始時の`pendingApproval`が失われ、残りの保存は続く一方、`complete_approval`はno-opとなる。
+- `savePlanDraft`は`targetPlanId ?? editingPlanId`を参照し、週間承認と無関係なeditor stateに影響される。
+- approval applicationは保存後に擬似ID`weekly-plan:<sourceDraftBlockId>`をledgerへ記録している。
 
 ## 2. 目的
 
-週間計画承認が、画面遷移・編集セッション・通知の副作用を持たない保存プリミティブを使い、承認中に週間計画状態が自壊しない。保存結果は実planIdとして記録される。
+週間計画承認が、画面遷移、editor state、per-item noticeを持たない保存関数を利用する。保存関数は永続化した`Plan.id`を返し、承認完了まで同じ週間計画stateを維持する。
 
 ## 3. 計画書との対応
 
-- product spec: `docs/weekly-planning/weekly-planning-spec.md`(承認して保存のUX)
-- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`(save boundary)
+- product spec: `docs/weekly-planning/weekly-planning-spec.md`の明示承認後保存
+- architecture: `docs/architecture/weekly-planning-dialogue-architecture-v4.md`のsave boundary
 - roadmap: `docs/ai/strategy/weekly-planning-roadmap.md` §3
 - test contract / Requirement ID: DA-PREVIEW-001
 
 ## 4. Entry conditions
 
-- `main` 37b1146以降を対象に、`approveWeeklyPlanningDraftBlocks`→`savePlanDraft`→`plannerRepository.upsertPlan`の経路を再調査する。
-- 週外日付の仮予定を実際に生成できる入力(next_week scope)をtest fixtureとして確認する。
-- `20260716-weekly-planning-approval-persistence-and-idempotency.md`のserver-side設計と保存契約が競合しないことを確認する。
+- `approveWeeklyPlanningDraftBlocks`から`plannerRepository.upsertPlan`までの現行経路を再確認する。
+- `createPlanFromDraft`が生成するIDとrepositoryへ保存される`Plan.id`が同一であることを確認する。
+- `20260718-weekly-planning-application-behavior-tests.md`のdeferred save harnessを利用できる場合は先に取り込む。
 
 ## 5. 対象ファイル
 
 - 変更:
-  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`(注入する保存関数の差し替え)
-  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`(実planIdの記録)
-  - `src/App.tsx`(週間計画へ渡す保存依存の選択。画面遷移する`savePlanDraft`ではなく保存専用関数を渡す)
-  - `src/hooks/usePlannerDataState.ts`(副作用なし保存関数の公開。既存`savePlanDraft`の挙動は変えない)
-- 新規: なし(必要なら保存プリミティブ用の小さなadapter)
+  - `src/hooks/usePlannerDataState.ts`
+  - `src/hooks/usePlannerAppState.ts`
+  - `src/App.tsx`
+  - `src/features/weeklyPlanning/application/useWeeklyPlanningApplication.ts`
+  - `src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.ts`
+- 新規: 必要なら副作用なし保存adapter
 - テスト:
-  - `src/features/weeklyPlanning/application/`配下の挙動テスト(`20260718-weekly-planning-application-behavior-tests.md`のharnessを利用)
+  - planner data stateの保存契約test
+  - application層の週外日付承認test
 
 ## 6. 現在の処理経路
 
 ```text
-NaturalLanguageAssistant.handleApproveWeeklyDrafts
-→ useWeeklyPlanningApplication.approveDraftBlocks
-→ approveWeeklyPlanningDraftBlocks (validate → executeWeeklyDraftApproval)
-→ dependencies.saveBlock → savePlanDraft(usePlannerDataState)
-→ setPlans / setSelectedDate / setMonthDate / closePlanEditor / plannerRepository.upsertPlan
+approveDraftBlocks
+→ approveWeeklyPlanningDraftBlocks
+→ executeWeeklyDraftApproval
+→ injected savePlanDraft
+→ editor参照
+→ plans optimistic update
+→ selectedDate / monthDate変更
+→ editor close / notice
+→ plannerRepository.upsertPlan
 ```
 
 ## 7. 確認済みの事実
 
-- 全テスト1163件と本番build成功(37b1146)。既存テストは`savePlanDraft`を副作用のないmockで代替しており、この経路のバグを検出できない。
-- 同一週内の承認では`weekStartDate`が変わらないため状態差し替えは起きない(selectedDateの移動と複数toastのみ)。
-- 承認後に旧週へ戻って再承認すると、memo markerの重複判定で`skipped_duplicate`となり自己修復する。
+- 同一週内の日付ではstate keyが変わらないため、主要な自壊は週外日付で発生する。
+- 保存済みplan自体はrepositoryへ入るため、画面上の失敗と永続データが乖離する。
+- `Plan.id`はrepository upsert前にclient側で確定する現行設計であり、保存専用関数から返却できる。
+- 監査基準`37b1146`の既存testは保存依存を純粋mockにしており、この副作用を再現しない。
 
 ## 8. 未確認事項
 
-- 実ブラウザでのnext_week承認の再現(Issue #43の実ブラウザ確認と合わせて行う)。
-- optimistic updateされた`plans`と週間計画の重複判定の間のタイミング差。
+- optimistic updateの共通化に伴い、手動保存と週間承認でrollback処理をどこまで共有できるか。
+- repository成功後、application state更新前に例外が起きる経路があるか。
 
 ## 9. 問題点
 
-- 保存プリミティブに画面遷移・編集セッション・通知という別責務が混在し、承認applicationがその副作用を前提にできない。
-- 保存結果のplanIdが実IDでないため、承認履歴と通常予定の照合力がない(server-side idempotency設計の障害になる)。
+手動editor向けcommandとrepository保存primitiveが同一関数へ混在し、approval applicationが画面遷移とeditor stateへ暗黙依存している。
 
 ## 10. 修正方針
 
-- application層の修正とする。会話解釈、reducer遷移、schedulerには触れない。
-- `usePlannerDataState`に「予定をupsertし実planIdを返すだけの関数」(例: `savePlanFromWeeklyApproval`)を追加し、週間計画へはそれを注入する。楽観更新(`setPlans`)は維持してよいが、selectedDate/monthDate変更・editor閉鎖・編集セッション参照は行わない。
-- `saveBlock`は返却された実planIdを`savedPlanId`としてledgerへ記録する。
-- 既存`savePlanDraft`の手動予定編集向け挙動は変更しない。
+- `usePlannerDataState`に、週間承認専用のcreate保存契約を公開する。契約は概ね`(draft: PlanDraft) => Promise<Plan>`または`Promise<{ planId: string }>`とし、targetPlanIdやeditingPlanIdを受け取らない。
+- この保存関数は入力検証、Plan生成、optimistic `setPlans`、repository upsert、失敗時rollbackだけを担当する。
+- `selectedDate`、`monthDate`、editor close、recurring scope dialog、noticeを変更しない。
+- `usePlannerAppState`を通じてAppへ公開し、Appは週間計画applicationへこの関数を渡す。
+- application側の依存名を`savePlanDraft`のまま流用せず、画面副作用なしの契約であることが分かる名前へ変更する。
+- approval ledgerの`savedPlanId`には返却された永続`Plan.id`を記録する。
+- 手動編集用`savePlanDraft`の外部挙動は維持する。共通private helperへの抽出は許可するが、週間承認からeditor stateを参照しない。
 
 ## 11. 触らない範囲
 
-- `savePlanDraft`の手動編集経路の挙動(画面遷移・通知)
-- 重複判定方式(memo marker)の変更 — `20260716-weekly-planning-approval-persistence-and-idempotency.md`の範囲
-- scheduler、preview生成、承認前検証の内容
-- UI文言・CSS
+- 手動editorの画面遷移、notice、recurring edit UX
+- memo markerによるdedupeの恒久修正
+- server-side approval claim
+- scheduler、preview生成、承認前検証
+- CSSと表示文言
 
 ## 12. 受け入れ条件
 
-- 選択週の外の日付を含む仮予定を承認しても、`selectedDate`と`weekStartDate`が変化せず、`pendingApproval`が承認完了まで維持される。
-- 承認完了後に`complete_approval`が適用され、保存済みblockが仮予定一覧から消え、完了メッセージが表示される。
-- 承認保存が編集中plan(`editingPlanId`)の有無に影響されない。recurring編集中でも承認保存はハイジャックされない。
-- ledgerの`savedPlanId`が`plannerRepository`の実planIdと一致する。
-- 保存失敗時は従来どおりitemが`failed`となり、部分再試行が動く。
+- 選択週外の日付を含む複数blockを承認しても、`selectedDate`、`monthDate`、`weekStartDate`が変化しない。
+- 全item処理中に同じ`pendingApproval.requestId`が維持される。
+- 保存成功後に`complete_approval`が適用され、保存済みblockがdraft一覧から除去される。
+- editorが開いている場合やrecurring plan編集中でも、週間承認はeditor対象を上書きせずscope dialogを開かない。
+- ledgerの`savedPlanId`が永続化された`Plan.id`と一致する。
+- 保存失敗時のoptimistic rollbackと部分再試行を維持する。
+- per-item noticeを出さず、週間計画側の集約メッセージだけを表示する。
 
 ## 13. テスト観点
 
-- unit: 保存プリミティブが画面状態を変更しないこと。実planId返却。
-- integration: next_week相当の日付を含む承認で`pendingApproval`維持と`complete_approval`適用を確認(実reducer + 実`useWeeklyPlanningState`)。
-- browser/manual: 「来週の計画」を作成し承認 → 画面が現在週のまま、成功メッセージ表示、来週へ移動するとplanが存在する。
-- regression: 同一週内承認、部分失敗再試行、二重クリック防止。
+- unit: 保存専用関数が画面stateとeditor stateを変更せず、永続Plan IDを返す。
+- integration: next-week相当の複数block承認でstate key、pending ownership、完了messageを確認する。
+- browser/manual: 現在週から来週の仮予定を承認し、画面が飛ばず、来週へ移動すると保存planが存在する。
+- regression: 同一週承認、保存失敗rollback、部分再試行、二重承認拒否。
 - property/fuzz: 不要。
 
 ## 14. リスク
 
-- `usePlannerDataState`のAPI追加により、他の保存経路との差異(通知の有無)が生じる。承認完了メッセージは週間計画側の会話メッセージで表示されるため、per-item toastは出さない方針で統一する。
-- server-side idempotency設計(先行task)と保存契約が二重に変わらないよう、実planId返却の契約を先に固定する。
+- 保存処理を複製するとrollbackやvalidationが分岐するため、可能なら副作用なしcoreを共有し、UI副作用を手動保存側で後置する。
+- `Plan.id`返却契約は後続server-side idempotency taskが利用するため、擬似IDへ戻さない。
 
 ## 15. Dependencies
 
-- 先行: なし(単独で着手可能)。
-- 並行変更禁止: `weeklyPlanningApprovalApplication.ts`を変更する`20260718-weekly-planning-approval-inflight-interruption.md`、`20260718-weekly-planning-approval-validation-session-binding.md`とは同一ファイルを触るため、着手順を直列にする。
+- 先行推奨: `20260718-weekly-planning-application-behavior-tests.md`。
+- 後続: `20260716-weekly-planning-approval-persistence-and-idempotency.md`。
+- 並行変更禁止: `weeklyPlanningApprovalApplication.ts`を変更するvalidation binding、inflight interruption taskとは直列に実施する。
 
 ## 16. Exit conditions
 
 - focused test、週間計画suite、全test、TypeScript、production build、`git diff --check`が成功する。
-- 変更ファイルと未確認事項(実ブラウザ確認の残り)を最終報告へ記載する。
+- 実ブラウザ未確認の場合はIssue #43へ残項目を同期する。
 - 完了時はcompletion recordへ統合し、rootから本taskを閉じる。
 
 ## 17. 実装担当への指示
