@@ -5,7 +5,7 @@ import {
 } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEmptyPlanDraft } from '../domain/planner';
+import { createEmptyPlanDraft, createPlanFromDraft } from '../domain/planner';
 import type { Plan } from '../types/domain';
 import { usePlannerAppState } from './usePlannerAppState';
 
@@ -39,8 +39,8 @@ vi.mock('./useAuthSessionState', () => ({
       id: 'user-1',
       email: 'user@example.com',
       username: 'User',
+      avatar: '',
       createdAt: '2026-07-18T00:00:00.000Z',
-      updatedAt: '2026-07-18T00:00:00.000Z',
     },
     bootstrapSession: bootstrapSessionMock,
     signUpWithPassword: stableAsyncNoop,
@@ -50,6 +50,10 @@ vi.mock('./useAuthSessionState', () => ({
     saveUserProfile: stableAsyncNoop,
     signOut: stableAsyncNoop,
   }),
+}));
+
+vi.mock('../data/naturalLanguageCatalog', () => ({
+  loadNaturalLanguageCatalog: stableAsyncNoop,
 }));
 
 vi.mock('./usePlannerDataState', () => ({
@@ -131,24 +135,16 @@ function createDeferred<T>() {
 }
 
 function createExistingPlan(id: string): Plan {
-  return {
-    id,
-    userId: 'user-1',
-    date: '2026-07-13',
-    startTime: '09:00',
-    endTime: '10:00',
+  const draft = {
+    ...createEmptyPlanDraft('user-1', '2026-07-13'),
     title: '先に保存済み',
     subject: '英語',
-    type: 'study',
-    label: '英語',
-    color: '#000000',
-    memo: '',
-    repeat: 'none',
-    repeatUntil: '',
-    excludedDates: [],
-    recurrenceRules: [],
-    createdAt: '2026-07-18T00:00:00.000Z',
-    updatedAt: '2026-07-18T00:00:00.000Z',
+    startTime: '09:00',
+    endTime: '10:00',
+  };
+  return {
+    ...createPlanFromDraft(draft),
+    id,
   };
 }
 
@@ -163,7 +159,6 @@ describe('usePlannerAppState weekly approval save', () => {
     editorSavePlanDraftMock.mockClear();
     showNoticeMock.mockClear();
     bootstrapSessionMock.mockClear();
-    ref.current = null;
     await act(async () => {
       renderer = create(<AppStateHarness ref={ref} />);
     });
@@ -206,7 +201,9 @@ describe('usePlannerAppState weekly approval save', () => {
     expect(loadPlannerDataMock).toHaveBeenCalledWith('user-1');
     expect(editorSavePlanDraftMock).not.toHaveBeenCalled();
     expect(showNoticeMock).not.toHaveBeenCalled();
-    renderer.unmount();
+    await act(async () => {
+      renderer.unmount();
+    });
   });
 
   it('removes only the failed optimistic Plan and preserves an earlier Plan', async () => {
@@ -241,6 +238,8 @@ describe('usePlannerAppState weekly approval save', () => {
     expect(loadPlannerDataMock).not.toHaveBeenCalledWith('user-1');
     expect(editorSavePlanDraftMock).not.toHaveBeenCalled();
     expect(showNoticeMock).not.toHaveBeenCalled();
-    renderer.unmount();
+    await act(async () => {
+      renderer.unmount();
+    });
   });
 });
