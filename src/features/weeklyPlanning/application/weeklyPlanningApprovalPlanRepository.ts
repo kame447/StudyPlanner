@@ -5,7 +5,6 @@ import {
 } from 'firebase/firestore';
 import { createPlanFromDraft } from '../../../domain/planner';
 import { getFirestoreDb } from '../../../lib/firebaseClient';
-import { plannerRepository } from '../../../repositories';
 import { normalizePlanRecord } from '../../../repositories/repositoryUtils';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
@@ -549,6 +548,7 @@ function createPlannerBackedWeeklyPlanningApprovalPlanRepository(): WeeklyPlanni
   return {
     async saveApprovedPlan(draft) {
       const identity = resolveDraftIdentity(draft);
+      const { plannerRepository } = await import('../../../repositories');
       const existing = (await plannerRepository.getPlans(identity.userId)).find(
         (plan) => plan.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE
           && plan.sourceId === draft.sourceId,
