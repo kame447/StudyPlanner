@@ -12,6 +12,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_count(text: str, old: str, new: str, expected: int, label: str) -> str:
+    count = text.count(old)
+    if count != expected:
+        raise SystemExit(f'{label}: expected {expected} anchors, found {count}')
+    return text.replace(old, new)
+
+
 def replace_pattern(text: str, pattern: str, replacement: str, label: str) -> str:
     next_text, count = re.subn(pattern, replacement, text, count=1, flags=re.DOTALL)
     if count != 1:
@@ -68,17 +75,12 @@ text = replace_pattern(
     "  if (currentPath === '/terms') {",
     'App-local weekly planning functions',
 )
-text = replace_once(
+text = replace_count(
     text,
     "              weeklyDraftBlocks={pendingWeeklyDraftBlocks}\n              onRemoveWeeklyDraftBlock={planningState.pendingTurn || planningState.pendingApproval\n                ? undefined\n                : (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}",
     "              weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}\n              onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks\n                ? weeklyPlanning.removeDraftBlock\n                : undefined}",
-    'week view weekly props',
-)
-text = replace_once(
-    text,
-    "              weeklyDraftBlocks={pendingWeeklyDraftBlocks}\n              onRemoveWeeklyDraftBlock={planningState.pendingTurn || planningState.pendingApproval\n                ? undefined\n                : (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId })}",
-    "              weeklyDraftBlocks={weeklyPlanning.pendingDraftBlocks}\n              onRemoveWeeklyDraftBlock={weeklyPlanning.canEditDraftBlocks\n                ? weeklyPlanning.removeDraftBlock\n                : undefined}",
-    'day view weekly props',
+    2,
+    'week and day view weekly props',
 )
 text = replace_pattern(
     text,
