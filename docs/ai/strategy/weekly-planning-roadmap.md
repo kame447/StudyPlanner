@@ -170,15 +170,34 @@ PR #24で追加・強化されたplanning range contract:
 
 4. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
    - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
+   - 2026-07-18監査で、単一端末クラッシュ変種、tab間の古い`plans`スナップショット、memo marker依存のdedupe脆弱性を設計範囲へ追加した。
+
+5. `20260718-weekly-planning-application-behavior-tests.md`
+   - App分離後のapplication層(hook + approval application)の結合挙動テストharnessを整備する。20260718系修正taskの受け皿として先行を推奨する。
+
+6. `20260718-weekly-planning-approval-save-side-effect-isolation.md`
+   - 承認保存を`savePlanDraft`の画面副作用(selectedDate変更・editor閉鎖)から分離し、週外日付承認での状態自壊を解消する。実planIdをledgerへ記録する。
+
+7. `20260718-weekly-planning-approval-validation-session-binding.md`
+   - conversationIdをexecutor→pipeline→preview→runtimeへ配線し、承認前検証の捏造proposalRecordsと自己比較revisionを実セッション値へ置き換える。
+
+8. `20260718-weekly-planning-approval-inflight-interruption.md`
+   - 承認実行中のreset・週変更で未保存itemの保存を中断し、破棄済み仮予定の無通知保存を防ぐ。
+
+9. `20260718-weekly-planning-restored-draft-approval-lifecycle.md`
+   - リロード後に復元した仮予定の承認可否をproduct decisionとして確定し、表示と承認可否を一致させる。
 
 ### P2
 
-5. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
-   - pagination、query cost、index、archive、schemaVersion decoderを設計する。
+10. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+    - pagination、query cost、index、archive、schemaVersion decoderを設計する。
 
-6. `20260716-weekly-planning-controller-ui-responsibility-split.md`
-   - conversation controller、preview controller、view componentへ責務を分離する。
-   - PR #5 post-merge stateとentrypoint ownership taskの結果を前提にする。
+11. `20260716-weekly-planning-controller-ui-responsibility-split.md`
+    - conversation controller、preview controller、view componentへ責務を分離する。
+    - PR #5 post-merge stateとentrypoint ownership taskの結果を前提にする。
+
+12. `20260718-weekly-planning-user-boundary-storage-guard.md`
+    - userId切替時のstorage書き込み窓を塞ぎ、承認ledgerをユーザー別keyへ分離する。
 
 構造監査の全項目は`weekly-planning-pr5-post-merge-status.md`と`tasks/closed/20260717-codebase-maintainability-review.md`を参照する。個別実装へ進める際は、一つの主原因と受け入れ条件を持つtaskへ分ける。
 

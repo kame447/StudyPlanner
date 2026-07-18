@@ -36,7 +36,7 @@ weekly-planning-current-contract-status.md
 
 ## Current queue
 
-現在のroot taskは8件である。
+現在のroot taskは14件である(うち1件はcompleted record化待ち)。2026-07-18の全体監査(main 37b1146)で20260718系taskを追加した。
 
 ### P0
 
@@ -54,14 +54,31 @@ weekly-planning-current-contract-status.md
 5. [20260716-weekly-planning-longitudinal-personalization-data-governance.md](tasks/20260716-weekly-planning-longitudinal-personalization-data-governance.md)
    - account-linked profile、原履歴180日、profile訂正、account deletion、初回利用条件を実装する。
 6. [20260716-weekly-planning-approval-persistence-and-idempotency.md](tasks/20260716-weekly-planning-approval-persistence-and-idempotency.md)
-   - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
+   - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。単一端末クラッシュ変種とdedupe脆弱性を2026-07-18に追加。
+7. [20260718-weekly-planning-application-behavior-tests.md](tasks/20260718-weekly-planning-application-behavior-tests.md)
+   - application層の結合挙動テストharnessを整備する。20260718系修正taskの受け皿として先行推奨。
+8. [20260718-weekly-planning-approval-save-side-effect-isolation.md](tasks/20260718-weekly-planning-approval-save-side-effect-isolation.md)
+   - 承認保存を画面副作用から分離し、週外日付承認での状態自壊を解消する。
+9. [20260718-weekly-planning-approval-validation-session-binding.md](tasks/20260718-weekly-planning-approval-validation-session-binding.md)
+   - 承認前検証をフォールバック定数・捏造値から実セッション値へ接続する。
+10. [20260718-weekly-planning-approval-inflight-interruption.md](tasks/20260718-weekly-planning-approval-inflight-interruption.md)
+    - 承認実行中のreset・週変更で未保存itemの保存を中断する。
+11. [20260718-weekly-planning-restored-draft-approval-lifecycle.md](tasks/20260718-weekly-planning-restored-draft-approval-lifecycle.md)
+    - リロード後に復元した仮予定の承認lifecycleを確定する。
 
 ### P2
 
-7. [20260716-weekly-planning-trace-scalability-and-schema-migration.md](tasks/20260716-weekly-planning-trace-scalability-and-schema-migration.md)
-   - pagination、query cost、index、archive、versioned decoderを設計する。
-8. [20260716-weekly-planning-controller-ui-responsibility-split.md](tasks/20260716-weekly-planning-controller-ui-responsibility-split.md)
-   - conversation controller、preview controller、view componentの責務を分離する。
+12. [20260716-weekly-planning-trace-scalability-and-schema-migration.md](tasks/20260716-weekly-planning-trace-scalability-and-schema-migration.md)
+    - pagination、query cost、index、archive、versioned decoderを設計する。
+13. [20260716-weekly-planning-controller-ui-responsibility-split.md](tasks/20260716-weekly-planning-controller-ui-responsibility-split.md)
+    - conversation controller、preview controller、view componentの責務を分離する。
+14. [20260718-weekly-planning-user-boundary-storage-guard.md](tasks/20260718-weekly-planning-user-boundary-storage-guard.md)
+    - userId切替時のstorage書き込み窓と承認ledgerのユーザー別key化。
+
+### Completed record化待ち
+
+- [20260718-weekly-planning-app-orchestration-extraction.md](tasks/20260718-weekly-planning-app-orchestration-extraction.md)
+  - Status: completed。運用規則に従い`tasks/closed/`のcompletion recordへ統合してrootから閉じる。
 
 AI/rules統合方式、「来週」と週の始まり、trace privacy、長期個別最適化データはproduct decision済みである。実装契約はcurrent contract status、post-merge status、roadmap、対応するroot taskを正とする。
 
