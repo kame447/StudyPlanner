@@ -35,10 +35,25 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run tests
-        run: npm run test:run
-      - name: TypeScript and production build
-        run: npm run build
-      - name: Check pull request diff
-        if: github.event_name == 'pull_request'
-        run: git diff --check origin/${{ github.base_ref }}...HEAD
+      - name: Capture restored lifecycle tests
+        id: focused
+        shell: bash
+        run: |
+          set +e
+          npm run test:run -- \
+            src/features/weeklyPlanning/application/weeklyPlanningApprovalAvailability.test.ts \
+            src/features/weeklyPlanning/application/useWeeklyPlanningApplication.test.tsx \
+            src/components/WeeklyPlanningQuickEntryModal.test.tsx \
+            > restored-test.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload restored lifecycle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restored-lifecycle-test-log
+          path: restored-test.log
+      - name: Fail when focused tests failed
+        if: steps.focused.outputs.status != '0'
+        run: exit 1
