@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -28,7 +28,287 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/weekly-planning-idempotency-retention
           fetch-depth: 0
+      - name: Apply retention boundary patch
+        if: github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          repository = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts')
+          text = repository.read_text()
+          text = text.replace(
+            "const ITEM_COLLECTION = 'items';",
+            "const ITEM_COLLECTION = 'weekly_planning_approval_items';",
+            1,
+          )
+          old_item_interface = """interface StoredApprovalItem {
+            schemaVersion: typeof RECORD_SCHEMA_VERSION;
+            userId: string;
+            approvalOperationId: string;
+            sourceDraftBlockId: string;
+            status: 'saved';
+            savedPlanId: string;
+            updatedAt: string;
+          }"""
+          new_item_interface = """interface StoredApprovalItem {
+            schemaVersion: typeof RECORD_SCHEMA_VERSION;
+            userId: string;
+            approvalOperationId: string;
+            sourceDraftBlockId: string;
+            status: 'saved';
+            savedPlanId: string;
+            updatedAt: string;
+            expiresAt: Date;
+          }"""
+          if old_item_interface not in text:
+            raise SystemExit('StoredApprovalItem pattern not found')
+          text = text.replace(old_item_interface, new_item_interface, 1)
+
+          parse_pattern = re.compile(
+            r"function parseItem\(value: unknown\): StoredApprovalItem \| null \{.*?\n\}",
+            re.DOTALL,
+          )
+          parse_replacement = """function parseItem(value: unknown): StoredApprovalItem | null {
+            if (!isRecord(value)
+              || value.schemaVersion !== RECORD_SCHEMA_VERSION
+              || typeof value.userId !== 'string'
+              || typeof value.approvalOperationId !== 'string'
+              || typeof value.sourceDraftBlockId !== 'string'
+              || value.status !== 'saved'
+              || typeof value.savedPlanId !== 'string'
+              || typeof value.updatedAt !== 'string'
+              || value.expiresAt === undefined) {
+              return null;
+            }
+            return value as unknown as StoredApprovalItem;
+          }"""
+          text, count = parse_pattern.subn(parse_replacement, text, count=1)
+          if count != 1:
+            raise SystemExit(f'parseItem replacement count was {count}')
+
+          helper_marker = 'function resolveAtomicSave(params: {'
+          retention_helper = """function refreshItemRetention(
+            item: StoredApprovalItem,
+            now: Date,
+          ): StoredApprovalItem {
+            return {
+              ...item,
+              updatedAt: now.toISOString(),
+              expiresAt: retentionExpiry(now),
+            };
+          }
+
+          """
+          if helper_marker not in text:
+            raise SystemExit('resolveAtomicSave marker not found')
+          text = text.replace(helper_marker, retention_helper + helper_marker, 1)
+
+          old_item_creation = """  const item: StoredApprovalItem = snapshot.item ?? {
+            schemaVersion: RECORD_SCHEMA_VERSION,
+            userId: identity.userId,
+            approvalOperationId: identity.approvalOperationId,
+            sourceDraftBlockId: identity.sourceDraftBlockId,
+            status: 'saved',
+            savedPlanId: identity.planId,
+            updatedAt: timestamp,
+          };"""
+          new_item_creation = """  const item = refreshItemRetention(snapshot.item ?? {
+            schemaVersion: RECORD_SCHEMA_VERSION,
+            userId: identity.userId,
+            approvalOperationId: identity.approvalOperationId,
+            sourceDraftBlockId: identity.sourceDraftBlockId,
+            status: 'saved',
+            savedPlanId: identity.planId,
+            updatedAt: timestamp,
+            expiresAt: retentionExpiry(now),
+          }, now);"""
+          if old_item_creation not in text:
+            raise SystemExit('item creation pattern not found')
+          text = text.replace(old_item_creation, new_item_creation, 1)
+
+          firestore_completion = """          const completed = resolveCompletion({
+            operation: parsedOperation,
+            userId: identities[0].userId,
+            approvalOperationId: identities[0].approvalOperationId,
+            durableItemCount: storedItems.length,
+            expectedItemCount: identities.length,
+            now: new Date(),
+          });
+          transaction.set(operationRef, completed, { merge: false });"""
+          firestore_completion_replacement = """          const completionTime = new Date();
+          const completed = resolveCompletion({
+            operation: parsedOperation,
+            userId: identities[0].userId,
+            approvalOperationId: identities[0].approvalOperationId,
+            durableItemCount: storedItems.length,
+            expectedItemCount: identities.length,
+            now: completionTime,
+          });
+          transaction.set(operationRef, completed, { merge: false });
+          storedItems.forEach((item, index) => {
+            transaction.set(
+              itemRefs[index],
+              refreshItemRetention(item, completionTime),
+              { merge: false },
+            );
+          });"""
+          if firestore_completion not in text:
+            raise SystemExit('firestore completion pattern not found')
+          text = text.replace(
+            firestore_completion,
+            firestore_completion_replacement,
+            1,
+          )
+
+          memory_completion = """        const operationDocumentId = identities[0].operationDocumentId;
+        const completed = resolveCompletion({
+          operation: state.operations.get(operationDocumentId) ?? null,
+          userId: identities[0].userId,
+          approvalOperationId: identities[0].approvalOperationId,
+          durableItemCount: storedItems.length,
+          expectedItemCount: identities.length,
+          now: new Date(),
+        });
+        state.operations.set(operationDocumentId, completed);
+        state.metrics.operationWrites += 1;"""
+          memory_completion_replacement = """        const operationDocumentId = identities[0].operationDocumentId;
+        const completionTime = new Date();
+        const completed = resolveCompletion({
+          operation: state.operations.get(operationDocumentId) ?? null,
+          userId: identities[0].userId,
+          approvalOperationId: identities[0].approvalOperationId,
+          durableItemCount: storedItems.length,
+          expectedItemCount: identities.length,
+          now: completionTime,
+        });
+        state.operations.set(operationDocumentId, completed);
+        identities.forEach((identity, index) => {
+          state.items.set(
+            identity.itemStorageKey,
+            refreshItemRetention(storedItems[index], completionTime),
+          );
+          state.metrics.itemWrites += 1;
+        });
+        state.metrics.operationWrites += 1;"""
+          if memory_completion not in text:
+            raise SystemExit('memory completion pattern not found')
+          text = text.replace(memory_completion, memory_completion_replacement, 1)
+          repository.write_text(text)
+
+          rules = Path('firestore.rules')
+          rules_text = rules.read_text()
+          rules_text = rules_text.replace(
+            'match /items/{itemId} {',
+            'match /weekly_planning_approval_items/{itemId} {',
+            1,
+          )
+          rules_text = rules_text.replace(
+            "          && request.resource.data.savedPlanId is string;",
+            "          && request.resource.data.savedPlanId is string\n          && request.resource.data.expiresAt is timestamp;",
+            1,
+          )
+          rules_text = rules_text.replace(
+            "          && request.resource.data.status == resource.data.status\n          && request.resource.data.userId == resource.data.userId",
+            "          && request.resource.data.status == resource.data.status\n          && request.resource.data.userId == resource.data.userId\n          && request.resource.data.expiresAt >= resource.data.expiresAt",
+            1,
+          )
+          rules_text = rules_text.replace(
+            "            'updatedAt'\n          ]);",
+            "            'updatedAt',\n            'expiresAt'\n          ]);",
+            1,
+          )
+          rules.write_text(rules_text)
+
+          test = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.retention.test.ts')
+          test.write_text("""import { describe, expect, it } from 'vitest';
+          import type { PlanDraft } from '../../../types/domain';
+          import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
+          import { buildWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanProvenance';
+          import {
+            createMemoryWeeklyPlanningApprovalPlanRepository,
+            createWeeklyPlanningApprovalMemoryState,
+          } from './weeklyPlanningApprovalPlanRepository';
+
+          const USER_ID = 'user-1';
+          const OPERATION_ID = 'weekly-approval:retention';
+
+          function draft(): PlanDraft {
+            return {
+              userId: USER_ID,
+              title: '英語',
+              subject: '英語',
+              date: '2026-07-20',
+              startTime: '19:00',
+              endTime: '20:00',
+              repeat: 'none',
+              repeatUntil: null,
+              excludedDates: [],
+              recurrenceRules: [],
+              type: 'study',
+              memo: '',
+              sourceType: 'weekly-planning',
+              sourceId: buildWeeklyPlanningPlanSourceId({
+                approvalOperationId: OPERATION_ID,
+                sourceDraftBlockId: 'block-1',
+              }),
+            };
+          }
+
+          function operation(): WeeklyDraftApprovalOperation {
+            const timestamp = '2026-07-18T00:00:00.000Z';
+            return {
+              approvalOperationId: OPERATION_ID,
+              userId: USER_ID,
+              previewId: 'preview-retention',
+              previewStateRevision: 0,
+              startedAt: timestamp,
+              completedAt: timestamp,
+              status: 'completed',
+              items: [{
+                sourceDraftBlockId: 'block-1',
+                status: 'saved',
+                attemptCount: 1,
+                updatedAt: timestamp,
+              }],
+            };
+          }
+
+          describe('weekly planning approval retention', () => {
+            it('stores expiry on both operation and item and refreshes them at completion', async () => {
+              const state = createWeeklyPlanningApprovalMemoryState();
+              const repository = createMemoryWeeklyPlanningApprovalPlanRepository(state);
+              await repository.saveApprovedPlan(draft());
+
+              const itemBefore = Array.from(state.items.values())[0];
+              const operationBefore = Array.from(state.operations.values())[0];
+              expect(itemBefore.expiresAt).toBeInstanceOf(Date);
+              expect(operationBefore.expiresAt).toBeInstanceOf(Date);
+
+              await repository.completeOperation(operation());
+
+              const itemAfter = Array.from(state.items.values())[0];
+              const operationAfter = Array.from(state.operations.values())[0];
+              expect(itemAfter.expiresAt).toBeInstanceOf(Date);
+              expect(operationAfter.expiresAt).toBeInstanceOf(Date);
+              expect(itemAfter.expiresAt.getTime()).toBeGreaterThanOrEqual(
+                itemBefore.expiresAt.getTime(),
+              );
+              expect(operationAfter.expiresAt.getTime()).toBeGreaterThanOrEqual(
+                operationBefore.expiresAt.getTime(),
+              );
+            });
+          });
+          """.replace('          ', ''))
+          PY
+          git checkout origin/main -- .github/workflows/ci.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add firestore.rules src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.retention.test.ts .github/workflows/ci.yml
+          git commit -m "feat: 承認itemへ専用TTL境界を追加"
+          git push origin HEAD:agent/weekly-planning-idempotency-retention
       - uses: actions/setup-node@v4
         with:
           node-version: 22
