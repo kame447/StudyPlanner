@@ -312,3 +312,20 @@ mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履
 - behavior annotationとrelative constraintでavailabilityを増やさない。
 - existing plan、timetable、buffer、hard busy intervalを上書きしない。
 - current-week factをrecurring profileへ無断昇格しない。
+- profile factはorigin、confidence、scope、confirmedAtを持つ。
+- trace documentを直接longitudinal profileとして参照しない。
+- selected week変更、session reset、explicit cancel、revision不一致後のstale async resultをstateへ適用しない。
+- modal closeまたはpresentation unmountだけで有効session resultを失わない。
+- stale/pending preview approvalでrepository writeを開始しない。
+- trace保存はplanning処理の成功条件にしない。
+- client生成traceを監査、課金、security判定の根拠にしない。
+
+## 7. Task operation
+
+- task rootには未完了taskだけを置く。
+- 一taskは一つの主原因、責務境界、完了条件を持つ。
+- 実装結果は`docs/ai/tasks/closed/`のcompletion recordへ統合する。
+- `implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
+- PR本文のtest結果を現在`main`へ自動継承しない。
+- 新taskはcurrent contract、post-merge status、roadmap、roleplay statusと同期する。
+- historical / closed / superseded文書をcurrent instructionとして直接実行しない。
