@@ -57,6 +57,8 @@ describe('weekly planning trace privacy boundary', () => {
   it('removes identity keys and redacts common identifiers in nested content', () => {
     const redacted = redactWeeklyPlanningTraceValue({
       userId: 'raw-user',
+      traceSubjectToken: 'wpt_internal-token',
+      traceSubjectEpoch: '100',
       nested: {
         email: 'person@example.com',
         content: '連絡先は person@example.com / 090-1234-5678 https://example.com/path?token=secret',
@@ -67,6 +69,8 @@ describe('weekly planning trace privacy boundary', () => {
     const output = serialized(redacted);
 
     expect(output).not.toContain('raw-user');
+    expect(output).not.toContain('wpt_internal-token');
+    expect(output).not.toContain('traceSubjectEpoch');
     expect(output).not.toContain('person@example.com');
     expect(output).not.toContain('090-1234-5678');
     expect(output).not.toContain('token=secret');
