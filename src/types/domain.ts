@@ -15,7 +15,7 @@ export type PlanType =
   | 'deadline'
   | 'other';
 
-export type PlanSourceType = 'manual' | 'todo' | 'timetable';
+export type PlanSourceType = 'manual' | 'todo' | 'timetable' | 'weekly-planning';
 
 export interface User {
   id: string;

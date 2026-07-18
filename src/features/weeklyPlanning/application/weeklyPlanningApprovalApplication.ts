@@ -4,6 +4,10 @@ import {
   validateWeeklyPreviewApproval,
 } from '../planning/weeklyPlanningApproval';
 import { executeInterruptibleWeeklyDraftApproval } from '../planning/weeklyPlanningInterruptibleApproval';
+import {
+  buildWeeklyPlanningPlanSourceId,
+  WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
+} from '../planning/weeklyPlanningPlanProvenance';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import type {
   PlanningState,
@@ -110,15 +114,35 @@ export async function approveWeeklyPlanningDraftBlocks({
       shouldContinue: () => ownsPendingApproval(getState(), pending),
       dependencies: {
         async findExistingPlanId({ sourceDraftBlockId }) {
-          const marker = `[weekly-source:${sourceDraftBlockId}]`;
-          return plans.find((plan) => plan.userId === authenticatedUserId && plan.memo.includes(marker))?.id;
+          const sourceId = buildWeeklyPlanningPlanSourceId({
+            approvalOperationId: operation.approvalOperationId,
+            sourceDraftBlockId,
+          });
+          const structuredMatch = plans.find((plan) =>
+            plan.userId === authenticatedUserId
+            && plan.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE
+            && plan.sourceId === sourceId,
+          );
+          if (structuredMatch) return structuredMatch.id;
+
+          const legacyMarker = `[weekly-source:${sourceDraftBlockId}]`;
+          return plans.find((plan) =>
+            plan.userId === authenticatedUserId
+            && plan.memo.includes(legacyMarker),
+          )?.id;
         },
         async saveBlock({ block, source }) {
           const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId);
+          const sourceId = buildWeeklyPlanningPlanSourceId({
+            approvalOperationId: source.approvalOperationId,
+            sourceDraftBlockId: source.sourceDraftBlockId,
+          });
           const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
           const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
           const savedPlan = await saveWeeklyApprovedPlan({
             ...draft,
+            sourceType: WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
+            sourceId,
             memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
           });
           return { planId: savedPlan.id };
