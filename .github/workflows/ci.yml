@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -30,26 +30,103 @@ jobs:
         with:
           ref: agent/weekly-planning-server-idempotency
           fetch-depth: 0
-      - name: Remove duplicate identity helper
+      - name: Restore identity helpers once
         run: |
           python - <<'PY'
-          import re
           from pathlib import Path
 
           path = Path('src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts')
           text = path.read_text()
-          marker = 'function resolveOperationItemIdentity(params: {'
-          starts = [match.start() for match in re.finditer(re.escape(marker), text)]
-          if len(starts) != 2:
-            raise SystemExit(f'identity helper count was {len(starts)}')
-          second_start = starts[1]
-          retention_start = text.index('function retentionExpiry', second_start)
-          path.write_text(text[:second_start] + text[retention_start:])
+          operation_marker = 'function resolveOperationItemIdentity(params: {'
+          draft_marker = 'function resolveDraftIdentity(draft: PlanDraft): ResolvedIdentity {'
+          count = text.count(operation_marker)
+          if count > 1:
+            raise SystemExit(f'identity helper count was {count}')
+          if count == 0:
+            insertion = r'''function resolveOperationItemIdentity(params: {
+              userId: string;
+              approvalOperationId: string;
+              sourceDraftBlockId: string;
+            }): ResolvedIdentity {
+              const userId = requireNonempty(params.userId, '利用者');
+              const approvalOperationId = requireNonempty(
+                params.approvalOperationId,
+                '承認操作',
+              );
+              const sourceDraftBlockId = requireNonempty(
+                params.sourceDraftBlockId,
+                '仮予定',
+              );
+              const sourceId = buildWeeklyPlanningPlanSourceId({
+                approvalOperationId,
+                sourceDraftBlockId,
+              });
+              const operationDocumentId = safeDocumentId(
+                'weekly-approval',
+                `${userId}\u001f${approvalOperationId}`,
+              );
+              const itemDocumentId = safeDocumentId('item', sourceDraftBlockId);
+              const planId = safeDocumentId(
+                'weekly-plan',
+                `${userId}\u001f${sourceId}`,
+              );
+              return {
+                userId,
+                approvalOperationId,
+                sourceDraftBlockId,
+                sourceId,
+                operationDocumentId,
+                itemDocumentId,
+                itemStorageKey: `${operationDocumentId}/${itemDocumentId}`,
+                planId,
+              };
+            }
+
+            function resolveDraftIdentity(draft: PlanDraft): ResolvedIdentity {
+              const userId = requireNonempty(draft.userId, '利用者');
+              if (draft.sourceType !== WEEKLY_PLANNING_PLAN_SOURCE_TYPE) {
+                throw new WeeklyPlanningApprovalPersistenceError(
+                  'invalid_request',
+                  '週間計画由来ではない予定を承認保存できません。',
+                );
+              }
+              const parsed = parseWeeklyPlanningPlanSourceId(draft.sourceId);
+              if (!parsed) {
+                throw new WeeklyPlanningApprovalPersistenceError(
+                  'invalid_request',
+                  '週間計画の保存元を確認できませんでした。',
+                );
+              }
+              const identity = resolveOperationItemIdentity({
+                userId,
+                approvalOperationId: parsed.approvalOperationId,
+                sourceDraftBlockId: parsed.sourceDraftBlockId,
+              });
+              if (identity.sourceId !== draft.sourceId) {
+                throw new WeeklyPlanningApprovalPersistenceError(
+                  'invalid_request',
+                  '週間計画の保存元形式が一致しません。',
+                );
+              }
+              return identity;
+            }
+
+            '''
+            marker = 'function retentionExpiry(now: Date): Date {'
+            if marker not in text:
+              raise SystemExit('retention helper marker not found')
+            text = text.replace(marker, insertion + marker, 1)
+            path.write_text(text)
+          elif draft_marker not in text:
+            raise SystemExit('resolveDraftIdentity is missing')
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: patched-approval-repository
-          path: src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
+          if ! git diff --quiet; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts
+            git commit -m "feat: 承認repositoryのidentity helperを復元"
+            git push origin HEAD:agent/weekly-planning-server-idempotency
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
