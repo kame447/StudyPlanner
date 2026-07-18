@@ -1,8 +1,10 @@
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { useEffect, useMemo, useState } from 'react';
 import App from '../App';
+import {
+  isWeeklyPlanningTraceFeatureEnabled,
+} from '../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository';
 import { useWeeklyPlanningTracePolicy } from '../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy';
-import { isWeeklyPlanningTraceEnabled } from '../features/weeklyPlanning/trace/weeklyPlanningTraceRepository';
 import { getFirebaseAuth } from '../lib/firebaseClient';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { SplashScreen } from './SplashScreen';
@@ -42,7 +44,7 @@ function AuthenticatedStudyPlannerApp({ userId }: { userId: string }) {
 
 export function StudyPlannerAppRoot() {
   const auth = useMemo(() => getFirebaseAuth(), []);
-  const traceEnabled = isWeeklyPlanningTraceEnabled();
+  const traceEnabled = isWeeklyPlanningTraceFeatureEnabled();
   const currentPath = window.location.pathname;
   const isLegalPage = currentPath === '/terms'
     || currentPath === '/privacy'
