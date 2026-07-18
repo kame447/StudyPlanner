@@ -2,6 +2,7 @@ import {
   createRef,
   forwardRef,
   useImperativeHandle,
+  type RefObject,
 } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,8 +49,7 @@ const ApplicationHarness = forwardRef<
 });
 
 interface RenderedApplicationHarness {
-  ref: React.RefObject<WeeklyPlanningApplication>;
-  renderer: ReactTestRenderer;
+  ref: RefObject<WeeklyPlanningApplication>;
   update(overrides: Partial<UseWeeklyPlanningApplicationInput>): Promise<void>;
   unmount(): Promise<void>;
 }
@@ -74,7 +74,6 @@ async function renderApplicationHarness(
 
   return {
     ref,
-    renderer,
     async update(nextOverrides) {
       currentProps = { ...currentProps, ...nextOverrides };
       await act(async () => {
@@ -196,7 +195,7 @@ describe('useWeeklyPlanningApplication', () => {
     });
 
     expect(traceRequestIds).toHaveLength(3);
-    expect(new Set(traceRequestIds)).toHaveLength(3);
+    expect(new Set(traceRequestIds).size).toBe(3);
     expect(traceRequestIds.every((requestId) => requestId.endsWith(':request:1'))).toBe(true);
     await harness.unmount();
   });
