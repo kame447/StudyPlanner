@@ -138,7 +138,12 @@ export function redactWeeklyPlanningTraceValue(
       Object.entries(value as Record<string, unknown>)
         .slice(0, 100)
         .forEach(([key, entryValue]) => {
-          if (FORBIDDEN_IDENTITY_KEYS.has(normalizedKey(key))) return;
+          const keyName = normalizedKey(key);
+          if (keyName === 'tracesubjecttoken' && typeof entryValue === 'string') {
+            result.subjectAlias = `subject-${entryValue.slice(-12)}`;
+            return;
+          }
+          if (FORBIDDEN_IDENTITY_KEYS.has(keyName)) return;
           const redacted = visit(entryValue, depth + 1);
           if (redacted !== undefined) result[key] = redacted;
         });
