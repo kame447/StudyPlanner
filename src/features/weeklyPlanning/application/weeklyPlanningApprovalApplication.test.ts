@@ -120,7 +120,7 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(approvalOperations).toHaveLength(1);
     expect(approvalOperations[0].status).toBe('partially_saved');
     expect(approvalOperations[0].items.map((item) => item.status)).toEqual(['saved', 'failed']);
-    expect(approvalOperations[0].items[0].planId).toBe('persisted-plan-block-1');
+    expect(approvalOperations[0].items[0].savedPlanId).toBe('persisted-plan-block-1');
     const approvalOperationId = approvalOperations[0].approvalOperationId;
 
     await expect(approveWeeklyPlanningDraftBlocks({
@@ -140,7 +140,7 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(approvalOperations[0].approvalOperationId).toBe(approvalOperationId);
     expect(approvalOperations[0].status).toBe('completed');
     expect(approvalOperations[0].items.map((item) => item.status)).toEqual(['saved', 'saved']);
-    expect(approvalOperations[0].items.map((item) => item.planId)).toEqual([
+    expect(approvalOperations[0].items.map((item) => item.savedPlanId)).toEqual([
       'persisted-plan-block-1',
       'persisted-plan-block-2',
     ]);
