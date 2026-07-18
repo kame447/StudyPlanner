@@ -1,6 +1,6 @@
 # 週間計画traceのprivacyとlifecycleを実装する
 
-Status: planned / product decision recorded
+Status: implementing / automated verification pending
 Priority: P1
 Requirement IDs: P7-TRACE-001
 
@@ -120,3 +120,31 @@ traceは完全匿名化ではなく、限定linkabilityを持つ仮名化デー�
 - emulatorでownership、admin read、TTL対象field、account deletion処理を検証する。
 - production feature flagとprivacy noticeをdeploy前checklistへ追加する。
 - privacy/legal reviewの確認結果を別recordへ残す。
+
+## 7. 実装状況
+
+### 実装済み・自動検証待ち
+
+- FirebaseアカウントIDを記録本文へ保存せず、サーバー側で30日単位の匿名化済み識別子を生成する処理
+- メールアドレス、電話番号、URL内の識別情報、認証情報候補を保存前に除去する処理
+- 会話本文、状態、処理情報へ180日後の削除日時を設定する処理
+- 利用前の説明・同意状態を取得、承認するサーバー処理と画面側の接続部品
+- 会話記録の追加、削除、限定された管理者閲覧、閲覧履歴の保存をサーバー側で行う処理
+- 本番環境ではブラウザからFirestoreへ直接会話記録を書き込まない保存処理
+- 個人情報保護境界と保存処理の単体テスト
+
+### 自動検証後に確定する項目
+
+- 既存の週間計画画面へ説明・同意表示が正しく接続されること
+- 同意前に会話記録が保存されないこと
+- Firestoreへのブラウザからの直接アクセスを拒否できること
+- 全テスト、本番用ビルド、Cloudflare Workerの構成確認
+- 一時的な検証用ファイルを最終差分から除去すること
+
+### 環境・運用上の未達成項目
+
+- 本番用の匿名化鍵とFirebase接続情報の登録
+- Firestoreで180日後の自動削除設定を有効にすること
+- 本番環境へのWorkerとFirestore Rulesの反映
+- 法務・プライバシー確認
+- 実ブラウザとFirestore Emulatorでの確認
