@@ -25,6 +25,7 @@ interface WeeklyPlanningApprovalApplicationInput {
   plans: Plan[];
   approvalOperations: readonly WeeklyDraftApprovalOperation[];
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
+  completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   getState: () => PlanningState;
   dispatch: (action: WeeklyPlanningAction) => PlanningState;
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
@@ -64,6 +65,7 @@ export async function approveWeeklyPlanningDraftBlocks({
   plans,
   approvalOperations,
   saveWeeklyApprovedPlan,
+  completeWeeklyApprovalOperation,
   getState,
   dispatch,
   onOperationCompleted,
@@ -151,6 +153,9 @@ export async function approveWeeklyPlanningDraftBlocks({
       },
     });
     onOperationCompleted(result);
+    if (result.status === 'completed' && completeWeeklyApprovalOperation) {
+      await completeWeeklyApprovalOperation(result);
+    }
 
     if (!ownsPendingApproval(getState(), pending)) return;
 

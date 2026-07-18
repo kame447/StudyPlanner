@@ -10,6 +10,8 @@ import type { Plan } from '../types/domain';
 import { usePlannerAppState } from './usePlannerAppState';
 
 const repositoryUpsertPlanMock = vi.hoisted(() => vi.fn());
+const approvalSavePlanMock = vi.hoisted(() => vi.fn());
+const approvalCompleteOperationMock = vi.hoisted(() => vi.fn(async () => undefined));
 const loadPlannerDataMock = vi.hoisted(() => vi.fn(async () => undefined));
 const editorSavePlanDraftMock = vi.hoisted(() => vi.fn(async () => undefined));
 const showNoticeMock = vi.hoisted(() => vi.fn());
@@ -22,6 +24,13 @@ vi.mock('../repositories', () => ({
   plannerRepository: {
     upsertPlan: repositoryUpsertPlanMock,
   },
+}));
+
+vi.mock('../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository', () => ({
+  getWeeklyPlanningApprovalPlanRepository: () => ({
+    saveApprovedPlan: approvalSavePlanMock,
+    completeOperation: approvalCompleteOperationMock,
+  }),
 }));
 
 vi.mock('./useNoticeState', () => ({
@@ -155,6 +164,8 @@ describe('usePlannerAppState weekly approval save', () => {
   beforeEach(async () => {
     plannerFixture.plans = [];
     repositoryUpsertPlanMock.mockReset();
+    approvalSavePlanMock.mockReset();
+    approvalCompleteOperationMock.mockClear();
     loadPlannerDataMock.mockClear();
     editorSavePlanDraftMock.mockClear();
     showNoticeMock.mockClear();
@@ -166,7 +177,7 @@ describe('usePlannerAppState weekly approval save', () => {
 
   it('saves optimistically without changing editor or calendar UI state and returns the persisted Plan', async () => {
     const deferred = createDeferred<Plan>();
-    repositoryUpsertPlanMock.mockImplementation(() => deferred.promise);
+    approvalSavePlanMock.mockImplementation(() => deferred.promise);
     const draft = {
       ...createEmptyPlanDraft('user-1', '2026-07-20'),
       title: '承認予定',
@@ -189,7 +200,7 @@ describe('usePlannerAppState weekly approval save', () => {
     expect(editorSavePlanDraftMock).not.toHaveBeenCalled();
     expect(showNoticeMock).not.toHaveBeenCalled();
 
-    const optimisticPlan = repositoryUpsertPlanMock.mock.calls[0][0] as Plan;
+    const optimisticPlan = approvalSavePlanMock.mock.calls[0][0] as Plan;
     const persistedPlan = { ...optimisticPlan, id: 'persisted-plan-1' };
     let result!: Plan;
     await act(async () => {
@@ -213,7 +224,7 @@ describe('usePlannerAppState weekly approval save', () => {
       renderer.update(<AppStateHarness ref={ref} />);
     });
     const deferred = createDeferred<Plan>();
-    repositoryUpsertPlanMock.mockImplementation(() => deferred.promise);
+    approvalSavePlanMock.mockImplementation(() => deferred.promise);
     const draft = {
       ...createEmptyPlanDraft('user-1', '2026-07-21'),
       title: '失敗予定',
