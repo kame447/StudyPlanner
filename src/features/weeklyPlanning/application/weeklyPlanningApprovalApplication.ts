@@ -1,0 +1,141 @@
+import type { Plan, PlanDraft } from '../../../types/domain';
+import {
+  createWeeklyDraftApprovalOperation,
+  executeWeeklyDraftApproval,
+  validateWeeklyPreviewApproval,
+} from '../planning/weeklyPlanningApproval';
+import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
+import type {
+  PlanningState,
+  WeeklyPlanningAction,
+  WeeklyPlanningPendingApproval,
+} from '../types';
+import { createPlanDraftFromWeeklyDraftBlock } from '../weeklyPlanningTransforms';
+import {
+  createWeeklyPlanningApplicationMessage,
+  createWeeklyPlanningApplicationRequestId,
+} from './weeklyPlanningApplicationIdentity';
+
+interface WeeklyPlanningApprovalApplicationInput {
+  userId: string;
+  plans: Plan[];
+  approvalOperations: readonly WeeklyDraftApprovalOperation[];
+  savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  getState: () => PlanningState;
+  dispatch: (action: WeeklyPlanningAction) => PlanningState;
+  onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
+}
+
+function approvalErrorMessage(kind: string): string {
+  switch (kind) {
+    case 'stale_preview_approval_attempt':
+      return '現在の条件と一致しない仮予定です。最新条件で再計算してください。';
+    case 'pending_assumption_preview_approval_attempt':
+      return '未確認の仮定があります。仮定を確認してから最新案を再計算してください。';
+    default:
+      return 'この仮予定は保存できません。最新案を作り直してください。';
+  }
+}
+
+export async function approveWeeklyPlanningDraftBlocks({
+  userId,
+  plans,
+  approvalOperations,
+  savePlanDraft,
+  getState,
+  dispatch,
+  onOperationCompleted,
+}: WeeklyPlanningApprovalApplicationInput): Promise<void> {
+  const snapshot = getState();
+  const blocks = snapshot.draftBlocks.filter((block) => block.status === 'draft');
+  if (blocks.length === 0 || snapshot.pendingTurn || snapshot.pendingApproval) return;
+
+  const pending: WeeklyPlanningPendingApproval = {
+    requestId: createWeeklyPlanningApplicationRequestId('weekly-approval'),
+    weekStartDate: snapshot.weekStartDate,
+    baseRevision: snapshot.revision,
+    blockIds: blocks.map((block) => block.id),
+    startedAt: new Date().toISOString(),
+  };
+  const begun = dispatch({ type: 'begin_approval', pending });
+  if (begun.pendingApproval?.requestId !== pending.requestId) return;
+
+  try {
+    const firstMetadata = blocks[0]?.behaviorMetadata?.previewMetadata;
+    const proposalRecords = (firstMetadata?.assumptionDependencies ?? []).map((dependency) => ({
+      proposalId: dependency.proposalId,
+      conversationId: 'weekly-planning-session',
+      slot: 'duration' as const,
+      targetRef: dependency.targetRef,
+      proposedValue: 0,
+      proposedUnit: 'minutes' as const,
+      reasonCode: 'missing_duration' as const,
+      sourceFactRefs: [dependency.targetRef],
+      createdAtTurnId: 'preview-dependency',
+      createdFromStateRevision: dependency.proposalCreatedFromStateRevision,
+      status: 'pending' as const,
+    }));
+    const guard = validateWeeklyPreviewApproval({
+      blocks,
+      currentStateRevision: firstMetadata?.stateRevision ?? -1,
+      userId,
+      proposalRecords,
+    });
+    if (!guard.allowed) throw new Error(approvalErrorMessage(guard.attempt.kind));
+
+    const existingOperation = approvalOperations.find((operation) =>
+      operation.userId === userId
+      && operation.previewId === guard.metadata.previewId
+      && operation.previewStateRevision === guard.metadata.stateRevision,
+    );
+    const operation = existingOperation ?? createWeeklyDraftApprovalOperation({
+      userId,
+      metadata: guard.metadata,
+      blocks,
+      now: new Date().toISOString(),
+    });
+    const result = await executeWeeklyDraftApproval({
+      operation,
+      blocks,
+      dependencies: {
+        async findExistingPlanId({ sourceDraftBlockId }) {
+          const marker = `[weekly-source:${sourceDraftBlockId}]`;
+          return plans.find((plan) => plan.userId === userId && plan.memo.includes(marker))?.id;
+        },
+        async saveBlock({ block, source }) {
+          const draft = createPlanDraftFromWeeklyDraftBlock(block, userId);
+          const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
+          const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
+          await savePlanDraft({
+            ...draft,
+            memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
+          });
+          return { planId: `weekly-plan:${source.sourceDraftBlockId}` };
+        },
+        now: () => new Date().toISOString(),
+      },
+    });
+    onOperationCompleted(result);
+
+    const completedBlockIds = result.items
+      .filter((item) => item.status === 'saved' || item.status === 'skipped_duplicate')
+      .map((item) => item.sourceDraftBlockId);
+    const failed = result.status === 'failed' || result.status === 'partially_saved';
+    const message = failed
+      ? '一部の仮予定を保存できませんでした。未保存分だけ再試行できます。'
+      : `${completedBlockIds.length}件の仮予定を通常予定として保存しました。`;
+    dispatch({
+      type: 'complete_approval',
+      pending,
+      completedBlockIds,
+      assistantMessage: createWeeklyPlanningApplicationMessage('assistant', message),
+    });
+    if (failed) throw new Error(message);
+  } catch (error) {
+    const current = getState();
+    if (current.pendingApproval?.requestId === pending.requestId) {
+      dispatch({ type: 'fail_approval', pending });
+    }
+    throw error;
+  }
+}
