@@ -36,7 +36,16 @@ service cloud.firestore {
 
     match /profiles/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && !request.resource.data.keys().hasAny(['weeklyPlanningTracePolicy']);
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'id',
+          'email',
+          'username',
+          'avatar',
+          'createdAt'
+        ]);
       allow delete: if false;
     }
 
@@ -111,32 +120,15 @@ service cloud.firestore {
     }
 
     match /weekly_planning_trace_sessions/{sessionId} {
-      allow read: if isAdmin();
-      allow create: if canCreateOwnedResource()
-        && request.resource.data.id == sessionId;
-      allow update: if (
-          canUpdateOwnedResource()
-          && request.resource.data.id == resource.data.id
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.logicalConversationId == resource.data.logicalConversationId
-          && request.resource.data.startedAt == resource.data.startedAt
-          && request.resource.data.schemaVersion == resource.data.schemaVersion
-          && request.resource.data.get('archivedAt', null) == resource.data.get('archivedAt', null)
-        ) || (
-          isAdmin()
-          && request.resource.data.archivedAt is string
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archivedAt'])
-        );
-      allow delete: if false;
+      allow read, write: if false;
     }
 
     match /weekly_planning_trace_entries/{entryId} {
-      allow read: if isAdmin();
-      allow create: if canCreateOwnedResource()
-        && request.resource.data.id == entryId;
-      allow update: if canUpdateOwnedResource()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([]);
-      allow delete: if false;
+      allow read, write: if false;
+    }
+
+    match /weekly_planning_trace_access_audit/{auditId} {
+      allow read, write: if false;
     }
 
     match /app_catalogs/{catalogId} {

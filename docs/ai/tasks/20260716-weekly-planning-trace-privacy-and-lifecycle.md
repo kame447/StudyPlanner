@@ -1,6 +1,6 @@
 # 週間計画traceのprivacyとlifecycleを実装する
 
-Status: planned / product decision recorded
+Status: implemented / automated verified / browser and operations pending
 Priority: P1
 Requirement IDs: P7-TRACE-001
 
@@ -16,10 +16,13 @@ conversation trace基盤は実装済みだが、productionでの有効化、発�
 
 ### 2.1 利用者への説明と利用条件
 
-- 毎conversationで同意を求めない。
-- 初回利用前の利用規約・privacy noticeで、個別最適化、品質改善、不具合調査のためにデータを保存することを明示する。
-- 規約本文へ埋めるだけで終わらせず、収集対象、利用目的、保存期間、管理者閲覧、削除方法、収集を受け入れない場合は週間計画機能を利用できないことを短い要約でも表示する。
+- 毎conversationや週間計画の開始ごとに同意を求めない。
+- 認証完了後、アプリ本体を初めて開く前のログイン導線上で、収集対象、利用目的、保存期間、管理者閲覧、削除方法を短く表示して明示的な同意を得る。
+- 同意したprivacy noticeの版と同意日時をアカウントへ保存する。同じ版へ同意済みなら、再ログイン、別端末、別conversationでも再表示しない。
+- 利用規約またはprivacy noticeへ重大な変更がある場合だけ版を更新し、必要に応じて再同意を求める。軽微な文言修正だけで毎回再同意を発生させない。
+- 規約本文へ埋めるだけ、または「ログインした時点で同意したものとみなす」という方式にはしない。
 - traceおよび個別最適化データの必須収集だけを停止して、同じ週間計画サービスを継続するopt-out modeは提供しない。
+- 同意しない場合はアプリ本体へ進まず、ログアウトできるようにする。
 - 利用者が利用停止・削除を求めた場合は、週間計画機能またはアカウントの終了と関連データ削除へ移る。
 - 法令上の適法性、要配慮個人情報、未成年者、国外利用は公開前に別途確認し、本product decisionだけで法的判断を完了扱いにしない。
 
@@ -48,7 +51,7 @@ conversation trace基盤は実装済みだが、productionでの有効化、発�
 - server-side HMACで`traceSubjectToken = HMAC(epochSecret, userId)`を生成する。
 - trace tokenは30日単位でrotationし、quality traceだけから恒久的な利用者追跡を行わない。
 - epoch secretはtrace dataと別の権限境界で管理し、削除要求へ対応できる期間だけ保持する。
-- 発話本文は保存前にメール、電話番号、URL query、明示名、識別子候補をredactする。
+- 発話本文は保存前にメール、電話番号、URL query、識別子候補をredactする。
 - Firestore標準暗号化またはCMEKは追加の安全管理措置として使うが、匿名化の代替とは扱わない。
 - account-linked personalization profileとtrace subject tokenを同じ識別子へ統合しない。
 
@@ -89,7 +92,7 @@ traceは完全匿名化ではなく、限定linkabilityを持つ仮名化デー�
 - 保存前redaction
 - content、snapshot、metadataの180日TTL
 - account deletion cascade
-- privacy notice、利用規約、初回acceptance gate
+- privacy notice、利用規約、初回ログインacceptance gate
 - admin access audit
 - export時の再redactionとunlink
 - personalization profile storageとの責務分離
@@ -104,8 +107,9 @@ traceは完全匿名化ではなく、限定linkabilityを持つ仮名化デー�
 
 ## 5. 受け入れ条件
 
-- 同意前にproduction traceを作成しない。
-- 同意しない利用者は個別最適化を前提とする週間計画を開始できない。
+- 同意前にアプリ本体へ進まず、production traceも作成しない。
+- 同意した版と日時をアカウントへ保存し、同じ版では再ログイン時に再同意を求めない。
+- 同意しない利用者はログアウトできる。
 - raw user IDをtrace documentへ保存しない。
 - 同じ利用者でもepochが異なればtrace subject tokenが一致しない。
 - account deletion時に保持期間内のtokenを解決して削除できる。
@@ -120,3 +124,48 @@ traceは完全匿名化ではなく、限定linkabilityを持つ仮名化デー�
 - emulatorでownership、admin read、TTL対象field、account deletion処理を検証する。
 - production feature flagとprivacy noticeをdeploy前checklistへ追加する。
 - privacy/legal reviewの確認結果を別recordへ残す。
+
+## 7. 実装状況
+
+### 実装・自動検証済み
+
+- 初回ログイン後、アプリ本体へ進む前にだけ表示する同意画面
+- 同意した版と日時を利用者アカウントへ保存し、同じ版では次回以降に再表示しない処理
+- 同意状況を確認できない場合に、再試行またはログアウトを選べる処理
+- FirebaseアカウントIDを記録本文へ保存せず、サーバー側で30日単位の匿名化済み識別子を生成する処理
+- メールアドレス、電話番号、URL内の識別情報、認証情報候補を保存前に除去する処理
+- 会話本文、状態、処理情報へ180日後の削除日時を設定する処理
+- 会話記録の追加、削除、限定された管理者閲覧、閲覧履歴の保存をサーバー側で行う処理
+- 本番環境の会話記録保存先をブラウザからのFirestore直接書き込みではなくサーバーAPIへ切り替える処理
+- 管理画面へ内部識別子を返さず、短い匿名表示名だけを返す処理
+- 利用規約、プライバシーポリシー、ログイン画面の説明同期
+- ブラウザからの会話記録直接読書きと、同意状態の直接書き換えを拒否するRules
+- 開発環境では既定で有効、本番環境では`VITE_WEEKLY_PLANNING_TRACE_ENABLED=true`を明示した場合だけ初回同意と会話記録保存を開始する安全な有効化条件
+- 本番用サーバー設定が不足している状態では保存処理を無効化し、既存利用者のログインを妨げない処理
+
+2026-07-18に次を自動検証し、すべて成功した。
+
+- 初回同意画面の操作テスト
+- 本番環境の明示有効化・未設定時無効化テスト
+- 個人情報除去と30日単位の識別子切替テスト
+- 週間計画trace suite
+- 全自動テスト
+- production build
+- Cloudflare Worker dry-run bundle validation
+
+### 実ブラウザ確認待ち
+
+- 初回ログイン時だけ同意画面が表示されること
+- 同意後の再ログインと別端末で再表示されないこと
+- 同意前にアプリ本体と週間計画処理が開始されないこと
+- 同意しない場合にログアウトできること
+- Firestore Emulatorで非権限者の直接アクセスが拒否されること
+
+### 環境・運用上の未達成項目
+
+- 本番用の匿名化鍵とFirebase接続情報の登録
+- Firestoreで180日後の自動削除設定を有効にすること
+- 本番環境へのWorkerとFirestore Rulesの反映
+- 上記設定と実ブラウザ確認の完了後に`VITE_WEEKLY_PLANNING_TRACE_ENABLED=true`を設定すること
+- 法務・プライバシー確認
+- 本番またはEmulatorを使った削除処理と限定閲覧の確認
