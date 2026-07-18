@@ -423,7 +423,11 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
     },
 
     async completeOperation(operation) {
-      const userId = requireNonempty(operation.userId, '利用者');
+        const expectedItemCount = operation.items.filter(
+          (item) => item.status === 'saved',
+        ).length;
+        if (expectedItemCount === 0) return;
+        const userId = requireNonempty(operation.userId, '利用者');
       const approvalOperationId = requireNonempty(
         operation.approvalOperationId,
         '承認操作',
@@ -444,7 +448,7 @@ export function createFirestoreWeeklyPlanningApprovalPlanRepository(
             operation: snapshot.exists() ? parseOperation(snapshot.data()) : null,
             userId,
             approvalOperationId,
-            expectedItemCount: operation.items.length,
+            expectedItemCount,
             now: new Date(),
           });
           transaction.set(operationRef, completed, { merge: false });
@@ -513,7 +517,11 @@ export function createMemoryWeeklyPlanningApprovalPlanRepository(
     },
 
     async completeOperation(operation) {
-      const userId = requireNonempty(operation.userId, '利用者');
+        const expectedItemCount = operation.items.filter(
+          (item) => item.status === 'saved',
+        ).length;
+        if (expectedItemCount === 0) return;
+        const userId = requireNonempty(operation.userId, '利用者');
       const approvalOperationId = requireNonempty(
         operation.approvalOperationId,
         '承認操作',
@@ -527,7 +535,7 @@ export function createMemoryWeeklyPlanningApprovalPlanRepository(
           operation: state.operations.get(operationDocumentId) ?? null,
           userId,
           approvalOperationId,
-          expectedItemCount: operation.items.length,
+          expectedItemCount,
           now: new Date(),
         });
         state.operations.set(operationDocumentId, completed);

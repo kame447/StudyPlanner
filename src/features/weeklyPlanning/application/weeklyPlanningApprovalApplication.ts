@@ -116,20 +116,10 @@ export async function approveWeeklyPlanningDraftBlocks({
       shouldContinue: () => ownsPendingApproval(getState(), pending),
       dependencies: {
         async findExistingPlanId({ sourceDraftBlockId }) {
-          const sourceId = buildWeeklyPlanningPlanSourceId({
-            approvalOperationId: operation.approvalOperationId,
-            sourceDraftBlockId,
-          });
-          const structuredMatch = plans.find((plan) =>
-            plan.userId === authenticatedUserId
-            && plan.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE
-            && plan.sourceId === sourceId,
-          );
-          if (structuredMatch) return structuredMatch.id;
-
           const legacyMarker = `[weekly-source:${sourceDraftBlockId}]`;
           return plans.find((plan) =>
             plan.userId === authenticatedUserId
+            && plan.sourceType !== WEEKLY_PLANNING_PLAN_SOURCE_TYPE
             && plan.memo.includes(legacyMarker),
           )?.id;
         },
