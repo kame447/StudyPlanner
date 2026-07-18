@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanDraft } from '../../../types/domain';
-import type { WeeklyDraftApprovalOperation, WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
+import type {
+  WeeklyDraftApprovalOperation,
+  WeeklyPreviewMetadata,
+} from '../planning/weeklyPlanningApprovalTypes';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import { createWeeklyPlanningTestDraftBlock } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
@@ -103,6 +106,6 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(approvalOperations[0].items.map((item) => item.status)).toEqual(['saved', 'saved']);
     expect(store.getState().draftBlocks).toEqual([]);
     expect(store.getState().pendingApproval).toBeUndefined();
-    expect(store.getState().lastAssistantMessage).toBe('1件の仮予定を通常予定として保存しました。');
+    expect(store.getState().lastAssistantMessage).toBe('2件の仮予定を通常予定として保存しました。');
   });
 });
