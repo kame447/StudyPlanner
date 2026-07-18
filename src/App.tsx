@@ -101,6 +101,7 @@ export default function App() {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    saveWeeklyApprovedPlan,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -145,7 +146,7 @@ export default function App() {
     plans,
     scheduleTemplates,
     timetableTermId: activeTimetableTermId,
-    savePlanDraft,
+    saveWeeklyApprovedPlan,
   });
   const currentPath = window.location.pathname;
 

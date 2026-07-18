@@ -1,4 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPlanFromDraft } from '../domain/planner';
+import { upsertByKey } from '../lib/collections';
+import { minutesBetween, sortByDateTime } from '../lib/date';
+import { plannerRepository } from '../repositories';
 import { useAuthSessionState } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
@@ -67,6 +71,7 @@ interface PlannerAppState {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -125,7 +130,7 @@ export function usePlannerAppState(): PlannerAppState {
     signOut: signOutSession,
   } = useAuthSessionState({ showNotice });
   const {
-    plans,
+    plans: storedPlans,
     actuals,
     dayNotes,
     monthEvents,
@@ -184,6 +189,20 @@ export function usePlannerAppState(): PlannerAppState {
     userId: user?.id ?? null,
     showNotice,
   });
+  const [weeklyApprovedPlanOverlay, setWeeklyApprovedPlanOverlay] = useState<Plan[]>([]);
+  const plans = useMemo(
+    () => sortByDateTime(
+      weeklyApprovedPlanOverlay.reduce(
+        (current, plan) => upsertByKey(current, plan, (item) => item.id),
+        storedPlans,
+      ),
+    ),
+    [storedPlans, weeklyApprovedPlanOverlay],
+  );
+
+  useEffect(() => {
+    setWeeklyApprovedPlanOverlay([]);
+  }, [user?.id]);
 
   useEffect(() => {
     void bootstrapSession(loadPlannerData);
@@ -225,7 +244,46 @@ export function usePlannerAppState(): PlannerAppState {
 
   async function signOut() {
     await signOutSession();
+    setWeeklyApprovedPlanOverlay([]);
     resetPlannerData();
+  }
+
+  async function saveWeeklyApprovedPlan(draft: PlanDraft): Promise<Plan> {
+    if (!user?.id) {
+      throw new Error('ログイン状態を確認できませんでした。');
+    }
+
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+
+    const nextPlan = createPlanFromDraft(draft);
+    setWeeklyApprovedPlanOverlay((current) =>
+      sortByDateTime(upsertByKey(current, nextPlan, (plan) => plan.id)),
+    );
+
+    try {
+      const savedPlan = await plannerRepository.upsertPlan(nextPlan);
+      setWeeklyApprovedPlanOverlay((current) =>
+        sortByDateTime(
+          upsertByKey(
+            current.filter((plan) => plan.id !== nextPlan.id),
+            savedPlan,
+            (plan) => plan.id,
+          ),
+        ),
+      );
+      await loadPlannerData(user.id);
+      setWeeklyApprovedPlanOverlay((current) =>
+        current.filter((plan) => plan.id !== nextPlan.id && plan.id !== savedPlan.id),
+      );
+      return savedPlan;
+    } catch (error) {
+      setWeeklyApprovedPlanOverlay((current) =>
+        current.filter((plan) => plan.id !== nextPlan.id),
+      );
+      throw error;
+    }
   }
 
   return {
@@ -262,6 +320,7 @@ export function usePlannerAppState(): PlannerAppState {
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    saveWeeklyApprovedPlan,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,

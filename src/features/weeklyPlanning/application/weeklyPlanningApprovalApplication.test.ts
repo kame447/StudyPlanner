@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanDraft } from '../../../types/domain';
+import { createPlanFromDraft } from '../../../domain/planner';
+import type { Plan, PlanDraft } from '../../../types/domain';
 import type {
   WeeklyDraftApprovalOperation,
   WeeklyPreviewMetadata,
@@ -45,6 +46,13 @@ function readSourceBlockId(draft: PlanDraft): string {
   return match[1];
 }
 
+function persistedPlan(draft: PlanDraft, id: string): Plan {
+  return {
+    ...createPlanFromDraft(draft),
+    id,
+  };
+}
+
 describe('weeklyPlanningApprovalApplication', () => {
   it('does not begin an approval operation without an authenticated user', async () => {
     const store = createStore();
@@ -55,8 +63,9 @@ describe('weeklyPlanningApprovalApplication', () => {
       userId: null,
       plans: [],
       approvalOperations: [],
-      savePlanDraft: async () => {
+      saveWeeklyApprovedPlan: async (draft) => {
         saveCount += 1;
+        return persistedPlan(draft, 'unused-plan');
       },
       getState: store.getState,
       dispatch: store.dispatch,
@@ -71,13 +80,13 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(store.getState().draftBlocks).toHaveLength(2);
   });
 
-  it('reuses the approval operation and retries only the failed item', async () => {
+  it('reuses the approval operation, records real Plan IDs, and retries only the failed item', async () => {
     const store = createStore();
     let approvalOperations: WeeklyDraftApprovalOperation[] = [];
     const savedSourceIds: string[] = [];
     const attempts = new Map<string, number>();
 
-    const savePlanDraft = async (draft: PlanDraft): Promise<void> => {
+    const saveWeeklyApprovedPlan = async (draft: PlanDraft): Promise<Plan> => {
       const sourceBlockId = readSourceBlockId(draft);
       savedSourceIds.push(sourceBlockId);
       const attempt = (attempts.get(sourceBlockId) ?? 0) + 1;
@@ -85,6 +94,7 @@ describe('weeklyPlanningApprovalApplication', () => {
       if (sourceBlockId === 'block-2' && attempt === 1) {
         throw new Error('forced-save-failure');
       }
+      return persistedPlan(draft, `persisted-plan-${sourceBlockId}`);
     };
     const onOperationCompleted = (operation: WeeklyDraftApprovalOperation) => {
       approvalOperations = [
@@ -99,7 +109,7 @@ describe('weeklyPlanningApprovalApplication', () => {
       userId: 'user-1',
       plans: [],
       approvalOperations,
-      savePlanDraft,
+      saveWeeklyApprovedPlan,
       getState: store.getState,
       dispatch: store.dispatch,
       onOperationCompleted,
@@ -110,13 +120,14 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(approvalOperations).toHaveLength(1);
     expect(approvalOperations[0].status).toBe('partially_saved');
     expect(approvalOperations[0].items.map((item) => item.status)).toEqual(['saved', 'failed']);
+    expect(approvalOperations[0].items[0].savedPlanId).toBe('persisted-plan-block-1');
     const approvalOperationId = approvalOperations[0].approvalOperationId;
 
     await expect(approveWeeklyPlanningDraftBlocks({
       userId: 'user-1',
       plans: [],
       approvalOperations,
-      savePlanDraft,
+      saveWeeklyApprovedPlan,
       getState: store.getState,
       dispatch: store.dispatch,
       onOperationCompleted,
@@ -129,6 +140,10 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(approvalOperations[0].approvalOperationId).toBe(approvalOperationId);
     expect(approvalOperations[0].status).toBe('completed');
     expect(approvalOperations[0].items.map((item) => item.status)).toEqual(['saved', 'saved']);
+    expect(approvalOperations[0].items.map((item) => item.savedPlanId)).toEqual([
+      'persisted-plan-block-1',
+      'persisted-plan-block-2',
+    ]);
     expect(store.getState().draftBlocks).toEqual([]);
     expect(store.getState().pendingApproval).toBeUndefined();
     expect(store.getState().lastAssistantMessage).toBe('2件の仮予定を通常予定として保存しました。');

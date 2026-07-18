@@ -31,7 +31,7 @@ export interface UseWeeklyPlanningApplicationInput {
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
-  savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
 }
 
 export interface WeeklyPlanningApplication {
@@ -56,7 +56,7 @@ export function useWeeklyPlanningApplication({
   plans,
   scheduleTemplates,
   timetableTermId,
-  savePlanDraft,
+  saveWeeklyApprovedPlan,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
   const ownerId = userId?.trim() || 'anonymous';
   const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
@@ -147,7 +147,7 @@ export function useWeeklyPlanningApplication({
       userId,
       plans,
       approvalOperations,
-      savePlanDraft,
+      saveWeeklyApprovedPlan,
       getState: getPlanningState,
       dispatch: dispatchPlanningAction,
       onOperationCompleted: (operation) => {

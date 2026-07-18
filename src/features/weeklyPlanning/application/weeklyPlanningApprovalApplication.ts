@@ -20,7 +20,7 @@ interface WeeklyPlanningApprovalApplicationInput {
   userId: string | null | undefined;
   plans: Plan[];
   approvalOperations: readonly WeeklyDraftApprovalOperation[];
-  savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   getState: () => PlanningState;
   dispatch: (action: WeeklyPlanningAction) => PlanningState;
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
@@ -41,7 +41,7 @@ export async function approveWeeklyPlanningDraftBlocks({
   userId,
   plans,
   approvalOperations,
-  savePlanDraft,
+  saveWeeklyApprovedPlan,
   getState,
   dispatch,
   onOperationCompleted,
@@ -95,11 +95,11 @@ export async function approveWeeklyPlanningDraftBlocks({
           const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId);
           const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
           const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
-          await savePlanDraft({
+          const savedPlan = await saveWeeklyApprovedPlan({
             ...draft,
             memo: [draft.memo, sourceMarker, operationMarker].filter(Boolean).join(' / '),
           });
-          return { planId: `weekly-plan:${source.sourceDraftBlockId}` };
+          return { planId: savedPlan.id };
         },
         now: () => new Date().toISOString(),
       },
