@@ -17,7 +17,7 @@ import {
 } from './weeklyPlanningApplicationIdentity';
 
 interface WeeklyPlanningApprovalApplicationInput {
-  userId: string;
+  userId: string | null | undefined;
   plans: Plan[];
   approvalOperations: readonly WeeklyDraftApprovalOperation[];
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -46,6 +46,9 @@ export async function approveWeeklyPlanningDraftBlocks({
   dispatch,
   onOperationCompleted,
 }: WeeklyPlanningApprovalApplicationInput): Promise<void> {
+  const authenticatedUserId = userId?.trim();
+  if (!authenticatedUserId) return;
+
   const snapshot = getState();
   const blocks = snapshot.draftBlocks.filter((block) => block.status === 'draft');
   if (blocks.length === 0 || snapshot.pendingTurn || snapshot.pendingApproval) return;
@@ -61,35 +64,21 @@ export async function approveWeeklyPlanningDraftBlocks({
   if (begun.pendingApproval?.requestId !== pending.requestId) return;
 
   try {
-    const firstMetadata = blocks[0]?.behaviorMetadata?.previewMetadata;
-    const proposalRecords = (firstMetadata?.assumptionDependencies ?? []).map((dependency) => ({
-      proposalId: dependency.proposalId,
-      conversationId: 'weekly-planning-session',
-      slot: 'duration' as const,
-      targetRef: dependency.targetRef,
-      proposedValue: 0,
-      proposedUnit: 'minutes' as const,
-      reasonCode: 'missing_duration' as const,
-      sourceFactRefs: [dependency.targetRef],
-      createdAtTurnId: 'preview-dependency',
-      createdFromStateRevision: dependency.proposalCreatedFromStateRevision,
-      status: 'pending' as const,
-    }));
     const guard = validateWeeklyPreviewApproval({
       blocks,
-      currentStateRevision: firstMetadata?.stateRevision ?? -1,
-      userId,
-      proposalRecords,
+      currentStateRevision: snapshot.intakeState?.sourceTurns.length ?? 0,
+      userId: authenticatedUserId,
+      proposalRecords: snapshot.intakeState?.assumptionProposalRecords ?? [],
     });
     if (!guard.allowed) throw new Error(approvalErrorMessage(guard.attempt.kind));
 
     const existingOperation = approvalOperations.find((operation) =>
-      operation.userId === userId
+      operation.userId === authenticatedUserId
       && operation.previewId === guard.metadata.previewId
       && operation.previewStateRevision === guard.metadata.stateRevision,
     );
     const operation = existingOperation ?? createWeeklyDraftApprovalOperation({
-      userId,
+      userId: authenticatedUserId,
       metadata: guard.metadata,
       blocks,
       now: new Date().toISOString(),
@@ -100,10 +89,10 @@ export async function approveWeeklyPlanningDraftBlocks({
       dependencies: {
         async findExistingPlanId({ sourceDraftBlockId }) {
           const marker = `[weekly-source:${sourceDraftBlockId}]`;
-          return plans.find((plan) => plan.userId === userId && plan.memo.includes(marker))?.id;
+          return plans.find((plan) => plan.userId === authenticatedUserId && plan.memo.includes(marker))?.id;
         },
         async saveBlock({ block, source }) {
-          const draft = createPlanDraftFromWeeklyDraftBlock(block, userId);
+          const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId);
           const sourceMarker = `[weekly-source:${source.sourceDraftBlockId}]`;
           const operationMarker = `[weekly-approval:${source.approvalOperationId}]`;
           await savePlanDraft({

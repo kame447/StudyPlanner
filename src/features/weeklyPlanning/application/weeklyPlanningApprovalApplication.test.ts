@@ -11,7 +11,7 @@ import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplic
 
 const metadata: WeeklyPreviewMetadata = {
   previewId: 'preview-partial-retry',
-  stateRevision: 7,
+  stateRevision: 0,
   assumptionDependencies: [],
   approvalEligibility: 'eligible',
   stale: false,
@@ -46,6 +46,31 @@ function readSourceBlockId(draft: PlanDraft): string {
 }
 
 describe('weeklyPlanningApprovalApplication', () => {
+  it('does not begin an approval operation without an authenticated user', async () => {
+    const store = createStore();
+    let saveCount = 0;
+    let completionCount = 0;
+
+    await approveWeeklyPlanningDraftBlocks({
+      userId: null,
+      plans: [],
+      approvalOperations: [],
+      savePlanDraft: async () => {
+        saveCount += 1;
+      },
+      getState: store.getState,
+      dispatch: store.dispatch,
+      onOperationCompleted: () => {
+        completionCount += 1;
+      },
+    });
+
+    expect(saveCount).toBe(0);
+    expect(completionCount).toBe(0);
+    expect(store.getState().pendingApproval).toBeUndefined();
+    expect(store.getState().draftBlocks).toHaveLength(2);
+  });
+
   it('reuses the approval operation and retries only the failed item', async () => {
     const store = createStore();
     let approvalOperations: WeeklyDraftApprovalOperation[] = [];
