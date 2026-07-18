@@ -1,4 +1,10 @@
-import { addDays, startOfWeek } from '../../../lib/date';
+import { addDays } from '../../../lib/date';
+import {
+  endOfWeeklyPlanningWeek,
+  nextWeekdayOnOrAfter,
+  resolveWeekendRange,
+  startOfWeeklyPlanningWeek,
+} from '../personalization/weeklyPlanningWeek';
 import type { BeginWeeklyPlanningCommand, NormalizedSetPendingPlanningRangeCommand, SetExamScopeCommand, SetPlanningRangeCommand } from './weeklyPlanningCommandTypes';
 import {
   isDateWithinWindow,
@@ -45,14 +51,13 @@ function parseWeekendPlanningRange(
     return undefined;
   }
 
-  const weekStart = startOfWeek(context.selectedDate);
-  const sunday = addDays(weekStart, 6);
+  const weekend = resolveWeekendRange(context.selectedDate);
   const startHour = Number(startMatch[1]);
   const startTime = String(startHour).padStart(2, '0') + ':00';
 
   return {
     startDateTime: formatDateTime(context.selectedDate, startTime),
-    endDateTime: formatDateTime(sunday, '24:00'),
+    endDateTime: formatDateTime(weekend.endDate, '24:00'),
     sourceText: text,
     confidence: 'explicit',
   };
@@ -138,8 +143,8 @@ function parseNamedPlanningRange(
   const kind = parseNamedPlanningRangeKind(text, expectedSlot);
   if (!kind) return undefined;
 
-  const weekStart = startOfWeek(context.selectedDate);
-  const thisSunday = addDays(weekStart, 6);
+  const weekStart = startOfWeeklyPlanningWeek(context.selectedDate, context.weekStartsOn);
+  const weekEnd = endOfWeeklyPlanningWeek(context.selectedDate, context.weekStartsOn);
 
   if (kind === 'next_week') {
     const startDate = addDays(weekStart, 7);
@@ -153,19 +158,18 @@ function parseNamedPlanningRange(
   }
 
   if (kind === 'weekend') {
-    const saturday = addDays(weekStart, 5);
-    const startDate = context.selectedDate > saturday ? context.selectedDate : saturday;
+    const weekend = resolveWeekendRange(context.selectedDate);
     return rangeThroughEndDate({
       context,
-      startDate,
-      endDate: thisSunday,
+      startDate: weekend.startDate,
+      endDate: weekend.endDate,
       sourceText: text,
     });
   }
 
   return rangeThroughEndDate({
     context,
-    endDate: thisSunday,
+    endDate: weekEnd,
     sourceText: text,
   });
 }
@@ -326,7 +330,7 @@ function sundayBoundaryEndDate(
     return undefined;
   }
 
-  const thisSunday = addDays(startOfWeek(context.selectedDate), 6);
+  const thisSunday = nextWeekdayOnOrAfter(context.selectedDate, 0);
   return /次の\s*日曜/.test(normalizedText) && context.selectedDate === thisSunday
     ? addDays(thisSunday, 7)
     : thisSunday;
@@ -562,7 +566,10 @@ function parseExplicitDate(
 export function nextWeekScope(
   context: WeeklyPlanningIntakeContext,
 ): Extract<PendingPlanningRangeClarification['scope'], { kind: 'next_week' }> {
-  const nextWeekStart = addDays(startOfWeek(context.selectedDate), 7);
+  const nextWeekStart = addDays(
+    startOfWeeklyPlanningWeek(context.selectedDate, context.weekStartsOn),
+    7,
+  );
   return {
     kind: 'next_week',
     label: '来週',
@@ -580,13 +587,17 @@ function parseWeekdayStart(text: string): number | undefined {
 function resolveWeekdayInScope(
   weekdayIndex: number,
   scope: PendingPlanningRangeClarification['scope'],
+  weekStartsOn: WeeklyPlanningIntakeContext['weekStartsOn'],
 ): string | undefined {
   if (!scope.windowStartDate || !scope.windowEndDate) return undefined;
 
+  const expectedOffset = weekStartsOn === 'sunday'
+    ? (weekdayIndex + 1) % 7
+    : weekdayIndex;
   for (let offset = 0; offset < 7; offset += 1) {
     const date = addDays(scope.windowStartDate, offset);
     if (date > scope.windowEndDate) return undefined;
-    if (offset === weekdayIndex) return date;
+    if (offset === expectedOffset) return date;
   }
 
   return undefined;
@@ -682,7 +693,9 @@ function parsePendingPlanningRange(
   if (/来週/.test(normalizedText)) {
     const scope = nextWeekScope(context);
     const weekdayIndex = parseWeekdayStart(normalizedText);
-    const startDate = weekdayIndex === undefined ? undefined : resolveWeekdayInScope(weekdayIndex, scope);
+    const startDate = weekdayIndex === undefined
+      ? undefined
+      : resolveWeekdayInScope(weekdayIndex, scope, context.weekStartsOn);
 
     if (startDate) {
       return undefined;
@@ -752,7 +765,7 @@ function parseWeeklyPlanningRange(
       : undefined;
     const weekdayStartDate = weekdayIndex === undefined
       ? undefined
-      : resolveWeekdayInScope(weekdayIndex, pending.scope);
+      : resolveWeekdayInScope(weekdayIndex, pending.scope, context.weekStartsOn);
     const startDate = explicitDate
       ?? weekdayStartDate
       ?? pending.planningStartDate;
@@ -781,7 +794,9 @@ function parseWeeklyPlanningRange(
   if (/来週/.test(normalizedText)) {
     const scope = nextWeekScope(context);
     const weekdayIndex = parseWeekdayStart(normalizedText);
-    const startDate = weekdayIndex === undefined ? undefined : resolveWeekdayInScope(weekdayIndex, scope);
+    const startDate = weekdayIndex === undefined
+      ? undefined
+      : resolveWeekdayInScope(weekdayIndex, scope, context.weekStartsOn);
     return startDate
       ? rangeFromStartDate({ startDate, durationDays, sourceText: text })
       : undefined;

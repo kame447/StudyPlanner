@@ -1,3 +1,4 @@
+import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { AssumptionProposalRecord } from './weeklyPlanningAssumptionProposals';
 
 export type PlanningIntakeStatus =
@@ -254,4 +255,5 @@ export interface WeeklyPlanningIntakeContext {
   selectedDate: string;
   planningDayCount?: number;
   currentDateTime?: string;
+  weekStartsOn?: WeeklyPlanningWeekStartsOn;
 }

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { startOfWeek } from '../../lib/date';
+import {
+  startOfWeeklyPlanningWeek,
+  type WeeklyPlanningWeekStartsOn,
+} from './personalization/weeklyPlanningWeek';
 import type { PlanningState, WeeklyPlanningAction } from './types';
 import {
   loadOwnedWeeklyPlanningState,
@@ -10,8 +13,15 @@ import {
   weeklyPlanningReducer,
 } from './weeklyPlanningReducer';
 
-export function useWeeklyPlanningState(userId: string, selectedDate: string) {
-  const weekStartDate = useMemo(() => startOfWeek(selectedDate), [selectedDate]);
+export function useWeeklyPlanningState(
+  userId: string,
+  selectedDate: string,
+  weekStartsOn: WeeklyPlanningWeekStartsOn = 'monday',
+) {
+  const weekStartDate = useMemo(
+    () => startOfWeeklyPlanningWeek(selectedDate, weekStartsOn),
+    [selectedDate, weekStartsOn],
+  );
   const scopeKey = `${userId}:${weekStartDate}`;
   const [planningState, setPlanningState] = useState<PlanningState>(() =>
     createInitialPlanningState(weekStartDate),

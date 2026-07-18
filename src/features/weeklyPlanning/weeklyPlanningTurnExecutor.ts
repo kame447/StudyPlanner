@@ -8,6 +8,7 @@ import {
   runWeeklyPlanningBehaviorAwarePipeline,
   runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
 } from './pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
+import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningMessage } from './types';
 
@@ -24,6 +25,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   timetableTermId?: string;
   conversationId: string;
   traceRequestId: string;
+  weekStartsOn?: WeeklyPlanningWeekStartsOn;
 }
 
 export interface WeeklyPlanningTurnExecutionResult {
@@ -57,6 +59,7 @@ export async function executeWeeklyPlanningTurn(
     existingPlans: input.plans,
     scheduleTemplates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
+    weekStartsOn: input.weekStartsOn,
   };
   const aiConfig = getAiConfig();
   const shouldUseAiInterpreter =
