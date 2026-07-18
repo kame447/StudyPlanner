@@ -1,6 +1,9 @@
 name: Weekly Planning Application Tests
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - agent/weekly-planning-application-behavior-tests
