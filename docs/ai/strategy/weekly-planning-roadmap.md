@@ -1,8 +1,9 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / active
-最終更新: 2026-07-17
-Current main baseline: `10c40296dc6655343d4d36d04ceb63abb9c07f8e`
+最終更新: 2026-07-18
+Current code audit baseline: `37b1146a56139c28b52624b11ff0e705a69a5544`
+Task docs audit input: `2d6b482e5610a91895dd7f57c33aa967214c84cb`
 
 - Current contract status: [weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
@@ -152,12 +153,12 @@ PR #24で追加・強化されたplanning range contract:
 
 ## 3. Current queue
 
-`docs/ai/tasks/`直下には、未完了または追加確認が必要なtaskだけを置く。現在のqueueは次である。
+`docs/ai/tasks/`直下には未完了または追加確認が必要なtaskだけを置く。現在のroot taskは12件である。
 
 ### P1
 
 1. `20260716-weekly-planning-entrypoint-request-ownership.md`
-   - conversation、turn、request、revision、selected week、reset、explicit cancel、retryのownershipをproduction controllerへ統一する。
+   - controller/envelope実装と自動検証は完了し、browser verificationが残る。
    - modal close/presentation unmountをsession cancelとして扱わない。
 
 2. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
@@ -169,23 +170,24 @@ PR #24で追加・強化されたplanning range contract:
    - 週の始まり、学習時間見積り、session構成、修正傾向、実績差、修復方針を次回計画へ反映する。
 
 4. `20260716-weekly-planning-approval-persistence-and-idempotency.md`
-   - localStorageを越えたmulti-device、multi-tab、partial retryの重複保存防止を設計する。
-   - 2026-07-18監査で、単一端末クラッシュ変種、tab間の古い`plans`スナップショット、memo marker依存のdedupe脆弱性を設計範囲へ追加した。
+   - server-side claim、item単位progress、実Plan ID、構造化provenanceによりmulti-tab・multi-device・crash retryを一意化する。
+   - validation session bindingとsave side-effect isolationを先行必須とする。
 
 5. `20260718-weekly-planning-application-behavior-tests.md`
-   - App分離後のapplication層(hook + approval application)の結合挙動テストharnessを整備する。20260718系修正taskの受け皿として先行を推奨する。
+   - application層の実reducer・storage・非同期競合を検証する共通harnessを整備する。
+   - 既知の壊れた挙動をpassing characterizationとして固定しない。
 
 6. `20260718-weekly-planning-approval-save-side-effect-isolation.md`
-   - 承認保存を`savePlanDraft`の画面副作用(selectedDate変更・editor閉鎖)から分離し、週外日付承認での状態自壊を解消する。実planIdをledgerへ記録する。
+   - 週間承認をeditor・画面遷移・notice副作用のない保存関数へ分離し、永続Plan IDを返す。
 
 7. `20260718-weekly-planning-approval-validation-session-binding.md`
-   - conversationIdをexecutor→pipeline→preview→runtimeへ配線し、承認前検証の捏造proposalRecordsと自己比較revisionを実セッション値へ置き換える。
+   - pending conversationId、intake revision、実proposal recordsをexecutor→pipeline→preview→runtime→approvalへ接続する。
 
 8. `20260718-weekly-planning-approval-inflight-interruption.md`
-   - 承認実行中のreset・週変更で未保存itemの保存を中断し、破棄済み仮予定の無通知保存を防ぐ。
+   - ownership喪失後に次itemのlookup・保存を開始せず、古いstateへ完了messageを適用しない。
 
 9. `20260718-weekly-planning-restored-draft-approval-lifecycle.md`
-   - リロード後に復元した仮予定の承認可否をproduct decisionとして確定し、表示と承認可否を一致させる。
+   - browser reload後のbehavior-aware仮予定は再計算必須とし、承認導線と表示を一致させる。
 
 ### P2
 
@@ -197,7 +199,19 @@ PR #24で追加・強化されたplanning range contract:
     - PR #5 post-merge stateとentrypoint ownership taskの結果を前提にする。
 
 12. `20260718-weekly-planning-user-boundary-storage-guard.md`
-    - userId切替時のstorage書き込み窓を塞ぎ、承認ledgerをユーザー別keyへ分離する。
+    - stateとowner identityを同一snapshotとして保存し、approval ledgerをuser別keyへ安全にmigrationする。
+
+承認系taskの推奨着手順は次である。queue番号より各taskのDependenciesを優先する。
+
+```text
+application behavior test harness
+→ validation session binding / save side-effect isolation
+→ in-flight interruption
+→ reload-restored draft lifecycle
+→ server-side persistence and idempotency
+```
+
+`validation session binding`と`save side-effect isolation`は独立した主原因を持つが、同じapplication fileを変更するため並行実装しない。user-boundary storage guardはledger API変更と競合する場合、server-side persistenceより先に統合する。
 
 構造監査の全項目は`weekly-planning-pr5-post-merge-status.md`と`tasks/closed/20260717-codebase-maintainability-review.md`を参照する。個別実装へ進める際は、一つの主原因と受け入れ条件を持つtaskへ分ける。
 
@@ -226,7 +240,7 @@ product spec、architecture、roleplay test planに残る`single interpreter / n
 - 今回発話の具体的な日付・曜日範囲をprofile設定より優先する。
 - profileが未設定、破損、競合している場合だけ明示的修復へ入る。
 
-profile schemaとprofile-based range resolutionは未実装である。現在`main`はPR #24までのpending planning range契約を使用する。漢数字絶対日付の誤認はP0 taskで修正する。
+profile schemaとprofile-based range resolutionは未実装である。現在`main`はPR #24までのpending planning range契約を使用する。漢数字絶対日付の誤認はPR #26で修正済みである。
 
 ### 4.3 conversation trace privacy — decision recorded / production controls not implemented
 
@@ -257,6 +271,19 @@ profile schemaとprofile-based range resolutionは未実装である。現在`ma
 
 詳細は`20260716-weekly-planning-longitudinal-personalization-data-governance.md`を正とする。
 
+### 4.5 reload後のbehavior-aware仮予定 — decision recorded / not implemented
+
+2026-07-18に次を決定した。
+
+- modal close/reopenは同一sessionのpresentation lifecycleとして扱い、runtimeが維持される限り承認可能状態を保つ。
+- browser reload後はsession runtimeとsession-only proposal recordsを信頼可能に復元できないため、復元されたbehavior-aware仮予定をそのまま承認しない。
+- 復元案は参考表示できるが、承認buttonを非表示またはdisabledとし、最新条件での再計算を明示する。
+- approval domainのfail-closed guardは維持し、UI判定だけへ依存しない。
+- legacy metadataなしblockの互換経路は変更しない。
+- 将来server-sideで信頼できるruntime snapshotを導入した場合だけ、reload後承認可能化を再検討する。
+
+詳細は`20260718-weekly-planning-restored-draft-approval-lifecycle.md`を正とする。
+
 ## 5. Deferred backlog
 
 次はactive root taskへまだ昇格させない。実コードを再調査し、単一の責務と受け入れ条件を持てる場合だけtask化する。
@@ -285,20 +312,3 @@ mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履
 - behavior annotationとrelative constraintでavailabilityを増やさない。
 - existing plan、timetable、buffer、hard busy intervalを上書きしない。
 - current-week factをrecurring profileへ無断昇格しない。
-- profile factはorigin、confidence、scope、confirmedAtを持つ。
-- trace documentを直接longitudinal profileとして参照しない。
-- selected week変更、session reset、explicit cancel、revision不一致後のstale async resultをstateへ適用しない。
-- modal closeまたはpresentation unmountだけで有効session resultを失わない。
-- stale/pending preview approvalでrepository writeを開始しない。
-- trace保存はplanning処理の成功条件にしない。
-- client生成traceを監査、課金、security判定の根拠にしない。
-
-## 7. Task operation
-
-- task rootには未完了taskだけを置く。
-- 一taskは一つの主原因、責務境界、完了条件を持つ。
-- 実装結果は`docs/ai/tasks/closed/`のcompletion recordへ統合する。
-- `implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
-- PR本文のtest結果を現在`main`へ自動継承しない。
-- 新taskはcurrent contract、post-merge status、roadmap、roleplay statusと同期する。
-- historical / closed / superseded文書をcurrent instructionとして直接実行しない。
