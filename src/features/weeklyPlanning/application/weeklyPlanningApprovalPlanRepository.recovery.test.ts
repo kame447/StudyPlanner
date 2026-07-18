@@ -5,7 +5,6 @@ import { buildWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanP
 import {
   createMemoryWeeklyPlanningApprovalPlanRepository,
   createWeeklyPlanningApprovalMemoryState,
-  WeeklyPlanningApprovalPersistenceError,
 } from './weeklyPlanningApprovalPlanRepository';
 
 const USER_ID = 'user-1';
@@ -82,7 +81,7 @@ describe('weeklyPlanningApprovalPlanRepository operation recovery', () => {
 
     await expect(
       repository.completeOperation(completedOperation(['block-1', 'block-2'])),
-    ).rejects.toMatchObject<Partial<WeeklyPlanningApprovalPersistenceError>>({
+    ).rejects.toMatchObject({
       code: 'incomplete_operation',
       retryable: true,
     });
