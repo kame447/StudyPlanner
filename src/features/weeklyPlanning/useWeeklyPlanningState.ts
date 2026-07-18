@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { startOfWeek } from '../../lib/date';
 import type { PlanningState, WeeklyPlanningAction } from './types';
 import {
-  loadWeeklyPlanningState,
-  saveWeeklyPlanningState,
-} from './weeklyPlanningStorage';
+  loadOwnedWeeklyPlanningState,
+  saveOwnedWeeklyPlanningState,
+} from './weeklyPlanningOwnedStorage';
 import {
   createInitialPlanningState,
   weeklyPlanningReducer,
@@ -12,13 +12,16 @@ import {
 
 export function useWeeklyPlanningState(userId: string, selectedDate: string) {
   const weekStartDate = useMemo(() => startOfWeek(selectedDate), [selectedDate]);
+  const scopeKey = `${userId}:${weekStartDate}`;
   const [planningState, setPlanningState] = useState<PlanningState>(() =>
     createInitialPlanningState(weekStartDate),
   );
   const planningStateRef = useRef(planningState);
+  const planningStateScopeRef = useRef(scopeKey);
 
-  const replacePlanningState = useCallback((nextState: PlanningState) => {
+  const replacePlanningState = useCallback((nextState: PlanningState, nextScope?: string) => {
     planningStateRef.current = nextState;
+    if (nextScope) planningStateScopeRef.current = nextScope;
     setPlanningState(nextState);
     return nextState;
   }, []);
@@ -33,13 +36,18 @@ export function useWeeklyPlanningState(userId: string, selectedDate: string) {
   const getPlanningState = useCallback(() => planningStateRef.current, []);
 
   useEffect(() => {
-    replacePlanningState(loadWeeklyPlanningState(userId, weekStartDate));
-  }, [replacePlanningState, userId, weekStartDate]);
+    replacePlanningState(
+      loadOwnedWeeklyPlanningState(userId, weekStartDate),
+      scopeKey,
+    );
+  }, [replacePlanningState, scopeKey, userId, weekStartDate]);
 
   useEffect(() => {
+    if (planningStateRef.current !== planningState) return;
+    if (planningStateScopeRef.current !== scopeKey) return;
     if (planningState.weekStartDate !== weekStartDate) return;
-    saveWeeklyPlanningState(userId, planningState);
-  }, [planningState, userId, weekStartDate]);
+    saveOwnedWeeklyPlanningState(userId, planningState);
+  }, [planningState, scopeKey, userId, weekStartDate]);
 
   return {
     planningState,

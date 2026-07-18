@@ -55,6 +55,11 @@ export interface WeeklyPlanningApplication {
   approveDraftBlocks: () => Promise<void>;
 }
 
+interface ApprovalLedgerState {
+  ownerId: string;
+  operations: WeeklyDraftApprovalOperation[];
+}
+
 export function useWeeklyPlanningApplication({
   userId,
   selectedDate,
@@ -69,9 +74,10 @@ export function useWeeklyPlanningApplication({
     selectedDate,
   );
   const controllerSessionRef = useRef<WeeklyPlanningControllerSession | null>(null);
-  const [approvalOperations, setApprovalOperations] = useState<WeeklyDraftApprovalOperation[]>(
-    loadWeeklyPlanningApprovalOperations,
-  );
+  const [approvalLedger, setApprovalLedger] = useState<ApprovalLedgerState>(() => ({
+    ownerId,
+    operations: loadWeeklyPlanningApprovalOperations(ownerId),
+  }));
 
   if (!controllerSessionRef.current) {
     controllerSessionRef.current = createWeeklyPlanningControllerSession(
@@ -81,9 +87,21 @@ export function useWeeklyPlanningApplication({
   }
 
   useEffect(() => {
-    saveWeeklyPlanningApprovalOperations(approvalOperations);
-  }, [approvalOperations]);
+    if (approvalLedger.ownerId === ownerId) return;
+    setApprovalLedger({
+      ownerId,
+      operations: loadWeeklyPlanningApprovalOperations(ownerId),
+    });
+  }, [approvalLedger.ownerId, ownerId]);
 
+  useEffect(() => {
+    if (approvalLedger.ownerId !== ownerId) return;
+    saveWeeklyPlanningApprovalOperations(ownerId, approvalLedger.operations);
+  }, [approvalLedger, ownerId]);
+
+  const approvalOperations = approvalLedger.ownerId === ownerId
+    ? approvalLedger.operations
+    : [];
   const pendingDraftBlocks = useMemo(
     () => planningState.draftBlocks.filter((block) => block.status === 'draft'),
     [planningState.draftBlocks],
@@ -161,10 +179,20 @@ export function useWeeklyPlanningApplication({
       getState: getPlanningState,
       dispatch: dispatchPlanningAction,
       onOperationCompleted: (operation) => {
-        setApprovalOperations((current) => [
-          ...current.filter((item) => item.approvalOperationId !== operation.approvalOperationId),
-          operation,
-        ]);
+        setApprovalLedger((current) => {
+          const currentOperations = current.ownerId === ownerId
+            ? current.operations
+            : loadWeeklyPlanningApprovalOperations(ownerId);
+          return {
+            ownerId,
+            operations: [
+              ...currentOperations.filter(
+                (item) => item.approvalOperationId !== operation.approvalOperationId,
+              ),
+              operation,
+            ],
+          };
+        });
       },
     }),
   };
