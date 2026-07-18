@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import type {
@@ -38,6 +38,14 @@ function createStore(): {
       return state;
     },
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function readSourceBlockId(draft: PlanDraft): string {
@@ -147,5 +155,35 @@ describe('weeklyPlanningApprovalApplication', () => {
     expect(store.getState().draftBlocks).toEqual([]);
     expect(store.getState().pendingApproval).toBeUndefined();
     expect(store.getState().lastAssistantMessage).toBe('2件の仮予定を通常予定として保存しました。');
+  });
+
+  it('stops before the second save after session reset and does not dispatch an old completion message', async () => {
+    const store = createStore();
+    const firstSave = deferred<Plan>();
+    const savedSourceIds: string[] = [];
+    let completedOperation: WeeklyDraftApprovalOperation | undefined;
+
+    const approval = approveWeeklyPlanningDraftBlocks({
+      userId: 'user-1',
+      plans: [],
+      approvalOperations: [],
+      async saveWeeklyApprovedPlan(draft) {
+        const sourceBlockId = readSourceBlockId(draft);
+        savedSourceIds.push(sourceBlockId);
+        if (sourceBlockId === 'block-1') return firstSave.promise;
+        return persistedPlan(draft, `persisted-plan-${sourceBlockId}`);
+      },
+      getState: store.getState,
+      dispatch: store.dispatch,
+      onOperationCompleted(operation) {
+        completedOperation = operation;
+      },
+    });
+
+    await vi.waitFor(() => expect(savedSourceIds).toEqual(['block-1']));
+    store.dispatch({ type: 'reset_session' });
+    firstSave.resolve(persistedPlan({
+      ...createPlanFromDraft as never,
+    } as never, 'unused'));
   });
 });
