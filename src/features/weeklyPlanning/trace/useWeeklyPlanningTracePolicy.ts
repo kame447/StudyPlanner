@@ -26,7 +26,7 @@ export interface WeeklyPlanningTracePolicyState {
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
     ? error.message.trim()
-    : '週間計画traceの利用状態を確認できませんでした。';
+    : '週間計画の会話記録に関する同意状況を確認できませんでした。';
 }
 
 export function useWeeklyPlanningTracePolicy(
@@ -53,7 +53,7 @@ export function useWeeklyPlanningTracePolicy(
     if (!userId.trim() || !proxyConfigured) {
       setStatus('unavailable');
       setAcceptedAt(null);
-      setError('週間計画traceのserver設定を確認してください。');
+      setError('同意状況を確認するサーバーの設定が不足しています。');
       return;
     }
     setStatus('loading');
@@ -82,7 +82,7 @@ export function useWeeklyPlanningTracePolicy(
     }
     if (!proxyConfigured || !userId.trim()) {
       setStatus('unavailable');
-      setError('週間計画traceのserver設定を確認してください。');
+      setError('同意状況を保存するサーバーの設定が不足しています。');
       return false;
     }
     setStatus('loading');
@@ -93,7 +93,7 @@ export function useWeeklyPlanningTracePolicy(
         && next.policyVersion === WEEKLY_PLANNING_TRACE_POLICY_VERSION;
       setStatus(accepted ? 'accepted' : 'required');
       setAcceptedAt(accepted ? next.acceptedAt : null);
-      if (!accepted) setError('週間計画traceの利用同意を保存できませんでした。');
+      if (!accepted) setError('同意内容をアカウントへ保存できませんでした。');
       return accepted;
     } catch (caught) {
       setStatus('unavailable');
