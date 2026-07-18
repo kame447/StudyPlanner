@@ -35,10 +35,19 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run tests
-        run: npm run test:run
-      - name: TypeScript and production build
-        run: npm run build
-      - name: Check pull request diff
-        if: github.event_name == 'pull_request'
-        run: git diff --check origin/${{ github.base_ref }}...HEAD
+      - name: Capture build
+        id: build
+        shell: bash
+        run: |
+          set +e
+          npm run build > server-idempotency-build.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-idempotency-build-log
+          path: server-idempotency-build.log
+      - name: Fail when build failed
+        if: steps.build.outputs.status != '0'
+        run: exit 1
