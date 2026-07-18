@@ -123,12 +123,28 @@ service cloud.firestore {
       allow read: if canReadOwnedResource();
       allow create: if canCreateOwnedResource()
         && request.resource.data.schemaVersion == 1
-        && request.resource.data.status == 'active'
-        && request.resource.data.savedItemCount >= 1;
+        && request.resource.data.savedItemCount >= 1
+        && (
+          request.resource.data.status == 'active'
+          || (
+            request.resource.data.status == 'completed'
+            && request.resource.data.expectedItemCount == request.resource.data.savedItemCount
+            && request.resource.data.completedAt is string
+          )
+        );
       allow update: if canUpdateOwnedResource()
         && request.resource.data.schemaVersion == resource.data.schemaVersion
         && request.resource.data.approvalOperationId == resource.data.approvalOperationId
         && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.savedItemCount >= resource.data.savedItemCount
+        && (resource.data.status != 'completed' || request.resource.data.status == 'completed')
+        && (
+          request.resource.data.status != 'completed'
+          || (
+            request.resource.data.expectedItemCount == request.resource.data.savedItemCount
+            && request.resource.data.completedAt is string
+          )
+        )
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'savedItemCount',
@@ -137,24 +153,27 @@ service cloud.firestore {
           'completedAt',
           'expiresAt'
         ]);
-      allow delete: if isOwner(resource.data.userId);
+      allow delete: if false;
 
       match /items/{itemId} {
         allow read: if canReadOwnedResource();
         allow create: if canCreateOwnedResource()
           && request.resource.data.schemaVersion == 1
-          && request.resource.data.status == 'saved';
+          && request.resource.data.status == 'saved'
+          && request.resource.data.approvalOperationId is string
+          && request.resource.data.sourceDraftBlockId is string
+          && request.resource.data.savedPlanId is string;
         allow update: if canUpdateOwnedResource()
           && request.resource.data.schemaVersion == resource.data.schemaVersion
           && request.resource.data.approvalOperationId == resource.data.approvalOperationId
           && request.resource.data.sourceDraftBlockId == resource.data.sourceDraftBlockId
+          && request.resource.data.savedPlanId == resource.data.savedPlanId
+          && request.resource.data.status == resource.data.status
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status',
-            'savedPlanId',
             'updatedAt'
           ]);
-        allow delete: if isOwner(resource.data.userId);
+        allow delete: if false;
       }
     }
 
