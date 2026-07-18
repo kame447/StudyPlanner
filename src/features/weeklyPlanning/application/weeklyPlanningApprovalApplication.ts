@@ -28,7 +28,7 @@ interface WeeklyPlanningApprovalApplicationInput {
 
 function approvalErrorMessage(kind: string, reason?: string): string {
   if (reason === 'session-runtime-unavailable') {
-    return '再読み込み前の仮予定です。最新条件で作り直してください。';
+    return '現在の条件と一致しない仮予定です。最新条件で再計算してください。';
   }
   switch (kind) {
     case 'stale_preview_approval_attempt':
