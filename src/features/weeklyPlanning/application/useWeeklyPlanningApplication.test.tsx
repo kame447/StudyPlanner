@@ -214,7 +214,7 @@ describe('useWeeklyPlanningApplication', () => {
   it('loads the approval ledger after remount and skips an already completed operation', async () => {
     const previewMetadata: WeeklyPreviewMetadata = {
       previewId: 'preview-ledger-round-trip',
-      stateRevision: 4,
+      stateRevision: 0,
       assumptionDependencies: [],
       approvalEligibility: 'eligible',
       stale: false,
