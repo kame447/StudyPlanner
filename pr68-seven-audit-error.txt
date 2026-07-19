@@ -5,11 +5,11 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 3[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 4[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mrenders only untargeted completion target fields from questionPlan context[32m 1[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 2[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22momits a generic acknowledgement from renderer output[32m 1[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[32m 1[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 1[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 0[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 3[2mms[22m[39m
@@ -34,8 +34,8 @@
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: lateness drift[32m 0[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: graduation-year drift[32m 0[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[32m 0[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mcovers every PlanningIntakeMissing slot with the required question metadata[32m 7[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mkeeps status priority separate from question-plan order[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mcovers every PlanningIntakeMissing slot with the required question metadata[32m 9[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mkeeps status priority separate from question-plan order[32m 0[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mkeeps dynamic deterministic missing-question text in the registry[32m 0[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mdoes not label an explicit future one-day range as today[32m 0[2mms[22m[39m
  [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22muses controlled vocabulary for target years and exam unit-rate questions[32m 0[2mms[22m[39m
@@ -71,6 +71,6 @@
 
 [2m Test Files [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (6)[39m
 [2m      Tests [22m [1m[32m35 passed[39m[22m[90m (35)[39m
-[2m   Start at [22m 06:20:40
-[2m   Duration [22m 3.53s[2m (transform 778ms, setup 0ms, collect 452ms, tests 37ms, environment 1ms, prepare 704ms)[22m
+[2m   Start at [22m 06:25:34
+[2m   Duration [22m 3.69s[2m (transform 863ms, setup 0ms, collect 484ms, tests 41ms, environment 2ms, prepare 696ms)[22m
 
