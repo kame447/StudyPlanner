@@ -36,6 +36,7 @@ jobs:
           {
             python scripts/apply_weekly_planning_trace_dialogue_fix.py
             python scripts/apply_weekly_planning_integration_tests.py
+            python scripts/apply_weekly_planning_integration_fixes.py
           } > /tmp/apply-output.txt 2>&1
           status=$?
           set -e
@@ -99,6 +100,7 @@ jobs:
         run: |
           rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
           rm -f scripts/apply_weekly_planning_integration_tests.py
+          rm -f scripts/apply_weekly_planning_integration_fixes.py
           rm -f scripts/apply-error.txt
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
