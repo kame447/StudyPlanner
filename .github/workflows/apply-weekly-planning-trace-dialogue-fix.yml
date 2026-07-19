@@ -34,6 +34,7 @@ jobs:
         run: |
           python scripts/apply_weekly_planning_trace_dialogue_fix.py
           python scripts/apply_weekly_planning_integration_tests.py
+          python scripts/apply_weekly_planning_integration_fixes.py
           python scripts/apply_weekly_planning_followup_fix.py
       - name: Install dependencies
         run: npm ci
