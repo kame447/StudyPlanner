@@ -1,14 +1,1 @@
-/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:206: SyntaxWarning: invalid escape sequence '\s'
-  """function extractExamFields(text: string): string[] {
-/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:214: SyntaxWarning: invalid escape sequence '\s'
-  """function cleanExamFieldCandidate(value: string): string | undefined {
-/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:331: SyntaxWarning: invalid escape sequence '\s'
-  """function normalizedTurnText(value: string | undefined): string {
-/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:363: SyntaxWarning: invalid escape sequence '\.'
-  """function unitRateBasisLabel(state: PlanningIntakeState): string | undefined {
-Traceback (most recent call last):
-  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py", line 204, in <module>
-    replace_once(
-  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py", line 11, in replace_once
-    raise RuntimeError(f"expected one replacement in {path}, found {count}: {old[:80]!r}")
-RuntimeError: expected one replacement in src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts, found 0: 'function extractExamFields(text: string): string[] {\n  return normalizeIntakeTex'
+retry after normalizing the applicator regex literal
