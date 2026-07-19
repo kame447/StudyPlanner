@@ -30,20 +30,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run focused tests
-        run: >-
-          npm run test:run --
-          src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts
-          src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts
-          src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts
-          workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts
-          workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts
-          workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
+        shell: bash
+        run: |
+          set +e
+          npm run test:run -- \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts \
+            src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts \
+            --reporter=verbose > /tmp/pr68-final-focused.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 220 /tmp/pr68-final-focused.log > pr68-final-focused-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pr68-final-focused-error.txt
+            git commit -m 'feat: PR68最終focused診断を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          fi
+          tail -n 220 /tmp/pr68-final-focused.log
+          exit "$status"
       - name: Run full tests
         run: npm run test:run
       - name: Build
@@ -54,6 +68,7 @@ jobs:
           rm -f .github/workflows/pr68-second-audit-fixes.yml .github/workflows/pr68-second-audit-finalize.yml
           rm -f pr68-second-audit-error.txt pr68-second-audit-test-error.txt
           rm -f pr68-second-audit-full-test-error.txt pr68-second-audit-build-error.txt
+          rm -f pr68-final-focused-error.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
