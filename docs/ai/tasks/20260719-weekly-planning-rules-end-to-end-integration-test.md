@@ -48,6 +48,11 @@ AI interpreter を使用しない `rules` 経路について、ユーザー入�
 9. 最終 assistant message が保存件数を通知する。
 10. 保存処理中に画面側の選択日相当の値が変化しても、承認対象 state を失わず完了する。
 11. 現在ターンで更新した優先順は受理事実として表示対象にし、次ターンでは同じ優先順を再表示しない。
+12. 受理事実の表示判定は発話文字列の部分一致ではなく、前後stateの意味差分に基づく。
+13. 院試のreadinessは、正の有限値を持つ `year_field_chunk` の目安時間が存在する場合に限って成立する。
+14. AI commandは種別だけでなく、目標名、subject、数値、年度、順序、日時を現在入力または既知stateへgroundingする。
+15. AI rendererはslotKeyが一致していても、医療質問、個人情報要求、遅刻時間や卒業年度など別概念への意味逸脱を拒否する。
+16. trace entryのimmutable保存は原子的なcreateを使用し、同一payloadの再送だけをidempotentに受理する。
 
 ## 完了条件
 
