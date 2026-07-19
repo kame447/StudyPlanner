@@ -33,12 +33,64 @@ replace_once(
         || (unitRateQuestion && explicitNumberValues(normalized).length > 0);
       return command.unitRate.source === 'user'
         && typeof minutes === 'number'
-        && Number.isFinite(minutes)
-        && minutes > 0
         && hasDurationEvidence
         && unitCompatible
         ? null : 'ungrounded-unit-rate';
     }
+""",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts',
+    """    case 'add_fixed_event':
+      if (command.event.date && !isDate(command.event.date)) return 'invalid-date';
+""",
+    """    case 'add_unavailable':
+      if (command.range.date && !isDate(command.range.date)) return 'invalid-date';
+      if (command.range.start && !isTime(command.range.start)) return 'invalid-time';
+      if (command.range.end && !isTime(command.range.end)) return 'invalid-time';
+      if (command.range.durationMinutes !== undefined && !isReasonableMinutes(command.range.durationMinutes)) {
+        return 'invalid-duration-minutes';
+      }
+      return null;
+    case 'add_fixed_event':
+      if (command.event.date && !isDate(command.event.date)) return 'invalid-date';
+""",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts',
+    """    [
+      'unit-rate value',
+      '3時間です',
+      {
+        type: 'set_unit_rate',
+        unitRate: {
+          unit: 'year_field_chunk',
+          minutesPerUnit: 30,
+          source: 'user',
+        },
+        sourceText: '3時間です',
+        confidence: 'high',
+      },
+      'ungrounded-unit-rate',
+    ],
+""",
+    """    [
+      'unit-rate range',
+      '3時間です',
+      {
+        type: 'set_unit_rate',
+        unitRate: {
+          unit: 'year_field_chunk',
+          minutesPerUnit: 0,
+          source: 'user',
+        },
+        sourceText: '3時間です',
+        confidence: 'high',
+      },
+      'invalid-unit-rate-minutes',
+    ],
 """,
 )
 
