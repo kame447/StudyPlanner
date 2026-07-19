@@ -239,7 +239,7 @@ function normalizedTextContainsValue(text: string, value: string | undefined): b
   const hour = Number(hourText);
   const minute = Number(minuteText);
   if (!Number.isInteger(hour) || !Number.isInteger(minute)) return false;
-  return new RegExp(`${hour}\s*時(?:\s*${minute}\s*分)?`).test(normalized)
+  return new RegExp(`${hour}\\s*時(?:\\s*${minute}\\s*分)?`).test(normalized)
     || new RegExp(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`).test(normalized);
 }
 

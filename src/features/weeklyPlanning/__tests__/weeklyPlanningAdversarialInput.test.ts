@@ -166,6 +166,34 @@ describe('weekly planning adversarial input guards', () => {
     ]);
   });
 
+  it('accepts Japanese hour notation when it matches the structured life constraint', () => {
+    const userText = '23時から7時まで寝ます';
+    const result = validateInterpretedCandidates([{
+      command: {
+        type: 'update_life_constraint',
+        kind: 'sleep',
+        constraint: {
+          start: '23:00',
+          end: '07:00',
+          hardness: 'hard',
+        },
+        sourceText: userText,
+        confidence: 'high',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+      sourceUserText: userText,
+    }], {
+      knownFields: [],
+      confirmedSlots: [],
+    });
+
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ type: 'update_life_constraint', kind: 'sleep' }),
+    ]);
+    expect(result.rejected).toEqual([]);
+  });
+
   it.each([
     [
       'study goal title',
