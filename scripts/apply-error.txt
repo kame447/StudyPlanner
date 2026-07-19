@@ -1,35 +1,35 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 37[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 4[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 50[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 5[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mrenders only untargeted completion target fields from questionPlan context[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 2[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22momits a generic acknowledgement from renderer output[32m 1[2mms[22m[39m
-[31m   [31m×[31m weekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[39m[32m 10[2mms[22m[39m
+[31m   [31m×[31m weekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[39m[32m 14[2mms[22m[39m
 [31m     → expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 3[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 4[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mrestores final output to questionPlan order when AI returns planned slots out of order[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: plan outside slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 0[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for AI call failure[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[32m 8[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[32m 12[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22momits the period label when the user never stated one (no fabrication)[32m 0[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22momits the period label when the user never stated one (no fabrication)[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22msupplies a plain-vocabulary hint for internal slot keys (fixed_events)[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mrenders a pending planning start question with its user-provided period label[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mpasses the pending period label and start-date vocabulary hint to renderers[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mpasses the pending period label through the AI renderer input path[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[32m 0[2mms[22m[39m
- [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
- [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 14[2mms[22m[39m
 
 [31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
@@ -82,8 +82,8 @@
 
 [2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (5)[39m
 [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m36 passed[39m[22m[90m (37)[39m
-[2m   Start at [22m 00:44:45
-[2m   Duration [22m 2.77s[2m (transform 750ms, setup 0ms, collect 1.27s, tests 67ms, environment 2ms, prepare 625ms)[22m
+[2m   Start at [22m 00:48:26
+[2m   Duration [22m 3.82s[2m (transform 974ms, setup 0ms, collect 1.77s, tests 105ms, environment 1ms, prepare 798ms)[22m
 
 
 ::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning AI dialogue renderer > replaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary,line=205,column=21::AssertionError: expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'%0A%0A- Expected%0A+ Received%0A%0A- 対象分野はOSnetworkで受け取りました。%0A+ OSnetworkを1科目で受け取りました。%0A+ すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？%0A+ 睡眠時間はどうしますか？%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:205:21%0A%0A
