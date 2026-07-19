@@ -1,0 +1,78 @@
+name: Apply weekly planning trace and dialogue fix
+
+on:
+  push:
+    branches:
+      - agent/fix-weekly-planning-trace-and-dialogue-repair
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'feat: 週間計画ログと対話修復を適用'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-weekly-planning-trace-and-dialogue-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply source changes
+        run: |
+          python scripts/apply_weekly_planning_trace_dialogue_fix.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts')
+          content = path.read_text(encoding='utf-8')
+          priority = """  const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
+            ? params.state.priorityPolicy.order
+            : undefined;
+          """
+          if priority not in content:
+              raise SystemExit('priorityOrder cleanup target missing')
+          content = content.replace(priority, '', 1)
+          constraint = """function constraintSummary(state: PlanningIntakeState): string[] | undefined {
+            const values = state.constraints.map((constraint) =>
+              [constraint.kind, constraint.date, constraint.start, constraint.end]
+                .filter(Boolean)
+                .join(' '),
+            );
+
+            return values.length > 0 ? values : undefined;
+          }
+
+          """
+          if constraint not in content:
+              raise SystemExit('constraintSummary cleanup target missing')
+          path.write_text(content.replace(constraint, '', 1), encoding='utf-8')
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run focused regression tests
+        run: |
+          npx vitest run \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts \
+            src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts
+      - name: Build
+        run: npm run build
+      - name: Remove temporary applicator
+        run: |
+          rm scripts/apply_weekly_planning_trace_dialogue_fix.py
+          rm .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
+      - name: Commit applied fix
+        run: |
+          git config user.name 'studyplanner-agent'
+          git config user.email 'studyplanner-agent@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat: 週間計画ログと対話修復を改善'
+          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
