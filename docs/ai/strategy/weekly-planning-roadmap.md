@@ -1,257 +1,221 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / active
-最終更新: 2026-07-18
-Current implementation baseline: `fe0dc86af264ab339e81b2191b333b4ef2a779b0`
+最終更新: 2026-07-19
+Current implementation baseline: `34c6744fefbc9b7f34bce36b97d47da4a86bf264`
 
 - Current contract status: [weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
 - Approval stream completion: [20260716-weekly-planning-approval-persistence-and-idempotency.md](../tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md)
 - Approval operational rollout: [20260718-weekly-planning-approval-operational-rollout.md](../tasks/20260718-weekly-planning-approval-operational-rollout.md)
+- Personalization foundation completion: [20260718-weekly-planning-personalization-foundation.md](../tasks/closed/20260718-weekly-planning-personalization-foundation.md)
+- Personalization design: [weekly-planning-personalization-history-and-optimization-design.md](weekly-planning-personalization-history-and-optimization-design.md)
 - Architecture: [weekly-planning-dialogue-architecture-v4.md](../../architecture/weekly-planning-dialogue-architecture-v4.md)
 - Product spec: [weekly-planning-spec.md](../../weekly-planning/weekly-planning-spec.md)
 - Test scenarios: [weekly-planning-roleplay-test-plan.md](../../testing/weekly-planning-roleplay-test-plan.md)
 - Test coverage status: [weekly-planning-roleplay-status.md](../../testing/weekly-planning-roleplay-status.md)
 - Documentation index: [weekly-planning-docs-index.md](../weekly-planning-docs-index.md)
 
-## 1. Verified baseline
+## 1. Statusの読み方
 
-### 1.1 Historical dialogue-stack baseline
+次の状態を同一視しない。
 
-次は記録済みのローカル自動検証を持つ。
+```text
+module implemented
+→ production connected
+→ automated verified
+→ browser verified
+→ operationally deployed
+```
 
-| item | status |
-| --- | --- |
-| Gate P4 | complete historical gate |
-| DA0a assumption proposal foundation | complete |
-| DA0r behavior-aware readiness | complete |
-| minimal behavior derivation | complete |
-| DA0 non-exam preview bridge | complete |
-| DA1 allowed action / response contract | complete |
-| authorization / availability / deadline hardening | complete |
-| preview metadata preservation | complete |
-| behavior-aware entrypoint connection | complete |
-| test architecture refactor | complete |
+PR本文や過去のcompletion recordに記録されたテスト成功は、その時点のheadに対する記録である。現在の`main`、実ブラウザ、本番Firestore設定へ自動的に継承しない。
 
-Historical recorded validation:
+## 2. 現在の実装基盤
 
-- targeted tests: 8 files / 38 tests passed
-- full tests: 62 files / 825 tests passed
-- TypeScript: passed
-- build: passed
-- diff check: passed
-- browser roleplay: automation environment interruptionにより未完了
+### 2.1 対話・preview・承認
 
-### 1.2 PR #5 recorded validation
+次は`main`へ実装済みである。
 
-PR #5最終head `052d7f0`には次の記録がある。
+- deterministic baselineとAI semantic補完の属性単位merge
+- 明示的修復、やり過ごし、grounded acknowledgement
+- planning range pending contract
+- session-owned preview lifecycle
+- closed storage validation
+- request ownershipとstale result拒否
+- approval専用保存境界
+- browser reload後の復元仮予定の再計算要求
+- user-boundary storage
+- server transactionを正本とするapproval idempotency
 
-- `git diff --check origin/main...HEAD`: passed
-- 104 test files passed、1 skipped
-- 1003 tests passed、13 skipped、5 todo
-- production build: passed
-- 既知警告: dynamic/static import重複、500kB超chunk
+残る作業は、実ブラウザでのclose/reopen、reload、IME、focus、reset、週切替、複数tab・複数端末相当の確認と、本番Firestore rules・TTL・Emulatorの運用検証である。
 
-PR #5は2026-07-17にsquash mergeされ、`main` merge commitは`55f8e32`である。
+### 2.2 conversation trace
 
-これらは記録時点の結果であり、browser verifiedまたはoperationally deployedを意味しない。
+quality traceのcode実装と自動検証は完了している。本番secret、TTL、rules/Worker deploy、account deletion、限定閲覧、audit、privacy/legal reviewは未完了である。
 
-### 1.3 PR #24 / #26 recorded validation
+### 2.3 長期個別最適化
 
-PR #24は期間短答と`日曜日まで`の終了境界契約、PR #26は漢数字絶対日付と曜日誤認を修正した。各PRでfocused regression、週間計画suite、full tests、TypeScript、production build、diff checkが成功している。
+PR #48は2026-07-18に`main`へmerge済みであり、次の基盤を実装した。
 
-### 1.4 Current main dialogue-stack verification
+- version付きaccount-linked personalization profile
+- profile factのorigin、confidence、scope、confirmedAt、expiresAt
+- 月曜始まり／日曜始まりの初回選択
+- 保存済み週始まりの「今週」「来週」解釈への反映
+- 明示的な日付・曜日指定の優先
+- 設定画面からの変更とprofile reset
+- conversation traceとは別のrepository、collection、Firestore権限
+- 一時的な相談条件を自動的に長期profileへ昇格しない境界
 
-`main` `2af1a5e`をGitHub Actions run `29582279740`で再検証した。
+これはpersonalization foundationの完了を意味する。次は未実装であり、PR #48の完了範囲へ含めない。
 
-- targeted dialogue-stack tests: 48 files / 423 tests passed、1 file / 1 test skipped
-- full tests: 109 files / 1118 tests passed、1 file / 13 tests skipped、5 todo
-- TypeScript: passed
-- production build: passed
-- diff check: passed
-
-production entrypointの静的確認ではsession、preview、storage、approvalが接続済みである。request ownershipの実装後もbrowser roleplayは未検証であり、entrypoint taskへ残す。
-
-### 1.5 Approval stream recorded validation
-
-2026-07-18にPR #54〜#60、#62、#63をmainへmergeした。
-
-- PR #54: application behavior test harness
-- PR #55: validation session binding
-- PR #56: save side-effect isolation
-- PR #57: in-flight interruption
-- PR #58: restored draft lifecycle
-- PR #59: user-boundary storage guard
-- PR #60: structured Plan provenance
-- PR #62: server transaction idempotency
-- PR #63: operation/item retention boundary
-
-GitHub Actions runs `29642637792`、`29644307045`、`29645304800`、`29645775829`、`29646646819`、`29648193062`、`29649806549`、`29650224824`で、対象PRのfull tests、TypeScript、production build、diff checkが成功している。
-
-これはimplemented / production connected / automated verifiedを意味する。本番Firestore rules deploy、TTL policy、Emulator、multi-client実環境確認が完了するまではoperationally deployedとしない。
-
-## 2. Implemented modules and contracts on `main`
-
-次のmoduleとcontractは`main`に存在する。ただし、module実装、production entrypoint接続、自動検証、browser検証、production運用を同じ意味で扱わない。
-
-| item | module / connection status | remaining verification / decision |
-| --- | --- | --- |
-| PR #5 conversation/session hardening | merged to `main` | browser close-resume、IME、focus |
-| deterministic baseline + AI semantic補完 | merged to `main` | long-form spec/architecture/test planの旧no-merge記述同期 |
-| explicit repair / pass-over / grounded acknowledgement | merged to `main` | browser roleplay、real-model rubric |
-| contextual fixed-event question | merged to `main` | browser rendering、range edge cases |
-| planning range pending contract | PR #26までmerged / automated verified | week-start profile、browser roleplay |
-| session-owned preview lifecycle | merged / automated verified | browser close-resume、reload表示確認 |
-| closed storage validation | merged | current main round-trip再実行 |
-| approval application harness | merged / automated verified | browser multi-client scenario |
-| approval validation and save boundary | merged / automated verified | production rollout |
-| approval interruption and restored-draft lifecycle | merged / automated verified | browser reset/reload scenario |
-| approval user-boundary storage | merged / automated verified | legacy migration実環境確認 |
-| approval server idempotency | merged / automated verified | rules deploy、TTL、Emulator、multi-client実環境確認 |
-| DA2 request orchestrator and UI policy | implemented | browser race and IME |
-| DA3a relative constraint domain | implemented | local integration |
-| DA3b feasibility consultation | implemented | local integration / roleplay |
-| DA3c conversation evaluation | implemented | local full validation / requirement status sync |
-| conversation trace | implemented | production privacy rollout、scalability |
-| longitudinal personalization profile | active draft PR | validation、merge、operational rollout |
+- 週途中の現在時刻境界
+- 週sessionのクラウド同期と競合処理
+- 相談resetと派生観測の無効化
+- plan／actualからのversion付き観測記録
+- 見積り補正、session長、時間帯傾向の集計
+- 時間減衰、不確実性、既定値への縮約
+- 個人別placement score
+- 同意version、TTL、削除cascade、admin audit、privacy/legal review
 
 ## 3. Current queue
 
-`docs/ai/tasks/`直下には未完了または追加確認が必要なtaskだけを置く。現在のroot taskは6件である。
+`docs/ai/tasks/`直下には未完了taskだけを置く。個別最適化は基盤実装と学習pipelineを一つの巨大taskへ戻さず、依存順に分離する。
 
-### P1
+### P0: scheduler safety boundary
 
-1. `20260716-weekly-planning-entrypoint-request-ownership.md`
-   - controller/envelope実装と自動検証は完了し、browser verificationが残る。
-   - modal close/presentation unmountをsession cancelとして扱わない。
+1. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
+   - 明示開始がない今週計画で、現在時刻より前へ候補を生成しない。
+   - request単位の`currentDateTime`とplanning horizon開始境界を確立する。
 
-2. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
-   - code実装後の本番設定、TTL、削除、限定閲覧、privacy/legal reviewを完了する。
+### P1: production boundary / data governance
 
-3. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
-   - active draft PR #48を現行application境界へ統合し、検証・review・merge・運用確認を完了する。
+2. `20260716-weekly-planning-entrypoint-request-ownership.md`
+   - controller/envelope実装後のbrowser verificationを完了する。
 
-4. `20260718-weekly-planning-approval-operational-rollout.md`
-   - 本番Firestore rules deploy、operation/item双方のTTL policy、Emulator rules/transaction、multi-client実環境確認を完了する。
+3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
+   - traceの本番設定、TTL、削除、限定閲覧、audit、privacy/legal reviewを完了する。
 
-### P2
+4. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
+   - PR #48で完了したprofile基盤を前提に、同意、保持、訂正、削除、権限、監査、本番運用を完了する。
+   - 学習観測、集計、scoreの実装は後続taskへ委譲する。
 
-5. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
-   - pagination、query cost、index、archive、schemaVersion decoderを設計する。
+5. `20260718-weekly-planning-approval-operational-rollout.md`
+   - 本番Firestore rules、operation/item TTL、Emulator、multi-client確認を完了する。
 
-6. `20260716-weekly-planning-controller-ui-responsibility-split.md`
-   - conversation controller、preview controller、view componentへ責務を分離する。
+6. `20260716-weekly-planning-synced-conversation-session-store.md`
+   - 週単位sessionをクラウド正本へ移行し、別端末復元、revision競合、offline cache、legacy migrationを実装する。
 
-承認applicationの実装順序は完了済みである。今後の承認streamでは`approval operational rollout`だけをactive taskとして扱い、完了記録から実装taskを再開しない。
+7. `20260716-weekly-planning-consultation-reset-and-invalidation.md`
+   - session store確立後に、相談resetと未承認仮予定・派生観測の無効化を原子的に実装する。
 
-## 4. Decision gates
+### P2: observation and maintainability
 
-決定済みcontractは`weekly-planning-current-contract-status.md`を正とし、product spec、architecture、test contract、AI prompt、runtime testを順次同期する。
+8. `20260716-weekly-planning-history-feature-extraction.md`
+   - 計画・承認・実績を、会話本文なしで再集計できるversion付き観測へ変換する。
 
-### 4.1 AIとdeterministic parserの責務 — decided and implemented
+9. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+   - pagination、query cost、index、archive、schema decoderを設計する。
 
-2026-07-16に次を決定し、PR #5で`main`へ実装した。
+10. `20260716-weekly-planning-controller-ui-responsibility-split.md`
+    - conversation controller、preview controller、view componentへ責務を分離する。
 
-- deterministic baseline + AI semantic補完を採用する。
-- 高信頼でないAI解釈は、影響と質問コストに応じて明示的修復またはやり過ごしへ分類する。
-- previewを止める不確実性だけを一度に一件確認する。
-- accepted stateに根拠がある事項だけを短い反復でacknowledgeする。
+### P3: profile aggregation
 
-product spec、architecture、roleplay test planに残る`single interpreter / no merge`はhistorical contractであり、current implementation指示として使用しない。
+11. `20260716-weekly-planning-user-profile-time-decay.md`
+    - 有効な観測だけから、時間減衰、観測数、不確実性を持つ再計算可能profileを構築する。
 
-### 4.2 「来週」と週の始まり — decision recorded / profile not merged
+### P4: personalized selection
+
+12. `20260716-weekly-planning-personalized-placement-scoring.md`
+    - hard constraints通過後の安全な候補だけを個人別scoreで並べ替える。
+    - profile不足または計算失敗時は現行heuristicへ戻す。
+
+## 4. 個別最適化の実装順序
+
+```text
+PR #48 profile foundation: complete
+  ↓
+P0 current-time start boundary
+  ↓
+P1 synced weekly session store
+  ↓
+P1 consultation reset / invalidation
+  ↓
+P2 planning and outcome observations
+  ↓
+P3 decayed profile aggregation
+  ↓
+P4 personalized placement score
+```
+
+同意・保持・削除・権限・監査は上記pipelineと並行してP1で進める。ただし、同意前にprofileまたはaccount-linked観測を作成しない。
+
+contextual bandit、オンライン探索、RNN、Transformer、rewardのオンライン更新はこのqueueへ含めない。説明可能な統計集計とoffline比較が成立し、観測biasと安全評価を扱える段階で別途decision gateを設ける。
+
+## 5. Decision gates
+
+### 5.1 AIとdeterministic parser — decided / implemented
+
+- deterministic baselineを先に適用する。
+- AIはsemantic補完を担当する。
+- mergeはclosed attribute contractとruntime validatorを通す。
+- previewを止める高影響の不確実性だけを確認する。
+- accepted stateに根拠がある事項だけをacknowledgeする。
+
+旧`single interpreter / no merge`はcurrent contractではない。
+
+### 5.2 週の始まり — decided / foundation implemented
 
 - 初回だけ月曜始まりまたは日曜始まりを確認する。
-- 選択をaccount-linked personalization profileへ保存する。
-- 以後の「今週」「来週」は保存設定に従って一意解決する。
-- 今回発話の具体的な日付・曜日範囲をprofile設定より優先する。
-- profileが未設定、破損、競合している場合だけ明示的修復へ入る。
+- account-linked profileへ保存する。
+- 以後の「今週」「来週」は保存設定に従う。
+- 今回発話の具体的な日付・曜日範囲をprofileより優先する。
+- 未設定、破損、競合時だけ明示的修復へ入る。
 
-active draft PR #48は未mergeであり、現行mainの完了機能として扱わない。
+PR #48でmodule実装、production接続、自動検証まで完了した。本番運用、同意、削除、監査はP1 taskに残る。
 
-### 4.3 conversation trace privacy — implementation merged / rollout incomplete
+### 5.3 個別最適化データ — decided / operational work incomplete
 
-- quality traceとaccount-linked personalization profileを別schema、別repository、別権限で管理する。
-- traceではraw user IDを保存せず、server-side rotating HMAC subject tokenを使用する。
-- 全sessionのredacted本文、state snapshot、structured metadataを180日保持する。
-- account deletion、限定admin access、閲覧auditを実装する。
+- quality traceとaccount-linked profileを別schema、repository、identity、権限で管理する。
+- current-week factをrecurring profileへ無断昇格しない。
+- profile factはorigin、confidence、scope、confirmedAt、必要に応じてexpiresAtを持つ。
+- 原会話をそのままprofileとして参照しない。
+- 医療等の詳細は必要な生活制約へ一般化し、不要な自由記述を長期保持しない。
+- 明示的な利用者設定は推定値より優先する。
+- 推定値は観測数と不確実性が不足する場合に既定値へ戻す。
 
-code実装はPR #46でmerge済みである。本番設定、TTL、削除、限定閲覧、privacy/legal reviewはactive taskに残る。
+### 5.4 Approval idempotency — implemented / rollout incomplete
 
-### 4.4 longitudinal personalization data — decision recorded / active draft
-
-- 長期個別最適化データの収集・利用を週間計画機能の中核契約とする。
-- 必要な情報だけをorigin、confidence、scope、confirmedAt付きprofile factへ昇格する。
-- 構造化profileはアカウント存続中保持する。
-- traceをそのままprofileへ転用せず、専用profile update boundaryを通す。
-- 医療等の要配慮情報を含む自由記述は必要な生活制約へ一般化する。
-
-### 4.5 reload後のbehavior-aware仮予定 — implemented / automated verified
-
-- modal close/reopenは同一sessionのpresentation lifecycleとして扱う。
-- browser reload後は復元されたbehavior-aware仮予定をそのまま承認しない。
-- 復元案は参考表示し、最新条件での再計算を明示する。
-- approval domainのfail-closed guardを維持する。
-- legacy metadataなしblockの互換経路を維持する。
-
-PR #58で実装・自動検証済みである。実ブラウザ確認はentrypoint verificationに残る。
-
-### 4.6 approval persistent idempotency — implemented / rollout incomplete
-
-- Planへ構造化provenanceを保存する。
 - server transactionをduplicate判定の正本とする。
 - operation、item、Planを原子的に保存する。
-- deterministic Plan IDで同一itemの同時保存を一件へ収束させる。
-- progress消失時はdurable provenanceから復旧する。
-- itemとPlanの不整合はfail closedとする。
-- operation/item双方を180日TTL対象とする。
+- deterministic Plan IDで同一itemを一件へ収束させる。
+- identity不一致はfail closedとする。
+- operation/item双方をTTL対象とする。
 
-PR #60、#62、#63で実装・自動検証済みである。operational rollout task完了前は本番保証としない。
-
-## 5. Deferred backlog
-
-次はactive root taskへまだ昇格させない。実コードを再調査し、単一の責務と受け入れ条件を持てる場合だけtask化する。
-
-- generic progress unit（page、word、problem、report stage等）
-- deterministic replanning trigger
-- scheduler二系統の整理
-- legacy fallback semanticsとretirement条件
-- command schema / runtime validator / scheduler boundaryの網羅性
-- scheduler capacity policyとatomic split permission dialogue
-- 時刻不定の生活制約
-- dead message state / unreachable branch / renderer不要callの整理
-- opportunity annotationのplacement score高度化
-- lint、format、feature boundary、cycle、bundle budget
-- test architectureとtask metadataの再編
-
-mutation testingは`20260716-weekly-planning-mutation-testing-deferred.md`へ履歴化し、current queueから除外した。
+本番rules、TTL、Emulator、multi-client確認が完了するまでoperationally deployedとしない。
 
 ## 6. Safety boundaries
 
 - AIはstate、readiness、available minutes、hard constraint、scheduler、save、approve、deleteを決定しない。
 - user textとAI outputはtyped candidateとruntime validatorを通す。
-- deterministic baselineとAI補完のmergeはclosed attribute contractを通す。
 - previewはexplicit authorizationとreadiness gate通過後だけ生成する。
 - previewはexplicit UI approvalまで保存しない。
-- behavior annotationとrelative constraintでavailabilityを増やさない。
-- existing plan、timetable、buffer、hard busy intervalを上書きしない。
+- fixed event、timetable、buffer、hard busy intervalを上書きしない。
+- 現在より前、利用不可時間、睡眠・最低休息違反の候補をscore前に除外する。
 - current-week factをrecurring profileへ無断昇格しない。
-- profile factはorigin、confidence、scope、confirmedAtを持つ。
 - trace documentを直接longitudinal profileとして参照しない。
-- selected week変更、session reset、explicit cancel、revision不一致後のstale async resultをstateへ適用しない。
-- modal closeまたはpresentation unmountだけで有効session resultを失わない。
-- stale/pending preview approvalでrepository writeを開始しない。
-- 同一approval itemのduplicate判定はserver transactionを正本とする。
-- operation/item/Planのidentity不一致はfail closedとする。
-- trace保存はplanning処理の成功条件にしない。
-- client生成traceを監査、課金、security判定の根拠にしない。
+- resetまたはsupersedeされた観測をprofile集計へ含めない。
+- 明示的設定を推定値で黙って上書きしない。
+- profile不足またはscore失敗時は現行heuristicへ戻す。
+- selected week変更、session reset、explicit cancel、revision不一致後のstale resultをstateへ適用しない。
+- trace、観測、profileの保存失敗を計画作成成功の必須条件にしない。
 
 ## 7. Task operation
 
 - task rootには未完了taskだけを置く。
 - 一taskは一つの主原因、責務境界、完了条件を持つ。
-- 実装結果は`docs/ai/tasks/closed/`のcompletion recordへ統合する。
+- 完了した実装範囲は`docs/ai/tasks/closed/`のcompletion recordへ移す。
+- broad parent Issueは進捗の索引として使い、実装責務はtask mdへ分離する。
 - `implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
 - PR本文のtest結果を現在`main`へ自動継承しない。
-- 新taskはcurrent contract、post-merge status、roadmap、roleplay statusと同期する。
 - historical / closed / superseded文書をcurrent instructionとして直接実行しない。
