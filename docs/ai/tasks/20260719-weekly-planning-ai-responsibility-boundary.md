@@ -9,3 +9,7 @@ deterministic側の責務は、既知の短答・明示形式に対する補助�
 validatorはAIの意味判断を正規表現で再現しない。AIが出したcommandの意味を別のルールparserで再判定するのではなく、commandが入力・既知stateから明白に逸脱していないことと、構造的不変条件を満たすことだけを確認する。
 
 rendererも同様に、AIが質問文を自然化する責務を持つ。deterministic側はslot契約、禁止内容、質問数、順序、重複、明白な意味逸脱だけを検証し、失敗時に登録済み質問へfallbackする。
+
+## 最終7監査の検証記録
+
+PR #68の最終7監査では、AI意味解釈責務、grounding、構造的不変条件、readiness、質問文fallback、受理内容表示、全体回帰の各境界を再検証した。focused tests、全体テスト、TypeScriptおよびproduction build、`git diff --check`はすべて通過し、監査専用workflow・一時script・診断ログは最終コミットで除去した。
