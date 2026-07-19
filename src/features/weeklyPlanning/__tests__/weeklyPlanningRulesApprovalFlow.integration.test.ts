@@ -5,6 +5,10 @@ import { approveWeeklyPlanningDraftBlocks } from '../application/weeklyPlanningA
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import {
+  WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
+  parseWeeklyPlanningPlanSourceId,
+} from '../planning/weeklyPlanningPlanProvenance';
+import {
   createWeeklyDraftBlocksFromPreviewCandidates,
   createWeeklyPlanningPreviewBlocks,
   createWeeklyPlanningPreviewDisplayBlock,
@@ -233,8 +237,8 @@ describe('weekly planning rules input-to-approval integration', () => {
     });
 
     expect(savedDrafts).toHaveLength(promotedBlocks.length);
-    expect(savedDrafts.every((draft) => draft.sourceType === 'weekly_planning')).toBe(true);
-    expect(savedDrafts.every((draft) => draft.sourceId?.includes(':draft:'))).toBe(true);
+    expect(savedDrafts.every((draft) => draft.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE)).toBe(true);
+    expect(savedDrafts.every((draft) => parseWeeklyPlanningPlanSourceId(draft.sourceId) !== null)).toBe(true);
     expect(savedDrafts.every((draft) => draft.memo.includes('[weekly-source:'))).toBe(true);
     expect(savedDrafts.every((draft) => draft.memo.includes('[weekly-approval:'))).toBe(true);
     expect(completedOperations).toHaveLength(1);
