@@ -1,0 +1,267 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/tmp/pr68-stage1[39m
+
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts [2m([22m[2m88 tests[22m[2m)[22m[32m 257[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningIntakeEdgeCases.test.ts [2m([22m[2m117 tests[22m[2m)[22m[32m 214[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/scheduling/placementScoring.test.ts [2m([22m[2m31 tests[22m[2m)[22m[33m 636[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/__tests__/integration.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 180[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningTransforms.integration.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 355[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/lower-ir.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [2m[90m↓[39m[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.real-eval.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+ [32m✓[39m src/services/natural-language/__tests__/adapter.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 105[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/scheduling/sessionChunking.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueManager.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts [2m([22m[2m12 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[32m 30[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mconverts a valid structured response into interpreted command candidates[32m 5[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mrejects candidate units with invalid shape or missing required confidence[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mrejects the real smoke response when required confidence is missing[32m 1[2mms[22m[39m
+[31m   [31m×[31m weekly planning AI interpreter[2m > [22maccepts the simplified bare command array response and derives needsConfirmation from confidence[39m[32m 10[2mms[22m[39m
+[31m     → expected [] to deeply equal [ ObjectContaining{…} ][39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mkeeps accepting the legacy candidate wrapper shape[32m 1[2mms[22m[39m
+[31m   [31m×[31m weekly planning AI interpreter[2m > [22mtreats null object properties as unspecified without repairing required fields[39m[32m 2[2mms[22m[39m
+[31m     → expected [] to deeply equal [ ObjectContaining{…} ][39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mdefines a closed command schema for every known command type[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mdrops payload-missing command responses into parse rejections[32m 0[2mms[22m[39m
+[31m   [31m×[31m weekly planning AI interpreter[2m > [22mparses and validates complete planning range, exam scope, and priority commands[39m[32m 2[2mms[22m[39m
+[31m     → expected [] to deeply equal [ ObjectContaining{…}, …(1) ][39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mshrinks invalid JSON and rejects candidate-shaped data missing required fields[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mkeeps ambiguous constraint source resolution outside the validator natural-language boundary[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mpropagates an AI client error so the pipeline can use turn-level rules fallback[32m 1[2mms[22m[39m
+[90mstderr[2m | src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts[2m > [22m[2mweekly planning trace runtime contract[2m > [22m[2m遅延write失敗を次の成功writeで一度だけ診断event化する
+[22m[39m[WeeklyPlanningTrace] write failed {
+  sessionId: [32m'weekly-trace-359927da-6584-40af-8b6c-3ed1f614747d'[39m,
+  error: [32m'delayed-write-failure'[39m
+}
+
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntimeContract.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 75[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/compile.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 98[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialoguePlanner.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningRemainingWorkItems.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningRegression.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 481[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/useWeeklyPlanningApplication.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/lib/reportAnalytics.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m src/lib/adminAnalytics.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningDraftRequestAdapter.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningAssumptionProposals.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 95[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningStorageValidation.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/build-ast.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningPersonaInputs.test.ts [2m([22m[2m28 tests[22m[2m | [22m[33m17 skipped[39m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningRoleplayScenarios.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningBehaviorSafety.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningSessionState.property.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/scheduling/placementProperties.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1106[2mms[22m[39m
+   [33m[2m✓[22m[39m weekly placement properties[2m > [22mconserves requested minutes and emits only valid blocks [33m 577[2mms[22m[39m
+ [32m✓[39m src/lib/materialPace.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningBehaviorPlanner.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 307[2mms[22m[39m
+   [33m[2m✓[22m[39m weekly planning preview session lifecycle[2m > [22mcommits an App-owned Promise result while the modal child is unmounted and restores it on remount [33m 305[2mms[22m[39m
+ [32m✓[39m src/hooks/usePlannerAppState.weeklyApproval.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningReducer.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueMessages.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/__tests__/planner-facade.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeCommandContract.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPeriodShortAnswerRegression.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 49[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningKanjiAbsoluteDateGuard.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningBehaviorAwareRoleplay.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningRulesApprovalFlow.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 66[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningPendingRangeContract.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningDialogueStackIntegration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m src/repositories/plannerRepository.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/lib/naturalLanguageCsvTest.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningApproval.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningDialogueStackProperties.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/parsing/weeklyTaskExtraction.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningPendingRangeStorageContract.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningDialoguePathRegression.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceRepository.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/scheduling/availabilitySlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 87[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/clause-parser.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m src/lib/quickEntryDrafts.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/parsing/weeklyQualityPreferenceParser.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 207[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 64[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningClarificationContext.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningAssumptionLifecycle.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/tokenizer.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRepairPolicy.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningBehaviorAwarePreviewBridge.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/components/NaturalLanguageAssistant.weeklyPlanningControls.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/lib/timetableImport.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/studyRecords.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningPendingRangeAdversarialRegression.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalAvailability.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/components/QuickEntryModalSessionResume.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningInterruptibleApproval.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalLedgerStorage.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningBehaviorAwareDialogueValidation.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/components/WeeklyPlanningQuickEntryModal.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAssumptionProposalPipeline.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueOrchestrator.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningOwnedStorage.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceExport.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/services/ai/openAiCompatibleClient.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningKnownFixedEvents.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalApplication.serverCompletion.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/plan-allocation.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningLifecycleInterpreter.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceFlow.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.recovery.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningApprovalAssumption.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningApprovalRuntime.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningRelativeConstraints.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningFeasibility.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/testing/weeklyPlanningConversationEvaluation.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/subjectInference.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueUiPolicy.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningConversationPersistence.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningBehaviorHardenedGate.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningSingleFieldPriority.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/dateTimeRange.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/validate.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.retention.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningFixedEventCapability.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningDraftGenerationAuthorization.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/components/InitialPrivacyConsentScreen.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/parsing/weeklyParserFuzz.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningTurnExecutor.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningScopeEnrichment.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCommandRuntimeValidation.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningReviewCoreFixes.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/modelPolicy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceTypes.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningSessionRuntime.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/application/weeklyPlanningAppOrchestrationArchitecture.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/pipeline/weeklyPlanningDialogueTurnPipeline.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningRelativeConstraintAdapter.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreterAssumptionDraft.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationTypes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningClarificationParsing.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/personalization/weeklyPlanningWeekStartPreferenceRegression.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceRedaction.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningApprovalLegacy.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/components/weeklyPlanningConversationMode.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceArchive.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/repositories/weeklyPlanningPlanProvenanceNormalization.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/parsing/weeklyTitleCleanup.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/components/InitialWeekStartPreferenceScreen.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/personalization/weeklyPlanningWeek.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/weeklyPlanningTurnController.inputBoundary.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/planning/weeklyPlanningPlanProvenance.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueText.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/materialSubject.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/services/natural-language/normalize.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/components/WeeklyPlanningConversation.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/trace/weeklyPlanningTraceDate.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22maccepts the simplified bare command array response and derives needsConfirmation from confidence
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_exam_scope",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:[2m194:33[22m[39m
+    [90m192| [39m      { type[33m:[39m [32m'set_priority_policy'[39m[33m,[39m needsConfirmation[33m:[39m [35mtrue[39m }[33m,[39m
+    [90m193| [39m    ])[33m;[39m
+    [90m194| [39m    [34mexpect[39m(validation[33m.[39maccepted)[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                [31m^[39m
+    [90m195| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_exam_scope'[39m })[33m,[39m
+    [90m196| [39m    ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mtreats null object properties as unspecified without repairing required fields
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_study_goal",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:[2m277:49[22m[39m
+    [90m275| [39m      }[33m,[39m
+    [90m276| [39m    }))[33m;[39m
+    [90m277| [39m    [34mexpect[39m(validation[33m.[39macceptedWithConfirmation)[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                [31m^[39m
+    [90m278| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_study_goal'[39m })[33m,[39m
+    [90m279| [39m    ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mparses and validates complete planning range, exam scope, and priority commands
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…}, …(1) ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_planning_range",[39m
+[32m-   },[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_exam_scope",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:[2m338:33[22m[39m
+    [90m336| [39m
+    [90m337| [39m    [34mexpect[39m(result[33m.[39mparseRejections)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m338| [39m    [34mexpect[39m(validation[33m.[39maccepted)[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                [31m^[39m
+    [90m339| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_planning_range'[39m })[33m,[39m
+    [90m340| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_exam_scope'[39m })[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m144 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (146)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m1242 passed[39m[22m[2m | [22m[33m13 skipped[39m[2m | [22m[90m5 todo[39m[90m (1263)[39m
+[2m   Start at [22m 03:09:09
+[2m   Duration [22m 64.50s[2m (transform 3.68s, setup 0ms, collect 21.41s, tests 6.79s, environment 51ms, prepare 15.91s)[22m
+
+
+::error file=/tmp/pr68-stage1/src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts > weekly planning AI interpreter > accepts the simplified bare command array response and derives needsConfirmation from confidence,line=194,column=33::AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   ObjectContaining {%0A-     "type": "set_exam_scope",%0A-   },%0A- ]%0A+ []%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:194:33%0A%0A
+
+::error file=/tmp/pr68-stage1/src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts > weekly planning AI interpreter > treats null object properties as unspecified without repairing required fields,line=277,column=49::AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   ObjectContaining {%0A-     "type": "set_study_goal",%0A-   },%0A- ]%0A+ []%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:277:49%0A%0A
+
+::error file=/tmp/pr68-stage1/src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts > weekly planning AI interpreter > parses and validates complete planning range%2C exam scope%2C and priority commands,line=338,column=33::AssertionError: expected [] to deeply equal [ ObjectContaining{…}, …(1) ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   ObjectContaining {%0A-     "type": "set_planning_range",%0A-   },%0A-   ObjectContaining {%0A-     "type": "set_exam_scope",%0A-   },%0A- ]%0A+ []%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:338:33%0A%0A
+
+patch_status=0
+install_status=0
+test_status=1

@@ -1,0 +1,6 @@
+scripts/pr68_stage1_fix.py:67: SyntaxWarning: invalid escape sequence '\s'
+  """    /(?:違う[!！]?\s*)?(?:分野(?:は|が|を)?\s*)?(.+?)\s*で\s*(?:一|1)\s*科目/,
+scripts/pr68_stage1_fix.py:69: SyntaxWarning: invalid escape sequence '\s'
+  """    /(?:違う[!！]?\s*)?(?:(?:院試(?:の)?過去問|過去問)\s*[:：]?\s*)?(?:分野(?:は|が|を)?\s*)?(.+?)\s*で\s*(?:一|1)\s*科目/,
+src/features/weeklyPlanning/weeklyPlanningTurnController.ts
+src/features/weeklyPlanning/weeklyPlanningTurnController.inputBoundary.test.ts
