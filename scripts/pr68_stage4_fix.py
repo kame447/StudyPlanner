@@ -101,7 +101,7 @@ replace_once(
     }));
     expect(fifth.message).toContain('条件が厳しく');
     expect(fifth.message).toContain('必要時間: 42時間');
-    expect(fifth.state.assumptions).toContain('分野の宣言順を仮の優先順として扱います。');
+    expect(fifth.message).toContain('分野の宣言順を仮の優先順として扱います。');
 
     const sixth = await submit('違う！OSとネットワークで一科目です');
     expect(sixth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
