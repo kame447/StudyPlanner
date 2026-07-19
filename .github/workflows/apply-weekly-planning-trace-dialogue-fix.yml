@@ -101,6 +101,7 @@ jobs:
           rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
           rm -f scripts/apply_weekly_planning_integration_tests.py
           rm -f scripts/apply_weekly_planning_integration_fixes.py
+          rm -f scripts/apply_weekly_planning_followup_fix.py
           rm -f scripts/apply-error.txt
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
