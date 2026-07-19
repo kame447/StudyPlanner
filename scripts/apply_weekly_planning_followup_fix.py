@@ -11,24 +11,6 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 
 replace_once(
-    "src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts",
-    """  const normalizedText = normalizeIntakeText(text);
-  const fields = uniqueList([...(previousScope?.fields ?? []), ...extractExamFields(text)]);
-  const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
-""",
-    """  const normalizedText = normalizeIntakeText(text);
-  const extractedFields = extractExamFields(text);
-  const explicitFieldReplacement = extractedFields.length > 0
-    && parseTotalFields(text) === 1
-    && /(?:違う|訂正|一科目|1科目|一分野|1分野)/.test(normalizedText);
-  const fields = explicitFieldReplacement
-    ? uniqueList(extractedFields)
-    : uniqueList([...(previousScope?.fields ?? []), ...extractedFields]);
-  const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
-""",
-)
-
-replace_once(
     "src/features/weeklyPlanning/pipeline/weeklyPlanningRenderedQuestionContext.ts",
     """export function applyRenderedQuestionContext(
   output: WeeklyPlanningBehaviorAwarePipelineOutput,
