@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/pr68_second_audit_finalize.py", line 80, in <module>
+    raise RuntimeError('unexpected AI foundation examType fixture count')
+RuntimeError: unexpected AI foundation examType fixture count
