@@ -48,7 +48,21 @@ jobs:
             workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts \
             workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
       - name: Run full test suite
-        run: npm run test:run
+        id: full-tests
+        continue-on-error: true
+        run: npm run test:run > /tmp/full-test.log 2>&1
+      - name: Upload full test failure log
+        if: steps.full-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-full-test-log
+          path: /tmp/full-test.log
+          retention-days: 1
+      - name: Report full test failure
+        if: steps.full-tests.outcome == 'failure'
+        run: |
+          tail -n 300 /tmp/full-test.log
+          exit 1
       - name: Build
         run: npm run build
       - name: Prepare clean patch
