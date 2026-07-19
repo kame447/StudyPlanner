@@ -1,0 +1,32 @@
+name: PR68 remove superseded audit workflow
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/pr68-remove-superseded-audit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Remove superseded audit files
+        run: python3 scripts/pr68_cleanup_superseded_audit.py
+      - name: Commit cleanup
+        run: |
+          rm -f scripts/pr68_cleanup_superseded_audit.py
+          rm -f .github/workflows/pr68-remove-superseded-audit.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: 旧7監査診断を除去'
+          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
