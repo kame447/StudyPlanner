@@ -24,6 +24,16 @@ jobs:
       - name: Apply second audit fixes
         shell: bash
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/pr68_second_audit_fixes.py')
+          text = path.read_text()
+          old = 'updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)'
+          new = 'updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=re.S)'
+          if old not in text:
+              raise SystemExit('regex replacement helper was not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
           set +e
           python3 scripts/pr68_second_audit_fixes.py > /tmp/pr68-second-audit.log 2>&1
           status=$?
