@@ -15,4 +15,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts --reporter=verbose
+      - name: Run focused test and print only failure tail
+        shell: bash
+        run: |
+          set +e
+          npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts --reporter=verbose > /tmp/pr68-focused.log 2>&1
+          status=$?
+          tail -n 90 /tmp/pr68-focused.log
+          exit "$status"
