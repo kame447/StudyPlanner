@@ -89,10 +89,13 @@ jobs:
           rm -f scripts/apply-error.txt
           rm -f scripts/full-test-error.txt
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
+          git add -N .
           git diff --binary origin/main -- . ':(exclude)node_modules' > /tmp/final.patch
           test -s /tmp/final.patch
       - name: Publish clean final branch
         run: |
+          git reset --hard
+          git clean -fd
           git checkout -B agent/fix-weekly-planning-trace-and-dialogue-final origin/main
           git apply --index /tmp/final.patch
           git diff --cached --check
