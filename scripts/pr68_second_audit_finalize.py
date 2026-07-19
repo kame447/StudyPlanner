@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import runpy
 
 
@@ -75,10 +76,15 @@ script_path.write_text(text)
 
 fixture_path = Path('src/features/weeklyPlanning/testFixtures/weeklyPlanningEvaluationCases.ts')
 fixture = fixture_path.read_text()
-exam_type_line = "              examType: '院試',\n"
-if fixture.count(exam_type_line) != 3:
-    raise RuntimeError('unexpected AI foundation examType fixture count')
-fixture_path.write_text(fixture.replace(exam_type_line, ''))
+fixture, exam_type_count = re.subn(
+    r"^\s+examType: '院試',\n",
+    '',
+    fixture,
+    flags=re.MULTILINE,
+)
+if exam_type_count < 2:
+    raise RuntimeError(f'unexpected AI foundation examType fixture count: {exam_type_count}')
+fixture_path.write_text(fixture)
 
 interpreter_test_path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts')
 interpreter_test = interpreter_test_path.read_text()
