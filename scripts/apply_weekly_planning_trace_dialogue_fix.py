@@ -11,8 +11,11 @@ source = subprocess.check_output(
     text=True,
 )
 source = source.replace(
-    "'- For Japanese exam years like 2025〜2019",
-    "'For Japanese exam years like 2025〜2019",
+    """    '- For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 and endYear to 2019.',
+""",
+    """    'For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 and endYear to 2019.',
+""",
+    1,
 )
 target = '''    content = file_path.read_text(encoding="utf-8")
     count = content.count(old)
