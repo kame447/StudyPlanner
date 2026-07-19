@@ -65,6 +65,57 @@ describe('weekly planning adversarial input guards', () => {
     ]);
   });
 
+  it('allows ordinary study goals about generating JSON', () => {
+    const userText = 'JSONを生成する課題を勉強したいです';
+    const result = validateInterpretedCandidates([{
+      command: {
+        type: 'set_study_goal',
+        goal: { title: 'JSONを生成する課題' },
+        sourceText: userText,
+        confidence: 'high',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+      sourceUserText: userText,
+    }], {
+      knownFields: [],
+      confirmedSlots: [],
+    });
+
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ type: 'set_study_goal' }),
+    ]);
+    expect(result.rejected).toEqual([]);
+  });
+
+  it('rejects an exam field invented from a generic entrance-exam request', () => {
+    const userText = '院試の勉強計画を立てたいです';
+    const result = validateInterpretedCandidates([{
+      command: {
+        type: 'set_exam_scope',
+        scope: {
+          examType: '院試',
+          fields: ['OS'],
+          unitModel: 'year_field_chunk',
+          rawText: [userText],
+        },
+        sourceText: userText,
+        confidence: 'high',
+      },
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+      sourceUserText: userText,
+    }], {
+      knownFields: [],
+      confirmedSlots: [],
+    });
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason: 'ungrounded-exam-scope' }),
+    ]);
+  });
+
   it('rejects renderer text that preserves the slot key but changes the meaning', () => {
     const input: DialogueRenderInput = {
       acceptedFacts: {},

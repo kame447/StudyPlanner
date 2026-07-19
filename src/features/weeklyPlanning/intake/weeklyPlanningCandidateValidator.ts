@@ -156,7 +156,7 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
 }
 
 
-const MODEL_INSTRUCTION_PATTERN = /(?:system\s*prompt|developer\s*message|ignore\s+(?:all|previous)|システムプロンプト|開発者メッセージ|前の指示|これまでの指示|指示を無視|命令を無視|candidates?|command|json).{0,100}(?:出力|返して|生成|emit|return)|(?:candidates?|command|json).{0,100}(?:出力|返して|生成)/i;
+const MODEL_INSTRUCTION_PATTERN = /(?:system\s*prompt|developer\s*message|ignore\s+(?:all|previous)(?:\s+instructions?)?|システムプロンプト|開発者メッセージ|前の指示|これまでの指示|指示を無視|命令を無視).{0,160}(?:出力|返して|生成|emit|return)/i;
 
 function normalizedEvidence(value: string): string {
   return normalizeIntakeText(value)
@@ -241,10 +241,19 @@ function validateCommandGrounding(
       return /予定|計画|スケジュール/.test(normalized) && /立て|作|組|決め|したい|お願い/.test(normalized)
         ? null : 'ungrounded-planning-intent';
     case 'set_exam_scope': {
-      const hasField = command.scope.fields.some((field) =>
-        normalizedEvidence(normalized).includes(normalizedEvidence(field))
-        || approximatelyContains(normalized, field));
-      return hasField || /院試|過去問|20\d{2}/.test(normalized)
+      const normalizedUser = normalizedEvidence(normalized);
+      const knownFields = new Set(summary.knownFields.map(normalizedEvidence));
+      const fieldsGrounded = command.scope.fields.every((field) => {
+        const normalizedField = normalizedEvidence(field);
+        return knownFields.has(normalizedField)
+          || normalizedUser.includes(normalizedField)
+          || approximatelyContains(normalized, field);
+      });
+      const range = command.scope.yearRange;
+      const yearRangeGrounded = !range
+        || (normalizedUser.includes(String(range.startYear))
+          && normalizedUser.includes(String(range.endYear)));
+      return fieldsGrounded && yearRangeGrounded
         ? null : 'ungrounded-exam-scope';
     }
     case 'add_fixed_event':

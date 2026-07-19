@@ -252,7 +252,7 @@ function planningPeriodLabelForQuestion(state: PlanningIntakeState): string {
   if (/来週/.test(sourceText)) return '来週';
   if (/今週/.test(sourceText)) return '今週';
   if (/週末|土日/.test(sourceText)) return '週末';
-  if (/今日/.test(sourceText) || state.range?.calendarDayCount === 1) return '今日';
+  if (/今日/.test(sourceText)) return '今日';
   return state.pendingPlanningRange?.scope.label ?? 'この期間';
 }
 
