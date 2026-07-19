@@ -30,3 +30,30 @@ exec(
     compile(patched_source, str(Path(__file__)), "exec"),
     {"__name__": "__main__", "__file__": __file__},
 )
+
+renderer_path = Path(
+    "src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts"
+)
+renderer = renderer_path.read_text(encoding="utf-8")
+unused_blocks = [
+    """  const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
+    ? params.state.priorityPolicy.order
+    : undefined;
+""",
+    """function constraintSummary(state: PlanningIntakeState): string[] | undefined {
+  const values = state.constraints.map((constraint) =>
+    [constraint.kind, constraint.date, constraint.start, constraint.end]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  return values.length > 0 ? values : undefined;
+}
+
+""",
+]
+for block in unused_blocks:
+    if block not in renderer:
+        raise RuntimeError(f"renderer cleanup target was not found: {block[:80]!r}")
+    renderer = renderer.replace(block, "", 1)
+renderer_path.write_text(renderer, encoding="utf-8")
