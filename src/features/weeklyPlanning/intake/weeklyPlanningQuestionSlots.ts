@@ -179,6 +179,15 @@ const yearRangeSlot: PlanningQuestionSlotDefinition = {
   userLabel: '対象年度',
 };
 
+function completionBoundaryYearForQuestion(state: PlanningIntakeState): number | undefined {
+  return state.progress.find((progress) =>
+    progress.ambiguity === 'completion_direction'
+    && typeof progress.completionBoundaryYear === 'number',
+  )?.completionBoundaryYear
+    ?? state.progress.find((progress) => typeof progress.completionBoundaryYear === 'number')
+      ?.completionBoundaryYear;
+}
+
 const completionDirectionSlot: PlanningQuestionSlotDefinition = {
   missing: ['completion_direction'],
   targetSlot: 'completion_direction',
@@ -186,8 +195,12 @@ const completionDirectionSlot: PlanningQuestionSlotDefinition = {
   kind: 'missing_slot',
   previewPolicy: 'deferrable',
   status: 'needs_progress_clarification',
-  deterministicQuestion: () =>
-    '2021まで完了は、新しい年度から2021までですか？古い年度から2021までですか？',
+  deterministicQuestion: (state) => {
+    const boundaryYear = completionBoundaryYearForQuestion(state);
+    return boundaryYear
+      ? `${boundaryYear}まで完了というのは、新しい年度側から${boundaryYear}年度までですか？古い年度側から${boundaryYear}年度までですか？`
+      : '完了済み年度は、新しい年度側からですか？古い年度側からですか？';
+  },
   isStateQuestionEligible: (state) => isMissing(state, 'completion_direction'),
   isQuestionPlanEligible: defaultQuestionPlanEligibility,
   dependsOn: ['tasks_or_goals', 'year_range'],

@@ -95,7 +95,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isTime(value: unknown): boolean {
-  return typeof value === 'string' && /^([01]?\d|2[0-4]):[0-5]\d$/.test(value);
+  return typeof value === 'string'
+    && /^(?:[01]?\d|2[0-3]):[0-5]\d$|^24:00$/.test(value);
 }
 
 function isDate(value: unknown): boolean {
@@ -317,22 +318,28 @@ function validateCommandGrounding(
       const minutes = command.unitRate.minutesPerUnit;
       const unitCompatible = command.unitRate.unit === 'year_field_chunk'
         || summary.examScopeSummary?.unitModel !== 'year_field_chunk';
+      const unitRateQuestion = summary.lastQuestions?.some((question) =>
+        question.slotKey === 'unit_rate'
+        || question.slotKey === 'unit_duration_estimate');
+      const hasDurationEvidence = /時間|分|半日|午前|午後|一日|1日|日中|くらい|程度|かか|目安/.test(normalized)
+        || (unitRateQuestion && explicitNumberValues(normalized).length > 0);
       return command.unitRate.source === 'user'
         && typeof minutes === 'number'
-        && explicitMinuteValues(normalized).includes(minutes)
+        && hasDurationEvidence
         && unitCompatible
         ? null : 'ungrounded-unit-rate';
     }
     case 'set_priority_policy': {
-      if (!/優先|順番|先に|から.*(?:進め|やり|解き|始め)/.test(normalized)) {
+      if (!/優先|順番|先に|から.*(?:進め|やり|解き|始め)|締切|期限|苦手|弱点|配点|均等|バランス/.test(normalized)) {
         return 'ungrounded-priority-policy';
       }
       if (command.policy.kind !== 'field_first') return null;
-      const mentionedFields = summary.knownFields.filter((field) =>
-        normalizedUser.includes(normalizedEvidence(field)));
-      return mentionedFields.length <= 1
-        || mentionedFields[0] === command.policy.order[0]
-        ? null : 'ungrounded-priority-policy';
+      const normalizedKnownFields = new Set(summary.knownFields.map(normalizedEvidence));
+      const orderIsStructurallyValid = command.policy.order.length > 0
+        && new Set(command.policy.order).size === command.policy.order.length
+        && (summary.knownFields.length === 0
+          || command.policy.order.every((field) => normalizedKnownFields.has(normalizedEvidence(field))));
+      return orderIsStructurallyValid ? null : 'ungrounded-priority-policy';
     }
     case 'use_constraint_source':
       return /時間割|予定表|登録済み|保存済み|いつもの授業|カレンダー/.test(normalized)
@@ -560,6 +567,11 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
       return isReasonableYear(command.boundaryYear) ? null : 'invalid-progress-year';
     case 'set_unit_rate':
       return isReasonableMinutes(command.unitRate.minutesPerUnit) ? null : 'invalid-unit-rate-minutes';
+    case 'add_unavailable':
+      if (command.range.date && !isDate(command.range.date)) return 'invalid-date';
+      if (command.range.start && !isTime(command.range.start)) return 'invalid-time';
+      if (command.range.end && !isTime(command.range.end)) return 'invalid-time';
+      return null;
     case 'add_fixed_event':
       if (command.event.date && !isDate(command.event.date)) return 'invalid-date';
       if (command.event.start && !isTime(command.event.start)) return 'invalid-time';

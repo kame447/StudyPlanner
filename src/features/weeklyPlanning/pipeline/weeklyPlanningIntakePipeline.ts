@@ -26,6 +26,7 @@ import {
   finalizeState,
   hasConfirmedFixedEvents,
   hasConfirmedLifeConstraints,
+  hasConfirmedYearFieldUnitRate,
 } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
 import {
@@ -386,7 +387,14 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
   if (state.range) slots.push('planning_range');
   if ((state.examPrepScope?.fields.length ?? 0) > 0) slots.push('exam_scope');
   if (state.examPrepScope?.yearRange) slots.push('year_range');
-  if (state.unitRates.length > 0) slots.push('unit_duration_estimate');
+  const hasConfirmedUnitRate = state.examPrepScope?.unitModel === 'year_field_chunk'
+    ? hasConfirmedYearFieldUnitRate(state)
+    : state.unitRates.some((rate) =>
+      typeof rate.minutesPerUnit === 'number'
+      && Number.isFinite(rate.minutesPerUnit)
+      && rate.minutesPerUnit > 0,
+    );
+  if (hasConfirmedUnitRate) slots.push('unit_duration_estimate');
   if (state.priorityPolicy.kind !== 'unknown') slots.push('priority_policy');
   if (state.progress.some((progress) => progress.completedYears?.length || progress.completionBoundaryYear)) {
     slots.push('progress');

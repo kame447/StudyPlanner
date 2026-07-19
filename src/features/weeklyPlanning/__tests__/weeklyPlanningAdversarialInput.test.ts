@@ -179,19 +179,19 @@ describe('weekly planning adversarial input guards', () => {
       'ungrounded-study-goal',
     ],
     [
-      'unit-rate value',
+      'unit-rate range',
       '3時間です',
       {
         type: 'set_unit_rate',
         unitRate: {
           unit: 'year_field_chunk',
-          minutesPerUnit: 30,
+          minutesPerUnit: 0,
           source: 'user',
         },
         sourceText: '3時間です',
         confidence: 'high',
       },
-      'ungrounded-unit-rate',
+      'invalid-unit-rate-minutes',
     ],
     [
       'invented exam classification',
@@ -226,11 +226,11 @@ describe('weekly planning adversarial input guards', () => {
       'ungrounded-life-constraint',
     ],
     [
-      'priority ordering',
+      'unknown priority field',
       'OSをネットワークより先にします',
       {
         type: 'set_priority_policy',
-        policy: { kind: 'field_first', order: ['ネットワーク', 'OS'] },
+        policy: { kind: 'field_first', order: ['数学', 'OS'] },
         sourceText: 'OSをネットワークより先にします',
         confidence: 'high',
       },

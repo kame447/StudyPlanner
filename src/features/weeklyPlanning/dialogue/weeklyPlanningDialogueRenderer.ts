@@ -55,6 +55,18 @@ const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
   calendar: 'カレンダーの予定',
 };
 
+const CONSTRAINT_KIND_LABELS: Record<PlanningIntakeState['constraints'][number]['kind'], string> = {
+  sleep: '睡眠',
+  meal: '食事',
+  bath: '入浴',
+  commute: '移動',
+  club: '部活動',
+  cram_school: '塾',
+  fixed_event: '固定予定',
+  unavailable: '利用不可時間',
+  buffer: '準備・休憩',
+};
+
 /**
  * 計画期間ラベルはユーザー発話(range.sourceText)に含まれる語からのみ導く。
  * 日付だけから「今週/来週」を推測して補完しない(実例1「来週」→「今週」の回帰防止)。
@@ -300,9 +312,22 @@ export function createDialogueRenderInput(params: {
   const acceptedConstraintSummary = params.state.constraints
     .filter((constraint) =>
       isNewSemanticItem(constraint, previousConstraints, constraintSemanticValue))
-    .map((constraint) => [constraint.kind, constraint.date, constraint.start, constraint.end]
-      .filter(Boolean)
-      .join(' '));
+    .map((constraint) => {
+      const rawText = constraint.rawText?.trim();
+      if (rawText) return rawText;
+      const timeRange = constraint.start && constraint.end
+        ? `${constraint.start}〜${constraint.end}`
+        : constraint.start ?? constraint.end;
+      const duration = typeof constraint.durationMinutes === 'number'
+        ? `${constraint.durationMinutes}分`
+        : undefined;
+      return [
+        CONSTRAINT_KIND_LABELS[constraint.kind],
+        constraint.date,
+        timeRange,
+        duration,
+      ].filter(Boolean).join(' ');
+    });
 
   return {
     planningPeriodLabel: planningPeriodLabel(params.state, params.previousState),
@@ -467,6 +492,9 @@ function formatAcceptedFacts(input: DialogueRenderInput): string | null {
       : null,
     input.acceptedFacts.priorityOrder?.length
       ? `優先順は${input.acceptedFacts.priorityOrder.join('、')}`
+      : null,
+    input.acceptedFacts.constraintSummary?.length
+      ? `生活・予定条件は${input.acceptedFacts.constraintSummary.join('、')}`
       : null,
     input.constraintSourcesInUse?.length
       ? `${input.constraintSourcesInUse.join('、')}を予定として利用中`
