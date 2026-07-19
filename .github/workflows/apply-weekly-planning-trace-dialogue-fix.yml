@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - agent/fix-weekly-planning-trace-and-dialogue-repair
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -14,6 +11,7 @@ permissions:
 
 jobs:
   apply:
+    if: github.event.head_commit.message != 'chore: 週間計画修正の適用エラーを記録'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -27,7 +25,19 @@ jobs:
           cache: npm
       - name: Apply source changes
         run: |
-          python scripts/apply_weekly_planning_trace_dialogue_fix.py
+          set +e
+          python scripts/apply_weekly_planning_trace_dialogue_fix.py > /tmp/apply-output.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/apply-output.txt scripts/apply-error.txt
+            git config user.name 'studyplanner-agent'
+            git config user.email 'studyplanner-agent@users.noreply.github.com'
+            git add scripts/apply-error.txt
+            git commit -m 'chore: 週間計画修正の適用エラーを記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
+            exit "$status"
+          fi
           python - <<'PY'
           from pathlib import Path
 
@@ -68,12 +78,11 @@ jobs:
       - name: Build
         run: npm run build
       - name: Remove temporary applicator
-        if: github.event_name != 'pull_request'
         run: |
-          rm scripts/apply_weekly_planning_trace_dialogue_fix.py
-          rm .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
+          rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
+          rm -f scripts/apply-error.txt
+          rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
-        if: github.event_name != 'pull_request'
         run: |
           git config user.name 'studyplanner-agent'
           git config user.email 'studyplanner-agent@users.noreply.github.com'
