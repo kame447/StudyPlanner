@@ -1,62 +1,51 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[32m 54[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 38[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 4[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mrenders only untargeted completion target fields from questionPlan context[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22momits a generic acknowledgement from renderer output[32m 1[2mms[22m[39m
-[31m   [31m×[31m weekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[39m[32m 14[2mms[22m[39m
-[31m     → expected 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？\…' to contain '対象分野はOSnetworkで受け取りました。'[39m
+[31m   [31m×[31m weekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[39m[32m 11[2mms[22m[39m
+[31m     → expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 1[2mms[22m[39m
-[31m   [31m×[31m weekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[39m[32m 7[2mms[22m[39m
-[31m     → expected { acceptedFacts: { …(1) }, …(3) } to deeply equal { acceptedFacts: {}, …(3) }[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 3[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mrestores final output to questionPlan order when AI returns planned slots out of order[32m 1[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: plan outside slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 0[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 0[2mms[22m[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for AI call failure[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 0[2mms[22m[39m
-[31m   [31m×[31m weekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[39m[32m 12[2mms[22m[39m
-[31m     → expected undefined to be '来週' // Object.is equality[39m
-[31m   [31m×[31m weekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週[39m[32m 1[2mms[22m[39m
-[31m     → expected 'ここまでの条件を確認しました。\n計画したい学習内容や目標を教えてください。' to contain '来週'[39m
+   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[32m 8[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22momits the period label when the user never stated one (no fabrication)[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22msupplies a plain-vocabulary hint for internal slot keys (fixed_events)[32m 0[2mms[22m[39m
-[31m   [31m×[31m weekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels[39m[32m 1[2mms[22m[39m
-[31m     → expected undefined to deeply equal [ '時間割' ][39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mrenders a pending planning start question with its user-provided period label[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels[32m 0[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22mrenders a pending planning start question with its user-provided period label[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mpasses the pending period label and start-date vocabulary hint to renderers[32m 0[2mms[22m[39m
    [32m✓[39m weekly planning renderer deterministic context[2m > [22mpasses the pending period label through the AI renderer input path[32m 1[2mms[22m[39m
-[31m   [31m×[31m weekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[39m[32m 1[2mms[22m[39m
-[31m     → expected undefined to deeply equal [ '数学のテスト勉強' ][39m
- [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 15[2mms[22m[39m
- [31m❯[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 27[2mms[22m[39m
-   [32m✓[39m weekly planning question slot registry[2m > [22mcovers every PlanningIntakeMissing slot with the required question metadata[32m 13[2mms[22m[39m
-   [32m✓[39m weekly planning question slot registry[2m > [22mkeeps status priority separate from question-plan order[32m 1[2mms[22m[39m
-[31m   [31m×[31m weekly planning question slot registry[2m > [22mkeeps dynamic deterministic missing-question text in the registry[39m[32m 10[2mms[22m[39m
-[31m     → expected [ '来週の計画は、いつから始めますか？', …(1) ] to deeply equal [ '来週の計画は、いつから始めますか？', …(1) ][39m
-   [32m✓[39m weekly planning question slot registry[2m > [22muses controlled vocabulary for target years and exam unit-rate questions[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning question slot registry[2m > [22mclassifies every missing slot for preview synthesis[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[32m 0[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
  [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
 
 [31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
 [41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m [ src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts ][22m
 [31m[1mError[22m: Transform failed with 1 error:
-/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:77:63: ERROR: Unterminated string literal[39m
+/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:103:26: ERROR: Unterminated string literal[39m
   Plugin: [35mvite:esbuild[39m
-  File: [36m/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[39m:77:63
+  File: [36m/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[39m:103:26
 [33m  
   [33mUnterminated string literal[33m
-  77 |      const third = runTurn(second.state, '3時間ぐらいです
-  78 |  予定は特にないです');
-  79 |      const durationMessage = await renderWeeklyPlanningDialogueMessage({
-     |  ^
-  80 |        state: third.state,
-  81 |        previousState: second.state,
+  101|      expect(message).toContain('進める順番だけ確認します');
+  102|      expect(message).not.toContain('睡眠時間や');
+  103|      expect(message.split('
+     |                            ^
+  104|  ').filter((line) => line.includes('？'))).toHaveLength(1);
+  105|    });
   [39m
 [90m [2m❯[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:15[22m[39m
 [90m [2m❯[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
@@ -64,18 +53,19 @@
 [90m [2m❯[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:12[22m[39m
 [90m [2m❯[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600:7[22m[39m
 
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯[22m[39m
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
 
 
-[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 7 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
 [41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary
-[31m[1mAssertionError[22m: expected 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？\…' to contain '対象分野はOSnetworkで受け取りました。'[39m
+[31m[1mAssertionError[22m: expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'[39m
 
 [32m- Expected[39m
 [31m+ Received[39m
 
-[32m- 対象分野はOSnetworkで受け取りました。[39m
+[32m- [7m対象分野は[27mOSnetworkで受け取りました。[39m
+[31m+ OSnetwork[7mを1科目[27mで受け取りました。[39m
 [31m+ すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？[39m
 [31m+ 睡眠時間はどうしますか？[39m
 
@@ -87,156 +77,13 @@
     [90m206| [39m    [34mexpect[39m(message)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'年度の計画'[39m)[33m;[39m
     [90m207| [39m  })[33m;[39m
 
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input
-[31m[1mAssertionError[22m: expected { acceptedFacts: { …(1) }, …(3) } to deeply equal { acceptedFacts: {}, …(3) }[39m
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[33m@@ -1,7 +1,9 @@[39m
-[2m  {[22m
-[32m-   "acceptedFacts": {},[39m
-[31m+   "acceptedFacts": {[39m
-[31m+     "constraintSummary": [],[39m
-[31m+   },[39m
-[2m    "assumptions": [],[22m
-[2m    "nextQuestions": [[22m
-[2m      {[22m
-[2m        "intent": "ask_fixed_events",[22m
-[2m        "questionKind": "missing_life_constraint",[22m
-
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:[2m298:25[22m[39m
-    [90m296| [39m    const userPayload = JSON.parse(request.messages[1].content) as Rec…
-    [90m297| [39m
-    [90m298| [39m    [34mexpect[39m(userPayload)[33m.[39m[34mtoEqual[39m({
-    [90m   | [39m                        [31m^[39m
-    [90m299| [39m      acceptedFacts[33m:[39m {}[33m,[39m
-    [90m300| [39m      assumptions[33m:[39m [][33m,[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input
-[31m[1mAssertionError[22m: expected undefined to be '来週' // Object.is equality[39m
-
-[32m- Expected:[39m 
-"来週"
-
-[31m+ Received:[39m 
-undefined
-
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:[2m455:39[22m[39m
-    [90m453| [39m    })[33m;[39m
-    [90m454| [39m
-    [90m455| [39m    [34mexpect[39m(input[33m.[39mplanningPeriodLabel)[33m.[39m[34mtoBe[39m([32m'来週'[39m)[33m;[39m
-    [90m   | [39m                                      [31m^[39m
-    [90m456| [39m  })[33m;[39m
-    [90m457| [39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週
-[31m[1mAssertionError[22m: expected 'ここまでの条件を確認しました。\n計画したい学習内容や目標を教えてください。' to contain '来週'[39m
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[32m- 来週[39m
-[31m+ ここまでの条件を確認しました。[39m
-[31m+ 計画したい学習内容や目標を教えてください。[39m
-
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:[2m464:21[22m[39m
-    [90m462| [39m    })[33m;[39m
-    [90m463| [39m
-    [90m464| [39m    [34mexpect[39m(message)[33m.[39m[34mtoContain[39m([32m'来週'[39m)[33m;[39m
-    [90m   | [39m                    [31m^[39m
-    [90m465| [39m    [34mexpect[39m(message)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'今週'[39m)[33m;[39m
-    [90m466| [39m  })[33m;[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels
-[31m[1mAssertionError[22m: expected undefined to deeply equal [ '時間割' ][39m
-
-[32m- Expected:[39m 
-[
-  "時間割",
-]
-
-[31m+ Received:[39m 
-undefined
-
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:[2m500:42[22m[39m
-    [90m498| [39m    const input = createDialogueRenderInput({ state, decision: askScop…
-    [90m499| [39m
-    [90m500| [39m    [34mexpect[39m(input[33m.[39mconstraintSourcesInUse)[33m.[39m[34mtoEqual[39m([[32m'時間割'[39m])[33m;[39m
-    [90m   | [39m                                         [31m^[39m
-    [90m501| [39m  })[33m;[39m
-    [90m502| [39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts
-[31m[1mAssertionError[22m: expected undefined to deeply equal [ '数学のテスト勉強' ][39m
-
-[32m- Expected:[39m 
-[
-  "数学のテスト勉強",
-]
-
-[31m+ Received:[39m 
-undefined
-
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:[2m618:39[22m[39m
-    [90m616| [39m    })[33m;[39m
-    [90m617| [39m
-    [90m618| [39m    [34mexpect[39m(input[33m.[39macceptedFacts[33m.[39mgoals)[33m.[39m[34mtoEqual[39m([[32m'数学のテスト勉強'[39m])[33m;[39m
-    [90m   | [39m                                      [31m^[39m
-    [90m619| [39m    [35mconst[39m message [33m=[39m [35mawait[39m [34mrenderWeeklyPlanningDialogueMessage[39m({
-    [90m620| [39m      state[33m:[39m {
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯[22m[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mkeeps dynamic deterministic missing-question text in the registry
-[31m[1mAssertionError[22m: expected [ '来週の計画は、いつから始めますか？', …(1) ] to deeply equal [ '来週の計画は、いつから始めますか？', …(1) ][39m
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[2m  [[22m
-[2m    "来週の計画は、いつから始めますか？",[22m
-[32m-   "週末で優先する分野や進める順番を教えてください。",[39m
-[31m+   "来週で優先する分野や進める順番を教えてください。",[39m
-[2m  ][22m
-
-[36m [2m❯[22m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts:[2m90:51[22m[39m
-    [90m 88| [39m    }[33m;[39m
-    [90m 89| [39m
-    [90m 90| [39m    [34mexpect[39m([34mdeterministicQuestionsForState[39m(state))[33m.[39m[34mtoEqual[39m([
-    [90m   | [39m                                                  [31m^[39m
-    [90m 91| [39m      [32m'来週の計画は、いつから始めますか？'[39m[33m,[39m
-    [90m 92| [39m      [32m'週末で優先する分野や進める順番を教えてください。'[39m[33m,[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯[22m[39m
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
 
 
-[2m Test Files [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (5)[39m
-[2m      Tests [22m [1m[31m7 failed[39m[22m[2m | [22m[1m[32m30 passed[39m[22m[90m (37)[39m
-[2m   Start at [22m 00:41:23
-[2m   Duration [22m 3.33s[2m (transform 827ms, setup 0ms, collect 1.51s, tests 102ms, environment 1ms, prepare 690ms)[22m
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (5)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m36 passed[39m[22m[90m (37)[39m
+[2m   Start at [22m 00:43:56
+[2m   Duration [22m 2.82s[2m (transform 728ms, setup 0ms, collect 1.25s, tests 69ms, environment 1ms, prepare 646ms)[22m
 
 
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning AI dialogue renderer > replaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary,line=205,column=21::AssertionError: expected 'すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？\…' to contain '対象分野はOSnetworkで受け取りました。'%0A%0A- Expected%0A+ Received%0A%0A- 対象分野はOSnetworkで受け取りました。%0A+ すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？%0A+ 睡眠時間はどうしますか？%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:205:21%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning AI dialogue renderer > uses the existing OpenAI-compatible client with structured response format and renderer-only input,line=298,column=25::AssertionError: expected { acceptedFacts: { …(1) }, …(3) } to deeply equal { acceptedFacts: {}, …(3) }%0A%0A- Expected%0A+ Received%0A%0A@@ -1,7 +1,9 @@%0A  {%0A-   "acceptedFacts": {},%0A+   "acceptedFacts": {%0A+     "constraintSummary": [],%0A+   },%0A    "assumptions": [],%0A    "nextQuestions": [%0A      {%0A        "intent": "ask_fixed_events",%0A        "questionKind": "missing_life_constraint",%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:298:25%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning renderer deterministic context > carries the planning period label from range.sourceText into the render input,line=455,column=39::AssertionError: expected undefined to be '来週' // Object.is equality%0A%0A- Expected: %0A"来週"%0A%0A+ Received: %0Aundefined%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:455:39%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning renderer deterministic context > does not fabricate a week%3A deterministic fallback says 来週%2C never 今週,line=464,column=21::AssertionError: expected 'ここまでの条件を確認しました。\n計画したい学習内容や目標を教えてください。' to contain '来週'%0A%0A- Expected%0A+ Received%0A%0A- 来週%0A+ ここまでの条件を確認しました。%0A+ 計画したい学習内容や目標を教えてください。%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:464:21%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning renderer deterministic context > surfaces constraint sources already in use as plain labels,line=500,column=42::AssertionError: expected undefined to deeply equal [ '時間割' ]%0A%0A- Expected: %0A[%0A  "時間割",%0A]%0A%0A+ Received: %0Aundefined%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:500:42%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning renderer deterministic context > includes command-derived goal titles in deterministic accepted facts,line=618,column=39::AssertionError: expected undefined to deeply equal [ '数学のテスト勉強' ]%0A%0A- Expected: %0A[%0A  "数学のテスト勉強",%0A]%0A%0A+ Received: %0Aundefined%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:618:39%0A%0A
-
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts,title=src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts > weekly planning question slot registry > keeps dynamic deterministic missing-question text in the registry,line=90,column=51::AssertionError: expected [ '来週の計画は、いつから始めますか？', …(1) ] to deeply equal [ '来週の計画は、いつから始めますか？', …(1) ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A    "来週の計画は、いつから始めますか？",%0A-   "週末で優先する分野や進める順番を教えてください。",%0A+   "来週で優先する分野や進める順番を教えてください。",%0A  ]%0A%0A ❯ src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts:90:51%0A%0A
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning AI dialogue renderer > replaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary,line=205,column=21::AssertionError: expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'%0A%0A- Expected%0A+ Received%0A%0A- 対象分野はOSnetworkで受け取りました。%0A+ OSnetworkを1科目で受け取りました。%0A+ すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？%0A+ 睡眠時間はどうしますか？%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:205:21%0A%0A
