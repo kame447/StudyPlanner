@@ -36,7 +36,7 @@ jobs:
           {
             python scripts/apply_weekly_planning_trace_dialogue_fix.py
             python scripts/apply_weekly_planning_integration_tests.py
-            python scripts/apply_weekly_planning_integration_fixes.py
+            python scripts/apply_weekly_planning_followup_fix.py
           } > /tmp/apply-output.txt 2>&1
           status=$?
           set -e
@@ -77,8 +77,11 @@ jobs:
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
-            cp /tmp/full-test-output.txt scripts/apply-error.txt
-            git add scripts/apply-error.txt
+            {
+              printf 'run_commit=%s\n' "$(git rev-parse HEAD)"
+              cat /tmp/full-test-output.txt
+            } > scripts/full-test-error.txt
+            git add scripts/full-test-error.txt
             git commit -m 'chore: 週間計画修正の全体テスト失敗を記録'
             git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
             exit "$status"
@@ -103,6 +106,7 @@ jobs:
           rm -f scripts/apply_weekly_planning_integration_fixes.py
           rm -f scripts/apply_weekly_planning_followup_fix.py
           rm -f scripts/apply-error.txt
+          rm -f scripts/full-test-error.txt
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
         run: |
