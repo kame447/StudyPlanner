@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "<stdin>", line 7, in <module>
+  File "pr68-stage1-patch.py", line 59
+    "    /(?:違う[!！]?\\s*)?(?:分野(?:は|が|を)?\\s*)?(.+?)\\s*で\\s*(?:一|1)\\s*科目/,
+    ^
+SyntaxError: unterminated string literal (detected at line 59)
+exit_status=1
