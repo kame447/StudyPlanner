@@ -155,6 +155,16 @@ function nextQuestionsFromDecision(
     }));
 }
 
+function priorityPolicyChanged(
+  current: PlanningIntakeState['priorityPolicy'],
+  previous: PlanningIntakeState['priorityPolicy'] | undefined,
+): boolean {
+  if (!previous || current.kind !== previous.kind) return true;
+  if (current.kind !== 'field_first' || previous.kind !== 'field_first') return false;
+  return current.order.length !== previous.order.length
+    || current.order.some((field, index) => field !== previous.order[index]);
+}
+
 export function createDialogueRenderInput(params: {
   state: PlanningIntakeState;
   previousState?: PlanningIntakeState;
@@ -226,7 +236,9 @@ export function createDialogueRenderInput(params: {
       unitRateDisplay: unitRate && typeof unitRate.minutesPerUnit === 'number'
         ? unitRateDisplayLabel(unitRate.rawText, unitRate.minutesPerUnit)
         : undefined,
-      priorityOrder: useTurnDelta ? undefined : priorityOrder,
+      priorityOrder: priorityPolicyChanged(params.state.priorityPolicy, params.previousState?.priorityPolicy)
+        ? priorityOrder
+        : undefined,
       constraintSummary: acceptedConstraintSummary.length > 0
         ? acceptedConstraintSummary
         : undefined,

@@ -123,7 +123,7 @@ describe('weekly planning adversarial input guards', () => {
     const candidate: InterpretedCommandCandidate = {
       command: {
         type: 'use_constraint_source',
-        source: { kind: 'existing_plans' },
+        source: { kind: 'existing_plans', selector: 'active' },
         sourceText: userText,
         confidence: 'high',
       },

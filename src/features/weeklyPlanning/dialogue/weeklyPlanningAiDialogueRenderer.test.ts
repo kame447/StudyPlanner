@@ -585,6 +585,36 @@ describe('weekly planning renderer deterministic context', () => {
       ],
     }));
   });
+  it('acknowledges a priority accepted in the current turn but not an unchanged prior priority', () => {
+    const previousState: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      sourceTurns: ['院試の過去問はOSです'],
+    };
+    const state: PlanningIntakeState = {
+      ...previousState,
+      priorityPolicy: { kind: 'field_first', order: ['OS'] },
+      sourceTurns: [...previousState.sourceTurns, 'OSを優先します'],
+    };
+
+    const accepted = createDialogueRenderInput({
+      state,
+      previousState,
+      decision: askScopeDecision(),
+    });
+    expect(accepted.acceptedFacts.priorityOrder).toEqual(['OS']);
+
+    const nextState: PlanningIntakeState = {
+      ...state,
+      sourceTurns: [...state.sourceTurns, '固定予定はありません'],
+    };
+    const unchanged = createDialogueRenderInput({
+      state: nextState,
+      previousState: state,
+      decision: askScopeDecision(),
+    });
+    expect(unchanged.acceptedFacts.priorityOrder).toBeUndefined();
+  });
+
   it('includes command-derived goal titles in deterministic accepted facts', async () => {
     const state: PlanningIntakeState = {
       ...createInitialPlanningIntakeState(),
