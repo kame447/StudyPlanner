@@ -1,0 +1,41 @@
+name: PR68 stage2 debug
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/pr68-stage2-debug.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Capture trace test failure
+        run: |
+          git worktree add /tmp/pr68-stage2 HEAD
+          set +e
+          cd /tmp/pr68-stage2
+          python3 scripts/pr68_stage2_fix.py > /tmp/pr68-stage2-patch.txt 2>&1
+          npm ci > /tmp/pr68-stage2-install.txt 2>&1
+          npm run test:run -- workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts > /tmp/pr68-stage2-test.txt 2>&1
+          status=$?
+          cd "$GITHUB_WORKSPACE"
+          cp /tmp/pr68-stage2-test.txt pr68-stage2-test.txt
+          echo "test_status=$status" >> pr68-stage2-test.txt
+          rm .github/workflows/pr68-stage2-debug.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pr68-stage2-test.txt .github/workflows/pr68-stage2-debug.yml
+          git commit -m 'feat: trace不変条件テスト診断を記録'
+          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
