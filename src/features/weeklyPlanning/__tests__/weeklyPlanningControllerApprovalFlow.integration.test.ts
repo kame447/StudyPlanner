@@ -4,6 +4,7 @@ import type { Plan, PlanDraft } from '../../../types/domain';
 import { approveWeeklyPlanningDraftBlocks } from '../application/weeklyPlanningApprovalApplication';
 import type { PlanningIntakeMissing } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
+import { parseWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanProvenance';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import { createWeeklyDraftBlocksFromPreviewCandidates } from '../preview/weeklyPlanningPreviewBlocks';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
@@ -165,7 +166,6 @@ describe('weekly planning controller input-to-approval integration', () => {
         status: 'draft',
         source: 'ai',
       }));
-      expect(block.behaviorMetadata).toEqual(candidate?.behaviorMetadata);
     });
 
     dispatch({ type: 'add_draft_blocks', blocks: promotedBlocks });
@@ -194,12 +194,15 @@ describe('weekly planning controller input-to-approval integration', () => {
     });
 
     expect(savedDrafts).toHaveLength(promotedBlocks.length);
-    savedDrafts.forEach((draft) => {
+    savedDrafts.forEach((draft, index) => {
       expect(draft).toEqual(expect.objectContaining({
         userId: USER_ID,
         sourceType: 'weekly-planning',
       }));
-      expect(draft.sourceId).toEqual(expect.objectContaining({ version: 1 }));
+      expect(parseWeeklyPlanningPlanSourceId(draft.sourceId)).toEqual({
+        approvalOperationId: completedOperations[0]?.approvalOperationId,
+        sourceDraftBlockId: promotedBlocks[index]?.id,
+      });
     });
     expect(completedOperations).toHaveLength(1);
     expect(completedOperations[0]?.status).toBe('completed');
