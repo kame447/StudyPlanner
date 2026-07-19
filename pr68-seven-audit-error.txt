@@ -1,0 +1,76 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningSevenAuditBoundary.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts --reporter=verbose
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
+
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 3[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mrenders only untargeted completion target fields from questionPlan context[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22momits a generic acknowledgement from renderer output[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 3[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mrestores final output to questionPlan order when AI returns planned slots out of order[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: plan outside slot[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for AI call failure[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22momits the period label when the user never stated one (no fabrication)[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22msupplies a plain-vocabulary hint for internal slot keys (fixed_events)[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrenders a pending planning start question with its user-provided period label[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mpasses the pending period label and start-date vocabulary hint to renderers[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mpasses the pending period label through the AI renderer input path[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22macknowledges a priority accepted in the current turn but not an unchanged prior priority[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mdoes not repeat old exam facts when a short old source appears inside the current priority answer[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: sleep medication drift[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: lateness drift[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: graduation-year drift[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mcovers every PlanningIntakeMissing slot with the required question metadata[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mkeeps status priority separate from question-plan order[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mkeeps dynamic deterministic missing-question text in the registry[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mdoes not label an explicit future one-day range as today[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22muses controlled vocabulary for target years and exam unit-rate questions[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts[2m > [22mweekly planning question slot registry[2m > [22mclassifies every missing slot for preview synthesis[32m 0[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m [ src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts ][22m
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m [ src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts ][22m
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningSevenAuditBoundary.test.ts[2m [ src/features/weeklyPlanning/__tests__/weeklyPlanningSevenAuditBoundary.test.ts ][22m
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m [ src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts:338:52: ERROR: Unterminated regular expression[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36m/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts[39m:338:52
+[33m  
+  [33mUnterminated regular expression[33m
+  336|  
+  337|  function escapeRegExp(value: string): string {
+  338|    return value.replace(/[.*+?^${}()|[\]\]/g, '\$&');
+     |                                                      ^
+  339|  }
+  340|  
+  [39m
+[90m [2m❯[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:15[22m[39m
+[90m [2m❯[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m❯[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:[2m622:9[22m[39m
+[90m [2m❯[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:12[22m[39m
+[90m [2m❯[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (6)[39m
+[2m      Tests [22m [1m[32m35 passed[39m[22m[90m (35)[39m
+[2m   Start at [22m 06:20:40
+[2m   Duration [22m 3.53s[2m (transform 778ms, setup 0ms, collect 452ms, tests 37ms, environment 1ms, prepare 704ms)[22m
+
