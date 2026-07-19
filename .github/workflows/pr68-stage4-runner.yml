@@ -1,4 +1,4 @@
-name: PR68 stage4 exam scope integrity
+name: PR68 stage4 exam scope integrity v2
 
 on:
   pull_request:
@@ -34,7 +34,7 @@ jobs:
       - name: Commit fixes to the existing branch
         run: |
           rm -f scripts/pr68_stage4_fix.py .github/workflows/pr68-stage4-runner.yml
-          rm -f pr68-stage3-test.txt pr68-stage3-v2-test.txt pr68-stage3-v3-test.txt pr68-stage3-v4-test.txt
+          rm -f pr68-stage3-test.txt pr68-stage3-v2-test.txt pr68-stage3-v3-test.txt pr68-stage3-v4-test.txt pr68-stage4-test.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
