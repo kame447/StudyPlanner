@@ -26,8 +26,9 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('scripts/pr68_second_audit_fixes.py')
-          text = path.read_text()
+
+          script_path = Path('scripts/pr68_second_audit_fixes.py')
+          text = script_path.read_text()
           replacements = [
               (
                   'updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)',
@@ -38,19 +39,52 @@ jobs:
                   "anchor = \"\"\"describe('weekly planning legacy fallback regression', () => {",
               ),
               (
-                  'readiness_test = \'src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts\'\ntext = Path(readiness_test).read_text()\n',
+                  "readiness_test = 'src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts'\ntext = Path(readiness_test).read_text()\n",
                   "readiness_test = 'src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts'\ntext = Path(readiness_test).read_text()\ntext = text.replace(\n    \"import { context, applyWeekendRangeAndExamScope } from './weeklyPlanningRoleplayTestHelpers';\\n\",\n    \"import { finalizeState } from '../intake/weeklyPlanningMissingStatus';\\nimport { context, applyWeekendRangeAndExamScope } from './weeklyPlanningRoleplayTestHelpers';\\n\",\n    1,\n)\n",
               ),
               (
                   "      confirmedSlots: [],\n      examScopeSummary: {\n        examType: '院試',\n        fields: ['OS', 'ネットワーク'],\n        unitModel: 'year_field_chunk',\n        rawText: ['院試の過去問はOSとネットワーク'],\n      },\n",
                   "      confirmedSlots: [],\n",
               ),
+              (
+                  "  unit_rate: (text) => /(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),",
+                  r"  unit_rate: (text) => /(?:(?:1|一)\s*(?:年分|分野).*(?:何時間|何分|どれくらい))|(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),",
+              ),
+              (
+                  "  unit_duration_estimate: (text) => /(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),",
+                  r"  unit_duration_estimate: (text) => /(?:(?:1|一)\s*(?:年分|分野).*(?:何時間|何分|どれくらい))|(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),",
+              ),
+              (
+                  """    case 'set_study_goal': {
+      const titleGrounded = normalizedUser.includes(normalizedEvidence(command.goal.title))
+        || approximatelyContains(normalized, command.goal.title);
+      const subjectGrounded = !command.goal.subject
+""",
+                  """    case 'set_study_goal': {
+      const goalEvidenceStem = (value: string) => normalizedEvidence(value)
+        .replace(/(?:したいです|したい|します|する|した)$/, '');
+      const normalizedGoalTitle = goalEvidenceStem(command.goal.title);
+      const normalizedGoalUser = goalEvidenceStem(normalized);
+      const titleGrounded = normalizedGoalUser.includes(normalizedGoalTitle)
+        || normalizedUser.includes(normalizedEvidence(command.goal.title))
+        || approximatelyContains(normalized, command.goal.title);
+      const subjectGrounded = !command.goal.subject
+""",
+              ),
           ]
           for old, new in replacements:
               if old not in text:
-                  raise SystemExit(f'patch target was not found: {old[:80]}')
+                  raise SystemExit(f'patch target was not found: {old[:100]}')
               text = text.replace(old, new, 1)
-          path.write_text(text)
+          script_path.write_text(text)
+
+          fixture_path = Path('src/features/weeklyPlanning/testFixtures/weeklyPlanningEvaluationCases.ts')
+          fixture = fixture_path.read_text()
+          old_fixture = "freeTextExamScopeAndPriority: '数学とOSとハードウェアとソフトウェアとヒューマンサイエンスがあって、2025〜2019までそれぞれある。分野ごとにまとめてやる。数学から始めて最後がヒューマンサイエンスかな'"
+          new_fixture = "freeTextExamScopeAndPriority: '院試の過去問は数学とOSとハードウェアとソフトウェアとヒューマンサイエンスがあって、2025〜2019までそれぞれある。分野ごとにまとめてやる。数学から始めて最後がヒューマンサイエンスかな'"
+          if old_fixture not in fixture:
+              raise SystemExit('AI interpreter foundation fixture was not found')
+          fixture_path.write_text(fixture.replace(old_fixture, new_fixture, 1))
           PY
           set +e
           python3 scripts/pr68_second_audit_fixes.py > /tmp/pr68-second-audit.log 2>&1
@@ -75,6 +109,8 @@ jobs:
           set +e
           npm run test:run -- \
             src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts \
             src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts \
             src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
             src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts \
@@ -87,14 +123,14 @@ jobs:
             --reporter=verbose > /tmp/pr68-second-audit-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            tail -n 180 /tmp/pr68-second-audit-tests.log > pr68-second-audit-test-error.txt
+            tail -n 220 /tmp/pr68-second-audit-tests.log > pr68-second-audit-test-error.txt
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add pr68-second-audit-test-error.txt
             git commit -m 'feat: PR68再監査test診断を記録'
             git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
           fi
-          tail -n 180 /tmp/pr68-second-audit-tests.log
+          tail -n 220 /tmp/pr68-second-audit-tests.log
           exit "$status"
       - name: Run full tests
         shell: bash
@@ -103,20 +139,36 @@ jobs:
           npm run test:run -- --reporter=verbose > /tmp/pr68-second-audit-full-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            tail -n 260 /tmp/pr68-second-audit-full-tests.log > pr68-second-audit-full-test-error.txt
+            tail -n 300 /tmp/pr68-second-audit-full-tests.log > pr68-second-audit-full-test-error.txt
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add pr68-second-audit-full-test-error.txt
             git commit -m 'feat: PR68再監査全体test診断を記録'
             git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
           fi
-          tail -n 260 /tmp/pr68-second-audit-full-tests.log
+          tail -n 300 /tmp/pr68-second-audit-full-tests.log
           exit "$status"
       - name: Build
-        run: npm run build
+        shell: bash
+        run: |
+          set +e
+          npm run build > /tmp/pr68-second-audit-build.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 220 /tmp/pr68-second-audit-build.log > pr68-second-audit-build-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pr68-second-audit-build-error.txt
+            git commit -m 'feat: PR68再監査build診断を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          fi
+          tail -n 220 /tmp/pr68-second-audit-build.log
+          exit "$status"
       - name: Commit verified fixes and remove temporary files
         run: |
-          rm -f scripts/pr68_second_audit_fixes.py .github/workflows/pr68-second-audit-fixes.yml pr68-second-audit-error.txt pr68-second-audit-test-error.txt pr68-second-audit-full-test-error.txt
+          rm -f scripts/pr68_second_audit_fixes.py .github/workflows/pr68-second-audit-fixes.yml
+          rm -f pr68-second-audit-error.txt pr68-second-audit-test-error.txt
+          rm -f pr68-second-audit-full-test-error.txt pr68-second-audit-build-error.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
