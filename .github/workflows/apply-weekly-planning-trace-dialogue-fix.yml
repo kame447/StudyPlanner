@@ -4,6 +4,10 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
   workflow_dispatch:
 
 permissions:
@@ -18,87 +22,61 @@ jobs:
         with:
           ref: agent/fix-weekly-planning-trace-and-dialogue-repair
           fetch-depth: 0
-      - name: Stop after a recorded applicator failure
-        run: |
-          if [ "$(git log -1 --pretty=%s)" = 'chore: 週間計画修正の適用エラーを記録' ]; then
-            echo 'The applicator error is already recorded on the branch.'
-            exit 78
-          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Configure commit identity
+        run: |
+          git config user.name 'studyplanner-agent'
+          git config user.email 'studyplanner-agent@users.noreply.github.com'
       - name: Apply source changes
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('scripts/apply_weekly_planning_trace_dialogue_fix.py')
-          content = path.read_text(encoding='utf-8')
-          target = """    content = file_path.read_text(encoding=\"utf-8\")
-    count = content.count(old)
-"""
-          replacement = """    old = old.replace(\"\\r?\\n\", r\"\\r?\\n\")
-    new = new.replace(\"\\r?\\n\", r\"\\r?\\n\")
-    content = file_path.read_text(encoding=\"utf-8\")
-    count = content.count(old)
-"""
-          if target not in content:
-              raise SystemExit('applicator normalization target missing')
-          path.write_text(content.replace(target, replacement, 1), encoding='utf-8')
-          PY
           set +e
           python scripts/apply_weekly_planning_trace_dialogue_fix.py > /tmp/apply-output.txt 2>&1
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
             cp /tmp/apply-output.txt scripts/apply-error.txt
-            git config user.name 'studyplanner-agent'
-            git config user.email 'studyplanner-agent@users.noreply.github.com'
             git add scripts/apply-error.txt
             git commit -m 'chore: 週間計画修正の適用エラーを記録'
             git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
             exit "$status"
           fi
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts')
-          content = path.read_text(encoding='utf-8')
-          priority = """  const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
-            ? params.state.priorityPolicy.order
-            : undefined;
-          """
-          if priority not in content:
-              raise SystemExit('priorityOrder cleanup target missing')
-          content = content.replace(priority, '', 1)
-          constraint = """function constraintSummary(state: PlanningIntakeState): string[] | undefined {
-            const values = state.constraints.map((constraint) =>
-              [constraint.kind, constraint.date, constraint.start, constraint.end]
-                .filter(Boolean)
-                .join(' '),
-            );
-
-            return values.length > 0 ? values : undefined;
-          }
-
-          """
-          if constraint not in content:
-              raise SystemExit('constraintSummary cleanup target missing')
-          path.write_text(content.replace(constraint, '', 1), encoding='utf-8')
-          PY
       - name: Install dependencies
         run: npm ci
       - name: Run focused regression tests
         run: |
+          set +e
           npx vitest run \
             src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts \
             src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
             src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts \
             workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts \
-            workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts
+            workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts \
+            > /tmp/test-output.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/test-output.txt scripts/apply-error.txt
+            git add scripts/apply-error.txt
+            git commit -m 'chore: 週間計画修正のテスト失敗を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
+            exit "$status"
+          fi
       - name: Build
-        run: npm run build
+        run: |
+          set +e
+          npm run build > /tmp/build-output.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/build-output.txt scripts/apply-error.txt
+            git add scripts/apply-error.txt
+            git commit -m 'chore: 週間計画修正のビルド失敗を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
+            exit "$status"
+          fi
       - name: Remove temporary applicator
         run: |
           rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
@@ -106,8 +84,6 @@ jobs:
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
         run: |
-          git config user.name 'studyplanner-agent'
-          git config user.email 'studyplanner-agent@users.noreply.github.com'
           git add -A
           git diff --cached --check
           git commit -m 'feat: 週間計画ログと対話修復を改善'
