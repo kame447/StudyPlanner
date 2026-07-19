@@ -27,6 +27,10 @@ controller = controller_candidates[0]
         "/勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記/.test(normalized)",
         "/勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記|おさらい|取り組/.test(normalized)",
     ),
+    (
+        "/優先|順番|先に|から.*(?:進め|やり|解き)/.test(normalized)",
+        "/優先|順番|先に|から.*(?:進め|やり|解き|始め)/.test(normalized)",
+    ),
 ]
 for old, new in replacements:
     if old not in source:
