@@ -118,10 +118,10 @@ replace_once(
 
 replace_once(
     'src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts',
-    """    const third = runTurn(second.state, '3時間ぐらいです\n予定は特にないです');
+    r"""    const third = runTurn(second.state, '3時間ぐらいです\n予定は特にないです');
     const fourth = runTurn(third.state, '分野はOSとネットワークだけです');
 """,
-    """    const withYearRange = runTurn(second.state, '対象年度は2025〜2019です');
+    r"""    const withYearRange = runTurn(second.state, '対象年度は2025〜2019です');
     const third = runTurn(withYearRange.state, '3時間ぐらいです\n予定は特にないです');
     const fourth = runTurn(third.state, '分野はOSとネットワークだけです');
 """,
