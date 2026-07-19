@@ -121,7 +121,7 @@ replace_once(
   const firstRenderedQuestion = isExamFlow
     ? pipelineOutput.decision.questionPlan?.[0]
     : undefined;
-  const state = firstRenderedQuestion
+  const state: PlanningIntakeState = firstRenderedQuestion
     ? {
         ...pipelineOutput.state,
         lastQuestionContext: {
@@ -150,14 +150,14 @@ replace_once(
   const useTurnDelta = Boolean(params.previousState);
   const unitRate = params.state.unitRates.find((rate) =>
 """,
-    """  const latestTurn = params.state.sourceTurns.at(-1) ?? '';
+    """  const latestTurn = params.state.sourceTurns[params.state.sourceTurns.length - 1] ?? '';
   const useTurnDelta = Boolean(params.previousState);
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : undefined;
   const unitRate = params.state.unitRates.find((rate) =>
 """,
-    "renderer priority order source",
+    "renderer latest turn and priority source",
 )
 replace_once(
     renderer_path,
