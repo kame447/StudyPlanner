@@ -1,4 +1,4 @@
-name: PR68 stage1 wrapper runner v2
+name: PR68 stage1 wrapper runner v3
 
 on:
   pull_request:
@@ -35,7 +35,7 @@ jobs:
         run: |
           rm -f scripts/pr68_stage1_fix.py scripts/pr68_stage1_fix_wrapper.py
           rm -f pr68-stage1*.txt
-          rm -f .github/workflows/pr68-stage1-autofix.yml .github/workflows/pr68-stage1-runner.yml .github/workflows/pr68-stage1-script-runner.yml .github/workflows/pr68-stage1-wrapper-runner.yml
+          rm -f .github/workflows/pr68-stage1-wrapper-runner.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
