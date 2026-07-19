@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply AI-responsibility and structural-invariant fixes
+      - name: Apply final AI-responsibility and structural-invariant fixes
         run: |
           python3 scripts/pr68_seven_audit_contract_fixes.py
           python3 scripts/pr68_seven_audit_contract_adjust.py
