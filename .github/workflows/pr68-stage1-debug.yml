@@ -1,0 +1,40 @@
+name: PR68 stage1 debug
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/pr68-stage1-debug.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Execute patch and capture failure
+        shell: bash
+        run: |
+          set +e
+          python3 <<'PY' >pr68-stage1-output.txt 2>pr68-stage1-error.txt
+          from pathlib import Path
+          source = Path('.github/workflows/pr68-stage1-autofix.yml').read_text()
+          marker = "          python3 <<'PY'\n"
+          start = source.index(marker) + len(marker)
+          end = source.index("\n          PY\n", start)
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in source[start:end].splitlines())
+          exec(compile(script, 'pr68-stage1-patch.py', 'exec'))
+          PY
+          status=$?
+          echo "exit_status=$status" >> pr68-stage1-error.txt
+          rm .github/workflows/pr68-stage1-debug.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: 敵対的入力修正の診断結果を記録'
+          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
