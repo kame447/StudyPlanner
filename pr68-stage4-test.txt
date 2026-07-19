@@ -1,0 +1,70 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/tmp/pr68-stage4[39m
+
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 72[2mms[22m[39m
+[31m   [31m×[31m weekly planning controller input-to-approval integration[2m > [22mruns natural-language turns through controller ownership, preview, approval, persistence, and completion[39m[32m 70[2mms[22m[39m
+[31m     → expected 'v1:weekly-approval%3Aa2a8821d:OS%3A20…' to deeply equal ObjectContaining {"version": 1}[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 47[2mms[22m[39m
+[31m   [31m×[31m observed weekly planning conversation integration[2m > [22mruns the reported conversation through turn execution, state carry-over, and rendering[39m[32m 46[2mms[22m[39m
+[31m     → expected 'OSとネットワークの2分野で受け取りました。\n対象年度は何年から何年まで…' to contain '進める順番だけ確認します'[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts[2m > [22mweekly planning controller input-to-approval integration[2m > [22mruns natural-language turns through controller ownership, preview, approval, persistence, and completion
+[31m[1mAssertionError[22m: expected 'v1:weekly-approval%3Aa2a8821d:OS%3A20…' to deeply equal ObjectContaining {"version": 1}[39m
+
+[32m- Expected:[39m 
+ObjectContaining {
+  "version": 1,
+}
+
+[31m+ Received:[39m 
+"v1:weekly-approval%3Aa2a8821d:OS%3A2025%3Achunk-0"
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts:[2m202:30[22m[39m
+    [90m200| [39m        sourceType[33m:[39m [32m'weekly-planning'[39m[33m,[39m
+    [90m201| [39m      }))[33m;[39m
+    [90m202| [39m      expect(draft.sourceId).toEqual(expect.objectContaining({ version…
+    [90m   | [39m                             [31m^[39m
+    [90m203| [39m    })[33m;[39m
+    [90m204| [39m    [34mexpect[39m(completedOperations)[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+[90m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts:[2m197:17[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts[2m > [22mobserved weekly planning conversation integration[2m > [22mruns the reported conversation through turn execution, state carry-over, and rendering
+[31m[1mAssertionError[22m: expected 'OSとネットワークの2分野で受け取りました。\n対象年度は何年から何年まで…' to contain '進める順番だけ確認します'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 進める順番だけ確認します[39m
+[31m+ OSとネットワークの2分野で受け取りました。[39m
+[31m+ 対象年度は何年から何年までですか？[39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts:[2m84:28[22m[39m
+    [90m 82| [39m
+    [90m 83| [39m    [35mconst[39m fourth [33m=[39m [35mawait[39m [34msubmit[39m([32m'分野はOSとネットワークだけです'[39m)[33m;[39m
+    [90m 84| [39m    [34mexpect[39m(fourth[33m.[39mmessage)[33m.[39m[34mtoContain[39m([32m'進める順番だけ確認します'[39m)[33m;[39m
+    [90m   | [39m                           [31m^[39m
+    [90m 85| [39m    [34mexpect[39m(fourth[33m.[39mmessage)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'睡眠時間や'[39m)[33m;[39m
+    [90m 86| [39m    [34mexpect[39m(fourth[33m.[39mmessage[33m.[39m[34mmatch[39m([36m/？/g[39m) [33m??[39m [])[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m6 passed[39m[22m[90m (8)[39m
+[2m   Start at [22m 03:49:50
+[2m   Duration [22m 2.59s[2m (transform 857ms, setup 0ms, collect 1.72s, tests 130ms, environment 1ms, prepare 255ms)[22m
+
+
+::error file=/tmp/pr68-stage4/src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts > weekly planning controller input-to-approval integration > runs natural-language turns through controller ownership%2C preview%2C approval%2C persistence%2C and completion,line=202,column=30::AssertionError: expected 'v1:weekly-approval%253Aa2a8821d:OS%253A20…' to deeply equal ObjectContaining {"version": 1}%0A%0A- Expected: %0AObjectContaining {%0A  "version": 1,%0A}%0A%0A+ Received: %0A"v1:weekly-approval%253Aa2a8821d:OS%253A2025%253Achunk-0"%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts:202:30%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts:197:17%0A%0A
+
+::error file=/tmp/pr68-stage4/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts > observed weekly planning conversation integration > runs the reported conversation through turn execution%2C state carry-over%2C and rendering,line=84,column=28::AssertionError: expected 'OSとネットワークの2分野で受け取りました。\n対象年度は何年から何年まで…' to contain '進める順番だけ確認します'%0A%0A- Expected%0A+ Received%0A%0A- 進める順番だけ確認します%0A+ OSとネットワークの2分野で受け取りました。%0A+ 対象年度は何年から何年までですか？%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts:84:28%0A%0A
+test_status=1
