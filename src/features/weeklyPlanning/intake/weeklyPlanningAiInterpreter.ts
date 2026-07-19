@@ -488,6 +488,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseCandidate(
   candidate: unknown,
   context: WeeklyPlanningIntakeContext,
+  sourceUserText: string,
 ): InterpretedCommandCandidate | null {
   if (!isRecord(candidate)) {
     return null;
@@ -508,11 +509,17 @@ function parseCandidate(
     ? candidate.needsConfirmation
     : undefined;
 
-  return {
+  const parsedCandidate: InterpretedCommandCandidate = {
     command: parsedCommand,
     origin: 'ai_interpreter',
     needsConfirmation: wrappedNeedsConfirmation ?? normalizedCommand.confidence === 'medium',
   };
+  Object.defineProperty(parsedCandidate, 'sourceUserText', {
+    value: sourceUserText,
+    enumerable: false,
+    configurable: false,
+  });
+  return parsedCandidate;
 }
 
 function emptyInterpreterResult(): WeeklyPlanningInterpreterResult {
@@ -525,6 +532,7 @@ function emptyInterpreterResult(): WeeklyPlanningInterpreterResult {
 function parseInterpreterResponse(
   content: string,
   context: WeeklyPlanningIntakeContext,
+  userText: string,
 ): WeeklyPlanningInterpreterResult {
   let parsed: unknown;
 
@@ -543,7 +551,7 @@ function parseInterpreterResponse(
   const parseRejections: WeeklyPlanningInterpreterResult['parseRejections'] = [];
 
   response.candidates.forEach((rawCandidate) => {
-    const candidate = parseCandidate(rawCandidate, context);
+    const candidate = parseCandidate(rawCandidate, context, userText);
 
     if (!candidate) {
       parseRejections.push({ rawCandidate, reason: 'invalid-candidate-shape' });
@@ -631,7 +639,7 @@ export function createAiWeeklyPlanningInterpreter(
         purpose: 'weekly_planning_interpreter',
       });
 
-      return parseInterpreterResponse(content, context);
+      return parseInterpreterResponse(content, context, userText);
     },
   };
 }

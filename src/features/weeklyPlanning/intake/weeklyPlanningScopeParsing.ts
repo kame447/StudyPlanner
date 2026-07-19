@@ -913,21 +913,41 @@ export function parseSetPlanningRangeCommand(
     : undefined;
 }
 
+const KNOWN_EXAM_FIELD_TYPO_CORRECTIONS = new Map<string, string>([
+  ['ネトワーク', 'ネットワーク'],
+  ['デタベース', 'データベース'],
+  ['アルゴリズ', 'アルゴリズム'],
+  ['オペレーティングシテム', 'オペレーティングシステム'],
+]);
+
+function normalizeKnownExamFieldTypo(value: string): string {
+  return KNOWN_EXAM_FIELD_TYPO_CORRECTIONS.get(value) ?? value;
+}
+
+function correctionRightHandSide(value: string): string {
+  const withoutExamPrefix = value.replace(
+    /^(?:院試(?:の)?過去問|過去問)\s*[:：]?\s*/,
+    '',
+  );
+  const correction = withoutExamPrefix.match(/(?:ではなく|じゃなく|でなく)\s*(.+)$/);
+  return correction?.[1] ?? withoutExamPrefix;
+}
+
 function cleanExamFieldCandidate(value: string): string | undefined {
-  const cleaned = value
+  const cleaned = correctionRightHandSide(value)
     .replace(/^(?:違う[!！]?\s*)/, '')
     .replace(/^(?:対象(?:分野|科目)?|分野|科目)\s*(?:は|が|を)?\s*/, '')
     .replace(/\s*(?:を)?(?:進め|やり|解き|勉強し|学習し)(?:たい|ます|る)?.*$/, '')
     .replace(/\s*(?:だけ)?(?:です|だ|でお願いします)$/, '')
     .trim();
   if (!cleaned || /^(?:院試|過去問|勉強|学習)$/.test(cleaned)) return undefined;
-  return cleaned;
+  return normalizeKnownExamFieldTypo(cleaned);
 }
 
 function extractInlineExamFields(text: string): string[] {
   const normalizedText = normalizeIntakeText(text).replace(/\s+/g, ' ').trim();
   const combinedSubject = normalizedText.match(
-    /(?:違う[!！]?\s*)?(?:分野(?:は|が|を)?\s*)?(.+?)\s*で\s*(?:一|1)\s*科目/,
+    /(?:違う[!！]?\s*)?(?:(?:院試(?:の)?過去問|過去問)\s*[:：]?\s*)?(?:分野(?:は|が|を)?\s*)?(.+?)\s*で\s*(?:一|1)\s*科目/,
   );
   if (combinedSubject) {
     const combined = cleanExamFieldCandidate(combinedSubject[1]);
@@ -1027,7 +1047,11 @@ function mergeExamPrepScope(
   const fields = replacesExistingFields
     ? extractedFields
     : uniqueList([...(previousScope?.fields ?? []), ...extractedFields]);
-  const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
+  const parsedTotalFields = parseTotalFields(text);
+  const totalFields = parsedTotalFields
+    ?? (replacesExistingFields && extractedFields.length > 0
+      ? extractedFields.length
+      : previousScope?.totalFields);
   const totalYears = parseTotalYears(text) ?? previousScope?.totalYears;
   const yearRange = parseYearRange(text) ?? previousScope?.yearRange;
   const examType = /院試/.test(normalizedText) ? '院試' : previousScope?.examType;

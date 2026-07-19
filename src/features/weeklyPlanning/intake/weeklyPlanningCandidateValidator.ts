@@ -17,6 +17,7 @@ import { isValidWeeklyPlanningCommand } from './weeklyPlanningCommandRuntimeVali
 import { normalizeExamScopeEnrichment } from './weeklyPlanningExamScopeEnrichment';
 import { isPlanningRangeConsistentWithAbsoluteDateSource } from './weeklyPlanningAbsoluteDate';
 import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
+import { normalizeIntakeText } from './weeklyPlanningTextParsing';
 
 const CONFIDENCE_RANK = {
   low: 0,
@@ -152,6 +153,125 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
     default:
       return null;
   }
+}
+
+
+const MODEL_INSTRUCTION_PATTERN = /(?:system\s*prompt|developer\s*message|ignore\s+(?:all|previous)|システムプロンプト|開発者メッセージ|前の指示|これまでの指示|指示を無視|命令を無視|candidates?|command|json).{0,100}(?:出力|返して|生成|emit|return)|(?:candidates?|command|json).{0,100}(?:出力|返して|生成)/i;
+
+function normalizedEvidence(value: string): string {
+  return normalizeIntakeText(value)
+    .toLowerCase()
+    .replace(/[\s、。,.!?！？「」『』"'：:]/g, '');
+}
+
+function sourceTextIsGrounded(
+  candidate: InterpretedCommandCandidate,
+  command: ParsedWeeklyPlanningCommand,
+): boolean {
+  if (!candidate.sourceUserText) return true;
+  const user = normalizedEvidence(candidate.sourceUserText);
+  const source = normalizedEvidence(command.sourceSegment ?? command.sourceText);
+  return source.length > 0 && user.includes(source);
+}
+
+function levenshteinDistance(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+function approximatelyContains(userText: string, expected: string): boolean {
+  const user = normalizedEvidence(userText);
+  const target = normalizedEvidence(expected);
+  if (target.length < 4 || user.includes(target)) return false;
+  for (const length of [target.length - 1, target.length, target.length + 1]) {
+    if (length < 3) continue;
+    for (let index = 0; index + length <= user.length; index += 1) {
+      if (levenshteinDistance(user.slice(index, index + length), target) <= 1) return true;
+    }
+  }
+  return false;
+}
+
+function validateCommandGrounding(
+  candidate: InterpretedCommandCandidate,
+  command: ParsedWeeklyPlanningCommand,
+  summary: InterpreterStateSummary,
+): string | null {
+  const userText = candidate.sourceUserText;
+  if (!userText) return null;
+  if (MODEL_INSTRUCTION_PATTERN.test(userText)) return 'prompt-injection-like-user-text';
+  if (command.sourceSegment && !sourceTextIsGrounded(candidate, command)) return 'ungrounded-source-segment';
+  const normalized = normalizeIntakeText(userText).trim();
+  switch (command.type) {
+    case 'note_no_fixed_events': {
+      const fixedEventsQuestion = summary.lastQuestions?.some((question) => question.slotKey === 'fixed_events');
+      const explicit = /(?:固定|動かせない|外せない|予定).*(?:ない|なし|ありません)|(?:ない|なし|ありません).*(?:固定|予定)/.test(normalized);
+      const shortAnswer = fixedEventsQuestion
+        && /^(?:特に)?(?:ない|なし|ありません|ないです)[。！!]*$/.test(normalized);
+      return explicit || shortAnswer ? null : 'ungrounded-no-fixed-events';
+    }
+    case 'set_unit_rate':
+      return /(?:\d+(?:\.\d+)?|[一二三四五六七八九十]+)\s*(?:時間|分)/.test(normalized)
+        ? null : 'ungrounded-unit-rate';
+    case 'set_priority_policy':
+      return /優先|順番|先に|から.*(?:進め|やり|解き|始め)/.test(normalized)
+        ? null : 'ungrounded-priority-policy';
+    case 'use_constraint_source':
+      return /時間割|予定表|登録済み|保存済み|いつもの授業|カレンダー/.test(normalized)
+        ? null : 'ungrounded-constraint-source';
+    case 'request_clarification':
+      return /意味|どういう|何を答え|とは|って何|わからない/.test(normalized)
+        ? null : 'ungrounded-clarification-request';
+    case 'set_planning_range':
+    case 'set_pending_planning_range':
+      return /今日|明日|明後日|今週|来週|週末|夏休み|[月火水木金土日]曜|\d{1,2}\s*月\s*\d{1,2}\s*日|から|まで|週間|日間/.test(normalized)
+        ? null : 'ungrounded-planning-range';
+    case 'begin_weekly_planning':
+      return /予定|計画|スケジュール/.test(normalized) && /立て|作|組|決め|したい|お願い/.test(normalized)
+        ? null : 'ungrounded-planning-intent';
+    case 'set_exam_scope': {
+      const hasField = command.scope.fields.some((field) =>
+        normalizedEvidence(normalized).includes(normalizedEvidence(field))
+        || approximatelyContains(normalized, field));
+      return hasField || /院試|過去問|20\d{2}/.test(normalized)
+        ? null : 'ungrounded-exam-scope';
+    }
+    case 'add_fixed_event':
+    case 'add_unavailable':
+    case 'update_life_constraint':
+      return /\d{1,2}\s*時|\d{1,2}:\d{2}|睡眠|寝|食事|夕食|風呂|入浴|移動|バイト|授業|予定/.test(normalized)
+        ? null : 'ungrounded-life-constraint';
+    case 'mark_completed_units':
+    case 'mark_completion_target':
+    case 'note_progress_boundary':
+      return /年度|年分|終|済|未着手|進捗|どこまで/.test(normalized)
+        ? null : 'ungrounded-progress';
+    case 'set_study_goal':
+      return /勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記|おさらい|取り組/.test(normalized)
+        ? null : 'ungrounded-study-goal';
+    default:
+      return null;
+  }
+}
+
+function requiresTypoConfirmation(
+  candidate: InterpretedCommandCandidate,
+  command: ParsedWeeklyPlanningCommand,
+): boolean {
+  return Boolean(candidate.sourceUserText
+    && command.type === 'set_exam_scope'
+    && command.scope.fields.some((field) => approximatelyContains(candidate.sourceUserText!, field)));
 }
 
 function constraintSourceAvailable(
@@ -390,6 +510,12 @@ export function validateInterpretedCandidates(
       command = enrichment.command;
       effectiveCandidate = command === candidate.command ? candidate : { ...candidate, command };
     }
+    const groundingError = validateCommandGrounding(candidate, command, summary);
+    if (groundingError) {
+      addRejected(result, effectiveCandidate, groundingError);
+      return;
+    }
+
     const enumError = validateEnumVocabulary(command);
 
     if (enumError) {
@@ -501,7 +627,10 @@ export function validateInterpretedCandidates(
       return;
     }
 
-    if (command.confidence === 'medium' || candidate.needsConfirmation || hasUnknownField(command, summary.knownFields)) {
+    if (command.confidence === 'medium'
+      || candidate.needsConfirmation
+      || requiresTypoConfirmation(candidate, command)
+      || hasUnknownField(command, summary.knownFields)) {
       result.acceptedWithConfirmation.push(command);
       return;
     }

@@ -67,6 +67,8 @@ interface NaturalLanguageAssistantProps {
   embedded?: boolean;
 }
 
+const MAX_NATURAL_LANGUAGE_INPUT_LENGTH = 4_000;
+
 const FIELD_LABELS: Record<SuggestionField, string> = {
   targetPlan: '修正対象',
   date: '日付',
@@ -774,6 +776,7 @@ export function NaturalLanguageAssistant({
       <label className="field field-full">
         <span>自然言語入力</span>
         <textarea
+          maxLength={MAX_NATURAL_LANGUAGE_INPUT_LENGTH}
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={4}
@@ -958,6 +961,7 @@ export function NaturalLanguageAssistant({
               <label className="field field-full">
                 <span>条件を修正する</span>
                 <textarea
+                  maxLength={MAX_NATURAL_LANGUAGE_INPUT_LENGTH}
                   ref={weeklyPlanningInputRef}
                   value={text}
                   onChange={(event) => setText(event.target.value)}
@@ -1310,6 +1314,7 @@ export function NaturalLanguageAssistant({
               <label className="field field-full">
                 <span>週間計画にしたいこと</span>
                 <textarea
+                  maxLength={MAX_NATURAL_LANGUAGE_INPUT_LENGTH}
                   ref={weeklyPlanningInputRef}
                   value={text}
                   onChange={(event) => setText(event.target.value)}

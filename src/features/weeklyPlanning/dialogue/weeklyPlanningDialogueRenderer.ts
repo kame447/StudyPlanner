@@ -248,6 +248,40 @@ function isDialogueRenderOutput(value: unknown): value is DialogueRenderOutput {
   );
 }
 
+
+const DIALOGUE_FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|設定画面|外部サイト|リンクを開|貼り付けて|送信して)/i;
+const QUESTION_GROUNDING_PATTERNS: Record<string, RegExp> = {
+  planning_period: /いつ|期間|今週|来週|週末|開始|終わり/,
+  planning_start_date: /いつ|何日|開始|始め/,
+  planning_duration: /何日|期間|どれくらい|週間/,
+  tasks_or_goals: /何を|勉強|学習|課題|進め/,
+  fixed_events: /予定|固定|動かせない|外せない/,
+  sleep_cycle: /睡眠|寝|起き|勉強を始め/,
+  meal_bath_constraints: /食事|夕食|風呂|入浴/,
+  life_constraints: /予定|睡眠|食事|風呂|時間/,
+  year_range: /年度|何年|対象年/,
+  progress: /どこまで|進捗|終|年度/,
+  completion_direction: /終わらせ|進め|どこまで/,
+  unit_rate: /時間|分|目安/,
+  unit_duration_estimate: /時間|分|目安/,
+  priority_policy: /優先|順番|先/,
+  next_field_after_math: /次|分野|科目/,
+};
+
+function isGroundedDialogueQuestion(planned: DialogueNextQuestion, text: string): boolean {
+  const normalized = stripGenericAcknowledgementPrefix(text).replace(/\s+/g, ' ').trim();
+  if (!normalized || normalized.length > 240 || DIALOGUE_FORBIDDEN_CONTENT.test(normalized)) {
+    return false;
+  }
+  const slotPattern = QUESTION_GROUNDING_PATTERNS[planned.slotKey];
+  if (slotPattern?.test(normalized)) return true;
+  const hintTokens = (planned.vocabularyHint ?? '')
+    .split(/[\s、。・／/やをのにへはがとでか]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+  return hintTokens.some((token) => normalized.includes(token));
+}
+
 export function sanitizeDialogueRenderOutput(
   output: unknown,
   input: DialogueRenderInput,
@@ -258,6 +292,7 @@ export function sanitizeDialogueRenderOutput(
 
   const plannedQuestions = input.nextQuestions.slice(0, input.styleConstraints.maxQuestions);
   const allowedSlotKeys = new Set(plannedQuestions.map((question) => question.slotKey));
+  const plannedBySlotKey = new Map(plannedQuestions.map((question) => [question.slotKey, question]));
 
   if (output.questions.length !== plannedQuestions.length || plannedQuestions.length === 0) {
     return null;
@@ -265,7 +300,11 @@ export function sanitizeDialogueRenderOutput(
 
   const outputBySlotKey = new Map<string, { slotKey: string; text: string }>();
   for (const question of output.questions) {
-    if (!allowedSlotKeys.has(question.slotKey) || outputBySlotKey.has(question.slotKey)) {
+    const plannedQuestion = plannedBySlotKey.get(question.slotKey);
+    if (!allowedSlotKeys.has(question.slotKey)
+      || outputBySlotKey.has(question.slotKey)
+      || !plannedQuestion
+      || !isGroundedDialogueQuestion(plannedQuestion, question.text)) {
       return null;
     }
 
