@@ -1,1 +1,11 @@
-retry after normalizing the applicator regex literal
+/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:208: SyntaxWarning: invalid escape sequence '\s'
+/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:216: SyntaxWarning: invalid escape sequence '\s'
+/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:333: SyntaxWarning: invalid escape sequence '\s'
+/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py:365: SyntaxWarning: invalid escape sequence '\.'
+Traceback (most recent call last):
+  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py", line 25, in <module>
+    exec(
+  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py", line 617, in <module>
+  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/apply_weekly_planning_trace_dialogue_fix.py", line 23, in append_once
+    
+RuntimeError: marker not found in src/features/weeklyPlanning/intake/weeklyPlanningAiInterpreter.ts: "    '- For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 a"
