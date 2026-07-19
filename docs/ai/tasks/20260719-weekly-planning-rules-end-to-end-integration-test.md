@@ -53,6 +53,7 @@ AI interpreter を使用しない `rules` 経路について、ユーザー入�
 14. AI commandは種別だけでなく、目標名、subject、数値、年度、順序、日時を現在入力または既知stateへgroundingする。
 15. AI rendererはslotKeyが一致していても、医療質問、個人情報要求、遅刻時間や卒業年度など別概念への意味逸脱を拒否する。
 16. trace entryのimmutable保存は原子的なcreateを使用し、同一payloadの再送だけをidempotentに受理する。
+17. trace sessionの`entryCount`は、複数タブ・端末から更新が競合してもFirestoreのmaximum transformで単調増加し、session作成時には所有者を先に予約する。
 
 ## 完了条件
 
