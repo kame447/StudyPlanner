@@ -1,4 +1,4 @@
-name: Apply weekly planning trace and dialogue fix
+name: Build weekly planning trace and dialogue fix
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  build-fix:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,26 +32,13 @@ jobs:
           git config user.email 'studyplanner-agent@users.noreply.github.com'
       - name: Apply source changes
         run: |
-          set +e
-          {
-            python scripts/apply_weekly_planning_trace_dialogue_fix.py
-            python scripts/apply_weekly_planning_integration_tests.py
-            python scripts/apply_weekly_planning_followup_fix.py
-          } > /tmp/apply-output.txt 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            cp /tmp/apply-output.txt scripts/apply-error.txt
-            git add scripts/apply-error.txt
-            git commit -m 'chore: 週間計画修正の適用エラーを記録'
-            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
-            exit "$status"
-          fi
+          python scripts/apply_weekly_planning_trace_dialogue_fix.py
+          python scripts/apply_weekly_planning_integration_tests.py
+          python scripts/apply_weekly_planning_followup_fix.py
       - name: Install dependencies
         run: npm ci
       - name: Run focused unit and integration tests
         run: |
-          set +e
           npx vitest run \
             src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts \
             src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts \
@@ -59,47 +46,12 @@ jobs:
             src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts \
             workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts \
             workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts \
-            workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts \
-            > /tmp/test-output.txt 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            cp /tmp/test-output.txt scripts/apply-error.txt
-            git add scripts/apply-error.txt
-            git commit -m 'chore: 週間計画修正のテスト失敗を記録'
-            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
-            exit "$status"
-          fi
+            workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
       - name: Run full test suite
-        run: |
-          set +e
-          npm run test:run > /tmp/full-test-output.txt 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            {
-              printf 'run_commit=%s\n' "$(git rev-parse HEAD)"
-              cat /tmp/full-test-output.txt
-            } > scripts/full-test-error.txt
-            git add scripts/full-test-error.txt
-            git commit -m 'chore: 週間計画修正の全体テスト失敗を記録'
-            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
-            exit "$status"
-          fi
+        run: npm run test:run
       - name: Build
-        run: |
-          set +e
-          npm run build > /tmp/build-output.txt 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            cp /tmp/build-output.txt scripts/apply-error.txt
-            git add scripts/apply-error.txt
-            git commit -m 'chore: 週間計画修正のビルド失敗を記録'
-            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
-            exit "$status"
-          fi
-      - name: Remove temporary applicators
+        run: npm run build
+      - name: Prepare clean patch
         run: |
           rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
           rm -f scripts/apply_weekly_planning_integration_tests.py
@@ -108,9 +60,12 @@ jobs:
           rm -f scripts/apply-error.txt
           rm -f scripts/full-test-error.txt
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
-      - name: Commit applied fix
+          git diff --binary origin/main -- . ':(exclude)node_modules' > /tmp/final.patch
+          test -s /tmp/final.patch
+      - name: Publish clean final branch
         run: |
-          git add -A
+          git checkout -B agent/fix-weekly-planning-trace-and-dialogue-final origin/main
+          git apply --index /tmp/final.patch
           git diff --cached --check
           git commit -m 'feat: 週間計画ログと対話修復を改善'
-          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
+          git push --force origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
