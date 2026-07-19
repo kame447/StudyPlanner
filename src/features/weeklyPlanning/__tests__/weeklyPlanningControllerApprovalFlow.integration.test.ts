@@ -48,9 +48,9 @@ const ANSWERS: Partial<Record<PlanningIntakeMissing | string, string>> = {
   unit_rate: '2時間です',
   priority_policy: 'OSを優先します',
   fixed_events: '固定予定はありません',
-  sleep_cycle: '23時から7時まで寝ます',
-  meal_bath_constraints: '夕食は1時間、風呂は30分です',
-  life_constraints: '固定予定はなく、23時から7時まで寝て、夕食は1時間、風呂は30分です',
+  sleep_cycle: '睡眠時間は23時から7時です',
+  meal_bath_constraints: '食事時間は60分、風呂は30分です',
+  life_constraints: '固定予定はありません。睡眠時間は23時から7時です。食事時間は60分、風呂は30分です',
   next_field_after_math: '次の分野はありません',
 };
 
