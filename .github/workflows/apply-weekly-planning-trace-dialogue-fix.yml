@@ -1,9 +1,9 @@
 name: Apply weekly planning trace and dialogue fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-weekly-planning-trace-and-dialogue-repair
+      - main
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message != 'chore: 週間計画修正の適用エラーを記録'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -19,6 +18,12 @@ jobs:
         with:
           ref: agent/fix-weekly-planning-trace-and-dialogue-repair
           fetch-depth: 0
+      - name: Stop after a recorded applicator failure
+        run: |
+          if [ "$(git log -1 --pretty=%s)" = 'chore: 週間計画修正の適用エラーを記録' ]; then
+            echo 'The applicator error is already recorded on the branch.'
+            exit 78
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
