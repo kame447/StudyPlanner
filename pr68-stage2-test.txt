@@ -1,0 +1,67 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/tmp/pr68-stage2[39m
+
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 14[2mms[22m[39m
+ [31m❯[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m3 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 25[2mms[22m[39m
+[31m   [31m×[31m weekly planning trace structural identifiers[2m > [22mkeeps random correlation IDs unique while removing account identity[39m[32m 10[2mms[22m[39m
+[31m     → trace entry sequence is invalid[39m
+   [32m✓[39m weekly planning trace structural identifiers[2m > [22mrejects arbitrary or inconsistent structural identifiers at the write boundary[32m 3[2mms[22m[39m
+[31m   [31m×[31m weekly planning trace structural identifiers[2m > [22mpreserves distinct admin lookup handles instead of collapsing UUIDs[39m[32m 9[2mms[22m[39m
+[31m     → expected [ { id: 'john-smith-[PHONE]', …(1) } ] to deeply equal [ {} ][39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts[2m > [22mweekly planning trace structural identifiers[2m > [22mkeeps random correlation IDs unique while removing account identity
+[31m[1mError[22m: trace entry sequence is invalid[39m
+[36m [2m❯[22m workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts:[2m349:13[22m[39m
+    [90m347| [39m      [33m||[39m sequence [33m>=[39m entryCount
+    [90m348| [39m      [33m||[39m seenSequences[33m.[39m[34mhas[39m(sequence)) {
+    [90m349| [39m      [35mthrow[39m [35mnew[39m [33mError[39m([32m'trace entry sequence is invalid'[39m)[33m;[39m
+    [90m   | [39m            [31m^[39m
+    [90m350| [39m    }
+    [90m351| [39m    seenSequences[33m.[39m[34madd[39m(sequence)[33m;[39m
+[90m [2m❯[22m Module.prepareWeeklyPlanningTraceWrite workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts:[2m339:33[22m[39m
+[90m [2m❯[22m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts:[2m11:22[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts[2m > [22mweekly planning trace structural identifiers[2m > [22mpreserves distinct admin lookup handles instead of collapsing UUIDs
+[31m[1mAssertionError[22m: expected [ { id: 'john-smith-[PHONE]', …(1) } ] to deeply equal [ {} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   {},[39m
+[31m+   {[39m
+[31m+     "id": "john-smith-[PHONE]",[39m
+[31m+     "logicalConversationId": "john-smith-[PHONE]",[39m
+[31m+   },[39m
+[2m  ][22m
+
+[36m [2m❯[22m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts:[2m61:10[22m[39m
+    [90m 59| [39m      id[33m:[39m [32m'john-smith-09012345678'[39m[33m,[39m
+    [90m 60| [39m      logicalConversationId[33m:[39m [32m'john-smith-09012345678'[39m[33m,[39m
+    [90m 61| [39m    }]))[33m.[39m[34mtoEqual[39m([{}])[33m;[39m
+    [90m   | [39m         [31m^[39m
+    [90m 62| [39m  })[33m;[39m
+    [90m 63| [39m})[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m8 passed[39m[22m[90m (10)[39m
+[2m   Start at [22m 03:22:30
+[2m   Duration [22m 1.18s[2m (transform 246ms, setup 0ms, collect 313ms, tests 58ms, environment 1ms, prepare 311ms)[22m
+
+
+::error file=/tmp/pr68-stage2/workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts,title=workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts > weekly planning trace structural identifiers > keeps random correlation IDs unique while removing account identity,line=349,column=13::Error: trace entry sequence is invalid%0A ❯ workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts:349:13%0A ❯ Module.prepareWeeklyPlanningTraceWrite workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts:339:33%0A ❯ workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts:11:22%0A%0A
+
+::error file=/tmp/pr68-stage2/workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts,title=workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts > weekly planning trace structural identifiers > preserves distinct admin lookup handles instead of collapsing UUIDs,line=61,column=10::AssertionError: expected [ { id: 'john-smith-[PHONE]', …(1) } ] to deeply equal [ {} ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A-   {},%0A+   {%0A+     "id": "john-smith-[PHONE]",%0A+     "logicalConversationId": "john-smith-[PHONE]",%0A+   },%0A  ]%0A%0A ❯ workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts:61:10%0A%0A
+test_status=1
