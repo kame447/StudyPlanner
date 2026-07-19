@@ -202,7 +202,7 @@ describe('weekly planning AI dialogue renderer', () => {
       renderer,
     });
 
-    expect(message).toContain('対象分野はOSnetworkで受け取りました。');
+    expect(message).toContain('OSnetworkを1科目で受け取りました。');
     expect(message).not.toContain('年度の計画');
   });
 

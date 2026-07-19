@@ -36,9 +36,11 @@ export interface DialogueRenderInput {
   knownFixedEventSummaries?: string[];
   acceptedFacts: {
     fields?: string[];
+    totalFields?: number;
     goals?: string[];
     yearRange?: { startYear: number; endYear: number };
     unitRateMinutes?: number;
+    unitRateDisplay?: string;
     priorityOrder?: string[];
     constraintSummary?: string[];
   };
@@ -57,8 +59,26 @@ const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
  * 計画期間ラベルはユーザー発話(range.sourceText)に含まれる語からのみ導く。
  * 日付だけから「今週/来週」を推測して補完しない(実例1「来週」→「今週」の回帰防止)。
  */
-function planningPeriodLabel(state: PlanningIntakeState): string | undefined {
+function normalizedTurnText(value: string | undefined): string {
+  return value?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function acceptedFromLatestTurn(source: string | undefined, latestTurn: string): boolean {
+  const normalizedSource = normalizedTurnText(source);
+  const normalizedLatest = normalizedTurnText(latestTurn);
+  return Boolean(normalizedSource && normalizedLatest && (
+    normalizedSource === normalizedLatest
+    || normalizedLatest.includes(normalizedSource)
+    || normalizedSource.includes(normalizedLatest)
+  ));
+}
+
+function planningPeriodLabel(
+  state: PlanningIntakeState,
+  latestTurn?: string,
+): string | undefined {
   const source = state.range?.sourceText;
+  if (source && latestTurn && !acceptedFromLatestTurn(source, latestTurn)) return undefined;
 
   if (source) {
     if (/来週/.test(source)) return '来週';
@@ -79,6 +99,13 @@ function unitRateBasisLabel(state: PlanningIntakeState): string | undefined {
     : undefined;
 }
 
+function unitRateDisplayLabel(rawText: string | undefined, minutes: number): string {
+  const match = rawText?.match(
+    /([0-9０-９]+(?:\.[0-9０-９]+)?|[一二三四五六七八九十]+)\s*(時間|分)/,
+  );
+  return match ? `${match[1]}${match[2]}` : `${minutes}分`;
+}
+
 function constraintSourcesInUseLabels(state: PlanningIntakeState): string[] | undefined {
   const sources = state.constraintSourcesInUse;
 
@@ -96,16 +123,6 @@ export interface DialogueRenderOutput {
 
 export interface WeeklyPlanningDialogueRenderer {
   render(input: DialogueRenderInput): Promise<DialogueRenderOutput>;
-}
-
-function constraintSummary(state: PlanningIntakeState): string[] | undefined {
-  const values = state.constraints.map((constraint) =>
-    [constraint.kind, constraint.date, constraint.start, constraint.end]
-      .filter(Boolean)
-      .join(' '),
-  );
-
-  return values.length > 0 ? values : undefined;
 }
 
 function nextQuestionsFromDecision(
@@ -140,48 +157,83 @@ function nextQuestionsFromDecision(
 
 export function createDialogueRenderInput(params: {
   state: PlanningIntakeState;
+  previousState?: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
   existingPlans?: Plan[];
 }): DialogueRenderInput {
-  const unitRate = params.state.unitRates.find((rate) => typeof rate.minutesPerUnit === 'number');
+  const latestTurn = params.state.sourceTurns[params.state.sourceTurns.length - 1] ?? '';
+  const useTurnDelta = Boolean(params.previousState);
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : undefined;
+  const unitRate = params.state.unitRates.find((rate) =>
+    typeof rate.minutesPerUnit === 'number'
+    && (!useTurnDelta || acceptedFromLatestTurn(rate.rawText, latestTurn)),
+  );
   const commandGoalTitles = params.state.tasks
-    .filter((task) => task.source === 'command')
+    .filter((task) => task.source === 'command'
+      && (!useTurnDelta || acceptedFromLatestTurn(task.rawText, latestTurn)))
     .map((task) => task.title);
+  const examScopeAcceptedThisTurn = !useTurnDelta || (params.state.examPrepScope?.rawText.some(
+    (sourceText) => acceptedFromLatestTurn(sourceText, latestTurn),
+  ) ?? false);
   const knownFixedEventSummaries = createKnownFixedEventSummaries(
     params.existingPlans ?? [],
     params.state.range,
   );
 
+  const nextQuestions = nextQuestionsFromDecision(
+    params.decision,
+    2,
+    unitRateBasisLabel(params.state),
+  );
+  const repeatedTargetSlot = params.previousState?.lastQuestionContext?.targetSlot;
+  const shouldRepairRepeatedQuestion = Boolean(
+    repeatedTargetSlot && nextQuestions[0]?.slotKey === repeatedTargetSlot,
+  );
+  const renderedQuestions = shouldRepairRepeatedQuestion
+    ? [{ ...nextQuestions[0], questionKind: 'repair' }]
+    : nextQuestions;
+  const mentionsConstraintSource = !useTurnDelta
+    || /時間割|予定表|登録済みの予定|保存済みの予定/.test(latestTurn);
+  const acceptedConstraintSummary = params.state.constraints
+    .filter((constraint) => !useTurnDelta || acceptedFromLatestTurn(constraint.rawText, latestTurn))
+    .map((constraint) => [constraint.kind, constraint.date, constraint.start, constraint.end]
+      .filter(Boolean)
+      .join(' '));
+
   return {
-    planningPeriodLabel: planningPeriodLabel(params.state),
+    planningPeriodLabel: planningPeriodLabel(params.state, useTurnDelta ? latestTurn : undefined),
     unitRateBasisLabel: unitRateBasisLabel(params.state),
-    constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
+    constraintSourcesInUse: mentionsConstraintSource
+      ? constraintSourcesInUseLabels(params.state)
+      : undefined,
     knownFixedEventSummaries: knownFixedEventSummaries.length > 0
       ? knownFixedEventSummaries
       : undefined,
     acceptedFacts: {
-      fields: params.state.examPrepScope?.fields,
+      fields: examScopeAcceptedThisTurn ? params.state.examPrepScope?.fields : undefined,
+      totalFields: examScopeAcceptedThisTurn ? params.state.examPrepScope?.totalFields : undefined,
       goals: commandGoalTitles.length > 0 ? commandGoalTitles : undefined,
       yearRange: params.state.examPrepScope?.yearRange
+        && (!useTurnDelta || latestTurn.includes(params.state.examPrepScope.yearRange.sourceText))
         ? {
             startYear: params.state.examPrepScope.yearRange.startYear,
             endYear: params.state.examPrepScope.yearRange.endYear,
           }
         : undefined,
       unitRateMinutes: unitRate?.minutesPerUnit,
-      priorityOrder,
-      constraintSummary: constraintSummary(params.state),
+      unitRateDisplay: unitRate && typeof unitRate.minutesPerUnit === 'number'
+        ? unitRateDisplayLabel(unitRate.rawText, unitRate.minutesPerUnit)
+        : undefined,
+      priorityOrder: useTurnDelta ? undefined : priorityOrder,
+      constraintSummary: acceptedConstraintSummary.length > 0
+        ? acceptedConstraintSummary
+        : undefined,
     },
     assumptions: [...params.state.assumptions],
-    nextQuestions: nextQuestionsFromDecision(
-      params.decision,
-      2,
-      unitRateBasisLabel(params.state),
-    ),
-    styleConstraints: { tone: 'mentor', maxQuestions: 2 },
+    nextQuestions: renderedQuestions,
+    styleConstraints: { tone: 'mentor', maxQuestions: shouldRepairRepeatedQuestion ? 1 : 2 },
   };
 }
 
@@ -223,7 +275,9 @@ export function sanitizeDialogueRenderOutput(
   const questions = plannedQuestions.map((plannedQuestion) => {
     const renderedQuestion = outputBySlotKey.get(plannedQuestion.slotKey);
     if (!renderedQuestion) return undefined;
-    const text = plannedQuestion.slotKey === 'fixed_events'
+    const text = plannedQuestion.questionKind === 'repair'
+      || plannedQuestion.slotKey === 'planning_period'
+      || plannedQuestion.slotKey === 'fixed_events'
       || plannedQuestion.slotKey === 'planning_start_date'
       ? fallbackQuestionText(
         plannedQuestion,
@@ -251,16 +305,22 @@ export function sanitizeDialogueRenderOutput(
 }
 
 function formatAcceptedFacts(input: DialogueRenderInput): string | null {
+  const fields = input.acceptedFacts.fields ?? [];
+  const fieldList = fields.length === 2 ? fields.join('と') : fields.join('、');
   const facts = [
-    input.acceptedFacts.fields?.length
-      ? `対象分野は${input.acceptedFacts.fields.join('、')}`
+    fields.length
+      ? input.acceptedFacts.totalFields === 1 && fields.length === 1
+        ? `${fieldList}を1科目`
+        : fields.length === 1
+          ? `対象分野は${fieldList}`
+          : `${fieldList}の${fields.length}分野`
       : null,
     input.acceptedFacts.goals?.length ? '目標は' + input.acceptedFacts.goals.join('、') : null,
     input.acceptedFacts.yearRange
       ? `対象年度は${input.acceptedFacts.yearRange.startYear}〜${input.acceptedFacts.yearRange.endYear}`
       : null,
     typeof input.acceptedFacts.unitRateMinutes === 'number'
-      ? `${input.unitRateBasisLabel ?? '1単位あたり'}の目安時間は${input.acceptedFacts.unitRateMinutes}分`
+      ? `${input.unitRateBasisLabel ?? '1単位あたり'}の目安時間は${input.acceptedFacts.unitRateDisplay ?? `${input.acceptedFacts.unitRateMinutes}分`}`
       : null,
     input.acceptedFacts.priorityOrder?.length
       ? `優先順は${input.acceptedFacts.priorityOrder.join('、')}`
@@ -287,6 +347,27 @@ function fallbackQuestionText(
   knownFixedEventSummaries?: string[],
   unitRateBasis?: string,
 ): string {
+  if (question.questionKind === 'repair') {
+    switch (question.slotKey) {
+      case 'priority_policy':
+        return '進める順番だけ確認します。どちらを先にしますか？同じ優先度でも構いません。';
+      case 'sleep_cycle':
+        return '開始できる時刻だけ確認します。何時から勉強できますか？';
+      case 'fixed_events':
+        return '固定予定についてだけ確認します。登録済み以外に、動かせない予定はありますか？';
+      case 'unit_rate':
+        return `${unitRateBasis ?? '1単位あたり'}の目安時間だけ確認します。だいたい何時間かかりますか？`;
+      case 'planning_period':
+        return '計画期間だけ確認します。いつからいつまでにしますか？';
+      default:
+        return fallbackQuestionForSlot(question.slotKey, {
+          planningPeriodLabel,
+          options: question.options,
+          knownFixedEventSummaries,
+          unitRateBasisLabel: unitRateBasis,
+        }) ?? '未回答の条件を一つだけ確認します。';
+    }
+  }
   return fallbackQuestionForSlot(question.slotKey, {
     planningPeriodLabel,
     options: question.options,
@@ -333,6 +414,7 @@ function tracedMessage(
 
 export async function renderWeeklyPlanningDialogueMessage(params: {
   state: PlanningIntakeState;
+  previousState?: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
   renderer?: WeeklyPlanningDialogueRenderer;
   userId?: string;
@@ -340,6 +422,7 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
 }): Promise<string> {
   const input = createDialogueRenderInput({
     state: params.state,
+    previousState: params.previousState,
     decision: params.decision,
     existingPlans: params.existingPlans,
   });

@@ -592,6 +592,8 @@ export function createSystemPrompt(): string {
     '- request_clarification: when the user is asking what one of the app\'s question words or terms means, rather than answering it. Map ALL such phrasings to this single intent: 「固定の予定って何ですか？」「それってどういう意味？」「何を答えればいいの？」. Set ref to the term or slot being asked about (e.g. fixed_events) when identifiable. Never map such a question to note_uncertainty or any answer command; the user is not providing information, they are asking for an explanation.',
     'Confidence rules: high for explicit complete facts, medium for inferred or partially ordered facts that need confirmation, low for ambiguous facts.',
     'For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 and endYear to 2019.',
+    '- When an entrance-exam turn names content after 過去問, extract the named fields. Treat AとB as two fields by default and emit fields=[A,B].',
+    '- An explicit correction such as 「違う、AとBで一科目」 replaces the previous scope: emit fields=[AとB] and totalFields=1 instead of appending A and B separately.',
   ].join('\n');
 }
 

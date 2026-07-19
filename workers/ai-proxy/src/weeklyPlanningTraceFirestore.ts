@@ -223,7 +223,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Firestore get failed: ${response.status}`);
     const document = await response.json() as FirestoreDocument;
-    return { id: documentId(document.name), ...decodeFirestoreFields(document.fields ?? {}) };
+    return { ...decodeFirestoreFields(document.fields ?? {}), id: documentId(document.name) };
   }
 
   async setDocument(
@@ -295,7 +295,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!response.ok) throw new Error(`Firestore query failed: ${response.status}`);
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => result.document
-      ? [{ id: documentId(result.document.name), ...decodeFirestoreFields(result.document.fields ?? {}) }]
+      ? [{ ...decodeFirestoreFields(result.document.fields ?? {}), id: documentId(result.document.name) }]
       : []);
   }
 

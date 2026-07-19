@@ -71,6 +71,32 @@ function currentTime(context: WeeklyPlanningIntakeContext): string {
   return currentDateTime(context).slice(11, 16) || '00:00';
 }
 
+function parseTodayPlanningRange(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+  expectedSlot?: string,
+): SetPlanningRangeCommand['range'] | undefined {
+  const normalizedText = stripQuotedSegments(normalizeIntakeText(text)).trim();
+  if (hasReportedOrExampleContext(normalizedText)) return undefined;
+
+  const explicitTodayRequest = /今日(?:の)?(?:勉強|学習)?(?:の)?(?:予定|計画|スケジュール)/.test(
+    normalizedText,
+  ) && /(?:立て|作|組|決め|お願い|して)/.test(normalizedText);
+  const bareTodayAnswer = expectedSlot === 'planning_period'
+    && /^今日(?:です|でお願いします|にします)?$/.test(normalizedText);
+  if (!explicitTodayRequest && !bareTodayAnswer) return undefined;
+
+  const startDateTime = currentDateTime(context);
+  const date = startDateTime.slice(0, 10);
+  return {
+    startDateTime,
+    endDateTime: formatDateTime(date, '24:00'),
+    sourceText: text,
+    calendarDayCount: 1,
+    confidence: 'explicit',
+  };
+}
+
 type NamedPlanningRangeKind = 'this_week' | 'next_week' | 'weekend';
 
 function inclusiveCalendarDayCount(
@@ -866,7 +892,8 @@ export function parseSetPlanningRangeCommand(
   pending?: PendingPlanningRangeClarification,
   expectedSlot?: string,
 ): SetPlanningRangeCommand | undefined {
-  const range = parseNamedPlanningRange(text, context, expectedSlot)
+  const range = parseTodayPlanningRange(text, context, expectedSlot)
+    ?? parseNamedPlanningRange(text, context, expectedSlot)
     ?? parseSundayBoundPlanningRange(text, context, expectedSlot)
     ?? parseWeekendPlanningRange(text, context)
     ?? parseWeeklyPlanningRange(
@@ -886,12 +913,51 @@ export function parseSetPlanningRangeCommand(
     : undefined;
 }
 
+function cleanExamFieldCandidate(value: string): string | undefined {
+  const cleaned = value
+    .replace(/^(?:違う[!！]?\s*)/, '')
+    .replace(/^(?:対象(?:分野|科目)?|分野|科目)\s*(?:は|が|を)?\s*/, '')
+    .replace(/\s*(?:を)?(?:進め|やり|解き|勉強し|学習し)(?:たい|ます|る)?.*$/, '')
+    .replace(/\s*(?:だけ)?(?:です|だ|でお願いします)$/, '')
+    .trim();
+  if (!cleaned || /^(?:院試|過去問|勉強|学習)$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
+function extractInlineExamFields(text: string): string[] {
+  const normalizedText = normalizeIntakeText(text).replace(/\s+/g, ' ').trim();
+  const combinedSubject = normalizedText.match(
+    /(?:違う[!！]?\s*)?(?:分野(?:は|が|を)?\s*)?(.+?)\s*で\s*(?:一|1)\s*科目/,
+  );
+  if (combinedSubject) {
+    const combined = cleanExamFieldCandidate(combinedSubject[1]);
+    return combined ? [combined] : [];
+  }
+
+  const captured = [
+    normalizedText.match(
+      /(?:院試(?:の)?過去問|過去問)\s*[:：]?\s*(.+?)(?=(?:を)?(?:進め|やり|解き|勉強し|学習し)|$)/,
+    )?.[1],
+    normalizedText.match(/(?:対象)?分野(?:は|が|を)\s*(.+?)(?=だけ(?:です|だ)?|です|$)/)?.[1],
+  ].filter((value): value is string => Boolean(value));
+
+  return uniqueList(captured.flatMap((value) =>
+    value
+      .split(/\s*(?:、|,|，|／|\/|・|と)\s*/)
+      .map(cleanExamFieldCandidate)
+      .filter((field): field is string => Boolean(field)),
+  ));
+}
+
 function extractExamFields(text: string): string[] {
-  return normalizeIntakeText(text)
+  const sectionFields = normalizeIntakeText(text)
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/\s+/g, ' '))
     .map((line) => line.match(/第\s*\d+\s*部\s+(.+)$/)?.[1]?.trim())
     .filter((field): field is string => Boolean(field));
+  return sectionFields.length > 0
+    ? uniqueList(sectionFields)
+    : extractInlineExamFields(text);
 }
 
 function isYearFieldUnitRateSegment(segment: string): boolean {
@@ -917,7 +983,11 @@ function parseTotalYears(text: string): number | undefined {
 }
 
 function parseTotalFields(text: string): number | undefined {
-  const match = normalizeIntakeText(text).match(/([0-9]+|[一二三四五六七八九十]+)\s*分野/);
+  const normalizedText = normalizeIntakeText(text);
+  if (/(?:1|一)\s*分野\s*(?:あたり|の\s*(?:1|一)?\s*年分)/.test(normalizedText)) {
+    return undefined;
+  }
+  const match = normalizedText.match(/([0-9]+|[一二三四五六七八九十]+)\s*(?:分野|科目)/);
   return match ? parseSmallInteger(match[1]) : undefined;
 }
 
@@ -951,7 +1021,12 @@ function mergeExamPrepScope(
   text: string,
 ): ExamPrepScope | undefined {
   const normalizedText = normalizeIntakeText(text);
-  const fields = uniqueList([...(previousScope?.fields ?? []), ...extractExamFields(text)]);
+  const extractedFields = extractExamFields(text);
+  const replacesExistingFields = extractedFields.length > 0
+    && /(?:違う|訂正|ではなく|じゃなく|だけ(?:です|だ)?|(?:一|1)\s*科目)/.test(normalizedText);
+  const fields = replacesExistingFields
+    ? extractedFields
+    : uniqueList([...(previousScope?.fields ?? []), ...extractedFields]);
   const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
   const totalYears = parseTotalYears(text) ?? previousScope?.totalYears;
   const yearRange = parseYearRange(text) ?? previousScope?.yearRange;
@@ -983,7 +1058,9 @@ function mergeExamPrepScope(
 
 function hasExamScopeSignal(text: string): boolean {
   const normalizedText = normalizeIntakeText(text);
-  return /院試|分野|20\d{2}\s*[〜~-]\s*20\d{2}|第\s*\d+\s*部/.test(normalizedText)
+  const fieldDeclaration = /(?:対象)?分野(?:は|が|を)|分野ごと|(?:[0-9]+|[一二三四五六七八九十]+)\s*分野(?!\s*(?:あたり|の\s*(?:1|一)?\s*年分))|(?:[0-9]+|[一二三四五六七八九十]+)\s*科目|第\s*\d+\s*部/.test(normalizedText);
+  return /院試|20\d{2}\s*[〜~-]\s*20\d{2}/.test(normalizedText)
+    || fieldDeclaration
     || Boolean(parseTotalYears(normalizedText));
 }
 

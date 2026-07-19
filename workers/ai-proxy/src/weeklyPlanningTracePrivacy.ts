@@ -269,15 +269,33 @@ export function prepareWeeklyPlanningTraceWrite(
     throw new Error('trace entry batch is invalid');
   }
   const sessionId = requireDocumentId(input.session.id, 'trace session id');
+  const logicalConversationId = typeof input.session.logicalConversationId === 'string'
+    ? requireDocumentId(input.session.logicalConversationId, 'logical conversation id')
+    : undefined;
   const expireAt = weeklyPlanningTraceExpireAt(now);
-  const session = preparedDocument({ ...input.session, id: sessionId }, subject, expireAt);
+  const session = {
+    ...preparedDocument({ ...input.session, id: sessionId }, subject, expireAt),
+    id: sessionId,
+    ...(logicalConversationId ? { logicalConversationId } : {}),
+  };
   const entries = input.entries.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       throw new Error('trace entry payload is invalid');
     }
     const entryId = requireDocumentId(entry.id, 'trace entry id');
     if (entry.sessionId !== sessionId) throw new Error('trace entry session mismatch');
-    return preparedDocument({ ...entry, id: entryId, sessionId }, subject, expireAt);
+    const entryConversationId = typeof entry.logicalConversationId === 'string'
+      ? requireDocumentId(entry.logicalConversationId, 'entry logical conversation id')
+      : undefined;
+    if (logicalConversationId && entryConversationId && entryConversationId !== logicalConversationId) {
+      throw new Error('trace entry conversation mismatch');
+    }
+    return {
+      ...preparedDocument({ ...entry, id: entryId, sessionId }, subject, expireAt),
+      id: entryId,
+      sessionId,
+      ...(entryConversationId ? { logicalConversationId: entryConversationId } : {}),
+    };
   });
   return { session, entries };
 }
