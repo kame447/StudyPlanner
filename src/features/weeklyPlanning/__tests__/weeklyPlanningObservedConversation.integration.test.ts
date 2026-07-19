@@ -63,6 +63,10 @@ describe('observed weekly planning conversation integration', () => {
     expect(first.state.range?.calendarDayCount).toBe(1);
     expect(first.state.missing).not.toContain('planning_period');
     expect(first.message).not.toContain('今週・来週・週末');
+    expect(first.state.lastQuestionContext).toEqual(expect.objectContaining({
+      kind: 'missing',
+      targetSlot: 'tasks_or_goals',
+    }));
 
     const second = await submit('院試の過去問 OSとネットワークを進めたいです');
     expect(second.state.examPrepScope?.fields).toEqual(['OS', 'ネットワーク']);
@@ -80,6 +84,10 @@ describe('observed weekly planning conversation integration', () => {
     expect(fourth.message).toContain('進める順番だけ確認します');
     expect(fourth.message).not.toContain('睡眠時間や');
     expect(fourth.message.match(/？/g) ?? []).toHaveLength(1);
+    expect(fourth.state.lastQuestionContext).toEqual(expect.objectContaining({
+      kind: 'missing',
+    }));
+    expect(fourth.state.lastQuestionContext?.targetSlot).toBeTruthy();
 
     const fifth = await submit('違う！OSとネットワークで一科目です');
     expect(fifth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
