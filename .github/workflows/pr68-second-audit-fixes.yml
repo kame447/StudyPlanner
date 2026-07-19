@@ -22,7 +22,21 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply second audit fixes
-        run: python3 scripts/pr68_second_audit_fixes.py
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/pr68_second_audit_fixes.py > /tmp/pr68-second-audit.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 120 /tmp/pr68-second-audit.log > pr68-second-audit-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pr68-second-audit-error.txt
+            git commit -m 'feat: PR68再監査script診断を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          fi
+          cat /tmp/pr68-second-audit.log
+          exit "$status"
       - name: Check diff
         run: git diff --check
       - name: Install dependencies
@@ -46,7 +60,7 @@ jobs:
         run: npm run build
       - name: Commit verified fixes and remove temporary files
         run: |
-          rm -f scripts/pr68_second_audit_fixes.py .github/workflows/pr68-second-audit-fixes.yml
+          rm -f scripts/pr68_second_audit_fixes.py .github/workflows/pr68-second-audit-fixes.yml pr68-second-audit-error.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
