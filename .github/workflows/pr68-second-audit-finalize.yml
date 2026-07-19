@@ -24,7 +24,21 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply audited changes
-        run: python3 scripts/pr68_second_audit_finalize.py
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/pr68_second_audit_finalize.py > /tmp/pr68-final-apply.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 160 /tmp/pr68-final-apply.log > pr68-final-apply-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pr68-final-apply-error.txt
+            git commit -m 'feat: PR68最終適用診断を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          fi
+          cat /tmp/pr68-final-apply.log
+          exit "$status"
       - name: Check diff
         run: git diff --check
       - name: Install dependencies
@@ -68,7 +82,7 @@ jobs:
           rm -f .github/workflows/pr68-second-audit-fixes.yml .github/workflows/pr68-second-audit-finalize.yml
           rm -f pr68-second-audit-error.txt pr68-second-audit-test-error.txt
           rm -f pr68-second-audit-full-test-error.txt pr68-second-audit-build-error.txt
-          rm -f pr68-final-focused-error.txt
+          rm -f pr68-final-apply-error.txt pr68-final-focused-error.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
