@@ -1,0 +1,11 @@
+# 週間計画におけるAI意味解釈と決定論境界
+
+週間計画の自然言語入力では、AI interpreterを主たる意味解釈器とする。
+
+AI interpreterは、発話の意図、訂正、省略、指示対象、分野間の関係、優先方針、生活制約の意味を解釈し、command候補へ構造化する。deterministic parserはAIの代わりに自然言語全体を再解釈する高性能な値入力口として扱わない。
+
+deterministic側の責務は、既知の短答・明示形式に対する補助、canonicalization、runtime shape validation、時刻や数値の範囲検証、既知stateに存在しないID・分野の拒否、重複・競合・readiness invariantの維持、AI障害時の限定fallbackである。
+
+validatorはAIの意味判断を正規表現で再現しない。AIが出したcommandの意味を別のルールparserで再判定するのではなく、commandが入力・既知stateから明白に逸脱していないことと、構造的不変条件を満たすことだけを確認する。
+
+rendererも同様に、AIが質問文を自然化する責務を持つ。deterministic側はslot契約、禁止内容、質問数、順序、重複、明白な意味逸脱だけを検証し、失敗時に登録済み質問へfallbackする。
