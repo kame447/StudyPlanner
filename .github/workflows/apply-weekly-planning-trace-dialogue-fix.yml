@@ -30,6 +30,23 @@ jobs:
           cache: npm
       - name: Apply source changes
         run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/apply_weekly_planning_trace_dialogue_fix.py')
+          content = path.read_text(encoding='utf-8')
+          target = """    content = file_path.read_text(encoding=\"utf-8\")
+    count = content.count(old)
+"""
+          replacement = """    old = old.replace(\"\\r?\\n\", r\"\\r?\\n\")
+    new = new.replace(\"\\r?\\n\", r\"\\r?\\n\")
+    content = file_path.read_text(encoding=\"utf-8\")
+    count = content.count(old)
+"""
+          if target not in content:
+              raise SystemExit('applicator normalization target missing')
+          path.write_text(content.replace(target, replacement, 1), encoding='utf-8')
+          PY
           set +e
           python scripts/apply_weekly_planning_trace_dialogue_fix.py > /tmp/apply-output.txt 2>&1
           status=$?
