@@ -109,3 +109,20 @@ replace_once(
     expect(sixth.message).toContain('必要時間: 21時間');
 """,
 )
+
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts',
+    "    expect(state.missing).toEqual(['unit_duration_estimate']);\n",
+    "    expect(state.missing).toEqual(['year_range', 'unit_duration_estimate']);\n",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts',
+    """    const third = runTurn(second.state, '3時間ぐらいです\n予定は特にないです');
+    const fourth = runTurn(third.state, '分野はOSとネットワークだけです');
+""",
+    """    const withYearRange = runTurn(second.state, '対象年度は2025〜2019です');
+    const third = runTurn(withYearRange.state, '3時間ぐらいです\n予定は特にないです');
+    const fourth = runTurn(third.state, '分野はOSとネットワークだけです');
+""",
+)
