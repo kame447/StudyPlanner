@@ -10,6 +10,10 @@ source = subprocess.check_output(
     ["git", "show", f"{ORIGINAL_COMMIT}:{ORIGINAL_PATH}"],
     text=True,
 )
+source = source.replace(
+    "'- For Japanese exam years like 2025〜2019",
+    "'For Japanese exam years like 2025〜2019",
+)
 target = '''    content = file_path.read_text(encoding="utf-8")
     count = content.count(old)
 '''
