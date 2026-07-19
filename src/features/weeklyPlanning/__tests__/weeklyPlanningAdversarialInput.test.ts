@@ -166,6 +166,98 @@ describe('weekly planning adversarial input guards', () => {
     ]);
   });
 
+  it.each([
+    [
+      'study goal title',
+      '英語を勉強したいです',
+      {
+        type: 'set_study_goal',
+        goal: { title: '数学' },
+        sourceText: '英語を勉強したいです',
+        confidence: 'high',
+      },
+      'ungrounded-study-goal',
+    ],
+    [
+      'unit-rate value',
+      '3時間です',
+      {
+        type: 'set_unit_rate',
+        unitRate: {
+          unit: 'year_field_chunk',
+          minutesPerUnit: 30,
+          source: 'user',
+        },
+        sourceText: '3時間です',
+        confidence: 'high',
+      },
+      'ungrounded-unit-rate',
+    ],
+    [
+      'invented exam classification',
+      'OSを勉強したいです',
+      {
+        type: 'set_exam_scope',
+        scope: {
+          examType: '院試',
+          fields: ['OS'],
+          unitModel: 'year_field_chunk',
+          rawText: ['OSを勉強したいです'],
+        },
+        sourceText: 'OSを勉強したいです',
+        confidence: 'high',
+      },
+      'ungrounded-exam-scope',
+    ],
+    [
+      'life-constraint time',
+      '23時から7時まで寝ます',
+      {
+        type: 'update_life_constraint',
+        kind: 'sleep',
+        constraint: {
+          start: '22:00',
+          end: '07:00',
+          hardness: 'hard',
+        },
+        sourceText: '23時から7時まで寝ます',
+        confidence: 'high',
+      },
+      'ungrounded-life-constraint',
+    ],
+    [
+      'priority ordering',
+      'OSをネットワークより先にします',
+      {
+        type: 'set_priority_policy',
+        policy: { kind: 'field_first', order: ['ネットワーク', 'OS'] },
+        sourceText: 'OSをネットワークより先にします',
+        confidence: 'high',
+      },
+      'ungrounded-priority-policy',
+    ],
+  ])('rejects an AI command with an ungrounded payload value: %s', (
+    _label,
+    userText,
+    command,
+    reason,
+  ) => {
+    const result = validateInterpretedCandidates([{
+      command: command as never,
+      origin: 'ai_interpreter',
+      needsConfirmation: false,
+      sourceUserText: userText,
+    }], {
+      knownFields: ['OS', 'ネットワーク'],
+      confirmedSlots: [],
+    });
+
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason }),
+    ]);
+  });
+
   it('rejects renderer text that preserves the slot key but changes the meaning', () => {
     const input: DialogueRenderInput = {
       acceptedFacts: {},

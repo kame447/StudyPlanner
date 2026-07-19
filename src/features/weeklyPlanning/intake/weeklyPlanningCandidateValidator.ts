@@ -17,7 +17,7 @@ import { isValidWeeklyPlanningCommand } from './weeklyPlanningCommandRuntimeVali
 import { normalizeExamScopeEnrichment } from './weeklyPlanningExamScopeEnrichment';
 import { isPlanningRangeConsistentWithAbsoluteDateSource } from './weeklyPlanningAbsoluteDate';
 import type { WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
-import { normalizeIntakeText } from './weeklyPlanningTextParsing';
+import { normalizeIntakeText, parseSmallInteger } from './weeklyPlanningTextParsing';
 
 const CONFIDENCE_RANK = {
   low: 0,
@@ -203,16 +203,108 @@ function approximatelyContains(userText: string, expected: string): boolean {
   return false;
 }
 
+function explicitNumberValues(text: string): number[] {
+  const normalized = normalizeIntakeText(text);
+  const values = Array.from(normalized.matchAll(/\d+(?:\.\d+)?/g))
+    .map((match) => Number(match[0]))
+    .filter(Number.isFinite);
+  for (const match of normalized.matchAll(/[一二三四五六七八九十]+/g)) {
+    const parsed = parseSmallInteger(match[0]);
+    if (parsed !== undefined) values.push(parsed);
+  }
+  return Array.from(new Set(values));
+}
+
+function explicitMinuteValues(text: string): number[] {
+  const normalized = normalizeIntakeText(text);
+  const values: number[] = [];
+  for (const match of normalized.matchAll(/(\d+(?:\.\d+)?|[一二三四五六七八九十]+)\s*時間(?:\s*(\d+|[一二三四五六七八九十]+)\s*分)?/g)) {
+    const hours = Number(match[1]) || parseSmallInteger(match[1]);
+    const minutes = match[2] ? Number(match[2]) || parseSmallInteger(match[2]) || 0 : 0;
+    if (hours !== undefined && Number.isFinite(hours)) values.push(hours * 60 + minutes);
+  }
+  for (const match of normalized.matchAll(/(\d+(?:\.\d+)?|[一二三四五六七八九十]+)\s*分(?!野)/g)) {
+    const minutes = Number(match[1]) || parseSmallInteger(match[1]);
+    if (minutes !== undefined && Number.isFinite(minutes)) values.push(minutes);
+  }
+  return Array.from(new Set(values));
+}
+
+function normalizedTextContainsValue(text: string, value: string | undefined): boolean {
+  if (!value) return true;
+  const normalized = normalizeIntakeText(text);
+  if (normalized.includes(value)) return true;
+  const [hourText, minuteText = '00'] = value.split(':');
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return false;
+  return new RegExp(`${hour}\s*時(?:\s*${minute}\s*分)?`).test(normalized)
+    || new RegExp(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`).test(normalized);
+}
+
+function normalizedTextContainsDate(text: string, value: string | undefined): boolean {
+  if (!value) return true;
+  const normalized = normalizeIntakeText(text);
+  if (normalized.includes(value)) return true;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [, year, month, day] = match;
+  return normalized.includes(`${Number(year)}年${Number(month)}月${Number(day)}日`)
+    || normalized.includes(`${Number(month)}月${Number(day)}日`);
+}
+
+function lifeConstraintPayloadGrounded(params: {
+  userText: string;
+  date?: string;
+  start?: string;
+  end?: string;
+  durationMinutes?: number;
+  studyAvailableStart?: string;
+}): boolean {
+  return normalizedTextContainsDate(params.userText, params.date)
+    && normalizedTextContainsValue(params.userText, params.start)
+    && normalizedTextContainsValue(params.userText, params.end)
+    && normalizedTextContainsValue(params.userText, params.studyAvailableStart)
+    && (params.durationMinutes === undefined
+      || explicitMinuteValues(params.userText).includes(params.durationMinutes));
+}
+
+function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function relativePlanningDateGrounded(
+  text: string,
+  startDateTime: string | undefined,
+  context: WeeklyPlanningIntakeContext | undefined,
+): boolean {
+  if (!startDateTime || !context) return true;
+  const normalized = normalizeIntakeText(text);
+  const currentDate = context.currentDateTime?.slice(0, 10) ?? context.selectedDate;
+  const expected = /明後日/.test(normalized)
+    ? addDays(currentDate, 2)
+    : /明日/.test(normalized)
+      ? addDays(currentDate, 1)
+      : /今日/.test(normalized)
+        ? currentDate
+        : undefined;
+  return expected === undefined || startDateTime.slice(0, 10) === expected;
+}
+
 function validateCommandGrounding(
   candidate: InterpretedCommandCandidate,
   command: ParsedWeeklyPlanningCommand,
   summary: InterpreterStateSummary,
+  context?: WeeklyPlanningIntakeContext,
 ): string | null {
   const userText = candidate.sourceUserText;
   if (!userText) return null;
   if (MODEL_INSTRUCTION_PATTERN.test(userText)) return 'prompt-injection-like-user-text';
   if (command.sourceSegment && !sourceTextIsGrounded(candidate, command)) return 'ungrounded-source-segment';
   const normalized = normalizeIntakeText(userText).trim();
+  const normalizedUser = normalizedEvidence(normalized);
   switch (command.type) {
     case 'note_no_fixed_events': {
       const fixedEventsQuestion = summary.lastQuestions?.some((question) => question.slotKey === 'fixed_events');
@@ -221,12 +313,27 @@ function validateCommandGrounding(
         && /^(?:特に)?(?:ない|なし|ありません|ないです)[。！!]*$/.test(normalized);
       return explicit || shortAnswer ? null : 'ungrounded-no-fixed-events';
     }
-    case 'set_unit_rate':
-      return /(?:\d+(?:\.\d+)?|[一二三四五六七八九十]+)\s*(?:時間|分)/.test(normalized)
+    case 'set_unit_rate': {
+      const minutes = command.unitRate.minutesPerUnit;
+      const unitCompatible = command.unitRate.unit === 'year_field_chunk'
+        || summary.examScopeSummary?.unitModel !== 'year_field_chunk';
+      return command.unitRate.source === 'user'
+        && typeof minutes === 'number'
+        && explicitMinuteValues(normalized).includes(minutes)
+        && unitCompatible
         ? null : 'ungrounded-unit-rate';
-    case 'set_priority_policy':
-      return /優先|順番|先に|から.*(?:進め|やり|解き|始め)/.test(normalized)
+    }
+    case 'set_priority_policy': {
+      if (!/優先|順番|先に|から.*(?:進め|やり|解き|始め)/.test(normalized)) {
+        return 'ungrounded-priority-policy';
+      }
+      if (command.policy.kind !== 'field_first') return null;
+      const mentionedFields = summary.knownFields.filter((field) =>
+        normalizedUser.includes(normalizedEvidence(field)));
+      return mentionedFields.length <= 1
+        || mentionedFields[0] === command.policy.order[0]
         ? null : 'ungrounded-priority-policy';
+    }
     case 'use_constraint_source':
       return /時間割|予定表|登録済み|保存済み|いつもの授業|カレンダー/.test(normalized)
         ? null : 'ungrounded-constraint-source';
@@ -234,14 +341,21 @@ function validateCommandGrounding(
       return /意味|どういう|何を答え|とは|って何|わからない/.test(normalized)
         ? null : 'ungrounded-clarification-request';
     case 'set_planning_range':
+      return /今日|明日|明後日|今週|来週|週末|夏休み|[月火水木金土日]曜|\d{1,2}\s*月\s*\d{1,2}\s*日|から|まで|週間|日間/.test(normalized)
+        && relativePlanningDateGrounded(normalized, command.range.startDateTime, context)
+        ? null : 'ungrounded-planning-range';
     case 'set_pending_planning_range':
       return /今日|明日|明後日|今週|来週|週末|夏休み|[月火水木金土日]曜|\d{1,2}\s*月\s*\d{1,2}\s*日|から|まで|週間|日間/.test(normalized)
+        && relativePlanningDateGrounded(
+          normalized,
+          command.pending.planningStartDateTime ?? command.pending.planningStartDate,
+          context,
+        )
         ? null : 'ungrounded-planning-range';
     case 'begin_weekly_planning':
       return /予定|計画|スケジュール/.test(normalized) && /立て|作|組|決め|したい|お願い/.test(normalized)
         ? null : 'ungrounded-planning-intent';
     case 'set_exam_scope': {
-      const normalizedUser = normalizedEvidence(normalized);
       const knownFields = new Set(summary.knownFields.map(normalizedEvidence));
       const fieldsGrounded = command.scope.fields.every((field) => {
         const normalizedField = normalizedEvidence(field);
@@ -253,22 +367,85 @@ function validateCommandGrounding(
       const yearRangeGrounded = !range
         || (normalizedUser.includes(String(range.startYear))
           && normalizedUser.includes(String(range.endYear)));
-      return fieldsGrounded && yearRangeGrounded
+      const existingScope = summary.examScopeSummary;
+      const examTypeGrounded = !command.scope.examType
+        || normalizedUser.includes(normalizedEvidence(command.scope.examType))
+        || command.scope.examType === existingScope?.examType;
+      const unitModelGrounded = command.scope.unitModel !== 'year_field_chunk'
+        || existingScope?.unitModel === 'year_field_chunk'
+        || /院試|過去問|年度|年分|20\d{2}\s*[〜~-]\s*20\d{2}/.test(normalized);
+      const explicitNumbers = explicitNumberValues(normalized);
+      const totalFieldsGrounded = command.scope.totalFields === undefined
+        || command.scope.totalFields === command.scope.fields.length
+        || (explicitNumbers.includes(command.scope.totalFields)
+          && /(?:分野|科目)/.test(normalized));
+      const totalYearsGrounded = command.scope.totalYears === undefined
+        || (range && Math.abs(range.startYear - range.endYear) + 1 === command.scope.totalYears)
+        || (explicitNumbers.includes(command.scope.totalYears) && /年分/.test(normalized));
+      return fieldsGrounded
+        && yearRangeGrounded
+        && examTypeGrounded
+        && unitModelGrounded
+        && totalFieldsGrounded
+        && totalYearsGrounded
         ? null : 'ungrounded-exam-scope';
     }
     case 'add_fixed_event':
+      return /\d{1,2}\s*時|\d{1,2}:\d{2}|睡眠|寝|食事|夕食|風呂|入浴|移動|バイト|授業|予定/.test(normalized)
+        && lifeConstraintPayloadGrounded({ userText: normalized, ...command.event })
+        ? null : 'ungrounded-life-constraint';
     case 'add_unavailable':
+      return /\d{1,2}\s*時|\d{1,2}:\d{2}|睡眠|寝|食事|夕食|風呂|入浴|移動|バイト|授業|予定/.test(normalized)
+        && lifeConstraintPayloadGrounded({ userText: normalized, ...command.range })
+        ? null : 'ungrounded-life-constraint';
     case 'update_life_constraint':
       return /\d{1,2}\s*時|\d{1,2}:\d{2}|睡眠|寝|食事|夕食|風呂|入浴|移動|バイト|授業|予定/.test(normalized)
+        && lifeConstraintPayloadGrounded({ userText: normalized, ...command.constraint })
         ? null : 'ungrounded-life-constraint';
     case 'mark_completed_units':
-    case 'mark_completion_target':
+      return /年度|年分|終|済|未着手|進捗|どこまで/.test(normalized)
+        && command.completedYears.every((year) => normalizedUser.includes(String(year)))
+        ? null : 'ungrounded-progress';
+    case 'mark_completion_target': {
+      const target = command.target;
+      const valuesGrounded = target.kind === 'latest_n_years'
+        ? explicitNumberValues(normalized).includes(target.count)
+        : target.kind === 'year_range'
+          ? normalizedUser.includes(String(target.startYear))
+            && normalizedUser.includes(String(target.endYear))
+          : true;
+      return /年度|年分|終|済|未着手|進捗|どこまで/.test(normalized)
+        && valuesGrounded
+        ? null : 'ungrounded-progress';
+    }
     case 'note_progress_boundary':
       return /年度|年分|終|済|未着手|進捗|どこまで/.test(normalized)
+        && normalizedUser.includes(String(command.boundaryYear))
         ? null : 'ungrounded-progress';
-    case 'set_study_goal':
+    case 'set_study_goal': {
+      const goalEvidenceStem = (value: string) => normalizedEvidence(value)
+        .replace(/(?:したいです|したい|します|する|した)$/, '');
+      const normalizedGoalTitle = goalEvidenceStem(command.goal.title);
+      const normalizedGoalUser = goalEvidenceStem(normalized);
+      const titleGrounded = normalizedGoalUser.includes(normalizedGoalTitle)
+        || normalizedUser.includes(normalizedEvidence(command.goal.title))
+        || approximatelyContains(normalized, command.goal.title);
+      const subjectGrounded = !command.goal.subject
+        || normalizedUser.includes(normalizedEvidence(command.goal.subject))
+        || approximatelyContains(normalized, command.goal.subject);
+      const amountGrounded = command.goal.amount === undefined
+        || (command.goal.unit === 'minutes'
+          ? explicitMinuteValues(normalized).includes(command.goal.amount)
+          : explicitNumberValues(normalized).includes(command.goal.amount));
       return /勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記|おさらい|取り組/.test(normalized)
+        && titleGrounded
+        && subjectGrounded
+        && amountGrounded
         ? null : 'ungrounded-study-goal';
+    }
+    case 'note_uncertainty':
+      return /わから|不明|不確か|自信|たぶん|かも|苦手|時間がかか/.test(normalized)
+        ? null : 'ungrounded-uncertainty';
     default:
       return null;
   }
@@ -519,7 +696,7 @@ export function validateInterpretedCandidates(
       command = enrichment.command;
       effectiveCandidate = command === candidate.command ? candidate : { ...candidate, command };
     }
-    const groundingError = validateCommandGrounding(candidate, command, summary);
+    const groundingError = validateCommandGrounding(candidate, command, summary, context);
     if (groundingError) {
       addRejected(result, effectiveCandidate, groundingError);
       return;

@@ -250,16 +250,30 @@ export class WeeklyPlanningTraceFirestoreClient {
     id: string,
     value: Record<string, unknown>,
   ): Promise<void> {
-    const existing = await this.getDocument(collection, id);
-    if (existing) {
-      const normalizedExisting = { ...existing };
-      delete normalizedExisting.id;
-      if (stableJson(normalizedExisting) !== stableJson(value)) {
-        throw new Error(`immutable trace document conflict: ${collection}/${id}`);
-      }
-      return;
+    const params = new URLSearchParams({ documentId: id });
+    const response = await this.request(
+      `${this.documentsBase()}/${encodeURIComponent(collection)}?${params.toString()}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
+      },
+    );
+    if (response.ok) return;
+    if (response.status !== 409) {
+      throw new Error(`Firestore immutable write failed: ${response.status}`);
     }
-    await this.setDocument(collection, id, value);
+
+    const existing = await this.getDocument(collection, id);
+    if (!existing) {
+      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+    }
+    const normalizedExisting = { ...existing };
+    const normalizedValue = { ...value };
+    delete normalizedExisting.id;
+    delete normalizedValue.id;
+    if (stableJson(normalizedExisting) !== stableJson(normalizedValue)) {
+      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+    }
   }
 
   async queryDocuments(

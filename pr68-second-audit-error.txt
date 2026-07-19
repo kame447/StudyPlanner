@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/home/runner/work/StudyPlannner/StudyPlannner/scripts/pr68_second_audit_fixes.py", line 975, in <module>
-    raise RuntimeError('legacy fallback describe anchor not found')
-RuntimeError: legacy fallback describe anchor not found

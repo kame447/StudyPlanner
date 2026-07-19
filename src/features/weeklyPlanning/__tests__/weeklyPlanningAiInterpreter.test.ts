@@ -257,7 +257,7 @@ describe('weekly planning AI interpreter', () => {
     })));
 
     const result = await interpreter.interpretUserTurn({
-      userText: '全体を先におさらいしたい',
+      userText: '院試全体を先におさらいしたい',
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary: { knownFields: [], confirmedSlots: [] },
     });

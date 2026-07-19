@@ -39,6 +39,89 @@ function env() {
 }
 
 describe('weekly planning trace Firestore protocol integration', () => {
+  it('creates immutable documents atomically and accepts an identical retry', async () => {
+    const value = { id: ENTRY_ID, sessionId: SESSION_ID, sequence: 0, content: 'first' };
+    let createAttempts = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/weekly_planning_trace_entries?documentId=')) {
+        expect(init?.method).toBe('POST');
+        createAttempts += 1;
+        return createAttempts === 1
+          ? new Response('{}', { status: 200 })
+          : new Response('{}', { status: 409 });
+      }
+      if (url.endsWith(`/weekly_planning_trace_entries/${encodeURIComponent(ENTRY_ID)}`)) {
+        return new Response(JSON.stringify(firestoreDocument(ENTRY_ID, value)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const client = new WeeklyPlanningTraceFirestoreClient(
+      env(),
+      fetcher as typeof fetch,
+      fakeCrypto(),
+    );
+
+    await expect(client.setImmutableDocument(
+      'weekly_planning_trace_entries',
+      ENTRY_ID,
+      value,
+    )).resolves.toBeUndefined();
+    await expect(client.setImmutableDocument(
+      'weekly_planning_trace_entries',
+      ENTRY_ID,
+      value,
+    )).resolves.toBeUndefined();
+    expect(createAttempts).toBe(2);
+  });
+
+  it('rejects an immutable retry whose payload differs from the stored document', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/weekly_planning_trace_entries?documentId=')) {
+        return new Response('{}', { status: 409 });
+      }
+      if (url.endsWith(`/weekly_planning_trace_entries/${encodeURIComponent(ENTRY_ID)}`)) {
+        return new Response(JSON.stringify(firestoreDocument(ENTRY_ID, {
+          id: ENTRY_ID,
+          sessionId: SESSION_ID,
+          sequence: 0,
+          content: 'stored',
+        })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const client = new WeeklyPlanningTraceFirestoreClient(
+      env(),
+      fetcher as typeof fetch,
+      fakeCrypto(),
+    );
+
+    await expect(client.setImmutableDocument(
+      'weekly_planning_trace_entries',
+      ENTRY_ID,
+      { id: ENTRY_ID, sessionId: SESSION_ID, sequence: 0, content: 'different' },
+    )).rejects.toThrow(/immutable trace document conflict/);
+  });
+
   it('uses the Firestore document path ID instead of redacted structural fields for get and query', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

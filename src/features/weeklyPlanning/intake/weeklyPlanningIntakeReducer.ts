@@ -421,8 +421,16 @@ function applyWeeklyPlanningCommand(
       if (examPrepScope.yearRange) {
         nextMissing = removeMissing(nextMissing, ['year_range']);
       }
-      if (examPrepScope.unitModel === 'year_field_chunk' && nextState.unitRates.length === 0) {
-        nextMissing = addMissing(nextMissing, ['unit_duration_estimate']);
+      if (examPrepScope.unitModel === 'year_field_chunk') {
+        const hasYearFieldUnitRate = nextState.unitRates.some((rate) =>
+          rate.unit === 'year_field_chunk'
+          && typeof rate.minutesPerUnit === 'number'
+          && Number.isFinite(rate.minutesPerUnit)
+          && rate.minutesPerUnit > 0,
+        );
+        nextMissing = hasYearFieldUnitRate
+          ? removeMissing(nextMissing, ['unit_duration_estimate'])
+          : addMissing(nextMissing, ['unit_duration_estimate']);
       }
 
       return {

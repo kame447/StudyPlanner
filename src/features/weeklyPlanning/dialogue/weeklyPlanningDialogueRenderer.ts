@@ -59,31 +59,49 @@ const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
  * 計画期間ラベルはユーザー発話(range.sourceText)に含まれる語からのみ導く。
  * 日付だけから「今週/来週」を推測して補完しない(実例1「来週」→「今週」の回帰防止)。
  */
-function normalizedTurnText(value: string | undefined): string {
-  return value?.replace(/\s+/g, ' ').trim() ?? '';
+function sameSemanticValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function acceptedFromLatestTurn(source: string | undefined, latestTurn: string): boolean {
-  const normalizedSource = normalizedTurnText(source);
-  const normalizedLatest = normalizedTurnText(latestTurn);
-  return Boolean(normalizedSource && normalizedLatest && (
-    normalizedSource === normalizedLatest
-    || normalizedLatest.includes(normalizedSource)
-    || normalizedSource.includes(normalizedLatest)
-  ));
+function planningRangeSemanticValue(state: PlanningIntakeState): unknown {
+  return {
+    range: state.range
+      ? {
+          startDateTime: state.range.startDateTime,
+          endDateTime: state.range.endDateTime,
+          calendarDayCount: state.range.calendarDayCount,
+          confidence: state.range.confidence,
+        }
+      : undefined,
+    pending: state.pendingPlanningRange
+      ? {
+          scope: state.pendingPlanningRange.scope,
+          planningStartDate: state.pendingPlanningRange.planningStartDate,
+          planningStartDateTime: state.pendingPlanningRange.planningStartDateTime,
+          durationDays: state.pendingPlanningRange.durationDays,
+          planningEndDateTime: state.pendingPlanningRange.planningEndDateTime,
+        }
+      : undefined,
+  };
 }
 
 function planningPeriodLabel(
   state: PlanningIntakeState,
-  latestTurn?: string,
+  previousState?: PlanningIntakeState,
 ): string | undefined {
-  const source = state.range?.sourceText;
-  if (source && latestTurn && !acceptedFromLatestTurn(source, latestTurn)) return undefined;
+  if (previousState && sameSemanticValue(
+    planningRangeSemanticValue(state),
+    planningRangeSemanticValue(previousState),
+  )) {
+    return undefined;
+  }
 
+  const source = state.range?.sourceText;
   if (source) {
     if (/来週/.test(source)) return '来週';
     if (/今週/.test(source)) return '今週';
     if (/週末|土日/.test(source)) return '週末';
+    if (/今日/.test(source)) return '今日';
   }
 
   if (!state.range && state.pendingPlanningRange) {
@@ -91,6 +109,53 @@ function planningPeriodLabel(
   }
 
   return undefined;
+}
+
+function taskSemanticValue(task: PlanningIntakeState['tasks'][number]): unknown {
+  return {
+    title: task.title,
+    subject: task.subject,
+    examType: task.examType,
+    field: task.field,
+    year: task.year,
+    unit: task.unit,
+    amount: task.amount,
+    requiresTimeEstimate: task.requiresTimeEstimate,
+    source: task.source,
+  };
+}
+
+function unitRateSemanticValue(rate: PlanningIntakeState['unitRates'][number]): unknown {
+  return {
+    unit: rate.unit,
+    minutesPerUnit: rate.minutesPerUnit,
+    source: rate.source,
+    uncertainty: rate.uncertainty,
+  };
+}
+
+function constraintSemanticValue(
+  constraint: PlanningIntakeState['constraints'][number],
+): unknown {
+  return {
+    kind: constraint.kind,
+    date: constraint.date,
+    start: constraint.start,
+    end: constraint.end,
+    durationMinutes: constraint.durationMinutes,
+    studyAvailableStart: constraint.studyAvailableStart,
+    hardness: constraint.hardness,
+  };
+}
+
+function isNewSemanticItem<T>(
+  item: T,
+  previousItems: readonly T[],
+  semanticValue: (value: T) => unknown,
+): boolean {
+  const currentValue = semanticValue(item);
+  return !previousItems.some((previous) =>
+    sameSemanticValue(currentValue, semanticValue(previous)));
 }
 
 function unitRateBasisLabel(state: PlanningIntakeState): string | undefined {
@@ -171,22 +236,50 @@ export function createDialogueRenderInput(params: {
   decision: WeeklyPlanningDialogueDecision;
   existingPlans?: Plan[];
 }): DialogueRenderInput {
-  const latestTurn = params.state.sourceTurns[params.state.sourceTurns.length - 1] ?? '';
-  const useTurnDelta = Boolean(params.previousState);
+  const previousTasks = params.previousState?.tasks ?? [];
+  const previousUnitRates = params.previousState?.unitRates ?? [];
+  const previousConstraints = params.previousState?.constraints ?? [];
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : undefined;
   const unitRate = params.state.unitRates.find((rate) =>
     typeof rate.minutesPerUnit === 'number'
-    && (!useTurnDelta || acceptedFromLatestTurn(rate.rawText, latestTurn)),
+    && isNewSemanticItem(rate, previousUnitRates, unitRateSemanticValue),
   );
   const commandGoalTitles = params.state.tasks
     .filter((task) => task.source === 'command'
-      && (!useTurnDelta || acceptedFromLatestTurn(task.rawText, latestTurn)))
+      && isNewSemanticItem(task, previousTasks, taskSemanticValue))
     .map((task) => task.title);
-  const examScopeAcceptedThisTurn = !useTurnDelta || (params.state.examPrepScope?.rawText.some(
-    (sourceText) => acceptedFromLatestTurn(sourceText, latestTurn),
-  ) ?? false);
+  const currentFields = {
+    fields: params.state.examPrepScope?.fields ?? [],
+    totalFields: params.state.examPrepScope?.totalFields,
+  };
+  const previousFields = {
+    fields: params.previousState?.examPrepScope?.fields ?? [],
+    totalFields: params.previousState?.examPrepScope?.totalFields,
+  };
+  const examScopeAcceptedThisTurn = !params.previousState
+    || !sameSemanticValue(currentFields, previousFields);
+  const yearRangeAcceptedThisTurn = !params.previousState
+    || !sameSemanticValue(
+      params.state.examPrepScope?.yearRange
+        ? {
+            startYear: params.state.examPrepScope.yearRange.startYear,
+            endYear: params.state.examPrepScope.yearRange.endYear,
+          }
+        : undefined,
+      params.previousState.examPrepScope?.yearRange
+        ? {
+            startYear: params.previousState.examPrepScope.yearRange.startYear,
+            endYear: params.previousState.examPrepScope.yearRange.endYear,
+          }
+        : undefined,
+    );
+  const constraintSourcesChanged = !params.previousState
+    || !sameSemanticValue(
+      params.state.constraintSourcesInUse ?? [],
+      params.previousState.constraintSourcesInUse ?? [],
+    );
   const knownFixedEventSummaries = createKnownFixedEventSummaries(
     params.existingPlans ?? [],
     params.state.range,
@@ -204,18 +297,17 @@ export function createDialogueRenderInput(params: {
   const renderedQuestions = shouldRepairRepeatedQuestion
     ? [{ ...nextQuestions[0], questionKind: 'repair' }]
     : nextQuestions;
-  const mentionsConstraintSource = !useTurnDelta
-    || /時間割|予定表|登録済みの予定|保存済みの予定/.test(latestTurn);
   const acceptedConstraintSummary = params.state.constraints
-    .filter((constraint) => !useTurnDelta || acceptedFromLatestTurn(constraint.rawText, latestTurn))
+    .filter((constraint) =>
+      isNewSemanticItem(constraint, previousConstraints, constraintSemanticValue))
     .map((constraint) => [constraint.kind, constraint.date, constraint.start, constraint.end]
       .filter(Boolean)
       .join(' '));
 
   return {
-    planningPeriodLabel: planningPeriodLabel(params.state, useTurnDelta ? latestTurn : undefined),
+    planningPeriodLabel: planningPeriodLabel(params.state, params.previousState),
     unitRateBasisLabel: unitRateBasisLabel(params.state),
-    constraintSourcesInUse: mentionsConstraintSource
+    constraintSourcesInUse: constraintSourcesChanged
       ? constraintSourcesInUseLabels(params.state)
       : undefined,
     knownFixedEventSummaries: knownFixedEventSummaries.length > 0
@@ -225,8 +317,7 @@ export function createDialogueRenderInput(params: {
       fields: examScopeAcceptedThisTurn ? params.state.examPrepScope?.fields : undefined,
       totalFields: examScopeAcceptedThisTurn ? params.state.examPrepScope?.totalFields : undefined,
       goals: commandGoalTitles.length > 0 ? commandGoalTitles : undefined,
-      yearRange: params.state.examPrepScope?.yearRange
-        && (!useTurnDelta || latestTurn.includes(params.state.examPrepScope.yearRange.sourceText))
+      yearRange: yearRangeAcceptedThisTurn && params.state.examPrepScope?.yearRange
         ? {
             startYear: params.state.examPrepScope.yearRange.startYear,
             endYear: params.state.examPrepScope.yearRange.endYear,
@@ -261,23 +352,24 @@ function isDialogueRenderOutput(value: unknown): value is DialogueRenderOutput {
 }
 
 
-const DIALOGUE_FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|設定画面|外部サイト|リンクを開|貼り付けて|送信して)/i;
-const QUESTION_GROUNDING_PATTERNS: Record<string, RegExp> = {
-  planning_period: /いつ|期間|今週|来週|週末|開始|終わり/,
-  planning_start_date: /いつ|何日|開始|始め/,
-  planning_duration: /何日|期間|どれくらい|週間/,
-  tasks_or_goals: /何を|勉強|学習|課題|進め/,
-  fixed_events: /予定|固定|動かせない|外せない/,
-  sleep_cycle: /睡眠|寝|起き|勉強を始め/,
-  meal_bath_constraints: /食事|夕食|風呂|入浴/,
-  life_constraints: /予定|睡眠|食事|風呂|時間/,
-  year_range: /年度|何年|対象年/,
-  progress: /どこまで|進捗|終|年度/,
-  completion_direction: /終わらせ|進め|どこまで/,
-  unit_rate: /時間|分|目安/,
-  unit_duration_estimate: /時間|分|目安/,
-  priority_policy: /優先|順番|先/,
-  next_field_after_math: /次|分野|科目/,
+const DIALOGUE_FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|設定画面|外部サイト|リンクを開|貼り付けて|送信して|睡眠薬|服用|何錠|診断|病歴|住所|メールアドレス|電話番号|口座番号|クレジットカード)/i;
+
+const QUESTION_GROUNDING_VALIDATORS: Record<string, (text: string) => boolean> = {
+  planning_period: (text) => /(?:いつ|何日|期間|今週|来週|週末|開始|始め|終わり|まで)/.test(text),
+  planning_start_date: (text) => /(?:いつ|何日|何曜|開始|始め)/.test(text),
+  planning_duration: (text) => /(?:何日|日数|期間|どれくらい|何週間)/.test(text),
+  tasks_or_goals: (text) => /(?:何を|学習内容|目標|教材|課題|勉強|進めたい)/.test(text),
+  fixed_events: (text) => /(?:固定|動かせない|外せない|時間が決ま|登録済み).*(?:予定|授業|仕事|用事)|(?:予定|授業|仕事|用事).*(?:固定|動かせない|外せない|ありますか)/.test(text),
+  sleep_cycle: (text) => /(?:睡眠|就寝|起床|寝る|起きる|勉強を始め).*(?:時間|時刻|何時|いつ|リズム)|(?:何時|いつ).*(?:寝|起き|勉強を始め)/.test(text),
+  meal_bath_constraints: (text) => /(?:食事|朝食|昼食|夕食|風呂|入浴).*(?:時間|時刻|何時|どれくらい|入れにくい)/.test(text),
+  life_constraints: (text) => /(?:生活|睡眠|食事|風呂|入浴).*(?:制約|時間|リズム|入れにくい)/.test(text),
+  year_range: (text) => /(?:対象|過去問|試験).*(?:年度|何年).*(?:から|まで|範囲)|(?:年度|何年).*(?:から|まで|範囲)/.test(text),
+  progress: (text) => /(?:進捗|現在|今).*(?:どこまで|終わ|済み|未着手)|(?:どこまで).*(?:進め|終わ)/.test(text),
+  completion_direction: (text) => /(?:新しい|古い|どちら|どっち).*(?:年度|側|順)|(?:年度).*(?:新しい|古い|側)/.test(text),
+  unit_rate: (text) => /(?:(?:1|一)\s*(?:年分|分野).*(?:何時間|何分|どれくらい))|(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),
+  unit_duration_estimate: (text) => /(?:(?:1|一)\s*(?:年分|分野).*(?:何時間|何分|どれくらい))|(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),
+  priority_policy: (text) => /(?:優先|順番|先).*(?:分野|科目|どれ|何|進め)|(?:分野|科目|どれ|何).*(?:優先|順番|先)/.test(text),
+  next_field_after_math: (text) => /(?:次|その次).*(?:分野|科目)|(?:分野|科目).*(?:次|その次)/.test(text),
 };
 
 function isGroundedDialogueQuestion(planned: DialogueNextQuestion, text: string): boolean {
@@ -285,8 +377,8 @@ function isGroundedDialogueQuestion(planned: DialogueNextQuestion, text: string)
   if (!normalized || normalized.length > 240 || DIALOGUE_FORBIDDEN_CONTENT.test(normalized)) {
     return false;
   }
-  const slotPattern = QUESTION_GROUNDING_PATTERNS[planned.slotKey];
-  if (slotPattern?.test(normalized)) return true;
+  const validator = QUESTION_GROUNDING_VALIDATORS[planned.slotKey];
+  if (validator) return validator(normalized);
   const hintTokens = (planned.vocabularyHint ?? '')
     .split(/[\s、。・／/やをのにへはがとでか]+/)
     .map((token) => token.trim())
