@@ -19,9 +19,25 @@ controller = controller_candidates[0]
 """,
         "controller = Path('src/features/weeklyPlanning/weeklyPlanningTurnController.ts')\n",
     ),
+    (
+        "if (!sourceTextIsGrounded(candidate, command)) return 'ungrounded-source-text';",
+        "if (command.sourceSegment && !sourceTextIsGrounded(candidate, command)) return 'ungrounded-source-segment';",
+    ),
+    (
+        "/勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記/.test(normalized)",
+        "/勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記|おさらい|取り組/.test(normalized)",
+    ),
 ]
 for old, new in replacements:
     if old not in source:
-        raise RuntimeError(f'wrapper replacement was not found: {old[:80]!r}')
+        raise RuntimeError(f'wrapper replacement was not found: {old[:100]!r}')
     source = source.replace(old, new, 1)
 exec(compile(source, str(source_path), 'exec'))
+
+test_path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts')
+test_source = test_path.read_text()
+old = "userText: '実AI応答',"
+new = "userText: `来週、${WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.freeTextExamScopeAndPriority}`,"
+if old not in test_source:
+    raise RuntimeError('generic AI interpreter test input was not found')
+test_path.write_text(test_source.replace(old, new))
