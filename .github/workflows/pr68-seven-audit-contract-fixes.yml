@@ -23,11 +23,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Remove superseded diagnostics
-        run: |
-          rm -f scripts/pr68_seven_audit_boundary_fixes.py
-          rm -f .github/workflows/pr68-seven-audit-boundary-fixes.yml
-          rm -f pr68-seven-audit-error.txt
       - name: Apply responsibility-boundary fixes
         run: python3 scripts/pr68_seven_audit_contract_fixes.py
       - name: Check diff
