@@ -179,8 +179,23 @@ describe('weekly planning adversarial input guards', () => {
       'ungrounded-study-goal',
     ],
     [
-      'unit-rate range',
+      'unit-rate value',
       '3時間です',
+      {
+        type: 'set_unit_rate',
+        unitRate: {
+          unit: 'year_field_chunk',
+          minutesPerUnit: 30,
+          source: 'user',
+        },
+        sourceText: '3時間です',
+        confidence: 'high',
+      },
+      'ungrounded-unit-rate',
+    ],
+    [
+      'unit-rate range',
+      '0分です',
       {
         type: 'set_unit_rate',
         unitRate: {
@@ -188,7 +203,7 @@ describe('weekly planning adversarial input guards', () => {
           minutesPerUnit: 0,
           source: 'user',
         },
-        sourceText: '3時間です',
+        sourceText: '0分です',
         confidence: 'high',
       },
       'invalid-unit-rate-minutes',
@@ -217,6 +232,33 @@ describe('weekly planning adversarial input guards', () => {
         kind: 'sleep',
         constraint: {
           start: '22:00',
+          end: '07:00',
+          hardness: 'hard',
+        },
+        sourceText: '23時から7時まで寝ます',
+        confidence: 'high',
+      },
+      'ungrounded-life-constraint',
+    ],
+    [
+      'priority ordering',
+      'OSをネットワークより先にします',
+      {
+        type: 'set_priority_policy',
+        policy: { kind: 'field_first', order: ['ネットワーク', 'OS'] },
+        sourceText: 'OSをネットワークより先にします',
+        confidence: 'high',
+      },
+      'ungrounded-priority-policy',
+    ],
+    [
+      'life-constraint kind',
+      '23時から7時まで寝ます',
+      {
+        type: 'update_life_constraint',
+        kind: 'meal',
+        constraint: {
+          start: '23:00',
           end: '07:00',
           hardness: 'hard',
         },
