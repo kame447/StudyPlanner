@@ -41,6 +41,10 @@ jobs:
                   'readiness_test = \'src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts\'\ntext = Path(readiness_test).read_text()\n',
                   "readiness_test = 'src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts'\ntext = Path(readiness_test).read_text()\ntext = text.replace(\n    \"import { context, applyWeekendRangeAndExamScope } from './weeklyPlanningRoleplayTestHelpers';\\n\",\n    \"import { finalizeState } from '../intake/weeklyPlanningMissingStatus';\\nimport { context, applyWeekendRangeAndExamScope } from './weeklyPlanningRoleplayTestHelpers';\\n\",\n    1,\n)\n",
               ),
+              (
+                  "      confirmedSlots: [],\n      examScopeSummary: {\n        examType: '院試',\n        fields: ['OS', 'ネットワーク'],\n        unitModel: 'year_field_chunk',\n        rawText: ['院試の過去問はOSとネットワーク'],\n      },\n",
+                  "      confirmedSlots: [],\n",
+              ),
           ]
           for old, new in replacements:
               if old not in text:
