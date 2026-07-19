@@ -32,14 +32,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run focused tests
+        shell: bash
         run: |
+          set +e
           npm run test:run -- \
             src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts \
             src/features/weeklyPlanning/__tests__/weeklyPlanningSevenAuditContract.test.ts \
             src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts \
             src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts \
             src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts \
-            src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts
+            src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
+            --reporter=verbose > /tmp/pr68-grounding-focused.log 2>&1
+          status=$?
+          tail -n 400 /tmp/pr68-grounding-focused.log
+          if [ "$status" -ne 0 ]; then
+            tail -n 400 /tmp/pr68-grounding-focused.log > pr68-grounding-focused-error.txt
+            printf '\n' >> pr68-grounding-focused-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pr68-grounding-focused-error.txt
+            git commit -m 'feat: 7監査grounding診断を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          fi
+          exit "$status"
       - name: Run full tests
         run: npm run test:run
       - name: Build
@@ -49,6 +64,7 @@ jobs:
           rm -f scripts/pr68_seven_audit_grounding_fixes.py
           rm -f scripts/pr68_seven_audit_grounding_escape_fix.py
           rm -f .github/workflows/pr68-seven-audit-grounding-fixes.yml
+          rm -f pr68-grounding-focused-error.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
