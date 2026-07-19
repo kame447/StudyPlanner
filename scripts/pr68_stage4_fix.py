@@ -60,3 +60,55 @@ addition = """  it('removes a particle after 過去問 and keeps year range bloc
 if anchor not in text:
     raise RuntimeError('adversarial test insertion point was not found')
 path.write_text(text.replace(anchor, anchor + addition, 1))
+
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts',
+    """      expect(draft.sourceId).toEqual(expect.objectContaining({ version: 1 }));
+""",
+    """      expect(typeof draft.sourceId).toBe('string');
+      expect(draft.sourceId).toMatch(/^v1:/);
+""",
+)
+
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts',
+    """    const fourth = await submit('分野はOSとネットワークだけです');
+    expect(fourth.message).toContain('進める順番だけ確認します');
+    expect(fourth.message).not.toContain('睡眠時間や');
+    expect(fourth.message.match(/？/g) ?? []).toHaveLength(1);
+    expect(fourth.state.lastQuestionContext).toEqual(expect.objectContaining({
+      kind: 'missing',
+    }));
+    expect(fourth.state.lastQuestionContext?.targetSlot).toBeTruthy();
+
+    const fifth = await submit('違う！OSとネットワークで一科目です');
+    expect(fifth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
+    expect(fifth.state.examPrepScope?.totalFields).toBe(1);
+    expect(fifth.message).toContain('OSとネットワークを1科目');
+""",
+    """    const fourth = await submit('分野はOSとネットワークだけです');
+    expect(fourth.message).toContain('対象年度は何年から何年までですか？');
+    expect(fourth.message.match(/？/g) ?? []).toHaveLength(1);
+    expect(fourth.state.lastQuestionContext).toEqual(expect.objectContaining({
+      kind: 'missing',
+      targetSlot: 'year_range',
+    }));
+
+    const fifth = await submit('対象年度は2025〜2019です');
+    expect(fifth.state.examPrepScope?.yearRange).toEqual(expect.objectContaining({
+      startYear: 2025,
+      endYear: 2019,
+    }));
+    expect(fifth.message).toMatch(/優先|進める順番/);
+
+    const sixth = await submit('分野はOSとネットワークだけです');
+    expect(sixth.message).toContain('進める順番だけ確認します');
+    expect(sixth.message).not.toContain('睡眠時間や');
+    expect(sixth.message.match(/？/g) ?? []).toHaveLength(1);
+
+    const seventh = await submit('違う！OSとネットワークで一科目です');
+    expect(seventh.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
+    expect(seventh.state.examPrepScope?.totalFields).toBe(1);
+    expect(seventh.message).toContain('OSとネットワークを1科目');
+""",
+)
