@@ -27,6 +27,7 @@ jobs:
         run: |
           python3 scripts/pr68_seven_audit_grounding_fixes.py
           python3 scripts/pr68_seven_audit_grounding_escape_fix.py
+          python3 scripts/pr68_seven_audit_grounding_test_fix.py
       - name: Check diff
         run: git diff --check
       - name: Install dependencies
@@ -63,6 +64,7 @@ jobs:
         run: |
           rm -f scripts/pr68_seven_audit_grounding_fixes.py
           rm -f scripts/pr68_seven_audit_grounding_escape_fix.py
+          rm -f scripts/pr68_seven_audit_grounding_test_fix.py
           rm -f .github/workflows/pr68-seven-audit-grounding-fixes.yml
           rm -f pr68-grounding-focused-error.txt
           git config user.name 'github-actions[bot]'
