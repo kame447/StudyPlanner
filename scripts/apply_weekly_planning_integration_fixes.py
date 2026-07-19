@@ -140,3 +140,30 @@ replace_once(
 """,
     "turn executor rendered-question context",
 )
+
+renderer_path = Path(
+    "src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueRenderer.ts"
+)
+replace_once(
+    renderer_path,
+    """  const latestTurn = params.state.sourceTurns.at(-1) ?? '';
+  const useTurnDelta = Boolean(params.previousState);
+  const unitRate = params.state.unitRates.find((rate) =>
+""",
+    """  const latestTurn = params.state.sourceTurns.at(-1) ?? '';
+  const useTurnDelta = Boolean(params.previousState);
+  const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
+    ? params.state.priorityPolicy.order
+    : undefined;
+  const unitRate = params.state.unitRates.find((rate) =>
+""",
+    "renderer priority order source",
+)
+replace_once(
+    renderer_path,
+    """      priorityOrder: undefined,
+""",
+    """      priorityOrder: useTurnDelta ? undefined : priorityOrder,
+""",
+    "renderer priority order turn delta",
+)
