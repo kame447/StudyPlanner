@@ -7,6 +7,7 @@ const fakeFirestore = vi.hoisted(() => {
     id: sessionId,
     logicalConversationId: conversationId,
     entryCount: 2,
+    storageLayoutVersion: 1,
     traceSubjectToken: 'wpt_hidden-session-token',
   };
   const entryDocuments = new Map<string, Record<string, unknown>>([
@@ -38,8 +39,7 @@ const fakeFirestore = vi.hoisted(() => {
         return { ...sessionDocument };
       }
       if (collection === 'weekly_planning_trace_entries') {
-        const entry = entryDocuments.get(id);
-        return entry ? { ...entry } : null;
+        throw new Error('current layout must use a bounded session query');
       }
       return null;
     }
@@ -49,7 +49,7 @@ const fakeFirestore = vi.hoisted(() => {
         return [{ ...sessionDocument }];
       }
       if (collection === 'weekly_planning_trace_entries') {
-        throw new Error('legacy sessionId query path must not be used');
+        return Array.from(entryDocuments.values()).map((entry) => ({ ...entry }));
       }
       return [];
     }

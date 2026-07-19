@@ -1,7 +1,10 @@
 import {
   WEEKLY_PLANNING_TRACE_POLICY_VERSION,
   createWeeklyPlanningTraceSubject,
+  isWeeklyPlanningTraceConversationId,
+  isWeeklyPlanningTraceEntryId,
   isWeeklyPlanningTracePolicyAccepted,
+  isWeeklyPlanningTraceSessionId,
   parseWeeklyPlanningTraceHmacSecrets,
   prepareWeeklyPlanningTraceWrite,
   redactWeeklyPlanningTraceValue,
@@ -35,6 +38,7 @@ const PROFILES = 'profiles';
 const ADMINS = 'admins';
 const MAX_TRACE_API_BODY_BYTES = 512 * 1024;
 const ADMIN_LIST_LIMIT = 500;
+const TRACE_STORAGE_LAYOUT_VERSION = 1;
 
 function ok(body: Record<string, unknown> = {}): WeeklyPlanningTraceApiResult {
   return { status: 200, body: { ok: true, ...body } };
@@ -112,6 +116,19 @@ async function appendAccessAudit(
   });
 }
 
+function isSafeTraceStructuralValue(
+  key: 'id' | 'sessionId' | 'logicalConversationId',
+  value: unknown,
+  document: Record<string, unknown>,
+): value is string {
+  if (key === 'sessionId') return isWeeklyPlanningTraceSessionId(value);
+  if (key === 'logicalConversationId') return isWeeklyPlanningTraceConversationId(value);
+  if (isWeeklyPlanningTraceSessionId(value) || isWeeklyPlanningTraceConversationId(value)) return true;
+  return isWeeklyPlanningTraceEntryId(value, typeof document.sessionId === 'string'
+    ? document.sessionId
+    : undefined);
+}
+
 const TRACE_STRUCTURAL_KEYS = ['id', 'sessionId', 'logicalConversationId'] as const;
 
 export function safeWeeklyPlanningTraceDocumentsForAdmin(
@@ -122,7 +139,7 @@ export function safeWeeklyPlanningTraceDocumentsForAdmin(
     if (!isRecord(redacted)) return [];
     TRACE_STRUCTURAL_KEYS.forEach((key) => {
       const value = document[key];
-      if (typeof value === 'string' && /^[A-Za-z0-9:_-]{1,240}$/.test(value)) {
+      if (isSafeTraceStructuralValue(key, value, document)) {
         redacted[key] = value;
       }
     });
@@ -186,16 +203,29 @@ async function handleAppend(
   ) {
     return error(409, 'trace session ownership conflict');
   }
+  if (existingSession) {
+    if (existingSession.logicalConversationId !== prepared.session.logicalConversationId) {
+      return error(409, 'trace session conversation conflict');
+    }
+    const oldCount = existingSession.entryCount;
+    const nextCount = prepared.session.entryCount;
+    if (typeof oldCount === 'number'
+      && typeof nextCount === 'number'
+      && nextCount < oldCount) {
+      return error(409, 'trace session entryCount conflict');
+    }
+  }
   const mergedSession = {
     ...(existingSession ?? {}),
     ...prepared.session,
+    storageLayoutVersion: TRACE_STORAGE_LAYOUT_VERSION,
     ...(existingSession?.archivedAt ? { archivedAt: existingSession.archivedAt } : {}),
   };
   delete mergedSession.userId;
-  await firestore.setDocument(TRACE_SESSIONS, sessionId, mergedSession);
   for (const entry of prepared.entries) {
     await firestore.setImmutableDocument(TRACE_ENTRIES, String(entry.id), entry);
   }
+  await firestore.setDocument(TRACE_SESSIONS, sessionId, mergedSession);
   return ok({
     sessionId,
     acceptedEntries: prepared.entries.length,
@@ -253,22 +283,39 @@ async function handleAdminEntries(
   const body = await parseJsonBody(request);
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
   if (!sessionId) return error(400, 'sessionId is required');
+  if (!isWeeklyPlanningTraceSessionId(sessionId)) return error(400, 'sessionId is invalid');
   const target = await firestore.getDocument(TRACE_SESSIONS, sessionId);
   if (!target) return error(404, 'trace session was not found');
   await appendAccessAudit(firestore, env, session, 'list_entries', sessionId);
-  const rawEntryCount = target.entryCount;
-  const entryCount = typeof rawEntryCount === 'number' && Number.isFinite(rawEntryCount)
-    ? Math.max(0, Math.min(ADMIN_LIST_LIMIT, Math.trunc(rawEntryCount)))
-    : 0;
-  const entries = (await Promise.all(
-    Array.from({ length: entryCount }, (_, sequence) =>
-      firestore.getDocument(
-        TRACE_ENTRIES,
-        `${sessionId}-${String(sequence).padStart(8, '0')}`,
-      )),
-  ))
-    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-    .map((entry) => ({ ...entry, sessionId }));
+  let entries: Record<string, unknown>[];
+  if (target.storageLayoutVersion === TRACE_STORAGE_LAYOUT_VERSION) {
+    entries = (await firestore.queryDocuments(
+      TRACE_ENTRIES,
+      [{ field: 'sessionId', value: sessionId }],
+      ADMIN_LIST_LIMIT,
+    ))
+      .filter((entry) => isWeeklyPlanningTraceEntryId(
+        entry.id,
+        sessionId,
+        typeof entry.sequence === 'number' ? entry.sequence : undefined,
+      ))
+      .sort((left, right) => Number(left.sequence) - Number(right.sequence))
+      .map((entry) => ({ ...entry, sessionId }));
+  } else {
+    const rawEntryCount = target.entryCount;
+    const entryCount = typeof rawEntryCount === 'number' && Number.isFinite(rawEntryCount)
+      ? Math.max(0, Math.min(ADMIN_LIST_LIMIT, Math.trunc(rawEntryCount)))
+      : 0;
+    entries = (await Promise.all(
+      Array.from({ length: entryCount }, (_, sequence) =>
+        firestore.getDocument(
+          TRACE_ENTRIES,
+          `${sessionId}-${String(sequence).padStart(8, '0')}`,
+        )),
+    ))
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+      .map((entry) => ({ ...entry, sessionId }));
+  }
   return ok({ entries: safeWeeklyPlanningTraceDocumentsForAdmin(entries) });
 }
 
@@ -284,6 +331,7 @@ async function handleAdminArchive(
   const body = await parseJsonBody(request);
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
   if (!sessionId) return error(400, 'sessionId is required');
+  if (!isWeeklyPlanningTraceSessionId(sessionId)) return error(400, 'sessionId is invalid');
   const target = await firestore.getDocument(TRACE_SESSIONS, sessionId);
   if (!target) return error(404, 'trace session was not found');
   const archivedAt = new Date().toISOString();

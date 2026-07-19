@@ -12,12 +12,14 @@ describe('weekly planning trace structural identifiers', () => {
       session: {
         id: SESSION_ID,
         logicalConversationId: CONVERSATION_ID,
+        entryCount: 1,
         userId: 'firebase-user-123',
       },
       entries: [{
         id: `${SESSION_ID}-00000000`,
         sessionId: SESSION_ID,
         logicalConversationId: CONVERSATION_ID,
+        sequence: 0,
         userId: 'firebase-user-123',
       }],
     }, { token: 'wpt_subject', epoch: '100' }, '2026-07-19T00:00:00.000Z');
@@ -28,6 +30,23 @@ describe('weekly planning trace structural identifiers', () => {
     expect(JSON.stringify(prepared)).not.toContain('firebase-user-123');
   });
 
+  it('rejects arbitrary or inconsistent structural identifiers at the write boundary', () => {
+    expect(() => prepareWeeklyPlanningTraceWrite({
+      session: { id: 'john-smith-09012345678', logicalConversationId: CONVERSATION_ID, entryCount: 0 },
+      entries: [],
+    }, { token: 'wpt_subject', epoch: '100' })).toThrow(/session id is invalid/);
+
+    expect(() => prepareWeeklyPlanningTraceWrite({
+      session: { id: SESSION_ID, logicalConversationId: CONVERSATION_ID, entryCount: 1 },
+      entries: [{
+        id: `${SESSION_ID}-00000001`,
+        sessionId: SESSION_ID,
+        logicalConversationId: CONVERSATION_ID,
+        sequence: 0,
+      }],
+    }, { token: 'wpt_subject', epoch: '100' })).toThrow(/entry id is invalid/);
+  });
+
   it('preserves distinct admin lookup handles instead of collapsing UUIDs', () => {
     const documents = safeWeeklyPlanningTraceDocumentsForAdmin([
       { id: SESSION_ID, logicalConversationId: CONVERSATION_ID, traceSubjectToken: 'wpt_a' },
@@ -36,5 +55,11 @@ describe('weekly planning trace structural identifiers', () => {
 
     expect(documents.map((document) => document.id)).toEqual([SESSION_ID, OTHER_SESSION_ID]);
     expect(JSON.stringify(documents)).not.toContain('traceSubjectToken');
+    const redactedStructuralValues = safeWeeklyPlanningTraceDocumentsForAdmin([{
+      id: 'john-smith-09012345678',
+      logicalConversationId: 'john-smith-09012345678',
+    }]);
+    expect(JSON.stringify(redactedStructuralValues)).not.toContain('09012345678');
+    expect(JSON.stringify(redactedStructuralValues)).toContain('[PHONE]');
   });
 });

@@ -227,9 +227,58 @@ export function isWeeklyPlanningTracePolicyAccepted(
     && Number.isFinite(new Date(record.acceptedAt).getTime());
 }
 
-function requireDocumentId(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9:_-]{1,240}$/.test(value)) {
-    throw new Error(`${label} is invalid`);
+const UUID_SUFFIX = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const FALLBACK_RANDOM_SUFFIX = '[0-9]{10,16}-[a-z0-9]{6,16}';
+const OPAQUE_SUFFIX = `(?:${UUID_SUFFIX}|${FALLBACK_RANDOM_SUFFIX})`;
+const TRACE_SESSION_ID_PATTERN = new RegExp(`^weekly-trace-${OPAQUE_SUFFIX}$`, 'i');
+const TRACE_CONVERSATION_ID_PATTERN = new RegExp(
+  `^(?:weekly-conversation|weekly-planning-conversation)-${OPAQUE_SUFFIX}$`,
+  'i',
+);
+const MAX_TRACE_SESSION_ENTRIES = 100_000;
+
+export function isWeeklyPlanningTraceSessionId(value: unknown): value is string {
+  return typeof value === 'string' && TRACE_SESSION_ID_PATTERN.test(value);
+}
+
+export function isWeeklyPlanningTraceConversationId(value: unknown): value is string {
+  return typeof value === 'string' && TRACE_CONVERSATION_ID_PATTERN.test(value);
+}
+
+export function weeklyPlanningTraceEntryId(sessionId: string, sequence: number): string {
+  return `${sessionId}-${String(sequence).padStart(8, '0')}`;
+}
+
+export function isWeeklyPlanningTraceEntryId(
+  value: unknown,
+  sessionId?: string,
+  sequence?: number,
+): value is string {
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(weekly-trace-.+)-(\d{8})$/);
+  if (!match || !isWeeklyPlanningTraceSessionId(match[1])) return false;
+  const parsedSequence = Number(match[2]);
+  return Number.isSafeInteger(parsedSequence)
+    && (sessionId === undefined || match[1] === sessionId)
+    && (sequence === undefined || parsedSequence === sequence);
+}
+
+function requireTraceSessionId(value: unknown): string {
+  if (!isWeeklyPlanningTraceSessionId(value)) throw new Error('trace session id is invalid');
+  return value;
+}
+
+function requireTraceConversationId(value: unknown, label: string): string {
+  if (!isWeeklyPlanningTraceConversationId(value)) throw new Error(`${label} is invalid`);
+  return value;
+}
+
+function requireTraceEntryCount(value: unknown): number {
+  if (typeof value !== 'number'
+    || !Number.isSafeInteger(value)
+    || value < 0
+    || value > MAX_TRACE_SESSION_ENTRIES) {
+    throw new Error('trace session entryCount is invalid');
   }
   return value;
 }
@@ -268,33 +317,63 @@ export function prepareWeeklyPlanningTraceWrite(
   if (!Array.isArray(input.entries) || input.entries.length > MAX_TRACE_ENTRIES_PER_REQUEST) {
     throw new Error('trace entry batch is invalid');
   }
-  const sessionId = requireDocumentId(input.session.id, 'trace session id');
-  const logicalConversationId = typeof input.session.logicalConversationId === 'string'
-    ? requireDocumentId(input.session.logicalConversationId, 'logical conversation id')
-    : undefined;
+  const sessionId = requireTraceSessionId(input.session.id);
+  const logicalConversationId = requireTraceConversationId(
+    input.session.logicalConversationId,
+    'logical conversation id',
+  );
+  const entryCount = requireTraceEntryCount(input.session.entryCount);
   const expireAt = weeklyPlanningTraceExpireAt(now);
   const session = {
-    ...preparedDocument({ ...input.session, id: sessionId }, subject, expireAt),
+    ...preparedDocument({
+      ...input.session,
+      id: sessionId,
+      logicalConversationId,
+      entryCount,
+    }, subject, expireAt),
     id: sessionId,
-    ...(logicalConversationId ? { logicalConversationId } : {}),
+    logicalConversationId,
+    entryCount,
   };
+  const seenSequences = new Set<number>();
   const entries = input.entries.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       throw new Error('trace entry payload is invalid');
     }
-    const entryId = requireDocumentId(entry.id, 'trace entry id');
+    const sequence = entry.sequence;
+    if (typeof sequence !== 'number'
+      || !Number.isSafeInteger(sequence)
+      || sequence < 0
+      || sequence >= entryCount
+      || seenSequences.has(sequence)) {
+      throw new Error('trace entry sequence is invalid');
+    }
+    seenSequences.add(sequence);
+    const expectedEntryId = weeklyPlanningTraceEntryId(sessionId, sequence);
+    if (!isWeeklyPlanningTraceEntryId(entry.id, sessionId, sequence)
+      || entry.id !== expectedEntryId) {
+      throw new Error('trace entry id is invalid');
+    }
     if (entry.sessionId !== sessionId) throw new Error('trace entry session mismatch');
-    const entryConversationId = typeof entry.logicalConversationId === 'string'
-      ? requireDocumentId(entry.logicalConversationId, 'entry logical conversation id')
-      : undefined;
-    if (logicalConversationId && entryConversationId && entryConversationId !== logicalConversationId) {
+    const entryConversationId = requireTraceConversationId(
+      entry.logicalConversationId,
+      'entry logical conversation id',
+    );
+    if (entryConversationId !== logicalConversationId) {
       throw new Error('trace entry conversation mismatch');
     }
     return {
-      ...preparedDocument({ ...entry, id: entryId, sessionId }, subject, expireAt),
-      id: entryId,
+      ...preparedDocument({
+        ...entry,
+        id: expectedEntryId,
+        sessionId,
+        logicalConversationId: entryConversationId,
+        sequence,
+      }, subject, expireAt),
+      id: expectedEntryId,
       sessionId,
-      ...(entryConversationId ? { logicalConversationId: entryConversationId } : {}),
+      logicalConversationId: entryConversationId,
+      sequence,
     };
   });
   return { session, entries };

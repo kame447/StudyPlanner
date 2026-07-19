@@ -92,15 +92,18 @@ describe('weekly planning trace privacy boundary', () => {
     );
     const prepared = prepareWeeklyPlanningTraceWrite({
       session: {
-        id: 'session-1',
+        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000',
         userId: 'firebase-user-123',
-        logicalConversationId: 'conversation-1',
+        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
         status: 'active',
+        entryCount: 1,
       },
       entries: [{
-        id: 'entry-1',
-        sessionId: 'session-1',
+        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000-00000000',
+        sessionId: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000',
         userId: 'firebase-user-123',
+        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
+        sequence: 0,
         kind: 'turn',
         content: 'person@example.com',
       }],
@@ -117,8 +120,17 @@ describe('weekly planning trace privacy boundary', () => {
 
   it('requires matching entry ownership and the current policy version', () => {
     expect(() => prepareWeeklyPlanningTraceWrite({
-      session: { id: 'session-1' },
-      entries: [{ id: 'entry-1', sessionId: 'session-2' }],
+      session: {
+        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000',
+        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
+        entryCount: 1,
+      },
+      entries: [{
+        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000-00000000',
+        sessionId: 'weekly-trace-223e4567-e89b-12d3-a456-426614174000',
+        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
+        sequence: 0,
+      }],
     }, { token: 'wpt_token', epoch: '100' })).toThrow(/session mismatch/);
 
     expect(isWeeklyPlanningTracePolicyAccepted({
