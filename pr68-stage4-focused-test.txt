@@ -1,0 +1,52 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/tmp/pr68-stage4-focused[39m
+
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts [2m([22m[2m4 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 34[2mms[22m[39m
+   [32m✓[39m observed weekly planning conversation regressions[2m > [22maccepts 今日の勉強計画 as a one-day range instead of asking for a week[32m 9[2mms[22m[39m
+   [32m✓[39m observed weekly planning conversation regressions[2m > [22mextracts OS and network as two fields and accepts an explicit one-subject correction[32m 5[2mms[22m[39m
+   [32m✓[39m observed weekly planning conversation regressions[2m > [22macknowledges only facts accepted in the current turn and keeps 3時間 as written[32m 9[2mms[22m[39m
+[31m   [31m×[31m observed weekly planning conversation regressions[2m > [22mrepairs an unanswered repeated question by paraphrasing and narrowing to one question[39m[32m 9[2mms[22m[39m
+[31m     → expected '条件が厳しく、すべては配置しきれません。時間帯や生活制約を緩めるか、配置で…' to contain 'OSとネットワークの2分野'[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m > [22mobserved weekly planning conversation regressions[2m > [22mrepairs an unanswered repeated question by paraphrasing and narrowing to one question
+[31m[1mAssertionError[22m: expected '条件が厳しく、すべては配置しきれません。時間帯や生活制約を緩めるか、配置で…' to contain 'OSとネットワークの2分野'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- OS[7mと[27mネットワーク[7mの2分野[27m[39m
+[31m+ 条件が厳しく、すべては配置しきれません。時間帯や生活制約を緩めるか、配置できる分だけにするか教えてください。[39m
+[31m+[39m
+[31m+ 対象年度: 2025〜2019[39m
+[31m+ [7m分野: [27mOS[7m、[27mネットワーク[39m
+[31m+ 必要時間: 42時間[39m
+[31m+ 配置候補: 0分[39m
+[31m+ 固定予定: 0件[39m
+[31m+ 仮定: 分野の宣言順を仮の優先順として扱います。 ほか2件[39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:[2m101:21[22m[39m
+    [90m 99| [39m    })[33m;[39m
+    [90m100| [39m
+    [90m101| [39m    [34mexpect[39m(message)[33m.[39m[34mtoContain[39m([32m'OSとネットワークの2分野'[39m)[33m;[39m
+    [90m   | [39m                    [31m^[39m
+    [90m102| [39m    [34mexpect[39m(message)[33m.[39m[34mtoContain[39m([32m'進める順番だけ確認します'[39m)[33m;[39m
+    [90m103| [39m    [34mexpect[39m(message)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'睡眠時間や'[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m15 passed[39m[22m[90m (16)[39m
+[2m   Start at [22m 04:11:26
+[2m   Duration [22m 1.75s[2m (transform 646ms, setup 0ms, collect 1.23s, tests 61ms, environment 0ms, prepare 169ms)[22m
+
+
+::error file=/tmp/pr68-stage4-focused/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts > observed weekly planning conversation regressions > repairs an unanswered repeated question by paraphrasing and narrowing to one question,line=101,column=21::AssertionError: expected '条件が厳しく、すべては配置しきれません。時間帯や生活制約を緩めるか、配置で…' to contain 'OSとネットワークの2分野'%0A%0A- Expected%0A+ Received%0A%0A- OSとネットワークの2分野%0A+ 条件が厳しく、すべては配置しきれません。時間帯や生活制約を緩めるか、配置できる分だけにするか教えてください。%0A+%0A+ 対象年度: 2025〜2019%0A+ 分野: OS、ネットワーク%0A+ 必要時間: 42時間%0A+ 配置候補: 0分%0A+ 固定予定: 0件%0A+ 仮定: 分野の宣言順を仮の優先順として扱います。 ほか2件%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:101:21%0A%0A
+test_status=1
