@@ -33,7 +33,10 @@ jobs:
       - name: Apply source changes
         run: |
           set +e
-          python scripts/apply_weekly_planning_trace_dialogue_fix.py > /tmp/apply-output.txt 2>&1
+          {
+            python scripts/apply_weekly_planning_trace_dialogue_fix.py
+            python scripts/apply_weekly_planning_integration_tests.py
+          } > /tmp/apply-output.txt 2>&1
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
@@ -45,15 +48,17 @@ jobs:
           fi
       - name: Install dependencies
         run: npm ci
-      - name: Run focused regression tests
+      - name: Run focused unit and integration tests
         run: |
           set +e
           npx vitest run \
             src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts \
             src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
             src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts \
             workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts \
             workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts \
             > /tmp/test-output.txt 2>&1
           status=$?
           set -e
@@ -61,6 +66,19 @@ jobs:
             cp /tmp/test-output.txt scripts/apply-error.txt
             git add scripts/apply-error.txt
             git commit -m 'chore: 週間計画修正のテスト失敗を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
+            exit "$status"
+          fi
+      - name: Run full test suite
+        run: |
+          set +e
+          npm run test:run > /tmp/full-test-output.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/full-test-output.txt scripts/apply-error.txt
+            git add scripts/apply-error.txt
+            git commit -m 'chore: 週間計画修正の全体テスト失敗を記録'
             git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
             exit "$status"
           fi
@@ -77,9 +95,10 @@ jobs:
             git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-repair
             exit "$status"
           fi
-      - name: Remove temporary applicator
+      - name: Remove temporary applicators
         run: |
           rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
+          rm -f scripts/apply_weekly_planning_integration_tests.py
           rm -f scripts/apply-error.txt
           rm -f .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
