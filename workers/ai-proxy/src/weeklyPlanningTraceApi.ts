@@ -179,6 +179,41 @@ async function handlePolicyAccept(
   });
 }
 
+function traceSessionConflict(
+  existing: Record<string, unknown> | null,
+  next: Record<string, unknown>,
+): string | null {
+  if (!existing) return null;
+  if (existing.traceSubjectToken !== next.traceSubjectToken) {
+    return 'trace session ownership conflict';
+  }
+  if (existing.logicalConversationId !== next.logicalConversationId) {
+    return 'trace session conversation conflict';
+  }
+  const oldCount = existing.entryCount;
+  const nextCount = next.entryCount;
+  if (typeof oldCount === 'number'
+    && typeof nextCount === 'number'
+    && nextCount < oldCount) {
+    return 'trace session entryCount conflict';
+  }
+  return null;
+}
+
+function mergeTraceSession(
+  existing: Record<string, unknown> | null,
+  next: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = {
+    ...(existing ?? {}),
+    ...next,
+    storageLayoutVersion: TRACE_STORAGE_LAYOUT_VERSION,
+    ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
+  };
+  delete merged.userId;
+  return merged;
+}
+
 async function handleAppend(
   request: Request,
   firestore: WeeklyPlanningTraceFirestoreClient,
@@ -196,36 +231,40 @@ async function handleAppend(
     subject,
   );
   const sessionId = String(prepared.session.id);
-  const existingSession = await firestore.getDocument(TRACE_SESSIONS, sessionId);
-  if (
-    existingSession
-    && existingSession.traceSubjectToken !== prepared.session.traceSubjectToken
-  ) {
-    return error(409, 'trace session ownership conflict');
-  }
-  if (existingSession) {
-    if (existingSession.logicalConversationId !== prepared.session.logicalConversationId) {
-      return error(409, 'trace session conversation conflict');
+  let existingSession = await firestore.getDocument(TRACE_SESSIONS, sessionId);
+  let conflict = traceSessionConflict(existingSession, prepared.session);
+  if (conflict) return error(409, conflict);
+
+  let mergedSession = mergeTraceSession(existingSession, prepared.session);
+  if (!existingSession) {
+    try {
+      await firestore.setImmutableDocument(TRACE_SESSIONS, sessionId, {
+        ...mergedSession,
+        entryCount: 0,
+      });
+    } catch (caught) {
+      if (!(caught instanceof Error)
+        || !caught.message.includes('immutable trace document conflict')) {
+        throw caught;
+      }
+      existingSession = await firestore.getDocument(TRACE_SESSIONS, sessionId);
+      if (!existingSession) throw caught;
+      conflict = traceSessionConflict(existingSession, prepared.session);
+      if (conflict) return error(409, conflict);
+      mergedSession = mergeTraceSession(existingSession, prepared.session);
     }
-    const oldCount = existingSession.entryCount;
-    const nextCount = prepared.session.entryCount;
-    if (typeof oldCount === 'number'
-      && typeof nextCount === 'number'
-      && nextCount < oldCount) {
-      return error(409, 'trace session entryCount conflict');
-    }
   }
-  const mergedSession = {
-    ...(existingSession ?? {}),
-    ...prepared.session,
-    storageLayoutVersion: TRACE_STORAGE_LAYOUT_VERSION,
-    ...(existingSession?.archivedAt ? { archivedAt: existingSession.archivedAt } : {}),
-  };
-  delete mergedSession.userId;
+
   for (const entry of prepared.entries) {
     await firestore.setImmutableDocument(TRACE_ENTRIES, String(entry.id), entry);
   }
-  await firestore.setDocument(TRACE_SESSIONS, sessionId, mergedSession);
+  await firestore.setDocumentWithMaximumInteger(
+    TRACE_SESSIONS,
+    sessionId,
+    mergedSession,
+    'entryCount',
+    Number(prepared.session.entryCount),
+  );
   return ok({
     sessionId,
     acceptedEntries: prepared.entries.length,

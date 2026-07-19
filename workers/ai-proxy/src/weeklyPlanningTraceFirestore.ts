@@ -245,6 +245,49 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
   }
 
+  async setDocumentWithMaximumInteger(
+    collection: string,
+    id: string,
+    value: Record<string, unknown>,
+    fieldPath: string,
+    maximum: number,
+  ): Promise<void> {
+    if (!Number.isSafeInteger(maximum) || maximum < 0) {
+      throw new Error('Firestore maximum integer is invalid');
+    }
+    const baseValue = { ...value };
+    delete baseValue[fieldPath];
+    await this.setDocument(collection, id, baseValue, Object.keys(baseValue));
+
+    const documentName = [
+      'projects',
+      this.projectId(),
+      'databases',
+      '(default)',
+      'documents',
+      collection,
+      id,
+    ].join('/');
+    const response = await this.request(
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents:commit`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          writes: [{
+            transform: {
+              document: documentName,
+              fieldTransforms: [{
+                fieldPath,
+                maximum: { integerValue: String(maximum) },
+              }],
+            },
+          }],
+        }),
+      },
+    );
+    if (!response.ok) throw new Error(`Firestore maximum transform failed: ${response.status}`);
+  }
+
   async setImmutableDocument(
     collection: string,
     id: string,

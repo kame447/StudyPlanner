@@ -122,6 +122,65 @@ describe('weekly planning trace Firestore protocol integration', () => {
     )).rejects.toThrow(/immutable trace document conflict/);
   });
 
+  it('preserves entryCount during metadata PATCH and applies an atomic maximum transform', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes(`/weekly_planning_trace_sessions/${encodeURIComponent(SESSION_ID)}?`)) {
+        expect(init?.method).toBe('PATCH');
+        expect(url).not.toContain('updateMask.fieldPaths=entryCount');
+        const body = JSON.parse(String(init?.body)) as {
+          fields: Record<string, unknown>;
+        };
+        expect(body.fields.entryCount).toBeUndefined();
+        return new Response('{}', { status: 200 });
+      }
+      if (url.endsWith('/documents:commit')) {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body)) as {
+          writes: Array<{
+            transform: {
+              document: string;
+              fieldTransforms: Array<{
+                fieldPath: string;
+                maximum: { integerValue: string };
+              }>;
+            };
+          }>;
+        };
+        expect(body.writes[0]?.transform.document).toContain(SESSION_ID);
+        expect(body.writes[0]?.transform.fieldTransforms).toEqual([{
+          fieldPath: 'entryCount',
+          maximum: { integerValue: '7' },
+        }]);
+        return new Response('{}', { status: 200 });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const client = new WeeklyPlanningTraceFirestoreClient(
+      env(),
+      fetcher as typeof fetch,
+      fakeCrypto(),
+    );
+
+    await expect(client.setDocumentWithMaximumInteger(
+      'weekly_planning_trace_sessions',
+      SESSION_ID,
+      {
+        id: SESSION_ID,
+        logicalConversationId: 'weekly-conversation-223e4567-e89b-12d3-a456-426614174000',
+        entryCount: 7,
+      },
+      'entryCount',
+      7,
+    )).resolves.toBeUndefined();
+  });
+
   it('uses the Firestore document path ID instead of redacted structural fields for get and query', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
