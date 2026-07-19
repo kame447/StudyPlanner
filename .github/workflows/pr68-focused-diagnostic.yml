@@ -1,4 +1,4 @@
-name: PR68 focused diagnostic
+name: PR68 final audit verification
 
 on:
   pull_request:
@@ -9,30 +9,37 @@ permissions:
   contents: write
 
 jobs:
-  focused:
+  verify-and-clean:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci >/dev/null 2>&1
-      - name: Capture focused failure
-        shell: bash
+      - name: Apply final audit fixes
+        run: python3 scripts/pr68_finalize_audit.py
+      - name: Check diff
+        run: git diff --check
+      - name: Install dependencies
+        run: npm ci
+      - name: Run focused tests
+        run: npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts
+      - name: Run full tests
+        run: npm run test:run
+      - name: Build
+        run: npm run build
+      - name: Commit verified fixes and remove diagnostics
         run: |
-          set +e
-          npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts --reporter=verbose > /tmp/pr68-focused.log 2>&1
-          status=$?
-          tail -n 120 /tmp/pr68-focused.log > pr68-focused-failure.txt
-          if [ "$status" -eq 0 ]; then
-            echo 'focused test passed' > pr68-focused-failure.txt
-          fi
+          rm -f scripts/pr68_finalize_audit.py
+          rm -f pr68-focused-failure.txt
+          rm -f .github/workflows/pr68-focused-diagnostic.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pr68-focused-failure.txt
-          git commit -m 'feat: PR68 focused診断結果を記録'
+          git add -A
+          git commit -m 'feat: 優先順の受理表示と入力groundingを整合'
           git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
-          exit "$status"
