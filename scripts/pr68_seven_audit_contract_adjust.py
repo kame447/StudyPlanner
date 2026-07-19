@@ -154,3 +154,17 @@ replace_once(
     """      userText: '午前中いっぱいくらいです',
 """,
 )
+replace_once(
+    'src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.ts',
+    """      ? `${boundaryYear}年度まで完了というのは、新しい年度側から${boundaryYear}年度までですか？古い年度側から${boundaryYear}年度までですか？`
+""",
+    """      ? `${boundaryYear}まで完了というのは、新しい年度側から${boundaryYear}年度までですか？古い年度側から${boundaryYear}年度までですか？`
+""",
+)
+replace_once(
+    contract_test,
+    """      '2019年度まで完了というのは、新しい年度側から2019年度までですか？古い年度側から2019年度までですか？',
+""",
+    """      '2019まで完了というのは、新しい年度側から2019年度までですか？古い年度側から2019年度までですか？',
+""",
+)
