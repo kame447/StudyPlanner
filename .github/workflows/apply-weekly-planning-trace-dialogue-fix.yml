@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - agent/fix-weekly-planning-trace-and-dialogue-repair
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'feat: 週間計画ログと対話修復を適用'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -65,10 +68,12 @@ jobs:
       - name: Build
         run: npm run build
       - name: Remove temporary applicator
+        if: github.event_name != 'pull_request'
         run: |
           rm scripts/apply_weekly_planning_trace_dialogue_fix.py
           rm .github/workflows/apply-weekly-planning-trace-dialogue-fix.yml
       - name: Commit applied fix
+        if: github.event_name != 'pull_request'
         run: |
           git config user.name 'studyplanner-agent'
           git config user.email 'studyplanner-agent@users.noreply.github.com'
