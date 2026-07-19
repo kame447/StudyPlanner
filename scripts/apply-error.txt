@@ -1,89 +1,73 @@
 
 [1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
 
- [31m❯[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 50[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 5[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mrenders only untargeted completion target fields from questionPlan context[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 2[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22momits a generic acknowledgement from renderer output[32m 1[2mms[22m[39m
-[31m   [31m×[31m weekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[39m[32m 14[2mms[22m[39m
-[31m     → expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 4[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mrestores final output to questionPlan order when AI returns planned slots out of order[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: plan outside slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for AI call failure[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[32m 12[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22momits the period label when the user never stated one (no fabrication)[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22msupplies a plain-vocabulary hint for internal slot keys (fixed_events)[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mrenders a pending planning start question with its user-provided period label[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mpasses the pending period label and start-date vocabulary hint to renderers[32m 0[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mpasses the pending period label through the AI renderer input path[32m 1[2mms[22m[39m
-   [32m✓[39m weekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[32m 0[2mms[22m[39m
- [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 24[2mms[22m[39m
- [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
- [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningQuestionSlots.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 16[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts [2m([22m[2m4 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 40[2mms[22m[39m
+   [32m✓[39m observed weekly planning conversation regressions[2m > [22maccepts 今日の勉強計画 as a one-day range instead of asking for a week[32m 11[2mms[22m[39m
+[31m   [31m×[31m observed weekly planning conversation regressions[2m > [22mextracts OS and network as two fields and accepts an explicit one-subject correction[39m[32m 13[2mms[22m[39m
+[31m     → expected [ 'OS', 'ネットワーク', 'OSとネットワーク' ] to deeply equal [ 'OSとネットワーク' ][39m
+   [32m✓[39m observed weekly planning conversation regressions[2m > [22macknowledges only facts accepted in the current turn and keeps 3時間 as written[32m 12[2mms[22m[39m
+   [32m✓[39m observed weekly planning conversation regressions[2m > [22mrepairs an unanswered repeated question by paraphrasing and narrowing to one question[32m 3[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 46[2mms[22m[39m
+[31m   [31m×[31m observed weekly planning conversation integration[2m > [22mruns the reported conversation through turn execution, state carry-over, and rendering[39m[32m 44[2mms[22m[39m
+[31m     → expected 'OSとネットワークの2分野で受け取りました。\nこの期間で優先する分野や進…' to contain '進める順番だけ確認します'[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceStructuralIds.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
 
-[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m [ src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts ][22m
-[31m[1mError[22m: Transform failed with 1 error:
-/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:103:26: ERROR: Unterminated string literal[39m
-  Plugin: [35mvite:esbuild[39m
-  File: [36m/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[39m:103:26
-[33m  
-  [33mUnterminated string literal[33m
-  101|      expect(message).toContain('進める順番だけ確認します');
-  102|      expect(message).not.toContain('睡眠時間や');
-  103|      expect(message.split('
-     |                            ^
-  104|  ').filter((line) => line.includes('？'))).toHaveLength(1);
-  105|    });
-  [39m
-[90m [2m❯[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:15[22m[39m
-[90m [2m❯[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
-[90m [2m❯[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:[2m622:9[22m[39m
-[90m [2m❯[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:12[22m[39m
-[90m [2m❯[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600:7[22m[39m
-
-[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
-
-
-[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
-
-[41m[1m FAIL [22m[49m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary
-[31m[1mAssertionError[22m: expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'[39m
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts[2m > [22mobserved weekly planning conversation integration[2m > [22mruns the reported conversation through turn execution, state carry-over, and rendering
+[31m[1mAssertionError[22m: expected 'OSとネットワークの2分野で受け取りました。\nこの期間で優先する分野や進…' to contain '進める順番だけ確認します'[39m
 
 [32m- Expected[39m
 [31m+ Received[39m
 
-[32m- [7m対象分野は[27mOSnetworkで受け取りました。[39m
-[31m+ OSnetwork[7mを1科目[27mで受け取りました。[39m
-[31m+ すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？[39m
-[31m+ 睡眠時間はどうしますか？[39m
+[32m- 進める順番だけ確認します[39m
+[31m+ OSとネットワークの2分野で受け取りました。[39m
+[31m+ この期間で優先する分野や進める順番を教えてください。[39m
+[31m+ 睡眠時間や、何時から勉強を始められるかを教えてください。[39m
 
-[36m [2m❯[22m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:[2m205:21[22m[39m
-    [90m203| [39m    })[33m;[39m
-    [90m204| [39m
-    [90m205| [39m    [34mexpect[39m(message)[33m.[39m[34mtoContain[39m([32m'対象分野はOSnetworkで受け取りました。'[39m)[33m;[39m
-    [90m   | [39m                    [31m^[39m
-    [90m206| [39m    [34mexpect[39m(message)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'年度の計画'[39m)[33m;[39m
-    [90m207| [39m  })[33m;[39m
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts:[2m80:28[22m[39m
+    [90m 78| [39m
+    [90m 79| [39m    [35mconst[39m fourth [33m=[39m [35mawait[39m [34msubmit[39m([32m'分野はOSとネットワークだけです'[39m)[33m;[39m
+    [90m 80| [39m    [34mexpect[39m(fourth[33m.[39mmessage)[33m.[39m[34mtoContain[39m([32m'進める順番だけ確認します'[39m)[33m;[39m
+    [90m   | [39m                           [31m^[39m
+    [90m 81| [39m    [34mexpect[39m(fourth[33m.[39mmessage)[33m.[39mnot[33m.[39m[34mtoContain[39m([32m'睡眠時間や'[39m)[33m;[39m
+    [90m 82| [39m    [34mexpect[39m(fourth[33m.[39mmessage[33m.[39m[34mmatch[39m([36m/？/g[39m) [33m??[39m [])[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m > [22mobserved weekly planning conversation regressions[2m > [22mextracts OS and network as two fields and accepts an explicit one-subject correction
+[31m[1mAssertionError[22m: expected [ 'OS', 'ネットワーク', 'OSとネットワーク' ] to deeply equal [ 'OSとネットワーク' ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[31m+   "OS",[39m
+[31m+   "ネットワーク",[39m
+[2m    "OSとネットワーク",[22m
+[2m  ][22m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:[2m61:45[22m[39m
+    [90m 59| [39m      context[33m,[39m
+    [90m 60| [39m    )[33m;[39m
+    [90m 61| [39m    [34mexpect[39m(corrected[33m.[39mexamPrepScope[33m?.[39mfields)[33m.[39m[34mtoEqual[39m([[32m'OSとネットワーク'[39m])[33m;[39m
+    [90m   | [39m                                            [31m^[39m
+    [90m 62| [39m    [34mexpect[39m(corrected[33m.[39mexamPrepScope[33m?.[39mtotalFields)[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+    [90m 63| [39m  })[33m;[39m
 
 [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
 
 
-[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (5)[39m
-[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m36 passed[39m[22m[90m (37)[39m
-[2m   Start at [22m 00:48:26
-[2m   Duration [22m 3.82s[2m (transform 974ms, setup 0ms, collect 1.77s, tests 105ms, environment 1ms, prepare 798ms)[22m
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (7)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m41 passed[39m[22m[90m (43)[39m
+[2m   Start at [22m 00:49:23
+[2m   Duration [22m 4.00s[2m (transform 905ms, setup 0ms, collect 1.95s, tests 157ms, environment 2ms, prepare 793ms)[22m
 
 
-::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts,title=src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts > weekly planning AI dialogue renderer > replaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary,line=205,column=21::AssertionError: expected 'OSnetworkを1科目で受け取りました。\nすでに登録した予定以外に、…' to contain '対象分野はOSnetworkで受け取りました。'%0A%0A- Expected%0A+ Received%0A%0A- 対象分野はOSnetworkで受け取りました。%0A+ OSnetworkを1科目で受け取りました。%0A+ すでに登録した予定以外に、時間が決まっていて動かせない予定はありますか？%0A+ 睡眠時間はどうしますか？%0A%0A ❯ src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts:205:21%0A%0A
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts > observed weekly planning conversation integration > runs the reported conversation through turn execution%2C state carry-over%2C and rendering,line=80,column=28::AssertionError: expected 'OSとネットワークの2分野で受け取りました。\nこの期間で優先する分野や進…' to contain '進める順番だけ確認します'%0A%0A- Expected%0A+ Received%0A%0A- 進める順番だけ確認します%0A+ OSとネットワークの2分野で受け取りました。%0A+ この期間で優先する分野や進める順番を教えてください。%0A+ 睡眠時間や、何時から勉強を始められるかを教えてください。%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts:80:28%0A%0A
+
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts > observed weekly planning conversation regressions > extracts OS and network as two fields and accepts an explicit one-subject correction,line=61,column=45::AssertionError: expected [ 'OS', 'ネットワーク', 'OSとネットワーク' ] to deeply equal [ 'OSとネットワーク' ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A+   "OS",%0A+   "ネットワーク",%0A    "OSとネットワーク",%0A  ]%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts:61:45%0A%0A
