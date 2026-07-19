@@ -99,16 +99,13 @@ replace_once(
       startYear: 2025,
       endYear: 2019,
     }));
-    expect(fifth.message).toMatch(/優先|進める順番/);
+    expect(fifth.message).toContain('条件が厳しく');
+    expect(fifth.message).toContain('必要時間: 42時間');
+    expect(fifth.state.assumptions).toContain('分野の宣言順を仮の優先順として扱います。');
 
-    const sixth = await submit('分野はOSとネットワークだけです');
-    expect(sixth.message).toContain('進める順番だけ確認します');
-    expect(sixth.message).not.toContain('睡眠時間や');
-    expect(sixth.message.match(/？/g) ?? []).toHaveLength(1);
-
-    const seventh = await submit('違う！OSとネットワークで一科目です');
-    expect(seventh.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
-    expect(seventh.state.examPrepScope?.totalFields).toBe(1);
-    expect(seventh.message).toContain('OSとネットワークを1科目');
+    const sixth = await submit('違う！OSとネットワークで一科目です');
+    expect(sixth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
+    expect(sixth.state.examPrepScope?.totalFields).toBe(1);
+    expect(sixth.message).toContain('OSとネットワークを1科目');
 """,
 )
