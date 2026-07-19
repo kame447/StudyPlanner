@@ -12,4 +12,8 @@ rendererも同様に、AIが質問文を自然化する責務を持つ。determi
 
 ## 最終7監査の検証記録
 
-PR #68の最終7監査では、AI意味解釈責務、grounding、構造的不変条件、readiness、質問文fallback、受理内容表示、全体回帰の各境界を再検証した。focused tests、全体テスト、TypeScriptおよびproduction build、`git diff --check`はすべて通過し、監査専用workflow・一時script・診断ログは最終コミットで除去した。
+PR #68の最終7監査では、AI意味解釈責務、grounding、構造的不変条件、readiness、質問文fallback、受理内容表示、trace保存、承認保存、入力境界、全体回帰を再検証した。
+
+追加監査で、明示された目安時間とcommand値の不一致、明示された分野優先順の逆転、生活制約種別の取り違えを拒否する境界を復元した。曖昧な時間表現はAI意味解釈へ残し、明示数値がある場合だけ値の一致を検証する。分野順は既知分野だけでなく、発話で先頭として指定された分野との整合も検証する。生活制約は時刻だけでなく、睡眠・食事・入浴などの種別も入力または直前質問へgroundingする。
+
+focused tests、全体テスト、TypeScriptおよびproduction build、`git diff --check`はすべて通過した。監査専用workflow、一時script、診断ログは最終コミットで除去した。
