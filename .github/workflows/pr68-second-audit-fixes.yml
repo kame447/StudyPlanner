@@ -66,25 +66,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run focused tests
-        run: >-
-          npm run test:run --
-          src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts
-          src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts
-          src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts
-          workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts
-          workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts
-          workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
+        shell: bash
+        run: |
+          set +e
+          npm run test:run -- \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts \
+            src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts \
+            src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts \
+            src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts \
+            workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts \
+            --reporter=verbose > /tmp/pr68-second-audit-tests.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 180 /tmp/pr68-second-audit-tests.log > pr68-second-audit-test-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add pr68-second-audit-test-error.txt
+            git commit -m 'feat: PR68再監査test診断を記録'
+            git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          fi
+          tail -n 180 /tmp/pr68-second-audit-tests.log
+          exit "$status"
       - name: Run full tests
         run: npm run test:run
       - name: Build
         run: npm run build
       - name: Commit verified fixes and remove temporary files
         run: |
-          rm -f scripts/pr68_second_audit_fixes.py .github/workflows/pr68-second-audit-fixes.yml pr68-second-audit-error.txt
+          rm -f scripts/pr68_second_audit_fixes.py .github/workflows/pr68-second-audit-fixes.yml pr68-second-audit-error.txt pr68-second-audit-test-error.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
