@@ -1,0 +1,41 @@
+name: PR68 stage4 debug
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/pr68-stage4-debug.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Capture focused failures
+        run: |
+          git worktree add /tmp/pr68-stage4 HEAD
+          set +e
+          cd /tmp/pr68-stage4
+          python3 scripts/pr68_stage4_fix.py >/tmp/pr68-stage4-patch.txt 2>&1
+          npm ci >/tmp/pr68-stage4-install.txt 2>&1
+          npm run test:run -- src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts >/tmp/pr68-stage4-test.txt 2>&1
+          status=$?
+          cd "$GITHUB_WORKSPACE"
+          cp /tmp/pr68-stage4-test.txt pr68-stage4-test.txt
+          echo "test_status=$status" >> pr68-stage4-test.txt
+          rm .github/workflows/pr68-stage4-debug.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pr68-stage4-test.txt .github/workflows/pr68-stage4-debug.yml
+          git commit -m 'feat: 院試scope整合性テスト診断を記録'
+          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
