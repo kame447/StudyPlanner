@@ -3,15 +3,34 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def replace_once(path: Path, old: str, new: str, label: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    count = content.count(old)
+    if count != 1:
+        raise RuntimeError(f"{label}: expected one replacement, found {count}")
+    path.write_text(content.replace(old, new, 1), encoding="utf-8")
+
+
 scope_path = Path(
     "src/features/weeklyPlanning/intake/weeklyPlanningScopeParsing.ts"
 )
-scope = scope_path.read_text(encoding="utf-8")
-old_scope_merge = """  const normalizedText = normalizeIntakeText(text);
+replace_once(
+    scope_path,
+    """  return uniqueList([...sectionFields, ...extractInlineExamFields(text)]);
+""",
+    """  return sectionFields.length > 0
+    ? uniqueList(sectionFields)
+    : extractInlineExamFields(text);
+""",
+    "exam field extraction precedence",
+)
+replace_once(
+    scope_path,
+    """  const normalizedText = normalizeIntakeText(text);
   const fields = uniqueList([...(previousScope?.fields ?? []), ...extractExamFields(text)]);
   const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
-"""
-new_scope_merge = """  const normalizedText = normalizeIntakeText(text);
+""",
+    """  const normalizedText = normalizeIntakeText(text);
   const extractedFields = extractExamFields(text);
   const replacesExistingFields = extractedFields.length > 0
     && /(?:違う|訂正|ではなく|じゃなく|だけ(?:です|だ)?|(?:一|1)\s*科目)/.test(normalizedText);
@@ -19,19 +38,16 @@ new_scope_merge = """  const normalizedText = normalizeIntakeText(text);
     ? extractedFields
     : uniqueList([...(previousScope?.fields ?? []), ...extractedFields]);
   const totalFields = parseTotalFields(text) ?? previousScope?.totalFields;
-"""
-if old_scope_merge not in scope:
-    raise RuntimeError("exam scope merge target was not found")
-scope_path.write_text(
-    scope.replace(old_scope_merge, new_scope_merge, 1),
-    encoding="utf-8",
+""",
+    "exam scope correction merge",
 )
 
 executor_path = Path(
     "src/features/weeklyPlanning/weeklyPlanningTurnExecutor.ts"
 )
-executor = executor_path.read_text(encoding="utf-8")
-old_executor_return = """  const message = isExamFlow
+replace_once(
+    executor_path,
+    """  const message = isExamFlow
     ? await renderWeeklyPlanningDialogueMessage({
       state: pipelineOutput.state,
       previousState: input.previousState,
@@ -47,8 +63,8 @@ old_executor_return = """  const message = isExamFlow
     message,
     draftCandidates: pipelineOutput.draftCandidates ?? [],
   };
-"""
-new_executor_return = """  const message = isExamFlow
+""",
+    """  const message = isExamFlow
     ? await renderWeeklyPlanningDialogueMessage({
       state: pipelineOutput.state,
       previousState: input.previousState,
@@ -77,10 +93,6 @@ new_executor_return = """  const message = isExamFlow
     message,
     draftCandidates: pipelineOutput.draftCandidates ?? [],
   };
-"""
-if old_executor_return not in executor:
-    raise RuntimeError("turn executor rendered-question context target was not found")
-executor_path.write_text(
-    executor.replace(old_executor_return, new_executor_return, 1),
-    encoding="utf-8",
+""",
+    "turn executor rendered-question context",
 )
