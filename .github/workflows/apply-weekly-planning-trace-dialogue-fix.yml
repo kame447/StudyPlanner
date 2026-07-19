@@ -65,7 +65,21 @@ jobs:
           tail -n 300 /tmp/full-test.log
           exit 1
       - name: Build
-        run: npm run build
+        id: production-build
+        continue-on-error: true
+        run: npm run build > /tmp/build.log 2>&1
+      - name: Upload build failure log
+        if: steps.production-build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-build-log
+          path: /tmp/build.log
+          retention-days: 1
+      - name: Report build failure
+        if: steps.production-build.outcome == 'failure'
+        run: |
+          cat /tmp/build.log
+          exit 1
       - name: Prepare clean patch
         run: |
           rm -f scripts/apply_weekly_planning_trace_dialogue_fix.py
