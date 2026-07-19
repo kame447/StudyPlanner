@@ -24,7 +24,9 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply responsibility-boundary fixes
-        run: python3 scripts/pr68_seven_audit_contract_fixes.py
+        run: |
+          python3 scripts/pr68_seven_audit_contract_fixes.py
+          python3 scripts/pr68_seven_audit_contract_adjust.py
       - name: Check diff
         run: git diff --check
       - name: Install dependencies
@@ -59,6 +61,7 @@ jobs:
       - name: Commit verified fixes and clean temporary files
         run: |
           rm -f scripts/pr68_seven_audit_contract_fixes.py
+          rm -f scripts/pr68_seven_audit_contract_adjust.py
           rm -f .github/workflows/pr68-seven-audit-contract-fixes.yml
           rm -f pr68-seven-contract-error.txt
           git config user.name 'github-actions[bot]'
