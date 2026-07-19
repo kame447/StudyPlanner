@@ -1,0 +1,85 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/tmp/pr68-stage1[39m
+
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts [2m([22m[2m12 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 31[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mconverts a valid structured response into interpreted command candidates[32m 6[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mrejects candidate units with invalid shape or missing required confidence[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mrejects the real smoke response when required confidence is missing[32m 1[2mms[22m[39m
+[31m   [31m×[31m weekly planning AI interpreter[2m > [22maccepts the simplified bare command array response and derives needsConfirmation from confidence[39m[32m 11[2mms[22m[39m
+[31m     → expected [] to deeply equal [ ObjectContaining{…} ][39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mkeeps accepting the legacy candidate wrapper shape[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mtreats null object properties as unspecified without repairing required fields[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mdefines a closed command schema for every known command type[32m 2[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mdrops payload-missing command responses into parse rejections[32m 0[2mms[22m[39m
+[31m   [31m×[31m weekly planning AI interpreter[2m > [22mparses and validates complete planning range, exam scope, and priority commands[39m[32m 3[2mms[22m[39m
+[31m     → expected [] to deeply equal [ ObjectContaining{…} ][39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mshrinks invalid JSON and rejects candidate-shaped data missing required fields[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mkeeps ambiguous constraint source resolution outside the validator natural-language boundary[32m 1[2mms[22m[39m
+   [32m✓[39m weekly planning AI interpreter[2m > [22mpropagates an AI client error so the pipeline can use turn-level rules fallback[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22maccepts the simplified bare command array response and derives needsConfirmation from confidence
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_priority_policy",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:[2m197:49[22m[39m
+    [90m195| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_exam_scope'[39m })[33m,[39m
+    [90m196| [39m    ])[33m;[39m
+    [90m197| [39m    [34mexpect[39m(validation[33m.[39macceptedWithConfirmation)[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                [31m^[39m
+    [90m198| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_priority_policy'[39m })[33m,[39m
+    [90m199| [39m    ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mparses and validates complete planning range, exam scope, and priority commands
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_priority_policy",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:[2m342:49[22m[39m
+    [90m340| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_exam_scope'[39m })[33m,[39m
+    [90m341| [39m    ])[33m;[39m
+    [90m342| [39m    [34mexpect[39m(validation[33m.[39macceptedWithConfirmation)[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                [31m^[39m
+    [90m343| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_priority_policy'[39m })[33m,[39m
+    [90m344| [39m    ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (4)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m40 passed[39m[22m[90m (42)[39m
+[2m   Start at [22m 03:13:33
+[2m   Duration [22m 2.98s[2m (transform 931ms, setup 0ms, collect 1.82s, tests 112ms, environment 1ms, prepare 406ms)[22m
+
+
+::error file=/tmp/pr68-stage1/src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts > weekly planning AI interpreter > accepts the simplified bare command array response and derives needsConfirmation from confidence,line=197,column=49::AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   ObjectContaining {%0A-     "type": "set_priority_policy",%0A-   },%0A- ]%0A+ []%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:197:49%0A%0A
+
+::error file=/tmp/pr68-stage1/src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts > weekly planning AI interpreter > parses and validates complete planning range%2C exam scope%2C and priority commands,line=342,column=49::AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   ObjectContaining {%0A-     "type": "set_priority_policy",%0A-   },%0A- ]%0A+ []%0A%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:342:49%0A%0A
+test_status=1
