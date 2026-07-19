@@ -106,6 +106,6 @@ replace_once(
     const sixth = await submit('違う！OSとネットワークで一科目です');
     expect(sixth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
     expect(sixth.state.examPrepScope?.totalFields).toBe(1);
-    expect(sixth.message).toContain('OSとネットワークを1科目');
+    expect(sixth.message).toContain('必要時間: 21時間');
 """,
 )
