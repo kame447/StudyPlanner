@@ -137,8 +137,13 @@ describe('weekly planning controller input-to-approval integration', () => {
     expect(planningState.messages.filter((message) => message.role === 'assistant').length)
       .toBe(planningState.messages.filter((message) => message.role === 'user').length);
 
-    const creation = await submit('この条件で作って');
-    expect(creation.draftCandidates.length).toBeGreaterThan(0);
+    const creation = await submit('仮で予定を組んでみよう');
+    if (creation.draftCandidates.length === 0) {
+      throw new Error(`Preview was not created: ${JSON.stringify({
+        message: planningState.lastAssistantMessage,
+        intakeState: planningState.intakeState,
+      })}`);
+    }
     expect(planningState.previewCandidates).toEqual(creation.draftCandidates);
     expect(planningState.intakeState?.shouldSavePlan).toBe(false);
 
