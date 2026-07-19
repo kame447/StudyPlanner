@@ -154,7 +154,7 @@ describe('weekly planning rules input-to-approval integration', () => {
     const execution = await executeWeeklyPlanningTurn({
       previousState: completeExamIntakeState(),
       messages: [],
-      userText: 'この条件で仮予定を作成してください',
+      userText: 'この条件で作って',
       selectedDate: '2026-07-20',
       userId: 'integration-user',
       plans: [],
@@ -165,6 +165,7 @@ describe('weekly planning rules input-to-approval integration', () => {
     });
 
     expect(execution.state.missing).toEqual([]);
+    expect(execution.state.draftGenerationIntent).toBe('user_authorized');
     expect(execution.draftCandidates.length).toBeGreaterThan(0);
     expect(execution.message).not.toContain('教えてください');
 
