@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { sanitizeDialogueRenderOutput, type DialogueRenderInput } from '../dialogue/weeklyPlanningDialogueRenderer';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
+import {
+  applyWeeklyPlanningCommands,
+  createInitialPlanningIntakeState,
+} from '../intake/weeklyPlanningIntakeReducer';
 import { parseSetExamScopeCommand } from '../intake/weeklyPlanningScopeParsing';
 import type { ExamPrepScope } from '../intake/weeklyPlanningIntakeTypes';
 
@@ -29,6 +33,18 @@ describe('weekly planning adversarial input guards', () => {
   it('normalizes a closed set of unambiguous domain typos', () => {
     const command = parseSetExamScopeCommand('院試の過去問 ネトワークを進めたい', undefined);
     expect(command?.scope.fields).toEqual(['ネットワーク']);
+  });
+
+  it('removes a particle after 過去問 and keeps year range blocking until supplied', () => {
+    const command = parseSetExamScopeCommand('院試の過去問はOSを進めたいです', undefined);
+    expect(command?.scope.fields).toEqual(['OS']);
+    if (!command) throw new Error('exam scope fixture failed');
+
+    const state = applyWeeklyPlanningCommands(
+      createInitialPlanningIntakeState(),
+      [command],
+    );
+    expect(state.missing).toContain('year_range');
   });
 
   it('rejects model-output instructions even when the command shape is valid', () => {

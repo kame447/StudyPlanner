@@ -39,7 +39,7 @@ AI interpreter を使用しない `rules` 経路について、ユーザー入�
 
 1. rules provider で入力を処理する。
 2. 条件充足済み intake state に対する作成指示から `draftCandidates` が生成される。
-3. 候補の日付・時間・タイトル・field・metadata が preview 変換後も保持される。
+3. 候補の日付・時間・タイトル・field が昇格後 block へ保持され、保存時に provenance が付与される。
 4. preview から昇格した block が `draft` / `未保存` として扱われる。
 5. 承認時に候補数と同数の保存処理が実行される。
 6. 保存される予定に週間計画 provenance が付与される。

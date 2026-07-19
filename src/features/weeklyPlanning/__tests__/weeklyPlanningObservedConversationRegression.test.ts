@@ -89,16 +89,16 @@ describe('observed weekly planning conversation regressions', () => {
   it('repairs an unanswered repeated question by paraphrasing and narrowing to one question', async () => {
     const first = runTurn(undefined, '今日の勉強計画を立ててください');
     const second = runTurn(first.state, '院試の過去問 OSとネットワークを進めたいです');
-    const third = runTurn(second.state, '3時間ぐらいです\n予定は特にないです');
-    const fourth = runTurn(third.state, '分野はOSとネットワークだけです');
+    const withYearRange = runTurn(second.state, '対象年度は2025〜2019です');
+    const fourth = runTurn(withYearRange.state, '分野はOSとネットワークだけです');
     const message = await renderWeeklyPlanningDialogueMessage({
       state: fourth.state,
-      previousState: third.state,
+      previousState: withYearRange.state,
       decision: fourth.decision,
     });
 
     expect(message).toContain('OSとネットワークの2分野');
-    expect(message).toContain('進める順番だけ確認します');
+    expect(message).toContain('目安時間だけ確認します');
     expect(message).not.toContain('睡眠時間や');
     expect(message.split('\n').filter((line) => line.includes('？'))).toHaveLength(1);
   });

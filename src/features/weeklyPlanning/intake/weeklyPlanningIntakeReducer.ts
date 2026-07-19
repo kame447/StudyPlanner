@@ -415,7 +415,7 @@ function applyWeeklyPlanningCommand(
       };
 
       let nextMissing = nextState.missing;
-      if (examPrepScope.totalYears && !examPrepScope.yearRange) {
+      if (examPrepScope.unitModel === 'year_field_chunk' && !examPrepScope.yearRange) {
         nextMissing = addMissing(nextMissing, ['year_range']);
       }
       if (examPrepScope.yearRange) {

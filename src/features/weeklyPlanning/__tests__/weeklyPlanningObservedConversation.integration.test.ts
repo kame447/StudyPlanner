@@ -81,17 +81,25 @@ describe('observed weekly planning conversation integration', () => {
     expect(third.message).not.toContain('180分');
 
     const fourth = await submit('分野はOSとネットワークだけです');
-    expect(fourth.message).toContain('進める順番だけ確認します');
-    expect(fourth.message).not.toContain('睡眠時間や');
+    expect(fourth.message).toContain('対象年度は何年から何年までですか？');
     expect(fourth.message.match(/？/g) ?? []).toHaveLength(1);
     expect(fourth.state.lastQuestionContext).toEqual(expect.objectContaining({
       kind: 'missing',
+      targetSlot: 'year_range',
     }));
-    expect(fourth.state.lastQuestionContext?.targetSlot).toBeTruthy();
 
-    const fifth = await submit('違う！OSとネットワークで一科目です');
-    expect(fifth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
-    expect(fifth.state.examPrepScope?.totalFields).toBe(1);
-    expect(fifth.message).toContain('OSとネットワークを1科目');
+    const fifth = await submit('対象年度は2025〜2019です');
+    expect(fifth.state.examPrepScope?.yearRange).toEqual(expect.objectContaining({
+      startYear: 2025,
+      endYear: 2019,
+    }));
+    expect(fifth.message).toContain('条件が厳しく');
+    expect(fifth.message).toContain('必要時間: 42時間');
+    expect(fifth.message).toContain('分野の宣言順を仮の優先順として扱います。');
+
+    const sixth = await submit('違う！OSとネットワークで一科目です');
+    expect(sixth.state.examPrepScope?.fields).toEqual(['OSとネットワーク']);
+    expect(sixth.state.examPrepScope?.totalFields).toBe(1);
+    expect(sixth.message).toContain('必要時間: 21時間');
   });
 });

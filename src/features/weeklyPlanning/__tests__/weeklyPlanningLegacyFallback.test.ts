@@ -68,7 +68,7 @@ describe('weekly planning legacy fallback regression', () => {
       examType: '院試',
       unitModel: 'year_field_chunk',
     });
-    expect(state.missing).toEqual(['unit_duration_estimate']);
+    expect(state.missing).toEqual(['year_range', 'unit_duration_estimate']);
     expect(state.shouldSavePlan).toBe(false);
   });
 

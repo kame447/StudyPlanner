@@ -956,7 +956,7 @@ function extractInlineExamFields(text: string): string[] {
 
   const captured = [
     normalizedText.match(
-      /(?:院試(?:の)?過去問|過去問)\s*[:：]?\s*(.+?)(?=(?:を)?(?:進め|やり|解き|勉強し|学習し)|$)/,
+      /(?:院試(?:の)?過去問|過去問)\s*[:：]?\s*(?:は|が|を)?\s*(.+?)(?=(?:を)?(?:進め|やり|解き|勉強し|学習し)|$)/,
     )?.[1],
     normalizedText.match(/(?:対象)?分野(?:は|が|を)\s*(.+?)(?=だけ(?:です|だ)?|です|$)/)?.[1],
   ].filter((value): value is string => Boolean(value));
