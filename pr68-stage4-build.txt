@@ -1,0 +1,6 @@
+
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
+
+src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts(168,57): error TS2339: Property 'behaviorMetadata' does not exist on type 'WeeklyDraftCandidate'.
+build_status=2
