@@ -1,0 +1,34 @@
+
+> studyplanner-app@0.1.0 test:run
+> node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/home/runner/work/StudyPlannner/StudyPlannner[39m
+
+ [31m❯[39m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 75[2mms[22m[39m
+[31m   [31m×[31m weekly planning controller input-to-approval integration[2m > [22mruns natural-language turns through controller ownership, preview, approval, persistence, and completion[39m[32m 74[2mms[22m[39m
+[31m     → expected 0 to be greater than 0[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts[2m > [22mweekly planning controller input-to-approval integration[2m > [22mruns natural-language turns through controller ownership, preview, approval, persistence, and completion
+[31m[1mAssertionError[22m: expected 0 to be greater than 0[39m
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts:[2m141:45[22m[39m
+    [90m139| [39m
+    [90m140| [39m    [35mconst[39m creation [33m=[39m [35mawait[39m [34msubmit[39m([32m'この条件で作って'[39m)[33m;[39m
+    [90m141| [39m    [34mexpect[39m(creation[33m.[39mdraftCandidates[33m.[39mlength)[33m.[39m[34mtoBeGreaterThan[39m([34m0[39m)[33m;[39m
+    [90m   | [39m                                            [31m^[39m
+    [90m142| [39m    expect(planningState.previewCandidates).toEqual(creation.draftCand…
+    [90m143| [39m    [34mexpect[39m(planningState[33m.[39mintakeState[33m?.[39mshouldSavePlan)[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 03:40:07
+[2m   Duration [22m 2.49s[2m (transform 1.40s, setup 0ms, collect 1.94s, tests 75ms, environment 0ms, prepare 152ms)[22m
+
+
+::error file=/home/runner/work/StudyPlannner/StudyPlannner/src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts,title=src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts > weekly planning controller input-to-approval integration > runs natural-language turns through controller ownership%2C preview%2C approval%2C persistence%2C and completion,line=141,column=45::AssertionError: expected 0 to be greater than 0%0A ❯ src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts:141:45%0A%0A
+test_status=1
