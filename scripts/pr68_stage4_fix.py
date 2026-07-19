@@ -127,6 +127,11 @@ replace_once(
 )
 replace_once(
     'src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts',
+    "      previousState: third.state,\n",
+    "      previousState: withYearRange.state,\n",
+)
+replace_once(
+    'src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts',
     "    expect(message).toContain('進める順番だけ確認します');\n",
     "    expect(message).toContain('目安時間だけ確認します');\n",
 )
