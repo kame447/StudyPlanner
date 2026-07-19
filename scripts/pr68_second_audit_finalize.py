@@ -65,16 +65,29 @@ text = replace_once(
 """,
     'Japanese study goal stem grounding',
 )
+text = replace_once(
+    text,
+    "        || /院試|過去問|年度|年分/.test(normalized);",
+    "        || /院試|過去問|年度|年分|20\\d{2}\\s*[〜~-]\\s*20\\d{2}/.test(normalized);",
+    'year-field unit model evidence',
+)
 script_path.write_text(text)
 
 fixture_path = Path('src/features/weeklyPlanning/testFixtures/weeklyPlanningEvaluationCases.ts')
 fixture = fixture_path.read_text()
-fixture = replace_once(
-    fixture,
-    "freeTextExamScopeAndPriority: '数学とOSとハードウェアとソフトウェアとヒューマンサイエンスがあって、2025〜2019までそれぞれある。分野ごとにまとめてやる。数学から始めて最後がヒューマンサイエンスかな'",
-    "freeTextExamScopeAndPriority: '院試の過去問は数学とOSとハードウェアとソフトウェアとヒューマンサイエンスがあって、2025〜2019までそれぞれある。分野ごとにまとめてやる。数学から始めて最後がヒューマンサイエンスかな'",
-    'AI interpreter foundation exam evidence',
+exam_type_line = "              examType: '院試',\n"
+if fixture.count(exam_type_line) != 3:
+    raise RuntimeError('unexpected AI foundation examType fixture count')
+fixture_path.write_text(fixture.replace(exam_type_line, ''))
+
+interpreter_test_path = Path('src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts')
+interpreter_test = interpreter_test_path.read_text()
+interpreter_test = replace_once(
+    interpreter_test,
+    "      userText: '全体を先におさらいしたい',",
+    "      userText: '院試全体を先におさらいしたい',",
+    'study goal subject evidence fixture',
 )
-fixture_path.write_text(fixture)
+interpreter_test_path.write_text(interpreter_test)
 
 runpy.run_path(str(script_path), run_name='__main__')
