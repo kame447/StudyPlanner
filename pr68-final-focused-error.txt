@@ -1,0 +1,220 @@
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mbuilds renderer input from code-owned dialogue decisions and facts[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mrenders only the planned questions in plan order even when state has other missing slots[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22muses fake renderer output only when every planned question is returned exactly once[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mnormalizes AI planning ranges to calendar days: same day[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mnormalizes AI planning ranges to calendar days: month boundary[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mnormalizes AI planning ranges to calendar days: five days[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mpreserves a deterministic calendarDayCount during range normalization[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mnormalizes a next_week pending command from selectedDate at the Friday current time boundary[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mnormalizes a next_week pending command from selectedDate at the Sunday current time boundary[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mnormalizes a next_week pending command from selectedDate at the Monday current time boundary[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mdoes not infer dates or duration for a named future period[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22maccepts a valid pending command and protects a confirmed planning range[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mrejects a pending command with invalid kind[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mrejects a pending command with missing label[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mrejects a pending command with invalid date[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mrejects a pending command with zero duration[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mderives fixed and life confirmation from state facts instead of missing absence[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mkeeps the no-fixed-events fact through later user turns[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mprotects a pending range from inferred AI ranges and confirms explicit AI ranges[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mincludes deterministic context and last-question grounding in the AI prompt contract[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22muses an empty recentConversation on the first turn[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22minstructs the interpreter to reconcile only supplied history and never execute it[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mdoes not call the AI renderer when the decision has no questions[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mrenders only untargeted completion target fields from questionPlan context[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mstill calls the AI renderer when missing-info questions are planned[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22momits a generic acknowledgement from renderer output[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mreplaces an AI-authored yearly-plan acknowledgement with controlled accepted-fact vocabulary[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mpasses the canonical exam unit-rate basis to the AI question renderer[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back when two planned questions render as the same visible text[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22muses the existing OpenAI-compatible client with structured response format and renderer-only input[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mrestores final output to questionPlan order when AI returns planned slots out of order[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: plan outside slot[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: missing planned slot[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for invalid AI output: duplicate planned slot[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for schema parse failure[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mfalls back to deterministic rendering for AI call failure[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning AI dialogue renderer[2m > [22mdoes not mutate questionPlan after adopting AI text[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mcarries the planning period label from range.sourceText into the render input[32m 10[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mdoes not fabricate a week: deterministic fallback says 来週, never 今週[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22momits the period label when the user never stated one (no fabrication)[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22msupplies a plain-vocabulary hint for internal slot keys (fixed_events)[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22msurfaces constraint sources already in use as plain labels[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrenders a pending planning start question with its user-provided period label[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mpasses the pending period label and start-date vocabulary hint to renderers[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mpasses the pending period label through the AI renderer input path[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22macknowledges a priority accepted in the current turn but not an unchanged prior priority[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mdoes not repeat old exam facts when a short old source appears inside the current priority answer[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: sleep medication drift[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: lateness drift[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mrejects renderer semantic drift: graduation-year drift[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/dialogue/weeklyPlanningAiDialogueRenderer.test.ts[2m > [22mweekly planning renderer deterministic context[2m > [22mincludes command-derived goal titles in deterministic accepted facts[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mconverts a valid structured response into interpreted command candidates[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mrejects candidate units with invalid shape or missing required confidence[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mrejects the real smoke response when required confidence is missing[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22maccepts the simplified bare command array response and derives needsConfirmation from confidence[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mkeeps accepting the legacy candidate wrapper shape[32m 1[2mms[22m[39m
+ [31m×[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mtreats null object properties as unspecified without repairing required fields[32m 13[2mms[22m[39m
+[31m   → expected [] to deeply equal [ ObjectContaining{…} ][39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mdefines a closed command schema for every known command type[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mdrops payload-missing command responses into parse rejections[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mparses and validates complete planning range, exam scope, and priority commands[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mshrinks invalid JSON and rejects candidate-shaped data missing required fields[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mkeeps ambiguous constraint source resolution outside the validator natural-language boundary[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mpropagates an AI client error so the pipeline can use turn-level rules fallback[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning readiness invariants[2m > [22mdoes not become draft-ready with an unrelated non-exam unit rate[32m 3[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch A assesses first weekly input with multiple time amounts[32m 19[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch A does not run without a weekly keyword[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch A does not run when durations are missing and the exam scope command sets the intent[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch A is skipped when setup command has already set the planning range[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mdoes not replace command-derived tasks during a later rules fallback turn[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch B merges revision tasks into an existing weekly planning state[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch B does not run for exam prep intent states[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch B preserves tasks when weekly state already has examPrepScope[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch B rebuilds previousText from legacy task rawText[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mkeeps a command task when a same-title legacy candidate is parsed[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mkeeps command and different-title legacy tasks together[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningLegacyFallback.test.ts[2m > [22mweekly planning legacy fallback regression[2m > [22mlegacy fallback branch B replaces tasks for weekly state without examPrepScope[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mreplaces the left side of natural Japanese corrections and keeps counts consistent[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mremoves the exam prefix from a combined one-subject field[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mnormalizes a closed set of unambiguous domain typos[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mremoves a particle after 過去問 and keeps year range blocking until supplied[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects model-output instructions even when the command shape is valid[32m 2[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mallows ordinary study goals about generating JSON[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects an exam field invented from a generic entrance-exam request[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mpreserves hidden user grounding through constraint-source resolution[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects an AI command with an ungrounded payload value: study goal title[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects an AI command with an ungrounded payload value: unit-rate value[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects an AI command with an ungrounded payload value: invented exam classification[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects an AI command with an ungrounded payload value: life-constraint time[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects an AI command with an ungrounded payload value: priority ordering[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningAdversarialInput.test.ts[2m > [22mweekly planning adversarial input guards[2m > [22mrejects renderer text that preserves the slot key but changes the meaning[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts[2m > [22mweekly planning controller input-to-approval integration[2m > [22mruns natural-language turns through controller ownership, preview, approval, persistence, and completion[32m 75[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with missing title[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with empty title[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with invalid unit[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with negative amount[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with number sourceText[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with object subject[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with unknown goal property[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with overlong title[32m 0[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator contract[2m > [22mrejects set_study_goal with overlong sourceText[32m 1[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator properties[2m > [22mselects the higher confidence candidate independently of normalized-title form and input order[32m 32[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator properties[2m > [22mkeeps different goal identities in their confidence buckets regardless of input order[32m 10[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator properties[2m > [22mpreserves a valid candidate when an unrelated candidate is invalid[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.test.ts[2m > [22mweekly planning candidate validator properties[2m > [22mkeeps one accepted command and deterministic rejections for repeated candidates[32m 35[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts[2m > [22mweekly planning trace Firestore protocol integration[2m > [22mcreates immutable documents atomically and accepts an identical retry[32m 18[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts[2m > [22mweekly planning trace Firestore protocol integration[2m > [22mrejects an immutable retry whose payload differs from the stored document[32m 5[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts[2m > [22mweekly planning trace Firestore protocol integration[2m > [22muses the Firestore document path ID instead of redacted structural fields for get and query[32m 8[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts[2m > [22mweekly planning trace privacy boundary[2m > [22mrotates the subject token by epoch without exposing the uid[32m 8[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts[2m > [22mweekly planning trace privacy boundary[2m > [22maccepts only well-formed secret rings and lists every retained epoch[32m 2[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts[2m > [22mweekly planning trace privacy boundary[2m > [22muses epochs no longer than thirty days and assigns a 180 day expiry[32m 1[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts[2m > [22mweekly planning trace privacy boundary[2m > [22mremoves identity keys and redacts common identifiers in nested content[32m 2[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts[2m > [22mweekly planning trace privacy boundary[2m > [22mprepares session and entry documents without raw account identifiers[32m 4[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts[2m > [22mweekly planning trace privacy boundary[2m > [22mrequires matching entry ownership and the current policy version[32m 2[2mms[22m[39m
+ [32m✓[39m workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts[2m > [22mweekly planning trace admin API integration[2m > [22mlists a session and retrieves its entries with the same opaque lookup ID[32m 34[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m > [22mobserved weekly planning conversation regressions[2m > [22maccepts 今日の勉強計画 as a one-day range instead of asking for a week[32m 15[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m > [22mobserved weekly planning conversation regressions[2m > [22mextracts OS and network as two fields and accepts an explicit one-subject correction[32m 10[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m > [22mobserved weekly planning conversation regressions[2m > [22macknowledges only facts accepted in the current turn and keeps 3時間 as written[32m 17[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversationRegression.test.ts[2m > [22mobserved weekly planning conversation regressions[2m > [22mrepairs an unanswered repeated question by paraphrasing and narrowing to one question[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/weeklyPlanning/__tests__/weeklyPlanningObservedConversation.integration.test.ts[2m > [22mobserved weekly planning conversation integration[2m > [22mruns the reported conversation through turn execution, state carry-over, and rendering[32m 60[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts[2m > [22mweekly planning AI interpreter[2m > [22mtreats null object properties as unspecified without repairing required fields
+[31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "type": "set_study_goal",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts:[2m277:49[22m[39m
+    [90m275| [39m      }[33m,[39m
+    [90m276| [39m    }))[33m;[39m
+    [90m277| [39m    [34mexpect[39m(validation[33m.[39macceptedWithConfirmation)[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                [31m^[39m
+    [90m278| [39m      expect[33m.[39m[34mobjectContaining[39m({ type[33m:[39m [32m'set_study_goal'[39m })[33m,[39m
+    [90m279| [39m    ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mapplies fake interpreter command candidates through validator and reducer for the first evaluation case
+[31m[1mAssertionError[22m: expected { examType: '院試', …(8) } to match object { fields: [ '数学', 'OS', …(3) ], …(2) }
+(6 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -2,11 +2,14 @@[39m
+[2m    "fields": [[22m
+[2m      "数学",[22m
+[2m      "OS",[22m
+[2m      "ハードウェア",[22m
+[2m      "ソフトウェア",[22m
+[32m-     "ヒューマンサイエンス",[39m
+[31m+     "ヒューマンサイエンスがあって",[39m
+[31m+     "2025〜2019までそれぞれある。分野ご",[39m
+[31m+     "にま",[39m
+[31m+     "めてやる。数学から始めて最後がヒューマンサイエンスかな",[39m
+[2m    ],[22m
+[2m    "unitModel": "year_field_chunk",[22m
+[2m    "yearRange": {[22m
+[2m      "endYear": 2019,[22m
+[2m      "startYear": 2025,[22m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts:[2m159:40[22m[39m
+    [90m157| [39m
+    [90m158| [39m    [34mexpect[39m(interpretUserTurn)[33m.[39m[34mtoHaveBeenCalledTimes[39m([34m1[39m)[33m;[39m
+    [90m159| [39m    [34mexpect[39m(output[33m.[39mstate[33m.[39mexamPrepScope)[33m.[39m[34mtoMatchObject[39m({
+    [90m   | [39m                                       [31m^[39m
+    [90m160| [39m      fields[33m:[39m evaluationCase[33m.[39mfields[33m,[39m
+    [90m161| [39m      yearRange[33m:[39m { startYear[33m:[39m [34m2025[39m[33m,[39m endYear[33m:[39m [34m2019[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts[2m > [22mweekly planning AI foundation without real AI[2m > [22mapplies complete AI planning range, exam scope, and priority commands through the pipeline
+[31m[1mAssertionError[22m: expected { examType: '院試', …(8) } to match object { fields: [ '数学', 'OS', …(3) ], …(2) }
+(6 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -2,11 +2,14 @@[39m
+[2m    "fields": [[22m
+[2m      "数学",[22m
+[2m      "OS",[22m
+[2m      "ハードウェア",[22m
+[2m      "ソフトウェア",[22m
+[32m-     "ヒューマンサイエンス",[39m
+[31m+     "ヒューマンサイエンスがあって",[39m
+[31m+     "2025〜2019までそれぞれある。分野ご",[39m
+[31m+     "にま",[39m
+[31m+     "めてやる。数学から始めて最後がヒューマンサイエンスかな",[39m
+[2m    ],[22m
+[2m    "unitModel": "year_field_chunk",[22m
+[2m    "yearRange": {[22m
+[2m      "endYear": 2019,[22m
+[2m      "startYear": 2025,[22m
+
+[36m [2m❯[22m src/features/weeklyPlanning/__tests__/weeklyPlanningInterpreterFoundation.test.ts:[2m199:40[22m[39m
+    [90m197| [39m      endDateTime[33m:[39m [32m'2026-07-12'[39m[33m,[39m
+    [90m198| [39m    })[33m;[39m
+    [90m199| [39m    [34mexpect[39m(output[33m.[39mstate[33m.[39mexamPrepScope)[33m.[39m[34mtoMatchObject[39m({
+    [90m   | [39m                                       [31m^[39m
+    [90m200| [39m      fields[33m:[39m evaluationCase[33m.[39mfields[33m,[39m
+    [90m201| [39m      yearRange[33m:[39m { startYear[33m:[39m [34m2025[39m[33m,[39m endYear[33m:[39m [34m2019[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (12)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m126 passed[39m[22m[90m (129)[39m
+[2m   Start at [22m 05:45:54
+[2m   Duration [22m 8.67s[2m (transform 1.31s, setup 0ms, collect 4.17s, tests 602ms, environment 7ms, prepare 1.53s)[22m
+
