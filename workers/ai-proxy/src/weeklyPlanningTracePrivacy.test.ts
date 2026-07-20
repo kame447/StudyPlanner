@@ -15,6 +15,29 @@ function serialized(value: unknown): string {
   return JSON.stringify(value);
 }
 
+
+const SESSION_ID = 'weekly-trace-123e4567-e89b-12d3-a456-426614174000';
+const CONVERSATION_ID = 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000';
+const OCCURRED_AT = '2026-07-18T00:00:00.000Z';
+
+function validSession(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: SESSION_ID, logicalConversationId: CONVERSATION_ID, status: 'active',
+    startedAt: OCCURRED_AT, lastActivityAt: OCCURRED_AT, turnCount: 1, entryCount: 1,
+    hasPreview: false, hasApprovalFailure: false, hasFallback: false, hasError: false,
+    appVersion: 'test', schemaVersion: 1, ...overrides,
+  };
+}
+
+function validTurnEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: `${SESSION_ID}-00000000`, sessionId: SESSION_ID,
+    logicalConversationId: CONVERSATION_ID, sequence: 0,
+    occurredAt: OCCURRED_AT, observedAt: OCCURRED_AT, schemaVersion: 1,
+    kind: 'turn', role: 'user', content: 'hello', turnIndex: 0, ...overrides,
+  };
+}
+
 describe('weekly planning trace privacy boundary', () => {
   it('rotates the subject token by epoch without exposing the uid', async () => {
     const secrets = {
@@ -91,23 +114,9 @@ describe('weekly planning trace privacy boundary', () => {
       { '100': 'a'.repeat(32) },
     );
     const prepared = prepareWeeklyPlanningTraceWrite({
-      session: {
-        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000',
-        userId: 'firebase-user-123',
-        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
-        status: 'active',
-        entryCount: 1,
-      },
-      entries: [{
-        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000-00000000',
-        sessionId: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000',
-        userId: 'firebase-user-123',
-        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
-        sequence: 0,
-        kind: 'turn',
-        content: 'person@example.com',
-      }],
-    }, subject, '2026-07-18T00:00:00.000Z');
+session: validSession({ userId: 'firebase-user-123' }),
+entries: [validTurnEntry({ userId: 'firebase-user-123', content: 'person@example.com' })],
+        }, subject, '2026-07-18T00:00:00.000Z');
     const output = serialized(prepared);
 
     expect(output).not.toContain('firebase-user-123');
@@ -120,18 +129,11 @@ describe('weekly planning trace privacy boundary', () => {
 
   it('requires matching entry ownership and the current policy version', () => {
     expect(() => prepareWeeklyPlanningTraceWrite({
-      session: {
-        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000',
-        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
-        entryCount: 1,
-      },
-      entries: [{
-        id: 'weekly-trace-123e4567-e89b-12d3-a456-426614174000-00000000',
-        sessionId: 'weekly-trace-223e4567-e89b-12d3-a456-426614174000',
-        logicalConversationId: 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000',
-        sequence: 0,
-      }],
-    }, { token: 'wpt_token', epoch: '100' })).toThrow(/session mismatch/);
+session: validSession(),
+entries: [validTurnEntry({
+  sessionId: 'weekly-trace-223e4567-e89b-12d3-a456-426614174000',
+})],
+        }, { token: 'wpt_token', epoch: '100' })).toThrow(/session mismatch/);
 
     expect(isWeeklyPlanningTracePolicyAccepted({
       version: WEEKLY_PLANNING_TRACE_POLICY_VERSION,
@@ -142,4 +144,25 @@ describe('weekly planning trace privacy boundary', () => {
       acceptedAt: '2026-07-18T00:00:00.000Z',
     })).toBe(false);
   });
+
+it('rejects missing or invalid session schema at the write boundary', () => {
+  expect(() => prepareWeeklyPlanningTraceWrite({
+    session: validSession({ status: 'unknown' }), entries: [validTurnEntry()],
+  }, { token: 'wpt_token', epoch: '100' })).toThrow(/session schema/);
+  expect(() => prepareWeeklyPlanningTraceWrite({
+    session: validSession({ startedAt: 'not-a-date' }), entries: [validTurnEntry()],
+  }, { token: 'wpt_token', epoch: '100' })).toThrow(/session schema/);
+});
+
+it.each([
+  ['invalid turn role', { role: 'admin' }],
+  ['non-string turn content', { content: 123 }],
+  ['unknown internal event', { kind: 'internal_event', eventType: 'unknown', payload: {}, severity: 'info' }],
+  ['snapshot without state', { kind: 'state_snapshot', snapshotReason: 'manual_capture', state: undefined }],
+])('rejects %s at the server write boundary', (_label, overrides) => {
+  expect(() => prepareWeeklyPlanningTraceWrite({
+    session: validSession(), entries: [validTurnEntry(overrides)],
+  }, { token: 'wpt_token', epoch: '100' })).toThrow(/entry/);
+});
+
 });

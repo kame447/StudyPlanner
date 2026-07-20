@@ -274,7 +274,9 @@ function normalizedTextContainsValue(text: string, value: string | undefined): b
   const minute = Number(minuteText);
   if (!Number.isInteger(hour) || !Number.isInteger(minute)) return false;
   if (minute === 0) {
-    return new RegExp(`${hour}\\s*時(?!\\s*\\d+\\s*分)`).test(normalized)
+    return new RegExp(
+      `${hour}\\s*時(?:\\s*0{1,2}\\s*分|(?!\\s*\\d+\\s*分))`,
+    ).test(normalized)
       || new RegExp(`${String(hour).padStart(2, '0')}:00`).test(normalized);
   }
   return new RegExp(`${hour}\\s*時\\s*${minute}\\s*分`).test(normalized)
@@ -363,15 +365,94 @@ function priorityHeadGrounded(userText: string, field: string | undefined): bool
   ].some((pattern) => pattern.test(normalized));
 }
 
-function mentionedFieldOrder(userText: string, knownFields: string[]): string[] {
-  const normalized = normalizedEvidence(userText);
-  return knownFields
-    .map((field) => ({ field, index: normalized.indexOf(normalizedEvidence(field)) }))
-    .filter((item) => item.index >= 0)
-    .sort((left, right) => left.index - right.index)
-    .map((item) => item.field);
-}
+interface PriorityRelation {
+before: string;
+after: string;
+        }
 
+        function explicitPriorityRelations(userText: string, knownFields: string[]): PriorityRelation[] {
+const normalized = normalizedEvidence(userText);
+const relations: PriorityRelation[] = [];
+const keys = new Set<string>();
+const addRelation = (before: string, after: string) => {
+  const key = `${before}\u0000${after}`;
+  if (before !== after && !keys.has(key)) {
+    keys.add(key);
+    relations.push({ before, after });
+  }
+};
+
+for (let leftIndex = 0; leftIndex < knownFields.length; leftIndex += 1) {
+  for (let rightIndex = leftIndex + 1; rightIndex < knownFields.length; rightIndex += 1) {
+    const left = knownFields[leftIndex];
+    const right = knownFields[rightIndex];
+    const leftPattern = escapeRegExp(normalizedEvidence(left));
+    const rightPattern = escapeRegExp(normalizedEvidence(right));
+    const leftBeforeRight = [
+      new RegExp(`${rightPattern}より(?:も)?${leftPattern}を?(?:先に|優先)`),
+      new RegExp(`${leftPattern}を?${rightPattern}より(?:も)?(?:先に|優先)`),
+      new RegExp(`${rightPattern}の(?:前|まえ)に${leftPattern}`),
+      new RegExp(`${leftPattern}の(?:後|あと)に${rightPattern}`),
+    ].some((pattern) => pattern.test(normalized));
+    const rightBeforeLeft = [
+      new RegExp(`${leftPattern}より(?:も)?${rightPattern}を?(?:先に|優先)`),
+      new RegExp(`${rightPattern}を?${leftPattern}より(?:も)?(?:先に|優先)`),
+      new RegExp(`${leftPattern}の(?:前|まえ)に${rightPattern}`),
+      new RegExp(`${rightPattern}の(?:後|あと)に${leftPattern}`),
+    ].some((pattern) => pattern.test(normalized));
+
+    if (leftBeforeRight && !rightBeforeLeft) addRelation(left, right);
+    if (rightBeforeLeft && !leftBeforeRight) addRelation(right, left);
+  }
+}
+return relations;
+        }
+
+        function applyPriorityRelations(
+mentionedFields: string[],
+relations: PriorityRelation[],
+        ): string[] {
+const mentionedSet = new Set(mentionedFields);
+const outgoing = new Map<string, Set<string>>(
+  mentionedFields.map((field) => [field, new Set<string>()]),
+);
+const indegree = new Map<string, number>(mentionedFields.map((field) => [field, 0]));
+
+relations.forEach(({ before, after }) => {
+  if (!mentionedSet.has(before) || !mentionedSet.has(after)) return;
+  const targets = outgoing.get(before);
+  if (!targets || targets.has(after)) return;
+  targets.add(after);
+  indegree.set(after, (indegree.get(after) ?? 0) + 1);
+});
+
+const ordered: string[] = [];
+const selected = new Set<string>();
+while (ordered.length < mentionedFields.length) {
+  const next = mentionedFields.find((field) =>
+    !selected.has(field) && (indegree.get(field) ?? 0) === 0);
+  if (!next) return mentionedFields;
+  selected.add(next);
+  ordered.push(next);
+  outgoing.get(next)?.forEach((target) => {
+    indegree.set(target, (indegree.get(target) ?? 0) - 1);
+  });
+}
+return ordered;
+        }
+
+        function mentionedFieldOrder(userText: string, knownFields: string[]): string[] {
+const normalized = normalizedEvidence(userText);
+const mentionedFields = knownFields
+  .map((field) => ({ field, index: normalized.indexOf(normalizedEvidence(field)) }))
+  .filter((item) => item.index >= 0)
+  .sort((left, right) => left.index - right.index)
+  .map((item) => item.field);
+return applyPriorityRelations(
+  mentionedFields,
+  explicitPriorityRelations(userText, knownFields),
+);
+        }
 function lifeConstraintKindGrounded(
   kind: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'],
   userText: string,

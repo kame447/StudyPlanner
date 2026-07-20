@@ -289,6 +289,93 @@ function requireTraceEntryCount(value: unknown): number {
   return value;
 }
 
+const TRACE_SESSION_STATUSES = new Set(['active', 'completed', 'abandoned', 'failed']);
+const TRACE_RESPONSE_SOURCES = new Set(['ai', 'deterministic_fallback', 'rules', 'system']);
+const TRACE_EVENT_TYPES = new Set([
+  'user_turn_received', 'interpreter_started', 'interpreter_completed',
+  'candidate_accepted', 'candidate_rejected', 'assumption_proposed',
+  'assumption_accepted', 'assumption_rejected', 'assumption_superseded',
+  'correction_applied', 'correction_rejected', 'relative_constraint_resolved',
+  'relative_constraint_rejected', 'readiness_evaluated', 'feasibility_evaluated',
+  'dialogue_planned', 'fallback_used', 'preview_gate_evaluated',
+  'preview_generated', 'preview_rejected_stale',
+  'preview_rejected_pending_assumption', 'draft_promoted', 'approval_started',
+  'approval_item_saved', 'approval_item_failed', 'approval_completed',
+  'request_cancelled', 'stale_async_result_discarded', 'trace_write_failed',
+]);
+const TRACE_SEVERITIES = new Set(['debug', 'info', 'warn', 'error']);
+const TRACE_SNAPSHOT_REASONS = new Set([
+  'turn_completed', 'correction_applied', 'preview_generated',
+  'approval_started', 'approval_completed', 'error', 'manual_capture',
+]);
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function requireTraceSessionSchema(session: Record<string, unknown>): void {
+  const valid = TRACE_SESSION_STATUSES.has(String(session.status))
+    && isIsoTimestamp(session.startedAt)
+    && isIsoTimestamp(session.lastActivityAt)
+    && (session.endedAt === undefined || isIsoTimestamp(session.endedAt))
+    && (session.archivedAt === undefined || isIsoTimestamp(session.archivedAt))
+    && (session.planningRangeStart === undefined || isIsoTimestamp(session.planningRangeStart))
+    && (session.planningRangeEnd === undefined || isIsoTimestamp(session.planningRangeEnd))
+    && isNonNegativeInteger(session.turnCount)
+    && typeof session.hasPreview === 'boolean'
+    && typeof session.hasApprovalFailure === 'boolean'
+    && typeof session.hasFallback === 'boolean'
+    && typeof session.hasError === 'boolean'
+    && typeof session.appVersion === 'string'
+    && session.appVersion.trim().length > 0
+    && typeof session.schemaVersion === 'number'
+    && Number.isSafeInteger(session.schemaVersion)
+    && session.schemaVersion >= 1;
+  if (!valid) throw new Error('trace session schema is invalid');
+}
+
+function requireTraceEntrySchema(entry: Record<string, unknown>): void {
+  const validBase = isIsoTimestamp(entry.occurredAt)
+    && isIsoTimestamp(entry.observedAt)
+    && typeof entry.schemaVersion === 'number'
+    && Number.isSafeInteger(entry.schemaVersion)
+    && entry.schemaVersion >= 1
+    && (entry.requestId === undefined || typeof entry.requestId === 'string')
+    && (entry.stateRevision === undefined || isNonNegativeInteger(entry.stateRevision));
+  if (!validBase) throw new Error('trace entry schema is invalid');
+  if (entry.kind === 'turn') {
+    const validSource = TRACE_RESPONSE_SOURCES.has(String(entry.responseSource));
+    const validTurn = (entry.role === 'user' || entry.role === 'assistant')
+      && typeof entry.content === 'string'
+      && isNonNegativeInteger(entry.turnIndex)
+      && (entry.role === 'assistant' ? validSource : entry.responseSource === undefined);
+    if (!validTurn) throw new Error('trace turn entry schema is invalid');
+    return;
+  }
+  if (entry.kind === 'internal_event') {
+    const validEvent = Object.prototype.hasOwnProperty.call(entry, 'payload')
+      && entry.payload !== undefined
+      && TRACE_EVENT_TYPES.has(String(entry.eventType))
+      && TRACE_SEVERITIES.has(String(entry.severity));
+    if (!validEvent) throw new Error('trace internal event entry schema is invalid');
+    return;
+  }
+  if (entry.kind === 'state_snapshot') {
+    const validSnapshot = Object.prototype.hasOwnProperty.call(entry, 'state')
+      && entry.state !== undefined
+      && TRACE_SNAPSHOT_REASONS.has(String(entry.snapshotReason));
+    if (!validSnapshot) throw new Error('trace state snapshot entry schema is invalid');
+    return;
+  }
+  throw new Error('trace entry kind is invalid');
+}
+
 function preparedDocument(
   input: Record<string, unknown>,
   subject: WeeklyPlanningTraceSubject,
@@ -329,6 +416,7 @@ export function prepareWeeklyPlanningTraceWrite(
     'logical conversation id',
   );
   const entryCount = requireTraceEntryCount(input.session.entryCount);
+  requireTraceSessionSchema(input.session);
   const expireAt = weeklyPlanningTraceExpireAt(now);
   const session = {
     ...preparedDocument({
@@ -368,6 +456,7 @@ export function prepareWeeklyPlanningTraceWrite(
     if (entryConversationId !== logicalConversationId) {
       throw new Error('trace entry conversation mismatch');
     }
+    requireTraceEntrySchema(entry);
     return {
       ...preparedDocument({
         ...entry,

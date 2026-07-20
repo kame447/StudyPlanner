@@ -156,4 +156,34 @@ describe('weekly planning final-audit candidate hardening', () => {
       }),
     ]);
   });
+it('accepts comparative priority wording according to its semantic relation', () => {
+  const userText = 'OSよりネットワークを先にして、最後にデータベースを進めたいです';
+  const result = validateInterpretedCandidates([
+    candidate({
+      type: 'set_priority_policy',
+      policy: { kind: 'field_first', order: ['ネットワーク', 'OS', 'データベース'] },
+      confidence: 'high',
+      sourceText: userText,
+    }, userText),
+  ], summary({ knownFields: ['OS', 'ネットワーク', 'データベース'] }));
+
+  expect(result.accepted).toHaveLength(1);
+  expect(result.rejected).toEqual([]);
+});
+
+it('rejects literal mention order when comparative wording requires the reverse relation', () => {
+  const userText = 'OSよりネットワークを先にして、最後にデータベースを進めたいです';
+  const result = validateInterpretedCandidates([
+    candidate({
+      type: 'set_priority_policy',
+      policy: { kind: 'field_first', order: ['OS', 'ネットワーク', 'データベース'] },
+      confidence: 'high',
+      sourceText: userText,
+    }, userText),
+  ], summary({ knownFields: ['OS', 'ネットワーク', 'データベース'] }));
+
+  expect(result.accepted).toEqual([]);
+  expect(result.rejected).toHaveLength(1);
+});
+
 });
