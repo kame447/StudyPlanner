@@ -122,4 +122,3 @@
 `## agent/fix-weekly-planning-trace-and-dialogue-final...origin/agent/fix-weekly-planning-trace-and-dialogue-final`
 
 作業ツリーは clean。一時テスト・probe・repo 内一時報告は存在しない。本体コード、Git index、commit、branch、remote には変更を加えていない。
-
