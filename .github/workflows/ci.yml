@@ -36,7 +36,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run tests
-        run: npm run test:run
+        run: npm run test:run 2>&1 | tee final-test.log
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-test-diagnostics
+          path: final-test.log
+          if-no-files-found: warn
+          retention-days: 1
       - name: TypeScript and production build
         run: npm run build
       - name: Check pull request diff
