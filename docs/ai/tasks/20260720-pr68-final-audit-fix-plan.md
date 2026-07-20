@@ -5,6 +5,7 @@
 - ブランチ: `agent/fix-weekly-planning-trace-and-dialogue-final`
 - 監査対象コードHEAD: `23d7676370b3efebc8d1465dfd01abc32c6462ca`
 - M-8以外の実装完了コミット: `d9726b47340b2b3ef8907ea6f52b4ce37fd431eb`
+- 最終整理コミット: `dfeda947e9820278863b88af90543c70b9155aac`
 - 詳細: `docs/ai/audits/20260720-pr68-final/final-audit.md`
 
 ## 実装原則
