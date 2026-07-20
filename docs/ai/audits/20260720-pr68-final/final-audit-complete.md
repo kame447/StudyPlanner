@@ -1,5 +1,7 @@
 # StudyPlanner PR #68 最終監査・完了サマリー
 
+## 監査時点
+
 - 監査対象HEAD: `23d7676370b3efebc8d1465dfd01abc32c6462ca`
 - 比較元HEAD: `34c6744fefbc9b7f34bce36b97d47da4a86bf264`
 - 完了した独立監査人数: 6
@@ -8,38 +10,32 @@
 - BLOCKER: 0
 - MAJOR: 9
 - MINOR: 1
-- 採用判定: **採用不可**
+- 監査時点の採用判定: 採用不可
 
-## 最終検証
+監査時点では、実コードとfocused反例によりMAJOR 9件が確定したため、採用不可と判定した。詳細な根拠と再現条件は `final-audit.md` に保存している。
 
-- focused tests: 8ファイル、67件成功
-- 全テスト: 147ファイル成功、1ファイルskip
-- テスト件数: 1275件成功、13件skip、5件todo
-- production build: 成功
-- `git diff --check origin/main...HEAD`: 成功
-- 最終`git status -sb`: branch表示のみ、clean
-- リポジトリ内の監査用一時ファイル: なし
+## 修正後の状態
 
-テストとbuildは成功したが、統括監査で実コードと14件のfocused反例によりMAJOR 9件が確定したため、採用不可とする。
+- 修正後HEAD: `c7d86bf1ccdc47b7b6ad6dde2b9e60c3eece9f99`
+- M-1〜M-7: 修正完了
+- M-8: ユーザーとの議論対象として保留し、関連コードは未変更
+- M-9: 修正完了
+- MINOR指摘: 今回のM-1〜M-9修正単位の対象外
 
-## 確定MAJOR
+M-1〜M-7とM-9では、時刻grounding、曖昧な生活制約短答、単位なし目安時間、優先順の完全性、一般的な科目数の誤分類、受理表示のcanonical整合性、trace retry、legacy trace取得を修正した。
 
-1. life constraintの時刻groundingが分精度・開始終了役割・同一節対応を保証しない。
-2. meal/bath質問への自然な短答を直前文脈でgroundingできず、回答を捨てる。
-3. unit-rate質問への単位なし数値から3分と180分の双方を受理できる。
-4. priority groundingが先頭だけを見て、対象欠落と後続順逆転を受理する。
-5. 一般的な「1科目」をdeterministic層が院試scopeと誤分類する。
-6. accepted-fact表示が未検証rawTextをcanonical値より優先する。
-7. trace retryでexpireAtが変わり、immutable conflict後に部分保存から回復できない。
-8. fallback structural IDに埋めた電話番号がredaction後に復元される。
-9. legacy読取分岐より前の新ID validatorが、直前実装の実document IDを拒否する。
+## 修正後検証
 
-## 確定MINOR
+- focused回帰: 成功
+- 全テストsuite: 成功
+- TypeScriptおよびproduction build: 成功
+- `git diff --check`: 成功
+- 一時適用script: 除去済み
+- 診断用CI変更: 除去済み
+- 通常CI: read-only構成へ復旧済み
 
-- server write境界がtraceのdiscriminated schemaを検証しない。
+M-8が未解決のため、PR全体の最終採用判定は保留とする。M-8の方針を議論し、修正または受容判断を行った後に採用監査を確定する。
 
 ## 監査完全性
 
 監査人1〜5と7は完了した。監査人6はユーザー指示で現状終了とし、部分報告を保存したため、完全な独立監査7/7完了とは扱わない。統括監査は部分報告を含む7ファイルを読み、候補を実コードで再検証して採否を決定した。
-
-詳細な根拠、再現条件、対象関数、除外した誤検知、PR外残件、監査人別採否対応は `final-audit.md` を参照する。
