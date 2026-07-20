@@ -50,6 +50,19 @@ jobs:
           script.write_text(source)
           PY
             python .github/apply_final_audit_fixes.py
+            python - <<'PY'
+          from pathlib import Path
+
+          for name in [
+              'src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts',
+              'src/features/weeklyPlanning/__tests__/weeklyPlanningLifeConstraintGrounding.audit.test.ts',
+              'src/features/weeklyPlanning/__tests__/weeklyPlanningCandidateAuditHardening.test.ts',
+              'workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts',
+              'workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts',
+          ]:
+              path = Path(name)
+              path.write_text('\n'.join(line.rstrip() for line in path.read_text().splitlines()) + '\n')
+          PY
             git diff --check
           } > apply-output.txt 2>&1
           status=$?
