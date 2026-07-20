@@ -155,7 +155,7 @@ export interface SetUnitRateCommand {
   type: 'set_unit_rate';
   unitRate: {
     unit: StudyScopeUnit;
-    minutesPerUnit?: number;
+    minutesPerUnit: number;
     source: 'user' | 'assumption' | 'default';
     uncertainty?: 'low' | 'medium' | 'high';
     rawText?: string;
