@@ -46,7 +46,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
       - name: TypeScript and production build
-        run: npm run build
+        run: npm run build 2>&1 | tee final-build.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-build-diagnostics
+          path: final-build.log
+          if-no-files-found: warn
+          retention-days: 1
       - name: Check pull request diff
         if: github.event_name == 'pull_request'
         run: git diff --check origin/${{ github.base_ref }}...HEAD
