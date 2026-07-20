@@ -72,6 +72,15 @@ jobs:
           src/features/weeklyPlanning/__tests__/weeklyPlanningFinalAuditRemainingFixes.test.ts
           workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts
           workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
+          2>&1 | tee focused-regressions.log
+      - name: Upload focused diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-regression-diagnostics
+          path: focused-regressions.log
+          if-no-files-found: warn
+          retention-days: 1
       - name: Run full verification
         run: |
           npm run test:run
