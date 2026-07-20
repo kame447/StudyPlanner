@@ -156,7 +156,6 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
   }
 }
 
-
 const MODEL_INSTRUCTION_PATTERN = /(?:system\s*prompt|developer\s*message|ignore\s+(?:all|previous)(?:\s+instructions?)?|システムプロンプト|開発者メッセージ|前の指示|これまでの指示|指示を無視|命令を無視).{0,160}(?:出力|返して|生成|emit|return)/i;
 
 function normalizedEvidence(value: string): string {
@@ -231,6 +230,11 @@ function explicitMinuteValues(text: string): number[] {
   return Array.from(new Set(values));
 }
 
+function isBareNumericReply(text: string): boolean {
+  const normalized = normalizeIntakeText(text).trim();
+  return /^(?:\d+(?:\.\d+)?|[一二三四五六七八九十]+)(?:くらい|ぐらい|程度)?(?:です)?[。！!]*$/.test(normalized);
+}
+
 const EXPLICIT_TIME_TOKEN_PATTERN = '(\\d{1,2})(?:\\s*時(?:\\s*(\\d{1,2})\\s*分)?|:(\\d{2}))';
 
 function normalizeExplicitClockTime(
@@ -295,6 +299,19 @@ function splitLifeConstraintSegments(text: string): string[] {
     .filter(Boolean);
 }
 
+const LIFE_CONSTRAINT_KIND_PATTERNS: Record<
+  Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'],
+  RegExp
+> = {
+  sleep: /睡眠|寝|就寝|起床/,
+  meal: /食事|朝食|昼食|夕食|ご飯|食べ/,
+  bath: /風呂|入浴|シャワー/,
+  commute: /移動|通学|通勤|帰宅|登校/,
+  club: /部活|部活動|サークル/,
+  cram_school: /塾|予備校/,
+  buffer: /休憩|準備|余裕|バッファ/,
+};
+
 function lifeConstraintEvidenceSegments(
   userText: string,
   kind: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'] | undefined,
@@ -346,18 +363,14 @@ function priorityHeadGrounded(userText: string, field: string | undefined): bool
   ].some((pattern) => pattern.test(normalized));
 }
 
-const LIFE_CONSTRAINT_KIND_PATTERNS: Record<
-  Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'],
-  RegExp
-> = {
-  sleep: /睡眠|寝|就寝|起床/,
-  meal: /食事|朝食|昼食|夕食|ご飯|食べ/,
-  bath: /風呂|入浴|シャワー/,
-  commute: /移動|通学|通勤|帰宅|登校/,
-  club: /部活|部活動|サークル/,
-  cram_school: /塾|予備校/,
-  buffer: /休憩|準備|余裕|バッファ/,
-};
+function mentionedFieldOrder(userText: string, knownFields: string[]): string[] {
+  const normalized = normalizedEvidence(userText);
+  return knownFields
+    .map((field) => ({ field, index: normalized.indexOf(normalizedEvidence(field)) }))
+    .filter((item) => item.index >= 0)
+    .sort((left, right) => left.index - right.index)
+    .map((item) => item.field);
+}
 
 function lifeConstraintKindGrounded(
   kind: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'],
@@ -367,6 +380,16 @@ function lifeConstraintKindGrounded(
   if (LIFE_CONSTRAINT_KIND_PATTERNS[kind].test(userText)) return true;
   return kind === 'sleep'
     && Boolean(summary.lastQuestions?.some((question) => question.slotKey === 'sleep_cycle'));
+}
+
+function hasAmbiguousMealBathQuestionContext(
+  kind: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'],
+  userText: string,
+  summary: InterpreterStateSummary,
+): boolean {
+  return (kind === 'meal' || kind === 'bath')
+    && !LIFE_CONSTRAINT_KIND_PATTERNS[kind].test(userText)
+    && Boolean(summary.lastQuestions?.some((question) => question.slotKey === 'meal_bath_constraints'));
 }
 
 function addDays(date: string, days: number): string {
@@ -420,6 +443,9 @@ function validateCommandGrounding(
       const unitRateQuestion = summary.lastQuestions?.some((question) =>
         question.slotKey === 'unit_rate'
         || question.slotKey === 'unit_duration_estimate');
+      if (unitRateQuestion && isBareNumericReply(normalized)) {
+        return 'ambiguous-unit-rate';
+      }
       const hasDurationEvidence = /時間|分|半日|午前|午後|一日|1日|日中|くらい|程度|かか|目安/.test(normalized)
         || (unitRateQuestion && explicitNumberValues(normalized).length > 0);
       const explicitMinutes = explicitMinuteValues(normalized);
@@ -433,20 +459,30 @@ function validateCommandGrounding(
         ? null : 'ungrounded-unit-rate';
     }
     case 'set_priority_policy': {
-      if (!/優先|順番|先に|から.*(?:進め|やり|解き|始め)|締切|期限|苦手|弱点|配点|均等|バランス/.test(normalized)) {
+      if (!/優先|順番|先に|から.*(?:進め|やり|解き|始め)|締切|期限|苦手|弱点|配点|均等|バランス|次に|最後に/.test(normalized)) {
         return 'ungrounded-priority-policy';
       }
       if (command.policy.kind !== 'field_first') return null;
       const normalizedKnownFields = new Set(summary.knownFields.map(normalizedEvidence));
+      const orderCoversKnownFields = summary.knownFields.length === 0
+        || (command.policy.order.length === summary.knownFields.length
+          && command.policy.order.every((field) => normalizedKnownFields.has(normalizedEvidence(field))));
       const orderIsStructurallyValid = command.policy.order.length > 0
         && new Set(command.policy.order).size === command.policy.order.length
-        && (summary.knownFields.length === 0
-          || command.policy.order.every((field) => normalizedKnownFields.has(normalizedEvidence(field))));
+        && orderCoversKnownFields;
       if (!orderIsStructurallyValid) return 'ungrounded-priority-policy';
+      const mentionedOrder = mentionedFieldOrder(normalized, summary.knownFields);
+      if (mentionedOrder.length >= 2) {
+        const projectedOrder = command.policy.order.filter((field) => mentionedOrder.includes(field));
+        if (projectedOrder.join('\u0000') !== mentionedOrder.join('\u0000')) {
+          return 'ungrounded-priority-policy';
+        }
+      }
       const explicitlyMentionedFields = command.policy.order.filter((field) =>
         normalizedUser.includes(normalizedEvidence(field)));
       return explicitlyMentionedFields.length === 0
         || priorityHeadGrounded(normalized, command.policy.order[0])
+        || mentionedOrder.length >= 2
         ? null : 'ungrounded-priority-policy';
     }
     case 'use_constraint_source':
@@ -514,6 +550,9 @@ function validateCommandGrounding(
         && lifeConstraintPayloadGrounded({ userText: normalized, ...command.range })
         ? null : 'ungrounded-life-constraint';
     case 'update_life_constraint':
+      if (hasAmbiguousMealBathQuestionContext(command.kind, normalized, summary)) {
+        return 'ambiguous-meal-bath-constraint';
+      }
       return lifeConstraintKindGrounded(command.kind, normalized, summary)
         && lifeConstraintPayloadGrounded({
           userText: normalized,
@@ -568,6 +607,39 @@ function validateCommandGrounding(
     default:
       return null;
   }
+}
+
+function normalizeDisplayEvidence(command: ParsedWeeklyPlanningCommand): ParsedWeeklyPlanningCommand {
+  if (command.type !== 'set_unit_rate' || !command.unitRate.rawText) return command;
+  const rawMinutes = explicitMinuteValues(command.unitRate.rawText);
+  if (rawMinutes.length === 0 || rawMinutes.includes(command.unitRate.minutesPerUnit)) return command;
+  return {
+    ...command,
+    unitRate: {
+      ...command.unitRate,
+      rawText: undefined,
+    },
+  };
+}
+
+function addGroundingClarification(
+  result: CandidateValidationResult,
+  command: ParsedWeeklyPlanningCommand,
+  reason: string,
+): void {
+  const ref = reason === 'ambiguous-meal-bath-constraint'
+    ? 'meal_bath_constraints'
+    : reason === 'ambiguous-unit-rate'
+      ? 'unit_duration_estimate'
+      : undefined;
+  if (!ref) return;
+  result.clarificationRequests.push({
+    type: 'request_clarification',
+    target: 'unresolved_slot',
+    ref,
+    confidence: 'high',
+    sourceText: command.sourceText,
+  });
 }
 
 function requiresTypoConfirmation(
@@ -820,8 +892,14 @@ export function validateInterpretedCandidates(
       command = enrichment.command;
       effectiveCandidate = command === candidate.command ? candidate : { ...candidate, command };
     }
+    const displayNormalizedCommand = normalizeDisplayEvidence(command);
+    if (displayNormalizedCommand !== command) {
+      command = displayNormalizedCommand;
+      effectiveCandidate = { ...effectiveCandidate, command };
+    }
     const groundingError = validateCommandGrounding(candidate, command, summary, context);
     if (groundingError) {
+      addGroundingClarification(result, command, groundingError);
       addRejected(result, effectiveCandidate, groundingError);
       return;
     }
