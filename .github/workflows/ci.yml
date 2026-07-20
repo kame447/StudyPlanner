@@ -9,9 +9,6 @@ on:
       - synchronize
       - reopened
       - ready_for_review
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -36,7 +33,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run tests
-        run: npm run test:run
+        id: tests
+        run: |
+          set -o pipefail
+          npm run test:run 2>&1 | tee /tmp/final-full-tests.log
+      - name: Upload full test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-full-tests-log
+          path: /tmp/final-full-tests.log
       - name: TypeScript and production build
         run: npm run build
       - name: Check pull request diff
