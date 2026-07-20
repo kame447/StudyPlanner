@@ -39,105 +39,92 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
+          def edit_block(path: str, start_marker: str, end_marker: str, replacements):
+              file = Path(path)
+              text = file.read_text()
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              block = text[start:end]
+              for old, new, expected in replacements:
+                  count = block.count(old)
+                  if count != expected:
+                      raise SystemExit(
+                          f'{path}: {start_marker!r}: expected {expected} occurrences of {old!r}, found {count}'
+                      )
+                  block = block.replace(old, new)
+              file.write_text(text[:start] + block + text[end:])
+
+          def replace_once(path: str, old: str, new: str):
               file = Path(path)
               text = file.read_text()
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected one replacement, found {count}')
+                  raise SystemExit(f'{path}: expected one occurrence of {old!r}, found {count}')
               file.write_text(text.replace(old, new, 1))
 
-          replace_once(
+          edit_block(
               'src/features/weeklyPlanning/dialogue/weeklyPlanningDialogueManager.test.ts',
-              """      requiredFields: ['fixed_events', 'sleep_cycle'],
-              questionPlan: [
-                expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
-                expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),
-              ],""",
-              """      requiredFields: ['fixed_events'],
-              questionPlan: [
-                expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
-              ],""",
+              "  it('asks missing info before considering ambiguity or draft creation'",
+              "  it('plans only the next dependent missing slots instead of listing every missing item'",
+              [
+                  ("      requiredFields: ['fixed_events', 'sleep_cycle'],\n", "      requiredFields: ['fixed_events'],\n", 1),
+                  ("        expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),\n", '', 1),
+              ],
           )
 
           pipeline = 'src/features/weeklyPlanning/pipeline/weeklyPlanningIntakePipeline.test.ts'
-          replace_once(
+          edit_block(
               pipeline,
-              """      questionPlan: [
-                expect.objectContaining({ targetSlot: 'planning_period', intent: 'ask_planning_period' }),
-                expect.objectContaining({ targetSlot: 'tasks_or_goals', intent: 'ask_tasks_or_goals' }),
-              ],""",
-              """      questionPlan: [
-                expect.objectContaining({ targetSlot: 'planning_period', intent: 'ask_planning_period' }),
-              ],""",
+              "  it.each([",
+              "  it('connects a begin turn to a later period answer without re-asking the begin intent'",
+              [("        expect.objectContaining({ targetSlot: 'tasks_or_goals', intent: 'ask_tasks_or_goals' }),\n", '', 1)],
           )
-          replace_once(
+          edit_block(
               pipeline,
-              """    expect(continued.decision.questionPlan).toEqual([
-                expect.objectContaining({ targetSlot: 'planning_start_date' }),
-                expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
-              ]);""",
-              """    expect(continued.decision.questionPlan).toEqual([
-                expect.objectContaining({ targetSlot: 'planning_start_date' }),
-              ]);""",
+              "  it('connects a begin turn to a later period answer without re-asking the begin intent'",
+              "  it('does not seed redundant begin slots when one turn already includes range and exam scope'",
+              [("      expect.objectContaining({ targetSlot: 'tasks_or_goals' }),\n", '', 1)],
           )
-          replace_once(
+          edit_block(
               pipeline,
-              """    expect(output.decision.questionPlan).toEqual([
-                expect.objectContaining({ targetSlot: 'planning_start_date' }),
-                expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
-              ]);""",
-              """    expect(output.decision.questionPlan).toEqual([
-                expect.objectContaining({ targetSlot: 'planning_start_date' }),
-              ]);""",
+              "  it('routes a pending next-week start utterance to start-date and learning-content questions'",
+              "  it('classifies an uninterpretable first turn as an open planning dialogue'",
+              [("      expect.objectContaining({ targetSlot: 'tasks_or_goals' }),\n", '', 1)],
           )
-          replace_once(
+          edit_block(
               pipeline,
-              """        requiredFields: [
-                  'fixed_events',
-                  'sleep_cycle',
-                ],
-                questionPlan: [
-                  expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
-                  expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),
-                ],""",
-              """        requiredFields: [
-                  'fixed_events',
-                ],
-                questionPlan: [
-                  expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
-                ],""",
+              "    it('documents the first-turn pipeline truthiness difference for setup-command legacy fallback'",
+              "    it('legacy fallback removes tasks_or_goals missing after branch B fills first-turn setup tasks'",
+              [
+                  ("          'sleep_cycle',\n", '', 1),
+                  ("          expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),\n", '', 1),
+              ],
           )
-          replace_once(
+          edit_block(
               pipeline,
-              """        requiredFields: [
-                  'fixed_events',
-                  'sleep_cycle',
-                ],
-                shouldSavePlan: false,""",
-              """        requiredFields: [
-                  'fixed_events',
-                ],
-                shouldSavePlan: false,""",
+              "    it('legacy fallback removes tasks_or_goals missing after branch B fills first-turn setup tasks'",
+              "    it('does not ask fixed events or sleep again after a compound turn fills both slots'",
+              [("          'sleep_cycle',\n", '', 1)],
           )
 
           replace_once(
               'workers/ai-proxy/src/weeklyPlanningTraceApi.ts',
-              """  return ok({ entries: safeWeeklyPlanningTraceDocumentsForAdmin(entries) });""",
+              '  return ok({ entries: safeWeeklyPlanningTraceDocumentsForAdmin(entries) });\n',
               """  const safeEntries = safeWeeklyPlanningTraceDocumentsForAdmin(entries);
-              if (isLegacySessionHandle) {
-                safeEntries.forEach((entry) => {
-                  const sequence = entry.sequence;
-                  if (typeof sequence !== 'number'
-                    || !Number.isSafeInteger(sequence)
-                    || sequence < 0) {
-                    return;
-                  }
-                  entry.id = `${sessionId}-${String(sequence).padStart(8, '0')}`;
-                  entry.sessionId = sessionId;
-                });
+          if (isLegacySessionHandle) {
+            safeEntries.forEach((entry) => {
+              const sequence = entry.sequence;
+              if (typeof sequence !== 'number'
+                || !Number.isSafeInteger(sequence)
+                || sequence < 0) {
+                return;
               }
-              return ok({ entries: safeEntries });""",
+              entry.id = `${sessionId}-${String(sequence).padStart(8, '0')}`;
+              entry.sessionId = sessionId;
+            });
+          }
+          return ok({ entries: safeEntries });
+          """,
           )
           PY
           git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
