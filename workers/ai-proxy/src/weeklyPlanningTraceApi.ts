@@ -360,7 +360,20 @@ async function handleAdminEntries(
       .filter((entry): entry is Record<string, unknown> => Boolean(entry))
       .map((entry) => ({ ...entry, sessionId }));
   }
-  return ok({ entries: safeWeeklyPlanningTraceDocumentsForAdmin(entries) });
+  const safeEntries = safeWeeklyPlanningTraceDocumentsForAdmin(entries);
+if (isLegacySessionHandle) {
+  safeEntries.forEach((entry) => {
+    const sequence = entry.sequence;
+    if (typeof sequence !== 'number'
+      || !Number.isSafeInteger(sequence)
+      || sequence < 0) {
+      return;
+    }
+    entry.id = `${sessionId}-${String(sequence).padStart(8, '0')}`;
+    entry.sessionId = sessionId;
+  });
+}
+return ok({ entries: safeEntries });
 }
 
 async function handleAdminArchive(

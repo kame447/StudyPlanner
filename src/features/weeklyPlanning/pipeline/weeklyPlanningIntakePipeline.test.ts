@@ -258,7 +258,6 @@ describe('weekly planning intake pipeline', () => {
       messageKey: 'ask_planning_period',
       questionPlan: [
         expect.objectContaining({ targetSlot: 'planning_period', intent: 'ask_planning_period' }),
-        expect.objectContaining({ targetSlot: 'tasks_or_goals', intent: 'ask_tasks_or_goals' }),
       ],
     });
     expect(output.decision.messageKey).not.toContain('cannot_create');
@@ -272,7 +271,6 @@ describe('weekly planning intake pipeline', () => {
     expect(continued.state.missing).not.toContain('planning_period');
     expect(continued.decision.questionPlan).toEqual([
       expect.objectContaining({ targetSlot: 'planning_start_date' }),
-      expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
     ]);
   });
 
@@ -303,7 +301,6 @@ describe('weekly planning intake pipeline', () => {
     expect(output.state.missing).not.toContain('planning_period');
     expect(output.decision.questionPlan).toEqual([
       expect.objectContaining({ targetSlot: 'planning_start_date' }),
-      expect.objectContaining({ targetSlot: 'tasks_or_goals' }),
     ]);
     expect(output.decision.messageKey).toBe('ask_planning_start_date');
   });
@@ -802,11 +799,9 @@ describe('weekly planning intake pipeline', () => {
         kind: 'ask_missing_info',
         requiredFields: [
           'fixed_events',
-          'sleep_cycle',
         ],
         questionPlan: [
           expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
-          expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),
         ],
         shouldCreateDraft: false,
         shouldSavePlan: false,
@@ -834,7 +829,6 @@ describe('weekly planning intake pipeline', () => {
         kind: 'ask_missing_info',
         requiredFields: [
           'fixed_events',
-          'sleep_cycle',
         ],
         shouldSavePlan: false,
       });

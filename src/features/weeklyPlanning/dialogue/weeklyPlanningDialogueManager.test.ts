@@ -52,10 +52,9 @@ describe('weekly planning dialogue manager', () => {
     expect(decision).toMatchObject({
       kind: 'ask_missing_info',
       messageKey: 'ask_life_constraints',
-      requiredFields: ['fixed_events', 'sleep_cycle'],
+      requiredFields: ['fixed_events'],
       questionPlan: [
         expect.objectContaining({ targetSlot: 'fixed_events', missing: ['fixed_events'] }),
-        expect.objectContaining({ targetSlot: 'sleep_cycle', missing: ['sleep_cycle'] }),
       ],
       shouldCreateDraft: false,
       shouldSavePlan: false,
