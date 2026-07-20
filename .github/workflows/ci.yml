@@ -45,7 +45,8 @@ jobs:
 
   apply-final-audit-fixes:
     if: >-
-      github.event_name == 'pull_request'
+      always()
+      && github.event_name == 'pull_request'
       && github.event.pull_request.head.ref == 'agent/fix-weekly-planning-trace-and-dialogue-final'
       && github.actor != 'github-actions[bot]'
     needs: verify
