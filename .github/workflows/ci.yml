@@ -38,7 +38,15 @@ jobs:
       - name: Run tests
         run: npm run test:run
       - name: TypeScript and production build
-        run: npm run build
+        run: npm run build 2>&1 | tee verify-build.log
+      - name: Upload verify diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-build-diagnostics
+          path: verify-build.log
+          if-no-files-found: warn
+          retention-days: 1
       - name: Check pull request diff
         if: github.event_name == 'pull_request'
         run: git diff --check origin/${{ github.base_ref }}...HEAD
@@ -73,19 +81,24 @@ jobs:
           workers/ai-proxy/src/weeklyPlanningTraceFirestore.integration.test.ts
           workers/ai-proxy/src/weeklyPlanningTraceAdmin.integration.test.ts
           2>&1 | tee focused-regressions.log
-      - name: Upload focused diagnostics
+      - name: Run full tests
+        run: npm run test:run 2>&1 | tee full-tests.log
+      - name: Run full build
+        run: npm run build 2>&1 | tee full-build.log
+      - name: Check full diff
+        run: git diff --check 2>&1 | tee full-diff.log
+      - name: Upload full diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: focused-regression-diagnostics
-          path: focused-regressions.log
+          name: full-verification-diagnostics
+          path: |
+            focused-regressions.log
+            full-tests.log
+            full-build.log
+            full-diff.log
           if-no-files-found: warn
           retention-days: 1
-      - name: Run full verification
-        run: |
-          npm run test:run
-          npm run build
-          git diff --check
       - name: Commit and push
         run: |
           git config user.name github-actions[bot]
