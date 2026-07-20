@@ -9,87 +9,36 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/fix-weekly-planning-trace-and-dialogue-final
-          fetch-depth: 1
-          show-progress: false
-      - name: Apply final audit fixes except M-8
-        id: apply
-        run: |
-          set +e
-          {
-            python - <<'PY'
-          from pathlib import Path
-
-          candidate = Path('src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts')
-          text = candidate.read_text()
-          old = r"new RegExp(`${hour}\\s*時(?!\\s*\\d+\\s*分)`).test(normalized)"
-          new = r"""new RegExp(
-                `${hour}\\s*時(?:\\s*0{1,2}\\s*分|(?!\\s*\\d+\\s*分))`,
-              ).test(normalized)"""
-          if text.count(old) != 1:
-              raise SystemExit(f'minute grounding expression count={text.count(old)}')
-          candidate.write_text(text.replace(old, new, 1))
-
-          script = Path('.github/apply_final_audit_fixes.py')
-          source = script.read_text()
-          start = source.index("candidate = Path('src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts')")
-          end = source.index("start = text.index('function mentionedFieldOrder(')", start)
-          source = source[:start] + "candidate = Path('src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts')\ntext = candidate.read_text()\n" + source[end:]
-          script.write_text(source)
-          PY
-            python .github/apply_final_audit_fixes.py
-            python - <<'PY'
-          from pathlib import Path
-
-          for name in [
-              'src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts',
-              'src/features/weeklyPlanning/__tests__/weeklyPlanningLifeConstraintGrounding.audit.test.ts',
-              'src/features/weeklyPlanning/__tests__/weeklyPlanningCandidateAuditHardening.test.ts',
-              'workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts',
-              'workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts',
-          ]:
-              path = Path(name)
-              path.write_text('\n'.join(line.rstrip() for line in path.read_text().splitlines()) + '\n')
-          PY
-            git diff --check
-          } > apply-output.txt 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          cat apply-output.txt
-          exit 0
-      - uses: actions/upload-artifact@v4
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
         with:
-          name: final-audit-apply-output
-          path: apply-output.txt
-      - name: Commit product and test fixes
-        if: steps.apply.outputs.status == '0'
-        run: |
-          rm .github/apply_final_audit_fixes.py
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts \
-            src/features/weeklyPlanning/__tests__/weeklyPlanningLifeConstraintGrounding.audit.test.ts \
-            src/features/weeklyPlanning/__tests__/weeklyPlanningCandidateAuditHardening.test.ts \
-            workers/ai-proxy/src/weeklyPlanningTracePrivacy.ts \
-            workers/ai-proxy/src/weeklyPlanningTracePrivacy.test.ts
-          git add -u -- \
-            .github/apply_final_audit_fixes.py \
-            focused-regressions.log \
-            full-tests.log \
-            full-build.log \
-            full-diff.log
-          git commit -m "feat: M-8以外の監査残件を修正"
-          git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm run test:run
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Check pull request diff
+        if: github.event_name == 'pull_request'
+        run: git diff --check origin/${{ github.base_ref }}...HEAD
