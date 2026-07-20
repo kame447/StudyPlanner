@@ -42,9 +42,41 @@ canonical値と矛盾する`rawText`をvalidation境界で表示根拠から除�
 
 immutable同値比較からserver生成の`expireAt`を除外し、同一payloadのretryがexpiry更新だけを理由にconflictしないようにした。その他の差分は従来どおり拒否する。
 
-### T8 / M-8: structural IDのprivacy境界 — 保留・未着手
+### T8 / M-8: client-controlled structural IDの信頼境界 — 方針確定・実装未着手
 
-ユーザーとの議論対象として保留する。関連するvalidator、redaction、admin出力は変更していない。
+#### 調査結果
+
+`src/features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts` はブラウザ側の `randomId()` で `logicalConversationId` と `sessionId` を生成する。通常は `crypto.randomUUID()` を使い、利用できない環境では `Date.now()` と `Math.random()` を組み合わせたfallback値を使う。
+
+生成されたsession、conversation、entryの各IDは、`weeklyPlanningTraceRemoteRepository.ts` と `weeklyPlanningTracePrivacyClient.ts` を通じてappend APIへそのまま送られる。サーバー側の `prepareWeeklyPlanningTraceWrite()` は文字列形式と各IDの対応関係を検証するが、受理したclient値をFirestore document IDとstructural fieldの正本として使用する。
+
+したがって、問題の本質は電話番号を扱う機能ではない。認証済みユーザーはブラウザコードを経由せずappend APIのrequest bodyを直接作れるため、`weekly-trace-09012345678-abcdef` は「クライアントが指定した任意のstructural IDをサーバーが正式IDとして採用する」設計上の穴を示す反例にすぎない。
+
+fallback形式から電話番号形だけを除外しても、任意のUUIDへ差し替えることはできる。UUID形式への限定だけでは、client-controlled IDをサーバーの永続化キーとして信頼する問題は解消しない。
+
+#### 採用方針
+
+Firestore path、admin取得、entryの親子関係に使うcanonical structural IDはサーバーが生成し、認証subjectへ紐付けた値だけを正本とする。append APIが、クライアントから初めて送られた任意の `sessionId` を新規sessionとして作成する現在の契約は廃止する。
+
+クライアント生成値が必要な場合は、非権威のcorrelation keyまたはidempotency keyとしてのみ扱う。raw値をFirestore pathやadmin responseへ使用せず、保存が必要ならサーバー側で固定長hashまたはHMACへ変換する。会話本文など自由入力に対するPII redactionは維持し、structural ID問題を理由に一般redactionを削除しない。
+
+#### 実装境界
+
+1. 認証済みsession開始APIを追加し、サーバーがcanonical `sessionId` と `logicalConversationId` を発行してownerへ紐付ける。既存のserver-issued conversation IDを継続利用する場合もowner一致を確認する。
+2. client runtimeは最初のtrace書込み前にserver-issued handleを取得し、取得中に生成されたentryをlocal queueへ保持する。
+3. append APIは既存かつowner一致するserver-issued sessionだけを受理し、未知のclient-supplied session IDからdocumentを新規作成しない。
+4. entry IDはサーバー側でcanonical session IDとsequenceから決定する。clientの `entry.id` は送信契約から外すか、照合用に残す場合も永続化キーとして採用しない。
+5. `crypto.randomUUID()` とfallback IDは、local correlationまたは開始APIのidempotency用途へ限定する。fallback形式をcanonical structural IDとして受理するvalidatorは新規write経路から削除する。
+6. 既存traceはread-only legacyとして取得可能にし、新形式はstorage layout versionを更新して区別する。legacy互換を理由に新規writeでclient-controlled IDを再許可しない。
+
+#### 必須回帰テスト
+
+- 任意文字列、電話番号入り形式、別UUIDをappendへ直接送っても新規canonical sessionを作れない。
+- session開始APIが発行したIDだけでappendでき、別userが同じIDを使用すると拒否される。
+- persisted path、structural field、admin responseがclient correlation keyのraw値に依存しない。
+- entry IDがサーバー側でsession IDとsequenceから決まり、client指定値で上書きできない。
+- session開始とappendのretryが同一owner・同一idempotency keyで収束する。
+- 旧形式traceのread互換を維持しつつ、旧fallback形式による新規writeは拒否される。
 
 ### T9 / M-9: legacy trace handleの取得 — 完了
 
@@ -56,4 +88,4 @@ M-8を除くT1〜T7とT9について、focused回帰、全テストsuite、TypeS
 
 ## 残件
 
-M-8は方針未確定のため未修正である。統括監査のMINOR指摘はこの修正単位の対象外であり、別タスクとして扱う。
+M-8は方針を上記のserver-authoritative IDへ確定したが、実装と回帰テストは未着手である。統括監査のMINOR指摘はこの修正単位の対象外であり、別タスクとして扱う。
