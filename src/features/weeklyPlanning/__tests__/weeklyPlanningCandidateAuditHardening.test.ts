@@ -156,7 +156,7 @@ describe('weekly planning final-audit candidate hardening', () => {
       }),
     ]);
   });
-it('accepts comparative priority wording according to its semantic relation', () => {
+  it('accepts comparative priority wording according to its semantic relation', () => {
   const userText = 'OSよりネットワークを先にして、最後にデータベースを進めたいです';
   const result = validateInterpretedCandidates([
     candidate({
@@ -185,5 +185,4 @@ it('rejects literal mention order when comparative wording requires the reverse 
   expect(result.accepted).toEqual([]);
   expect(result.rejected).toHaveLength(1);
 });
-
 });
