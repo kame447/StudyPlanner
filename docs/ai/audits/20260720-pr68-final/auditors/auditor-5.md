@@ -153,4 +153,3 @@ production 関数だけを直接使う一時 Vitest を作成し、次の3反例
 - repo本体コードは変更していない。
 - Git write操作は実行していない。
 - full suite / buildは主監査agentが最後に実行する指示のため重複実行せず、担当focused testsと最小再現に限定した。
-
