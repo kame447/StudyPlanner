@@ -20,18 +20,8 @@ const PRIORITY_POLICY_KINDS = new Set([
 const LIFE_CONSTRAINT_KINDS = new Set([
   'sleep', 'meal', 'bath', 'commute', 'club', 'cram_school', 'buffer',
 ]);
-const LIFE_CONSTRAINT_KIND_PATTERNS: Record<string, RegExp> = {
-  sleep: /睡眠|寝|就寝|起床/,
-  meal: /食事|朝食|昼食|夕食|ご飯|食べ/,
-  bath: /風呂|入浴|シャワー/,
-  commute: /移動|通学|通勤|帰宅|登校/,
-  club: /部活|部活動|サークル/,
-  cram_school: /塾|予備校/,
-  buffer: /休憩|準備|余裕|バッファ/,
-};
 const COMPLETION_TARGET_KINDS = new Set(['all', 'latest_n_years', 'up_to_reachable', 'year_range']);
 const TOP_LEVEL_COMMON_KEYS = ['type', 'confidence', 'sourceText', 'sourceSegment'] as const;
-const TIME_TOKEN_PATTERN = '(\\d{1,2})(?:\\s*時(?:\\s*(\\d{1,2})\\s*分)?|:(\\d{2}))';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -79,87 +69,6 @@ function hasValidCommonShape(command: Record<string, unknown>): boolean {
     && typeof command.sourceText === 'string'
     && command.sourceText.length <= 4000
     && isOptionalString(command.sourceSegment);
-}
-
-function normalizeClockTime(
-  hourText: string | undefined,
-  japaneseMinuteText: string | undefined,
-  colonMinuteText: string | undefined,
-): string | undefined {
-  if (hourText === undefined) return undefined;
-  const hour = Number(hourText);
-  const minute = Number(colonMinuteText ?? japaneseMinuteText ?? '0');
-  if (!Number.isInteger(hour) || hour < 0 || hour > 24) return undefined;
-  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return undefined;
-  if (hour === 24 && minute !== 0) return undefined;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
-function explicitTimeRanges(text: string): Array<{ start: string; end: string }> {
-  const pattern = new RegExp(
-    `${TIME_TOKEN_PATTERN}\\s*(?:から|〜|～|~|－|-|–|—)\\s*${TIME_TOKEN_PATTERN}\\s*(?:まで)?`,
-    'g',
-  );
-  const ranges: Array<{ start: string; end: string }> = [];
-  for (const match of text.matchAll(pattern)) {
-    const start = normalizeClockTime(match[1], match[2], match[3]);
-    const end = normalizeClockTime(match[4], match[5], match[6]);
-    if (start && end) ranges.push({ start, end });
-  }
-  return ranges;
-}
-
-function exactTimeMentioned(text: string, value: string | undefined): boolean {
-  if (value === undefined) return true;
-  if (text.includes(value)) return true;
-  const match = value.match(/^(\\d{1,2}):(\\d{2})$/);
-  if (!match) return false;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (minute === 0) {
-    return new RegExp(`${hour}\\s*時(?!\\s*\\d+\\s*分)`).test(text);
-  }
-  return new RegExp(`${hour}\\s*時\\s*${minute}\\s*分`).test(text);
-}
-
-function splitLifeConstraintSegments(text: string): string[] {
-  return text
-    .split(/(?:[、，,。．.!！?？;；\n]+|そして|その後|また)/)
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-}
-
-function lifeConstraintSourceConsistent(command: Record<string, unknown>): boolean {
-  if (typeof command.kind !== 'string' || !isRecord(command.constraint)) return false;
-  const kindPattern = LIFE_CONSTRAINT_KIND_PATTERNS[command.kind];
-  if (!kindPattern) return false;
-
-  const sourceText = typeof command.sourceText === 'string' ? command.sourceText : '';
-  const sourceSegment = typeof command.sourceSegment === 'string' ? command.sourceSegment.trim() : '';
-  const evidenceText = sourceSegment && kindPattern.test(sourceSegment) ? sourceSegment : sourceText;
-  const kindSegments = splitLifeConstraintSegments(evidenceText).filter((segment) => kindPattern.test(segment));
-
-  // A bare-time answer can be grounded by the preceding question. The state-aware validator
-  // remains responsible for deciding whether that question actually identifies this kind.
-  if (kindSegments.length === 0) return true;
-
-  const start = typeof command.constraint.start === 'string' ? command.constraint.start : undefined;
-  const end = typeof command.constraint.end === 'string' ? command.constraint.end : undefined;
-  const studyAvailableStart = typeof command.constraint.studyAvailableStart === 'string'
-    ? command.constraint.studyAvailableStart
-    : undefined;
-
-  return kindSegments.some((segment) => {
-    if (start && end) {
-      const ranges = explicitTimeRanges(segment);
-      if (ranges.length > 0) {
-        return ranges.some((range) => range.start === start && range.end === end);
-      }
-    }
-    return exactTimeMentioned(segment, start)
-      && exactTimeMentioned(segment, end)
-      && exactTimeMentioned(segment, studyAvailableStart);
-  });
 }
 
 function validatePriorityPolicy(value: unknown): boolean {
@@ -266,8 +175,7 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
         && isOptionalString(constraint.end)
         && isOptionalString(constraint.studyAvailableStart)
         && isOptionalFiniteNumber(constraint.durationMinutes)
-        && HARDNESS_VALUES.has(constraint.hardness as string)
-        && lifeConstraintSourceConsistent(value);
+        && HARDNESS_VALUES.has(constraint.hardness as string);
     }
     case 'use_constraint_source':
       return hasCommandKeys(value, ['source'])
