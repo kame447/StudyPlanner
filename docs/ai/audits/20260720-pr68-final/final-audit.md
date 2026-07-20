@@ -5,7 +5,7 @@
 - 完了した独立監査人数: 6
 - 部分監査人数: 1（監査人6）
 - 統括監査: 実施
-- 全体テスト/build/diff check/最終status: メイン最終検証待ち
+- 全体テスト/build/diff check/最終status: 完了
 - 採用判定: **採用不可**
 
 ## 結論
@@ -229,18 +229,17 @@
    - testが実時計を参照するコード構造は残るため、夜間失敗報告への反証にはならない。統括時には失敗そのものを再現しなかったため運用残件へ分離した。
 3. 7報告の存在/non-emptyを`wc -c`で確認。サイズは順に15,223 / 13,671 / 14,608 / 11,928 / 16,182 / 2,328 / 10,477 bytes。
 4. `git diff --stat origin/main...HEAD`と`git diff --name-status origin/main...HEAD`を確認。35 files、3,076 insertions、115 deletions。主要findingについて現HEADと比較元diffを照合し、PR由来とPR外を分離した。
-5. 全suite、build、lint、`git diff --check`は統括では実行していない。メイン最終検証待ち。`package.json`にlint scriptがないことは各監査報告と一致する。
+5. メイン最終検証でfocused tests 8ファイル・67件、全suite 147ファイル（1ファイルskip）・1275件（13件skip、5件todo）、production build、`git diff --check origin/main...HEAD`、clean statusを確認した。`package.json`にlint scriptは存在しない。
 
 一時Vitestは削除済みで、リポジトリ内に監査用fixtureを残していない。
 
-## 最終git status
+## 最終検証
 
-統括報告保存直前の`git status --short --branch`:
-
-```text
-## agent/fix-weekly-planning-trace-and-dialogue-final...origin/agent/fix-weekly-planning-trace-and-dialogue-final
-```
-
-未追跡・変更ファイルなし。一時テスト不存在。本体コード、Git index、commit、branch、remoteは変更していない。報告ファイルはリポジトリ外の`/tmp/studyplanner-pr68-final-audit/final-audit.md`に置く。
-
-全体テスト/build/diff check/最終statusのゲート結果は、メインエージェントの最終検証待ちである。
+- focused tests: 8ファイル、67件成功。
+- 全テスト: 147ファイル成功、1ファイルskip。
+- テスト件数: 1275件成功、13件skip、5件todo。
+- production build: 成功。
+- `git diff --check origin/main...HEAD`: 成功。
+- 最終`git status -sb`: branch表示のみ、clean。
+- リポジトリ内の監査用一時ファイル: なし。
+- 監査資料は`docs/ai/audits/20260720-pr68-final/`へ保存した。
