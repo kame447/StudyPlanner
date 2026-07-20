@@ -113,5 +113,4 @@ preview候補生成、previewからdraft blockへの昇格、pending approval、
 
 ## 監査完了時git status
 
-最終確認結果を下記に追記する。リポジトリ内の一時テスト・一時報告は作成していない。
-
+`git status -sb` は追跡ブランチ行のみで、未追跡・変更ファイルなし。本体コード、Git index、commit、branch、remoteは変更していない。
