@@ -25,8 +25,11 @@ jobs:
           fetch-depth: 1
           show-progress: false
       - name: Apply final audit fixes except M-8
+        id: apply
         run: |
-          python - <<'PY'
+          set +e
+          {
+            python - <<'PY'
           from pathlib import Path
 
           candidate = Path('src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts')
@@ -46,9 +49,19 @@ jobs:
           source = source[:start] + "candidate = Path('src/features/weeklyPlanning/intake/weeklyPlanningCandidateValidator.ts')\ntext = candidate.read_text()\n" + source[end:]
           script.write_text(source)
           PY
-          python .github/apply_final_audit_fixes.py
-          git diff --check
+            python .github/apply_final_audit_fixes.py
+            git diff --check
+          } > apply-output.txt 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat apply-output.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-audit-apply-output
+          path: apply-output.txt
       - name: Commit product and test fixes
+        if: steps.apply.outputs.status == '0'
         run: |
           rm .github/apply_final_audit_fixes.py
           git config user.name github-actions[bot]
