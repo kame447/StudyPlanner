@@ -231,6 +231,36 @@ function explicitMinuteValues(text: string): number[] {
   return Array.from(new Set(values));
 }
 
+const EXPLICIT_TIME_TOKEN_PATTERN = '(\\d{1,2})(?:\\s*時(?:\\s*(\\d{1,2})\\s*分)?|:(\\d{2}))';
+
+function normalizeExplicitClockTime(
+  hourText: string | undefined,
+  japaneseMinuteText: string | undefined,
+  colonMinuteText: string | undefined,
+): string | undefined {
+  if (hourText === undefined) return undefined;
+  const hour = Number(hourText);
+  const minute = Number(colonMinuteText ?? japaneseMinuteText ?? '0');
+  if (!Number.isInteger(hour) || hour < 0 || hour > 24) return undefined;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return undefined;
+  if (hour === 24 && minute !== 0) return undefined;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function explicitTimeRanges(text: string): Array<{ start: string; end: string }> {
+  const pattern = new RegExp(
+    `${EXPLICIT_TIME_TOKEN_PATTERN}\\s*(?:から|〜|～|~|－|-|–|—)\\s*${EXPLICIT_TIME_TOKEN_PATTERN}\\s*(?:まで)?`,
+    'g',
+  );
+  const ranges: Array<{ start: string; end: string }> = [];
+  for (const match of normalizeIntakeText(text).matchAll(pattern)) {
+    const start = normalizeExplicitClockTime(match[1], match[2], match[3]);
+    const end = normalizeExplicitClockTime(match[4], match[5], match[6]);
+    if (start && end) ranges.push({ start, end });
+  }
+  return ranges;
+}
+
 function normalizedTextContainsValue(text: string, value: string | undefined): boolean {
   if (!value) return true;
   const normalized = normalizeIntakeText(text);
@@ -239,7 +269,11 @@ function normalizedTextContainsValue(text: string, value: string | undefined): b
   const hour = Number(hourText);
   const minute = Number(minuteText);
   if (!Number.isInteger(hour) || !Number.isInteger(minute)) return false;
-  return new RegExp(`${hour}\\s*時(?:\\s*${minute}\\s*分)?`).test(normalized)
+  if (minute === 0) {
+    return new RegExp(`${hour}\\s*時(?!\\s*\\d+\\s*分)`).test(normalized)
+      || new RegExp(`${String(hour).padStart(2, '0')}:00`).test(normalized);
+  }
+  return new RegExp(`${hour}\\s*時\\s*${minute}\\s*分`).test(normalized)
     || new RegExp(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`).test(normalized);
 }
 
@@ -254,20 +288,44 @@ function normalizedTextContainsDate(text: string, value: string | undefined): bo
     || normalized.includes(`${Number(month)}月${Number(day)}日`);
 }
 
+function splitLifeConstraintSegments(text: string): string[] {
+  return normalizeIntakeText(text)
+    .split(/(?:[、，,。．.!！?？;；\n]+|そして|その後|また)/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function lifeConstraintEvidenceSegments(
+  userText: string,
+  kind: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'] | undefined,
+): string[] {
+  if (!kind) return [userText];
+  const matched = splitLifeConstraintSegments(userText)
+    .filter((segment) => LIFE_CONSTRAINT_KIND_PATTERNS[kind].test(segment));
+  return matched.length > 0 ? matched : [userText];
+}
+
 function lifeConstraintPayloadGrounded(params: {
   userText: string;
+  kind?: Extract<ParsedWeeklyPlanningCommand, { type: 'update_life_constraint' }>['kind'];
   date?: string;
   start?: string;
   end?: string;
   durationMinutes?: number;
   studyAvailableStart?: string;
 }): boolean {
-  return normalizedTextContainsDate(params.userText, params.date)
-    && normalizedTextContainsValue(params.userText, params.start)
-    && normalizedTextContainsValue(params.userText, params.end)
-    && normalizedTextContainsValue(params.userText, params.studyAvailableStart)
-    && (params.durationMinutes === undefined
-      || explicitMinuteValues(params.userText).includes(params.durationMinutes));
+  return lifeConstraintEvidenceSegments(params.userText, params.kind).some((segment) => {
+    const ranges = params.start && params.end ? explicitTimeRanges(segment) : [];
+    const orderedRangeGrounded = ranges.length === 0
+      || ranges.some((range) => range.start === params.start && range.end === params.end);
+    return orderedRangeGrounded
+      && normalizedTextContainsDate(segment, params.date)
+      && normalizedTextContainsValue(segment, params.start)
+      && normalizedTextContainsValue(segment, params.end)
+      && normalizedTextContainsValue(segment, params.studyAvailableStart)
+      && (params.durationMinutes === undefined
+        || explicitMinuteValues(segment).includes(params.durationMinutes));
+  });
 }
 
 function escapeRegExp(value: string): string {
@@ -457,7 +515,11 @@ function validateCommandGrounding(
         ? null : 'ungrounded-life-constraint';
     case 'update_life_constraint':
       return lifeConstraintKindGrounded(command.kind, normalized, summary)
-        && lifeConstraintPayloadGrounded({ userText: normalized, ...command.constraint })
+        && lifeConstraintPayloadGrounded({
+          userText: normalized,
+          kind: command.kind,
+          ...command.constraint,
+        })
         ? null : 'ungrounded-life-constraint';
     case 'mark_completed_units':
       return /年度|年分|終|済|未着手|進捗|どこまで/.test(normalized)
