@@ -5,24 +5,50 @@ import { prepareWeeklyPlanningTraceWrite } from './weeklyPlanningTracePrivacy';
 const SESSION_ID = 'weekly-trace-123e4567-e89b-12d3-a456-426614174000';
 const OTHER_SESSION_ID = 'weekly-trace-223e4567-e89b-12d3-a456-426614174000';
 const CONVERSATION_ID = 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000';
+const OCCURRED_AT = '2026-07-19T00:00:00.000Z';
+
+function validSession(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: SESSION_ID,
+    logicalConversationId: CONVERSATION_ID,
+    status: 'active',
+    startedAt: OCCURRED_AT,
+    lastActivityAt: OCCURRED_AT,
+    turnCount: 1,
+    entryCount: 1,
+    hasPreview: false,
+    hasApprovalFailure: false,
+    hasFallback: false,
+    hasError: false,
+    appVersion: 'test',
+    schemaVersion: 1,
+    ...overrides,
+  };
+}
+
+function validEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: `${SESSION_ID}-00000000`,
+    sessionId: SESSION_ID,
+    logicalConversationId: CONVERSATION_ID,
+    sequence: 0,
+    occurredAt: OCCURRED_AT,
+    observedAt: OCCURRED_AT,
+    schemaVersion: 1,
+    kind: 'turn',
+    role: 'user',
+    content: 'test',
+    turnIndex: 0,
+    ...overrides,
+  };
+}
 
 describe('weekly planning trace structural identifiers', () => {
   it('keeps random correlation IDs unique while removing account identity', () => {
     const prepared = prepareWeeklyPlanningTraceWrite({
-      session: {
-        id: SESSION_ID,
-        logicalConversationId: CONVERSATION_ID,
-        entryCount: 1,
-        userId: 'firebase-user-123',
-      },
-      entries: [{
-        id: `${SESSION_ID}-00000000`,
-        sessionId: SESSION_ID,
-        logicalConversationId: CONVERSATION_ID,
-        sequence: 0,
-        userId: 'firebase-user-123',
-      }],
-    }, { token: 'wpt_subject', epoch: '100' }, '2026-07-19T00:00:00.000Z');
+      session: validSession({ userId: 'firebase-user-123' }),
+      entries: [validEntry({ userId: 'firebase-user-123' })],
+    }, { token: 'wpt_subject', epoch: '100' }, OCCURRED_AT);
 
     expect(prepared.session.id).toBe(SESSION_ID);
     expect(prepared.session.logicalConversationId).toBe(CONVERSATION_ID);
@@ -32,18 +58,16 @@ describe('weekly planning trace structural identifiers', () => {
 
   it('rejects arbitrary or inconsistent structural identifiers at the write boundary', () => {
     expect(() => prepareWeeklyPlanningTraceWrite({
-      session: { id: 'john-smith-09012345678', logicalConversationId: CONVERSATION_ID, entryCount: 0 },
+      session: validSession({
+        id: 'john-smith-09012345678',
+        entryCount: 0,
+      }),
       entries: [],
     }, { token: 'wpt_subject', epoch: '100' })).toThrow(/session id is invalid/);
 
     expect(() => prepareWeeklyPlanningTraceWrite({
-      session: { id: SESSION_ID, logicalConversationId: CONVERSATION_ID, entryCount: 1 },
-      entries: [{
-        id: `${SESSION_ID}-00000001`,
-        sessionId: SESSION_ID,
-        logicalConversationId: CONVERSATION_ID,
-        sequence: 0,
-      }],
+      session: validSession(),
+      entries: [validEntry({ id: `${SESSION_ID}-00000001` })],
     }, { token: 'wpt_subject', epoch: '100' })).toThrow(/entry id is invalid/);
   });
 
