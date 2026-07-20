@@ -128,4 +128,3 @@
 `## agent/fix-weekly-planning-trace-and-dialogue-final...origin/agent/fix-weekly-planning-trace-and-dialogue-final`
 
 作業ツリーは clean。監査専用一時ファイルは残っていない。Git/GitHub write は実施していない。
-
