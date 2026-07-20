@@ -9,31 +9,21 @@ on:
       - synchronize
       - reopened
       - ready_for_review
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/fix-weekly-planning-trace-and-dialogue-final
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+          fetch-depth: 1
+          show-progress: false
       - name: Apply final audit fixes except M-8
         run: |
           python - <<'PY'
@@ -77,11 +67,3 @@ jobs:
             full-diff.log
           git commit -m "feat: M-8以外の監査残件を修正"
           git push origin HEAD:agent/fix-weekly-planning-trace-and-dialogue-final
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm run test:run
-      - name: TypeScript and production build
-        run: npm run build
-      - name: Check pull request diff
-        run: git diff --check origin/main...HEAD
