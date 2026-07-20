@@ -4,50 +4,55 @@
 
 - ブランチ: `agent/fix-weekly-planning-trace-and-dialogue-final`
 - 監査対象コードHEAD: `23d7676370b3efebc8d1465dfd01abc32c6462ca`
+- 修正後HEAD: `c7d86bf1ccdc47b7b6ad6dde2b9e60c3eece9f99`
 - 詳細: `docs/ai/audits/20260720-pr68-final/final-audit.md`
 
 ## 実装原則
 
-各項目を独立した修正単位として扱い、対象外の指摘を同時に変更しない。各単位では、監査反例を失敗テストとして追加し、実装後にfocused testを成功させる。全項目完了後に全suite、production build、`git diff --check origin/main...HEAD`を実行する。
+各項目を独立した修正単位として扱い、対象外の指摘を同時に変更しない。各単位では監査反例を回帰テストとして追加し、実装後にfocused testを成功させる。対象項目の完了後に全suite、production build、`git diff --check`を実行する。
 
 ## 修正単位
 
-### T1 / M-1: life constraint時刻grounding
+### T1 / M-1: life constraint時刻grounding — 完了
 
 時刻の分精度、start/endの役割、kindと時刻の同一節対応を検証する。hour-only入力は`:00`だけを許可し、明示minuteの切捨て、endpoint swap、複数節cross-associationを拒否する。
 
-### T2 / M-2: meal/bath短答の質問文脈
+### T2 / M-2: meal/bath短答の質問文脈 — 完了
 
-`meal_bath_constraints`直後の短答を黙って破棄しない。質問文脈だけでmeal/bathを一意に決められない場合は、値を確定せず限定的なrepairへ回す。表示した複数質問と保存contextの不整合も解消する。
+曖昧な短答を黙って破棄せず、値を一意に確定できない場合は限定的なrepairへ回す。表示質問を一ターン一問へ統一し、保存contextとの不整合を解消した。
 
-### T3 / M-3: unit-rateの単位grounding
+### T3 / M-3: unit-rateの単位grounding — 完了
 
-単位なし数値を複数のcanonical値へgroundingできないようにする。質問契約から単位が一意ならその単位へ変換し、一意でなければ確認を継続する。
+単位なし数値を複数のcanonical値へgroundingできないようにし、単位を一意に確定できない短答は確認を継続する。
 
-### T4 / M-4: priorityの完全性と順序grounding
+### T4 / M-4: priorityの完全性と順序grounding — 完了
 
-既知fieldの被覆と、発話で明示された全相対順を検証する。partial orderまたはtail permutationをconfirmed priorityとして受理しない。
+既知fieldの完全被覆と、発話で明示された全相対順を検証し、partial orderとtail permutationをconfirmed priorityとして受理しない。
 
-### T5 / M-5: 一般的な「科目」のexam誤分類
+### T5 / M-5: 一般的な「科目」のexam誤分類 — 完了
 
-`1科目`だけを院試scope signalとして扱わない。院試・過去問などの明示文脈、既存exam scope、または対応slotへの短答がある場合に限定する。
+`1科目`だけを院試scope signalとして扱わず、明示的なexam文脈または既存exam scopeがある場合に限定した。
 
-### T6 / M-6: accepted-factのcanonical表示
+### T6 / M-6: accepted-factのcanonical表示 — 完了
 
-`rawText`を表示上の正本にしない。受理表示は確定したcanonical値から生成するか、validation境界でraw/canonicalの一致を保証する。
+canonical値と矛盾する`rawText`をvalidation境界で表示根拠から除外し、受理表示と保存stateの不一致を防止した。
 
-### T7 / M-7: trace retryのidempotency
+### T7 / M-7: trace retryのidempotency — 完了
 
-retryごとに変化する`expireAt`がimmutable同値比較を壊さないようにする。同一payload再送が既存entryを成功扱いし、部分保存から収束できることを検証する。
+immutable同値比較からserver生成の`expireAt`を除外し、同一payloadのretryがexpiry更新だけを理由にconflictしないようにした。その他の差分は従来どおり拒否する。
 
-### T8 / M-8: fallback structural IDと電話番号
+### T8 / M-8: structural IDのprivacy境界 — 保留・未着手
 
-要議論のため未着手とする。方針確定前にvalidator、redaction、admin出力を変更しない。
+ユーザーとの議論対象として保留する。関連するvalidator、redaction、admin出力は変更していない。
 
-### T9 / M-9: legacy trace handleの取得
+### T9 / M-9: legacy trace handleの取得 — 完了
 
-旧実装が保存した`weekly-trace-[UUID]`形式を、legacy読取分岐へ安全に到達させる。新形式validatorを緩めるのではなく、legacy handle用の限定的な検証経路を追加する。
+新形式validatorを緩めず、旧実装の限定的なlegacy handleだけを認識し、legacy読取分岐へ到達させた。
 
-## 実装順
+## 検証結果
 
-T1 → T2 → T3 → T4 → T5 → T6 → T7 → T9。T8はユーザーとの議論後に別途着手する。
+M-8を除くT1〜T7とT9について、focused回帰、全テストsuite、TypeScriptおよびproduction build、`git diff --check`が成功した。一時適用script、診断ログ出力、追加CI jobは最終commitから除去し、通常CIへ戻した。
+
+## 残件
+
+M-8は方針未確定のため未修正である。統括監査のMINOR指摘はこの修正単位の対象外であり、別タスクとして扱う。
