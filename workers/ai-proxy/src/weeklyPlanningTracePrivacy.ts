@@ -231,6 +231,7 @@ const UUID_SUFFIX = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 const FALLBACK_RANDOM_SUFFIX = '[0-9]{10,16}-[a-z0-9]{6,16}';
 const OPAQUE_SUFFIX = `(?:${UUID_SUFFIX}|${FALLBACK_RANDOM_SUFFIX})`;
 const TRACE_SESSION_ID_PATTERN = new RegExp(`^weekly-trace-${OPAQUE_SUFFIX}$`, 'i');
+const LEGACY_REDACTED_TRACE_SESSION_HANDLE_PATTERN = /^weekly-trace-\[UUID\]$/;
 const TRACE_CONVERSATION_ID_PATTERN = new RegExp(
   `^(?:weekly-conversation|weekly-planning-conversation)-${OPAQUE_SUFFIX}$`,
   'i',
@@ -239,6 +240,11 @@ const MAX_TRACE_SESSION_ENTRIES = 100_000;
 
 export function isWeeklyPlanningTraceSessionId(value: unknown): value is string {
   return typeof value === 'string' && TRACE_SESSION_ID_PATTERN.test(value);
+}
+
+export function isWeeklyPlanningLegacyTraceSessionHandle(value: unknown): value is string {
+  return typeof value === 'string'
+    && LEGACY_REDACTED_TRACE_SESSION_HANDLE_PATTERN.test(value);
 }
 
 export function isWeeklyPlanningTraceConversationId(value: unknown): value is string {

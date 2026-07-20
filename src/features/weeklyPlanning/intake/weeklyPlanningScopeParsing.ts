@@ -1080,19 +1080,25 @@ function mergeExamPrepScope(
   };
 }
 
-function hasExamScopeSignal(text: string): boolean {
+function hasExamScopeSignal(
+  text: string,
+  previousScope: ExamPrepScope | undefined,
+): boolean {
   const normalizedText = normalizeIntakeText(text);
-  const fieldDeclaration = /(?:対象)?分野(?:は|が|を)|分野ごと|(?:[0-9]+|[一二三四五六七八九十]+)\s*分野(?!\s*(?:あたり|の\s*(?:1|一)?\s*年分))|(?:[0-9]+|[一二三四五六七八九十]+)\s*科目|第\s*\d+\s*部/.test(normalizedText);
-  return /院試|20\d{2}\s*[〜~-]\s*20\d{2}/.test(normalizedText)
+  const explicitExamContext = /院試|過去問|20\d{2}\s*[〜~-]\s*20\d{2}/.test(normalizedText);
+  const fieldDeclaration = /(?:対象)?分野(?:は|が|を)|分野ごと|(?:[0-9]+|[一二三四五六七八九十]+)\s*分野(?!\s*(?:あたり|の\s*(?:1|一)?\s*年分))|第\s*\d+\s*部/.test(normalizedText);
+  const subjectCount = /(?:[0-9]+|[一二三四五六七八九十]+)\s*科目/.test(normalizedText);
+  return explicitExamContext
     || fieldDeclaration
-    || Boolean(parseTotalYears(normalizedText));
+    || Boolean(parseTotalYears(normalizedText))
+    || Boolean(previousScope && subjectCount);
 }
 
 export function parseSetExamScopeCommand(
   text: string,
   previousScope: ExamPrepScope | undefined,
 ): SetExamScopeCommand | undefined {
-  if (!hasExamScopeSignal(text)) {
+  if (!hasExamScopeSignal(text, previousScope)) {
     return undefined;
   }
 

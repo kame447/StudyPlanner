@@ -314,6 +314,8 @@ export class WeeklyPlanningTraceFirestoreClient {
     const normalizedValue = { ...value };
     delete normalizedExisting.id;
     delete normalizedValue.id;
+    delete normalizedExisting.expireAt;
+    delete normalizedValue.expireAt;
     if (stableJson(normalizedExisting) !== stableJson(normalizedValue)) {
       throw new Error(`immutable trace document conflict: ${collection}/${id}`);
     }

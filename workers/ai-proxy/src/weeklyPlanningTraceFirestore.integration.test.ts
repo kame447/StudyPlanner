@@ -39,8 +39,18 @@ function env() {
 }
 
 describe('weekly planning trace Firestore protocol integration', () => {
-  it('creates immutable documents atomically and accepts an identical retry', async () => {
-    const value = { id: ENTRY_ID, sessionId: SESSION_ID, sequence: 0, content: 'first' };
+  it('creates immutable documents atomically and accepts a retry with a refreshed expiry', async () => {
+    const storedValue = {
+      id: ENTRY_ID,
+      sessionId: SESSION_ID,
+      sequence: 0,
+      content: 'first',
+      expireAt: '2027-01-14T00:00:00.000Z',
+    };
+    const retryValue = {
+      ...storedValue,
+      expireAt: '2027-01-14T00:00:01.000Z',
+    };
     let createAttempts = 0;
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -58,7 +68,7 @@ describe('weekly planning trace Firestore protocol integration', () => {
           : new Response('{}', { status: 409 });
       }
       if (url.endsWith(`/weekly_planning_trace_entries/${encodeURIComponent(ENTRY_ID)}`)) {
-        return new Response(JSON.stringify(firestoreDocument(ENTRY_ID, value)), {
+        return new Response(JSON.stringify(firestoreDocument(ENTRY_ID, storedValue)), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -74,12 +84,12 @@ describe('weekly planning trace Firestore protocol integration', () => {
     await expect(client.setImmutableDocument(
       'weekly_planning_trace_entries',
       ENTRY_ID,
-      value,
+      storedValue,
     )).resolves.toBeUndefined();
     await expect(client.setImmutableDocument(
       'weekly_planning_trace_entries',
       ENTRY_ID,
-      value,
+      retryValue,
     )).resolves.toBeUndefined();
     expect(createAttempts).toBe(2);
   });

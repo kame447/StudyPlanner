@@ -1,0 +1,12 @@
+
+> studyplanner-app@0.1.0 build
+> tsc --noEmit && vite build --config vite.config.mjs
+
+src/features/weeklyPlanning/intake/weeklyPlanningUnitRateParsing.ts(53,7): error TS2322: Type 'UnitRateEstimate' is not assignable to type '{ unit: StudyScopeUnit; minutesPerUnit: number; source: "default" | "user" | "assumption"; uncertainty?: "high" | "medium" | "low" | undefined; rawText?: string | undefined; }'.
+  Types of property 'minutesPerUnit' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/features/weeklyPlanning/intake/weeklyPlanningUnitRateParsing.ts(101,9): error TS2322: Type 'UnitRateEstimate' is not assignable to type '{ unit: StudyScopeUnit; minutesPerUnit: number; source: "default" | "user" | "assumption"; uncertainty?: "high" | "medium" | "low" | undefined; rawText?: string | undefined; }'.
+  Types of property 'minutesPerUnit' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.

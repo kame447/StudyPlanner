@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 const fakeFirestore = vi.hoisted(() => {
   const sessionId = 'weekly-trace-123e4567-e89b-12d3-a456-426614174000';
   const conversationId = 'weekly-conversation-223e4567-e89b-12d3-a456-426614174000';
+  const legacySessionId = 'weekly-trace-[UUID]';
   const sessionDocument = {
     id: sessionId,
     logicalConversationId: conversationId,
@@ -10,7 +11,21 @@ const fakeFirestore = vi.hoisted(() => {
     storageLayoutVersion: 1,
     traceSubjectToken: 'wpt_hidden-session-token',
   };
+  const legacySessionDocument = {
+    id: legacySessionId,
+    logicalConversationId: '[UUID]',
+    entryCount: 1,
+    traceSubjectToken: 'wpt_hidden-legacy-session-token',
+  };
   const entryDocuments = new Map<string, Record<string, unknown>>([
+    [`${legacySessionId}-00000000`, {
+      id: `${legacySessionId}-00000000`,
+      sessionId: legacySessionId,
+      logicalConversationId: '[UUID]',
+      sequence: 0,
+      content: 'legacy',
+      traceSubjectToken: 'wpt_hidden-legacy-entry-token',
+    }],
     [`${sessionId}-00000000`, {
       id: `${sessionId}-00000000`,
       sessionId: '[UUID]',
@@ -38,7 +53,13 @@ const fakeFirestore = vi.hoisted(() => {
       if (collection === 'weekly_planning_trace_sessions' && id === sessionId) {
         return { ...sessionDocument };
       }
+      if (collection === 'weekly_planning_trace_sessions' && id === legacySessionId) {
+        return { ...legacySessionDocument };
+      }
       if (collection === 'weekly_planning_trace_entries') {
+        if (id.startsWith(legacySessionId)) {
+          return entryDocuments.get(id) ?? null;
+        }
         throw new Error('current layout must use a bounded session query');
       }
       return null;
@@ -68,6 +89,7 @@ const fakeFirestore = vi.hoisted(() => {
 
   return {
     sessionId,
+    legacySessionId,
     conversationId,
     auditWrites,
     FakeWeeklyPlanningTraceFirestoreClient,
@@ -129,4 +151,27 @@ describe('weekly planning trace admin API integration', () => {
     expect(JSON.stringify(entries)).not.toContain('traceSubjectToken');
     expect(fakeFirestore.auditWrites).toHaveLength(2);
   });
+
+  it('retrieves entries for the exact legacy redacted session handle', async () => {
+    const result = await handleWeeklyPlanningTraceApi(
+      new Request('https://example.test/weekly-planning-trace/admin/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: fakeFirestore.legacySessionId }),
+      }),
+      env(),
+      { uid: 'admin-user' },
+    );
+
+    expect(result.status).toBe(200);
+    const entries = result.body.entries as Array<Record<string, unknown>>;
+    expect(entries).toEqual([
+      expect.objectContaining({
+        id: `${fakeFirestore.legacySessionId}-00000000`,
+        sessionId: fakeFirestore.legacySessionId,
+        content: 'legacy',
+      }),
+    ]);
+  });
+
 });

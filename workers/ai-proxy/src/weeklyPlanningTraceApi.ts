@@ -3,6 +3,7 @@ import {
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningTraceConversationId,
   isWeeklyPlanningTraceEntryId,
+  isWeeklyPlanningLegacyTraceSessionHandle,
   isWeeklyPlanningTracePolicyAccepted,
   isWeeklyPlanningTraceSessionId,
   parseWeeklyPlanningTraceHmacSecrets,
@@ -322,12 +323,16 @@ async function handleAdminEntries(
   const body = await parseJsonBody(request);
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
   if (!sessionId) return error(400, 'sessionId is required');
-  if (!isWeeklyPlanningTraceSessionId(sessionId)) return error(400, 'sessionId is invalid');
+  const isCurrentSessionId = isWeeklyPlanningTraceSessionId(sessionId);
+  const isLegacySessionHandle = isWeeklyPlanningLegacyTraceSessionHandle(sessionId);
+  if (!isCurrentSessionId && !isLegacySessionHandle) {
+    return error(400, 'sessionId is invalid');
+  }
   const target = await firestore.getDocument(TRACE_SESSIONS, sessionId);
   if (!target) return error(404, 'trace session was not found');
   await appendAccessAudit(firestore, env, session, 'list_entries', sessionId);
   let entries: Record<string, unknown>[];
-  if (target.storageLayoutVersion === TRACE_STORAGE_LAYOUT_VERSION) {
+  if (isCurrentSessionId && target.storageLayoutVersion === TRACE_STORAGE_LAYOUT_VERSION) {
     entries = (await firestore.queryDocuments(
       TRACE_ENTRIES,
       [{ field: 'sessionId', value: sessionId }],
