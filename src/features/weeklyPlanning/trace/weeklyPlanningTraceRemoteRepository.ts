@@ -7,6 +7,7 @@ import {
 import {
   createWeeklyPlanningTraceApiClient,
   type WeeklyPlanningTraceApiClient,
+  type WeeklyPlanningTraceServerHandle,
 } from './weeklyPlanningTracePrivacyClient';
 
 function stringValue(value: unknown): string | undefined {
@@ -79,20 +80,98 @@ function entryFromRemote(record: Record<string, unknown>): WeeklyPlanningTraceEn
   return isWeeklyPlanningTraceEntry(candidate) ? candidate : null;
 }
 
+function entryId(sessionId: string, sequence: number): string {
+  return `${sessionId}-${String(sequence).padStart(8, '0')}`;
+}
+
+function startMetadata(session: WeeklyPlanningTraceSession): Record<string, unknown> {
+  return {
+    status: 'active',
+    startedAt: session.startedAt,
+    lastActivityAt: session.startedAt,
+    ...(session.planningRangeStart ? { planningRangeStart: session.planningRangeStart } : {}),
+    ...(session.planningRangeEnd ? { planningRangeEnd: session.planningRangeEnd } : {}),
+    turnCount: 0,
+    entryCount: 0,
+    hasPreview: false,
+    hasApprovalFailure: false,
+    hasFallback: false,
+    hasError: false,
+    appVersion: session.appVersion,
+    schemaVersion: session.schemaVersion,
+  };
+}
+
+function canonicalSession(
+  session: WeeklyPlanningTraceSession,
+  handle: WeeklyPlanningTraceServerHandle,
+): WeeklyPlanningTraceSession {
+  return {
+    ...session,
+    id: handle.sessionId,
+    logicalConversationId: handle.logicalConversationId,
+  };
+}
+
+function canonicalEntry(
+  entry: WeeklyPlanningTraceEntry,
+  handle: WeeklyPlanningTraceServerHandle,
+): WeeklyPlanningTraceEntry {
+  return {
+    ...entry,
+    id: entryId(handle.sessionId, entry.sequence),
+    sessionId: handle.sessionId,
+    logicalConversationId: handle.logicalConversationId,
+  };
+}
+
 export function createRemoteWeeklyPlanningTraceRepository(
   client: WeeklyPlanningTraceApiClient = createWeeklyPlanningTraceApiClient(),
 ): WeeklyPlanningTraceRepository {
   const sessionsById = new Map<string, WeeklyPlanningTraceSession>();
+  const handlesByLocalSessionId = new Map<string, Promise<WeeklyPlanningTraceServerHandle>>();
+
+  function serverHandle(session: WeeklyPlanningTraceSession): Promise<WeeklyPlanningTraceServerHandle> {
+    const existing = handlesByLocalSessionId.get(session.id);
+    if (existing) return existing;
+
+    const pending = client.startSession({
+      idempotencyKey: session.id,
+      conversationCorrelationKey: session.logicalConversationId,
+      session: startMetadata(session),
+    }).catch((error) => {
+      handlesByLocalSessionId.delete(session.id);
+      throw error;
+    });
+    handlesByLocalSessionId.set(session.id, pending);
+    return pending;
+  }
+
+  async function canonicalPayload(params: {
+    session: WeeklyPlanningTraceSession;
+    entries: WeeklyPlanningTraceEntry[];
+  }): Promise<{
+    session: WeeklyPlanningTraceSession;
+    entries: WeeklyPlanningTraceEntry[];
+  }> {
+    const handle = await serverHandle(params.session);
+    return {
+      session: canonicalSession(params.session, handle),
+      entries: params.entries.map((entry) => canonicalEntry(entry, handle)),
+    };
+  }
 
   return {
     async upsertSession(session) {
-      sessionsById.set(session.id, { ...session });
-      await client.append({ session, entries: [] });
+      const canonical = await canonicalPayload({ session, entries: [] });
+      sessionsById.set(canonical.session.id, { ...canonical.session });
+      await client.append(canonical);
     },
 
     async appendEntries({ session, entries }) {
-      sessionsById.set(session.id, { ...session });
-      await client.append({ session, entries });
+      const canonical = await canonicalPayload({ session, entries });
+      sessionsById.set(canonical.session.id, { ...canonical.session });
+      await client.append(canonical);
     },
 
     async listSessions() {
