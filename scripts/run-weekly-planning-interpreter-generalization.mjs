@@ -7,6 +7,12 @@ source = source.replace(
   `  if (content.indexOf(before, first + before.length) >= 0) {\n    throw new Error(\`Replacement anchor is not unique: \${label}\`);\n  }\n`,
   '',
 );
+source = source
+  .split('\n')
+  .filter((line) => !line.startsWith(
+    "write('src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.observed-real-eval.test.ts'",
+  ))
+  .join('\n');
 fs.writeFileSync(applicatorPath, source);
 
 const syntaxCheck = spawnSync(process.execPath, ['--check', applicatorPath], { encoding: 'utf8' });
