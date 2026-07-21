@@ -102,6 +102,8 @@ export interface WeeklyPlanningInterpreterResult {
   assumptionProposalDrafts?: unknown[];
   assumptionDecisions?: unknown[];
   correctionEnvelopes?: unknown[];
+  /** Exact provider content before parsing. Persist only through the trace privacy boundary. */
+  rawResponse?: string;
 }
 
 export interface InterpreterRecentTurn {

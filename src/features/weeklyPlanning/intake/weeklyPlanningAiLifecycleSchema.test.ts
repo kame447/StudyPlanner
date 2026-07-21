@@ -70,10 +70,13 @@ describe('weekly planning AI lifecycle schema', () => {
     })]);
   });
 
-  it('does not give contradictory instructions for field-specific remaining workload', () => {
+  it('keeps workload interpretation general while the schema owns command vocabulary', () => {
     const prompt = createSystemPrompt();
+    const schema = JSON.stringify(WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT);
 
-    expect(prompt).toContain('mark_completion_target records the amount the user wants included');
-    expect(prompt).not.toContain('mark_completion_target only for the desired future completion target');
+    expect(prompt).toContain('Keep per-entity quantities distinct');
+    expect(prompt).toContain('do not collapse them into a global total');
+    expect(prompt).not.toContain('mark_completion_target records the amount');
+    expect(schema).toContain('mark_completion_target');
   });
 });

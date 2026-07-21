@@ -357,7 +357,11 @@ describe('weekly planning AI interpreter', () => {
       userText: '数学から始めたい',
       context: { selectedDate: '2026-07-06' },
       stateSummary,
-    })).resolves.toEqual({ candidates: [], parseRejections: [] });
+    })).resolves.toEqual({
+      candidates: [],
+      parseRejections: [],
+      rawResponse: 'not json',
+    });
     await expect(invalidShapeInterpreter.interpretUserTurn({
       userText: '数学から始めたい',
       context: { selectedDate: '2026-07-06' },
@@ -365,6 +369,7 @@ describe('weekly planning AI interpreter', () => {
     })).resolves.toEqual({
       candidates: [],
       parseRejections: [expect.objectContaining({ reason: 'invalid-candidate-shape' })],
+      rawResponse: expect.any(String),
     });
   });
 
