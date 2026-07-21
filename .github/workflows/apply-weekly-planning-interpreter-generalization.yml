@@ -78,20 +78,7 @@ jobs:
           git add weekly-planning-generalization-build.log
           git commit -m "chore: 週間計画AI一般化のbuild失敗を記録"
           git push origin HEAD:agent/generalize-weekly-planning-interpreter
-      - name: Check diff
-        id: diff_check
-        run: |
-          set -o pipefail
-          git diff --check 2>&1 | tee weekly-planning-generalization-diff.log
-      - name: Persist diff failure
-        if: failure() && steps.diff_check.outcome == 'failure'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add weekly-planning-generalization-diff.log
-          git commit -m "chore: 週間計画AI一般化のdiff失敗を記録"
-          git push origin HEAD:agent/generalize-weekly-planning-interpreter
-      - name: Remove temporary applicator
+      - name: Remove temporary files
         run: |
           rm scripts/apply-weekly-planning-interpreter-generalization.mjs
           rm scripts/run-weekly-planning-interpreter-generalization.mjs
@@ -100,6 +87,8 @@ jobs:
           rm -f weekly-planning-generalization-full-test.log
           rm -f weekly-planning-generalization-build.log
           rm -f weekly-planning-generalization-diff.log
+      - name: Check final diff
+        run: git diff --check
       - name: Commit implementation
         run: |
           git config user.name "github-actions[bot]"
