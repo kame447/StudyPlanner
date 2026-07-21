@@ -49,6 +49,13 @@ try {
   );
 
   replaceOnce(
+    'src/features/weeklyPlanning/intake/weeklyPlanningAiRawResponse.test.ts',
+    `  } as const;`,
+    `  };`,
+    'mutable interpreter test parameters',
+  );
+
+  replaceOnce(
     'src/features/weeklyPlanning/__tests__/weeklyPlanningAiInterpreter.test.ts',
     `    })).resolves.toEqual({ candidates: [], parseRejections: [] });`,
     `    })).resolves.toEqual({\n      candidates: [],\n      parseRejections: [],\n      rawResponse: 'not json',\n    });`,
