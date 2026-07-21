@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/remove-weekly-planning-parser-boundary
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
