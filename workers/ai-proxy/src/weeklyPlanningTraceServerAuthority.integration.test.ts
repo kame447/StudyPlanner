@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fakeFirestore = vi.hoisted(() => {
   const sessions = new Map<string, Record<string, unknown>>();
@@ -87,6 +87,11 @@ import { resolveWeeklyPlanningTraceEpoch } from './weeklyPlanningTracePrivacy';
 const NOW = '2026-07-21T00:00:00.000Z';
 const MALICIOUS_SESSION_ID = 'weekly-trace-323e4567-e89b-52d3-a456-426614174000';
 const MALICIOUS_CONVERSATION_ID = 'weekly-conversation-423e4567-e89b-52d3-a456-426614174000';
+
+beforeEach(() => {
+  fakeFirestore.sessions.clear();
+  fakeFirestore.entries.clear();
+});
 
 function env() {
   const epoch = resolveWeeklyPlanningTraceEpoch(new Date());
