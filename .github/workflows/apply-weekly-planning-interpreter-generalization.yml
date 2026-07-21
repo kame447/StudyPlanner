@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Apply implementation
-        run: node scripts/apply-weekly-planning-interpreter-generalization.mjs
+        run: node scripts/run-weekly-planning-interpreter-generalization.mjs
       - name: Run focused tests
         run: >-
           npm run test:run --
@@ -53,6 +53,7 @@ jobs:
       - name: Remove temporary applicator
         run: |
           rm scripts/apply-weekly-planning-interpreter-generalization.mjs
+          rm scripts/run-weekly-planning-interpreter-generalization.mjs
           rm .github/workflows/apply-weekly-planning-interpreter-generalization.yml
       - name: Commit implementation
         run: |
