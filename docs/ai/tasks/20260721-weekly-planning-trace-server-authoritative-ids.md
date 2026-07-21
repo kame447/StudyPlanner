@@ -41,3 +41,15 @@ PR #68の統括監査でM-8とされた項目を、修正計画上のT-8とし�
 - session開始retryが同じhandleへ収束する。
 - remote repositoryがhandle取得を一度だけ行い、全appendをcanonical IDへ変換する。
 - 旧storage layoutのread互換を維持し、新規appendは拒否する。
+
+## 実装結果
+
+- client APIへsession開始操作を追加した。
+- remote repositoryはlocal IDをidempotency/correlation用途に限定し、server handle取得後のappend payloadをcanonical IDへ変換する。
+- serverはHMAC digestからUUID形式のcanonical session/conversation IDを決定する。
+- appendは既存・server-issued・owner一致・layout v2のsessionだけを受理する。
+- client指定entry structural fieldは保存前にserver canonical値へ置換する。
+- owner判定はsecret ringに保持される全epochのsubject tokenで行う。
+- layout v1以前はadmin read互換を維持し、新規writeを拒否する。
+- focused回帰、full suite、TypeScript、production build、`git diff --check`に成功した。
+- 一時適用scriptと検証workflowは最終ツリーから削除した。
