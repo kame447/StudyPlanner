@@ -7,6 +7,14 @@ source = source.replace(
   `  if (content.indexOf(before, first + before.length) >= 0) {\n    throw new Error(\`Replacement anchor is not unique: \${label}\`);\n  }\n`,
   '',
 );
+source = source.replace(
+  'function emptyInterpreterResult(): WeeklyPlanningInterpreterResult {\\n  return { candidates: [], parseRejections: [] };\\n}',
+  'function emptyInterpreterResult(): WeeklyPlanningInterpreterResult {\\n  return {\\n    candidates: [],\\n    parseRejections: [],\\n  };\\n}',
+);
+source = source.replaceAll(
+  "!parsed || typeof parsed !== 'object' || Array.isArray(parsed)",
+  '!isRecord(parsed) || !Array.isArray(parsed.candidates)',
+);
 source = source
   .split('\n')
   .filter((line) => !line.startsWith(
