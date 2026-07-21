@@ -7,4 +7,11 @@ source = source.replace(
   '',
 );
 fs.writeFileSync(applicatorPath, source);
-await import('./apply-weekly-planning-interpreter-generalization.mjs');
+
+try {
+  await import('./apply-weekly-planning-interpreter-generalization.mjs');
+} catch (error) {
+  const details = error instanceof Error ? error.stack || error.message : String(error);
+  fs.writeFileSync('apply-weekly-planning-interpreter-error.log', `${details}\n`);
+  throw error;
+}
