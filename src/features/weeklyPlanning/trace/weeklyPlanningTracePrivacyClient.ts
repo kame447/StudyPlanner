@@ -15,9 +15,21 @@ export interface WeeklyPlanningTracePolicyStatus {
   acceptedAt: string | null;
 }
 
+export interface WeeklyPlanningTraceServerHandle {
+  sessionId: string;
+  logicalConversationId: string;
+}
+
+export interface WeeklyPlanningTraceSessionStartInput {
+  idempotencyKey: string;
+  conversationCorrelationKey: string;
+  session: Record<string, unknown>;
+}
+
 export interface WeeklyPlanningTraceApiClient {
   getPolicyStatus(): Promise<WeeklyPlanningTracePolicyStatus>;
   acceptPolicy(): Promise<WeeklyPlanningTracePolicyStatus>;
+  startSession(input: WeeklyPlanningTraceSessionStartInput): Promise<WeeklyPlanningTraceServerHandle>;
   append(payload: Record<string, unknown>): Promise<void>;
   deleteCurrentUserTrace(): Promise<{ deletedSessions: number; deletedEntries: number }>;
   listAdminSessions(): Promise<Record<string, unknown>[]>;
@@ -85,6 +97,17 @@ function recordArray(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
+function serverHandle(payload: TraceApiEnvelope): WeeklyPlanningTraceServerHandle {
+  const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
+  const logicalConversationId = typeof payload.logicalConversationId === 'string'
+    ? payload.logicalConversationId.trim()
+    : '';
+  if (!sessionId || !logicalConversationId) {
+    throw new Error('週間計画traceのserver handleが不正です。');
+  }
+  return { sessionId, logicalConversationId };
+}
+
 export function createWeeklyPlanningTraceApiClient(): WeeklyPlanningTraceApiClient {
   return {
     async getPolicyStatus() {
@@ -96,6 +119,13 @@ export function createWeeklyPlanningTraceApiClient(): WeeklyPlanningTraceApiClie
         '/weekly-planning-trace/policy/accept',
         { method: 'POST', body: '{}' },
       ));
+    },
+
+    async startSession(input) {
+      return serverHandle(await authenticatedTraceRequest('/weekly-planning-trace/session/start', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }));
     },
 
     async append(payload) {

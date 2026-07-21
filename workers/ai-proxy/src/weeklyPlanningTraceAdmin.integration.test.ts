@@ -8,7 +8,8 @@ const fakeFirestore = vi.hoisted(() => {
     id: sessionId,
     logicalConversationId: conversationId,
     entryCount: 2,
-    storageLayoutVersion: 1,
+    storageLayoutVersion: 2,
+    serverIssued: true,
     traceSubjectToken: 'wpt_hidden-session-token',
   };
   const legacySessionDocument = {

@@ -56,6 +56,11 @@ export interface WeeklyPlanningTraceSubject {
   epoch: string;
 }
 
+export interface WeeklyPlanningTraceCanonicalIds {
+  sessionId: string;
+  logicalConversationId: string;
+}
+
 export interface WeeklyPlanningTracePolicyAcceptance {
   version: string;
   acceptedAt: string;
@@ -84,6 +89,83 @@ function base64Url(bytes: Uint8Array): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '');
+}
+
+
+function requireCorrelationKey(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new Error(`${label} is invalid`);
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 240 || /[\u0000-\u001f\u007f]/.test(normalized)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return normalized;
+}
+
+function uuidFromDigest(digest: Uint8Array): string {
+  if (digest.length < 16) throw new Error('trace canonical ID digest is invalid');
+  const bytes = digest.slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)]
+    .join('-');
+}
+
+async function hmacDigest(
+  secret: string,
+  value: string,
+  cryptoApi: Crypto,
+): Promise<Uint8Array> {
+  const key = await cryptoApi.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await cryptoApi.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(value),
+  );
+  return new Uint8Array(signature);
+}
+
+export async function createWeeklyPlanningTraceCanonicalIds(params: {
+  uid: string;
+  epoch: string;
+  secretRing: TraceHmacSecretRing;
+  sessionCorrelationKey: unknown;
+  conversationCorrelationKey: unknown;
+  cryptoApi?: Crypto;
+}): Promise<WeeklyPlanningTraceCanonicalIds> {
+  const uid = params.uid.trim();
+  const secret = params.secretRing[params.epoch];
+  if (!uid) throw new Error('trace subject uid is empty');
+  if (!secret) throw new Error(`trace HMAC secret is missing for epoch ${params.epoch}`);
+  const sessionCorrelationKey = requireCorrelationKey(
+    params.sessionCorrelationKey,
+    'trace session idempotency key',
+  );
+  const conversationCorrelationKey = requireCorrelationKey(
+    params.conversationCorrelationKey,
+    'trace conversation correlation key',
+  );
+  const cryptoApi = params.cryptoApi ?? crypto;
+  const sessionDigest = await hmacDigest(
+    secret,
+    `${params.epoch}:${uid}:trace-session:${sessionCorrelationKey}`,
+    cryptoApi,
+  );
+  const conversationDigest = await hmacDigest(
+    secret,
+    `${params.epoch}:${uid}:trace-conversation:${conversationCorrelationKey}`,
+    cryptoApi,
+  );
+  return {
+    sessionId: `weekly-trace-${uuidFromDigest(sessionDigest)}`,
+    logicalConversationId: `weekly-conversation-${uuidFromDigest(conversationDigest)}`,
+  };
 }
 
 function serializedBytes(value: unknown): number {
@@ -468,6 +550,72 @@ export function prepareWeeklyPlanningTraceWrite(
       id: expectedEntryId,
       sessionId,
       logicalConversationId: entryConversationId,
+      sequence,
+    };
+  });
+  return { session, entries };
+}
+
+
+export function prepareWeeklyPlanningTraceServerWrite(
+  input: WeeklyPlanningTraceWriteInput,
+  subject: WeeklyPlanningTraceSubject,
+  canonicalIds: WeeklyPlanningTraceCanonicalIds,
+  now: Date | string | number = new Date(),
+): PreparedWeeklyPlanningTraceWrite {
+  if (!input || typeof input !== 'object') throw new Error('trace write payload is invalid');
+  if (!input.session || typeof input.session !== 'object' || Array.isArray(input.session)) {
+    throw new Error('trace session payload is invalid');
+  }
+  if (!Array.isArray(input.entries) || input.entries.length > MAX_TRACE_ENTRIES_PER_REQUEST) {
+    throw new Error('trace entry batch is invalid');
+  }
+  const sessionId = requireTraceSessionId(canonicalIds.sessionId);
+  const logicalConversationId = requireTraceConversationId(
+    canonicalIds.logicalConversationId,
+    'logical conversation id',
+  );
+  const entryCount = requireTraceEntryCount(input.session.entryCount);
+  requireTraceSessionSchema(input.session);
+  const expireAt = weeklyPlanningTraceExpireAt(now);
+  const session = {
+    ...preparedDocument({
+      ...input.session,
+      id: sessionId,
+      logicalConversationId,
+      entryCount,
+    }, subject, expireAt),
+    id: sessionId,
+    logicalConversationId,
+    entryCount,
+  };
+  const seenSequences = new Set<number>();
+  const entries = input.entries.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('trace entry payload is invalid');
+    }
+    const sequence = entry.sequence;
+    if (typeof sequence !== 'number'
+      || !Number.isSafeInteger(sequence)
+      || sequence < 0
+      || sequence >= entryCount
+      || seenSequences.has(sequence)) {
+      throw new Error('trace entry sequence is invalid');
+    }
+    seenSequences.add(sequence);
+    requireTraceEntrySchema(entry);
+    const expectedEntryId = weeklyPlanningTraceEntryId(sessionId, sequence);
+    return {
+      ...preparedDocument({
+        ...entry,
+        id: expectedEntryId,
+        sessionId,
+        logicalConversationId,
+        sequence,
+      }, subject, expireAt),
+      id: expectedEntryId,
+      sessionId,
+      logicalConversationId,
       sequence,
     };
   });

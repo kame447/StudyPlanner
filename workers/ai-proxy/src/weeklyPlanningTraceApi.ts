@@ -1,5 +1,6 @@
 import {
   WEEKLY_PLANNING_TRACE_POLICY_VERSION,
+  createWeeklyPlanningTraceCanonicalIds,
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningTraceConversationId,
   isWeeklyPlanningTraceEntryId,
@@ -7,7 +8,7 @@ import {
   isWeeklyPlanningTracePolicyAccepted,
   isWeeklyPlanningTraceSessionId,
   parseWeeklyPlanningTraceHmacSecrets,
-  prepareWeeklyPlanningTraceWrite,
+  prepareWeeklyPlanningTraceServerWrite,
   redactWeeklyPlanningTraceValue,
   resolveWeeklyPlanningTraceEpoch,
   traceSubjectEpochsForDeletion,
@@ -39,7 +40,7 @@ const PROFILES = 'profiles';
 const ADMINS = 'admins';
 const MAX_TRACE_API_BODY_BYTES = 512 * 1024;
 const ADMIN_LIST_LIMIT = 500;
-const TRACE_STORAGE_LAYOUT_VERSION = 1;
+const TRACE_STORAGE_LAYOUT_VERSION = 2;
 
 function ok(body: Record<string, unknown> = {}): WeeklyPlanningTraceApiResult {
   return { status: 200, body: { ok: true, ...body } };
@@ -78,6 +79,26 @@ async function currentSubject(
 ) {
   const epoch = resolveWeeklyPlanningTraceEpoch(now);
   return await createWeeklyPlanningTraceSubject(uid, epoch, currentSecretRing(env));
+}
+
+
+async function retainedSubjectTokens(
+  uid: string,
+  env: WeeklyPlanningTraceApiEnv,
+): Promise<Set<string>> {
+  const ring = currentSecretRing(env);
+  const subjects = await Promise.all(
+    Object.keys(ring).map((epoch) => createWeeklyPlanningTraceSubject(uid, epoch, ring)),
+  );
+  return new Set(subjects.map((subject) => subject.token));
+}
+
+function isOwnedServerSession(
+  document: Record<string, unknown>,
+  subjectTokens: Set<string>,
+): boolean {
+  return typeof document.traceSubjectToken === 'string'
+    && subjectTokens.has(document.traceSubjectToken);
 }
 
 async function policyAcceptance(
@@ -257,14 +278,86 @@ async function handlePolicyAccept(
   });
 }
 
+
+async function handleSessionStart(
+  request: Request,
+  firestore: WeeklyPlanningTraceFirestoreClient,
+  env: WeeklyPlanningTraceApiEnv,
+  session: WeeklyPlanningTraceApiSession,
+): Promise<WeeklyPlanningTraceApiResult> {
+  const acceptance = await policyAcceptance(firestore, session.uid);
+  if (!isWeeklyPlanningTracePolicyAccepted(acceptance)) {
+    return error(412, '週間計画traceの利用同意が必要です。');
+  }
+  const body = await parseJsonBody(request);
+  const metadata = isRecord(body.session) ? body.session : null;
+  if (!metadata) return error(400, 'trace session payload is invalid');
+  const now = new Date();
+  const epoch = resolveWeeklyPlanningTraceEpoch(now);
+  const ring = currentSecretRing(env);
+  const canonicalIds = await createWeeklyPlanningTraceCanonicalIds({
+    uid: session.uid,
+    epoch,
+    secretRing: ring,
+    sessionCorrelationKey: body.idempotencyKey,
+    conversationCorrelationKey: body.conversationCorrelationKey,
+  });
+  const subject = await createWeeklyPlanningTraceSubject(session.uid, epoch, ring);
+  const initialStartedAt = typeof metadata.startedAt === 'string'
+    ? metadata.startedAt
+    : now.toISOString();
+  const prepared = prepareWeeklyPlanningTraceServerWrite({
+    session: {
+      ...metadata,
+      status: 'active',
+      startedAt: initialStartedAt,
+      lastActivityAt: initialStartedAt,
+      turnCount: 0,
+      entryCount: 0,
+      hasPreview: false,
+      hasApprovalFailure: false,
+      hasFallback: false,
+      hasError: false,
+    },
+    entries: [],
+  }, subject, canonicalIds, now);
+  const existing = await firestore.getDocument(TRACE_SESSIONS, canonicalIds.sessionId);
+  if (existing) {
+    const ownerTokens = await retainedSubjectTokens(session.uid, env);
+    if (!isOwnedServerSession(existing, ownerTokens)) {
+      return error(409, 'trace session ownership conflict');
+    }
+    if (existing.logicalConversationId !== canonicalIds.logicalConversationId
+      || existing.serverIssued !== true
+      || existing.storageLayoutVersion !== TRACE_STORAGE_LAYOUT_VERSION) {
+      return error(409, 'trace session issuance conflict');
+    }
+    return ok(canonicalIds);
+  }
+  try {
+    await firestore.setImmutableDocument(TRACE_SESSIONS, canonicalIds.sessionId, {
+      ...prepared.session,
+      entryCount: 0,
+      serverIssued: true,
+      storageLayoutVersion: TRACE_STORAGE_LAYOUT_VERSION,
+    });
+  } catch (caught) {
+    if (!(caught instanceof Error)
+      || !caught.message.includes('immutable trace document conflict')) {
+      throw caught;
+    }
+    const raced = await firestore.getDocument(TRACE_SESSIONS, canonicalIds.sessionId);
+    const ownerTokens = await retainedSubjectTokens(session.uid, env);
+    if (!raced || !isOwnedServerSession(raced, ownerTokens)) throw caught;
+  }
+  return ok(canonicalIds);
+}
+
 function traceSessionConflict(
   existing: Record<string, unknown> | null,
   next: Record<string, unknown>,
 ): string | null {
   if (!existing) return null;
-  if (existing.traceSubjectToken !== next.traceSubjectToken) {
-    return 'trace session ownership conflict';
-  }
   if (existing.logicalConversationId !== next.logicalConversationId) {
     return 'trace session conversation conflict';
   }
@@ -279,14 +372,19 @@ function traceSessionConflict(
 }
 
 function mergeTraceSession(
-  existing: Record<string, unknown> | null,
+  existing: Record<string, unknown>,
   next: Record<string, unknown>,
 ): Record<string, unknown> {
   const merged = {
-    ...(existing ?? {}),
+    ...existing,
     ...next,
+    id: existing.id,
+    logicalConversationId: existing.logicalConversationId,
+    traceSubjectToken: existing.traceSubjectToken,
+    traceSubjectEpoch: existing.traceSubjectEpoch,
+    serverIssued: true,
     storageLayoutVersion: TRACE_STORAGE_LAYOUT_VERSION,
-    ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
+    ...(existing.archivedAt ? { archivedAt: existing.archivedAt } : {}),
   };
   delete merged.userId;
   return merged;
@@ -303,36 +401,36 @@ async function handleAppend(
     return error(412, '週間計画traceの利用同意が必要です。');
   }
   const payload = await parseJsonBody(request);
+  if (!isRecord(payload.session)) return error(400, 'trace session payload is invalid');
+  const sessionId = typeof payload.session.id === 'string' ? payload.session.id.trim() : '';
+  if (!isWeeklyPlanningTraceSessionId(sessionId)) return error(400, 'trace session id is invalid');
+  const existingSession = await firestore.getDocument(TRACE_SESSIONS, sessionId);
+  if (!existingSession) {
+    return error(404, 'trace session must be started before append');
+  }
+  const ownerTokens = await retainedSubjectTokens(session.uid, env);
+  if (!isOwnedServerSession(existingSession, ownerTokens)) {
+    return error(409, 'trace session ownership conflict');
+  }
+  if (existingSession.serverIssued !== true
+    || existingSession.storageLayoutVersion !== TRACE_STORAGE_LAYOUT_VERSION) {
+    return error(409, 'legacy trace session is read-only');
+  }
+  const logicalConversationId = typeof existingSession.logicalConversationId === 'string'
+    ? existingSession.logicalConversationId
+    : '';
+  if (!isWeeklyPlanningTraceConversationId(logicalConversationId)) {
+    return error(409, 'trace session conversation conflict');
+  }
   const subject = await currentSubject(session.uid, env);
-  const prepared = prepareWeeklyPlanningTraceWrite(
+  const prepared = prepareWeeklyPlanningTraceServerWrite(
     payload as unknown as WeeklyPlanningTraceWriteInput,
     subject,
+    { sessionId, logicalConversationId },
   );
-  const sessionId = String(prepared.session.id);
-  let existingSession = await firestore.getDocument(TRACE_SESSIONS, sessionId);
-  let conflict = traceSessionConflict(existingSession, prepared.session);
+  const conflict = traceSessionConflict(existingSession, prepared.session);
   if (conflict) return error(409, conflict);
-
-  let mergedSession = mergeTraceSession(existingSession, prepared.session);
-  if (!existingSession) {
-    try {
-      await firestore.setImmutableDocument(TRACE_SESSIONS, sessionId, {
-        ...mergedSession,
-        entryCount: 0,
-      });
-    } catch (caught) {
-      if (!(caught instanceof Error)
-        || !caught.message.includes('immutable trace document conflict')) {
-        throw caught;
-      }
-      existingSession = await firestore.getDocument(TRACE_SESSIONS, sessionId);
-      if (!existingSession) throw caught;
-      conflict = traceSessionConflict(existingSession, prepared.session);
-      if (conflict) return error(409, conflict);
-      mergedSession = mergeTraceSession(existingSession, prepared.session);
-    }
-  }
-
+  const mergedSession = mergeTraceSession(existingSession, prepared.session);
   for (const entry of prepared.entries) {
     await firestore.setImmutableDocument(TRACE_ENTRIES, String(entry.id), entry);
   }
@@ -468,6 +566,9 @@ export async function handleWeeklyPlanningTraceApi(
     }
     if (pathname === '/weekly-planning-trace/policy/accept' && request.method === 'POST') {
       return await handlePolicyAccept(firestore, session);
+    }
+    if (pathname === '/weekly-planning-trace/session/start' && request.method === 'POST') {
+      return await handleSessionStart(request, firestore, env, session);
     }
     if (pathname === '/weekly-planning-trace/append' && request.method === 'POST') {
       return await handleAppend(request, firestore, env, session);
