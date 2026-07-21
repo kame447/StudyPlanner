@@ -34,7 +34,6 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
           command: {
             type: 'set_exam_scope',
             scope: {
-              examType: '院試',
               fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
               totalFields: 5,
               totalYears: 7,
@@ -62,7 +61,6 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
         {
           type: 'set_exam_scope',
           scope: {
-            examType: '院試',
             fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
             totalFields: 5,
             totalYears: 7,
@@ -103,7 +101,6 @@ export const WEEKLY_PLANNING_INTAKE_EVALUATION_CASES = {
           command: {
             type: 'set_exam_scope',
             scope: {
-              examType: '院試',
               fields: ['数学', 'OS', 'ハードウェア', 'ソフトウェア', 'ヒューマンサイエンス'],
               totalFields: 5,
               totalYears: 7,

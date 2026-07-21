@@ -45,6 +45,26 @@ export function hasConfirmedLifeConstraints(state: PlanningIntakeState): boolean
   return hasConfirmedSleepCycle(state) && hasConfirmedMealBathConstraints(state);
 }
 
+export function hasConfirmedYearFieldUnitRate(state: PlanningIntakeState): boolean {
+  return state.unitRates.some((rate) =>
+    rate.unit === 'year_field_chunk'
+    && typeof rate.minutesPerUnit === 'number'
+    && Number.isFinite(rate.minutesPerUnit)
+    && rate.minutesPerUnit > 0,
+  );
+}
+
+function applyUnitRateMissingState(state: PlanningIntakeState): PlanningIntakeState {
+  if (state.examPrepScope?.unitModel !== 'year_field_chunk') return state;
+  const missing = hasConfirmedYearFieldUnitRate(state)
+    ? removeMissing(state.missing, ['unit_duration_estimate'])
+    : addMissing(state.missing, ['unit_duration_estimate']);
+  return missing.length === state.missing.length
+    && missing.every((item, index) => item === state.missing[index])
+    ? state
+    : { ...state, missing };
+}
+
 export function deriveMissingForPlanningRange(
   state: PlanningIntakeState,
 ): PlanningIntakeMissing[] {
@@ -61,7 +81,7 @@ function applyPriorityMissingState(state: PlanningIntakeState): PlanningIntakeSt
   const totalFields = state.examPrepScope?.totalFields;
   const isPriorityStage = Boolean(
     state.examPrepScope
-    && state.unitRates.length > 0
+    && hasConfirmedYearFieldUnitRate(state)
     && !state.missing.includes('year_range')
     && !state.missing.includes('completion_direction'),
   );
@@ -129,7 +149,8 @@ function resolveStatus(state: PlanningIntakeState): PlanningIntakeStatus {
 }
 
 export function finalizeState(state: PlanningIntakeState): PlanningIntakeState {
-  const stateWithPriorityMissing = applyPriorityMissingState(state);
+  const stateWithUnitRateMissing = applyUnitRateMissingState(state);
+  const stateWithPriorityMissing = applyPriorityMissingState(stateWithUnitRateMissing);
   const status = resolveStatus(stateWithPriorityMissing);
   const nextState = {
     ...stateWithPriorityMissing,

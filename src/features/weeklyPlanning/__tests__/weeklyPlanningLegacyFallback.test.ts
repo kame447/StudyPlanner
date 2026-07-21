@@ -1,9 +1,47 @@
 import { describe, expect, it } from 'vitest';
+import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import {
   applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
+import { finalizeState } from '../intake/weeklyPlanningMissingStatus';
 import { context, applyWeekendRangeAndExamScope } from './weeklyPlanningRoleplayTestHelpers';
+
+describe('weekly planning readiness invariants', () => {
+  it('does not become draft-ready with an unrelated non-exam unit rate', () => {
+    const state = finalizeState({
+      ...createInitialPlanningIntakeState(),
+      intent: 'exam_prep_planning',
+      examPrepScope: {
+        examType: '院試',
+        fields: ['OS'],
+        totalFields: 1,
+        yearRange: { startYear: 2025, endYear: 2025, sourceText: '2025年度' },
+        unitModel: 'year_field_chunk',
+        rawText: ['院試の過去問はOS'],
+      },
+      unitRates: [{
+        unit: 'hours',
+        minutesPerUnit: 120,
+        source: 'user',
+        rawText: '2時間',
+      }],
+      priorityPolicy: { kind: 'field_first', order: ['OS'] },
+      fixedEventsDeclaredNone: true,
+      constraints: [
+        { kind: 'sleep', start: '23:00', end: '07:00', hardness: 'hard' },
+        { kind: 'meal', durationMinutes: 60, hardness: 'soft' },
+        { kind: 'bath', durationMinutes: 30, hardness: 'soft' },
+      ],
+      missing: [],
+    });
+
+    expect(state.status).toBe('needs_unit_rate');
+    expect(state.missing).toContain('unit_duration_estimate');
+    expect(state.shouldCreateDraft).toBe(false);
+    expect(createWeeklyDraftRequestFromIntakeState(state)).toBeNull();
+  });
+});
 
 describe('weekly planning legacy fallback regression', () => {
   it('legacy fallback branch A assesses first weekly input with multiple time amounts', () => {
@@ -68,7 +106,7 @@ describe('weekly planning legacy fallback regression', () => {
       examType: '院試',
       unitModel: 'year_field_chunk',
     });
-    expect(state.missing).toEqual(['unit_duration_estimate']);
+    expect(state.missing).toEqual(['year_range', 'unit_duration_estimate']);
     expect(state.shouldSavePlan).toBe(false);
   });
 

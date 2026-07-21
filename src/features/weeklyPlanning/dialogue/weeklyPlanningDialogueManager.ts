@@ -101,7 +101,7 @@ export interface WeeklyPlanningDialogueDecisionInput {
   };
 }
 
-const MAX_MISSING_QUESTIONS_PER_TURN = 2;
+const MAX_MISSING_QUESTIONS_PER_TURN = 1;
 
 function uniqueList<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -415,6 +415,9 @@ function resolveClarificationTarget(params: {
 
 function clarificationExplanation(targetSlot: string | undefined): string {
   if (!targetSlot) return GENERIC_CLARIFICATION;
+  if (targetSlot === 'meal_bath_constraints') {
+    return '時刻だけでは食事かお風呂かを特定できません。その時刻は食事の開始ですか、それともお風呂の開始ですか？';
+  }
   return termExplanationForSlot(targetSlot)
     ?? CONTEXTUAL_CLARIFICATION_EXPLANATIONS[targetSlot]
     ?? GENERIC_CLARIFICATION;

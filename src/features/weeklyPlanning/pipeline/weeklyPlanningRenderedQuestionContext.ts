@@ -81,7 +81,10 @@ function renderedActionIds(output: WeeklyPlanningBehaviorAwarePipelineOutput): s
 export function applyRenderedQuestionContext(
   output: WeeklyPlanningBehaviorAwarePipelineOutput,
 ): WeeklyPlanningBehaviorAwarePipelineOutput {
-  if (output.decision.kind === 'answer_clarification') return output;
+  // Exam flows are rendered from decision.questionPlan after this pipeline returns.
+  // Keep the intake pipeline's first-question context instead of overwriting it
+  // with behaviorDialogue actions that are not shown to the user.
+  if (output.decision.kind === 'answer_clarification' || output.state.examPrepScope) return output;
   let lastQuestionContext: WeeklyPlanningQuestionContext | undefined;
   for (const actionId of renderedActionIds(output)) {
     const action = output.behavior.actions.find((candidate) => candidate.actionId === actionId);

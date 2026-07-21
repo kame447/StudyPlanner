@@ -227,11 +227,153 @@ export function isWeeklyPlanningTracePolicyAccepted(
     && Number.isFinite(new Date(record.acceptedAt).getTime());
 }
 
-function requireDocumentId(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9:_-]{1,240}$/.test(value)) {
-    throw new Error(`${label} is invalid`);
+const UUID_SUFFIX = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const FALLBACK_RANDOM_SUFFIX = '[0-9]{10,16}-[a-z0-9]{6,16}';
+const OPAQUE_SUFFIX = `(?:${UUID_SUFFIX}|${FALLBACK_RANDOM_SUFFIX})`;
+const TRACE_SESSION_ID_PATTERN = new RegExp(`^weekly-trace-${OPAQUE_SUFFIX}$`, 'i');
+const LEGACY_REDACTED_TRACE_SESSION_HANDLE_PATTERN = /^weekly-trace-\[UUID\]$/;
+const TRACE_CONVERSATION_ID_PATTERN = new RegExp(
+  `^(?:weekly-conversation|weekly-planning-conversation)-${OPAQUE_SUFFIX}$`,
+  'i',
+);
+const MAX_TRACE_SESSION_ENTRIES = 100_000;
+
+export function isWeeklyPlanningTraceSessionId(value: unknown): value is string {
+  return typeof value === 'string' && TRACE_SESSION_ID_PATTERN.test(value);
+}
+
+export function isWeeklyPlanningLegacyTraceSessionHandle(value: unknown): value is string {
+  return typeof value === 'string'
+    && LEGACY_REDACTED_TRACE_SESSION_HANDLE_PATTERN.test(value);
+}
+
+export function isWeeklyPlanningTraceConversationId(value: unknown): value is string {
+  return typeof value === 'string' && TRACE_CONVERSATION_ID_PATTERN.test(value);
+}
+
+export function weeklyPlanningTraceEntryId(sessionId: string, sequence: number): string {
+  return `${sessionId}-${String(sequence).padStart(8, '0')}`;
+}
+
+export function isWeeklyPlanningTraceEntryId(
+  value: unknown,
+  sessionId?: string,
+  sequence?: number,
+): value is string {
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(weekly-trace-.+)-(\d{8})$/);
+  if (!match || !isWeeklyPlanningTraceSessionId(match[1])) return false;
+  const parsedSequence = Number(match[2]);
+  return Number.isSafeInteger(parsedSequence)
+    && (sessionId === undefined || match[1] === sessionId)
+    && (sequence === undefined || parsedSequence === sequence);
+}
+
+function requireTraceSessionId(value: unknown): string {
+  if (!isWeeklyPlanningTraceSessionId(value)) throw new Error('trace session id is invalid');
+  return value;
+}
+
+function requireTraceConversationId(value: unknown, label: string): string {
+  if (!isWeeklyPlanningTraceConversationId(value)) throw new Error(`${label} is invalid`);
+  return value;
+}
+
+function requireTraceEntryCount(value: unknown): number {
+  if (typeof value !== 'number'
+    || !Number.isSafeInteger(value)
+    || value < 0
+    || value > MAX_TRACE_SESSION_ENTRIES) {
+    throw new Error('trace session entryCount is invalid');
   }
   return value;
+}
+
+const TRACE_SESSION_STATUSES = new Set(['active', 'completed', 'abandoned', 'failed']);
+const TRACE_RESPONSE_SOURCES = new Set(['ai', 'deterministic_fallback', 'rules', 'system']);
+const TRACE_EVENT_TYPES = new Set([
+  'user_turn_received', 'interpreter_started', 'interpreter_completed',
+  'candidate_accepted', 'candidate_rejected', 'assumption_proposed',
+  'assumption_accepted', 'assumption_rejected', 'assumption_superseded',
+  'correction_applied', 'correction_rejected', 'relative_constraint_resolved',
+  'relative_constraint_rejected', 'readiness_evaluated', 'feasibility_evaluated',
+  'dialogue_planned', 'fallback_used', 'preview_gate_evaluated',
+  'preview_generated', 'preview_rejected_stale',
+  'preview_rejected_pending_assumption', 'draft_promoted', 'approval_started',
+  'approval_item_saved', 'approval_item_failed', 'approval_completed',
+  'request_cancelled', 'stale_async_result_discarded', 'trace_write_failed',
+]);
+const TRACE_SEVERITIES = new Set(['debug', 'info', 'warn', 'error']);
+const TRACE_SNAPSHOT_REASONS = new Set([
+  'turn_completed', 'correction_applied', 'preview_generated',
+  'approval_started', 'approval_completed', 'error', 'manual_capture',
+]);
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function requireTraceSessionSchema(session: Record<string, unknown>): void {
+  const valid = TRACE_SESSION_STATUSES.has(String(session.status))
+    && isIsoTimestamp(session.startedAt)
+    && isIsoTimestamp(session.lastActivityAt)
+    && (session.endedAt === undefined || isIsoTimestamp(session.endedAt))
+    && (session.archivedAt === undefined || isIsoTimestamp(session.archivedAt))
+    && (session.planningRangeStart === undefined || isIsoTimestamp(session.planningRangeStart))
+    && (session.planningRangeEnd === undefined || isIsoTimestamp(session.planningRangeEnd))
+    && isNonNegativeInteger(session.turnCount)
+    && typeof session.hasPreview === 'boolean'
+    && typeof session.hasApprovalFailure === 'boolean'
+    && typeof session.hasFallback === 'boolean'
+    && typeof session.hasError === 'boolean'
+    && typeof session.appVersion === 'string'
+    && session.appVersion.trim().length > 0
+    && typeof session.schemaVersion === 'number'
+    && Number.isSafeInteger(session.schemaVersion)
+    && session.schemaVersion >= 1;
+  if (!valid) throw new Error('trace session schema is invalid');
+}
+
+function requireTraceEntrySchema(entry: Record<string, unknown>): void {
+  const validBase = isIsoTimestamp(entry.occurredAt)
+    && isIsoTimestamp(entry.observedAt)
+    && typeof entry.schemaVersion === 'number'
+    && Number.isSafeInteger(entry.schemaVersion)
+    && entry.schemaVersion >= 1
+    && (entry.requestId === undefined || typeof entry.requestId === 'string')
+    && (entry.stateRevision === undefined || isNonNegativeInteger(entry.stateRevision));
+  if (!validBase) throw new Error('trace entry schema is invalid');
+  if (entry.kind === 'turn') {
+    const validSource = TRACE_RESPONSE_SOURCES.has(String(entry.responseSource));
+    const validTurn = (entry.role === 'user' || entry.role === 'assistant')
+      && typeof entry.content === 'string'
+      && isNonNegativeInteger(entry.turnIndex)
+      && (entry.role === 'assistant' ? validSource : entry.responseSource === undefined);
+    if (!validTurn) throw new Error('trace turn entry schema is invalid');
+    return;
+  }
+  if (entry.kind === 'internal_event') {
+    const validEvent = Object.prototype.hasOwnProperty.call(entry, 'payload')
+      && entry.payload !== undefined
+      && TRACE_EVENT_TYPES.has(String(entry.eventType))
+      && TRACE_SEVERITIES.has(String(entry.severity));
+    if (!validEvent) throw new Error('trace internal event entry schema is invalid');
+    return;
+  }
+  if (entry.kind === 'state_snapshot') {
+    const validSnapshot = Object.prototype.hasOwnProperty.call(entry, 'state')
+      && entry.state !== undefined
+      && TRACE_SNAPSHOT_REASONS.has(String(entry.snapshotReason));
+    if (!validSnapshot) throw new Error('trace state snapshot entry schema is invalid');
+    return;
+  }
+  throw new Error('trace entry kind is invalid');
 }
 
 function preparedDocument(
@@ -268,16 +410,66 @@ export function prepareWeeklyPlanningTraceWrite(
   if (!Array.isArray(input.entries) || input.entries.length > MAX_TRACE_ENTRIES_PER_REQUEST) {
     throw new Error('trace entry batch is invalid');
   }
-  const sessionId = requireDocumentId(input.session.id, 'trace session id');
+  const sessionId = requireTraceSessionId(input.session.id);
+  const logicalConversationId = requireTraceConversationId(
+    input.session.logicalConversationId,
+    'logical conversation id',
+  );
+  const entryCount = requireTraceEntryCount(input.session.entryCount);
+  requireTraceSessionSchema(input.session);
   const expireAt = weeklyPlanningTraceExpireAt(now);
-  const session = preparedDocument({ ...input.session, id: sessionId }, subject, expireAt);
+  const session = {
+    ...preparedDocument({
+      ...input.session,
+      id: sessionId,
+      logicalConversationId,
+      entryCount,
+    }, subject, expireAt),
+    id: sessionId,
+    logicalConversationId,
+    entryCount,
+  };
+  const seenSequences = new Set<number>();
   const entries = input.entries.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       throw new Error('trace entry payload is invalid');
     }
-    const entryId = requireDocumentId(entry.id, 'trace entry id');
+    const sequence = entry.sequence;
+    if (typeof sequence !== 'number'
+      || !Number.isSafeInteger(sequence)
+      || sequence < 0
+      || sequence >= entryCount
+      || seenSequences.has(sequence)) {
+      throw new Error('trace entry sequence is invalid');
+    }
+    seenSequences.add(sequence);
+    const expectedEntryId = weeklyPlanningTraceEntryId(sessionId, sequence);
+    if (!isWeeklyPlanningTraceEntryId(entry.id, sessionId, sequence)
+      || entry.id !== expectedEntryId) {
+      throw new Error('trace entry id is invalid');
+    }
     if (entry.sessionId !== sessionId) throw new Error('trace entry session mismatch');
-    return preparedDocument({ ...entry, id: entryId, sessionId }, subject, expireAt);
+    const entryConversationId = requireTraceConversationId(
+      entry.logicalConversationId,
+      'entry logical conversation id',
+    );
+    if (entryConversationId !== logicalConversationId) {
+      throw new Error('trace entry conversation mismatch');
+    }
+    requireTraceEntrySchema(entry);
+    return {
+      ...preparedDocument({
+        ...entry,
+        id: expectedEntryId,
+        sessionId,
+        logicalConversationId: entryConversationId,
+        sequence,
+      }, subject, expireAt),
+      id: expectedEntryId,
+      sessionId,
+      logicalConversationId: entryConversationId,
+      sequence,
+    };
   });
   return { session, entries };
 }

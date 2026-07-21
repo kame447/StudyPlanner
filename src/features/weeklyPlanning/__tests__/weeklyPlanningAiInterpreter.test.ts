@@ -155,7 +155,7 @@ describe('weekly planning AI interpreter', () => {
     const interpreter = createAiWeeklyPlanningInterpreter(config, client);
 
     const result = await interpreter.interpretUserTurn({
-      userText: '実AI応答',
+      userText: `来週、${WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.freeTextExamScopeAndPriority}`,
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary: { knownFields: [], confirmedSlots: [] },
     });
@@ -177,7 +177,7 @@ describe('weekly planning AI interpreter', () => {
     );
 
     const result = await interpreter.interpretUserTurn({
-      userText: '実AI応答',
+      userText: `来週、${WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.freeTextExamScopeAndPriority}`,
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary: { knownFields: [], confirmedSlots: [] },
     });
@@ -257,7 +257,7 @@ describe('weekly planning AI interpreter', () => {
     })));
 
     const result = await interpreter.interpretUserTurn({
-      userText: '全体を先におさらいしたい',
+      userText: '院試全体を先におさらいしたい',
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary: { knownFields: [], confirmedSlots: [] },
     });
@@ -307,7 +307,7 @@ describe('weekly planning AI interpreter', () => {
     );
 
     const result = await interpreter.interpretUserTurn({
-      userText: '実AI応答',
+      userText: `来週、${WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.freeTextExamScopeAndPriority}`,
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary,
     });
@@ -328,7 +328,7 @@ describe('weekly planning AI interpreter', () => {
     );
 
     const result = await interpreter.interpretUserTurn({
-      userText: '実AI応答',
+      userText: `来週、${WEEKLY_PLANNING_INTAKE_EVALUATION_CASES.aiInterpreterFoundation.freeTextExamScopeAndPriority}`,
       context: { selectedDate: '2030-01-01', planningDayCount: 7 },
       stateSummary: { knownFields: [], confirmedSlots: [] },
     });

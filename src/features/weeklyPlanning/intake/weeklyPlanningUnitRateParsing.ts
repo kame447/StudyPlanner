@@ -2,10 +2,14 @@ import type { SetUnitRateCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope, UnitRateEstimate } from './weeklyPlanningIntakeTypes';
 import { parseSmallInteger, splitIntakeSegments } from './weeklyPlanningTextParsing';
 
+type ParsedUnitRateEstimate = UnitRateEstimate & {
+  minutesPerUnit: number;
+};
+
 function buildYearFieldUnitRate(
   match: RegExpMatchArray,
   segment: string,
-): UnitRateEstimate | undefined {
+): ParsedUnitRateEstimate | undefined {
   const hours = parseSmallInteger(match[1]);
 
   if (!hours) {
@@ -40,7 +44,7 @@ export function parseBareDurationAsUnitRateCommand(
     }
 
     const uncertainty = /くらい|ぐらい|だいたい|かな/.test(segment) ? 'medium' : 'low';
-    const unitRate: UnitRateEstimate = {
+    const unitRate: ParsedUnitRateEstimate = {
       unit: 'year_field_chunk',
       minutesPerUnit: hours * 60,
       source: 'user',
@@ -63,7 +67,7 @@ export function parseBareDurationAsUnitRateCommand(
 export function parseUnitRate(
   text: string,
   examPrepScope: ExamPrepScope | undefined,
-): UnitRateEstimate | undefined {
+): ParsedUnitRateEstimate | undefined {
   for (const segment of splitIntakeSegments(text)) {
     const explicitYearFieldMatch = segment.match(
       /(?:1|一)\s*分野(?:の)?\s*(?:1|一)\s*年分.*?([0-9]+|[一二三四五六七八九十]+)\s*時間/,

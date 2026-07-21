@@ -86,15 +86,29 @@ export async function executeWeeklyPlanningTurn(
   const message = isExamFlow
     ? await renderWeeklyPlanningDialogueMessage({
       state: pipelineOutput.state,
+      previousState: input.previousState,
       decision: pipelineOutput.decision,
       renderer: dialogueRenderer,
       userId: input.userId,
       existingPlans: input.plans,
     })
     : pipelineOutput.behaviorDialogue.message;
+  const firstRenderedQuestion = isExamFlow
+    ? pipelineOutput.decision.questionPlan?.[0]
+    : undefined;
+  const state: PlanningIntakeState = firstRenderedQuestion
+    ? {
+        ...pipelineOutput.state,
+        lastQuestionContext: {
+          kind: pipelineOutput.decision.kind === 'offer_dry_run_preview' ? 'preview' : 'missing',
+          targetSlot: firstRenderedQuestion.targetSlot,
+          intent: firstRenderedQuestion.intent,
+        },
+      }
+    : pipelineOutput.state;
 
   return {
-    state: pipelineOutput.state,
+    state,
     message,
     draftCandidates: pipelineOutput.draftCandidates ?? [],
   };

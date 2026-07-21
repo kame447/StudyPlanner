@@ -36,9 +36,11 @@ export interface DialogueRenderInput {
   knownFixedEventSummaries?: string[];
   acceptedFacts: {
     fields?: string[];
+    totalFields?: number;
     goals?: string[];
     yearRange?: { startYear: number; endYear: number };
     unitRateMinutes?: number;
+    unitRateDisplay?: string;
     priorityOrder?: string[];
     constraintSummary?: string[];
   };
@@ -53,17 +55,65 @@ const CONSTRAINT_SOURCE_LABELS: Record<ConstraintSourceRef['kind'], string> = {
   calendar: 'カレンダーの予定',
 };
 
+const CONSTRAINT_KIND_LABELS: Record<PlanningIntakeState['constraints'][number]['kind'], string> = {
+  sleep: '睡眠',
+  meal: '食事',
+  bath: '入浴',
+  commute: '移動',
+  club: '部活動',
+  cram_school: '塾',
+  fixed_event: '固定予定',
+  unavailable: '利用不可時間',
+  buffer: '準備・休憩',
+};
+
 /**
  * 計画期間ラベルはユーザー発話(range.sourceText)に含まれる語からのみ導く。
  * 日付だけから「今週/来週」を推測して補完しない(実例1「来週」→「今週」の回帰防止)。
  */
-function planningPeriodLabel(state: PlanningIntakeState): string | undefined {
-  const source = state.range?.sourceText;
+function sameSemanticValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
+function planningRangeSemanticValue(state: PlanningIntakeState): unknown {
+  return {
+    range: state.range
+      ? {
+          startDateTime: state.range.startDateTime,
+          endDateTime: state.range.endDateTime,
+          calendarDayCount: state.range.calendarDayCount,
+          confidence: state.range.confidence,
+        }
+      : undefined,
+    pending: state.pendingPlanningRange
+      ? {
+          scope: state.pendingPlanningRange.scope,
+          planningStartDate: state.pendingPlanningRange.planningStartDate,
+          planningStartDateTime: state.pendingPlanningRange.planningStartDateTime,
+          durationDays: state.pendingPlanningRange.durationDays,
+          planningEndDateTime: state.pendingPlanningRange.planningEndDateTime,
+        }
+      : undefined,
+  };
+}
+
+function planningPeriodLabel(
+  state: PlanningIntakeState,
+  previousState?: PlanningIntakeState,
+): string | undefined {
+  if (previousState && sameSemanticValue(
+    planningRangeSemanticValue(state),
+    planningRangeSemanticValue(previousState),
+  )) {
+    return undefined;
+  }
+
+  const source = state.range?.sourceText;
   if (source) {
     if (/来週/.test(source)) return '来週';
     if (/今週/.test(source)) return '今週';
     if (/週末|土日/.test(source)) return '週末';
+    if (/今日/.test(source)) return '今日';
   }
 
   if (!state.range && state.pendingPlanningRange) {
@@ -73,10 +123,64 @@ function planningPeriodLabel(state: PlanningIntakeState): string | undefined {
   return undefined;
 }
 
+function taskSemanticValue(task: PlanningIntakeState['tasks'][number]): unknown {
+  return {
+    title: task.title,
+    subject: task.subject,
+    examType: task.examType,
+    field: task.field,
+    year: task.year,
+    unit: task.unit,
+    amount: task.amount,
+    requiresTimeEstimate: task.requiresTimeEstimate,
+    source: task.source,
+  };
+}
+
+function unitRateSemanticValue(rate: PlanningIntakeState['unitRates'][number]): unknown {
+  return {
+    unit: rate.unit,
+    minutesPerUnit: rate.minutesPerUnit,
+    source: rate.source,
+    uncertainty: rate.uncertainty,
+  };
+}
+
+function constraintSemanticValue(
+  constraint: PlanningIntakeState['constraints'][number],
+): unknown {
+  return {
+    kind: constraint.kind,
+    date: constraint.date,
+    start: constraint.start,
+    end: constraint.end,
+    durationMinutes: constraint.durationMinutes,
+    studyAvailableStart: constraint.studyAvailableStart,
+    hardness: constraint.hardness,
+  };
+}
+
+function isNewSemanticItem<T>(
+  item: T,
+  previousItems: readonly T[],
+  semanticValue: (value: T) => unknown,
+): boolean {
+  const currentValue = semanticValue(item);
+  return !previousItems.some((previous) =>
+    sameSemanticValue(currentValue, semanticValue(previous)));
+}
+
 function unitRateBasisLabel(state: PlanningIntakeState): string | undefined {
   return state.examPrepScope?.unitModel === 'year_field_chunk'
     ? '1年分・1分野あたり'
     : undefined;
+}
+
+function unitRateDisplayLabel(rawText: string | undefined, minutes: number): string {
+  const match = rawText?.match(
+    /([0-9０-９]+(?:\.[0-9０-９]+)?|[一二三四五六七八九十]+)\s*(時間|分)/,
+  );
+  return match ? `${match[1]}${match[2]}` : `${minutes}分`;
 }
 
 function constraintSourcesInUseLabels(state: PlanningIntakeState): string[] | undefined {
@@ -96,16 +200,6 @@ export interface DialogueRenderOutput {
 
 export interface WeeklyPlanningDialogueRenderer {
   render(input: DialogueRenderInput): Promise<DialogueRenderOutput>;
-}
-
-function constraintSummary(state: PlanningIntakeState): string[] | undefined {
-  const values = state.constraints.map((constraint) =>
-    [constraint.kind, constraint.date, constraint.start, constraint.end]
-      .filter(Boolean)
-      .join(' '),
-  );
-
-  return values.length > 0 ? values : undefined;
 }
 
 function nextQuestionsFromDecision(
@@ -138,50 +232,136 @@ function nextQuestionsFromDecision(
     }));
 }
 
+function priorityPolicyChanged(
+  current: PlanningIntakeState['priorityPolicy'],
+  previous: PlanningIntakeState['priorityPolicy'] | undefined,
+): boolean {
+  if (!previous || current.kind !== previous.kind) return true;
+  if (current.kind !== 'field_first' || previous.kind !== 'field_first') return false;
+  return current.order.length !== previous.order.length
+    || current.order.some((field, index) => field !== previous.order[index]);
+}
+
 export function createDialogueRenderInput(params: {
   state: PlanningIntakeState;
+  previousState?: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
   existingPlans?: Plan[];
 }): DialogueRenderInput {
-  const unitRate = params.state.unitRates.find((rate) => typeof rate.minutesPerUnit === 'number');
+  const previousTasks = params.previousState?.tasks ?? [];
+  const previousUnitRates = params.previousState?.unitRates ?? [];
+  const previousConstraints = params.previousState?.constraints ?? [];
   const priorityOrder = params.state.priorityPolicy.kind === 'field_first'
     ? params.state.priorityPolicy.order
     : undefined;
+  const unitRate = params.state.unitRates.find((rate) =>
+    typeof rate.minutesPerUnit === 'number'
+    && isNewSemanticItem(rate, previousUnitRates, unitRateSemanticValue),
+  );
   const commandGoalTitles = params.state.tasks
-    .filter((task) => task.source === 'command')
+    .filter((task) => task.source === 'command'
+      && isNewSemanticItem(task, previousTasks, taskSemanticValue))
     .map((task) => task.title);
+  const currentFields = {
+    fields: params.state.examPrepScope?.fields ?? [],
+    totalFields: params.state.examPrepScope?.totalFields,
+  };
+  const previousFields = {
+    fields: params.previousState?.examPrepScope?.fields ?? [],
+    totalFields: params.previousState?.examPrepScope?.totalFields,
+  };
+  const examScopeAcceptedThisTurn = !params.previousState
+    || !sameSemanticValue(currentFields, previousFields);
+  const yearRangeAcceptedThisTurn = !params.previousState
+    || !sameSemanticValue(
+      params.state.examPrepScope?.yearRange
+        ? {
+            startYear: params.state.examPrepScope.yearRange.startYear,
+            endYear: params.state.examPrepScope.yearRange.endYear,
+          }
+        : undefined,
+      params.previousState.examPrepScope?.yearRange
+        ? {
+            startYear: params.previousState.examPrepScope.yearRange.startYear,
+            endYear: params.previousState.examPrepScope.yearRange.endYear,
+          }
+        : undefined,
+    );
+  const constraintSourcesChanged = !params.previousState
+    || !sameSemanticValue(
+      params.state.constraintSourcesInUse ?? [],
+      params.previousState.constraintSourcesInUse ?? [],
+    );
   const knownFixedEventSummaries = createKnownFixedEventSummaries(
     params.existingPlans ?? [],
     params.state.range,
   );
 
+  const nextQuestions = nextQuestionsFromDecision(
+    params.decision,
+    2,
+    unitRateBasisLabel(params.state),
+  );
+  const repeatedTargetSlot = params.previousState?.lastQuestionContext?.targetSlot;
+  const shouldRepairRepeatedQuestion = Boolean(
+    repeatedTargetSlot && nextQuestions[0]?.slotKey === repeatedTargetSlot,
+  );
+  const renderedQuestions = shouldRepairRepeatedQuestion
+    ? [{ ...nextQuestions[0], questionKind: 'repair' }]
+    : nextQuestions;
+  const acceptedConstraintSummary = params.state.constraints
+    .filter((constraint) =>
+      isNewSemanticItem(constraint, previousConstraints, constraintSemanticValue))
+    .map((constraint) => {
+      const rawText = constraint.rawText?.trim();
+      if (rawText) return rawText;
+      const timeRange = constraint.start && constraint.end
+        ? `${constraint.start}〜${constraint.end}`
+        : constraint.start ?? constraint.end;
+      const duration = typeof constraint.durationMinutes === 'number'
+        ? `${constraint.durationMinutes}分`
+        : undefined;
+      return [
+        CONSTRAINT_KIND_LABELS[constraint.kind],
+        constraint.date,
+        timeRange,
+        duration,
+      ].filter(Boolean).join(' ');
+    });
+
   return {
-    planningPeriodLabel: planningPeriodLabel(params.state),
+    planningPeriodLabel: planningPeriodLabel(params.state, params.previousState),
     unitRateBasisLabel: unitRateBasisLabel(params.state),
-    constraintSourcesInUse: constraintSourcesInUseLabels(params.state),
+    constraintSourcesInUse: constraintSourcesChanged
+      ? constraintSourcesInUseLabels(params.state)
+      : undefined,
     knownFixedEventSummaries: knownFixedEventSummaries.length > 0
       ? knownFixedEventSummaries
       : undefined,
     acceptedFacts: {
-      fields: params.state.examPrepScope?.fields,
+      fields: examScopeAcceptedThisTurn ? params.state.examPrepScope?.fields : undefined,
+      totalFields: examScopeAcceptedThisTurn ? params.state.examPrepScope?.totalFields : undefined,
       goals: commandGoalTitles.length > 0 ? commandGoalTitles : undefined,
-      yearRange: params.state.examPrepScope?.yearRange
+      yearRange: yearRangeAcceptedThisTurn && params.state.examPrepScope?.yearRange
         ? {
             startYear: params.state.examPrepScope.yearRange.startYear,
             endYear: params.state.examPrepScope.yearRange.endYear,
           }
         : undefined,
       unitRateMinutes: unitRate?.minutesPerUnit,
-      priorityOrder,
-      constraintSummary: constraintSummary(params.state),
+      unitRateDisplay: unitRate && typeof unitRate.minutesPerUnit === 'number'
+        ? unitRateDisplayLabel(unitRate.rawText, unitRate.minutesPerUnit)
+        : undefined,
+      priorityOrder: priorityPolicyChanged(params.state.priorityPolicy, params.previousState?.priorityPolicy)
+        ? priorityOrder
+        : undefined,
+      constraintSummary: acceptedConstraintSummary.length > 0
+        ? acceptedConstraintSummary
+        : undefined,
     },
     assumptions: [...params.state.assumptions],
-    nextQuestions: nextQuestionsFromDecision(
-      params.decision,
-      2,
-      unitRateBasisLabel(params.state),
-    ),
-    styleConstraints: { tone: 'mentor', maxQuestions: 2 },
+    nextQuestions: renderedQuestions,
+    styleConstraints: { tone: 'mentor', maxQuestions: shouldRepairRepeatedQuestion ? 1 : 2 },
   };
 }
 
@@ -196,6 +376,41 @@ function isDialogueRenderOutput(value: unknown): value is DialogueRenderOutput {
   );
 }
 
+
+const DIALOGUE_FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|設定画面|外部サイト|リンクを開|貼り付けて|送信して|睡眠薬|服用|何錠|診断|病歴|住所|メールアドレス|電話番号|口座番号|クレジットカード)/i;
+
+const QUESTION_GROUNDING_VALIDATORS: Record<string, (text: string) => boolean> = {
+  planning_period: (text) => /(?:いつ|何日|期間|今週|来週|週末|開始|始め|終わり|まで)/.test(text),
+  planning_start_date: (text) => /(?:いつ|何日|何曜|開始|始め)/.test(text),
+  planning_duration: (text) => /(?:何日|日数|期間|どれくらい|何週間)/.test(text),
+  tasks_or_goals: (text) => /(?:何を|学習内容|目標|教材|課題|勉強|進めたい)/.test(text),
+  fixed_events: (text) => /(?:固定|動かせない|外せない|時間が決ま|登録済み).*(?:予定|授業|仕事|用事)|(?:予定|授業|仕事|用事).*(?:固定|動かせない|外せない|ありますか)/.test(text),
+  sleep_cycle: (text) => /(?:睡眠|就寝|起床|寝る|起きる|勉強を始め).*(?:時間|時刻|何時|いつ|リズム)|(?:何時|いつ).*(?:寝|起き|勉強を始め)/.test(text),
+  meal_bath_constraints: (text) => /(?:食事|朝食|昼食|夕食|風呂|入浴).*(?:時間|時刻|何時|どれくらい|入れにくい)/.test(text),
+  life_constraints: (text) => /(?:生活|睡眠|食事|風呂|入浴).*(?:制約|時間|リズム|入れにくい)/.test(text),
+  year_range: (text) => /(?:対象|過去問|試験).*(?:年度|何年).*(?:から|まで|範囲)|(?:年度|何年).*(?:から|まで|範囲)/.test(text),
+  progress: (text) => /(?:進捗|現在|今).*(?:どこまで|終わ|済み|未着手)|(?:どこまで).*(?:進め|終わ)/.test(text),
+  completion_direction: (text) => /(?:新しい|古い|どちら|どっち).*(?:年度|側|順)|(?:年度).*(?:新しい|古い|側)/.test(text),
+  unit_rate: (text) => /(?:(?:1|一)\s*(?:年分|分野).*(?:何時間|何分|どれくらい))|(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),
+  unit_duration_estimate: (text) => /(?:(?:1|一)\s*(?:年分|分野).*(?:何時間|何分|どれくらい))|(?:目安|かかる|かかります|必要|所要).*(?:時間|何時間|何分|どれくらい)|(?:何時間|何分|どれくらい).*(?:かかる|必要|目安)/.test(text),
+  priority_policy: (text) => /(?:優先|順番|先).*(?:分野|科目|どれ|何|進め)|(?:分野|科目|どれ|何).*(?:優先|順番|先)/.test(text),
+  next_field_after_math: (text) => /(?:次|その次).*(?:分野|科目)|(?:分野|科目).*(?:次|その次)/.test(text),
+};
+
+function isGroundedDialogueQuestion(planned: DialogueNextQuestion, text: string): boolean {
+  const normalized = stripGenericAcknowledgementPrefix(text).replace(/\s+/g, ' ').trim();
+  if (!normalized || normalized.length > 240 || DIALOGUE_FORBIDDEN_CONTENT.test(normalized)) {
+    return false;
+  }
+  const validator = QUESTION_GROUNDING_VALIDATORS[planned.slotKey];
+  if (validator) return validator(normalized);
+  const hintTokens = (planned.vocabularyHint ?? '')
+    .split(/[\s、。・／/やをのにへはがとでか]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+  return hintTokens.some((token) => normalized.includes(token));
+}
+
 export function sanitizeDialogueRenderOutput(
   output: unknown,
   input: DialogueRenderInput,
@@ -206,6 +421,7 @@ export function sanitizeDialogueRenderOutput(
 
   const plannedQuestions = input.nextQuestions.slice(0, input.styleConstraints.maxQuestions);
   const allowedSlotKeys = new Set(plannedQuestions.map((question) => question.slotKey));
+  const plannedBySlotKey = new Map(plannedQuestions.map((question) => [question.slotKey, question]));
 
   if (output.questions.length !== plannedQuestions.length || plannedQuestions.length === 0) {
     return null;
@@ -213,7 +429,11 @@ export function sanitizeDialogueRenderOutput(
 
   const outputBySlotKey = new Map<string, { slotKey: string; text: string }>();
   for (const question of output.questions) {
-    if (!allowedSlotKeys.has(question.slotKey) || outputBySlotKey.has(question.slotKey)) {
+    const plannedQuestion = plannedBySlotKey.get(question.slotKey);
+    if (!allowedSlotKeys.has(question.slotKey)
+      || outputBySlotKey.has(question.slotKey)
+      || !plannedQuestion
+      || !isGroundedDialogueQuestion(plannedQuestion, question.text)) {
       return null;
     }
 
@@ -223,7 +443,9 @@ export function sanitizeDialogueRenderOutput(
   const questions = plannedQuestions.map((plannedQuestion) => {
     const renderedQuestion = outputBySlotKey.get(plannedQuestion.slotKey);
     if (!renderedQuestion) return undefined;
-    const text = plannedQuestion.slotKey === 'fixed_events'
+    const text = plannedQuestion.questionKind === 'repair'
+      || plannedQuestion.slotKey === 'planning_period'
+      || plannedQuestion.slotKey === 'fixed_events'
       || plannedQuestion.slotKey === 'planning_start_date'
       ? fallbackQuestionText(
         plannedQuestion,
@@ -251,19 +473,28 @@ export function sanitizeDialogueRenderOutput(
 }
 
 function formatAcceptedFacts(input: DialogueRenderInput): string | null {
+  const fields = input.acceptedFacts.fields ?? [];
+  const fieldList = fields.length === 2 ? fields.join('と') : fields.join('、');
   const facts = [
-    input.acceptedFacts.fields?.length
-      ? `対象分野は${input.acceptedFacts.fields.join('、')}`
+    fields.length
+      ? input.acceptedFacts.totalFields === 1 && fields.length === 1
+        ? `${fieldList}を1科目`
+        : fields.length === 1
+          ? `対象分野は${fieldList}`
+          : `${fieldList}の${fields.length}分野`
       : null,
     input.acceptedFacts.goals?.length ? '目標は' + input.acceptedFacts.goals.join('、') : null,
     input.acceptedFacts.yearRange
       ? `対象年度は${input.acceptedFacts.yearRange.startYear}〜${input.acceptedFacts.yearRange.endYear}`
       : null,
     typeof input.acceptedFacts.unitRateMinutes === 'number'
-      ? `${input.unitRateBasisLabel ?? '1単位あたり'}の目安時間は${input.acceptedFacts.unitRateMinutes}分`
+      ? `${input.unitRateBasisLabel ?? '1単位あたり'}の目安時間は${input.acceptedFacts.unitRateDisplay ?? `${input.acceptedFacts.unitRateMinutes}分`}`
       : null,
     input.acceptedFacts.priorityOrder?.length
       ? `優先順は${input.acceptedFacts.priorityOrder.join('、')}`
+      : null,
+    input.acceptedFacts.constraintSummary?.length
+      ? `生活・予定条件は${input.acceptedFacts.constraintSummary.join('、')}`
       : null,
     input.constraintSourcesInUse?.length
       ? `${input.constraintSourcesInUse.join('、')}を予定として利用中`
@@ -287,6 +518,27 @@ function fallbackQuestionText(
   knownFixedEventSummaries?: string[],
   unitRateBasis?: string,
 ): string {
+  if (question.questionKind === 'repair') {
+    switch (question.slotKey) {
+      case 'priority_policy':
+        return '進める順番だけ確認します。どちらを先にしますか？同じ優先度でも構いません。';
+      case 'sleep_cycle':
+        return '開始できる時刻だけ確認します。何時から勉強できますか？';
+      case 'fixed_events':
+        return '固定予定についてだけ確認します。登録済み以外に、動かせない予定はありますか？';
+      case 'unit_rate':
+        return `${unitRateBasis ?? '1単位あたり'}の目安時間だけ確認します。だいたい何時間かかりますか？`;
+      case 'planning_period':
+        return '計画期間だけ確認します。いつからいつまでにしますか？';
+      default:
+        return fallbackQuestionForSlot(question.slotKey, {
+          planningPeriodLabel,
+          options: question.options,
+          knownFixedEventSummaries,
+          unitRateBasisLabel: unitRateBasis,
+        }) ?? '未回答の条件を一つだけ確認します。';
+    }
+  }
   return fallbackQuestionForSlot(question.slotKey, {
     planningPeriodLabel,
     options: question.options,
@@ -333,6 +585,7 @@ function tracedMessage(
 
 export async function renderWeeklyPlanningDialogueMessage(params: {
   state: PlanningIntakeState;
+  previousState?: PlanningIntakeState;
   decision: WeeklyPlanningDialogueDecision;
   renderer?: WeeklyPlanningDialogueRenderer;
   userId?: string;
@@ -340,6 +593,7 @@ export async function renderWeeklyPlanningDialogueMessage(params: {
 }): Promise<string> {
   const input = createDialogueRenderInput({
     state: params.state,
+    previousState: params.previousState,
     decision: params.decision,
     existingPlans: params.existingPlans,
   });

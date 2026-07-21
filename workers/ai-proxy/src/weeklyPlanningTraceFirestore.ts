@@ -223,7 +223,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Firestore get failed: ${response.status}`);
     const document = await response.json() as FirestoreDocument;
-    return { id: documentId(document.name), ...decodeFirestoreFields(document.fields ?? {}) };
+    return { ...decodeFirestoreFields(document.fields ?? {}), id: documentId(document.name) };
   }
 
   async setDocument(
@@ -245,21 +245,80 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
   }
 
+  async setDocumentWithMaximumInteger(
+    collection: string,
+    id: string,
+    value: Record<string, unknown>,
+    fieldPath: string,
+    maximum: number,
+  ): Promise<void> {
+    if (!Number.isSafeInteger(maximum) || maximum < 0) {
+      throw new Error('Firestore maximum integer is invalid');
+    }
+    const baseValue = { ...value };
+    delete baseValue[fieldPath];
+    await this.setDocument(collection, id, baseValue, Object.keys(baseValue));
+
+    const documentName = [
+      'projects',
+      this.projectId(),
+      'databases',
+      '(default)',
+      'documents',
+      collection,
+      id,
+    ].join('/');
+    const response = await this.request(
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents:commit`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          writes: [{
+            transform: {
+              document: documentName,
+              fieldTransforms: [{
+                fieldPath,
+                maximum: { integerValue: String(maximum) },
+              }],
+            },
+          }],
+        }),
+      },
+    );
+    if (!response.ok) throw new Error(`Firestore maximum transform failed: ${response.status}`);
+  }
+
   async setImmutableDocument(
     collection: string,
     id: string,
     value: Record<string, unknown>,
   ): Promise<void> {
-    const existing = await this.getDocument(collection, id);
-    if (existing) {
-      const normalizedExisting = { ...existing };
-      delete normalizedExisting.id;
-      if (stableJson(normalizedExisting) !== stableJson(value)) {
-        throw new Error(`immutable trace document conflict: ${collection}/${id}`);
-      }
-      return;
+    const params = new URLSearchParams({ documentId: id });
+    const response = await this.request(
+      `${this.documentsBase()}/${encodeURIComponent(collection)}?${params.toString()}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
+      },
+    );
+    if (response.ok) return;
+    if (response.status !== 409) {
+      throw new Error(`Firestore immutable write failed: ${response.status}`);
     }
-    await this.setDocument(collection, id, value);
+
+    const existing = await this.getDocument(collection, id);
+    if (!existing) {
+      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+    }
+    const normalizedExisting = { ...existing };
+    const normalizedValue = { ...value };
+    delete normalizedExisting.id;
+    delete normalizedValue.id;
+    delete normalizedExisting.expireAt;
+    delete normalizedValue.expireAt;
+    if (stableJson(normalizedExisting) !== stableJson(normalizedValue)) {
+      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+    }
   }
 
   async queryDocuments(
@@ -295,7 +354,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!response.ok) throw new Error(`Firestore query failed: ${response.status}`);
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => result.document
-      ? [{ id: documentId(result.document.name), ...decodeFirestoreFields(result.document.fields ?? {}) }]
+      ? [{ ...decodeFirestoreFields(result.document.fields ?? {}), id: documentId(result.document.name) }]
       : []);
   }
 

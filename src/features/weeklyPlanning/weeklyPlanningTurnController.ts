@@ -100,12 +100,17 @@ function createTurnMessage(
   };
 }
 
+export const MAX_WEEKLY_PLANNING_USER_TEXT_LENGTH = 4_000;
+
 export async function submitWeeklyPlanningControlledTurn(
   params: SubmitWeeklyPlanningControlledTurnParams,
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
   const userText = params.userText.trim();
   const snapshot = params.getState();
-  if (!userText || snapshot.pendingTurn || snapshot.pendingApproval) {
+  if (!userText
+    || userText.length > MAX_WEEKLY_PLANNING_USER_TEXT_LENGTH
+    || snapshot.pendingTurn
+    || snapshot.pendingApproval) {
     return { accepted: false, draftCandidates: [] };
   }
 

@@ -17,6 +17,8 @@ export interface InterpretedCommandCandidate {
   command: ParsedWeeklyPlanningCommand;
   origin: InterpreterOrigin;
   needsConfirmation: boolean;
+  /** Actual current user turn. Kept non-enumerable on AI candidates. */
+  sourceUserText?: string;
   constraintSourceResolution?: ConstraintSourceReferenceResolution;
 }
 

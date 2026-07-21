@@ -9,6 +9,8 @@ import {
 import {
   createDialogueRenderInput,
   renderWeeklyPlanningDialogueMessage,
+  sanitizeDialogueRenderOutput,
+  type DialogueRenderInput,
 } from '../dialogue/weeklyPlanningDialogueRenderer';
 import {
   createInitialPlanningIntakeState,
@@ -202,7 +204,7 @@ describe('weekly planning AI dialogue renderer', () => {
       renderer,
     });
 
-    expect(message).toContain('対象分野はOSnetworkで受け取りました。');
+    expect(message).toContain('OSnetworkを1科目で受け取りました。');
     expect(message).not.toContain('年度の計画');
   });
 
@@ -585,6 +587,92 @@ describe('weekly planning renderer deterministic context', () => {
       ],
     }));
   });
+  it('acknowledges a priority accepted in the current turn but not an unchanged prior priority', () => {
+    const previousState: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      sourceTurns: ['院試の過去問はOSです'],
+    };
+    const state: PlanningIntakeState = {
+      ...previousState,
+      priorityPolicy: { kind: 'field_first', order: ['OS'] },
+      sourceTurns: [...previousState.sourceTurns, 'OSを優先します'],
+    };
+
+    const accepted = createDialogueRenderInput({
+      state,
+      previousState,
+      decision: askScopeDecision(),
+    });
+    expect(accepted.acceptedFacts.priorityOrder).toEqual(['OS']);
+
+    const nextState: PlanningIntakeState = {
+      ...state,
+      sourceTurns: [...state.sourceTurns, '固定予定はありません'],
+    };
+    const unchanged = createDialogueRenderInput({
+      state: nextState,
+      previousState: state,
+      decision: askScopeDecision(),
+    });
+    expect(unchanged.acceptedFacts.priorityOrder).toBeUndefined();
+  });
+
+  it('does not repeat old exam facts when a short old source appears inside the current priority answer', () => {
+    const previousState: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      examPrepScope: {
+        examType: '院試',
+        fields: ['OS'],
+        totalFields: 1,
+        unitModel: 'year_field_chunk',
+        rawText: ['OS'],
+      },
+      priorityPolicy: { kind: 'unknown' },
+      sourceTurns: ['OS'],
+    };
+    const state: PlanningIntakeState = {
+      ...previousState,
+      priorityPolicy: { kind: 'field_first', order: ['OS'] },
+      priorityPolicySource: 'user',
+      sourceTurns: [...previousState.sourceTurns, 'OSを優先します'],
+    };
+
+    const input = createDialogueRenderInput({
+      state,
+      previousState,
+      decision: askScopeDecision(),
+    });
+
+    expect(input.acceptedFacts.fields).toBeUndefined();
+    expect(input.acceptedFacts.totalFields).toBeUndefined();
+    expect(input.acceptedFacts.priorityOrder).toEqual(['OS']);
+  });
+
+  it.each([
+    ['sleep medication drift', 'sleep_cycle', '睡眠薬は何錠飲みますか？'],
+    ['lateness drift', 'unit_rate', '何分遅刻しましたか？'],
+    ['graduation-year drift', 'year_range', '卒業年度は何年ですか？'],
+  ])('rejects renderer semantic drift: %s', (_label, slotKey, text) => {
+    const input: DialogueRenderInput = {
+      acceptedFacts: {},
+      assumptions: [],
+      nextQuestions: [{
+        slotKey,
+        intent: 'ask_missing_info',
+        vocabularyHint: slotKey === 'sleep_cycle'
+          ? '睡眠時間や、何時から勉強を始められるか'
+          : slotKey === 'unit_rate'
+            ? '1年分・1分野あたりの目安時間'
+            : '対象の年度範囲',
+      }],
+      styleConstraints: { tone: 'mentor', maxQuestions: 1 },
+    };
+
+    expect(sanitizeDialogueRenderOutput({
+      questions: [{ slotKey, text }],
+    }, input)).toBeNull();
+  });
+
   it('includes command-derived goal titles in deterministic accepted facts', async () => {
     const state: PlanningIntakeState = {
       ...createInitialPlanningIntakeState(),

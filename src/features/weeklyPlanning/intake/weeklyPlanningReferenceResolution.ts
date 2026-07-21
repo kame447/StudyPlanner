@@ -146,6 +146,17 @@ function resolveConstraintSourceReference(params: {
   };
 }
 
+function preserveSourceUserText(
+  source: InterpretedCommandCandidate,
+  target: InterpretedCommandCandidate,
+): InterpretedCommandCandidate {
+  const descriptor = Object.getOwnPropertyDescriptor(source, 'sourceUserText');
+  if (descriptor) {
+    Object.defineProperty(target, 'sourceUserText', descriptor);
+  }
+  return target;
+}
+
 export function resolveConstraintSourceReferences(
   params: ReferenceResolutionInput,
 ): InterpretedCommandCandidate[] {
@@ -154,13 +165,13 @@ export function resolveConstraintSourceReferences(
       return candidate;
     }
 
-    return {
+    return preserveSourceUserText(candidate, {
       ...candidate,
       constraintSourceResolution: resolveConstraintSourceReference({
         command: candidate.command,
         userText: params.userText,
         stateSummary: params.stateSummary,
       }),
-    };
+    });
   });
 }

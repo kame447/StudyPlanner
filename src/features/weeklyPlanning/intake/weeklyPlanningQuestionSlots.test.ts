@@ -89,7 +89,25 @@ describe('weekly planning question slot registry', () => {
 
     expect(deterministicQuestionsForState(state)).toEqual([
       '来週の計画は、いつから始めますか？',
-      '週末で優先する分野や進める順番を教えてください。',
+      '来週で優先する分野や進める順番を教えてください。',
+    ]);
+  });
+
+  it('does not label an explicit future one-day range as today', () => {
+    const state: PlanningIntakeState = {
+      ...createInitialPlanningIntakeState(),
+      range: {
+        startDateTime: '2026-07-25T00:00:00',
+        endDateTime: '2026-07-25T24:00:00',
+        sourceText: '7月25日',
+        calendarDayCount: 1,
+        confidence: 'explicit',
+      },
+      missing: ['priority_policy'],
+    };
+
+    expect(deterministicQuestionsForState(state)).toEqual([
+      'この期間で優先する分野や進める順番を教えてください。',
     ]);
   });
 
