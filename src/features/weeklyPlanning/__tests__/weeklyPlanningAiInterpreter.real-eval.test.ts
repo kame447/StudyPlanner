@@ -391,7 +391,6 @@ async function evaluateModel(params: {
 
     const resolvedCandidates = resolveConstraintSourceReferences({
       candidates: interpreterResult.candidates,
-      userText: evalCase.userText,
       stateSummary: evalCase.stateSummary,
     });
     const diagnostics = validateInterpretedCandidates(resolvedCandidates, evalCase.stateSummary);

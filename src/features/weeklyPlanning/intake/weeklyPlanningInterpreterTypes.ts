@@ -17,8 +17,6 @@ export interface InterpretedCommandCandidate {
   command: ParsedWeeklyPlanningCommand;
   origin: InterpreterOrigin;
   needsConfirmation: boolean;
-  /** Actual current user turn. Kept non-enumerable on AI candidates. */
-  sourceUserText?: string;
   constraintSourceResolution?: ConstraintSourceReferenceResolution;
 }
 
@@ -96,14 +94,23 @@ export interface InterpreterParseRejection {
   reason: string;
 }
 
+export type WeeklyPlanningInterpreterResponseFailure =
+  | 'invalid_json'
+  | 'invalid_response_shape'
+  | 'invalid_candidates_after_repair';
+
 export interface WeeklyPlanningInterpreterResult {
   candidates: InterpretedCommandCandidate[];
   parseRejections: InterpreterParseRejection[];
   assumptionProposalDrafts?: unknown[];
   assumptionDecisions?: unknown[];
   correctionEnvelopes?: unknown[];
-  /** Exact provider content before parsing. Persist only through the trace privacy boundary. */
+  /** Exact provider content ultimately used for parsing. Persist only through the trace privacy boundary. */
   rawResponse?: string;
+  /** First provider response when one repair attempt was required. */
+  initialRawResponse?: string;
+  repairAttempted?: boolean;
+  responseFailure?: WeeklyPlanningInterpreterResponseFailure;
 }
 
 export interface InterpreterRecentTurn {

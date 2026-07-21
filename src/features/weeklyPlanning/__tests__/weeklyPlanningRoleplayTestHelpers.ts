@@ -1,7 +1,5 @@
-import {
-  applyWeeklyPlanningUserTurn,
-  createInitialPlanningIntakeState,
-} from '../intake/weeklyPlanningIntakeReducer';
+import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningLegacyIntakeReducer.testSupport';
+import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import {
   SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
   WP_RP_001_WEEKEND_EXAM_TURNS,

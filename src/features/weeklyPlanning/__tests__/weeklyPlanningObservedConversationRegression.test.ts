@@ -1,10 +1,10 @@
+import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import { renderWeeklyPlanningDialogueMessage } from '../dialogue/weeklyPlanningDialogueRenderer';
 import {
-  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
-import { runWeeklyPlanningIntakePipeline } from '../pipeline/weeklyPlanningIntakePipeline';
+import { runLegacyWeeklyPlanningIntakePipelineForTests } from '../pipeline/weeklyPlanningLegacyIntakePipeline.testSupport';
 
 const context = {
   selectedDate: '2026-07-19',
@@ -14,7 +14,7 @@ const context = {
 };
 
 function runTurn(previousState: ReturnType<typeof createInitialPlanningIntakeState> | undefined, userText: string) {
-  return runWeeklyPlanningIntakePipeline({
+  return runLegacyWeeklyPlanningIntakePipelineForTests({
     previousState,
     userText,
     planningStartDate: context.selectedDate,

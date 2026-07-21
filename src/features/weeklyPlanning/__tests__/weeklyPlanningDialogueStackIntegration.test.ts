@@ -158,7 +158,6 @@ describe('weekly planning dialogue stack integration', () => {
             },
             origin: 'ai_interpreter',
             needsConfirmation: false,
-            sourceUserText: userText,
           }],
           parseRejections: [],
         };

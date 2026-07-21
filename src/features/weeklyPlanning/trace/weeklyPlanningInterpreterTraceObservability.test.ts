@@ -65,13 +65,18 @@ describe('weekly planning interpreter trace observability', () => {
         expect.objectContaining({
           kind: 'internal_event',
           eventType: 'interpreter_completed',
-          payload: expect.objectContaining({ status: 'completed', rawResponse }),
+          payload: expect.objectContaining({
+            status: 'empty',
+            interpretationSource: 'ai_interpreter',
+            stateMutationSource: 'none',
+            rawResponse,
+          }),
         }),
       ]));
     });
   });
 
-  it('records the provider failure reason when rules fallback is used', async () => {
+  it('records provider failure without marking a parser fallback', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
@@ -83,20 +88,32 @@ describe('weekly planning interpreter trace observability', () => {
 
     await waitForTrace(async () => {
       const [session] = await repository.listSessionsForAdmin();
-      expect(session?.hasFallback).toBe(true);
+      expect(session?.hasFallback).toBe(false);
+      expect(session?.hasError).toBe(true);
       const entries = await repository.listEntries('user-1', session!.id);
       expect(entries).toEqual(expect.arrayContaining([
         expect.objectContaining({
           kind: 'internal_event',
-          eventType: 'fallback_used',
+          eventType: 'interpreter_completed',
+          severity: 'error',
           payload: expect.objectContaining({
-            category: 'interpreter_failure',
+            status: 'failed',
+            interpretationSource: 'ai_interpreter',
+            stateMutationSource: 'none',
             failure: expect.objectContaining({
               category: 'provider_error',
               message: 'A message was too long.',
             }),
           }),
         }),
+        expect.objectContaining({
+          kind: 'turn',
+          role: 'assistant',
+          responseSource: 'system',
+        }),
+      ]));
+      expect(entries).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ eventType: 'fallback_used' }),
       ]));
     });
   });

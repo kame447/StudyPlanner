@@ -1,7 +1,7 @@
+import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import {
-  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import { finalizeState } from '../intake/weeklyPlanningMissingStatus';

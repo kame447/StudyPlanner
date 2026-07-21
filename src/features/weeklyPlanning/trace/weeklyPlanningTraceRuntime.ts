@@ -389,7 +389,10 @@ function pipelineEventEntries(params: {
     entries.push(eventEntry(active, {
       eventType: 'interpreter_completed',
       payload: {
-        status: 'completed',
+        status: output.interpretationOutcome ?? 'completed',
+        interpretationSource: output.interpretationSource,
+        stateMutationSource: output.stateMutationSource,
+        repairAttempted: output.interpreterRepairAttempted === true,
         acceptedCount: diagnostics.accepted.length,
         acceptedWithConfirmationCount: diagnostics.acceptedWithConfirmation.length,
         rejectedCount: diagnostics.rejected.length,
@@ -420,22 +423,19 @@ function pipelineEventEntries(params: {
     })));
   }
   if (interpreterFailure) {
-    active.session.hasFallback = true;
+    active.session.hasError = true;
     entries.push(eventEntry(active, {
       eventType: 'interpreter_completed',
-      payload: { status: 'failed', failure: interpreterFailure },
+      payload: {
+        status: 'failed',
+        interpretationSource: output.interpretationSource,
+        stateMutationSource: output.stateMutationSource,
+        failure: interpreterFailure,
+      },
       requestId,
       stateRevision,
       occurredAt,
-      severity: 'warn',
-    }));
-    entries.push(eventEntry(active, {
-      eventType: 'fallback_used',
-      payload: { category: 'interpreter_failure', failure: interpreterFailure },
-      requestId,
-      stateRevision,
-      occurredAt,
-      severity: 'warn',
+      severity: 'error',
     }));
   }
 
@@ -590,6 +590,7 @@ function behaviorResponseSource(
   options: WeeklyPlanningBehaviorAwarePipelineOptions,
 ): WeeklyPlanningTraceResponseSource {
   if (output.behaviorDialogue.source === 'ai') return 'ai';
+  if (output.behaviorDialogue.source === 'system') return 'system';
   if (options.useAiDialoguePlanner || options.dialoguePlanner) return 'deterministic_fallback';
   return 'rules';
 }

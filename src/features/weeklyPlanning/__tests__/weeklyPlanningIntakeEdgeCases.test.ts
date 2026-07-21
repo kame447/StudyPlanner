@@ -1,3 +1,4 @@
+import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -24,7 +25,6 @@ import {
 import { createWeeklyDraftRequestFromIntakeState } from '../intake/weeklyPlanningDraftRequestAdapter';
 import {
   applyWeeklyPlanningCommands,
-  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import { parseSetPriorityPolicyCommand } from '../intake/weeklyPlanningPriorityParsing';

@@ -13,13 +13,12 @@ const validatorContext = {
 
 function candidate(
   command: ParsedWeeklyPlanningCommand,
-  sourceUserText: string,
+  _sourceUserText?: string,
 ): InterpretedCommandCandidate {
   return {
     command,
     origin: 'ai_interpreter',
     needsConfirmation: false,
-    sourceUserText,
   };
 }
 
@@ -131,7 +130,7 @@ describe('weekly planning final seven-perspective audit regressions', () => {
     );
   });
 
-  it('rejects a weekday deadline outside the selected planning week', () => {
+  it('accepts an explicit typed deadline without reparsing the weekday phrase', () => {
     const userText = '金曜日までに英単語の小テスト対策をしたい';
     const result = validateInterpretedCandidates([
       candidate({
@@ -150,10 +149,10 @@ describe('weekly planning final seven-perspective audit regressions', () => {
       tasks: [{ ref: 'task:0', label: '英単語' }],
     }, validatorContext);
 
-    expect(result.accepted).toEqual([]);
-    expect(result.rejected).toEqual([
-      expect.objectContaining({ reason: 'ungrounded-study-goal' }),
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ type: 'set_study_goal' }),
     ]);
+    expect(result.rejected).toEqual([]);
   });
 
   it('rejects a calendar-invalid deadline date', () => {
@@ -181,7 +180,7 @@ describe('weekly planning final seven-perspective audit regressions', () => {
     ]);
   });
 
-  it('rejects a relative constraint when the mentioned anchor is ambiguous', () => {
+  it('uses the exact typed anchor reference even when labels are similar', () => {
     const userText = 'バイトの後、帰宅に10分かかる';
     const result = validateInterpretedCandidates([
       candidate({
@@ -209,13 +208,13 @@ describe('weekly planning final seven-perspective audit regressions', () => {
       ],
     }, validatorContext);
 
-    expect(result.accepted).toEqual([]);
-    expect(result.rejected).toEqual([
-      expect.objectContaining({ reason: 'ungrounded-relative-constraint' }),
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ type: 'add_relative_constraint', anchorRef: 'constraint:0' }),
     ]);
+    expect(result.rejected).toEqual([]);
   });
 
-  it('rejects an ambiguous task reference in a time preference', () => {
+  it('uses the exact typed task reference in a time preference', () => {
     const userText = '寝る前なら英単語を見直せそう';
     const result = validateInterpretedCandidates([
       candidate({
@@ -233,9 +232,12 @@ describe('weekly planning final seven-perspective audit regressions', () => {
       ],
     }, validatorContext);
 
-    expect(result.accepted).toEqual([]);
-    expect(result.rejected).toEqual([
-      expect.objectContaining({ reason: 'ungrounded-study-time-preference' }),
+    expect(result.accepted).toEqual([
+      expect.objectContaining({
+        type: 'note_study_time_preference',
+        preference: expect.objectContaining({ taskRef: 'task:0' }),
+      }),
     ]);
+    expect(result.rejected).toEqual([]);
   });
 });

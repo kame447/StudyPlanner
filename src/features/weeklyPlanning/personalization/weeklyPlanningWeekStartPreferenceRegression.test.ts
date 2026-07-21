@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { nextWeekScope } from '../intake/weeklyPlanningScopeParsing';
-import { runWeeklyPlanningIntakePipeline } from '../pipeline/weeklyPlanningIntakePipeline';
+import { runLegacyWeeklyPlanningIntakePipelineForTests } from '../pipeline/weeklyPlanningLegacyIntakePipeline.testSupport';
 
 describe('weekly planning week-start preference regression', () => {
   it('changes the next-week window according to the confirmed account setting', () => {
@@ -30,7 +30,7 @@ describe('weekly planning week-start preference regression', () => {
         targetSlot: 'planning_period',
       },
     };
-    const output = runWeeklyPlanningIntakePipeline({
+    const output = runLegacyWeeklyPlanningIntakePipelineForTests({
       previousState,
       userText: '来週',
       planningStartDate: '2026-07-18',

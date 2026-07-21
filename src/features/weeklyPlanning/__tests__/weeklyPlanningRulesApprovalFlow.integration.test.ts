@@ -13,23 +13,7 @@ import {
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 
-vi.mock('../../../lib/aiConfig', async () => {
-  const actual = await vi.importActual<typeof import('../../../lib/aiConfig')>(
-    '../../../lib/aiConfig',
-  );
-  return {
-    ...actual,
-    getAiConfig: () => ({
-      provider: 'rules' as const,
-      baseUrl: '',
-      model: '',
-      apiKey: '',
-    }),
-    getAiConfigValidationMessage: () => undefined,
-  };
-});
-
-import { executeWeeklyPlanningTurn } from '../weeklyPlanningTurnExecutor';
+import { executeLegacyWeeklyPlanningTurnForTests } from '../weeklyPlanningLegacyTurnExecutor.testSupport';
 
 function completeExamIntakeState(): PlanningIntakeState {
   return {
@@ -129,7 +113,7 @@ afterEach(() => {
 
 describe('weekly planning rules input-to-approval integration', () => {
   it('runs input through preview, promotion, approval, persistence, and completion', async () => {
-    const execution = await executeWeeklyPlanningTurn({
+    const execution = await executeLegacyWeeklyPlanningTurnForTests({
       previousState: completeExamIntakeState(),
       messages: [],
       userText: 'この条件で作って',

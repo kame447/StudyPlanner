@@ -1,9 +1,9 @@
+import { applyWeeklyPlanningUserTurn } from './weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import { validateInterpretedCandidates } from './weeklyPlanningCandidateValidator';
 import type { InterpretedCommandCandidate, InterpreterStateSummary, WeeklyPlanningIntakeInterpreter } from './weeklyPlanningInterpreterTypes';
 import type { PendingPlanningRangeClarification, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
 import {
-  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from './weeklyPlanningIntakeReducer';
 import {
@@ -147,7 +147,7 @@ describe('漢数字を含む絶対日付のguard', () => {
     },
   );
 
-  it('AI candidateの開始日がsourceTextの絶対日付と異なる場合は拒否する', () => {
+  it('AI candidateはsourceTextを再解析せずtyped開始日を受理する', () => {
     const intakeContext = context('2026-07-26');
     const candidate = rangeCandidate({
       sourceText: '八月一日から一週間',
@@ -160,10 +160,8 @@ describe('漢数字を含む絶対日付のguard', () => {
       intakeContext,
     );
 
-    expect(validation.accepted).toHaveLength(0);
-    expect(validation.rejected).toEqual([
-      expect.objectContaining({ reason: 'planning-range-absolute-date-mismatch' }),
-    ]);
+    expect(validation.accepted).toHaveLength(1);
+    expect(validation.rejected).toEqual([]);
   });
 
   it('AI candidateの開始日がsourceTextの絶対日付と一致する場合は受理する', () => {
@@ -183,7 +181,7 @@ describe('漢数字を含む絶対日付のguard', () => {
     expect(validation.accepted).toHaveLength(1);
   });
 
-  it('pipelineで範囲外の漢数字日付をAI候補の日曜日へ置換しない', async () => {
+  it('pipelineはsourceTextを再解析せずAIのtyped日付をそのまま適用する', async () => {
     const selectedDate = '2026-06-26';
     const intakeContext = context(selectedDate);
     const previousState = applyWeeklyPlanningUserTurn(
@@ -213,13 +211,11 @@ describe('漢数字を含む絶対日付のguard', () => {
       interpreter,
     });
 
-    expect(output.state.range).toBeUndefined();
-    expect(output.state.pendingPlanningRange?.scope).toMatchObject({
-      windowStartDate: '2026-06-29',
-      windowEndDate: '2026-07-05',
+    expect(output.state.range).toMatchObject({
+      startDateTime: '2026-07-05T00:00:00',
+      endDateTime: '2026-07-11T24:00:00',
     });
-    expect(output.interpreterDiagnostics?.rejected).toEqual([
-      expect.objectContaining({ reason: 'planning-range-absolute-date-mismatch' }),
-    ]);
+    expect(output.state.pendingPlanningRange).toBeUndefined();
+    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
   });
 });

@@ -130,7 +130,7 @@ describe('weekly planning AI semantic ownership', () => {
     expect(output.decision.kind).not.toBe('answer_clarification');
   });
 
-  it('uses the deterministic parser only after provider failure', async () => {
+  it('keeps semantic state unchanged after provider failure without invoking a parser', async () => {
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultInput,
       userText: '今日の計画立てたい',
@@ -141,7 +141,10 @@ describe('weekly planning AI semantic ownership', () => {
       },
     });
 
-    expect(output.state.range?.sourceText).toBe('今日の計画立てたい');
-    expect(output.state.intent).toBe('weekly_study_planning');
+    expect(output.state.range).toBeUndefined();
+    expect(output.state.intent).toBe('unknown');
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
+    expect(output.interpreterFailure?.category).toBe('provider_error');
   });
 });

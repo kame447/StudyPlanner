@@ -12,8 +12,6 @@ import {
 import {
   applyWeeklyPlanningCommands,
   beginWeeklyPlanningUserTurn,
-  applyWeeklyPlanningUserTurn,
-  applyWeeklyPlanningUserTurnWithDiagnostics,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import type {
@@ -34,7 +32,6 @@ import {
   toPlanningRangeFromSetPlanningRangeCommand,
 } from '../intake/weeklyPlanningCommandAdapter';
 import { resolveConstraintSourceReferences } from '../intake/weeklyPlanningReferenceResolution';
-import { parseRequestClarificationCommand } from '../intake/weeklyPlanningClarificationParsing';
 import type {
   CandidateValidationResult,
   ConstraintSourceAvailability,
@@ -62,6 +59,7 @@ import {
   type WeeklyDraftCandidateDiagnostics,
   type WeeklyDraftCandidateSessionPolicy,
 } from '../scheduling/weeklyDraftCandidateGenerator';
+import { WeeklyPlanningSemanticInterpreterError } from './weeklyPlanningSemanticInterpreterError';
 
 export interface WeeklyPlanningIntakePipelineInput {
   previousState?: PlanningIntakeState;
@@ -102,7 +100,7 @@ function resolveCurrentDateTime(input: WeeklyPlanningIntakePipelineInput): strin
   return input.currentDateTime ?? currentLocalDateTime();
 }
 
-function initialAssumptionProposalState(
+export function initialAssumptionProposalState(
   input: WeeklyPlanningIntakePipelineInput,
 ): AssumptionProposalSessionState | undefined {
   if (!input.assumptionProposalContext) {
@@ -212,10 +210,14 @@ export interface WeeklyPlanningAssumptionProposalDiagnostics {
 }
 
 export interface WeeklyPlanningInterpreterFailure {
-  category: 'provider_error';
+  category: 'provider_error' | 'invalid_response';
   name: string;
   message: string;
 }
+
+export type WeeklyPlanningInterpretationSource = 'ai_interpreter';
+export type WeeklyPlanningInterpretationOutcome = 'applied' | 'empty' | 'rejected' | 'failed';
+export type WeeklyPlanningStateMutationSource = 'validated_ai_commands' | 'none';
 
 export interface WeeklyPlanningIntakePipelineOutput {
   state: PlanningIntakeState;
@@ -229,6 +231,10 @@ export interface WeeklyPlanningIntakePipelineOutput {
   interpreterDiagnostics?: CandidateValidationResult;
   interpreterRawResponse?: string;
   interpreterFailure?: WeeklyPlanningInterpreterFailure;
+  interpretationSource?: WeeklyPlanningInterpretationSource;
+  interpretationOutcome?: WeeklyPlanningInterpretationOutcome;
+  stateMutationSource?: WeeklyPlanningStateMutationSource;
+  interpreterRepairAttempted?: boolean;
   assumptionProposalState?: AssumptionProposalSessionState;
   assumptionProposalRefs?: string[];
   assumptionProposalDiagnostics?: WeeklyPlanningAssumptionProposalDiagnostics;
@@ -264,12 +270,45 @@ function questionContextFromDecision(
   }
 }
 
-function buildPipelineOutput(params: {
+function stateForUnappliedInterpreterTurn(
+  previousState: PlanningIntakeState,
+  preparedState: PlanningIntakeState,
+): PlanningIntakeState {
+  return {
+    ...preparedState,
+    status: previousState.status,
+    questions: [...previousState.questions],
+    lastQuestionContext: previousState.lastQuestionContext
+      ? { ...previousState.lastQuestionContext }
+      : undefined,
+  };
+}
+
+function suppressUnappliedTurnArtifacts(
+  output: WeeklyPlanningIntakePipelineOutput,
+  previousState: PlanningIntakeState,
+): WeeklyPlanningIntakePipelineOutput {
+  output.state.lastQuestionContext = previousState.lastQuestionContext
+    ? { ...previousState.lastQuestionContext }
+    : undefined;
+  output.draftRequest = null;
+  output.remainingWorkItems = null;
+  output.draftCandidates = null;
+  output.diagnostics = null;
+  delete output.assumedDraft;
+  return output;
+}
+
+export function buildPipelineOutput(params: {
   input: WeeklyPlanningIntakePipelineInput;
   state: PlanningIntakeState;
   interpreterDiagnostics?: CandidateValidationResult;
   interpreterRawResponse?: string;
   interpreterFailure?: WeeklyPlanningInterpreterFailure;
+  interpretationSource?: WeeklyPlanningInterpretationSource;
+  interpretationOutcome?: WeeklyPlanningInterpretationOutcome;
+  stateMutationSource?: WeeklyPlanningStateMutationSource;
+  interpreterRepairAttempted?: boolean;
   assumptionProposalState?: AssumptionProposalSessionState;
   assumptionProposalRefs?: string[];
   assumptionProposalDiagnostics?: WeeklyPlanningAssumptionProposalDiagnostics;
@@ -334,6 +373,18 @@ function buildPipelineOutput(params: {
   if (params.interpreterFailure) {
     output.interpreterFailure = params.interpreterFailure;
   }
+  if (params.interpretationSource) {
+    output.interpretationSource = params.interpretationSource;
+  }
+  if (params.interpretationOutcome) {
+    output.interpretationOutcome = params.interpretationOutcome;
+  }
+  if (params.stateMutationSource) {
+    output.stateMutationSource = params.stateMutationSource;
+  }
+  if (params.interpreterRepairAttempted !== undefined) {
+    output.interpreterRepairAttempted = params.interpreterRepairAttempted;
+  }
 
   if (params.assumptionProposalState) {
     output.assumptionProposalState = params.assumptionProposalState;
@@ -347,66 +398,21 @@ function buildPipelineOutput(params: {
   return output;
 }
 
-function toInterpreterFailure(error: unknown): WeeklyPlanningInterpreterFailure {
+function toInterpreterFailure(
+  category: WeeklyPlanningInterpreterFailure['category'],
+  error: unknown,
+): WeeklyPlanningInterpreterFailure {
   const name = error instanceof Error && error.name.trim() ? error.name.trim() : 'Error';
   const message = error instanceof Error && error.message.trim()
     ? error.message.trim()
-    : 'Unknown interpreter provider failure.';
+    : category === 'provider_error'
+      ? 'Unknown interpreter provider failure.'
+      : 'Invalid interpreter response.';
   return {
-    category: 'provider_error',
+    category,
     name: name.slice(0, 120),
     message: message.slice(0, 500),
   };
-}
-
-function deterministicClarificationRequest(
-  input: WeeklyPlanningIntakePipelineInput,
-  previousState: PlanningIntakeState,
-) {
-  return parseRequestClarificationCommand(input.userText, {
-    hasActiveQuestion: Boolean(previousState.lastQuestionContext),
-    activeQuestionSource: 'rendered',
-  });
-}
-
-function applyClarificationDecision(
-  output: WeeklyPlanningIntakePipelineOutput,
-  request: ReturnType<typeof parseRequestClarificationCommand>,
-  previousQuestionContext: WeeklyPlanningQuestionContext | undefined,
-): WeeklyPlanningIntakePipelineOutput {
-  if (!request) return output;
-  const decision = createWeeklyPlanningClarificationDecision({
-    state: output.state,
-    target: request.target,
-    ref: request.ref,
-    previousQuestionContext,
-  });
-  const targetSlot = decision.clarification?.targetSlot;
-  output.decision = decision;
-  output.state.lastQuestionContext = request.target === 'referenced_question' && previousQuestionContext
-    ? previousQuestionContext
-    : targetSlot
-      ? { kind: 'options', targetSlot, intent: decision.clarification?.intent }
-      : previousQuestionContext;
-  return output;
-}
-
-export function runWeeklyPlanningIntakePipeline(
-  input: WeeklyPlanningIntakePipelineInput,
-): WeeklyPlanningIntakePipelineOutput {
-  const previousState = input.previousState ?? createInitialPlanningIntakeState();
-  const clarificationRequest = deterministicClarificationRequest(input, previousState);
-  const state = applyWeeklyPlanningUserTurn(previousState, input.userText, {
-    selectedDate: input.planningStartDate,
-    planningDayCount: input.planningDayCount,
-    currentDateTime: resolveCurrentDateTime(input),
-    weekStartsOn: input.weekStartsOn,
-  });
-  return applyClarificationDecision(buildPipelineOutput({
-    input,
-    state,
-    assumptionProposalState: initialAssumptionProposalState(input),
-  }), clarificationRequest, previousState.lastQuestionContext);
 }
 
 function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
@@ -577,7 +583,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   input: WeeklyPlanningIntakePipelineWithInterpreterInput,
 ): Promise<WeeklyPlanningIntakePipelineOutput> {
   if (!input.interpreter) {
-    return runWeeklyPlanningIntakePipeline(input);
+    throw new WeeklyPlanningSemanticInterpreterError('interpreter_unavailable');
   }
 
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
@@ -600,18 +606,32 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       recentTurns: input.recentTurns,
     });
   } catch (error) {
-    const deterministicClarification = deterministicClarificationRequest(input, previousState);
-    const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
-      previousState,
-      input.userText,
-      context,
-    );
-    return applyClarificationDecision(buildPipelineOutput({
+    return suppressUnappliedTurnArtifacts(buildPipelineOutput({
       input,
-      state: fallbackTurn.state,
-      interpreterFailure: toInterpreterFailure(error),
+      state: stateForUnappliedInterpreterTurn(previousState, preparedState),
+      interpreterFailure: toInterpreterFailure('provider_error', error),
+      interpretationSource: 'ai_interpreter',
+      interpretationOutcome: 'failed',
+      stateMutationSource: 'none',
       assumptionProposalState: proposalState,
-    }), deterministicClarification, previousState.lastQuestionContext);
+    }), previousState);
+  }
+
+  if (interpreterResult.responseFailure) {
+    return suppressUnappliedTurnArtifacts(buildPipelineOutput({
+      input,
+      state: stateForUnappliedInterpreterTurn(previousState, preparedState),
+      interpreterRawResponse: interpreterResult.rawResponse,
+      interpreterFailure: toInterpreterFailure(
+        'invalid_response',
+        new Error(interpreterResult.responseFailure),
+      ),
+      interpretationSource: 'ai_interpreter',
+      interpretationOutcome: 'failed',
+      stateMutationSource: 'none',
+      interpreterRepairAttempted: interpreterResult.repairAttempted === true,
+      assumptionProposalState: proposalState,
+    }), previousState);
   }
 
   const proposalResult = input.assumptionProposalContext && proposalState
@@ -626,7 +646,6 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
 
   const resolvedCandidates = resolveConstraintSourceReferences({
     candidates: interpreterResult.candidates,
-    userText: input.userText,
     stateSummary,
   });
   const interpreterDiagnostics = validateInterpretedCandidates(
@@ -635,6 +654,32 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     context,
   );
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
+
+  const hadCandidateOutput = interpreterResult.candidates.length > 0
+    || interpreterResult.parseRejections.length > 0;
+  const hasApplicableResult = interpreterDiagnostics.accepted.length > 0
+    || interpreterDiagnostics.acceptedWithConfirmation.length > 0
+    || interpreterDiagnostics.clarifications.length > 0
+    || interpreterDiagnostics.clarificationRequests.length > 0;
+  const interpretationOutcome: WeeklyPlanningInterpretationOutcome = hasApplicableResult
+    ? 'applied'
+    : hadCandidateOutput
+      ? 'rejected'
+      : 'empty';
+
+  if (interpretationOutcome === 'rejected') {
+    return suppressUnappliedTurnArtifacts(buildPipelineOutput({
+      input,
+      state: stateForUnappliedInterpreterTurn(previousState, preparedState),
+      interpreterDiagnostics,
+      interpreterRawResponse: interpreterResult.rawResponse,
+      interpretationSource: 'ai_interpreter',
+      interpretationOutcome,
+      stateMutationSource: 'none',
+      interpreterRepairAttempted: interpreterResult.repairAttempted === true,
+      assumptionProposalState: proposalState,
+    }), previousState);
+  }
 
   const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];
   const interpretedCommands = [
@@ -669,6 +714,10 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     state: interpretedState,
     interpreterDiagnostics,
     interpreterRawResponse: interpreterResult.rawResponse,
+    interpretationSource: 'ai_interpreter',
+    interpretationOutcome,
+    stateMutationSource: interpretedCommands.length > 0 ? 'validated_ai_commands' : 'none',
+    interpreterRepairAttempted: interpreterResult.repairAttempted === true,
     assumptionProposalState: proposalResult?.state ?? proposalState,
     assumptionProposalRefs: proposalResult?.assumptionProposalRefs,
     assumptionProposalDiagnostics: proposalResult

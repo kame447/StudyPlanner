@@ -1,10 +1,10 @@
+import { applyWeeklyPlanningUserTurn } from './weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import type {
   PlanningIntakeState,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
 import {
-  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from './weeklyPlanningIntakeReducer';
 import {

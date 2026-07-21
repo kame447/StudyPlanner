@@ -1,3 +1,5 @@
+import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningLegacyIntakeReducer.testSupport';
+import { runLegacyWeeklyPlanningIntakePipelineForTests } from '../pipeline/weeklyPlanningLegacyIntakePipeline.testSupport';
 import { describe, expect, it, vi } from 'vitest';
 import type { WeeklyPlanningDialogueDecision } from '../dialogue/weeklyPlanningDialogueManager';
 import {
@@ -12,7 +14,6 @@ import {
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import {
   applyWeeklyPlanningCommands,
-  applyWeeklyPlanningUserTurn,
   createInitialPlanningIntakeState,
 } from '../intake/weeklyPlanningIntakeReducer';
 import {
@@ -32,7 +33,6 @@ import {
 } from '../intake/weeklyPlanningMissingStatus';
 import { validateInterpretedCandidates } from '../intake/weeklyPlanningCandidateValidator';
 import {
-  runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
 } from '../pipeline/weeklyPlanningIntakePipeline';
 import { WEEKLY_PLANNING_INTAKE_EVALUATION_CASES } from '../testFixtures/weeklyPlanningEvaluationCases';
@@ -136,7 +136,7 @@ function baseSummary(overrides: Partial<InterpreterStateSummary> = {}): Interpre
 
 describe('weekly planning AI foundation without real AI', () => {
   it('applies fake interpreter command candidates through validator and reducer for the first evaluation case', async () => {
-    const afterRange = runWeeklyPlanningIntakePipeline({
+    const afterRange = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
     });
@@ -250,7 +250,7 @@ describe('weekly planning AI foundation without real AI', () => {
   });
 
   it('exposes AI parser rejections through pipeline interpreter diagnostics', async () => {
-    const afterRange = runWeeklyPlanningIntakePipeline({
+    const afterRange = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
     });
@@ -324,7 +324,7 @@ describe('weekly planning AI foundation without real AI', () => {
   });
 
 
-  it('uses legacy fallback only after an interpreter error while empty AI remains empty', async () => {
+  it('keeps both empty and failed AI turns free from legacy parser mutations', async () => {
     const userText = String.fromCodePoint(0x6765,0x9031,0x3001,0x82f1,0x8a9e,0x3092,0x33,0x6642,0x9593,0x3001,0x6570,0x5b66,0x3092,0x32,0x6642,0x9593);
     const emptyInterpreter = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
       candidates: [],
@@ -348,8 +348,11 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(emptyOutput.state.tasks).toEqual([]);
     expect(emptyOutput.interpreterDiagnostics).toBeDefined();
     expect(failingInterpreter).toHaveBeenCalledTimes(1);
-    expect(fallbackOutput.state.tasks).toHaveLength(2);
+    expect(fallbackOutput.state.tasks).toEqual([]);
     expect(fallbackOutput.interpreterDiagnostics).toBeUndefined();
+    expect(fallbackOutput.interpretationOutcome).toBe('failed');
+    expect(fallbackOutput.stateMutationSource).toBe('none');
+    expect(fallbackOutput.interpreterFailure?.category).toBe('provider_error');
   });
 
   it('keeps only the higher confidence candidate when a later candidate targets the same slot', () => {

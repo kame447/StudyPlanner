@@ -150,11 +150,6 @@ function validateReplacementCommand(params: {
     origin: 'ai_interpreter',
     needsConfirmation: false,
   };
-  Object.defineProperty(candidate, 'sourceUserText', {
-    value: params.userText,
-    enumerable: false,
-    configurable: false,
-  });
   const validation = validateInterpretedCandidates(
     [candidate],
     summaryForCorrection(params.stateSummary, params.target),

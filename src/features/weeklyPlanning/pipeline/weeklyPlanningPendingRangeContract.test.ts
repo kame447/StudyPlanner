@@ -3,7 +3,7 @@ import {
   parseSetPendingPlanningRangeCommand,
   parseSetPlanningRangeCommand,
 } from '../intake/weeklyPlanningScopeParsing';
-import { runWeeklyPlanningIntakePipeline } from './weeklyPlanningIntakePipeline';
+import { runLegacyWeeklyPlanningIntakePipelineForTests } from './weeklyPlanningLegacyIntakePipeline.testSupport';
 
 const context = {
   selectedDate: '2026-07-17',
@@ -11,10 +11,10 @@ const context = {
 };
 
 function runTurn(
-  previousState: Parameters<typeof runWeeklyPlanningIntakePipeline>[0]['previousState'],
+  previousState: Parameters<typeof runLegacyWeeklyPlanningIntakePipelineForTests>[0]['previousState'],
   userText: string,
 ) {
-  return runWeeklyPlanningIntakePipeline({
+  return runLegacyWeeklyPlanningIntakePipelineForTests({
     previousState,
     userText,
     planningStartDate: context.selectedDate,

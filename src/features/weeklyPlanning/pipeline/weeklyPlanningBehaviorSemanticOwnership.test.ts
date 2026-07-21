@@ -57,13 +57,12 @@ function acceptedState(): PlanningIntakeState {
 
 function candidate(
   command: ParsedWeeklyPlanningCommand,
-  sourceUserText: string,
+  _sourceUserText?: string,
 ): InterpretedCommandCandidate {
   return {
     command,
     origin: 'ai_interpreter',
     needsConfirmation: false,
-    sourceUserText,
   };
 }
 
