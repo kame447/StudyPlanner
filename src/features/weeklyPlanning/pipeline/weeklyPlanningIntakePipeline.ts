@@ -211,6 +211,12 @@ export interface WeeklyPlanningAssumptionProposalDiagnostics {
   rejected: Array<{ draft: unknown; reason: string }>;
 }
 
+export interface WeeklyPlanningInterpreterFailure {
+  category: 'provider_error';
+  name: string;
+  message: string;
+}
+
 export interface WeeklyPlanningIntakePipelineOutput {
   state: PlanningIntakeState;
   draftRequest: WeeklyPlanningDraftRequest | null;
@@ -221,6 +227,8 @@ export interface WeeklyPlanningIntakePipelineOutput {
   assumedDraft?: WeeklyPlanningAssumedDraft;
   decision: WeeklyPlanningDialogueDecision;
   interpreterDiagnostics?: CandidateValidationResult;
+  interpreterRawResponse?: string;
+  interpreterFailure?: WeeklyPlanningInterpreterFailure;
   assumptionProposalState?: AssumptionProposalSessionState;
   assumptionProposalRefs?: string[];
   assumptionProposalDiagnostics?: WeeklyPlanningAssumptionProposalDiagnostics;
@@ -260,6 +268,8 @@ function buildPipelineOutput(params: {
   input: WeeklyPlanningIntakePipelineInput;
   state: PlanningIntakeState;
   interpreterDiagnostics?: CandidateValidationResult;
+  interpreterRawResponse?: string;
+  interpreterFailure?: WeeklyPlanningInterpreterFailure;
   assumptionProposalState?: AssumptionProposalSessionState;
   assumptionProposalRefs?: string[];
   assumptionProposalDiagnostics?: WeeklyPlanningAssumptionProposalDiagnostics;
@@ -318,6 +328,12 @@ function buildPipelineOutput(params: {
   if (params.interpreterDiagnostics) {
     output.interpreterDiagnostics = params.interpreterDiagnostics;
   }
+  if (params.interpreterRawResponse !== undefined) {
+    output.interpreterRawResponse = params.interpreterRawResponse;
+  }
+  if (params.interpreterFailure) {
+    output.interpreterFailure = params.interpreterFailure;
+  }
 
   if (params.assumptionProposalState) {
     output.assumptionProposalState = params.assumptionProposalState;
@@ -329,6 +345,18 @@ function buildPipelineOutput(params: {
     output.assumptionProposalDiagnostics = params.assumptionProposalDiagnostics;
   }
   return output;
+}
+
+function toInterpreterFailure(error: unknown): WeeklyPlanningInterpreterFailure {
+  const name = error instanceof Error && error.name.trim() ? error.name.trim() : 'Error';
+  const message = error instanceof Error && error.message.trim()
+    ? error.message.trim()
+    : 'Unknown interpreter provider failure.';
+  return {
+    category: 'provider_error',
+    name: name.slice(0, 120),
+    message: message.slice(0, 500),
+  };
 }
 
 function deterministicClarificationRequest(
@@ -571,7 +599,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       stateSummary,
       recentTurns: input.recentTurns,
     });
-  } catch {
+  } catch (error) {
     const deterministicClarification = deterministicClarificationRequest(input, previousState);
     const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
       previousState,
@@ -581,6 +609,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     return applyClarificationDecision(buildPipelineOutput({
       input,
       state: fallbackTurn.state,
+      interpreterFailure: toInterpreterFailure(error),
       assumptionProposalState: proposalState,
     }), deterministicClarification, previousState.lastQuestionContext);
   }
@@ -639,6 +668,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     input,
     state: interpretedState,
     interpreterDiagnostics,
+    interpreterRawResponse: interpreterResult.rawResponse,
     assumptionProposalState: proposalResult?.state ?? proposalState,
     assumptionProposalRefs: proposalResult?.assumptionProposalRefs,
     assumptionProposalDiagnostics: proposalResult

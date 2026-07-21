@@ -374,7 +374,8 @@ function pipelineEventEntries(params: {
   const { active, output, requestId, occurredAt, stateRevision } = params;
   const entries: WeeklyPlanningTraceEntry[] = [];
   const diagnostics = output.interpreterDiagnostics;
-  if (diagnostics) {
+  const interpreterFailure = output.interpreterFailure;
+  if (diagnostics || interpreterFailure) {
     entries.push(eventEntry(active, {
       eventType: 'interpreter_started',
       payload: { previousStateRevision: Math.max(0, stateRevision - 1) },
@@ -383,14 +384,20 @@ function pipelineEventEntries(params: {
       occurredAt,
       severity: 'debug',
     }));
+  }
+  if (diagnostics) {
     entries.push(eventEntry(active, {
       eventType: 'interpreter_completed',
       payload: {
+        status: 'completed',
         acceptedCount: diagnostics.accepted.length,
         acceptedWithConfirmationCount: diagnostics.acceptedWithConfirmation.length,
         rejectedCount: diagnostics.rejected.length,
         clarificationRequestCount: diagnostics.clarificationRequests.length,
         parseRejections: diagnostics.parseRejections,
+        ...(output.interpreterRawResponse !== undefined
+          ? { rawResponse: output.interpreterRawResponse }
+          : {}),
       },
       requestId,
       stateRevision,
@@ -411,6 +418,25 @@ function pipelineEventEntries(params: {
       occurredAt,
       severity: 'warn',
     })));
+  }
+  if (interpreterFailure) {
+    active.session.hasFallback = true;
+    entries.push(eventEntry(active, {
+      eventType: 'interpreter_completed',
+      payload: { status: 'failed', failure: interpreterFailure },
+      requestId,
+      stateRevision,
+      occurredAt,
+      severity: 'warn',
+    }));
+    entries.push(eventEntry(active, {
+      eventType: 'fallback_used',
+      payload: { category: 'interpreter_failure', failure: interpreterFailure },
+      requestId,
+      stateRevision,
+      occurredAt,
+      severity: 'warn',
+    }));
   }
 
   output.assumptionProposalDiagnostics?.accepted.forEach((proposal) => entries.push(eventEntry(active, {

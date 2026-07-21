@@ -102,6 +102,8 @@ export interface WeeklyPlanningInterpreterResult {
   assumptionProposalDrafts?: unknown[];
   assumptionDecisions?: unknown[];
   correctionEnvelopes?: unknown[];
+  /** Raw provider content before parsing. Kept for redacted diagnostic trace. */
+  rawResponse?: string;
 }
 
 export interface InterpreterRecentTurn {

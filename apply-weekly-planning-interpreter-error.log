@@ -1,6 +1,0 @@
-Error: Missing replacement anchor: emptyInterpreterResult
-    at replaceOnce (file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-interpreter-generalization.mjs:13:24)
-    at file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/apply-weekly-planning-interpreter-generalization.mjs:26:15
-    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
-    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
-    at async file:///home/runner/work/StudyPlannner/StudyPlannner/scripts/run-weekly-planning-interpreter-generalization.mjs:26:3

@@ -2580,7 +2580,14 @@ describe('Stage 2 bounded conversation grounding', () => {
       },
     });
 
-    expect(output).toEqual(expected);
+    expect(output).toEqual({
+      ...expected,
+      interpreterFailure: {
+        category: 'provider_error',
+        name: 'Error',
+        message: 'provider unavailable',
+      },
+    });
   });
 });
 
