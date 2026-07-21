@@ -19,6 +19,8 @@ const SESSION: WeeklyPlanningTraceSession = {
   status: 'active',
   startedAt: NOW,
   lastActivityAt: NOW,
+  planningRangeStart: '2026-07-21',
+  planningRangeEnd: '2026-07-27T24:00:00',
   turnCount: 1,
   entryCount: 1,
   hasPreview: false,
@@ -92,6 +94,10 @@ describe('createRemoteWeeklyPlanningTraceRepository', () => {
     expect(apiClient.startSession).toHaveBeenCalledWith(expect.objectContaining({
       idempotencyKey: LOCAL_SESSION_ID,
       conversationCorrelationKey: LOCAL_CONVERSATION_ID,
+      session: expect.objectContaining({
+        planningRangeStart: '2026-07-21',
+        planningRangeEnd: '2026-07-27T24:00:00',
+      }),
     }));
     expect(apiClient.append).toHaveBeenCalledTimes(2);
     const payloads = vi.mocked(apiClient.append).mock.calls.map(([payload]) => payload);
@@ -102,6 +108,8 @@ describe('createRemoteWeeklyPlanningTraceRepository', () => {
         session: expect.objectContaining({
           id: SERVER_SESSION_ID,
           logicalConversationId: SERVER_CONVERSATION_ID,
+          planningRangeStart: '2026-07-21',
+          planningRangeEnd: '2026-07-27T24:00:00',
         }),
         entries: [expect.objectContaining({
           id: `${SERVER_SESSION_ID}-00000000`,
@@ -148,6 +156,10 @@ describe('createRemoteWeeklyPlanningTraceRepository', () => {
     const entries = await repository.listEntries('ignored', SERVER_SESSION_ID);
 
     expect(sessions[0]?.userId).toBe('subject-abc123');
+    expect(sessions[0]).toMatchObject({
+      planningRangeStart: '2026-07-21',
+      planningRangeEnd: '2026-07-27T24:00:00',
+    });
     expect(entries[0]?.userId).toBe('subject-abc123');
     expect(JSON.stringify({ sessions, entries })).not.toContain('firebase-user-1');
   });
