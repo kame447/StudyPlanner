@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const applicatorPath = 'scripts/apply-weekly-planning-interpreter-generalization.mjs';
 let source = fs.readFileSync(applicatorPath, 'utf8');
@@ -7,6 +8,13 @@ source = source.replace(
   '',
 );
 fs.writeFileSync(applicatorPath, source);
+
+const syntaxCheck = spawnSync(process.execPath, ['--check', applicatorPath], { encoding: 'utf8' });
+if (syntaxCheck.status !== 0) {
+  const details = `${syntaxCheck.stdout || ''}${syntaxCheck.stderr || ''}`;
+  fs.writeFileSync('apply-weekly-planning-interpreter-error.log', details);
+  throw new Error('Applicator syntax check failed.');
+}
 
 try {
   await import('./apply-weekly-planning-interpreter-generalization.mjs');
