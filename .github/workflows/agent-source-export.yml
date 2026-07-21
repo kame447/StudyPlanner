@@ -18,9 +18,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Create source archive
         run: |
-          tar --exclude=.git --exclude=node_modules -czf studyplanner-source.tar.gz .
+          tar --exclude=.git --exclude=node_modules -czf /tmp/studyplanner-source.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
           name: studyplanner-source
-          path: studyplanner-source.tar.gz
+          path: /tmp/studyplanner-source.tar.gz
           retention-days: 1
