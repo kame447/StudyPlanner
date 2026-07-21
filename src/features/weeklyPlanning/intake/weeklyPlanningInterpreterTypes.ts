@@ -102,7 +102,7 @@ export interface WeeklyPlanningInterpreterResult {
   assumptionProposalDrafts?: unknown[];
   assumptionDecisions?: unknown[];
   correctionEnvelopes?: unknown[];
-  /** Raw provider content before parsing. Kept for redacted diagnostic trace. */
+  /** Exact provider content before parsing. Persist only through the trace privacy boundary. */
   rawResponse?: string;
 }
 
