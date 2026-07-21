@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - agent/generalize-weekly-planning-interpreter
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
