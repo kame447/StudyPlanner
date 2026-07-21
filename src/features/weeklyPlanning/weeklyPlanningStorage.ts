@@ -43,6 +43,14 @@ const LIFE_CONSTRAINT_KINDS = new Set([
   'sleep', 'meal', 'bath', 'commute', 'club', 'cram_school', 'fixed_event',
   'unavailable', 'buffer',
 ]);
+const STUDY_TIME_PREFERENCE_KINDS = new Set(['avoid_morning', 'prefer_before_sleep']);
+const STUDY_ACTIVITY_KINDS = new Set([
+  'memorization', 'drill', 'reading', 'writing', 'problem_solving', 'project', 'review', 'unknown',
+]);
+const TASK_DISTRIBUTION_POLICIES = new Set([
+  'single_block', 'contiguous', 'splittable', 'spaced', 'sequential_units',
+]);
+const STUDY_COGNITIVE_LOADS = new Set(['light', 'medium', 'heavy', 'unknown']);
 const QUESTION_CONTEXT_KINDS = new Set([
   'missing', 'feasibility_adjustment', 'options', 'preview', 'approval', 'ambiguity',
 ]);
@@ -382,11 +390,19 @@ function isExamPrepScope(value: unknown): boolean {
     && isStringArray(value.rawText);
 }
 
+function isTaskExecutionProfile(value: unknown): boolean {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['activityKind', 'distributionPolicy', 'cognitiveLoad'])
+    && STUDY_ACTIVITY_KINDS.has(String(value.activityKind))
+    && TASK_DISTRIBUTION_POLICIES.has(String(value.distributionPolicy))
+    && STUDY_COGNITIVE_LOADS.has(String(value.cognitiveLoad));
+}
+
 function isTask(value: unknown): boolean {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
-      'title', 'subject', 'examType', 'field', 'year', 'unit', 'amount', 'rawText',
-      'requiresTimeEstimate', 'source',
+      'title', 'subject', 'examType', 'field', 'year', 'unit', 'amount', 'deadlineDeclared',
+      'deadlineDate', 'deadlineTime', 'executionProfile', 'rawText', 'requiresTimeEstimate', 'source',
     ])) {
     return false;
   }
@@ -397,6 +413,12 @@ function isTask(value: unknown): boolean {
     && (value.year === undefined || isInteger(value.year))
     && STUDY_SCOPE_UNITS.has(String(value.unit))
     && isOptionalFiniteNumber(value.amount)
+    && (value.deadlineDeclared === undefined || value.deadlineDeclared === true)
+    && (value.deadlineDate === undefined || isDate(value.deadlineDate))
+    && (value.deadlineTime === undefined || isTime(value.deadlineTime))
+    && (value.executionProfile === undefined || isTaskExecutionProfile(value.executionProfile))
+    && ((value.deadlineDate === undefined && value.deadlineTime === undefined)
+      || value.deadlineDeclared === true)
     && typeof value.rawText === 'string'
     && typeof value.requiresTimeEstimate === 'boolean'
     && (value.source === 'command' || value.source === 'legacy_fallback');
@@ -478,6 +500,17 @@ function isLifeConstraint(value: unknown): boolean {
     && isOptionalString(value.rawText);
 }
 
+function isStudyTimePreference(value: unknown): boolean {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, ['kind', 'taskRef', 'rawText', 'confidence'])) {
+    return false;
+  }
+  return STUDY_TIME_PREFERENCE_KINDS.has(String(value.kind))
+    && isOptionalString(value.taskRef)
+    && typeof value.rawText === 'string'
+    && (value.confidence === 'high' || value.confidence === 'medium');
+}
+
 function isConstraintSource(value: unknown): boolean {
   if (!isRecord(value) || !hasOnlyKeys(value, ['kind', 'selector'])) return false;
   return (value.kind === 'timetable'
@@ -516,7 +549,7 @@ function isPlanningIntakeState(value: unknown): value is PlanningIntakeState {
     || !hasOnlyKeys(value, [
       'status', 'intent', 'range', 'pendingPlanningRange', 'examPrepScope', 'tasks',
       'progress', 'unitRates', 'constraints', 'constraintSourcesInUse',
-      'fixedEventsDeclaredNone', 'priorityPolicy', 'priorityPolicySource', 'missing',
+      'studyTimePreferences', 'fixedEventsDeclaredNone', 'priorityPolicy', 'priorityPolicySource', 'missing',
       'assumptions', 'uncertainties', 'questions', 'lastQuestionContext',
       'shouldCreateDraft', 'shouldSavePlan', 'draftGenerationIntent',
       'draftGenerationAuthorizedAtRevision', 'sourceTurns',
@@ -539,6 +572,9 @@ function isPlanningIntakeState(value: unknown): value is PlanningIntakeState {
     && (value.constraintSourcesInUse === undefined
       || (Array.isArray(value.constraintSourcesInUse)
         && value.constraintSourcesInUse.every(isConstraintSource)))
+    && (value.studyTimePreferences === undefined
+      || (Array.isArray(value.studyTimePreferences)
+        && value.studyTimePreferences.every(isStudyTimePreference)))
     && (value.fixedEventsDeclaredNone === undefined || value.fixedEventsDeclaredNone === true)
     && isPriorityPolicy(value.priorityPolicy)
     && (value.priorityPolicySource === undefined

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import type { WeeklyPlanningIntakeInterpreter } from '../intake/weeklyPlanningInterpreterTypes';
+import type {
+  WeeklyPlanningIntakeInterpreter,
+  WeeklyPlanningInterpreterResult,
+} from '../intake/weeklyPlanningInterpreterTypes';
 import { runWeeklyPlanningBehaviorAwarePipelineWithInterpreter } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 
 const emptyInterpreter: WeeklyPlanningIntakeInterpreter = {
@@ -9,6 +12,20 @@ const emptyInterpreter: WeeklyPlanningIntakeInterpreter = {
     return { candidates: [], parseRejections: [] };
   },
 };
+
+function lifecycleInterpreter(
+  lifecycleResult: Pick<WeeklyPlanningInterpreterResult, 'assumptionDecisions' | 'correctionEnvelopes'>,
+): WeeklyPlanningIntakeInterpreter {
+  return {
+    async interpretUserTurn() {
+      return {
+        candidates: [],
+        parseRejections: [],
+        ...lifecycleResult,
+      };
+    },
+  };
+}
 
 function baseState(): PlanningIntakeState {
   return {
@@ -64,14 +81,18 @@ function baseState(): PlanningIntakeState {
   };
 }
 
-function input(userText: string, previousState: PlanningIntakeState = baseState()) {
+function input(
+  userText: string,
+  previousState: PlanningIntakeState = baseState(),
+  interpreter: WeeklyPlanningIntakeInterpreter = emptyInterpreter,
+) {
   return {
     userText,
     previousState,
     context: { selectedDate: '2026-07-12' },
     planningStartDate: '2026-07-13',
     planningDayCount: 7,
-    interpreter: emptyInterpreter,
+    interpreter,
     sessionPolicy: { dayStartTime: '09:00', dayEndTime: '23:00' },
     existingPlans: [],
     scheduleTemplates: [],
@@ -82,7 +103,13 @@ function input(userText: string, previousState: PlanningIntakeState = baseState(
 describe('weekly planning dialogue stack integration', () => {
   it('accepts a pending assumption through interpreter decorator and persists the ledger in intake state', async () => {
     const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
-      input('その仮定で進めて'),
+      input('その仮定で進めて', baseState(), lifecycleInterpreter({
+        assumptionDecisions: [{
+          type: 'accept_assumption',
+          proposalId: 'proposal-duration-english',
+          confidence: 'high',
+        }],
+      })),
       { conversationId: 'conversation-1', userId: 'user-1' },
     );
 
@@ -96,7 +123,14 @@ describe('weekly planning dialogue stack integration', () => {
 
   it('applies one task correction while preserving unrelated tasks and proposal history', async () => {
     const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
-      input('数学は外して'),
+      input('数学は外して', baseState(), lifecycleInterpreter({
+        correctionEnvelopes: [{
+          operation: 'remove',
+          targetKind: 'task',
+          targetRef: 'task:1',
+          confidence: 'high',
+        }],
+      })),
       { conversationId: 'conversation-1', userId: 'user-1' },
     );
 
@@ -107,8 +141,31 @@ describe('weekly planning dialogue stack integration', () => {
   });
 
   it('resolves an explicit relative commute into the behavior snapshot without inventing availability', async () => {
+    const userText = 'バイトの後、帰宅10分して夕食';
+    const relativeInterpreter: WeeklyPlanningIntakeInterpreter = {
+      async interpretUserTurn() {
+        return {
+          candidates: [{
+            command: {
+              type: 'add_relative_constraint',
+              anchorRef: 'constraint:0',
+              relation: 'after',
+              offsetMinutes: 0,
+              durationMinutes: 10,
+              kind: 'commute',
+              sourceText: userText,
+              confidence: 'high',
+            },
+            origin: 'ai_interpreter',
+            needsConfirmation: false,
+            sourceUserText: userText,
+          }],
+          parseRejections: [],
+        };
+      },
+    };
     const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
-      input('バイトの後、帰宅10分して夕食'),
+      input(userText, baseState(), relativeInterpreter),
       { conversationId: 'conversation-1', userId: 'user-1' },
     );
 
@@ -147,6 +204,11 @@ describe('weekly planning dialogue stack integration', () => {
         unit: 'hours',
         amount: 1,
         rawText: '英単語を1時間',
+        executionProfile: {
+          activityKind: 'memorization',
+          distributionPolicy: 'spaced',
+          cognitiveLoad: 'light',
+        },
         requiresTimeEstimate: false,
         source: 'command',
       }],

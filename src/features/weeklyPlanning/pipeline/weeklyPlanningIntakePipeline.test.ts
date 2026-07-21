@@ -2494,7 +2494,9 @@ describe('Stage 2 bounded conversation grounding', () => {
     });
 
     expect(output.state.priorityPolicy).toEqual({ kind: 'field_first', order: ['hardware'] });
-    expect(output.interpreterDiagnostics?.accepted).toEqual([]);
+    expect(output.interpreterDiagnostics?.accepted).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
+    ]);
     expect(output.state.missing).not.toContain('priority_policy');
   });
 

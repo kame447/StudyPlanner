@@ -10,6 +10,7 @@ import {
   type AssumptionProposalCanonicalizationContext,
   type AssumptionProposalRecord,
 } from '../intake/weeklyPlanningAssumptionProposals';
+import { isValidWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandRuntimeValidation';
 import type {
   InterpreterCorrectionTargetSummary,
   InterpreterPendingAssumptionSummary,
@@ -150,10 +151,11 @@ function constraintSummary(output: WeeklyPlanningIntakePipelineOutput): string[]
 }
 
 function planningPeriodLabel(output: WeeklyPlanningIntakePipelineOutput): string | undefined {
-  const source = output.state.range?.sourceText;
-  if (source && /来週/.test(source)) return '来週';
-  if (source && /今週/.test(source)) return '今週';
-  if (source && /週末|土日/.test(source)) return '週末';
+  const range = output.state.range;
+  const startDate = range?.startDateTime?.slice(0, 10);
+  const endDate = range?.endDateTime?.slice(0, 10);
+  if (startDate && endDate) return `${startDate}〜${endDate}`;
+  if (startDate && range?.calendarDayCount) return `${startDate}から${range.calendarDayCount}日間`;
   return output.state.pendingPlanningRange?.scope.label;
 }
 
@@ -251,7 +253,9 @@ function applyNonExamDraftAuthorization(params: {
   base: WeeklyPlanningIntakePipelineOutput;
   userText: string;
 }): WeeklyPlanningIntakePipelineOutput {
-  if (params.base.state.examPrepScope || params.base.state.draftGenerationIntent === 'user_authorized') {
+  if (params.base.interpreterDiagnostics
+    || params.base.state.examPrepScope
+    || params.base.state.draftGenerationIntent === 'user_authorized') {
     return params.base;
   }
   return {
@@ -285,7 +289,6 @@ function runBehavior(params: {
 }): BehaviorAwarePlanningBridgeResult {
   return runHardenedBehaviorAwarePlanningPreviewBridge({
     state: params.base.state,
-    currentUserText: params.input.userText,
     conversationId: getConversationId(params.options),
     planningStartDate: params.input.planningStartDate,
     planningDayCount: params.input.planningDayCount,
@@ -396,6 +399,7 @@ function applyLifecycleResult(params: {
     records,
     envelopes: validCorrections,
     context,
+    validateReplacementCommand: isValidWeeklyPlanningCommand,
   });
   records = correctionResult.records;
   rejectedCorrections.push(...correctionResult.rejected.map((item) => ({

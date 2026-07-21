@@ -37,6 +37,11 @@ function state(sourceTurns: string[]): PlanningIntakeState {
       unit: 'pages',
       amount: 10,
       rawText: '英語ワーク10ページ',
+      executionProfile: {
+        activityKind: 'drill',
+        distributionPolicy: 'sequential_units',
+        cognitiveLoad: 'medium',
+      },
       requiresTimeEstimate: true,
       source: 'command',
     }],
@@ -272,7 +277,6 @@ describe('behavior-aware weekly planning AI dialogue planner', () => {
     const value = rangeOnlyState();
     const snapshot = createPlanningHypothesisSnapshot({
       state: value,
-      currentUserText: '今日から日曜までの予定立てたい',
       conversationId: 'conversation-1',
     });
     const result = await createDeterministicBehaviorAwareDialoguePlanner().plan({

@@ -39,6 +39,13 @@ function completeState(overrides: Partial<PlanningIntakeState> = {}): PlanningIn
       unit: 'minutes',
       amount: 30,
       rawText: '金曜日に英単語の小テストがある',
+      deadlineDeclared: true,
+      deadlineDate: '2026-07-17',
+      executionProfile: {
+        activityKind: 'memorization',
+        distributionPolicy: 'spaced',
+        cognitiveLoad: 'light',
+      },
       requiresTimeEstimate: false,
       source: 'command',
     }],
@@ -64,10 +71,9 @@ function completeState(overrides: Partial<PlanningIntakeState> = {}): PlanningIn
   };
 }
 
-function runBridge(state: PlanningIntakeState, currentUserText = '') {
+function runBridge(state: PlanningIntakeState) {
   return runHardenedBehaviorAwarePlanningPreviewBridge({
     state,
-    currentUserText,
     planningStartDate: '2026-07-13',
     planningDayCount: 7,
     sessionPolicy: {
@@ -91,7 +97,7 @@ const allowedAction: AllowedDialogueAction = {
 
 describe('behavior-aware planning safety boundary', () => {
   it('does not authorize preview from raw text without the typed authorization reducer', () => {
-    const output = runBridge(completeState(), '仮で予定を組んで');
+    const output = runBridge(completeState());
 
     expect(output.snapshot.readiness.draftGenerationIntent).toBe('not_requested');
     expect(output.gate).toEqual({ allowed: false, reason: 'not_user_authorized' });
@@ -137,6 +143,13 @@ describe('behavior-aware planning safety boundary', () => {
           unit: 'minutes',
           amount: 30,
           rawText: '英単語の小テストがある',
+          deadlineDeclared: true,
+          deadlineTime: '12:00',
+          executionProfile: {
+            activityKind: 'memorization',
+            distributionPolicy: 'spaced',
+            cognitiveLoad: 'light',
+          },
           requiresTimeEstimate: false,
           source: 'command',
         }],
@@ -162,6 +175,13 @@ describe('behavior-aware planning safety boundary', () => {
           unit: 'minutes',
           amount: 30,
           rawText: '英単語の小テストがある',
+          deadlineDeclared: true,
+          deadlineTime: '12:00',
+          executionProfile: {
+            activityKind: 'memorization',
+            distributionPolicy: 'spaced',
+            cognitiveLoad: 'light',
+          },
           requiresTimeEstimate: false,
           source: 'command',
         }],

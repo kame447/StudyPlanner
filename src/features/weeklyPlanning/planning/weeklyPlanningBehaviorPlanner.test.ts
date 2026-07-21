@@ -52,6 +52,11 @@ function readyNonExamState(sourceTurns: string[]): PlanningIntakeState {
       unit: 'pages',
       amount: 10,
       rawText: '英語ワーク10ページ',
+      executionProfile: {
+        activityKind: 'drill',
+        distributionPolicy: 'sequential_units',
+        cognitiveLoad: 'medium',
+      },
       requiresTimeEstimate: true,
       source: 'command',
     }],
@@ -79,8 +84,12 @@ describe('behavior-aware weekly planning foundation', () => {
     expect(deriveDraftGenerationIntent({ state: value })).toBe('not_requested');
   });
 
-  it('recognizes an explicit request to create a tentative schedule', () => {
-    const value = state({ sourceTurns: ['それじゃあ仮で予定を組んでみよう'] });
+  it('reads draft authorization only from accepted typed state', () => {
+    const value = state({
+      sourceTurns: ['それじゃあ仮で予定を組んでみよう'],
+      draftGenerationIntent: 'user_authorized',
+      draftGenerationAuthorizedAtRevision: 1,
+    });
     expect(deriveDraftGenerationIntent({ state: value })).toBe('user_authorized');
   });
 
@@ -101,6 +110,8 @@ describe('behavior-aware weekly planning foundation', () => {
 
   it('allows preview only when readiness, authorization, execution shape and availability agree', () => {
     const value = readyNonExamState(['今週の予定を作りたい', '仮で予定を組んで']);
+    value.draftGenerationIntent = 'user_authorized';
+    value.draftGenerationAuthorizedAtRevision = value.sourceTurns.length;
     const snapshot = createPlanningHypothesisSnapshot({ state: value });
     const result = evaluatePreviewGate({
       readiness: snapshot.readiness,
@@ -114,6 +125,8 @@ describe('behavior-aware weekly planning foundation', () => {
 
   it('rejects stale revisions even if the other conditions are ready', () => {
     const value = readyNonExamState(['仮で予定を組んで']);
+    value.draftGenerationIntent = 'user_authorized';
+    value.draftGenerationAuthorizedAtRevision = value.sourceTurns.length;
     const snapshot = createPlanningHypothesisSnapshot({ state: value });
     expect(evaluatePreviewGate({
       readiness: snapshot.readiness,
@@ -125,6 +138,15 @@ describe('behavior-aware weekly planning foundation', () => {
 
   it('derives commute, meal and before-sleep anchors without persisting a recurring profile', () => {
     const value = state({
+      constraints: [
+        { kind: 'commute', end: '17:30', hardness: 'soft', rawText: '帰宅は17時30分' },
+        { kind: 'meal', start: '19:00', hardness: 'soft', rawText: '夕食は19時' },
+      ],
+      studyTimePreferences: [{
+        kind: 'prefer_before_sleep',
+        rawText: '寝る前なら英単語をできそう',
+        confidence: 'high',
+      }],
       sourceTurns: ['帰宅は17時30分。夕食は19時。寝る前なら英単語をできそう'],
     });
     const anchors = deriveLifeActivityAnchors(value);
@@ -145,6 +167,11 @@ describe('behavior-aware weekly planning foundation', () => {
           unit: 'words',
           amount: 50,
           rawText: '英単語の小テスト',
+          executionProfile: {
+            activityKind: 'memorization',
+            distributionPolicy: 'spaced',
+            cognitiveLoad: 'light',
+          },
           requiresTimeEstimate: true,
           source: 'command',
         },
@@ -154,6 +181,11 @@ describe('behavior-aware weekly planning foundation', () => {
           unit: 'pages',
           amount: 10,
           rawText: 'ワーク10ページ',
+          executionProfile: {
+            activityKind: 'drill',
+            distributionPolicy: 'sequential_units',
+            cognitiveLoad: 'medium',
+          },
           requiresTimeEstimate: true,
           source: 'command',
         },
@@ -167,6 +199,14 @@ describe('behavior-aware weekly planning foundation', () => {
 
   it('does not fabricate availability while adding opportunity annotations', () => {
     const value = state({
+      studyTimePreferences: [
+        { kind: 'avoid_morning', rawText: '朝は続かない', confidence: 'high' },
+        {
+          kind: 'prefer_before_sleep',
+          rawText: '寝る前なら英単語をできそう',
+          confidence: 'high',
+        },
+      ],
       sourceTurns: ['朝は続かない。寝る前なら英単語をできそう'],
     });
     const anchors = deriveLifeActivityAnchors(value);

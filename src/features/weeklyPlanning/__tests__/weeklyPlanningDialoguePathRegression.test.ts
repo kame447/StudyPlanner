@@ -8,23 +8,68 @@ import {
   type BehaviorAwareDialoguePlanner,
 } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 
+const clarificationPhrasings = [
+  'どういうこと？',
+  'それってどういう意味？',
+  '何を答えればいいの？',
+  '今の質問がよく分からない',
+  'もう少し詳しく説明して',
+  '具体的には何を入力すればいい？',
+] as const;
+
 function interpreterResult(userText: string): WeeklyPlanningInterpreterResult {
-  if (userText !== '来週の予定立てたい') {
-    return { candidates: [], parseRejections: [] };
+  if (userText === '来週の予定立てたい') {
+    return {
+      candidates: [
+        {
+          command: {
+            type: 'set_pending_planning_range',
+            pending: {
+              scope: {
+                kind: 'next_week',
+                label: '来週',
+                windowStartDate: '2026-07-20',
+                windowEndDate: '2026-07-26',
+              },
+              sourceText: userText,
+            },
+            sourceText: userText,
+            confidence: 'high',
+          },
+          origin: 'ai_interpreter',
+          needsConfirmation: false,
+        },
+        {
+          command: {
+            type: 'begin_weekly_planning',
+            sourceText: userText,
+            confidence: 'high',
+          },
+          origin: 'ai_interpreter',
+          needsConfirmation: false,
+        },
+      ],
+      parseRejections: [],
+    };
   }
 
-  return {
-    candidates: [{
-      command: {
-        type: 'begin_weekly_planning',
-        sourceText: userText,
-        confidence: 'high',
-      },
-      origin: 'ai_interpreter',
-      needsConfirmation: false,
-    }],
-    parseRejections: [],
-  };
+  if ((clarificationPhrasings as readonly string[]).includes(userText)) {
+    return {
+      candidates: [{
+        command: {
+          type: 'request_clarification',
+          target: 'referenced_question',
+          sourceText: userText,
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }],
+      parseRejections: [],
+    };
+  }
+
+  return { candidates: [], parseRejections: [] };
 }
 
 function createInterpreter(): WeeklyPlanningIntakeInterpreter {
@@ -41,17 +86,8 @@ const baseInput = {
   currentDateTime: '2026-07-15T12:00:00',
 };
 
-const clarificationPhrasings = [
-  'どういうこと？',
-  'それってどういう意味？',
-  '何を答えればいいの？',
-  '今の質問がよく分からない',
-  'もう少し詳しく説明して',
-  '具体的には何を入力すればいい？',
-] as const;
-
 describe('weekly planning dialogue path regressions', () => {
-  it('keeps the deterministic next-week range and asks only one explicit-repair question', async () => {
+  it('keeps the AI-interpreted next-week range and asks only one explicit-repair question', async () => {
     const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
       ...baseInput,
       userText: '来週の予定立てたい',

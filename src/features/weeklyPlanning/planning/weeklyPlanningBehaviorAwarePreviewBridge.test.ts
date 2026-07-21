@@ -19,6 +19,11 @@ function baseState(sourceTurns: string[]): PlanningIntakeState {
       unit: 'pages',
       amount: 10,
       rawText: '英語ワーク10ページ',
+      executionProfile: {
+        activityKind: 'drill',
+        distributionPolicy: 'sequential_units',
+        cognitiveLoad: 'medium',
+      },
       requiresTimeEstimate: true,
       source: 'command',
     }],
@@ -60,7 +65,6 @@ describe('behavior-aware non-exam preview bridge', () => {
   it('does not run the scheduler before explicit user authorization', () => {
     const result = runBehaviorAwarePlanningPreviewBridge({
       state: baseState(['今週は英語ワークを進めたい']),
-      currentUserText: '今週は英語ワークを進めたい',
       planningStartDate: '2026-07-13',
       planningDayCount: 7,
     });
@@ -70,10 +74,11 @@ describe('behavior-aware non-exam preview bridge', () => {
   });
 
   it('uses the existing scheduler after authorization and attaches traceable metadata', () => {
-    const currentUserText = 'それじゃあ仮で予定を組んでみよう';
+    const authorizedState = baseState(['今週は英語ワークを進めたい', '予定作成を承認']);
+    authorizedState.draftGenerationIntent = 'user_authorized';
+    authorizedState.draftGenerationAuthorizedAtRevision = authorizedState.sourceTurns.length;
     const result = runBehaviorAwarePlanningPreviewBridge({
-      state: baseState(['今週は英語ワークを進めたい', currentUserText]),
-      currentUserText,
+      state: authorizedState,
       planningStartDate: '2026-07-13',
       planningDayCount: 7,
       sessionPolicy: {
@@ -105,13 +110,13 @@ describe('behavior-aware non-exam preview bridge', () => {
   });
 
   it('does not infer workload from a profile when the unit estimate is missing', () => {
-    const currentUserText = '仮で予定を組んで';
-    const state = baseState([currentUserText]);
+    const state = baseState(['予定作成を承認']);
+    state.draftGenerationIntent = 'user_authorized';
+    state.draftGenerationAuthorizedAtRevision = state.sourceTurns.length;
     state.unitRates = [];
 
     const result = runBehaviorAwarePlanningPreviewBridge({
       state,
-      currentUserText,
       planningStartDate: '2026-07-13',
       planningDayCount: 7,
     });
@@ -122,10 +127,11 @@ describe('behavior-aware non-exam preview bridge', () => {
   });
 
   it('preserves hard meal constraints in generated candidates', () => {
-    const currentUserText = '仮で予定を組んで';
+    const authorizedState = baseState(['予定作成を承認']);
+    authorizedState.draftGenerationIntent = 'user_authorized';
+    authorizedState.draftGenerationAuthorizedAtRevision = authorizedState.sourceTurns.length;
     const result = runBehaviorAwarePlanningPreviewBridge({
-      state: baseState([currentUserText]),
-      currentUserText,
+      state: authorizedState,
       planningStartDate: '2026-07-13',
       planningDayCount: 7,
       sessionPolicy: {

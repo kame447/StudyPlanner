@@ -154,6 +154,12 @@ export function toStudyTaskScopeFromSetStudyGoalCommand(
   return {
     title: command.goal.title,
     subject: command.goal.subject,
+    deadlineDeclared: command.goal.deadlineDeclared,
+    deadlineDate: command.goal.deadlineDate,
+    deadlineTime: command.goal.deadlineTime,
+    executionProfile: command.goal.executionProfile
+      ? { ...command.goal.executionProfile }
+      : undefined,
     unit,
     amount,
     rawText: command.sourceSegment ?? command.sourceText,

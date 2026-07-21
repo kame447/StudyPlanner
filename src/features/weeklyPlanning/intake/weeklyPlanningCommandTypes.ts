@@ -9,12 +9,16 @@ import type {
   LifeConstraintKind,
   PriorityPolicy,
   StudyScopeUnit,
+  StudyTaskExecutionProfile,
+  StudyTimePreferenceKind,
 } from './weeklyPlanningIntakeTypes';
 
 export type ParsedWeeklyPlanningCommand =
   | AddUnavailableCommand
   | AddFixedEventCommand
+  | AddRelativeConstraintCommand
   | UpdateLifeConstraintCommand
+  | NoteStudyTimePreferenceCommand
   | UseConstraintSourceCommand
   | RequestClarificationCommand
   | SetPriorityPolicyCommand
@@ -74,6 +78,18 @@ export interface AddFixedEventCommand {
   confidence: 'high' | 'medium' | 'low';
 }
 
+export interface AddRelativeConstraintCommand {
+  type: 'add_relative_constraint';
+  anchorRef: string;
+  relation: 'before' | 'after' | 'during_buffer';
+  offsetMinutes: number;
+  durationMinutes?: number;
+  kind: 'commute' | 'buffer';
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
 export interface UpdateLifeConstraintCommand {
   type: 'update_life_constraint';
   kind: Exclude<LifeConstraintKind, 'fixed_event' | 'unavailable'>;
@@ -84,6 +100,17 @@ export interface UpdateLifeConstraintCommand {
     durationMinutes?: number;
     studyAvailableStart?: string;
     hardness: 'hard' | 'soft';
+  };
+  sourceText: string;
+  sourceSegment?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface NoteStudyTimePreferenceCommand {
+  type: 'note_study_time_preference';
+  preference: {
+    kind: StudyTimePreferenceKind;
+    taskRef?: string;
   };
   sourceText: string;
   sourceSegment?: string;
@@ -233,6 +260,10 @@ export interface SetStudyGoalCommand {
     subject?: string;
     unit?: StudyScopeUnit;
     amount?: number;
+    deadlineDeclared?: true;
+    deadlineDate?: string;
+    deadlineTime?: string;
+    executionProfile?: StudyTaskExecutionProfile;
   };
   sourceText: string;
   sourceSegment?: string;

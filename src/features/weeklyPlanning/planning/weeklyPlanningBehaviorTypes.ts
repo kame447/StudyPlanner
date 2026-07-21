@@ -70,6 +70,7 @@ export interface TaskExecutionProfile {
   confidence: PlanningConfidence;
   origin:
     | 'user_explicit'
+    | 'ai_interpreted'
     | 'deterministic_derived'
     | 'pending_proposal'
     | 'accepted_assumption';

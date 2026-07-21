@@ -79,6 +79,31 @@ export type ExamPrepStrategyHint = 'field_first' | 'year_first' | 'unknown';
 
 export type StudyTaskSource = 'command' | 'legacy_fallback';
 
+export type StudyActivityKind =
+  | 'memorization'
+  | 'drill'
+  | 'reading'
+  | 'writing'
+  | 'problem_solving'
+  | 'project'
+  | 'review'
+  | 'unknown';
+
+export type TaskDistributionPolicy =
+  | 'single_block'
+  | 'contiguous'
+  | 'splittable'
+  | 'spaced'
+  | 'sequential_units';
+
+export type StudyCognitiveLoad = 'light' | 'medium' | 'heavy' | 'unknown';
+
+export interface StudyTaskExecutionProfile {
+  activityKind: StudyActivityKind;
+  distributionPolicy: TaskDistributionPolicy;
+  cognitiveLoad: StudyCognitiveLoad;
+}
+
 export interface ExamPrepScope {
   examType?: string;
   fields: string[];
@@ -101,6 +126,10 @@ export interface StudyTaskScope {
   examType?: string;
   field?: string;
   year?: number;
+  deadlineDeclared?: true;
+  deadlineDate?: string;
+  deadlineTime?: string;
+  executionProfile?: StudyTaskExecutionProfile;
   unit: StudyScopeUnit;
   amount?: number;
   rawText: string;
@@ -160,6 +189,15 @@ export interface LifeConstraint {
   studyAvailableStart?: string;
   hardness: 'hard' | 'soft';
   rawText?: string;
+}
+
+export type StudyTimePreferenceKind = 'avoid_morning' | 'prefer_before_sleep';
+
+export interface StudyTimePreference {
+  kind: StudyTimePreferenceKind;
+  taskRef?: string;
+  rawText: string;
+  confidence: 'high' | 'medium';
 }
 
 export type ConstraintSourceKind = 'timetable' | 'existing_plans' | 'calendar';
@@ -231,6 +269,7 @@ export interface PlanningIntakeState {
   progress: StudyProgress[];
   unitRates: UnitRateEstimate[];
   constraints: LifeConstraint[];
+  studyTimePreferences?: StudyTimePreference[];
   constraintSourcesInUse?: ConstraintSourceRef[];
   fixedEventsDeclaredNone?: true;
   priorityPolicy: PriorityPolicy;

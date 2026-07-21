@@ -11,7 +11,6 @@ import {
   evaluateHardenedPreviewGate,
   hardenPlanningSnapshot,
 } from './weeklyPlanningBehaviorSafety';
-import { applyRelativeConstraintTurn } from './weeklyPlanningRelativeConstraintAdapter';
 import { publishWeeklyPlanningSessionRuntime } from './weeklyPlanningSessionRuntime';
 
 function minutes(time: string): number {
@@ -51,8 +50,8 @@ function schedulingAvailabilityLowerBound(state: PlanningIntakeState): string | 
     if (constraint.kind === 'commute' && constraint.end) return [constraint.end];
     return [];
   });
-  const morningAvoided = state.sourceTurns.some((turn) =>
-    /朝(?:は|だと).*(?:続かない|苦手|無理|できない)/.test(turn),
+  const morningAvoided = (state.studyTimePreferences ?? []).some((preference) =>
+    preference.kind === 'avoid_morning',
   );
   if (morningAvoided) lowerBounds.push('12:00');
 
@@ -88,11 +87,7 @@ function stateForScheduling(state: PlanningIntakeState): PlanningIntakeState {
 export function runHardenedBehaviorAwarePlanningPreviewBridge(
   input: BehaviorAwarePlanningBridgeInput,
 ): BehaviorAwarePlanningBridgeResult {
-  const relative = applyRelativeConstraintTurn({
-    state: input.state,
-    userText: input.currentUserText,
-  });
-  const workingState = relative.state;
+  const workingState = input.state;
   publishWeeklyPlanningSessionRuntime({
     conversationId: input.conversationId ?? 'weekly-planning-session',
     stateRevision: workingState.sourceTurns.length,
@@ -110,7 +105,6 @@ export function runHardenedBehaviorAwarePlanningPreviewBridge(
 
   const rawSnapshot = createPlanningHypothesisSnapshot({
     state: workingState,
-    currentUserText: '',
     conversationId: input.conversationId,
     availabilityRanges: canonicalRanges,
   });

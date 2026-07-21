@@ -1,4 +1,4 @@
-import type { PlanningIntakeState, StudyTaskScope } from '../intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   createAllowedDialogueActions,
   deriveMissingResolutionOpportunities,
@@ -12,10 +12,6 @@ import type {
   PreviewGateResult,
 } from './weeklyPlanningBehaviorTypes';
 
-const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
-const DEADLINE_SIGNAL = /(?:小テスト|テスト|試験|締切|期限|提出|までに|まで)/;
-const EXPLICIT_DATE = /(?:20\d{2}[年/-])?\d{1,2}[月/-]\d{1,2}日?/;
-const WEEKDAY = /([日月火水木金土])曜(?:日)?/;
 const INTERNAL_TERM = /(?:blockingDimensions|reasonCode|readiness|suitability|sourceFactRefs|proposalRef|slotKey)/i;
 const SAVE_CLAIM = /(?:保存しました|確定しました|登録しました|予定に追加しました)/;
 
@@ -31,46 +27,14 @@ function removeDimension(items: PlanningDimension[], dimension: PlanningDimensio
   return items.filter((item) => item !== dimension);
 }
 
-function taskLabels(task: StudyTaskScope): string[] {
-  const title = task.title.trim();
-  return title ? [title] : [];
+function validDate(value: string | undefined): boolean {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-function taskDeadlineEvidence(task: StudyTaskScope, state: PlanningIntakeState): string[] {
-  const labels = taskLabels(task);
-  if (labels.length === 0) return [];
-
-  const candidateTexts = unique([task.rawText, ...state.sourceTurns]);
-  return candidateTexts.flatMap((text) =>
-    text
-      .split(/[、。,.\n]/)
-      .map((clause) => clause.trim())
-      .filter((clause) =>
-        Boolean(clause)
-        && DEADLINE_SIGNAL.test(clause)
-        && labels.some((label) => clause.includes(label)),
-      ),
-  );
-}
-
-function weekdayFallsInPlanningRange(text: string, state: PlanningIntakeState): boolean {
-  const match = text.match(WEEKDAY);
-  const start = state.range?.startDateTime?.slice(0, 10);
-  const dayCount = state.range?.calendarDayCount;
-  if (!match || !start || !dayCount || dayCount <= 0) return false;
-
-  const target = WEEKDAYS.indexOf(match[1] as typeof WEEKDAYS[number]);
-  if (target < 0) return false;
-  const startDate = new Date(`${start}T00:00:00`);
-  return Array.from({ length: dayCount }, (_, index) => {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + index);
-    return date.getDay() === target;
-  }).some(Boolean);
-}
-
-function hasConcreteDeadline(text: string, state: PlanningIntakeState): boolean {
-  return EXPLICIT_DATE.test(text) || weekdayFallsInPlanningRange(text, state);
+function validTime(value: string | undefined): boolean {
+  return value === undefined || /^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(value);
 }
 
 export function evaluateDeadlineSafety(state: PlanningIntakeState): {
@@ -78,14 +42,16 @@ export function evaluateDeadlineSafety(state: PlanningIntakeState): {
   resolved: boolean;
   sourceFactRefs: string[];
 } {
-  const evidence = state.tasks.flatMap((task) => taskDeadlineEvidence(task, state));
-  if (evidence.length === 0) {
+  const deadlineTasks = state.tasks
+    .map((task, index) => ({ task, index }))
+    .filter(({ task }) => task.deadlineDeclared === true);
+  if (deadlineTasks.length === 0) {
     return { required: false, resolved: false, sourceFactRefs: [] };
   }
   return {
     required: true,
-    resolved: evidence.every((text) => hasConcreteDeadline(text, state)),
-    sourceFactRefs: evidence.map((_, index) => `deadline-evidence:${index}`),
+    resolved: deadlineTasks.every(({ task }) => validDate(task.deadlineDate) && validTime(task.deadlineTime)),
+    sourceFactRefs: deadlineTasks.map(({ index }) => `task:${index}:deadline`),
   };
 }
 

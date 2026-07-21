@@ -276,11 +276,26 @@ describe('weekly planning AI foundation without real AI', () => {
     ]);
   });
 
-  it('uses deterministic command parsing before AI without applying legacy fallback', async () => {
-    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
-      candidates: [candidate(unitRateCommand(120, 'high'))],
-      parseRejections: [],
-    }));
+  it('uses only AI semantic commands on successful interpreter turns', async () => {
+    const interpretUserTurn = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(
+      async ({ userText }) => ({
+        candidates: userText === WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly
+          ? [candidate({
+              type: 'set_planning_range',
+              range: {
+                startDateTime: '2026-06-26T19:00:00',
+                endDateTime: '2026-06-29T00:00:00',
+                calendarDayCount: 3,
+                confidence: 'explicit',
+                sourceText: userText,
+              },
+              sourceText: userText,
+              confidence: 'high',
+            })]
+          : [candidate(unitRateCommand(120, 'high'))],
+        parseRejections: [],
+      }),
+    );
 
     const firstOutput = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
@@ -308,7 +323,8 @@ describe('weekly planning AI foundation without real AI', () => {
     expect(bareOutput.state.tasks).toEqual([]);
   });
 
-  it('uses legacy fallback only after an interpreter error while empty AI keeps deterministic parsing', async () => {
+
+  it('uses legacy fallback only after an interpreter error while empty AI remains empty', async () => {
     const userText = String.fromCodePoint(0x6765,0x9031,0x3001,0x82f1,0x8a9e,0x3092,0x33,0x6642,0x9593,0x3001,0x6570,0x5b66,0x3092,0x32,0x6642,0x9593);
     const emptyInterpreter = vi.fn<WeeklyPlanningIntakeInterpreter['interpretUserTurn']>(async () => ({
       candidates: [],

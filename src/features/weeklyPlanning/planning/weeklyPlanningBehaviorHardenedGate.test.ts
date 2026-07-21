@@ -48,7 +48,6 @@ function state(overrides: Partial<PlanningIntakeState> = {}): PlanningIntakeStat
 function run(value: PlanningIntakeState) {
   return runHardenedBehaviorAwarePlanningPreviewBridge({
     state: value,
-    currentUserText: '仮の予定を組んで',
     planningStartDate: '2026-07-13',
     planningDayCount: 7,
     sessionPolicy: {

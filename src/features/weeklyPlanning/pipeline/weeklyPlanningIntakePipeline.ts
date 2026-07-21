@@ -10,8 +10,8 @@ import {
   type WeeklyPlanningDraftRequest,
 } from '../intake/weeklyPlanningDraftRequestAdapter';
 import {
-  applyDeterministicWeeklyPlanningUserTurn,
   applyWeeklyPlanningCommands,
+  beginWeeklyPlanningUserTurn,
   applyWeeklyPlanningUserTurn,
   applyWeeklyPlanningUserTurnWithDiagnostics,
   createInitialPlanningIntakeState,
@@ -396,9 +396,15 @@ function confirmedSlotsFromState(state: PlanningIntakeState): string[] {
     );
   if (hasConfirmedUnitRate) slots.push('unit_duration_estimate');
   if (state.priorityPolicy.kind !== 'unknown') slots.push('priority_policy');
-  if (state.progress.some((progress) => progress.completedYears?.length || progress.completionBoundaryYear)) {
-    slots.push('progress');
-  }
+  state.progress.forEach((progress) => {
+    const hasConfirmedProgress = Boolean(
+      progress.completedYears?.length
+      || progress.completionBoundaryYear
+      || progress.completionTarget,
+    );
+    if (!hasConfirmedProgress) return;
+    slots.push(progress.field ? `progress:${progress.field}` : 'progress');
+  });
   if (hasConfirmedFixedEvents(state)) slots.push('fixed_events');
   if (hasConfirmedLifeConstraints(state)) slots.push('life_constraints');
 
@@ -478,6 +484,18 @@ function createInterpreterStateSummary(
         }
       : undefined,
     availableConstraintSources: toConstraintSourceAvailability(snapshot),
+    constraintAnchors: state.constraints.map((constraint, index) => ({
+      ref: `constraint:${index}`,
+      label: constraint.rawText ?? constraint.kind,
+      kind: constraint.kind,
+      date: constraint.date,
+      start: constraint.start,
+      end: constraint.end,
+    })),
+    tasks: state.tasks.map((task, index) => ({
+      ref: `task:${index}`,
+      label: task.title,
+    })),
   };
 }
 
@@ -535,13 +553,8 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   }
 
   const previousState = input.previousState ?? createInitialPlanningIntakeState();
-  const deterministicClarification = deterministicClarificationRequest(input, previousState);
   const context = createInterpreterContext(input);
-  const preparedState = applyDeterministicWeeklyPlanningUserTurn(
-    previousState,
-    input.userText,
-    context,
-  );
+  const preparedState = beginWeeklyPlanningUserTurn(previousState, input.userText);
   const capabilitySnapshot = createPlannerCapabilitySnapshot(input, preparedState);
   const stateSummary = createInterpreterStateSummary(
     preparedState,
@@ -559,6 +572,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
       recentTurns: input.recentTurns,
     });
   } catch {
+    const deterministicClarification = deterministicClarificationRequest(input, previousState);
     const fallbackTurn = applyWeeklyPlanningUserTurnWithDiagnostics(
       previousState,
       input.userText,
@@ -593,7 +607,7 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   );
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
-  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0] ?? deterministicClarification;
+  const clarificationRequest = interpreterDiagnostics.clarificationRequests[0];
   const interpretedCommands = [
     ...interpreterDiagnostics.accepted,
     ...interpreterDiagnostics.acceptedWithConfirmation.filter((command) =>

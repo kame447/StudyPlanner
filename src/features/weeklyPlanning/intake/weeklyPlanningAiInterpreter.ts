@@ -20,6 +20,8 @@ export interface AiInterpreterResponse {
     needsConfirmation?: boolean;
   }>;
   assumptionProposalDrafts?: unknown[];
+  assumptionDecisions?: unknown[];
+  correctionEnvelopes?: unknown[];
 }
 
 interface JsonSchemaObject extends Record<string, unknown> {
@@ -54,6 +56,21 @@ const STUDY_SCOPE_UNIT_SCHEMA = {
 const PLANNING_RANGE_CONFIDENCE_SCHEMA = {
   type: 'string',
   enum: ['explicit', 'inferred', 'missing'],
+};
+
+const STUDY_ACTIVITY_KIND_SCHEMA = {
+  type: 'string',
+  enum: ['memorization', 'drill', 'reading', 'writing', 'problem_solving', 'project', 'review', 'unknown'],
+};
+
+const TASK_DISTRIBUTION_POLICY_SCHEMA = {
+  type: 'string',
+  enum: ['single_block', 'contiguous', 'splittable', 'spaced', 'sequential_units'],
+};
+
+const STUDY_COGNITIVE_LOAD_SCHEMA = {
+  type: 'string',
+  enum: ['light', 'medium', 'heavy', 'unknown'],
 };
 
 function stringSchema(): JsonSchemaObject {
@@ -130,6 +147,23 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
     },
   }),
   commandSchema({
+    type: 'add_relative_constraint',
+    required: ['anchorRef', 'relation', 'offsetMinutes', 'kind'],
+    properties: {
+      anchorRef: stringSchema(),
+      relation: {
+        type: 'string',
+        enum: ['before', 'after', 'during_buffer'],
+      },
+      offsetMinutes: integerSchema(),
+      durationMinutes: integerSchema(),
+      kind: {
+        type: 'string',
+        enum: ['commute', 'buffer'],
+      },
+    },
+  }),
+  commandSchema({
     type: 'update_life_constraint',
     required: ['kind', 'constraint'],
     properties: {
@@ -147,6 +181,24 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
           end: stringSchema(),
           durationMinutes: numberSchema(),
           hardness: HARDNESS_SCHEMA,
+        },
+      },
+    },
+  }),
+  commandSchema({
+    type: 'note_study_time_preference',
+    required: ['preference'],
+    properties: {
+      preference: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind'],
+        properties: {
+          kind: {
+            type: 'string',
+            enum: ['avoid_morning', 'prefer_before_sleep'],
+          },
+          taskRef: stringSchema(),
         },
       },
     },
@@ -404,6 +456,11 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
     properties: {},
   }),
   commandSchema({
+    type: 'authorize_draft_generation',
+    required: [],
+    properties: {},
+  }),
+  commandSchema({
     type: 'set_study_goal',
     required: ['goal'],
     properties: {
@@ -416,6 +473,19 @@ const WEEKLY_PLANNING_COMMAND_SCHEMAS: JsonSchemaObject[] = [
           subject: stringSchema(),
           unit: STUDY_SCOPE_UNIT_SCHEMA,
           amount: numberSchema(),
+          deadlineDeclared: { const: true },
+          deadlineDate: stringSchema(),
+          deadlineTime: stringSchema(),
+          executionProfile: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['activityKind', 'distributionPolicy', 'cognitiveLoad'],
+            properties: {
+              activityKind: STUDY_ACTIVITY_KIND_SCHEMA,
+              distributionPolicy: TASK_DISTRIBUTION_POLICY_SCHEMA,
+              cognitiveLoad: STUDY_COGNITIVE_LOAD_SCHEMA,
+            },
+          },
         },
       },
     },
@@ -456,6 +526,52 @@ const ASSUMPTION_PROPOSAL_DRAFT_SCHEMA: JsonSchemaObject = {
   },
 };
 
+const ASSUMPTION_DECISION_DRAFT_SCHEMA: JsonSchemaObject = {
+  anyOf: [
+    ...['accept_assumption', 'reject_assumption'].map((type) => ({
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'proposalId', 'confidence'],
+      properties: {
+        type: { const: type },
+        proposalId: stringSchema(),
+        confidence: { const: 'high' },
+      },
+    })),
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'proposalId', 'replacementValue', 'confidence'],
+      properties: {
+        type: { const: 'modify_assumption' },
+        proposalId: stringSchema(),
+        replacementValue: { type: ['string', 'number', 'boolean'] },
+        replacementUnit: stringSchema(),
+        confidence: { const: 'high' },
+      },
+    },
+  ],
+};
+
+const CORRECTION_DRAFT_SCHEMA: JsonSchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['operation', 'targetKind', 'targetRef', 'confidence'],
+  properties: {
+    operation: {
+      type: 'string',
+      enum: ['replace', 'remove', 'supersede'],
+    },
+    targetKind: {
+      type: 'string',
+      enum: ['task', 'planning_range', 'constraint', 'priority', 'proposal'],
+    },
+    targetRef: stringSchema(),
+    replacementCommand: { anyOf: WEEKLY_PLANNING_COMMAND_SCHEMAS },
+    confidence: { const: 'high' },
+  },
+};
+
 export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
@@ -475,6 +591,14 @@ export const WEEKLY_PLANNING_INTERPRETER_RESPONSE_FORMAT: JsonSchemaResponseForm
         assumptionProposalDrafts: {
           type: 'array',
           items: ASSUMPTION_PROPOSAL_DRAFT_SCHEMA,
+        },
+        assumptionDecisions: {
+          type: 'array',
+          items: ASSUMPTION_DECISION_DRAFT_SCHEMA,
+        },
+        correctionEnvelopes: {
+          type: 'array',
+          items: CORRECTION_DRAFT_SCHEMA,
         },
       },
     },
@@ -565,6 +689,12 @@ function parseInterpreterResponse(
   if (Array.isArray(response.assumptionProposalDrafts)) {
     result.assumptionProposalDrafts = response.assumptionProposalDrafts;
   }
+  if (Array.isArray(response.assumptionDecisions)) {
+    result.assumptionDecisions = response.assumptionDecisions;
+  }
+  if (Array.isArray(response.correctionEnvelopes)) {
+    result.correctionEnvelopes = response.correctionEnvelopes;
+  }
 
   return result;
 }
@@ -583,11 +713,14 @@ export function createSystemPrompt(): string {
     '- set_exam_scope: examType, fields, totalFields, totalYears, yearRange, strategyHint, unitModel, rawText.',
     '- set_priority_policy: policy.kind field_first with order when the user describes field order or priority.',
     '- set_unit_rate: minutesPerUnit for a known scope unit.',
-    '- mark_completed_units or note_progress_boundary for completed year/field progress. Use mark_completion_target only for the desired future completion target.',
+    '- mark_completed_units records work already completed. note_progress_boundary records an ambiguous completed/uncompleted boundary. mark_completion_target records the amount the user wants included in the new plan, including stated remaining workload such as field-specific year counts.',
     '- add_fixed_event, add_unavailable, update_life_constraint, note_no_fixed_events, note_uncertainty, set_planning_range only when explicit in the current turn.',
+    '- add_relative_constraint: use when the user places commute or buffer time before/after a public constraintAnchors ref. Copy the exact anchorRef. Use relation=after for phrases such as 「バイトの後、帰宅10分」 with offsetMinutes=0 and durationMinutes=10. Use during_buffer for 「予定の前後30分は空けて」 with offsetMinutes=30 and no durationMinutes.',
+    '- note_study_time_preference: use kind=avoid_morning for explicit statements that morning study does not work, and kind=prefer_before_sleep for explicit preference to study before sleep. Use an exact stateSummary.tasks ref only when one task is clearly named; otherwise omit taskRef.',
     '- set_pending_planning_range: when the user states a future planning scope that still lacks either a selected planning start date or duration. For an end-only phrase such as 「日曜日まで」, preserve the end as pending.planningEndDateTime and scope.windowEndDate, leave the start unresolved, and do not add planning duration. scope.windowStartDate/windowEndDate are selectable-window boundaries. pending.planningStartDate/planningStartDateTime are only the start selected by the user. pending.durationDays is only the requested plan length. Never use one field for two meanings. The application computes omitted next_week window boundaries.',
     '- begin_weekly_planning: emit when the user expresses an intention to create a plan or schedule, even if the period or learning content is not yet specified.',
-    '- set_study_goal: emit when the user states a non-exam learning goal or study subject to work on. Preserve the goal title and optional subject/unit/amount; do not invent amount. Use set_exam_scope for entrance-exam year×field scope instead.',
+    '- authorize_draft_generation: emit with confidence=high only when the user explicitly asks the app to create or generate the plan now. Do not infer authorization from merely saying they need to study.',
+    '- set_study_goal: emit when the user states a non-exam learning goal or study subject to work on. Preserve the goal title and optional subject/unit/amount; do not invent amount. Interpret the task execution semantics in goal.executionProfile: activityKind, distributionPolicy, and cognitiveLoad. Use unknown only when the task type genuinely cannot be determined from the current turn and accepted context. Set deadlineDeclared=true whenever the user says the task has a deadline, test date, or due date, even when the date is still unresolved. Add deadlineDate as ISO only when certain and deadlineTime only if stated. Use set_exam_scope for entrance-exam year×field scope instead.',
     '- When stateSummary.pendingPlanningRange exists, resolve only an answer to the currently asked planning slot. Resolve a weekday or short start-date answer against pendingPlanningRange.windowStartDate/windowEndDate, and store the selected value as pending.planningStartDate. Resolve a short duration answer as pending.durationDays. Do not treat dates or durations inside task descriptions, deadlines, fixed events, quotations, reported speech, examples, or third-party wishes as planning-period answers.',
     '- Emit set_planning_range only when both pending.planningStartDate and pending.durationDays are known and the selected start date satisfies the pending window. Never persist a fully resolved pending object.',
     '- Never substitute an inferred set_planning_range for an unresolved pending range.',
@@ -600,7 +733,10 @@ export function createSystemPrompt(): string {
     '- request_clarification: when the user is asking what one of the app\'s question words or terms means, rather than answering it. Map ALL such phrasings to this single intent: 「固定の予定って何ですか？」「それってどういう意味？」「何を答えればいいの？」. Set ref to the term or slot being asked about (e.g. fixed_events) when identifiable. Never map such a question to note_uncertainty or any answer command; the user is not providing information, they are asking for an explanation.',
     'Confidence rules: high for explicit complete facts, medium for inferred or partially ordered facts that need confirmation, low for ambiguous facts.',
     'For Japanese exam years like 2025〜2019, set yearRange.startYear to 2025 and endYear to 2019.',
-    '- When an entrance-exam turn names content after 過去問, extract the named fields. Treat AとB as two fields by default and emit fields=[A,B].',
+    '- When an entrance-exam turn names content after 過去問, extract only actual study fields. Treat AとB as two fields by default and emit fields=[A,B]. Do not turn predicates, conjunctions, obligations, time phrases, or unrelated research tasks into fields.',
+    '- When remaining exam workload differs by field, emit one mark_completion_target per field using target.kind=latest_n_years and the stated count. Example: 「OSとネットワークが1年分、ヒューマンサイエンスが2年分」 means three fields plus targets OS=1, ネットワーク=1, ヒューマンサイエンス=2. Do not collapse these into one totalYears value.',
+    '- When stateSummary.pendingAssumptionProposals exists, emit assumptionDecisions only for an explicit accept, reject, or modification and use an exact proposalId from the summary. Do not emit expectedStateRevision; the application injects trusted revision metadata.',
+    '- When stateSummary.correctionTargets exists, emit correctionEnvelopes only for explicit high-confidence corrections. Use an exact targetKind/targetRef, include confidence=high, and include replacementCommand only for replace. Do not emit restore, correctionId, conversationId, expectedStateRevision, or a target object; the application resolves the public target, grounds replacement commands against the current user turn, and injects trusted metadata.',
     '- An explicit correction such as 「違う、AとBで一科目」 replaces the previous scope: emit fields=[AとB] and totalFields=1 instead of appending A and B separately.',
   ].join('\n');
 }

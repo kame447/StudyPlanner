@@ -28,7 +28,9 @@ const CONFIDENCE_RANK = {
 export const KNOWN_COMMAND_TYPES = new Set([
   'add_unavailable',
   'add_fixed_event',
+  'add_relative_constraint',
   'update_life_constraint',
+  'note_study_time_preference',
   'use_constraint_source',
   'request_clarification',
   'set_priority_policy',
@@ -42,6 +44,7 @@ export const KNOWN_COMMAND_TYPES = new Set([
   'set_planning_range',
   'set_pending_planning_range',
   'begin_weekly_planning',
+  'authorize_draft_generation',
   'set_study_goal',
 ]);
 
@@ -76,6 +79,9 @@ const LIFE_CONSTRAINT_KINDS = new Set([
   'cram_school',
   'buffer',
 ]);
+const RELATIVE_RELATIONS = new Set(['before', 'after', 'during_buffer']);
+const RELATIVE_CONSTRAINT_KINDS = new Set(['commute', 'buffer']);
+const STUDY_TIME_PREFERENCE_KINDS = new Set(['avoid_morning', 'prefer_before_sleep']);
 
 const PLANNING_TEMPORAL_SCOPE_KINDS = new Set(['next_week', 'named_future_period']);
 
@@ -100,7 +106,7 @@ function isTime(value: unknown): boolean {
 }
 
 function isDate(value: unknown): boolean {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return typeof value === 'string' && isIsoCalendarDate(value);
 }
 
 function isReasonableYear(year: unknown): boolean {
@@ -144,9 +150,16 @@ function validateEnumVocabulary(command: ParsedWeeklyPlanningCommand): string | 
       return !HARDNESS_VALUES.has(command.range.hardness) ? 'invalid-hardness' : null;
     case 'add_fixed_event':
       return !HARDNESS_VALUES.has(command.event.hardness) ? 'invalid-hardness' : null;
+    case 'add_relative_constraint':
+      if (!RELATIVE_RELATIONS.has(command.relation)) return 'invalid-relative-relation';
+      return !RELATIVE_CONSTRAINT_KINDS.has(command.kind) ? 'invalid-relative-constraint-kind' : null;
     case 'update_life_constraint':
       if (!LIFE_CONSTRAINT_KINDS.has(command.kind)) return 'invalid-life-constraint-kind';
       return !HARDNESS_VALUES.has(command.constraint.hardness) ? 'invalid-hardness' : null;
+    case 'note_study_time_preference':
+      return !STUDY_TIME_PREFERENCE_KINDS.has(command.preference.kind)
+        ? 'invalid-study-time-preference-kind'
+        : null;
     case 'use_constraint_source':
       return !CONSTRAINT_SOURCE_KINDS.has(command.source.kind) ? 'invalid-constraint-source-kind' : null;
     case 'request_clarification':
@@ -482,6 +495,18 @@ function addDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
+function planningWeekdayDate(
+  text: string,
+  context: WeeklyPlanningIntakeContext,
+): string | undefined {
+  const weekday = normalizeIntakeText(text).match(/([日月火水木金土])曜(?:日)?/);
+  if (!weekday || !isIsoCalendarDate(context.selectedDate)) return undefined;
+  const base = new Date(`${context.selectedDate}T00:00:00Z`);
+  const targetIndex = WEEKDAY_INDEX[weekday[1]];
+  const offset = (targetIndex - base.getUTCDay() + 7) % 7;
+  return addDays(context.selectedDate, offset);
+}
+
 function relativePlanningDateGrounded(
   text: string,
   startDateTime: string | undefined,
@@ -490,14 +515,36 @@ function relativePlanningDateGrounded(
   if (!startDateTime || !context) return true;
   const normalized = normalizeIntakeText(text);
   const currentDate = context.currentDateTime?.slice(0, 10) ?? context.selectedDate;
+  const weekdayDate = planningWeekdayDate(normalized, context);
   const expected = /明後日/.test(normalized)
     ? addDays(currentDate, 2)
     : /明日/.test(normalized)
       ? addDays(currentDate, 1)
       : /今日/.test(normalized)
         ? currentDate
-        : undefined;
+        : weekdayDate;
   return expected === undefined || startDateTime.slice(0, 10) === expected;
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  日: 0,
+  月: 1,
+  火: 2,
+  水: 3,
+  木: 4,
+  金: 5,
+  土: 6,
+};
+
+function deadlineDateGrounded(
+  text: string,
+  deadlineDate: string | undefined,
+  context: WeeklyPlanningIntakeContext | undefined,
+): boolean {
+  if (!deadlineDate) return true;
+  if (normalizedTextContainsDate(text, deadlineDate)) return true;
+  if (!isDate(deadlineDate)) return false;
+  return relativePlanningDateGrounded(text, `${deadlineDate}T00:00:00`, context);
 }
 
 function validateCommandGrounding(
@@ -629,6 +676,32 @@ function validateCommandGrounding(
       return /\d{1,2}\s*時|\d{1,2}:\d{2}|睡眠|寝|食事|夕食|風呂|入浴|移動|バイト|授業|予定/.test(normalized)
         && lifeConstraintPayloadGrounded({ userText: normalized, ...command.event })
         ? null : 'ungrounded-life-constraint';
+    case 'add_relative_constraint': {
+      const anchorVocabulary = ['バイト', '授業', '講義', 'ゼミ', '通院', '予定', '食事', '夕食', '昼食', '朝食', '風呂', '入浴', '部活', 'サークル', '塾', '予備校'];
+      const groundedAnchors = (summary.constraintAnchors ?? []).filter((candidateAnchor) => {
+        const exactLabel = normalizedUser.includes(normalizedEvidence(candidateAnchor.label));
+        const sharedTerm = anchorVocabulary.some((term) =>
+          candidateAnchor.label.includes(term) && normalized.includes(term));
+        return exactLabel || sharedTerm;
+      });
+      const anchorGrounded = groundedAnchors.length === 1
+        && groundedAnchors[0].ref === command.anchorRef;
+      const durationGrounded = command.durationMinutes === undefined
+        || explicitMinuteValues(normalized).includes(command.durationMinutes);
+      const offsetGrounded = command.offsetMinutes === 0
+        || explicitMinuteValues(normalized).includes(command.offsetMinutes);
+      const relationGrounded = command.relation === 'before'
+        ? /前/.test(normalized)
+        : command.relation === 'after'
+          ? /後|あと/.test(normalized)
+          : /前後|空け|バッファ/.test(normalized);
+      const kindGrounded = command.kind === 'commute'
+        ? /帰宅|移動|通学|通勤/.test(normalized)
+        : /空け|余裕|バッファ|前後/.test(normalized);
+      return anchorGrounded && durationGrounded && offsetGrounded && relationGrounded && kindGrounded
+        ? null
+        : 'ungrounded-relative-constraint';
+    }
     case 'add_unavailable':
       return /\d{1,2}\s*時|\d{1,2}:\d{2}|睡眠|寝|食事|夕食|風呂|入浴|移動|バイト|授業|予定/.test(normalized)
         && lifeConstraintPayloadGrounded({ userText: normalized, ...command.range })
@@ -644,6 +717,16 @@ function validateCommandGrounding(
           ...command.constraint,
         })
         ? null : 'ungrounded-life-constraint';
+    case 'note_study_time_preference': {
+      const groundedTasks = (summary.tasks ?? []).filter((candidateTask) =>
+        normalizedUser.includes(normalizedEvidence(candidateTask.label)));
+      const taskGrounded = !command.preference.taskRef
+        || (groundedTasks.length === 1 && groundedTasks[0].ref === command.preference.taskRef);
+      const preferenceGrounded = command.preference.kind === 'avoid_morning'
+        ? /朝/.test(normalized) && /続かない|苦手|無理|できない|避け/.test(normalized)
+        : /寝る前|就寝前/.test(normalized);
+      return taskGrounded && preferenceGrounded ? null : 'ungrounded-study-time-preference';
+    }
     case 'mark_completed_units':
       return /年度|年分|終|済|未着手|進捗|どこまで/.test(normalized)
         && command.completedYears.every((year) => normalizedUser.includes(String(year)))
@@ -679,10 +762,18 @@ function validateCommandGrounding(
         || (command.goal.unit === 'minutes'
           ? explicitMinuteValues(normalized).includes(command.goal.amount)
           : explicitNumberValues(normalized).includes(command.goal.amount));
-      return /勉強|学習|課題|ワーク|過去問|進め|やり|解き|復習|暗記|おさらい|取り組/.test(normalized)
+      const deadlineSignal = /締切|期限|提出|テスト|試験|小テスト|まで/.test(normalized);
+      const hasDeadlinePayload = command.goal.deadlineDeclared === true
+        || command.goal.deadlineDate !== undefined
+        || command.goal.deadlineTime !== undefined;
+      const deadlineGrounded = deadlineDateGrounded(normalized, command.goal.deadlineDate, context)
+        && normalizedTextContainsValue(normalized, command.goal.deadlineTime)
+        && (!hasDeadlinePayload || deadlineSignal);
+      return /勉強|学習|課題|ワーク|過去問|対策|進め|やり|解き|復習|暗記|おさらい|取り組/.test(normalized)
         && titleGrounded
         && subjectGrounded
         && amountGrounded
+        && deadlineGrounded
         ? null : 'ungrounded-study-goal';
     }
     case 'note_uncertainty':
@@ -806,12 +897,28 @@ function validateValueRange(command: ParsedWeeklyPlanningCommand): string | null
       return null;
     }
     case 'set_study_goal':
-      return command.goal.amount === undefined
-        || (typeof command.goal.amount === 'number'
-          && Number.isFinite(command.goal.amount)
-          && command.goal.amount > 0)
+      if (command.goal.amount !== undefined
+        && (!Number.isFinite(command.goal.amount) || command.goal.amount <= 0)) {
+        return 'invalid-goal-amount';
+      }
+      if ((command.goal.deadlineDate !== undefined || command.goal.deadlineTime !== undefined)
+        && command.goal.deadlineDeclared !== true) {
+        return 'deadline-payload-requires-declaration';
+      }
+      if (command.goal.deadlineDate !== undefined && !isDate(command.goal.deadlineDate)) {
+        return 'invalid-deadline-date';
+      }
+      if (command.goal.deadlineTime !== undefined && !isTime(command.goal.deadlineTime)) {
+        return 'invalid-deadline-time';
+      }
+      return null;
+    case 'add_relative_constraint':
+      if (!Number.isInteger(command.offsetMinutes)
+        || command.offsetMinutes < 0
+        || command.offsetMinutes > 24 * 60) return 'invalid-relative-offset';
+      return command.durationMinutes === undefined || isReasonableMinutes(command.durationMinutes)
         ? null
-        : 'invalid-goal-amount';
+        : 'invalid-duration-minutes';
     case 'set_exam_scope': {
       const yearRange = command.scope.yearRange;
       if (yearRange && (!isReasonableYear(yearRange.startYear) || !isReasonableYear(yearRange.endYear))) {
@@ -875,21 +982,27 @@ function commandSlotKeys(command: ParsedWeeklyPlanningCommand): string[] {
     case 'set_priority_policy':
       return ['priority_policy'];
     case 'mark_completed_units':
+      return [`progress:${command.field}`];
     case 'mark_completion_target':
+      return [command.field ? `progress:${command.field}` : 'progress'];
     case 'note_progress_boundary':
-      return ['progress'];
+      return [command.field ? `progress:${command.field}` : 'progress'];
     case 'set_unit_rate':
       return ['unit_duration_estimate'];
     case 'add_fixed_event':
     case 'note_no_fixed_events':
     case 'use_constraint_source':
       return ['fixed_events'];
+    case 'add_relative_constraint':
+      return [`relative_constraint:${command.anchorRef}:${command.kind}`];
     case 'add_unavailable':
       return ['fixed_events'];
     case 'update_life_constraint':
-      return ['life_constraints'];
+      return [`life_constraints:${command.kind}:${command.constraint.date ?? 'all'}`];
+    case 'note_study_time_preference':
+      return [`study_time_preference:${command.preference.kind}:${command.preference.taskRef ?? 'all'}`];
     case 'set_study_goal':
-      return [studyGoalIdentity(command.goal.title)];
+      return [studyGoalIdentity(command.goal.title, command.goal.subject)];
     default:
       return [];
   }
@@ -1027,6 +1140,27 @@ export function validateInterpretedCandidates(
 
       if (!constraintSourceAvailable(command.source, summary)) {
         addRejected(result, candidate, 'constraint-source-unavailable');
+        return;
+      }
+    }
+
+    if (command.type === 'add_relative_constraint') {
+      const anchors = summary.constraintAnchors?.filter((anchor) => anchor.ref === command.anchorRef) ?? [];
+      if (anchors.length !== 1) {
+        addRejected(result, effectiveCandidate, 'relative-constraint-anchor-unavailable');
+        return;
+      }
+      const [anchor] = anchors;
+      if (!anchor.date || !anchor.start || !anchor.end) {
+        addRejected(result, effectiveCandidate, 'relative-constraint-anchor-incomplete');
+        return;
+      }
+    }
+
+    if (command.type === 'note_study_time_preference' && command.preference.taskRef) {
+      const taskMatches = summary.tasks?.filter((task) => task.ref === command.preference.taskRef) ?? [];
+      if (taskMatches.length !== 1) {
+        addRejected(result, effectiveCandidate, 'study-time-preference-task-unavailable');
         return;
       }
     }
