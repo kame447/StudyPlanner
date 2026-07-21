@@ -91,7 +91,6 @@ function base64Url(bytes: Uint8Array): string {
     .replace(/=+$/g, '');
 }
 
-
 function requireCorrelationKey(value: unknown, label: string): string {
   if (typeof value !== 'string') throw new Error(`${label} is invalid`);
   const normalized = value.trim();
@@ -397,6 +396,41 @@ function isIsoTimestamp(value: unknown): value is string {
   return Number.isFinite(time) && new Date(time).toISOString() === value;
 }
 
+const PLANNING_RANGE_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const PLANNING_RANGE_LOCAL_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?$/;
+
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+export function isWeeklyPlanningTracePlanningRangeBoundary(value: unknown): value is string {
+  if (isIsoTimestamp(value)) return true;
+  if (typeof value !== 'string') return false;
+
+  const dateOnly = value.match(PLANNING_RANGE_DATE_PATTERN);
+  if (dateOnly) {
+    return isValidCalendarDate(Number(dateOnly[1]), Number(dateOnly[2]), Number(dateOnly[3]));
+  }
+
+  const localDateTime = value.match(PLANNING_RANGE_LOCAL_DATE_TIME_PATTERN);
+  if (!localDateTime) return false;
+  const year = Number(localDateTime[1]);
+  const month = Number(localDateTime[2]);
+  const day = Number(localDateTime[3]);
+  const hour = Number(localDateTime[4]);
+  const minute = Number(localDateTime[5]);
+  const second = Number(localDateTime[6]);
+  const millisecond = localDateTime[7] === undefined ? 0 : Number(localDateTime[7]);
+  if (!isValidCalendarDate(year, month, day)) return false;
+  if (hour === 24) return minute === 0 && second === 0 && millisecond === 0;
+  return hour >= 0 && hour <= 23
+    && minute >= 0 && minute <= 59
+    && second >= 0 && second <= 59;
+}
+
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
@@ -407,8 +441,10 @@ function requireTraceSessionSchema(session: Record<string, unknown>): void {
     && isIsoTimestamp(session.lastActivityAt)
     && (session.endedAt === undefined || isIsoTimestamp(session.endedAt))
     && (session.archivedAt === undefined || isIsoTimestamp(session.archivedAt))
-    && (session.planningRangeStart === undefined || isIsoTimestamp(session.planningRangeStart))
-    && (session.planningRangeEnd === undefined || isIsoTimestamp(session.planningRangeEnd))
+    && (session.planningRangeStart === undefined
+      || isWeeklyPlanningTracePlanningRangeBoundary(session.planningRangeStart))
+    && (session.planningRangeEnd === undefined
+      || isWeeklyPlanningTracePlanningRangeBoundary(session.planningRangeEnd))
     && isNonNegativeInteger(session.turnCount)
     && typeof session.hasPreview === 'boolean'
     && typeof session.hasApprovalFailure === 'boolean'
@@ -555,7 +591,6 @@ export function prepareWeeklyPlanningTraceWrite(
   });
   return { session, entries };
 }
-
 
 export function prepareWeeklyPlanningTraceServerWrite(
   input: WeeklyPlanningTraceWriteInput,
