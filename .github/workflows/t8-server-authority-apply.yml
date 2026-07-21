@@ -1,9 +1,13 @@
 name: T8 Server Authority Apply
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-weekly-planning-trace-server-authoritative-ids
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
