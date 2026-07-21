@@ -1,17 +1,18 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-18
-Current implementation baseline: `fe0dc86af264ab339e81b2191b333b4ef2a779b0`
-Post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
-Approval stream completion: [20260716-weekly-planning-approval-persistence-and-idempotency.md](tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md)
-Approval operational rollout: [20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
+Updated: 2026-07-19
+Current implementation baseline: `34c6744fefbc9b7f34bce36b97d47da4a86bf264`
 
-## 1. 役割
+- Roadmap: [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
+- PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
+- Approval stream completion: [tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md](tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md)
+- Approval operational rollout: [tasks/20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
+- Personalization foundation completion: [tasks/closed/20260718-weekly-planning-personalization-foundation.md](tasks/closed/20260718-weekly-planning-personalization-foundation.md)
 
-この文書は、product spec、dialogue architecture、roleplay test planに残る古い実装status、queue、未決定contractの読み方を統一する。
+## 1. 役割と優先順位
 
-優先順位は次のとおりである。
+この文書は、product spec、dialogue architecture、roleplay test plan、task mdに残る古い実装statusと未決定contractの読み方を統一する。
 
 ```text
 確定済みproduct decision
@@ -24,18 +25,18 @@ Approval operational rollout: [20260718-weekly-planning-approval-operational-rol
 → historical/closed/superseded records
 ```
 
-queueはroadmapだけを正とする。spec、architecture、roleplay内の古いqueue、branch名、head、`queued` statusはcurrent queueとして使用しない。
+queueはroadmapだけを正とする。spec、architecture、roleplay、過去PR本文に残る旧queue、branch名、head、`queued`、`draft`はcurrent queueとして使用しない。
 
 ## 2. AIとdeterministic parser
 
-Product decisionは2026-07-16に確定し、PR #5で`main`へ実装された。
+Product decisionは2026-07-16に確定し、PR #5系列で`main`へ実装された。
 
 - legacy fallbackを含まないdeterministic baselineを先に適用する。
 - 明示的な日付、曜日、時刻、数値、単位、現在質問への短答、確定済み情報の保護をdeterministic責務とする。
-- AIは曖昧な言い換え、複数文の関係、訂正対象、タスク種別、優先関係等のsemantic補完を担当する。
-- deterministic resultとAI candidateは属性単位のclosed validatorと保護規則を通して補完する。
+- AIは曖昧な言い換え、複数文の関係、訂正対象、task種別、優先関係等のsemantic補完を担当する。
+- deterministic resultとAI candidateは属性単位のclosed validatorと保護規則を通してmergeする。
 - 確定済み属性を異なるAI候補で破壊的に上書きしない。
-- AI解釈が高信頼でない場合は、影響と質問コストに応じて明示的修復またはやり過ごしへ分類する。
+- 高信頼でないAI解釈は、影響と質問コストに応じて明示的修復またはやり過ごしへ分類する。
 - previewを止める高影響の不確実性だけを一度に一件確認する。
 - accepted stateと直近user turnに根拠がある事項だけを短くacknowledgeする。
 
@@ -52,9 +53,9 @@ Product decisionは2026-07-16に確定した。
 - 利用者は設定または会話によって週の始まりを変更できる。
 - profileが未設定、破損、競合している場合だけ明示的修復へ入る。
 
-PR #24で期間短答と片側終了境界、PR #26で漢数字絶対日付guardを実装・自動検証した。
+PR #24で期間短答と片側終了境界、PR #26で漢数字絶対日付guardを実装・自動検証した。account-linked week-start profileはPR #48で`main`へmergeされ、module実装、production接続、自動検証まで完了している。
 
-account-linked week-start profileはPR #48で実装中だが未mergeであり、current mainの完了機能として扱わない。
+本番運用、同意、削除、監査、週始まり変更時の既存session移行は個別最適化データガバナンスタスクへ残る。
 
 ## 4. sessionと非同期lifecycle
 
@@ -65,7 +66,7 @@ current contractは次である。
 - `pendingTurn`、`pendingApproval`、session-local proposal recordはload時に除去する。
 - conversation ID、turn ID、request ID、対象週、開始revisionの不一致はstale resultとして扱う。
 - pending turnまたはapproval中の許可されていないmutationを拒否する。
-- `clear_conversation`と`reset_session`を別操作として扱う。
+- `clear_conversation`、`reset_session`、account profile resetを別操作として扱う。
 - retryは新しいturn IDとrequest IDを持つ。
 
 ```text
@@ -81,6 +82,8 @@ browser reload中の未完了request
 
 entrypoint ownership実装はconversation/turn/request identity、explicit cancellation、clear conversation、Ctrl/Meta+Enter、IME guard、focus restorationをproductionへ接続した。実ブラウザ確認は未完了である。
 
+週単位conversation sessionのクラウド同期、revision競合、offline cache、legacy migrationは未実装であり、active taskを正とする。
+
 ## 5. previewとapproval
 
 ### 5.1 Preview生成と承認前検証
@@ -91,7 +94,7 @@ entrypoint ownership実装はconversation/turn/request identity、explicit cance
 - preview候補はsession stateで所有し、個別削除、全破棄、draft昇格を扱う。
 - stale previewとpending-assumption previewを保存前に拒否する。
 - behavior-aware previewのrevisionはintake stateのrevision domainであり、`PlanningState.revision`と直接比較しない。
-- preview authorizationには当該turnの実conversationIdを用いる。
+- preview authorizationには当該turnの実conversation IDを用いる。
 - assumption dependency検証には実proposal recordsを使用する。
 - 未ログイン状態ではapproval operationを開始しない。
 
@@ -154,18 +157,16 @@ PR #60、PR #62、PR #63で実装・自動検証した。
 - Firestore Emulator rules/transaction tests
 - 2tab・2端末相当の実環境確認
 
-active taskは`docs/ai/tasks/20260718-weekly-planning-approval-operational-rollout.md`を正とする。
+active taskは`tasks/20260718-weekly-planning-approval-operational-rollout.md`を正とする。
 
 ## 6. conversation traceと長期個別最適化データ
-
-Product decisionは2026-07-16に確定した。
 
 ### 6.1 共通利用条件
 
 - 個別最適化、品質改善、不具合調査のためのデータ収集・利用を週間計画機能の利用条件とする。
 - 毎conversationではなく、初回利用前の利用規約・privacy noticeで目的、収集範囲、保存期間、削除方法、必須性を説明する。
-- 方針を受け入れない利用者は週間計画機能を開始できない。
-- 利用開始後の停止・削除要求は、週間計画機能またはアカウントの終了と関連データ削除へ接続する。
+- 方針を受け入れない利用者はaccount-linked personalizationを前提とする週間計画を開始できない。
+- 利用開始後の停止・削除要求は、週間計画機能またはaccountの終了と関連データ削除へ接続する。
 
 ### 6.2 Quality trace
 
@@ -179,13 +180,29 @@ PR #46でcode実装と自動検証は完了した。本番secret、TTL policy、
 
 ### 6.3 Longitudinal personalization profile
 
-- profileはaccount IDへひも付く保有個人データとして扱う。
-- 週の始まり、学習速度、見積り誤差、session長、修正傾向、実績差、確認方法の好みを構造化して保持する。
-- 原会話とstate snapshotは180日で削除し、必要な情報だけをorigin、confidence、scope、confirmedAt付きprofile factへ昇格する。
-- trace tokenとaccount-linked profile identityを混同しない。
-- 不要な医療詳細は長期profileへ保存せず、必要な生活制約へ一般化する。
+PR #48は2026-07-18に`main`へmerge済みである。
 
-PR #48はactive draftであり、merge、検証、運用確認が残る。
+実装済みfoundation:
+
+- account-linked versioned profile
+- profile factのorigin、confidence、scope、confirmedAt、expiresAt
+- 週の始まり設定と自然言語解釈への反映
+- 設定画面からの変更とprofile reset
+- traceとは別のrepository、collection、Firestore権限
+- 一時的な相談条件を長期profileへ自動昇格しない境界
+
+未完了:
+
+- 週途中の現在時刻境界
+- 週session同期と競合処理
+- 相談resetと派生観測無効化
+- plan／actualからのversion付き観測記録
+- 見積り補正、session長、時間帯傾向の集計
+- 時間減衰、不確実性、既定値への縮約
+- 個人別placement score
+- 規約version、TTL、削除cascade、admin audit、privacy/legal review
+
+個別最適化のqueueと依存順はroadmapを正とし、foundation完了記録とactive taskを混同しない。
 
 ## 7. 実装statusの読み方
 
@@ -199,10 +216,12 @@ browser verified
 operationally deployed
 ```
 
-PR本文またはcompletion recordのtest成功を、browser verifiedまたはoperationally deployedへ自動昇格しない。
+PR本文またはcompletion recordのtest成功を、現在`main`のbrowser verificationや本番deployへ自動継承しない。
 
-## 8. 歴史文書と既知の競合
+## 8. Task operation
 
-closedまたはsuperseded文書に残るsingle-interpreter、preview-first、旧stage/phase、旧queue、旧30日trace保持は、その時点の履歴である。現在の実装指示として直接再実行しない。
-
-active長大文書に残る旧記述は、本書、post-merge status、roadmap、roleplay statusで上書きする。長大文書の全面同期は、機能修正と混ぜずdocs-only taskとして扱う。
+- `tasks/`直下には未完了taskだけを置く。
+- 完了した範囲は`tasks/closed/`へcompletion recordとして保存する。
+- broad parent Issueは進捗索引としてopenを維持し、実装責務は依存付きtask mdへ分離する。
+- current queue、priority、blocked状態はroadmapを正とする。
+- historical、closed、superseded文書をcurrent instructionとして直接実行しない。
