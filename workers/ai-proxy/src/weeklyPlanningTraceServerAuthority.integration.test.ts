@@ -14,6 +14,11 @@ const fakeFirestore = vi.hoisted(() => {
           },
         };
       }
+      if (collection === 'admins') {
+        return id === 'admin-1'
+          ? { enabled: true, weeklyPlanningTraceReader: true }
+          : null;
+      }
       if (collection === 'weekly_planning_trace_sessions') {
         return sessions.has(id) ? { ...sessions.get(id)! } : null;
       }
@@ -50,7 +55,21 @@ const fakeFirestore = vi.hoisted(() => {
     }
 
     async setDocument(): Promise<void> {}
-    async queryDocuments(): Promise<Record<string, unknown>[]> { return []; }
+
+    async queryDocuments(
+      collection: string,
+      filters: Array<{ field: string; value: string }>,
+    ): Promise<Record<string, unknown>[]> {
+      const source = collection === 'weekly_planning_trace_sessions'
+        ? sessions
+        : collection === 'weekly_planning_trace_entries'
+          ? entries
+          : new Map<string, Record<string, unknown>>();
+      return Array.from(source.values())
+        .filter((document) => filters.every((filter) => document[filter.field] === filter.value))
+        .map((document) => ({ ...document }));
+    }
+
     async deleteByStringField(): Promise<number> { return 0; }
   }
 
@@ -81,7 +100,10 @@ function env() {
   };
 }
 
-function sessionMetadata(entryCount = 0): Record<string, unknown> {
+function sessionMetadata(
+  entryCount = 0,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     status: 'active',
     startedAt: NOW,
@@ -94,10 +116,14 @@ function sessionMetadata(entryCount = 0): Record<string, unknown> {
     hasError: false,
     appVersion: 'test',
     schemaVersion: 1,
+    ...overrides,
   };
 }
 
-async function start(uid = 'user-1') {
+async function start(
+  uid = 'user-1',
+  sessionOverrides: Record<string, unknown> = {},
+) {
   return handleWeeklyPlanningTraceApi(
     new Request('https://example.test/weekly-planning-trace/session/start', {
       method: 'POST',
@@ -105,7 +131,7 @@ async function start(uid = 'user-1') {
       body: JSON.stringify({
         idempotencyKey: 'weekly-trace-09012345678-client',
         conversationCorrelationKey: 'conversation-09012345678-client',
-        session: sessionMetadata(),
+        session: sessionMetadata(0, sessionOverrides),
       }),
     }),
     env(),
@@ -113,13 +139,17 @@ async function start(uid = 'user-1') {
   );
 }
 
-function appendRequest(sessionId: string, entryOverrides: Record<string, unknown> = {}) {
+function appendRequest(
+  sessionId: string,
+  entryOverrides: Record<string, unknown> = {},
+  sessionOverrides: Record<string, unknown> = {},
+) {
   return new Request('https://example.test/weekly-planning-trace/append', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       session: {
-        ...sessionMetadata(1),
+        ...sessionMetadata(1, sessionOverrides),
         id: sessionId,
         logicalConversationId: MALICIOUS_CONVERSATION_ID,
       },
@@ -158,6 +188,60 @@ describe('weekly planning trace server authority', () => {
     const persisted = JSON.stringify(Array.from(fakeFirestore.sessions.values()));
     expect(persisted).not.toContain('09012345678');
     expect(persisted).not.toContain('client');
+  });
+
+  it('accepts production range values and exposes the active session through admin APIs', async () => {
+    const range = {
+      planningRangeStart: '2026-07-21',
+      planningRangeEnd: '2026-07-27T24:00:00',
+    };
+    const started = await start('user-1', range);
+    expect(started.status).toBe(200);
+    const sessionId = String(started.body.sessionId);
+
+    const appended = await handleWeeklyPlanningTraceApi(
+      appendRequest(sessionId, {}, {
+        planningRangeStart: '2026-07-21T09:00:00',
+        planningRangeEnd: '2026-07-27T24:00:00',
+      }),
+      env(),
+      { uid: 'user-1' },
+    );
+    expect(appended.status).toBe(200);
+
+    const listed = await handleWeeklyPlanningTraceApi(
+      new Request('https://example.test/weekly-planning-trace/admin/sessions'),
+      env(),
+      { uid: 'admin-1' },
+    );
+    expect(listed.status).toBe(200);
+    expect(listed.body.sessions).toEqual([
+      expect.objectContaining({
+        id: sessionId,
+        status: 'active',
+        entryCount: 1,
+        planningRangeStart: '2026-07-21T09:00:00',
+        planningRangeEnd: '2026-07-27T24:00:00',
+      }),
+    ]);
+
+    const listedEntries = await handleWeeklyPlanningTraceApi(
+      new Request('https://example.test/weekly-planning-trace/admin/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      }),
+      env(),
+      { uid: 'admin-1' },
+    );
+    expect(listedEntries.status).toBe(200);
+    expect(listedEntries.body.entries).toEqual([
+      expect.objectContaining({
+        id: `${sessionId}-00000000`,
+        sessionId,
+        sequence: 0,
+      }),
+    ]);
   });
 
   it('does not create a session from a direct append with an arbitrary valid UUID', async () => {
