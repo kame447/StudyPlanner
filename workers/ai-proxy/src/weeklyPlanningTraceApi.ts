@@ -148,6 +148,83 @@ export function safeWeeklyPlanningTraceDocumentsForAdmin(
   });
 }
 
+function boundedAdminEntryCount(target: Record<string, unknown>): number {
+  const rawEntryCount = target.entryCount;
+  return typeof rawEntryCount === 'number' && Number.isFinite(rawEntryCount)
+    ? Math.max(0, Math.min(ADMIN_LIST_LIMIT, Math.trunc(rawEntryCount)))
+    : 0;
+}
+
+function normalizeAdminTraceEntry(
+  entry: Record<string, unknown> | null,
+  sessionId: string,
+  expectedSequence?: number,
+): Record<string, unknown> | null {
+  if (!entry) return null;
+  const sequence = expectedSequence ?? entry.sequence;
+  if (typeof sequence !== 'number'
+    || !Number.isSafeInteger(sequence)
+    || sequence < 0
+    || sequence >= ADMIN_LIST_LIMIT) {
+    return null;
+  }
+  const expectedId = `${sessionId}-${String(sequence).padStart(8, '0')}`;
+  if (entry.id !== expectedId) return null;
+  return {
+    ...entry,
+    id: expectedId,
+    sessionId,
+    sequence,
+  };
+}
+
+async function loadAdminTraceEntries(
+  firestore: WeeklyPlanningTraceFirestoreClient,
+  sessionId: string,
+  target: Record<string, unknown>,
+  useSessionQuery: boolean,
+): Promise<Record<string, unknown>[]> {
+  const entryCount = boundedAdminEntryCount(target);
+  const entriesBySequence = new Map<number, Record<string, unknown>>();
+
+  if (useSessionQuery) {
+    const queriedEntries = await firestore.queryDocuments(
+      TRACE_ENTRIES,
+      [{ field: 'sessionId', value: sessionId }],
+      ADMIN_LIST_LIMIT,
+    );
+    queriedEntries.forEach((entry) => {
+      const normalized = normalizeAdminTraceEntry(entry, sessionId);
+      if (!normalized) return;
+      const sequence = normalized.sequence as number;
+      if (sequence < entryCount) entriesBySequence.set(sequence, normalized);
+    });
+  }
+
+  const missingSequences = Array.from(
+    { length: entryCount },
+    (_, sequence) => sequence,
+  ).filter((sequence) => !entriesBySequence.has(sequence));
+
+  const recoveredEntries = await Promise.all(
+    missingSequences.map(async (sequence) => normalizeAdminTraceEntry(
+      await firestore.getDocument(
+        TRACE_ENTRIES,
+        `${sessionId}-${String(sequence).padStart(8, '0')}`,
+      ),
+      sessionId,
+      sequence,
+    )),
+  );
+  recoveredEntries.forEach((entry) => {
+    if (!entry) return;
+    entriesBySequence.set(entry.sequence as number, entry);
+  });
+
+  return Array.from(entriesBySequence.values())
+    .sort((left, right) => Number(left.sequence) - Number(right.sequence));
+}
+
 async function handlePolicyStatus(
   firestore: WeeklyPlanningTraceFirestoreClient,
   session: WeeklyPlanningTraceApiSession,
@@ -331,49 +408,26 @@ async function handleAdminEntries(
   const target = await firestore.getDocument(TRACE_SESSIONS, sessionId);
   if (!target) return error(404, 'trace session was not found');
   await appendAccessAudit(firestore, env, session, 'list_entries', sessionId);
-  let entries: Record<string, unknown>[];
-  if (isCurrentSessionId && target.storageLayoutVersion === TRACE_STORAGE_LAYOUT_VERSION) {
-    entries = (await firestore.queryDocuments(
-      TRACE_ENTRIES,
-      [{ field: 'sessionId', value: sessionId }],
-      ADMIN_LIST_LIMIT,
-    ))
-      .filter((entry) => isWeeklyPlanningTraceEntryId(
-        entry.id,
-        sessionId,
-        typeof entry.sequence === 'number' ? entry.sequence : undefined,
-      ))
-      .sort((left, right) => Number(left.sequence) - Number(right.sequence))
-      .map((entry) => ({ ...entry, sessionId }));
-  } else {
-    const rawEntryCount = target.entryCount;
-    const entryCount = typeof rawEntryCount === 'number' && Number.isFinite(rawEntryCount)
-      ? Math.max(0, Math.min(ADMIN_LIST_LIMIT, Math.trunc(rawEntryCount)))
-      : 0;
-    entries = (await Promise.all(
-      Array.from({ length: entryCount }, (_, sequence) =>
-        firestore.getDocument(
-          TRACE_ENTRIES,
-          `${sessionId}-${String(sequence).padStart(8, '0')}`,
-        )),
-    ))
-      .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-      .map((entry) => ({ ...entry, sessionId }));
-  }
+  const entries = await loadAdminTraceEntries(
+    firestore,
+    sessionId,
+    target,
+    isCurrentSessionId && target.storageLayoutVersion === TRACE_STORAGE_LAYOUT_VERSION,
+  );
   const safeEntries = safeWeeklyPlanningTraceDocumentsForAdmin(entries);
-if (isLegacySessionHandle) {
-  safeEntries.forEach((entry) => {
-    const sequence = entry.sequence;
-    if (typeof sequence !== 'number'
-      || !Number.isSafeInteger(sequence)
-      || sequence < 0) {
-      return;
-    }
-    entry.id = `${sessionId}-${String(sequence).padStart(8, '0')}`;
-    entry.sessionId = sessionId;
-  });
-}
-return ok({ entries: safeEntries });
+  if (isLegacySessionHandle) {
+    safeEntries.forEach((entry) => {
+      const sequence = entry.sequence;
+      if (typeof sequence !== 'number'
+        || !Number.isSafeInteger(sequence)
+        || sequence < 0) {
+        return;
+      }
+      entry.id = `${sessionId}-${String(sequence).padStart(8, '0')}`;
+      entry.sessionId = sessionId;
+    });
+  }
+  return ok({ entries: safeEntries });
 }
 
 async function handleAdminArchive(
