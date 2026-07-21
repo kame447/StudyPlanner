@@ -1,9 +1,13 @@
 name: Apply PR75 final audit fixes
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/remove-weekly-planning-parser-boundary
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
@@ -16,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/remove-weekly-planning-parser-boundary
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
