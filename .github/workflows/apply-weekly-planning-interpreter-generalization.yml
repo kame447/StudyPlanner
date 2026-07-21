@@ -1,0 +1,56 @@
+name: Apply weekly planning interpreter generalization
+
+on:
+  push:
+    branches:
+      - agent/generalize-weekly-planning-interpreter
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-weekly-planning-interpreter-generalization
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/generalize-weekly-planning-interpreter
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply implementation
+        run: node scripts/apply-weekly-planning-interpreter-generalization.mjs
+      - name: Run focused tests
+        run: >-
+          npm run test:run --
+          src/features/weeklyPlanning/intake/weeklyPlanningAiPromptContract.test.ts
+          src/features/weeklyPlanning/intake/weeklyPlanningAiRawResponse.test.ts
+          src/features/weeklyPlanning/trace/weeklyPlanningInterpreterTraceObservability.test.ts
+          src/features/weeklyPlanning/pipeline/weeklyPlanningAiSemanticOwnership.test.ts
+      - name: Run full test suite
+        run: npm run test:run
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Check diff
+        run: git diff --check
+      - name: Remove temporary applicator
+        run: |
+          rm scripts/apply-weekly-planning-interpreter-generalization.mjs
+          rm .github/workflows/apply-weekly-planning-interpreter-generalization.yml
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: 週間計画AIの意味解釈指示を一般化"
+          git push origin HEAD:agent/generalize-weekly-planning-interpreter
