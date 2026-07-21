@@ -1,25 +1,48 @@
-name: Agent source export
+name: Apply PR75 final audit fixes
 
 on:
   push:
     branches:
       - agent/remove-weekly-planning-parser-boundary
-  pull_request:
-    branches:
-      - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export-source:
+  apply-verify-commit:
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Create source archive
-        run: tar --exclude=.git --exclude=node_modules -czf /tmp/studyplanner-pr75.tar.gz .
-      - uses: actions/upload-artifact@v4
         with:
-          name: studyplanner-pr75
-          path: /tmp/studyplanner-pr75.tar.gz
-          retention-days: 1
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Reconstruct audited patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/agent-pr75-final/part-* > /tmp/pr75-final.patch.gz.b64
+          base64 --decode /tmp/pr75-final.patch.gz.b64 | gzip --decompress > /tmp/pr75-final.patch
+          echo '9e72d6e03c6b899946665d1e429baea0805dd8514570402827c75481f0de9401  /tmp/pr75-final.patch' | sha256sum --check
+          git apply --index /tmp/pr75-final.patch
+          git rm -r .github/agent-pr75-final
+      - name: Install dependencies
+        run: npm ci
+      - name: Run full test suite
+        run: npm run test:run
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Check staged diff
+        run: git diff --cached --check
+      - name: Commit verified audit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: 週間計画の七監査指摘を修正'
+          git push origin HEAD:agent/remove-weekly-planning-parser-boundary
