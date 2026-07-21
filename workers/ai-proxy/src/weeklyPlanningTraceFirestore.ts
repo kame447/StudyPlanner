@@ -34,6 +34,9 @@ const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
 
+const workerSafeFetch: typeof fetch = (input, init) =>
+  globalThis.fetch(input, init);
+
 function base64Url(value: Uint8Array | string): string {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
   let binary = '';
@@ -142,7 +145,7 @@ export class WeeklyPlanningTraceFirestoreClient {
 
   constructor(
     private readonly env: WeeklyPlanningTraceFirestoreEnv,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = workerSafeFetch,
     private readonly cryptoApi: Crypto = crypto,
   ) {}
 
