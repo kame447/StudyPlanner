@@ -90,6 +90,13 @@ describe('WP-BEHAVIOR-001 behavior-aware roleplay', () => {
             subject: '英語',
             unit: 'minutes',
             amount: 30,
+            deadlineDeclared: true,
+            deadlineDate: '2026-07-17',
+            executionProfile: {
+              activityKind: 'memorization',
+              distributionPolicy: 'spaced',
+              cognitiveLoad: 'light',
+            },
           },
         }, taskText),
         source({
@@ -99,6 +106,11 @@ describe('WP-BEHAVIOR-001 behavior-aware roleplay', () => {
             subject: '英語',
             unit: 'pages',
             amount: 10,
+            executionProfile: {
+              activityKind: 'drill',
+              distributionPolicy: 'sequential_units',
+              cognitiveLoad: 'medium',
+            },
           },
         }, taskText),
       ]),
@@ -161,6 +173,14 @@ describe('WP-BEHAVIOR-001 behavior-aware roleplay', () => {
             hardness: 'soft',
           },
         }, routineText),
+        source({
+          type: 'note_study_time_preference',
+          preference: { kind: 'avoid_morning' },
+        }, routineText),
+        source({
+          type: 'note_study_time_preference',
+          preference: { kind: 'prefer_before_sleep', taskRef: 'task:0' },
+        }, routineText),
         source({ type: 'note_no_fixed_events' }, routineText),
       ]),
     });
@@ -181,7 +201,9 @@ describe('WP-BEHAVIOR-001 behavior-aware roleplay', () => {
       ...pipelineDefaults,
       previousState: routine.state,
       userText: authorizationText,
-      interpreter: interpreter([]),
+      interpreter: interpreter([
+        source({ type: 'authorize_draft_generation' }, authorizationText),
+      ]),
     });
 
     expect(preview.behavior.snapshot.readiness.draftGenerationIntent).toBe('user_authorized');

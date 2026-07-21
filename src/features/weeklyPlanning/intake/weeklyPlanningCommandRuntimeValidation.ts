@@ -20,6 +20,16 @@ const PRIORITY_POLICY_KINDS = new Set([
 const LIFE_CONSTRAINT_KINDS = new Set([
   'sleep', 'meal', 'bath', 'commute', 'club', 'cram_school', 'buffer',
 ]);
+const RELATIVE_RELATIONS = new Set(['before', 'after', 'during_buffer']);
+const RELATIVE_CONSTRAINT_KINDS = new Set(['commute', 'buffer']);
+const STUDY_TIME_PREFERENCE_KINDS = new Set(['avoid_morning', 'prefer_before_sleep']);
+const STUDY_ACTIVITY_KINDS = new Set([
+  'memorization', 'drill', 'reading', 'writing', 'problem_solving', 'project', 'review', 'unknown',
+]);
+const TASK_DISTRIBUTION_POLICIES = new Set([
+  'single_block', 'contiguous', 'splittable', 'spaced', 'sequential_units',
+]);
+const STUDY_COGNITIVE_LOADS = new Set(['light', 'medium', 'heavy', 'unknown']);
 const COMPLETION_TARGET_KINDS = new Set(['all', 'latest_n_years', 'up_to_reachable', 'year_range']);
 const TOP_LEVEL_COMMON_KEYS = ['type', 'confidence', 'sourceText', 'sourceSegment'] as const;
 
@@ -126,15 +136,27 @@ function validateExamScope(value: unknown): boolean {
   return true;
 }
 
+function validateStudyExecutionProfile(value: unknown): boolean {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['activityKind', 'distributionPolicy', 'cognitiveLoad'])
+    && STUDY_ACTIVITY_KINDS.has(value.activityKind as string)
+    && TASK_DISTRIBUTION_POLICIES.has(value.distributionPolicy as string)
+    && STUDY_COGNITIVE_LOADS.has(value.cognitiveLoad as string);
+}
+
 function validateStudyGoal(command: Record<string, unknown>): boolean {
   if (!hasCommandKeys(command, ['goal']) || !isRecord(command.goal)) return false;
   const goal = command.goal;
-  return hasOnlyKeys(goal, ['title', 'subject', 'unit', 'amount'])
+  return hasOnlyKeys(goal, ['title', 'subject', 'unit', 'amount', 'deadlineDeclared', 'deadlineDate', 'deadlineTime', 'executionProfile'])
     && isNonEmptyString(goal.title)
     && goal.title.length <= 200
     && isOptionalString(goal.subject)
     && (goal.unit === undefined || typeof goal.unit === 'string')
-    && isOptionalFiniteNumber(goal.amount);
+    && isOptionalFiniteNumber(goal.amount)
+    && (goal.deadlineDeclared === undefined || goal.deadlineDeclared === true)
+    && isOptionalString(goal.deadlineDate)
+    && isOptionalString(goal.deadlineTime)
+    && (goal.executionProfile === undefined || validateStudyExecutionProfile(goal.executionProfile));
 }
 
 export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPlanningCommandPayload {
@@ -161,6 +183,15 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
         && isOptionalFiniteNumber(event.durationMinutes)
         && HARDNESS_VALUES.has(event.hardness as string);
     }
+    case 'add_relative_constraint':
+      return hasCommandKeys(value, [
+        'anchorRef', 'relation', 'offsetMinutes', 'durationMinutes', 'kind',
+      ])
+        && isNonEmptyString(value.anchorRef)
+        && RELATIVE_RELATIONS.has(value.relation as string)
+        && typeof value.offsetMinutes === 'number' && Number.isInteger(value.offsetMinutes)
+        && isOptionalPositiveInteger(value.durationMinutes)
+        && RELATIVE_CONSTRAINT_KINDS.has(value.kind as string);
     case 'update_life_constraint': {
       if (!hasCommandKeys(value, ['kind', 'constraint'])
         || typeof value.kind !== 'string'
@@ -177,6 +208,12 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
         && isOptionalFiniteNumber(constraint.durationMinutes)
         && HARDNESS_VALUES.has(constraint.hardness as string);
     }
+    case 'note_study_time_preference':
+      return hasCommandKeys(value, ['preference'])
+        && isRecord(value.preference)
+        && hasOnlyKeys(value.preference, ['kind', 'taskRef'])
+        && STUDY_TIME_PREFERENCE_KINDS.has(value.preference.kind as string)
+        && isOptionalString(value.preference.taskRef);
     case 'use_constraint_source':
       return hasCommandKeys(value, ['source'])
         && isRecord(value.source)
@@ -280,6 +317,8 @@ export function isValidWeeklyPlanningCommand(value: unknown): value is WeeklyPla
     }
     case 'begin_weekly_planning':
       return hasCommandKeys(value, []);
+    case 'authorize_draft_generation':
+      return hasCommandKeys(value, []) && value.confidence === 'high';
     case 'set_study_goal':
       return validateStudyGoal(value);
     default:
@@ -315,6 +354,9 @@ export function canonicalizeOptionalCommandNulls(value: unknown): unknown {
       if (event) ['date', 'start', 'end', 'durationMinutes'].forEach((key) => removeNull(event, key));
       break;
     }
+    case 'add_relative_constraint':
+      removeNull(command, 'durationMinutes');
+      break;
     case 'update_life_constraint': {
       const constraint = copyNested(command, 'constraint');
       if (constraint) ['date', 'start', 'end', 'durationMinutes', 'studyAvailableStart'].forEach((key) => removeNull(constraint, key));
@@ -356,7 +398,12 @@ export function canonicalizeOptionalCommandNulls(value: unknown): unknown {
     }
     case 'set_study_goal': {
       const goal = copyNested(command, 'goal');
-      if (goal) ['subject', 'unit', 'amount'].forEach((key) => removeNull(goal, key));
+      if (goal) ['subject', 'unit', 'amount', 'deadlineDeclared', 'deadlineDate', 'deadlineTime'].forEach((key) => removeNull(goal, key));
+      break;
+    }
+    case 'note_study_time_preference': {
+      const preference = copyNested(command, 'preference');
+      if (preference) removeNull(preference, 'taskRef');
       break;
     }
     default:

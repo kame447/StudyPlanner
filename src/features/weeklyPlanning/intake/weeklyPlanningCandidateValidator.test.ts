@@ -93,10 +93,10 @@ describe('weekly planning candidate validator properties', () => {
       goalTitleArbitrary,
       fc.boolean(),
       (title, reverseOrder) => {
-        const high = studyGoalCandidate({ title, subject: 'high', confidence: 'high' });
+        const high = studyGoalCandidate({ title, subject: '同一科目', confidence: 'high' });
         const medium = studyGoalCandidate({
           title: `  ${fullWidthAscii(title)}\u3000`,
-          subject: 'medium',
+          subject: '同一科目',
           confidence: 'medium',
         });
         const candidates = reverseOrder ? [medium, high] : [high, medium];

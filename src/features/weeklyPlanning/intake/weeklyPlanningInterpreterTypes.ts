@@ -47,6 +47,20 @@ export interface InterpreterCorrectionTargetSummary {
   label: string;
 }
 
+export interface InterpreterConstraintAnchorSummary {
+  ref: string;
+  label: string;
+  kind: string;
+  date?: string;
+  start?: string;
+  end?: string;
+}
+
+export interface InterpreterTaskSummary {
+  ref: string;
+  label: string;
+}
+
 export interface InterpreterStateSummary {
   knownFields: string[];
   examScopeSummary?: Omit<Partial<ExamPrepScope>, 'fields' | 'yearRange'> & {
@@ -71,6 +85,8 @@ export interface InterpreterStateSummary {
     planningEndDateTime?: string;
   };
   availableConstraintSources?: ConstraintSourceAvailability;
+  constraintAnchors?: InterpreterConstraintAnchorSummary[];
+  tasks?: InterpreterTaskSummary[];
   pendingAssumptionProposals?: InterpreterPendingAssumptionSummary[];
   correctionTargets?: InterpreterCorrectionTargetSummary[];
 }

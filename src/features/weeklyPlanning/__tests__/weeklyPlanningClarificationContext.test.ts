@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import type { WeeklyPlanningIntakeInterpreter } from '../intake/weeklyPlanningInterpreterTypes';
 import {
   runWeeklyPlanningBehaviorAwarePipeline,
@@ -17,11 +18,34 @@ const emptyInterpreter: WeeklyPlanningIntakeInterpreter = {
   },
 };
 
+function clarificationInterpreter(
+  target: Extract<ParsedWeeklyPlanningCommand, { type: 'request_clarification' }>['target'],
+  ref?: string,
+): WeeklyPlanningIntakeInterpreter {
+  return {
+    async interpretUserTurn({ userText }) {
+      return {
+        candidates: [{
+          command: {
+            type: 'request_clarification',
+            target,
+            ...(ref ? { ref } : {}),
+            sourceText: userText,
+            confidence: 'high',
+          },
+          origin: 'ai_interpreter' as const,
+          needsConfirmation: false,
+        }],
+        parseRejections: [],
+      };
+    },
+  };
+}
+
 async function initialState() {
-  return runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+  return runWeeklyPlanningBehaviorAwarePipeline({
     ...baseInput,
     userText: '来週の予定立てたい',
-    interpreter: emptyInterpreter,
   });
 }
 
@@ -32,7 +56,7 @@ describe('weekly planning clarification context', () => {
       ...baseInput,
       previousState: first.state,
       userText: '固定の予定って何ですか？',
-      interpreter: emptyInterpreter,
+      interpreter: clarificationInterpreter('referenced_term', 'fixed_events'),
     });
 
     expect(output.decision.kind).toBe('answer_clarification');
@@ -56,7 +80,7 @@ describe('weekly planning clarification context', () => {
         },
       },
       userText: '年度の計画ってどういうこと？',
-      interpreter: emptyInterpreter,
+      interpreter: clarificationInterpreter('referenced_term', 'year_range'),
     });
 
     expect(output.decision.kind).toBe('answer_clarification');
@@ -80,7 +104,7 @@ describe('weekly planning clarification context', () => {
         },
       },
       userText: 'よく分からない',
-      interpreter: emptyInterpreter,
+      interpreter: clarificationInterpreter('referenced_question'),
     });
 
     expect(output.decision.kind).toBe('answer_clarification');

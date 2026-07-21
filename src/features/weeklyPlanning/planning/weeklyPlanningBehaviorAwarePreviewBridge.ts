@@ -71,7 +71,6 @@ export interface AcceptedTaskDurationAssumption {
 
 export interface BehaviorAwarePlanningBridgeInput {
   state: PlanningIntakeState;
-  currentUserText: string;
   conversationId?: string;
   planningStartDate: string;
   planningDayCount: number;
@@ -250,15 +249,13 @@ export function createBehaviorAwareNonExamDraftRun(params: {
     timetableTermId: params.input.timetableTermId,
     existingPlanBufferMinutes: params.input.existingPlanBufferMinutes,
   });
-  const resolvedByTitle = new Map(complete.map((item) => [item.task.title, item]));
-  const profileByTitle = new Map(
-    params.snapshot.taskProfiles.map((profile, index) => [complete[index].task.title, profile]),
-  );
-
   const candidates = run.candidates.map((candidate) => {
-    const item = resolvedByTitle.get(candidate.field);
-    const profile = profileByTitle.get(candidate.field);
-    if (!item || !profile) {
+    const taskIndex = candidate.year - 1;
+    const item = Number.isInteger(taskIndex) ? complete[taskIndex] : undefined;
+    const profile = Number.isInteger(taskIndex)
+      ? params.snapshot.taskProfiles[taskIndex]
+      : undefined;
+    if (!item || !profile || candidate.field !== item.task.title) {
       throw new Error(`Missing behavior metadata for candidate: ${candidate.stableKey}`);
     }
 
@@ -292,7 +289,6 @@ export function runBehaviorAwarePlanningPreviewBridge(
 ): BehaviorAwarePlanningBridgeResult {
   const snapshot = createPlanningHypothesisSnapshot({
     state: input.state,
-    currentUserText: input.currentUserText,
     conversationId: input.conversationId,
     availabilityRanges: input.availabilityRanges,
   });

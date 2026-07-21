@@ -38,8 +38,13 @@ import {
   parseBareDurationAsUnitRateCommand,
   parseSetUnitRateCommand,
 } from './weeklyPlanningUnitRateParsing';
-import { normalizeStudyTaskTitle } from './weeklyPlanningTaskIdentity';
+import { studyGoalIdentity } from './weeklyPlanningTaskIdentity';
 import { parseNoteUncertaintyCommand } from './weeklyPlanningUncertaintyParsing';
+import {
+  reduceDraftGenerationAuthorization,
+  validateDraftGenerationAuthorizationCommand,
+} from '../planning/weeklyPlanningDraftGenerationAuthorization';
+import { resolveRelativeConstraints } from '../planning/weeklyPlanningRelativeConstraints';
 import { applyLegacyWeeklyPlanningFallback } from './weeklyPlanningLegacyFallback';
 
 const DEFAULT_PRIORITY_POLICY = { kind: 'unknown' } as const;
@@ -52,6 +57,7 @@ export function createInitialPlanningIntakeState(): PlanningIntakeState {
     progress: [],
     unitRates: [],
     constraints: [],
+    studyTimePreferences: [],
     priorityPolicy: DEFAULT_PRIORITY_POLICY,
     missing: [],
     assumptions: [],
@@ -60,6 +66,82 @@ export function createInitialPlanningIntakeState(): PlanningIntakeState {
     shouldCreateDraft: false,
     shouldSavePlan: false,
     sourceTurns: [],
+  };
+}
+
+function relativeConstraintTargetIndex(anchorRef: string): number | null {
+  const match = /^constraint:(\d+)$/.exec(anchorRef);
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+function applyAddRelativeConstraintCommand(
+  state: PlanningIntakeState,
+  command: Extract<ParsedWeeklyPlanningCommand, { type: 'add_relative_constraint' }>,
+): PlanningIntakeState {
+  const index = relativeConstraintTargetIndex(command.anchorRef);
+  const anchorConstraint = index === null ? undefined : state.constraints[index];
+  if (!anchorConstraint?.date || !anchorConstraint.start || !anchorConstraint.end) return state;
+
+  const stateRevision = state.sourceTurns.length;
+  const resolution = resolveRelativeConstraints({
+    constraints: [{
+      relationId: `relative-command:${stateRevision}:${index}:${command.relation}`,
+      anchorFactRef: command.anchorRef,
+      relation: command.relation,
+      offsetMinutes: command.offsetMinutes,
+      durationMinutes: command.durationMinutes,
+      sourceFactRefs: [command.anchorRef, `turn:${stateRevision}`],
+      stateRevision,
+      confidence: command.confidence,
+    }],
+    anchors: [{
+      factRef: command.anchorRef,
+      eventId: `constraint-event:${index}`,
+      date: anchorConstraint.date,
+      startTime: anchorConstraint.start,
+      endTime: anchorConstraint.end,
+      visibility: 'public',
+      stateRevision,
+      sourceFactRefs: [command.anchorRef],
+    }],
+    currentStateRevision: stateRevision,
+  });
+  const resolved = resolution.resolved[0];
+  if (!resolved) return state;
+
+  return {
+    ...state,
+    constraints: mergeLifeConstraints(state.constraints, [{
+      kind: command.kind,
+      date: resolved.date,
+      start: resolved.startTime,
+      end: resolved.endTime,
+      hardness: command.relation === 'during_buffer' ? 'hard' : 'soft',
+      rawText: command.sourceSegment ?? command.sourceText,
+    }]),
+    missing: removeMissingForLifeConstraint(state.missing, command.kind),
+  };
+}
+
+function applyNoteStudyTimePreferenceCommand(
+  state: PlanningIntakeState,
+  command: Extract<ParsedWeeklyPlanningCommand, { type: 'note_study_time_preference' }>,
+): PlanningIntakeState {
+  const preference = {
+    kind: command.preference.kind,
+    taskRef: command.preference.taskRef,
+    rawText: command.sourceSegment ?? command.sourceText,
+    confidence: command.confidence === 'high' ? 'high' as const : 'medium' as const,
+  };
+  const existing = state.studyTimePreferences ?? [];
+  const withoutSameTarget = existing.filter((candidate) =>
+    candidate.kind !== preference.kind || candidate.taskRef !== preference.taskRef,
+  );
+  return {
+    ...state,
+    studyTimePreferences: [...withoutSameTarget, preference],
   };
 }
 
@@ -347,6 +429,8 @@ function applyWeeklyPlanningCommand(
           ? removeMissing(state.missing, ['fixed_events'])
           : state.missing,
       };
+    case 'add_relative_constraint':
+      return applyAddRelativeConstraintCommand(state, command);
     case 'update_life_constraint':
       return {
         ...state,
@@ -355,6 +439,8 @@ function applyWeeklyPlanningCommand(
         ]),
         missing: removeMissingForLifeConstraint(state.missing, command.kind),
       };
+    case 'note_study_time_preference':
+      return applyNoteStudyTimePreferenceCommand(state, command);
     case 'use_constraint_source':
       return applyUseConstraintSourceCommand(state, command);
     case 'set_priority_policy':
@@ -483,10 +569,10 @@ function applyWeeklyPlanningCommand(
     }
     case 'set_study_goal': {
       const task = toStudyTaskScopeFromSetStudyGoalCommand(command);
-      const taskIdentity = normalizeStudyTaskTitle(task.title);
+      const taskIdentity = studyGoalIdentity(task.title, task.subject);
       const tasks = [
         ...state.tasks.filter(
-          (existingTask) => normalizeStudyTaskTitle(existingTask.title) !== taskIdentity,
+          (existingTask) => studyGoalIdentity(existingTask.title, existingTask.subject) !== taskIdentity,
         ),
         task,
       ];
@@ -498,6 +584,11 @@ function applyWeeklyPlanningCommand(
         missing: removeMissing(state.missing, ['tasks_or_goals']),
       };
     }
+    case 'authorize_draft_generation':
+      return reduceDraftGenerationAuthorization(
+        state,
+        validateDraftGenerationAuthorizationCommand(command),
+      );
     case 'begin_weekly_planning': {
       const hasPlanningScope = Boolean(state.range || state.pendingPlanningRange);
       const hasLearningScope = Boolean(state.examPrepScope || state.tasks.length > 0);
@@ -555,6 +646,7 @@ export function beginWeeklyPlanningUserTurn(
     })),
     unitRates: baseState.unitRates.map((unitRate) => ({ ...unitRate })),
     constraints: baseState.constraints.map((constraint) => ({ ...constraint })),
+    studyTimePreferences: baseState.studyTimePreferences?.map((preference) => ({ ...preference })),
     constraintSourcesInUse: baseState.constraintSourcesInUse
       ? baseState.constraintSourcesInUse.map((source) => ({ ...source }))
       : undefined,

@@ -18,7 +18,6 @@ import type {
   PlanningReadinessSnapshot,
   PreviewGateResult,
   StudyActivityKind,
-  TaskDistributionPolicy,
   TaskExecutionProfile,
 } from './weeklyPlanningBehaviorTypes';
 
@@ -84,31 +83,19 @@ export const WEEKLY_PLANNING_READINESS_POLICIES: Record<
   },
 };
 
-const EXPLICIT_DRAFT_REQUEST =
-  /(?:仮(?:の)?予定|予定|計画)(?:を|で|も)?(?:組んで|作って|作りたい|立てて|出して|生成して|お願い)|(?:仮で|この条件で)(?:組んで|作って)|予定作成を?(?:始めて|お願い)/;
-const VAGUE_STUDY_GOAL =
-  /(?:やらないと|勉強しないと|進めないと|そろそろ(?:勉強|課題))/;
-
 function unique<T>(items: T[]): T[] {
   return Array.from(new Set(items));
 }
 
-function latestTurn(state: PlanningIntakeState, currentUserText?: string): string {
-  return currentUserText ?? state.sourceTurns[state.sourceTurns.length - 1] ?? '';
-}
-
 export function deriveDraftGenerationIntent(params: {
   state: PlanningIntakeState;
-  currentUserText?: string;
   assistantSuggested?: boolean;
 }): DraftGenerationIntent {
-  const text = latestTurn(params.state, params.currentUserText);
-
-  if (EXPLICIT_DRAFT_REQUEST.test(text) && !VAGUE_STUDY_GOAL.test(text)) {
+  if (params.state.draftGenerationIntent === 'user_authorized') {
     return 'user_authorized';
   }
 
-  if (params.assistantSuggested) {
+  if (params.assistantSuggested || params.state.draftGenerationIntent === 'assistant_suggested') {
     return 'assistant_suggested';
   }
 
@@ -159,10 +146,8 @@ function hasAvailabilityBasis(state: PlanningIntakeState): boolean {
   );
 }
 
-function sourceTextContainsDeadline(state: PlanningIntakeState): boolean {
-  return state.sourceTurns.some((turn) =>
-    /(?:締切|期限|提出|テスト|試験|小テスト|までに|曜日まで|月曜|火曜|水曜|木曜|金曜|土曜|日曜)/.test(turn),
-  );
+function hasStructuredDeadline(state: PlanningIntakeState): boolean {
+  return state.tasks.some((task) => task.deadlineDeclared === true);
 }
 
 function resolveDimensions(params: {
@@ -186,14 +171,16 @@ function resolveDimensions(params: {
   ) {
     resolved.add('workload');
   }
-  if (sourceTextContainsDeadline(state) || Boolean(state.examPrepScope?.examType)) {
+  if (hasStructuredDeadline(state) || Boolean(state.examPrepScope?.examType)) {
     resolved.add('deadline');
   }
   if (taskProfiles.length > 0 && taskProfiles.every((profile) => profile.activityKind !== 'unknown')) {
     resolved.add('task_execution_profile');
   }
   if (hasAvailabilityBasis(state)) resolved.add('availability_basis');
-  if (state.constraints.length > 0) resolved.add('routine_anchors');
+  if (state.constraints.length > 0 || (state.studyTimePreferences?.length ?? 0) > 0) {
+    resolved.add('routine_anchors');
+  }
 
   return resolved;
 }
@@ -278,19 +265,6 @@ function constraintKindToAnchorKind(constraint: LifeConstraint): LifeActivityKin
   }
 }
 
-function clockFromJapanese(text: string, label: RegExp): string | undefined {
-  const match = text.match(
-    new RegExp(`(?:${label.source})[^0-9]{0,8}(\\d{1,2})(?::(\\d{1,2})|時(?:(\\d{1,2})分?)?)`),
-  );
-  if (!match) return undefined;
-  const hour = Number(match[1]);
-  const minute = Number(match[2] ?? match[3] ?? 0);
-  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 24 || minute < 0 || minute > 59) {
-    return undefined;
-  }
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
 export function deriveLifeActivityAnchors(
   state: PlanningIntakeState,
 ): LifeActivityAnchor[] {
@@ -310,48 +284,24 @@ export function deriveLifeActivityAnchors(
     }];
   });
 
-  const sourceAnchors = state.sourceTurns.flatMap((turn, turnIndex) => {
-    const anchors: LifeActivityAnchor[] = [];
-    const returnHome = clockFromJapanese(turn, /帰宅|家に着/);
-    const dinner = clockFromJapanese(turn, /夕食|晩ごはん|晩御飯/);
-
-    if (returnHome) {
-      anchors.push({
-        anchorId: `turn-${turnIndex}-commute-end`,
-        kind: 'commute',
-        endTime: returnHome,
-        sourceFactRefs: [`turn:${turnIndex}`],
-        origin: 'user_explicit',
-        scope: 'current_week',
-        confidence: 'high',
-      });
-    }
-    if (dinner) {
-      anchors.push({
-        anchorId: `turn-${turnIndex}-meal`,
-        kind: 'meal',
-        startTime: dinner,
-        sourceFactRefs: [`turn:${turnIndex}`],
-        origin: 'user_explicit',
-        scope: 'current_week',
-        confidence: 'high',
-      });
-    }
-    if (/寝る前|就寝前/.test(turn)) {
-      anchors.push({
-        anchorId: `turn-${turnIndex}-before-sleep`,
-        kind: 'sleep',
-        sourceFactRefs: [`turn:${turnIndex}`],
-        origin: 'user_explicit',
-        scope: 'current_week',
-        confidence: 'medium',
-      });
-    }
-    return anchors;
-  });
+  const preferenceAnchors = (state.studyTimePreferences ?? []).flatMap((preference, index) =>
+    preference.kind === 'prefer_before_sleep'
+      ? [{
+          anchorId: `study-time-preference-${index}-before-sleep`,
+          kind: 'sleep' as const,
+          date: undefined,
+          startTime: undefined,
+          endTime: undefined,
+          sourceFactRefs: [`study-time-preference:${index}`],
+          origin: 'user_explicit' as const,
+          scope: 'current_week' as const,
+          confidence: preference.confidence,
+        }]
+      : [],
+  );
 
   const seen = new Set<string>();
-  return [...constraintAnchors, ...sourceAnchors].filter((anchor) => {
+  return [...constraintAnchors, ...preferenceAnchors].filter((anchor) => {
     const key = [anchor.kind, anchor.date, anchor.startTime, anchor.endTime, ...anchor.sourceFactRefs].join('|');
     if (seen.has(key)) return false;
     seen.add(key);
@@ -359,71 +309,27 @@ export function deriveLifeActivityAnchors(
   });
 }
 
-interface TaskProfilePolicy {
-  matches: RegExp;
-  activityKind: StudyActivityKind;
-  distributionPolicy: TaskDistributionPolicy;
-  cognitiveLoad: TaskExecutionProfile['cognitiveLoad'];
+interface TaskSessionPolicy {
   minSessionMinutes: number;
   targetSessionMinutes: number;
   maxSessionMinutes: number;
 }
 
-const TASK_PROFILE_POLICIES: TaskProfilePolicy[] = [
-  {
-    matches: /単語|英単語|暗記|用語|語彙/,
-    activityKind: 'memorization',
-    distributionPolicy: 'spaced',
-    cognitiveLoad: 'light',
-    minSessionMinutes: 10,
-    targetSessionMinutes: 20,
-    maxSessionMinutes: 45,
-  },
-  {
-    matches: /ワーク|ドリル|問題集|演習|練習問題/,
-    activityKind: 'drill',
-    distributionPolicy: 'sequential_units',
-    cognitiveLoad: 'medium',
-    minSessionMinutes: 30,
-    targetSessionMinutes: 60,
-    maxSessionMinutes: 90,
-  },
-  {
-    matches: /レポート|作文|論文|執筆|記述/,
-    activityKind: 'writing',
-    distributionPolicy: 'contiguous',
-    cognitiveLoad: 'heavy',
-    minSessionMinutes: 45,
-    targetSessionMinutes: 90,
-    maxSessionMinutes: 120,
-  },
-  {
-    matches: /読書|読む|読解|教科書/,
-    activityKind: 'reading',
-    distributionPolicy: 'splittable',
-    cognitiveLoad: 'medium',
-    minSessionMinutes: 20,
-    targetSessionMinutes: 45,
-    maxSessionMinutes: 90,
-  },
-  {
-    matches: /復習|見直し/,
-    activityKind: 'review',
-    distributionPolicy: 'spaced',
-    cognitiveLoad: 'light',
-    minSessionMinutes: 15,
-    targetSessionMinutes: 30,
-    maxSessionMinutes: 60,
-  },
-];
+const TASK_SESSION_POLICIES: Partial<Record<StudyActivityKind, TaskSessionPolicy>> = {
+  memorization: { minSessionMinutes: 10, targetSessionMinutes: 20, maxSessionMinutes: 45 },
+  drill: { minSessionMinutes: 30, targetSessionMinutes: 60, maxSessionMinutes: 90 },
+  reading: { minSessionMinutes: 20, targetSessionMinutes: 45, maxSessionMinutes: 90 },
+  writing: { minSessionMinutes: 45, targetSessionMinutes: 90, maxSessionMinutes: 120 },
+  problem_solving: { minSessionMinutes: 30, targetSessionMinutes: 90, maxSessionMinutes: 120 },
+  project: { minSessionMinutes: 45, targetSessionMinutes: 90, maxSessionMinutes: 180 },
+  review: { minSessionMinutes: 15, targetSessionMinutes: 30, maxSessionMinutes: 60 },
+};
 
 function profileForTask(task: StudyTaskScope, index: number): TaskExecutionProfile {
-  const taskText = `${task.title} ${task.subject ?? ''}`;
-  const policy = TASK_PROFILE_POLICIES.find((candidate) => candidate.matches.test(taskText))
-    ?? TASK_PROFILE_POLICIES.find((candidate) => candidate.matches.test(task.rawText));
   const taskRef = `task:${index}`;
+  const interpreted = task.executionProfile;
 
-  if (!policy) {
+  if (!interpreted) {
     return {
       taskRef,
       activityKind: 'unknown',
@@ -435,17 +341,16 @@ function profileForTask(task: StudyTaskScope, index: number): TaskExecutionProfi
     };
   }
 
+  const sessionPolicy = TASK_SESSION_POLICIES[interpreted.activityKind];
   return {
     taskRef,
-    activityKind: policy.activityKind,
-    distributionPolicy: policy.distributionPolicy,
-    cognitiveLoad: policy.cognitiveLoad,
-    minSessionMinutes: policy.minSessionMinutes,
-    targetSessionMinutes: policy.targetSessionMinutes,
-    maxSessionMinutes: policy.maxSessionMinutes,
+    activityKind: interpreted.activityKind,
+    distributionPolicy: interpreted.distributionPolicy,
+    cognitiveLoad: interpreted.cognitiveLoad,
+    ...(sessionPolicy ?? {}),
     sourceFactRefs: [taskRef],
-    confidence: 'medium',
-    origin: 'deterministic_derived',
+    confidence: interpreted.activityKind === 'unknown' ? 'low' : 'high',
+    origin: 'ai_interpreted',
   };
 }
 
@@ -489,8 +394,8 @@ export function derivePlanningOpportunityAnnotations(params: {
   anchors: LifeActivityAnchor[];
   state: PlanningIntakeState;
 }): PlanningOpportunityAnnotation[] {
-  const morningAvoided = params.state.sourceTurns.some((turn) =>
-    /朝(?:は|だと).*(?:続かない|苦手|無理|できない)/.test(turn),
+  const morningAvoided = (params.state.studyTimePreferences ?? []).some((preference) =>
+    preference.kind === 'avoid_morning',
   );
 
   return params.availabilityRanges.map((range) => {
@@ -690,7 +595,6 @@ function suggestedNextAction(params: {
 
 export function createPlanningHypothesisSnapshot(params: {
   state: PlanningIntakeState;
-  currentUserText?: string;
   conversationId?: string;
   availabilityRanges?: AvailabilityRangeReference[];
 }): PlanningHypothesisSnapshot {
@@ -698,7 +602,6 @@ export function createPlanningHypothesisSnapshot(params: {
   const anchors = deriveLifeActivityAnchors(params.state);
   const intent = deriveDraftGenerationIntent({
     state: params.state,
-    currentUserText: params.currentUserText,
   });
   const readiness = evaluatePlanningReadiness({
     state: params.state,
