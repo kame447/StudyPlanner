@@ -24,9 +24,7 @@ import {
   type TaskCommitmentReservation,
   type TaskCommitmentResolutionIssue,
 } from './weeklyPlanningTaskCommitmentResolver';
-import {
-  isValidCalendarDate,
-} from './weeklyPlanningCalendarResolver';
+import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
 
 export const GENERIC_SCHEDULER_INPUT_VERSION =
   'weekly-planning-generic-scheduler-input-v1' as const;
@@ -61,9 +59,7 @@ export interface GenericSchedulerInput {
 export type GenericSchedulerInputIssue =
   | {
       domain: 'planning_horizon';
-      code:
-        | 'invalid_planning_horizon'
-        | 'ambiguous_planning_window';
+      code: 'invalid_planning_horizon' | 'ambiguous_planning_window';
       blocking: true;
       factId: string | null;
       details?: Record<string, string | number | boolean | null>;
@@ -113,8 +109,7 @@ export interface GenericSchedulerInputCompilationResult {
   issues: GenericSchedulerInputIssue[];
 }
 
-export interface GenericSchedulerInputContext
-  extends AvailabilityResolutionContext {}
+export type GenericSchedulerInputContext = AvailabilityResolutionContext;
 
 function projectGraphToV1(graph: WeeklyPlanningFactGraphV2): WeeklyPlanningFactGraph {
   return {
@@ -173,7 +168,7 @@ function validateHorizon(params: {
   return issues;
 }
 
-function relationCompilation(params: {
+function compileRelations(params: {
   graph: WeeklyPlanningFactGraphV2;
   issues: GenericSchedulerInputIssue[];
 }): GenericSchedulerTaskRelation[] {
@@ -242,15 +237,6 @@ export function compileGenericSchedulerInput(params: {
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = validateHorizon(params);
 
-  const work = compileGenericPlanningWorkItems(projectGraphToV1(params.graph));
-  issues.push(...work.issues.map((issue): GenericSchedulerInputIssue => ({
-    domain: 'work_item',
-    code: issue.code,
-    blocking: issue.blocking,
-    factId: issue.workloadFactId,
-    details: issue.details,
-  })));
-
   const commitments = resolveWeeklyPlanningTaskCommitments({
     graph: params.graph,
     context: {
@@ -271,22 +257,14 @@ export function compileGenericSchedulerInput(params: {
     },
   })));
 
-  const availability = resolveWeeklyPlanningAvailability({
-    graph: params.graph,
-    context: params.context,
-    externalSources: params.externalSources,
-  });
-  issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => ({
-    domain: 'availability',
-    code: issue.code,
-    blocking: issue.blocking,
-    factId: issue.sourceFactId,
-    details: issue.details,
-  })));
-
   const fixedTaskIds = new Set(
     commitments.reservations.map((reservation) => reservation.taskId),
   );
+  const workloadTaskById = new Map(
+    params.graph.workloads.map((workload) => [workload.id, workload.taskId]),
+  );
+
+  const work = compileGenericPlanningWorkItems(projectGraphToV1(params.graph));
   const movableWorkItems = work.items.filter((item) => {
     if (!fixedTaskIds.has(item.taskId)) return true;
     issues.push({
@@ -302,7 +280,34 @@ export function compileGenericSchedulerInput(params: {
     return false;
   });
 
-  const relations = relationCompilation({ graph: params.graph, issues });
+  for (const issue of work.issues) {
+    const issueTaskId = workloadTaskById.get(issue.workloadFactId);
+    if (issueTaskId && fixedTaskIds.has(issueTaskId)) {
+      continue;
+    }
+    issues.push({
+      domain: 'work_item',
+      code: issue.code,
+      blocking: issue.blocking,
+      factId: issue.workloadFactId,
+      details: issue.details,
+    });
+  }
+
+  const availability = resolveWeeklyPlanningAvailability({
+    graph: params.graph,
+    context: params.context,
+    externalSources: params.externalSources,
+  });
+  issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => ({
+    domain: 'availability',
+    code: issue.code,
+    blocking: issue.blocking,
+    factId: issue.sourceFactId,
+    details: issue.details,
+  })));
+
+  const relations = compileRelations({ graph: params.graph, issues });
   const blocking = issues.some((issue) => issue.blocking);
   if (blocking) {
     return {
