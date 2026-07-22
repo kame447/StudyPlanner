@@ -89,8 +89,10 @@ export async function loadExternalConstraintSourceAtomically(params: {
   );
   const wait = params.wait ?? defaultWait;
   let lastFailure: ExternalConstraintSourceFailureKind = 'unknown_error';
+  let completedAttemptCount = 0;
 
   for (let attemptNumber = 1; attemptNumber <= policy.maxAttempts; attemptNumber += 1) {
+    completedAttemptCount = attemptNumber;
     let result: ExternalConstraintSourceFetchAttemptResult;
     try {
       result = await params.fetchAttempt(params.context, attemptNumber);
@@ -124,6 +126,6 @@ export async function loadExternalConstraintSourceAtomically(params: {
     ownerId: params.context.ownerId,
     activeSourceId: null,
     failureKind: lastFailure,
-    attemptCount: policy.maxAttempts,
+    attemptCount: completedAttemptCount,
   };
 }
