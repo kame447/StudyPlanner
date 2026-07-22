@@ -13,7 +13,7 @@ Updated: 2026-07-22
 
 ## 1. 意味解釈境界
 
-- raw user textからtask、quantity、time、relation、correction、decision、明示的な外部予定source requestを生成する主体はsingle AI semantic normalizerだけとする。
+- raw user textからtask、quantity、time、relation、availability、correction、decision、明示的な外部予定source requestを生成する主体はsingle AI semantic normalizerだけとする。
 - AIは内部mutation commandを選ばない。
 - AI出力は`SemanticTurnDocument`であり、database state、reducer command、scheduler requestではない。
 - validator、canonicalizer、readiness、dialogue、scheduler、safety層はraw textを再解釈しない。
@@ -42,16 +42,17 @@ PlanningTask
 - componentとworkloadの対応を同一object内またはID参照で保持し、配列位置へ依存しない。
 - 研究等の分類が不明ならAI境界で`unknown`を許可し、必要性が低ければ即時質問しない。
 
-## 3. 数量と時間
+## 3. 数量、時間、availability
 
 - workloadは作業量を表す。
 - effort estimateは所要時間見積りを表す。
-- temporal constraintは開始、終了、固定区間、締切、希望、回避時間を表す。
-- recurrenceは繰り返し頻度を表す。
+- temporal constraintは特定taskの開始、終了、固定区間、締切、希望、回避時間を表す。
+- recurrenceはtaskまたはavailabilityの繰り返し頻度を表す。
 - planning windowは計画全体の期間だけを表す。
+- plan-wide availability declarationは特定taskを持たない空き、利用不可、希望、回避時間を表す。
+- external source requestは時間割、既存予定、calendarを使う・使わないというユーザー要求だけを表す。
 - task局所の「今週」「明日」等をplanning windowへ昇格させない。
-- temporal constraintは`hard | soft | unknown`の強さを持つ。
-- kindだけから強さを無条件推定しない。
+- external予定の本文、event ID、owner、日時をAIに生成させない。
 
 workloadのquantity roleは次とする。
 
@@ -59,18 +60,30 @@ workloadのquantity roleは次とする。
 declared | target | remaining | completed | unknown
 ```
 
-量が明示されたが総量・残量・今回目標のどれかを確定できない場合は`declared`とする。AIに早期確定を強制しない。
+量が明示されたが総量・残量・今回目標を確定できない場合は`declared`とする。AIに早期確定を強制しない。
 
-## 4. Availabilityと外部予定source
+## 4. 日付と時間帯
 
-work demandとavailabilityを分離する。
+AI境界で日付と時間帯を分離する。
 
-- user-declaredな研究、仕事、授業、食事、風呂、移動等は通常task＋temporal constraintとして保持する。
-- timetable、existing plans、calendarの予定本文をAIに再解釈・再生成させない。
-- AIはユーザーの明示的な`use/stop_using` source requestだけを返す。
-- coreがactive source、owner、event ID、日時、hardnessをauthoritative dataから解決する。
-- source取得失敗やpartial fetchを「予定なし」と見なさない。
-- user taskとexternal eventをsource refでdedupeし、同一予定を二重計上しない。
+```text
+dateExpression:
+  today | tomorrow | day_after_tomorrow | this_week | next_week
+  | YYYY-MM-DD
+  | custom:<原文>
+
+namedTimePeriod:
+  morning | afternoon | evening | night
+  | before_sleep | before_meal | after_meal
+  | custom:<原文>
+```
+
+- `今日`、`明日`、`来週`、`午前中`等の日本語をvalidator以降で再解析しない。
+- ISO形式だけでなく実在する日付かを検証する。
+- 週境界は月曜日始まりとする。
+- `custom:`は後段で意味解釈せず、未解決としてreadinessへ返す。
+- named time periodは注入済みpolicyがある場合だけ具体時刻へ解決する。
+- named time periodと明示clockを同じfactへ同時指定しない。
 
 ## 5. Canonical state
 
@@ -78,52 +91,59 @@ AI出力をそのまま永続化しない。deterministic coreが`PlanningFactGr
 
 - 正式ID、revision、owner、trusted metadataはcoreが発行する。
 - local IDは一response内参照に限定する。
-- accepted factをtask、study context、component、workload、effort、temporal constraint、recurrence、relation、window、uncertainty、source requestへ分離する。
-- authoritative external dataからsource selection factとavailability window factを生成する。
+- accepted factをtask、study context、component、workload、effort、temporal constraint、recurrence、relation、window、availability declaration、source request、uncertaintyへ分離する。
 - correctionはstable public fact refを対象にし、対象factだけをsupersedeする。
 - deleteは明示的public refを対象にする。
 - partial factを保持する。例としてend timeだけが明示された制約を捨てない。
 - 一turnのcanonical commitはatomicとし、検証失敗時はrevisionを進めない。
 
-## 6. Readinessと対話
+## 6. Availability resolution
+
+coreはsemantic factを次へ決定論的に解決する。
+
+- user availability declaration → available/unavailable/preferred/avoided window
+- hard fixed task → task ID付きcommitment reservation
+- explicit source request → owner-bound active source selection
+- complete external event set → occupied windows
+
+不変条件:
+
+- external sourceが`partial`または`unavailable`なら「予定なし」とみなさない。
+- owner mismatchまたは不正eventが一件でもあればsource import全体を拒否する。
+- fixed taskを可動work itemとして二重配置しない。
+- hard occupied/unavailable windowへwork itemを配置しない。
+- named time periodのpolicyが無ければ時刻を捏造しない。
+
+## 7. Readinessと対話
 
 - accepted fact diffからgrounded acknowledgementをdeterministicに生成する。
 - 次の質問はreadiness policyが選ぶ。
 - previewを止める高影響不足を一度に原則一件だけ確認する。
 - AI normalizerはmissing slot、question target、readiness、preview可否を決定しない。
 - exam専用rendererと一般rendererを最終的に統合する。
+- availability/source/commitmentのblocking issueも同じreadinessへ統合する。
 
-## 7. Scheduler境界
+## 8. Scheduler境界
 
-schedulerへ渡す正本はgeneric work demandとavailabilityである。
-
-```text
-GenericPlanningWorkItem[]
-AvailabilityWindowFact[]
-TaskRelationFact[]
-PlanningWindowFact
-```
-
-work itemは次を持つ。
+schedulerへ渡す正本はgeneric scheduler inputである。
 
 ```text
-taskId
-componentId
-unit code
-ordinal range
-actual range
-estimated minutes
-split policy
+planning window
+generic work items
+task commitment reservations
+availability windows
+task relations
 source fact refs
 ```
 
 - `exam_year`は単位の一つであり、全work itemの必須fieldではない。
-- 「2年分」は具体年度がなくてもordinal rangeへ変換できる。
-- 具体年度が必要なpolicyだけactual rangeを要求する。
+- 「2年分」は具体年度がなくてもordinal unitへ変換できる。
+- 具体年度が必要なpolicyだけactual valueを要求する。
 - estimated minutesが不足する場合は推測せずreadinessへ返す。
-- hard availability windowへwork itemを配置しない。
+- fixed reservation対象taskは可動work itemから除外する。
+- unresolved availability/source/commitmentがある場合はpreviewをblockする。
 
-## 8. 維持する安全境界
+## 9. 維持する安全境界
 
 - conversation、turn、request、revision、selected week ownership
 - stale async result rejection
@@ -136,25 +156,29 @@ source fact refs
 - browser reload後のpreview再計算
 - trace privacyとaccount data separation
 
-## 9. 移行規則
+## 10. 移行規則
 
 - 新旧semantic resultを同一turnでmergeしない。
 - 新schemaはshadow評価から開始する。
 - production切替はexecutor単位で一括して行う。
 - temporary adapterは旧schedulerへ渡す境界だけに置き、新しいcanonical stateへexam構造を戻さない。
 - production切替後に旧prompt、command schema、command reducer、exam state、exam adapter、exam rendererを削除する。
+- alpha1/alpha2はproduction採用前に一つのstable schemaへ統合する。
 - mainへ採用する前にfull tests、build、roleplay、real-eval、七視点監査を行う。
 
-## 10. 現在status
+## 11. 現在status
 
 ```text
-API schema experiment           complete
-architecture / contract         documented
-stable schema / validator       partial: availability fields pending
-PlanningFactGraph               foundation complete; lifecycle pending
-shadow normalizer               module complete; production disconnected
-generic work demand             foundation complete
-availability facts              design only
-dialogue policy                 pure module complete; renderer disconnected
-production cutover              not started
+API schema experiment                 complete
+architecture / contract               documented
+alpha2 semantic / validator           foundation complete
+PlanningFactGraph additive facts      foundation complete
+availability / source resolution      foundation complete
+fixed commitment reservation          foundation complete
+shadow normalizer                      module complete / disconnected
+generic work demand                    foundation complete
+unified scheduler input                in progress
+fact lifecycle / correction            not implemented
+persisted migration                    not implemented
+production cutover                     not started
 ```
