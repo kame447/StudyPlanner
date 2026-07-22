@@ -1,8 +1,10 @@
+import type { RecurrenceFact } from './weeklyPlanningFactGraph';
 import type {
   TaskDateRuleFact,
   WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
 import {
+  calendarWeekday,
   intersectCalendarDates,
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
@@ -20,7 +22,9 @@ export type TaskDateRuleResolutionIssueCode =
   | 'invalid_task_date_rule_level'
   | 'unsupported_task_date_expression'
   | 'task_date_rule_outside_planning_window'
-  | 'conflicting_task_date_rule';
+  | 'conflicting_task_date_rule'
+  | 'orphan_task_recurrence'
+  | 'invalid_task_recurrence_weekday';
 
 export interface TaskDateRuleResolutionIssue {
   code: TaskDateRuleResolutionIssueCode;
@@ -34,6 +38,43 @@ export interface TaskDateRuleResolutionResult {
   eligibilities: ResolvedTaskDateEligibility[];
   issues: TaskDateRuleResolutionIssue[];
   readiness: 'ready' | 'needs_resolution' | 'empty';
+}
+
+interface MutableTaskDateEligibility {
+  hasPositiveDateScope: boolean;
+  allowedDates: Set<string>;
+  excludedDates: Set<string>;
+  sourceFactIds: Set<string>;
+  allowedRuleByDate: Map<string, string>;
+  excludedRuleByDate: Map<string, string>;
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+function mutableState(
+  mutable: Map<string, MutableTaskDateEligibility>,
+  taskId: string,
+): MutableTaskDateEligibility {
+  const existing = mutable.get(taskId);
+  if (existing) return existing;
+  const created: MutableTaskDateEligibility = {
+    hasPositiveDateScope: false,
+    allowedDates: new Set<string>(),
+    excludedDates: new Set<string>(),
+    sourceFactIds: new Set<string>(),
+    allowedRuleByDate: new Map<string, string>(),
+    excludedRuleByDate: new Map<string, string>(),
+  };
+  mutable.set(taskId, created);
+  return created;
 }
 
 function resolveRuleDates(params: {
@@ -82,6 +123,51 @@ function resolveRuleDates(params: {
   return inWindow;
 }
 
+function resolveRecurrenceDates(params: {
+  recurrence: RecurrenceFact;
+  planningDates: string[];
+  issues: TaskDateRuleResolutionIssue[];
+}): string[] | null {
+  if (params.recurrence.kind === 'daily') return [...params.planningDates];
+  if (params.recurrence.kind === 'weekdays') {
+    return params.planningDates.filter((date) => {
+      const day = calendarWeekday(date);
+      return day !== null && day >= 1 && day <= 5;
+    });
+  }
+  if (params.recurrence.kind === 'weekends') {
+    return params.planningDates.filter((date) => {
+      const day = calendarWeekday(date);
+      return day === 0 || day === 6;
+    });
+  }
+  if (params.recurrence.kind === 'custom') return null;
+  if (params.recurrence.days.length === 0) return null;
+
+  const indexes = new Set<number>();
+  let invalid = false;
+  for (const day of params.recurrence.days) {
+    const index = WEEKDAY_INDEX[day];
+    if (index === undefined) {
+      invalid = true;
+      params.issues.push({
+        code: 'invalid_task_recurrence_weekday',
+        taskDateRuleFactId: params.recurrence.id,
+        taskId: params.recurrence.taskId,
+        blocking: true,
+        details: { day },
+      });
+    } else {
+      indexes.add(index);
+    }
+  }
+  if (invalid || indexes.size === 0) return null;
+  return params.planningDates.filter((date) => {
+    const day = calendarWeekday(date);
+    return day !== null && indexes.has(day);
+  });
+}
+
 export function resolveWeeklyPlanningTaskDateRules(params: {
   graph: WeeklyPlanningFactGraphV2;
   currentDate: string;
@@ -90,14 +176,11 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
 }): TaskDateRuleResolutionResult {
   const issues: TaskDateRuleResolutionIssue[] = [];
   const taskIds = new Set(params.graph.tasks.map((task) => task.id));
-  const mutable = new Map<string, {
-    hasAllowedRule: boolean;
-    allowedDates: Set<string>;
-    excludedDates: Set<string>;
-    sourceFactIds: Set<string>;
-    allowedRuleByDate: Map<string, string>;
-    excludedRuleByDate: Map<string, string>;
-  }>();
+  const planningDates = listCalendarDatesInclusive(
+    params.planningStartDate,
+    params.planningEndDate,
+  ) ?? [];
+  const mutable = new Map<string, MutableTaskDateEligibility>();
 
   for (const rule of params.graph.taskDateRules) {
     if (!taskIds.has(rule.taskId)) {
@@ -127,17 +210,10 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
     });
     if (!dates) continue;
 
-    const state = mutable.get(rule.taskId) ?? {
-      hasAllowedRule: false,
-      allowedDates: new Set<string>(),
-      excludedDates: new Set<string>(),
-      sourceFactIds: new Set<string>(),
-      allowedRuleByDate: new Map<string, string>(),
-      excludedRuleByDate: new Map<string, string>(),
-    };
+    const state = mutableState(mutable, rule.taskId);
     state.sourceFactIds.add(rule.id);
     if (rule.kind === 'allowed_date') {
-      state.hasAllowedRule = true;
+      state.hasPositiveDateScope = true;
       for (const date of dates) {
         state.allowedDates.add(date);
         state.allowedRuleByDate.set(date, rule.id);
@@ -148,7 +224,29 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
         state.excludedRuleByDate.set(date, rule.id);
       }
     }
-    mutable.set(rule.taskId, state);
+  }
+
+  for (const recurrence of params.graph.recurrences) {
+    if (!taskIds.has(recurrence.taskId)) {
+      issues.push({
+        code: 'orphan_task_recurrence',
+        taskDateRuleFactId: recurrence.id,
+        taskId: recurrence.taskId,
+        blocking: true,
+      });
+      continue;
+    }
+    if (recurrence.targetFactId !== recurrence.taskId) continue;
+    const dates = resolveRecurrenceDates({ recurrence, planningDates, issues });
+    if (!dates) continue;
+
+    const state = mutableState(mutable, recurrence.taskId);
+    state.hasPositiveDateScope = true;
+    state.sourceFactIds.add(recurrence.id);
+    for (const date of dates) {
+      state.allowedDates.add(date);
+      state.allowedRuleByDate.set(date, recurrence.id);
+    }
   }
 
   const eligibilities: ResolvedTaskDateEligibility[] = [];
@@ -165,7 +263,7 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
         details: { date },
       });
     }
-    const allowedDates = state.hasAllowedRule
+    const allowedDates = state.hasPositiveDateScope
       ? [...state.allowedDates]
         .filter((date) => !state.excludedDates.has(date))
         .sort()
