@@ -8,9 +8,9 @@ import {
 } from './weeklyPlanningCalendarResolver';
 
 export interface WeeklyPlanningTaskDateRuleGraphView {
-  readonly tasks: readonly Array<{ id: string }>;
-  readonly taskDateRules: readonly TaskDateRuleFact[];
-  readonly recurrences: readonly RecurrenceFact[];
+  readonly tasks: ReadonlyArray<{ id: string }>;
+  readonly taskDateRules: ReadonlyArray<TaskDateRuleFact>;
+  readonly recurrences: ReadonlyArray<RecurrenceFact>;
 }
 
 export interface ResolvedTaskDateEligibility {
