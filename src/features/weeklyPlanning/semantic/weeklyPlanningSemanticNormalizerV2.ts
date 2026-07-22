@@ -9,7 +9,9 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V2,
   type WeeklyPlanningSemanticDocumentV2,
 } from './weeklyPlanningSemanticDocumentV2';
-import { parseWeeklyPlanningSemanticDocumentV2 } from './weeklyPlanningSemanticValidatorV2';
+import {
+  parseWeeklyPlanningSemanticDocumentV2WithDateRules,
+} from './weeklyPlanningSemanticValidatorV2DateRules';
 
 const SEMANTIC_NORMALIZER_V2_MAX_COMPLETION_TOKENS = 3200;
 
@@ -123,7 +125,7 @@ export function createWeeklyPlanningSemanticNormalizerV2(
         };
       }
 
-      const initialParse = parseWeeklyPlanningSemanticDocumentV2(initialResponse);
+      const initialParse = parseWeeklyPlanningSemanticDocumentV2WithDateRules(initialResponse);
       if (initialParse.document) {
         return {
           status: 'accepted',
@@ -167,7 +169,7 @@ export function createWeeklyPlanningSemanticNormalizerV2(
         };
       }
 
-      const repairedParse = parseWeeklyPlanningSemanticDocumentV2(repairedResponse);
+      const repairedParse = parseWeeklyPlanningSemanticDocumentV2WithDateRules(repairedResponse);
       if (!repairedParse.document) {
         return {
           status: 'rejected',
