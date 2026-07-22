@@ -25,6 +25,7 @@ export type CalendarDateExpressionResolution =
     };
 
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const CUSTOM_DATE_EXPRESSION_PATTERN = /^custom:.+$/;
 
 function parseCalendarDate(value: string): Date | null {
   const match = ISO_DATE_PATTERN.exec(value);
@@ -52,6 +53,14 @@ function formatCalendarDate(date: Date): string {
 
 export function isValidCalendarDate(value: string): boolean {
   return parseCalendarDate(value) !== null;
+}
+
+export function isCanonicalDateExpressionSyntax(value: string): boolean {
+  return (
+    isValidCalendarDate(value)
+    || (CANONICAL_RELATIVE_DATE_EXPRESSIONS as readonly string[]).includes(value)
+    || CUSTOM_DATE_EXPRESSION_PATTERN.test(value)
+  );
 }
 
 export function compareCalendarDates(left: string, right: string): number {
