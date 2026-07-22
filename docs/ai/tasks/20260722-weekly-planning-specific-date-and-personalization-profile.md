@@ -39,6 +39,33 @@ PR: #77
 - 固定予定にも同じ除外日を適用する。
 - 除外で固定予約が0件になっても可動作業へ戻さない。
 
+### 非連続の日付集合と曜日集合
+
+```text
+7月8日、10日、11日だけ行う
+→ allowed_date(7/8) + allowed_date(7/10) + allowed_date(7/11)
+→ 許可日の和集合
+
+毎週、水曜と金曜から日曜に行う
+→ recurrence.kind=weekly
+→ days=[wed, fri, sat, sun]
+→ planning window内の具体日付へ展開
+```
+
+- 非連続の具体日付を最小日から最大日までの連続rangeへ変換しない。
+- 一つの曜日集合を複数recurrence factへ分割せず、一つの`days`配列として保持する。
+- `金曜から日曜`等の曜日rangeはAI境界で`fri, sat, sun`へ展開する。
+- task-level recurrenceから得た曜日集合は、可動タスクの`taskDateEligibilities.allowedDates`へ統合する。
+- exact excluded dateは曜日集合から差し引く。
+- recurrence fact IDもscheduler inputのsource fact refsへ保持する。
+- component-level recurrenceと`custom` recurrenceはtask全体へ勝手に昇格・解釈しない。
+
+発見した欠落:
+
+- recurrence fact自体と固定予定・availabilityの曜日展開は実装済みだった。
+- しかし可動タスクではrecurrenceがgeneric scheduler inputへ反映されず、曜日条件が途中で失われていた。
+- `weeklyPlanningTaskDateRuleResolver`へtask-level recurrenceの展開を統合し、同じtask date eligibility contractへ揃えた。
+
 ### 個人最適化
 
 個人最適化係数はSemanticTurnDocumentやPlanningFactGraphへ入れない。アカウント単位profileへ保存する。
@@ -65,6 +92,8 @@ global scoring model
 - date rule専用validatorを追加した。
 - date ruleを通常のtemporal constraintから分離し、正式`TaskDateRuleFact`へcanonicalizeするようにした。
 - fact graph、diff、local ID mappingへ`task_date_rule`を追加した。
+- normalizerへ非連続日を一日ずつ保持する指示を追加した。
+- normalizerへ曜日rangeをcanonical weekday配列へ展開する指示を追加した。
 
 ### resolution / scheduler
 
@@ -75,6 +104,8 @@ global scoring model
 - generic scheduler inputをv2へ更新し、task date eligibilitiesを追加した。
 - scheduler inputのsource fact refsへ日付ルールを含めた。
 - dialogue policyへdate rule issueの優先順位と具体的質問を追加した。
+- task-level `daily / weekdays / weekends / weekly(days) / times_per_week(days)` recurrenceをplanning window内のallowed datesへ展開するようにした。
+- 曜日集合と複数のallowed dateを和集合し、excluded dateを最後に差し引くようにした。
 
 ### personalization
 
@@ -108,6 +139,11 @@ subject affinity
 - 一日だけのplanning horizon
 - taskのallowed date
 - taskのexcluded date
+- 複数の非連続allowed dateの和集合
+- `wed + fri + sat + sun`の曜日集合展開
+- 曜日集合からexact excluded dateを差し引くこと
+- 曜日集合をgeneric scheduler inputまで保持すること
+- recurrence fact IDをsource fact refsへ保持すること
 - 同一日のallow/exclude conflict
 - custom dateを後段で再解析しないこと
 - 計画範囲外の日付を別日に変換しないこと
@@ -126,7 +162,7 @@ subject affinity
 - full TypeScript
 - Vite production build
 
-検証commit:
+既存の検証commit:
 
 ```text
 8913477  task date resolver
@@ -141,7 +177,9 @@ a4c29be  full TypeScript + production build
 93c2de3  通常build設定復元後のfull TypeScript + production build
 ```
 
-一括検証用の一時package設定とtemporary tsconfigは削除・復元済みである。
+非連続日・曜日集合の追加検証commitはCloudflare Pages結果確定後に追記する。
+
+一括検証用の一時package設定とtemporary tsconfigは検証後に削除・復元する。
 
 ## 注意点
 
@@ -151,6 +189,7 @@ a4c29be  full TypeScript + production build
 - 計画実績から係数を更新するlearning pipelineは未実装である。
 - feature/weight version変更時のmigration policyをproduction接続前に固定する必要がある。
 - correction/delete実適用が未実装のため、既存の日付ルールを会話で削除・置換する処理は次gateである。
+- `times_per_week`で曜日候補がない場合の「週N回」という回数制約は、曜日eligibilityとは別のscheduler constraintとして今後保持する必要がある。
 
 ## 次の作業
 
@@ -159,4 +198,5 @@ a4c29be  full TypeScript + production build
 3. scheduler adapterでtask date eligibilitiesを消費
 4. production personalization scoringへprofileを読取専用で接続
 5. plan/actual eventからparameter候補を生成する学習pipeline
-6. roleplay、real API eval、七視点監査
+6. `times_per_week`回数制約のscheduler contract追加
+7. roleplay、real API eval、七視点監査
