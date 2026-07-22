@@ -4,8 +4,10 @@ Status: canonical subordinate contract / foundation implemented
 最終更新: 2026-07-22
 
 - Parent architecture: [weekly-planning-dialogue-architecture-v5.md](weekly-planning-dialogue-architecture-v5.md)
+- Schema overview: [weekly-planning-semantic-schema-v5.md](weekly-planning-semantic-schema-v5.md)
 - Current contract: [weekly-planning-current-contract-v5.md](../ai/weekly-planning-current-contract-v5.md)
 - Active migration task: [20260722-weekly-planning-generic-semantic-v5-migration.md](../ai/tasks/20260722-weekly-planning-generic-semantic-v5-migration.md)
+- External source retry task: [20260722-weekly-planning-external-source-atomic-retry.md](../ai/tasks/20260722-weekly-planning-external-source-atomic-retry.md)
 
 ## 1. 目的
 
@@ -39,7 +41,10 @@ PlanningFactGraph
 - hard occupied/unavailable windowへ学習work itemを配置しない。
 - soft preferenceはfeasibilityを壊さない範囲で最適化へ使う。
 - source取得失敗時に「予定なし」と見なさない。
+- source取得成功時の空配列は「登録予定なし」の正常結果とする。
+- pagination等の途中結果を上位層へ公開しない。
 - validator、resolver、scheduler adapterは日本語の日時表現を再解析しない。
+- 外部予定取得失敗を理由にconversationやaccepted factsを破棄しない。
 
 ## 3. User-declared commitment
 
@@ -170,9 +175,65 @@ interface SemanticConstraintSourceRequest {
 
 曖昧な「予定を見て」は一つのsourceへ勝手に確定しない。AIはuncertaintyを返すか、public contextで参照先が一意の場合だけrequestを返す。
 
-## 8. Authoritative resolution
+## 8. External source acquisition
 
-coreはuser declarationまたはsource requestを検証後、owner-bound contextから次を生成する。
+外部予定取得結果は成功または失敗だけとする。
+
+```ts
+type ExternalConstraintSourceSnapshot =
+  | {
+      status: 'success';
+      ownerId: string;
+      activeSourceId: string | null;
+      events: ExternalConstraintEvent[];
+      attemptCount: number;
+    }
+  | {
+      status: 'failure';
+      ownerId: string;
+      activeSourceId: null;
+      failureKind: ExternalConstraintSourceFailureKind;
+      attemptCount: number;
+    };
+```
+
+`success(events=[])`は正常な「予定なし」である。
+
+`partial`状態は設けない。paginationや複数requestの途中で失敗した場合、取得adapterは途中結果を破棄し、取得全体を失敗として自動再試行する。
+
+```text
+全ページ成功
+→ success(events)
+
+途中で失敗
+→ 途中結果を破棄
+→ temporary failureなら自動再試行
+→ 上限後も失敗ならfailure
+```
+
+### 自動再試行する失敗
+
+```text
+timeout
+network_error
+rate_limited
+server_error
+```
+
+### 自動再試行しない失敗
+
+```text
+authentication_error
+permission_error
+source_not_configured
+invalid_response
+```
+
+既定は最大3回とする。待機処理は注入可能とし、unit testで実時間待機を発生させない。
+
+## 9. Authoritative resolution
+
+coreはuser declarationまたは取得済みsource snapshotを検証後、owner-bound contextから次を生成する。
 
 ```ts
 interface ConstraintSourceSelectionFact {
@@ -203,17 +264,19 @@ interface AvailabilityWindowFact {
 
 AIは`AvailabilityWindowFact`を直接生成しない。
 
-## 9. Resolution rules
+## 10. Resolution rules
 
 - user declarationはplanning window内の日付だけへ展開する。
 - recurrent weekdays/weekendsは共通calendar resolverで展開する。
 - 23:00〜00:30等は翌日終了として保持する。
 - named time periodにpolicyが無い場合は時刻を捏造しない。
-- external sourceは`complete`の場合だけ一括importする。
-- `partial`、`unavailable`、owner mismatch、invalid eventが一件でもあればsource全体を採用しない。
+- external sourceは`success`の場合だけ一括importする。
+- successのeventsが0件でもsource selectionは正常に成立する。
+- failure、owner mismatch、invalid eventが一件でもあればsource eventを採用しない。
+- external eventは一件でも不正ならそのsource import全体を拒否する。
 - `stop_using`はeventを取得せずdeselectionだけを生成する。
 
-## 10. Duplicate prevention
+## 11. Duplicate prevention
 
 - user availabilityのsourceRefはavailability declaration fact IDとする。
 - user commitmentのsourceRefはtemporal constraint fact IDとする。
@@ -221,7 +284,7 @@ AIは`AvailabilityWindowFact`を直接生成しない。
 - `(sourceKind, sourceRef, start, end)`をdedupe keyとする。
 - task reservationはtask IDを保持し、同じtaskの可動work itemとの重複を防止する。
 
-## 11. Scheduler input
+## 12. Scheduler input
 
 schedulerは次を同時に受け取る。
 
@@ -239,16 +302,18 @@ PlanningWindowFact
 - relationは順序・依存・優先を表す。
 - planning windowはschedule horizonを表す。
 
-## 12. Failure behavior
+## 13. Failure behavior
 
 - user declaration incomplete: partial factを保持し、必要な一項目だけ確認する。
-- custom/date resolution failure: declarationを捨てずpreviewをblockする。
-- named time period unresolved: 時刻を推測せずpreviewをblockする。
-- external source unavailable/partial: 「予定なし」と扱わずpreviewをblockする。
-- invalid owner/source ref: source import全体を拒否する。
-- invalid planning date/timezone: windowを捨てずpreviewをblockする。
+- custom/date resolution failure: declarationを捨てずpreviewを保留する。
+- named time period unresolved: 時刻を推測せずpreviewを保留する。
+- external source failure: 「予定なし」と扱わず、そのsourceを反映した最終previewだけを保留する。
+- external source failure中もconversation、accepted facts、他の条件確認を継続する。
+- invalid owner/source ref: source import全体を拒否し、入力済み計画内容を保持する。
+- invalid planning date/timezone: windowを捨てずpreviewを保留する。
+- ユーザーが明示的にsourceを使わず進めると決めた場合だけ、そのsource依存を解除する。
 
-## 13. Migration
+## 14. Migration
 
 旧`LifeConstraint`は次へ移す。
 
