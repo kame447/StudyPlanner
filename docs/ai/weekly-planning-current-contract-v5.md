@@ -113,7 +113,7 @@ AI出力をそのまま永続化しない。deterministic coreが`PlanningFactGr
 - 不完全なfactを保持する。例としてend timeだけが明示された制約を捨てない。
 - 一turnのcanonical commitはatomicとし、検証失敗時はrevisionを進めない。
 
-現在のFact Graph V2はFact Graph V1を型継承し、V2 canonicalizerはdocumentとgraphをV1へprojectionしてV1 canonicalizerを再利用している。この構造はAlpha段階の実装依存であり、Stable V5の正しい境界ではない。
+Alpha段階ではFact Graph V2がFact Graph V1を型継承し、V2 canonicalizerがdocumentとgraphをV1へprojectionしてV1 canonicalizerを再利用している。この構造はlegacy Alpha実行依存として残すが、Stable V5の正しい境界ではない。
 
 Stable V5では次を必須とする。
 
@@ -122,6 +122,8 @@ Stable V5では次を必須とする。
 - Stable canonicalizerは旧documentまたは旧graphへのprojectionを行わない。
 - Stable Fact Graphは現在必要なcollectionを直接定義する。
 - semantic schema versionとfact graph versionを独立して記録する。
+
+現在、`WeeklyPlanningSemanticDocumentV5`、strict response format、direct prompt、direct validator、`WeeklyPlanningFactGraphV5`、direct canonicalizer、Stable V5 normalizerはAlpha 1 / Alpha 2と並列に実装済みである。Stable実装はAlpha schema、Alpha validator、旧Fact Graph、旧canonicalizerをimportまたはprojectionしない。Alpha経路は既存moduleと過去評価を壊さないため残しており、production参照はまだ切り替えていない。
 
 ## 6. Availabilityと外部予定取得
 
@@ -195,6 +197,8 @@ source fact refs
 - task date eligibilityは複数の非連続日と曜日集合を具体的な許可日へ解決した結果を保持する。
 - eligibilityのsource fact refsには明示日付ruleとrecurrence factの両方を含める。
 
+現行resolverとgeneric scheduler inputは`WeeklyPlanningFactGraphV2`を入力型としている。Stable Fact Graph V5から既存resolverへ渡す共通read interfaceは未実装であり、castまたは旧graph projectionで迂回しない。resolver共通化を完了してからStable V5の後段回帰を実行する。
+
 ## 9. 個人最適化profile
 
 - 個人最適化係数をSemanticTurnDocumentまたはPlanningFactGraphへ混ぜない。
@@ -223,7 +227,7 @@ source fact refs
 - 新旧semantic resultを同一turnでmergeしない。
 - Alpha 1 / Alpha 2をproduction採用前に一つのdirect Stable V5 schemaへ統合する。
 - Stable V5はAlpha 1 response schema clone、Alpha 1 validator projection、V1 canonicalizer projectionへ依存しない。
-- Stable V5 automated compatibility testの後にStable V5専用real-evalを行う。
+- Stable V5 automated compatibility testとfull buildの後にStable V5専用real-evalを行う。
 - 実AI real-evalの成功後に、production stateへ書き込まないStable V5 shadowを接続する。
 - 現行のAlpha 1型shadow evaluatorをproductionへ接続しない。
 - shadow reportへsemantic schema version、JSON Schema name、fact graph version、normalizer/validator/canonicalizer versionを記録する。
@@ -251,29 +255,35 @@ Stable V5 direct implementation
 → legacy runtime deletion
 ```
 
+Stable V5 direct implementation、direct回帰テスト、read-only shadow evaluator module、real-eval harnessは追加済みである。ただしfull repository test/buildと実AI real-evalは未確認であり、production turnからshadowを起動してはならない。
+
 実AIを実行していない場合はreal-eval成功と書かない。GitHub Actionsがrunner開始前に失敗し、step、log、artifactがない場合は実行基盤失敗であり、AI評価失敗ではない。資格情報がない場合は資格情報不足として分離する。
 
 ## 12. 現在status
 
 ```text
 API schema experiment                 complete
-schema generation registry            documented
-Stable V5 migration design            documented / implementation not started
+schema generation registry            code + document synchronized
+Stable V5 migration design            documented
 architecture / contract               documented
-Alpha 2 semantic / validator           foundation complete
-Stable direct schema / validator       not implemented
-PlanningFactGraph V2 additive facts    foundation complete
-Stable Fact Graph V5                   not implemented
-availability / source resolution       foundation complete
+Alpha 2 semantic / validator           foundation retained for compatibility
+Stable direct schema / prompt          module implemented / production disconnected
+Stable direct validator                module implemented / full repository verification pending
+PlanningFactGraph V2 additive facts    foundation retained for compatibility
+Stable Fact Graph V5                   direct module implemented / not persisted
+Stable direct canonicalizer            module implemented / production disconnected
+Stable V5 normalizer                   module implemented / production disconnected
+availability / source resolution       V2 foundation complete / V5 common graph boundary pending
 external source atomic retry           module complete / production disconnected
 fixed commitment reservation           foundation complete
-specific dates / weekday sets          foundation complete / automated verified
+specific dates / weekday sets          V2 automated verified / Stable real-eval pending
 personalization profile v2             foundation complete / scoring disconnected
-Alpha 1 shadow evaluator               module complete / production disconnected
-Stable V5 shadow                       not implemented / disconnected
-generic work demand                    foundation complete
-unified scheduler input                foundation complete
-generic scheduler dialogue policy      foundation complete / renderer disconnected
+Alpha 1 shadow evaluator               module retained / production disconnected
+Stable V5 shadow evaluator             read-only module implemented / production invocation forbidden
+Stable V5 real-eval harness             implemented / actual AI run not confirmed
+generic work demand                    V2 foundation complete
+generic scheduler input                V2 foundation complete
+resolver common read boundary          not implemented
 fact lifecycle / correction            not implemented
 persisted migration                    not implemented
 production cutover                     not started
