@@ -3,7 +3,10 @@
   "files": [
     "src/vite-env.d.ts",
     "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts",
-    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticValidatorV2DateRules.ts"
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticValidatorV2DateRules.ts",
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV2.ts",
+    "src/features/weeklyPlanning/semantic/weeklyPlanningFactGraphV2.ts",
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticCanonicalizerV2.ts"
   ],
   "include": [],
   "exclude": []
