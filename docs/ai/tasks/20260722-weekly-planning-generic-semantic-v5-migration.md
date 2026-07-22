@@ -60,8 +60,10 @@ PlanningDocument
 - [x] 実験用v1からproduction候補schemaを分離する。
 - [x] `quantityRole = declared | target | remaining | completed | unknown`を採用する。
 - [x] runtime validatorを独立moduleにする。
-- [ ] raw response、parse error、schema versionの観測境界をnormalizerへ接続する。
+- [x] raw response、parse error、schema versionの観測境界をnormalizerへ接続する。
 - [x] 代表fixtureとproperty testを追加する。
+
+raw response本文はdiagnostics/shadow reportへ含めず、response lengthだけを記録する。
 
 ### C. PlanningFactGraphとcanonicalizer
 
@@ -75,17 +77,21 @@ PlanningDocument
 
 ### D. AI semantic normalizer shadow経路
 
-- [ ] 現行interpreterとは別moduleで実装する。
-- [ ] production stateへ書き込まないshadow evaluationを追加する。
-- [ ] request body byte、latency、parse/schema rejectionを記録する。
-- [ ] provider failure時にparser fallbackしないことを固定する。
+- [x] 現行interpreterとは別moduleで実装する。
+- [x] production stateへ書き込まないshadow evaluationを追加する。
+- [x] request body byte、latency、parse/schema rejectionを記録する。
+- [x] provider failure時にparser fallbackしないことを固定する。
+
+注: moduleとroutingは追加済みだが、実production turnからshadow callを起動する接続はまだ行っていない。
 
 ### E. Generic work item compiler
 
-- [ ] task/component/workloadから一般work itemを生成する。
-- [ ] `exam_year`は単位の一つとして扱う。
-- [ ] ordinal unitとactual yearを分離する。
-- [ ] estimated minutesが不足する場合のreadiness/proposal境界を定義する。
+- [x] task/component/workloadから一般work itemを生成する。
+- [x] `exam_year`は単位の一つとして扱う。
+- [x] ordinal unitとactual rangeを分離する。
+- [x] estimated minutesが不足する場合のreadiness境界を定義する。
+
+注: 旧schedulerへのadapterは未実装であり、現行preview生成には未接続である。
 
 ### F. Dialogue/readiness統合
 
@@ -224,3 +230,71 @@ PlanningDocument
 - active/superseded/removed lifecycleとcorrection実適用。
 - persisted graph migration。
 - GitHub Actionsによるunit/property test完走。
+
+### 2026-07-22 / 作業D: shadow semantic normalizer
+
+確認した文書:
+
+- current contract v5 §1、§8
+- architecture v5 §5、§10 Phase 3
+- semantic v5 roadmap V5-D
+
+変更ファイル:
+
+- `semantic/weeklyPlanningSemanticNormalizer.ts`
+- `semantic/weeklyPlanningSemanticNormalizer.test.ts`
+- `semantic/weeklyPlanningSemanticShadowEvaluation.ts`
+- `semantic/weeklyPlanningSemanticShadowEvaluation.test.ts`
+- `src/lib/aiModelPolicy.ts`
+- `workers/ai-proxy/src/modelPolicy.ts`
+- `workers/ai-proxy/src/modelPolicy.test.ts`
+
+実装:
+
+- 専用purpose `weekly_planning_semantic_normalizer`を追加した。
+- initial callと最大一回のschema repairだけを許可した。
+- initial/repair provider failure、repair後schema failureをfail closedで返す。
+- parser/rules fallbackを持たない。
+- request bytes、response length、latency、attempt、validation errorsを記録する。
+- shadow reportは意味本文を返さず集計件数だけを返す。
+- shadow evaluatorはproduction stateを引数に取らない。
+
+注意点:
+
+- production executorへshadow callを接続していないため、本番APIコスト・latencyへの影響はまだない。
+- raw AI responseをtraceやreportへ保存しない。
+
+### 2026-07-22 / 作業E: generic work item foundation
+
+確認した文書:
+
+- current contract v5 §6
+- architecture v5 §8
+- semantic v5 roadmap V5-E
+
+変更ファイル:
+
+- `semantic/weeklyPlanningGenericWorkItems.ts`
+- `semantic/weeklyPlanningGenericWorkItems.test.ts`
+
+実装:
+
+- workload fact一件を一般work demand一件へ変換する。
+- `exam_year`をpage、problem、word、minute等と同列のunitとして扱う。
+- ordinal rangeと明示actual rangeを分離する。
+- duration-per-unit、total duration、session duration、time workloadからestimated minutesを計算する。
+- 見積りがない場合は推測せずblocking issueを返す。
+- `declared`/`unknown` quantity roleはfactを保持しつつactionabilityをblockedにする。
+- completed workloadは候補生成から除外する。
+- fractional discrete unitを丸めず拒否する。
+
+判断:
+
+- 300語や20問を即座に300件/20件へ展開しない。workload fact一件を一つのwork demandとして保持し、実際の分割は後続scheduler policyへ委譲する。
+- splitPolicyはtime workloadだけ`splittable`、mock examだけ`atomic`、それ以外は根拠がないため`unknown`とする。
+
+検証上の注意:
+
+- Cloudflare build `b841d0c`でfailureを検出した。
+- ES2020 targetに対してtestで`Array.at`を使用していたため、index参照へ修正した。
+- 修正後buildと全test完走は未確認である。
