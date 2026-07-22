@@ -1,6 +1,8 @@
 import type { WeeklyPlanningWeekStartsOn } from './weeklyPlanningWeek';
 
-export const WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION = 1;
+export const WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION = 2;
+export const WEEKLY_PLANNING_PLACEMENT_FEATURE_VERSION = 'placement-features-v1' as const;
+export const WEEKLY_PLANNING_PLACEMENT_WEIGHT_VERSION = 'placement-weights-v1' as const;
 
 export type WeeklyPlanningPersonalizationConfidence =
   | 'confirmed'
@@ -33,11 +35,40 @@ export interface WeeklyPlanningPersonalizationFact<T> {
   };
 }
 
+export const WEEKLY_PLANNING_PLACEMENT_FEATURE_IDS = [
+  'completion_affinity',
+  'start_delay_penalty',
+  'interruption_penalty',
+  'reschedule_penalty',
+  'time_band_affinity',
+  'weekday_affinity',
+  'session_length_affinity',
+  'transition_cost',
+  'sleep_proximity_penalty',
+  'workload_density_penalty',
+  'subject_affinity',
+] as const;
+export type WeeklyPlanningPlacementFeatureId =
+  (typeof WEEKLY_PLANNING_PLACEMENT_FEATURE_IDS)[number];
+
+export interface WeeklyPlanningPlacementParameter {
+  featureId: WeeklyPlanningPlacementFeatureId;
+  contextKey: string;
+  coefficient: WeeklyPlanningPersonalizationFact<number>;
+}
+
+export interface WeeklyPlanningPlacementModelProfile {
+  featureVersion: typeof WEEKLY_PLANNING_PLACEMENT_FEATURE_VERSION;
+  weightVersion: typeof WEEKLY_PLANNING_PLACEMENT_WEIGHT_VERSION;
+  parameters: Record<string, WeeklyPlanningPlacementParameter>;
+}
+
 export interface WeeklyPlanningPersonalizationProfile {
   schemaVersion: typeof WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION;
   weekStartsOn?: WeeklyPlanningPersonalizationFact<WeeklyPlanningWeekStartsOn>;
   subjectEstimateMultipliers: Record<string, WeeklyPlanningPersonalizationFact<number>>;
   preferredSessionMinutes?: WeeklyPlanningPersonalizationFact<number>;
+  placementModel: WeeklyPlanningPlacementModelProfile;
   updatedAt: string;
 }
 
@@ -98,12 +129,53 @@ function safeFact<T>(
   };
 }
 
+function emptyPlacementModel(): WeeklyPlanningPlacementModelProfile {
+  return {
+    featureVersion: WEEKLY_PLANNING_PLACEMENT_FEATURE_VERSION,
+    weightVersion: WEEKLY_PLANNING_PLACEMENT_WEIGHT_VERSION,
+    parameters: {},
+  };
+}
+
+function safePlacementModel(value: unknown): WeeklyPlanningPlacementModelProfile {
+  const output = emptyPlacementModel();
+  if (!isRecord(value)
+    || value.featureVersion !== WEEKLY_PLANNING_PLACEMENT_FEATURE_VERSION
+    || value.weightVersion !== WEEKLY_PLANNING_PLACEMENT_WEIGHT_VERSION
+    || !isRecord(value.parameters)) {
+    return output;
+  }
+
+  Object.entries(value.parameters).slice(0, 300).forEach(([parameterKey, parameter]) => {
+    const normalizedParameterKey = safeKey(parameterKey);
+    if (!normalizedParameterKey || !isRecord(parameter)) return;
+    const featureId = WEEKLY_PLANNING_PLACEMENT_FEATURE_IDS.includes(
+      parameter.featureId as WeeklyPlanningPlacementFeatureId,
+    )
+      ? parameter.featureId as WeeklyPlanningPlacementFeatureId
+      : undefined;
+    const contextKey = safeKey(parameter.contextKey);
+    const coefficient = safeFact(parameter.coefficient, (input) =>
+      typeof input === 'number' && Number.isFinite(input) && input >= -4 && input <= 4
+        ? input
+        : undefined);
+    if (!featureId || !contextKey || !coefficient) return;
+    output.parameters[normalizedParameterKey] = {
+      featureId,
+      contextKey,
+      coefficient,
+    };
+  });
+  return output;
+}
+
 export function createEmptyWeeklyPlanningPersonalizationProfile(
   now = new Date().toISOString(),
 ): WeeklyPlanningPersonalizationProfile {
   return {
     schemaVersion: WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION,
     subjectEstimateMultipliers: {},
+    placementModel: emptyPlacementModel(),
     updatedAt: now,
   };
 }
@@ -112,7 +184,8 @@ export function sanitizeWeeklyPlanningPersonalizationProfile(
   value: unknown,
 ): WeeklyPlanningPersonalizationProfile | null {
   if (!isRecord(value)
-    || value.schemaVersion !== WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION
+    || (value.schemaVersion !== 1
+      && value.schemaVersion !== WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION)
     || !isIsoDateTime(value.updatedAt)) {
     return null;
   }
@@ -140,6 +213,9 @@ export function sanitizeWeeklyPlanningPersonalizationProfile(
   return {
     schemaVersion: WEEKLY_PLANNING_PERSONALIZATION_SCHEMA_VERSION,
     subjectEstimateMultipliers,
+    placementModel: value.schemaVersion === 1
+      ? emptyPlacementModel()
+      : safePlacementModel(value.placementModel),
     updatedAt: value.updatedAt,
     ...(weekStartsOn ? { weekStartsOn } : {}),
     ...(preferredSessionMinutes ? { preferredSessionMinutes } : {}),
