@@ -1,28 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SEMANTIC_PLANNING_SCHEMA_VERSION,
-  WEEKLY_PLANNING_SEMANTIC_EXPERIMENT_RESPONSE_FORMAT,
-} from '../semanticV2/weeklyPlanningSemanticExperiment';
-import {
-  SEMANTIC_PLANNING_V1_RESPONSE_FORMAT,
-  SEMANTIC_PLANNING_V1_SCHEMA_VERSION,
-} from '../semanticV2/weeklyPlanningSemanticExperimentV1';
-import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT,
-  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION,
 } from './weeklyPlanningSemanticDocument';
 import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V2,
-  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V2,
 } from './weeklyPlanningSemanticDocumentV2';
 import {
-  WEEKLY_PLANNING_FACT_GRAPH_VERSION,
   createEmptyWeeklyPlanningFactGraph,
 } from './weeklyPlanningFactGraph';
 import {
-  WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2,
   createEmptyWeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
+import {
+  WEEKLY_PLANNING_FACT_GRAPH_GENERATIONS,
+  WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS,
+  WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL,
+} from './weeklyPlanningSemanticSchemaGenerations';
 
 type JsonObject = Record<string, unknown>;
 
@@ -73,48 +66,78 @@ function difference(left: string[], right: string[]): string[] {
 }
 
 describe('weekly planning semantic schema generations', () => {
-  it('locks schema identifiers and JSON Schema names as distinct generations', () => {
-    const generations = [
-      {
-        version: SEMANTIC_PLANNING_SCHEMA_VERSION,
-        name: WEEKLY_PLANNING_SEMANTIC_EXPERIMENT_RESPONSE_FORMAT.json_schema.name,
-      },
-      {
-        version: SEMANTIC_PLANNING_V1_SCHEMA_VERSION,
-        name: SEMANTIC_PLANNING_V1_RESPONSE_FORMAT.json_schema.name,
-      },
-      {
-        version: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION,
-        name: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT.json_schema.name,
-      },
-      {
-        version: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V2,
-        name: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V2.json_schema.name,
-      },
-    ];
-
-    expect(generations).toEqual([
+  it('locks the current schema generations in the canonical code registry', () => {
+    expect(WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS.map((generation) => ({
+      version: generation.schemaVersion,
+      type: generation.documentTypeName,
+      name: generation.jsonSchemaName,
+      lifecycle: generation.lifecycle,
+      runtimeRole: generation.runtimeRole,
+    }))).toEqual([
       {
         version: 'planning-semantic-v0',
+        type: 'SemanticPlanningDocument',
         name: 'weekly_planning_semantic_document_v0',
+        lifecycle: 'experiment',
+        runtimeRole: 'legacy_eval_only',
       },
       {
         version: 'planning-semantic-v1',
+        type: 'SemanticPlanningDocumentV1',
         name: 'weekly_planning_semantic_document_v1',
+        lifecycle: 'experiment',
+        runtimeRole: 'legacy_eval_only',
       },
       {
         version: 'weekly-planning-semantic-v5-alpha1',
+        type: 'WeeklyPlanningSemanticDocument',
         name: 'weekly_planning_semantic_document_v5_alpha1',
+        lifecycle: 'active_foundation',
+        runtimeRole: 'alpha2_foundation',
       },
       {
         version: 'weekly-planning-semantic-v5-alpha2',
+        type: 'WeeklyPlanningSemanticDocumentV2',
         name: 'weekly_planning_semantic_document_v5_alpha2',
+        lifecycle: 'draft',
+        runtimeRole: 'module_pipeline',
       },
     ]);
-    expect(new Set(generations.map((generation) => generation.version)).size)
-      .toBe(generations.length);
-    expect(new Set(generations.map((generation) => generation.name)).size)
-      .toBe(generations.length);
+
+    const versions = WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS
+      .map((generation) => generation.schemaVersion);
+    const names = WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS
+      .map((generation) => generation.jsonSchemaName);
+
+    expect(new Set(versions).size).toBe(versions.length);
+    expect(new Set(names).size).toBe(names.length);
+    expect(WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS.every(
+      (generation) => !generation.productionConnected && !generation.productionPersisted,
+    )).toBe(true);
+  });
+
+  it('locks runtime dependencies and keeps Stable V5 as a non-runtime proposal', () => {
+    const [v0, v1, alpha1, alpha2] = WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS;
+
+    expect(v0.directSchemaDependencies).toEqual([]);
+    expect(v0.successorSchemaVersion).toBe(v1.schemaVersion);
+    expect(v1.directSchemaDependencies).toEqual([]);
+    expect(v1.successorSchemaVersion).toBe(alpha1.schemaVersion);
+    expect(alpha1.directSchemaDependencies).toEqual([]);
+    expect(alpha1.successorSchemaVersion).toBe(alpha2.schemaVersion);
+    expect(alpha2.directSchemaDependencies).toEqual([alpha1.schemaVersion]);
+    expect(alpha2.successorSchemaVersion).toBe(
+      WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL.schemaVersion,
+    );
+
+    expect(WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS.some(
+      (generation) => generation.schemaVersion
+        === WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL.schemaVersion,
+    )).toBe(false);
+    expect(WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS.some(
+      (generation) => generation.jsonSchemaName
+        === WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL.jsonSchemaName,
+    )).toBe(false);
   });
 
   it('locks Alpha 2 as the additive root and temporal extension of Alpha 1', () => {
@@ -178,14 +201,43 @@ describe('weekly planning semantic schema generations', () => {
     ]);
   });
 
-  it('locks Fact Graph V1 and V2 as separate generations', () => {
+  it('locks Fact Graph V1 and V2 as separate dependent generations', () => {
     const graphV1 = createEmptyWeeklyPlanningFactGraph();
     const graphV2 = createEmptyWeeklyPlanningFactGraphV2();
+    const [v1, v2] = WEEKLY_PLANNING_FACT_GRAPH_GENERATIONS;
 
-    expect(WEEKLY_PLANNING_FACT_GRAPH_VERSION).toBe('weekly-planning-fact-graph-v1');
-    expect(WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2).toBe('weekly-planning-fact-graph-v2');
-    expect(graphV1.version).toBe(WEEKLY_PLANNING_FACT_GRAPH_VERSION);
-    expect(graphV2.version).toBe(WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2);
+    expect(WEEKLY_PLANNING_FACT_GRAPH_GENERATIONS.map((generation) => ({
+      version: generation.factGraphVersion,
+      type: generation.graphTypeName,
+      lifecycle: generation.lifecycle,
+      runtimeRole: generation.runtimeRole,
+    }))).toEqual([
+      {
+        version: 'weekly-planning-fact-graph-v1',
+        type: 'WeeklyPlanningFactGraph',
+        lifecycle: 'active_foundation',
+        runtimeRole: 'v2_foundation',
+      },
+      {
+        version: 'weekly-planning-fact-graph-v2',
+        type: 'WeeklyPlanningFactGraphV2',
+        lifecycle: 'draft',
+        runtimeRole: 'module_pipeline',
+      },
+    ]);
+
+    expect(v1.directGraphDependencies).toEqual([]);
+    expect(v1.successorFactGraphVersion).toBe(v2.factGraphVersion);
+    expect(v2.directGraphDependencies).toEqual([v1.factGraphVersion]);
+    expect(v2.successorFactGraphVersion).toBe(
+      WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL.factGraphVersion,
+    );
+    expect(WEEKLY_PLANNING_FACT_GRAPH_GENERATIONS.every(
+      (generation) => !generation.productionConnected && !generation.productionPersisted,
+    )).toBe(true);
+
+    expect(graphV1.version).toBe(v1.factGraphVersion);
+    expect(graphV2.version).toBe(v2.factGraphVersion);
     expect(graphV2).toMatchObject({
       taskDateRules: [],
       availabilityDeclarations: [],
