@@ -20,7 +20,7 @@ Status: canonical / active migration queue
   → runtime validation
   → deterministic canonicalizer
   → PlanningFactGraph
-  → generic work demand + authoritative availability
+  → work demand / availability / commitment compilation
   → readiness / acknowledgement / question policy
   → scheduler / preview / approval / save
 ```
@@ -29,103 +29,72 @@ Status: canonical / active migration queue
 
 ### V5-A: documents and decisions
 
-Status: foundation complete
+Status: complete
 
-完了済み:
-
-- architecture v5、availability architecture v5、current contract v5、migration task、roadmapを追加した。
-- typed commandとexam専用stateが新しい正本ではないことを明記した。
-- API実験の判断を記録した。
+- architecture v5、availability architecture、current contract v5、migration task、roadmapを正本化する。
+- typed commandとexam専用stateが新しい正本ではないことを明記する。
+- API実験の判断を記録する。
 
 ### V5-B: stable semantic document
 
-Status: partially complete
+Status: alpha2 foundation complete / consolidation pending
 
-完了済み:
-
-- generic task/component/workload/effort/temporal/recurrence/relation schema。
-- `quantityRole=declared|target|remaining|completed|unknown`。
-- closed runtime validator、local ID/ref/cycle/category整合。
-- unit/property tests。
-
-残り:
-
-- temporal constraint level `hard|soft|unknown`。
-- explicit external constraint source request。
-- stable schemaでのreal API再評価。
+- generic task、component、workload、effort、temporal、recurrence、relationを分離する。
+- constraint level、availability declaration、named time period、external source requestを扱う。
+- local ID、ref、cycle、category/study整合をclosed validatorで検証する。
+- 日本語日時をAI境界でcanonical tokenへ変換し、後段で再解析しない。
+- alpha1とalpha2をproduction採用前に一つへ統合する。
+- stable alpha2 schemaでreal API evalを再実行する。
 
 ### V5-C: PlanningFactGraph
 
-Status: foundation complete / lifecycle incomplete
-
-完了済み:
+Status: additive foundation complete / lifecycle pending
 
 - 正式fact IDとrevisionをcoreが発行する。
-- SemanticTurnDocumentをatomic proposalへcanonicalizeする。
+- SemanticTurnDocumentをatomicにcanonicalizeする。
 - partial factを保持する。
-- failed validation/providerで元graph同一参照を返す。
-
-残り:
-
-- active/superseded/removed lifecycle。
-- correction/delete/proposal decision実適用。
-- source selection/availability facts。
-- old state migration decoder。
+- availability declaration、source request、constraint level、named time periodを正式factへ保持する。
+- correction/delete/proposal decisionへ使うstable public refとlifecycleを実装する。
+- old persisted state migration decoderを実装する。
 
 ### V5-D: shadow normalizer
 
-Status: module complete / production disconnected
+Status: module complete / production shadow connection pending
 
-完了済み:
+- 現行production stateへ書き込まないshadow evaluatorを実装する。
+- request bytes、latency、provider outcome、repair、parse/schema rejectionを記録する。
+- provider failureでparserへfallbackしない。
+- traceへraw response本文を永続化しない。
+- purpose別output token上限をWorkerへ実装する。
+- feature flag付きでproduction turnからshadow callを起動する。
 
-- 専用purpose、最大一回repair、no parser fallback。
-- request bytes、latency、provider outcome、parse/schema rejection観測。
-- raw responseをreportへ残さないshadow evaluator。
+### V5-E: scheduler input foundation
 
-残り:
+Status: work demand and availability resolvers complete / unified input pending
 
-- feature flag付きproduction shadow接続。
-- purpose別output token上限のWorker実装。
-- stable schema real API eval。
-
-### V5-E: generic work item compiler
-
-Status: work-demand foundation complete
-
-完了済み:
-
-- task/component/workloadから一般work demandを生成。
-- page、problem、word、chapter、minute、exam_year等を同一contractで扱う。
-- ordinal/actual range、estimated minutes、unresolved issuesを分離。
-
-残り:
-
-- authoritative availability input。
-- relation/planning window input。
-- old scheduler temporary adapter。
-- schedule chunk split policy。
+- generic work demandを生成する。
+- page、problem、word、chapter、minute、exam_year、customを同一contractで扱う。
+- ordinalとactual valueを分離する。
+- estimated minutes不足をreadinessへ返す。
+- user availability、external occupied event、fixed task reservationを解決する。
+- work demand、reservation、availability、relation、planning windowを単一scheduler inputへ統合する。
+- fixed taskを可動work itemから除外する。
+- hard occupied/unavailable windowを必須制約として渡す。
+- existing scheduler adapterは一方向かつtemporaryにする。
 
 ### V5-F: dialogue/readiness integration
 
-Status: pure policy foundation complete
+Status: base policy complete / availability integration pending
 
-完了済み:
-
-- accepted fact diffからgrounded acknowledgement素材を生成。
-- 高影響不足を原則一件質問。
-- explicit authorization/current revision/missing estimateを確認するpreview gate。
-
-残り:
-
-- unified renderer接続。
-- exam/general renderer統合。
-- production question context移行。
+- accepted fact diffからacknowledgementを生成する。
+- 高影響不足を原則一件質問する。
+- availability/source/commitmentのblocking issueを統合する。
+- exam/general rendererを統合する。
+- explicit authorizationとpreview gateを維持する。
 
 ### V5-G: production cutover
 
 Status: not started
-
-完了条件:
 
 - executorを新semantic pathへ一括切替する。
 - 同一turnで旧commandと新factをmergeしない。
@@ -136,34 +105,38 @@ Status: not started
 ## 3. 現在の進捗
 
 ```text
-V5-A documents and decisions       foundation complete
-V5-B stable semantic document      partial
-V5-C PlanningFactGraph             foundation complete / lifecycle pending
-V5-D shadow normalizer             module complete / disconnected
-V5-E generic work demand           foundation complete
-V5-F dialogue policy               foundation complete / disconnected
+V5-A documents and decisions       complete
+V5-B stable semantic document      alpha2 foundation complete
+V5-C PlanningFactGraph             additive foundation complete
+V5-D shadow normalizer             module complete / not connected
+V5-E scheduler input               unified input in progress
+V5-F dialogue integration          base policy complete
 V5-G production cutover            not started
 ```
 
 ## 4. 依存順
 
 ```text
-constraint level + source request schema
+V5-A
   ↓
-source selection / authoritative availability facts
+V5-B semantic contract
   ↓
-fact lifecycle + correction application
+V5-C canonical graph
   ↓
-old state migration decoder
+V5-D shadow module
   ↓
-feature-flagged shadow evaluation
+V5-E unified scheduler input
   ↓
-scheduler one-way adapter
+V5-C lifecycle / migration
   ↓
-unified dialogue integration
+V5-D production shadow evaluation
   ↓
-production cutover and old-path deletion
+V5-F dialogue and renderer integration
+  ↓
+V5-G production cutover and deletion
 ```
+
+V5-Cのadditive fact foundationとV5-Eのpure compilerは並行可能だが、production connectionはlifecycle、migration、authorization回帰の完了後に行う。
 
 ## 5. Merge禁止条件
 
@@ -173,19 +146,26 @@ production cutover and old-path deletion
 - AIが内部command、missing、readiness、preview、scheduler、saveを決める。
 - raw textの後段parserまたはfallbackが残る。
 - componentとworkloadが配列位置で対応する。
+- 日付と時間帯が混在し、後段が日本語日時を再解析する。
 - workloadとavailabilityが混同される。
 - external予定本文をAIが再生成する。
 - partial time factが破棄または0分へ変換される。
 - correctionが無関係factを破壊する。
 - provider failureでstateが変わる。
+- external source failureを空予定として扱う。
+- fixed taskが可動work itemとして二重配置される。
+- hard occupied/unavailable windowへwork itemを配置できる。
 - explicit authorization前にpreviewが生成される。
 - request ownership、approval、storage回帰が失敗する。
+- alpha1/alpha2の二重production経路が残る。
 
 ## 6. 検証記録
 
 - GitHub Models APIでinitial generic schemaを評価済み。
-- semantic関連unit/property tests、Worker routing test、TypeScript、production buildをCloudflare Pages上でcommit `d8e59f4`にて一括成功。
-- 一時的なbuild script変更は検証後に復元済み。
+- semantic全test、Worker routing、full TypeScript、Vite production buildをCloudflare Pages上でcommit `c6336f0`にて同時成功。
+- V2 sourceとV2 test fixtureのstrict TypeScriptも分離確認済み。
+- 診断用script、probe、temporary tsconfigは検証後に削除した。
+- `package.json`はcommit `e440292`で通常のproduction buildへ復元した。
 - GitHub Actionsはrunner step開始前failureのため、Actions側の運用問題は別途解決が必要。
 
 ## 7. 記録規則
