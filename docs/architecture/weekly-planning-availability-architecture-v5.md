@@ -20,6 +20,7 @@ PlanningFactGraph
 │  └─ effort estimate
 └─ availability / commitment
    ├─ user-declared commitment task
+   ├─ user-declared availability / unavailable window
    ├─ authoritative occupied window
    ├─ available window
    ├─ preferred / avoided window
@@ -29,12 +30,13 @@ PlanningFactGraph
 ## 2. 不変条件
 
 - workloadは作業量であり、availabilityではない。
-- temporal constraintはtaskへの時刻条件であり、外部予定そのものではない。
+- temporal constraintは特定taskへの時刻条件であり、計画全体の空き時間宣言や外部予定そのものではない。
+- user-declared availabilityはAIのsemantic declarationとして受け、coreがtimezone/date contextを解決してAvailabilityWindowFactへ変換する。
 - timetable、existing plans、calendarの内容をAIに再解釈・再生成させない。
 - AIはユーザーが明示的に「時間割を使って」「既存予定を考慮して」と述べたsource selectionだけを意味化する。
 - sourceのactive ID、event ID、owner、日時、hardnessはdeterministic coreがauthoritative dataから解決する。
 - 同じ固定予定をtaskとoccupied windowへ二重計上しない。
-- hard occupied windowへ学習work itemを配置しない。
+- hard occupied/unavailable windowへ学習work itemを配置しない。
 - soft preferenceはfeasibilityを壊さない範囲で最適化へ使う。
 - source取得失敗時に「予定なし」と見なさない。
 
@@ -56,9 +58,56 @@ PlanningFactGraph
 
 workloadがあるcommitmentはgeneric work itemへ変換できる。固定区間が明示されている場合、scheduler adapterはそのtaskをfixed commitmentとして扱い、同じtaskから別の可動work itemを重複生成しない。
 
-## 4. Constraint level
+## 4. User-declared availability
 
-すべてのtemporal constraintは次を持つ。
+特定taskを持たない空き・利用不可・希望・回避時間は`SemanticAvailabilityDeclaration`として意味化する。
+
+```ts
+interface SemanticAvailabilityDeclaration {
+  localId: string;
+  kind: 'available' | 'unavailable' | 'preferred' | 'avoided';
+  dateExpression: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  recurrenceKind:
+    | 'daily'
+    | 'weekly'
+    | 'weekdays'
+    | 'weekends'
+    | 'custom'
+    | null;
+  days: string[];
+  constraintLevel: 'hard' | 'soft' | 'unknown';
+  sourceText: string;
+}
+```
+
+例:
+
+```text
+平日は18時まで勉強できない
+→ kind=unavailable
+→ recurrenceKind=weekdays
+→ endTime=18:00
+→ constraintLevel=hard
+
+土日の午前中がやりやすい
+→ kind=preferred
+→ recurrenceKind=weekends
+→ dateExpression=午前中
+→ constraintLevel=soft
+
+明日は20時以降空いている
+→ kind=available
+→ dateExpression=明日
+→ startTime=20:00
+```
+
+AIは相対日付をsymbolicのまま返す。coreがplanning context、timezone、week-startを使って具体windowへ解決する。時刻や期間が不足するpartial declarationも破棄せず、readinessで確認する。
+
+## 5. Constraint level
+
+すべてのtemporal constraintとavailability declarationは次を持つ。
 
 ```text
 hard | soft | unknown
@@ -68,9 +117,9 @@ hard | soft | unknown
 - `soft`: 希望、避けたい時間、できれば、優先時間帯。
 - `unknown`: 発話だけでは強さを確定できない。
 
-kindだけから強さを無条件推定しない。ただしschema整合として`preferred_window`はsoft、明示的なfixed commitmentはhardを期待し、矛盾はvalidatorまたはcanonical policyで拒否する。
+kindだけから強さを無条件推定しない。ただしschema整合として`preferred_window`とavailability `preferred/avoided`はsoftを期待し、明示的なfixed commitmentや`unavailable`はhardを期待する。発話が曖昧な場合は`unknown`を許可し、deterministic readinessで必要性を判断する。
 
-## 5. External source request
+## 6. External source request
 
 AI SemanticTurnDocumentは外部予定の本文ではなく、明示的source requestだけを返す。
 
@@ -86,9 +135,9 @@ interface SemanticConstraintSourceRequest {
 
 曖昧な「予定を見て」は一つのsourceへ勝手に確定しない。AIはuncertaintyを返すか、recent public contextで参照先が一意の場合だけrequestを返す。
 
-## 6. Authoritative resolution
+## 7. Authoritative resolution
 
-coreはsource requestを検証後、owner-bound dataから次を生成する。
+coreはuser declarationまたはsource requestを検証後、owner-bound contextから次を生成する。
 
 ```ts
 interface ConstraintSourceSelectionFact {
@@ -106,6 +155,7 @@ interface AvailabilityWindowFact {
   endDateTime: string;
   constraintLevel: 'hard' | 'soft';
   sourceKind:
+    | 'user_declaration'
     | 'user_commitment'
     | 'timetable'
     | 'existing_plan'
@@ -118,14 +168,15 @@ interface AvailabilityWindowFact {
 
 AIは`AvailabilityWindowFact`を直接生成しない。
 
-## 7. Duplicate prevention
+## 8. Duplicate prevention
 
+- user-declared availabilityから生成する場合、sourceRefはavailability declaration fact IDとする。
 - user-declared taskからfixed windowを生成する場合、sourceRefはtask/constraint fact IDとする。
 - external sourceから生成する場合、sourceRefはauthoritative event IDとする。
 - `(sourceKind, sourceRef, startDateTime, endDateTime)`をdedupe keyとする。
 - existing planが会話内taskとしても参照された場合、public source refが一致すれば一つへ統合する。
 
-## 8. Scheduler input
+## 9. Scheduler input
 
 schedulerは次を同時に受け取る。
 
@@ -141,15 +192,17 @@ PlanningWindowFact
 - relationは順序・依存・優先を表す。
 - planning windowはschedule horizonを表す。
 
-## 9. Failure behavior
+## 10. Failure behavior
 
+- user declaration incomplete: partial factを保持し、必要な一項目だけ確認する。
+- relative date resolution failure: declarationを捨てずpreviewをblockする。
 - external source unavailable: readinessへ`constraint_source_unavailable`を返す。
 - source request unresolved: sourceを選択せず質問する。
 - invalid owner/source ref: whole importを拒否する。
 - partial source fetch:取得済みだけでpreviewを作らず、source completenessを確認する。
 - timezone/date conversion failure: occupied windowを捨てずpreviewをblockする。
 
-## 10. Migration
+## 11. Migration
 
 旧`LifeConstraint`は次へ移す。
 
@@ -158,7 +211,7 @@ fixed_event / commute / meal / bath / sleep
 → user commitment task + temporal constraint
 
 unavailable
-→ availability window
+→ user availability declaration または authoritative availability window
 
 buffer
 → scheduler policy / soft availability
@@ -167,4 +220,4 @@ constraintSourcesInUse
 → ConstraintSourceSelectionFact
 ```
 
-旧dataに係り先やhardnessが不足する場合は推測せずmigration uncertaintyを作る。
+旧dataに係り先、日時、hardness、source identityが不足する場合は推測せずmigration uncertaintyを作る。
