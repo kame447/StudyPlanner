@@ -3,6 +3,8 @@
 Status: canonical / active for semantic v5 migration
 Updated: 2026-07-22
 
+- Schema registry: [weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)
+- Stable V5 migration plan: [weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md)
 - Schema overview: [weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md)
 - Architecture: [weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md)
 - Availability architecture: [weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md)
@@ -12,7 +14,7 @@ Updated: 2026-07-22
 - Specific date / personalization record: [20260722-weekly-planning-specific-date-and-personalization-profile.md](tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md)
 - Legacy status overlay: [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md)
 
-この文書はsemantic v5移行に関する最優先contractである。request ownership、preview、approval、storage、personalization、trace等の非競合領域は従来のcurrent contractを継承する。
+この文書はsemantic v5移行に関する最優先contractである。request ownership、preview、approval、storage、personalization、trace等の非競合領域は従来のcurrent contractを継承する。schemaの実在世代、依存、廃止条件はschema registryを正とし、Alpha 1 / Alpha 2からStable V5への物理統合手順はStable V5 migration planを正とする。
 
 ## 1. 意味解釈境界
 
@@ -110,6 +112,16 @@ AI出力をそのまま永続化しない。deterministic coreが`PlanningFactGr
 - deleteは明示的public refを対象にする。
 - 不完全なfactを保持する。例としてend timeだけが明示された制約を捨てない。
 - 一turnのcanonical commitはatomicとし、検証失敗時はrevisionを進めない。
+
+現在のFact Graph V2はFact Graph V1を型継承し、V2 canonicalizerはdocumentとgraphをV1へprojectionしてV1 canonicalizerを再利用している。この構造はAlpha段階の実装依存であり、Stable V5の正しい境界ではない。
+
+Stable V5では次を必須とする。
+
+- Alpha 1基礎fieldとAlpha 2追加fieldを一つのStable schemaで直接定義する。
+- Stable validatorはAlpha 1へのprojectionを行わない。
+- Stable canonicalizerは旧documentまたは旧graphへのprojectionを行わない。
+- Stable Fact Graphは現在必要なcollectionを直接定義する。
+- semantic schema versionとfact graph versionを独立して記録する。
 
 ## 6. Availabilityと外部予定取得
 
@@ -209,29 +221,59 @@ source fact refs
 ## 11. 移行規則
 
 - 新旧semantic resultを同一turnでmergeしない。
-- 新schemaはshadow評価から開始する。
-- production切替はexecutor単位で一括して行う。
+- Alpha 1 / Alpha 2をproduction採用前に一つのdirect Stable V5 schemaへ統合する。
+- Stable V5はAlpha 1 response schema clone、Alpha 1 validator projection、V1 canonicalizer projectionへ依存しない。
+- Stable V5 automated compatibility testの後にStable V5専用real-evalを行う。
+- 実AI real-evalの成功後に、production stateへ書き込まないStable V5 shadowを接続する。
+- 現行のAlpha 1型shadow evaluatorをproductionへ接続しない。
+- shadow reportへsemantic schema version、JSON Schema name、fact graph version、normalizer/validator/canonicalizer versionを記録する。
+- shadow後にold persisted state migration decoderとdry-runを完了する。migration設計とfixture作成はshadow前から進めてよい。
+- migrationなしで保存済みschema/state versionを書き換えない。
+- SemanticDocumentをraw conversationからAIで再生成してmigrationしない。
+- production切替はexecutor単位かつsession generation単位で一括して行う。
+- Stable V5へ移行済みsessionを旧executorへ無条件に戻さず、Stable graphを旧形式へdowngrade保存しない。
 - temporary adapterは旧schedulerへ渡す境界だけに置き、新しいcanonical stateへexam構造を戻さない。
-- production切替後に旧prompt、command schema、command reducer、exam state、exam adapter、exam rendererを削除する。
-- alpha1/alpha2はproduction採用前に一つのstable schemaへ統合する。
-- mainへ採用する前にfull tests、build、roleplay、real-eval、七視点監査を行う。
+- production切替後、rollback観察期間を経てから旧prompt、command schema、command reducer、exam state、exam adapter、exam renderer、Alpha runtime依存を削除する。
+- pre-V5 eval fixtureとrunnerはGit履歴だけへ退避せず、legacy-eval領域で保持する。
+- mainへ採用する前にfull tests、build、roleplay、Stable V5 real-eval、七視点監査を行う。
+
+順序は次で固定する。
+
+```text
+Stable V5 direct implementation
+→ automated compatibility and full build
+→ Stable V5 real-eval
+→ read-only production shadow
+→ migration decoder and dry-run
+→ cutover rehearsal and rollback verification
+→ production cutover
+→ rollback observation
+→ legacy runtime deletion
+```
+
+実AIを実行していない場合はreal-eval成功と書かない。GitHub Actionsがrunner開始前に失敗し、step、log、artifactがない場合は実行基盤失敗であり、AI評価失敗ではない。資格情報がない場合は資格情報不足として分離する。
 
 ## 12. 現在status
 
 ```text
 API schema experiment                 complete
+schema generation registry            documented
+Stable V5 migration design            documented / implementation not started
 architecture / contract               documented
-alpha2 semantic / validator           foundation complete
-PlanningFactGraph additive facts      foundation complete
-availability / source resolution      foundation complete
-external source atomic retry          module complete / production disconnected
-fixed commitment reservation          foundation complete
-specific dates / weekday sets         foundation complete / automated verified
-personalization profile v2            foundation complete / scoring disconnected
-shadow normalizer                      module complete / disconnected
+Alpha 2 semantic / validator           foundation complete
+Stable direct schema / validator       not implemented
+PlanningFactGraph V2 additive facts    foundation complete
+Stable Fact Graph V5                   not implemented
+availability / source resolution       foundation complete
+external source atomic retry           module complete / production disconnected
+fixed commitment reservation           foundation complete
+specific dates / weekday sets          foundation complete / automated verified
+personalization profile v2             foundation complete / scoring disconnected
+Alpha 1 shadow evaluator               module complete / production disconnected
+Stable V5 shadow                       not implemented / disconnected
 generic work demand                    foundation complete
 unified scheduler input                foundation complete
-generic scheduler dialogue policy     foundation complete / renderer disconnected
+generic scheduler dialogue policy      foundation complete / renderer disconnected
 fact lifecycle / correction            not implemented
 persisted migration                    not implemented
 production cutover                     not started
