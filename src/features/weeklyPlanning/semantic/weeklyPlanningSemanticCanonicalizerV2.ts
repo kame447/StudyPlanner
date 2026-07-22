@@ -14,10 +14,17 @@ import {
 } from './weeklyPlanningSemanticCanonicalizer';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION,
+  type SemanticTemporalConstraint,
   type WeeklyPlanningSemanticDocument,
 } from './weeklyPlanningSemanticDocument';
-import type { WeeklyPlanningSemanticDocumentV2 } from './weeklyPlanningSemanticDocumentV2';
-import { validateWeeklyPlanningSemanticValueV2 } from './weeklyPlanningSemanticValidatorV2';
+import {
+  SEMANTIC_TASK_DATE_RULE_KINDS,
+  type SemanticTaskDateRuleKind,
+  type WeeklyPlanningSemanticDocumentV2,
+} from './weeklyPlanningSemanticDocumentV2';
+import {
+  validateWeeklyPlanningSemanticValueV2WithDateRules,
+} from './weeklyPlanningSemanticValidatorV2DateRules';
 
 export interface WeeklyPlanningSemanticCanonicalizationResultV2 {
   status: 'applied' | 'duplicate' | 'rejected';
@@ -64,6 +71,10 @@ function createSource(params: {
   };
 }
 
+function isTaskDateRuleKind(value: string): value is SemanticTaskDateRuleKind {
+  return (SEMANTIC_TASK_DATE_RULE_KINDS as readonly string[]).includes(value);
+}
+
 function projectDocumentToV1(
   document: WeeklyPlanningSemanticDocumentV2,
 ): WeeklyPlanningSemanticDocument {
@@ -73,11 +84,13 @@ function projectDocumentToV1(
     planningWindow: document.planningWindow,
     tasks: document.tasks.map((task) => ({
       ...task,
-      temporalConstraints: task.temporalConstraints.map(({
-        constraintLevel: _level,
-        namedTimePeriod: _namedTimePeriod,
-        ...rest
-      }) => rest),
+      temporalConstraints: task.temporalConstraints
+        .filter((constraint) => !isTaskDateRuleKind(constraint.kind))
+        .map(({
+          constraintLevel: _level,
+          namedTimePeriod: _namedTimePeriod,
+          ...rest
+        }) => rest as SemanticTemporalConstraint),
     })),
     relations: document.relations,
     uncertainties: document.uncertainties,
@@ -119,6 +132,7 @@ function collectFactIds(graph: WeeklyPlanningFactGraphV2): Set<string> {
     ...graph.workloads.map((fact) => fact.id),
     ...graph.effortEstimates.map((fact) => fact.id),
     ...graph.temporalConstraints.map((fact) => fact.id),
+    ...graph.taskDateRules.map((fact) => fact.id),
     ...graph.recurrences.map((fact) => fact.id),
     ...graph.relations.map((fact) => fact.id),
     ...graph.uncertainties.map((fact) => fact.id),
@@ -151,7 +165,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     return rejected(params.graph, ['fact-graph-version-v2']);
   }
 
-  const validation = validateWeeklyPlanningSemanticValueV2(params.document);
+  const validation = validateWeeklyPlanningSemanticValueV2WithDateRules(params.document);
   if (!validation.document) {
     return rejected(params.graph, validation.errors);
   }
@@ -206,6 +220,30 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     return id;
   };
 
+  const taskDateRules = validation.document.tasks.flatMap((task) => {
+    const taskFactId = localToFactId.get(task.localId);
+    if (!taskFactId) {
+      errors.push(`task-date-rule-task-not-mapped:${task.localId}`);
+      return [];
+    }
+    return task.temporalConstraints
+      .filter((constraint) => isTaskDateRuleKind(constraint.kind))
+      .map((constraint) => ({
+        id: registerAdditional('task_date_rule', constraint.localId),
+        taskId: taskFactId,
+        targetFactId: taskFactId,
+        kind: constraint.kind,
+        dateExpression: constraint.dateExpression ?? '',
+        constraintLevel: constraint.constraintLevel,
+        source: createSource({
+          context: params.context,
+          semanticLocalId: constraint.localId,
+          sourceText: constraint.sourceText,
+        }),
+        createdRevision: base.graph.revision,
+      }));
+  });
+
   const availabilityDeclarations = validation.document.availabilityDeclarations.map((declaration) => ({
     id: registerAdditional('availability', declaration.localId),
     kind: declaration.kind,
@@ -247,6 +285,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
   const semanticTemporalByLocalId = new Map(
     validation.document.tasks
       .flatMap((task) => task.temporalConstraints)
+      .filter((constraint) => !isTaskDateRuleKind(constraint.kind))
       .map((constraint) => [constraint.localId, constraint]),
   );
   const temporalConstraints = base.graph.temporalConstraints.map((constraint) => {
@@ -281,6 +320,10 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     workloads: base.graph.workloads,
     effortEstimates: base.graph.effortEstimates,
     temporalConstraints,
+    taskDateRules: [
+      ...params.graph.taskDateRules,
+      ...taskDateRules,
+    ],
     recurrences: base.graph.recurrences,
     relations: base.graph.relations,
     uncertainties: base.graph.uncertainties,
@@ -301,6 +344,10 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     toRevision: base.diff.toRevision,
     added: [
       ...base.diff.added,
+      ...taskDateRules.map((fact) => ({
+        kind: 'task_date_rule' as const,
+        id: fact.id,
+      })),
       ...availabilityDeclarations.map((fact) => ({
         kind: 'availability_declaration' as const,
         id: fact.id,
