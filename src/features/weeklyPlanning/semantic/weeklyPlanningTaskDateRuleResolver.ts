@@ -45,7 +45,7 @@ interface MutableTaskDateEligibility {
   allowedDates: Set<string>;
   excludedDates: Set<string>;
   sourceFactIds: Set<string>;
-  allowedRuleByDate: Map<string, string>;
+  explicitAllowedRuleByDate: Map<string, string>;
   excludedRuleByDate: Map<string, string>;
 }
 
@@ -70,7 +70,7 @@ function mutableState(
     allowedDates: new Set<string>(),
     excludedDates: new Set<string>(),
     sourceFactIds: new Set<string>(),
-    allowedRuleByDate: new Map<string, string>(),
+    explicitAllowedRuleByDate: new Map<string, string>(),
     excludedRuleByDate: new Map<string, string>(),
   };
   mutable.set(taskId, created);
@@ -216,7 +216,7 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
       state.hasPositiveDateScope = true;
       for (const date of dates) {
         state.allowedDates.add(date);
-        state.allowedRuleByDate.set(date, rule.id);
+        state.explicitAllowedRuleByDate.set(date, rule.id);
       }
     } else {
       for (const date of dates) {
@@ -245,19 +245,16 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
     state.sourceFactIds.add(recurrence.id);
     for (const date of dates) {
       state.allowedDates.add(date);
-      state.allowedRuleByDate.set(date, recurrence.id);
     }
   }
 
   const eligibilities: ResolvedTaskDateEligibility[] = [];
   for (const [taskId, state] of mutable.entries()) {
-    for (const date of state.allowedDates) {
+    for (const [date, allowedRuleId] of state.explicitAllowedRuleByDate.entries()) {
       if (!state.excludedDates.has(date)) continue;
       issues.push({
         code: 'conflicting_task_date_rule',
-        taskDateRuleFactId: state.excludedRuleByDate.get(date)
-          ?? state.allowedRuleByDate.get(date)
-          ?? 'unknown',
+        taskDateRuleFactId: state.excludedRuleByDate.get(date) ?? allowedRuleId,
         taskId,
         blocking: true,
         details: { date },
