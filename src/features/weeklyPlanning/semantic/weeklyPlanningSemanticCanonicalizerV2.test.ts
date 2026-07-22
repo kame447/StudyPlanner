@@ -44,6 +44,18 @@ function document(): WeeklyPlanningSemanticDocumentV2 {
             precision: 'unspecified',
             sourceText: '寝る前がやりやすい',
           },
+          {
+            localId: 'date-rule-skip-25',
+            targetLocalId: 'task-dinner',
+            kind: 'excluded_date',
+            constraintLevel: 'hard',
+            dateExpression: '2026-07-25',
+            namedTimePeriod: null,
+            startTime: null,
+            endTime: null,
+            precision: 'exact',
+            sourceText: '25日は夕食の予定を入れない',
+          },
         ],
         recurrence: [],
         sourceText: '18時から19時まで夕食',
@@ -98,7 +110,7 @@ const context = {
 } as const;
 
 describe('weekly planning semantic alpha2 canonicalizer', () => {
-  it('preserves temporal and availability extensions as unresolved facts', () => {
+  it('preserves temporal, task-date, and availability extensions as separate facts', () => {
     const result = canonicalizeWeeklyPlanningSemanticDocumentV2({
       graph: createEmptyWeeklyPlanningFactGraphV2(),
       document: document(),
@@ -122,6 +134,17 @@ describe('weekly planning semantic alpha2 canonicalizer', () => {
         namedTimePeriod: 'before_sleep',
       }),
     ]));
+    expect(result.graph.temporalConstraints.map((fact) => fact.kind))
+      .not.toContain('excluded_date');
+    expect(result.graph.taskDateRules).toEqual([
+      expect.objectContaining({
+        taskId: result.localToFactId['task-dinner'],
+        targetFactId: result.localToFactId['task-dinner'],
+        kind: 'excluded_date',
+        dateExpression: '2026-07-25',
+        constraintLevel: 'hard',
+      }),
+    ]);
     expect(result.graph.availabilityDeclarations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: 'unavailable',
@@ -153,9 +176,15 @@ describe('weekly planning semantic alpha2 canonicalizer', () => {
       context,
     });
 
+    expect(result.localToFactId['date-rule-skip-25'])
+      .toMatch(/^wpf_task_date_rule_/);
     expect(result.localToFactId['availability-weekdays']).toMatch(/^wpf_availability_/);
     expect(result.localToFactId['source-timetable']).toMatch(/^wpf_source_request_/);
     expect(result.diff?.added).toEqual(expect.arrayContaining([
+      {
+        kind: 'task_date_rule',
+        id: result.localToFactId['date-rule-skip-25'],
+      },
       {
         kind: 'availability_declaration',
         id: result.localToFactId['availability-weekdays'],
