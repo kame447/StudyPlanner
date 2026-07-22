@@ -42,9 +42,23 @@ export const SEMANTIC_CONSTRAINT_SOURCE_KINDS = [
 export type SemanticConstraintSourceKind =
   (typeof SEMANTIC_CONSTRAINT_SOURCE_KINDS)[number];
 
+export const SEMANTIC_NAMED_TIME_PERIODS = [
+  'morning',
+  'afternoon',
+  'evening',
+  'night',
+  'before_sleep',
+  'before_meal',
+  'after_meal',
+] as const;
+export type SemanticNamedTimePeriod =
+  | (typeof SEMANTIC_NAMED_TIME_PERIODS)[number]
+  | `custom:${string}`;
+
 export interface SemanticTemporalConstraintV2
   extends Omit<SemanticTemporalConstraint, 'constraintLevel'> {
   constraintLevel: SemanticConstraintLevel;
+  namedTimePeriod: SemanticNamedTimePeriod | null;
 }
 
 export interface SemanticTaskV2 extends Omit<SemanticTask, 'temporalConstraints'> {
@@ -55,6 +69,7 @@ export interface SemanticAvailabilityDeclaration {
   localId: string;
   kind: SemanticAvailabilityKind;
   dateExpression: string | null;
+  namedTimePeriod: SemanticNamedTimePeriod | null;
   startTime: string | null;
   endTime: string | null;
   recurrenceKind: SemanticAvailabilityRecurrenceKind | null;
@@ -111,6 +126,14 @@ function cloneBaseSchema(): Record<string, unknown> {
   ) as Record<string, unknown>;
 }
 
+const nullableNamedTimePeriodSchema = {
+  anyOf: [
+    { type: 'string', enum: SEMANTIC_NAMED_TIME_PERIODS },
+    { type: 'string', pattern: '^custom:.+$' },
+    { type: 'null' },
+  ],
+} as const;
+
 function createAlpha2Schema(): Record<string, unknown> {
   const root = cloneBaseSchema();
   const rootProperties = requireRecord(root.properties, 'root.properties');
@@ -144,10 +167,14 @@ function createAlpha2Schema(): Record<string, unknown> {
   if (!temporalRequired.includes('constraintLevel')) {
     temporalRequired.splice(3, 0, 'constraintLevel');
   }
+  if (!temporalRequired.includes('namedTimePeriod')) {
+    temporalRequired.splice(5, 0, 'namedTimePeriod');
+  }
   temporalProperties.constraintLevel = {
     type: 'string',
     enum: SEMANTIC_CONSTRAINT_LEVELS,
   };
+  temporalProperties.namedTimePeriod = nullableNamedTimePeriodSchema;
 
   const availabilityDeclarationSchema = {
     type: 'object',
@@ -156,6 +183,7 @@ function createAlpha2Schema(): Record<string, unknown> {
       'localId',
       'kind',
       'dateExpression',
+      'namedTimePeriod',
       'startTime',
       'endTime',
       'recurrenceKind',
@@ -167,6 +195,7 @@ function createAlpha2Schema(): Record<string, unknown> {
       localId: { type: 'string' },
       kind: { type: 'string', enum: SEMANTIC_AVAILABILITY_KINDS },
       dateExpression: { type: ['string', 'null'] },
+      namedTimePeriod: nullableNamedTimePeriodSchema,
       startTime: { type: ['string', 'null'] },
       endTime: { type: ['string', 'null'] },
       recurrenceKind: {
@@ -224,9 +253,12 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V2: JsonSchemaResponseForm
 export function createWeeklyPlanningSemanticSystemPromptV2(): string {
   return [
     createWeeklyPlanningSemanticSystemPrompt(),
-    'Every temporal constraint must include constraintLevel hard, soft, or unknown.',
+    'Every temporal constraint must include constraintLevel hard, soft, or unknown and namedTimePeriod.',
     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences such as できれば, やりやすい, 週末にまとめたい, or 避けたい. Use unknown when the strength is not established.',
     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target, such as 平日は18時まで勉強できない or 土日の午前中がやりやすい, belongs in availabilityDeclarations.',
+    'Use dateExpression only for today, tomorrow, day_after_tomorrow, this_week, next_week, an explicit YYYY-MM-DD date, or custom:<original phrase>. Never put a Japanese time-of-day phrase in dateExpression.',
+    'Use namedTimePeriod morning, afternoon, evening, night, before_sleep, before_meal, after_meal, or custom:<original phrase> for a named time period. Use null when exact startTime/endTime are supplied or no named time period exists.',
+    'For 寝る前に英単語, attach namedTimePeriod before_sleep to the English-word task or component. For 土日の午前中がやりやすい, create a plan-wide preferred availability declaration with recurrenceKind weekends and namedTimePeriod morning.',
     'availabilityDeclarations describe only user-stated available, unavailable, preferred, or avoided windows. Keep relative dates symbolic and do not calculate concrete dates.',
     'Use recurrenceKind weekdays, weekends, daily, weekly, or custom only when the availability statement itself repeats. Keep days empty when no explicit weekday list is present.',
     'External timetable, existing plan, and calendar contents are authoritative application data. Never reproduce, summarize, or invent their events.',
