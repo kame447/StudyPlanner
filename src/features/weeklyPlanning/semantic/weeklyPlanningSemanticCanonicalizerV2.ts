@@ -5,6 +5,10 @@ import {
 } from './weeklyPlanningFactGraph';
 import {
   WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2,
+  type AvailabilityDeclarationFact,
+  type ConstraintSourceRequestFact,
+  type TaskDateRuleFact,
+  type TemporalConstraintFactV2,
   type WeeklyPlanningFactDiffV2,
   type WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
@@ -20,6 +24,7 @@ import {
 import {
   SEMANTIC_TASK_DATE_RULE_KINDS,
   type SemanticTaskDateRuleKind,
+  type SemanticTemporalConstraintV2,
   type WeeklyPlanningSemanticDocumentV2,
 } from './weeklyPlanningSemanticDocumentV2';
 import {
@@ -33,6 +38,14 @@ export interface WeeklyPlanningSemanticCanonicalizationResultV2 {
   errors: string[];
   localToFactId: Record<string, string>;
 }
+
+type SemanticTaskDateRuleConstraint = SemanticTemporalConstraintV2 & {
+  kind: SemanticTaskDateRuleKind;
+};
+
+type SemanticBaseTemporalConstraint = SemanticTemporalConstraintV2 & {
+  kind: SemanticTemporalConstraint['kind'];
+};
 
 function stableHash(input: string, seed: number): string {
   let hash = seed >>> 0;
@@ -75,6 +88,18 @@ function isTaskDateRuleKind(value: string): value is SemanticTaskDateRuleKind {
   return (SEMANTIC_TASK_DATE_RULE_KINDS as readonly string[]).includes(value);
 }
 
+function isTaskDateRuleConstraint(
+  constraint: SemanticTemporalConstraintV2,
+): constraint is SemanticTaskDateRuleConstraint {
+  return isTaskDateRuleKind(constraint.kind);
+}
+
+function isBaseTemporalConstraint(
+  constraint: SemanticTemporalConstraintV2,
+): constraint is SemanticBaseTemporalConstraint {
+  return !isTaskDateRuleKind(constraint.kind);
+}
+
 function projectDocumentToV1(
   document: WeeklyPlanningSemanticDocumentV2,
 ): WeeklyPlanningSemanticDocument {
@@ -83,14 +108,26 @@ function projectDocumentToV1(
     planningIntent: document.planningIntent,
     planningWindow: document.planningWindow,
     tasks: document.tasks.map((task) => ({
-      ...task,
+      localId: task.localId,
+      category: task.category,
+      title: task.title,
+      study: task.study,
+      workloads: task.workloads,
+      effortEstimates: task.effortEstimates,
       temporalConstraints: task.temporalConstraints
-        .filter((constraint) => !isTaskDateRuleKind(constraint.kind))
-        .map(({
-          constraintLevel: _level,
-          namedTimePeriod: _namedTimePeriod,
-          ...rest
-        }) => rest as SemanticTemporalConstraint),
+        .filter(isBaseTemporalConstraint)
+        .map((constraint): SemanticTemporalConstraint => ({
+          localId: constraint.localId,
+          targetLocalId: constraint.targetLocalId,
+          kind: constraint.kind,
+          dateExpression: constraint.dateExpression,
+          startTime: constraint.startTime,
+          endTime: constraint.endTime,
+          precision: constraint.precision,
+          sourceText: constraint.sourceText,
+        })),
+      recurrence: task.recurrence,
+      sourceText: task.sourceText,
     })),
     relations: document.relations,
     uncertainties: document.uncertainties,
@@ -110,11 +147,18 @@ function projectGraphToV1(graph: WeeklyPlanningFactGraphV2): WeeklyPlanningFactG
     components: [...graph.components],
     workloads: [...graph.workloads],
     effortEstimates: [...graph.effortEstimates],
-    temporalConstraints: graph.temporalConstraints.map(({
-      constraintLevel: _level,
-      namedTimePeriod: _namedTimePeriod,
-      ...rest
-    }) => rest),
+    temporalConstraints: graph.temporalConstraints.map((constraint) => ({
+      id: constraint.id,
+      taskId: constraint.taskId,
+      targetFactId: constraint.targetFactId,
+      kind: constraint.kind,
+      dateExpression: constraint.dateExpression,
+      startTime: constraint.startTime,
+      endTime: constraint.endTime,
+      precision: constraint.precision,
+      source: constraint.source,
+      createdRevision: constraint.createdRevision,
+    })),
     recurrences: [...graph.recurrences],
     relations: [...graph.relations],
     uncertainties: [...graph.uncertainties],
@@ -123,7 +167,7 @@ function projectGraphToV1(graph: WeeklyPlanningFactGraphV2): WeeklyPlanningFactG
   };
 }
 
-function collectFactIds(graph: WeeklyPlanningFactGraphV2): Set<string> {
+function collectV2FactIds(graph: WeeklyPlanningFactGraphV2): Set<string> {
   return new Set([
     ...graph.planningWindows.map((fact) => fact.id),
     ...graph.tasks.map((fact) => fact.id),
@@ -141,6 +185,29 @@ function collectFactIds(graph: WeeklyPlanningFactGraphV2): Set<string> {
     ...graph.availabilityDeclarations.map((fact) => fact.id),
     ...graph.constraintSourceRequests.map((fact) => fact.id),
   ]);
+}
+
+function addBaseFactIds(
+  ids: Set<string>,
+  graph: WeeklyPlanningFactGraph,
+): void {
+  const collections = [
+    graph.planningWindows,
+    graph.tasks,
+    graph.studyContexts,
+    graph.components,
+    graph.workloads,
+    graph.effortEstimates,
+    graph.temporalConstraints,
+    graph.recurrences,
+    graph.relations,
+    graph.uncertainties,
+    graph.correctionIntents,
+    graph.decisionIntents,
+  ] as const;
+  for (const collection of collections) {
+    for (const fact of collection) ids.add(fact.id);
+  }
 }
 
 function rejected(
@@ -170,9 +237,10 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     return rejected(params.graph, validation.errors);
   }
 
+  const document = validation.document;
   const base = canonicalizeWeeklyPlanningSemanticDocument({
     graph: projectGraphToV1(params.graph),
-    document: projectDocumentToV1(validation.document),
+    document: projectDocumentToV1(document),
     context: params.context,
   });
 
@@ -190,26 +258,9 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
   }
 
   const errors: string[] = [];
-  const localToFactId = new Map(Object.entries(base.localToFactId));
-  const existingIds = collectFactIds(params.graph);
-  for (const id of collectFactIds({
-    ...params.graph,
-    version: WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2,
-    planningWindows: base.graph.planningWindows,
-    tasks: base.graph.tasks,
-    studyContexts: base.graph.studyContexts,
-    components: base.graph.components,
-    workloads: base.graph.workloads,
-    effortEstimates: base.graph.effortEstimates,
-    temporalConstraints: [],
-    recurrences: base.graph.recurrences,
-    relations: base.graph.relations,
-    uncertainties: base.graph.uncertainties,
-    correctionIntents: base.graph.correctionIntents,
-    decisionIntents: base.graph.decisionIntents,
-  })) {
-    existingIds.add(id);
-  }
+  const localToFactId = new Map<string, string>(Object.entries(base.localToFactId));
+  const existingIds = collectV2FactIds(params.graph);
+  addBaseFactIds(existingIds, base.graph);
 
   const registerAdditional = (kind: string, localId: string): string => {
     const id = createFactId({ context: params.context, kind, semanticLocalId: localId });
@@ -220,15 +271,15 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     return id;
   };
 
-  const taskDateRules = validation.document.tasks.flatMap((task) => {
+  const taskDateRules: TaskDateRuleFact[] = [];
+  for (const task of document.tasks) {
     const taskFactId = localToFactId.get(task.localId);
     if (!taskFactId) {
       errors.push(`task-date-rule-task-not-mapped:${task.localId}`);
-      return [];
+      continue;
     }
-    return task.temporalConstraints
-      .filter((constraint) => isTaskDateRuleKind(constraint.kind))
-      .map((constraint) => ({
+    for (const constraint of task.temporalConstraints.filter(isTaskDateRuleConstraint)) {
+      taskDateRules.push({
         id: registerAdditional('task_date_rule', constraint.localId),
         taskId: taskFactId,
         targetFactId: taskFactId,
@@ -241,71 +292,75 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
           sourceText: constraint.sourceText,
         }),
         createdRevision: base.graph.revision,
-      }));
-  });
+      });
+    }
+  }
 
-  const availabilityDeclarations = validation.document.availabilityDeclarations.map((declaration) => ({
-    id: registerAdditional('availability', declaration.localId),
-    kind: declaration.kind,
-    dateExpression: declaration.dateExpression,
-    namedTimePeriod: declaration.namedTimePeriod,
-    startTime: declaration.startTime,
-    endTime: declaration.endTime,
-    recurrenceKind: declaration.recurrenceKind,
-    days: [...declaration.days],
-    constraintLevel: declaration.constraintLevel,
-    resolutionStatus: 'unresolved' as const,
-    source: createSource({
-      context: params.context,
-      semanticLocalId: declaration.localId,
-      sourceText: declaration.sourceText,
-    }),
-    createdRevision: base.graph.revision,
-  }));
+  const availabilityDeclarations: AvailabilityDeclarationFact[] =
+    document.availabilityDeclarations.map((declaration) => ({
+      id: registerAdditional('availability', declaration.localId),
+      kind: declaration.kind,
+      dateExpression: declaration.dateExpression,
+      namedTimePeriod: declaration.namedTimePeriod,
+      startTime: declaration.startTime,
+      endTime: declaration.endTime,
+      recurrenceKind: declaration.recurrenceKind,
+      days: [...declaration.days],
+      constraintLevel: declaration.constraintLevel,
+      resolutionStatus: 'unresolved',
+      source: createSource({
+        context: params.context,
+        semanticLocalId: declaration.localId,
+        sourceText: declaration.sourceText,
+      }),
+      createdRevision: base.graph.revision,
+    }));
 
-  const constraintSourceRequests = validation.document.constraintSourceRequests.map((request) => ({
-    id: registerAdditional('source_request', request.localId),
-    kind: request.kind,
-    selector: request.selector,
-    requestedAction: request.requestedAction,
-    resolutionStatus: 'unresolved' as const,
-    source: createSource({
-      context: params.context,
-      semanticLocalId: request.localId,
-      sourceText: request.sourceText,
-    }),
-    createdRevision: base.graph.revision,
-  }));
+  const constraintSourceRequests: ConstraintSourceRequestFact[] =
+    document.constraintSourceRequests.map((request) => ({
+      id: registerAdditional('source_request', request.localId),
+      kind: request.kind,
+      selector: request.selector,
+      requestedAction: request.requestedAction,
+      resolutionStatus: 'unresolved',
+      source: createSource({
+        context: params.context,
+        semanticLocalId: request.localId,
+        sourceText: request.sourceText,
+      }),
+      createdRevision: base.graph.revision,
+    }));
 
   if (errors.length > 0) return rejected(params.graph, errors);
 
-  const existingTemporalById = new Map(
+  const existingTemporalById = new Map<string, TemporalConstraintFactV2>(
     params.graph.temporalConstraints.map((constraint) => [constraint.id, constraint]),
   );
-  const semanticTemporalByLocalId = new Map(
-    validation.document.tasks
+  const semanticTemporalByLocalId = new Map<string, SemanticBaseTemporalConstraint>(
+    document.tasks
       .flatMap((task) => task.temporalConstraints)
-      .filter((constraint) => !isTaskDateRuleKind(constraint.kind))
+      .filter(isBaseTemporalConstraint)
       .map((constraint) => [constraint.localId, constraint]),
   );
-  const temporalConstraints = base.graph.temporalConstraints.map((constraint) => {
-    const existing = existingTemporalById.get(constraint.id);
-    if (existing) return existing;
-    const semantic = semanticTemporalByLocalId.get(constraint.source.semanticLocalId);
-    if (!semantic) {
-      errors.push(`missing-temporal-extension:${constraint.source.semanticLocalId}`);
+  const temporalConstraints: TemporalConstraintFactV2[] =
+    base.graph.temporalConstraints.map((constraint) => {
+      const existing = existingTemporalById.get(constraint.id);
+      if (existing) return existing;
+      const semantic = semanticTemporalByLocalId.get(constraint.source.semanticLocalId);
+      if (!semantic) {
+        errors.push(`missing-temporal-extension:${constraint.source.semanticLocalId}`);
+        return {
+          ...constraint,
+          constraintLevel: 'unknown',
+          namedTimePeriod: null,
+        };
+      }
       return {
         ...constraint,
-        constraintLevel: 'unknown' as const,
-        namedTimePeriod: null,
+        constraintLevel: semantic.constraintLevel,
+        namedTimePeriod: semantic.namedTimePeriod,
       };
-    }
-    return {
-      ...constraint,
-      constraintLevel: semantic.constraintLevel,
-      namedTimePeriod: semantic.namedTimePeriod,
-    };
-  });
+    });
 
   if (errors.length > 0) return rejected(params.graph, errors);
 
@@ -320,10 +375,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     workloads: base.graph.workloads,
     effortEstimates: base.graph.effortEstimates,
     temporalConstraints,
-    taskDateRules: [
-      ...params.graph.taskDateRules,
-      ...taskDateRules,
-    ],
+    taskDateRules: [...params.graph.taskDateRules, ...taskDateRules],
     recurrences: base.graph.recurrences,
     relations: base.graph.relations,
     uncertainties: base.graph.uncertainties,
@@ -344,10 +396,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     toRevision: base.diff.toRevision,
     added: [
       ...base.diff.added,
-      ...taskDateRules.map((fact) => ({
-        kind: 'task_date_rule' as const,
-        id: fact.id,
-      })),
+      ...taskDateRules.map((fact) => ({ kind: 'task_date_rule' as const, id: fact.id })),
       ...availabilityDeclarations.map((fact) => ({
         kind: 'availability_declaration' as const,
         id: fact.id,
