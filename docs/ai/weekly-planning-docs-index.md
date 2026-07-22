@@ -1,107 +1,72 @@
 # weeklyPlanning documentation index
 
 Status: canonical / active
-最終更新: 2026-07-18
-Current implementation baseline: `fe0dc86af264ab339e81b2191b333b4ef2a779b0`
+最終更新: 2026-07-22
+Current implementation baseline: `48fe92669b016c2e96463578df86dc79589ddc01`
 
-## Active documents
-
-週間計画の現行判断には、次の文書を使用する。
+## 1. 現行判断に使用する文書
 
 | document | role |
 | --- | --- |
-| [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | active文書間の優先順位、確定済みproduct decision、current contract |
-| [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md) | PR #5で実装された機能、known bug、検証不足、構造課題のpost-merge status |
-| [weekly-planning-spec.md](../weekly-planning/weekly-planning-spec.md) | product goal、UX、planning principles。旧single-interpreter/旧queueはcurrent contractで上書き |
-| [weekly-planning-dialogue-architecture-v4.md](../architecture/weekly-planning-dialogue-architecture-v4.md) | architecture、safety boundary、module ownership。旧status/旧queueはcurrent contractで上書き |
-| [weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md) | current implementation status、decision records、current queue |
-| [weekly-planning-roleplay-test-plan.md](../testing/weekly-planning-roleplay-test-plan.md) | scenario IDとstrict contract |
-| [weekly-planning-roleplay-status.md](../testing/weekly-planning-roleplay-status.md) | module、production、自動検証、browser coverageの現行status |
-| [weekly-planning-pipeline-guide.md](weekly-planning-pipeline-guide.md) | task作成・実装・検証の運用 |
+| [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | 確定済みproduct decision、現在の責務境界、実装statusの読み方 |
+| [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md) | current queue、priority、decision gate、依存順 |
+| [../weekly-planning/weekly-planning-spec.md](../weekly-planning/weekly-planning-spec.md) | product goal、UX、planning principles。current contractと競合するhistorical記述は採用しない |
+| [../architecture/weekly-planning-dialogue-architecture-v4.md](../architecture/weekly-planning-dialogue-architecture-v4.md) | architectureとmodule ownership。semantic ownershipはcurrent contractを優先する |
+| [../testing/weekly-planning-roleplay-test-plan.md](../testing/weekly-planning-roleplay-test-plan.md) | scenario IDとstrict contract |
+| [../testing/weekly-planning-roleplay-status.md](../testing/weekly-planning-roleplay-status.md) | module、production、自動検証、browser coverageのstatus |
+| [weekly-planning-pipeline-guide.md](weekly-planning-pipeline-guide.md) | task作成、実装、検証の運用 |
 
-conversation traceを扱う作業では、[weekly-planning-conversation-trace.md](../architecture/weekly-planning-conversation-trace.md)も参照する。ただしcurrent contract statusのprivacy boundaryを上書きしない。
+conversation traceを扱う作業では、[../architecture/weekly-planning-conversation-trace.md](../architecture/weekly-planning-conversation-trace.md)も参照する。ただし、current contractのidentity、privacy、retention boundaryを上書きしない。
 
-active文書間でstatus、queue、contractが競合する場合は、次の順で読む。
+active文書間でstatus、queue、contractが競合する場合は次の順で読む。
 
 ```text
 weekly-planning-current-contract-status.md
-→ weekly-planning-pr5-post-merge-status.md
 → weekly-planning-roadmap.md
 → weekly-planning-roleplay-status.md
 → spec / architecture / roleplay test planの非競合部分
-→ active tasks
+→ docs/ai/tasks/直下のactive task
+→ closed / superseded / audit records
 ```
 
-`docs/ai/tasks/`直下の未完了task以外をcurrent instructionとして扱わない。
+## 2. Current queue
 
-## Current queue
+current queue、priority、blocked状態、依存順は[weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)だけを正とする。このindexではtask一覧を複製しない。
 
-`docs/ai/tasks/`直下のroot taskは6件である。完了済みtaskはrootに含めない。
+`docs/ai/tasks/`直下には未完了taskだけを置く。完了済みtaskは`tasks/closed/`、契約変更で実行対象外になったtaskは`tasks/superseded/`へ移す。
 
-### P1
+## 3. 主要な完了記録
 
-1. [20260716-weekly-planning-entrypoint-request-ownership.md](tasks/20260716-weekly-planning-entrypoint-request-ownership.md)
-   - request ownership実装後のbrowser close-resume、週変更、reset、cancel、IME、focusを確認する。
+- [PR #75: AI-only semantic boundary and seven-audit completion](tasks/closed/20260722-weekly-planning-ai-only-semantic-boundary-and-seven-audit.md)
+- [PR #68 final audit fix plan](tasks/closed/20260720-pr68-final-audit-fix-plan.md)
+- [trace server-authoritative structural IDs](tasks/closed/20260721-weekly-planning-trace-server-authoritative-ids.md)
+- [personalization foundation](tasks/closed/20260718-weekly-planning-personalization-foundation.md)
+- [approval persistence and idempotency](tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md)
+- [application behavior tests](tasks/closed/20260718-weekly-planning-application-behavior-tests.md)
+- [validation session binding](tasks/closed/20260718-weekly-planning-approval-validation-session-binding.md)
+- [save side-effect isolation](tasks/closed/20260718-weekly-planning-approval-save-side-effect-isolation.md)
+- [in-flight interruption](tasks/closed/20260718-weekly-planning-approval-inflight-interruption.md)
+- [restored draft lifecycle](tasks/closed/20260718-weekly-planning-restored-draft-approval-lifecycle.md)
+- [user-boundary storage guard](tasks/closed/20260718-weekly-planning-user-boundary-storage-guard.md)
 
-2. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
-   - code実装後の本番secret、TTL、rules/Worker deploy、削除、限定閲覧、privacy/legal reviewを完了する。
+## 4. Historical and superseded records
 
-3. [20260716-weekly-planning-longitudinal-personalization-data-governance.md](tasks/20260716-weekly-planning-longitudinal-personalization-data-governance.md)
-   - active draft PR #48を現行application境界へ統合し、検証・merge・運用確認を完了する。
+[weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)はPR #5時点のhistorical snapshotであり、PR #75後のsemantic ownershipを決めるcurrent contractではない。
 
-4. [20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
-   - 本番Firestore rules、operation/item TTL、Emulator rules/transaction、multi-client実環境確認を完了する。
+次のtaskは現在のproduction契約では実行しない。
 
-### P2
+- [旧AI/deterministic責務境界](tasks/superseded/20260719-weekly-planning-ai-responsibility-boundary.md)
+- [旧rules end-to-end integration test](tasks/superseded/20260719-weekly-planning-rules-end-to-end-integration-test.md)
+- [PR #75前のAI semantic ownership task](tasks/superseded/20260721-weekly-planning-ai-semantic-ownership.md)
 
-5. [20260716-weekly-planning-trace-scalability-and-schema-migration.md](tasks/20260716-weekly-planning-trace-scalability-and-schema-migration.md)
-   - pagination、query cost、index、archive、versioned decoderを設計する。
+長大なspec、architecture、過去task、過去PR本文には、deterministic baseline先行、AIとの属性merge、provider failure時のparser fallback、rules production経路、close/unmount cancel、旧queue等のhistorical記述が残り得る。これらはcurrent contractまたはroadmapと競合する場合に採用しない。
 
-6. [20260716-weekly-planning-controller-ui-responsibility-split.md](tasks/20260716-weekly-planning-controller-ui-responsibility-split.md)
-   - conversation controller、preview controller、view componentの責務を分離する。
-
-## Approval stream status
-
-次の実装taskは完了し、rootからclosedへ移行した。
-
-- [application behavior tests](tasks/closed/20260718-weekly-planning-application-behavior-tests.md) — PR #54
-- [validation session binding](tasks/closed/20260718-weekly-planning-approval-validation-session-binding.md) — PR #55
-- [save side-effect isolation](tasks/closed/20260718-weekly-planning-approval-save-side-effect-isolation.md) — PR #56
-- [in-flight interruption](tasks/closed/20260718-weekly-planning-approval-inflight-interruption.md) — PR #57
-- [restored draft lifecycle](tasks/closed/20260718-weekly-planning-restored-draft-approval-lifecycle.md) — PR #58
-- [user-boundary storage guard](tasks/closed/20260718-weekly-planning-user-boundary-storage-guard.md) — PR #59
-- [persistent idempotency](tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md) — PR #60、#62、#63
-
-承認streamのactive taskはoperational rolloutだけである。closed taskを再実装指示として使用しない。
-
-## Other implemented records
-
-- [20260718-weekly-planning-app-orchestration-extraction-completion.md](tasks/closed/20260718-weekly-planning-app-orchestration-extraction-completion.md)
-- [20260717-weekly-planning-kanji-absolute-date-guard.md](tasks/closed/20260717-weekly-planning-kanji-absolute-date-guard.md)
-- [20260714-weekly-planning-dialogue-stack-verification.md](tasks/closed/20260714-weekly-planning-dialogue-stack-verification.md)
-- [20260714-weekly-planning-behavior-aware-vertical-slice-completion.md](tasks/closed/20260714-weekly-planning-behavior-aware-vertical-slice-completion.md)
-- [20260714-weekly-planning-dialogue-stack-implementation.md](tasks/closed/20260714-weekly-planning-dialogue-stack-implementation.md)
-- [20260715-weekly-planning-dialogue-path-fix-completion.md](tasks/closed/20260715-weekly-planning-dialogue-path-fix-completion.md)
-- [20260715-weekly-planning-conversation-trace-completion.md](tasks/closed/20260715-weekly-planning-conversation-trace-completion.md)
-
-## Audit and migration records
-
-- [20260717-codebase-maintainability-review.md](tasks/closed/20260717-codebase-maintainability-review.md)
-- [20260716-weekly-planning-markdown-audit.md](tasks/closed/20260716-weekly-planning-markdown-audit.md)
-- [20260715-weekly-planning-cross-cutting-risks-split.md](tasks/closed/20260715-weekly-planning-cross-cutting-risks-split.md)
-- [20260716-weekly-planning-historical-contract-migrations.md](tasks/closed/20260716-weekly-planning-historical-contract-migrations.md)
-- [20260716-weekly-planning-mutation-testing-deferred.md](tasks/closed/20260716-weekly-planning-mutation-testing-deferred.md)
-- [weekly-planning-branch-archive-20260716.md](closed/weekly-planning-branch-archive-20260716.md)
-
-## Known documentation conflicts
-
-active長大文書には旧single-interpreter、no-merge、close/unmount cancel、旧queue等のhistorical記述が残る。current contract status、roadmap、roleplay statusで上書きする。
-
-## Rules
+## 5. 運用規則
 
 - queueはroadmapだけを正とする。
-- historical documentから直接taskを実行しない。
-- task完了時はcompletion recordへ残し、元taskはrootから閉じる。
-- `implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
-- PR merge後はbranch/head/merge statusをcurrent overlayとqueueへ同期する。
-- 一つの作業streamで不要なbranchを増やさず、既存の作業branchを再利用する。
+- historical、closed、superseded、audit文書から直接taskを実行しない。
+- task完了時はcompletion recordを`tasks/closed/`へ残し、root taskを削除する。
+- 契約変更で不要になったtaskは理由を明記して`tasks/superseded/`へ移す。
+- `module implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
+- PR merge後はbaseline、contract、roadmap、task placementを同期する。
+- 一つの作業streamで不要なbranchを増やさず、既存branchを再利用する。

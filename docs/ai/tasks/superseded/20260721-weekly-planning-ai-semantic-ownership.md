@@ -1,3 +1,5 @@
+Status: superseded by the stricter PR #75 contract and preserved as historical design context. Provider-failure parser fallback described below is no longer permitted.
+
 # 週間計画の意味解析責務をAIへ一本化する
 
 ## 背景

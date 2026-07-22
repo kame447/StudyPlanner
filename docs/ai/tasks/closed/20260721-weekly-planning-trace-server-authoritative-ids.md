@@ -1,3 +1,5 @@
+Status: closed / implemented and verified.
+
 # T-8: 週間計画traceのserver-authoritative structural ID
 
 ## 対象

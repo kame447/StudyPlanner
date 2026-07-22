@@ -1,3 +1,5 @@
+Status: superseded by PR #75. Historical only. The parser assistance and provider-failure fallback described below are not current production contract.
+
 # 週間計画におけるAI意味解釈と決定論境界
 
 週間計画の自然言語入力では、AI interpreterを主たる意味解釈器とする。
