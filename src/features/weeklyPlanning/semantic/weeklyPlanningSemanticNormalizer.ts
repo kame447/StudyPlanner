@@ -11,6 +11,8 @@ import {
 } from './weeklyPlanningSemanticDocument';
 import { parseWeeklyPlanningSemanticDocument } from './weeklyPlanningSemanticValidator';
 
+const SEMANTIC_NORMALIZER_MAX_COMPLETION_TOKENS = 2400;
+
 export interface WeeklyPlanningSemanticNormalizerInput {
   userText: string;
   recentConversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -94,12 +96,14 @@ export function createWeeklyPlanningSemanticNormalizer(
           purpose: 'weekly_planning_semantic_normalizer',
           messages,
           responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT,
+          maxCompletionTokens: SEMANTIC_NORMALIZER_MAX_COMPLETION_TOKENS,
         }));
         const response = await client.createChatCompletion({
           messages,
           temperature: 0,
           responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT,
           purpose: 'weekly_planning_semantic_normalizer',
+          maxCompletionTokens: SEMANTIC_NORMALIZER_MAX_COMPLETION_TOKENS,
         });
         responseLengths.push(response.length);
         return response;
