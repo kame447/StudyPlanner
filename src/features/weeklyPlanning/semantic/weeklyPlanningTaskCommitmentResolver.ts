@@ -1,8 +1,16 @@
+import type { RecurrenceFact } from './weeklyPlanningFactGraph';
 import type {
-  RecurrenceFact,
   TemporalConstraintFactV2,
   WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
+import {
+  addCalendarDays,
+  calendarWeekday,
+  intersectCalendarDates,
+  isValidCalendarDate,
+  listCalendarDatesInclusive,
+  resolveCanonicalDateExpression,
+} from './weeklyPlanningCalendarResolver';
 
 export interface TaskCommitmentLocalPoint {
   date: string;
@@ -54,7 +62,6 @@ export interface TaskCommitmentResolutionResult {
   readiness: 'ready' | 'needs_resolution' | 'empty';
 }
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const WEEKDAY_INDEX: Record<string, number> = {
   sun: 0,
@@ -75,75 +82,6 @@ function stableHash(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function parseDate(value: string): Date | null {
-  if (!ISO_DATE_PATTERN.test(value)) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(value: string, amount: number): string | null {
-  const date = parseDate(value);
-  if (!date) return null;
-  date.setUTCDate(date.getUTCDate() + amount);
-  return formatDate(date);
-}
-
-function dateRange(start: string, end: string): string[] | null {
-  if (!parseDate(start) || !parseDate(end) || start > end) return null;
-  const values: string[] = [];
-  let current = start;
-  while (current <= end) {
-    values.push(current);
-    const next = addDays(current, 1);
-    if (!next) return null;
-    current = next;
-  }
-  return values;
-}
-
-function mondayOfWeek(value: string): string | null {
-  const date = parseDate(value);
-  if (!date) return null;
-  const day = date.getUTCDay();
-  return addDays(value, day === 0 ? -6 : 1 - day);
-}
-
-function resolveDateExpression(
-  expression: string,
-  currentDate: string,
-): { start: string; end: string } | null {
-  if (ISO_DATE_PATTERN.test(expression)) return { start: expression, end: expression };
-  if (expression === 'today') return { start: currentDate, end: currentDate };
-  if (expression === 'tomorrow') {
-    const date = addDays(currentDate, 1);
-    return date ? { start: date, end: date } : null;
-  }
-  if (expression === 'day_after_tomorrow') {
-    const date = addDays(currentDate, 2);
-    return date ? { start: date, end: date } : null;
-  }
-  const monday = mondayOfWeek(currentDate);
-  if (!monday) return null;
-  if (expression === 'this_week') {
-    const end = addDays(monday, 6);
-    return end ? { start: monday, end } : null;
-  }
-  if (expression === 'next_week') {
-    const start = addDays(monday, 7);
-    const end = addDays(monday, 13);
-    return start && end ? { start, end } : null;
-  }
-  return null;
-}
-
-function weekday(date: string): number | null {
-  return parseDate(date)?.getUTCDay() ?? null;
-}
-
 function datesFromRecurrence(params: {
   recurrence: RecurrenceFact;
   planningDates: string[];
@@ -153,13 +91,13 @@ function datesFromRecurrence(params: {
   if (params.recurrence.kind === 'daily') return [...params.planningDates];
   if (params.recurrence.kind === 'weekdays') {
     return params.planningDates.filter((date) => {
-      const day = weekday(date);
+      const day = calendarWeekday(date);
       return day !== null && day >= 1 && day <= 5;
     });
   }
   if (params.recurrence.kind === 'weekends') {
     return params.planningDates.filter((date) => {
-      const day = weekday(date);
+      const day = calendarWeekday(date);
       return day === 0 || day === 6;
     });
   }
@@ -180,7 +118,7 @@ function datesFromRecurrence(params: {
     }
   }
   return params.planningDates.filter((date) => {
-    const day = weekday(date);
+    const day = calendarWeekday(date);
     return day !== null && indexes.has(day);
   });
 }
@@ -216,34 +154,33 @@ function resolveDates(params: {
     : null;
 
   if (params.constraint.dateExpression) {
-    if (params.constraint.dateExpression.startsWith('custom:')) {
+    const resolution = resolveCanonicalDateExpression({
+      expression: params.constraint.dateExpression,
+      currentDate: params.context.currentDate,
+    });
+    if (resolution.status !== 'resolved') {
       params.issues.push({
         code: 'unsupported_commitment_date_expression',
         temporalConstraintFactId: params.constraint.id,
         taskId: params.constraint.taskId,
         blocking: true,
-        details: { expression: params.constraint.dateExpression },
+        details: {
+          expression: params.constraint.dateExpression,
+          resolutionStatus: resolution.status,
+        },
       });
       return [];
     }
-    const range = resolveDateExpression(
-      params.constraint.dateExpression,
-      params.context.currentDate,
-    );
-    if (!range) {
-      params.issues.push({
-        code: 'unsupported_commitment_date_expression',
-        temporalConstraintFactId: params.constraint.id,
-        taskId: params.constraint.taskId,
-        blocking: true,
-        details: { expression: params.constraint.dateExpression },
-      });
-      return [];
+    const expressionDates = listCalendarDatesInclusive(
+      resolution.range.start,
+      resolution.range.end,
+    ) ?? [];
+    if (dates) {
+      const expressionSet = new Set(expressionDates);
+      dates = dates.filter((date) => expressionSet.has(date));
+    } else {
+      dates = expressionDates;
     }
-    const expressionDates = dateRange(range.start, range.end) ?? [];
-    dates = dates
-      ? dates.filter((date) => expressionDates.includes(date))
-      : expressionDates;
   }
 
   if (!dates) {
@@ -257,8 +194,11 @@ function resolveDates(params: {
     return [];
   }
 
-  const inWindow = dates.filter((date) =>
-    date >= params.context.planningStartDate && date <= params.context.planningEndDate);
+  const inWindow = intersectCalendarDates(
+    dates,
+    params.context.planningStartDate,
+    params.context.planningEndDate,
+  ) ?? [];
   if (dates.length > 0 && inWindow.length === 0) {
     params.issues.push({
       code: 'commitment_outside_planning_window',
@@ -276,7 +216,7 @@ function createEndPoint(
   endTime: string,
 ): TaskCommitmentLocalPoint | null {
   if (endTime < startTime) {
-    const nextDate = addDays(date, 1);
+    const nextDate = addCalendarDays(date, 1);
     return nextDate ? { date: nextDate, time: endTime } : null;
   }
   return { date, time: endTime };
@@ -286,11 +226,11 @@ export function resolveWeeklyPlanningTaskCommitments(params: {
   graph: WeeklyPlanningFactGraphV2;
   context: TaskCommitmentResolutionContext;
 }): TaskCommitmentResolutionResult {
-  const planningDates = dateRange(
+  const planningDates = listCalendarDatesInclusive(
     params.context.planningStartDate,
     params.context.planningEndDate,
   );
-  if (!planningDates || !parseDate(params.context.currentDate)) {
+  if (!planningDates || !isValidCalendarDate(params.context.currentDate)) {
     return {
       reservations: [],
       issues: [{
@@ -325,11 +265,13 @@ export function resolveWeeklyPlanningTaskCommitments(params: {
       });
       continue;
     }
-    if (!constraint.startTime
+    if (
+      !constraint.startTime
       || !constraint.endTime
       || !CLOCK_PATTERN.test(constraint.startTime)
       || !CLOCK_PATTERN.test(constraint.endTime)
-      || constraint.startTime === constraint.endTime) {
+      || constraint.startTime === constraint.endTime
+    ) {
       issues.push({
         code: 'invalid_commitment_interval',
         temporalConstraintFactId: constraint.id,
