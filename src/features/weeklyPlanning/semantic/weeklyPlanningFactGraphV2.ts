@@ -9,6 +9,7 @@ import type {
   SemanticAvailabilityRecurrenceKind,
   SemanticConstraintLevel,
   SemanticConstraintSourceKind,
+  SemanticNamedTimePeriod,
 } from './weeklyPlanningSemanticDocumentV2';
 
 export const WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2 =
@@ -17,12 +18,14 @@ export const WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2 =
 export interface TemporalConstraintFactV2
   extends Omit<TemporalConstraintFact, 'constraintLevel'> {
   constraintLevel: SemanticConstraintLevel;
+  namedTimePeriod: SemanticNamedTimePeriod | null;
 }
 
 export interface AvailabilityDeclarationFact {
   id: string;
   kind: SemanticAvailabilityKind;
   dateExpression: string | null;
+  namedTimePeriod: SemanticNamedTimePeriod | null;
   startTime: string | null;
   endTime: string | null;
   recurrenceKind: SemanticAvailabilityRecurrenceKind | null;
