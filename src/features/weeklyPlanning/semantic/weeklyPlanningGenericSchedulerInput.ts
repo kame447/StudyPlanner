@@ -12,7 +12,6 @@ import {
   type GenericWorkItemIssue,
 } from './weeklyPlanningGenericWorkItems';
 import {
-  resolveWeeklyPlanningAvailability,
   type AvailabilityResolutionContext,
   type AvailabilityResolutionIssue,
   type AvailabilityWindowFact,
@@ -20,14 +19,23 @@ import {
   type ExternalConstraintSourceSnapshot,
 } from './weeklyPlanningAvailabilityResolver';
 import {
-  resolveWeeklyPlanningTaskCommitments,
-  type TaskCommitmentReservation,
-  type TaskCommitmentResolutionIssue,
+  resolveWeeklyPlanningAvailabilityWithFullDayRules,
+} from './weeklyPlanningAvailabilityFullDayAdapter';
+import type {
+  TaskCommitmentReservation,
+  TaskCommitmentResolutionIssue,
 } from './weeklyPlanningTaskCommitmentResolver';
+import {
+  resolveWeeklyPlanningTaskCommitmentsWithDateRules,
+} from './weeklyPlanningTaskCommitmentDateRuleAdapter';
+import type {
+  ResolvedTaskDateEligibility,
+  TaskDateRuleResolutionIssue,
+} from './weeklyPlanningTaskDateRuleResolver';
 import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
 
 export const GENERIC_SCHEDULER_INPUT_VERSION =
-  'weekly-planning-generic-scheduler-input-v1' as const;
+  'weekly-planning-generic-scheduler-input-v2' as const;
 
 export interface GenericSchedulerPlanningHorizon {
   startDate: string;
@@ -50,6 +58,7 @@ export interface GenericSchedulerInput {
   horizon: GenericSchedulerPlanningHorizon;
   movableWorkItems: GenericPlanningWorkItem[];
   fixedTaskReservations: TaskCommitmentReservation[];
+  taskDateEligibilities: ResolvedTaskDateEligibility[];
   availabilityWindows: AvailabilityWindowFact[];
   sourceSelections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
@@ -74,6 +83,13 @@ export type GenericSchedulerInputIssue =
   | {
       domain: 'commitment';
       code: TaskCommitmentResolutionIssue['code'];
+      blocking: boolean;
+      factId: string;
+      details?: Record<string, string | number | boolean | null>;
+    }
+  | {
+      domain: 'task_date_rule';
+      code: TaskDateRuleResolutionIssue['code'];
       blocking: boolean;
       factId: string;
       details?: Record<string, string | number | boolean | null>;
@@ -211,6 +227,7 @@ function collectSourceFactRefs(params: {
   graph: WeeklyPlanningFactGraphV2;
   movableWorkItems: GenericPlanningWorkItem[];
   reservations: TaskCommitmentReservation[];
+  taskDateEligibilities: ResolvedTaskDateEligibility[];
   windows: AvailabilityWindowFact[];
   selections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
@@ -223,6 +240,10 @@ function collectSourceFactRefs(params: {
   for (const reservation of params.reservations) {
     refs.add(reservation.taskId);
     refs.add(reservation.temporalConstraintFactId);
+  }
+  for (const eligibility of params.taskDateEligibilities) {
+    refs.add(eligibility.taskId);
+    for (const ref of eligibility.sourceFactIds) refs.add(ref);
   }
   for (const window of params.windows) refs.add(window.sourceRef);
   for (const selection of params.selections) refs.add(selection.requestFactId);
@@ -237,7 +258,7 @@ export function compileGenericSchedulerInput(params: {
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = validateHorizon(params);
 
-  const commitments = resolveWeeklyPlanningTaskCommitments({
+  const commitmentResolution = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
     graph: params.graph,
     context: {
       currentDate: params.context.currentDate,
@@ -246,6 +267,18 @@ export function compileGenericSchedulerInput(params: {
       timeZone: params.context.timeZone,
     },
   });
+  const commitments = commitmentResolution.commitments;
+  const taskDateRules = commitmentResolution.dateRules;
+  issues.push(...taskDateRules.issues.map((issue): GenericSchedulerInputIssue => ({
+    domain: 'task_date_rule',
+    code: issue.code,
+    blocking: issue.blocking,
+    factId: issue.taskDateRuleFactId,
+    details: {
+      taskId: issue.taskId,
+      ...(issue.details ?? {}),
+    },
+  })));
   issues.push(...commitments.issues.map((issue): GenericSchedulerInputIssue => ({
     domain: 'commitment',
     code: issue.code,
@@ -257,9 +290,13 @@ export function compileGenericSchedulerInput(params: {
     },
   })));
 
-  const fixedTaskIds = new Set(
-    commitments.reservations.map((reservation) => reservation.taskId),
-  );
+  const fixedTaskIds = new Set([
+    ...commitments.reservations.map((reservation) => reservation.taskId),
+    ...params.graph.temporalConstraints
+      .filter((constraint) =>
+        constraint.kind === 'fixed_interval' && constraint.constraintLevel === 'hard')
+      .map((constraint) => constraint.taskId),
+  ]);
   const workloadTaskById = new Map(
     params.graph.workloads.map((workload) => [workload.id, workload.taskId]),
   );
@@ -282,9 +319,7 @@ export function compileGenericSchedulerInput(params: {
 
   for (const issue of work.issues) {
     const issueTaskId = workloadTaskById.get(issue.workloadFactId);
-    if (issueTaskId && fixedTaskIds.has(issueTaskId)) {
-      continue;
-    }
+    if (issueTaskId && fixedTaskIds.has(issueTaskId)) continue;
     issues.push({
       domain: 'work_item',
       code: issue.code,
@@ -294,7 +329,7 @@ export function compileGenericSchedulerInput(params: {
     });
   }
 
-  const availability = resolveWeeklyPlanningAvailability({
+  const availability = resolveWeeklyPlanningAvailabilityWithFullDayRules({
     graph: params.graph,
     context: params.context,
     externalSources: params.externalSources,
@@ -310,19 +345,11 @@ export function compileGenericSchedulerInput(params: {
   const relations = compileRelations({ graph: params.graph, issues });
   const blocking = issues.some((issue) => issue.blocking);
   if (blocking) {
-    return {
-      status: 'needs_resolution',
-      input: null,
-      issues,
-    };
+    return { status: 'needs_resolution', input: null, issues };
   }
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
-    return {
-      status: 'empty',
-      input: null,
-      issues,
-    };
+    return { status: 'empty', input: null, issues };
   }
 
   const input: GenericSchedulerInput = {
@@ -337,6 +364,7 @@ export function compileGenericSchedulerInput(params: {
     },
     movableWorkItems,
     fixedTaskReservations: commitments.reservations,
+    taskDateEligibilities: taskDateRules.eligibilities,
     availabilityWindows: availability.windows,
     sourceSelections: availability.sourceSelections,
     relations,
@@ -344,15 +372,12 @@ export function compileGenericSchedulerInput(params: {
       graph: params.graph,
       movableWorkItems,
       reservations: commitments.reservations,
+      taskDateEligibilities: taskDateRules.eligibilities,
       windows: availability.windows,
       selections: availability.sourceSelections,
       relations,
     }),
   };
 
-  return {
-    status: 'ready',
-    input,
-    issues,
-  };
+  return { status: 'ready', input, issues };
 }
