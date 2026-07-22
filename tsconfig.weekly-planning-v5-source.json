@@ -1,7 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
   "files": [
-    "src/features/weeklyPlanning/semantic/weeklyPlanningCalendarResolver.ts"
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts"
   ],
   "include": [],
   "exclude": []
