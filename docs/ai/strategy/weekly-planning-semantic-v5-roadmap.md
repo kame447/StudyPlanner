@@ -4,6 +4,8 @@ Status: canonical / active migration queue
 最終更新: 2026-07-22
 
 - Current contract: [weekly-planning-current-contract-v5.md](../weekly-planning-current-contract-v5.md)
+- Schema registry: [weekly-planning-semantic-schema-registry.md](../../architecture/weekly-planning-semantic-schema-registry.md)
+- Stable V5 migration plan: [weekly-planning-semantic-stable-v5-migration-plan.md](weekly-planning-semantic-stable-v5-migration-plan.md)
 - Schema overview: [weekly-planning-semantic-schema-v5.md](../../architecture/weekly-planning-semantic-schema-v5.md)
 - Architecture: [weekly-planning-dialogue-architecture-v5.md](../../architecture/weekly-planning-dialogue-architecture-v5.md)
 - Availability architecture: [weekly-planning-availability-architecture-v5.md](../../architecture/weekly-planning-availability-architecture-v5.md)
@@ -12,7 +14,7 @@ Status: canonical / active migration queue
 - External source retry record: [20260722-weekly-planning-external-source-atomic-retry.md](../tasks/20260722-weekly-planning-external-source-atomic-retry.md)
 - General roadmap: [weekly-planning-roadmap.md](weekly-planning-roadmap.md)
 
-この文書はsemantic v5移行streamのqueue正本である。一般運用、privacy、approval、personalization等のqueueは従来roadmapを参照する。
+この文書はsemantic v5移行streamのqueue正本である。一般運用、privacy、approval、personalization等のqueueは従来roadmapを参照する。schema世代、実行時依存、廃止条件はschema registryを正とし、Stable V5の物理統合手順はStable V5 migration planを正とする。
 
 ## 1. 到達状態
 
@@ -37,10 +39,11 @@ Status: complete
 - architecture v5、schema overview、availability architecture、current contract v5、migration task、roadmapを正本化する。
 - typed commandとexam専用stateが新しい正本ではないことを明記する。
 - API実験と外部予定取得契約の判断を記録する。
+- schema registryでpre-V5、Alpha 1、Alpha 2、Fact Graph V1/V2の責務と廃止条件を固定する。
 
 ### V5-B: stable semantic document
 
-Status: alpha2 foundation complete / consolidation pending
+Status: Alpha 2 foundation complete / Stable V5 direct consolidation pending
 
 - generic task、component、workload、effort、temporal、recurrence、relationを分離する。
 - constraint level、availability declaration、named time period、external source requestを扱う。
@@ -48,30 +51,36 @@ Status: alpha2 foundation complete / consolidation pending
 - weekday rangeをcanonical weekday集合へ展開し、一つのrecurrence factへ保持する。
 - local ID、ref、cycle、category/study整合をclosed validatorで検証する。
 - 日本語日時をAI境界でcanonical tokenへ変換し、後段で再解析しない。
-- alpha1とalpha2をproduction採用前に一つへ統合する。
-- stable alpha2 schemaでreal API evalを再実行する。
+- Alpha 1の基礎fieldとAlpha 2の追加fieldを一つのStable V5 schemaへ直接定義する。
+- Stable V5はAlpha 1 response schemaのclone、Alpha 1 promptのappend、Alpha 1 validatorへのprojectionを使用しない。
+- `WeeklyPlanningSemanticDocumentV5`、`weekly-planning-semantic-v5`、`weekly_planning_semantic_document_v5`は候補名とし、direct実装とmigration contractを固定してから確定する。
+- Stable V5専用schemaでreal API evalを実行する。
 
 ### V5-C: PlanningFactGraph
 
-Status: additive foundation complete / lifecycle pending
+Status: additive foundation complete / Stable V5 graph and lifecycle pending
 
 - 正式fact IDとrevisionをcoreが発行する。
 - SemanticTurnDocumentをatomicにcanonicalizeする。
 - 不完全なfactを保持する。
 - task date rule、recurrence、availability declaration、source request、constraint level、named time periodを正式factへ保持する。
+- Stable canonicalizerはdocumentとgraphをV1へprojectionせず、Fact Graph V5へ直接書き込む。
+- `WeeklyPlanningFactGraphV5`と`weekly-planning-fact-graph-v5`は候補名とし、serializationとmigration contractを固定してから確定する。
 - correction/delete/proposal decisionへ使うstable public refとlifecycleを実装する。
 - old persisted state migration decoderを実装する。
 
 ### V5-D: shadow normalizer
 
-Status: module complete / production shadow connection pending
+Status: Alpha 1 shadow module exists / Stable V5 production shadow connection pending
 
-- 現行production stateへ書き込まないshadow evaluatorを実装する。
+- 現行のshadow evaluatorはAlpha 1 normalizer型に固定され、Alpha 2追加fieldとcanonicalization結果を扱わないため、そのままproductionへ接続しない。
+- Stable V5 normalizerとFact Graph V5を使用し、現行production stateへ書き込まないshadow evaluatorを実装する。
+- semantic schema version、JSON Schema name、fact graph version、normalizer/validator/canonicalizer versionを記録する。
 - request bytes、latency、provider outcome、repair、parse/schema rejectionを記録する。
 - provider failureでparserへfallbackしない。
 - traceへraw response本文を永続化しない。
 - purpose別output token上限をWorkerへ実装する。
-- feature flag付きでproduction turnからshadow callを起動する。
+- Stable V5 real-evalとautomated compatibility testの成功後に、feature flag付きでproduction turnからshadow callを起動する。
 
 ### V5-E: scheduler input foundation
 
@@ -120,18 +129,20 @@ Status: not started
 
 - executorを新semantic pathへ一括切替する。
 - 同一turnで旧commandと新factをmergeしない。
-- persisted state migrationを実装する。
+- persisted state migrationを実装し、versionだけを書き換えない。
+- migrationをidempotentにし、owner mismatch、破損payload、途中失敗をfail closedで扱う。
 - old scheduler adapterでtask date eligibilityを消費する。
+- cutover generationをsessionへ記録し、Stable persisted graphを旧executorへ渡さない。
 - 旧prompt、command、exam state、exam adapter、exam rendererを削除する。
-- full tests、build、roleplay、real-eval、七視点監査を完了する。
+- full tests、build、roleplay、Stable V5 real-eval、七視点監査を完了する。
 
 ## 3. 現在の進捗
 
 ```text
 V5-A documents and decisions       complete
-V5-B stable semantic document      alpha2 foundation complete
-V5-C PlanningFactGraph             additive foundation complete
-V5-D shadow normalizer             module complete / not connected
+V5-B stable semantic document      Alpha 2 foundation complete / direct Stable consolidation pending
+V5-C PlanningFactGraph             V2 additive foundation complete / direct V5 graph pending
+V5-D shadow normalizer             Alpha 1 module only / Stable production shadow not connected
 V5-E scheduler input               date eligibility foundation complete / adapter pending
 V5-F dialogue integration          pure policy complete / renderer pending
 V5-FS external source acquisition  automated verified / disconnected
@@ -141,26 +152,30 @@ V5-G production cutover            not started
 ## 4. 依存順
 
 ```text
-V5-A
+V5-A documents / schema registry
   ↓
-V5-B semantic contract
+V5-B direct Stable V5 schema / prompt / validator
   ↓
-V5-C canonical graph
+V5-C direct Fact Graph V5 / canonicalizer
   ↓
-V5-D shadow module
+automated schema compatibility / resolver / scheduler regression
   ↓
-V5-E scheduler input + V5-FS source acquisition
+Stable V5 real-eval
   ↓
-V5-C lifecycle / migration
+V5-D read-only production shadow
   ↓
-V5-D production shadow evaluation
+V5-C lifecycle / persisted migration decoder / migration dry-run
   ↓
-V5-F renderer integration
+V5-E old scheduler adapter + V5-F renderer integration
   ↓
-V5-G production cutover and deletion
+cutover rehearsal / rollback verification
+  ↓
+V5-G production cutover
+  ↓
+rollback observation / legacy runtime deletion
 ```
 
-V5-Cのadditive fact foundationとV5-E/V5-FSのpure moduleは並行可能だが、production connectionはlifecycle、migration、authorization回帰の完了後に行う。
+V5-E/V5-FSのpure moduleはStable V5 direct実装と並行して保守できる。ただしproduction shadowはStable V5 real-eval後、production cutoverはlifecycle、migration、authorization、approval、storage、rollback回帰の完了後に限る。
 
 ## 5. Merge禁止条件
 
@@ -186,6 +201,11 @@ V5-Cのadditive fact foundationとV5-E/V5-FSのpure moduleは並行可能だが�
 - hard occupied/unavailable windowへwork itemを配置できる。
 - explicit authorization前にpreviewが生成される。
 - request ownership、approval、storage回帰が失敗する。
+- Stable schemaがAlpha 1 schema cloneまたはAlpha 1 validator projectionへ依存する。
+- Stable canonicalizerが旧documentまたは旧graphへprojectionする。
+- Alpha 1固定shadow evaluatorをproductionへ接続する。
+- schema version、fact graph version、migration versionを記録しない。
+- migrationなしでpersisted versionを書き換える。
 - alpha1/alpha2の二重production経路が残る。
 
 ## 6. 検証記録
@@ -195,16 +215,19 @@ V5-Cのadditive fact foundationとV5-E/V5-FSのpure moduleは並行可能だが�
 - 外部予定atomic retry修正はcommit `47b66f8`でsemantic全test、Worker routing、full TypeScript、Vite production buildを同時成功した。
 - specific-date / personalization全体はcommit `090a5eb`でsemantic全test、personalization、routing、full TypeScript、production buildを同時成功した。
 - non-consecutive dates / weekday setsはcommit `d9c6829`でresolver、scheduler integration、normalizer prompt、full TypeScript、production buildを同時成功した。
-- 通常buildへ復元したcommit `2b25994`以降の最新headでもfull TypeScriptとVite production buildが成功している。
-- 実APIで`7/8、10、11`と`水曜と金曜〜日曜`を評価するreal-evalは未実施である。
-- GitHub Actionsはrunner step開始前failureのため、Actions側の運用問題は別途解決が必要。
+- 通常buildへ復元したcommit `2b25994`以降のheadでもfull TypeScriptとVite production buildが成功している。
+- 実APIで`7/8、10、11`と`水曜と金曜〜日曜`を評価するAlpha 2 real-evalは未実施である。
+- GitHub Actionsはrunner step開始前failureのため、Actions側の運用問題は別途解決が必要である。step、log、artifactがないfailureをAI評価失敗と扱わない。
+- schema generation固定testを追加した。実行結果は対応commitのCIまたは作業記録で成功、失敗、未実施を区別する。
 
 ## 7. 記録規則
 
-各gate開始前に、current contract v5、schema overview v5、architecture v5、availability architecture v5、本roadmap、active task MDを確認する。完了後はactive task MDまたは対応する個別task MDへ次を記録する。
+各gate開始前に、current contract v5、schema registry、Stable V5 migration plan、schema overview v5、architecture v5、availability architecture v5、本roadmap、active task MDを確認する。完了後はactive task MDまたは対応する個別task MDへ次を記録する。
 
 - 変更ファイル
 - contract上の判断
 - 発見した注意点
 - 検証結果
+- real-eval、実行基盤、資格情報の失敗分類
+- production接続状態
 - 次gateへの未解決事項
