@@ -1,13 +1,14 @@
-import type { WeeklyPlanningFactGraphV2 } from './weeklyPlanningFactGraphV2';
+import type { AvailabilityDeclarationFact } from './weeklyPlanningFactGraphV2';
 import {
   resolveWeeklyPlanningAvailability,
   type AvailabilityResolutionContext,
   type AvailabilityResolutionResult,
   type ExternalConstraintSourceSnapshot,
+  type WeeklyPlanningAvailabilityGraphView,
 } from './weeklyPlanningAvailabilityResolver';
 
 function isWholeDayUnavailableDeclaration(
-  declaration: WeeklyPlanningFactGraphV2['availabilityDeclarations'][number],
+  declaration: AvailabilityDeclarationFact,
 ): boolean {
   return declaration.kind === 'unavailable'
     && declaration.constraintLevel === 'hard'
@@ -18,12 +19,12 @@ function isWholeDayUnavailableDeclaration(
 }
 
 export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
 }): AvailabilityResolutionResult {
-  const graph: WeeklyPlanningFactGraphV2 = {
-    ...params.graph,
+  const graph: WeeklyPlanningAvailabilityGraphView = {
+    revision: params.graph.revision,
     availabilityDeclarations: params.graph.availabilityDeclarations.map((declaration) =>
       isWholeDayUnavailableDeclaration(declaration)
         ? {
@@ -32,6 +33,7 @@ export function resolveWeeklyPlanningAvailabilityWithFullDayRules(params: {
             endTime: '24:00',
           }
         : declaration),
+    constraintSourceRequests: params.graph.constraintSourceRequests,
   };
   return resolveWeeklyPlanningAvailability({
     graph,
