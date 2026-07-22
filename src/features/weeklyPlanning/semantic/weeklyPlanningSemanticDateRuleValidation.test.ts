@@ -15,7 +15,7 @@ function document(): WeeklyPlanningSemanticDocumentV2 {
     planningWindow: null,
     tasks: [{
       localId: 'task-study',
-      category: 'study',
+      category: 'non_study',
       title: '英単語',
       study: null,
       workloads: [],
