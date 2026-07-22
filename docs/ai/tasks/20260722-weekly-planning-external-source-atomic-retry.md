@@ -1,13 +1,13 @@
 # 外部予定取得をatomic success/failureへ修正する
 
-Status: implemented / production not connected
+Status: implemented / automated verified / production not connected
 Date: 2026-07-22
 Branch: `test/weekly-planning-semantic-schema-eval`
 PR: #77
 
 ## 背景
 
-外部予定取得に`complete | partial | unavailable`を置き、`partial`時に最終previewをblockする設計としていた。
+外部予定取得に`complete | partial | unavailable`を置き、`partial`時に最終previewを保留する設計としていた。
 
 再確認の結果、StudyPlannerの上位契約として途中取得状態を公開する必要はない。paginationや複数requestの途中失敗は取得層内部の失敗であり、途中まで取得した予定をschedulerへ渡すべきではない。
 
@@ -41,6 +41,7 @@ timeout
 network error
 rate limit
 一時的server error
+取得adapterが投げた通信系例外
 ```
 
 自動再試行しない。
@@ -56,16 +57,18 @@ invalid response
 
 ## 変更
 
-- `ExternalConstraintSourceSnapshot`を判別可能なsuccess/failure unionへ変更した。
-- successだけが`events`を持つ。
-- failureは途中取得済みeventを持たない。
+- 外部予定取得結果を判別可能なsuccess/failure unionへ変更した。
+- successだけが予定一覧を持つ。
+- failureは途中取得済み予定を持たない。
 - `constraint_source_partial`をresolver contractから削除した。
 - atomic loaderを追加した。
-- temporary failureの自動再試行を追加した。
+- temporary failureと取得例外の自動再試行を追加した。
 - success空配列を正常な予定なしとして扱うようにした。
+- scheduler入力で予定なしと取得失敗を区別した。
 - 対話文から「予定作成をやり直す」「一部しか取得できない」を削除した。
 - failure時に入力済み内容を保持していることを明示した。
 - 認証、権限、未設定、invalid responseを原因別に案内するようにした。
+- 全体スキーマの説明文書を追加した。
 
 ## 注意点
 
@@ -74,20 +77,36 @@ invalid response
 - 取得APIがpaginationを持つ場合、cursor完走をadapter内部で保証する。
 - owner mismatchや不正eventは取得成功後のauthoritative validationでsource全体を拒否する。
 - 外部予定取得失敗を理由にconversation stateを破棄してはならない。
+- ユーザーが外部予定の利用を明示している間は、取得失敗を黙って無視して最終previewを作ってはならない。
 
-## 検証項目
+## 検証結果
 
-- 成功空配列を予定なしとして受理する。
-- timeout後の再試行で成功する。
-- authentication errorを再試行しない。
-- retry上限後に一つのfailureを返す。
-- failure結果がeventsを持たない。
-- failureをschedulerの空予定として扱わない。
-- failure時の対話が入力済み内容の保持を伝える。
-- security rejectionでも計画作成の再開始を要求しない。
+Cloudflare Pagesを代替実行環境として使用した。
+
+commit `47b66f8`:
+
+- semantic全test: success
+- Worker model routing test: success
+- full TypeScript: success
+- Vite production build: success
+- 成功空配列を予定なしとして受理: success
+- temporary failure後の自動再試行: success
+- 取得例外後の自動再試行: success
+- authentication errorを再試行しない: success
+- retry上限後にfailureだけを返す: success
+- failure結果が予定一覧を持たない: success
+- failureをschedulerの空予定として扱わない: success
+- failure時の対話が入力済み内容の保持を伝える: success
+- security rejectionで計画の再開始を要求しない: success
+
+commit `f44d09c`:
+
+- `package.json`を通常の`tsc --noEmit && vite build`へ復元
+- full TypeScript: success
+- Vite production build: success
 
 ## 次の作業
 
-- semantic全test、routing、full TypeScript、production buildを一括実行する。
 - 各production source adapterの実際の取得契約を確認する。
 - feature flag付きshadow接続時に自動再試行を統合する。
+- production接続後に実データで0件、timeout、認証切れ、pagination完走を検証する。
