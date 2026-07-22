@@ -1,8 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "files": [
-    "src/features/weeklyPlanning/semantic/weeklyPlanningCalendarResolver.ts",
-    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts"
+    "src/features/weeklyPlanning/semantic/weeklyPlanningCalendarResolver.ts"
   ],
   "include": [],
   "exclude": []
