@@ -1,6 +1,6 @@
 # 特定日計画と個人最適化profileを汎用スキーマへ追加する
 
-Status: foundation implemented / production not connected
+Status: foundation implemented / automated verified / production not connected
 Date: 2026-07-22
 Branch: `test/weekly-planning-semantic-schema-eval`
 PR: #77
@@ -125,6 +125,23 @@ subject affinity
 - Worker routing test
 - full TypeScript
 - Vite production build
+
+検証commit:
+
+```text
+8913477  task date resolver
+6514a81  specific-date scheduler integration
+86d1972  personalization profile v2
+ e8c8c5c  date-rule validation
+89e8942  canonicalizer separation
+69bebad  semantic + personalization + routing regression
+3d6d674  task-date dialogue regression
+a4c29be  full TypeScript + production build
+090a5eb  semantic全test + personalization + routing + full TypeScript + production build
+93c2de3  通常build設定復元後のfull TypeScript + production build
+```
+
+一括検証用の一時package設定とtemporary tsconfigは削除・復元済みである。
 
 ## 注意点
 
