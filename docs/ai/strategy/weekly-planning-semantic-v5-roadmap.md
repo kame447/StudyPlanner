@@ -97,13 +97,13 @@ Status: pure scheduler policy complete / renderer connection pending
 
 ### V5-FS: external source acquisition
 
-Status: atomic retry module complete / production adapter connection pending
+Status: atomic retry module complete / automated verified / production adapter connection pending
 
 - 取得結果を`success(events)`または`failure(reason)`へ限定する。
 - `success(events=[])`を正常な予定なしとして扱う。
 - `partial`状態を上位contractから削除する。
 - pagination等の途中結果を破棄する。
-- timeout、network、rate limit、一時的server errorを自動再試行する。
+- timeout、network、rate limit、一時的server error、取得例外を自動再試行する。
 - authentication、permission、source未設定、invalid responseは再試行せず具体的対応へ進む。
 - failureを空予定として扱わない。
 - failure時に計画sessionを終了せず、source依存previewだけを保留する。
@@ -127,7 +127,7 @@ V5-C PlanningFactGraph             additive foundation complete
 V5-D shadow normalizer             module complete / not connected
 V5-E scheduler input               foundation complete / adapter pending
 V5-F dialogue integration          pure policy complete / renderer pending
-V5-FS external source acquisition  atomic retry complete / disconnected
+V5-FS external source acquisition  automated verified / disconnected
 V5-G production cutover            not started
 ```
 
@@ -184,7 +184,8 @@ V5-Cのadditive fact foundationとV5-E/V5-FSのpure moduleは並行可能だが�
 - semantic全test、Worker routing、full TypeScript、Vite production buildをCloudflare Pages上でcommit `c6336f0`にて同時成功。
 - V2 sourceとV2 test fixtureのstrict TypeScriptも分離確認済み。
 - 診断用script、probe、temporary tsconfigは検証後に削除した。
-- 外部予定atomic retry修正の一括検証は実行中であり、成功commitを確定後に追記する。
+- 外部予定atomic retry修正はcommit `47b66f8`でsemantic全test、Worker routing、full TypeScript、Vite production buildを同時成功した。
+- `package.json`を通常buildへ戻したcommit `f44d09c`でもfull TypeScriptとVite production buildが成功した。
 - GitHub Actionsはrunner step開始前failureのため、Actions側の運用問題は別途解決が必要。
 
 ## 7. 記録規則
