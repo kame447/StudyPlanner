@@ -8,6 +8,8 @@ export interface WeeklyPlanningFactGraphValidationResultV5 {
   errors: string[];
 }
 
+type UnknownFact = Record<string, unknown>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -58,12 +60,12 @@ function validateFactArray(
   graphRevision: number,
   allFactIds: Set<string>,
   errors: string[],
-): Array<Record<string, unknown>> {
+): UnknownFact[] {
   if (!Array.isArray(value)) {
     errors.push(`${path}:not-array`);
     return [];
   }
-  const facts: Array<Record<string, unknown>> = [];
+  const facts: UnknownFact[] = [];
   value.forEach((fact, index) => {
     const factPath = `${path}[${index}]`;
     if (!isRecord(fact)) {
@@ -85,29 +87,30 @@ function validateFactArray(
     if (!isRecord(fact.source)) {
       errors.push(`${factPath}.source:not-object`);
     } else {
-      const source = fact.source;
       validateExactKeys(
-        source,
+        fact.source,
         ['conversationId', 'turnId', 'semanticLocalId', 'sourceText', 'origin'],
         `${factPath}.source`,
         errors,
       );
-      if (!isNonEmptyString(source.conversationId)) {
+      if (!isNonEmptyString(fact.source.conversationId)) {
         errors.push(`${factPath}.source.conversationId`);
       }
-      if (!isNonEmptyString(source.turnId)) errors.push(`${factPath}.source.turnId`);
-      if (!isNonEmptyString(source.semanticLocalId)) {
+      if (!isNonEmptyString(fact.source.turnId)) errors.push(`${factPath}.source.turnId`);
+      if (!isNonEmptyString(fact.source.semanticLocalId)) {
         errors.push(`${factPath}.source.semanticLocalId`);
       }
-      if (!isNonEmptyString(source.sourceText)) errors.push(`${factPath}.source.sourceText`);
-      if (source.origin !== 'user') errors.push(`${factPath}.source.origin`);
+      if (!isNonEmptyString(fact.source.sourceText)) {
+        errors.push(`${factPath}.source.sourceText`);
+      }
+      if (fact.source.origin !== 'user') errors.push(`${factPath}.source.origin`);
     }
     facts.push(fact);
   });
   return facts;
 }
 
-function factIdSet(facts: Array<Record<string, unknown>>): Set<string> {
+function idsOf(facts: UnknownFact[]): Set<string> {
   return new Set(
     facts
       .map((fact) => fact.id)
@@ -133,6 +136,79 @@ function validateOptionalReference(
   if (value !== null) validateReference(value, allowedIds, path, errors);
 }
 
+function validateLifecycleEntries(params: {
+  value: unknown;
+  allFactIds: Set<string>;
+  revision: number;
+  errors: string[];
+}): void {
+  if (!Array.isArray(params.value)) {
+    params.errors.push('graph.factLifecycles:not-array');
+    return;
+  }
+  const lifecycleFactIds = new Set<string>();
+  params.value.forEach((entry, index) => {
+    const path = `graph.factLifecycles[${index}]`;
+    if (!isRecord(entry)) {
+      params.errors.push(`${path}:not-object`);
+      return;
+    }
+    validateExactKeys(entry, [
+      'factId',
+      'status',
+      'createdRevision',
+      'terminalRevision',
+      'supersededByFactId',
+    ], path, params.errors);
+    if (!isNonEmptyString(entry.factId) || !params.allFactIds.has(entry.factId)) {
+      params.errors.push(`${path}.factId`);
+    } else if (lifecycleFactIds.has(entry.factId)) {
+      params.errors.push(`${path}.factId:duplicate:${entry.factId}`);
+    } else {
+      lifecycleFactIds.add(entry.factId);
+    }
+    if (!isNonNegativeInteger(entry.createdRevision)
+      || entry.createdRevision === 0
+      || entry.createdRevision > params.revision) {
+      params.errors.push(`${path}.createdRevision`);
+    }
+    if (!['active', 'superseded', 'removed'].includes(String(entry.status))) {
+      params.errors.push(`${path}.status`);
+      return;
+    }
+    if (entry.status === 'active') {
+      if (entry.terminalRevision !== null) params.errors.push(`${path}.terminalRevision`);
+      if (entry.supersededByFactId !== null) {
+        params.errors.push(`${path}.supersededByFactId`);
+      }
+      return;
+    }
+    if (!isNonNegativeInteger(entry.terminalRevision)
+      || entry.terminalRevision === 0
+      || entry.terminalRevision > params.revision
+      || (isNonNegativeInteger(entry.createdRevision)
+        && entry.terminalRevision <= entry.createdRevision)) {
+      params.errors.push(`${path}.terminalRevision`);
+    }
+    if (entry.status === 'removed') {
+      if (entry.supersededByFactId !== null) {
+        params.errors.push(`${path}.supersededByFactId`);
+      }
+      return;
+    }
+    if (!isNonEmptyString(entry.supersededByFactId)
+      || !params.allFactIds.has(entry.supersededByFactId)
+      || entry.supersededByFactId === entry.factId) {
+      params.errors.push(`${path}.supersededByFactId`);
+    }
+  });
+  for (const factId of params.allFactIds) {
+    if (!lifecycleFactIds.has(factId)) {
+      params.errors.push(`graph.factLifecycles:missing:${factId}`);
+    }
+  }
+}
+
 export function validateWeeklyPlanningFactGraphValueV5(
   value: unknown,
 ): WeeklyPlanningFactGraphValidationResultV5 {
@@ -142,6 +218,8 @@ export function validateWeeklyPlanningFactGraphValueV5(
     'version',
     'revision',
     'appliedTurnKeys',
+    'appliedLifecycleOperationKeys',
+    'factLifecycles',
     'planningWindows',
     'tasks',
     'studyContexts',
@@ -158,13 +236,20 @@ export function validateWeeklyPlanningFactGraphValueV5(
     'availabilityDeclarations',
     'constraintSourceRequests',
   ], 'graph', errors);
-  if (value.version !== WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5) {
-    errors.push('graph.version');
-  }
+  if (value.version !== WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5) errors.push('graph.version');
   if (!isNonNegativeInteger(value.revision)) errors.push('graph.revision');
   const revision = isNonNegativeInteger(value.revision) ? value.revision : 0;
+
   const turnKeys = validateStringArray(value.appliedTurnKeys, 'graph.appliedTurnKeys', errors);
   if (new Set(turnKeys).size !== turnKeys.length) errors.push('graph.appliedTurnKeys:duplicate');
+  const lifecycleKeys = validateStringArray(
+    value.appliedLifecycleOperationKeys,
+    'graph.appliedLifecycleOperationKeys',
+    errors,
+  );
+  if (new Set(lifecycleKeys).size !== lifecycleKeys.length) {
+    errors.push('graph.appliedLifecycleOperationKeys:duplicate');
+  }
 
   const allFactIds = new Set<string>();
   const planningWindows = validateFactArray(
@@ -266,18 +351,24 @@ export function validateWeeklyPlanningFactGraphValueV5(
     allFactIds,
     errors,
   );
-
   if (revision === 0 && allFactIds.size > 0) errors.push('graph.revision:zero-with-facts');
-  const taskIds = factIdSet(tasks);
-  const componentIds = factIdSet(components);
-  const workloadIds = factIdSet(workloads);
-  const effortIds = factIdSet(effortEstimates);
-  const temporalIds = factIdSet(temporalConstraints);
-  const taskDateRuleIds = factIdSet(taskDateRules);
-  const recurrenceIds = factIdSet(recurrences);
-  const relationIds = factIdSet(relations);
-  const planningWindowIds = factIdSet(planningWindows);
-  const proposalIds = new Set<string>();
+
+  validateLifecycleEntries({
+    value: value.factLifecycles,
+    allFactIds,
+    revision,
+    errors,
+  });
+
+  const taskIds = idsOf(tasks);
+  const componentIds = idsOf(components);
+  const workloadIds = idsOf(workloads);
+  const effortIds = idsOf(effortEstimates);
+  const temporalIds = idsOf(temporalConstraints);
+  const taskDateRuleIds = idsOf(taskDateRules);
+  const recurrenceIds = idsOf(recurrences);
+  const relationIds = idsOf(relations);
+  const planningWindowIds = idsOf(planningWindows);
   const targetIds = new Set([
     ...taskIds,
     ...componentIds,
@@ -288,8 +379,8 @@ export function validateWeeklyPlanningFactGraphValueV5(
     ...recurrenceIds,
     ...relationIds,
     ...planningWindowIds,
-    ...proposalIds,
   ]);
+  const taskOrComponentIds = new Set([...taskIds, ...componentIds]);
 
   studyContexts.forEach((fact, index) => {
     validateReference(fact.taskId, taskIds, `graph.studyContexts[${index}].taskId`, errors);
@@ -316,7 +407,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     validateReference(fact.taskId, taskIds, `graph.effortEstimates[${index}].taskId`, errors);
     validateReference(
       fact.targetFactId,
-      new Set([...taskIds, ...componentIds]),
+      taskOrComponentIds,
       `graph.effortEstimates[${index}].targetFactId`,
       errors,
     );
@@ -330,7 +421,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     );
     validateReference(
       fact.targetFactId,
-      new Set([...taskIds, ...componentIds]),
+      taskOrComponentIds,
       `graph.temporalConstraints[${index}].targetFactId`,
       errors,
     );
@@ -351,7 +442,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     validateReference(fact.taskId, taskIds, `graph.recurrences[${index}].taskId`, errors);
     validateReference(
       fact.targetFactId,
-      new Set([...taskIds, ...componentIds]),
+      taskOrComponentIds,
       `graph.recurrences[${index}].targetFactId`,
       errors,
     );
@@ -372,24 +463,29 @@ export function validateWeeklyPlanningFactGraphValueV5(
     }
   });
 
-  const validateIntentReference = (
-    fact: Record<string, unknown>,
-    path: string,
-  ): void => {
+  const validateIntentReference = (fact: UnknownFact, path: string): void => {
     if (!isRecord(fact.target)) {
       errors.push(`${path}.target:not-object`);
       return;
     }
-    const target = fact.target;
-    validateExactKeys(target, ['kind', 'publicId', 'factId', 'mention'], `${path}.target`, errors);
-    if (target.factId !== null) validateReference(target.factId, targetIds, `${path}.target.factId`, errors);
-    if (target.publicId !== null && !isNonEmptyString(target.publicId)) {
+    validateExactKeys(
+      fact.target,
+      ['kind', 'publicId', 'factId', 'mention'],
+      `${path}.target`,
+      errors,
+    );
+    if (fact.target.factId !== null) {
+      validateReference(fact.target.factId, targetIds, `${path}.target.factId`, errors);
+    }
+    if (fact.target.publicId !== null && !isNonEmptyString(fact.target.publicId)) {
       errors.push(`${path}.target.publicId`);
     }
-    if (target.mention !== null && !isNonEmptyString(target.mention)) {
+    if (fact.target.mention !== null && !isNonEmptyString(fact.target.mention)) {
       errors.push(`${path}.target.mention`);
     }
-    if (target.factId === null && target.publicId === null && target.mention === null) {
+    if (fact.target.factId === null
+      && fact.target.publicId === null
+      && fact.target.mention === null) {
       errors.push(`${path}.target:empty-reference`);
     }
   };
