@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   diagnose:
@@ -47,7 +49,27 @@ jobs:
         with:
           name: weekly-planning-v5-diagnostics
           path: artifacts
-          if-no-files-found: error
+          if-no-files-found: warn
+      - name: Publish diagnostic tail
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo '<!-- weekly-planning-v5-diagnostic -->'
+            echo '## V5 diagnostic'
+            echo
+            echo '### semantic validator test'
+            echo '```text'
+            tail -n 100 artifacts/semantic-validator-test.log 2>/dev/null || true
+            echo '```'
+            echo
+            echo '### build'
+            echo '```text'
+            tail -n 140 artifacts/build.log 2>/dev/null || true
+            echo '```'
+          } > /tmp/weekly-planning-v5-diagnostic.md
+          gh pr comment 77 --body-file /tmp/weekly-planning-v5-diagnostic.md
       - name: Propagate failure
         if: steps.tests.outcome == 'failure' || steps.build.outcome == 'failure'
         run: exit 1
