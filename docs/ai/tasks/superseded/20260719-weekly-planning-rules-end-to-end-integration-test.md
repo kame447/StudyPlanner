@@ -1,3 +1,5 @@
+Status: superseded by PR #75. Production rules-provider execution is prohibited; this task must not be implemented as written.
+
 # 週間計画 rules 経路の入力から保存完了までの横断結合テスト
 
 ## 目的

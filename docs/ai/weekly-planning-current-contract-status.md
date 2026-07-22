@@ -1,11 +1,12 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-19
-Current implementation baseline: `34c6744fefbc9b7f34bce36b97d47da4a86bf264`
+Updated: 2026-07-22
+Current implementation baseline: `48fe92669b016c2e96463578df86dc79589ddc01`
 
 - Roadmap: [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
-- PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
+- PR #75 completion and seven-audit record: [tasks/closed/20260722-weekly-planning-ai-only-semantic-boundary-and-seven-audit.md](tasks/closed/20260722-weekly-planning-ai-only-semantic-boundary-and-seven-audit.md)
+- PR #5 historical post-merge status: [weekly-planning-pr5-post-merge-status.md](weekly-planning-pr5-post-merge-status.md)
 - Approval stream completion: [tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md](tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md)
 - Approval operational rollout: [tasks/20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
 - Personalization foundation completion: [tasks/closed/20260718-weekly-planning-personalization-foundation.md](tasks/closed/20260718-weekly-planning-personalization-foundation.md)
@@ -16,31 +17,33 @@ Current implementation baseline: `34c6744fefbc9b7f34bce36b97d47da4a86bf264`
 
 ```text
 確定済みproduct decision
-→ current implementation facts
-→ weekly-planning-pr5-post-merge-status.md
+→ current implementation facts / PR #75 completion record
 → roadmap Decision gates / current queue
 → roleplay coverage status
 → active architecture/spec/testの未競合部分
 → active tasks
-→ historical/closed/superseded records
+→ PR #5等のhistorical snapshot
+→ closed/superseded/audit records
 ```
 
 queueはroadmapだけを正とする。spec、architecture、roleplay、過去PR本文に残る旧queue、branch名、head、`queued`、`draft`はcurrent queueとして使用しない。
 
-## 2. AIとdeterministic parser
+## 2. AI意味解釈と決定論的core
 
-Product decisionは2026-07-16に確定し、PR #5系列で`main`へ実装された。
+PR #75は2026-07-22に`main`へmergeされ、自然言語の初期意味解釈責務をAI interpreterへ一本化した。
 
-- legacy fallbackを含まないdeterministic baselineを先に適用する。
-- 明示的な日付、曜日、時刻、数値、単位、現在質問への短答、確定済み情報の保護をdeterministic責務とする。
-- AIは曖昧な言い換え、複数文の関係、訂正対象、task種別、優先関係等のsemantic補完を担当する。
-- deterministic resultとAI candidateは属性単位のclosed validatorと保護規則を通してmergeする。
-- 確定済み属性を異なるAI候補で破壊的に上書きしない。
-- 高信頼でないAI解釈は、影響と質問コストに応じて明示的修復またはやり過ごしへ分類する。
-- previewを止める高影響の不確実性だけを一度に一件確認する。
+- raw user textから意図、対象、訂正、省略、指示関係、優先関係、生活制約等の意味を生成する主体はAI interpreterだけとする。
+- production executorはAI interpreter付きpipelineだけを使用し、rules providerまたはAI設定不備では`WeeklyPlanningSemanticInterpreterError`としてfail closedする。
+- provider例外、不正JSON、schema不一致、空応答、候補全拒否、repair失敗でもrules parserまたはlegacy parserへfallbackしない。
+- AIはtyped command候補を返し、決定論的coreはshape、enum、値域、公開参照、confirmed slot、重複、競合、revision、readiness、feasibilityを検証・適用する。
+- validator、reference resolver、canonicalizer、behavior planner、safety層はraw user textを正規表現、キーワード、数値抽出、近似一致で再解釈しない。
+- 意味出力が空の場合はAI repairを一度だけ行い、修復できなければ以前の意味状態と質問文脈を維持して失敗通知を返す。
+- failed/rejected turnではassistant-suggested mutation、preview、draft candidate、assumption artifact、diagnosticsを生成しない。
+- AIはstate、missing、質問対象、readiness、preview可否、scheduler、approval、saveを直接決定しない。
+- 確定済み属性を異なるAI候補で破壊的に上書きせず、高影響の不確実性だけを一度に一件確認する。
 - accepted stateと直近user turnに根拠がある事項だけを短くacknowledgeする。
 
-旧`single AI interpreter / no merge`記述はcurrent contractではない。
+旧`deterministic baselineを先に適用し、AI candidateと属性単位mergeする`契約、成功AI経路の後段raw-text補完、provider failure時のparser fallbackはhistoricalであり、current contractではない。legacy parserは明示的なtest-support境界にのみ残す。
 
 ## 3. planning rangeと週の始まり
 

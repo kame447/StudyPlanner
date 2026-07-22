@@ -1,11 +1,12 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / active
-最終更新: 2026-07-19
-Current implementation baseline: `34c6744fefbc9b7f34bce36b97d47da4a86bf264`
+最終更新: 2026-07-22
+Current implementation baseline: `48fe92669b016c2e96463578df86dc79589ddc01`
 
 - Current contract status: [weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
-- PR #5 post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
+- PR #75 completion and seven-audit record: [20260722-weekly-planning-ai-only-semantic-boundary-and-seven-audit.md](../tasks/closed/20260722-weekly-planning-ai-only-semantic-boundary-and-seven-audit.md)
+- PR #5 historical post-merge status: [weekly-planning-pr5-post-merge-status.md](../weekly-planning-pr5-post-merge-status.md)
 - Approval stream completion: [20260716-weekly-planning-approval-persistence-and-idempotency.md](../tasks/closed/20260716-weekly-planning-approval-persistence-and-idempotency.md)
 - Approval operational rollout: [20260718-weekly-planning-approval-operational-rollout.md](../tasks/20260718-weekly-planning-approval-operational-rollout.md)
 - Personalization foundation completion: [20260718-weekly-planning-personalization-foundation.md](../tasks/closed/20260718-weekly-planning-personalization-foundation.md)
@@ -36,7 +37,9 @@ PR本文や過去のcompletion recordに記録されたテスト成功は、そ�
 
 次は`main`へ実装済みである。
 
-- deterministic baselineとAI semantic補完の属性単位merge
+- 自然言語の初期意味解釈をAI interpreterへ一本化
+- AI typed commandに対するclosed schema、runtime validation、参照整合性、競合排除
+- provider失敗、空応答、候補全拒否、repair失敗でparserへ戻らないfail-closed境界
 - 明示的修復、やり過ごし、grounded acknowledgement
 - planning range pending contract
 - session-owned preview lifecycle
@@ -154,15 +157,17 @@ contextual bandit、オンライン探索、RNN、Transformer、rewardのオン�
 
 ## 5. Decision gates
 
-### 5.1 AIとdeterministic parser — decided / implemented
+### 5.1 AI意味解釈と決定論的core — decided / implemented by PR #75
 
-- deterministic baselineを先に適用する。
-- AIはsemantic補完を担当する。
-- mergeはclosed attribute contractとruntime validatorを通す。
-- previewを止める高影響の不確実性だけを確認する。
-- accepted stateに根拠がある事項だけをacknowledgeする。
+- raw user textから意図、対象、訂正、省略、関係、生活制約等の意味を生成する主体はAI interpreterだけとする。
+- production経路ではrules parser、legacy parser、test-supportを呼ばず、provider失敗、空応答、不正JSON、schema不一致、候補全拒否、repair失敗でもparserへfallbackしない。
+- AIはtyped command候補を返し、決定論的coreはshape、enum、値域、公開参照、confirmed slot、重複、競合、revision、readiness、feasibilityを検証・適用する。
+- validator、reference resolver、behavior planner、safety層はraw user textを正規表現、キーワード、近似一致で再解釈しない。
+- 意味出力が空の場合はAI repairを一度だけ行い、修復できなければ意味状態と質問文脈を維持したままfail closedする。
+- AIはstate、missing、readiness、preview可否、scheduler、approval、saveを直接決定しない。
+- previewを止める高影響の不確実性だけを一度に一件確認し、accepted stateに根拠がある事項だけをacknowledgeする。
 
-旧`single interpreter / no merge`はcurrent contractではない。
+旧`deterministic baselineを先に適用し、AI候補と属性単位mergeする`契約と、provider failure時にrules parserへ戻る契約はhistoricalであり、current contractではない。
 
 ### 5.2 週の始まり — decided / foundation implemented
 
@@ -197,7 +202,7 @@ PR #48でmodule実装、production接続、自動検証まで完了した。本�
 ## 6. Safety boundaries
 
 - AIはstate、readiness、available minutes、hard constraint、scheduler、save、approve、deleteを決定しない。
-- user textとAI outputはtyped candidateとruntime validatorを通す。
+- raw user textの意味解釈はAI interpreterだけが行い、AI outputはtyped candidateとruntime validatorを通す。
 - previewはexplicit authorizationとreadiness gate通過後だけ生成する。
 - previewはexplicit UI approvalまで保存しない。
 - fixed event、timetable、buffer、hard busy intervalを上書きしない。

@@ -1,3 +1,5 @@
+Status: closed / implementation completed except separately tracked T-8, which was completed in the server-authoritative ID task.
+
 # PR #68 統括監査指摘の修正計画
 
 ## 対象

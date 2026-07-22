@@ -1,10 +1,11 @@
 # weeklyPlanning PR #5 post-merge status
 
-Status: canonical / active post-merge status
-Updated: 2026-07-17
+Status: historical / closed post-merge snapshot
+Updated: 2026-07-22
 Target branch: `main`
 Target merge commit: `55f8e32c68cfd057494fadec0ed208cba267db12`
 Related PR: `#5 feat: 週間計画の対話と履歴を改善`
+Current semantic ownership is defined by `weekly-planning-current-contract-status.md` and the PR #75 completion record. This document must not be used as an active contract or queue.
 Resolved functional bug: Issue `#21` / PR `#26`
 
 ## 1. この文書の役割
