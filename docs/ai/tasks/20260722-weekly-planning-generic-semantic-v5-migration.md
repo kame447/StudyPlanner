@@ -1,6 +1,6 @@
 # 週間計画 汎用意味モデル v5 移行
 
-Status: active / semantic and availability foundation implemented / production not connected
+Status: active / semantic, availability, scheduler-input foundation implemented / production not connected
 開始日: 2026-07-22
 Branch: `test/weekly-planning-semantic-schema-eval`
 PR: #77
@@ -133,9 +133,10 @@ PlanningFactGraph
 - [x] fixed taskをtask ID付きreservationへ変換する。
 - [x] weekday/weekend/relative date処理を共通calendar resolverへ集約する。
 - [x] named time periodは注入済みpolicyがある場合だけ解決する。
-- [ ] work demand、reservation、availability、relation、planning windowを単一scheduler inputへ統合する。
-- [ ] fixed taskを可動work itemから除外する。
-- [ ] hard occupied/unavailable windowをscheduler境界で必須制約として渡す。
+- [x] work demand、reservation、availability、relation、planning windowを単一scheduler inputへ統合する。
+- [x] fixed taskを可動work itemから除外する。
+- [x] hard occupied/unavailable windowをscheduler inputへ保持する。
+- [x] unresolved work/source/availability/commitmentがあればinput全体を生成しない。
 - [ ] 旧schedulerへのtemporary one-way adapterを実装する。
 
 300語や20問を即座に300件/20件へ展開しない。workload fact一件を一つのwork demandとして保持し、分割は後続scheduler policyへ委譲する。
@@ -146,7 +147,7 @@ PlanningFactGraph
 - [x] 一度に一件の高影響質問を選ぶpure policyを追加する。
 - [x] explicit authorization、conversation、revision、見積り解決を確認するpreview gateを追加する。
 - [x] acknowledgementから内部unit codeを除外する。
-- [ ] availability/source/commitmentのblocking issueをdialogue policyへ統合する。
+- [ ] scheduler inputのblocking issueをdialogue policyへ統合する。
 - [ ] unified rendererへ接続する。
 - [ ] exam専用rendererを削除する。
 
@@ -176,6 +177,8 @@ PlanningFactGraph
 14. 「寝る前」と「午前中」を日付表現へ混ぜない。
 15. `custom:`日時を後段parserへ渡さずpreviewをblockする。
 16. fixed taskを可動work itemとして二重配置しない。
+17. fixed taskの可動作業用見積り不足でpreviewを止めない。
+18. orphan/self relationをschedulerへ渡さない。
 
 ## 6. 作業記録
 
@@ -220,8 +223,6 @@ PlanningFactGraph
 
 ### 2026-07-22 / alpha2 availability foundation
 
-変更:
-
 - temporal constraintへconstraint levelを追加した。
 - plan-wide availability declarationを追加した。
 - timetable、existing plans、calendarのsource requestを追加した。
@@ -252,6 +253,24 @@ PlanningFactGraph
 - 23:00〜00:30等を翌日終了として保持する。
 - 一時型bridgeを削除した。
 
+### 2026-07-22 / generic scheduler input
+
+変更:
+
+- generic work demand、fixed task reservation、availability window、external source selection、task relation、planning horizonを一つのimmutable inputへ統合した。
+- blocking issueが一件でもあれば部分的なscheduler inputを返さず`input=null`とする。
+- fixed reservation対象taskの可動work itemを除外する。
+- fixed task由来の可動作業用見積り不足・quantity issueを抑制する。
+- orphan relationとself relationをblocking issueにする。
+- complete external sourceだけをoccupied windowとして含める。
+- inputへgraph revision、owner、timezone、source fact refsを保持する。
+
+判断:
+
+- fixed taskの時間はfixed intervalから確定するため、可動作業用の1問あたり時間を要求しない。
+- availabilityだけ存在しtaskもreservationも無い場合はscheduler inputを`empty`とする。
+- unresolved source、work、commitment、relationを含むinputをschedulerへ渡さない。
+
 ### 2026-07-22 / 検証
 
 GitHub Actions:
@@ -266,8 +285,9 @@ Cloudflare Pagesによる代替検証:
 - V2 test fixture TypeScript: success。
 - full project TypeScript: success。
 - semantic全test＋routing＋full TypeScript＋Vite production buildをcommit `c6336f0`で同時実行し、success。
+- scheduler inputと固定task回帰を含む一括検証をcommit `7041d75`で実行し、success。
 - 診断用script、probe、temporary tsconfigは検証後にすべて削除した。
-- `package.json`はcommit `e440292`で通常の`tsc --noEmit && vite build`へ復元した。
+- `package.json`はcommit `b74fc8a`で通常の`tsc --noEmit && vite build`へ復元した。
 
 ## 7. 現在の注意点
 
@@ -277,5 +297,6 @@ Cloudflare Pagesによる代替検証:
 - Workerのsemantic normalizer出力上限は現状1200 tokenである。
 - correction/decision intentは既存factへ実適用されない。
 - persisted state migrationは未実装である。
-- scheduler input統合と旧scheduler adapterは未実装である。
+- scheduler inputはgeneric contractまでで、旧scheduler adapterは未実装である。
+- scheduler inputのblocking issueを対話質問へ変換するpolicyは未実装である。
 - GitHub Actions runner問題は未解決である。
