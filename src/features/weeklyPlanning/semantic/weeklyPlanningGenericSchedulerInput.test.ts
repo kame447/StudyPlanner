@@ -7,7 +7,10 @@ import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputContext,
 } from './weeklyPlanningGenericSchedulerInput';
-import type { ExternalConstraintSourceSnapshot } from './weeklyPlanningAvailabilityResolver';
+import type {
+  ExternalConstraintEvent,
+  ExternalConstraintSourceSnapshot,
+} from './weeklyPlanningAvailabilityResolver';
 
 function source(semanticLocalId: string, sourceText: string) {
   return {
@@ -132,26 +135,38 @@ function context(
   };
 }
 
-function timetable(
-  status: 'complete' | 'partial' | 'unavailable' = 'complete',
+function classEvent(): ExternalConstraintEvent {
+  return {
+    eventId: 'class-1',
+    ownerId: 'user-1',
+    start: { date: '2026-07-22', time: '10:00' },
+    end: { date: '2026-07-22', time: '11:00' },
+    timeZone: 'Asia/Tokyo',
+    constraintLevel: 'hard',
+  };
+}
+
+function successfulTimetable(
+  events: ExternalConstraintEvent[] = [classEvent()],
 ): ExternalConstraintSourceSnapshot {
   return {
     kind: 'timetable',
+    status: 'success',
     ownerId: 'user-1',
     activeSourceId: 'timetable-1',
-    status,
-    events: status === 'complete'
-      ? [
-          {
-            eventId: 'class-1',
-            ownerId: 'user-1',
-            start: { date: '2026-07-22', time: '10:00' },
-            end: { date: '2026-07-22', time: '11:00' },
-            timeZone: 'Asia/Tokyo',
-            constraintLevel: 'hard',
-          },
-        ]
-      : [],
+    events,
+    attemptCount: 1,
+  };
+}
+
+function failedTimetable(): ExternalConstraintSourceSnapshot {
+  return {
+    kind: 'timetable',
+    status: 'failure',
+    ownerId: 'user-1',
+    activeSourceId: null,
+    failureKind: 'network_error',
+    attemptCount: 3,
   };
 }
 
@@ -193,12 +208,18 @@ describe('generic weekly planning scheduler input', () => {
     ]);
   });
 
-  it('suppresses movable work for a task already fixed by reservation', () => {
+  it('suppresses movable work and its blocking issues for a fixed task', () => {
+    const graph = baseGraph();
+    graph.workloads[1].unitCode = 'problem';
+    graph.workloads[1].unitLabel = '問';
+    graph.workloads[1].amount = 10;
+
     const result = compileGenericSchedulerInput({
-      graph: baseGraph(),
+      graph,
       context: context(),
     });
 
+    expect(result.status).toBe('ready');
     expect(result.input?.movableWorkItems.map((item) => item.taskId))
       .toEqual(['task-study']);
     expect(result.issues).toContainEqual({
@@ -211,9 +232,14 @@ describe('generic weekly planning scheduler input', () => {
         workItemId: expect.stringMatching(/^wpwi_/),
       },
     });
+    expect(result.issues).not.toContainEqual(expect.objectContaining({
+      domain: 'work_item',
+      factId: 'workload-dinner',
+      blocking: true,
+    }));
   });
 
-  it('returns no scheduler input while an external source is partial', () => {
+  it('returns no scheduler input after external source retries fail', () => {
     const graph = baseGraph();
     graph.constraintSourceRequests = [
       {
@@ -230,20 +256,25 @@ describe('generic weekly planning scheduler input', () => {
     const result = compileGenericSchedulerInput({
       graph,
       context: context(),
-      externalSources: [timetable('partial')],
+      externalSources: [failedTimetable()],
     });
 
     expect(result.status).toBe('needs_resolution');
     expect(result.input).toBeNull();
     expect(result.issues).toContainEqual(expect.objectContaining({
       domain: 'availability',
-      code: 'constraint_source_partial',
+      code: 'constraint_source_unavailable',
       blocking: true,
       factId: 'source-request-timetable',
+      details: {
+        kind: 'timetable',
+        failureKind: 'network_error',
+        attemptCount: 3,
+      },
     }));
   });
 
-  it('includes authoritative occupied windows only after complete import', () => {
+  it('includes authoritative occupied windows after a successful import', () => {
     const graph = baseGraph();
     graph.constraintSourceRequests = [
       {
@@ -260,7 +291,7 @@ describe('generic weekly planning scheduler input', () => {
     const result = compileGenericSchedulerInput({
       graph,
       context: context(),
-      externalSources: [timetable()],
+      externalSources: [successfulTimetable()],
     });
 
     expect(result.status).toBe('ready');
@@ -277,6 +308,36 @@ describe('generic weekly planning scheduler input', () => {
         sourceId: 'timetable-1',
       }),
     ]);
+  });
+
+  it('accepts a successfully fetched source with no registered events', () => {
+    const graph = baseGraph();
+    graph.constraintSourceRequests = [
+      {
+        id: 'source-request-timetable',
+        kind: 'timetable',
+        selector: 'active',
+        requestedAction: 'use',
+        resolutionStatus: 'unresolved',
+        source: source('source-request-timetable', '時間割も使って'),
+        createdRevision: 1,
+      },
+    ];
+
+    const result = compileGenericSchedulerInput({
+      graph,
+      context: context(),
+      externalSources: [successfulTimetable([])],
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.input).not.toBeNull();
+    expect(result.input?.sourceSelections).toEqual([
+      expect.objectContaining({ status: 'selected' }),
+    ]);
+    expect(result.input?.availabilityWindows).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceKind: 'timetable' }),
+    ]));
   });
 
   it('blocks orphan and self relations', () => {
@@ -307,7 +368,7 @@ describe('generic weekly planning scheduler input', () => {
     }));
   });
 
-  it('blocks unresolved work estimates instead of passing partial input', () => {
+  it('blocks unresolved movable work estimates instead of passing partial input', () => {
     const graph = baseGraph();
     graph.workloads[0].unitCode = 'problem';
     graph.workloads[0].unitLabel = '問';
