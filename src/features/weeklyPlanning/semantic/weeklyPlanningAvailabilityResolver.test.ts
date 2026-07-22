@@ -8,6 +8,7 @@ import {
 import {
   resolveWeeklyPlanningAvailability,
   type AvailabilityResolutionContext,
+  type ExternalConstraintEvent,
   type ExternalConstraintSourceSnapshot,
 } from './weeklyPlanningAvailabilityResolver';
 
@@ -84,25 +85,41 @@ function context(
   };
 }
 
-function timetable(
-  partial: Partial<ExternalConstraintSourceSnapshot> = {},
+function classEvent(
+  partial: Partial<ExternalConstraintEvent> = {},
+): ExternalConstraintEvent {
+  return {
+    eventId: 'class-1',
+    ownerId: 'user-1',
+    start: { date: '2026-07-21', time: '09:00' },
+    end: { date: '2026-07-21', time: '10:30' },
+    timeZone: 'Asia/Tokyo',
+    constraintLevel: 'hard',
+    ...partial,
+  };
+}
+
+function successfulTimetable(
+  events: ExternalConstraintEvent[] = [classEvent()],
 ): ExternalConstraintSourceSnapshot {
   return {
     kind: 'timetable',
+    status: 'success',
     ownerId: 'user-1',
     activeSourceId: 'timetable-active-1',
-    status: 'complete',
-    events: [
-      {
-        eventId: 'class-1',
-        ownerId: 'user-1',
-        start: { date: '2026-07-21', time: '09:00' },
-        end: { date: '2026-07-21', time: '10:30' },
-        timeZone: 'Asia/Tokyo',
-        constraintLevel: 'hard',
-      },
-    ],
-    ...partial,
+    events,
+    attemptCount: 1,
+  };
+}
+
+function failedTimetable(): ExternalConstraintSourceSnapshot {
+  return {
+    kind: 'timetable',
+    status: 'failure',
+    ownerId: 'user-1',
+    activeSourceId: null,
+    failureKind: 'timeout',
+    attemptCount: 3,
   };
 }
 
@@ -221,11 +238,11 @@ describe('weekly planning availability resolver', () => {
     });
   });
 
-  it('imports a complete owner-bound timetable and selects its active source', () => {
+  it('imports a successful owner-bound timetable and selects its source', () => {
     const result = resolveWeeklyPlanningAvailability({
       graph: graph({ requests: [request()] }),
       context: context(),
-      externalSources: [timetable()],
+      externalSources: [successfulTimetable()],
     });
 
     expect(result.readiness).toBe('ready');
@@ -250,39 +267,54 @@ describe('weekly planning availability resolver', () => {
     ]);
   });
 
-  it('does not treat unavailable or partial external sources as empty schedules', () => {
-    for (const status of ['unavailable', 'partial'] as const) {
-      const result = resolveWeeklyPlanningAvailability({
-        graph: graph({ requests: [request()] }),
-        context: context(),
-        externalSources: [timetable({ status, events: [] })],
-      });
-
-      expect(result.windows).toEqual([]);
-      expect(result.sourceSelections).toEqual([]);
-      expect(result.readiness).toBe('needs_resolution');
-      expect(result.issues[0].code).toBe(
-        status === 'partial'
-          ? 'constraint_source_partial'
-          : 'constraint_source_unavailable',
-      );
-    }
-  });
-
-  it('rejects a whole external source import on owner mismatch', () => {
+  it('treats success with zero events as a valid empty schedule', () => {
     const result = resolveWeeklyPlanningAvailability({
       graph: graph({ requests: [request()] }),
       context: context(),
-      externalSources: [timetable({
-        events: [
-          timetable().events[0],
-          {
-            ...timetable().events[0],
-            eventId: 'class-other-user',
-            ownerId: 'user-2',
-          },
-        ],
-      })],
+      externalSources: [successfulTimetable([])],
+    });
+
+    expect(result.readiness).toBe('ready');
+    expect(result.windows).toEqual([]);
+    expect(result.issues).toEqual([]);
+    expect(result.sourceSelections).toEqual([
+      expect.objectContaining({
+        status: 'selected',
+        sourceId: 'timetable-active-1',
+      }),
+    ]);
+  });
+
+  it('does not treat a failed fetch as an empty schedule', () => {
+    const result = resolveWeeklyPlanningAvailability({
+      graph: graph({ requests: [request()] }),
+      context: context(),
+      externalSources: [failedTimetable()],
+    });
+
+    expect(result.windows).toEqual([]);
+    expect(result.sourceSelections).toEqual([]);
+    expect(result.readiness).toBe('needs_resolution');
+    expect(result.issues).toEqual([{
+      code: 'constraint_source_unavailable',
+      sourceFactId: 'source-request-1',
+      blocking: true,
+      details: {
+        kind: 'timetable',
+        failureKind: 'timeout',
+        attemptCount: 3,
+      },
+    }]);
+  });
+
+  it('rejects the whole external source import on owner mismatch', () => {
+    const result = resolveWeeklyPlanningAvailability({
+      graph: graph({ requests: [request()] }),
+      context: context(),
+      externalSources: [successfulTimetable([
+        classEvent(),
+        classEvent({ eventId: 'class-other-user', ownerId: 'user-2' }),
+      ])],
     });
 
     expect(result.windows).toEqual([]);
@@ -313,11 +345,11 @@ describe('weekly planning availability resolver', () => {
   });
 
   it('deduplicates repeated authoritative events by source identity and interval', () => {
-    const event = timetable().events[0];
+    const event = classEvent();
     const result = resolveWeeklyPlanningAvailability({
       graph: graph({ requests: [request()] }),
       context: context(),
-      externalSources: [timetable({ events: [event, { ...event }] })],
+      externalSources: [successfulTimetable([event, { ...event }])],
     });
 
     expect(result.windows).toHaveLength(1);
