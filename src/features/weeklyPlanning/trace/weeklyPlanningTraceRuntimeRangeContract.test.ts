@@ -1,6 +1,6 @@
+import { runLegacyWeeklyPlanningBehaviorAwarePipelineForTests } from '../pipeline/weeklyPlanningLegacyBehaviorAwareIntakePipeline.testSupport';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  runWeeklyPlanningBehaviorAwarePipeline,
   type BehaviorAwareDialoguePlanner,
 } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import { createInMemoryWeeklyPlanningTraceRepository } from './weeklyPlanningTraceInMemoryRepository';
@@ -42,7 +42,7 @@ describe('weekly planning trace runtime range contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    await runWeeklyPlanningBehaviorAwarePipeline({
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests({
       userText: '予定を作りたい',
       planningStartDate: '2026-07-15',
       planningDayCount: 7,

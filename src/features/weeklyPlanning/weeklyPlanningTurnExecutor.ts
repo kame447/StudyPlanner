@@ -5,10 +5,10 @@ import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDi
 import { createAiWeeklyPlanningInterpreter } from './intake/weeklyPlanningAiInterpreter';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import {
-  runWeeklyPlanningBehaviorAwarePipeline,
   runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
 } from './pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
+import { WeeklyPlanningSemanticInterpreterError } from './pipeline/weeklyPlanningSemanticInterpreterError';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningMessage } from './types';
 
@@ -62,28 +62,30 @@ export async function executeWeeklyPlanningTurn(
     weekStartsOn: input.weekStartsOn,
   };
   const aiConfig = getAiConfig();
-  const shouldUseAiInterpreter =
-    aiConfig.provider !== 'rules' && !getAiConfigValidationMessage(aiConfig);
-  const pipelineOutput = shouldUseAiInterpreter
-    ? await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
-      ...pipelineInput,
-      interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
-    }, {
-      useAiDialoguePlanner: true,
-      userId: input.userId,
-      conversationId: input.conversationId,
-      traceRequestId: input.traceRequestId,
-    })
-    : await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput, {
-      userId: input.userId,
-      conversationId: input.conversationId,
-      traceRequestId: input.traceRequestId,
-    });
+  const aiConfigError = getAiConfigValidationMessage(aiConfig);
+  if (aiConfig.provider === 'rules' || aiConfigError) {
+    throw new WeeklyPlanningSemanticInterpreterError(
+      'interpreter_unavailable',
+      aiConfigError ?? 'rules provider is not permitted for weekly-planning interpretation',
+    );
+  }
+  const pipelineOutput = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
+    ...pipelineInput,
+    interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
+  }, {
+    useAiDialoguePlanner: true,
+    userId: input.userId,
+    conversationId: input.conversationId,
+    traceRequestId: input.traceRequestId,
+  });
   const isExamFlow = Boolean(pipelineOutput.state.examPrepScope);
-  const dialogueRenderer = isExamFlow && shouldUseAiInterpreter
+  const semanticInterpretationSuppressed = pipelineOutput.interpretationOutcome === 'failed'
+    || pipelineOutput.interpretationOutcome === 'rejected';
+  const shouldRenderExamDialogue = isExamFlow && !semanticInterpretationSuppressed;
+  const dialogueRenderer = shouldRenderExamDialogue
     ? createAiWeeklyPlanningDialogueRenderer(aiConfig)
     : undefined;
-  const message = isExamFlow
+  const message = shouldRenderExamDialogue
     ? await renderWeeklyPlanningDialogueMessage({
       state: pipelineOutput.state,
       previousState: input.previousState,
@@ -93,7 +95,7 @@ export async function executeWeeklyPlanningTurn(
       existingPlans: input.plans,
     })
     : pipelineOutput.behaviorDialogue.message;
-  const firstRenderedQuestion = isExamFlow
+  const firstRenderedQuestion = shouldRenderExamDialogue
     ? pipelineOutput.decision.questionPlan?.[0]
     : undefined;
   const state: PlanningIntakeState = firstRenderedQuestion

@@ -35,7 +35,6 @@ function candidate(value: SetStudyGoalCommand): InterpretedCommandCandidate {
     command: value,
     origin: 'ai_interpreter',
     needsConfirmation: false,
-    sourceUserText: value.sourceText,
   };
 }
 

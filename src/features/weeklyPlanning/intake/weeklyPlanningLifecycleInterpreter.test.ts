@@ -176,7 +176,7 @@ describe('weeklyPlanningLifecycleInterpreter', () => {
     });
   });
 
-  it('drops a replacement command whose numeric value is not grounded in the user turn', async () => {
+  it('does not re-parse raw text to second-guess a structurally valid AI correction', async () => {
     const interpreter = createLifecycleAwareWeeklyPlanningInterpreter({
       interpreter: {
         async interpretUserTurn() {
@@ -206,6 +206,11 @@ describe('weeklyPlanningLifecycleInterpreter', () => {
 
     const result = await interpreter.interpretUserTurn(params('英語の勉強は60分にして'));
 
-    expect(result.correctionEnvelopes).toBeUndefined();
+    expect(result.correctionEnvelopes?.[0]).toMatchObject({
+      replacementCommand: {
+        type: 'set_study_goal',
+        goal: { amount: 120, unit: 'minutes' },
+      },
+    });
   });
 });

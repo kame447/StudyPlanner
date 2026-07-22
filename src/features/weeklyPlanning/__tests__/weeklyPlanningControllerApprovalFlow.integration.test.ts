@@ -14,23 +14,7 @@ import {
 } from '../weeklyPlanningTurnController';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 
-vi.mock('../../../lib/aiConfig', async () => {
-  const actual = await vi.importActual<typeof import('../../../lib/aiConfig')>(
-    '../../../lib/aiConfig',
-  );
-  return {
-    ...actual,
-    getAiConfig: () => ({
-      provider: 'rules' as const,
-      baseUrl: '',
-      model: '',
-      apiKey: '',
-    }),
-    getAiConfigValidationMessage: () => undefined,
-  };
-});
-
-import { executeWeeklyPlanningTurn } from '../weeklyPlanningTurnExecutor';
+import { executeLegacyWeeklyPlanningTurnForTests } from '../weeklyPlanningLegacyTurnExecutor.testSupport';
 
 const USER_ID = 'controller-approval-integration-user';
 const SELECTED_DATE = '2026-07-19';
@@ -88,7 +72,7 @@ describe('weekly planning controller input-to-approval integration', () => {
         dispatch,
         now: () => `2026-07-19T03:${String(timestampSequence++).padStart(2, '0')}:00.000Z`,
         execute: async ({ snapshot, pending, userText: currentUserText }) =>
-          executeWeeklyPlanningTurn({
+          executeLegacyWeeklyPlanningTurnForTests({
             previousState: snapshot.intakeState,
             messages: snapshot.messages,
             userText: currentUserText,

@@ -3,7 +3,10 @@ import {
   QUESTION_SLOT_DEFINITION_BY_MISSING,
   statusForMissing,
 } from './weeklyPlanningQuestionSlots';
-import { uniqueList } from './weeklyPlanningTextParsing';
+
+function uniqueList<T>(values: readonly T[]): T[] {
+  return Array.from(new Set(values));
+}
 
 export function addMissing(
   current: PlanningIntakeMissing[],

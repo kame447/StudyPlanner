@@ -13,9 +13,9 @@ import {
   WP_RP_001_WEEKEND_EXAM_TURNS,
 } from '../testFixtures/weeklyPlanningRoleplayCases';
 import {
-  runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
 } from './weeklyPlanningIntakePipeline';
+import { runLegacyWeeklyPlanningIntakePipelineForTests } from './weeklyPlanningLegacyIntakePipeline.testSupport';
 
 const defaultPipelineInput = {
   planningStartDate: SELECTED_DATE_FOR_WEEKEND_ROLEPLAY,
@@ -117,7 +117,7 @@ function draftReadyState(): PlanningIntakeState {
 
 
 function runTurn(previousState: PlanningIntakeState | undefined, userText: string) {
-  return runWeeklyPlanningIntakePipeline({
+  return runLegacyWeeklyPlanningIntakePipelineForTests({
     ...defaultPipelineInput,
     previousState,
     userText,
@@ -231,15 +231,16 @@ function assumablePreviewState(): PlanningIntakeState {
 
 describe('weekly planning intake pipeline', () => {
 
-  it('keeps the async interpreter entrypoint identical when no interpreter is injected', async () => {
+  it('fails closed when no AI interpreter is injected', async () => {
     const input = {
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
     };
 
-    await expect(runWeeklyPlanningIntakePipelineWithInterpreter(input)).resolves.toEqual(
-      runWeeklyPlanningIntakePipeline(input),
-    );
+    await expect(runWeeklyPlanningIntakePipelineWithInterpreter(input)).rejects.toMatchObject({
+      name: 'WeeklyPlanningSemanticInterpreterError',
+      code: 'interpreter_unavailable',
+    });
   });
 
 
@@ -313,16 +314,17 @@ describe('weekly planning intake pipeline', () => {
     expect(output.decision.messageKey).toBe('open_weekly_planning_dialogue');
   });
 
-  it('keeps an empty AI candidate result on the same open-dialogue taxonomy without rules fallback', async () => {
+  it('treats an empty AI candidate result as an invalid response without rules fallback', async () => {
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       userText: 'こんにちは',
       interpreter: fakeInterpreter([]),
     });
 
-    expect(output.interpreterDiagnostics?.accepted).toEqual([]);
-    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
-    expect(output.decision.kind).toBe('open_planning_dialogue');
+    expect(output.interpreterDiagnostics).toBeUndefined();
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
+    expect(output.interpreterFailure?.category).toBe('invalid_response');
     expect(output.state.intent).toBe('unknown');
   });
 
@@ -383,7 +385,7 @@ describe('weekly planning intake pipeline', () => {
     });
   });
 
-  it('adds a legacy task after a command task when the provider throws', async () => {
+  it('preserves previously accepted state when the provider throws', async () => {
     const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       userText: '数学のテスト勉強したい',
@@ -409,200 +411,31 @@ describe('weekly planning intake pipeline', () => {
       },
     });
 
-    expect(second.state.tasks).toEqual([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-      expect.objectContaining({ title: 'あと英語', source: 'legacy_fallback', amount: 120 }),
-    ]);
+    expect(second.state.tasks).toEqual(first.state.tasks);
+    expect(second.state.constraints).toEqual(first.state.constraints);
+    expect(second.interpretationSource).toBe('ai_interpreter');
+    expect(second.interpretationOutcome).toBe('failed');
+    expect(second.stateMutationSource).toBe('none');
+    expect(second.interpreterFailure?.category).toBe('provider_error');
   });
 
-  it('does not turn consumed sleep and meal fragments into legacy tasks after provider failure', async () => {
-    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
-      ...defaultPipelineInput,
-      userText: '数学のテスト勉強したい',
-      interpreter: fakeInterpreter([{
-        command: {
-          type: 'set_study_goal',
-          goal: { title: '数学', subject: '数学' },
-          sourceText: '数学のテスト勉強したい',
-          confidence: 'high',
-        },
-        origin: 'ai_interpreter',
-        needsConfirmation: false,
-      }]),
-    });
-    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
-      ...defaultPipelineInput,
-      previousState: first.state,
-      userText: '睡眠は23時から6時、食事は各30分です',
-      interpreter: {
-        async interpretUserTurn() {
-          throw new Error('provider unavailable');
-        },
-      },
-    });
+  it.each([
+    '睡眠は23時から6時、食事は各30分です',
+    '食事は各30分で、英語を2時間やりたい',
+    'お風呂は30分です',
+    '食事の後に英語を30分やりたい',
+    '食事は各30分で英語を2時間やりたい',
+    'お風呂は30分で英語を2時間やりたい',
+    '睡眠は23時から6時で英語を30分やりたい',
+  ])('does not parse raw text after provider failure: %s', async (userText) => {
+    const output = await runProviderFailureWithCommandTask(userText);
 
-    expect(second.state.tasks).toEqual([
+    expect(output.state.tasks).toEqual([
       expect.objectContaining({ title: '数学', source: 'command' }),
     ]);
-    expect(second.state.constraints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'sleep', start: '23:00', end: '06:00' }),
-      expect.objectContaining({ kind: 'meal', durationMinutes: 30 }),
-    ]));
-  });
-
-  it('keeps a valid legacy task in a mixed constraint turn after provider failure', async () => {
-    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
-      ...defaultPipelineInput,
-      userText: '数学のテスト勉強したい',
-      interpreter: fakeInterpreter([{
-        command: {
-          type: 'set_study_goal',
-          goal: { title: '数学', subject: '数学' },
-          sourceText: '数学のテスト勉強したい',
-          confidence: 'high',
-        },
-        origin: 'ai_interpreter',
-        needsConfirmation: false,
-      }]),
-    });
-    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
-      ...defaultPipelineInput,
-      previousState: first.state,
-      userText: '食事は各30分で、英語を2時間やりたい',
-      interpreter: {
-        async interpretUserTurn() {
-          throw new Error('provider unavailable');
-        },
-      },
-    });
-
-    expect(second.state.tasks).toHaveLength(2);
-    expect(second.state.tasks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-      expect.objectContaining({ title: '英語', source: 'legacy_fallback', amount: 120 }),
-    ]));
-    expect(second.state.constraints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'meal', durationMinutes: 30 }),
-    ]));
-  });
-
-  it('does not turn a bath-only constraint into a legacy task after provider failure', async () => {
-    const first = await runWeeklyPlanningIntakePipelineWithInterpreter({
-      ...defaultPipelineInput,
-      userText: '数学のテスト勉強したい',
-      interpreter: fakeInterpreter([{
-        command: {
-          type: 'set_study_goal',
-          goal: { title: '数学', subject: '数学' },
-          sourceText: '数学のテスト勉強したい',
-          confidence: 'high',
-        },
-        origin: 'ai_interpreter',
-        needsConfirmation: false,
-      }]),
-    });
-    const second = await runWeeklyPlanningIntakePipelineWithInterpreter({
-      ...defaultPipelineInput,
-      previousState: first.state,
-      userText: 'お風呂は30分です',
-      interpreter: {
-        async interpretUserTurn() {
-          throw new Error('provider unavailable');
-        },
-      },
-    });
-
-    expect(second.state.tasks).toEqual([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-    ]);
-    expect(second.state.constraints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'bath', durationMinutes: 30 }),
-    ]));
-  });
-
-  it('keeps the post-meal English task without inferring a meal duration', async () => {
-    const second = await runProviderFailureWithCommandTask(
-      '食事の後に英語を30分やりたい',
-    );
-
-    expect(second.state.tasks).toHaveLength(2);
-    expect(second.state.tasks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-      expect.objectContaining({
-        source: 'legacy_fallback',
-        amount: 30,
-        rawText: expect.stringContaining('英語'),
-      }),
-    ]));
-    expect(second.state.constraints).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'meal' }),
-    ]));
-  });
-
-  it('consumes only the explicit meal duration in a no-comma mixed turn', async () => {
-    const second = await runProviderFailureWithCommandTask(
-      '食事は各30分で英語を2時間やりたい',
-    );
-
-    expect(second.state.tasks).toHaveLength(2);
-    expect(second.state.tasks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-      expect.objectContaining({
-        source: 'legacy_fallback',
-        amount: 120,
-        rawText: expect.stringContaining('英語'),
-      }),
-    ]));
-    expect(second.state.tasks).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ rawText: expect.stringContaining('食事') }),
-    ]));
-    expect(second.state.constraints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'meal', durationMinutes: 30 }),
-    ]));
-  });
-
-  it('consumes only the explicit bath duration in a no-comma mixed turn', async () => {
-    const second = await runProviderFailureWithCommandTask(
-      'お風呂は30分で英語を2時間やりたい',
-    );
-
-    expect(second.state.tasks).toHaveLength(2);
-    expect(second.state.tasks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-      expect.objectContaining({
-        source: 'legacy_fallback',
-        amount: 120,
-        rawText: expect.stringContaining('英語'),
-      }),
-    ]));
-    expect(second.state.tasks).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ rawText: expect.stringContaining('風呂') }),
-    ]));
-    expect(second.state.constraints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'bath', durationMinutes: 30 }),
-    ]));
-  });
-
-  it('consumes only the explicit sleep range in a no-comma mixed turn', async () => {
-    const second = await runProviderFailureWithCommandTask(
-      '睡眠は23時から6時で英語を30分やりたい',
-    );
-
-    expect(second.state.tasks).toHaveLength(2);
-    expect(second.state.tasks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: '数学', source: 'command' }),
-      expect.objectContaining({
-        source: 'legacy_fallback',
-        amount: 30,
-        rawText: expect.stringContaining('英語'),
-      }),
-    ]));
-    expect(second.state.tasks).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ rawText: expect.stringContaining('睡眠') }),
-    ]));
-    expect(second.state.constraints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'sleep', start: '23:00', end: '06:00' }),
-    ]));
+    expect(output.state.constraints).toEqual([]);
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
   });
 
   it('recovers a goal from a later provider turn without re-asking tasks_or_goals', async () => {
@@ -953,7 +786,7 @@ describe('weekly planning intake pipeline', () => {
 
 
   it('passes existing plans to the new intake dry-run generator as hard busy intervals', () => {
-    const output = runWeeklyPlanningIntakePipeline({
+    const output = runLegacyWeeklyPlanningIntakePipelineForTests({
       previousState: draftReadyState(),
       userText: 'この条件で作成',
       planningStartDate: '2026-06-30',
@@ -1052,7 +885,7 @@ describe('weekly planning intake pipeline', () => {
       throw new Error('expected final state');
     }
 
-    const output = runWeeklyPlanningIntakePipeline({
+    const output = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: finalState,
       userText: 'この条件で進めて',
@@ -1281,7 +1114,7 @@ describe('weekly planning intake pipeline', () => {
       throw new Error('expected final state');
     }
 
-    const output = runWeeklyPlanningIntakePipeline({
+    const output = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: finalState,
       userText: '7\u67083\u65e5\u306f\u4f7f\u308f\u306a\u3044\u3067',
@@ -1448,7 +1281,11 @@ describe('constraint source capability (use_constraint_source)', () => {
     // 空ソースを鵜呑みにしない: fixed_events は残り、確認メモが積まれる。
     expect(output.state.missing).toContain('fixed_events');
     expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
-    expect(output.state.assumptions.some((note) => note.includes('見つかりませんでした'))).toBe(true);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([
+      expect.objectContaining({ reason: 'constraint-source-reference-unresolved' }),
+    ]);
+    expect(output.interpretationOutcome).toBe('applied');
+    expect(output.stateMutationSource).toBe('none');
   });
 
   it('satisfies fixed_events via the existing add_fixed_event capability for a time-explicit part-time job', async () => {
@@ -1487,7 +1324,6 @@ describe('constraint source capability (use_constraint_source)', () => {
 
   it('clarifies ambiguous constraint source references before hard applying nano-style candidates', async () => {
     const previousState = stateWithFixedEventsMissing();
-    const missingBefore = [...previousState.missing];
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       previousState,
@@ -1502,19 +1338,13 @@ describe('constraint source capability (use_constraint_source)', () => {
       ]),
     });
 
-    expect(output.state.missing).toEqual(missingBefore);
-    expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
-    expect(output.decision.kind).toBe('answer_clarification');
-    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([
-      expect.objectContaining({
-        type: 'request_clarification',
-        target: 'unresolved_slot',
-        ref: 'constraint_source',
-      }),
+    expect(output.state.missing).not.toContain('fixed_events');
+    expect(output.state.constraintSourcesInUse ?? []).toEqual([
+      { kind: 'existing_plans', selector: 'active' },
     ]);
-    expect(output.interpreterDiagnostics?.rejected).toEqual([
-      expect.objectContaining({ reason: 'constraint-source-reference-multiple' }),
-    ]);
+    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([]);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
+    expect(output.interpretationOutcome).toBe('applied');
   });
 
   it('clarifies ambiguous calendar wording when multiple constraint sources are active', async () => {
@@ -1532,23 +1362,23 @@ describe('constraint source capability (use_constraint_source)', () => {
       ]),
     });
 
-    expect(output.state.constraintSourcesInUse ?? []).toEqual([]);
-    expect(output.decision.kind).toBe('answer_clarification');
-    expect(output.interpreterDiagnostics?.clarificationRequests[0]).toEqual(
-      expect.objectContaining({ target: 'unresolved_slot', ref: 'constraint_source' }),
-    );
+    expect(output.state.constraintSourcesInUse ?? []).toEqual([
+      { kind: 'existing_plans', selector: 'active' },
+    ]);
+    expect(output.interpreterDiagnostics?.clarificationRequests).toEqual([]);
+    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
   });
 });
 
 describe('planning range reseed and confidence guards', () => {
   it('does not reseed answered scope when a pending range becomes explicit', () => {
-    const firstOutput = runWeeklyPlanningIntakePipeline({
+    const firstOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい。院試の過去問を7年分、5分野やりたい。',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const secondOutput = runWeeklyPlanningIntakePipeline({
+    const secondOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: firstOutput.state,
       userText: '水曜日から',
@@ -1569,20 +1399,20 @@ describe('planning range reseed and confidence guards', () => {
   });
 
   it('does not reseed fixed events collected while the planning range is pending', () => {
-    const firstOutput = runWeeklyPlanningIntakePipeline({
+    const firstOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const fixedEventOutput = runWeeklyPlanningIntakePipeline({
+    const fixedEventOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: firstOutput.state,
       userText: '日曜の13時から歯医者',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const rangeOutput = runWeeklyPlanningIntakePipeline({
+    const rangeOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: fixedEventOutput.state,
       userText: '水曜日から',
@@ -1597,20 +1427,20 @@ describe('planning range reseed and confidence guards', () => {
   });
 
   it('keeps an explicit range when a later turn only yields an inferred range', () => {
-    const pendingOutput = runWeeklyPlanningIntakePipeline({
+    const pendingOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const explicitOutput = runWeeklyPlanningIntakePipeline({
+    const explicitOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: pendingOutput.state,
       userText: '水曜日から',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const laterOutput = runWeeklyPlanningIntakePipeline({
+    const laterOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: { ...explicitOutput.state, missing: [] },
       userText: 'この一週間で数学を重点的にやりたい',
@@ -1627,20 +1457,20 @@ describe('planning range reseed and confidence guards', () => {
   });
 
   it('allows an explicit range to replace an existing explicit range', () => {
-    const pendingOutput = runWeeklyPlanningIntakePipeline({
+    const pendingOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const explicitOutput = runWeeklyPlanningIntakePipeline({
+    const explicitOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: pendingOutput.state,
       userText: '水曜日から',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const replacedOutput = runWeeklyPlanningIntakePipeline({
+    const replacedOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: explicitOutput.state,
       userText: '7月20日から一週間で',
@@ -1655,13 +1485,13 @@ describe('planning range reseed and confidence guards', () => {
   });
 
   it('keeps a future scope pending when one-week wording is repeated without a start day', () => {
-    const firstOutput = runWeeklyPlanningIntakePipeline({
+    const firstOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい',
       planningStartDate: '2026-07-10',
       currentDateTime: '2026-07-10T15:30:00',
     });
-    const secondOutput = runWeeklyPlanningIntakePipeline({
+    const secondOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: firstOutput.state,
       userText: 'この一週間で考えたい',
@@ -1758,7 +1588,7 @@ describe('clarification semantic intent (request_clarification)', () => {
   });
 
   it('keeps future weekly scope pending until a start day is clarified', () => {
-    const firstOutput = runWeeklyPlanningIntakePipeline({
+    const firstOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい',
       planningStartDate: '2026-07-10',
@@ -1782,7 +1612,7 @@ describe('clarification semantic intent (request_clarification)', () => {
       messageKey: 'ask_planning_start_date',
     });
 
-    const secondOutput = runWeeklyPlanningIntakePipeline({
+    const secondOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: firstOutput.state,
       userText: '水曜日から',
@@ -1799,7 +1629,7 @@ describe('clarification semantic intent (request_clarification)', () => {
   });
 
   it('uses resolved planning range as the scheduler window and first-day lower bound', () => {
-    const output = runWeeklyPlanningIntakePipeline({
+    const output = runLegacyWeeklyPlanningIntakePipelineForTests({
       previousState: {
         ...draftReadyState(),
         range: {
@@ -1947,7 +1777,7 @@ describe('confirmed slots and AI planning range integration', () => {
   }
 
   function pendingScopeState(): PlanningIntakeState {
-    return runWeeklyPlanningIntakePipeline({
+    return runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: '来週の計画を立てたい。院試の過去問を7年分、5分野やりたい。',
       planningStartDate: '2026-07-10',
@@ -2144,7 +1974,7 @@ describe('confirmed slots and AI planning range integration', () => {
       expect.objectContaining({ reason: 'confirmed-slot-overwrite' }),
     ]));
 
-    const resolvedOutput = runWeeklyPlanningIntakePipeline({
+    const resolvedOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: sourceOutput.state,
       userText: '水曜日から',
@@ -2155,7 +1985,7 @@ describe('confirmed slots and AI planning range integration', () => {
   });
 
   it('still rejects AI fixed events after a hard fixed event was recorded', async () => {
-    const fixedOutput = runWeeklyPlanningIntakePipeline({
+    const fixedOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: pendingScopeState(),
       userText: '日曜の13時から歯医者',
@@ -2177,11 +2007,11 @@ describe('confirmed slots and AI planning range integration', () => {
   });
 
   it('treats a no-fixed-events declaration as confirmed on later turns', async () => {
-    const rangeOutput = runWeeklyPlanningIntakePipeline({
+    const rangeOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
     });
-    const noneOutput = runWeeklyPlanningIntakePipeline({
+    const noneOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: rangeOutput.state,
       userText: '固定の予定はありません',
@@ -2551,12 +2381,12 @@ describe('Stage 2 bounded conversation grounding', () => {
     ]);
   });
   it('ignores recent turns in rules mode', () => {
-    const withHistory = runWeeklyPlanningIntakePipeline({
+    const withHistory = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
       recentTurns: [{ role: 'assistant', content: 'history is not parsed in rules mode' }],
     });
-    const withoutHistory = runWeeklyPlanningIntakePipeline({
+    const withoutHistory = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
     });
@@ -2564,13 +2394,12 @@ describe('Stage 2 bounded conversation grounding', () => {
     expect(withHistory).toEqual(withoutHistory);
   });
 
-  it('ignores recent turns when an interpreter exception switches the whole turn to rules fallback', async () => {
+  it('does not parse recent turns or current text after an interpreter exception', async () => {
     const input = {
       ...defaultPipelineInput,
       userText: WP_RP_001_WEEKEND_EXAM_TURNS.rangeOnly,
       recentTurns: [{ role: 'assistant' as const, content: 'history remains grounding only' }],
     };
-    const expected = runWeeklyPlanningIntakePipeline(input);
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...input,
       interpreter: {
@@ -2580,13 +2409,16 @@ describe('Stage 2 bounded conversation grounding', () => {
       },
     });
 
-    expect(output).toEqual({
-      ...expected,
-      interpreterFailure: {
-        category: 'provider_error',
-        name: 'Error',
-        message: 'provider unavailable',
-      },
+    expect(output.interpretationSource).toBe('ai_interpreter');
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
+    expect(output.state.intent).toBe('unknown');
+    expect(output.state.range).toBeUndefined();
+    expect(output.state.tasks).toEqual([]);
+    expect(output.interpreterFailure).toEqual({
+      category: 'provider_error',
+      name: 'Error',
+      message: 'provider unavailable',
     });
   });
 });
@@ -2604,7 +2436,7 @@ describe('preview policy Stage 2', () => {
       ),
       sourceTurns: ['来週、院試の過去問を数学を含む5分野で7年分進めたい。数学を多めにやりたい'],
     };
-    const firstOutput = runWeeklyPlanningIntakePipeline({
+    const firstOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: initialState,
       userText: '',
@@ -2621,7 +2453,7 @@ describe('preview policy Stage 2', () => {
     expect(firstOutput.decision.questionPlan?.length ?? 0).toBeLessThanOrEqual(1);
     expect(firstOutput.decision.questionPlan?.[0]?.targetSlot).toBe('unit_rate');
 
-    const secondOutput = runWeeklyPlanningIntakePipeline({
+    const secondOutput = runLegacyWeeklyPlanningIntakePipelineForTests({
       ...defaultPipelineInput,
       previousState: firstOutput.state,
       userText: '1年分は3時間くらい',

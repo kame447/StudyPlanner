@@ -5,17 +5,9 @@ import type {
   StudyTaskProfileScore,
 } from '../weeklyPlanningTypes';
 import { normalizeWeeklyPlanningText } from '../parsing/weeklyPlanningText';
+import { DEFAULT_STUDY_TASK_PROFILE } from './studyTaskProfileDefaults';
 
-export const DEFAULT_STUDY_TASK_PROFILE: StudyTaskProfile = {
-  cognitiveLoad: 3,
-  contextRetentionCost: 3,
-  chunkability: 3,
-  feedbackGranularity: 3,
-  fatigueRisk: 3,
-  switchingCost: 3,
-  repetitionBenefit: 3,
-  deadlinePressure: 3,
-};
+export { DEFAULT_STUDY_TASK_PROFILE } from './studyTaskProfileDefaults';
 
 export function clampProfileScore(score: number): StudyTaskProfileScore {
   return Math.min(5, Math.max(1, Math.round(score))) as StudyTaskProfileScore;

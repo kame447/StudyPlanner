@@ -1,6 +1,6 @@
+import { applyWeeklyPlanningUserTurn } from './weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import { normalizeSetPendingPlanningRangeCommand } from './weeklyPlanningCommandAdapter';
-import { applyWeeklyPlanningUserTurn } from './weeklyPlanningIntakeReducer';
 import {
   canonicalizeOptionalCommandNulls,
   isValidWeeklyPlanningCommand,

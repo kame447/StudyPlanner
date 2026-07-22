@@ -57,13 +57,12 @@ function acceptedState(): PlanningIntakeState {
 
 function candidate(
   command: ParsedWeeklyPlanningCommand,
-  sourceUserText: string,
+  _sourceUserText?: string,
 ): InterpretedCommandCandidate {
   return {
     command,
     origin: 'ai_interpreter',
     needsConfirmation: false,
-    sourceUserText,
   };
 }
 
@@ -78,8 +77,14 @@ function interpreter(
 }
 
 describe('behavior semantic ownership', () => {
-  it('does not derive relative constraints, preferences, or deadlines from raw text after successful empty AI', async () => {
-    const previousState = acceptedState();
+  it('fails closed on empty AI output without deriving facts or regenerating a preview', async () => {
+    const previousState = {
+      ...acceptedState(),
+      status: 'draft_ready' as const,
+      shouldCreateDraft: true,
+      draftGenerationIntent: 'user_authorized' as const,
+      draftGenerationAuthorizedAtRevision: 1,
+    };
     const output = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
       ...pipelineInput,
       previousState,
@@ -87,12 +92,16 @@ describe('behavior semantic ownership', () => {
       interpreter: interpreter(() => []),
     });
 
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
     expect(output.state.constraints).toEqual(previousState.constraints);
     expect(output.state.studyTimePreferences).toBeUndefined();
     expect(output.state.tasks[0]).not.toHaveProperty('deadlineDeclared');
-    expect(output.behavior.snapshot.lifeActivityAnchors).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'sleep' }),
-    ]));
+    expect(output.state.draftGenerationIntent).toBe('user_authorized');
+    expect(output.behavior.actions).toEqual([]);
+    expect(output.behavior.draftRun).toBeNull();
+    expect(output.draftCandidates).toBeNull();
+    expect(output.behaviorDialogue.source).toBe('system');
   });
 
   it('resolves an AI relative-constraint command against one accepted public anchor', async () => {

@@ -14,6 +14,7 @@ import {
   isValidPlanningDurationDays,
 } from './weeklyPlanningDateValidation';
 import type { ExamPrepScope, PendingPlanningRangeClarification, StudyScopeUnit, WeeklyPlanningIntakeContext } from './weeklyPlanningIntakeTypes';
+import { nextWeekScope } from './weeklyPlanningRangeScope';
 import {
   normalizeIntakeText,
   parseSmallInteger,
@@ -589,20 +590,7 @@ function parseExplicitDate(
   return resolveAbsoluteMonthDayDate(text, context.selectedDate);
 }
 
-export function nextWeekScope(
-  context: WeeklyPlanningIntakeContext,
-): Extract<PendingPlanningRangeClarification['scope'], { kind: 'next_week' }> {
-  const nextWeekStart = addDays(
-    startOfWeeklyPlanningWeek(context.selectedDate, context.weekStartsOn),
-    7,
-  );
-  return {
-    kind: 'next_week',
-    label: '来週',
-    windowStartDate: nextWeekStart,
-    windowEndDate: addDays(nextWeekStart, 6),
-  };
-}
+export { nextWeekScope } from './weeklyPlanningRangeScope';
 
 function parseWeekdayStart(text: string): number | undefined {
   const withoutExplicitMonthDays = stripAbsoluteMonthDayTokens(text);

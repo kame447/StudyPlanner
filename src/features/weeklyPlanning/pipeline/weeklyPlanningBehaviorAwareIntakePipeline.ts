@@ -25,7 +25,6 @@ import type {
 import type { AllowedDialogueAction } from '../planning/weeklyPlanningBehaviorTypes';
 import { createKnownFixedEventSummaries } from '../dialogue/weeklyPlanningKnownFixedEvents';
 import { applyRenderedQuestionContext } from './weeklyPlanningRenderedQuestionContext';
-import { applyDraftGenerationAuthorizationTurn } from '../planning/weeklyPlanningDraftGenerationAuthorization';
 import {
   applyAssumptionDecision,
   applyCorrectionEnvelopes,
@@ -43,7 +42,6 @@ import {
   recordWeeklyPlanningPipelineTrace,
 } from '../trace/weeklyPlanningTraceRuntime';
 import {
-  runWeeklyPlanningIntakePipeline,
   runWeeklyPlanningIntakePipelineWithInterpreter,
   type WeeklyPlanningIntakePipelineInput,
   type WeeklyPlanningIntakePipelineOutput,
@@ -88,7 +86,7 @@ function cloneProposalRecords(records: readonly AssumptionProposalRecord[]): Ass
   }));
 }
 
-function proposalRecords(input: WeeklyPlanningIntakePipelineInput): AssumptionProposalRecord[] {
+export function proposalRecords(input: WeeklyPlanningIntakePipelineInput): AssumptionProposalRecord[] {
   return cloneProposalRecords(
     input.previousAssumptionProposalState?.records
       ?? input.previousState?.assumptionProposalRecords
@@ -129,7 +127,7 @@ function createSessionProposalContext(
   };
 }
 
-function withSessionProposalContext<T extends WeeklyPlanningIntakePipelineInput>(
+export function withSessionProposalContext<T extends WeeklyPlanningIntakePipelineInput>(
   input: T,
   options: WeeklyPlanningBehaviorAwarePipelineOptions,
 ): T {
@@ -249,21 +247,6 @@ function selectDialoguePlanner(options: WeeklyPlanningBehaviorAwarePipelineOptio
   return createDeterministicBehaviorAwareDialoguePlanner();
 }
 
-function applyNonExamDraftAuthorization(params: {
-  base: WeeklyPlanningIntakePipelineOutput;
-  userText: string;
-}): WeeklyPlanningIntakePipelineOutput {
-  if (params.base.interpreterDiagnostics
-    || params.base.state.examPrepScope
-    || params.base.state.draftGenerationIntent === 'user_authorized') {
-    return params.base;
-  }
-  return {
-    ...params.base,
-    state: applyDraftGenerationAuthorizationTurn({ state: params.base.state, userText: params.userText }),
-  };
-}
-
 function acceptedDurationAssumptions(base: WeeklyPlanningIntakePipelineOutput): AcceptedTaskDurationAssumption[] {
   const records = base.assumptionProposalState?.records ?? base.state.assumptionProposalRecords ?? [];
   return records.flatMap((record) => {
@@ -345,7 +328,7 @@ function isCorrectionEnvelope(value: unknown): value is CorrectionEnvelope {
     && Boolean(target && typeof target === 'object' && !Array.isArray(target));
 }
 
-function synchronizeProposalRecords(
+export function synchronizeProposalRecords(
   base: WeeklyPlanningIntakePipelineOutput,
   records: readonly AssumptionProposalRecord[],
 ): WeeklyPlanningIntakePipelineOutput {
@@ -421,18 +404,25 @@ function applyLifecycleResult(params: {
   };
 }
 
-async function finalizeBehaviorAwareOutput(params: {
+export async function finalizeBehaviorAwareOutput(params: {
   base: WeeklyPlanningIntakePipelineOutput & { lifecycleDiagnostics?: WeeklyPlanningLifecycleDiagnostics };
   input: WeeklyPlanningIntakePipelineInput;
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
 }): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
-  let currentBase = applyNonExamDraftAuthorization({ base: params.base, userText: params.input.userText });
+  let currentBase = params.base;
+  const interpretationFailed = currentBase.interpretationOutcome === 'failed';
+  const interpretationRejected = currentBase.interpretationOutcome === 'rejected';
+  const suppressSemanticDialogue = interpretationFailed || interpretationRejected;
   let behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
-  if (!currentBase.state.examPrepScope
+  if (!suppressSemanticDialogue
+    && !currentBase.state.examPrepScope
     && currentBase.state.draftGenerationIntent !== 'user_authorized'
     && behavior.actions.some((action) => action.kind === 'suggest_draft_generation')) {
     currentBase = { ...currentBase, state: markAssistantSuggested(currentBase.state) };
     behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
+  }
+  if (suppressSemanticDialogue) {
+    behavior = { ...behavior, actions: [], draftRun: null };
   }
 
   const feasibility = createFeasibilitySummary({
@@ -447,11 +437,22 @@ async function finalizeBehaviorAwareOutput(params: {
       `planning-dimension:${dimension}`,
     ),
   });
-  const actions = mergeActions(behavior.actions, createFeasibilityDialogueActions(feasibility));
+  const actions = suppressSemanticDialogue
+    ? []
+    : mergeActions(behavior.actions, createFeasibilityDialogueActions(feasibility));
   behavior = { ...behavior, actions };
-  const behaviorDialogue = await selectDialoguePlanner(params.options).plan(
-    behaviorDialogueInput({ base: currentBase, behavior, actions, input: params.input }),
-  );
+  const behaviorDialogue = suppressSemanticDialogue
+    ? {
+        message: interpretationFailed
+          ? '入力内容を解析できませんでした。意味状態は変更していません。もう一度送信してください。'
+          : '入力内容の意味解釈結果を安全に反映できませんでした。意味状態は変更していません。内容を言い換えて、もう一度送信してください。',
+        response: null,
+        source: 'system' as const,
+        renderedActionIds: [],
+      }
+    : await selectDialoguePlanner(params.options).plan(
+        behaviorDialogueInput({ base: currentBase, behavior, actions, input: params.input }),
+      );
   const common = {
     ...currentBase,
     behavior,
@@ -467,47 +468,35 @@ async function finalizeBehaviorAwareOutput(params: {
   };
 }
 
-export async function runWeeklyPlanningBehaviorAwarePipeline(
-  rawInput: WeeklyPlanningIntakePipelineInput,
-  rawOptions: WeeklyPlanningBehaviorAwarePipelineOptions = {},
-): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
-  const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
-  const input = withSessionProposalContext(rawInput, options);
-  const base = synchronizeProposalRecords(runWeeklyPlanningIntakePipeline(input), proposalRecords(input));
-  const output = applyRenderedQuestionContext(await finalizeBehaviorAwareOutput({ base, input, options }));
-  recordWeeklyPlanningPipelineTrace({ input, options, output });
-  return output;
-}
-
 export async function runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(
   rawInput: WeeklyPlanningIntakePipelineWithInterpreterInput,
   rawOptions: WeeklyPlanningBehaviorAwarePipelineOptions = {},
 ): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
   const options = prepareWeeklyPlanningTraceOptions(rawInput, rawOptions);
   const input = withSessionProposalContext(rawInput, options);
+  const interpreter = input.interpreter;
+  if (!interpreter) {
+    throw new Error('AI interpreter is required for the behavior-aware weekly-planning pipeline.');
+  }
   let capturedResult: WeeklyPlanningInterpreterResult | undefined;
   const conversationId = getConversationId(options);
-  const lifecycleInterpreter: WeeklyPlanningIntakeInterpreter | undefined = input.interpreter
-    ? (() => {
-        const decorated = createLifecycleAwareWeeklyPlanningInterpreter({
-          interpreter: input.interpreter as WeeklyPlanningIntakeInterpreter,
-          conversationId,
-          currentStateRevision: input.previousState?.sourceTurns.length ?? 0,
-          pendingAssumptions: pendingAssumptionSummaries(input),
-          correctionTargets: correctionTargetSummaries(input),
-        });
-        return {
-          async interpretUserTurn(params) {
-            const result = await decorated.interpretUserTurn(params);
-            capturedResult = result;
-            return result;
-          },
-        } satisfies WeeklyPlanningIntakeInterpreter;
-      })()
-    : undefined;
+  const decorated = createLifecycleAwareWeeklyPlanningInterpreter({
+    interpreter,
+    conversationId,
+    currentStateRevision: input.previousState?.sourceTurns.length ?? 0,
+    pendingAssumptions: pendingAssumptionSummaries(input),
+    correctionTargets: correctionTargetSummaries(input),
+  });
+  const lifecycleInterpreter: WeeklyPlanningIntakeInterpreter = {
+    async interpretUserTurn(params) {
+      const result = await decorated.interpretUserTurn(params);
+      capturedResult = result;
+      return result;
+    },
+  };
   const base = await runWeeklyPlanningIntakePipelineWithInterpreter({
     ...input,
-    ...(lifecycleInterpreter ? { interpreter: lifecycleInterpreter } : {}),
+    interpreter: lifecycleInterpreter,
   });
   const lifecycleBase = applyLifecycleResult({ base, input, options, result: capturedResult });
   const output = applyRenderedQuestionContext(await finalizeBehaviorAwareOutput({ base: lifecycleBase, input, options }));

@@ -330,6 +330,13 @@ function removeNull(record: Record<string, unknown>, key: string): void {
   if (record[key] === null) delete record[key];
 }
 
+function removeNullOrBlankString(record: Record<string, unknown>, key: string): void {
+  const value = record[key];
+  if (value === null || (typeof value === 'string' && value.trim().length === 0)) {
+    delete record[key];
+  }
+}
+
 function copyNested(record: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   const value = record[key];
   if (!isRecord(value)) return undefined;
@@ -341,17 +348,20 @@ function copyNested(record: Record<string, unknown>, key: string): Record<string
 export function canonicalizeOptionalCommandNulls(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const command = { ...value };
-  removeNull(command, 'sourceSegment');
+  removeNullOrBlankString(command, 'sourceSegment');
 
   switch (command.type) {
     case 'add_unavailable': {
       const range = copyNested(command, 'range');
-      if (range) ['date', 'reason'].forEach((key) => removeNull(range, key));
+      if (range) ['date', 'reason'].forEach((key) => removeNullOrBlankString(range, key));
       break;
     }
     case 'add_fixed_event': {
       const event = copyNested(command, 'event');
-      if (event) ['date', 'start', 'end', 'durationMinutes'].forEach((key) => removeNull(event, key));
+      if (event) {
+        ['date', 'start', 'end'].forEach((key) => removeNullOrBlankString(event, key));
+        removeNull(event, 'durationMinutes');
+      }
       break;
     }
     case 'add_relative_constraint':
@@ -359,51 +369,63 @@ export function canonicalizeOptionalCommandNulls(value: unknown): unknown {
       break;
     case 'update_life_constraint': {
       const constraint = copyNested(command, 'constraint');
-      if (constraint) ['date', 'start', 'end', 'durationMinutes', 'studyAvailableStart'].forEach((key) => removeNull(constraint, key));
+      if (constraint) {
+        ['date', 'start', 'end', 'studyAvailableStart'].forEach((key) => removeNullOrBlankString(constraint, key));
+        removeNull(constraint, 'durationMinutes');
+      }
       break;
     }
     case 'request_clarification':
-      removeNull(command, 'ref');
+      removeNullOrBlankString(command, 'ref');
       break;
     case 'mark_completion_target':
     case 'note_progress_boundary':
-      removeNull(command, 'field');
+      removeNullOrBlankString(command, 'field');
       break;
     case 'set_unit_rate': {
       const unitRate = copyNested(command, 'unitRate');
-      if (unitRate) ['uncertainty', 'rawText'].forEach((key) => removeNull(unitRate, key));
+      if (unitRate) ['uncertainty', 'rawText'].forEach((key) => removeNullOrBlankString(unitRate, key));
       break;
     }
     case 'set_exam_scope': {
       const scope = copyNested(command, 'scope');
       if (scope) {
-        ['examType', 'totalFields', 'totalYears', 'yearRange', 'strategyHint', 'unitModel', 'unitCountHint']
-          .forEach((key) => removeNull(scope, key));
+        ['examType', 'strategyHint', 'unitModel'].forEach((key) => removeNullOrBlankString(scope, key));
+        ['totalFields', 'totalYears', 'yearRange', 'unitCountHint'].forEach((key) => removeNull(scope, key));
       }
       break;
     }
     case 'set_planning_range': {
       const range = copyNested(command, 'range');
-      if (range) ['startDateTime', 'endDateTime', 'sourceText', 'calendarDayCount'].forEach((key) => removeNull(range, key));
+      if (range) {
+        ['startDateTime', 'endDateTime', 'sourceText'].forEach((key) => removeNullOrBlankString(range, key));
+        removeNull(range, 'calendarDayCount');
+      }
       break;
     }
     case 'set_pending_planning_range': {
       const pending = copyNested(command, 'pending');
       if (pending) {
-        ['planningStartDate', 'planningStartDateTime', 'durationDays', 'planningEndDateTime'].forEach((key) => removeNull(pending, key));
+        ['planningStartDate', 'planningStartDateTime', 'planningEndDateTime'].forEach((key) => removeNullOrBlankString(pending, key));
+        removeNull(pending, 'durationDays');
         const scope = copyNested(pending, 'scope');
-        if (scope) ['windowStartDate', 'windowEndDate'].forEach((key) => removeNull(scope, key));
+        if (scope) ['windowStartDate', 'windowEndDate'].forEach((key) => removeNullOrBlankString(scope, key));
       }
       break;
     }
     case 'set_study_goal': {
       const goal = copyNested(command, 'goal');
-      if (goal) ['subject', 'unit', 'amount', 'deadlineDeclared', 'deadlineDate', 'deadlineTime'].forEach((key) => removeNull(goal, key));
+      if (goal) {
+        ['subject', 'unit', 'deadlineDate', 'deadlineTime']
+          .forEach((key) => removeNullOrBlankString(goal, key));
+        ['amount', 'deadlineDeclared'].forEach((key) => removeNull(goal, key));
+        if (goal.deadlineDeclared === false) delete goal.deadlineDeclared;
+      }
       break;
     }
     case 'note_study_time_preference': {
       const preference = copyNested(command, 'preference');
-      if (preference) removeNull(preference, 'taskRef');
+      if (preference) removeNullOrBlankString(preference, 'taskRef');
       break;
     }
     default:

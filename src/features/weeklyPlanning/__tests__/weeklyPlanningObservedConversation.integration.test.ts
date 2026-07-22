@@ -1,24 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningMessage } from '../types';
 
-vi.mock('../../../lib/aiConfig', async () => {
-  const actual = await vi.importActual<typeof import('../../../lib/aiConfig')>(
-    '../../../lib/aiConfig',
-  );
-  return {
-    ...actual,
-    getAiConfig: () => ({
-      provider: 'rules' as const,
-      baseUrl: '',
-      model: '',
-      apiKey: '',
-    }),
-    getAiConfigValidationMessage: () => undefined,
-  };
-});
-
-import { executeWeeklyPlanningTurn } from '../weeklyPlanningTurnExecutor';
+import { executeLegacyWeeklyPlanningTurnForTests } from '../weeklyPlanningLegacyTurnExecutor.testSupport';
 
 describe('observed weekly planning conversation integration', () => {
   it('runs the reported conversation through turn execution, state carry-over, and rendering', async () => {
@@ -28,7 +12,7 @@ describe('observed weekly planning conversation integration', () => {
 
     const submit = async (userText: string) => {
       sequence += 1;
-      const result = await executeWeeklyPlanningTurn({
+      const result = await executeLegacyWeeklyPlanningTurnForTests({
         previousState: state,
         messages: [...messages],
         userText,

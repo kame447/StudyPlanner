@@ -1,3 +1,4 @@
+import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningLegacyIntakeReducer.testSupport';
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -5,7 +6,6 @@ import {
   createWeeklyDraftRequestFromIntakeState,
   DEFAULT_ASSUMED_UNIT_MINUTES,
 } from '../intake/weeklyPlanningDraftRequestAdapter';
-import { applyWeeklyPlanningUserTurn } from '../intake/weeklyPlanningIntakeReducer';
 import { WP_RP_001_WEEKEND_EXAM_TURNS } from '../testFixtures/weeklyPlanningRoleplayCases';
 import {
   applyWeekendExamReadyForDraftRequest,

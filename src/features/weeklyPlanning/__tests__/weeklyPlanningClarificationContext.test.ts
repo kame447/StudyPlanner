@@ -1,8 +1,8 @@
+import { runLegacyWeeklyPlanningBehaviorAwarePipelineForTests } from '../pipeline/weeklyPlanningLegacyBehaviorAwareIntakePipeline.testSupport';
 import { describe, expect, it } from 'vitest';
 import type { ParsedWeeklyPlanningCommand } from '../intake/weeklyPlanningCommandTypes';
 import type { WeeklyPlanningIntakeInterpreter } from '../intake/weeklyPlanningInterpreterTypes';
 import {
-  runWeeklyPlanningBehaviorAwarePipeline,
   runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
 } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 
@@ -43,7 +43,7 @@ function clarificationInterpreter(
 }
 
 async function initialState() {
-  return runWeeklyPlanningBehaviorAwarePipeline({
+  return runLegacyWeeklyPlanningBehaviorAwarePipelineForTests({
     ...baseInput,
     userText: '来週の予定立てたい',
   });
@@ -125,12 +125,12 @@ describe('weekly planning clarification context', () => {
     expect(output.decision.kind).not.toBe('answer_clarification');
   });
 
-  it('supports the rules-only and provider-failure paths', async () => {
-    const rulesFirst = await runWeeklyPlanningBehaviorAwarePipeline({
+  it('keeps rules-only behavior in test support and fails closed on provider failure', async () => {
+    const rulesFirst = await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests({
       ...baseInput,
       userText: '来週の予定立てたい',
     });
-    const rulesOutput = await runWeeklyPlanningBehaviorAwarePipeline({
+    const rulesOutput = await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests({
       ...baseInput,
       previousState: rulesFirst.state,
       userText: 'よく分からない',
@@ -149,8 +149,9 @@ describe('weekly planning clarification context', () => {
       userText: 'よく分からない',
       interpreter: failingInterpreter,
     });
-    expect(fallbackOutput.decision.kind).toBe('answer_clarification');
-    expect(fallbackOutput.decision.clarification?.targetSlot)
-      .toBe(first.state.lastQuestionContext?.targetSlot);
+    expect(fallbackOutput.interpretationOutcome).toBe('failed');
+    expect(fallbackOutput.stateMutationSource).toBe('none');
+    expect(fallbackOutput.behaviorDialogue.source).toBe('system');
+    expect(fallbackOutput.decision.kind).not.toBe('answer_clarification');
   });
 });

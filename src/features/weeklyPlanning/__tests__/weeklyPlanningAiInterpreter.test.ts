@@ -361,6 +361,9 @@ describe('weekly planning AI interpreter', () => {
       candidates: [],
       parseRejections: [],
       rawResponse: 'not json',
+      initialRawResponse: 'not json',
+      repairAttempted: true,
+      responseFailure: 'invalid_candidates_after_repair',
     });
     await expect(invalidShapeInterpreter.interpretUserTurn({
       userText: '数学から始めたい',
@@ -370,12 +373,14 @@ describe('weekly planning AI interpreter', () => {
       candidates: [],
       parseRejections: [expect.objectContaining({ reason: 'invalid-candidate-shape' })],
       rawResponse: expect.any(String),
+      initialRawResponse: expect.any(String),
+      repairAttempted: true,
+      responseFailure: 'invalid_candidates_after_repair',
     });
   });
 
-  it('keeps ambiguous constraint source resolution outside the validator natural-language boundary', () => {
+  it('trusts the typed constraint-source selection and checks only capability availability', () => {
     const candidates = resolveConstraintSourceReferences({
-      userText: '入れてあるやつをそのまま考慮して',
       stateSummary: {
         knownFields: [],
         confirmedSlots: ['planning_range'],
@@ -386,7 +391,7 @@ describe('weekly planning AI interpreter', () => {
           command: {
             type: 'use_constraint_source',
             source: { kind: 'existing_plans', selector: 'active' },
-            sourceText: '入れてあるやつをそのまま考慮して',
+            sourceText: '保存済み予定を考慮する',
             confidence: 'high',
           },
           origin: 'ai_interpreter',
@@ -400,21 +405,19 @@ describe('weekly planning AI interpreter', () => {
       availableConstraintSources: { timetable: true, existingPlans: true, calendar: false },
     });
 
-    expect(candidates[0].constraintSourceResolution).toEqual(expect.objectContaining({ status: 'multiple' }));
-    expect(validation.accepted).toEqual([]);
-    expect(validation.clarificationRequests).toEqual([
-      expect.objectContaining({
-        type: 'request_clarification',
-        target: 'unresolved_slot',
-        ref: 'constraint_source',
-      }),
+    expect(candidates[0].constraintSourceResolution).toEqual({
+      status: 'resolved',
+      resolvedKind: 'existing_plans',
+      reason: 'typed-source-available',
+    });
+    expect(validation.accepted).toEqual([
+      expect.objectContaining({ type: 'use_constraint_source' }),
     ]);
-    expect(validation.rejected).toEqual([
-      expect.objectContaining({ reason: 'constraint-source-reference-multiple' }),
-    ]);
+    expect(validation.clarificationRequests).toEqual([]);
+    expect(validation.rejected).toEqual([]);
   });
 
-  it('propagates an AI client error so the pipeline can use turn-level rules fallback', async () => {
+  it('propagates an AI client error without invoking any rules fallback', async () => {
     const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => { throw new Error('network failed'); }) };
     const interpreter = createAiWeeklyPlanningInterpreter(config, client);
     await expect(interpreter.interpretUserTurn({ userText: 'input', context: { selectedDate: '2026-07-06' }, stateSummary })).rejects.toThrow('network failed');

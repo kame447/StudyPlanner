@@ -25,7 +25,7 @@ import type {
   UnitRateEstimate,
   WeeklyPlanningIntakeContext,
 } from './weeklyPlanningIntakeTypes';
-import { nextWeekScope } from './weeklyPlanningScopeParsing';
+import { nextWeekScope } from './weeklyPlanningRangeScope';
 
 export function toLifeConstraintFromAddUnavailableCommand(
   command: AddUnavailableCommand,

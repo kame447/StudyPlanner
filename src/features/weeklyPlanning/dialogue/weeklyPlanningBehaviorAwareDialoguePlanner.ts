@@ -48,7 +48,7 @@ export interface BehaviorAwareDialoguePlannerInput {
 export interface BehaviorAwareDialoguePlannerResult {
   message: string;
   response: BehaviorAwareDialogueResponse | null;
-  source: 'ai' | 'deterministic_fallback';
+  source: 'ai' | 'deterministic_fallback' | 'system';
   /** 実際にユーザーへ表示した質問・確認action。候補actionから推測しない。 */
   renderedActionIds?: string[];
 }

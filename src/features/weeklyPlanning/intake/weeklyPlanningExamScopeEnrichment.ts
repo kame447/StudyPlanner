@@ -1,6 +1,9 @@
 import type { SetExamScopeCommand } from './weeklyPlanningCommandTypes';
 import type { ExamPrepScope } from './weeklyPlanningIntakeTypes';
-import { uniqueList } from './weeklyPlanningTextParsing';
+
+function uniqueList<T>(values: readonly T[]): T[] {
+  return Array.from(new Set(values));
+}
 
 export interface ExamScopeEnrichmentResult {
   command?: SetExamScopeCommand;

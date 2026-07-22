@@ -4,13 +4,11 @@ import type { InterpretedCommandCandidate, InterpreterStateSummary } from '../in
 
 function candidate(
   command: InterpretedCommandCandidate['command'],
-  sourceUserText: string,
 ): InterpretedCommandCandidate {
   return {
     command,
     origin: 'ai_interpreter',
     needsConfirmation: false,
-    sourceUserText,
   };
 }
 
@@ -22,109 +20,25 @@ function summary(overrides: Partial<InterpreterStateSummary> = {}): InterpreterS
   };
 }
 
-describe('weekly planning final-audit candidate hardening', () => {
-  it('turns a bare meal/bath time into a targeted clarification instead of dropping it', () => {
-    const userText = '19時です';
+describe('weekly planning typed candidate hardening', () => {
+  it('accepts a structurally valid life constraint without reparsing sourceText', () => {
     const result = validateInterpretedCandidates([
       candidate({
         type: 'update_life_constraint',
         kind: 'meal',
         constraint: { start: '19:00', hardness: 'hard' },
         confidence: 'high',
-        sourceText: userText,
-      }, userText),
-    ], summary({
-      lastQuestions: [{ slotKey: 'meal_bath_constraints', intent: 'ask_life_constraints' }],
-    }));
-
-    expect(result.accepted).toEqual([]);
-    expect(result.clarificationRequests).toEqual([
-      expect.objectContaining({
-        type: 'request_clarification',
-        target: 'unresolved_slot',
-        ref: 'meal_bath_constraints',
+        sourceText: '19時です',
       }),
-    ]);
-  });
-
-  it('still accepts a meal time when the user identifies the constraint kind', () => {
-    const userText = '夕食は19時です';
-    const result = validateInterpretedCandidates([
-      candidate({
-        type: 'update_life_constraint',
-        kind: 'meal',
-        constraint: { start: '19:00', hardness: 'hard' },
-        confidence: 'high',
-        sourceText: userText,
-      }, userText),
     ], summary());
 
-    expect(result.accepted).toHaveLength(1);
-    expect(result.clarificationRequests).toEqual([]);
-  });
-
-  it.each([3, 180])('does not ground bare unit-rate reply 3 as %i minutes', (minutesPerUnit) => {
-    const userText = '3';
-    const result = validateInterpretedCandidates([
-      candidate({
-        type: 'set_unit_rate',
-        unitRate: {
-          unit: 'year_field_chunk',
-          minutesPerUnit,
-          source: 'user',
-        },
-        confidence: 'high',
-        sourceText: userText,
-      }, userText),
-    ], summary({
-      examScopeSummary: {
-        fields: ['OS'],
-        unitModel: 'year_field_chunk',
-        rawText: ['院試の過去問 OS'],
-      },
-      lastQuestions: [{ slotKey: 'unit_rate', intent: 'ask_unit_rate' }],
-    }));
-
-    expect(result.accepted).toEqual([]);
-    expect(result.clarificationRequests).toEqual([
-      expect.objectContaining({ ref: 'unit_duration_estimate' }),
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ type: 'update_life_constraint', kind: 'meal' }),
     ]);
+    expect(result.rejected).toEqual([]);
   });
 
-  it.each([
-    ['partial order', ['OS']],
-    ['tail permutation', ['OS', 'データベース', 'ネットワーク']],
-  ])('rejects %s for an explicitly complete priority statement', (_label, order) => {
-    const userText = 'OSから進め、次にネットワーク、最後にデータベースです';
-    const result = validateInterpretedCandidates([
-      candidate({
-        type: 'set_priority_policy',
-        policy: { kind: 'field_first', order },
-        confidence: 'high',
-        sourceText: userText,
-      }, userText),
-    ], summary({ knownFields: ['OS', 'ネットワーク', 'データベース'] }));
-
-    expect(result.accepted).toEqual([]);
-    expect(result.rejected).toHaveLength(1);
-  });
-
-  it('accepts the complete priority order stated by the user', () => {
-    const userText = 'OSから進め、次にネットワーク、最後にデータベースです';
-    const result = validateInterpretedCandidates([
-      candidate({
-        type: 'set_priority_policy',
-        policy: { kind: 'field_first', order: ['OS', 'ネットワーク', 'データベース'] },
-        confidence: 'high',
-        sourceText: userText,
-      }, userText),
-    ], summary({ knownFields: ['OS', 'ネットワーク', 'データベース'] }));
-
-    expect(result.accepted).toHaveLength(1);
-  });
-
-  it('removes inconsistent rawText before an accepted unit rate reaches state and renderer', () => {
-    const userText = '3時間です';
+  it('accepts a positive typed unit rate independently of its display evidence', () => {
     const result = validateInterpretedCandidates([
       candidate({
         type: 'set_unit_rate',
@@ -132,57 +46,103 @@ describe('weekly planning final-audit candidate hardening', () => {
           unit: 'year_field_chunk',
           minutesPerUnit: 180,
           source: 'user',
-          rawText: '30分',
+          rawText: '3です',
         },
         confidence: 'high',
-        sourceText: userText,
-      }, userText),
-    ], summary({
-      examScopeSummary: {
-        fields: ['OS'],
-        unitModel: 'year_field_chunk',
-        rawText: ['院試の過去問 OS'],
-      },
-      lastQuestions: [{ slotKey: 'unit_rate', intent: 'ask_unit_rate' }],
-    }));
+        sourceText: '3です',
+      }),
+    ], summary());
 
     expect(result.accepted).toEqual([
       expect.objectContaining({
         type: 'set_unit_rate',
-        unitRate: expect.objectContaining({
-          minutesPerUnit: 180,
-          rawText: undefined,
-        }),
+        unitRate: expect.objectContaining({ minutesPerUnit: 180, rawText: '3です' }),
       }),
     ]);
   });
-  it('accepts comparative priority wording according to its semantic relation', () => {
-  const userText = 'OSよりネットワークを先にして、最後にデータベースを進めたいです';
-  const result = validateInterpretedCandidates([
-    candidate({
-      type: 'set_priority_policy',
-      policy: { kind: 'field_first', order: ['ネットワーク', 'OS', 'データベース'] },
-      confidence: 'high',
-      sourceText: userText,
-    }, userText),
-  ], summary({ knownFields: ['OS', 'ネットワーク', 'データベース'] }));
 
-  expect(result.accepted).toHaveLength(1);
-  expect(result.rejected).toEqual([]);
-});
+  it('rejects a non-positive typed unit rate by value range', () => {
+    const result = validateInterpretedCandidates([
+      candidate({
+        type: 'set_unit_rate',
+        unitRate: { unit: 'year_field_chunk', minutesPerUnit: 0, source: 'user' },
+        confidence: 'high',
+        sourceText: '0分です',
+      }),
+    ], summary());
 
-it('rejects literal mention order when comparative wording requires the reverse relation', () => {
-  const userText = 'OSよりネットワークを先にして、最後にデータベースを進めたいです';
-  const result = validateInterpretedCandidates([
-    candidate({
-      type: 'set_priority_policy',
-      policy: { kind: 'field_first', order: ['OS', 'ネットワーク', 'データベース'] },
-      confidence: 'high',
-      sourceText: userText,
-    }, userText),
-  ], summary({ knownFields: ['OS', 'ネットワーク', 'データベース'] }));
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason: 'invalid-unit-rate-minutes' }),
+    ]);
+  });
 
-  expect(result.accepted).toEqual([]);
-  expect(result.rejected).toHaveLength(1);
-});
+  it('accepts a complete typed priority order for known fields', () => {
+    const result = validateInterpretedCandidates([
+      candidate({
+        type: 'set_priority_policy',
+        policy: { kind: 'field_first', order: ['OS', 'ネットワーク', '数学'] },
+        confidence: 'high',
+        sourceText: '優先順を指定しました',
+      }),
+    ], summary({ knownFields: ['OS', 'ネットワーク', '数学'] }));
+
+    expect(result.accepted).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
+    ]);
+  });
+
+  it('requires confirmation when a typed priority policy references an unknown field', () => {
+    const result = validateInterpretedCandidates([
+      candidate({
+        type: 'set_priority_policy',
+        policy: { kind: 'field_first', order: ['数学', 'OS'] },
+        confidence: 'high',
+        sourceText: '優先順を指定しました',
+      }),
+    ], summary({ knownFields: ['OS', 'ネットワーク'] }));
+
+    expect(result.accepted).toEqual([]);
+    expect(result.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
+    ]);
+  });
+
+  it('rejects a relative constraint whose typed anchor reference is unavailable', () => {
+    const result = validateInterpretedCandidates([
+      candidate({
+        type: 'add_relative_constraint',
+        anchorRef: 'constraint:missing',
+        relation: 'after',
+        offsetMinutes: 0,
+        durationMinutes: 10,
+        kind: 'commute',
+        confidence: 'high',
+        sourceText: '移動時間を追加',
+      }),
+    ], summary({ constraintAnchors: [] }));
+
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason: 'relative-constraint-anchor-unavailable' }),
+    ]);
+  });
+
+  it('rejects invalid calendar values without consulting sourceText', () => {
+    const result = validateInterpretedCandidates([
+      candidate({
+        type: 'set_study_goal',
+        goal: {
+          title: '小テスト対策',
+          deadlineDeclared: true,
+          deadlineDate: '2026-02-30',
+        },
+        confidence: 'high',
+        sourceText: '期限を設定',
+      }),
+    ], summary());
+
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ reason: 'invalid-deadline-date' }),
+    ]);
+  });
 });

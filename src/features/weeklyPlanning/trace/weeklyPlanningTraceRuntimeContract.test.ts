@@ -1,6 +1,6 @@
+import { runLegacyWeeklyPlanningBehaviorAwarePipelineForTests } from '../pipeline/weeklyPlanningLegacyBehaviorAwareIntakePipeline.testSupport';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  runWeeklyPlanningBehaviorAwarePipeline,
   type BehaviorAwareDialoguePlanner,
 } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
@@ -73,11 +73,11 @@ describe('weekly planning trace runtime contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    const first = await runWeeklyPlanningBehaviorAwarePipeline(
+    const first = await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('今日から日曜までの予定立てたい'),
       { userId: 'user-1', dialoguePlanner },
     );
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('英語を3時間やりたい', first.state),
       { userId: 'user-1', dialoguePlanner },
     );
@@ -95,8 +95,8 @@ describe('weekly planning trace runtime contract', () => {
     setWeeklyPlanningTraceRepositoryForTests(repository);
     const input = pipelineInput('来週の予定を作りたい');
 
-    await runWeeklyPlanningBehaviorAwarePipeline(input, { userId: 'user-1', dialoguePlanner });
-    await runWeeklyPlanningBehaviorAwarePipeline(input, { userId: 'user-1', dialoguePlanner });
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(input, { userId: 'user-1', dialoguePlanner });
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(input, { userId: 'user-1', dialoguePlanner });
 
     await waitForTrace(async () => {
       const sessions = await repository.listSessionsForAdmin();
@@ -113,7 +113,7 @@ describe('weekly planning trace runtime contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('予定を作りたい'),
       { userId: 'user-1', dialoguePlanner },
     );
@@ -140,7 +140,7 @@ describe('weekly planning trace runtime contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('予定を作りたい'),
       { userId: 'user-1', dialoguePlanner },
     );
@@ -167,7 +167,7 @@ describe('weekly planning trace runtime contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('予定を作りたい'),
       { userId: 'user-1', dialoguePlanner },
     );
@@ -212,11 +212,11 @@ describe('weekly planning trace runtime contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('来週の予定を作りたい'),
       { userId: 'user-1', dialoguePlanner },
     );
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('来週の予定を作りたい'),
       { userId: 'user-1', dialoguePlanner },
     );
@@ -232,11 +232,11 @@ describe('weekly planning trace runtime contract', () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
 
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('会話A'),
       { userId: 'user-1', conversationId: 'conversation-a', dialoguePlanner },
     );
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('会話B'),
       { userId: 'user-1', conversationId: 'conversation-b', dialoguePlanner },
     );
@@ -304,12 +304,12 @@ describe('weekly planning trace runtime contract', () => {
       },
     });
 
-    const first = await runWeeklyPlanningBehaviorAwarePipeline(
+    const first = await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('予定を作りたい'),
       { userId: 'user-1', conversationId: 'conversation-write', dialoguePlanner },
     );
     await firstWriteStartedPromise;
-    const second = await runWeeklyPlanningBehaviorAwarePipeline(
+    const second = await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('英語を3時間やりたい', first.state),
       { userId: 'user-1', conversationId: 'conversation-write', dialoguePlanner },
     );
@@ -338,8 +338,8 @@ describe('weekly planning trace runtime contract', () => {
       dialoguePlanner,
     };
 
-    await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput('同じ発話'), options);
-    await runWeeklyPlanningBehaviorAwarePipeline(pipelineInput('同じ発話'), options);
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(pipelineInput('同じ発話'), options);
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(pipelineInput('同じ発話'), options);
 
     await waitForTrace(async () => {
       const [session] = await repository.listSessionsForAdmin();
@@ -353,7 +353,7 @@ describe('weekly planning trace runtime contract', () => {
   it('runtime reset後の同じ初期発話を新しいconversationとして保存する', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('同じ発話'),
       { userId: 'user-1', dialoguePlanner },
     );
@@ -362,7 +362,7 @@ describe('weekly planning trace runtime contract', () => {
     });
 
     resetWeeklyPlanningTraceRuntimeForTests();
-    await runWeeklyPlanningBehaviorAwarePipeline(
+    await runLegacyWeeklyPlanningBehaviorAwarePipelineForTests(
       pipelineInput('同じ発話'),
       { userId: 'user-1', dialoguePlanner },
     );

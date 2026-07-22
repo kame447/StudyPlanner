@@ -1,6 +1,6 @@
 import type { SessionChunkPlan, SessionLengthPolicy, StudyTaskProfile } from '../weeklyPlanningTypes';
-import { DEFAULT_STUDY_TASK_PROFILE } from '../profiling/studyTaskProfile';
-import { distributeMinutesAcrossBuckets } from './dailyDistribution';
+import { DEFAULT_STUDY_TASK_PROFILE } from '../profiling/studyTaskProfileDefaults';
+import { distributeMinutesAcrossBuckets } from './minuteDistribution';
 
 const DEFAULT_MIN_STUDY_BLOCK_MINUTES = 30;
 

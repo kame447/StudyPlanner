@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { isValidWeeklyPlanningCommand } from './weeklyPlanningCommandRuntimeValidation';
+import {
+  canonicalizeOptionalCommandNulls,
+  isValidWeeklyPlanningCommand,
+} from './weeklyPlanningCommandRuntimeValidation';
 
 describe('weekly planning command runtime validation', () => {
   it('rejects duplicate exam fields at the command boundary', () => {
@@ -65,4 +68,35 @@ describe('weekly planning command runtime validation', () => {
   ])('rejects malformed required command fields %#', (command) => {
     expect(isValidWeeklyPlanningCommand(command)).toBe(false);
   });
+
+  it('canonicalizes blank optional AI fields without interpreting their meaning', () => {
+    const canonicalized = canonicalizeOptionalCommandNulls({
+      type: 'set_study_goal',
+      goal: {
+        title: '研究の進捗を作る',
+        subject: '研究',
+        unit: 'unknown',
+        amount: 1,
+        deadlineDeclared: false,
+        deadlineDate: '',
+        deadlineTime: '',
+        executionProfile: {
+          activityKind: 'project',
+          distributionPolicy: 'single_block',
+          cognitiveLoad: 'unknown',
+        },
+      },
+      sourceText: '研究の進捗を作る',
+      sourceSegment: '',
+      confidence: 'high',
+    }) as Record<string, unknown>;
+    const goal = canonicalized.goal as Record<string, unknown>;
+
+    expect(canonicalized.sourceSegment).toBeUndefined();
+    expect(goal.deadlineDeclared).toBeUndefined();
+    expect(goal.deadlineDate).toBeUndefined();
+    expect(goal.deadlineTime).toBeUndefined();
+    expect(isValidWeeklyPlanningCommand(canonicalized)).toBe(true);
+  });
+
 });

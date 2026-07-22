@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runWeeklyPlanningIntakePipeline } from './pipeline/weeklyPlanningIntakePipeline';
+import { runLegacyWeeklyPlanningIntakePipelineForTests } from './pipeline/weeklyPlanningLegacyIntakePipeline.testSupport';
 import { loadWeeklyPlanningState } from './weeklyPlanningStorage';
 import type { PlanningState } from './types';
 
@@ -82,7 +82,7 @@ function writeStoredState(
 }
 
 function continueTurn(state: PlanningState, userText: string) {
-  return runWeeklyPlanningIntakePipeline({
+  return runLegacyWeeklyPlanningIntakePipelineForTests({
     previousState: state.intakeState,
     userText,
     planningStartDate: '2026-07-17',

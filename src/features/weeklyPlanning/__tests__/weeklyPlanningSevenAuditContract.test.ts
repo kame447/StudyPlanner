@@ -13,19 +13,18 @@ import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { runWeeklyPlanningIntakePipelineWithInterpreter } from '../pipeline/weeklyPlanningIntakePipeline';
 
 function candidate(
-  userText: string,
+  _userText: string,
   command: InterpretedCommandCandidate['command'],
 ): InterpretedCommandCandidate {
   return {
     command,
     origin: 'ai_interpreter',
     needsConfirmation: false,
-    sourceUserText: userText,
   };
 }
 
 describe('weekly planning seven-audit responsibility contract', () => {
-  it('lets AI interpret priority semantics while rejecting fields outside known state', () => {
+  it('lets AI own priority semantics while requiring confirmation for unknown typed fields', () => {
     const accepted = validateInterpretedCandidates([
       candidate('OSを優先します', {
         type: 'set_priority_policy',
@@ -47,9 +46,10 @@ describe('weekly planning seven-audit responsibility contract', () => {
       }),
     ], { knownFields: ['OS', 'ネットワーク'], confirmedSlots: [] });
     expect(rejected.accepted).toEqual([]);
-    expect(rejected.rejected).toEqual([
-      expect.objectContaining({ reason: 'ungrounded-priority-policy' }),
+    expect(rejected.acceptedWithConfirmation).toEqual([
+      expect.objectContaining({ type: 'set_priority_policy' }),
     ]);
+    expect(rejected.rejected).toEqual([]);
   });
 
   it('rejects structurally invalid times but leaves constraint meaning to AI', () => {
