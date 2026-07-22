@@ -346,7 +346,10 @@ describe('weekly planning AI foundation without real AI', () => {
 
     expect(emptyInterpreter).toHaveBeenCalledTimes(1);
     expect(emptyOutput.state.tasks).toEqual([]);
-    expect(emptyOutput.interpreterDiagnostics).toBeDefined();
+    expect(emptyOutput.interpreterDiagnostics).toBeUndefined();
+    expect(emptyOutput.interpretationOutcome).toBe('failed');
+    expect(emptyOutput.stateMutationSource).toBe('none');
+    expect(emptyOutput.interpreterFailure?.category).toBe('invalid_response');
     expect(failingInterpreter).toHaveBeenCalledTimes(1);
     expect(fallbackOutput.state.tasks).toEqual([]);
     expect(fallbackOutput.interpreterDiagnostics).toBeUndefined();

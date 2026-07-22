@@ -115,10 +115,11 @@ describe('weekly planning AI semantic ownership', () => {
     ]));
   });
 
-  it('does not let deterministic clarification parsing override a successful empty AI result', async () => {
+  it('fails closed on an empty semantic result instead of continuing with deterministic dialogue', async () => {
+    const previousState = previousTodayState();
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultInput,
-      previousState: previousTodayState(),
+      previousState,
       userText: 'それってどういうこと？',
       interpreter: {
         async interpretUserTurn() {
@@ -127,7 +128,12 @@ describe('weekly planning AI semantic ownership', () => {
       },
     });
 
-    expect(output.decision.kind).not.toBe('answer_clarification');
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
+    expect(output.interpreterFailure?.category).toBe('invalid_response');
+    expect(output.state.range).toEqual(previousState.range);
+    expect(output.state.lastQuestionContext).toEqual(previousState.lastQuestionContext);
+    expect(output.draftCandidates).toBeNull();
   });
 
   it('keeps semantic state unchanged after provider failure without invoking a parser', async () => {

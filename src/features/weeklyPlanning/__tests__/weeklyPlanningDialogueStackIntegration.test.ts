@@ -7,9 +7,20 @@ import type {
 } from '../intake/weeklyPlanningInterpreterTypes';
 import { runWeeklyPlanningBehaviorAwarePipelineWithInterpreter } from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 
-const emptyInterpreter: WeeklyPlanningIntakeInterpreter = {
-  async interpretUserTurn() {
-    return { candidates: [], parseRejections: [] };
+const beginInterpreter: WeeklyPlanningIntakeInterpreter = {
+  async interpretUserTurn({ userText }) {
+    return {
+      candidates: [{
+        command: {
+          type: 'begin_weekly_planning',
+          sourceText: userText,
+          confidence: 'high',
+        },
+        origin: 'ai_interpreter',
+        needsConfirmation: false,
+      }],
+      parseRejections: [],
+    };
   },
 };
 
@@ -84,7 +95,7 @@ function baseState(): PlanningIntakeState {
 function input(
   userText: string,
   previousState: PlanningIntakeState = baseState(),
-  interpreter: WeeklyPlanningIntakeInterpreter = emptyInterpreter,
+  interpreter: WeeklyPlanningIntakeInterpreter = beginInterpreter,
 ) {
   return {
     userText,

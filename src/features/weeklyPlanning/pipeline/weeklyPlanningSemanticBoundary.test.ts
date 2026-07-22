@@ -64,9 +64,11 @@ describe('weekly planning semantic ownership boundary', () => {
 
   it('keeps parser and legacy modules outside the production dependency graph', () => {
     const graph = productionDependencyGraph('../weeklyPlanningTurnExecutor.ts');
-    const forbidden = graph.filter((path) =>
-      /(?:Parsing|Parser|Legacy|\.testSupport)\.(?:ts|tsx)$/.test(path),
-    );
+    const forbidden = graph.filter((path) => {
+      const normalized = path.split('\\').join('/');
+      return normalized.includes('/parsing/')
+        || /(?:Parsing|Parser|Legacy|\.testSupport)\.(?:ts|tsx)$/.test(normalized);
+    });
 
     expect(forbidden).toEqual([]);
   });
@@ -133,6 +135,48 @@ describe('weekly planning semantic ownership boundary', () => {
     expect(result.state.tasks).toEqual([]);
     expect(result.state.lastQuestionContext).toEqual(previousState.lastQuestionContext);
     expect(result.state.questions).toEqual(previousState.questions);
+    expect(result.draftCandidates).toBeNull();
+    expect(result.assumedDraft).toBeUndefined();
+  });
+
+  it('fails closed on an empty semantic result without generating preview artifacts', async () => {
+    const previousState = createInitialPlanningIntakeState();
+    previousState.status = 'draft_ready';
+    previousState.intent = 'weekly_study_planning';
+    previousState.range = {
+      startDateTime: '2026-07-22T00:00:00',
+      endDateTime: '2026-07-22T24:00:00',
+      calendarDayCount: 1,
+      sourceText: '今日',
+      confidence: 'explicit',
+    };
+    previousState.tasks = [{
+      title: '英単語',
+      unit: 'minutes',
+      amount: 30,
+      rawText: '英単語を30分',
+      requiresTimeEstimate: false,
+      source: 'command',
+    }];
+    previousState.fixedEventsDeclaredNone = true;
+    previousState.missing = [];
+    previousState.shouldCreateDraft = true;
+    previousState.draftGenerationIntent = 'user_authorized';
+    previousState.draftGenerationAuthorizedAtRevision = 1;
+
+    const result = await runWeeklyPlanningIntakePipelineWithInterpreter({
+      ...input,
+      previousState,
+      interpreter: {
+        async interpretUserTurn() {
+          return { candidates: [], parseRejections: [] };
+        },
+      },
+    });
+
+    expect(result.interpretationOutcome).toBe('failed');
+    expect(result.stateMutationSource).toBe('none');
+    expect(result.state.draftGenerationIntent).toBe('user_authorized');
     expect(result.draftCandidates).toBeNull();
     expect(result.assumedDraft).toBeUndefined();
   });

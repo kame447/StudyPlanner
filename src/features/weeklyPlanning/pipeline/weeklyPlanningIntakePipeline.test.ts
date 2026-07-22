@@ -314,16 +314,17 @@ describe('weekly planning intake pipeline', () => {
     expect(output.decision.messageKey).toBe('open_weekly_planning_dialogue');
   });
 
-  it('keeps an empty AI candidate result on the same open-dialogue taxonomy without rules fallback', async () => {
+  it('treats an empty AI candidate result as an invalid response without rules fallback', async () => {
     const output = await runWeeklyPlanningIntakePipelineWithInterpreter({
       ...defaultPipelineInput,
       userText: 'こんにちは',
       interpreter: fakeInterpreter([]),
     });
 
-    expect(output.interpreterDiagnostics?.accepted).toEqual([]);
-    expect(output.interpreterDiagnostics?.rejected).toEqual([]);
-    expect(output.decision.kind).toBe('open_planning_dialogue');
+    expect(output.interpreterDiagnostics).toBeUndefined();
+    expect(output.interpretationOutcome).toBe('failed');
+    expect(output.stateMutationSource).toBe('none');
+    expect(output.interpreterFailure?.category).toBe('invalid_response');
     expect(output.state.intent).toBe('unknown');
   });
 

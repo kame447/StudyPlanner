@@ -732,8 +732,19 @@ function parseInterpreterResponse(
   return result;
 }
 
+function semanticOutputCount(result: WeeklyPlanningInterpreterResult): number {
+  return result.candidates.length
+    + (result.assumptionProposalDrafts?.length ?? 0)
+    + (result.assumptionDecisions?.length ?? 0)
+    + (result.correctionEnvelopes?.length ?? 0);
+}
+
 function needsResponseRepair(result: WeeklyPlanningInterpreterResult): boolean {
-  return Boolean(result.responseFailure || result.parseRejections.length > 0);
+  return Boolean(
+    result.responseFailure
+    || result.parseRejections.length > 0
+    || semanticOutputCount(result) === 0
+  );
 }
 
 function createRepairPrompt(result: WeeklyPlanningInterpreterResult): string {
@@ -821,10 +832,7 @@ export function createAiWeeklyPlanningInterpreter(
         purpose: 'weekly_planning_interpreter',
       });
       const repairedResult = parseInterpreterResponse(repairedContent, context);
-      const repairedSemanticOutputCount = repairedResult.candidates.length
-        + (repairedResult.assumptionProposalDrafts?.length ?? 0)
-        + (repairedResult.assumptionDecisions?.length ?? 0)
-        + (repairedResult.correctionEnvelopes?.length ?? 0);
+      const repairedSemanticOutputCount = semanticOutputCount(repairedResult);
       const repairFailed = Boolean(
         repairedResult.responseFailure
         || repairedResult.parseRejections.length > 0

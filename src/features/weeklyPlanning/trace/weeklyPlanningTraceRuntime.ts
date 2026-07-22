@@ -399,7 +399,7 @@ function pipelineEventEntries(params: {
         clarificationRequestCount: diagnostics.clarificationRequests.length,
         parseRejections: diagnostics.parseRejections,
         ...(output.interpreterRawResponse !== undefined
-          ? { rawResponse: output.interpreterRawResponse }
+          ? { rawResponseLength: output.interpreterRawResponse.length }
           : {}),
       },
       requestId,

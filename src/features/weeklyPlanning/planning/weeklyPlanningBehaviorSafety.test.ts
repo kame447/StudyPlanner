@@ -277,8 +277,19 @@ describe('behavior-aware planning safety boundary', () => {
       },
     };
     const interpreter: WeeklyPlanningIntakeInterpreter = {
-      async interpretUserTurn() {
-        return { candidates: [], parseRejections: [] };
+      async interpretUserTurn({ userText }) {
+        return {
+          candidates: [{
+            command: {
+              type: 'begin_weekly_planning',
+              sourceText: userText,
+              confidence: 'high',
+            },
+            origin: 'ai_interpreter',
+            needsConfirmation: false,
+          }],
+          parseRejections: [],
+        };
       },
     };
     const recentTurns = [

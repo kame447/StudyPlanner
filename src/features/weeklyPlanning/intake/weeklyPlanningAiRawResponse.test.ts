@@ -20,7 +20,13 @@ function params() {
 
 describe('weekly planning AI raw response observability', () => {
   it('preserves the exact valid provider response for trace diagnostics', async () => {
-    const raw = JSON.stringify({ candidates: [] });
+    const raw = JSON.stringify({
+      candidates: [{
+        type: 'begin_weekly_planning',
+        confidence: 'high',
+        sourceText: '研究と院試の予定を立てたい',
+      }],
+    });
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => raw),
     };
@@ -28,6 +34,21 @@ describe('weekly planning AI raw response observability', () => {
     const result = await createAiWeeklyPlanningInterpreter(config, client).interpretUserTurn(params());
 
     expect(result.rawResponse).toBe(raw);
+    expect(result.candidates).toHaveLength(1);
+  });
+
+  it('repairs an empty semantic response and fails closed when the repair is also empty', async () => {
+    const empty = JSON.stringify({ candidates: [] });
+    const createChatCompletion = vi.fn()
+      .mockResolvedValueOnce(empty)
+      .mockResolvedValueOnce(empty);
+    const client: OpenAiCompatibleClient = { createChatCompletion };
+
+    const result = await createAiWeeklyPlanningInterpreter(config, client).interpretUserTurn(params());
+
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(result.repairAttempted).toBe(true);
+    expect(result.responseFailure).toBe('invalid_candidates_after_repair');
     expect(result.candidates).toEqual([]);
   });
 

@@ -410,12 +410,19 @@ export async function finalizeBehaviorAwareOutput(params: {
   options: WeeklyPlanningBehaviorAwarePipelineOptions;
 }): Promise<WeeklyPlanningBehaviorAwarePipelineOutput> {
   let currentBase = params.base;
+  const interpretationFailed = currentBase.interpretationOutcome === 'failed';
+  const interpretationRejected = currentBase.interpretationOutcome === 'rejected';
+  const suppressSemanticDialogue = interpretationFailed || interpretationRejected;
   let behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
-  if (!currentBase.state.examPrepScope
+  if (!suppressSemanticDialogue
+    && !currentBase.state.examPrepScope
     && currentBase.state.draftGenerationIntent !== 'user_authorized'
     && behavior.actions.some((action) => action.kind === 'suggest_draft_generation')) {
     currentBase = { ...currentBase, state: markAssistantSuggested(currentBase.state) };
     behavior = runBehavior({ base: currentBase, input: params.input, options: params.options });
+  }
+  if (suppressSemanticDialogue) {
+    behavior = { ...behavior, actions: [], draftRun: null };
   }
 
   const feasibility = createFeasibilitySummary({
@@ -430,9 +437,6 @@ export async function finalizeBehaviorAwareOutput(params: {
       `planning-dimension:${dimension}`,
     ),
   });
-  const interpretationFailed = currentBase.interpretationOutcome === 'failed';
-  const interpretationRejected = currentBase.interpretationOutcome === 'rejected';
-  const suppressSemanticDialogue = interpretationFailed || interpretationRejected;
   const actions = suppressSemanticDialogue
     ? []
     : mergeActions(behavior.actions, createFeasibilityDialogueActions(feasibility));

@@ -216,7 +216,7 @@ export interface WeeklyPlanningInterpreterFailure {
 }
 
 export type WeeklyPlanningInterpretationSource = 'ai_interpreter';
-export type WeeklyPlanningInterpretationOutcome = 'applied' | 'empty' | 'rejected' | 'failed';
+export type WeeklyPlanningInterpretationOutcome = 'applied' | 'rejected' | 'failed';
 export type WeeklyPlanningStateMutationSource = 'validated_ai_commands' | 'none';
 
 export interface WeeklyPlanningIntakePipelineOutput {
@@ -634,6 +634,28 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
     }), previousState);
   }
 
+  const semanticOutputCount = interpreterResult.candidates.length
+    + interpreterResult.parseRejections.length
+    + (interpreterResult.assumptionProposalDrafts?.length ?? 0)
+    + (interpreterResult.assumptionDecisions?.length ?? 0)
+    + (interpreterResult.correctionEnvelopes?.length ?? 0);
+  if (semanticOutputCount === 0) {
+    return suppressUnappliedTurnArtifacts(buildPipelineOutput({
+      input,
+      state: stateForUnappliedInterpreterTurn(previousState, preparedState),
+      interpreterRawResponse: interpreterResult.rawResponse,
+      interpreterFailure: toInterpreterFailure(
+        'invalid_response',
+        new Error('empty_semantic_output'),
+      ),
+      interpretationSource: 'ai_interpreter',
+      interpretationOutcome: 'failed',
+      stateMutationSource: 'none',
+      interpreterRepairAttempted: interpreterResult.repairAttempted === true,
+      assumptionProposalState: proposalState,
+    }), previousState);
+  }
+
   const proposalResult = input.assumptionProposalContext && proposalState
     ? canonicalizeAssumptionProposalDrafts(
       interpreterResult.assumptionProposalDrafts ?? [],
@@ -655,17 +677,17 @@ export async function runWeeklyPlanningIntakePipelineWithInterpreter(
   );
   interpreterDiagnostics.parseRejections = interpreterResult.parseRejections;
 
-  const hadCandidateOutput = interpreterResult.candidates.length > 0
-    || interpreterResult.parseRejections.length > 0;
+  const hasDeferredLifecycleOutput = (interpreterResult.assumptionDecisions?.length ?? 0) > 0
+    || (interpreterResult.correctionEnvelopes?.length ?? 0) > 0;
   const hasApplicableResult = interpreterDiagnostics.accepted.length > 0
     || interpreterDiagnostics.acceptedWithConfirmation.length > 0
     || interpreterDiagnostics.clarifications.length > 0
-    || interpreterDiagnostics.clarificationRequests.length > 0;
+    || interpreterDiagnostics.clarificationRequests.length > 0
+    || (proposalResult?.accepted.length ?? 0) > 0
+    || hasDeferredLifecycleOutput;
   const interpretationOutcome: WeeklyPlanningInterpretationOutcome = hasApplicableResult
     ? 'applied'
-    : hadCandidateOutput
-      ? 'rejected'
-      : 'empty';
+    : 'rejected';
 
   if (interpretationOutcome === 'rejected') {
     return suppressUnappliedTurnArtifacts(buildPipelineOutput({

@@ -47,7 +47,7 @@ describe('weekly planning interpreter trace observability', () => {
     setWeeklyPlanningTraceRepositoryForTests(undefined);
   });
 
-  it('records the redaction-boundary raw provider response with interpreter completion', async () => {
+  it('records an empty semantic provider response as a failed interpreter completion', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     setWeeklyPlanningTraceRepositoryForTests(repository);
     const rawResponse = JSON.stringify({ candidates: [] });
@@ -66,13 +66,69 @@ describe('weekly planning interpreter trace observability', () => {
           kind: 'internal_event',
           eventType: 'interpreter_completed',
           payload: expect.objectContaining({
-            status: 'empty',
+            status: 'failed',
             interpretationSource: 'ai_interpreter',
             stateMutationSource: 'none',
-            rawResponse,
+            failure: expect.objectContaining({ category: 'invalid_response' }),
           }),
         }),
       ]));
+      expect(JSON.stringify(entries)).not.toContain(rawResponse);
+    });
+  });
+
+
+  it('persists raw-response metadata without storing the AI response body', async () => {
+    const repository = createInMemoryWeeklyPlanningTraceRepository();
+    setWeeklyPlanningTraceRepositoryForTests(repository);
+    const rawResponse = JSON.stringify({
+      candidates: [{
+        type: 'set_planning_range',
+        range: {
+          startDateTime: '2026-07-22T00:00:00',
+          endDateTime: '2026-07-22T24:00:00',
+          confidence: 'explicit',
+        },
+        sourceText: '今日',
+        confidence: 'high',
+      }],
+      privateMarker: 'must-not-be-persisted',
+    });
+
+    await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter(input({
+      async interpretUserTurn() {
+        return {
+          candidates: [{
+            command: {
+              type: 'set_planning_range',
+              range: {
+                startDateTime: '2026-07-22T00:00:00',
+                endDateTime: '2026-07-22T24:00:00',
+                confidence: 'explicit',
+              },
+              sourceText: '今日',
+              confidence: 'high',
+            },
+            origin: 'ai_interpreter',
+            needsConfirmation: false,
+          }],
+          parseRejections: [],
+          rawResponse,
+        };
+      },
+    }), { userId: 'user-1', conversationId: 'conversation-redaction', dialoguePlanner });
+
+    await waitForTrace(async () => {
+      const [session] = await repository.listSessionsForAdmin();
+      const entries = await repository.listEntries('user-1', session!.id);
+      const interpreterEntry = entries.find((entry) =>
+        entry.kind === 'internal_event' && entry.eventType === 'interpreter_completed'
+      );
+      expect(interpreterEntry).toMatchObject({
+        kind: 'internal_event',
+        payload: expect.objectContaining({ rawResponseLength: rawResponse.length }),
+      });
+      expect(JSON.stringify(entries)).not.toContain('must-not-be-persisted');
     });
   });
 
