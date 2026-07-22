@@ -1,15 +1,12 @@
 import type {
+  PlanningWindowFact,
   TaskRelationFact,
-  WeeklyPlanningFactGraph,
 } from './weeklyPlanningFactGraph';
-import {
-  WEEKLY_PLANNING_FACT_GRAPH_VERSION,
-} from './weeklyPlanningFactGraph';
-import type { WeeklyPlanningFactGraphV2 } from './weeklyPlanningFactGraphV2';
 import {
   compileGenericPlanningWorkItems,
   type GenericPlanningWorkItem,
   type GenericWorkItemIssue,
+  type WeeklyPlanningGenericWorkGraphView,
 } from './weeklyPlanningGenericWorkItems';
 import {
   type AvailabilityResolutionContext,
@@ -17,6 +14,7 @@ import {
   type AvailabilityWindowFact,
   type ConstraintSourceSelectionFact,
   type ExternalConstraintSourceSnapshot,
+  type WeeklyPlanningAvailabilityGraphView,
 } from './weeklyPlanningAvailabilityResolver';
 import {
   resolveWeeklyPlanningAvailabilityWithFullDayRules,
@@ -27,6 +25,7 @@ import type {
 } from './weeklyPlanningTaskCommitmentResolver';
 import {
   resolveWeeklyPlanningTaskCommitmentsWithDateRules,
+  type WeeklyPlanningTaskCommitmentDateRuleGraphView,
 } from './weeklyPlanningTaskCommitmentDateRuleAdapter';
 import type {
   ResolvedTaskDateEligibility,
@@ -36,6 +35,15 @@ import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
 
 export const GENERIC_SCHEDULER_INPUT_VERSION =
   'weekly-planning-generic-scheduler-input-v2' as const;
+
+export type WeeklyPlanningGenericSchedulerGraphView =
+  WeeklyPlanningGenericWorkGraphView
+  & WeeklyPlanningTaskCommitmentDateRuleGraphView
+  & WeeklyPlanningAvailabilityGraphView
+  & {
+    readonly planningWindows: ReadonlyArray<PlanningWindowFact>;
+    readonly relations: ReadonlyArray<TaskRelationFact>;
+  };
 
 export interface GenericSchedulerPlanningHorizon {
   startDate: string;
@@ -127,32 +135,8 @@ export interface GenericSchedulerInputCompilationResult {
 
 export type GenericSchedulerInputContext = AvailabilityResolutionContext;
 
-function projectGraphToV1(graph: WeeklyPlanningFactGraphV2): WeeklyPlanningFactGraph {
-  return {
-    version: WEEKLY_PLANNING_FACT_GRAPH_VERSION,
-    revision: graph.revision,
-    appliedTurnKeys: [...graph.appliedTurnKeys],
-    planningWindows: [...graph.planningWindows],
-    tasks: [...graph.tasks],
-    studyContexts: [...graph.studyContexts],
-    components: [...graph.components],
-    workloads: [...graph.workloads],
-    effortEstimates: [...graph.effortEstimates],
-    temporalConstraints: graph.temporalConstraints.map(({
-      constraintLevel: _constraintLevel,
-      namedTimePeriod: _namedTimePeriod,
-      ...constraint
-    }) => constraint),
-    recurrences: [...graph.recurrences],
-    relations: [...graph.relations],
-    uncertainties: [...graph.uncertainties],
-    correctionIntents: [...graph.correctionIntents],
-    decisionIntents: [...graph.decisionIntents],
-  };
-}
-
 function validateHorizon(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningGenericSchedulerGraphView;
   context: GenericSchedulerInputContext;
 }): GenericSchedulerInputIssue[] {
   const issues: GenericSchedulerInputIssue[] = [];
@@ -185,7 +169,7 @@ function validateHorizon(params: {
 }
 
 function compileRelations(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningGenericSchedulerGraphView;
   issues: GenericSchedulerInputIssue[];
 }): GenericSchedulerTaskRelation[] {
   const taskIds = new Set(params.graph.tasks.map((task) => task.id));
@@ -224,7 +208,7 @@ function compileRelations(params: {
 }
 
 function collectSourceFactRefs(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningGenericSchedulerGraphView;
   movableWorkItems: GenericPlanningWorkItem[];
   reservations: TaskCommitmentReservation[];
   taskDateEligibilities: ResolvedTaskDateEligibility[];
@@ -252,7 +236,7 @@ function collectSourceFactRefs(params: {
 }
 
 export function compileGenericSchedulerInput(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningGenericSchedulerGraphView;
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
 }): GenericSchedulerInputCompilationResult {
@@ -301,7 +285,7 @@ export function compileGenericSchedulerInput(params: {
     params.graph.workloads.map((workload) => [workload.id, workload.taskId]),
   );
 
-  const work = compileGenericPlanningWorkItems(projectGraphToV1(params.graph));
+  const work = compileGenericPlanningWorkItems(params.graph);
   const movableWorkItems = work.items.filter((item) => {
     if (!fixedTaskIds.has(item.taskId)) return true;
     issues.push({
