@@ -10,22 +10,30 @@ import {
 import { parseWeeklyPlanningSemanticDocumentV2WithDateRules } from './weeklyPlanningSemanticValidatorV2DateRules';
 import { canonicalizeWeeklyPlanningSemanticDocumentV2 } from './weeklyPlanningSemanticCanonicalizerV2';
 import { createEmptyWeeklyPlanningFactGraphV2 } from './weeklyPlanningFactGraphV2';
-import { resolveWeeklyPlanningTaskDateRules } from './weeklyPlanningTaskDateRuleResolver';
+import {
+  resolveWeeklyPlanningTaskDateRules,
+  type ResolvedTaskDateEligibility,
+} from './weeklyPlanningTaskDateRuleResolver';
 
 const shouldRun = process.env.WEEKLY_PLANNING_SEMANTIC_V2_DATE_REAL_EVAL === '1';
 const ENDPOINT = 'https://models.github.ai/inference/chat/completions';
 const MODEL = process.env.WEEKLY_PLANNING_SEMANTIC_V2_DATE_EVAL_MODEL?.trim()
   || 'openai/gpt-4.1';
 
+type DateResolution = ReturnType<typeof resolveWeeklyPlanningTaskDateRules>;
+
+interface EvaluationContext {
+  document: WeeklyPlanningSemanticDocumentV2;
+  canonicalStatus: string;
+  canonicalErrors: string[];
+  localToFactId: Record<string, string>;
+  resolved: DateResolution | null;
+}
+
 interface EvalCase {
   id: string;
   userText: string;
-  evaluate: (params: {
-    document: WeeklyPlanningSemanticDocumentV2;
-    canonicalStatus: string;
-    canonicalErrors: string[];
-    resolved: ReturnType<typeof resolveWeeklyPlanningTaskDateRules> | null;
-  }) => Record<string, boolean>;
+  evaluate: (context: EvaluationContext) => Record<string, boolean>;
 }
 
 interface EvalOutcome {
@@ -67,42 +75,29 @@ function exactSet(values: string[], expected: string[]): boolean {
   return [...new Set(values)].sort().join('|') === [...expected].sort().join('|');
 }
 
-function dateRuleExpressions(task: SemanticTaskV2 | undefined, kind: string): string[] {
+function dateExpressions(task: SemanticTaskV2 | undefined, kind: string): string[] {
   return task?.temporalConstraints
     .filter((constraint) => constraint.kind === kind)
     .map((constraint) => constraint.dateExpression ?? '') ?? [];
 }
 
 function weeklyDays(task: SemanticTaskV2 | undefined): string[] {
-  const recurrence = task?.recurrence.find((item) => item.kind === 'weekly');
-  return recurrence?.days ?? [];
+  return task?.recurrence.find((item) => item.kind === 'weekly')?.days ?? [];
 }
 
 function weeklyTargetsTask(task: SemanticTaskV2 | undefined): boolean {
   if (!task) return false;
-  const recurrence = task.recurrence.find((item) => item.kind === 'weekly');
-  return recurrence?.targetLocalId === task.localId;
+  return task.recurrence.find((item) => item.kind === 'weekly')?.targetLocalId
+    === task.localId;
 }
 
-function resolverEligibility(
-  resolved: ReturnType<typeof resolveWeeklyPlanningTaskDateRules> | null,
-  document: WeeklyPlanningSemanticDocumentV2,
+function eligibilityFor(
+  context: EvaluationContext,
   task: SemanticTaskV2 | undefined,
-) {
-  if (!resolved || !task) return undefined;
-  const canonicalTaskId = resolved.eligibilities.find((item) => {
-    const sourceIds = new Set(item.sourceFactIds);
-    const semanticSourceIds = new Set([
-      ...task.temporalConstraints.map((constraint) => constraint.localId),
-      ...task.recurrence.map((recurrence) => recurrence.localId),
-    ]);
-    return [...sourceIds].some((sourceId) =>
-      [...semanticSourceIds].some((semanticId) => sourceId.includes(semanticId)));
-  })?.taskId;
-  if (canonicalTaskId) {
-    return resolved.eligibilities.find((item) => item.taskId === canonicalTaskId);
-  }
-  return resolved.eligibilities.length === 1 ? resolved.eligibilities[0] : undefined;
+): ResolvedTaskDateEligibility | undefined {
+  if (!task || !context.resolved) return undefined;
+  const taskFactId = context.localToFactId[task.localId];
+  return context.resolved.eligibilities.find((item) => item.taskId === taskFactId);
 }
 
 function buildCases(): EvalCase[] {
@@ -110,19 +105,20 @@ function buildCases(): EvalCase[] {
     {
       id: 'discontinuous-allowed-dates',
       userText: '英単語は2026年7月8日、10日、11日だけやりたい。',
-      evaluate: ({ document, canonicalStatus, resolved }) => {
-        const task = findTask(document, '英単語');
-        const eligibility = resolverEligibility(resolved, document, task);
+      evaluate: (context) => {
+        const task = findTask(context.document, '英単語');
+        const eligibility = eligibilityFor(context, task);
         return {
           taskFound: Boolean(task),
-          threeAllowedDateFacts: exactSet(
-            dateRuleExpressions(task, 'allowed_date'),
+          threeAllowedDates: exactSet(
+            dateExpressions(task, 'allowed_date'),
             ['2026-07-08', '2026-07-10', '2026-07-11'],
           ),
-          noCollapsedGap: !dateRuleExpressions(task, 'allowed_date').includes('2026-07-09'),
-          canonicalApplied: canonicalStatus === 'applied',
-          resolverReady: resolved?.readiness === 'ready',
-          resolverExactDates: exactSet(
+          noCollapsedGap: !dateExpressions(task, 'allowed_date').includes('2026-07-09'),
+          canonicalApplied: context.canonicalStatus === 'applied',
+          noCanonicalErrors: context.canonicalErrors.length === 0,
+          resolverReady: context.resolved?.readiness === 'ready',
+          resolvedDates: exactSet(
             eligibility?.allowedDates ?? [],
             ['2026-07-08', '2026-07-10', '2026-07-11'],
           ),
@@ -132,17 +128,17 @@ function buildCases(): EvalCase[] {
     {
       id: 'weekly-discontinuous-weekday-set',
       userText: '英単語は毎週、水曜と金曜から日曜にやりたい。',
-      evaluate: ({ document, canonicalStatus, resolved }) => {
-        const task = findTask(document, '英単語');
-        const eligibility = resolverEligibility(resolved, document, task);
+      evaluate: (context) => {
+        const task = findTask(context.document, '英単語');
+        const eligibility = eligibilityFor(context, task);
         return {
           taskFound: Boolean(task),
           oneWeeklyRecurrence: task?.recurrence.filter((item) => item.kind === 'weekly').length === 1,
           exactWeekdaySet: exactSet(weeklyDays(task), ['wed', 'fri', 'sat', 'sun']),
           recurrenceTargetsTask: weeklyTargetsTask(task),
-          canonicalApplied: canonicalStatus === 'applied',
-          resolverReady: resolved?.readiness === 'ready',
-          resolverExactDates: exactSet(
+          canonicalApplied: context.canonicalStatus === 'applied',
+          resolverReady: context.resolved?.readiness === 'ready',
+          resolvedDates: exactSet(
             eligibility?.allowedDates ?? [],
             ['2026-07-22', '2026-07-24', '2026-07-25', '2026-07-26'],
           ),
@@ -152,23 +148,23 @@ function buildCases(): EvalCase[] {
     {
       id: 'weekly-set-with-exact-exclusion',
       userText: '英単語は毎週、水曜と金曜から日曜にやりたい。ただし2026年7月25日はやらない。',
-      evaluate: ({ document, canonicalStatus, resolved }) => {
-        const task = findTask(document, '英単語');
-        const eligibility = resolverEligibility(resolved, document, task);
+      evaluate: (context) => {
+        const task = findTask(context.document, '英単語');
+        const eligibility = eligibilityFor(context, task);
         return {
           taskFound: Boolean(task),
           exactWeekdaySet: exactSet(weeklyDays(task), ['wed', 'fri', 'sat', 'sun']),
           exactExcludedDate: exactSet(
-            dateRuleExpressions(task, 'excluded_date'),
+            dateExpressions(task, 'excluded_date'),
             ['2026-07-25'],
           ),
-          canonicalApplied: canonicalStatus === 'applied',
-          resolverReady: resolved?.readiness === 'ready',
-          resolverSubtractsException: exactSet(
+          canonicalApplied: context.canonicalStatus === 'applied',
+          resolverReady: context.resolved?.readiness === 'ready',
+          exceptionSubtracted: exactSet(
             eligibility?.allowedDates ?? [],
             ['2026-07-22', '2026-07-24', '2026-07-26'],
           ),
-          noFalseConflict: !(resolved?.issues ?? []).some((issue) =>
+          noFalseConflict: !(context.resolved?.issues ?? []).some((issue) =>
             issue.code === 'conflicting_task_date_rule'),
         };
       },
@@ -176,36 +172,36 @@ function buildCases(): EvalCase[] {
     {
       id: 'two-task-attachment',
       userText: '数学は2026年7月8日、10日、11日だけ、英単語は毎週水曜と金曜から日曜にやりたい。',
-      evaluate: ({ document, canonicalStatus }) => {
-        const math = findTask(document, '数学');
-        const english = findTask(document, '英単語');
+      evaluate: (context) => {
+        const math = findTask(context.document, '数学');
+        const english = findTask(context.document, '英単語');
         return {
           separateTasks: Boolean(math && english && math.localId !== english.localId),
           mathOwnsDates: exactSet(
-            dateRuleExpressions(math, 'allowed_date'),
+            dateExpressions(math, 'allowed_date'),
             ['2026-07-08', '2026-07-10', '2026-07-11'],
           ),
           englishOwnsWeekdays: exactSet(weeklyDays(english), ['wed', 'fri', 'sat', 'sun']),
-          noDateLeakToEnglish: dateRuleExpressions(english, 'allowed_date').length === 0,
+          noDateLeakToEnglish: dateExpressions(english, 'allowed_date').length === 0,
           noRecurrenceLeakToMath: weeklyDays(math).length === 0,
-          canonicalApplied: canonicalStatus === 'applied',
+          canonicalApplied: context.canonicalStatus === 'applied',
         };
       },
     },
     {
       id: 'discontinuous-excluded-dates',
       userText: '英単語は2026年7月8日、10日、11日はやらない。',
-      evaluate: ({ document, canonicalStatus, resolved }) => {
-        const task = findTask(document, '英単語');
-        const eligibility = resolverEligibility(resolved, document, task);
+      evaluate: (context) => {
+        const task = findTask(context.document, '英単語');
+        const eligibility = eligibilityFor(context, task);
         return {
           taskFound: Boolean(task),
-          threeExcludedDateFacts: exactSet(
-            dateRuleExpressions(task, 'excluded_date'),
+          threeExcludedDates: exactSet(
+            dateExpressions(task, 'excluded_date'),
             ['2026-07-08', '2026-07-10', '2026-07-11'],
           ),
-          canonicalApplied: canonicalStatus === 'applied',
-          resolverReady: resolved?.readiness === 'ready',
+          canonicalApplied: context.canonicalStatus === 'applied',
+          resolverReady: context.resolved?.readiness === 'ready',
           exclusionsPreserved: exactSet(
             eligibility?.excludedDates ?? [],
             ['2026-07-08', '2026-07-10', '2026-07-11'],
@@ -299,10 +295,8 @@ describe.skipIf(!shouldRun)('weekly planning semantic v2 date real evaluation', 
     const token = process.env.GITHUB_MODELS_TOKEN?.trim();
     if (!token) throw new Error('GITHUB_MODELS_TOKEN is required.');
     const outcomes: EvalOutcome[] = [];
-    const cases = buildCases();
 
-    for (let index = 0; index < cases.length; index += 1) {
-      const evalCase = cases[index];
+    for (const [index, evalCase] of buildCases().entries()) {
       if (index > 0) await wait(20_000);
       const startedAt = performance.now();
       try {
@@ -310,7 +304,8 @@ describe.skipIf(!shouldRun)('weekly planning semantic v2 date real evaluation', 
         const parsed = parseWeeklyPlanningSemanticDocumentV2WithDateRules(rawContent);
         let canonicalStatus: string | null = null;
         let canonicalErrors: string[] = [];
-        let resolved: ReturnType<typeof resolveWeeklyPlanningTaskDateRules> | null = null;
+        let localToFactId: Record<string, string> = {};
+        let resolved: DateResolution | null = null;
 
         if (parsed.document) {
           const canonical = canonicalizeWeeklyPlanningSemanticDocumentV2({
@@ -324,6 +319,7 @@ describe.skipIf(!shouldRun)('weekly planning semantic v2 date real evaluation', 
           });
           canonicalStatus = canonical.status;
           canonicalErrors = canonical.errors;
+          localToFactId = canonical.localToFactId;
           if (canonical.status === 'applied') {
             resolved = resolveWeeklyPlanningTaskDateRules({
               graph: canonical.graph,
@@ -339,6 +335,7 @@ describe.skipIf(!shouldRun)('weekly planning semantic v2 date real evaluation', 
             document: parsed.document,
             canonicalStatus: canonicalStatus ?? 'not-run',
             canonicalErrors,
+            localToFactId,
             resolved,
           })
           : {};
