@@ -207,10 +207,22 @@ export interface ConstraintSourceRequestFactV5 {
   createdRevision: number;
 }
 
+export type PlanningFactLifecycleStatusV5 = 'active' | 'superseded' | 'removed';
+
+export interface PlanningFactLifecycleEntryV5 {
+  factId: string;
+  status: PlanningFactLifecycleStatusV5;
+  createdRevision: number;
+  terminalRevision: number | null;
+  supersededByFactId: string | null;
+}
+
 export interface WeeklyPlanningFactGraphV5 {
   version: typeof WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5;
   revision: number;
   appliedTurnKeys: string[];
+  appliedLifecycleOperationKeys: string[];
+  factLifecycles: PlanningFactLifecycleEntryV5[];
   planningWindows: PlanningWindowFactV5[];
   tasks: PlanningTaskFactV5[];
   studyContexts: StudyContextFactV5[];
@@ -263,6 +275,8 @@ export function createEmptyWeeklyPlanningFactGraphV5(): WeeklyPlanningFactGraphV
     version: WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
     revision: 0,
     appliedTurnKeys: [],
+    appliedLifecycleOperationKeys: [],
+    factLifecycles: [],
     planningWindows: [],
     tasks: [],
     studyContexts: [],
