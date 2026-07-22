@@ -101,7 +101,8 @@ function createFakeClient(sequence: Array<string | Error>): {
 
 describe('weekly planning semantic normalizer', () => {
   it('accepts a valid first response with the dedicated purpose and schema', async () => {
-    const { client, calls } = createFakeClient([JSON.stringify(createValidDocument())]);
+    const raw = JSON.stringify(createValidDocument());
+    const { client, calls } = createFakeClient([raw]);
     const result = await createWeeklyPlanningSemanticNormalizer(client).normalize({
       userText: '簿記の問題集を20問進めたいです。1問10分くらいかかります。',
     });
@@ -115,9 +116,7 @@ describe('weekly planning semantic normalizer', () => {
       providerError: null,
     });
     expect(result.diagnostics.requestBytes[0]).toBeGreaterThan(0);
-    expect(result.diagnostics.responseLengths).toEqual([
-      JSON.stringify(createValidDocument()).length,
-    ]);
+    expect(result.diagnostics.responseLengths).toEqual([raw.length]);
     expect(calls).toHaveLength(1);
     expect(calls[0].purpose).toBe('weekly_planning_semantic_normalizer');
     expect(calls[0].responseFormat?.json_schema.name)
@@ -139,11 +138,12 @@ describe('weekly planning semantic normalizer', () => {
     });
     expect(result.diagnostics.validationErrors).toContain('document.schemaVersion');
     expect(calls).toHaveLength(2);
-    expect(calls[1].messages.at(-2)).toMatchObject({
+    const repairMessages = calls[1].messages;
+    expect(repairMessages[repairMessages.length - 2]).toMatchObject({
       role: 'assistant',
       content: '{"schemaVersion":"wrong"}',
     });
-    expect(calls[1].messages.at(-1)?.content).toContain('validationErrors');
+    expect(repairMessages[repairMessages.length - 1]?.content).toContain('validationErrors');
   });
 
   it('rejects after one repair when both responses remain invalid', async () => {
