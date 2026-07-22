@@ -1,6 +1,5 @@
 import type {
   AvailabilityDeclarationFact,
-  ConstraintSourceRequestFact,
   WeeklyPlanningFactGraphV2,
 } from './weeklyPlanningFactGraphV2';
 import type {
