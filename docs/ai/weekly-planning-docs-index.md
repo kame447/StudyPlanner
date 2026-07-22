@@ -2,20 +2,20 @@
 
 Status: canonical / active
 最終更新: 2026-07-22
-Current implementation baseline: `82bd8003a4e15180329bed158a5bff3017ac34a7`
+Current implementation baseline: `eae67502b71c35abfdaab12c89a053adae282cf1`
 
 ## 1. 現行判断に使用する文書
 
 | document | role |
 | --- | --- |
-| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic v5移行の最優先contract。汎用task、availability、AI/core責務、移行規則 |
-| [../architecture/weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md) | 実在するpre-V5、Alpha、Fact Graph世代、runtime依存、記録用依存、production利用、廃止条件の正本 |
+| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic v5移行の最優先contract。Stable direct実装、汎用task、availability、AI/core責務、移行規則 |
+| [../architecture/weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md) | pre-V5、Alpha、Stable V5、Fact Graph V1/V2/V5、runtime依存、記録用依存、production利用、廃止条件の正本 |
 | [strategy/weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md) | Alpha 1 / Alpha 2からdirect Stable V5へ統合する設計、migration、shadow、rollback、compatibility gate |
-| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | semantic v5移行streamのgate、依存順、merge禁止条件 |
+| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | Stable direct module実装後の検証、resolver、real-eval、shadow、migration、cutoverのgateと依存順 |
 | [../architecture/weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md) | 意味文書、特定日、個人最適化profile、scheduler入力までの全体スキーマ構造 |
 | [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md) | 汎用SemanticTurnDocument、PlanningFactGraph、generic work item architecture |
 | [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | availability、fixed commitment、external source、scheduler境界 |
-| [tasks/20260722-weekly-planning-generic-semantic-v5-migration.md](tasks/20260722-weekly-planning-generic-semantic-v5-migration.md) | 現在の実装scope、チェックリスト、変更・注意点・検証記録 |
+| [tasks/20260722-weekly-planning-generic-semantic-v5-migration.md](tasks/20260722-weekly-planning-generic-semantic-v5-migration.md) | migration streamの作業記録。最新gateはcurrent contract、schema registry、roadmapを優先する |
 | [tasks/20260722-weekly-planning-external-source-atomic-retry.md](tasks/20260722-weekly-planning-external-source-atomic-retry.md) | 外部予定をsuccess/failureだけで扱い、自動再取得する契約と変更記録 |
 | [tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md](tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md) | 一日計画、task例外日、終日休み、個人最適化係数profileの契約と変更記録 |
 | [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | request ownership、preview、approval、storage、trace、personalization等の非競合contract |
@@ -49,7 +49,11 @@ weekly-planning-current-contract-v5.md
 
 ## 2. Current queue
 
-semantic v5移行のqueue、gate、依存順は[weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)を正とする。schema世代と廃止条件は[weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)、Stable V5の統合実装手順は[weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md)を正とする。それ以外のcurrent queueは[weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)を正とする。このindexではtask一覧を複製しない。
+semantic v5移行のqueue、gate、依存順は[weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)を正とする。schema世代と廃止条件は[weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)、Stable V5の統合・migration・rollback手順は[weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md)を正とする。
+
+現在、Stable V5のdirect document、strict response schema、prompt、validator、normalizer、Fact Graph V5、direct canonicalizer、read-only shadow、real-eval harnessを並列moduleとして実装済みである。Graph V5はtask date、fixed commitment、availability、generic work item、generic scheduler inputのpure compilerへ旧graph projectionなしで到達する。repository全体の自動検証、実AI real-eval、production shadow invocation、persisted migration、production cutoverは未完了である。
+
+それ以外のcurrent queueは[weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)を正とする。このindexではtask一覧を複製しない。
 
 `docs/ai/tasks/`直下には未完了taskだけを置く。完了済みtaskは`tasks/closed/`、契約変更で実行対象外になったtaskは`tasks/superseded/`へ移す。
 
@@ -79,12 +83,12 @@ semantic v5移行のqueue、gate、依存順は[weekly-planning-semantic-v5-road
 
 長大なspec、v4 architecture、過去task、過去PR本文には、typed command、deterministic baseline先行、AIとの属性merge、provider failure時parser fallback、exam専用state/scheduler、close/unmount cancel、旧queue等のhistorical記述が残り得る。これらはv5 contractまたはv5 roadmapと競合する場合に採用しない。
 
-pre-V5 semantic schemaとAlpha世代を扱う場合、Git履歴だけを理由にfixtureやreal-eval runnerを削除しない。runtime依存と記録用依存をschema registryで確認し、Stable V5 migration planの廃止gateを通す。
+pre-V5 semantic schemaとAlpha世代を扱う場合、Git履歴だけを理由にfixtureやreal-eval runnerを削除しない。runtime依存と記録用依存をschema registryで確認し、Stable V5 migration planの廃止gateを通す。Stable V5 moduleが存在することだけを理由にAlpha runtime依存を削除しない。
 
 ## 5. 運用規則
 
 - semantic v5の実装前後でcurrent contract v5、schema registry、Stable V5 migration plan、schema overview v5、architecture v5、availability architecture v5、v5 roadmap、active task MDを確認する。
-- 各作業単位の変更、判断、注意点、検証結果をactive task MDまたは対応する個別task MDへ記録する。
+- 各作業単位の変更、判断、注意点、検証結果をactive task MD、PR comment、または対応する個別task MDへ記録する。
 - queueは対応するroadmapだけを正とする。
 - historical、closed、superseded、audit文書から直接taskを実行しない。
 - task完了時はcompletion recordを`tasks/closed/`へ残し、root taskを削除する。
