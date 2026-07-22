@@ -39,19 +39,19 @@ export interface GenericSchedulerPreviewGateResult {
   >;
 }
 
-const SECURITY_ISSUES = new Set([
+const SECURITY_ISSUES = new Set<string>([
   'constraint_source_owner_mismatch',
   'constraint_event_owner_mismatch',
   'invalid_constraint_event',
 ]);
 
-const HORIZON_ISSUES = new Set([
+const HORIZON_ISSUES = new Set<string>([
   'invalid_planning_horizon',
   'ambiguous_planning_window',
   'invalid_planning_date_range',
 ]);
 
-const COMMITMENT_ISSUES = new Set([
+const COMMITMENT_ISSUES = new Set<string>([
   'unsupported_commitment_date_expression',
   'missing_commitment_date_scope',
   'ambiguous_commitment_recurrence',
@@ -61,13 +61,13 @@ const COMMITMENT_ISSUES = new Set([
   'soft_fixed_interval_not_allowed',
 ]);
 
-const SOURCE_ISSUES = new Set([
+const SOURCE_ISSUES = new Set<string>([
   'constraint_source_unavailable',
   'constraint_source_partial',
   'active_constraint_source_missing',
 ]);
 
-const AVAILABILITY_ISSUES = new Set([
+const AVAILABILITY_ISSUES = new Set<string>([
   'unsupported_date_expression',
   'missing_availability_date_scope',
   'missing_time_bounds',
@@ -77,7 +77,7 @@ const AVAILABILITY_ISSUES = new Set([
   'invalid_time_interval',
 ]);
 
-const RELATION_ISSUES = new Set([
+const RELATION_ISSUES = new Set<string>([
   'orphan_relation_task',
   'self_relation',
 ]);
@@ -93,6 +93,14 @@ const WORK_ISSUE_PRIORITY: Record<string, number> = {
 
 function issueKey(issue: GenericSchedulerInputIssue): string {
   return `${issue.domain}:${issue.code}`;
+}
+
+function issueDetail(
+  issue: GenericSchedulerInputIssue,
+  key: string,
+): unknown {
+  const details = issue.details as Record<string, unknown> | undefined;
+  return details?.[key];
 }
 
 function priority(issue: GenericSchedulerInputIssue): number {
@@ -114,7 +122,7 @@ function taskTitle(graph: WeeklyPlanningFactGraphV2, taskId: string | null): str
 }
 
 function taskIdFromIssue(issue: GenericSchedulerInputIssue): string | null {
-  const value = issue.details?.taskId;
+  const value = issueDetail(issue, 'taskId');
   return typeof value === 'string' ? value : null;
 }
 
@@ -149,7 +157,7 @@ function questionForWorkIssue(
   issue: GenericSchedulerInputIssue,
   graph: WeeklyPlanningFactGraphV2,
 ): string {
-  const label = workloadLabel(graph, issue.factId);
+  const label = workloadLabel(graph, issue.factId ?? '');
   switch (issue.code) {
     case 'quantity_role_unresolved':
       return `${label}の量は、今回進めたい量ですか、それとも残っている全体量ですか？`;
@@ -202,7 +210,7 @@ function questionForAvailabilityIssue(issue: GenericSchedulerInputIssue): string
     case 'missing_time_bounds':
       return 'その時間条件の開始時刻と終了時刻を教えてください。';
     case 'named_time_period_unresolved':
-      return `${namedTimeLabel(issue.details?.namedTimePeriod)}は、何時から何時までですか？`;
+      return `${namedTimeLabel(issueDetail(issue, 'namedTimePeriod'))}は、何時から何時までですか？`;
     case 'unknown_constraint_level':
       return 'その時間条件は必ず守る必要がありますか、それとも希望ですか？';
     case 'invalid_weekday':
@@ -215,9 +223,8 @@ function questionForAvailabilityIssue(issue: GenericSchedulerInputIssue): string
 }
 
 function questionForSourceIssue(issue: GenericSchedulerInputIssue): string {
-  const kind = typeof issue.details?.kind === 'string'
-    ? issue.details.kind
-    : '予定データ';
+  const kindValue = issueDetail(issue, 'kind');
+  const kind = typeof kindValue === 'string' ? kindValue : '予定データ';
   const labels: Record<string, string> = {
     timetable: '時間割',
     existing_plans: '登録済み予定',
@@ -312,13 +319,14 @@ export function deriveGenericSchedulerDialoguePolicy(params: {
   }
 
   if (params.compilation.status === 'empty' || !params.compilation.input) {
+    const task = params.graph.tasks[0];
     return {
       graphRevision: params.graph.revision,
       readinessStage: 'needs_workload',
       nextQuestion: {
         issueCode: 'missing_schedulable_work',
-        targetFactId: params.graph.tasks[0]?.id ?? null,
-        text: `「${params.graph.tasks[0]?.title ?? 'このタスク'}」をどれくらい進めたいですか？`,
+        targetFactId: task?.id ?? null,
+        text: `「${task?.title ?? 'このタスク'}」をどれくらい進めたいですか？`,
       },
       blockingIssueCodes: [],
       schedulerStatus: params.compilation.status,
