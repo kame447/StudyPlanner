@@ -11,7 +11,6 @@ export function probeNamedPeriod(
   declaration: AvailabilityDeclarationFact,
   context: ProbeContext,
 ): { startTime: string; endTime: string } | undefined {
-  const namedTimePeriod = declaration.namedTimePeriod;
-  if (!namedTimePeriod) return undefined;
-  return context.namedTimePeriods?.[namedTimePeriod];
+  if (!declaration.namedTimePeriod) return undefined;
+  return context.namedTimePeriods?.[declaration.namedTimePeriod];
 }
