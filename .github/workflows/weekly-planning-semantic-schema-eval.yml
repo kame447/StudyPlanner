@@ -37,11 +37,11 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Adapt token-limit field for GitHub Models
-        run: >-
-          sed -i
-          's/max_completion_tokens: 1200/max_tokens: 1200/'
-          src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
+      - name: Adapt experiment for GitHub Models
+        run: |
+          sed -i 's/max_completion_tokens: 1200/max_tokens: 1200/' src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
+          sed -i "s/schemaVersion: { const: SEMANTIC_PLANNING_SCHEMA_VERSION }/schemaVersion: { type: 'string', const: SEMANTIC_PLANNING_SCHEMA_VERSION }/" src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.ts
+          sed -i "s/if (index > 0 && transport.kind === 'cloudflare-proxy')/if (index > 0)/" src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
       - name: Run generic semantic schema API evaluation
         id: eval
         continue-on-error: true
