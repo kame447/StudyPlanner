@@ -1,13 +1,14 @@
-import type { WeeklyPlanningFactGraphV2 } from './weeklyPlanningFactGraphV2';
 import {
   resolveWeeklyPlanningTaskCommitments,
   type TaskCommitmentResolutionContext,
   type TaskCommitmentResolutionResult,
+  type WeeklyPlanningTaskCommitmentGraphView,
 } from './weeklyPlanningTaskCommitmentResolver';
 import {
   isTaskAllowedOnDate,
   resolveWeeklyPlanningTaskDateRules,
   type TaskDateRuleResolutionResult,
+  type WeeklyPlanningTaskDateRuleGraphView,
 } from './weeklyPlanningTaskDateRuleResolver';
 
 export interface TaskCommitmentWithDateRulesResult {
@@ -15,8 +16,11 @@ export interface TaskCommitmentWithDateRulesResult {
   dateRules: TaskDateRuleResolutionResult;
 }
 
+export type WeeklyPlanningTaskCommitmentDateRuleGraphView =
+  WeeklyPlanningTaskCommitmentGraphView & WeeklyPlanningTaskDateRuleGraphView;
+
 export function resolveWeeklyPlanningTaskCommitmentsWithDateRules(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningTaskCommitmentDateRuleGraphView;
   context: TaskCommitmentResolutionContext;
 }): TaskCommitmentWithDateRulesResult {
   const dateRules = resolveWeeklyPlanningTaskDateRules({
