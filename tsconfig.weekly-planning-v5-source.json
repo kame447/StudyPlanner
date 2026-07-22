@@ -2,7 +2,9 @@
   "extends": "./tsconfig.json",
   "files": [
     "src/vite-env.d.ts",
-    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts"
+    "src/features/weeklyPlanning/semantic/weeklyPlanningCalendarResolver.ts",
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts",
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticValidatorV2.ts"
   ],
   "include": [],
   "exclude": []
