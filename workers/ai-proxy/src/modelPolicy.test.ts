@@ -10,6 +10,9 @@ describe('ai-proxy chat model policy', () => {
     expect(resolveChatModel({ purpose: 'weekly_planning_interpreter' })).toEqual({
       model: 'gpt-5.4-nano-2026-03-17',
     });
+    expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({
+      model: 'gpt-5.4-nano-2026-03-17',
+    });
     expect(resolveChatModel({ purpose: 'weekly_planning_renderer' })).toEqual({
       model: 'gpt-5.4-mini-2026-03-17',
     });
@@ -38,7 +41,7 @@ describe('ai-proxy chat model policy', () => {
   });
 
   // デプロイ整合の要: purpose 解決後の model は必ず allowlist に含まれていなければ
-  // 下流の allowlist 検証で 400 になる。purpose model を追加したら allowlist にも足すこと。
+  // 下流の allowlist 検証で 400 になる。purpose model を追加したらallowlistにも足すこと。
   it('keeps every purpose-routed model inside the default allowlist (no silent 400)', () => {
     for (const model of Object.values(AI_CHAT_PURPOSE_MODELS)) {
       expect(DEFAULT_ALLOWED_CHAT_MODELS).toContain(model);
