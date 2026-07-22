@@ -16,14 +16,13 @@ Updated: 2026-07-22
 
 ## 1. 意味解釈境界
 
-- raw user textからtask、quantity、time、relation、availability、task date rule、correction、decision、明示的な外部予定source requestを生成する主体はsingle AI semantic normalizerだけとする。
+- raw user textからtask、quantity、time、relation、availability、correction、decision、明示的な外部予定source requestを生成する主体はsingle AI semantic normalizerだけとする。
 - AIは内部mutation commandを選ばない。
 - AI出力は`SemanticTurnDocument`であり、database state、reducer command、scheduler requestではない。
 - validator、canonicalizer、readiness、dialogue、scheduler、safety層はraw textを再解釈しない。
 - provider failure、空応答、不正JSON、schema不一致、全拒否、repair失敗でもparserへfallbackしない。
 - repairはJSON/schema修復に限り、一turn最大一回とする。
 - failed/rejected turnはaccepted facts、question context、preview、proposal、draftを変更しない。
-- 個人最適化係数を単発のAI出力から直接保存しない。
 
 ## 2. 汎用task model
 
@@ -37,7 +36,6 @@ PlanningTask
 ├─ workloads
 ├─ effort estimates
 ├─ temporal constraints
-├─ task date rules
 └─ recurrence
 ```
 
@@ -52,8 +50,8 @@ PlanningTask
 - workloadは作業量を表す。
 - effort estimateは所要時間見積りを表す。
 - temporal constraintは特定taskの開始、終了、固定区間、締切、希望、回避時間を表す。
-- task date ruleは特定taskを特定日にだけ実行する、または特定日だけ除外する条件を表す。
-- recurrenceはtaskまたはavailabilityの繰り返し頻度を表す。
+- task date ruleは特定taskの明示的な許可日・除外日を表す。
+- recurrenceはtaskまたはavailabilityの繰り返し頻度と曜日集合を表す。
 - planning windowは計画全体の期間だけを表す。
 - plan-wide availability declarationは特定taskを持たない空き、利用不可、希望、回避時間を表す。
 - external source requestは時間割、既存予定、calendarを使う・使わないというユーザー要求だけを表す。
@@ -68,7 +66,7 @@ declared | target | remaining | completed | unknown
 
 量が明示されたが総量・残量・今回目標を確定できない場合は`declared`とする。AIに早期確定を強制しない。
 
-## 4. 日付、時間帯、特定日
+## 4. 日付、時間帯、曜日集合
 
 AI境界で日付と時間帯を分離する。
 
@@ -82,6 +80,9 @@ namedTimePeriod:
   morning | afternoon | evening | night
   | before_sleep | before_meal | after_meal
   | custom:<原文>
+
+weekday:
+  sun | mon | tue | wed | thu | fri | sat
 ```
 
 - `今日`、`明日`、`来週`、`午前中`等の日本語をvalidator以降で再解析しない。
@@ -90,29 +91,13 @@ namedTimePeriod:
 - `custom:`は後段で意味解釈せず、未解決としてreadinessへ返す。
 - named time periodは注入済みpolicyがある場合だけ具体時刻へ解決する。
 - named time periodと明示clockを同じfactへ同時指定しない。
-
-特定日の要求は次へ分ける。
-
-```text
-一日だけの計画
-→ absolute planning window start=end
-
-特定taskをその日だけ行う
-→ allowed_date
-
-特定taskをその日だけ行わない
-→ excluded_date
-
-その日は計画全体で何も入れない
-→ date-only hard unavailable
-```
-
-- task date ruleはhardのみとし、clockやnamed time periodを持たせない。
-- 複数allowed dateは和集合とする。
-- excluded dateは実行可能日から差し引く。
-- 同じtask・同じ日へのallow/exclude競合は自動解決せず一件だけ確認する。
-- 繰り返し固定予定にも例外日を適用する。
-- date-only hard unavailableは00:00〜翌日00:00の終日windowへ解決する。
+- `7月8日、10日、11日`等の非連続日を最小日から最大日までの連続rangeへ変換しない。一日ごとの`allowed_date`として保持し、解決時に和集合する。
+- `水曜と金曜から日曜`等は一つのtask recurrenceへ`days=[wed,fri,sat,sun]`として保持する。
+- 曜日rangeはAI境界でcanonical weekdayへ展開する。
+- task-level recurrenceの曜日集合はplanning window内の具体日付へ決定論的に解決し、scheduler inputのtask date eligibilityへ渡す。
+- exact excluded dateは曜日集合から差し引く。
+- recurrence由来の候補日とexcluded dateの重なりは正常な例外指定である。
+- 明示的`allowed_date`と明示的`excluded_date`が同じtask・同じ日に直接衝突した場合だけblocking conflictとする。
 
 ## 5. Canonical state
 
@@ -131,9 +116,8 @@ AI出力をそのまま永続化しない。deterministic coreが`PlanningFactGr
 coreはsemantic factを次へ決定論的に解決する。
 
 - user availability declaration → available/unavailable/preferred/avoided window
-- date-only hard unavailable → whole-day unavailable window
 - hard fixed task → task ID付きcommitment reservation
-- task date rule → taskごとのallowed/excluded date
+- task date rule / task-level recurrence → taskごとの許可日・除外日
 - explicit source request → owner-bound active source selection
 - successful external event set → occupied windows
 
@@ -153,7 +137,6 @@ failure(reason)
 - retry後のfailureを予定0件とみなさない。
 - owner mismatchまたは不正eventが一件でもあればsource import全体を拒否する。
 - fixed taskを可動work itemとして二重配置しない。
-- 特定日除外で固定予約が0件になっても可動work itemへ戻さない。
 - hard occupied/unavailable windowへwork itemを配置しない。
 - named time periodのpolicyが無ければ時刻を捏造しない。
 
@@ -172,8 +155,7 @@ failure(reason)
 - previewを妨げる高影響不足を一度に原則一件だけ確認する。
 - AI normalizerはmissing slot、question target、readiness、preview可否を決定しない。
 - exam専用rendererと一般rendererを最終的に統合する。
-- availability/source/commitment/task date ruleのblocking issueも同じreadinessへ統合する。
-- 同じ日にtaskを行う指定と行わない指定が競合した場合、どちらを採用するか質問する。
+- availability/source/commitment/task dateのblocking issueも同じreadinessへ統合する。
 - 外部予定failure時は、自動再試行済みであること、予定へ未反映であること、入力内容を保持していることを案内する。
 - security rejectionでも計画の最初からのやり直しを要求しない。
 
@@ -196,37 +178,20 @@ source fact refs
 - 具体年度が必要なpolicyだけactual valueを要求する。
 - estimated minutesが不足する場合は推測せずreadinessへ返す。
 - fixed reservation対象taskは可動work itemから除外する。
-- task date eligibilitiesはallowed dateまたはexcluded dateとして渡す。
-- unresolved availability/source/commitment/task date ruleがある場合、schedulerへ不完全な入力を渡さない。
+- unresolved availability/source/commitment/task dateがある場合、schedulerへ不完全な入力を渡さない。
 - scheduler入力が未完成でも計画sessionを停止せず、readinessへ戻す。
+- task date eligibilityは複数の非連続日と曜日集合を具体的な許可日へ解決した結果を保持する。
+- eligibilityのsource fact refsには明示日付ruleとrecurrence factの両方を含める。
 
 ## 9. 個人最適化profile
 
-個人最適化係数はSemanticTurnDocumentやPlanningFactGraphへ混ぜず、アカウント単位のversion付きprofileへ保存する。
-
-```text
-personalization profile
-├─ schema version
-├─ week start
-├─ subject estimate multipliers
-├─ preferred session minutes
-└─ placement model
-   ├─ feature version
-   ├─ weight version
-   └─ contextual parameters
-```
-
-- 既存v1 profileは空のplacement modelを持つv2へ移行する。
-- parameterはfeature、context、coefficient、scope、provenance、confidence、updatedAtを持つ。
-- coefficientは`-4〜4`へ制限する。
-- unknown feature、不正key、不正係数をsanitize時に除外する。
-- parameter数は最大300件とする。
-- 全ユーザー共通の基本weightはprofileへ複製せず、weight versionで管理する。
-- 単発のAI発話から係数を直接保存しない。
-- 明示的好みはconfirmed setting、行動学習値はplan/actual集計を根拠とする。
-- production schedulerによるscore適用とlearning pipelineは未接続である。
-
-配置featureの初期集合は、完了しやすさ、開始遅延、中断、再配置、時間帯、曜日、session長、切替負担、就寝近接、詰め込み、科目相性とする。
+- 個人最適化係数をSemanticTurnDocumentまたはPlanningFactGraphへ混ぜない。
+- profileはaccount単位、schema version付きで保持する。
+- 全ユーザー共通の基本weightはprofileへ複製しない。
+- coefficient、scope、context、provenance、confidence、updatedAt、feature version、weight versionを保持する。
+- 単発のAI出力から長期係数を直接永続化しない。
+- 明示設定または計画と実績の集計を根拠に更新する。
+- raw conversation本文をprofileへ保存しない。
 
 ## 10. 維持する安全境界
 
@@ -240,7 +205,6 @@ personalization profile
 - user-boundary storage
 - browser reload後のpreview再計算
 - trace privacyとaccount data separation
-- personalization raw conversationをprofileへ保存しない
 
 ## 11. 移行規則
 
@@ -259,17 +223,15 @@ API schema experiment                 complete
 architecture / contract               documented
 alpha2 semantic / validator           foundation complete
 PlanningFactGraph additive facts      foundation complete
-task date rule                        foundation complete / production disconnected
-whole-day unavailable                 foundation complete / production disconnected
 availability / source resolution      foundation complete
 external source atomic retry          module complete / production disconnected
 fixed commitment reservation          foundation complete
+specific dates / weekday sets         foundation complete / automated verified
+personalization profile v2            foundation complete / scoring disconnected
 shadow normalizer                      module complete / disconnected
 generic work demand                    foundation complete
-unified scheduler input v2             foundation complete
+unified scheduler input                foundation complete
 generic scheduler dialogue policy     foundation complete / renderer disconnected
-personalization profile v2            storage/validation foundation complete
-personalized placement scoring        not connected
 fact lifecycle / correction            not implemented
 persisted migration                    not implemented
 production cutover                     not started
