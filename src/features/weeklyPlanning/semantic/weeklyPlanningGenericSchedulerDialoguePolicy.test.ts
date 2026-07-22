@@ -118,7 +118,7 @@ describe('generic scheduler dialogue policy', () => {
     });
   });
 
-  it('selects a security issue before a workload estimate issue', () => {
+  it('selects a security issue before a workload estimate issue without restarting the plan', () => {
     const policy = deriveGenericSchedulerDialoguePolicy({
       graph: graph(),
       compilation: compilation({
@@ -146,7 +146,7 @@ describe('generic scheduler dialogue policy', () => {
     expect(policy.nextQuestion).toEqual({
       issueCode: 'availability:constraint_event_owner_mismatch',
       targetFactId: 'source-request-1',
-      text: '予定データを安全に確認できませんでした。再読み込みして、もう一度予定作成を開始してください。',
+      text: '予定データを安全に確認できなかったため、その予定は反映していません。設定を確認してください。入力済みの計画内容は保持しています。',
     });
   });
 
@@ -175,7 +175,7 @@ describe('generic scheduler dialogue policy', () => {
     });
   });
 
-  it('explains that a partial external source is not treated as empty', () => {
+  it('reports the final failure only after automatic retries are exhausted', () => {
     const policy = deriveGenericSchedulerDialoguePolicy({
       graph: graph(),
       compilation: compilation({
@@ -184,21 +184,52 @@ describe('generic scheduler dialogue policy', () => {
         issues: [
           {
             domain: 'availability',
-            code: 'constraint_source_partial',
+            code: 'constraint_source_unavailable',
             blocking: true,
             factId: 'source-request-timetable',
-            details: { kind: 'timetable' },
+            details: {
+              kind: 'timetable',
+              failureKind: 'network_error',
+              attemptCount: 3,
+            },
           },
         ],
       }),
     });
 
     expect(policy.nextQuestion?.text).toBe(
-      '時間割を完全には取得できませんでした。再取得するか、時間割を使わずに進めるか教えてください。',
+      '時間割を自動で3回取得しましたが、確認できなかったため、まだ予定には反映していません。時間割を使わずに進めるか、設定を確認してください。入力済みの計画内容は保持しています。',
     );
   });
 
-  it('asks the existing workload question when work is the highest blocking issue', () => {
+  it('gives a specific action for authentication failures', () => {
+    const policy = deriveGenericSchedulerDialoguePolicy({
+      graph: graph(),
+      compilation: compilation({
+        status: 'needs_resolution',
+        input: null,
+        issues: [
+          {
+            domain: 'availability',
+            code: 'constraint_source_unavailable',
+            blocking: true,
+            factId: 'source-request-calendar',
+            details: {
+              kind: 'calendar',
+              failureKind: 'authentication_error',
+              attemptCount: 1,
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(policy.nextQuestion?.text).toBe(
+      'カレンダーの認証を確認できませんでした。接続設定を確認してください。入力済みの計画内容は保持しています。',
+    );
+  });
+
+  it('asks the workload question when work is the highest blocking issue', () => {
     const policy = deriveGenericSchedulerDialoguePolicy({
       graph: graph(),
       compilation: compilation({
