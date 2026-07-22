@@ -2,12 +2,18 @@ import type {
   EffortEstimateFact,
   PlanningTaskFact,
   StudyComponentFact,
-  WeeklyPlanningFactGraph,
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
 import type { SemanticWorkloadUnitCode } from './weeklyPlanningSemanticDocument';
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
+
+export interface WeeklyPlanningGenericWorkGraphView {
+  readonly tasks: ReadonlyArray<PlanningTaskFact>;
+  readonly components: ReadonlyArray<StudyComponentFact>;
+  readonly workloads: ReadonlyArray<WorkloadFact>;
+  readonly effortEstimates: ReadonlyArray<EffortEstimateFact>;
+}
 
 export interface GenericWorkItemQuantity {
   amount: number;
@@ -87,11 +93,15 @@ function createWorkItemId(workloadFactId: string): string {
   return `wpwi_${stableHash(`${GENERIC_WORK_ITEM_VERSION}|${workloadFactId}`)}`;
 }
 
-function taskById(graph: WeeklyPlanningFactGraph): Map<string, PlanningTaskFact> {
+function taskById(
+  graph: WeeklyPlanningGenericWorkGraphView,
+): Map<string, PlanningTaskFact> {
   return new Map(graph.tasks.map((task) => [task.id, task]));
 }
 
-function componentById(graph: WeeklyPlanningFactGraph): Map<string, StudyComponentFact> {
+function componentById(
+  graph: WeeklyPlanningGenericWorkGraphView,
+): Map<string, StudyComponentFact> {
   return new Map(graph.components.map((component) => [component.id, component]));
 }
 
@@ -136,7 +146,7 @@ interface EstimateResolution {
 
 function resolveEstimatedMinutes(params: {
   workload: WorkloadFact;
-  estimates: EffortEstimateFact[];
+  estimates: ReadonlyArray<EffortEstimateFact>;
 }): EstimateResolution {
   const workload = params.workload;
 
@@ -158,7 +168,11 @@ function resolveEstimatedMinutes(params: {
     };
   }
   if (perUnit.length > 1) {
-    return { estimatedMinutes: null, sourceFactIds: perUnit.map((value) => value.id), ambiguous: true };
+    return {
+      estimatedMinutes: null,
+      sourceFactIds: perUnit.map((value) => value.id),
+      ambiguous: true,
+    };
   }
 
   const total = matching.filter((estimate) => estimate.kind === 'total_duration');
@@ -170,7 +184,11 @@ function resolveEstimatedMinutes(params: {
     };
   }
   if (total.length > 1) {
-    return { estimatedMinutes: null, sourceFactIds: total.map((value) => value.id), ambiguous: true };
+    return {
+      estimatedMinutes: null,
+      sourceFactIds: total.map((value) => value.id),
+      ambiguous: true,
+    };
   }
 
   const session = matching.filter((estimate) => estimate.kind === 'session_duration');
@@ -182,7 +200,11 @@ function resolveEstimatedMinutes(params: {
     };
   }
   if (workload.unitCode === 'session' && session.length > 1) {
-    return { estimatedMinutes: null, sourceFactIds: session.map((value) => value.id), ambiguous: true };
+    return {
+      estimatedMinutes: null,
+      sourceFactIds: session.map((value) => value.id),
+      ambiguous: true,
+    };
   }
 
   return { estimatedMinutes: null, sourceFactIds: [], ambiguous: false };
@@ -195,7 +217,7 @@ function deriveSplitPolicy(workload: WorkloadFact): GenericPlanningWorkItem['spl
 }
 
 export function compileGenericPlanningWorkItems(
-  graph: WeeklyPlanningFactGraph,
+  graph: WeeklyPlanningGenericWorkGraphView,
 ): GenericWorkItemCompilationResult {
   const tasks = taskById(graph);
   const components = componentById(graph);
