@@ -58,7 +58,7 @@ function graph(): WeeklyPlanningFactGraphV2 {
 
 function readyInput(): GenericSchedulerInput {
   return {
-    version: 'weekly-planning-generic-scheduler-input-v1',
+    version: 'weekly-planning-generic-scheduler-input-v2',
     graphRevision: 2,
     ownerId: 'user-1',
     horizon: {
@@ -82,6 +82,7 @@ function readyInput(): GenericSchedulerInput {
         graphRevision: 2,
       },
     ],
+    taskDateEligibilities: [],
     availabilityWindows: [],
     sourceSelections: [],
     relations: [],
