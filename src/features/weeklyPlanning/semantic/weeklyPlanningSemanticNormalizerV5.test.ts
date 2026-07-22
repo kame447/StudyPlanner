@@ -122,8 +122,9 @@ describe('Stable V5 semantic normalizer', () => {
     });
     expect(fake.calls).toHaveLength(2);
     const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
-    expect(repairMessages.at(-1)?.content).toContain('Stable V5 JSON document only');
-    expect(repairMessages.at(-1)?.content).toContain('save decisions');
+    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
+    expect(repairInstruction).toContain('Stable V5 JSON document only');
+    expect(repairInstruction).toContain('save decisions');
   });
 
   it('rejects when the single repair remains invalid', async () => {
