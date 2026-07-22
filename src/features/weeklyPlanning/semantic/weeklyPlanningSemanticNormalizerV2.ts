@@ -14,6 +14,11 @@ import {
 } from './weeklyPlanningSemanticValidatorV2DateRules';
 
 const SEMANTIC_NORMALIZER_V2_MAX_COMPLETION_TOKENS = 3200;
+const DATE_SET_NORMALIZATION_INSTRUCTION = [
+  'For multiple non-consecutive explicit calendar dates that apply to one task, create one allowed_date temporal constraint per date. Do not collapse gaps into a continuous date range.',
+  'For a repeating task on explicitly named weekdays, create one recurrence fact with kind weekly and a single days array using only sun, mon, tue, wed, thu, fri, sat.',
+  'Expand weekday ranges before returning JSON. For example, 水曜と金曜から日曜 becomes days [wed, fri, sat, sun]. Keep the entire weekday set in one recurrence fact rather than splitting it into multiple recurrence facts.',
+].join('\n');
 
 export interface WeeklyPlanningSemanticNormalizerInputV2 {
   userText: string;
@@ -55,7 +60,13 @@ function errorMessage(error: unknown): string {
 
 function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV2): ChatMessage[] {
   return [
-    { role: 'system', content: createWeeklyPlanningSemanticSystemPromptV2() },
+    {
+      role: 'system',
+      content: [
+        createWeeklyPlanningSemanticSystemPromptV2(),
+        DATE_SET_NORMALIZATION_INSTRUCTION,
+      ].join('\n'),
+    },
     { role: 'user', content: createWeeklyPlanningSemanticUserPromptV2(input) },
   ];
 }
