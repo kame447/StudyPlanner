@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.mjs --host 0.0.0.0",
-    "build": "npm run test:run -- src/features/weeklyPlanning/semantic/weeklyPlanningGenericSchedulerWeekdayEligibility.test.ts && vite build --config vite.config.mjs",
+    "build": "npm run test:run -- src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV2.test.ts && vite build --config vite.config.mjs",
     "preview:vite": "vite preview --config vite.config.mjs --host 0.0.0.0",
     "preview": "node ./scripts/preview-server.mjs",
     "cert:dev": "node ./scripts/generate-dev-cert.mjs",
