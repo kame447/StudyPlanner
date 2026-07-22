@@ -23,12 +23,11 @@ concurrency:
 jobs:
   real-eval:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
-      WEEKLY_PLANNING_SEMANTIC_SCHEMA_REAL_EVAL: '1'
-      WEEKLY_PLANNING_SEMANTIC_SCHEMA_EVAL_MODEL: 'openai/gpt-4.1'
-      OPENAI_API_KEY: ${{ secrets.GITHUB_TOKEN }}
-      OPENAI_BASE_URL: 'https://models.github.ai/inference'
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_V1_REAL_EVAL: '1'
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_V1_MODEL: 'openai/gpt-4.1'
+      GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,23 +36,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Adapt experiment for GitHub Models
-        run: |
-          sed -i 's/max_completion_tokens: 1200/max_tokens: 1200/' src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
-          sed -i "s/schemaVersion: { const: SEMANTIC_PLANNING_SCHEMA_VERSION }/schemaVersion: { type: 'string', const: SEMANTIC_PLANNING_SCHEMA_VERSION }/" src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.ts
-          sed -i "s/if (index > 0 && transport.kind === 'cloudflare-proxy')/if (index > 0)/" src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
-      - name: Run generic semantic schema API evaluation
+      - name: Run generic semantic schema v1 API evaluation
         id: eval
         continue-on-error: true
         run: >-
           npm run test:run --
-          src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
+          src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperimentV1.real-eval.test.ts
       - name: Upload evaluation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-semantic-schema-eval
-          path: artifacts/weekly-planning-semantic-schema-eval.json
+          name: weekly-planning-semantic-schema-v1-eval
+          path: artifacts/weekly-planning-semantic-schema-v1-eval.json
           if-no-files-found: warn
       - name: Propagate evaluation failure
         if: steps.eval.outcome == 'failure'
