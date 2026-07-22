@@ -26,10 +26,23 @@ function document(): WeeklyPlanningSemanticDocumentV2 {
             kind: 'fixed_interval',
             constraintLevel: 'hard',
             dateExpression: null,
+            namedTimePeriod: null,
             startTime: '18:00',
             endTime: '19:00',
             precision: 'exact',
             sourceText: '18時から19時まで夕食',
+          },
+          {
+            localId: 'constraint-before-sleep',
+            targetLocalId: 'task-dinner',
+            kind: 'preferred_window',
+            constraintLevel: 'soft',
+            dateExpression: null,
+            namedTimePeriod: 'before_sleep',
+            startTime: null,
+            endTime: null,
+            precision: 'unspecified',
+            sourceText: '寝る前がやりやすい',
           },
         ],
         recurrence: [],
@@ -45,12 +58,25 @@ function document(): WeeklyPlanningSemanticDocumentV2 {
         localId: 'availability-weekdays',
         kind: 'unavailable',
         dateExpression: null,
+        namedTimePeriod: null,
         startTime: null,
         endTime: '18:00',
         recurrenceKind: 'weekdays',
         days: [],
         constraintLevel: 'hard',
         sourceText: '平日は18時まで勉強できない',
+      },
+      {
+        localId: 'availability-weekend-morning',
+        kind: 'preferred',
+        dateExpression: null,
+        namedTimePeriod: 'morning',
+        startTime: null,
+        endTime: null,
+        recurrenceKind: 'weekends',
+        days: [],
+        constraintLevel: 'soft',
+        sourceText: '土日の午前中がやりやすい',
       },
     ],
     constraintSourceRequests: [
@@ -72,7 +98,7 @@ const context = {
 } as const;
 
 describe('weekly planning semantic alpha2 canonicalizer', () => {
-  it('preserves temporal constraint level and creates unresolved semantic facts', () => {
+  it('preserves temporal and availability extensions as unresolved facts', () => {
     const result = canonicalizeWeeklyPlanningSemanticDocumentV2({
       graph: createEmptyWeeklyPlanningFactGraphV2(),
       document: document(),
@@ -82,18 +108,36 @@ describe('weekly planning semantic alpha2 canonicalizer', () => {
     expect(result.status).toBe('applied');
     expect(result.errors).toEqual([]);
     expect(result.graph.revision).toBe(1);
-    expect(result.graph.temporalConstraints[0]).toMatchObject({
-      kind: 'fixed_interval',
-      constraintLevel: 'hard',
-      startTime: '18:00',
-      endTime: '19:00',
-    });
-    expect(result.graph.availabilityDeclarations[0]).toMatchObject({
-      kind: 'unavailable',
-      recurrenceKind: 'weekdays',
-      constraintLevel: 'hard',
-      resolutionStatus: 'unresolved',
-    });
+    expect(result.graph.temporalConstraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'fixed_interval',
+        constraintLevel: 'hard',
+        namedTimePeriod: null,
+        startTime: '18:00',
+        endTime: '19:00',
+      }),
+      expect.objectContaining({
+        kind: 'preferred_window',
+        constraintLevel: 'soft',
+        namedTimePeriod: 'before_sleep',
+      }),
+    ]));
+    expect(result.graph.availabilityDeclarations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'unavailable',
+        recurrenceKind: 'weekdays',
+        namedTimePeriod: null,
+        constraintLevel: 'hard',
+        resolutionStatus: 'unresolved',
+      }),
+      expect.objectContaining({
+        kind: 'preferred',
+        recurrenceKind: 'weekends',
+        namedTimePeriod: 'morning',
+        constraintLevel: 'soft',
+        resolutionStatus: 'unresolved',
+      }),
+    ]));
     expect(result.graph.constraintSourceRequests[0]).toMatchObject({
       kind: 'timetable',
       selector: 'active',
