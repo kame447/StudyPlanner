@@ -7,12 +7,12 @@ Status: canonical / active migration queue
 - Schema overview: [weekly-planning-semantic-schema-v5.md](../../architecture/weekly-planning-semantic-schema-v5.md)
 - Architecture: [weekly-planning-dialogue-architecture-v5.md](../../architecture/weekly-planning-dialogue-architecture-v5.md)
 - Availability architecture: [weekly-planning-availability-architecture-v5.md](../../architecture/weekly-planning-availability-architecture-v5.md)
-- Active task: [20260722-weekly-planning-generic-semantic-v5-migration.md](../tasks/20260722-weekly-planning-generic-semantic-v5-migration.md)
-- External source record: [20260722-weekly-planning-external-source-atomic-retry.md](../tasks/20260722-weekly-planning-external-source-atomic-retry.md)
-- Specific date / personalization record: [20260722-weekly-planning-specific-date-and-personalization-profile.md](../tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md)
+- Active task and work log: [20260722-weekly-planning-generic-semantic-v5-migration.md](../tasks/20260722-weekly-planning-generic-semantic-v5-migration.md)
+- Specific-date / personalization record: [20260722-weekly-planning-specific-date-and-personalization-profile.md](../tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md)
+- External source retry record: [20260722-weekly-planning-external-source-atomic-retry.md](../tasks/20260722-weekly-planning-external-source-atomic-retry.md)
 - General roadmap: [weekly-planning-roadmap.md](weekly-planning-roadmap.md)
 
-この文書はsemantic v5移行streamのqueue正本である。一般運用、privacy、approval、storage、trace等の非競合queueは従来roadmapを参照する。
+この文書はsemantic v5移行streamのqueue正本である。一般運用、privacy、approval、personalization等のqueueは従来roadmapを参照する。
 
 ## 1. 到達状態
 
@@ -23,13 +23,9 @@ Status: canonical / active migration queue
   → runtime validation
   → deterministic canonicalizer
   → PlanningFactGraph
-  → work / commitment / task-date / availability compilation
+  → work demand / date eligibility / availability / commitment compilation
   → readiness / acknowledgement / question policy
   → scheduler / preview / approval / save
-
-account profile
-  → versioned personalization parameters
-  → scheduler scoring modifier
 ```
 
 ## 2. Gate
@@ -38,21 +34,22 @@ account profile
 
 Status: complete
 
-- architecture v5、schema overview、availability architecture、current contract、roadmap、work logを正本化する。
-- typed commandとexam専用stateをhistoricalへ降格する。
-- API実験、外部予定取得、特定日、個人最適化の判断を記録する。
+- architecture v5、schema overview、availability architecture、current contract v5、migration task、roadmapを正本化する。
+- typed commandとexam専用stateが新しい正本ではないことを明記する。
+- API実験と外部予定取得契約の判断を記録する。
 
 ### V5-B: stable semantic document
 
 Status: alpha2 foundation complete / consolidation pending
 
-- generic task、component、workload、effort、temporal、task-date、recurrence、relationを分離する。
+- generic task、component、workload、effort、temporal、recurrence、relationを分離する。
 - constraint level、availability declaration、named time period、external source requestを扱う。
-- 一日計画、task allowed date、task excluded date、終日休みを区別する。
+- non-consecutive explicit datesを一日ごとのdate ruleとして保持する。
+- weekday rangeをcanonical weekday集合へ展開し、一つのrecurrence factへ保持する。
 - local ID、ref、cycle、category/study整合をclosed validatorで検証する。
 - 日本語日時をAI境界でcanonical tokenへ変換し、後段で再解析しない。
 - alpha1とalpha2をproduction採用前に一つへ統合する。
-- stable schemaでreal API evalを再実行する。
+- stable alpha2 schemaでreal API evalを再実行する。
 
 ### V5-C: PlanningFactGraph
 
@@ -61,7 +58,7 @@ Status: additive foundation complete / lifecycle pending
 - 正式fact IDとrevisionをcoreが発行する。
 - SemanticTurnDocumentをatomicにcanonicalizeする。
 - 不完全なfactを保持する。
-- availability、source request、constraint level、named time period、task date ruleを正式factへ保持する。
+- task date rule、recurrence、availability declaration、source request、constraint level、named time periodを正式factへ保持する。
 - correction/delete/proposal decisionへ使うstable public refとlifecycleを実装する。
 - old persisted state migration decoderを実装する。
 
@@ -78,18 +75,18 @@ Status: module complete / production shadow connection pending
 
 ### V5-E: scheduler input foundation
 
-Status: v2 foundation complete / old scheduler adapter pending
+Status: foundation complete / old scheduler adapter pending
 
 - generic work demandを生成する。
 - page、problem、word、chapter、minute、exam_year、customを同一contractで扱う。
 - ordinalとactual valueを分離する。
 - estimated minutes不足をreadinessへ返す。
 - user availability、external occupied event、fixed task reservationを解決する。
-- task allowed/excluded dateを解決する。
-- date-only hard unavailableを終日windowへ解決する。
-- work、reservation、task-date、availability、relation、planning windowを単一scheduler inputへ統合する。
+- multiple allowed dates、excluded dates、task-level weekday recurrenceをtask date eligibilityへ解決する。
+- recurrence由来の候補日からexact excluded dateを差し引く。
+- 明示allowed/excludedの直接衝突だけをblocking conflictとする。
+- work demand、date eligibility、reservation、availability、relation、planning windowを単一scheduler inputへ統合する。
 - fixed taskを可動work itemとそのblocking issueから除外する。
-- 特定日除外でfixed reservationが消えても可動workへ戻さない。
 - hard occupied/unavailable windowを必須制約として渡す。
 - existing scheduler adapterは一方向かつtemporaryにする。
 
@@ -100,7 +97,6 @@ Status: pure scheduler policy complete / renderer connection pending
 - accepted fact diffからacknowledgementを生成する。
 - 高影響不足を原則一件質問する。
 - availability/source/commitment/task-dateのblocking issueを統合する。
-- 同一日のallowed/excluded conflictを勝手に解決しない。
 - external source failure時もconversationと入力内容を保持する。
 - explicit authorizationとpreview gateを維持する。
 - exam/general rendererを統合する。
@@ -118,21 +114,6 @@ Status: atomic retry module complete / automated verified / production adapter c
 - failureを空予定として扱わない。
 - failure時に計画sessionを終了せず、source依存previewだけを保留する。
 
-### V5-P: personalization profile
-
-Status: profile v2 storage/validation foundation complete / scoring and learning pending
-
-- 個人最適化をSemanticTurnDocumentとPlanningFactGraphから分離する。
-- profile schema、feature version、weight versionを持つ。
-- time band、weekday、session length、completion、delay、interruption、reschedule、transition、sleep proximity、workload density、subject affinityを扱う。
-- parameterへcontext、scope、coefficient、provenance、confidence、updatedAtを持たせる。
-- coefficientをboundedにし、未知featureと不正値をsanitizeする。
-- v1 profileを空placement model付きv2へ移行する。
-- 全ユーザー共通weightはprofileへ複製しない。
-- production schedulerへread-onlyで接続する。
-- plan/actual集計からparameter候補を生成するlearning pipelineを実装する。
-- 少数例、古い観測、明示設定との競合を扱う更新規則を固定する。
-
 ### V5-G: production cutover
 
 Status: not started
@@ -140,6 +121,7 @@ Status: not started
 - executorを新semantic pathへ一括切替する。
 - 同一turnで旧commandと新factをmergeしない。
 - persisted state migrationを実装する。
+- old scheduler adapterでtask date eligibilityを消費する。
 - 旧prompt、command、exam state、exam adapter、exam rendererを削除する。
 - full tests、build、roleplay、real-eval、七視点監査を完了する。
 
@@ -149,11 +131,10 @@ Status: not started
 V5-A documents and decisions       complete
 V5-B stable semantic document      alpha2 foundation complete
 V5-C PlanningFactGraph             additive foundation complete
-V5-D shadow normalizer             module complete / disconnected
-V5-E scheduler input v2            foundation complete / adapter pending
+V5-D shadow normalizer             module complete / not connected
+V5-E scheduler input               date eligibility foundation complete / adapter pending
 V5-F dialogue integration          pure policy complete / renderer pending
-V5-FS external acquisition         automated verified / disconnected
-V5-P personalization profile       v2 foundation complete / scoring pending
+V5-FS external source acquisition  automated verified / disconnected
 V5-G production cutover            not started
 ```
 
@@ -170,20 +151,16 @@ V5-D shadow module
   ↓
 V5-E scheduler input + V5-FS source acquisition
   ↓
-V5-C lifecycle / persisted migration
+V5-C lifecycle / migration
   ↓
 V5-D production shadow evaluation
   ↓
-V5-F renderer + scheduler adapter
+V5-F renderer integration
   ↓
-V5-P read-only personalization scoring
-  ↓
-V5-G production cutover
-  ↓
-V5-P learning pipeline
+V5-G production cutover and deletion
 ```
 
-pure moduleは並行実装可能だが、production connectionはlifecycle、migration、authorization、privacy回帰の完了後に行う。学習によるprofile更新は、read-only scoringの安全性確認後に導入する。
+V5-Cのadditive fact foundationとV5-E/V5-FSのpure moduleは並行可能だが、production connectionはlifecycle、migration、authorization回帰の完了後に行う。
 
 ## 5. Merge禁止条件
 
@@ -194,11 +171,9 @@ pure moduleは並行実装可能だが、production connectionはlifecycle、mig
 - raw textの後段parserまたはfallbackが残る。
 - componentとworkloadが配列位置で対応する。
 - 日付と時間帯が混在し、後段が日本語日時を再解析する。
-- 一日計画を一週間へ強制拡張する。
-- taskの特定日指定が破棄される。
-- recurring fixed taskへexcluded dateが適用されない。
-- date-only hard unavailableを時刻不足として捨てる。
-- allowed/excluded conflictを無言で片方へ決める。
+- 非連続日が連続rangeへ変換される。
+- task-level weekday recurrenceがscheduler input到達前に失われる。
+- recurrence由来の候補日とexact excluded dateが誤ってblocking conflictになる。
 - workloadとavailabilityが混同される。
 - external予定本文をAIが再生成する。
 - 不完全なtime factが破棄または0分へ変換される。
@@ -210,9 +185,6 @@ pure moduleは並行実装可能だが、production connectionはlifecycle、mig
 - fixed taskが可動work itemとして二重配置される。
 - hard occupied/unavailable windowへwork itemを配置できる。
 - explicit authorization前にpreviewが生成される。
-- personalization係数にversion、context、provenance、confidenceがない。
-- 単発のAI発話が長期profile係数を直接上書きする。
-- raw conversation本文をpersonalization profileへ保存する。
 - request ownership、approval、storage回帰が失敗する。
 - alpha1/alpha2の二重production経路が残る。
 
@@ -220,24 +192,19 @@ pure moduleは並行実装可能だが、production connectionはlifecycle、mig
 
 - GitHub Models APIでinitial generic schemaを評価済み。
 - semantic全test、Worker routing、full TypeScript、Vite production buildをCloudflare Pages上でcommit `c6336f0`にて同時成功。
-- 外部予定atomic retry修正はcommit `47b66f8`で一括成功。
-- 特定日resolver単体はcommit `8913477`で成功。
-- 一日計画、task例外日、終日休み、fixed reservation例外の統合テストはcommit `6514a81`で成功。
-- personalization profile v2 migration/validationはcommit `86d1972`で成功。
-- date-rule validationはcommit `e8c8c5c`、canonicalizerはcommit `89e8942`で成功。
-- semantic全test、personalization test、Worker routing、Vite buildはcommit `69bebad`で成功。
-- task-date dialogueを含むsemantic全回帰はcommit `3d6d674`で成功。
-- full TypeScriptとVite production buildはcommit `a4c29be`で成功。
-- temporary tsconfigはcommit `bb4d951`で削除済み。
+- 外部予定atomic retry修正はcommit `47b66f8`でsemantic全test、Worker routing、full TypeScript、Vite production buildを同時成功した。
+- specific-date / personalization全体はcommit `090a5eb`でsemantic全test、personalization、routing、full TypeScript、production buildを同時成功した。
+- non-consecutive dates / weekday setsはcommit `d9c6829`でresolver、scheduler integration、normalizer prompt、full TypeScript、production buildを同時成功した。
+- 通常buildへ復元したcommit `2b25994`以降の最新headでもfull TypeScriptとVite production buildが成功している。
+- 実APIで`7/8、10、11`と`水曜と金曜〜日曜`を評価するreal-evalは未実施である。
 - GitHub Actionsはrunner step開始前failureのため、Actions側の運用問題は別途解決が必要。
 
 ## 7. 記録規則
 
-各gate開始前に、current contract、schema overview、architecture、availability architecture、本roadmap、active taskを確認する。完了後は対応するMDへ次を記録する。
+各gate開始前に、current contract v5、schema overview v5、architecture v5、availability architecture v5、本roadmap、active task MDを確認する。完了後はactive task MDまたは対応する個別task MDへ次を記録する。
 
 - 変更ファイル
 - contract上の判断
 - 発見した注意点
 - 検証結果
-- production接続状態
 - 次gateへの未解決事項
