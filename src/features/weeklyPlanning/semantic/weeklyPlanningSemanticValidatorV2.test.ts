@@ -29,6 +29,7 @@ function createDocument(): WeeklyPlanningSemanticDocumentV2 {
             kind: 'fixed_interval',
             constraintLevel: 'hard',
             dateExpression: null,
+            namedTimePeriod: null,
             startTime: '18:00',
             endTime: '19:00',
             precision: 'exact',
@@ -48,6 +49,7 @@ function createDocument(): WeeklyPlanningSemanticDocumentV2 {
         localId: 'availability-weekdays',
         kind: 'unavailable',
         dateExpression: null,
+        namedTimePeriod: null,
         startTime: null,
         endTime: '18:00',
         recurrenceKind: 'weekdays',
@@ -58,7 +60,8 @@ function createDocument(): WeeklyPlanningSemanticDocumentV2 {
       {
         localId: 'availability-weekend',
         kind: 'preferred',
-        dateExpression: '午前中',
+        dateExpression: null,
+        namedTimePeriod: 'morning',
         startTime: null,
         endTime: null,
         recurrenceKind: 'weekends',
@@ -85,14 +88,14 @@ describe('weekly planning semantic alpha2 validator', () => {
 
     expect(result.errors).toEqual([]);
     expect(result.document?.tasks[0].temporalConstraints[0].constraintLevel).toBe('hard');
-    expect(result.document?.availabilityDeclarations).toHaveLength(2);
+    expect(result.document?.availabilityDeclarations[1].namedTimePeriod).toBe('morning');
     expect(result.document?.constraintSourceRequests[0]).toMatchObject({
       kind: 'timetable',
       requestedAction: 'use',
     });
   });
 
-  it('generates a strict JSON schema with alpha2 availability fields', () => {
+  it('generates a strict JSON schema with availability and named-time fields', () => {
     const schema = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V2.json_schema.schema;
     const required = schema.required as string[];
     const properties = schema.properties as Record<string, unknown>;
@@ -107,17 +110,56 @@ describe('weekly planning semantic alpha2 validator', () => {
     expect(properties).toHaveProperty('constraintSourceRequests');
   });
 
-  it('rejects a missing temporal constraint level', () => {
-    const value = createDocument() as unknown as Record<string, unknown>;
-    const tasks = value.tasks as Array<Record<string, unknown>>;
-    const constraints = tasks[0].temporalConstraints as Array<Record<string, unknown>>;
-    delete constraints[0].constraintLevel;
-
-    const result = validateWeeklyPlanningSemanticValueV2(value);
-
-    expect(result.document).toBeNull();
-    expect(result.errors).toContain(
+  it('rejects missing temporal extension fields', () => {
+    const missingLevel = createDocument() as unknown as Record<string, unknown>;
+    const levelTasks = missingLevel.tasks as Array<Record<string, unknown>>;
+    const levelConstraints = levelTasks[0].temporalConstraints as Array<Record<string, unknown>>;
+    delete levelConstraints[0].constraintLevel;
+    expect(validateWeeklyPlanningSemanticValueV2(missingLevel).errors).toContain(
       'document.tasks[0].temporalConstraints[0].constraintLevel',
+    );
+
+    const missingNamedPeriod = createDocument() as unknown as Record<string, unknown>;
+    const periodTasks = missingNamedPeriod.tasks as Array<Record<string, unknown>>;
+    const periodConstraints = periodTasks[0].temporalConstraints as Array<Record<string, unknown>>;
+    delete periodConstraints[0].namedTimePeriod;
+    expect(validateWeeklyPlanningSemanticValueV2(missingNamedPeriod).errors).toContain(
+      'document.tasks[0].temporalConstraints[0].namedTimePeriod',
+    );
+  });
+
+  it('rejects Japanese date expressions instead of requiring downstream parsing', () => {
+    const taskDate = createDocument();
+    taskDate.tasks[0].temporalConstraints[0].dateExpression = '明日';
+    expect(validateWeeklyPlanningSemanticValueV2(taskDate).errors).toContain(
+      'document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression',
+    );
+
+    const availabilityDate = createDocument();
+    availabilityDate.availabilityDeclarations[0].dateExpression = '来週';
+    expect(validateWeeklyPlanningSemanticValueV2(availabilityDate).errors).toContain(
+      'document.availabilityDeclarations[0].dateExpression:canonical-expression',
+    );
+  });
+
+  it('accepts canonical and custom-prefixed date or time expressions', () => {
+    const document = createDocument();
+    document.tasks[0].temporalConstraints[0].dateExpression = 'tomorrow';
+    document.availabilityDeclarations[1].namedTimePeriod = 'custom:昼休み後';
+    expect(validateWeeklyPlanningSemanticValueV2(document).errors).toEqual([]);
+  });
+
+  it('rejects named time periods combined with exact clock bounds', () => {
+    const task = createDocument();
+    task.tasks[0].temporalConstraints[0].namedTimePeriod = 'evening';
+    expect(validateWeeklyPlanningSemanticValueV2(task).errors).toContain(
+      'document.tasks[0].temporalConstraints[0].namedTimePeriod:cannot-combine-with-clock',
+    );
+
+    const availability = createDocument();
+    availability.availabilityDeclarations[1].startTime = '09:00';
+    expect(validateWeeklyPlanningSemanticValueV2(availability).errors).toContain(
+      'document.availabilityDeclarations[1].namedTimePeriod:cannot-combine-with-clock',
     );
   });
 
@@ -131,9 +173,7 @@ describe('weekly planning semantic alpha2 validator', () => {
       endTime: null,
     };
 
-    const result = validateWeeklyPlanningSemanticValueV2(document);
-
-    expect(result.errors).toContain(
+    expect(validateWeeklyPlanningSemanticValueV2(document).errors).toContain(
       'document.tasks[0].temporalConstraints[0].constraintLevel:preferred-window-cannot-be-hard',
     );
   });
@@ -157,15 +197,14 @@ describe('weekly planning semantic alpha2 validator', () => {
     document.availabilityDeclarations[0] = {
       ...document.availabilityDeclarations[0],
       dateExpression: null,
+      namedTimePeriod: null,
       startTime: null,
       endTime: null,
       recurrenceKind: null,
       days: [],
     };
 
-    const result = validateWeeklyPlanningSemanticValueV2(document);
-
-    expect(result.errors).toContain(
+    expect(validateWeeklyPlanningSemanticValueV2(document).errors).toContain(
       'document.availabilityDeclarations[0]:missing-time-scope',
     );
   });
@@ -174,9 +213,7 @@ describe('weekly planning semantic alpha2 validator', () => {
     const document = createDocument();
     document.availabilityDeclarations[0].localId = 'task-dinner';
 
-    const result = validateWeeklyPlanningSemanticValueV2(document);
-
-    expect(result.errors).toContain(
+    expect(validateWeeklyPlanningSemanticValueV2(document).errors).toContain(
       'document.availabilityDeclarations[0].localId:duplicate:task-dinner',
     );
   });
@@ -186,9 +223,7 @@ describe('weekly planning semantic alpha2 validator', () => {
     document.availabilityDeclarations[0].recurrenceKind = null;
     document.availabilityDeclarations[0].days = ['mon'];
 
-    const result = validateWeeklyPlanningSemanticValueV2(document);
-
-    expect(result.errors).toContain(
+    expect(validateWeeklyPlanningSemanticValueV2(document).errors).toContain(
       'document.availabilityDeclarations[0].days:requires-recurrence',
     );
   });
@@ -223,7 +258,6 @@ describe('weekly planning semantic alpha2 validator', () => {
     ];
 
     const result = validateWeeklyPlanningSemanticValueV2(document);
-
     expect(result.errors).toEqual([]);
     expect(result.document?.constraintSourceRequests).toEqual([]);
   });
