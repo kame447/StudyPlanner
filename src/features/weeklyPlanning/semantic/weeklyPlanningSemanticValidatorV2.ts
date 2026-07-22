@@ -3,13 +3,16 @@ import {
   SEMANTIC_AVAILABILITY_RECURRENCE_KINDS,
   SEMANTIC_CONSTRAINT_LEVELS,
   SEMANTIC_CONSTRAINT_SOURCE_KINDS,
+  SEMANTIC_NAMED_TIME_PERIODS,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V2,
+  type SemanticNamedTimePeriod,
   type WeeklyPlanningSemanticDocumentV2,
 } from './weeklyPlanningSemanticDocumentV2';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION,
 } from './weeklyPlanningSemanticDocument';
 import { validateWeeklyPlanningSemanticValue } from './weeklyPlanningSemanticValidator';
+import { isCanonicalDateExpressionSyntax } from './weeklyPlanningCalendarResolver';
 
 export interface WeeklyPlanningSemanticValidationResultV2 {
   document: WeeklyPlanningSemanticDocumentV2 | null;
@@ -17,6 +20,7 @@ export interface WeeklyPlanningSemanticValidationResultV2 {
 }
 
 const CLOCK_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const CUSTOM_NAMED_TIME_PERIOD_PATTERN = /^custom:.+$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -35,6 +39,13 @@ function isEnumValue<T extends readonly string[]>(
   values: T,
 ): value is T[number] {
   return typeof value === 'string' && (values as readonly string[]).includes(value);
+}
+
+function isNamedTimePeriod(value: unknown): value is SemanticNamedTimePeriod {
+  return (
+    isEnumValue(value, SEMANTIC_NAMED_TIME_PERIODS)
+    || (typeof value === 'string' && CUSTOM_NAMED_TIME_PERIOD_PATTERN.test(value))
+  );
 }
 
 function validateExactKeys(
@@ -62,6 +73,30 @@ function validateNullableClock(value: unknown, path: string, errors: string[]): 
   }
 }
 
+function validateNullableDateExpression(
+  value: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (!isNullableString(value)) {
+    errors.push(path);
+    return;
+  }
+  if (typeof value === 'string' && !isCanonicalDateExpressionSyntax(value)) {
+    errors.push(`${path}:canonical-expression`);
+  }
+}
+
+function validateNullableNamedTimePeriod(
+  value: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (value !== null && !isNamedTimePeriod(value)) {
+    errors.push(path);
+  }
+}
+
 function cloneValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -76,7 +111,9 @@ function projectToAlpha1(value: Record<string, unknown>): unknown {
     for (const task of projected.tasks) {
       if (!isRecord(task) || !Array.isArray(task.temporalConstraints)) continue;
       for (const constraint of task.temporalConstraints) {
-        if (isRecord(constraint)) delete constraint.constraintLevel;
+        if (!isRecord(constraint)) continue;
+        delete constraint.constraintLevel;
+        delete constraint.namedTimePeriod;
       }
     }
   }
@@ -122,7 +159,7 @@ function registerAdditionalLocalId(
   ids.add(value);
 }
 
-function validateTemporalConstraintLevels(
+function validateTemporalConstraints(
   value: Record<string, unknown>,
   errors: string[],
 ): void {
@@ -134,7 +171,22 @@ function validateTemporalConstraintLevels(
       if (!isRecord(constraint)) return;
       if (!isEnumValue(constraint.constraintLevel, SEMANTIC_CONSTRAINT_LEVELS)) {
         errors.push(`${path}.constraintLevel`);
-        return;
+      }
+      validateNullableDateExpression(
+        constraint.dateExpression,
+        `${path}.dateExpression`,
+        errors,
+      );
+      validateNullableNamedTimePeriod(
+        constraint.namedTimePeriod,
+        `${path}.namedTimePeriod`,
+        errors,
+      );
+      if (
+        constraint.namedTimePeriod !== null
+        && (constraint.startTime !== null || constraint.endTime !== null)
+      ) {
+        errors.push(`${path}.namedTimePeriod:cannot-combine-with-clock`);
       }
       if (constraint.kind === 'preferred_window' && constraint.constraintLevel === 'hard') {
         errors.push(`${path}.constraintLevel:preferred-window-cannot-be-hard`);
@@ -168,6 +220,7 @@ function validateAvailabilityDeclarations(
         'localId',
         'kind',
         'dateExpression',
+        'namedTimePeriod',
         'startTime',
         'endTime',
         'recurrenceKind',
@@ -182,32 +235,53 @@ function validateAvailabilityDeclarations(
     if (!isEnumValue(declaration.kind, SEMANTIC_AVAILABILITY_KINDS)) {
       errors.push(`${path}.kind`);
     }
-    if (!isNullableString(declaration.dateExpression)) {
-      errors.push(`${path}.dateExpression`);
-    }
+    validateNullableDateExpression(
+      declaration.dateExpression,
+      `${path}.dateExpression`,
+      errors,
+    );
+    validateNullableNamedTimePeriod(
+      declaration.namedTimePeriod,
+      `${path}.namedTimePeriod`,
+      errors,
+    );
     validateNullableClock(declaration.startTime, `${path}.startTime`, errors);
     validateNullableClock(declaration.endTime, `${path}.endTime`, errors);
-    if (declaration.recurrenceKind !== null
+    if (
+      declaration.namedTimePeriod !== null
+      && (declaration.startTime !== null || declaration.endTime !== null)
+    ) {
+      errors.push(`${path}.namedTimePeriod:cannot-combine-with-clock`);
+    }
+    if (
+      declaration.recurrenceKind !== null
       && !isEnumValue(
         declaration.recurrenceKind,
         SEMANTIC_AVAILABILITY_RECURRENCE_KINDS,
-      )) {
+      )
+    ) {
       errors.push(`${path}.recurrenceKind`);
     }
-    if (!Array.isArray(declaration.days)
-      || declaration.days.some((day) => !isNonEmptyString(day))) {
+    if (
+      !Array.isArray(declaration.days)
+      || declaration.days.some((day) => !isNonEmptyString(day))
+    ) {
       errors.push(`${path}.days`);
     }
-    if (declaration.recurrenceKind === null
+    if (
+      declaration.recurrenceKind === null
       && Array.isArray(declaration.days)
-      && declaration.days.length > 0) {
+      && declaration.days.length > 0
+    ) {
       errors.push(`${path}.days:requires-recurrence`);
     }
     if (!isEnumValue(declaration.constraintLevel, SEMANTIC_CONSTRAINT_LEVELS)) {
       errors.push(`${path}.constraintLevel`);
     }
-    if ((declaration.kind === 'preferred' || declaration.kind === 'avoided')
-      && declaration.constraintLevel === 'hard') {
+    if (
+      (declaration.kind === 'preferred' || declaration.kind === 'avoided')
+      && declaration.constraintLevel === 'hard'
+    ) {
       errors.push(`${path}.constraintLevel:preference-cannot-be-hard`);
     }
     if (declaration.kind === 'unavailable' && declaration.constraintLevel === 'soft') {
@@ -218,6 +292,7 @@ function validateAvailabilityDeclarations(
     }
 
     const hasScope = isNonEmptyString(declaration.dateExpression)
+      || isNamedTimePeriod(declaration.namedTimePeriod)
       || isNonEmptyString(declaration.startTime)
       || isNonEmptyString(declaration.endTime)
       || declaration.recurrenceKind !== null
@@ -291,7 +366,7 @@ export function validateWeeklyPlanningSemanticValueV2(
 
   const baseValidation = validateWeeklyPlanningSemanticValue(projectToAlpha1(value));
   errors.push(...baseValidation.errors.map((error) => `base:${error}`));
-  validateTemporalConstraintLevels(value, errors);
+  validateTemporalConstraints(value, errors);
 
   if (baseValidation.document) {
     const documentForIds = value as unknown as WeeklyPlanningSemanticDocumentV2;
