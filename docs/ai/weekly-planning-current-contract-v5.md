@@ -4,6 +4,7 @@ Status: canonical / active for semantic v5 migration
 Updated: 2026-07-22
 
 - Architecture: [weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md)
+- Availability architecture: [weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md)
 - Migration roadmap: [weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)
 - Active task and decision log: [20260722-weekly-planning-generic-semantic-v5-migration.md](tasks/20260722-weekly-planning-generic-semantic-v5-migration.md)
 - Legacy status overlay: [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md)
@@ -12,7 +13,7 @@ Updated: 2026-07-22
 
 ## 1. 意味解釈境界
 
-- raw user textからtask、quantity、time、relation、correction、decisionを生成する主体はsingle AI semantic normalizerだけとする。
+- raw user textからtask、quantity、time、relation、correction、decision、明示的な外部予定source requestを生成する主体はsingle AI semantic normalizerだけとする。
 - AIは内部mutation commandを選ばない。
 - AI出力は`SemanticTurnDocument`であり、database state、reducer command、scheduler requestではない。
 - validator、canonicalizer、readiness、dialogue、scheduler、safety層はraw textを再解釈しない。
@@ -49,6 +50,8 @@ PlanningTask
 - recurrenceは繰り返し頻度を表す。
 - planning windowは計画全体の期間だけを表す。
 - task局所の「今週」「明日」等をplanning windowへ昇格させない。
+- temporal constraintは`hard | soft | unknown`の強さを持つ。
+- kindだけから強さを無条件推定しない。
 
 workloadのquantity roleは次とする。
 
@@ -56,21 +59,33 @@ workloadのquantity roleは次とする。
 declared | target | remaining | completed | unknown
 ```
 
-量が明示されたが総量・残量・今回目標を確定できない場合は`declared`とする。AIに早期確定を強制しない。
+量が明示されたが総量・残量・今回目標のどれかを確定できない場合は`declared`とする。AIに早期確定を強制しない。
 
-## 4. Canonical state
+## 4. Availabilityと外部予定source
+
+work demandとavailabilityを分離する。
+
+- user-declaredな研究、仕事、授業、食事、風呂、移動等は通常task＋temporal constraintとして保持する。
+- timetable、existing plans、calendarの予定本文をAIに再解釈・再生成させない。
+- AIはユーザーの明示的な`use/stop_using` source requestだけを返す。
+- coreがactive source、owner、event ID、日時、hardnessをauthoritative dataから解決する。
+- source取得失敗やpartial fetchを「予定なし」と見なさない。
+- user taskとexternal eventをsource refでdedupeし、同一予定を二重計上しない。
+
+## 5. Canonical state
 
 AI出力をそのまま永続化しない。deterministic coreが`PlanningFactGraph`へ変換する。
 
 - 正式ID、revision、owner、trusted metadataはcoreが発行する。
 - local IDは一response内参照に限定する。
-- accepted factをtask、study context、component、workload、effort、temporal constraint、recurrence、relation、window、uncertaintyへ分離する。
+- accepted factをtask、study context、component、workload、effort、temporal constraint、recurrence、relation、window、uncertainty、source requestへ分離する。
+- authoritative external dataからsource selection factとavailability window factを生成する。
 - correctionはstable public fact refを対象にし、対象factだけをsupersedeする。
 - deleteは明示的public refを対象にする。
 - partial factを保持する。例としてend timeだけが明示された制約を捨てない。
 - 一turnのcanonical commitはatomicとし、検証失敗時はrevisionを進めない。
 
-## 5. Readinessと対話
+## 6. Readinessと対話
 
 - accepted fact diffからgrounded acknowledgementをdeterministicに生成する。
 - 次の質問はreadiness policyが選ぶ。
@@ -78,27 +93,37 @@ AI出力をそのまま永続化しない。deterministic coreが`PlanningFactGr
 - AI normalizerはmissing slot、question target、readiness、preview可否を決定しない。
 - exam専用rendererと一般rendererを最終的に統合する。
 
-## 6. Scheduler境界
+## 7. Scheduler境界
 
-schedulerへ渡す正本はgeneric work itemである。
+schedulerへ渡す正本はgeneric work demandとavailabilityである。
+
+```text
+GenericPlanningWorkItem[]
+AvailabilityWindowFact[]
+TaskRelationFact[]
+PlanningWindowFact
+```
+
+work itemは次を持つ。
 
 ```text
 taskId
 componentId
 unit code
-ordinal
-actual value
+ordinal range
+actual range
 estimated minutes
 split policy
 source fact refs
 ```
 
 - `exam_year`は単位の一つであり、全work itemの必須fieldではない。
-- 「2年分」は具体年度がなくてもordinal unitへ変換できる。
-- 具体年度が必要なpolicyだけactual valueを要求する。
+- 「2年分」は具体年度がなくてもordinal rangeへ変換できる。
+- 具体年度が必要なpolicyだけactual rangeを要求する。
 - estimated minutesが不足する場合は推測せずreadinessへ返す。
+- hard availability windowへwork itemを配置しない。
 
-## 7. 維持する安全境界
+## 8. 維持する安全境界
 
 - conversation、turn、request、revision、selected week ownership
 - stale async result rejection
@@ -111,7 +136,7 @@ source fact refs
 - browser reload後のpreview再計算
 - trace privacyとaccount data separation
 
-## 8. 移行規則
+## 9. 移行規則
 
 - 新旧semantic resultを同一turnでmergeしない。
 - 新schemaはshadow評価から開始する。
@@ -120,15 +145,16 @@ source fact refs
 - production切替後に旧prompt、command schema、command reducer、exam state、exam adapter、exam rendererを削除する。
 - mainへ採用する前にfull tests、build、roleplay、real-eval、七視点監査を行う。
 
-## 9. 現在status
+## 10. 現在status
 
 ```text
 API schema experiment           complete
 architecture / contract         documented
-stable schema / validator       in progress
-PlanningFactGraph               not implemented
-shadow normalizer               not implemented
-generic work item compiler      not implemented
-dialogue integration            not implemented
+stable schema / validator       partial: availability fields pending
+PlanningFactGraph               foundation complete; lifecycle pending
+shadow normalizer               module complete; production disconnected
+generic work demand             foundation complete
+availability facts              design only
+dialogue policy                 pure module complete; renderer disconnected
 production cutover              not started
 ```
