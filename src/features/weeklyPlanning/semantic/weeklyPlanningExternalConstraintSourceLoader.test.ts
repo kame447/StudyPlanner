@@ -73,6 +73,28 @@ describe('external constraint source atomic loader', () => {
     expect(wait).toHaveBeenNthCalledWith(2, 20);
   });
 
+  it('retries thrown fetch errors as network failures', async () => {
+    const fetchAttempt = vi.fn()
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce({
+        status: 'success',
+        ownerId: 'user-1',
+        activeSourceId: 'timetable-1',
+        events: [event()],
+      });
+
+    const result = await loadExternalConstraintSourceAtomically({
+      context: context(),
+      fetchAttempt,
+      wait: vi.fn().mockResolvedValue(undefined),
+      retryPolicy: { maxAttempts: 2, retryDelaysMs: [0] },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.attemptCount).toBe(2);
+    expect(fetchAttempt).toHaveBeenCalledTimes(2);
+  });
+
   it('does not retry authentication or permission failures', async () => {
     const fetchAttempt = vi.fn().mockResolvedValue({
       status: 'failure',
