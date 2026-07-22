@@ -1,9 +1,5 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noUnusedLocals": false,
-    "noUnusedParameters": false
-  },
   "files": [
     "src/vite-env.d.ts",
     "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts",
