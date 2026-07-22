@@ -1,4 +1,4 @@
-name: Weekly Planning Semantic V5 Date Eval
+name: Weekly Planning Stable V5 Semantic Eval
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
   models: read
 
 concurrency:
-  group: weekly-planning-semantic-v5-date-eval-${{ github.ref }}
+  group: weekly-planning-semantic-stable-v5-eval-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      WEEKLY_PLANNING_SEMANTIC_V2_DATE_REAL_EVAL: '1'
+      WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL: '1'
       GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -35,18 +35,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run V5 discontinuous-date and weekday-set evaluation
+      - name: Run Stable V5 semantic evaluation
         id: eval
         continue-on-error: true
         run: >-
           npm run test:run --
-          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticV2Date.real-eval.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticV5.real-eval.test.ts
       - name: Upload evaluation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-semantic-v2-date-real-eval
-          path: artifacts/weekly-planning-semantic-v2-date-real-eval.json
+          name: weekly-planning-semantic-v5-real-eval
+          path: artifacts/weekly-planning-semantic-v5-real-eval.json
           if-no-files-found: warn
       - name: Propagate evaluation failure
         if: steps.eval.outcome == 'failure'
