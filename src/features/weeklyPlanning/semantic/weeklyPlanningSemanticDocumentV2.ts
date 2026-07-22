@@ -1,5 +1,6 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import {
+  SEMANTIC_TEMPORAL_CONSTRAINT_KINDS,
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT,
   createWeeklyPlanningSemanticSystemPrompt,
   createWeeklyPlanningSemanticUserPrompt,
@@ -55,8 +56,16 @@ export type SemanticNamedTimePeriod =
   | (typeof SEMANTIC_NAMED_TIME_PERIODS)[number]
   | `custom:${string}`;
 
+export const SEMANTIC_TASK_DATE_RULE_KINDS = [
+  'allowed_date',
+  'excluded_date',
+] as const;
+export type SemanticTaskDateRuleKind =
+  (typeof SEMANTIC_TASK_DATE_RULE_KINDS)[number];
+
 export interface SemanticTemporalConstraintV2
-  extends Omit<SemanticTemporalConstraint, 'constraintLevel'> {
+  extends Omit<SemanticTemporalConstraint, 'constraintLevel' | 'kind'> {
+  kind: SemanticTemporalConstraint['kind'] | SemanticTaskDateRuleKind;
   constraintLevel: SemanticConstraintLevel;
   namedTimePeriod: SemanticNamedTimePeriod | null;
 }
@@ -170,6 +179,13 @@ function createAlpha2Schema(): Record<string, unknown> {
   if (!temporalRequired.includes('namedTimePeriod')) {
     temporalRequired.splice(5, 0, 'namedTimePeriod');
   }
+  temporalProperties.kind = {
+    type: 'string',
+    enum: [
+      ...SEMANTIC_TEMPORAL_CONSTRAINT_KINDS,
+      ...SEMANTIC_TASK_DATE_RULE_KINDS,
+    ],
+  };
   temporalProperties.constraintLevel = {
     type: 'string',
     enum: SEMANTIC_CONSTRAINT_LEVELS,
@@ -256,6 +272,8 @@ export function createWeeklyPlanningSemanticSystemPromptV2(): string {
     'Every temporal constraint must include constraintLevel hard, soft, or unknown and namedTimePeriod.',
     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences such as できれば, やりやすい, 週末にまとめたい, or 避けたい. Use unknown when the strength is not established.',
     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target, such as 平日は18時まで勉強できない or 土日の午前中がやりやすい, belongs in availabilityDeclarations.',
+    'Use allowed_date when a task may be scheduled only on the specified date. Use excluded_date when that task must not be scheduled on the specified date. Both require dateExpression and must use null for namedTimePeriod, startTime, and endTime.',
+    'For a plan that covers only one specific day, use an absolute planningWindow whose start and end are the same date. For a whole day with no planning, use a hard unavailable availability declaration with that dateExpression and no clock bounds.',
     'Use dateExpression only for today, tomorrow, day_after_tomorrow, this_week, next_week, an explicit YYYY-MM-DD date, or custom:<original phrase>. Never put a Japanese time-of-day phrase in dateExpression.',
     'Use namedTimePeriod morning, afternoon, evening, night, before_sleep, before_meal, after_meal, or custom:<original phrase> for a named time period. Use null when exact startTime/endTime are supplied or no named time period exists.',
     'For 寝る前に英単語, attach namedTimePeriod before_sleep to the English-word task or component. For 土日の午前中がやりやすい, create a plan-wide preferred availability declaration with recurrenceKind weekends and namedTimePeriod morning.',
