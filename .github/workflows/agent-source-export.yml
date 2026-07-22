@@ -1,4 +1,4 @@
-name: Apply PR75 final audit fixes
+name: Diagnose PR75 final audit build
 
 on:
   pull_request:
@@ -8,13 +8,13 @@ on:
       - synchronize
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-verify-commit:
+  diagnose-build:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,21 +32,23 @@ jobs:
           echo 'b6423fb07dc4e74190535f6ac6535bd24d8154e5eaf312db5fc720a543e362c8  /tmp/pr75-final.patch.gz.b64' | sha256sum --check
           base64 --decode /tmp/pr75-final.patch.gz.b64 | gzip --decompress > /tmp/pr75-final.patch
           echo '1640dba84f21ae73b73af55cbd902d783f73e1b797739c0ba34bb45ff3d41945  /tmp/pr75-final.patch' | sha256sum --check
-          git apply --index --exclude=.github/workflows/agent-source-export.yml /tmp/pr75-final.patch
-          git rm -r .github/agent-pr75-final .github/workflows/agent-source-export.yml
+          git apply --exclude=.github/workflows/agent-source-export.yml /tmp/pr75-final.patch
       - name: Install dependencies
         run: npm ci
-      - name: Run full test suite
-        run: npm run test:run
-      - name: TypeScript and production build
-        run: npm run build
-      - name: Check staged diff
-        run: git diff --cached --check
-      - name: Commit verified audit fixes
+      - name: Run build and capture output
+        id: build
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat: 週間計画の七監査指摘を修正'
-          git push origin HEAD:agent/remove-weekly-planning-parser-boundary
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/pr75-build.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr75-build-log
+          path: /tmp/pr75-build.log
+          retention-days: 1
+      - name: Fail when build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
