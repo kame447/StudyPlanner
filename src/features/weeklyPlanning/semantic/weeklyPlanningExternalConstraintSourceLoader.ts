@@ -97,7 +97,7 @@ export async function loadExternalConstraintSourceAtomically(params: {
     try {
       result = await params.fetchAttempt(params.context, attemptNumber);
     } catch {
-      result = { status: 'failure', failureKind: 'unknown_error' };
+      result = { status: 'failure', failureKind: 'network_error' };
     }
 
     if (result.status === 'success') {
