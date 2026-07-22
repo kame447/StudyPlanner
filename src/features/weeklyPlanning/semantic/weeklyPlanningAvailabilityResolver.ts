@@ -1,6 +1,6 @@
 import type {
   AvailabilityDeclarationFact,
-  WeeklyPlanningFactGraphV2,
+  ConstraintSourceRequestFact,
 } from './weeklyPlanningFactGraphV2';
 import type {
   SemanticConstraintSourceKind,
@@ -14,6 +14,12 @@ import {
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+
+export interface WeeklyPlanningAvailabilityGraphView {
+  readonly revision: number;
+  readonly availabilityDeclarations: ReadonlyArray<AvailabilityDeclarationFact>;
+  readonly constraintSourceRequests: ReadonlyArray<ConstraintSourceRequestFact>;
+}
 
 export interface LocalDateTimePoint {
   date: string;
@@ -357,7 +363,7 @@ function validateExternalEvent(event: ExternalConstraintEvent): boolean {
 }
 
 function resolveUserDeclarations(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   planningDates: string[];
   issues: AvailabilityResolutionIssue[];
@@ -434,7 +440,7 @@ function unavailableIssue(params: {
 }
 
 function resolveExternalSources(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   sources: ExternalConstraintSourceSnapshot[];
   issues: AvailabilityResolutionIssue[];
@@ -571,7 +577,7 @@ function dedupeWindows(windows: AvailabilityWindowFact[]): AvailabilityWindowFac
 }
 
 export function resolveWeeklyPlanningAvailability(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningAvailabilityGraphView;
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
 }): AvailabilityResolutionResult {
