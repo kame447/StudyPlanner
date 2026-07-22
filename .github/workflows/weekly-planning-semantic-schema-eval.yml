@@ -1,0 +1,51 @@
+name: Weekly Planning Semantic Schema Eval
+
+on:
+  push:
+    branches:
+      - test/weekly-planning-semantic-schema-eval
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-planning-semantic-schema-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_REAL_EVAL: '1'
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_EVAL_MODEL: ${{ vars.WEEKLY_PLANNING_SEMANTIC_SCHEMA_EVAL_MODEL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_EVAL_PROXY_URL: ${{ secrets.WEEKLY_PLANNING_REAL_AI_EVAL_PROXY_URL }}
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_EVAL_ID_TOKEN: ${{ secrets.WEEKLY_PLANNING_REAL_AI_EVAL_ID_TOKEN }}
+      VITE_CLOUDFLARE_AI_PROXY_URL: ${{ vars.VITE_CLOUDFLARE_AI_PROXY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run generic semantic schema API evaluation
+        id: eval
+        continue-on-error: true
+        run: >-
+          npm run test:run --
+          src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperiment.real-eval.test.ts
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-semantic-schema-eval
+          path: artifacts/weekly-planning-semantic-schema-eval.json
+          if-no-files-found: warn
+      - name: Propagate evaluation failure
+        if: steps.eval.outcome == 'failure'
+        run: exit 1
