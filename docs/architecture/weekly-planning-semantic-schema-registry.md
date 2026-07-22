@@ -7,8 +7,11 @@ Status: canonical / current generation registry
 - Stable V5 migration plan: [weekly-planning-semantic-stable-v5-migration-plan.md](../ai/strategy/weekly-planning-semantic-stable-v5-migration-plan.md)
 - V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](../ai/strategy/weekly-planning-semantic-v5-roadmap.md)
 - Schema overview: [weekly-planning-semantic-schema-v5.md](weekly-planning-semantic-schema-v5.md)
+- Code generation index: [weeklyPlanningSemanticSchemaGenerations.ts](../../src/features/weeklyPlanning/semantic/weeklyPlanningSemanticSchemaGenerations.ts)
 
 この文書は、コード上に存在するsemantic schemaとPlanningFactGraphの世代、依存関係、production利用状況、廃止条件を管理する正本である。現在確認できる事実と将来の統合提案を分離して記録する。
+
+schema識別子、JSON Schema名、TypeScript型名、直接依存、production未接続・未保存という現在事実はcode generation indexでも固定する。このindexはmetadata onlyであり、production runtimeがresponse formatやdecoderを動的選択するために使用してはならない。文書上の責務、廃止条件、migration順序は本registryを正とする。
 
 ## 1. 現在確認できるsemantic schema世代
 
@@ -124,7 +127,7 @@ JSON Schema name:    weekly_planning_semantic_document_v5
 fact graph version:  weekly-planning-fact-graph-v5
 ```
 
-これらはまだコード上に存在しない。`V2`参照がnormalizer、validator、canonicalizer、resolver、scheduler input、dialogue policy、real-eval、testへ広がっているため、単純renameは行わない。Stable V5移行計画と互換性testを先に固定し、direct実装の追加後に参照を一括切替する。
+これらはruntime type、response schema、Fact Graph実装としてはまだ存在しない。code generation indexには衝突防止用のmetadata-only naming proposalとして記録している。`V2`参照がnormalizer、validator、canonicalizer、resolver、scheduler input、dialogue policy、real-eval、testへ広がっているため、単純renameは行わない。Stable V5移行計画と互換性testを先に固定し、direct実装の追加後に参照を一括切替する。
 
 ## 8. Stable V5の正しい境界
 
@@ -186,6 +189,8 @@ Stable V5導入前後で次を固定する。
 - old persisted fixtureをmigrationした結果がowner、revision、fact ID、source versionを保持すること。
 - migrationの再実行がidempotentであること。
 - rollback markerに反する旧経路適用を拒否すること。
+
+現時点では、最初の2項、Alpha 1からAlpha 2への直接依存、Fact Graph V2からV1への直接依存、全現行世代のproduction未接続・未保存、Stable V5候補名との非衝突を`weeklyPlanningSemanticSchemaGeneration.test.ts`で固定済みである。Stable V5実装を必要とする残りの項目は未実施である。
 
 ## 12. 廃止判断
 
