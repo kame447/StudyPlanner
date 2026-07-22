@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.mjs --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build --config vite.config.mjs",
+    "build": "node -e \"const fs=require('node:fs');fs.mkdirSync('public',{recursive:true});fs.writeFileSync('public/weekly-planning-eval-env.json',JSON.stringify({openai:Boolean(process.env.OPENAI_API_KEY),githubModels:Boolean(process.env.GITHUB_MODELS_TOKEN),semanticIdToken:Boolean(process.env.WEEKLY_PLANNING_SEMANTIC_SCHEMA_EVAL_ID_TOKEN||process.env.WEEKLY_PLANNING_REAL_AI_EVAL_ID_TOKEN),proxyUrl:Boolean(process.env.VITE_CLOUDFLARE_AI_PROXY_URL)}))\" && tsc --noEmit && vite build --config vite.config.mjs",
     "preview:vite": "vite preview --config vite.config.mjs --host 0.0.0.0",
     "preview": "node ./scripts/preview-server.mjs",
     "cert:dev": "node ./scripts/generate-dev-cert.mjs",
@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react-dom": "^18.3.12",
     "@types/react-test-renderer": "^18.3.1",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.4",
