@@ -1,9 +1,3 @@
-import type {
-  SemanticTask,
-  SemanticTemporalConstraint,
-  WeeklyPlanningSemanticDocument,
-} from './weeklyPlanningSemanticDocument';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
-export type ProbeImportedTask = SemanticTask;
-export type ProbeImportedTemporalConstraint = SemanticTemporalConstraint;
-export type ProbeImportedDocument = WeeklyPlanningSemanticDocument;
+export type ProbeJsonSchemaResponseFormat = JsonSchemaResponseFormat;
