@@ -21,6 +21,7 @@ function document(): WeeklyPlanningSemanticDocumentV2 {
         localId: 'availability-1',
         kind: 'unavailable',
         dateExpression: null,
+        namedTimePeriod: null,
         startTime: null,
         endTime: '18:00',
         recurrenceKind: 'weekdays',
@@ -87,6 +88,27 @@ describe('weekly planning semantic alpha2 normalizer', () => {
     };
     expect(responseFormat.json_schema?.name)
       .toBe('weekly_planning_semantic_document_v5_alpha2');
+  });
+
+  it('repairs one response missing the new named-time field', async () => {
+    const invalid = document() as unknown as Record<string, unknown>;
+    const declarations = invalid.availabilityDeclarations as Array<Record<string, unknown>>;
+    delete declarations[0].namedTimePeriod;
+    const fake = client([JSON.stringify(invalid), JSON.stringify(document())]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV2(fake.value).normalize({
+      userText: '平日は18時まで無理です',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 2,
+      repairAttempted: true,
+    });
+    expect(result.diagnostics.validationErrors).toContain(
+      'document.availabilityDeclarations[0].missing-key:namedTimePeriod',
+    );
+    expect(fake.calls).toHaveLength(2);
   });
 
   it('repairs once and does not call a parser fallback', async () => {
