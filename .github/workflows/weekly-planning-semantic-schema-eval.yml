@@ -25,8 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      WEEKLY_PLANNING_SEMANTIC_SCHEMA_V1_REAL_EVAL: '1'
-      WEEKLY_PLANNING_SEMANTIC_SCHEMA_V1_MODEL: 'openai/gpt-4.1'
+      WEEKLY_PLANNING_SEMANTIC_SCHEMA_V1_REFINEMENT_EVAL: '1'
       GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -36,18 +35,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run generic semantic schema v1 API evaluation
+      - name: Run semantic schema v1 boundary evaluation
         id: eval
         continue-on-error: true
         run: >-
           npm run test:run --
-          src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperimentV1.real-eval.test.ts
+          src/features/weeklyPlanning/semanticV2/weeklyPlanningSemanticExperimentV1.refinement.real-eval.test.ts
       - name: Upload evaluation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-semantic-schema-v1-eval
-          path: artifacts/weekly-planning-semantic-schema-v1-eval.json
+          name: weekly-planning-semantic-schema-v1-refinement-eval
+          path: artifacts/weekly-planning-semantic-schema-v1-refinement-eval.json
           if-no-files-found: warn
       - name: Propagate evaluation failure
         if: steps.eval.outcome == 'failure'
