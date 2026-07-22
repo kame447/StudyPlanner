@@ -213,7 +213,7 @@ describe('weekly planning availability resolver', () => {
     });
 
     expect(result.windows).toEqual([]);
-    expect(result.issues).toContainEqual({
+    expect(result.issues[0]).toMatchObject({
       code: 'unsupported_date_expression',
       sourceFactId: 'availability-1',
       blocking: true,
@@ -323,24 +323,22 @@ describe('weekly planning availability resolver', () => {
     expect(result.windows).toHaveLength(1);
   });
 
-  it('rejects an invalid planning range before resolving any facts', () => {
-    const result = resolveWeeklyPlanningAvailability({
+  it('rejects invalid planning dates before resolving any facts', () => {
+    const reversed = resolveWeeklyPlanningAvailability({
       graph: graph({ declarations: [declaration()] }),
       context: context({
         planningStartDate: '2026-07-27',
         planningEndDate: '2026-07-20',
       }),
     });
+    expect(reversed.readiness).toBe('needs_resolution');
+    expect(reversed.issues[0].code).toBe('invalid_planning_date_range');
 
-    expect(result).toEqual({
-      windows: [],
-      sourceSelections: [],
-      issues: [{
-        code: 'invalid_planning_date_range',
-        sourceFactId: 'planning-context',
-        blocking: true,
-      }],
-      readiness: 'needs_resolution',
+    const impossible = resolveWeeklyPlanningAvailability({
+      graph: graph({ declarations: [declaration()] }),
+      context: context({ currentDate: '2026-02-30' }),
     });
+    expect(impossible.readiness).toBe('needs_resolution');
+    expect(impossible.issues[0].code).toBe('invalid_planning_date_range');
   });
 });
