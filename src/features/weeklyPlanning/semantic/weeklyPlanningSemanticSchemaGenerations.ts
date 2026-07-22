@@ -13,6 +13,9 @@ import {
   WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2,
 } from './weeklyPlanningFactGraphV2';
 import {
+  WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
+} from './weeklyPlanningFactGraphV5';
+import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION,
 } from './weeklyPlanningSemanticDocument';
@@ -20,16 +23,22 @@ import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V2,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V2,
 } from './weeklyPlanningSemanticDocumentV2';
+import {
+  WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
+  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+} from './weeklyPlanningSemanticDocumentV5';
 
 export type WeeklyPlanningSemanticSchemaLifecycle =
   | 'experiment'
   | 'active_foundation'
-  | 'draft';
+  | 'draft'
+  | 'stable';
 
 export type WeeklyPlanningSemanticSchemaRuntimeRole =
   | 'legacy_eval_only'
   | 'alpha2_foundation'
-  | 'module_pipeline';
+  | 'module_pipeline'
+  | 'stable_parallel';
 
 export interface WeeklyPlanningSemanticSchemaGeneration {
   schemaVersion: string;
@@ -38,7 +47,7 @@ export interface WeeklyPlanningSemanticSchemaGeneration {
   lifecycle: WeeklyPlanningSemanticSchemaLifecycle;
   runtimeRole: WeeklyPlanningSemanticSchemaRuntimeRole;
   directSchemaDependencies: readonly string[];
-  successorSchemaVersion: string;
+  successorSchemaVersion: string | null;
   productionConnected: false;
   productionPersisted: false;
 }
@@ -46,21 +55,25 @@ export interface WeeklyPlanningSemanticSchemaGeneration {
 export interface WeeklyPlanningFactGraphGeneration {
   factGraphVersion: string;
   graphTypeName: string;
-  lifecycle: 'active_foundation' | 'draft';
-  runtimeRole: 'v2_foundation' | 'module_pipeline';
+  lifecycle: 'active_foundation' | 'draft' | 'stable';
+  runtimeRole: 'v2_foundation' | 'module_pipeline' | 'stable_parallel';
   directGraphDependencies: readonly string[];
-  successorFactGraphVersion: string;
+  successorFactGraphVersion: string | null;
   productionConnected: false;
   productionPersisted: false;
 }
 
-export const WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL = {
+export const WEEKLY_PLANNING_STABLE_V5_IDENTIFIERS = {
   documentTypeName: 'WeeklyPlanningSemanticDocumentV5',
   factGraphTypeName: 'WeeklyPlanningFactGraphV5',
-  schemaVersion: 'weekly-planning-semantic-v5',
-  jsonSchemaName: 'weekly_planning_semantic_document_v5',
-  factGraphVersion: 'weekly-planning-fact-graph-v5',
+  schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+  factGraphVersion: WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
 } as const;
+
+/** @deprecated Use WEEKLY_PLANNING_STABLE_V5_IDENTIFIERS. */
+export const WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL =
+  WEEKLY_PLANNING_STABLE_V5_IDENTIFIERS;
 
 /**
  * Schema generation metadata only. This is not a runtime schema selector.
@@ -108,7 +121,18 @@ export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_GENERATIONS = [
     lifecycle: 'draft',
     runtimeRole: 'module_pipeline',
     directSchemaDependencies: [WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION],
-    successorSchemaVersion: WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL.schemaVersion,
+    successorSchemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    productionConnected: false,
+    productionPersisted: false,
+  },
+  {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    documentTypeName: 'WeeklyPlanningSemanticDocumentV5',
+    jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+    lifecycle: 'stable',
+    runtimeRole: 'stable_parallel',
+    directSchemaDependencies: [],
+    successorSchemaVersion: null,
     productionConnected: false,
     productionPersisted: false,
   },
@@ -135,8 +159,17 @@ export const WEEKLY_PLANNING_FACT_GRAPH_GENERATIONS = [
     lifecycle: 'draft',
     runtimeRole: 'module_pipeline',
     directGraphDependencies: [WEEKLY_PLANNING_FACT_GRAPH_VERSION],
-    successorFactGraphVersion:
-      WEEKLY_PLANNING_STABLE_V5_NAMING_PROPOSAL.factGraphVersion,
+    successorFactGraphVersion: WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
+    productionConnected: false,
+    productionPersisted: false,
+  },
+  {
+    factGraphVersion: WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
+    graphTypeName: 'WeeklyPlanningFactGraphV5',
+    lifecycle: 'stable',
+    runtimeRole: 'stable_parallel',
+    directGraphDependencies: [],
+    successorFactGraphVersion: null,
     productionConnected: false,
     productionPersisted: false,
   },
