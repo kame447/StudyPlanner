@@ -1,22 +1,20 @@
-name: Diagnose PR75 final audit fixes
+name: Apply PR75 final audit fixes
 
 on:
   pull_request:
     branches:
       - main
     types:
-      - opened
       - synchronize
-      - reopened
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  apply-verify-commit:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,25 +29,24 @@ jobs:
         run: |
           set -euo pipefail
           cat .github/agent-pr75-final/part-* > /tmp/pr75-final.patch.gz.b64
+          echo 'b6423fb07dc4e74190535f6ac6535bd24d8154e5eaf312db5fc720a543e362c8  /tmp/pr75-final.patch.gz.b64' | sha256sum --check
           base64 --decode /tmp/pr75-final.patch.gz.b64 | gzip --decompress > /tmp/pr75-final.patch
-          echo '9e72d6e03c6b899946665d1e429baea0805dd8514570402827c75481f0de9401  /tmp/pr75-final.patch' | sha256sum --check
-          git apply --exclude=.github/workflows/agent-source-export.yml /tmp/pr75-final.patch
+          echo '1640dba84f21ae73b73af55cbd902d783f73e1b797739c0ba34bb45ff3d41945  /tmp/pr75-final.patch' | sha256sum --check
+          git apply --index --exclude=.github/workflows/agent-source-export.yml /tmp/pr75-final.patch
+          git rm -r .github/agent-pr75-final .github/workflows/agent-source-export.yml
       - name: Install dependencies
         run: npm ci
-      - name: Run full test suite and capture output
-        id: tests
-        continue-on-error: true
+      - name: Run full test suite
+        run: npm run test:run
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Check staged diff
+        run: git diff --cached --check
+      - name: Commit verified audit fixes
         shell: bash
         run: |
-          set -o pipefail
-          npm run test:run 2>&1 | tee /tmp/pr75-test.log
-      - name: Upload test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr75-test-log
-          path: /tmp/pr75-test.log
-          retention-days: 1
-      - name: Fail when tests failed
-        if: steps.tests.outcome == 'failure'
-        run: exit 1
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: 週間計画の七監査指摘を修正'
+          git push origin HEAD:agent/remove-weekly-planning-parser-boundary
