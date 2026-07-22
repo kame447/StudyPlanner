@@ -1,8 +1,5 @@
 import type { RecurrenceFact } from './weeklyPlanningFactGraph';
-import type {
-  TemporalConstraintFactV2,
-  WeeklyPlanningFactGraphV2,
-} from './weeklyPlanningFactGraphV2';
+import type { TemporalConstraintFactV2 } from './weeklyPlanningFactGraphV2';
 import {
   addCalendarDays,
   calendarWeekday,
@@ -11,6 +8,12 @@ import {
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+
+export interface WeeklyPlanningTaskCommitmentGraphView {
+  readonly revision: number;
+  readonly temporalConstraints: ReadonlyArray<TemporalConstraintFactV2>;
+  readonly recurrences: ReadonlyArray<RecurrenceFact>;
+}
 
 export interface TaskCommitmentLocalPoint {
   date: string;
@@ -124,7 +127,7 @@ function datesFromRecurrence(params: {
 }
 
 function resolveDates(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningTaskCommitmentGraphView;
   constraint: TemporalConstraintFactV2;
   context: TaskCommitmentResolutionContext;
   planningDates: string[];
@@ -223,7 +226,7 @@ function createEndPoint(
 }
 
 export function resolveWeeklyPlanningTaskCommitments(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningTaskCommitmentGraphView;
   context: TaskCommitmentResolutionContext;
 }): TaskCommitmentResolutionResult {
   const planningDates = listCalendarDatesInclusive(
