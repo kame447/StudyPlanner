@@ -61,6 +61,13 @@ const COMMITMENT_ISSUES = new Set<string>([
   'soft_fixed_interval_not_allowed',
 ]);
 
+const TASK_DATE_RULE_ISSUES = new Set<string>([
+  'orphan_task_date_rule',
+  'invalid_task_date_rule_level',
+  'unsupported_task_date_expression',
+  'conflicting_task_date_rule',
+]);
+
 const SOURCE_ISSUES = new Set<string>([
   'constraint_source_unavailable',
   'active_constraint_source_missing',
@@ -106,6 +113,7 @@ function priority(issue: GenericSchedulerInputIssue): number {
   if (SECURITY_ISSUES.has(issue.code)) return 0;
   if (HORIZON_ISSUES.has(issue.code)) return 10;
   if (COMMITMENT_ISSUES.has(issue.code)) return 20;
+  if (TASK_DATE_RULE_ISSUES.has(issue.code)) return 25;
   if (SOURCE_ISSUES.has(issue.code)) return 30;
   if (AVAILABILITY_ISSUES.has(issue.code)) return 40;
   if (RELATION_ISSUES.has(issue.code)) return 50;
@@ -200,6 +208,27 @@ function questionForCommitmentIssue(
   }
 }
 
+function questionForTaskDateRuleIssue(
+  issue: GenericSchedulerInputIssue,
+  graph: WeeklyPlanningFactGraphV2,
+): string {
+  const title = taskTitle(graph, taskIdFromIssue(issue));
+  const dateValue = issueDetail(issue, 'date');
+  const date = typeof dateValue === 'string' ? dateValue : '同じ日';
+  switch (issue.code) {
+    case 'unsupported_task_date_expression':
+      return `${title}を行う日、または行わない日を具体的な日付で教えてください。`;
+    case 'conflicting_task_date_rule':
+      return `${title}を${date}に行う指定と、行わない指定が両方あります。どちらを採用しますか？`;
+    case 'orphan_task_date_rule':
+      return 'この特定日指定がどのタスクに対応するか教えてください。';
+    case 'invalid_task_date_rule_level':
+      return `${title}の特定日指定は、必ず守る条件として扱ってよいですか？`;
+    default:
+      return `${title}の実行日または除外日を確認させてください。`;
+  }
+}
+
 function questionForAvailabilityIssue(issue: GenericSchedulerInputIssue): string {
   switch (issue.code) {
     case 'unsupported_date_expression':
@@ -270,6 +299,8 @@ function questionForIssue(
     text = '計画期間が複数あります。今回使う期間を一つ選んでください。';
   } else if (issue.domain === 'commitment') {
     text = questionForCommitmentIssue(issue, graph);
+  } else if (issue.domain === 'task_date_rule') {
+    text = questionForTaskDateRuleIssue(issue, graph);
   } else if (issue.domain === 'availability' && SOURCE_ISSUES.has(issue.code)) {
     text = questionForSourceIssue(issue);
   } else if (issue.domain === 'availability') {
