@@ -63,7 +63,6 @@ const COMMITMENT_ISSUES = new Set<string>([
 
 const SOURCE_ISSUES = new Set<string>([
   'constraint_source_unavailable',
-  'constraint_source_partial',
   'active_constraint_source_missing',
 ]);
 
@@ -222,7 +221,7 @@ function questionForAvailabilityIssue(issue: GenericSchedulerInputIssue): string
   }
 }
 
-function questionForSourceIssue(issue: GenericSchedulerInputIssue): string {
+function sourceLabel(issue: GenericSchedulerInputIssue): string {
   const kindValue = issueDetail(issue, 'kind');
   const kind = typeof kindValue === 'string' ? kindValue : '予定データ';
   const labels: Record<string, string> = {
@@ -230,16 +229,31 @@ function questionForSourceIssue(issue: GenericSchedulerInputIssue): string {
     existing_plans: '登録済み予定',
     calendar: 'カレンダー',
   };
-  const label = labels[kind] ?? '予定データ';
-  switch (issue.code) {
-    case 'constraint_source_unavailable':
-      return `${label}を取得できませんでした。${label}を使わずに進めるか、設定を確認してください。`;
-    case 'constraint_source_partial':
-      return `${label}を完全には取得できませんでした。再取得するか、${label}を使わずに進めるか教えてください。`;
-    case 'active_constraint_source_missing':
-      return `使用する${label}が選ばれていません。対象を設定するか、使わずに進めるか教えてください。`;
-    default:
-      return `${label}の利用方法を確認させてください。`;
+  return labels[kind] ?? '予定データ';
+}
+
+function questionForSourceIssue(issue: GenericSchedulerInputIssue): string {
+  const label = sourceLabel(issue);
+  if (issue.code === 'active_constraint_source_missing') {
+    return `使用する${label}が設定されていません。対象を設定するか、${label}を使わずに進めてください。`;
+  }
+
+  const failureKind = issueDetail(issue, 'failureKind');
+  const attemptCountValue = issueDetail(issue, 'attemptCount');
+  const attemptCount = typeof attemptCountValue === 'number' ? attemptCountValue : 0;
+  switch (failureKind) {
+    case 'authentication_error':
+      return `${label}の認証を確認できませんでした。接続設定を確認してください。入力済みの計画内容は保持しています。`;
+    case 'permission_error':
+      return `${label}を読む権限がありません。権限設定を確認するか、${label}を使わずに進めてください。入力済みの計画内容は保持しています。`;
+    case 'source_not_configured':
+      return `使用する${label}が設定されていません。対象を設定するか、${label}を使わずに進めてください。`;
+    case 'invalid_response':
+      return `${label}のデータを安全に確認できなかったため、予定には反映していません。設定を確認してください。入力済みの計画内容は保持しています。`;
+    default: {
+      const attempts = attemptCount > 1 ? `自動で${attemptCount}回取得しましたが、` : '';
+      return `${label}を${attempts}確認できなかったため、まだ予定には反映していません。${label}を使わずに進めるか、設定を確認してください。入力済みの計画内容は保持しています。`;
+    }
   }
 }
 
@@ -249,7 +263,7 @@ function questionForIssue(
 ): GenericSchedulerDialogueQuestion {
   let text: string;
   if (SECURITY_ISSUES.has(issue.code)) {
-    text = '予定データを安全に確認できませんでした。再読み込みして、もう一度予定作成を開始してください。';
+    text = '予定データを安全に確認できなかったため、その予定は反映していません。設定を確認してください。入力済みの計画内容は保持しています。';
   } else if (issue.code === 'invalid_planning_horizon') {
     text = '計画する期間の開始日と終了日を教えてください。';
   } else if (issue.code === 'ambiguous_planning_window') {
