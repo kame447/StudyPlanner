@@ -57,13 +57,38 @@ export interface ExternalConstraintEvent {
   constraintLevel: 'hard' | 'soft';
 }
 
-export interface ExternalConstraintSourceSnapshot {
+export type ExternalConstraintSourceFailureKind =
+  | 'timeout'
+  | 'network_error'
+  | 'rate_limited'
+  | 'server_error'
+  | 'authentication_error'
+  | 'permission_error'
+  | 'source_not_configured'
+  | 'invalid_response'
+  | 'unknown_error';
+
+export interface ExternalConstraintSourceSuccessSnapshot {
   kind: SemanticConstraintSourceKind;
+  status: 'success';
   ownerId: string;
   activeSourceId: string | null;
-  status: 'complete' | 'partial' | 'unavailable';
   events: ExternalConstraintEvent[];
+  attemptCount: number;
 }
+
+export interface ExternalConstraintSourceFailureSnapshot {
+  kind: SemanticConstraintSourceKind;
+  status: 'failure';
+  ownerId: string;
+  activeSourceId: null;
+  failureKind: ExternalConstraintSourceFailureKind;
+  attemptCount: number;
+}
+
+export type ExternalConstraintSourceSnapshot =
+  | ExternalConstraintSourceSuccessSnapshot
+  | ExternalConstraintSourceFailureSnapshot;
 
 export interface AvailabilityResolutionContext {
   ownerId: string;
@@ -87,7 +112,6 @@ export type AvailabilityResolutionIssueCode =
   | 'invalid_weekday'
   | 'invalid_time_interval'
   | 'constraint_source_unavailable'
-  | 'constraint_source_partial'
   | 'active_constraint_source_missing'
   | 'constraint_source_owner_mismatch'
   | 'constraint_event_owner_mismatch'
@@ -391,6 +415,24 @@ function resolveUserDeclarations(params: {
   return windows;
 }
 
+function unavailableIssue(params: {
+  requestId: string;
+  kind: SemanticConstraintSourceKind;
+  failureKind: ExternalConstraintSourceFailureKind | 'missing_result';
+  attemptCount: number;
+}): AvailabilityResolutionIssue {
+  return {
+    code: 'constraint_source_unavailable',
+    sourceFactId: params.requestId,
+    blocking: true,
+    details: {
+      kind: params.kind,
+      failureKind: params.failureKind,
+      attemptCount: params.attemptCount,
+    },
+  };
+}
+
 function resolveExternalSources(params: {
   graph: WeeklyPlanningFactGraphV2;
   context: AvailabilityResolutionContext;
@@ -420,27 +462,27 @@ function resolveExternalSources(params: {
     }
 
     const source = sourceByKind.get(request.kind);
-    if (!source || source.status === 'unavailable') {
-      params.issues.push({
-        code: 'constraint_source_unavailable',
-        sourceFactId: request.id,
-        blocking: true,
-        details: { kind: request.kind },
-      });
+    if (!source) {
+      params.issues.push(unavailableIssue({
+        requestId: request.id,
+        kind: request.kind,
+        failureKind: 'missing_result',
+        attemptCount: 0,
+      }));
+      continue;
+    }
+    if (source.status === 'failure') {
+      params.issues.push(unavailableIssue({
+        requestId: request.id,
+        kind: request.kind,
+        failureKind: source.failureKind,
+        attemptCount: source.attemptCount,
+      }));
       continue;
     }
     if (source.ownerId !== params.context.ownerId) {
       params.issues.push({
         code: 'constraint_source_owner_mismatch',
-        sourceFactId: request.id,
-        blocking: true,
-        details: { kind: request.kind },
-      });
-      continue;
-    }
-    if (source.status === 'partial') {
-      params.issues.push({
-        code: 'constraint_source_partial',
         sourceFactId: request.id,
         blocking: true,
         details: { kind: request.kind },
