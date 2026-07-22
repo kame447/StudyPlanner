@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - test/weekly-planning-semantic-schema-eval
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/features/weeklyPlanning/semanticV2/**'
+      - '.github/workflows/weekly-planning-semantic-schema-eval.yml'
   workflow_dispatch:
 
 permissions:
