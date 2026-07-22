@@ -21,6 +21,17 @@ export interface TemporalConstraintFactV2
   namedTimePeriod: SemanticNamedTimePeriod | null;
 }
 
+export interface TaskDateRuleFact {
+  id: string;
+  taskId: string;
+  targetFactId: string;
+  kind: 'allowed_date' | 'excluded_date';
+  dateExpression: string;
+  constraintLevel: SemanticConstraintLevel;
+  source: PlanningFactSource;
+  createdRevision: number;
+}
+
 export interface AvailabilityDeclarationFact {
   id: string;
   kind: SemanticAvailabilityKind;
@@ -50,12 +61,14 @@ export interface WeeklyPlanningFactGraphV2
   extends Omit<WeeklyPlanningFactGraph, 'version' | 'temporalConstraints'> {
   version: typeof WEEKLY_PLANNING_FACT_GRAPH_VERSION_V2;
   temporalConstraints: TemporalConstraintFactV2[];
+  taskDateRules: TaskDateRuleFact[];
   availabilityDeclarations: AvailabilityDeclarationFact[];
   constraintSourceRequests: ConstraintSourceRequestFact[];
 }
 
 export type WeeklyPlanningFactKindV2 =
   | WeeklyPlanningFactDiffEntry['kind']
+  | 'task_date_rule'
   | 'availability_declaration'
   | 'constraint_source_request';
 
@@ -84,6 +97,7 @@ export function createEmptyWeeklyPlanningFactGraphV2(): WeeklyPlanningFactGraphV
     workloads: [],
     effortEstimates: [],
     temporalConstraints: [],
+    taskDateRules: [],
     recurrences: [],
     relations: [],
     uncertainties: [],
