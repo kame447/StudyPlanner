@@ -5,7 +5,7 @@
     "noUnusedParameters": false
   },
   "files": [
-    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2.ts"
+    "src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV2TypeProbe.ts"
   ],
   "include": [],
   "exclude": []
