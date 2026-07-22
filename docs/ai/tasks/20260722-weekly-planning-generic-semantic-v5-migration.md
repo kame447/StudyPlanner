@@ -43,31 +43,35 @@ PlanningDocument
 
 ## 3. 作業手順
 
-各作業単位の開始前に、このMD、architecture v5、current contract、roadmapを確認する。完了後は本MDの作業記録へ、変更、判断、注意点、検証結果を追記する。
+各作業単位の開始前に、このMD、architecture v5、current contract v5、semantic v5 roadmapを確認する。完了後は本MDの作業記録へ、変更、判断、注意点、検証結果を追記する。
 
 ### A. 正本文書更新
 
-- [ ] architecture v5を追加する。
-- [ ] v4をsupersededへ降格する。
-- [ ] current contractをsemantic document契約へ更新する。
-- [ ] roadmapへ移行streamと順序を追加する。
-- [ ] documentation indexの参照先をv5へ変更する。
+- [x] architecture v5を追加する。
+- [x] v4をsuperseded扱いへ降格する。
+- [x] current contractをsemantic document契約へ更新する。
+- [x] roadmapへ移行streamと順序を追加する。
+- [x] documentation indexの参照先をv5へ変更する。
+
+注: v4本文はhistorical informationを失わないため削除せず、documentation indexでv5より下位のhistorical sourceへ降格した。
 
 ### B. SemanticTurnDocumentの安定化
 
-- [ ] 実験用v1からproduction候補schemaを分離する。
-- [ ] `quantityRole = declared | target | remaining | completed | unknown`を採用する。
-- [ ] runtime validatorを独立moduleにする。
-- [ ] raw response、parse error、schema versionの観測境界を定義する。
-- [ ] 代表fixtureとproperty testを追加する。
+- [x] 実験用v1からproduction候補schemaを分離する。
+- [x] `quantityRole = declared | target | remaining | completed | unknown`を採用する。
+- [x] runtime validatorを独立moduleにする。
+- [ ] raw response、parse error、schema versionの観測境界をnormalizerへ接続する。
+- [x] 代表fixtureとproperty testを追加する。
 
 ### C. PlanningFactGraphとcanonicalizer
 
-- [ ] 正式ID、revision、source factをcoreが発行する。
-- [ ] local ID参照、親子関係、task relationを検証する。
-- [ ] partial factを破棄しない。
-- [ ] correction、delete、proposal decisionを後から適用できるstable public refを定義する。
-- [ ] 同一turnのatomic commitと失敗時無変更をテストする。
+- [x] 正式ID、revision、source factをcoreが発行する。
+- [x] local ID参照、親子関係、task relationを検証する。
+- [x] partial factを破棄しない。
+- [ ] correction、delete、proposal decisionをstable public refへ実適用する。
+- [x] 同一turnのatomic commitと失敗時無変更のテストを追加する。
+
+現在はcorrection/decisionをcanonical intentとして保持するだけであり、既存factへの破壊的適用はまだ行わない。
 
 ### D. AI semantic normalizer shadow経路
 
@@ -137,7 +141,7 @@ PlanningDocument
 - GitHub Modelsは短時間連続呼び出しで429になるため、real-evalは低頻度・再試行付きにする。
 - 実験workflowはproduction routingを変更しない。
 
-### 2026-07-22 / 作業A開始
+### 2026-07-22 / 作業A: 正本文書更新
 
 確認した文書:
 
@@ -148,10 +152,75 @@ PlanningDocument
 
 発見:
 
-- v4とcurrent contractはAI出力をtyped commandと定義しており、新方針と競合する。
+- v4と旧current contractはAI出力をtyped commandと定義しており、新方針と競合する。
 - v4にはexam互換経路とprovider failure時rules fallbackの古い記述が残る。
-- roadmapのqueueに汎用意味モデル移行streamが存在しない。
+- 旧roadmapのqueueに汎用意味モデル移行streamが存在しない。
 
-対応:
+変更:
 
-- architecture v5を新しい正本として追加し、関連文書を同期する。
+- `weekly-planning-dialogue-architecture-v5.md`を追加した。
+- `weekly-planning-current-contract-v5.md`を追加した。
+- `weekly-planning-semantic-v5-roadmap.md`を追加した。
+- documentation indexの最優先参照をv5文書へ切り替えた。
+- v4は本文を破棄せずhistorical sourceとして明示した。
+
+### 2026-07-22 / 作業B: stable semantic document
+
+確認した文書:
+
+- current contract v5 §1〜3
+- architecture v5 §3〜6
+- semantic v5 roadmap V5-B
+
+変更ファイル:
+
+- `semantic/weeklyPlanningSemanticDocument.ts`
+- `semantic/weeklyPlanningSemanticValidator.ts`
+- `semantic/weeklyPlanningSemanticValidator.test.ts`
+
+判断:
+
+- taskだけでなくcomponent、workload、effort、constraint、recurrence、relation、uncertainty、correction、decisionにもresponse-local IDを付ける。
+- workloadの意味役割が未確定なら`declared`とする。
+- relative planning windowはsymbolicのまま保持し、AIにISO日付を計算させない。
+- effort/constraint/recurrenceのtargetは同一taskまたはそのcomponentに限定する。
+- source excerptが空のfactを拒否する。
+
+検証:
+
+- Cloudflare Pagesの独立production buildはcommit `2f4fef7`で成功した。
+- GitHub Actionsは3 workflowともjob step開始前にfailureとなり、step/log blobが生成されなかった。コード由来のtest failureとは確定できない。
+
+注意点:
+
+- GitHub Actionsの実行枠またはrunner起動境界を確認するまで、追加testは「実装済み・未完走」と区別する。
+- 一時診断workflowは原因確認後に削除する。
+
+### 2026-07-22 / 作業C: fact graph foundation
+
+確認した文書:
+
+- current contract v5 §4
+- architecture v5 §6
+- semantic v5 roadmap V5-C
+
+変更ファイル:
+
+- `semantic/weeklyPlanningFactGraph.ts`
+- `semantic/weeklyPlanningSemanticCanonicalizer.ts`
+- `semantic/weeklyPlanningSemanticCanonicalizer.test.ts`
+
+実装:
+
+- conversation ID、turn ID、fact kind、semantic local IDからdeterministicな正式fact IDを生成する。
+- expected revision不一致をstate無変更で拒否する。
+- 同一turn再適用をduplicateとしてstate無変更にする。
+- task/component/workloadの所有関係とrelationを正式IDへ変換する。
+- `latest_end`のstartTime=nullを維持する。
+- correction/decisionはintent factとして保持し、既存factへまだ適用しない。
+
+未解決:
+
+- active/superseded/removed lifecycleとcorrection実適用。
+- persisted graph migration。
+- GitHub Actionsによるunit/property test完走。
