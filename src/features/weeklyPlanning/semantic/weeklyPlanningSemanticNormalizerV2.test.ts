@@ -90,6 +90,20 @@ describe('weekly planning semantic alpha2 normalizer', () => {
       .toBe('weekly_planning_semantic_document_v5_alpha2');
   });
 
+  it('instructs the model to preserve discontinuous dates and expand weekday ranges', async () => {
+    const fake = client([JSON.stringify(document())]);
+    await createWeeklyPlanningSemanticNormalizerV2(fake.value).normalize({
+      userText: '7月8日、10日、11日と、水曜と金曜から日曜にやりたい',
+    });
+
+    const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
+    const system = messages.find((message) => message.role === 'system')?.content ?? '';
+    expect(system).toContain('one allowed_date temporal constraint per date');
+    expect(system).toContain('Do not collapse gaps into a continuous date range');
+    expect(system).toContain('水曜と金曜から日曜 becomes days [wed, fri, sat, sun]');
+    expect(system).toContain('one recurrence fact');
+  });
+
   it('repairs one response missing the new named-time field', async () => {
     const invalid = document() as unknown as Record<string, unknown>;
     const declarations = invalid.availabilityDeclarations as Array<Record<string, unknown>>;
