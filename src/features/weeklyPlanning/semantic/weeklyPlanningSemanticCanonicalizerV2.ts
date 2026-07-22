@@ -73,7 +73,11 @@ function projectDocumentToV1(
     planningWindow: document.planningWindow,
     tasks: document.tasks.map((task) => ({
       ...task,
-      temporalConstraints: task.temporalConstraints.map(({ constraintLevel: _level, ...rest }) => rest),
+      temporalConstraints: task.temporalConstraints.map(({
+        constraintLevel: _level,
+        namedTimePeriod: _namedTimePeriod,
+        ...rest
+      }) => rest),
     })),
     relations: document.relations,
     uncertainties: document.uncertainties,
@@ -93,7 +97,11 @@ function projectGraphToV1(graph: WeeklyPlanningFactGraphV2): WeeklyPlanningFactG
     components: [...graph.components],
     workloads: [...graph.workloads],
     effortEstimates: [...graph.effortEstimates],
-    temporalConstraints: graph.temporalConstraints.map(({ constraintLevel: _level, ...rest }) => rest),
+    temporalConstraints: graph.temporalConstraints.map(({
+      constraintLevel: _level,
+      namedTimePeriod: _namedTimePeriod,
+      ...rest
+    }) => rest),
     recurrences: [...graph.recurrences],
     relations: [...graph.relations],
     uncertainties: [...graph.uncertainties],
@@ -202,6 +210,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
     id: registerAdditional('availability', declaration.localId),
     kind: declaration.kind,
     dateExpression: declaration.dateExpression,
+    namedTimePeriod: declaration.namedTimePeriod,
     startTime: declaration.startTime,
     endTime: declaration.endTime,
     recurrenceKind: declaration.recurrenceKind,
@@ -235,19 +244,28 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV2(params: {
   const existingTemporalById = new Map(
     params.graph.temporalConstraints.map((constraint) => [constraint.id, constraint]),
   );
-  const levelByLocalId = new Map(
-    validation.document.tasks.flatMap((task) => task.temporalConstraints)
-      .map((constraint) => [constraint.localId, constraint.constraintLevel]),
+  const semanticTemporalByLocalId = new Map(
+    validation.document.tasks
+      .flatMap((task) => task.temporalConstraints)
+      .map((constraint) => [constraint.localId, constraint]),
   );
   const temporalConstraints = base.graph.temporalConstraints.map((constraint) => {
     const existing = existingTemporalById.get(constraint.id);
     if (existing) return existing;
-    const level = levelByLocalId.get(constraint.source.semanticLocalId);
-    if (!level) {
-      errors.push(`missing-constraint-level:${constraint.source.semanticLocalId}`);
-      return { ...constraint, constraintLevel: 'unknown' as const };
+    const semantic = semanticTemporalByLocalId.get(constraint.source.semanticLocalId);
+    if (!semantic) {
+      errors.push(`missing-temporal-extension:${constraint.source.semanticLocalId}`);
+      return {
+        ...constraint,
+        constraintLevel: 'unknown' as const,
+        namedTimePeriod: null,
+      };
     }
-    return { ...constraint, constraintLevel: level };
+    return {
+      ...constraint,
+      constraintLevel: semantic.constraintLevel,
+      namedTimePeriod: semantic.namedTimePeriod,
+    };
   });
 
   if (errors.length > 0) return rejected(params.graph, errors);
