@@ -36,6 +36,7 @@ function graph(): WeeklyPlanningFactGraphV2 {
         kind: 'fixed_interval',
         constraintLevel: 'hard',
         dateExpression: 'today',
+        namedTimePeriod: null,
         startTime: '18:00',
         endTime: '19:00',
         precision: 'exact',
@@ -195,6 +196,23 @@ describe('weekly planning task commitment resolver', () => {
       taskId: 'task-dinner',
       blocking: true,
       details: { recurrenceCount: 2 },
+    });
+  });
+
+  it('keeps custom date expressions unresolved instead of parsing source text', () => {
+    const value = graph();
+    value.temporalConstraints[0].dateExpression = 'custom:試験前日';
+
+    const result = resolveWeeklyPlanningTaskCommitments({ graph: value, context });
+
+    expect(result.reservations).toEqual([]);
+    expect(result.readiness).toBe('needs_resolution');
+    expect(result.issues[0]).toMatchObject({
+      code: 'unsupported_commitment_date_expression',
+      temporalConstraintFactId: 'constraint-dinner',
+      taskId: 'task-dinner',
+      blocking: true,
+      details: { expression: 'custom:試験前日' },
     });
   });
 
