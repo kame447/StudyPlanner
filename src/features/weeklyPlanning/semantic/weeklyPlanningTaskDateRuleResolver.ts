@@ -1,14 +1,17 @@
 import type { RecurrenceFact } from './weeklyPlanningFactGraph';
-import type {
-  TaskDateRuleFact,
-  WeeklyPlanningFactGraphV2,
-} from './weeklyPlanningFactGraphV2';
+import type { TaskDateRuleFact } from './weeklyPlanningFactGraphV2';
 import {
   calendarWeekday,
   intersectCalendarDates,
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+
+export interface WeeklyPlanningTaskDateRuleGraphView {
+  readonly tasks: readonly Array<{ id: string }>;
+  readonly taskDateRules: readonly TaskDateRuleFact[];
+  readonly recurrences: readonly RecurrenceFact[];
+}
 
 export interface ResolvedTaskDateEligibility {
   taskId: string;
@@ -169,7 +172,7 @@ function resolveRecurrenceDates(params: {
 }
 
 export function resolveWeeklyPlanningTaskDateRules(params: {
-  graph: WeeklyPlanningFactGraphV2;
+  graph: WeeklyPlanningTaskDateRuleGraphView;
   currentDate: string;
   planningStartDate: string;
   planningEndDate: string;
@@ -243,9 +246,7 @@ export function resolveWeeklyPlanningTaskDateRules(params: {
     const state = mutableState(mutable, recurrence.taskId);
     state.hasPositiveDateScope = true;
     state.sourceFactIds.add(recurrence.id);
-    for (const date of dates) {
-      state.allowedDates.add(date);
-    }
+    for (const date of dates) state.allowedDates.add(date);
   }
 
   const eligibilities: ResolvedTaskDateEligibility[] = [];
