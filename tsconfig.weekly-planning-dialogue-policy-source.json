@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "files": [
-    "src/vite-env.d.ts",
-    "src/features/weeklyPlanning/semantic/weeklyPlanningGenericSchedulerDialoguePolicy.ts"
-  ],
-  "include": [],
-  "exclude": []
-}
