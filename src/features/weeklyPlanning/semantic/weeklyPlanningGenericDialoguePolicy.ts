@@ -8,6 +8,7 @@ import type {
   WeeklyPlanningFactGraph,
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
+import type { SemanticWorkloadUnitCode } from './weeklyPlanningSemanticDocument';
 import type {
   GenericPlanningWorkItem,
   GenericWorkItemCompilationResult,
@@ -61,6 +62,21 @@ export interface GenericPreviewGateResult {
     | 'missing_estimated_minutes'
   >;
 }
+
+const DISPLAY_UNIT_LABELS: Record<SemanticWorkloadUnitCode, string> = {
+  minute: '分',
+  hour: '時間',
+  page: 'ページ',
+  problem: '問',
+  word: '語',
+  lesson: '回',
+  chapter: '章',
+  section: '節',
+  exam_year: '年分',
+  mock_exam: '回',
+  session: '回',
+  custom: '単位',
+};
 
 function taskMap(graph: WeeklyPlanningFactGraph): Map<string, PlanningTaskFact> {
   return new Map(graph.tasks.map((task) => [task.id, task]));
@@ -130,19 +146,32 @@ function formatTemporalAcknowledgement(params: {
   }
 }
 
-function formatEffortAcknowledgement(params: {
+function effortTargetLabel(params: {
   estimate: EffortEstimateFact;
   tasks: Map<string, PlanningTaskFact>;
   components: Map<string, StudyComponentFact>;
 }): string {
   const task = params.tasks.get(params.estimate.taskId);
-  const target = params.estimate.targetFactId === params.estimate.taskId
-    ? task?.title
-    : params.components.get(params.estimate.targetFactId)?.label ?? task?.title;
-  const label = target ?? 'このタスク';
+  if (params.estimate.targetFactId === params.estimate.taskId) {
+    return task?.title ?? 'このタスク';
+  }
+  return params.components.get(params.estimate.targetFactId)?.label
+    ?? task?.title
+    ?? 'このタスク';
+}
+
+function formatEffortAcknowledgement(params: {
+  estimate: EffortEstimateFact;
+  tasks: Map<string, PlanningTaskFact>;
+  components: Map<string, StudyComponentFact>;
+}): string {
+  const label = effortTargetLabel(params);
   const approximate = params.estimate.precision === 'approximate' ? '約' : '';
   if (params.estimate.kind === 'duration_per_unit') {
-    return `${label}は1${params.estimate.unitCode ?? '単位'}あたり${approximate}${params.estimate.minutes}分`;
+    const unitLabel = params.estimate.unitCode
+      ? DISPLAY_UNIT_LABELS[params.estimate.unitCode]
+      : '単位';
+    return `${label}は1${unitLabel}あたり${approximate}${params.estimate.minutes}分`;
   }
   if (params.estimate.kind === 'session_duration') {
     return `${label}は1回${approximate}${params.estimate.minutes}分`;
