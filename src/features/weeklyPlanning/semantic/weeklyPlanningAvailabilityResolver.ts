@@ -7,6 +7,14 @@ import type {
   SemanticConstraintSourceKind,
   SemanticNamedTimePeriod,
 } from './weeklyPlanningSemanticDocumentV2';
+import {
+  addCalendarDays,
+  calendarWeekday,
+  intersectCalendarDates,
+  isValidCalendarDate,
+  listCalendarDatesInclusive,
+  resolveCanonicalDateExpression,
+} from './weeklyPlanningCalendarResolver';
 
 export interface LocalDateTimePoint {
   date: string;
@@ -100,7 +108,6 @@ export interface AvailabilityResolutionResult {
   readiness: 'ready' | 'needs_resolution' | 'empty';
 }
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const RESOLVED_CLOCK_PATTERN = /^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/;
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -126,90 +133,6 @@ function createId(prefix: string, input: string): string {
   return `${prefix}_${stableHash(`${prefix}|${input}`)}`;
 }
 
-function parseDate(value: string): Date | null {
-  if (!ISO_DATE_PATTERN.test(value)) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(value: string, amount: number): string | null {
-  const date = parseDate(value);
-  if (!date) return null;
-  date.setUTCDate(date.getUTCDate() + amount);
-  return formatDate(date);
-}
-
-function compareDate(left: string, right: string): number {
-  return left.localeCompare(right);
-}
-
-function dateRange(start: string, end: string): string[] | null {
-  if (!parseDate(start) || !parseDate(end) || compareDate(start, end) > 0) return null;
-  const values: string[] = [];
-  let current = start;
-  while (compareDate(current, end) <= 0) {
-    values.push(current);
-    const next = addDays(current, 1);
-    if (!next) return null;
-    current = next;
-  }
-  return values;
-}
-
-function dayOfWeek(value: string): number | null {
-  const date = parseDate(value);
-  return date ? date.getUTCDay() : null;
-}
-
-function mondayOfWeek(value: string): string | null {
-  const date = parseDate(value);
-  if (!date) return null;
-  const day = date.getUTCDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  return addDays(value, offset);
-}
-
-function resolveDateExpression(
-  expression: string,
-  currentDate: string,
-): { start: string; end: string } | null {
-  if (ISO_DATE_PATTERN.test(expression)) return { start: expression, end: expression };
-  if (expression === 'today') return { start: currentDate, end: currentDate };
-  if (expression === 'tomorrow') {
-    const date = addDays(currentDate, 1);
-    return date ? { start: date, end: date } : null;
-  }
-  if (expression === 'day_after_tomorrow') {
-    const date = addDays(currentDate, 2);
-    return date ? { start: date, end: date } : null;
-  }
-  const monday = mondayOfWeek(currentDate);
-  if (!monday) return null;
-  if (expression === 'this_week') {
-    const sunday = addDays(monday, 6);
-    return sunday ? { start: monday, end: sunday } : null;
-  }
-  if (expression === 'next_week') {
-    const start = addDays(monday, 7);
-    const end = addDays(monday, 13);
-    return start && end ? { start, end } : null;
-  }
-  return null;
-}
-
-function intersectDates(
-  dates: string[],
-  planningStart: string,
-  planningEnd: string,
-): string[] {
-  return dates.filter((date) =>
-    compareDate(date, planningStart) >= 0 && compareDate(date, planningEnd) <= 0);
-}
-
 function recurrenceDates(params: {
   declaration: AvailabilityDeclarationFact;
   planningDates: string[];
@@ -220,13 +143,13 @@ function recurrenceDates(params: {
   if (recurrence === 'daily') return [...params.planningDates];
   if (recurrence === 'weekdays') {
     return params.planningDates.filter((date) => {
-      const day = dayOfWeek(date);
+      const day = calendarWeekday(date);
       return day !== null && day >= 1 && day <= 5;
     });
   }
   if (recurrence === 'weekends') {
     return params.planningDates.filter((date) => {
-      const day = dayOfWeek(date);
+      const day = calendarWeekday(date);
       return day === 0 || day === 6;
     });
   }
@@ -247,7 +170,7 @@ function recurrenceDates(params: {
   }
   if (dayIndexes.size === 0) return null;
   return params.planningDates.filter((date) => {
-    const day = dayOfWeek(date);
+    const day = calendarWeekday(date);
     return day !== null && dayIndexes.has(day);
   });
 }
@@ -265,32 +188,32 @@ function resolveDeclarationDates(params: {
   });
 
   if (params.declaration.dateExpression) {
-    if (params.declaration.dateExpression.startsWith('custom:')) {
+    const resolution = resolveCanonicalDateExpression({
+      expression: params.declaration.dateExpression,
+      currentDate: params.context.currentDate,
+    });
+    if (resolution.status !== 'resolved') {
       params.issues.push({
         code: 'unsupported_date_expression',
         sourceFactId: params.declaration.id,
         blocking: true,
-        details: { expression: params.declaration.dateExpression },
+        details: {
+          expression: params.declaration.dateExpression,
+          resolutionStatus: resolution.status,
+        },
       });
       return [];
     }
-    const range = resolveDateExpression(
-      params.declaration.dateExpression,
-      params.context.currentDate,
-    );
-    if (!range) {
-      params.issues.push({
-        code: 'unsupported_date_expression',
-        sourceFactId: params.declaration.id,
-        blocking: true,
-        details: { expression: params.declaration.dateExpression },
-      });
-      return [];
+    const expressionDates = listCalendarDatesInclusive(
+      resolution.range.start,
+      resolution.range.end,
+    ) ?? [];
+    if (dates) {
+      const expressionSet = new Set(expressionDates);
+      dates = dates.filter((date) => expressionSet.has(date));
+    } else {
+      dates = expressionDates;
     }
-    const expressionDates = dateRange(range.start, range.end) ?? [];
-    dates = dates
-      ? dates.filter((date) => expressionDates.includes(date))
-      : expressionDates;
   }
 
   if (!dates) {
@@ -304,11 +227,11 @@ function resolveDeclarationDates(params: {
     }
   }
 
-  const inWindow = intersectDates(
+  const inWindow = intersectCalendarDates(
     dates,
     params.context.planningStartDate,
     params.context.planningEndDate,
-  );
+  ) ?? [];
   if (dates.length > 0 && inWindow.length === 0) {
     params.issues.push({
       code: 'availability_outside_planning_window',
@@ -352,10 +275,12 @@ function resolveTimeBounds(params: {
   }
   startTime = startTime ?? '00:00';
   endTime = endTime ?? '24:00';
-  if (!RESOLVED_CLOCK_PATTERN.test(startTime)
+  if (
+    !RESOLVED_CLOCK_PATTERN.test(startTime)
     || !RESOLVED_CLOCK_PATTERN.test(endTime)
     || startTime === '24:00'
-    || startTime === endTime) {
+    || startTime === endTime
+  ) {
     params.issues.push({
       code: 'invalid_time_interval',
       sourceFactId: params.declaration.id,
@@ -367,22 +292,36 @@ function resolveTimeBounds(params: {
   return { startTime, endTime };
 }
 
-function endPoint(date: string, startTime: string, endTime: string): LocalDateTimePoint | null {
+function endPoint(
+  date: string,
+  startTime: string,
+  endTime: string,
+): LocalDateTimePoint | null {
   if (endTime === '24:00') {
-    const nextDate = addDays(date, 1);
+    const nextDate = addCalendarDays(date, 1);
     return nextDate ? { date: nextDate, time: '00:00' } : null;
   }
   if (endTime < startTime) {
-    const nextDate = addDays(date, 1);
+    const nextDate = addCalendarDays(date, 1);
     return nextDate ? { date: nextDate, time: endTime } : null;
   }
   return { date, time: endTime };
 }
 
-function sourceKindForExternal(kind: SemanticConstraintSourceKind): AvailabilityWindowFact['sourceKind'] {
+function sourceKindForExternal(
+  kind: SemanticConstraintSourceKind,
+): AvailabilityWindowFact['sourceKind'] {
   if (kind === 'timetable') return 'timetable';
   if (kind === 'existing_plans') return 'existing_plan';
   return 'calendar';
+}
+
+function isValidLocalPoint(point: LocalDateTimePoint): boolean {
+  return isValidCalendarDate(point.date) && CLOCK_PATTERN.test(point.time);
+}
+
+function compareLocalPoint(left: LocalDateTimePoint, right: LocalDateTimePoint): number {
+  return `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`);
 }
 
 function validateExternalEvent(event: ExternalConstraintEvent): boolean {
@@ -392,14 +331,6 @@ function validateExternalEvent(event: ExternalConstraintEvent): boolean {
     && compareLocalPoint(event.start, event.end) < 0
     && event.timeZone.trim(),
   );
-}
-
-function isValidLocalPoint(point: LocalDateTimePoint): boolean {
-  return Boolean(parseDate(point.date) && CLOCK_PATTERN.test(point.time));
-}
-
-function compareLocalPoint(left: LocalDateTimePoint, right: LocalDateTimePoint): number {
-  return `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`);
 }
 
 function resolveUserDeclarations(params: {
@@ -603,11 +534,11 @@ export function resolveWeeklyPlanningAvailability(params: {
   context: AvailabilityResolutionContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
 }): AvailabilityResolutionResult {
-  const planningDates = dateRange(
+  const planningDates = listCalendarDatesInclusive(
     params.context.planningStartDate,
     params.context.planningEndDate,
   );
-  if (!planningDates || !parseDate(params.context.currentDate)) {
+  if (!planningDates || !isValidCalendarDate(params.context.currentDate)) {
     return {
       windows: [],
       sourceSelections: [],
