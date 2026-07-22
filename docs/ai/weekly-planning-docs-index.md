@@ -8,10 +8,10 @@ Current implementation baseline: `82bd8003a4e15180329bed158a5bff3017ac34a7`
 
 | document | role |
 | --- | --- |
-| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic v5移行の最優先contract。汎用task model、AI/core責務、移行規則 |
+| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic v5移行の最優先contract。汎用task、availability、AI/core責務、移行規則 |
 | [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | semantic v5移行streamのgate、依存順、merge禁止条件 |
 | [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md) | 汎用SemanticTurnDocument、PlanningFactGraph、generic work item architecture |
-| [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | task/workloadとavailability、外部予定source、hard/soft constraintの境界 |
+| [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | availability、fixed commitment、external source、scheduler境界 |
 | [tasks/20260722-weekly-planning-generic-semantic-v5-migration.md](tasks/20260722-weekly-planning-generic-semantic-v5-migration.md) | 現在の実装scope、チェックリスト、変更・注意点・検証記録 |
 | [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | request ownership、preview、approval、storage、trace、personalization等の非競合contract |
 | [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md) | semantic v5以外のcurrent queue、priority、data governance、運用依存順 |
@@ -73,7 +73,7 @@ semantic v5移行のqueue、gate、依存順は[weekly-planning-semantic-v5-road
 
 ## 5. 運用規則
 
-- semantic v5の実装前後でcurrent contract v5、architecture v5、availability v5、v5 roadmap、active task MDを確認する。
+- semantic v5の実装前後でcurrent contract v5、architecture v5、availability architecture v5、v5 roadmap、active task MDを確認する。
 - 各作業単位の変更、判断、注意点、検証結果をactive task MDへ記録する。
 - queueは対応するroadmapだけを正とする。
 - historical、closed、superseded、audit文書から直接taskを実行しない。
