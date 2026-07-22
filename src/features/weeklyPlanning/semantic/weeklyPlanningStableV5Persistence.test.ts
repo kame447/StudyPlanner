@@ -3,8 +3,8 @@ import {
   createEmptyWeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
-  canonicalizeWeeklyPlanningSemanticDocumentV5,
-} from './weeklyPlanningSemanticCanonicalizerV5';
+  canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
+} from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
@@ -57,7 +57,7 @@ function graph() {
     corrections: [],
     decisions: [],
   };
-  const result = canonicalizeWeeklyPlanningSemanticDocumentV5({
+  const result = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
     graph: createEmptyWeeklyPlanningFactGraphV5(),
     document,
     context: {
