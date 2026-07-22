@@ -1,3 +1,3 @@
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { AiChatPurpose } from '../../../lib/aiModelPolicy';
 
-export type ProbeJsonSchemaResponseFormat = JsonSchemaResponseFormat;
+export type ProbeAiChatPurpose = AiChatPurpose;
