@@ -1,21 +1,23 @@
 # weeklyPlanning documentation index
 
 Status: canonical / active
-最終更新: 2026-07-22
-Current implementation baseline: `eae67502b71c35abfdaab12c89a053adae282cf1`
+最終更新: 2026-07-23
+Current implementation baseline: PR #77 feature-flagged Stable V5 runtime trial
 
 ## 1. 現行判断に使用する文書
 
 | document | role |
 | --- | --- |
-| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic v5移行の最優先contract。Stable direct実装、汎用task、availability、AI/core責務、移行規則 |
+| [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md) | Stable V5の実環境接続、試用方法、rollback、session保存境界の正本。接続状態に関して既存文書と競合する場合に優先 |
+| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic v5移行の最優先contract。汎用task、availability、AI/core責務、移行規則。runtime接続状態だけは上記trial contractを優先 |
 | [../architecture/weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md) | pre-V5、Alpha、Stable V5、Fact Graph V1/V2/V5、runtime依存、記録用依存、production利用、廃止条件の正本 |
 | [strategy/weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md) | Alpha 1 / Alpha 2からdirect Stable V5へ統合する設計、migration、shadow、rollback、compatibility gate |
-| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | Stable direct module実装後の検証、resolver、real-eval、shadow、migration、cutoverのgateと依存順 |
+| [strategy/weekly-planning-semantic-stable-v5-implementation-status.md](strategy/weekly-planning-semantic-stable-v5-implementation-status.md) | Stable V5 direct module、runtime trial、短答結合、preview scheduler、検証状態の実装status |
+| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | Stable direct module実装後の検証、real-eval、shadow、migration、cutoverのgateと依存順 |
 | [../architecture/weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md) | 意味文書、特定日、個人最適化profile、scheduler入力までの全体スキーマ構造 |
 | [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md) | 汎用SemanticTurnDocument、PlanningFactGraph、generic work item architecture |
 | [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | availability、fixed commitment、external source、scheduler境界 |
-| [tasks/20260722-weekly-planning-generic-semantic-v5-migration.md](tasks/20260722-weekly-planning-generic-semantic-v5-migration.md) | migration streamの作業記録。最新gateはcurrent contract、schema registry、roadmapを優先する |
+| [tasks/20260722-weekly-planning-generic-semantic-v5-migration.md](tasks/20260722-weekly-planning-generic-semantic-v5-migration.md) | migration streamとruntime trialの作業記録 |
 | [tasks/20260722-weekly-planning-external-source-atomic-retry.md](tasks/20260722-weekly-planning-external-source-atomic-retry.md) | 外部予定をsuccess/failureだけで扱い、自動再取得する契約と変更記録 |
 | [tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md](tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md) | 一日計画、task例外日、終日休み、個人最適化係数profileの契約と変更記録 |
 | [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | request ownership、preview、approval、storage、trace、personalization等の非競合contract |
@@ -32,9 +34,11 @@ conversation traceを扱う作業では、[../architecture/weekly-planning-conve
 active文書間でstatus、queue、contractが競合する場合は次の順で読む。
 
 ```text
-weekly-planning-current-contract-v5.md
+weekly-planning-stable-v5-runtime-trial-contract.md
+→ weekly-planning-current-contract-v5.md
 → weekly-planning-semantic-schema-registry.md
 → weekly-planning-semantic-stable-v5-migration-plan.md
+→ weekly-planning-semantic-stable-v5-implementation-status.md
 → weekly-planning-semantic-v5-roadmap.md
 → weekly-planning-semantic-schema-v5.md
 → weekly-planning-dialogue-architecture-v5.md
@@ -51,7 +55,9 @@ weekly-planning-current-contract-v5.md
 
 semantic v5移行のqueue、gate、依存順は[weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)を正とする。schema世代と廃止条件は[weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)、Stable V5の統合・migration・rollback手順は[weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md)を正とする。
 
-現在、Stable V5のdirect document、strict response schema、prompt、validator、normalizer、Fact Graph V5、direct canonicalizer、read-only shadow、real-eval harnessを並列moduleとして実装済みである。Graph V5はtask date、fixed commitment、availability、generic work item、generic scheduler inputのpure compilerへ旧graph projectionなしで到達する。repository全体の自動検証、実AI real-eval、production shadow invocation、persisted migration、production cutoverは未完了である。
+Stable V5 direct document、strict response schema、prompt、validator、normalizer、Fact Graph V5、lifecycle、resolver、generic scheduler input、deterministic dialogue、preview schedulerを実装し、既存UIへfeature flag付きruntime trialとして接続済みである。defaultはlegacyである。
+
+repository全体の自動検証、実AI real-eval、実browser roleplay、Graph persistence、migration、read-only production shadow、default cutoverは未完了である。
 
 それ以外のcurrent queueは[weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)を正とする。このindexではtask一覧を複製しない。
 
@@ -87,13 +93,13 @@ pre-V5 semantic schemaとAlpha世代を扱う場合、Git履歴だけを理由�
 
 ## 5. 運用規則
 
-- semantic v5の実装前後でcurrent contract v5、schema registry、Stable V5 migration plan、schema overview v5、architecture v5、availability architecture v5、v5 roadmap、active task MDを確認する。
+- semantic v5の実装前後でruntime trial contract、current contract v5、schema registry、Stable V5 migration plan、implementation status、schema overview v5、architecture v5、availability architecture v5、v5 roadmap、active task MDを確認する。
 - 各作業単位の変更、判断、注意点、検証結果をactive task MD、PR comment、または対応する個別task MDへ記録する。
 - queueは対応するroadmapだけを正とする。
 - historical、closed、superseded、audit文書から直接taskを実行しない。
 - task完了時はcompletion recordを`tasks/closed/`へ残し、root taskを削除する。
 - 契約変更で不要になったtaskは理由を明記して`tasks/superseded/`へ移す。
-- `module implemented`、`production connected`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
+- `module implemented`、`runtime trial connected`、`production default enabled`、`automated verified`、`browser verified`、`operationally deployed`を区別する。
 - `real-eval success`、`AI評価失敗`、`実行基盤失敗`、`資格情報不足`を区別する。
 - PR merge後はbaseline、contract、roadmap、task placementを同期する。
 - 一つの作業streamで不要なbranchを増やさず、既存branchを再利用する。
