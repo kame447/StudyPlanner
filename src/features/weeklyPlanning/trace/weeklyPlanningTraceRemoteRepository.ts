@@ -208,6 +208,18 @@ function clearStoredServerHandle(session: WeeklyPlanningTraceSession): void {
   }
 }
 
+function rejectsStoredServerHandle(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return [
+    'trace session must be started before append',
+    'trace session ownership conflict',
+    'legacy trace session is read-only',
+    'trace session conversation conflict',
+    'trace session issuance conflict',
+    'stale server handle',
+  ].some((marker) => message.includes(marker));
+}
+
 export function createRemoteWeeklyPlanningTraceRepository(
   client: WeeklyPlanningTraceApiClient = createWeeklyPlanningTraceApiClient(),
 ): WeeklyPlanningTraceRepository {
@@ -267,7 +279,11 @@ export function createRemoteWeeklyPlanningTraceRepository(
     try {
       await client.append(canonical);
       return canonical.session;
-    } catch {
+    } catch (error) {
+      if (!rejectsStoredServerHandle(error)) {
+        await client.append(canonical);
+        return canonical.session;
+      }
       forgetServerHandle(params.session);
       canonical = await canonicalPayload(params);
       await client.append(canonical);
