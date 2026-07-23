@@ -121,7 +121,9 @@ removed
 → quantity_role_unresolvedの対象workloadをsupersede
 ```
 
-対象選択をAIへ任せない。未解決対象または構造化候補が一つに定まらない場合は結合せず、通常canonicalizationへ戻す。
+対象選択をAIへ任せない。expected revisionが一致し、短い応答で、未解決対象と構造化候補がそれぞれ一つの場合だけ結合する。長い別件入力、create_plan turn、availabilityやrelation等を同時に含む入力は短答として結合しない。
+
+「この条件で予定を作って」のような作成許可だけのturnでは、planningIntentを`create_plan`とし、public stateの既存taskやconstraintを再出力しないprompt契約を追加した。
 
 ## 6. deterministic preview scheduler
 
@@ -192,7 +194,10 @@ production turnからのshadow telemetry保存は未接続である。runtime tr
 - Stable runtime turn統合
 - direct schema / validator / canonicalizer
 - normalizer repair / fail closed
+- creation authorizationで既存factを再出力しないprompt
 - short-answer contextual binding
+- stale revision / 長い別件入力の短答誤結合防止
+- task → 3時間です → この条件で予定を作って、の三段階pipeline
 - Graph V5 lifecycle
 - task date / fixed commitment / availability
 - generic scheduler input
