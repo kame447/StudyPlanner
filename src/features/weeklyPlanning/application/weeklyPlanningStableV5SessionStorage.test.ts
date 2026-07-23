@@ -286,10 +286,10 @@ describe('Stable V5 persisted runtime session', () => {
   it('hydrates the same conversation and graph when the application is unmounted and mounted again', () => {
     const { state, factGraph } = persistStateWithGraph();
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-    let observed: WeeklyPlanningApplication | null = null;
+    const observed: { current: WeeklyPlanningApplication | null } = { current: null };
 
     function Probe() {
-      observed = useWeeklyPlanningApplication({
+      observed.current = useWeeklyPlanningApplication({
         userId: OWNER_ID,
         selectedDate: SELECTED_DATE,
         plans: [],
@@ -304,7 +304,7 @@ describe('Stable V5 persisted runtime session', () => {
     act(() => {
       renderer = create(createElement(Probe));
     });
-    expect(observed?.state.messages).toEqual(state.messages);
+    expect(observed.current?.state.messages).toEqual(state.messages);
     expect(getOrCreateWeeklyPlanningStableV5RuntimeSession({
       ownerId: OWNER_ID,
       conversationId: CONVERSATION_ID,
@@ -317,7 +317,7 @@ describe('Stable V5 persisted runtime session', () => {
     act(() => {
       renderer = create(createElement(Probe));
     });
-    expect(observed?.state.messages).toEqual(state.messages);
+    expect(observed.current?.state.messages).toEqual(state.messages);
     expect(getOrCreateWeeklyPlanningStableV5RuntimeSession({
       ownerId: OWNER_ID,
       conversationId: CONVERSATION_ID,
