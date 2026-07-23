@@ -10,6 +10,15 @@ import {
   type WeeklyPlanningTraceServerHandle,
 } from './weeklyPlanningTracePrivacyClient';
 
+const SERVER_HANDLE_STORAGE_VERSION =
+  'studyplanner-weekly-planning-trace-server-handle-v1' as const;
+
+interface StoredServerHandle {
+  version: typeof SERVER_HANDLE_STORAGE_VERSION;
+  localSessionId: string;
+  serverHandle: WeeklyPlanningTraceServerHandle;
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
@@ -125,22 +134,111 @@ function canonicalEntry(
   };
 }
 
+function serverHandleStorageKey(session: WeeklyPlanningTraceSession): string {
+  return [
+    'studyplanner.weeklyPlanning.traceServerHandle.v1',
+    encodeURIComponent(session.userId),
+    encodeURIComponent(session.id),
+  ].join('.');
+}
+
+function isServerHandle(value: unknown): value is WeeklyPlanningTraceServerHandle {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.sessionId === 'string'
+    && /^weekly-trace-[0-9a-f-]{36}$/i.test(record.sessionId)
+    && typeof record.logicalConversationId === 'string'
+    && /^weekly-conversation-[0-9a-f-]{36}$/i.test(record.logicalConversationId);
+}
+
+function loadStoredServerHandle(
+  session: WeeklyPlanningTraceSession,
+): WeeklyPlanningTraceServerHandle | null {
+  if (typeof window === 'undefined') return null;
+  const key = serverHandleStorageKey(session);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.version !== SERVER_HANDLE_STORAGE_VERSION
+      || record.localSessionId !== session.id
+      || !isServerHandle(record.serverHandle)) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return record.serverHandle;
+  } catch {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    return null;
+  }
+}
+
+function saveStoredServerHandle(
+  session: WeeklyPlanningTraceSession,
+  serverHandle: WeeklyPlanningTraceServerHandle,
+): void {
+  if (typeof window === 'undefined') return;
+  const payload: StoredServerHandle = {
+    version: SERVER_HANDLE_STORAGE_VERSION,
+    localSessionId: session.id,
+    serverHandle,
+  };
+  try {
+    window.localStorage.setItem(serverHandleStorageKey(session), JSON.stringify(payload));
+  } catch {
+    // Server handle continuity is best effort. Server-side issuance remains authoritative.
+  }
+}
+
+function clearStoredServerHandle(session: WeeklyPlanningTraceSession): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(serverHandleStorageKey(session));
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
 export function createRemoteWeeklyPlanningTraceRepository(
   client: WeeklyPlanningTraceApiClient = createWeeklyPlanningTraceApiClient(),
 ): WeeklyPlanningTraceRepository {
   const sessionsById = new Map<string, WeeklyPlanningTraceSession>();
   const handlesByLocalSessionId = new Map<string, Promise<WeeklyPlanningTraceServerHandle>>();
 
+  function forgetServerHandle(session: WeeklyPlanningTraceSession): void {
+    handlesByLocalSessionId.delete(session.id);
+    clearStoredServerHandle(session);
+  }
+
   function serverHandle(session: WeeklyPlanningTraceSession): Promise<WeeklyPlanningTraceServerHandle> {
     const existing = handlesByLocalSessionId.get(session.id);
     if (existing) return existing;
+
+    const stored = loadStoredServerHandle(session);
+    if (stored) {
+      const resolved = Promise.resolve(stored);
+      handlesByLocalSessionId.set(session.id, resolved);
+      return resolved;
+    }
 
     const pending = client.startSession({
       idempotencyKey: session.id,
       conversationCorrelationKey: session.logicalConversationId,
       session: startMetadata(session),
+    }).then((handle) => {
+      saveStoredServerHandle(session, handle);
+      return handle;
     }).catch((error) => {
-      handlesByLocalSessionId.delete(session.id);
+      forgetServerHandle(session);
       throw error;
     });
     handlesByLocalSessionId.set(session.id, pending);
@@ -161,17 +259,31 @@ export function createRemoteWeeklyPlanningTraceRepository(
     };
   }
 
+  async function appendWithHandleRecovery(params: {
+    session: WeeklyPlanningTraceSession;
+    entries: WeeklyPlanningTraceEntry[];
+  }): Promise<WeeklyPlanningTraceSession> {
+    let canonical = await canonicalPayload(params);
+    try {
+      await client.append(canonical);
+      return canonical.session;
+    } catch {
+      forgetServerHandle(params.session);
+      canonical = await canonicalPayload(params);
+      await client.append(canonical);
+      return canonical.session;
+    }
+  }
+
   return {
     async upsertSession(session) {
-      const canonical = await canonicalPayload({ session, entries: [] });
-      sessionsById.set(canonical.session.id, { ...canonical.session });
-      await client.append(canonical);
+      const canonicalSessionValue = await appendWithHandleRecovery({ session, entries: [] });
+      sessionsById.set(canonicalSessionValue.id, { ...canonicalSessionValue });
     },
 
     async appendEntries({ session, entries }) {
-      const canonical = await canonicalPayload({ session, entries });
-      sessionsById.set(canonical.session.id, { ...canonical.session });
-      await client.append(canonical);
+      const canonicalSessionValue = await appendWithHandleRecovery({ session, entries });
+      sessionsById.set(canonicalSessionValue.id, { ...canonicalSessionValue });
     },
 
     async listSessions() {
