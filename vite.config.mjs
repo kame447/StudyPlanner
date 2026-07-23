@@ -55,6 +55,14 @@ function preferredNetworkUrlPlugin() {
 
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin()],
+  test: {
+    alias: {
+      'cloudflare:workers': path.join(
+        workspaceDir,
+        'workers/ai-proxy/src/cloudflareWorkersVitestStub.ts',
+      ),
+    },
+  },
   server: {
     host: '0.0.0.0',
     https: resolveLocalHttpsOptions(),
