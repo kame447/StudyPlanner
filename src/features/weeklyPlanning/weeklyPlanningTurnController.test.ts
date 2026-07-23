@@ -183,6 +183,51 @@ describe('weeklyPlanningTurnController', () => {
     expect(store.getState().revision).toBe(beforeClear.revision + 1);
   });
 
+  it('does not reuse a request id after clear conversation and controller reload', async () => {
+    const store = harness();
+    const firstSession = createWeeklyPlanningControllerSession(
+      'user-1',
+      '2026-07-13',
+      'conversation-1',
+    );
+    let firstRequestId = '';
+    await submitWeeklyPlanningControlledTurn({
+      session: firstSession,
+      ownerId: 'user-1',
+      userText: '最初の送信',
+      getState: store.getState,
+      dispatch: store.dispatch,
+      async execute(input) {
+        firstRequestId = input.pending.requestId;
+        return result;
+      },
+    });
+    expect(firstRequestId).toBe('conversation-1:request:1');
+    expect(clearWeeklyPlanningControlledConversation(store)).toBe(true);
+    expect(store.getState().messages).toEqual([]);
+
+    const restoredSession = createWeeklyPlanningControllerSession(
+      'user-1',
+      '2026-07-13',
+      'conversation-1',
+    );
+    let nextRequestId = '';
+    await submitWeeklyPlanningControlledTurn({
+      session: restoredSession,
+      ownerId: 'user-1',
+      userText: '消去後の送信',
+      getState: store.getState,
+      dispatch: store.dispatch,
+      async execute(input) {
+        nextRequestId = input.pending.requestId;
+        return result;
+      },
+    });
+
+    expect(nextRequestId).toBe('conversation-1:request:2');
+    expect(nextRequestId).not.toBe(firstRequestId);
+  });
+
   it('commits a turn even when the assistant text matches the previous response', async () => {
     const store = harness();
     store.dispatch({
