@@ -41,7 +41,13 @@ function storedMode(): WeeklyPlanningRuntimeMode | null {
 }
 
 function dispatchModeChange(mode: WeeklyPlanningRuntimeMode): void {
-  if (typeof window === 'undefined') return;
+  if (
+    typeof window === 'undefined'
+    || typeof window.dispatchEvent !== 'function'
+    || typeof CustomEvent !== 'function'
+  ) {
+    return;
+  }
   window.dispatchEvent(new CustomEvent(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT, {
     detail: { mode },
   }));
