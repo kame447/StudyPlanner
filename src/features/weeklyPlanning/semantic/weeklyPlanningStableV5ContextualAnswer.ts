@@ -56,12 +56,30 @@ function turnKey(input: WeeklyPlanningStableV5ContextualAnswerInput): string {
   return `${input.conversationId}:${input.turnId}`;
 }
 
+function normalizeSourceText(text: string): string {
+  return text
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[。！？!?]+$/g, '');
+}
+
+function hasWholeTurnTaskSource(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): boolean {
+  const normalizedUserText = normalizeSourceText(input.userText);
+  return input.document.tasks.some(
+    (task) => normalizeSourceText(task.sourceText) === normalizedUserText,
+  );
+}
+
 function isMinimalContextualReply(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
   const text = input.userText.trim();
   return text.length > 0
     && text.length <= 40
+    && hasWholeTurnTaskSource(input)
     && input.expectedRevision === input.graph.revision
     && input.document.planningIntent !== 'create_plan'
     && input.document.planningWindow === null
