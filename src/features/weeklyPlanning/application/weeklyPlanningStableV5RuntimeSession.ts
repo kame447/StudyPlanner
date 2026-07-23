@@ -1,4 +1,9 @@
 import {
+  clearWeeklyPlanningSessionRuntime,
+  getWeeklyPlanningSessionRuntime,
+  publishWeeklyPlanningSessionRuntime,
+} from '../planning/weeklyPlanningSessionRuntime';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -28,6 +33,12 @@ function pruneSessions(): void {
     .sort((left, right) => left.updatedAt - right.updatedAt)
     .slice(0, sessions.size - MAX_RUNTIME_SESSIONS);
   oldest.forEach((session) => sessions.delete(session.conversationId));
+}
+
+function clearApprovalRuntimeForConversation(conversationId: string): void {
+  if (getWeeklyPlanningSessionRuntime()?.conversationId === conversationId) {
+    clearWeeklyPlanningSessionRuntime();
+  }
 }
 
 export function getOrCreateWeeklyPlanningStableV5RuntimeSession(params: {
@@ -64,6 +75,11 @@ export function commitWeeklyPlanningStableV5RuntimeGraph(params: {
     updatedAt: Date.now(),
   };
   sessions.set(params.conversationId, next);
+  publishWeeklyPlanningSessionRuntime({
+    conversationId: params.conversationId,
+    stateRevision: params.graph.revision,
+    proposalRecords: [],
+  });
   pruneSessions();
   return cloneSession(next);
 }
@@ -72,16 +88,21 @@ export function clearWeeklyPlanningStableV5RuntimeSession(
   conversationId: string,
 ): void {
   sessions.delete(conversationId);
+  clearApprovalRuntimeForConversation(conversationId);
 }
 
 export function clearWeeklyPlanningStableV5RuntimeSessionsForOwner(
   ownerId: string,
 ): void {
   for (const [conversationId, session] of sessions) {
-    if (session.ownerId === ownerId) sessions.delete(conversationId);
+    if (session.ownerId === ownerId) {
+      sessions.delete(conversationId);
+      clearApprovalRuntimeForConversation(conversationId);
+    }
   }
 }
 
 export function resetWeeklyPlanningStableV5RuntimeSessionsForTest(): void {
   sessions.clear();
+  clearWeeklyPlanningSessionRuntime();
 }
