@@ -10,6 +10,7 @@ import {
 
 export interface WeeklyPlanningStableV5RuntimeSession {
   ownerId: string;
+  weekStartDate: string;
   conversationId: string;
   graph: WeeklyPlanningFactGraphV5;
   updatedAt: number;
@@ -27,6 +28,14 @@ function cloneSession(
   };
 }
 
+function sameScope(
+  session: WeeklyPlanningStableV5RuntimeSession,
+  ownerId: string,
+  weekStartDate: string,
+): boolean {
+  return session.ownerId === ownerId && session.weekStartDate === weekStartDate;
+}
+
 function pruneSessions(): void {
   if (sessions.size <= MAX_RUNTIME_SESSIONS) return;
   const oldest = [...sessions.values()]
@@ -41,15 +50,47 @@ function clearApprovalRuntimeForConversation(conversationId: string): void {
   }
 }
 
+function publishSession(session: WeeklyPlanningStableV5RuntimeSession): void {
+  publishWeeklyPlanningSessionRuntime({
+    conversationId: session.conversationId,
+    stateRevision: session.graph.revision,
+    proposalRecords: [],
+  });
+}
+
+export function getWeeklyPlanningStableV5RuntimeSession(
+  conversationId: string,
+): WeeklyPlanningStableV5RuntimeSession | null {
+  const session = sessions.get(conversationId);
+  return session ? cloneSession(session) : null;
+}
+
+export function getWeeklyPlanningStableV5RuntimeSessionForScope(params: {
+  ownerId: string;
+  weekStartDate: string;
+}): WeeklyPlanningStableV5RuntimeSession | null {
+  const matching = [...sessions.values()]
+    .filter((session) => sameScope(session, params.ownerId, params.weekStartDate))
+    .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+  return matching ? cloneSession(matching) : null;
+}
+
 export function getOrCreateWeeklyPlanningStableV5RuntimeSession(params: {
   ownerId: string;
+  weekStartDate: string;
   conversationId: string;
 }): WeeklyPlanningStableV5RuntimeSession {
   const existing = sessions.get(params.conversationId);
-  if (existing && existing.ownerId === params.ownerId) return cloneSession(existing);
+  if (existing) {
+    if (!sameScope(existing, params.ownerId, params.weekStartDate)) {
+      throw new Error('Stable V5 runtime session scope mismatch.');
+    }
+    return cloneSession(existing);
+  }
 
   const created: WeeklyPlanningStableV5RuntimeSession = {
     ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
     conversationId: params.conversationId,
     graph: createEmptyWeeklyPlanningFactGraphV5(),
     updatedAt: Date.now(),
@@ -59,27 +100,49 @@ export function getOrCreateWeeklyPlanningStableV5RuntimeSession(params: {
   return cloneSession(created);
 }
 
+export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  updatedAt?: number;
+}): WeeklyPlanningStableV5RuntimeSession {
+  const existing = sessions.get(params.conversationId);
+  if (existing && !sameScope(existing, params.ownerId, params.weekStartDate)) {
+    throw new Error('Stable V5 runtime session scope mismatch.');
+  }
+  const hydrated: WeeklyPlanningStableV5RuntimeSession = {
+    ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
+    conversationId: params.conversationId,
+    graph: structuredClone(params.graph),
+    updatedAt: params.updatedAt ?? Date.now(),
+  };
+  sessions.set(params.conversationId, hydrated);
+  publishSession(hydrated);
+  pruneSessions();
+  return cloneSession(hydrated);
+}
+
 export function commitWeeklyPlanningStableV5RuntimeGraph(params: {
   ownerId: string;
+  weekStartDate: string;
   conversationId: string;
   graph: WeeklyPlanningFactGraphV5;
 }): WeeklyPlanningStableV5RuntimeSession {
   const current = sessions.get(params.conversationId);
-  if (current && current.ownerId !== params.ownerId) {
-    throw new Error('Stable V5 runtime session owner mismatch.');
+  if (current && !sameScope(current, params.ownerId, params.weekStartDate)) {
+    throw new Error('Stable V5 runtime session scope mismatch.');
   }
   const next: WeeklyPlanningStableV5RuntimeSession = {
     ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
     conversationId: params.conversationId,
     graph: structuredClone(params.graph),
     updatedAt: Date.now(),
   };
   sessions.set(params.conversationId, next);
-  publishWeeklyPlanningSessionRuntime({
-    conversationId: params.conversationId,
-    stateRevision: params.graph.revision,
-    proposalRecords: [],
-  });
+  publishSession(next);
   pruneSessions();
   return cloneSession(next);
 }
@@ -89,6 +152,18 @@ export function clearWeeklyPlanningStableV5RuntimeSession(
 ): void {
   sessions.delete(conversationId);
   clearApprovalRuntimeForConversation(conversationId);
+}
+
+export function clearWeeklyPlanningStableV5RuntimeSessionsForScope(params: {
+  ownerId: string;
+  weekStartDate: string;
+}): void {
+  for (const [conversationId, session] of sessions) {
+    if (sameScope(session, params.ownerId, params.weekStartDate)) {
+      sessions.delete(conversationId);
+      clearApprovalRuntimeForConversation(conversationId);
+    }
+  }
 }
 
 export function clearWeeklyPlanningStableV5RuntimeSessionsForOwner(
