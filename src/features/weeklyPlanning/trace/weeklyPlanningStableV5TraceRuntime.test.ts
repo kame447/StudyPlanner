@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
@@ -74,6 +74,7 @@ describe('Stable V5 trace runtime', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     setWeeklyPlanningTraceRepositoryForTests(undefined);
   });
@@ -174,6 +175,35 @@ describe('Stable V5 trace runtime', () => {
       expect(allEntries
         .filter((entry) => entry.kind === 'turn')
         .map((entry) => entry.turnIndex)).toEqual([0, 1, 2, 3]);
+    } finally {
+      resetWeeklyPlanningStableV5TraceRuntimeForTest();
+      restoreWindow();
+    }
+  });
+
+  it('keeps one trace session after more than thirty minutes of inactivity', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-24T00:00:00.000Z'));
+    const storageHarness = createMemoryStorageHarness();
+    const restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
+    const harness = createRepositoryHarness();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+
+    try {
+      await recordWeeklyPlanningStableV5TurnTrace(traceInput());
+      const first = harness.writes[0];
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      vi.setSystemTime(new Date('2026-07-24T01:00:00.000Z'));
+
+      await recordWeeklyPlanningStableV5TurnTrace(traceInput({
+        requestId: 'conversation-1:request:2',
+        userText: '一時間後に続きを入力します',
+        graphRevision: 2,
+      }));
+
+      expect(harness.writes).toHaveLength(2);
+      expect(harness.writes[1].session.id).toBe(first.session.id);
+      expect(harness.writes[1].entries[0].sequence).toBe(first.entries.length);
     } finally {
       resetWeeklyPlanningStableV5TraceRuntimeForTest();
       restoreWindow();
