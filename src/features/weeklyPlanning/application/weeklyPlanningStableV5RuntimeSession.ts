@@ -16,8 +16,20 @@ export interface WeeklyPlanningStableV5RuntimeSession {
   updatedAt: number;
 }
 
+interface StagedWeeklyPlanningStableV5Graph {
+  ownerId: string;
+  conversationId: string;
+  requestId: string;
+  graph: WeeklyPlanningFactGraphV5;
+}
+
 const MAX_RUNTIME_SESSIONS = 24;
 const sessions = new Map<string, WeeklyPlanningStableV5RuntimeSession>();
+const stagedGraphs = new Map<string, StagedWeeklyPlanningStableV5Graph>();
+
+function stagedKey(conversationId: string, requestId: string): string {
+  return `${conversationId}:${requestId}`;
+}
 
 function cloneSession(
   session: WeeklyPlanningStableV5RuntimeSession,
@@ -41,7 +53,10 @@ function pruneSessions(): void {
   const oldest = [...sessions.values()]
     .sort((left, right) => left.updatedAt - right.updatedAt)
     .slice(0, sessions.size - MAX_RUNTIME_SESSIONS);
-  oldest.forEach((session) => sessions.delete(session.conversationId));
+  oldest.forEach((session) => {
+    sessions.delete(session.conversationId);
+    discardAllStagedGraphsForConversation(session.conversationId);
+  });
 }
 
 function clearApprovalRuntimeForConversation(conversationId: string): void {
@@ -56,6 +71,19 @@ function publishSession(session: WeeklyPlanningStableV5RuntimeSession): void {
     stateRevision: session.graph.revision,
     proposalRecords: [],
   });
+}
+
+function requestIdFromGraph(graph: WeeklyPlanningFactGraphV5): string {
+  const requestId = graph.appliedTurnKeys[graph.appliedTurnKeys.length - 1]?.trim();
+  if (!requestId) throw new Error('Stable V5 staged graph is missing its request id.');
+  return requestId;
+}
+
+function discardAllStagedGraphsForConversation(conversationId: string): void {
+  const prefix = `${conversationId}:`;
+  for (const key of stagedGraphs.keys()) {
+    if (key.startsWith(prefix)) stagedGraphs.delete(key);
+  }
 }
 
 export function getWeeklyPlanningStableV5RuntimeSession(
@@ -143,6 +171,7 @@ export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
   if (existing && existing.weekStartDate && existing.weekStartDate !== params.weekStartDate) {
     throw new Error('Stable V5 runtime session week mismatch.');
   }
+  discardAllStagedGraphsForConversation(params.conversationId);
   const hydrated: WeeklyPlanningStableV5RuntimeSession = {
     ownerId: params.ownerId,
     weekStartDate: params.weekStartDate,
@@ -165,23 +194,66 @@ export function commitWeeklyPlanningStableV5RuntimeGraph(params: {
   if (current && current.ownerId !== params.ownerId) {
     throw new Error('Stable V5 runtime session owner mismatch.');
   }
-  const next: WeeklyPlanningStableV5RuntimeSession = {
+  const session = current ?? getOrCreateWeeklyPlanningStableV5RuntimeSession({
     ownerId: params.ownerId,
-    weekStartDate: current?.weekStartDate ?? '',
     conversationId: params.conversationId,
+  });
+  const requestId = requestIdFromGraph(params.graph);
+  stagedGraphs.set(stagedKey(params.conversationId, requestId), {
+    ownerId: params.ownerId,
+    conversationId: params.conversationId,
+    requestId,
     graph: structuredClone(params.graph),
+  });
+  return cloneSession(session);
+}
+
+export function finalizeWeeklyPlanningStableV5RuntimeGraph(params: {
+  ownerId: string;
+  conversationId: string;
+  requestId: string;
+}): WeeklyPlanningStableV5RuntimeSession {
+  const key = stagedKey(params.conversationId, params.requestId);
+  const staged = stagedGraphs.get(key);
+  if (!staged) throw new Error('Stable V5 staged graph was not found.');
+  if (staged.ownerId !== params.ownerId) {
+    throw new Error('Stable V5 staged graph owner mismatch.');
+  }
+  const current = sessions.get(params.conversationId);
+  if (!current || current.ownerId !== params.ownerId) {
+    throw new Error('Stable V5 runtime session owner mismatch.');
+  }
+  const next: WeeklyPlanningStableV5RuntimeSession = {
+    ...current,
+    graph: structuredClone(staged.graph),
     updatedAt: Date.now(),
   };
   sessions.set(params.conversationId, next);
+  stagedGraphs.delete(key);
   publishSession(next);
   pruneSessions();
   return cloneSession(next);
+}
+
+export function discardWeeklyPlanningStableV5StagedGraph(params: {
+  conversationId: string;
+  requestId: string;
+}): void {
+  stagedGraphs.delete(stagedKey(params.conversationId, params.requestId));
+}
+
+export function hasWeeklyPlanningStableV5StagedGraphForTest(params: {
+  conversationId: string;
+  requestId: string;
+}): boolean {
+  return stagedGraphs.has(stagedKey(params.conversationId, params.requestId));
 }
 
 export function clearWeeklyPlanningStableV5RuntimeSession(
   conversationId: string,
 ): void {
   sessions.delete(conversationId);
+  discardAllStagedGraphsForConversation(conversationId);
   clearApprovalRuntimeForConversation(conversationId);
 }
 
@@ -192,6 +264,7 @@ export function clearWeeklyPlanningStableV5RuntimeSessionsForScope(params: {
   for (const [conversationId, session] of sessions) {
     if (sameScope(session, params.ownerId, params.weekStartDate)) {
       sessions.delete(conversationId);
+      discardAllStagedGraphsForConversation(conversationId);
       clearApprovalRuntimeForConversation(conversationId);
     }
   }
@@ -203,6 +276,7 @@ export function clearWeeklyPlanningStableV5RuntimeSessionsForOwner(
   for (const [conversationId, session] of sessions) {
     if (session.ownerId === ownerId) {
       sessions.delete(conversationId);
+      discardAllStagedGraphsForConversation(conversationId);
       clearApprovalRuntimeForConversation(conversationId);
     }
   }
@@ -210,5 +284,6 @@ export function clearWeeklyPlanningStableV5RuntimeSessionsForOwner(
 
 export function resetWeeklyPlanningStableV5RuntimeSessionsForTest(): void {
   sessions.clear();
+  stagedGraphs.clear();
   clearWeeklyPlanningSessionRuntime();
 }
