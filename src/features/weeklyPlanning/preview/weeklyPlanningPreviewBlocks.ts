@@ -9,6 +9,7 @@ import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTrace
 
 export interface WeeklyPlanningStableV5PreviewMetadata {
   runtime: 'stable_v5';
+  conversationId: string;
   graphRevision: number;
   taskId: string;
   sourceFactRefs: string[];
@@ -48,10 +49,52 @@ function acceptedDependencies(metadata: BehaviorAwarePreviewMetadata) {
     }));
 }
 
+function stableV5MetadataFromCandidate(
+  candidate: WeeklyDraftCandidate,
+): WeeklyPlanningStableV5PreviewMetadata | undefined {
+  const metadata = (candidate as WeeklyDraftCandidateWithRuntimeMetadata).stableV5Metadata;
+  if (!metadata || metadata.runtime !== 'stable_v5') return undefined;
+  return {
+    ...metadata,
+    sourceFactRefs: [...metadata.sourceFactRefs],
+  };
+}
+
 function behaviorMetadataFromCandidate(
   candidate: WeeklyDraftCandidate,
   userId?: string,
 ): WeeklyPlanningBehaviorMetadata | undefined {
+  const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
+  if (stableV5Metadata) {
+    return {
+      conversationId: stableV5Metadata.conversationId,
+      stateRevision: stableV5Metadata.graphRevision,
+      sourceFactRefs: [...stableV5Metadata.sourceFactRefs],
+      usedAssumptionProposalRefs: [],
+      taskRef: stableV5Metadata.taskId,
+      opportunityTags: [],
+      reasoningKey: 'stable-v5-explicit-duration',
+      compatibility: {
+        workItemSemantic: 'generic_semantic_task',
+        schedulerInputSource: 'stable_v5_generic_scheduler_input',
+        candidateSource: 'stable_v5',
+      },
+      ...(userId
+        ? {
+            previewMetadata: {
+              previewId: `stable-v5-preview:${stableV5Metadata.conversationId}:${stableV5Metadata.graphRevision}`,
+              conversationId: stableV5Metadata.conversationId,
+              stateRevision: stableV5Metadata.graphRevision,
+              assumptionDependencies: [],
+              approvalEligibility: 'eligible' as const,
+              stale: false,
+              authorizedUserId: userId,
+            },
+          }
+        : {}),
+    };
+  }
+
   const metadata = (candidate as WeeklyDraftCandidate & {
     behaviorMetadata?: BehaviorAwarePreviewMetadata;
   }).behaviorMetadata;
@@ -86,17 +129,6 @@ function behaviorMetadataFromCandidate(
       candidateSource: 'weekly_exam_prep',
     },
     ...(previewMetadata ? { previewMetadata } : {}),
-  };
-}
-
-function stableV5MetadataFromCandidate(
-  candidate: WeeklyDraftCandidate,
-): WeeklyPlanningStableV5PreviewMetadata | undefined {
-  const metadata = (candidate as WeeklyDraftCandidateWithRuntimeMetadata).stableV5Metadata;
-  if (!metadata || metadata.runtime !== 'stable_v5') return undefined;
-  return {
-    ...metadata,
-    sourceFactRefs: [...metadata.sourceFactRefs],
   };
 }
 
@@ -168,7 +200,9 @@ export function createWeeklyPlanningPreviewDisplayBlock(
         ...block.behaviorMetadata,
         previewMetadata: {
           previewId: block.behaviorMetadata.conversationId
-            ? `behavior-preview:${block.behaviorMetadata.conversationId}:${block.behaviorMetadata.stateRevision}`
+            ? block.behaviorMetadata.compatibility.candidateSource === 'stable_v5'
+              ? `stable-v5-preview:${block.behaviorMetadata.conversationId}:${block.behaviorMetadata.stateRevision}`
+              : `behavior-preview:${block.behaviorMetadata.conversationId}:${block.behaviorMetadata.stateRevision}`
             : `behavior-preview:${block.behaviorMetadata.stateRevision}`,
           ...(block.behaviorMetadata.conversationId
             ? { conversationId: block.behaviorMetadata.conversationId }
