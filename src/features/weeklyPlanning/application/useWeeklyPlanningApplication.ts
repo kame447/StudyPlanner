@@ -30,6 +30,9 @@ import {
   saveWeeklyPlanningApprovalOperations,
 } from './weeklyPlanningApprovalLedgerStorage';
 import {
+  WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
+} from './weeklyPlanningRuntimeMode';
+import {
   clearWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -106,6 +109,29 @@ export function useWeeklyPlanningApplication({
     if (approvalLedger.ownerId !== ownerId) return;
     saveWeeklyPlanningApprovalOperations(ownerId, approvalLedger.operations);
   }, [approvalLedger, ownerId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleRuntimeModeChange = () => {
+      const session = controllerSessionRef.current;
+      if (!session) return;
+      clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
+      resetWeeklyPlanningControlledSession({
+        session,
+        ownerId,
+        getState: getPlanningState,
+        dispatch: dispatchPlanningAction,
+      });
+    };
+    window.addEventListener(
+      WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
+      handleRuntimeModeChange,
+    );
+    return () => window.removeEventListener(
+      WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
+      handleRuntimeModeChange,
+    );
+  }, [dispatchPlanningAction, getPlanningState, ownerId]);
 
   const approvalOperations = approvalLedger.ownerId === ownerId
     ? approvalLedger.operations
