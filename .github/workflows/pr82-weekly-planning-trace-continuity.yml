@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/weekly-planning-trace-conversation-continuity
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
