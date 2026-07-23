@@ -114,7 +114,9 @@ cursorのcontent非保存、owner・schema・counter・unknown field拒否
 storage key境界の衝突回帰
 ```
 
-GitHub Actionsは`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗している。code test failureとは判定しない一方、focused test、full Vitest、typecheck、Vite production buildの成功証跡もまだない。
+Cloudflare Pagesのbranch previewはproductionコード修正を含むcommit `3ae9e1f`でdeploy成功した。その後の差分はtestとdocumentationだけであり、runtime production sourceは変更していない。configured Pages buildは確認済みである。
+
+GitHub Actionsは最新headでも`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗している。code test failureとは判定しない一方、focused test、full Vitest、typecheckの成功証跡はまだない。
 
 ## 9. remaining gates
 
@@ -122,7 +124,6 @@ GitHub Actionsは`verify` jobを生成したが、step 0件・logsなしでrunne
 focused trace tests
 full Vitest
 typecheck
-Vite production build
 branch previewでreload・idle・clear後再送を実操作
 admin exportで同一session継続
 cross-tab sequence reservation
