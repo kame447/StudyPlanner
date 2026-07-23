@@ -1,7 +1,7 @@
 # 週間計画 Stable V5 semantic実装status
 
-Status: canonical implementation status / production disconnected
-最終更新: 2026-07-22
+Status: canonical implementation status / feature-flagged runtime trial connected
+最終更新: 2026-07-23
 
 関連文書:
 
@@ -10,9 +10,9 @@ Status: canonical implementation status / production disconnected
 - [Stable V5 migration plan](weekly-planning-semantic-stable-v5-migration-plan.md)
 - [semantic v5 roadmap](weekly-planning-semantic-v5-roadmap.md)
 
-この文書は、Stable V5 migration planに対する現在の実装到達点を記録する。migration planの設計原則を変更しない。production接続、保存形式切替、mainへのmergeを許可する文書ではない。
+この文書はStable V5の実装到達点を記録する。現在は既存UIから明示的に切り替えて試せるruntime trialまで接続済みである。ただしdefaultはlegacyであり、mainへのmerge、全ユーザーcutover、Graph永続化、旧経路削除を許可する状態ではない。
 
-## 1. 実装済みのStable識別子
+## 1. Stable識別子
 
 ```text
 TypeScript document: WeeklyPlanningSemanticDocumentV5
@@ -22,45 +22,70 @@ JSON Schema name:    weekly_planning_semantic_document_v5
 fact graph version:  weekly-planning-fact-graph-v5
 ```
 
-これらは並列moduleの識別子として確定済みである。ただしproduction採用済みという意味ではない。
-
-## 2. direct semantic core
-
-次をAlpha 1 / Alpha 2と並列に実装済みである。
-
-```text
-Stable document型
-→ direct strict JSON Schema
-→ direct system/user prompt
-→ direct runtime validator
-→ Stable normalizer
-→ direct canonicalizer
-→ Fact Graph V5
-```
-
 Stable document、validator、canonicalizerはAlpha schema、Alpha validator、旧Fact Graph、旧canonicalizerへimportまたはprojectionしない。
 
-Stable normalizerはinitial callと最大一回repairだけを許可する。provider failure、空応答、不正JSON、schema rejection、repair rejectionでparser fallbackしない。diagnosticsへraw response本文を保存しない。
+## 2. 実環境runtime経路
 
-## 3. Fact Graph V5
-
-Fact Graph V5はGraph V1/V2を継承せず、現在必要なcollectionを直接定義する。
+既存の週間計画turn入口へ次のfeature-flagged経路を追加した。
 
 ```text
-planning window
-task / study context / component
-workload / effort estimate
-temporal constraint / task date rule / recurrence
-relation / uncertainty
-correction intent / decision intent
-availability declaration / constraint source request
+既存NaturalLanguageAssistant
+→ weeklyPlanningTurnExecutor
+→ runtime mode判定
+→ Stable V5 OpenAI-compatible structured output
+→ direct Stable validator
+→ lifecycle付きcanonicalizer
+→ conversation-bound Fact Graph V5
+→ active fact read view
+→ generic scheduler input
+→ deterministic dialogue policy
+→ deterministic preview scheduler
+→ 既存preview UI
+→ 既存approval flow
+→ Plan保存
 ```
 
-canonical transactionは正式fact ID、source、revision、duplicate turn、expected revision、atomic rejectionを扱う。
+AIが担当するのはユーザー発話の意味構造化だけである。次はアプリ側が決定する。
 
-## 4. lifecycle
+- schema validation
+- fact IDとrevision
+- short-answer target binding
+- missing情報の優先順位
+- 質問選択
+- planning horizon解決
+- existing plan / timetable制約
+- task date eligibility
+- fixed commitment
+- availability
+- 予定配置
+- preview許可
+- approval freshness
+- 保存
 
-Fact Graph V5には独立したlifecycle indexを追加済みである。
+provider failureまたはschema rejectionでparserへfallbackしない。
+
+## 3. 有効化とrollback
+
+通常はlegacy経路を使用する。Stable V5は次のいずれかで明示的に有効化する。
+
+```text
+アプリ設定
+→ 週間計画AI
+→ Stable V5
+```
+
+または開発・preview環境で次を使用できる。
+
+```text
+?weeklyPlanningRuntime=stable-v5
+VITE_WEEKLY_PLANNING_RUNTIME_MODE=stable_v5
+```
+
+設定画面で「現行方式」へ戻すと即時rollbackできる。runtime切替時は会話、preview、Fact Graphを初期化し、旧世代とStable V5を同一conversationで混在させない。
+
+## 4. Fact Graph V5 lifecycle
+
+Fact Graph V5はfact本体を監査用に保持し、独立indexで次を管理する。
 
 ```text
 active
@@ -68,190 +93,162 @@ superseded
 removed
 ```
 
-各entryはfact ID、created revision、terminal revision、supersede先を保持する。fact本体は監査のため削除しない。
-
-lifecycle engineは次を実装する。
+実装済み:
 
 - expected revision確認
-- operation keyによるidempotency
-- active factだけを操作対象にする
-- removeとsupersedeを区別する
-- replacementを同一fact kindへ限定する
-- active依存factを持つtargetの単独終了を拒否する
-- correction intentのresolved fact IDを決定論的に適用する
-- inactive factをscheduler read viewから除外する
+- duplicate turn防止
+- operation key idempotency
+- 同一fact kindへのsupersede
+- active依存factを持つtargetの単独終了拒否
+- correction intent transaction
+- decision intentのaccept / reject
+- inactive factのscheduler除外
 
-proposal decisionの実適用と依存fact一括終了transactionは未実装である。
+未実装:
 
-## 5. deterministic resolverとscheduler input
+- proposal decisionの外部proposal stateへの実適用
+- 依存fact一括終了transaction
 
-次のmoduleはGraph V2全体型ではなく、必要collectionだけのstructural read interfaceを受け取る。
+## 5. multi-turn短答
 
-```text
-task date resolver
-fixed commitment resolver
-availability resolver
-full-day availability adapter
-commitment/date-rule adapter
-generic work item compiler
-generic scheduler input compiler
-```
-
-この変更によりFact Graph V5を旧Graph V1/V2へprojectせず、次まで直接渡せる。
+直前の決定論質問に対する次の短答を、AIが意味構造化した後、アプリ側で単一の未解決factへ結合する。
 
 ```text
-Fact Graph V5 active read view
-→ task date eligibility
-→ fixed task reservation
-→ availability / external occupied windows
-→ generic work item
-→ relation
-→ generic scheduler input
+「3時間です」
+→ missing_effort_estimateの対象へtotal_durationを追加
+
+「今回進めたい量です」
+→ quantity_role_unresolvedの対象workloadをsupersede
 ```
 
-既存Alpha/V2 moduleも同じstructural interfaceを満たすため、旧テストと呼出しを維持する設計である。
+対象選択をAIへ任せない。未解決対象または構造化候補が一つに定まらない場合は結合せず、通常canonicalizationへ戻す。
 
-## 6. dialogueとpreview gate
+## 6. deterministic preview scheduler
 
-Stable V5専用pure policyを追加済みである。
+Generic Scheduler Inputから既存preview候補を生成するruntime schedulerを追加した。
 
-- blocking issueをdomain priorityとstable keyで並べ、一件だけ質問対象にする。
-- scheduler inputがreadyの場合だけpreview eligibleにする。
-- preview gateは明示authorization、conversation ID、graph revisionを確認する。
-- AIはreadiness、質問選択、preview許可を決めない。
+- default placement window: 09:00–22:00
+- existing plansをoccupied intervalとして反映
+- timetableをoccupied intervalとして反映
+- hard fixed reservationを反映
+- hard unavailable / occupiedを反映
+- hard available windowを反映
+- task allowed / excluded datesを反映
+- splittable workを原則60分単位へ分割
+- interval間にbufferを確保
+- 全作業を配置できない場合はpartial previewを返さない
 
-production renderer、preview UI、approval保存には接続していない。
+AIは日時配置を生成しない。existing planやtimetableの本文・event ID・日時をAIへ送らない。
 
-## 7. read-only shadow
+## 7. previewとapproval
 
-Stable V5のread-only shadow evaluator moduleを追加済みである。
+Stable previewは次へ拘束する。
 
-reportは次を記録する。
+- owner ID
+- conversation ID
+- Fact Graph revision
+- source fact refs
+- task ID
+- PlanType
 
-- semantic schema version
-- JSON Schema name
-- fact graph version
-- normalizer / validator / canonicalizer version
-- provider outcome
-- attempt / repair
-- validation errors
-- canonicalization outcome
-- semantic / fact collection counts
+次のturnでGraph revisionが進んだ場合、古いpreviewは`recompute_required`となり承認できない。非学習taskは既存UIでも`other`として保存する。
 
-raw conversation本文、raw response、semantic本文、外部予定本文はreportへ保存しない。
+## 8. sessionと保存境界
 
-production turnからshadow evaluatorを起動する接続は未実装である。full automated testとStable実AI real-eval前に接続してはならない。
+現時点のFact Graph V5はconversation-bound memory storeで保持する。最大24 sessionを保持し、owner mismatchを拒否する。
 
-## 8. persistence準備
+Graph V5のproduction persistence migrationはまだ行わない。そのためStable V5モード中は、会話、preview、draftをlocalStorageへ永続化しない。ページ再読込後に会話だけ復元されGraphが失われる不整合を防ぐため、再読込時は新規sessionから開始する。
 
-保存処理へ接続しないpure moduleとして次を追加済みである。
+実装済みのpure persistence基盤:
 
-```text
-Fact Graph V5 validator
-Fact Graph V5 serializer / parser
-owner-bound persisted envelope
-migration metadata
-session cutover marker
-executor generation guard
-```
+- Graph V5 validator / serializer / parser
+- owner-bound envelope
+- migration metadata
+- unknown version / owner mismatch / broken graph rejection
+- executor generation guard
 
-persisted envelopeはowner、Fact Graph V5、source state/schema/graph version、migration version、migration timestampを保持する。
+未実装:
 
-unknown envelope version、owner mismatch、破損graph、不正migration metadataをfail closedで拒否する。versionだけを書き換えない。
+- 現行production stateからGraph V5へのdeterministic decoder
+- repositoryへのGraph V5保存
+- migration dry-run
 
-session cutover guardはlegacyとstable_v5を同一sessionで混在させない。Stableへcutoverしたsessionを旧executorが読み書きすること、旧形式へdowngrade保存することを拒否する。
+## 9. read-only shadowとreal-eval
 
-現行production stateからFact Graph V5への具体的decoderは、旧stateの実型と保存境界を確認できていないため未実装である。raw conversationをAIへ再投入してmigrationしてはならない。
+Stable V5 shadow evaluatorと専用real-eval harnessは実装済みである。raw conversation、raw response、semantic本文、外部予定本文はtelemetryへ保存しない。
 
-## 9. Stable統合pipeline
+production turnからのshadow telemetry保存は未接続である。runtime trialではconsoleへ次の非内容情報だけを出す。
 
-production副作用を持たない並列pipelineとして次を追加済みである。
+- schema version
+- graph revision
+- normalizer attempt count
+- repair有無
+- scheduler status
+- candidate count
 
-```text
-Stable normalizer
-→ lifecycle付きdirect canonicalization
-→ Fact Graph V5
-→ active scheduler read view
-→ generic scheduler input
-→ Stable dialogue decision
-```
+## 10. test追加範囲
 
-provider failure、normalization rejection、canonicalization rejectionでは入力graphを変更しない。duplicate turnをidempotentに扱う。
-
-production conversation handler、現行scheduler実行、preview UI、repository、保存処理は呼び出さない。
-
-## 10. real-eval
-
-Stable V5専用real-eval harnessとGitHub Actions workflowを追加済みである。
-
-評価対象:
-
-- 非連続allowed dates
-- 非連続weekday集合
-- weekday集合とexact exclusion
-- whole-day unavailable
-- authoritative calendar source request
-- direct validation
-- direct canonicalization
-
-実AIによるStable V5 real-eval成功は未確認である。GitHub Actionsがstep開始前に終了し、step、log、artifactが生成されないfailureは実行基盤失敗であり、AI評価失敗ではない。
-
-## 11. automated test追加範囲
-
-追加済みtestは次を対象にする。
-
-- schema世代・識別子・依存関係
-- Alpha 2とStable field compatibility
-- direct Stable validator
-- direct canonicalizer
+- runtime mode切替
+- Stable runtime turn統合
+- direct schema / validator / canonicalizer
 - normalizer repair / fail closed
-- shadow telemetry
-- Graph V5からtask date resolver
-- Graph V5からfixed commitment resolver
-- Graph V5からavailability resolver
-- Graph V5からgeneric scheduler input
-- semantic統合pipeline
-- dialogue pipelineとpreview authorization
-- lifecycleとactive read view
-- persistence envelope round-trip
-- owner mismatch / unknown version / broken graph
-- cutover generation guard
-- Stable direct coreのAlpha import禁止
+- short-answer contextual binding
+- Graph V5 lifecycle
+- task date / fixed commitment / availability
+- generic scheduler input
+- deterministic preview placement
+- existing plan conflict回避
+- insufficient capacity時のpartial preview禁止
+- non-study PlanType保持
+- preview revision freshness
+- production接続点限定
+- persistence envelope / cutover guard
 
-repository全体のsemantic test、Worker routing、`tsc --noEmit`、Vite production buildは、GitHub Actions実行基盤とrepository取得経路の問題により未確認である。
+## 11. 検証状況
 
-## 12. production接続状況
-
-次は未接続である。
+Stable V5追加後のrepository全体について、次はまだ成功確認できていない。
 
 ```text
-production conversation handler
-production feature-flagged shadow invocation
-現行scheduler実行
-preview UI
-approval flow
-repository
-保存処理
-旧state migration
-external timetable/calendar production adapter
+semantic全test
+runtime integration test
+Worker routing test
+tsc --noEmit
+Vite production build
+Stable V5実AI real-eval
+実ブラウザ操作
 ```
 
-Alpha 1 / Alpha 2、Graph V1/V2は削除していない。PR #77はDraftのまま維持し、mainへmergeしない。
+GitHub Actionsはrunnerのstep開始前に終了し、step、log、artifactが生成されない状態が継続している。このfailureは実行基盤失敗であり、コード不合格またはAI評価失敗とは判定しない。
+
+したがって「実環境経路を実装済み」と「実ブラウザで成功確認済み」を区別する。
+
+## 12. 現在未接続・未完了の範囲
+
+```text
+Graph V5 repository persistence
+旧state migration
+production shadow telemetry保存
+calendar production adapter
+personalization scoring
+plan/actual learning pipeline
+full renderer統合
+全ユーザーdefault cutover
+Alpha runtime依存削除
+```
 
 ## 13. 次gate
 
-順序は次とする。
-
 ```text
-full repository automated verification
-→ Stable V5実AI real-eval
-→ production read-only shadow接続
-→ 旧state型・repository境界の調査
-→ deterministic migration decoder / dry-run
-→ proposal decisionと依存fact一括lifecycle transaction
-→ old scheduler adapter / renderer rehearsal
+repository全体のautomated verification
+→ branch previewでStable V5を有効化
+→ 実AI structured output確認
+→ 実browser roleplay
+→ 発見不具合修正
+→ read-only production shadow
+→ migration decoder / dry-run
 → rollback verification
-→ production cutover
-→ rollback observation
-→ Alpha runtime依存削除
+→ default cutover判断
+→ full roleplay / 七視点監査
 ```
+
+PR #77はDraftのまま維持し、検証前にmainへmergeしない。
