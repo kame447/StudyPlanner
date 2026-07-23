@@ -19,6 +19,10 @@ import type {
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
+  applyWeeklyPlanningStableV5ContextualAnswer,
+  inferWeeklyPlanningStableV5ContextualQuestionCode,
+} from './weeklyPlanningStableV5ContextualAnswer';
 import type {
   WeeklyPlanningSemanticNormalizerInputV5,
   WeeklyPlanningSemanticNormalizerResultV5,
@@ -101,15 +105,29 @@ export function createWeeklyPlanningSemanticPipelineV5(
         };
       }
 
-      const canonicalization = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
-        graph,
-        document: normalization.document,
-        context: {
-          conversationId: input.conversationId,
-          turnId: input.turnId,
-          expectedRevision: input.expectedRevision,
-        },
-      });
+      const contextualQuestionCode = inferWeeklyPlanningStableV5ContextualQuestionCode(
+        input.publicStateSummary,
+      );
+      const contextualAnswer = contextualQuestionCode
+        ? applyWeeklyPlanningStableV5ContextualAnswer({
+            graph,
+            document: normalization.document,
+            questionCode: contextualQuestionCode,
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            userText: input.userText,
+          })
+        : null;
+      const canonicalization = contextualAnswer
+        ?? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+          graph,
+          document: normalization.document,
+          context: {
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            expectedRevision: input.expectedRevision,
+          },
+        });
       if (canonicalization.status === 'rejected') {
         return {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
