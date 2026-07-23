@@ -52,6 +52,67 @@ function lifecycleByFactId(
   return new Map(graph.factLifecycles.map((entry) => [entry.factId, entry]));
 }
 
+function activeDependentFactIds(
+  graph: WeeklyPlanningFactGraphV5,
+  targetFactId: string,
+): string[] {
+  const activeIds = new Set(
+    graph.factLifecycles
+      .filter((entry) => entry.status === 'active')
+      .map((entry) => entry.factId),
+  );
+  const dependentIds = new Set<string>();
+  const addIfDependent = (factId: string, dependsOnTarget: boolean): void => {
+    if (
+      dependsOnTarget
+      && factId !== targetFactId
+      && activeIds.has(factId)
+    ) dependentIds.add(factId);
+  };
+
+  graph.studyContexts.forEach((fact) =>
+    addIfDependent(fact.id, fact.taskId === targetFactId));
+  graph.components.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.taskId === targetFactId || fact.parentComponentId === targetFactId,
+    ));
+  graph.workloads.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.taskId === targetFactId || fact.componentId === targetFactId,
+    ));
+  graph.effortEstimates.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.taskId === targetFactId || fact.targetFactId === targetFactId,
+    ));
+  graph.temporalConstraints.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.taskId === targetFactId || fact.targetFactId === targetFactId,
+    ));
+  graph.taskDateRules.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.taskId === targetFactId || fact.targetFactId === targetFactId,
+    ));
+  graph.recurrences.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.taskId === targetFactId || fact.targetFactId === targetFactId,
+    ));
+  graph.relations.forEach((fact) =>
+    addIfDependent(
+      fact.id,
+      fact.fromTaskId === targetFactId || fact.toTaskId === targetFactId,
+    ));
+  graph.uncertainties.forEach((fact) =>
+    addIfDependent(fact.id, fact.targetFactId === targetFactId));
+
+  return [...dependentIds].sort();
+}
+
 export function applyWeeklyPlanningFactLifecycleOperationV5(params: {
   graph: WeeklyPlanningFactGraphV5;
   expectedRevision: number;
@@ -86,6 +147,13 @@ export function applyWeeklyPlanningFactLifecycleOperationV5(params: {
   if (targetLifecycle.status !== 'active') {
     return reject(graph, [
       `target-fact-not-active:${operation.targetFactId}:${targetLifecycle.status}`,
+    ]);
+  }
+
+  const activeDependents = activeDependentFactIds(graph, operation.targetFactId);
+  if (activeDependents.length > 0) {
+    return reject(graph, [
+      `target-has-active-dependents:${operation.targetFactId}:${activeDependents.join(',')}`,
     ]);
   }
 
