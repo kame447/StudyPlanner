@@ -3,7 +3,7 @@ import {
   classifyWeeklyPlanningApprovalAvailability,
 } from '../application/weeklyPlanningApprovalAvailability';
 import {
-  commitWeeklyPlanningStableV5RuntimeGraph,
+  hydrateWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from '../application/weeklyPlanningStableV5RuntimeSession';
 import {
@@ -42,8 +42,9 @@ function stableCandidate(): WeeklyDraftCandidate {
 }
 
 function publishRevision(revision: number): void {
-  commitWeeklyPlanningStableV5RuntimeGraph({
+  hydrateWeeklyPlanningStableV5RuntimeSession({
     ownerId: 'owner-1',
+    weekStartDate: '2026-07-27',
     conversationId: 'conversation-1',
     graph: {
       ...createEmptyWeeklyPlanningFactGraphV5(),
