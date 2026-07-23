@@ -18,16 +18,31 @@ function environmentDefault(): WeeklyPlanningRuntimeMode {
 
 function queryOverride(): WeeklyPlanningRuntimeMode | null {
   if (typeof window === 'undefined') return null;
-  return parseRuntimeMode(
-    new URLSearchParams(window.location.search).get('weeklyPlanningRuntime'),
-  );
+  try {
+    return parseRuntimeMode(
+      new URLSearchParams(window.location.search).get('weeklyPlanningRuntime'),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function storedMode(): WeeklyPlanningRuntimeMode | null {
   if (typeof window === 'undefined') return null;
-  return parseRuntimeMode(
-    window.sessionStorage.getItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY),
-  );
+  try {
+    return parseRuntimeMode(
+      window.sessionStorage.getItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function dispatchModeChange(mode: WeeklyPlanningRuntimeMode): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT, {
+    detail: { mode },
+  }));
 }
 
 export function getWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
@@ -38,22 +53,27 @@ export function setWeeklyPlanningRuntimeMode(
   mode: WeeklyPlanningRuntimeMode,
 ): WeeklyPlanningRuntimeMode {
   if (typeof window !== 'undefined') {
-    window.sessionStorage.setItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY, mode);
-    window.dispatchEvent(new CustomEvent(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT, {
-      detail: { mode },
-    }));
+    try {
+      window.sessionStorage.setItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY, mode);
+    } catch {
+      // The current tab still switches through the event even if storage is unavailable.
+    }
+    dispatchModeChange(mode);
   }
   return mode;
 }
 
 export function resetWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
+  const fallback = environmentDefault();
   if (typeof window !== 'undefined') {
-    window.sessionStorage.removeItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY);
-    window.dispatchEvent(new CustomEvent(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT, {
-      detail: { mode: environmentDefault() },
-    }));
+    try {
+      window.sessionStorage.removeItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY);
+    } catch {
+      // Keep the environment default when storage is unavailable.
+    }
+    dispatchModeChange(fallback);
   }
-  return environmentDefault();
+  return fallback;
 }
 
 export function isWeeklyPlanningStableV5RuntimeEnabled(): boolean {
