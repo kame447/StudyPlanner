@@ -1,3 +1,6 @@
+import {
+  isWeeklyPlanningStableV5RuntimeEnabled,
+} from './application/weeklyPlanningRuntimeMode';
 import type { PlanningState } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
 import {
@@ -56,11 +59,21 @@ function decodePayload(
   }
 }
 
+function persistentPlanningState(state: PlanningState): PlanningState {
+  if (!isWeeklyPlanningStableV5RuntimeEnabled()) return state;
+  // Fact Graph V5 is intentionally session-memory only at this gate. Persisting the
+  // conversation without its graph would restore a misleading, unusable session.
+  return createInitialPlanningState(state.weekStartDate);
+}
+
 export function loadOwnedWeeklyPlanningState(
   userId: string,
   weekStartDate: string,
 ): PlanningState {
   if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
+  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
+    return createInitialPlanningState(weekStartDate);
+  }
   const key = getStorageKey(userId, weekStartDate);
 
   try {
@@ -106,7 +119,8 @@ export function saveOwnedWeeklyPlanningState(
     return;
   }
 
-  saveLegacyWeeklyPlanningState(userId, state);
+  const persistentState = persistentPlanningState(state);
+  saveLegacyWeeklyPlanningState(userId, persistentState);
   const payloadRaw = window.localStorage.getItem(key);
   if (!payloadRaw) return;
 
