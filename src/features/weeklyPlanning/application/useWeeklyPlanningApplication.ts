@@ -111,7 +111,11 @@ export function useWeeklyPlanningApplication({
   }, [approvalLedger, ownerId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
+    if (
+      typeof window === 'undefined'
+      || typeof window.addEventListener !== 'function'
+      || typeof window.removeEventListener !== 'function'
+    ) return undefined;
     const handleRuntimeModeChange = () => {
       const session = controllerSessionRef.current;
       if (!session) return;
