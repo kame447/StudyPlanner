@@ -70,6 +70,25 @@ function createIdentity(prefix: string): string {
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function inferWeeklyPlanningControllerRequestSequence(
+  messages: readonly WeeklyPlanningMessage[],
+  conversationId: string,
+): number {
+  const prefix = `${conversationId}:turn:`;
+  let maximum = 0;
+  messages.forEach((message) => {
+    if (!message.id.startsWith(prefix)) return;
+    const suffix = message.id.slice(prefix.length);
+    const separator = suffix.lastIndexOf(':');
+    if (separator <= 0) return;
+    const role = suffix.slice(separator + 1);
+    if (role !== 'user' && role !== 'assistant') return;
+    const sequence = Number(suffix.slice(0, separator));
+    if (Number.isSafeInteger(sequence) && sequence > maximum) maximum = sequence;
+  });
+  return maximum;
+}
+
 export function createWeeklyPlanningControllerSession(
   ownerId: string,
   weekStartDate: string,
@@ -152,7 +171,10 @@ export async function submitWeeklyPlanningControlledTurn(
   }
 
   ensureSessionScope(params.session, params.ownerId, snapshot.weekStartDate);
-  params.session.requestSequence += 1;
+  params.session.requestSequence = Math.max(
+    params.session.requestSequence,
+    inferWeeklyPlanningControllerRequestSequence(snapshot.messages, params.session.conversationId),
+  ) + 1;
   const now = params.now ?? (() => new Date().toISOString());
   const createdAt = now();
   const envelope = createDialogueTurnEnvelope({
