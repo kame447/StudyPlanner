@@ -1,14 +1,21 @@
+import { createElement } from 'react';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { Plan } from '../../../types/domain';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
   type MemoryStorageHarness,
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 import {
   loadOwnedWeeklyPlanningState,
   saveOwnedWeeklyPlanningState,
 } from '../weeklyPlanningOwnedStorage';
+import {
+  createWeeklyDraftBlocksFromPreviewCandidates,
+} from '../preview/weeklyPlanningPreviewBlocks';
 import {
   canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
 } from '../semantic/weeklyPlanningSemanticCanonicalizerLifecycleV5';
@@ -32,9 +39,14 @@ import {
   getWeeklyPlanningStableV5SessionStorageKeyForTest,
   loadWeeklyPlanningStableV5PersistedSession,
 } from './weeklyPlanningStableV5SessionStorage';
+import {
+  useWeeklyPlanningApplication,
+  type WeeklyPlanningApplication,
+} from './useWeeklyPlanningApplication';
 
 const OWNER_ID = 'owner-1';
 const WEEK_START = '2026-07-20';
+const SELECTED_DATE = '2026-07-23';
 const CONVERSATION_ID = 'conversation-1';
 
 function graph() {
@@ -110,34 +122,74 @@ function restoredState() {
   });
 }
 
+function previewCandidate(factGraph: ReturnType<typeof graph>) {
+  const taskId = factGraph.tasks[0].id;
+  const workloadId = factGraph.workloads[0].id;
+  return {
+    stableKey: `stable-v5:${factGraph.revision}:${workloadId}:0`,
+    date: SELECTED_DATE,
+    startTime: '18:00',
+    endTime: '18:30',
+    durationMinutes: 30,
+    title: '英単語 30分',
+    field: '英単語',
+    year: 0,
+    estimatedMinutes: 30,
+    source: 'weekly_exam_prep',
+    approvalStatus: 'unapproved',
+    workItemKey: workloadId,
+    stableV5Metadata: {
+      runtime: 'stable_v5',
+      graphRevision: factGraph.revision,
+      taskId,
+      sourceFactRefs: [taskId, workloadId],
+      planType: 'study',
+    },
+  } as WeeklyDraftCandidate & {
+    stableV5Metadata: {
+      runtime: 'stable_v5';
+      graphRevision: number;
+      taskId: string;
+      sourceFactRefs: string[];
+      planType: 'study';
+    };
+  };
+}
+
+function persistStateWithGraph(state = restoredState()) {
+  const factGraph = graph();
+  hydrateWeeklyPlanningStableV5RuntimeSession({
+    ownerId: OWNER_ID,
+    weekStartDate: WEEK_START,
+    conversationId: CONVERSATION_ID,
+    graph: factGraph,
+  });
+  saveOwnedWeeklyPlanningState(OWNER_ID, state);
+  return { state, factGraph };
+}
+
 describe('Stable V5 persisted runtime session', () => {
   let storageHarness: MemoryStorageHarness;
   let restoreWindow: () => void;
+  let renderer: ReactTestRenderer | null;
 
   beforeEach(() => {
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     setWeeklyPlanningRuntimeMode('stable_v5');
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    renderer = null;
   });
 
   afterEach(() => {
+    renderer?.unmount();
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     resetWeeklyPlanningRuntimeModeForTest();
     restoreWindow();
   });
 
   it('restores conversation and Fact Graph together after runtime memory is lost', () => {
-    const factGraph = graph();
-    hydrateWeeklyPlanningStableV5RuntimeSession({
-      ownerId: OWNER_ID,
-      weekStartDate: WEEK_START,
-      conversationId: CONVERSATION_ID,
-      graph: factGraph,
-    });
-    const state = restoredState();
-
-    saveOwnedWeeklyPlanningState(OWNER_ID, state);
+    const { state, factGraph } = persistStateWithGraph();
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
 
     const loadedState = loadOwnedWeeklyPlanningState(OWNER_ID, WEEK_START);
@@ -163,16 +215,117 @@ describe('Stable V5 persisted runtime session', () => {
     }).graph).toEqual(factGraph);
   });
 
-  it('does not persist the half-completed state of a pending turn', () => {
+  it('restores Stable V5 preview candidates with their graph freshness metadata', () => {
     const factGraph = graph();
+    const candidate = previewCandidate(factGraph);
+    const state = {
+      ...restoredState(),
+      mode: 'draft_created' as const,
+      previewCandidates: [candidate],
+    };
     hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId: OWNER_ID,
       weekStartDate: WEEK_START,
       conversationId: CONVERSATION_ID,
       graph: factGraph,
     });
-    const state = restoredState();
+
     saveOwnedWeeklyPlanningState(OWNER_ID, state);
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+
+    const loaded = loadOwnedWeeklyPlanningState(OWNER_ID, WEEK_START);
+    expect(loaded.previewCandidates).toEqual([candidate]);
+    expect(
+      (loaded.previewCandidates?.[0] as typeof candidate).stableV5Metadata,
+    ).toMatchObject({
+      runtime: 'stable_v5',
+      graphRevision: factGraph.revision,
+      taskId: factGraph.tasks[0].id,
+    });
+  });
+
+  it('restores promoted draft blocks and keeps them bound to the same conversation', () => {
+    const factGraph = graph();
+    const candidate = previewCandidate(factGraph);
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: OWNER_ID,
+      weekStartDate: WEEK_START,
+      conversationId: CONVERSATION_ID,
+      graph: factGraph,
+    });
+    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: [candidate],
+      userId: OWNER_ID,
+      createdAt: '2026-07-23T08:05:00.000Z',
+    });
+    const state = {
+      ...restoredState(),
+      mode: 'awaiting_approval' as const,
+      draftBlocks: blocks,
+      previewCandidates: [],
+    };
+
+    saveOwnedWeeklyPlanningState(OWNER_ID, state);
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+
+    const loaded = loadOwnedWeeklyPlanningState(OWNER_ID, WEEK_START);
+    expect(loaded.draftBlocks).toEqual(blocks);
+    expect(loaded.draftBlocks[0].behaviorMetadata).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      stateRevision: factGraph.revision,
+      compatibility: {
+        candidateSource: 'stable_v5',
+      },
+      previewMetadata: {
+        conversationId: CONVERSATION_ID,
+        authorizedUserId: OWNER_ID,
+      },
+    });
+  });
+
+  it('hydrates the same conversation and graph when the application is unmounted and mounted again', () => {
+    const { state, factGraph } = persistStateWithGraph();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    let observed: WeeklyPlanningApplication | null = null;
+
+    function Probe() {
+      observed = useWeeklyPlanningApplication({
+        userId: OWNER_ID,
+        selectedDate: SELECTED_DATE,
+        plans: [],
+        scheduleTemplates: [],
+        async saveWeeklyApprovedPlan() {
+          return {} as Plan;
+        },
+      });
+      return null;
+    }
+
+    act(() => {
+      renderer = create(createElement(Probe));
+    });
+    expect(observed?.state.messages).toEqual(state.messages);
+    expect(getOrCreateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+    }).graph).toEqual(factGraph);
+
+    act(() => renderer?.unmount());
+    renderer = null;
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+
+    act(() => {
+      renderer = create(createElement(Probe));
+    });
+    expect(observed?.state.messages).toEqual(state.messages);
+    expect(getOrCreateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: OWNER_ID,
+      conversationId: CONVERSATION_ID,
+    }).graph.revision).toBe(factGraph.revision);
+  });
+
+  it('does not persist the half-completed state of a pending turn', () => {
+    const { state } = persistStateWithGraph();
     const key = getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER_ID, WEEK_START);
     const before = storageHarness.values.get(key);
 
@@ -201,14 +354,7 @@ describe('Stable V5 persisted runtime session', () => {
   });
 
   it('rejects a graph copied under a different conversation', () => {
-    const factGraph = graph();
-    hydrateWeeklyPlanningStableV5RuntimeSession({
-      ownerId: OWNER_ID,
-      weekStartDate: WEEK_START,
-      conversationId: CONVERSATION_ID,
-      graph: factGraph,
-    });
-    saveOwnedWeeklyPlanningState(OWNER_ID, restoredState());
+    persistStateWithGraph();
     const key = getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER_ID, WEEK_START);
     const envelope = JSON.parse(storageHarness.values.get(key)!) as Record<string, unknown>;
     envelope.conversationId = 'conversation-tampered';
