@@ -31,13 +31,15 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Run TypeScript checks
+        run: npm run typecheck
       - name: Run tests
         run: npm run test:run
-      - name: TypeScript and production build
+      - name: Build production bundle
         run: npm run build
       - name: Check pull request diff
         if: github.event_name == 'pull_request'
