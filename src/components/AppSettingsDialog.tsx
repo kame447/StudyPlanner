@@ -11,8 +11,10 @@ import {
   Sparkles,
   SunMoon,
 } from 'lucide-react';
-import type {
-  WeeklyPlanningRuntimeMode,
+import {
+  getWeeklyPlanningRuntimeMode,
+  setWeeklyPlanningRuntimeMode,
+  type WeeklyPlanningRuntimeMode,
 } from '../features/weeklyPlanning/application/weeklyPlanningRuntimeMode';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import {
@@ -28,10 +30,8 @@ interface AppSettingsDialogProps {
   open: boolean;
   themeMode: ThemeMode;
   themePalette: ThemePalette;
-  weeklyPlanningRuntimeMode: WeeklyPlanningRuntimeMode;
   onChangeTheme: (nextThemeMode: ThemeMode) => void;
   onChangeThemePalette: (nextThemePalette: ThemePalette) => void;
-  onChangeWeeklyPlanningRuntimeMode: (mode: WeeklyPlanningRuntimeMode) => void;
   onClose: () => void;
 }
 
@@ -39,14 +39,14 @@ export function AppSettingsDialog({
   open,
   themeMode,
   themePalette,
-  weeklyPlanningRuntimeMode,
   onChangeTheme,
   onChangeThemePalette,
-  onChangeWeeklyPlanningRuntimeMode,
   onClose,
 }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
   const [isThemePaletteSectionOpen, setIsThemePaletteSectionOpen] = useState(false);
+  const [weeklyPlanningRuntimeMode, setRuntimeModeState] =
+    useState<WeeklyPlanningRuntimeMode>(() => getWeeklyPlanningRuntimeMode());
   const {
     weekStartsOn,
     setWeekStartsOn,
@@ -57,17 +57,18 @@ export function AppSettingsDialog({
     THEME_PALETTE_OPTIONS[0];
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     setActiveTab('settings');
     setIsThemePaletteSectionOpen(false);
+    setRuntimeModeState(getWeeklyPlanningRuntimeMode());
   }, [open]);
 
-  if (!open) {
-    return null;
+  function changeWeeklyPlanningRuntimeMode(mode: WeeklyPlanningRuntimeMode): void {
+    setWeeklyPlanningRuntimeMode(mode);
+    setRuntimeModeState(mode);
   }
+
+  if (!open) return null;
 
   return (
     <div className="overlay modal-overlay app-settings-overlay" onClick={onClose}>
@@ -238,14 +239,14 @@ export function AppSettingsDialog({
                   <div className="segmented-control">
                     <button
                       className={weeklyPlanningRuntimeMode === 'legacy' ? 'segment active' : 'segment'}
-                      onClick={() => onChangeWeeklyPlanningRuntimeMode('legacy')}
+                      onClick={() => changeWeeklyPlanningRuntimeMode('legacy')}
                       type="button"
                     >
                       現行方式
                     </button>
                     <button
                       className={weeklyPlanningRuntimeMode === 'stable_v5' ? 'segment active' : 'segment'}
-                      onClick={() => onChangeWeeklyPlanningRuntimeMode('stable_v5')}
+                      onClick={() => changeWeeklyPlanningRuntimeMode('stable_v5')}
                       type="button"
                     >
                       Stable V5
