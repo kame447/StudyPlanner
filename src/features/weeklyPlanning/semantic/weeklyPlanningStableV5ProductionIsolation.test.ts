@@ -17,6 +17,7 @@ const STABLE_IMPORT_TOKENS = [
 const ALLOWED_PRODUCTION_ENTRYPOINTS = new Set([
   'weeklyPlanningTurnExecutor.ts',
   'application/useWeeklyPlanningApplication.ts',
+  'application/weeklyPlanningRuntimeMode.ts',
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',
   'application/weeklyPlanningStableV5RuntimeSession.ts',
 ]);
@@ -56,6 +57,7 @@ describe('Stable V5 production connection boundary', () => {
     expect(connectedEntrypoints).toEqual(new Set([
       'weeklyPlanningTurnExecutor.ts',
       'application/useWeeklyPlanningApplication.ts',
+      'application/weeklyPlanningRuntimeMode.ts',
       'application/weeklyPlanningStableV5RuntimeExecutor.ts',
       'application/weeklyPlanningStableV5RuntimeSession.ts',
     ]));
