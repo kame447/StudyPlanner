@@ -3,7 +3,6 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const uncheckedFiles = [
   'src/features/weeklyPlanning/weeklyPlanningTurnController.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.ts',
 ];
 
 const originals = new Map();
