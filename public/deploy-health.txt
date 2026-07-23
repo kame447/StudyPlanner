@@ -1,3 +1,4 @@
 studyplanner-pages
-commit=e1a389bd6198a032d6347cc813170dba8670c2c5
-triggered_at=2026-07-23T14:30:00Z
+source=fix/pages-deploy-20260723
+base=8dd1671c954cebbb56b9e7301f040eec3ca08aad
+triggered_at=2026-07-23T14:40:00Z
