@@ -16,6 +16,9 @@ import {
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest,
 } from './weeklyPlanningStableV5TraceRuntime';
 
+const SERVER_SESSION_ID = 'weekly-trace-123e4567-e89b-52d3-a456-426614174000';
+const SERVER_CONVERSATION_ID = 'weekly-conversation-223e4567-e89b-52d3-a456-426614174000';
+
 function clientHarness() {
   const startCalls: WeeklyPlanningTraceSessionStartInput[] = [];
   const appendCalls: Record<string, unknown>[] = [];
@@ -32,8 +35,8 @@ function clientHarness() {
       const existing = handles.get(input.idempotencyKey);
       if (existing) return existing;
       const handle = {
-        sessionId: 'weekly-trace-server-canonical-1',
-        logicalConversationId: 'weekly-conversation-server-canonical-1',
+        sessionId: SERVER_SESSION_ID,
+        logicalConversationId: SERVER_CONVERSATION_ID,
       };
       handles.set(input.idempotencyKey, handle);
       return handle;
@@ -84,7 +87,7 @@ describe('Stable V5 trace remote continuity', () => {
     restoreWindow = null;
   });
 
-  it('reuses the local idempotency key and canonical server session after reload', async () => {
+  it('reuses the canonical server handle after runtime and repository reload', async () => {
     const harness = clientHarness();
     setWeeklyPlanningTraceRepositoryForTests(
       createRemoteWeeklyPlanningTraceRepository(harness.client),
@@ -97,13 +100,11 @@ describe('Stable V5 trace remote continuity', () => {
     );
     await recordWeeklyPlanningStableV5TurnTrace(input(2));
 
-    expect(harness.startCalls).toHaveLength(2);
-    expect(harness.startCalls[1].idempotencyKey).toBe(
-      harness.startCalls[0].idempotencyKey,
-    );
-    expect(harness.startCalls[1].conversationCorrelationKey).toBe(
-      harness.startCalls[0].conversationCorrelationKey,
-    );
+    expect(harness.startCalls).toHaveLength(1);
+    expect(harness.startCalls[0]).toEqual(expect.objectContaining({
+      idempotencyKey: expect.any(String),
+      conversationCorrelationKey: 'weekly-conversation-local-1',
+    }));
 
     expect(harness.appendCalls).toHaveLength(2);
     const first = harness.appendCalls[0] as {
