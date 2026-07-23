@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createMemoryStorageHarness,
+  installWeeklyPlanningTestStorage,
+} from '../testUtils/weeklyPlanningApplicationTestHarness';
 import type { WeeklyPlanningTraceApiClient } from './weeklyPlanningTracePrivacyClient';
 import { createRemoteWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRemoteRepository';
 import type {
@@ -80,8 +84,16 @@ function client(): WeeklyPlanningTraceApiClient {
 }
 
 describe('createRemoteWeeklyPlanningTraceRepository', () => {
+  let restoreWindow: (() => void) | null = null;
+
   beforeEach(() => {
-    if (typeof window !== 'undefined') window.localStorage.clear();
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+  });
+
+  afterEach(() => {
+    restoreWindow?.();
+    restoreWindow = null;
   });
 
   it('starts once and removes raw client structural IDs from append payloads', async () => {
