@@ -8,10 +8,7 @@ import {
   loadOwnedWeeklyPlanningState,
   saveOwnedWeeklyPlanningState,
 } from './weeklyPlanningOwnedStorage';
-import {
-  createInitialPlanningState,
-  weeklyPlanningReducer,
-} from './weeklyPlanningReducer';
+import { weeklyPlanningReducer } from './weeklyPlanningReducer';
 
 export function useWeeklyPlanningState(
   userId: string,
@@ -24,7 +21,7 @@ export function useWeeklyPlanningState(
   );
   const scopeKey = `${userId}:${weekStartDate}`;
   const [planningState, setPlanningState] = useState<PlanningState>(() =>
-    createInitialPlanningState(weekStartDate),
+    loadOwnedWeeklyPlanningState(userId, weekStartDate),
   );
   const planningStateRef = useRef(planningState);
   const planningStateScopeRef = useRef(scopeKey);
@@ -46,6 +43,7 @@ export function useWeeklyPlanningState(
   const getPlanningState = useCallback(() => planningStateRef.current, []);
 
   useEffect(() => {
+    if (planningStateScopeRef.current === scopeKey) return;
     replacePlanningState(
       loadOwnedWeeklyPlanningState(userId, weekStartDate),
       scopeKey,
