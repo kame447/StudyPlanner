@@ -78,4 +78,4 @@ if (buildResult?.exitCode !== 0) {
 }
 
 console.log(JSON.stringify({ passed: report.passed, results: results.map(({ name, exitCode }) => ({ name, exitCode })) }));
-process.exit(0);
+process.exit(report.passed ? 0 : 1);
