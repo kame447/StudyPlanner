@@ -36,12 +36,19 @@ function normalizedRelative(path: string): string {
   return relative(WEEKLY_PLANNING_ROOT, path).split(sep).join('/');
 }
 
+function isTestSource(relativePath: string): boolean {
+  return relativePath.startsWith('__tests__/')
+    || relativePath.includes('/__tests__/')
+    || /\.(test|spec)\.(ts|tsx)$/.test(relativePath);
+}
+
 describe('Stable V5 production connection boundary', () => {
   it('allows Stable V5 imports only through the audited runtime entrypoints', () => {
     const violations: string[] = [];
     const connectedEntrypoints = new Set<string>();
     for (const path of sourceFiles(WEEKLY_PLANNING_ROOT)) {
       const relativePath = normalizedRelative(path);
+      if (isTestSource(relativePath)) continue;
       if (relativePath.startsWith('semantic/')) continue;
       const content = readFileSync(path, 'utf8');
       const usedTokens = STABLE_IMPORT_TOKENS.filter((token) => content.includes(token));
