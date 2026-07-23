@@ -29,6 +29,9 @@ import {
   loadWeeklyPlanningApprovalOperations,
   saveWeeklyPlanningApprovalOperations,
 } from './weeklyPlanningApprovalLedgerStorage';
+import {
+  clearWeeklyPlanningStableV5RuntimeSession,
+} from './weeklyPlanningStableV5RuntimeSession';
 
 export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
@@ -148,12 +151,25 @@ export function useWeeklyPlanningApplication({
   function resetSession(): void {
     const session = controllerSessionRef.current;
     if (!session) return;
+    clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
     resetWeeklyPlanningControlledSession({
       session,
       ownerId,
       getState: getPlanningState,
       dispatch: dispatchPlanningAction,
     });
+  }
+
+  function clearConversation(): boolean {
+    const session = controllerSessionRef.current;
+    const cleared = clearWeeklyPlanningControlledConversation({
+      getState: getPlanningState,
+      dispatch: dispatchPlanningAction,
+    });
+    if (cleared && session) {
+      clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
+    }
+    return cleared;
   }
 
   return {
@@ -166,10 +182,7 @@ export function useWeeklyPlanningApplication({
       getState: getPlanningState,
       dispatch: dispatchPlanningAction,
     }),
-    clearConversation: () => clearWeeklyPlanningControlledConversation({
-      getState: getPlanningState,
-      dispatch: dispatchPlanningAction,
-    }),
+    clearConversation,
     appendMessage: (message) => dispatchPlanningAction({ type: 'append_message', message }),
     resetSession,
     createDraftBlocks: (blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks }),
