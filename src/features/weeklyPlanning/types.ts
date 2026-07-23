@@ -20,7 +20,8 @@ export type WeeklyPlanDraftStatus = 'draft' | 'approved' | 'discarded';
 export type WeeklyPlanningReasoningKey =
   | 'explicit-duration'
   | 'explicit-unit-rate'
-  | 'accepted-assumption-duration';
+  | 'accepted-assumption-duration'
+  | 'stable-v5-explicit-duration';
 
 export interface WeeklyPlanningBehaviorMetadata {
   conversationId?: string;
@@ -32,9 +33,9 @@ export interface WeeklyPlanningBehaviorMetadata {
   opportunityTags: string[];
   reasoningKey: WeeklyPlanningReasoningKey;
   compatibility: {
-    workItemSemantic: 'behavior_aware_task';
-    schedulerInputSource: 'exam_prep_request';
-    candidateSource: 'weekly_exam_prep';
+    workItemSemantic: 'behavior_aware_task' | 'generic_semantic_task';
+    schedulerInputSource: 'exam_prep_request' | 'stable_v5_generic_scheduler_input';
+    candidateSource: 'weekly_exam_prep' | 'stable_v5';
   };
   previewMetadata?: WeeklyPreviewMetadata;
 }
