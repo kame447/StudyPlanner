@@ -25,6 +25,7 @@ export interface WeeklyPlanningStableV5ContextualAnswerInput {
   questionCode: WeeklyPlanningStableV5ContextualQuestionCode;
   conversationId: string;
   turnId: string;
+  expectedRevision: number;
   userText: string;
 }
 
@@ -53,6 +54,24 @@ function contextualFactId(params: {
 
 function turnKey(input: WeeklyPlanningStableV5ContextualAnswerInput): string {
   return `${input.conversationId}:${input.turnId}`;
+}
+
+function isMinimalContextualReply(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): boolean {
+  const text = input.userText.trim();
+  return text.length > 0
+    && text.length <= 40
+    && input.expectedRevision === input.graph.revision
+    && input.document.planningIntent !== 'create_plan'
+    && input.document.planningWindow === null
+    && input.document.tasks.length === 1
+    && input.document.relations.length === 0
+    && input.document.availabilityDeclarations.length === 0
+    && input.document.constraintSourceRequests.length === 0
+    && input.document.uncertainties.length === 0
+    && input.document.corrections.length === 0
+    && input.document.decisions.length === 0;
 }
 
 function isActiveFact(graph: WeeklyPlanningFactGraphV5, factId: string): boolean {
@@ -266,6 +285,7 @@ function applyQuantityRoleAnswer(
 export function applyWeeklyPlanningStableV5ContextualAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
+  if (!isMinimalContextualReply(input)) return null;
   if (input.questionCode === 'missing_effort_estimate') return applyEffortAnswer(input);
   return applyQuantityRoleAnswer(input);
 }
