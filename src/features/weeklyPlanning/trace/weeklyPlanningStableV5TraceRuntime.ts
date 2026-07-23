@@ -14,7 +14,9 @@ import {
 
 const SESSION_RETENTION_DAYS = 90;
 const SNAPSHOT_RETENTION_DAYS = 30;
-const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const TRACE_CONTINUITY_STORAGE_VERSION =
+  'studyplanner-weekly-planning-stable-v5-trace-continuity-v1' as const;
+const MAX_PERSISTED_REQUEST_IDS = 200;
 
 interface ActiveStableV5TraceSession {
   session: WeeklyPlanningTraceSession;
@@ -23,6 +25,17 @@ interface ActiveStableV5TraceSession {
   lastActivityMs: number;
   requestIds: Set<string>;
   writeQueue: Promise<void>;
+}
+
+interface PersistedStableV5TraceContinuity {
+  version: typeof TRACE_CONTINUITY_STORAGE_VERSION;
+  userId: string;
+  conversationId: string;
+  session: WeeklyPlanningTraceSession;
+  nextSequence: number;
+  nextTurnIndex: number;
+  requestIds: string[];
+  savedAt: string;
 }
 
 export interface WeeklyPlanningStableV5TraceInput {
@@ -51,21 +64,135 @@ function expireAt(now: string, retentionDays: number): string {
   return new Date(new Date(now).getTime() + retentionDays * 86_400_000).toISOString();
 }
 
-function randomId(prefix: string): string {
-  const suffix = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-  return `${prefix}-${suffix}`;
-}
-
 function sessionKey(userId: string, conversationId: string): string {
   return `${userId}:${conversationId}`;
 }
 
+function stableLocalSessionId(conversationId: string): string {
+  return `weekly-trace-stable-v5:${conversationId}`;
+}
+
+function continuityStorageKey(userId: string, conversationId: string): string {
+  return [
+    'studyplanner.weeklyPlanning.traceContinuity.v1',
+    encodeURIComponent(userId),
+    encodeURIComponent(conversationId),
+  ].join('.');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function isPersistedSession(
+  value: unknown,
+  userId: string,
+  conversationId: string,
+): value is WeeklyPlanningTraceSession {
+  if (!isRecord(value)) return false;
+  return value.id === stableLocalSessionId(conversationId)
+    && value.logicalConversationId === conversationId
+    && value.userId === userId
+    && (value.status === 'active'
+      || value.status === 'completed'
+      || value.status === 'abandoned'
+      || value.status === 'failed')
+    && isTimestamp(value.startedAt)
+    && isTimestamp(value.lastActivityAt)
+    && (value.endedAt === undefined || isTimestamp(value.endedAt))
+    && isNonNegativeInteger(value.turnCount)
+    && isNonNegativeInteger(value.entryCount)
+    && typeof value.hasPreview === 'boolean'
+    && typeof value.hasApprovalFailure === 'boolean'
+    && typeof value.hasFallback === 'boolean'
+    && typeof value.hasError === 'boolean'
+    && typeof value.appVersion === 'string'
+    && isNonNegativeInteger(value.schemaVersion)
+    && isTimestamp(value.expireAt);
+}
+
+function persistContinuity(active: ActiveStableV5TraceSession): void {
+  if (typeof window === 'undefined') return;
+  const payload: PersistedStableV5TraceContinuity = {
+    version: TRACE_CONTINUITY_STORAGE_VERSION,
+    userId: active.session.userId,
+    conversationId: active.session.logicalConversationId,
+    session: { ...active.session },
+    nextSequence: active.nextSequence,
+    nextTurnIndex: active.nextTurnIndex,
+    requestIds: Array.from(active.requestIds).slice(-MAX_PERSISTED_REQUEST_IDS),
+    savedAt: nowIso(),
+  };
+  try {
+    window.localStorage.setItem(
+      continuityStorageKey(payload.userId, payload.conversationId),
+      JSON.stringify(payload),
+    );
+  } catch {
+    // Trace continuity is best effort. The trace repository remains authoritative.
+  }
+}
+
+function loadContinuity(
+  userId: string,
+  conversationId: string,
+  now: string,
+): ActiveStableV5TraceSession | null {
+  if (typeof window === 'undefined') return null;
+  const key = continuityStorageKey(userId, conversationId);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!isRecord(value)
+      || value.version !== TRACE_CONTINUITY_STORAGE_VERSION
+      || value.userId !== userId
+      || value.conversationId !== conversationId
+      || !isPersistedSession(value.session, userId, conversationId)
+      || !isNonNegativeInteger(value.nextSequence)
+      || !isNonNegativeInteger(value.nextTurnIndex)
+      || !Array.isArray(value.requestIds)
+      || !value.requestIds.every((requestId) => typeof requestId === 'string')
+      || !isTimestamp(value.savedAt)) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    const { endedAt: _endedAt, ...sessionWithoutEnd } = value.session;
+    const session: WeeklyPlanningTraceSession = {
+      ...sessionWithoutEnd,
+      status: 'active',
+      lastActivityAt: now,
+      expireAt: expireAt(now, SESSION_RETENTION_DAYS),
+    };
+    return {
+      session,
+      nextSequence: Math.max(value.nextSequence, session.entryCount),
+      nextTurnIndex: Math.max(value.nextTurnIndex, session.turnCount),
+      lastActivityMs: Date.parse(now),
+      requestIds: new Set(value.requestIds.slice(-MAX_PERSISTED_REQUEST_IDS)),
+      writeQueue: Promise.resolve(),
+    };
+  } catch {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    return null;
+  }
+}
+
 function createSession(params: WeeklyPlanningStableV5TraceInput, now: string) {
-  const sessionId = randomId('weekly-trace-stable-v5');
   const session: WeeklyPlanningTraceSession = {
-    id: sessionId,
+    id: stableLocalSessionId(params.conversationId),
     logicalConversationId: params.conversationId,
     userId: params.userId,
     status: 'active',
@@ -100,29 +227,24 @@ function ensureSession(
   now: string,
 ): ActiveStableV5TraceSession {
   const key = sessionKey(params.userId, params.conversationId);
-  const current = activeSessions.get(key);
-  const nowMs = Date.parse(now);
-  if (current && nowMs - current.lastActivityMs <= SESSION_IDLE_TIMEOUT_MS) {
-    current.lastActivityMs = nowMs;
-    current.session.lastActivityAt = now;
-    current.session.expireAt = expireAt(now, SESSION_RETENTION_DAYS);
-    if (params.planningRangeStart) {
-      current.session.planningRangeStart = params.planningRangeStart;
-    }
-    if (params.planningRangeEnd) {
-      current.session.planningRangeEnd = params.planningRangeEnd;
-    }
-    return current;
+  const current = activeSessions.get(key)
+    ?? loadContinuity(params.userId, params.conversationId, now)
+    ?? createSession(params, now);
+
+  current.lastActivityMs = Date.parse(now);
+  current.session.status = 'active';
+  current.session.lastActivityAt = now;
+  current.session.expireAt = expireAt(now, SESSION_RETENTION_DAYS);
+  delete current.session.endedAt;
+  if (params.planningRangeStart) {
+    current.session.planningRangeStart = params.planningRangeStart;
   }
-  if (current) {
-    current.session.status = 'abandoned';
-    current.session.endedAt = now;
-    void getWeeklyPlanningTraceRepository().upsertSession({ ...current.session })
-      .catch(() => undefined);
+  if (params.planningRangeEnd) {
+    current.session.planningRangeEnd = params.planningRangeEnd;
   }
-  const created = createSession(params, now);
-  activeSessions.set(key, created);
-  return created;
+  activeSessions.set(key, current);
+  persistContinuity(current);
+  return current;
 }
 
 function commonEntry(
@@ -222,13 +344,16 @@ async function appendBestEffort(
   active: ActiveStableV5TraceSession,
   entries: WeeklyPlanningTraceEntry[],
 ): Promise<void> {
+  active.session.entryCount = active.nextSequence;
+  active.session.lastActivityAt = entries[entries.length - 1]?.observedAt ?? nowIso();
+  persistContinuity(active);
+
   const operation = active.writeQueue.catch(() => undefined).then(async () => {
-    active.session.entryCount = active.nextSequence;
-    active.session.lastActivityAt = entries[entries.length - 1]?.observedAt ?? nowIso();
     await getWeeklyPlanningTraceRepository().appendEntries({
       session: { ...active.session },
       entries,
     });
+    persistContinuity(active);
   });
   active.writeQueue = operation.catch(() => undefined);
   await operation;
@@ -341,11 +466,10 @@ export async function recordWeeklyPlanningStableV5TurnTrace(
         : 'turn_completed',
   }));
 
+  persistContinuity(active);
   try {
     await appendBestEffort(active, entries);
   } catch (error) {
-    active.requestIds.delete(params.requestId);
-    active.session.hasError = true;
     console.warn('[WeeklyPlanning Stable V5 Trace] write failed', {
       conversationId: params.conversationId,
       error: error instanceof Error ? error.message : String(error),
@@ -355,4 +479,12 @@ export async function recordWeeklyPlanningStableV5TurnTrace(
 
 export function resetWeeklyPlanningStableV5TraceRuntimeForTest(): void {
   activeSessions.clear();
+}
+
+export function clearWeeklyPlanningStableV5TraceContinuityForTest(params: {
+  userId: string;
+  conversationId: string;
+}): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(continuityStorageKey(params.userId, params.conversationId));
 }
