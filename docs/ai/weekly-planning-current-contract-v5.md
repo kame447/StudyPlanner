@@ -2,6 +2,7 @@
 
 Status: canonical / active for Stable V5 trial and remaining migration
 Updated: 2026-07-24
+Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 
 - Runtime state: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
 - Schema registry: [weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)
@@ -11,7 +12,7 @@ Updated: 2026-07-24
 - Availability architecture: [weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md)
 - Roadmap: [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)
 
-この文書はsemantic v5とStable V5 runtime trialの最優先contractである。runtime接続、browser persistence、conversation identity、rollbackについてはruntime trial contractを優先する。schemaの実在世代と廃止条件はschema registryを正とする。
+この文書はsemantic v5とStable V5 runtime trialの最優先contractである。runtime接続、browser persistence、conversation identity、trace continuity、rollbackについてはruntime trial contractを優先する。schemaの実在世代と廃止条件はschema registryを正とする。
 
 ## 1. 意味解釈境界
 
@@ -138,30 +139,33 @@ source fact refs
 
 ## 9. conversation identityとbrowser persistence
 
-conversation、turn、request、message、trace sessionを区別する。
+conversation、turn、request、message、local trace session、server trace handleを区別する。
 
 ```text
 conversation ID: 一つの対話系列
 turn ID: conversation内のuser/assistant対
 request ID: 一回の非同期実行
-trace session ID: 連続したtrace entry列
+local trace session ID: browser側の連続trace entry列
+server trace handle: server repository上のcanonical session identity
 ```
 
-同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDから最大turn sequenceを復元して次番号を発行する。
+同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDとPlanningState revisionから単調なsequence下限を復元して次番号を発行する。`clear_conversation`でmessagesが空になっても過去のrequest IDへ戻らない。
 
 Stable V5 browser envelopeはowner、week、conversationに拘束し、完了済みPlanningState、Fact Graph、preview、draftを一体保存する。pending turn / approval中の半端なstateは保存しない。不正envelopeを部分復元しない。
 
-これは同一browser内の保存であり、server/cross-device persistenceではない。旧stateからGraph V5へのmigration decoderは未実装である。
+これは同一browser内の保存であり、server/cross-device Graph persistenceではない。旧stateからGraph V5へのmigration decoderは未実装である。
 
 ## 10. trace、privacy、observability
 
 Stable V5 traceはuser/assistant turn、structured internal event、snapshot、preview、failureを既存repositoryへ保存する。raw provider response、stack trace、external event本文を保存しない。
 
-同一owner・同一conversationのactive traceは30分以内なら同じtrace sessionへ継続する。module memory消失後はmetadata-only cursorからsession ID、entry sequence、turn index、recent request IDを復元する。cursorへconversation本文、Graph、semantic documentを保存しない。
+physical trace continuityのscopeは`owner ID + logical conversation ID`とする。同じscopeでは、module memory消失、ページ再読込、remote repository再生成、30分を超えるidleがあっても同じlocal trace session、連続sequence、連続turn index、同じserver-issued handleへ追記する。idle時間をconversation終了条件にしない。
 
-trace counterはrepository append成功後だけcommitする。write failureはsequenceとrequest IDを消費せず、同じrequestを安全に再試行できる。
+metadata-only cursorからsession ID、entry sequence、turn index、recent request IDを復元する。cursorへconversation本文、Graph、semantic documentを保存しない。trace counterとrequest dedupeはrepository append成功後だけcommitし、write failureはsequenceを消費しない。
 
-server-issued structural ID、subject token、retention、admin access audit、immutable entry契約を維持する。
+server-issued handleはowner・local sessionに拘束したlocal mappingへ保存し、repository instance再生成後も再利用する。serverがsession不存在、ownership conflict、legacy read-only、conversation conflictを明示した場合だけ再発行する。一時的network failureは同じcanonical payloadを再送する。
+
+stored handleをowner認証の正本として扱わない。Firebase認証、server-side owner token、immutable entry、retention、admin access audit契約を維持する。過去に分割済みのlogsは自動mergeしない。
 
 ## 11. personalization
 
@@ -199,7 +203,9 @@ preview / approval / Plan save                  runtime connected
 browser conversation / Graph persistence        implemented
 staged Graph atomic commit                       implemented
 Stable V5 trace recording                        implemented
-trace continuity across reload                   fixed on current branch
+trace continuity across reload / idle            fixed on current branch
+controller ID continuity after clear / reload    fixed on current branch
+remote server handle continuity                  fixed on current branch
 default runtime                                  legacy
 server / cross-device Graph persistence          not implemented
 old state migration decoder                      not implemented
