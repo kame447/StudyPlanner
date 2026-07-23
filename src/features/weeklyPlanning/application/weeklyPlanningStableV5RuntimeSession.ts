@@ -77,20 +77,19 @@ export function getWeeklyPlanningStableV5RuntimeSessionForScope(params: {
 
 export function getOrCreateWeeklyPlanningStableV5RuntimeSession(params: {
   ownerId: string;
-  weekStartDate: string;
   conversationId: string;
 }): WeeklyPlanningStableV5RuntimeSession {
   const existing = sessions.get(params.conversationId);
   if (existing) {
-    if (!sameScope(existing, params.ownerId, params.weekStartDate)) {
-      throw new Error('Stable V5 runtime session scope mismatch.');
+    if (existing.ownerId !== params.ownerId) {
+      throw new Error('Stable V5 runtime session owner mismatch.');
     }
     return cloneSession(existing);
   }
 
   const created: WeeklyPlanningStableV5RuntimeSession = {
     ownerId: params.ownerId,
-    weekStartDate: params.weekStartDate,
+    weekStartDate: '',
     conversationId: params.conversationId,
     graph: createEmptyWeeklyPlanningFactGraphV5(),
     updatedAt: Date.now(),
@@ -98,6 +97,36 @@ export function getOrCreateWeeklyPlanningStableV5RuntimeSession(params: {
   sessions.set(params.conversationId, created);
   pruneSessions();
   return cloneSession(created);
+}
+
+export function bindWeeklyPlanningStableV5RuntimeSessionScope(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+}): WeeklyPlanningStableV5RuntimeSession {
+  const current = sessions.get(params.conversationId);
+  if (current && current.ownerId !== params.ownerId) {
+    throw new Error('Stable V5 runtime session owner mismatch.');
+  }
+  if (current && current.weekStartDate && current.weekStartDate !== params.weekStartDate) {
+    throw new Error('Stable V5 runtime session week mismatch.');
+  }
+  const next: WeeklyPlanningStableV5RuntimeSession = current
+    ? {
+        ...current,
+        weekStartDate: params.weekStartDate,
+        updatedAt: Date.now(),
+      }
+    : {
+        ownerId: params.ownerId,
+        weekStartDate: params.weekStartDate,
+        conversationId: params.conversationId,
+        graph: createEmptyWeeklyPlanningFactGraphV5(),
+        updatedAt: Date.now(),
+      };
+  sessions.set(params.conversationId, next);
+  pruneSessions();
+  return cloneSession(next);
 }
 
 export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
@@ -108,8 +137,11 @@ export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
   updatedAt?: number;
 }): WeeklyPlanningStableV5RuntimeSession {
   const existing = sessions.get(params.conversationId);
-  if (existing && !sameScope(existing, params.ownerId, params.weekStartDate)) {
-    throw new Error('Stable V5 runtime session scope mismatch.');
+  if (existing && existing.ownerId !== params.ownerId) {
+    throw new Error('Stable V5 runtime session owner mismatch.');
+  }
+  if (existing && existing.weekStartDate && existing.weekStartDate !== params.weekStartDate) {
+    throw new Error('Stable V5 runtime session week mismatch.');
   }
   const hydrated: WeeklyPlanningStableV5RuntimeSession = {
     ownerId: params.ownerId,
@@ -126,17 +158,16 @@ export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
 
 export function commitWeeklyPlanningStableV5RuntimeGraph(params: {
   ownerId: string;
-  weekStartDate: string;
   conversationId: string;
   graph: WeeklyPlanningFactGraphV5;
 }): WeeklyPlanningStableV5RuntimeSession {
   const current = sessions.get(params.conversationId);
-  if (current && !sameScope(current, params.ownerId, params.weekStartDate)) {
-    throw new Error('Stable V5 runtime session scope mismatch.');
+  if (current && current.ownerId !== params.ownerId) {
+    throw new Error('Stable V5 runtime session owner mismatch.');
   }
   const next: WeeklyPlanningStableV5RuntimeSession = {
     ownerId: params.ownerId,
-    weekStartDate: params.weekStartDate,
+    weekStartDate: current?.weekStartDate ?? '',
     conversationId: params.conversationId,
     graph: structuredClone(params.graph),
     updatedAt: Date.now(),
