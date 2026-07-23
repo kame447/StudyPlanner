@@ -115,6 +115,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
             questionCode: contextualQuestionCode,
             conversationId: input.conversationId,
             turnId: input.turnId,
+            expectedRevision: input.expectedRevision,
             userText: input.userText,
           })
         : null;
