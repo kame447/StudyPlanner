@@ -1,6 +1,6 @@
 # Stable V5 trace continuity 七視点監査 総括
 
-Status: implementation complete / automated verification pending
+Status: implementation complete / branch preview build confirmed / test and typecheck pending
 最終更新: 2026-07-24
 Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 Draft PR: #83
@@ -24,7 +24,7 @@ Draft PR: #83
 
 ## BLOCKER
 
-解消済み。
+実装上は解消済み。
 
 - 同じconversationでページ再読込またはruntime再生成後にtrace sessionが分裂する。
 - 30分idle後に同じconversationを別physical sessionへ分割する。
@@ -35,11 +35,12 @@ Draft PR: #83
 
 ## MAJOR
 
-本修正の範囲で解消済み。
+本修正の範囲で実装済み。
 
 - 既存testがconversation/Graphだけを確認し、controller、trace cursor、remote handleまで跨いでいない。
 - Stable V5 persistenceを未実装とするcanonical MDがmainの実装と矛盾している。
 - 一時的network failureでserver handleを捨てると、応答喪失時に別sessionへ移る可能性がある。
+- Node Vitest環境でmemory Storageを明示しないremote repository testが、実際のhandle保存経路を通らない。
 
 別taskへ分離。
 
@@ -47,6 +48,7 @@ Draft PR: #83
 - `responseSource`とsemantic interpretation sourceの概念分離。
 - accepted factをassistant acknowledgementへ反映するdialogue grounding回帰。
 - abrupt page close時の最終trace write durability。
+- explicit reset、logout、consent撤回時のserver handle mapping cleanup。
 
 ## 七視点の結論
 
@@ -65,8 +67,15 @@ structural rejection時だけhandle再発行
 transient append failureのsame-payload retry
 runtime-memory-loss / idle / clear / remote reload regression tests
 controller / reducer / trace integration test
+Node Vitest用memory Storage導入
 current contract、runtime contract、status、roadmap、docs index更新
 ```
+
+## 検証結果
+
+Cloudflare Pagesのbranch previewは、productionコード修正を含むcommit `3ae9e1f`でdeploy成功した。その後の変更はtestとdocumentationだけであり、runtime production sourceは変更していない。したがって、configured Pages production bundleのbuildは確認済みである。
+
+GitHub Actionsは最新headでも`verify` jobを生成したが、step 0件、logsなしでrunner起動前に失敗した。これはcode test failureではないが、focused test、full test、typecheckの成功証跡でもない。外部DNS制限により監査環境からrepositoryをcloneしてnpmを実行することもできなかった。
 
 ## 最終gate
 
@@ -74,11 +83,10 @@ current contract、runtime contract、status、roadmap、docs index更新
 focused tests
 → full test
 → typecheck
-→ production build
 → branch previewでreload・1時間idle・clear後再送を実操作
 → admin exportが一つのsessionになることを確認
 → unresolved review thread 0
 → review
 ```
 
-GitHub Actionsはjobを生成したがstep 0件・logsなしでrunner起動前に失敗している。これはcode test failureではないが、focused/full/typecheck/buildの成功証跡でもない。このgateの実行結果を取得するまでは、PR #83をDraft・merge不可とする。
+上記の実行結果を取得するまでは、PR #83をDraft・merge不可とする。
