@@ -180,7 +180,7 @@ describe('Stable V5 trace runtime', () => {
     await recordWeeklyPlanningStableV5TurnTrace(traceInput('request-2'));
 
     expect(harness.writes[1].session.id).toBe(firstSessionId);
-    expect(harness.sessions).toHaveLength(1);
+    expect(harness.sessions.size).toBe(1);
   });
 
   it('uses a different trace session after the logical conversation changes', async () => {
