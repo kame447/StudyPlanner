@@ -73,10 +73,17 @@ function publishSession(session: WeeklyPlanningStableV5RuntimeSession): void {
   });
 }
 
-function requestIdFromGraph(graph: WeeklyPlanningFactGraphV5): string {
-  const requestId = graph.appliedTurnKeys[graph.appliedTurnKeys.length - 1]?.trim();
-  if (!requestId) throw new Error('Stable V5 staged graph is missing its request id.');
-  return requestId;
+function requestIdFromGraph(
+  graph: WeeklyPlanningFactGraphV5,
+  conversationId: string,
+): string {
+  const turnKey = graph.appliedTurnKeys[graph.appliedTurnKeys.length - 1]?.trim();
+  if (!turnKey) throw new Error('Stable V5 staged graph is missing its request id.');
+  const prefix = `${conversationId}:`;
+  if (!turnKey.startsWith(prefix) || turnKey.length <= prefix.length) {
+    throw new Error('Stable V5 staged graph conversation does not match its turn key.');
+  }
+  return turnKey.slice(prefix.length);
 }
 
 function discardAllStagedGraphsForConversation(conversationId: string): void {
@@ -198,7 +205,7 @@ export function commitWeeklyPlanningStableV5RuntimeGraph(params: {
     ownerId: params.ownerId,
     conversationId: params.conversationId,
   });
-  const requestId = requestIdFromGraph(params.graph);
+  const requestId = requestIdFromGraph(params.graph, params.conversationId);
   stagedGraphs.set(stagedKey(params.conversationId, requestId), {
     ownerId: params.ownerId,
     conversationId: params.conversationId,
@@ -242,7 +249,7 @@ export function discardWeeklyPlanningStableV5StagedGraph(params: {
   stagedGraphs.delete(stagedKey(params.conversationId, params.requestId));
 }
 
-export function hasWeeklyPlanningStableV5StagedGraphForTest(params: {
+export function hasWeeklyPlanningStableV5StagedGraph(params: {
   conversationId: string;
   requestId: string;
 }): boolean {
