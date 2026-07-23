@@ -7,7 +7,10 @@ import type {
   WeeklyPlanningMessage,
   WeeklyPlanningPendingTurn,
 } from './types';
-import type { WeeklyPlanningTurnSubmissionResult } from './weeklyPlanningTurnExecutor';
+import type {
+  WeeklyPlanningTurnExecutionResult,
+  WeeklyPlanningTurnSubmissionResult,
+} from './weeklyPlanningTurnExecutor';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -22,6 +25,13 @@ export interface WeeklyPlanningControlledTurnResult {
   draftCandidates: WeeklyDraftCandidate[];
 }
 
+interface WeeklyPlanningControlledResultContext {
+  snapshot: PlanningState;
+  pending: WeeklyPlanningPendingTurn;
+  userText: string;
+  result: WeeklyPlanningTurnExecutionResult;
+}
+
 export interface SubmitWeeklyPlanningControlledTurnParams {
   session: WeeklyPlanningControllerSession;
   ownerId: string;
@@ -32,7 +42,23 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     snapshot: PlanningState;
     pending: WeeklyPlanningPendingTurn;
     userText: string;
-  }): Promise<WeeklyPlanningControlledTurnResult>;
+  }): Promise<WeeklyPlanningTurnExecutionResult>;
+  commitExecutionResult?(params: WeeklyPlanningControlledResultContext): void;
+  discardExecutionResult?(params: WeeklyPlanningControlledResultContext & {
+    reason: 'stale' | 'commit_rejected' | 'failed';
+  }): void;
+  onCommittedTurn?(params: WeeklyPlanningControlledResultContext & {
+    committed: PlanningState;
+    assistantMessage: WeeklyPlanningMessage;
+  }): void;
+  onFailedTurn?(params: {
+    snapshot: PlanningState;
+    pending: WeeklyPlanningPendingTurn;
+    userText: string;
+    error: unknown;
+    failedState: PlanningState;
+    assistantMessage: WeeklyPlanningMessage;
+  }): void;
   now?: () => string;
 }
 
@@ -142,11 +168,15 @@ export async function submitWeeklyPlanningControlledTurn(
     return { accepted: false, draftCandidates: [] };
   }
 
+  let result: WeeklyPlanningTurnExecutionResult | undefined;
   try {
-    const result = await params.execute({ snapshot, pending, userText });
+    result = await params.execute({ snapshot, pending, userText });
+    const context = { snapshot, pending, userText, result };
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+      params.discardExecutionResult?.({ ...context, reason: 'stale' });
       return { accepted: false, draftCandidates: [] };
     }
+    params.commitExecutionResult?.(context);
     const assistantMessage = createTurnMessage(
       envelope,
       'assistant',
@@ -163,19 +193,46 @@ export async function submitWeeklyPlanningControlledTurn(
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate
       && committed.revision === pending.baseRevision + 2;
+    if (!accepted) {
+      params.discardExecutionResult?.({ ...context, reason: 'commit_rejected' });
+      return { accepted: false, draftCandidates: [] };
+    }
+    params.onCommittedTurn?.({
+      ...context,
+      committed,
+      assistantMessage,
+    });
     return {
-      accepted,
-      draftCandidates: accepted ? result.draftCandidates : [],
+      accepted: true,
+      draftCandidates: result.draftCandidates,
     };
   } catch (error) {
+    if (result) {
+      params.discardExecutionResult?.({
+        snapshot,
+        pending,
+        userText,
+        result,
+        reason: 'failed',
+      });
+    }
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       return { accepted: false, draftCandidates: [] };
     }
     const message = '週間計画の会話状態を更新できませんでした。';
-    params.dispatch({
+    const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
+    const failedState = params.dispatch({
       type: 'fail_turn',
       pending,
-      assistantMessage: createTurnMessage(envelope, 'assistant', message, now()),
+      assistantMessage,
+    });
+    params.onFailedTurn?.({
+      snapshot,
+      pending,
+      userText,
+      error,
+      failedState,
+      assistantMessage,
     });
     throw error instanceof Error ? error : new Error(message);
   }
