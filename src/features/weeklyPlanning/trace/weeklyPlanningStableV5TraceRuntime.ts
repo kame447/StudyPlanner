@@ -20,7 +20,6 @@ import {
 
 const SESSION_RETENTION_DAYS = 90;
 const SNAPSHOT_RETENTION_DAYS = 30;
-const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 interface ActiveStableV5TraceSession {
   session: WeeklyPlanningTraceSession;
@@ -103,15 +102,13 @@ function createSession(params: WeeklyPlanningStableV5TraceInput, now: string) {
 
 function restoreSession(
   params: WeeklyPlanningStableV5TraceInput,
-  nowMs: number,
 ): ActiveStableV5TraceSession | null {
   const persisted = loadWeeklyPlanningStableV5TraceCursor({
     userId: params.userId,
     conversationId: params.conversationId,
   });
   if (!persisted) return null;
-  if (persisted.session.status !== 'active'
-    || nowMs - persisted.lastActivityMs > SESSION_IDLE_TIMEOUT_MS) {
+  if (persisted.session.status !== 'active') {
     clearWeeklyPlanningStableV5TraceCursor({
       userId: params.userId,
       conversationId: params.conversationId,
@@ -128,37 +125,15 @@ function restoreSession(
   };
 }
 
-function abandonSession(
-  active: ActiveStableV5TraceSession,
-  now: string,
-): void {
-  const abandoned = {
-    ...active.session,
-    status: 'abandoned' as const,
-    lastActivityAt: now,
-    endedAt: now,
-    expireAt: expireAt(now, SESSION_RETENTION_DAYS),
-  };
-  clearWeeklyPlanningStableV5TraceCursor({
-    userId: active.session.userId,
-    conversationId: active.session.logicalConversationId,
-  });
-  void getWeeklyPlanningTraceRepository().upsertSession(abandoned).catch(() => undefined);
-}
-
 function ensureSession(
   params: WeeklyPlanningStableV5TraceInput,
   now: string,
 ): ActiveStableV5TraceSession {
   const key = sessionKey(params.userId, params.conversationId);
   const current = activeSessions.get(key);
-  const nowMs = Date.parse(now);
-  if (current && nowMs - current.lastActivityMs <= SESSION_IDLE_TIMEOUT_MS) {
-    return current;
-  }
-  if (current) abandonSession(current, now);
+  if (current) return current;
 
-  const restored = restoreSession(params, nowMs);
+  const restored = restoreSession(params);
   const next = restored ?? createSession(params, now);
   activeSessions.set(key, next);
   return next;
