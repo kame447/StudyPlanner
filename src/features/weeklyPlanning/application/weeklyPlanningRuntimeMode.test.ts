@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getWeeklyPlanningRuntimeMode,
   resetWeeklyPlanningRuntimeMode,
+  resetWeeklyPlanningRuntimeModeForTest,
   setWeeklyPlanningRuntimeMode,
   WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
   WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY,
@@ -30,6 +31,7 @@ function createWindow(search = '') {
 
 describe('weekly planning runtime mode', () => {
   beforeEach(() => {
+    resetWeeklyPlanningRuntimeModeForTest();
     vi.stubGlobal('CustomEvent', class<T> extends Event {
       detail: T;
 
@@ -41,6 +43,7 @@ describe('weekly planning runtime mode', () => {
   });
 
   afterEach(() => {
+    resetWeeklyPlanningRuntimeModeForTest();
     vi.unstubAllGlobals();
   });
 
