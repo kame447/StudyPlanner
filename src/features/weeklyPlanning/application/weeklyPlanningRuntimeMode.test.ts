@@ -55,7 +55,9 @@ describe('weekly planning runtime mode', () => {
     expect(setWeeklyPlanningRuntimeMode('stable_v5')).toBe('stable_v5');
     expect(runtime.storage.get(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY)).toBe('stable_v5');
     expect(getWeeklyPlanningRuntimeMode()).toBe('stable_v5');
-    expect(runtime.events.at(-1)?.type).toBe(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT);
+    expect(runtime.events[runtime.events.length - 1]?.type).toBe(
+      WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
+    );
   });
 
   it('uses the URL override and can reset the stored mode', () => {
