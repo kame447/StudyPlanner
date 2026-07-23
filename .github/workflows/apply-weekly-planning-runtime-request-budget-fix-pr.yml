@@ -1,0 +1,74 @@
+name: Apply weekly planning runtime and request budget fix on PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.ref == 'fix/weekly-planning-stable-v5-runtime-and-request-budget'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply focused source changes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          workflow = Path('.github/workflows/apply-weekly-planning-runtime-request-budget-fix.yml')
+          text = workflow.read_text()
+          marker_start = "          python <<'PY'\n"
+          marker_end = "\n          PY\n"
+          if marker_start not in text or marker_end not in text:
+              raise SystemExit('Could not locate embedded patch script')
+          embedded = text.split(marker_start, 1)[1].split(marker_end, 1)[0]
+          exec(dedent(embedded), {'__name__': '__main__'})
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused tests
+        run: >-
+          npm run test:run --
+          src/components/WeeklyPlanningConversation.test.tsx
+          src/features/weeklyPlanning/application/weeklyPlanningRuntimeMode.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticRequestBudgetV5.test.ts
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-weekly-planning-runtime-request-budget-fix-pr.yml
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'studyplanner-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: Stable V5の選択導線とAI送信容量を修正'
+          git push origin HEAD:fix/weekly-planning-stable-v5-runtime-and-request-budget
