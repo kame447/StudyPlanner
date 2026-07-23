@@ -1,4 +1,7 @@
-import type { WeeklyPlanningTraceSession } from './weeklyPlanningTraceTypes';
+import {
+  WEEKLY_PLANNING_TRACE_SCHEMA_VERSION,
+  type WeeklyPlanningTraceSession,
+} from './weeklyPlanningTraceTypes';
 
 export const WEEKLY_PLANNING_STABLE_V5_TRACE_CURSOR_VERSION =
   'studyplanner-weekly-planning-stable-v5-trace-cursor-v1' as const;
@@ -8,6 +11,41 @@ const MAX_CURSOR_BYTES = 64 * 1024;
 const MAX_PERSISTED_CURSORS = 24;
 const MAX_REQUEST_IDS = 128;
 const CURSOR_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+const SESSION_KEYS = [
+  'id',
+  'logicalConversationId',
+  'userId',
+  'status',
+  'startedAt',
+  'lastActivityAt',
+  'endedAt',
+  'archivedAt',
+  'planningRangeStart',
+  'planningRangeEnd',
+  'turnCount',
+  'entryCount',
+  'hasPreview',
+  'hasApprovalFailure',
+  'hasFallback',
+  'hasError',
+  'appVersion',
+  'schemaVersion',
+  'expireAt',
+] as const;
+
+const CURSOR_KEYS = [
+  'version',
+  'userId',
+  'conversationId',
+  'session',
+  'nextSequence',
+  'nextTurnIndex',
+  'lastActivityMs',
+  'requestIds',
+  'savedAt',
+] as const;
 
 export interface WeeklyPlanningStableV5TraceCursor {
   version: typeof WEEKLY_PLANNING_STABLE_V5_TRACE_CURSOR_VERSION;
@@ -22,11 +60,19 @@ export interface WeeklyPlanningStableV5TraceCursor {
 }
 
 function storageKey(userId: string, conversationId: string): string {
-  return `${STORAGE_KEY_PREFIX}${encodeURIComponent(userId)}.${encodeURIComponent(conversationId)}`;
+  return `${STORAGE_KEY_PREFIX}${encodeURIComponent(userId)}::${encodeURIComponent(conversationId)}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  const allowedKeys = new Set(allowed);
+  return Object.keys(value).every((key) => allowedKeys.has(key));
 }
 
 function isNonEmptyString(value: unknown, maxLength = 512): value is string {
@@ -56,6 +102,7 @@ function parseSession(
   conversationId: string,
 ): WeeklyPlanningTraceSession | null {
   if (!isRecord(value)
+    || !hasOnlyKeys(value, SESSION_KEYS)
     || !isNonEmptyString(value.id)
     || value.userId !== userId
     || value.logicalConversationId !== conversationId
@@ -73,8 +120,20 @@ function parseSession(
     || typeof value.hasFallback !== 'boolean'
     || typeof value.hasError !== 'boolean'
     || !isNonEmptyString(value.appVersion)
-    || !isNonNegativeInteger(value.schemaVersion)
+    || value.schemaVersion !== WEEKLY_PLANNING_TRACE_SCHEMA_VERSION
     || !isTimestamp(value.expireAt)) {
+    return null;
+  }
+
+  const startedAtMs = Date.parse(value.startedAt);
+  const lastActivityAtMs = Date.parse(value.lastActivityAt);
+  const endedAtMs = value.endedAt === undefined ? null : Date.parse(value.endedAt);
+  const archivedAtMs = value.archivedAt === undefined ? null : Date.parse(value.archivedAt);
+  const expireAtMs = Date.parse(value.expireAt);
+  if (lastActivityAtMs < startedAtMs
+    || (endedAtMs !== null && endedAtMs < lastActivityAtMs)
+    || (archivedAtMs !== null && archivedAtMs < startedAtMs)
+    || expireAtMs < lastActivityAtMs) {
     return null;
   }
 
@@ -96,7 +155,7 @@ function parseSession(
     hasFallback: value.hasFallback,
     hasError: value.hasError,
     appVersion: value.appVersion,
-    schemaVersion: value.schemaVersion,
+    schemaVersion: WEEKLY_PLANNING_TRACE_SCHEMA_VERSION,
     expireAt: value.expireAt,
   };
 }
@@ -107,6 +166,7 @@ function parseCursor(
   conversationId: string,
 ): WeeklyPlanningStableV5TraceCursor | null {
   if (!isRecord(value)
+    || !hasOnlyKeys(value, CURSOR_KEYS)
     || value.version !== WEEKLY_PLANNING_STABLE_V5_TRACE_CURSOR_VERSION
     || value.userId !== userId
     || value.conversationId !== conversationId
@@ -125,9 +185,9 @@ function parseCursor(
 
   const session = parseSession(value.session, userId, conversationId);
   if (!session
-    || value.nextSequence < session.entryCount
-    || value.nextTurnIndex < session.turnCount
-    || Math.abs(Date.parse(session.lastActivityAt) - value.lastActivityMs) > 60_000) {
+    || value.nextSequence !== session.entryCount
+    || value.nextTurnIndex !== session.turnCount
+    || Date.parse(session.lastActivityAt) !== value.lastActivityMs) {
     return null;
   }
 
@@ -167,6 +227,7 @@ function pruneStoredCursors(nowMs = Date.now()): void {
       if (!isRecord(value)
         || typeof value.lastActivityMs !== 'number'
         || !Number.isFinite(value.lastActivityMs)
+        || value.lastActivityMs > nowMs + MAX_CLOCK_SKEW_MS
         || nowMs - value.lastActivityMs > CURSOR_RETENTION_MS) {
         window.localStorage.removeItem(key);
         return [];
