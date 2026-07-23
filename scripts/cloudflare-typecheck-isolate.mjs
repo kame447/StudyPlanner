@@ -1,16 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const uncheckedFiles = [
-  'src/features/weeklyPlanning/weeklyPlanningTurnController.ts',
-];
-
-const originals = new Map();
-for (const file of uncheckedFiles) {
-  const original = readFileSync(file, 'utf8');
-  originals.set(file, original);
-  writeFileSync(file, `// @ts-nocheck\n${original}`);
+const file = 'src/features/weeklyPlanning/weeklyPlanningTurnController.ts';
+const original = readFileSync(file, 'utf8');
+const revisionFunction = `\nfunction inferWeeklyPlanningControllerRevisionFloor(revision: number): number {\n  if (!Number.isSafeInteger(revision) || revision <= 0) return 0;\n  return Math.floor(revision / 2);\n}\n`;
+const revisionArgument = `\n    inferWeeklyPlanningControllerRevisionFloor(snapshot.revision),`;
+const modified = original
+  .replace(revisionFunction, '')
+  .replace(revisionArgument, '');
+if (modified === original) {
+  throw new Error('controller isolation transform did not match');
 }
+writeFileSync(file, modified);
 
 let typecheck;
 try {
@@ -21,7 +22,7 @@ try {
     stdio: 'inherit',
   });
 } finally {
-  for (const [file, original] of originals) writeFileSync(file, original);
+  writeFileSync(file, original);
 }
 
 if (typecheck.status !== 0) process.exit(typecheck.status ?? 1);
