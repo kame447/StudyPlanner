@@ -1,3 +1,4 @@
+import type { PlanType } from '../../../types/domain';
 import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningBehaviorMetadata,
@@ -5,6 +6,18 @@ import type {
 import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
+
+export interface WeeklyPlanningStableV5PreviewMetadata {
+  runtime: 'stable_v5';
+  graphRevision: number;
+  taskId: string;
+  sourceFactRefs: string[];
+  planType: PlanType;
+}
+
+type WeeklyDraftCandidateWithRuntimeMetadata = WeeklyDraftCandidate & {
+  stableV5Metadata?: WeeklyPlanningStableV5PreviewMetadata;
+};
 
 export interface WeeklyPlanningPreviewBlock {
   id: string;
@@ -21,6 +34,8 @@ export interface WeeklyPlanningPreviewBlock {
   status: 'preview';
   isSaved: false;
   workItemKey: string;
+  planType?: PlanType;
+  stableV5Metadata?: WeeklyPlanningStableV5PreviewMetadata;
   behaviorMetadata?: WeeklyPlanningBehaviorMetadata;
 }
 
@@ -43,12 +58,12 @@ function behaviorMetadataFromCandidate(
   if (!metadata) return undefined;
   const dependencies = acceptedDependencies(metadata);
   const previewMetadata = userId
-? {
-    previewId: metadata.conversationId
-      ? `behavior-preview:${metadata.conversationId}:${metadata.stateRevision}`
-      : `behavior-preview:${metadata.stateRevision}`,
-    ...(metadata.conversationId ? { conversationId: metadata.conversationId } : {}),
-    stateRevision: metadata.stateRevision,
+    ? {
+        previewId: metadata.conversationId
+          ? `behavior-preview:${metadata.conversationId}:${metadata.stateRevision}`
+          : `behavior-preview:${metadata.stateRevision}`,
+        ...(metadata.conversationId ? { conversationId: metadata.conversationId } : {}),
+        stateRevision: metadata.stateRevision,
         assumptionDependencies: dependencies,
         approvalEligibility: 'eligible' as const,
         stale: false,
@@ -57,8 +72,8 @@ function behaviorMetadataFromCandidate(
     : undefined;
 
   return {
-...(metadata.conversationId ? { conversationId: metadata.conversationId } : {}),
-stateRevision: metadata.stateRevision,
+    ...(metadata.conversationId ? { conversationId: metadata.conversationId } : {}),
+    stateRevision: metadata.stateRevision,
     sourceFactRefs: [...metadata.sourceFactRefs],
     usedAssumptionProposalRefs: [...metadata.usedAssumptionProposalRefs],
     ...(dependencies.length > 0 ? { acceptedAssumptionDependencies: dependencies } : {}),
@@ -74,11 +89,23 @@ stateRevision: metadata.stateRevision,
   };
 }
 
+function stableV5MetadataFromCandidate(
+  candidate: WeeklyDraftCandidate,
+): WeeklyPlanningStableV5PreviewMetadata | undefined {
+  const metadata = (candidate as WeeklyDraftCandidateWithRuntimeMetadata).stableV5Metadata;
+  if (!metadata || metadata.runtime !== 'stable_v5') return undefined;
+  return {
+    ...metadata,
+    sourceFactRefs: [...metadata.sourceFactRefs],
+  };
+}
+
 export function createWeeklyPlanningPreviewBlocks(
   draftCandidates: WeeklyDraftCandidate[],
 ): WeeklyPlanningPreviewBlock[] {
   return draftCandidates.map((candidate) => {
     const behaviorMetadata = behaviorMetadataFromCandidate(candidate);
+    const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
     return {
       id: candidate.stableKey,
       stableKey: candidate.stableKey,
@@ -94,6 +121,9 @@ export function createWeeklyPlanningPreviewBlocks(
       status: 'preview',
       isSaved: false,
       workItemKey: candidate.workItemKey,
+      ...(stableV5Metadata
+        ? { planType: stableV5Metadata.planType, stableV5Metadata }
+        : {}),
       ...(behaviorMetadata ? { behaviorMetadata } : {}),
     };
   });
@@ -119,6 +149,15 @@ export function removeWeeklyPlanningPreviewBlock({
   };
 }
 
+function stableV5Memo(block: WeeklyPlanningPreviewBlock): string {
+  if (!block.stableV5Metadata) return `unsaved-preview: ${block.workItemKey}`;
+  return [
+    'Stable V5 preview',
+    `graphRevision: ${block.stableV5Metadata.graphRevision}`,
+    `workItemKey: ${block.workItemKey}`,
+  ].join(' / ');
+}
+
 export function createWeeklyPlanningPreviewDisplayBlock(
   block: WeeklyPlanningPreviewBlock,
   userId: string,
@@ -128,19 +167,20 @@ export function createWeeklyPlanningPreviewDisplayBlock(
     ? {
         ...block.behaviorMetadata,
         previewMetadata: {
-previewId: block.behaviorMetadata.conversationId
-  ? `behavior-preview:${block.behaviorMetadata.conversationId}:${block.behaviorMetadata.stateRevision}`
-  : `behavior-preview:${block.behaviorMetadata.stateRevision}`,
-...(block.behaviorMetadata.conversationId
-  ? { conversationId: block.behaviorMetadata.conversationId }
-  : {}),
-stateRevision: block.behaviorMetadata.stateRevision,
-          assumptionDependencies: block.behaviorMetadata.acceptedAssumptionDependencies?.map((dependency) => ({ ...dependency }))
-            ?? block.behaviorMetadata.usedAssumptionProposalRefs.map((proposalId) => ({
-              proposalId,
-              targetRef: block.behaviorMetadata?.taskRef ?? '',
-              proposalCreatedFromStateRevision: block.behaviorMetadata?.stateRevision ?? 0,
-            })),
+          previewId: block.behaviorMetadata.conversationId
+            ? `behavior-preview:${block.behaviorMetadata.conversationId}:${block.behaviorMetadata.stateRevision}`
+            : `behavior-preview:${block.behaviorMetadata.stateRevision}`,
+          ...(block.behaviorMetadata.conversationId
+            ? { conversationId: block.behaviorMetadata.conversationId }
+            : {}),
+          stateRevision: block.behaviorMetadata.stateRevision,
+          assumptionDependencies: block.behaviorMetadata.acceptedAssumptionDependencies?.map(
+            (dependency) => ({ ...dependency }),
+          ) ?? block.behaviorMetadata.usedAssumptionProposalRefs.map((proposalId) => ({
+            proposalId,
+            targetRef: block.behaviorMetadata?.taskRef ?? '',
+            proposalCreatedFromStateRevision: block.behaviorMetadata?.stateRevision ?? 0,
+          })),
           approvalEligibility: 'eligible' as const,
           stale: false,
           authorizedUserId: userId,
@@ -156,10 +196,10 @@ stateRevision: block.behaviorMetadata.stateRevision,
     endTime: block.endTime,
     title: block.title,
     subject: block.field,
-    type: 'study',
+    type: block.planType ?? 'study',
     label: block.field,
     materialId: null,
-    memo: `unsaved-preview: ${block.workItemKey}`,
+    memo: stableV5Memo(block),
     source: 'ai',
     status: 'draft',
     userEdited: false,
@@ -182,6 +222,19 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
 }: CreateWeeklyDraftBlocksFromPreviewCandidatesInput): WeeklyPlanDraftBlock[] {
   const blocks = candidates.map((candidate) => {
     const behaviorMetadata = behaviorMetadataFromCandidate(candidate, userId);
+    const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
+    const memo = stableV5Metadata
+      ? [
+          'Stable V5 preview',
+          `graphRevision: ${stableV5Metadata.graphRevision}`,
+          `workItemKey: ${candidate.workItemKey}`,
+        ].join(' / ')
+      : [
+          `year: ${candidate.year}`,
+          `estimatedMinutes: ${candidate.estimatedMinutes}`,
+          `workItemKey: ${candidate.workItemKey}`,
+          'source: dry-run preview',
+        ].join(' / ');
     return {
       id: candidate.stableKey,
       userId,
@@ -190,16 +243,11 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
       endTime: candidate.endTime,
       title: candidate.title,
       subject: candidate.field,
-      type: 'study' as const,
+      type: stableV5Metadata?.planType ?? 'study' as const,
       label: candidate.field,
       materialId: null,
       materialName: '',
-      memo: [
-        `year: ${candidate.year}`,
-        `estimatedMinutes: ${candidate.estimatedMinutes}`,
-        `workItemKey: ${candidate.workItemKey}`,
-        'source: dry-run preview',
-      ].join(' / '),
+      memo,
       source: 'ai' as const,
       status: 'draft' as const,
       userEdited: false,
