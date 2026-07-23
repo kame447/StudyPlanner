@@ -89,6 +89,11 @@ export function inferWeeklyPlanningControllerRequestSequence(
   return maximum;
 }
 
+function inferWeeklyPlanningControllerRevisionFloor(revision: number): number {
+  if (!Number.isSafeInteger(revision) || revision <= 0) return 0;
+  return Math.floor(revision / 2);
+}
+
 export function createWeeklyPlanningControllerSession(
   ownerId: string,
   weekStartDate: string,
@@ -174,6 +179,7 @@ export async function submitWeeklyPlanningControlledTurn(
   params.session.requestSequence = Math.max(
     params.session.requestSequence,
     inferWeeklyPlanningControllerRequestSequence(snapshot.messages, params.session.conversationId),
+    inferWeeklyPlanningControllerRevisionFloor(snapshot.revision),
   ) + 1;
   const now = params.now ?? (() => new Date().toISOString());
   const createdAt = now();
