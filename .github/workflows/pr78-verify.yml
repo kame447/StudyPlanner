@@ -1,0 +1,44 @@
+name: PR78 Verify
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'fix/weekly-planning-stable-v5-runtime-and-request-budget'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused tests
+        run: >-
+          npm run test:run --
+          src/components/WeeklyPlanningConversation.test.tsx
+          src/features/weeklyPlanning/application/weeklyPlanningRuntimeMode.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticRequestBudgetV5.test.ts
+      - name: Full tests
+        run: npm run test:run
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
