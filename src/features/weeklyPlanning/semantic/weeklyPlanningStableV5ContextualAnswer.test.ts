@@ -125,6 +125,7 @@ describe('Stable V5 contextual answers', () => {
       questionCode: 'missing_effort_estimate',
       conversationId: 'conversation-1',
       turnId: 'turn-2',
+      expectedRevision: 1,
       userText: '3時間です',
     });
 
@@ -144,6 +145,7 @@ describe('Stable V5 contextual answers', () => {
       questionCode: 'quantity_role_unresolved',
       conversationId: 'conversation-1',
       turnId: 'turn-2',
+      expectedRevision: 1,
       userText: '今回進めたい量です',
     });
 
@@ -155,6 +157,28 @@ describe('Stable V5 contextual answers', () => {
     expect(result?.graph.factLifecycles).toEqual(expect.arrayContaining([
       expect.objectContaining({ factId: 'workload-1', status: 'superseded' }),
     ]));
+  });
+
+  it('rejects a stale or non-minimal contextual answer', () => {
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: graph('target'),
+      document: answerDocument({ minutes: 180 }),
+      questionCode: 'missing_effort_estimate',
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 0,
+      userText: '3時間です',
+    })).toBeNull();
+
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: graph('target'),
+      document: answerDocument({ minutes: 180 }),
+      questionCode: 'missing_effort_estimate',
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 1,
+      userText: '別件ですが、新しく数学を毎日3時間やる予定も追加してください',
+    })).toBeNull();
   });
 
   it('infers only supported previous questions', () => {
