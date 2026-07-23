@@ -3,14 +3,18 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const file = 'src/features/weeklyPlanning/weeklyPlanningTurnController.ts';
 const original = readFileSync(file, 'utf8');
-const revisionFunction = `\nfunction inferWeeklyPlanningControllerRevisionFloor(revision: number): number {\n  if (!Number.isSafeInteger(revision) || revision <= 0) return 0;\n  return Math.floor(revision / 2);\n}\n`;
-const revisionArgument = `\n    inferWeeklyPlanningControllerRevisionFloor(snapshot.revision),`;
-const modified = original
-  .replace(revisionFunction, '')
-  .replace(revisionArgument, '');
-if (modified === original) {
-  throw new Error('controller isolation transform did not match');
+const helperStart = original.indexOf(
+  'export function inferWeeklyPlanningControllerRequestSequence(',
+);
+const helperEnd = original.indexOf(
+  '\nfunction inferWeeklyPlanningControllerRevisionFloor',
+  helperStart,
+);
+if (helperStart < 0 || helperEnd < 0) {
+  throw new Error('controller helper isolation boundaries were not found');
 }
+const replacement = `export function inferWeeklyPlanningControllerRequestSequence(\n  _messages: readonly WeeklyPlanningMessage[],\n  _conversationId: string,\n): number {\n  return 0;\n}\n`;
+const modified = `${original.slice(0, helperStart)}${replacement}${original.slice(helperEnd + 1)}`;
 writeFileSync(file, modified);
 
 let typecheck;
