@@ -1,4 +1,4 @@
 studyplanner-pages
-source=fix/pages-deploy-20260723
-base=8dd1671c954cebbb56b9e7301f040eec3ca08aad
-triggered_at=2026-07-23T14:40:00Z
+environment=production
+source=d1de00ffd961e38fd104f25ab7f2c8eb7557272e
+triggered_at=2026-07-23T14:56:00Z
