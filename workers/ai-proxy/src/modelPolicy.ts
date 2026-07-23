@@ -8,11 +8,12 @@
 
 export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: 'gpt-5.4-nano-2026-03-17',
+  weekly_planning_semantic_normalizer: 'gpt-5.4-nano-2026-03-17',
   weekly_planning_renderer: 'gpt-5.4-mini-2026-03-17',
 };
 
 // ALLOWED_CHAT_MODELS env が未設定のときの既定 allowlist。
-// AI_CHAT_PURPOSE_MODELS の全 model を必ず含めること(purpose 解決後に allowlist 検証で弾かれないため)。
+// AI_CHAT_PURPOSE_MODELS の全 model を必ず含めること(purpose 解決後にallowlist検証で弾かれないため)。
 export const DEFAULT_ALLOWED_CHAT_MODELS = [
   'gpt-5.4-mini',
   'gpt-5.4-nano-2026-03-17',

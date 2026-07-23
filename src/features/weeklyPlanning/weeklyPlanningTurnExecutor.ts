@@ -1,5 +1,11 @@
 import { getAiConfig, getAiConfigValidationMessage } from '../../lib/aiConfig';
 import type { Plan, ScheduleTemplate } from '../../types/domain';
+import {
+  isWeeklyPlanningStableV5RuntimeEnabled,
+} from './application/weeklyPlanningRuntimeMode';
+import {
+  executeWeeklyPlanningStableV5RuntimeTurn,
+} from './application/weeklyPlanningStableV5RuntimeExecutor';
 import { createAiWeeklyPlanningDialogueRenderer } from './dialogue/weeklyPlanningAiDialogueRenderer';
 import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDialogueRenderer';
 import { createAiWeeklyPlanningInterpreter } from './intake/weeklyPlanningAiInterpreter';
@@ -42,6 +48,21 @@ export interface WeeklyPlanningTurnSubmissionResult {
 export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
+  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
+    return executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: input.previousState,
+      messages: input.messages,
+      userText: input.userText,
+      selectedDate: input.selectedDate,
+      userId: input.userId,
+      plans: input.plans,
+      scheduleTemplates: input.scheduleTemplates,
+      timetableTermId: input.timetableTermId,
+      conversationId: input.conversationId,
+      traceRequestId: input.traceRequestId,
+    });
+  }
+
   const pipelineInput = {
     previousState: input.previousState,
     recentTurns: input.messages

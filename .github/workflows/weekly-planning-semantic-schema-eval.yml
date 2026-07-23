@@ -1,0 +1,53 @@
+name: Weekly Planning Stable V5 Semantic Eval
+
+on:
+  push:
+    branches:
+      - test/weekly-planning-semantic-schema-eval
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/features/weeklyPlanning/semantic/**'
+      - '.github/workflows/weekly-planning-semantic-schema-eval.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  models: read
+
+concurrency:
+  group: weekly-planning-semantic-stable-v5-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL: '1'
+      GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Stable V5 semantic evaluation
+        id: eval
+        continue-on-error: true
+        run: >-
+          npm run test:run --
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticV5.real-eval.test.ts
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-semantic-v5-real-eval
+          path: artifacts/weekly-planning-semantic-v5-real-eval.json
+          if-no-files-found: warn
+      - name: Propagate evaluation failure
+        if: steps.eval.outcome == 'failure'
+        run: exit 1

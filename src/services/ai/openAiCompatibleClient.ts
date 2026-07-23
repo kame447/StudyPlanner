@@ -31,6 +31,7 @@ interface ChatCompletionRequest {
   temperature: number;
   messages: ChatMessage[];
   response_format?: JsonSchemaResponseFormat;
+  max_completion_tokens?: number;
 }
 
 interface ChatCompletionChoice {
@@ -83,6 +84,7 @@ export interface OpenAiCompatibleClient {
     temperature?: number;
     responseFormat?: JsonSchemaResponseFormat;
     purpose?: AiChatPurpose;
+    maxCompletionTokens?: number;
   }): Promise<string>;
 }
 
@@ -95,6 +97,7 @@ export function createOpenAiCompatibleClient(
       temperature = 0.2,
       responseFormat,
       purpose,
+      maxCompletionTokens,
     }) {
       if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
         const proxyUrl = getCloudflareAiProxyUrl();
@@ -118,6 +121,9 @@ export function createOpenAiCompatibleClient(
           temperature,
           messages,
           response_format: responseFormat,
+          ...(maxCompletionTokens === undefined
+            ? {}
+            : { max_completion_tokens: maxCompletionTokens }),
         };
         const logModel = purpose ? `purpose:${purpose}` : config.model;
 
@@ -173,6 +179,9 @@ export function createOpenAiCompatibleClient(
         temperature,
         messages,
         response_format: responseFormat,
+        ...(maxCompletionTokens === undefined
+          ? {}
+          : { max_completion_tokens: maxCompletionTokens }),
       };
       const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',

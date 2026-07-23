@@ -16,6 +16,7 @@ export interface OpenAiCompatibleClient {
     temperature?: number;
     responseFormat?: JsonSchemaResponseFormat;
     purpose?: AiChatPurpose;
+    maxCompletionTokens?: number;
   }): Promise<string>;
 }
 

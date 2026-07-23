@@ -8,8 +8,14 @@ import {
   Palette,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   SunMoon,
 } from 'lucide-react';
+import {
+  getWeeklyPlanningRuntimeMode,
+  setWeeklyPlanningRuntimeMode,
+  type WeeklyPlanningRuntimeMode,
+} from '../features/weeklyPlanning/application/weeklyPlanningRuntimeMode';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
 import {
   THEME_PALETTE_OPTIONS,
@@ -39,6 +45,8 @@ export function AppSettingsDialog({
 }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
   const [isThemePaletteSectionOpen, setIsThemePaletteSectionOpen] = useState(false);
+  const [weeklyPlanningRuntimeMode, setRuntimeModeState] =
+    useState<WeeklyPlanningRuntimeMode>(() => getWeeklyPlanningRuntimeMode());
   const {
     weekStartsOn,
     setWeekStartsOn,
@@ -49,17 +57,18 @@ export function AppSettingsDialog({
     THEME_PALETTE_OPTIONS[0];
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     setActiveTab('settings');
     setIsThemePaletteSectionOpen(false);
+    setRuntimeModeState(getWeeklyPlanningRuntimeMode());
   }, [open]);
 
-  if (!open) {
-    return null;
+  function changeWeeklyPlanningRuntimeMode(mode: WeeklyPlanningRuntimeMode): void {
+    setWeeklyPlanningRuntimeMode(mode);
+    setRuntimeModeState(mode);
   }
+
+  if (!open) return null;
 
   return (
     <div className="overlay modal-overlay app-settings-overlay" onClick={onClose}>
@@ -219,6 +228,34 @@ export function AppSettingsDialog({
                   <RotateCcw aria-hidden="true" size={18} strokeWidth={1.9} />
                   学習設定を初期化
                 </button>
+              </section>
+
+              <section className="assistant-settings-card">
+                <div className="field">
+                  <span className="settings-field-label">
+                    <Sparkles aria-hidden="true" size={20} strokeWidth={1.9} />
+                    週間計画AI
+                  </span>
+                  <div className="segmented-control">
+                    <button
+                      className={weeklyPlanningRuntimeMode === 'legacy' ? 'segment active' : 'segment'}
+                      onClick={() => changeWeeklyPlanningRuntimeMode('legacy')}
+                      type="button"
+                    >
+                      現行方式
+                    </button>
+                    <button
+                      className={weeklyPlanningRuntimeMode === 'stable_v5' ? 'segment active' : 'segment'}
+                      onClick={() => changeWeeklyPlanningRuntimeMode('stable_v5')}
+                      type="button"
+                    >
+                      Stable V5
+                    </button>
+                  </div>
+                  <p className="detail-note">
+                    Stable V5では、AIが入力を厳密な意味スキーマへ変換し、質問選択と予定配置はアプリ側で決定します。切替時は週間計画の会話を初期化します。
+                  </p>
+                </div>
               </section>
 
               <section className="assistant-settings-card app-settings-placeholder">
