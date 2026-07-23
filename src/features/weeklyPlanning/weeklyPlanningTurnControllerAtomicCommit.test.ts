@@ -92,7 +92,7 @@ describe('weekly planning controller runtime commit boundary', () => {
     expect(state.messages.filter((message) => message.role === 'assistant')).toHaveLength(0);
   });
 
-  it('commits runtime state only after confirming the same pending turn', async () => {
+  it('commits runtime state only after the reducer accepts the same pending turn', async () => {
     let state = createInitialPlanningState('2026-07-20');
     const session = createWeeklyPlanningControllerSession(
       'owner-1',
@@ -124,11 +124,45 @@ describe('weekly planning controller runtime commit boundary', () => {
     expect(result.accepted).toBe(true);
     expect(order).toEqual([
       'begin_turn',
-      'runtime_commit',
       'commit_turn',
+      'runtime_commit',
       'committed_callback',
     ]);
     expect(state.pendingTurn).toBeUndefined();
     expect(state.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('does not commit runtime state when the reducer rejects commit_turn', async () => {
+    let state = createInitialPlanningState('2026-07-20');
+    const session = createWeeklyPlanningControllerSession(
+      'owner-1',
+      '2026-07-20',
+      'conversation-1',
+    );
+    const commitExecutionResult = vi.fn();
+    const discardExecutionResult = vi.fn();
+
+    const result = await submitWeeklyPlanningControlledTurn({
+      session,
+      ownerId: 'owner-1',
+      userText: '予定を立てたい',
+      getState: () => state,
+      dispatch(action) {
+        if (action.type === 'commit_turn') return state;
+        state = weeklyPlanningReducer(state, action);
+        return state;
+      },
+      execute: async () => executionResult(),
+      commitExecutionResult,
+      discardExecutionResult,
+      now: () => '2026-07-23T09:00:00.000Z',
+    });
+
+    expect(result).toEqual({ accepted: false, draftCandidates: [] });
+    expect(commitExecutionResult).not.toHaveBeenCalled();
+    expect(discardExecutionResult).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'commit_rejected' }),
+    );
+    expect(state.pendingTurn).toBeDefined();
   });
 });
