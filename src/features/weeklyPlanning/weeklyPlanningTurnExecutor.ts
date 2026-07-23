@@ -16,6 +16,7 @@ import {
 import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
 import { WeeklyPlanningSemanticInterpreterError } from './pipeline/weeklyPlanningSemanticInterpreterError';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
+import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningMessage } from './types';
 
 const RECENT_TURN_LIMIT = 6;
@@ -38,6 +39,7 @@ export interface WeeklyPlanningTurnExecutionResult {
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
+  stableV5Graph?: WeeklyPlanningFactGraphV5;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {

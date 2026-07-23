@@ -1,6 +1,13 @@
 import {
   isWeeklyPlanningStableV5RuntimeEnabled,
 } from './application/weeklyPlanningRuntimeMode';
+import {
+  getWeeklyPlanningStableV5RuntimeSessionForScope,
+} from './application/weeklyPlanningStableV5RuntimeSession';
+import {
+  loadWeeklyPlanningStableV5PersistedSession,
+  saveWeeklyPlanningStableV5PersistedSession,
+} from './application/weeklyPlanningStableV5SessionStorage';
 import type { PlanningState } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
 import {
@@ -59,20 +66,16 @@ function decodePayload(
   }
 }
 
-function persistentPlanningState(state: PlanningState): PlanningState {
-  if (!isWeeklyPlanningStableV5RuntimeEnabled()) return state;
-  // Fact Graph V5 is intentionally session-memory only at this gate. Persisting the
-  // conversation without its graph would restore a misleading, unusable session.
-  return createInitialPlanningState(state.weekStartDate);
-}
-
 export function loadOwnedWeeklyPlanningState(
   userId: string,
   weekStartDate: string,
 ): PlanningState {
   if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
   if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    return createInitialPlanningState(weekStartDate);
+    return loadWeeklyPlanningStableV5PersistedSession({
+      ownerId: userId,
+      weekStartDate,
+    })?.planningState ?? createInitialPlanningState(weekStartDate);
   }
   const key = getStorageKey(userId, weekStartDate);
 
@@ -119,8 +122,24 @@ export function saveOwnedWeeklyPlanningState(
     return;
   }
 
-  const persistentState = persistentPlanningState(state);
-  saveLegacyWeeklyPlanningState(userId, persistentState);
+  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
+    if (state.pendingTurn || state.pendingApproval) return;
+    const runtimeSession = getWeeklyPlanningStableV5RuntimeSessionForScope({
+      ownerId: userId,
+      weekStartDate: state.weekStartDate,
+    });
+    if (!runtimeSession) return;
+    saveWeeklyPlanningStableV5PersistedSession({
+      ownerId: userId,
+      weekStartDate: state.weekStartDate,
+      conversationId: runtimeSession.conversationId,
+      graph: runtimeSession.graph,
+      planningState: state,
+    });
+    return;
+  }
+
+  saveLegacyWeeklyPlanningState(userId, state);
   const payloadRaw = window.localStorage.getItem(key);
   if (!payloadRaw) return;
 
