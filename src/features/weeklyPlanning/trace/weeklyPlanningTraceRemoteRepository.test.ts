@@ -176,6 +176,21 @@ describe('createRemoteWeeklyPlanningTraceRepository', () => {
     expect(apiClient.append).toHaveBeenCalledTimes(3);
   });
 
+  it('retries a transient append failure with the same canonical handle', async () => {
+    const apiClient = client();
+    vi.mocked(apiClient.append)
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce(undefined);
+    const repository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+
+    await repository.appendEntries({ session: SESSION, entries: [entry(0)] });
+
+    expect(apiClient.startSession).toHaveBeenCalledTimes(1);
+    expect(apiClient.append).toHaveBeenCalledTimes(2);
+    const payloads = vi.mocked(apiClient.append).mock.calls.map(([payload]) => payload);
+    expect(payloads[1]).toEqual(payloads[0]);
+  });
+
   it('retries session issuance after a failed start instead of caching the rejection', async () => {
     const apiClient = client();
     vi.mocked(apiClient.startSession)
