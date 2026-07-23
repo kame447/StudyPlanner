@@ -256,6 +256,9 @@ export function hasWeeklyPlanningStableV5StagedGraph(params: {
   return stagedGraphs.has(stagedKey(params.conversationId, params.requestId));
 }
 
+export const hasWeeklyPlanningStableV5StagedGraphForTest =
+  hasWeeklyPlanningStableV5StagedGraph;
+
 export function clearWeeklyPlanningStableV5RuntimeSession(
   conversationId: string,
 ): void {
