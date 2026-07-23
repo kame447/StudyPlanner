@@ -13,14 +13,24 @@ import type {
   WeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 
-const emptyCollections = {
-  relations: [],
-  availabilityDeclarations: [],
-  constraintSourceRequests: [],
-  uncertainties: [],
-  corrections: [],
-  decisions: [],
-} as const;
+function emptyCollections(): Pick<
+  WeeklyPlanningSemanticDocumentV5,
+  | 'relations'
+  | 'availabilityDeclarations'
+  | 'constraintSourceRequests'
+  | 'uncertainties'
+  | 'corrections'
+  | 'decisions'
+> {
+  return {
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
 
 function taskDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -60,7 +70,7 @@ function taskDocument(): WeeklyPlanningSemanticDocumentV5 {
       recurrence: [],
       sourceText: '問題集を10ページ進めたい',
     }],
-    ...emptyCollections,
+    ...emptyCollections(),
   };
 }
 
@@ -88,7 +98,7 @@ function durationAnswer(): WeeklyPlanningSemanticDocumentV5 {
       recurrence: [],
       sourceText: '3時間です',
     }],
-    ...emptyCollections,
+    ...emptyCollections(),
   };
 }
 
@@ -98,7 +108,7 @@ function authorizationDocument(): WeeklyPlanningSemanticDocumentV5 {
     planningIntent: 'create_plan',
     planningWindow: null,
     tasks: [],
-    ...emptyCollections,
+    ...emptyCollections(),
   };
 }
 
