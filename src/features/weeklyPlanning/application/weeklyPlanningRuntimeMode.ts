@@ -6,6 +6,8 @@ export const WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT =
 
 export type WeeklyPlanningRuntimeMode = 'legacy' | 'stable_v5';
 
+let runtimeOverride: WeeklyPlanningRuntimeMode | null = null;
+
 function parseRuntimeMode(value: unknown): WeeklyPlanningRuntimeMode | null {
   if (value === 'legacy') return 'legacy';
   if (value === 'stable_v5' || value === 'stable-v5') return 'stable_v5';
@@ -46,17 +48,18 @@ function dispatchModeChange(mode: WeeklyPlanningRuntimeMode): void {
 }
 
 export function getWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
-  return queryOverride() ?? storedMode() ?? environmentDefault();
+  return queryOverride() ?? runtimeOverride ?? storedMode() ?? environmentDefault();
 }
 
 export function setWeeklyPlanningRuntimeMode(
   mode: WeeklyPlanningRuntimeMode,
 ): WeeklyPlanningRuntimeMode {
+  runtimeOverride = mode;
   if (typeof window !== 'undefined') {
     try {
       window.sessionStorage.setItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY, mode);
     } catch {
-      // The current tab still switches through the event even if storage is unavailable.
+      // runtimeOverride keeps the selected mode for the current tab.
     }
     dispatchModeChange(mode);
   }
@@ -65,6 +68,7 @@ export function setWeeklyPlanningRuntimeMode(
 
 export function resetWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
   const fallback = environmentDefault();
+  runtimeOverride = null;
   if (typeof window !== 'undefined') {
     try {
       window.sessionStorage.removeItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY);
@@ -74,6 +78,10 @@ export function resetWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
     dispatchModeChange(fallback);
   }
   return fallback;
+}
+
+export function resetWeeklyPlanningRuntimeModeForTest(): void {
+  runtimeOverride = null;
 }
 
 export function isWeeklyPlanningStableV5RuntimeEnabled(): boolean {
