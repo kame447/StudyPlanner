@@ -26,7 +26,14 @@ export function WeeklyPlanningConversation({
   );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
+    if (
+      typeof window === 'undefined'
+      || typeof window.addEventListener !== 'function'
+      || typeof window.removeEventListener !== 'function'
+    ) {
+      return undefined;
+    }
+
     const syncRuntimeMode = () => setRuntimeModeState(getWeeklyPlanningRuntimeMode());
     window.addEventListener(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT, syncRuntimeMode);
     return () => window.removeEventListener(
@@ -40,6 +47,7 @@ export function WeeklyPlanningConversation({
     if (
       messages.length > 0
       && typeof window !== 'undefined'
+      && typeof window.confirm === 'function'
       && !window.confirm(
         '実行方式を切り替えると、現在の週間計画の会話と未保存previewを初期化します。切り替えますか？',
       )
