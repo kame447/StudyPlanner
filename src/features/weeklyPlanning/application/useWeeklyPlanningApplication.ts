@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Plan, PlanDraft, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
+  WeeklyPlanningAction,
   WeeklyPlanningMessage,
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
@@ -21,6 +22,7 @@ import {
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
+import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
 import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplication';
 import {
   classifyWeeklyPlanningApprovalAvailability,
@@ -125,6 +127,12 @@ export function useWeeklyPlanningApplication({
     );
   }
 
+  const dispatchAndPersist = useCallback((action: WeeklyPlanningAction): PlanningState => {
+    const next = dispatchPlanningAction(action);
+    saveOwnedWeeklyPlanningState(ownerId, next);
+    return next;
+  }, [dispatchPlanningAction, ownerId]);
+
   useEffect(() => {
     const session = controllerSessionRef.current;
     if (!session) return;
@@ -175,7 +183,7 @@ export function useWeeklyPlanningApplication({
         session,
         ownerId,
         getState: getPlanningState,
-        dispatch: dispatchPlanningAction,
+        dispatch: dispatchAndPersist,
       });
     };
     window.addEventListener(
@@ -186,7 +194,7 @@ export function useWeeklyPlanningApplication({
       WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
       handleRuntimeModeChange,
     );
-  }, [dispatchPlanningAction, getPlanningState, ownerId]);
+  }, [dispatchAndPersist, getPlanningState, ownerId]);
 
   const approvalOperations = approvalLedger.ownerId === ownerId
     ? approvalLedger.operations
@@ -210,7 +218,7 @@ export function useWeeklyPlanningApplication({
       ownerId: userId,
       userText,
       getState: getPlanningState,
-      dispatch: dispatchPlanningAction,
+      dispatch: dispatchAndPersist,
       async execute({ snapshot, pending, userText: controlledUserText }) {
         if (isWeeklyPlanningStableV5RuntimeEnabled()) {
           bindWeeklyPlanningStableV5RuntimeSessionScope({
@@ -241,12 +249,13 @@ export function useWeeklyPlanningApplication({
     if (!session) return;
     const weekStartDate = getPlanningState().weekStartDate;
     clearWeeklyPlanningStableV5PersistedSession({ ownerId, weekStartDate });
+    clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
     clearWeeklyPlanningStableV5RuntimeSessionsForScope({ ownerId, weekStartDate });
     resetWeeklyPlanningControlledSession({
       session,
       ownerId,
       getState: getPlanningState,
-      dispatch: dispatchPlanningAction,
+      dispatch: dispatchAndPersist,
     });
   }
 
@@ -260,7 +269,7 @@ export function useWeeklyPlanningApplication({
     const session = controllerSessionRef.current;
     const cleared = clearWeeklyPlanningControlledConversation({
       getState: getPlanningState,
-      dispatch: dispatchPlanningAction,
+      dispatch: dispatchAndPersist,
     });
     if (cleared && session) {
       clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
@@ -276,16 +285,16 @@ export function useWeeklyPlanningApplication({
     submitTurn,
     cancelTurn: () => cancelWeeklyPlanningControlledTurn({
       getState: getPlanningState,
-      dispatch: dispatchPlanningAction,
+      dispatch: dispatchAndPersist,
     }),
     clearConversation,
-    appendMessage: (message) => dispatchPlanningAction({ type: 'append_message', message }),
+    appendMessage: (message) => dispatchAndPersist({ type: 'append_message', message }),
     resetSession,
-    createDraftBlocks: (blocks) => dispatchPlanningAction({ type: 'add_draft_blocks', blocks }),
+    createDraftBlocks: (blocks) => dispatchAndPersist({ type: 'add_draft_blocks', blocks }),
     removePreviewCandidate: (candidateId) =>
-      dispatchPlanningAction({ type: 'remove_preview_candidate', candidateId }),
-    removeDraftBlock: (blockId) => dispatchPlanningAction({ type: 'remove_draft_block', blockId }),
-    clearDraftBlocks: () => dispatchPlanningAction({ type: 'clear_draft_blocks' }),
+      dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }),
+    removeDraftBlock: (blockId) => dispatchAndPersist({ type: 'remove_draft_block', blockId }),
+    clearDraftBlocks: () => dispatchAndPersist({ type: 'clear_draft_blocks' }),
     approveDraftBlocks: () => approveWeeklyPlanningDraftBlocks({
       userId,
       plans,
@@ -293,7 +302,7 @@ export function useWeeklyPlanningApplication({
       saveWeeklyApprovedPlan,
       completeWeeklyApprovalOperation,
       getState: getPlanningState,
-      dispatch: dispatchPlanningAction,
+      dispatch: dispatchAndPersist,
       onOperationCompleted: (operation) => {
         setApprovalLedger((current) => {
           const currentOperations = current.ownerId === ownerId
