@@ -1,274 +1,164 @@
-# 週間計画 汎用意味モデル v5 移行
+# 週間計画を汎用semantic V5へ移行する
 
-Status: active / semantic, availability, specific-date, scheduler-input, personalization-profile foundations implemented / production not connected
-開始日: 2026-07-22
-Branch: `test/weekly-planning-semantic-schema-eval`
-PR: #77
+Status: active / feature-flagged runtime trial connected
+最終更新: 2026-07-23
 
 ## 1. 目的
 
-週間計画を院試・過去問中心のcommand/state/scheduler構造から切り離し、すべての学習者と一般タスクを扱える汎用task modelへ移行する。
+院試専用typed command、exam state、exam schedulerへ意味解釈を閉じ込めず、一般学習、家事、仕事、生活予定を同じsemantic schemaとFact Graphで扱う。
+
+AIは自然言語を厳密なStable V5 semantic documentへ変換する。Fact ID、state revision、質問選択、予定配置、preview、approval、保存はアプリcoreが決定する。
+
+## 2. 実装済み
+
+- `WeeklyPlanningSemanticDocumentV5`
+- strict JSON Schema `weekly_planning_semantic_document_v5`
+- Stable V5 system/user prompt
+- direct validator
+- initial call + 最大一回repair
+- parser fallback禁止
+- lifecycle付きdirect canonicalizer
+- `WeeklyPlanningFactGraphV5`
+- active / superseded / removed lifecycle
+- task date、fixed commitment、availability resolver
+- generic work item / generic scheduler input
+- deterministic dialogue policy
+- deterministic preview scheduler
+- preview conversation / graph revision binding
+- owner-bound persistence envelopeとcutover guard
+- Stable V5 real-eval harness
+
+## 3. 実環境trial接続
+
+既存UIから次の経路を利用できるようにした。
 
 ```text
-SemanticTurnDocument
-├─ planning window
-├─ tasks
-│  ├─ study | non_study | unknown
-│  ├─ study details / components
-│  ├─ workloads
-│  ├─ effort estimates
-│  ├─ temporal constraints
-│  ├─ task date rules
-│  └─ recurrence
-├─ relations
-├─ availability declarations
-├─ explicit external source requests
-├─ uncertainties
-├─ corrections
-└─ decisions
-
-PlanningFactGraph
-├─ task / component / workload / effort
-├─ temporal constraint / task date rule / recurrence / relation
-├─ availability declaration / source request
-└─ correction / decision intent
-
-Resolved planning materials
-├─ generic work demand
-├─ fixed task reservation
-├─ task allowed / excluded dates
-├─ whole-day and clock-based availability windows
-└─ external source selection
+NaturalLanguageAssistant
+→ weeklyPlanningTurnExecutor
+→ Stable V5 runtime mode
+→ AI structured output
+→ Stable Fact Graph
+→ deterministic scheduler
+→ existing preview UI
+→ existing approval / Plan save
 ```
 
-個人最適化は一回の計画factへ混ぜず、アカウント単位のversion付きprofileとして保持する。
+有効化:
 
-## 2. 固定済み方針
+```text
+アプリ設定 → 週間計画AI → Stable V5
+```
 
-- raw user textの意味解釈主体は単一AI semantic normalizerだけとする。
-- AIはcommand、state mutation、missing slot、readiness、preview、scheduler、approval、saveを決定しない。
-- AI出力後にraw textを再解析しない。
-- provider failure、空応答、不正JSON、schema不一致、repair失敗でもparserへfallbackしない。
-- AI出力をそのまま永続化せず、deterministic canonicalizerで正式factへ変換する。
-- task、component、workload、effort、temporal constraint、task date rule、recurrence、relationを独立factとして扱う。
-- workloadと所要時間見積りを分離する。
-- task局所期間と計画全体のplanning windowを分離する。
-- workloadとavailabilityを分離する。
-- timetable、existing plans、calendarの本文をAIに再生成させない。
-- external sourceはowner-bound authoritative dataからcoreが解決する。
-- 日付と時間帯を分離し、後段で日本語日時を再解析しない。
-- 一日計画、taskの特定日、計画全体の終日休みを別の意味として扱う。
-- 個人最適化係数は単発AI出力から直接保存しない。
-- 新旧意味経路を同一turnでmergeしない。
-- request ownership、stale rejection、preview authorization、approval、storage、security境界を維持する。
+開発・preview環境では次も利用できる。
 
-## 3. 作業手順
+```text
+?weeklyPlanningRuntime=stable-v5
+VITE_WEEKLY_PLANNING_RUNTIME_MODE=stable_v5
+```
 
-各作業単位の開始前に次を確認する。
+defaultはlegacyである。現行方式へ戻すと即時rollbackし、会話とGraphを初期化する。
 
-- `weekly-planning-current-contract-v5.md`
-- `weekly-planning-semantic-schema-v5.md`
-- `weekly-planning-dialogue-architecture-v5.md`
-- `weekly-planning-availability-architecture-v5.md`
-- `weekly-planning-semantic-v5-roadmap.md`
-- 本MD
+## 4. 実環境安全境界
 
-完了後は変更、判断、注意点、検証結果、production接続状態を対応MDへ記録する。
+- existing planとtimetableのevent本文・ID・日時をAIへ渡さない。
+- AIは予定日時を配置しない。
+- provider/schema failureでparser fallbackしない。
+- Graph revision不一致を拒否する。
+- 古いpreviewを承認できない。
+- 全作業を配置できない場合はpartial previewを返さない。
+- non-study taskを`other`として保存する。
+- runtime切替時に旧経路とStable Graphを混在させない。
+- Graph V5未永続化中はStable会話・preview・draftをlocalStorageへ保存しない。
 
-## 4. Gate進捗
+## 5. multi-turn
 
-### A. 正本文書
+次の短答を決定論的に既存factへ結合する。
 
-- [x] architecture v5、schema overview、current contract、roadmap、active taskを正本化する。
-- [x] v4とtyped command/exam専用設計をhistoricalへ降格する。
-- [x] availability / external source / specific date / personalizationの正本文書を同期する。
+```text
+3時間です
+→ 単一のmissing effort targetへtotal durationを追加
 
-### B. SemanticTurnDocument
+今回進めたい量です
+→ 単一のunresolved workloadをtargetへsupersede
+```
 
-- [x] generic task、component、workload、effort、temporal、recurrence、relationを追加する。
-- [x] `quantityRole = declared | target | remaining | completed | unknown`を採用する。
-- [x] constraint level、plan-wide availability、external source request、named time periodを追加する。
-- [x] 日付と時間帯を別fieldへ分離する。
-- [x] canonical date tokenと`custom:`境界を追加する。
-- [x] `allowed_date | excluded_date`をtask-specific date ruleとして追加する。
-- [x] date ruleへclock/named period/soft strengthを許可しない。
-- [x] runtime validator、response-local ID、参照整合、repair境界を実装する。
-- [x] raw response本文をdiagnosticsへ残さない。
-- [ ] alpha1/alpha2を一つのstable schemaへ統合する。
-- [ ] stable schemaでreal API evalを再実行する。
+expected revision一致、短い応答、単一target、単一candidateの場合だけ適用する。対象factの選択はAIへ任せない。
 
-### C. PlanningFactGraph / canonicalizer
+作成許可だけのturnでは既存factを再出力しない。
 
-- [x] 正式ID、revision、source factをcoreが発行する。
-- [x] local ID参照、親子関係、task relationを検証する。
-- [x] 不完全なfactを破棄しない。
-- [x] 同一turnのatomic commitと失敗時無変更を保証する。
-- [x] constraint level、named time period、availability、source requestを正式factへ保持する。
-- [x] task date ruleを通常temporal constraintから分離して正式factへ保持する。
-- [x] task date ruleのID、diff、local mappingを追加する。
-- [ ] active / superseded / removed lifecycleを追加する。
-- [ ] correction、delete、proposal decisionをstable public refへ実適用する。
-- [ ] persisted graph migrationを実装する。
+```text
+この条件で予定を作って
+→ planningIntent=create_plan
+→ 新規factなし
+```
 
-### D. AI semantic normalizer / shadow
+## 6. preview scheduler
 
-- [x] 現行interpreterとは別moduleで実装する。
-- [x] initial call＋最大一回repairだけを許可する。
-- [x] provider/schema failure時にfail closedする。
-- [x] parser fallbackを持たない。
-- [x] request byte、response length、latency、attempt、validation errorを記録する。
-- [x] production stateを書き換えないshadow evaluatorを追加する。
-- [x] 専用purpose routingとclient output token要求を追加する。
-- [ ] Workerのpurpose別output token上限を固定する。
-- [ ] production turnからfeature flag付きshadow callを起動する。
+- default 09:00–22:00
+- existing plans / timetable / fixed reservationsをoccupiedとして反映
+- hard unavailable / availableを反映
+- task allowed / excluded datesを反映
+- splittable workを原則60分へ分割
+- bufferを確保
+- insufficient capacityでは全候補を破棄して再調整を要求
 
-### E. Work demand / availability / scheduler input
+## 7. 検証コード
 
-- [x] task/component/workloadからgeneric work demandを生成する。
-- [x] `exam_year`を一般単位の一つとして扱う。
-- [x] ordinal rangeとactual rangeを分離する。
-- [x] estimated minutes、quantity role、range不足をblocking issueとして返す。
-- [x] user-declared availabilityを具体windowへ解決する。
-- [x] external source selectionとauthoritative event importを追加する。
-- [x] 外部取得を`success(events) | failure(reason)`へ限定し、自動再試行する。
-- [x] fixed taskをtask ID付きreservationへ変換する。
-- [x] calendar/date/named-time処理を共通化する。
-- [x] task allowed/excluded date resolverを追加する。
-- [x] fixed reservationへtask date ruleを適用する。
-- [x] date-only hard unavailableを終日windowへ変換する。
-- [x] work、reservation、task-date、availability、relation、planning windowをscheduler input v2へ統合する。
-- [x] fixed taskを可動work itemから除外する。
-- [x] 特定日除外で固定予約が消えても可動workへ戻さない。
-- [x] hard occupied/unavailable windowを保持する。
-- [x] unresolved issueがあればinput全体を生成しない。
-- [ ] 旧schedulerへのtemporary one-way adapterを実装する。
+追加済み:
 
-### F. Dialogue / readiness
+- runtime mode test
+- Stable runtime executor integration test
+- Stable creation-authorization prompt test
+- contextual short-answer test
+- task → 3時間です → 作成許可の三段階pipeline test
+- deterministic preview scheduler test
+- existing plan conflict test
+- insufficient capacity atomic rejection test
+- PlanType bridge test
+- preview stale revision test
+- production entrypoint boundary test
 
-- [x] accepted fact diffからgrounded acknowledgement素材を生成する。
-- [x] 一度に一件の高影響質問を選ぶpure policyを追加する。
-- [x] work/source/availability/commitment/relationのblocking issueを統合する。
-- [x] task date ruleのcustom date、orphan、invalid strength、allow/exclude conflictを統合する。
-- [x] explicit authorization、conversation、revisionを確認するpreview gateを追加する。
-- [x] 外部取得失敗時もconversationと入力内容を保持する案内へ変更する。
-- [ ] unified rendererへ接続する。
-- [ ] exam専用rendererを削除する。
+## 8. 未確認
 
-### P. Personalization profile
+GitHub Actionsがrunner step開始前にfailureとなり、logとartifactが生成されないため、Stable trial追加後の次は未確認である。
 
-- [x] profile schemaをv2へ更新する。
-- [x] feature versionとweight versionを追加する。
-- [x] context、scope、coefficient、provenance、confidence、updatedAtを持つparameterを追加する。
-- [x] time band、weekday、session length、completion、delay、interruption、reschedule、transition、sleep proximity、density、subject affinityを初期featureにする。
-- [x] coefficientを`-4〜4`へ制限する。
-- [x] unknown feature、不正key、不正係数をsanitizeする。
-- [x] parameter数を最大300件へ制限する。
-- [x] v1 profileを空placement model付きv2へ移行する。
-- [ ] production schedulerへread-onlyで接続する。
-- [ ] plan/actual集計からparameter候補を生成する。
-- [ ] 更新率、最小標本数、減衰、明示設定優先を固定する。
+```text
+semantic全test
+tsc --noEmit
+Vite production build
+Worker routing test
+Stable V5実AI real-eval
+branch previewでの実browser roleplay
+```
 
-### G. Production切替
+実行基盤failureをコード不合格またはAI評価失敗とは扱わない。ただし成功確認済みとも書かない。
 
-- [ ] executorを新経路へ一括切替する。
-- [ ] old persisted state migrationを実装する。
-- [ ] 旧prompt、command schema、exam専用state、adapter、rendererを削除する。
-- [ ] full roleplay、stable real-eval、七視点監査を完了する。
+## 9. 未完了
 
-## 5. 必須評価ケース
+- Graph V5 repository persistence
+- 現行stateからのdeterministic migration decoder
+- production shadow telemetry保存
+- calendar production adapter
+- personalization scoring
+- plan/actual learning pipeline
+- proposal decision実適用
+- 依存fact一括lifecycle transaction
+- full renderer統合
+- default cutover
+- Alpha runtime依存削除
 
-1. 院試過去問2分野＋研究15時まで＋前後関係。
-2. 資格試験の分野、問題数、1問あたり時間。
-3. 学校課題の締切、時間帯、複数task。
-4. 仕事・家事・移動と学習の混在。
-5. task局所期間がplanning windowへ漏れない。
-6. 一日だけのplanning horizonを保持する。
-7. taskを特定日だけ実行する。
-8. taskを特定日だけ除外する。
-9. recurring fixed taskから例外日を除外する。
-10. 計画全体の特定日を終日休みにする。
-11. allowed/excluded conflictを一件だけ確認する。
-12. custom dateを後段parserへ渡さない。
-13. correctionで対象factだけを変更する。
-14. provider failure時にstateを変更せずfallbackしない。
-15. 外部予定本文をAIが捏造しない。
-16. external source failureを「予定なし」と扱わない。
-17. fixed taskを可動work itemとして二重配置しない。
-18. personalization v1→v2 migrationが成立する。
-19. 不正係数・未知featureをprofileから除外する。
-20. personalization profileへraw conversation本文を保存しない。
+## 10. 次gate
 
-## 6. 主要な作業記録
+```text
+full automated verification
+→ branch preview deploy
+→ Stable V5を設定で有効化
+→ 実AI structured output確認
+→ browser roleplay
+→ 発見不具合修正
+→ migration / shadow / rollback検証
+→ default cutover判断
+→ 七視点監査
+```
 
-### API schema / generic semantic
-
-- GitHub Models APIで院試、学校課題、仕事＋TOEICを評価した。
-- task分離、数量対応、研究15時まで、前後関係を保持した。
-- 量の役割を早期確定しすぎないため`declared`を追加した。
-- generic task、deterministic fact ID、expected revision、duplicate turn guard、atomic proposalを実装した。
-
-### Availability / calendar / external source
-
-- user commitment、plan-wide availability、external sourceを分離した。
-- dateとnamed time periodを分離した。
-- 実在日付、閏年、月跨ぎ、月曜始まりを共通resolverへ集約した。
-- 外部取得は途中結果を公開せず、temporary failureを最大3回再試行する契約へ変更した。
-- success空配列を正常な予定なしとして扱う。
-
-### Generic scheduler input
-
-- work、fixed reservation、availability、source selection、relation、horizonを一つのimmutable inputへ統合した。
-- fixed task由来の可動workと見積りissueを抑制した。
-- orphan/self relationをblocking issueにした。
-- graph revision、owner、timezone、source fact refsを保持する。
-
-### Specific date
-
-- 一日計画をstart=endのplanning windowとして確認した。
-- task-specific `allowed_date | excluded_date`を追加した。
-- task date ruleを通常temporal constraintから分離した。
-- allow集合、exclude差引き、同日conflictを実装した。
-- date-only hard unavailableを終日windowへ変換した。
-- recurring fixed reservationへ例外日を適用した。
-- scheduler inputをv2へ更新し、task date eligibilityを追加した。
-
-### Personalization profile
-
-- profile schemaをv2へ更新した。
-- 全ユーザー共通weightとユーザー固有parameterを分離した。
-- parameterへversion、context、scope、provenance、confidence、updatedAtを持たせた。
-- bounded coefficient、safe key、unknown feature rejection、最大件数を追加した。
-- v1 profileを安全にv2へ読み替える。
-
-## 7. 検証
-
-Cloudflare Pagesを代替実行環境として使用した。
-
-- semantic全test＋Worker routing: success。
-- full project TypeScript: success。
-- Vite production build: success。
-- 外部予定atomic retry一括検証: commit `47b66f8` success。
-- task date resolver: commit `8913477` success。
-- specific-date scheduler integration: commit `6514a81` success。
-- personalization profile v2: commit `86d1972` success。
-- date-rule validation: commit `e8c8c5c` success。
-- canonicalizer date-rule separation: commit `89e8942` success。
-- semantic全回帰＋personalization＋routing: commit `69bebad` success。
-- task-date dialogueを含むsemantic全回帰: commit `3d6d674` success。
-- full TypeScript＋Vite production build: commit `a4c29be` success。
-- temporary type-check configはcommit `bb4d951`で削除した。
-
-GitHub Actionsはrunner step開始前にfailureとなり、job log/artifactが生成されない状態が継続しているため、コード由来の判定には使用できていない。
-
-## 8. 現在の注意点
-
-- production executor、UI、repository、現行schedulerへ新経路はまだ接続していない。
-- 現行schedulerはtask date eligibilityをまだ消費しない。
-- personalization profile v2は保存・validation基盤のみで、配置scoreへ未接続である。
-- plan/actualから係数を更新するlearning pipelineは未実装である。
-- correction/decision intentは既存factへ実適用されない。
-- persisted state migrationは未実装である。
-- 旧prompt、typed command、exam state、exam rendererは残っている。
-- alpha1/alpha2はproduction採用前にstable schemaへ統合する必要がある。
-- Workerのsemantic normalizer出力上限は現状1200 tokenである。
-- GitHub Actions runner問題は未解決である。
+PR #77はDraftのまま維持し、mainへmergeしない。
