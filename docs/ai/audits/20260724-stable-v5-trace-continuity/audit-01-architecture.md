@@ -11,15 +11,19 @@ Stable V5の会話復元、controller、trace runtime、remote trace repository�
 
 同じ`logicalConversationId`を持つ対話状態は復元されていたが、trace runtimeはmodule-localな`activeSessions`だけを正本としていた。ページ再読込またはmodule再生成後は、同じ会話でも新しいlocal trace session IDを発行していた。
 
-同時にcontrollerの`requestSequence`もmemory-onlyであり、同じconversation IDを復元しても`request:1`と`turn:1`を再発行していた。つまり、conversation persistence、controller identity、trace persistenceの三境界が独立していた。
+controllerの`requestSequence`もmemory-onlyであり、同じconversation IDを復元しても`request:1`と`turn:1`を再発行していた。さらに、履歴を消去する`clear_conversation`はconversation IDを維持したままmessagesを空にするため、message列だけを復元根拠にすると再読込後にrequest IDを再利用した。
+
+remote repositoryもserver-issued handleをrepository instance内だけに保持していた。実serverのcanonical IDには30日secret epochが含まれるため、repository再生成後に`startSession`を再実行する設計ではepoch境界で同じconversationが別server sessionへ分裂し得た。
 
 ## 修正
 
-- controllerは現在の`PlanningState.messages`から同一conversationの最大turn番号を復元し、その次の番号を発行する。
-- trace runtimeはuser・conversationに拘束したmetadata-only cursorをlocalStorageへ保存し、30分以内の継続会話を同じtrace session、entry sequence、turn indexへ復帰させる。
-- remote repositoryのserver-issued ID契約は変更せず、同じlocal idempotency keyを再利用して同じserver sessionへ接続する。
+- controllerは現在の`PlanningState.messages`と永続化済み`revision`から単調なsequence下限を復元し、その次の番号を発行する。
+- trace runtimeはuser・conversationに拘束したmetadata-only cursorをlocalStorageへ保存し、idle時間に関係なく同じtrace session、entry sequence、turn indexへ復帰させる。
+- 30分idle timeoutをphysical session終了条件から除外する。
+- remote repositoryはserver-issued handleをowner・local sessionに拘束して保存し、repository再生成後も同じhandleへappendする。
+- serverがstructural rejectionを明示した場合だけhandleを再発行し、一時的network failureでは同じcanonical payloadを再送する。
 - persisted cursorは最大24件へ制限し、90日を超えるcursorを削除する。
 
 ## 残課題
 
-複数tabが同じconversationを同時に進める場合、browser間でsequenceを原子的に予約する契約は未実装である。現行UIの単一tab運用では今回の不具合を解消するが、cross-tab同時実行は別taskで扱う。
+複数tabが同じconversationを同時に進める場合、browser-wideにsequenceを原子的に予約する契約は未実装である。現行UIの単一tab運用では今回の不具合を解消するが、cross-tab同時実行は別taskで扱う。
