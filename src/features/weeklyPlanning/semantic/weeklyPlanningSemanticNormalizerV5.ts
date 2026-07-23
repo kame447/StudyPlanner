@@ -28,6 +28,11 @@ const CONTEXTUAL_ANSWER_INSTRUCTION_V5 = [
   'When the preceding question asks whether a quantity is the current target, remaining total, or completed amount, return exactly one minimal task containing exactly one workload with quantityRole target, remaining, or completed. Preserve the amount and unit visible in publicStateSummary when the short answer does not restate them.',
   'Do not select the target public fact yourself. Do not emit application commands or state mutations. Emit only the meaning of the short answer in the Stable V5 schema.',
 ].join('\n');
+const AUTHORIZATION_INSTRUCTION_V5 = [
+  'When the user only authorizes creation from the already accepted public state, for example この条件で予定を作って or それで仮予定を作って, set planningIntent to create_plan and return empty arrays for tasks, relations, availabilityDeclarations, constraintSourceRequests, uncertainties, corrections, and decisions unless the same utterance explicitly adds or changes a fact.',
+  'Do not copy accepted tasks or constraints from publicStateSummary into a creation-authorization response. publicStateSummary is context, not a request to re-emit existing facts.',
+  'When the user provides new planning facts and requests creation in the same utterance, set planningIntent to create_plan and include only those newly stated facts.',
+].join('\n');
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
   userText: string;
@@ -77,6 +82,7 @@ function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): Cha
         createWeeklyPlanningSemanticSystemPromptV5(),
         DATE_SET_NORMALIZATION_INSTRUCTION_V5,
         CONTEXTUAL_ANSWER_INSTRUCTION_V5,
+        AUTHORIZATION_INSTRUCTION_V5,
       ].join('\n'),
     },
     { role: 'user', content: createWeeklyPlanningSemanticUserPromptV5(input) },
