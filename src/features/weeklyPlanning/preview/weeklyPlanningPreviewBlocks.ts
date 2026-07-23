@@ -4,12 +4,13 @@ import type {
   WeeklyPlanningBehaviorMetadata,
 } from '../types';
 import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
+import { getWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
 
 export interface WeeklyPlanningStableV5PreviewMetadata {
   runtime: 'stable_v5';
-  conversationId: string;
+  conversationId?: string;
   graphRevision: number;
   taskId: string;
   sourceFactRefs: string[];
@@ -60,14 +61,24 @@ function stableV5MetadataFromCandidate(
   };
 }
 
+function stableV5ConversationId(
+  metadata: WeeklyPlanningStableV5PreviewMetadata,
+): string {
+  if (metadata.conversationId?.trim()) return metadata.conversationId;
+  const runtime = getWeeklyPlanningSessionRuntime();
+  if (runtime?.stateRevision === metadata.graphRevision) return runtime.conversationId;
+  return 'stable-v5-unbound';
+}
+
 function behaviorMetadataFromCandidate(
   candidate: WeeklyDraftCandidate,
   userId?: string,
 ): WeeklyPlanningBehaviorMetadata | undefined {
   const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
   if (stableV5Metadata) {
+    const conversationId = stableV5ConversationId(stableV5Metadata);
     return {
-      conversationId: stableV5Metadata.conversationId,
+      conversationId,
       stateRevision: stableV5Metadata.graphRevision,
       sourceFactRefs: [...stableV5Metadata.sourceFactRefs],
       usedAssumptionProposalRefs: [],
@@ -82,8 +93,8 @@ function behaviorMetadataFromCandidate(
       ...(userId
         ? {
             previewMetadata: {
-              previewId: `stable-v5-preview:${stableV5Metadata.conversationId}:${stableV5Metadata.graphRevision}`,
-              conversationId: stableV5Metadata.conversationId,
+              previewId: `stable-v5-preview:${conversationId}:${stableV5Metadata.graphRevision}`,
+              conversationId,
               stateRevision: stableV5Metadata.graphRevision,
               assumptionDependencies: [],
               approvalEligibility: 'eligible' as const,
