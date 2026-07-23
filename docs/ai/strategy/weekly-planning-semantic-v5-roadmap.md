@@ -2,6 +2,7 @@
 
 Status: canonical / active post-runtime-integration queue
 最終更新: 2026-07-24
+Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 
 - [Runtime trial contract](../weekly-planning-stable-v5-runtime-trial-contract.md)
 - [Current contract](../weekly-planning-current-contract-v5.md)
@@ -10,7 +11,7 @@ Status: canonical / active post-runtime-integration queue
 - [Schema registry](../../architecture/weekly-planning-semantic-schema-registry.md)
 - [Trace continuity七視点監査](../audits/20260724-stable-v5-trace-continuity/final-overseer.md)
 
-この文書はsemantic v5移行streamのqueue正本である。Stable V5 direct moduleとfeature-flagged runtime connectionはmainへ導入済みである。現在の中心課題はruntime trialの品質固定、real-eval、browser roleplay、shadow、migration、default cutoverである。
+この文書はsemantic V5移行streamのqueue正本である。Stable V5 direct moduleとfeature-flagged runtime connectionはmainへ導入済みである。現在の中心課題はPR #83のtrace continuity検証、real-eval、browser roleplay、shadow、migration、default cutoverである。
 
 ## 1. 到達済みruntime
 
@@ -28,9 +29,7 @@ Status: canonical / active post-runtime-integration queue
 → preview / approval / save
 ```
 
-browser内ではconversation、PlanningState、Fact Graph、preview、draftを一体復元する。Graph更新はrequest単位にstageし、PlanningState commit受理後だけfinalizeする。
-
-default runtimeはlegacyである。
+browser内ではconversation、PlanningState、Fact Graph、preview、draftを一体復元する。Graph更新はrequest単位にstageし、PlanningState commit受理後だけfinalizeする。default runtimeはlegacyである。
 
 ## 2. Gate status
 
@@ -38,7 +37,7 @@ default runtimeはlegacyである。
 
 Status: complete
 
-- architecture v5、schema overview、availability architecture、current contract、migration plan、roadmap、schema registryを正本化した。
+- architecture V5、schema overview、availability architecture、current contract、migration plan、roadmap、schema registryを正本化した。
 - pre-V5、Alpha 1、Alpha 2、Stable V5、Fact Graph V1/V2/V5の責務と廃止条件を分離した。
 - Stable識別子を確定した。
 
@@ -89,19 +88,27 @@ Remaining:
 
 ### V5-E: browser persistence and identity
 
-Status: implemented / trace continuity fixed on current branch
+Status: browser persistence implemented / trace continuity fixed on PR #83 branch / verification pending
 
 - owner・week・conversation拘束のStable V5 envelopeを実装した。
 - conversation、Graph、preview、draftを一体復元する。
 - pending turn / approvalの半端なsnapshotを保存しない。
-- controllerは復元messageから次turn sequenceを再構成する。
-- traceはmetadata-only cursorから同じsession、entry sequence、turn indexへ復帰する。
+- controllerは復元message IDとPlanningState revisionから次turn/request sequenceの単調下限を再構成する。
+- `clear_conversation`後にmessagesが空でも同じconversation内のrequest IDを再利用しない。
+- traceはmetadata-only cursorから同じlocal session、entry sequence、turn index、recent request dedupeへ復帰する。
+- 30分idleをphysical trace session終了条件から除外した。
 - append失敗時にsequenceを消費しないtransactional trace writeを実装した。
+- server-issued handleをowner・local sessionに拘束して保存し、remote repository再生成後も再利用する。
+- structural rejection時だけhandleを再発行し、一時的network failureでは同じcanonical payloadを再送する。
 
 Remaining:
 
+- focused/full/typecheck/buildの成功証跡
+- branch previewでreload・1時間idle・clear後reloadを実操作
+- admin exportが一つのsessionになることの確認
 - cross-tab同時実行のbrowser-wide sequence reservation
-- server / cross-device persistence
+- abrupt page close時の最終trace durability
+- server / cross-device Graph persistence
 
 ### V5-F: external source acquisition
 
@@ -164,7 +171,7 @@ V5-B direct semantic runtime           connected
 V5-C Fact Graph lifecycle              connected
 V5-D dialogue / scheduler              connected
 V5-E browser persistence               implemented
-V5-E trace continuity                  fixed on current branch
+V5-E trace continuity                  fixed on PR #83 branch / verification pending
 V5-F external source                   module complete / adapter pending
 V5-G real-eval / shadow                harness ready / execution pending
 V5-H persisted migration               not started
@@ -174,9 +181,10 @@ V5-I default cutover                    not started
 ## 4. 現在の依存順
 
 ```text
-trace continuity focused tests
+PR #83 focused trace tests
 → full Vitest / typecheck / production build
-→ branch preview two-turn export verification
+→ branch preview reload・idle・clear後再送
+→ admin export continuity確認
 → Stable V5 actual AI real-eval
 → full browser roleplay
 → read-only production shadow
@@ -192,11 +200,14 @@ trace continuity focused tests
 
 ### P0: trace continuity verification
 
-- focused test
-- full test
-- typecheck
-- build
-- browserで二turn継続
+- controller、reducer、traceを跨ぐ二turn結合test
+- runtime memory loss後の同一sessionと連続sequence
+- 1時間idle後の同一session
+- clear conversation + reload後のrequest ID非再利用
+- remote repository再生成後のserver handle再利用
+- stale handleとtransient append failure
+- focused test、full test、typecheck、build
+- browserでreload、idle、clear後再送
 - admin exportが一つのsessionになることを確認
 
 ### P1: dialogue grounding
@@ -206,6 +217,10 @@ trace continuity focused tests
 ### P1: cross-tab coordination
 
 同一owner・week・conversationを複数tabで同時操作した場合にrequest、turn、trace sequenceを一意に予約する。Web Locksまたはserver-authoritative reservationを比較し、fallback時のfail-closed動作を決める。
+
+### P1: final trace durability
+
+turn commit直後にpageを閉じた場合も最終traceを失わないdelivery境界を設計する。`sendBeacon`、service worker queue、server-side ingestion queueを比較し、会話commitをtrace成功へ同期させない方針を維持する。
 
 ### P2: actual AI real-eval / roleplay
 
@@ -224,7 +239,8 @@ old state decoderとdry-run fixtureを実装し、real-eval後にread-only shado
 - GraphとPlanningStateのcommitが非原子的である。
 - owner、week、conversation、preview freshnessを検証しない。
 - conversation復元後にturn/request/message IDを再利用する。
-- 同一conversationのtraceが通常操作で分裂する。
+- clear後のreloadでrequest IDを再利用する。
+- 同一conversationのtraceがreload、idle、repository再生成で分裂する。
 - append failureがsequence gapを作る。
 - external failureを予定0件として扱う。
 - actual AI real-eval、full browser roleplay、rollback verification、七視点監査が未完了である。
