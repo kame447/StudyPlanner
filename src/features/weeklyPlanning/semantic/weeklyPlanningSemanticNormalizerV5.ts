@@ -22,6 +22,12 @@ const DATE_SET_NORMALIZATION_INSTRUCTION_V5 = [
   'For a repeating task on explicitly named weekdays, create one recurrence fact with kind weekly and a single days array using only sun, mon, tue, wed, thu, fri, sat.',
   'Expand weekday ranges before returning JSON. For example, 水曜と金曜から日曜 becomes days [wed, fri, sat, sun]. Keep the entire weekday set in one recurrence fact rather than splitting it into multiple recurrence facts.',
 ].join('\n');
+const CONTEXTUAL_ANSWER_INSTRUCTION_V5 = [
+  'Use recentConversation and publicStateSummary to interpret short answers to the immediately preceding assistant question.',
+  'When the preceding question asks for the total time required and the user answers only a duration such as 3時間です, return exactly one minimal task containing exactly one effortEstimate with that duration in minutes. The task and target may use response-local IDs; the application core binds the structured answer to the single unresolved public fact.',
+  'When the preceding question asks whether a quantity is the current target, remaining total, or completed amount, return exactly one minimal task containing exactly one workload with quantityRole target, remaining, or completed. Preserve the amount and unit visible in publicStateSummary when the short answer does not restate them.',
+  'Do not select the target public fact yourself. Do not emit application commands or state mutations. Emit only the meaning of the short answer in the Stable V5 schema.',
+].join('\n');
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
   userText: string;
@@ -70,6 +76,7 @@ function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): Cha
       content: [
         createWeeklyPlanningSemanticSystemPromptV5(),
         DATE_SET_NORMALIZATION_INSTRUCTION_V5,
+        CONTEXTUAL_ANSWER_INSTRUCTION_V5,
       ].join('\n'),
     },
     { role: 'user', content: createWeeklyPlanningSemanticUserPromptV5(input) },
