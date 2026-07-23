@@ -149,7 +149,8 @@ describe('Stable V5 contextual answers', () => {
       userText: '今回進めたい量です',
     });
 
-    expect(result?.graph.workloads.at(-1)).toMatchObject({
+    const workloads = result?.graph.workloads ?? [];
+    expect(workloads[workloads.length - 1]).toMatchObject({
       taskId: 'task-1',
       quantityRole: 'target',
       amount: 10,
