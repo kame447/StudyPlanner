@@ -43,14 +43,16 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     pending: WeeklyPlanningPendingTurn;
     userText: string;
   }): Promise<WeeklyPlanningTurnExecutionResult>;
-  commitExecutionResult?(params: WeeklyPlanningControlledResultContext): void;
+  commitExecutionResult?(
+    params: WeeklyPlanningControlledResultContext,
+  ): void | Promise<void>;
   discardExecutionResult?(params: WeeklyPlanningControlledResultContext & {
     reason: 'stale' | 'commit_rejected' | 'failed';
-  }): void;
+  }): void | Promise<void>;
   onCommittedTurn?(params: WeeklyPlanningControlledResultContext & {
     committed: PlanningState;
     assistantMessage: WeeklyPlanningMessage;
-  }): void;
+  }): void | Promise<void>;
   onFailedTurn?(params: {
     snapshot: PlanningState;
     pending: WeeklyPlanningPendingTurn;
@@ -58,7 +60,7 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     error: unknown;
     failedState: PlanningState;
     assistantMessage: WeeklyPlanningMessage;
-  }): void;
+  }): void | Promise<void>;
   now?: () => string;
 }
 
@@ -126,6 +128,15 @@ function createTurnMessage(
   };
 }
 
+async function runBestEffort(callback: (() => void | Promise<void>) | undefined): Promise<void> {
+  if (!callback) return;
+  try {
+    await callback();
+  } catch {
+    // Persistence and trace side effects must not invalidate an already committed turn.
+  }
+}
+
 export const MAX_WEEKLY_PLANNING_USER_TEXT_LENGTH = 4_000;
 
 export async function submitWeeklyPlanningControlledTurn(
@@ -173,10 +184,9 @@ export async function submitWeeklyPlanningControlledTurn(
     result = await params.execute({ snapshot, pending, userText });
     const context = { snapshot, pending, userText, result };
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
-      params.discardExecutionResult?.({ ...context, reason: 'stale' });
+      await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
     }
-    params.commitExecutionResult?.(context);
     const assistantMessage = createTurnMessage(
       envelope,
       'assistant',
@@ -194,27 +204,32 @@ export async function submitWeeklyPlanningControlledTurn(
       && committed.weekStartDate === pending.weekStartDate
       && committed.revision === pending.baseRevision + 2;
     if (!accepted) {
-      params.discardExecutionResult?.({ ...context, reason: 'commit_rejected' });
+      await runBestEffort(() => params.discardExecutionResult?.({
+        ...context,
+        reason: 'commit_rejected',
+      }));
       return { accepted: false, draftCandidates: [] };
     }
-    params.onCommittedTurn?.({
+
+    await params.commitExecutionResult?.(context);
+    await runBestEffort(() => params.onCommittedTurn?.({
       ...context,
       committed,
       assistantMessage,
-    });
+    }));
     return {
       accepted: true,
       draftCandidates: result.draftCandidates,
     };
   } catch (error) {
     if (result) {
-      params.discardExecutionResult?.({
+      await runBestEffort(() => params.discardExecutionResult?.({
         snapshot,
         pending,
         userText,
         result,
         reason: 'failed',
-      });
+      }));
     }
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       return { accepted: false, draftCandidates: [] };
@@ -226,14 +241,14 @@ export async function submitWeeklyPlanningControlledTurn(
       pending,
       assistantMessage,
     });
-    params.onFailedTurn?.({
+    await runBestEffort(() => params.onFailedTurn?.({
       snapshot,
       pending,
       userText,
       error,
       failedState,
       assistantMessage,
-    });
+    }));
     throw error instanceof Error ? error : new Error(message);
   }
 }
