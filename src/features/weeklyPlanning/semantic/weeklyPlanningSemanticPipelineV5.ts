@@ -11,9 +11,14 @@ import {
   type GenericSchedulerInputContext,
 } from './weeklyPlanningGenericSchedulerInput';
 import {
-  canonicalizeWeeklyPlanningSemanticDocumentV5,
-  type WeeklyPlanningSemanticCanonicalizationResultV5,
+  canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
+} from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import type {
+  WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
+import {
+  createWeeklyPlanningActiveSchedulerGraphViewV5,
+} from './weeklyPlanningActiveSchedulerGraphViewV5';
 import type {
   WeeklyPlanningSemanticNormalizerInputV5,
   WeeklyPlanningSemanticNormalizerResultV5,
@@ -96,7 +101,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         };
       }
 
-      const canonicalization = canonicalizeWeeklyPlanningSemanticDocumentV5({
+      const canonicalization = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
         graph,
         document: normalization.document,
         context: {
@@ -117,7 +122,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
       }
 
       const scheduler = compileGenericSchedulerInput({
-        graph: canonicalization.graph,
+        graph: createWeeklyPlanningActiveSchedulerGraphViewV5(canonicalization.graph),
         context: input.schedulerContext,
         externalSources: input.externalSources,
       });
