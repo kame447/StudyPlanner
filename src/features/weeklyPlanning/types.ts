@@ -116,7 +116,7 @@ export type WeeklyPlanningAction =
   | {
       type: 'begin_turn';
       pending: WeeklyPlanningPendingTurn;
-      requestSequence: number;
+      requestSequence?: number;
       userMessage: WeeklyPlanningMessage;
     }
   | {
