@@ -3,19 +3,19 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const file = 'src/features/weeklyPlanning/weeklyPlanningTurnController.ts';
 const original = readFileSync(file, 'utf8');
-const helperStart = original.indexOf(
-  'export function inferWeeklyPlanningControllerRequestSequence(',
+const base = spawnSync(
+  'git',
+  ['show', 'a669b166db30fa3f355371c089062eb5cf4e3987:src/features/weeklyPlanning/weeklyPlanningTurnController.ts'],
+  {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: process.env,
+  },
 );
-const helperEnd = original.indexOf(
-  '\nfunction inferWeeklyPlanningControllerRevisionFloor',
-  helperStart,
-);
-if (helperStart < 0 || helperEnd < 0) {
-  throw new Error('controller helper isolation boundaries were not found');
+if (base.status !== 0 || !base.stdout) {
+  throw new Error(base.stderr || 'could not read the main controller');
 }
-const replacement = `export function inferWeeklyPlanningControllerRequestSequence(\n  _messages: readonly WeeklyPlanningMessage[],\n  _conversationId: string,\n): number {\n  return 0;\n}\n`;
-const modified = `${original.slice(0, helperStart)}${replacement}${original.slice(helperEnd + 1)}`;
-writeFileSync(file, modified);
+writeFileSync(file, base.stdout);
 
 let typecheck;
 try {
