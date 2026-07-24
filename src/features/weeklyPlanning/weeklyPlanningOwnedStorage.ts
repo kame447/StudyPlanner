@@ -11,6 +11,7 @@ import {
 import type { PlanningState } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
 import {
+  decodeWeeklyPlanningStatePayload,
   loadWeeklyPlanningState as loadLegacyWeeklyPlanningState,
   saveWeeklyPlanningState as saveLegacyWeeklyPlanningState,
 } from './weeklyPlanningStorage';
@@ -50,22 +51,6 @@ function belongsToUser(state: PlanningState, userId: string): boolean {
   );
 }
 
-function decodePayload(
-  userId: string,
-  weekStartDate: string,
-  payload: unknown,
-): PlanningState {
-  const key = getStorageKey(userId, weekStartDate);
-  const previous = window.localStorage.getItem(key);
-  try {
-    window.localStorage.setItem(key, JSON.stringify(payload));
-    return loadLegacyWeeklyPlanningState(userId, weekStartDate);
-  } finally {
-    if (previous === null) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, previous);
-  }
-}
-
 export function loadOwnedWeeklyPlanningState(
   userId: string,
   weekStartDate: string,
@@ -89,7 +74,7 @@ export function loadOwnedWeeklyPlanningState(
         window.localStorage.removeItem(key);
         return createInitialPlanningState(weekStartDate);
       }
-      const state = decodePayload(userId, weekStartDate, parsed.payload);
+      const state = decodeWeeklyPlanningStatePayload(parsed.payload, weekStartDate);
       if (!belongsToUser(state, userId)) {
         window.localStorage.removeItem(key);
         return createInitialPlanningState(weekStartDate);
