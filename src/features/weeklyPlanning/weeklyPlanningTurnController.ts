@@ -9,6 +9,7 @@ import type {
 } from './types';
 import type {
   WeeklyPlanningTurnExecutionResult,
+  WeeklyPlanningTurnFailure,
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutor';
 
@@ -62,6 +63,16 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     assistantMessage: WeeklyPlanningMessage;
   }): void | Promise<void>;
   now?: () => string;
+}
+
+class WeeklyPlanningControlledSemanticFailure extends Error {
+  readonly userMessage: string;
+
+  constructor(failure: WeeklyPlanningTurnFailure) {
+    super(failure.userMessage);
+    this.name = failure.traceCode;
+    this.userMessage = failure.userMessage;
+  }
 }
 
 function createIdentity(prefix: string): string {
@@ -211,6 +222,9 @@ export async function submitWeeklyPlanningControlledTurn(
   try {
     const executionResult = await params.execute({ snapshot, pending, userText });
     result = executionResult;
+    if (executionResult.failure) {
+      throw new WeeklyPlanningControlledSemanticFailure(executionResult.failure);
+    }
     const context: WeeklyPlanningControlledResultContext = {
       snapshot,
       pending,
@@ -269,7 +283,10 @@ export async function submitWeeklyPlanningControlledTurn(
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       return { accepted: false, draftCandidates: [] };
     }
-    const message = '週間計画の会話状態を更新できませんでした。';
+    const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
+    const message = controlledFailure
+      ? error.userMessage
+      : '週間計画の会話状態を更新できませんでした。';
     const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
     const failedState = params.dispatch({
       type: 'fail_turn',
@@ -284,6 +301,9 @@ export async function submitWeeklyPlanningControlledTurn(
       failedState,
       assistantMessage,
     }));
+    if (controlledFailure) {
+      return { accepted: true, draftCandidates: [] };
+    }
     throw error instanceof Error ? error : new Error(message);
   }
 }
