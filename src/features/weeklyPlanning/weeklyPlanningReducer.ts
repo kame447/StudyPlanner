@@ -138,24 +138,27 @@ export function weeklyPlanningReducer(
     case 'load_state':
       return action.state;
 
-    case 'begin_turn':
+    case 'begin_turn': {
+      const currentRequestSequence = state.conversationRequestSequence ?? 0;
+      const requestSequence = action.requestSequence ?? currentRequestSequence + 1;
       if (
         state.pendingTurn
         || state.pendingApproval
         || action.pending.weekStartDate !== state.weekStartDate
         || action.pending.baseRevision !== state.revision
-        || !Number.isSafeInteger(action.requestSequence)
-        || action.requestSequence <= (state.conversationRequestSequence ?? 0)
+        || !Number.isSafeInteger(requestSequence)
+        || requestSequence <= currentRequestSequence
       ) {
         return state;
       }
       return withMutation(state, {
         ...state,
-        conversationRequestSequence: action.requestSequence,
+        conversationRequestSequence: requestSequence,
         mode: state.mode === 'idle' ? 'collecting_tasks' : state.mode,
         messages: [...state.messages, action.userMessage],
         pendingTurn: action.pending,
       });
+    }
 
     case 'commit_turn':
       if (!canCommitTurn(state, action.pending)) return state;
