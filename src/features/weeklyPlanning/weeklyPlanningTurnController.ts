@@ -110,10 +110,10 @@ export function resetWeeklyPlanningControllerSession(
   session: WeeklyPlanningControllerSession,
   ownerId: string,
   weekStartDate: string,
-  conversationId = createIdentity('weekly-conversation'),
+  conversationId?: string,
 ): void {
   session.ownerId = ownerId;
-  session.conversationId = conversationId;
+  session.conversationId = conversationId ?? createIdentity('weekly-conversation');
   session.weekStartDate = weekStartDate;
   session.requestSequence = 0;
 }
