@@ -91,27 +91,29 @@ describe('Stable V5 failure contract', () => {
   it('does not disguise normalization rejection as needs_scope and keeps only redacted diagnostics', async () => {
     const traceRequestId = 'conversation-1:request:1';
     const pipeline = createWeeklyPlanningSemanticPipelineV5(rejectedNormalizer());
-    const pipelineResult = await pipeline.run({
-      conversationId: 'conversation-1',
-      turnId: traceRequestId,
-      expectedRevision: 0,
-      userText: '今日の計画を立ててください',
-      schedulerContext: {
-        ownerId: 'owner-1',
-        currentDate: '2026-07-24',
-        planningStartDate: '2026-07-24',
-        planningEndDate: '2026-07-24',
-        timeZone: 'Asia/Tokyo',
-        namedTimePeriods: {},
-      },
+    let pipelineStatus: string | null = null;
+    stableExecutorMock.mockImplementation(async () => {
+      const pipelineResult = await pipeline.run({
+        conversationId: 'conversation-1',
+        turnId: traceRequestId,
+        expectedRevision: 0,
+        userText: '今日の計画を立ててください',
+        schedulerContext: {
+          ownerId: 'owner-1',
+          currentDate: '2026-07-24',
+          planningStartDate: '2026-07-24',
+          planningEndDate: '2026-07-24',
+          timeZone: 'Asia/Tokyo',
+          namedTimePeriods: {},
+        },
+      });
+      pipelineStatus = pipelineResult.status;
+      return {
+        state: intakeState('needs_scope'),
+        message: 'AIの構造化結果を安全に採用できませんでした。内容を少し言い換えて、もう一度送ってください。',
+        draftCandidates: [],
+      } satisfies WeeklyPlanningTurnExecutionResult;
     });
-    expect(pipelineResult.status).toBe('normalization_rejected');
-
-    stableExecutorMock.mockResolvedValue({
-      state: intakeState('needs_scope'),
-      message: 'AIの構造化結果を安全に採用できませんでした。内容を少し言い換えて、もう一度送ってください。',
-      draftCandidates: [],
-    } satisfies WeeklyPlanningTurnExecutionResult);
 
     const result = await executeWeeklyPlanningTurn({
       messages: [],
@@ -124,6 +126,7 @@ describe('Stable V5 failure contract', () => {
       traceRequestId,
     });
 
+    expect(pipelineStatus).toBe('normalization_rejected');
     expect(result.state).toMatchObject({
       status: 'revision_pending',
       missing: [],
