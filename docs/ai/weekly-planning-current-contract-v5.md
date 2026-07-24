@@ -2,7 +2,7 @@
 
 Status: canonical / active for Stable V5 trial and remaining migration
 Updated: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
 
 - Runtime state: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
 - Schema registry: [weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)
@@ -149,9 +149,15 @@ local trace session ID: browser側の連続trace entry列
 server trace handle: server repository上のcanonical session identity
 ```
 
-同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDとPlanningState revisionから単調なsequence下限を復元して次番号を発行する。`clear_conversation`でmessagesが空になっても過去のrequest IDへ戻らない。
+同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDとPlanningState revisionから単調なsequence下限を復元して次番号を発行する。
+
+`clear_conversation`は画面に表示されるmessage履歴と最後のassistant表示だけを消す。同じconversation ID、request sequence、compatibility intake state、Fact Graph、preview、draft、approval作業状態、planning mode、persisted Stable V5 session、trace continuityを維持する。`clear_conversation`から`reset_session`を呼ばず、runtime、Graph、persisted session、trace sessionを削除しない。messagesが空になっても過去のrequest IDへ戻らない。
+
+`reset_session`は「最初からやり直す」操作である。messages、intake、preview、draft、approval、request sequence、conversation identity、Fact Graph、persisted Stable V5 sessionを初期化し、新しいconversationを発行する。
 
 Stable V5 browser envelopeはowner、week、conversationに拘束し、完了済みPlanningState、Fact Graph、preview、draftを一体保存する。pending turn / approval中の半端なstateは保存しない。不正envelopeを部分復元しない。
+
+versioned payloadのdecodeは純粋処理として行い、検証のためにlive localStorage keyへpayloadを一時書込みしない。明示的saveまたはlegacy migration commit以外で保存領域を変更しない。
 
 これは同一browser内の保存であり、server/cross-device Graph persistenceではない。旧stateからGraph V5へのmigration decoderは未実装である。
 
@@ -159,7 +165,7 @@ Stable V5 browser envelopeはowner、week、conversationに拘束し、完了済
 
 Stable V5 traceはuser/assistant turn、structured internal event、snapshot、preview、failureを既存repositoryへ保存する。raw provider response、stack trace、external event本文を保存しない。
 
-physical trace continuityのscopeは`owner ID + logical conversation ID`とする。同じscopeでは、module memory消失、ページ再読込、remote repository再生成、30分を超えるidleがあっても同じlocal trace session、連続sequence、連続turn index、同じserver-issued handleへ追記する。idle時間をconversation終了条件にしない。
+physical trace continuityのscopeは`owner ID + logical conversation ID`とする。同じscopeでは、module memory消失、ページ再読込、remote repository再生成、30分を超えるidle、表示message履歴の消去があっても同じlocal trace session、連続sequence、連続turn index、同じserver-issued handleへ追記する。idle時間または空のmessage配列をconversation終了条件にしない。
 
 metadata-only cursorからsession ID、entry sequence、turn index、recent request IDを復元する。cursorへconversation本文、Graph、semantic documentを保存しない。trace counterとrequest dedupeはrepository append成功後だけcommitし、write failureはsequenceを消費しない。
 
@@ -203,9 +209,11 @@ preview / approval / Plan save                  runtime connected
 browser conversation / Graph persistence        implemented
 staged Graph atomic commit                       implemented
 Stable V5 trace recording                        implemented
-trace continuity across reload / idle            fixed on current branch
-controller ID continuity after clear / reload    fixed on current branch
-remote server handle continuity                  fixed on current branch
+trace continuity across reload / idle            merged to main in PR #83
+controller ID continuity after clear / reload    merged to main in PR #83
+remote server handle continuity                  merged to main in PR #83
+message-only clear conversation boundary         implemented in Draft PR #86
+pure owner-bound storage decoder                 implemented in Draft PR #86
 default runtime                                  legacy
 server / cross-device Graph persistence          not implemented
 old state migration decoder                      not implemented
@@ -214,5 +222,7 @@ Stable V5 actual AI real-eval                     not confirmed
 full browser roleplay                             not confirmed
 default cutover                                   not started
 ```
+
+PR #86のfocused test、full Vitest、typecheck、buildは未確認である。GitHub Actionsはstep 0件・logsなしでrunner起動前に失敗しており、code test failureとは判定しない。PR #86はDraftのまま維持する。
 
 七視点監査は[audits/20260724-stable-v5-trace-continuity/final-overseer.md](audits/20260724-stable-v5-trace-continuity/final-overseer.md)を参照する。
