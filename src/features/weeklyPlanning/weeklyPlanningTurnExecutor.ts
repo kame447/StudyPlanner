@@ -35,11 +35,31 @@ export interface WeeklyPlanningTurnExecutionInput {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
 }
 
+export type WeeklyPlanningTurnFailureCode =
+  | 'stable_v5_provider_failure'
+  | 'stable_v5_normalization_rejected'
+  | 'stable_v5_canonicalization_rejected';
+
+export interface WeeklyPlanningTurnFailureDiagnostics {
+  attemptCount: number;
+  repairAttempted: boolean;
+  validationErrorCategories: string[];
+  providerErrorCategory: 'provider_error' | null;
+}
+
+export interface WeeklyPlanningTurnFailure {
+  code: WeeklyPlanningTurnFailureCode;
+  userMessage: string;
+  traceCode: string;
+  diagnostics: WeeklyPlanningTurnFailureDiagnostics;
+}
+
 export interface WeeklyPlanningTurnExecutionResult {
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
   stableV5Graph?: WeeklyPlanningFactGraphV5;
+  failure?: WeeklyPlanningTurnFailure;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {
