@@ -8,7 +8,7 @@ const result = spawnSync(
     '--config',
     'vite.config.mjs',
     'run',
-    'src/features/weeklyPlanning',
+    'src/features/weeklyPlanning/application',
   ],
   {
     cwd: process.cwd(),
@@ -18,5 +18,5 @@ const result = spawnSync(
   },
 );
 mkdirSync('dist', { recursive: true });
-writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>weeklyPlanning Vitest</title>');
+writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>weeklyPlanning application Vitest</title>');
 process.exit(result.status ?? 1);
