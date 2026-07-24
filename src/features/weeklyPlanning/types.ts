@@ -88,6 +88,7 @@ export interface WeeklyPlanningPendingApproval {
 export interface PlanningState {
   weekStartDate: string;
   revision: number;
+  conversationRequestSequence?: number;
   mode: WeeklyPlanningMode;
   draftBlocks: WeeklyPlanDraftBlock[];
   previewCandidates?: WeeklyDraftCandidate[];
@@ -115,6 +116,7 @@ export type WeeklyPlanningAction =
   | {
       type: 'begin_turn';
       pending: WeeklyPlanningPendingTurn;
+      requestSequence: number;
       userMessage: WeeklyPlanningMessage;
     }
   | {
