@@ -23,6 +23,9 @@ import {
   applyWeeklyPlanningStableV5ContextualAnswer,
   inferWeeklyPlanningStableV5ContextualQuestionCode,
 } from './weeklyPlanningStableV5ContextualAnswer';
+import {
+  recordWeeklyPlanningStableV5FailureDiagnostics,
+} from './weeklyPlanningStableV5FailureDiagnostics';
 import type {
   WeeklyPlanningSemanticNormalizerInputV5,
   WeeklyPlanningSemanticNormalizerResultV5,
@@ -85,6 +88,11 @@ export function createWeeklyPlanningSemanticPipelineV5(
       });
 
       if (normalization.status === 'provider_failure') {
+        recordWeeklyPlanningStableV5FailureDiagnostics({
+          turnId: input.turnId,
+          status: 'provider_failure',
+          diagnostics: normalization.diagnostics,
+        });
         return {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
           status: 'provider_failure',
@@ -95,6 +103,11 @@ export function createWeeklyPlanningSemanticPipelineV5(
         };
       }
       if (!normalization.document) {
+        recordWeeklyPlanningStableV5FailureDiagnostics({
+          turnId: input.turnId,
+          status: 'normalization_rejected',
+          diagnostics: normalization.diagnostics,
+        });
         return {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
           status: 'normalization_rejected',
@@ -130,6 +143,11 @@ export function createWeeklyPlanningSemanticPipelineV5(
           },
         });
       if (canonicalization.status === 'rejected') {
+        recordWeeklyPlanningStableV5FailureDiagnostics({
+          turnId: input.turnId,
+          status: 'canonicalization_rejected',
+          diagnostics: normalization.diagnostics,
+        });
         return {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
           status: 'canonicalization_rejected',
