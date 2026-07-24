@@ -1,6 +1,6 @@
 # 監査4: dialogue UX
 
-Status: fixed for identity continuity / grounding follow-up remains
+Status: fixed for identity continuity / grounding follow-up remains / local verification pending
 最終更新: 2026-07-24
 Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 
@@ -14,11 +14,16 @@ Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 
 ## 修正
 
-- 復元したmessage IDとPlanningState revisionからcontrollerの次sequenceを決定する。
-- messagesが空でも同じconversation内のturn/request/message IDを再利用しない。
+- PlanningStateへ`conversationRequestSequence`を明示保存する。
+- controllerはsession memory、`conversationRequestSequence`、有効なmessage IDの最大sequenceを比較し、その最大値より後のsequenceを発行する。
+- `begin_turn`は現在値より大きいsequenceだけを受理し、同じPlanningStateへ保存する。
+- `clear_conversation`はmessagesを消去しても`conversationRequestSequence`を保持する。
+- `reset_session`だけがsequenceを0へ戻し、新しいconversation scopeと組み合わせる。
 - trace session、entry sequence、turn indexを同じconversationへ継続する。
 - 30分を超えるidleを会話終了として扱わない。
 - 結合testで二つの発話が同じPlanningState、conversation ID、local trace session、server handleへ入り、request IDが1から2へ進むことを固定する。
+
+PlanningStateの一般的な`revision`からrequest sequenceを推測しない。revisionはstate mutation回数であり、request identityの専用counterではない。
 
 ## 対話内容に関する別所見
 

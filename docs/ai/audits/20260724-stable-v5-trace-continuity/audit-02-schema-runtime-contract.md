@@ -1,6 +1,6 @@
 # 監査2: schema / runtime contract
 
-Status: fixed
+Status: implementation fixed / local verification pending
 最終更新: 2026-07-24
 Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 
@@ -30,14 +30,24 @@ raw user text、assistant本文、Graph、semantic documentはcursorへ保存し
 
 ## controller sequence
 
-controllerはmessage IDのclosed formとPlanningState revisionを読む。
+controllerは次の三値を単調下限として使用する。
+
+```text
+controller session memoryのrequestSequence
+PlanningState.conversationRequestSequence
+有効なmessage IDから復元した最大sequence
+```
+
+message IDは次のclosed formだけを使用する。
 
 ```text
 <conversationId>:turn:<positive integer>:user
 <conversationId>:turn:<positive integer>:assistant
 ```
 
-他conversation、不正role、不正sequenceは使用しない。message列が`clear_conversation`で空になっても、revisionから導く単調下限より前のturn/request IDへ戻らない。
+次request sequenceは三値の最大値に1を加えた値である。`begin_turn`は現在の`conversationRequestSequence`より大きい安全な整数だけを受理し、PlanningStateへ保存する。他conversation、不正role、不正sequenceは使用しない。
+
+`clear_conversation`はmessagesを空にするが`conversationRequestSequence`を保持する。このため、clear後にreloadしても過去のturn、request、message IDへ戻らない。`reset_session`だけが`conversationRequestSequence`を0へ戻し、新しいconversation scopeの開始と組み合わせる。PlanningStateの一般的な`revision`からrequest sequenceを推測しない。
 
 ## remote server handle
 

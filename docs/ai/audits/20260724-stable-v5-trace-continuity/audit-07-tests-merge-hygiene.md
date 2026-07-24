@@ -1,6 +1,6 @@
 # 監査7: tests / merge hygiene
 
-Status: implementation fixed / automated execution pending
+Status: implementation fixed / branch consolidation archived / local execution pending
 最終更新: 2026-07-24
 Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 
@@ -48,11 +48,49 @@ user IDとconversation IDのstorage key境界を分離
 
 Vitestのdefault environmentはNodeであり、`window`は自動提供されない。remote repository unit testにはmemory Storageを明示的にinstallし、localStorage persistenceを実際に通すよう修正した。これを行わない場合、repository再生成testは保存経路を通らず、`startSession`回数の期待だけが不正になる。
 
-## merge hygiene
+## branch / PR hygiene
 
-修正は専用branchとDraft PR #83で行い、mainへ直接書き込まない。current contract、runtime trial contract、current status、implementation status、migration plan、semantic roadmap、general roadmap、docs index、七視点監査を実装差分と同期する。
+同一目的の修正、診断、再検証はDraft PR #83と`agent/stable-v5-trace-conversation-continuity`だけで行う。検証失敗またはrunner障害を理由に新しいbranchやPRを作らない。
 
-GitHub Actionsは`ubuntu-latest`の`verify` jobを生成したが、step 0件、logsなしで終了した。これはcode test failureではなくrunner起動前の実行基盤failureとして扱う。一方で、focused test、full test、typecheck、buildの成功証跡でもない。
+PR #84とPR #85はduplicateとしてclosedであり、mainへmergeしない。PR #82、#84、#85の固有資産は次へ退避した。
+
+```text
+docs/ai/audits/20260724-pr83-branch-consolidation/archive-manifest.md
+docs/ai/audits/20260724-pr83-branch-consolidation/archive/
+```
+
+退避対象にはPR #82の旧workflowと旧七視点監査、PR #84とPR #85の診断script、PR #83に残っていた一時Cloudflare検証scriptを含む。archive scriptは`.txt`として保存し、自動実行されない。
+
+`package.json`の`build`は通常の`vite build --config vite.config.mjs`へ戻した。rootの一時Cloudflare検証scriptは削除した。archive、設定復元、文書同期、最終SHA比較、ローカル検証が終わるまで旧branchを削除しない。
+
+## verification source
+
+GitHub Actionsは現在利用できないため、本PRの成功証跡として使用しない。過去のstep 0件、logsなしのfailureもコード合否には使用しない。
+
+検証の正本は、PR #83の固定headをcheckoutしたローカル環境で実行する次の結果である。
+
+```text
+focused trace / controller / integration tests
+full Vitest
+typecheck
+Vite production build
+git diff --check
+branch previewでreload・1時間idle・clear後再送
+admin exportが一つのsessionへ継続
+```
+
+結果は実行したcommit SHAとともにPR本文および本監査へ記録する。
+
+## branch削除禁止条件
+
+```text
+archive元とarchive内容の照合が完了していない
+PR #83のheadが照合中に変化した
+旧branchに未移植のproduction code、test、文書、診断資産が残る
+package.jsonまたはroot scriptsに一時検証設定が残る
+focused tests、full Vitest、typecheck、Vite build、diff checkの成功結果がない
+旧branch headと検証済みPR #83 headの最終比較が終わっていない
+```
 
 ## merge禁止条件
 
