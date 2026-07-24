@@ -260,12 +260,13 @@ export async function submitWeeklyPlanningControlledTurn(
       draftCandidates: executionResult.draftCandidates,
     };
   } catch (error) {
-    if (result) {
+    const failedResult = result;
+    if (failedResult) {
       await runBestEffort(() => params.discardExecutionResult?.({
         snapshot,
         pending,
         userText,
-        result,
+        result: failedResult,
         reason: 'failed',
       }));
     }
