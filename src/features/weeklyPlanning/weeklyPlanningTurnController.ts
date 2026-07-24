@@ -9,6 +9,7 @@ import type {
 } from './types';
 import type {
   WeeklyPlanningTurnExecutionResult,
+  WeeklyPlanningTurnFailure,
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutor';
 
@@ -64,10 +65,43 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
   now?: () => string;
 }
 
+class WeeklyPlanningControlledSemanticFailure extends Error {
+  readonly userMessage: string;
+
+  constructor(failure: WeeklyPlanningTurnFailure) {
+    super(failure.userMessage);
+    this.name = failure.traceCode;
+    this.userMessage = failure.userMessage;
+  }
+}
+
 function createIdentity(prefix: string): string {
   return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? `${prefix}-${crypto.randomUUID()}`
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function inferWeeklyPlanningControllerRequestSequence(
+  messages: readonly WeeklyPlanningMessage[],
+  conversationId: string,
+): number {
+  const prefix = `${conversationId}:turn:`;
+  let maximum = 0;
+  for (const message of messages) {
+    if (!message.id.startsWith(prefix)) continue;
+    const suffix = message.id.slice(prefix.length);
+    const separator = suffix.lastIndexOf(':');
+    if (separator <= 0) continue;
+    const role = suffix.slice(separator + 1);
+    if (role !== 'user' && role !== 'assistant') continue;
+    const sequenceText = suffix.slice(0, separator);
+    if (!/^[1-9]\d*$/.test(sequenceText)) continue;
+    const sequence = Number(sequenceText);
+    if (Number.isSafeInteger(sequence) && sequence > maximum) {
+      maximum = sequence;
+    }
+  }
+  return maximum;
 }
 
 export function createWeeklyPlanningControllerSession(
@@ -152,7 +186,11 @@ export async function submitWeeklyPlanningControlledTurn(
   }
 
   ensureSessionScope(params.session, params.ownerId, snapshot.weekStartDate);
-  params.session.requestSequence += 1;
+  params.session.requestSequence = Math.max(
+    params.session.requestSequence,
+    snapshot.conversationRequestSequence ?? 0,
+    inferWeeklyPlanningControllerRequestSequence(snapshot.messages, params.session.conversationId),
+  ) + 1;
   const now = params.now ?? (() => new Date().toISOString());
   const createdAt = now();
   const envelope = createDialogueTurnEnvelope({
@@ -173,6 +211,7 @@ export async function submitWeeklyPlanningControlledTurn(
   const begun = params.dispatch({
     type: 'begin_turn',
     pending,
+    requestSequence: params.session.requestSequence,
     userMessage: createTurnMessage(envelope, 'user', userText, createdAt),
   });
   if (!isSameWeeklyPlanningPendingTurn(begun.pendingTurn, pending)) {
@@ -181,8 +220,17 @@ export async function submitWeeklyPlanningControlledTurn(
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   try {
-    result = await params.execute({ snapshot, pending, userText });
-    const context = { snapshot, pending, userText, result };
+    const executionResult = await params.execute({ snapshot, pending, userText });
+    result = executionResult;
+    if (executionResult.failure) {
+      throw new WeeklyPlanningControlledSemanticFailure(executionResult.failure);
+    }
+    const context: WeeklyPlanningControlledResultContext = {
+      snapshot,
+      pending,
+      userText,
+      result: executionResult,
+    };
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
@@ -190,15 +238,15 @@ export async function submitWeeklyPlanningControlledTurn(
     const assistantMessage = createTurnMessage(
       envelope,
       'assistant',
-      result.message,
+      executionResult.message,
       now(),
     );
     const committed = params.dispatch({
       type: 'commit_turn',
       pending,
-      intakeState: result.state,
+      intakeState: executionResult.state,
       assistantMessage,
-      draftCandidates: result.draftCandidates,
+      draftCandidates: executionResult.draftCandidates,
     });
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate
@@ -219,22 +267,26 @@ export async function submitWeeklyPlanningControlledTurn(
     }));
     return {
       accepted: true,
-      draftCandidates: result.draftCandidates,
+      draftCandidates: executionResult.draftCandidates,
     };
   } catch (error) {
-    if (result) {
+    const failedResult = result;
+    if (failedResult) {
       await runBestEffort(() => params.discardExecutionResult?.({
         snapshot,
         pending,
         userText,
-        result,
+        result: failedResult,
         reason: 'failed',
       }));
     }
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       return { accepted: false, draftCandidates: [] };
     }
-    const message = '週間計画の会話状態を更新できませんでした。';
+    const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
+    const message = controlledFailure
+      ? error.userMessage
+      : '週間計画の会話状態を更新できませんでした。';
     const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
     const failedState = params.dispatch({
       type: 'fail_turn',
@@ -249,6 +301,9 @@ export async function submitWeeklyPlanningControlledTurn(
       failedState,
       assistantMessage,
     }));
+    if (controlledFailure) {
+      return { accepted: true, draftCandidates: [] };
+    }
     throw error instanceof Error ? error : new Error(message);
   }
 }

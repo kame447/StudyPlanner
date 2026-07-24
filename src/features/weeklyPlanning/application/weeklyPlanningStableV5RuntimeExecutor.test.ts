@@ -7,6 +7,10 @@ import {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
+const { normalizeMock } = vi.hoisted(() => ({
+  normalizeMock: vi.fn(),
+}));
+
 function document(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -50,6 +54,47 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+function todayOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'window-today',
+      kind: 'relative_day',
+      value: 'today',
+      start: null,
+      end: null,
+      sourceText: '今日',
+    },
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+function acceptedResult(semanticDocument: WeeklyPlanningSemanticDocumentV5) {
+  return {
+    status: 'accepted' as const,
+    document: semanticDocument,
+    diagnostics: {
+      schemaVersion: 'weekly-planning-semantic-v5' as const,
+      jsonSchemaName: 'weekly_planning_semantic_document_v5' as const,
+      normalizerVersion: 'weekly-planning-semantic-normalizer-v5' as const,
+      attemptCount: 1,
+      repairAttempted: false,
+      requestBytes: [100],
+      responseLengths: [100],
+      latencyMs: 1,
+      validationErrors: [],
+      providerError: null,
+    },
+  };
+}
+
 vi.mock('../../../lib/aiConfig', () => ({
   getAiConfig: () => ({
     provider: 'openai',
@@ -68,22 +113,7 @@ vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
 
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({
-    normalize: async () => ({
-      status: 'accepted',
-      document: document(),
-      diagnostics: {
-        schemaVersion: 'weekly-planning-semantic-v5',
-        jsonSchemaName: 'weekly_planning_semantic_document_v5',
-        normalizerVersion: 'weekly-planning-semantic-normalizer-v5',
-        attemptCount: 1,
-        repairAttempted: false,
-        requestBytes: [100],
-        responseLengths: [100],
-        latencyMs: 1,
-        validationErrors: [],
-        providerError: null,
-      },
-    }),
+    normalize: normalizeMock,
   }),
 }));
 
@@ -94,6 +124,8 @@ import {
 describe('Stable V5 runtime executor', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    normalizeMock.mockReset();
+    normalizeMock.mockResolvedValue(acceptedResult(document()));
   });
 
   it('runs structured semantic normalization through deterministic preview placement', async () => {
@@ -122,5 +154,31 @@ describe('Stable V5 runtime executor', () => {
       endTime: '10:00',
       title: '部屋の掃除 60分',
     });
+  });
+
+  it('accepts 今日 as the planning window and asks for the missing work instead of rejecting normalization', async () => {
+    normalizeMock.mockResolvedValueOnce(acceptedResult(todayOnlyDocument()));
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [],
+      userText: '今日の計画を立ててください',
+      selectedDate: '2026-07-24',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-today',
+      traceRequestId: 'request-today',
+    });
+
+    expect(result.state).toMatchObject({
+      status: 'needs_scope',
+      shouldCreateDraft: false,
+    });
+    expect(result.message).toBe(
+      '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+    );
+    expect(result.message).not.toContain('構造化結果を安全に採用できませんでした');
+    expect(result.draftCandidates).toEqual([]);
   });
 });

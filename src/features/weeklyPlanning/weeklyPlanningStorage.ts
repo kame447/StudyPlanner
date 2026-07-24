@@ -613,6 +613,7 @@ function sanitizeStoredPlanningState(value: unknown): unknown {
   } = value;
   return {
     ...sanitized,
+    conversationRequestSequence: sanitized.conversationRequestSequence ?? 0,
     previewCandidates: sanitized.previewCandidates ?? [],
     intakeState: sanitized.intakeState === undefined
       ? undefined
@@ -623,13 +624,15 @@ function sanitizeStoredPlanningState(value: unknown): unknown {
 function isPlanningState(value: unknown): value is PlanningState {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
-      'weekStartDate', 'revision', 'mode', 'draftBlocks', 'previewCandidates', 'messages',
+      'weekStartDate', 'revision', 'conversationRequestSequence', 'mode',
+      'draftBlocks', 'previewCandidates', 'messages',
       'intakeState', 'lastAssistantMessage', 'updatedAt',
     ])) {
     return false;
   }
   return typeof value.weekStartDate === 'string'
     && isNonNegativeInteger(value.revision)
+    && isNonNegativeInteger(value.conversationRequestSequence)
     && MODES.has(String(value.mode))
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.every(isDraftBlock)
@@ -668,6 +671,7 @@ function serializablePlanningState(state: PlanningState): PlanningState {
   const { pendingTurn: _pendingTurn, pendingApproval: _pendingApproval, ...serializable } = state;
   return {
     ...serializable,
+    conversationRequestSequence: state.conversationRequestSequence ?? 0,
     draftBlocks: state.draftBlocks.filter((block) => block.status === 'draft'),
     previewCandidates: state.previewCandidates ?? [],
     intakeState: serializableIntakeState(state.intakeState),
@@ -693,6 +697,7 @@ export function loadWeeklyPlanningState(
     return {
       ...storedState,
       weekStartDate,
+      conversationRequestSequence: storedState.conversationRequestSequence ?? 0,
       pendingTurn: undefined,
       pendingApproval: undefined,
       draftBlocks: storedState.draftBlocks.filter((block) => block.status === 'draft'),

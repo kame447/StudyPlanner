@@ -17,6 +17,9 @@ import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlannin
 import { WeeklyPlanningSemanticInterpreterError } from './pipeline/weeklyPlanningSemanticInterpreterError';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
+import {
+  takeWeeklyPlanningStableV5FailureDiagnostics,
+} from './semantic/weeklyPlanningStableV5FailureDiagnostics';
 import type { WeeklyPlanningMessage } from './types';
 
 const RECENT_TURN_LIMIT = 6;
@@ -35,11 +38,31 @@ export interface WeeklyPlanningTurnExecutionInput {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
 }
 
+export type WeeklyPlanningTurnFailureCode =
+  | 'stable_v5_provider_failure'
+  | 'stable_v5_normalization_rejected'
+  | 'stable_v5_canonicalization_rejected';
+
+export interface WeeklyPlanningTurnFailureDiagnostics {
+  attemptCount: number;
+  repairAttempted: boolean;
+  validationErrorCategories: string[];
+  providerErrorCategory: 'provider_error' | null;
+}
+
+export interface WeeklyPlanningTurnFailure {
+  code: WeeklyPlanningTurnFailureCode;
+  userMessage: string;
+  traceCode: string;
+  diagnostics: WeeklyPlanningTurnFailureDiagnostics;
+}
+
 export interface WeeklyPlanningTurnExecutionResult {
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
   stableV5Graph?: WeeklyPlanningFactGraphV5;
+  failure?: WeeklyPlanningTurnFailure;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {
@@ -51,7 +74,8 @@ export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
   if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    return executeWeeklyPlanningStableV5RuntimeTurn({
+    takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: input.previousState,
       messages: input.messages,
       userText: input.userText,
@@ -63,6 +87,33 @@ export async function executeWeeklyPlanningTurn(
       conversationId: input.conversationId,
       traceRequestId: input.traceRequestId,
     });
+    const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
+    if (!recordedFailure) return result;
+
+    const failureCode = `stable_v5_${recordedFailure.status}` as WeeklyPlanningTurnFailureCode;
+    return {
+      ...result,
+      state: {
+        ...result.state,
+        status: 'revision_pending',
+        missing: [],
+        questions: [],
+        lastQuestionContext: undefined,
+        shouldCreateDraft: false,
+        draftGenerationIntent: 'not_requested',
+      },
+      failure: {
+        code: failureCode,
+        userMessage: result.message,
+        traceCode: recordedFailure.traceCode,
+        diagnostics: {
+          attemptCount: recordedFailure.attemptCount,
+          repairAttempted: recordedFailure.repairAttempted,
+          validationErrorCategories: recordedFailure.validationErrorCategories,
+          providerErrorCategory: recordedFailure.providerErrorCategory,
+        },
+      },
+    };
   }
 
   const pipelineInput = {

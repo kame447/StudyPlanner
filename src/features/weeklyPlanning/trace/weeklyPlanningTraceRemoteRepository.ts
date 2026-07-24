@@ -10,6 +10,18 @@ import {
   type WeeklyPlanningTraceServerHandle,
 } from './weeklyPlanningTracePrivacyClient';
 
+const SERVER_HANDLE_STORAGE_VERSION =
+  'studyplanner-weekly-planning-trace-server-handle-v1' as const;
+const SERVER_HANDLE_STORAGE_PREFIX = 'studyplanner.weeklyPlanning.trace.serverHandle.v1.';
+const SERVER_HANDLE_KEYS = ['version', 'localSessionId', 'serverHandle'] as const;
+const HANDLE_KEYS = ['sessionId', 'logicalConversationId'] as const;
+
+interface StoredServerHandle {
+  version: typeof SERVER_HANDLE_STORAGE_VERSION;
+  localSessionId: string;
+  serverHandle: WeeklyPlanningTraceServerHandle;
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
@@ -20,6 +32,15 @@ function numberValue(value: unknown): number | undefined {
 
 function booleanValue(value: unknown): boolean {
   return value === true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 function subjectAlias(record: Record<string, unknown>): string {
@@ -125,22 +146,115 @@ function canonicalEntry(
   };
 }
 
+function serverHandleStorageKey(session: WeeklyPlanningTraceSession): string {
+  return `${SERVER_HANDLE_STORAGE_PREFIX}${encodeURIComponent(session.userId)}::${encodeURIComponent(session.id)}`;
+}
+
+function isServerHandle(value: unknown): value is WeeklyPlanningTraceServerHandle {
+  if (!isRecord(value) || !hasOnlyKeys(value, HANDLE_KEYS)) return false;
+  return typeof value.sessionId === 'string'
+    && /^weekly-trace-[0-9a-f-]{36}$/i.test(value.sessionId)
+    && typeof value.logicalConversationId === 'string'
+    && /^weekly-conversation-[0-9a-f-]{36}$/i.test(value.logicalConversationId);
+}
+
+function loadStoredServerHandle(
+  session: WeeklyPlanningTraceSession,
+): WeeklyPlanningTraceServerHandle | null {
+  if (typeof window === 'undefined') return null;
+  const key = serverHandleStorageKey(session);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!isRecord(value)
+      || !hasOnlyKeys(value, SERVER_HANDLE_KEYS)
+      || value.version !== SERVER_HANDLE_STORAGE_VERSION
+      || value.localSessionId !== session.id
+      || !isServerHandle(value.serverHandle)) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return value.serverHandle;
+  } catch {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    return null;
+  }
+}
+
+function saveStoredServerHandle(
+  session: WeeklyPlanningTraceSession,
+  serverHandle: WeeklyPlanningTraceServerHandle,
+): void {
+  if (typeof window === 'undefined') return;
+  const payload: StoredServerHandle = {
+    version: SERVER_HANDLE_STORAGE_VERSION,
+    localSessionId: session.id,
+    serverHandle,
+  };
+  try {
+    window.localStorage.setItem(serverHandleStorageKey(session), JSON.stringify(payload));
+  } catch {
+    // Server handle continuity is best effort. Server-side ownership remains authoritative.
+  }
+}
+
+function clearStoredServerHandle(session: WeeklyPlanningTraceSession): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(serverHandleStorageKey(session));
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function rejectsStoredServerHandle(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return [
+    'trace session must be started before append',
+    'trace session ownership conflict',
+    'legacy trace session is read-only',
+    'trace session conversation conflict',
+    'trace session issuance conflict',
+    'stale server handle',
+  ].some((marker) => message.includes(marker));
+}
+
 export function createRemoteWeeklyPlanningTraceRepository(
   client: WeeklyPlanningTraceApiClient = createWeeklyPlanningTraceApiClient(),
 ): WeeklyPlanningTraceRepository {
   const sessionsById = new Map<string, WeeklyPlanningTraceSession>();
   const handlesByLocalSessionId = new Map<string, Promise<WeeklyPlanningTraceServerHandle>>();
 
+  function forgetServerHandle(session: WeeklyPlanningTraceSession): void {
+    handlesByLocalSessionId.delete(session.id);
+    clearStoredServerHandle(session);
+  }
+
   function serverHandle(session: WeeklyPlanningTraceSession): Promise<WeeklyPlanningTraceServerHandle> {
     const existing = handlesByLocalSessionId.get(session.id);
     if (existing) return existing;
+
+    const stored = loadStoredServerHandle(session);
+    if (stored) {
+      const resolved = Promise.resolve(stored);
+      handlesByLocalSessionId.set(session.id, resolved);
+      return resolved;
+    }
 
     const pending = client.startSession({
       idempotencyKey: session.id,
       conversationCorrelationKey: session.logicalConversationId,
       session: startMetadata(session),
+    }).then((handle) => {
+      saveStoredServerHandle(session, handle);
+      return handle;
     }).catch((error) => {
-      handlesByLocalSessionId.delete(session.id);
+      forgetServerHandle(session);
       throw error;
     });
     handlesByLocalSessionId.set(session.id, pending);
@@ -161,17 +275,35 @@ export function createRemoteWeeklyPlanningTraceRepository(
     };
   }
 
+  async function appendWithHandleRecovery(params: {
+    session: WeeklyPlanningTraceSession;
+    entries: WeeklyPlanningTraceEntry[];
+  }): Promise<WeeklyPlanningTraceSession> {
+    let canonical = await canonicalPayload(params);
+    try {
+      await client.append(canonical);
+      return canonical.session;
+    } catch (error) {
+      if (!rejectsStoredServerHandle(error)) {
+        await client.append(canonical);
+        return canonical.session;
+      }
+      forgetServerHandle(params.session);
+      canonical = await canonicalPayload(params);
+      await client.append(canonical);
+      return canonical.session;
+    }
+  }
+
   return {
     async upsertSession(session) {
-      const canonical = await canonicalPayload({ session, entries: [] });
-      sessionsById.set(canonical.session.id, { ...canonical.session });
-      await client.append(canonical);
+      const canonicalSessionValue = await appendWithHandleRecovery({ session, entries: [] });
+      sessionsById.set(canonicalSessionValue.id, { ...canonicalSessionValue });
     },
 
     async appendEntries({ session, entries }) {
-      const canonical = await canonicalPayload({ session, entries });
-      sessionsById.set(canonical.session.id, { ...canonical.session });
-      await client.append(canonical);
+      const canonicalSessionValue = await appendWithHandleRecovery({ session, entries });
+      sessionsById.set(canonicalSessionValue.id, { ...canonicalSessionValue });
     },
 
     async listSessions() {

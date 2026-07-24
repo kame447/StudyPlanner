@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createMemoryStorageHarness,
+  installWeeklyPlanningTestStorage,
+} from '../testUtils/weeklyPlanningApplicationTestHarness';
 import type { WeeklyPlanningTraceApiClient } from './weeklyPlanningTracePrivacyClient';
 import { createRemoteWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRemoteRepository';
 import type {
@@ -80,6 +84,18 @@ function client(): WeeklyPlanningTraceApiClient {
 }
 
 describe('createRemoteWeeklyPlanningTraceRepository', () => {
+  let restoreWindow: (() => void) | null = null;
+
+  beforeEach(() => {
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+  });
+
+  afterEach(() => {
+    restoreWindow?.();
+    restoreWindow = null;
+  });
+
   it('starts once and removes raw client structural IDs from append payloads', async () => {
     const apiClient = client();
     const repository = createRemoteWeeklyPlanningTraceRepository(apiClient);
@@ -129,6 +145,62 @@ describe('createRemoteWeeklyPlanningTraceRepository', () => {
     expect(await repository.getSession('firebase-user-1', SERVER_SESSION_ID)).toEqual(
       expect.objectContaining({ id: SERVER_SESSION_ID }),
     );
+  });
+
+  it('reuses the same server handle after the repository is recreated', async () => {
+    const apiClient = client();
+    const firstRepository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+
+    await firstRepository.appendEntries({ session: SESSION, entries: [entry(0)] });
+    const secondRepository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+    await secondRepository.appendEntries({
+      session: { ...SESSION, entryCount: 2, turnCount: 2 },
+      entries: [entry(1)],
+    });
+
+    expect(apiClient.startSession).toHaveBeenCalledTimes(1);
+    expect(apiClient.append).toHaveBeenCalledTimes(2);
+    const secondPayload = vi.mocked(apiClient.append).mock.calls[1]?.[0];
+    expect(secondPayload).toEqual(expect.objectContaining({
+      session: expect.objectContaining({ id: SERVER_SESSION_ID }),
+      entries: [expect.objectContaining({
+        id: `${SERVER_SESSION_ID}-00000001`,
+        sessionId: SERVER_SESSION_ID,
+      })],
+    }));
+  });
+
+  it('refreshes a stale persisted server handle and retries append once', async () => {
+    const apiClient = client();
+    const firstRepository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+    await firstRepository.appendEntries({ session: SESSION, entries: [entry(0)] });
+
+    vi.mocked(apiClient.append)
+      .mockRejectedValueOnce(new Error('stale server handle'))
+      .mockResolvedValueOnce(undefined);
+    const secondRepository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+    await secondRepository.appendEntries({
+      session: { ...SESSION, entryCount: 2, turnCount: 2 },
+      entries: [entry(1)],
+    });
+
+    expect(apiClient.startSession).toHaveBeenCalledTimes(2);
+    expect(apiClient.append).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries a transient append failure with the same canonical handle', async () => {
+    const apiClient = client();
+    vi.mocked(apiClient.append)
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce(undefined);
+    const repository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+
+    await repository.appendEntries({ session: SESSION, entries: [entry(0)] });
+
+    expect(apiClient.startSession).toHaveBeenCalledTimes(1);
+    expect(apiClient.append).toHaveBeenCalledTimes(2);
+    const payloads = vi.mocked(apiClient.append).mock.calls.map(([payload]) => payload);
+    expect(payloads[1]).toEqual(payloads[0]);
   });
 
   it('retries session issuance after a failed start instead of caching the rejection', async () => {

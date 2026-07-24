@@ -15,6 +15,7 @@ export function createInitialPlanningState(weekStartDate: string): PlanningState
   return {
     weekStartDate,
     revision: 0,
+    conversationRequestSequence: 0,
     mode: 'idle',
     draftBlocks: [],
     previewCandidates: [],
@@ -137,21 +138,27 @@ export function weeklyPlanningReducer(
     case 'load_state':
       return action.state;
 
-    case 'begin_turn':
+    case 'begin_turn': {
+      const currentRequestSequence = state.conversationRequestSequence ?? 0;
+      const requestSequence = action.requestSequence ?? currentRequestSequence + 1;
       if (
         state.pendingTurn
         || state.pendingApproval
         || action.pending.weekStartDate !== state.weekStartDate
         || action.pending.baseRevision !== state.revision
+        || !Number.isSafeInteger(requestSequence)
+        || requestSequence <= currentRequestSequence
       ) {
         return state;
       }
       return withMutation(state, {
         ...state,
+        conversationRequestSequence: requestSequence,
         mode: state.mode === 'idle' ? 'collecting_tasks' : state.mode,
         messages: [...state.messages, action.userMessage],
         pendingTurn: action.pending,
       });
+    }
 
     case 'commit_turn':
       if (!canCommitTurn(state, action.pending)) return state;
@@ -322,6 +329,7 @@ export function weeklyPlanningReducer(
     case 'reset_session':
       return withMutation(state, {
         ...state,
+        conversationRequestSequence: 0,
         mode: 'idle',
         draftBlocks: [],
         previewCandidates: [],
