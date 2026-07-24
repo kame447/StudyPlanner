@@ -2,13 +2,13 @@
 
 Status: canonical for current runtime connection and browser persistence
 最終更新: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
 
 この文書はStable V5の実環境接続、browser保存、conversation identity、trace continuity、rollback境界を定める。semantic model、availability、migrationの詳細はcurrent contractとarchitectureを継承する。runtime接続状態または保存状態について競合する文書がある場合、この文書を優先する。
 
 ## 1. 現在の接続状態
 
-Stable V5は既存週間計画UIへfeature flag付きで接続済みであり、PR #77とPR #79はmainへmerge済みである。
+Stable V5は既存週間計画UIへfeature flag付きで接続済みであり、PR #77、PR #79、PR #83はmainへmerge済みである。
 
 ```text
 NaturalLanguageAssistant
@@ -59,7 +59,11 @@ conversation IDは一つの対話系列を表す。turn ID、request ID、messag
 <conversationId>:turn:<sequence>:assistant
 ```
 
-再マウントまたはページ再読込後は、復元済みmessage IDとPlanningState revisionからsequenceの単調下限を決め、その次を発行する。`clear_conversation`でmessagesが空になっても、同じconversation内の過去request IDへ戻らない。
+再マウントまたはページ再読込後は、復元済みmessage IDとPlanningState revisionからsequenceの単調下限を決め、その次を発行する。
+
+`clear_conversation`は表示中のmessage履歴だけを消す。同じconversation ID、request sequence、compatibility intake state、Fact Graph、preview、draft、approval作業状態、runtime session、persisted session、trace continuityを維持する。`clear_conversation`から`reset_session`を呼ばず、Graphまたはtrace sessionを削除しない。messagesが空になっても、同じconversation内の過去request IDへ戻らない。
+
+`reset_session`は「最初からやり直す」操作である。messages、intake、preview、draft、approval、request sequence、conversation identity、Fact Graph、persisted sessionを初期化し、新しいconversationを発行する。
 
 短答結合はexpected revision、短答形、単一target、単一candidateを満たす場合だけ行う。authorization turnではAIへ既存fact全文の再出力を要求しない。
 
@@ -68,6 +72,8 @@ conversation IDは一つの対話系列を表す。turn ID、request ID、messag
 Stable V5はowner・week・conversationに拘束したlocalStorage envelopeへconversation ID、完了済みPlanningState、Fact Graph V5、preview candidates、draft blocks、savedAtを一体保存する。
 
 pending turnまたはpending approval中の半端なstateは保存しない。復元時にowner、week、conversation、Graph source、preview freshness、size、schemaを検証し、一部だけを復元しない。
+
+versioned payloadのdecodeは純粋処理として行う。検証のためにlive localStorage keyへpayloadを一時書込みしてはならない。保存領域のmutationは明示的saveまたはlegacy migration commitだけで行う。
 
 これは同一browser内のruntime persistenceであり、server repositoryまたはcross-device Graph persistenceではない。旧PlanningStateからStable V5 Graphへのmigration decoderも未実装である。
 
@@ -79,7 +85,7 @@ Stable V5 traceは既存trace repositoryへuser/assistant turn、internal event�
 trace scope = owner ID + logical conversation ID
 ```
 
-同じscopeでは、ページ再読込、module memory消失、remote repository再生成、30分を超えるidleがあっても、同じlocal trace session ID、entry sequence、turn index、server-issued handleへ継続する。idle時間をconversation終了条件にしない。新conversation、明示reset、owner変更、week scope変更だけが新しいidentityを作る。
+同じscopeでは、ページ再読込、module memory消失、remote repository再生成、30分を超えるidle、表示messageの消去があっても、同じlocal trace session ID、entry sequence、turn index、server-issued handleへ継続する。idle時間またはmessage履歴の空配列をconversation終了条件にしない。新conversation、明示reset、owner変更、week scope変更だけが新しいidentityを作る。
 
 metadata-only cursorへ次を保存する。
 
@@ -99,7 +105,7 @@ remote repositoryはserver-issued handleをowner・local sessionに拘束して�
 
 ## 8. current verification state
 
-本branchでは次のtestを追加した。
+PR #83で次のtestと実装がmainへ統合済みである。
 
 ```text
 controller / reducer / traceを跨ぐ二turn結合
@@ -114,16 +120,17 @@ cursorのcontent非保存、owner・schema・counter・unknown field拒否
 storage key境界の衝突回帰
 ```
 
-Cloudflare Pagesのbranch previewはproductionコード修正を含むcommit `3ae9e1f`でdeploy成功した。その後の差分はtestとdocumentationだけであり、runtime production sourceは変更していない。configured Pages buildは確認済みである。
+Draft PR #86では、表示messageだけを消す`clear_conversation`の契約、structured planning state・preview・draft・conversation identity・request sequence維持、owner-bound storage decodeの無副作用化を追加している。
 
-GitHub Actionsは最新headでも`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗している。code test failureとは判定しない一方、focused test、full Vitest、typecheckの成功証跡はまだない。
+PR #86のGitHub Actionsは`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない一方、focused test、full Vitest、typecheck、buildの成功証跡はまだない。
 
 ## 9. remaining gates
 
 ```text
-focused trace tests
+PR #86 focused tests
 full Vitest
 typecheck
+Vite build
 branch previewでreload・idle・clear後再送を実操作
 admin exportで同一session継続
 cross-tab sequence reservation
@@ -138,6 +145,8 @@ legacy runtime削除
 
 ## 10. merge gate
 
-PR #83はDraftのまま維持する。automated verification、browser roleplay、七視点監査、canonical MD同期、unresolved review thread 0を確認するまでmergeしない。
+PR #83は2026-07-24にmainへmerge済みである。PR #83をDraftまたは未mergeと記載する文書はhistorical recordを除き更新する。
+
+Draft PR #86はfocused test、full Vitest、typecheck、build、diff check、clear/resetのbrowser roleplayを確認するまでmergeしない。検証未実施を成功扱いしない。
 
 七視点監査は[20260724-stable-v5-trace-continuity](audits/20260724-stable-v5-trace-continuity/final-overseer.md)を参照する。
