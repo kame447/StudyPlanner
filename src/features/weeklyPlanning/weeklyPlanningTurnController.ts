@@ -76,16 +76,20 @@ export function inferWeeklyPlanningControllerRequestSequence(
 ): number {
   const prefix = `${conversationId}:turn:`;
   let maximum = 0;
-  messages.forEach((message) => {
-    if (!message.id.startsWith(prefix)) return;
+  for (const message of messages) {
+    if (!message.id.startsWith(prefix)) continue;
     const suffix = message.id.slice(prefix.length);
     const separator = suffix.lastIndexOf(':');
-    if (separator <= 0) return;
+    if (separator <= 0) continue;
     const role = suffix.slice(separator + 1);
-    if (role !== 'user' && role !== 'assistant') return;
-    const sequence = Number(suffix.slice(0, separator));
-    if (Number.isSafeInteger(sequence) && sequence > maximum) maximum = sequence;
-  });
+    if (role !== 'user' && role !== 'assistant') continue;
+    const sequenceText = suffix.slice(0, separator);
+    if (!/^[1-9]\d*$/.test(sequenceText)) continue;
+    const sequence = Number(sequenceText);
+    if (Number.isSafeInteger(sequence) && sequence > maximum) {
+      maximum = sequence;
+    }
+  }
   return maximum;
 }
 
