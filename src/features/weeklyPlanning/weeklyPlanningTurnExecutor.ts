@@ -17,6 +17,9 @@ import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlannin
 import { WeeklyPlanningSemanticInterpreterError } from './pipeline/weeklyPlanningSemanticInterpreterError';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
+import {
+  takeWeeklyPlanningStableV5FailureDiagnostics,
+} from './semantic/weeklyPlanningStableV5FailureDiagnostics';
 import type { WeeklyPlanningMessage } from './types';
 
 const RECENT_TURN_LIMIT = 6;
@@ -71,7 +74,7 @@ export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
   if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    return executeWeeklyPlanningStableV5RuntimeTurn({
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: input.previousState,
       messages: input.messages,
       userText: input.userText,
@@ -83,6 +86,33 @@ export async function executeWeeklyPlanningTurn(
       conversationId: input.conversationId,
       traceRequestId: input.traceRequestId,
     });
+    const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
+    if (!recordedFailure) return result;
+
+    const failureCode = `stable_v5_${recordedFailure.status}` as WeeklyPlanningTurnFailureCode;
+    return {
+      ...result,
+      state: {
+        ...result.state,
+        status: 'revision_pending',
+        missing: [],
+        questions: [],
+        lastQuestionContext: undefined,
+        shouldCreateDraft: false,
+        draftGenerationIntent: 'not_requested',
+      },
+      failure: {
+        code: failureCode,
+        userMessage: result.message,
+        traceCode: recordedFailure.traceCode,
+        diagnostics: {
+          attemptCount: recordedFailure.attemptCount,
+          repairAttempted: recordedFailure.repairAttempted,
+          validationErrorCategories: recordedFailure.validationErrorCategories,
+          providerErrorCategory: recordedFailure.providerErrorCategory,
+        },
+      },
+    };
   }
 
   const pipelineInput = {
