@@ -213,8 +213,14 @@ export async function submitWeeklyPlanningControlledTurn(
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   try {
-    result = await params.execute({ snapshot, pending, userText });
-    const context = { snapshot, pending, userText, result };
+    const executionResult = await params.execute({ snapshot, pending, userText });
+    result = executionResult;
+    const context: WeeklyPlanningControlledResultContext = {
+      snapshot,
+      pending,
+      userText,
+      result: executionResult,
+    };
     if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
@@ -222,15 +228,15 @@ export async function submitWeeklyPlanningControlledTurn(
     const assistantMessage = createTurnMessage(
       envelope,
       'assistant',
-      result.message,
+      executionResult.message,
       now(),
     );
     const committed = params.dispatch({
       type: 'commit_turn',
       pending,
-      intakeState: result.state,
+      intakeState: executionResult.state,
       assistantMessage,
-      draftCandidates: result.draftCandidates,
+      draftCandidates: executionResult.draftCandidates,
     });
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate
@@ -251,7 +257,7 @@ export async function submitWeeklyPlanningControlledTurn(
     }));
     return {
       accepted: true,
-      draftCandidates: result.draftCandidates,
+      draftCandidates: executionResult.draftCandidates,
     };
   } catch (error) {
     if (result) {
