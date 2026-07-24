@@ -2,9 +2,13 @@ import ts from 'typescript';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const TARGETS = [
+  'src/features/weeklyPlanning/weeklyPlanningTurnController.ts',
   'src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts',
+  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.test.ts',
+  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.test.ts',
+  'src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.test.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRemoteContinuity.integration.test.ts',
   'src/features/weeklyPlanning/__tests__/weeklyPlanningStableV5ConversationTrace.integration.test.ts',
