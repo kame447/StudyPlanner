@@ -3,15 +3,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 
 const TARGETS = [
   'src/features/weeklyPlanning/weeklyPlanningTurnController.ts',
-  'src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.test.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.test.ts',
   'src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.test.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRemoteContinuity.integration.test.ts',
-  'src/features/weeklyPlanning/__tests__/weeklyPlanningStableV5ConversationTrace.integration.test.ts',
 ];
 
 const configFile = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
@@ -44,7 +38,7 @@ const otherDiagnostics = diagnostics.filter((diagnostic) =>
 
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/typecheck-diagnostics.json', `${JSON.stringify(diagnostics, null, 2)}\n`);
-writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>TypeScript diagnostic isolation</title>');
+writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>Production diagnostic isolation</title>');
 console.log(JSON.stringify({
   diagnosticCount: diagnostics.length,
   targetCount: targetDiagnostics.length,
