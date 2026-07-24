@@ -74,6 +74,7 @@ export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
   if (isWeeklyPlanningStableV5RuntimeEnabled()) {
+    takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: input.previousState,
       messages: input.messages,
