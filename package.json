@@ -7,7 +7,7 @@
     "dev": "vite --config vite.config.mjs --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "typecheck:build": "tsc --noEmit -p tsconfig.build.json",
-    "build": "npm run test:run -- src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.test.ts src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.test.ts src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.test.ts src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRemoteContinuity.integration.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningStableV5ConversationTrace.integration.test.ts && vite build --config vite.config.mjs",
+    "build": "npm run test:run -- src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.test.ts src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.test.ts",
     "verify": "npm run typecheck && npm run test:run && vite build --config vite.config.mjs",
     "preview:vite": "vite preview --config vite.config.mjs --host 0.0.0.0",
     "preview": "node ./scripts/preview-server.mjs",
