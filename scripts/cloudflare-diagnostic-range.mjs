@@ -2,7 +2,7 @@ import ts from 'typescript';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const TARGET = 'src/features/weeklyPlanning/weeklyPlanningTurnController.ts';
-const THRESHOLD = 210;
+const THRESHOLD = 220;
 
 const configFile = ts.readConfigFile('tsconfig.build.json', ts.sys.readFile);
 if (configFile.error) {
