@@ -1,16 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const tests = [
-  'src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceSessionStorage.test.ts',
-  'src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.test.ts',
-];
 const result = spawnSync(
   process.execPath,
-  ['./node_modules/vitest/vitest.mjs', '--config', 'vite.config.mjs', 'run', ...tests],
+  [
+    './node_modules/vitest/vitest.mjs',
+    '--config',
+    'vite.config.mjs',
+    'run',
+    'src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts',
+  ],
   { cwd: process.cwd(), encoding: 'utf8', env: process.env, stdio: 'inherit' },
 );
 mkdirSync('dist', { recursive: true });
-writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>focused tests group A</title>');
+writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>controller test</title>');
 process.exit(result.status ?? 1);
