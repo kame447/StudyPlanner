@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMemoryStorageHarness,
   createWeeklyPlanningTestDraftBlock,
@@ -53,6 +53,19 @@ describe('weeklyPlanningOwnedStorage', () => {
     expect(loadOwnedWeeklyPlanningState('user-a', WEEK_START).draftBlocks).toEqual(
       state.draftBlocks,
     );
+  });
+
+  it('decodes an owned envelope without transient storage writes', () => {
+    const state = stateWithDraft('user-a');
+    saveOwnedWeeklyPlanningState('user-a', state);
+    const setItem = vi.spyOn(storageHarness.storage, 'setItem');
+    const removeItem = vi.spyOn(storageHarness.storage, 'removeItem');
+
+    const loaded = loadOwnedWeeklyPlanningState('user-a', WEEK_START);
+
+    expect(loaded.draftBlocks).toEqual(state.draftBlocks);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
   });
 
   it('rejects and removes an envelope stored under another user key', () => {
