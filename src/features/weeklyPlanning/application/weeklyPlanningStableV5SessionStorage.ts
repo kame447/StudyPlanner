@@ -152,6 +152,7 @@ function isPlanningState(
   if (!hasOnlyKeys(value, [
     'weekStartDate',
     'revision',
+    'conversationRequestSequence',
     'mode',
     'draftBlocks',
     'previewCandidates',
@@ -171,6 +172,8 @@ function isPlanningState(
   ]);
   return value.weekStartDate === weekStartDate
     && isNonNegativeInteger(value.revision)
+    && (value.conversationRequestSequence === undefined
+      || isNonNegativeInteger(value.conversationRequestSequence))
     && modes.has(String(value.mode))
     && Array.isArray(value.draftBlocks)
     && value.draftBlocks.length <= MAX_DRAFT_BLOCKS
@@ -229,6 +232,7 @@ function serializablePlanningState(state: PlanningState): PlanningState {
     : undefined;
   return JSON.parse(JSON.stringify({
     ...withoutPending,
+    conversationRequestSequence: state.conversationRequestSequence ?? 0,
     draftBlocks: state.draftBlocks.filter((block) => block.status === 'draft'),
     previewCandidates: state.previewCandidates ?? [],
     intakeState,
@@ -240,6 +244,7 @@ function isEmptySession(
   graph: WeeklyPlanningFactGraphV5,
 ): boolean {
   return graph.revision === 0
+    && (state.conversationRequestSequence ?? 0) === 0
     && state.messages.length === 0
     && state.draftBlocks.length === 0
     && (state.previewCandidates?.length ?? 0) === 0
@@ -300,6 +305,7 @@ export function loadWeeklyPlanningStableV5PersistedSession(params: {
       graph: parsedGraph.graph,
       planningState: {
         ...value.planningState,
+        conversationRequestSequence: value.planningState.conversationRequestSequence ?? 0,
         pendingTurn: undefined,
         pendingApproval: undefined,
       },

@@ -17,7 +17,6 @@ export interface WeeklyPlanningControllerSession {
   conversationId: string;
   weekStartDate: string;
   requestSequence: number;
-  recoverSequenceFromState?: boolean;
 }
 
 export interface WeeklyPlanningControlledTurnResult {
@@ -94,36 +93,24 @@ export function inferWeeklyPlanningControllerRequestSequence(
   return maximum;
 }
 
-function inferWeeklyPlanningControllerRevisionFloor(revision: number): number {
-  if (!Number.isSafeInteger(revision) || revision <= 0) return 0;
-  return Math.floor(revision / 2);
-}
-
 export function createWeeklyPlanningControllerSession(
   ownerId: string,
   weekStartDate: string,
   conversationId = createIdentity('weekly-conversation'),
 ): WeeklyPlanningControllerSession {
-  return {
-    ownerId,
-    conversationId,
-    weekStartDate,
-    requestSequence: 0,
-    recoverSequenceFromState: true,
-  };
+  return { ownerId, conversationId, weekStartDate, requestSequence: 0 };
 }
 
 export function resetWeeklyPlanningControllerSession(
   session: WeeklyPlanningControllerSession,
   ownerId: string,
   weekStartDate: string,
-  conversationId?: string,
+  conversationId = createIdentity('weekly-conversation'),
 ): void {
   session.ownerId = ownerId;
-  session.conversationId = conversationId ?? createIdentity('weekly-conversation');
+  session.conversationId = conversationId;
   session.weekStartDate = weekStartDate;
   session.requestSequence = 0;
-  session.recoverSequenceFromState = false;
 }
 
 function ensureSessionScope(
@@ -188,15 +175,11 @@ export async function submitWeeklyPlanningControlledTurn(
   }
 
   ensureSessionScope(params.session, params.ownerId, snapshot.weekStartDate);
-  const revisionFloor = params.session.recoverSequenceFromState === false
-    ? 0
-    : inferWeeklyPlanningControllerRevisionFloor(snapshot.revision);
   params.session.requestSequence = Math.max(
     params.session.requestSequence,
+    snapshot.conversationRequestSequence ?? 0,
     inferWeeklyPlanningControllerRequestSequence(snapshot.messages, params.session.conversationId),
-    revisionFloor,
   ) + 1;
-  params.session.recoverSequenceFromState = true;
   const now = params.now ?? (() => new Date().toISOString());
   const createdAt = now();
   const envelope = createDialogueTurnEnvelope({
@@ -217,6 +200,7 @@ export async function submitWeeklyPlanningControlledTurn(
   const begun = params.dispatch({
     type: 'begin_turn',
     pending,
+    requestSequence: params.session.requestSequence,
     userMessage: createTurnMessage(envelope, 'user', userText, createdAt),
   });
   if (!isSameWeeklyPlanningPendingTurn(begun.pendingTurn, pending)) {
