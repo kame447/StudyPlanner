@@ -59,7 +59,7 @@ function rejectedNormalizer() {
       document: null,
       diagnostics: {
         schemaVersion: 'weekly-planning-semantic-v5' as const,
-        jsonSchemaName: 'weekly_planning_semantic_document_v5',
+        jsonSchemaName: 'weekly_planning_semantic_document_v5' as const,
         normalizerVersion: 'weekly-planning-semantic-normalizer-v5' as const,
         attemptCount: 2,
         repairAttempted: true,
