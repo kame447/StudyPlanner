@@ -21,6 +21,7 @@ const ALLOWED_PRODUCTION_ENTRYPOINTS = new Set([
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',
   'application/weeklyPlanningStableV5RuntimeSession.ts',
   'application/weeklyPlanningStableV5SessionStorage.ts',
+  'trace/weeklyPlanningStableV5TraceRuntime.ts',
 ]);
 
 function sourceFiles(root: string): string[] {
@@ -43,10 +44,6 @@ function isTestSource(relativePath: string): boolean {
     || /\.(test|spec)\.(ts|tsx)$/.test(relativePath);
 }
 
-function hasExactStableToken(content: string, token: string): boolean {
-  return new RegExp(`\\b${token}\\b`).test(content);
-}
-
 describe('Stable V5 production connection boundary', () => {
   it('allows Stable V5 imports only through the audited runtime entrypoints', () => {
     const violations: string[] = [];
@@ -56,9 +53,7 @@ describe('Stable V5 production connection boundary', () => {
       if (isTestSource(relativePath)) continue;
       if (relativePath.startsWith('semantic/')) continue;
       const content = readFileSync(path, 'utf8');
-      const usedTokens = STABLE_IMPORT_TOKENS.filter(
-        (token) => hasExactStableToken(content, token),
-      );
+      const usedTokens = STABLE_IMPORT_TOKENS.filter((token) => content.includes(token));
       if (usedTokens.length === 0) continue;
       if (ALLOWED_PRODUCTION_ENTRYPOINTS.has(relativePath)) {
         connectedEntrypoints.add(relativePath);
@@ -75,6 +70,7 @@ describe('Stable V5 production connection boundary', () => {
       'application/weeklyPlanningStableV5RuntimeExecutor.ts',
       'application/weeklyPlanningStableV5RuntimeSession.ts',
       'application/weeklyPlanningStableV5SessionStorage.ts',
+      'trace/weeklyPlanningStableV5TraceRuntime.ts',
     ]));
   });
 });
