@@ -354,21 +354,10 @@ export function useWeeklyPlanningApplication({
   }
 
   function clearConversation(): boolean {
-    const current = getPlanningState();
-    if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-      if (current.pendingTurn || current.pendingApproval) return false;
-      resetSession();
-      return true;
-    }
-    const session = controllerSessionRef.current;
-    const cleared = clearWeeklyPlanningControlledConversation({
+    return clearWeeklyPlanningControlledConversation({
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
     });
-    if (cleared && session) {
-      clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
-    }
-    return cleared;
   }
 
   return {
