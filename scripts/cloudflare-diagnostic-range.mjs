@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
+const TARGET = 'src/features/weeklyPlanning/weeklyPlanningTurnController.ts';
 const configFile = ts.readConfigFile('tsconfig.build.json', ts.sys.readFile);
 if (configFile.error) {
   throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'));
@@ -30,12 +31,7 @@ const formatted = diagnostics.map((diagnostic) => {
 });
 
 mkdirSync('dist', { recursive: true });
-const payload = JSON.stringify(formatted, null, 2)
-  .replaceAll('&', '&amp;')
-  .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;');
-writeFileSync(
-  'dist/index.html',
-  `<!doctype html><meta charset="utf-8"><title>TypeScript diagnostics</title><pre>${payload}</pre>`,
-);
-console.log(JSON.stringify({ diagnosticCount: formatted.length }));
+writeFileSync('dist/index.html', '<!doctype html><meta charset="utf-8"><title>diagnostic predicate</title>');
+const exactlyOneControllerDiagnostic = formatted.length === 1
+  && formatted[0]?.fileName?.endsWith(TARGET) === true;
+process.exit(exactlyOneControllerDiagnostic ? 0 : 1);
