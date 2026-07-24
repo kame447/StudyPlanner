@@ -15,6 +15,7 @@ export function createInitialPlanningState(weekStartDate: string): PlanningState
   return {
     weekStartDate,
     revision: 0,
+    conversationRequestSequence: 0,
     mode: 'idle',
     draftBlocks: [],
     previewCandidates: [],
@@ -143,11 +144,14 @@ export function weeklyPlanningReducer(
         || state.pendingApproval
         || action.pending.weekStartDate !== state.weekStartDate
         || action.pending.baseRevision !== state.revision
+        || !Number.isSafeInteger(action.requestSequence)
+        || action.requestSequence <= (state.conversationRequestSequence ?? 0)
       ) {
         return state;
       }
       return withMutation(state, {
         ...state,
+        conversationRequestSequence: action.requestSequence,
         mode: state.mode === 'idle' ? 'collecting_tasks' : state.mode,
         messages: [...state.messages, action.userMessage],
         pendingTurn: action.pending,
@@ -322,6 +326,7 @@ export function weeklyPlanningReducer(
     case 'reset_session':
       return withMutation(state, {
         ...state,
+        conversationRequestSequence: 0,
         mode: 'idle',
         draftBlocks: [],
         previewCandidates: [],
