@@ -270,6 +270,51 @@ function snapshotEntry(
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function integerField(value: unknown, key: string): number | null {
+  if (!isRecord(value)) return null;
+  const candidate = value[key];
+  return Number.isInteger(candidate) && Number(candidate) >= 0 ? Number(candidate) : null;
+}
+
+function nestedIntegerField(value: unknown, path: string[]): number | null {
+  let current: unknown = value;
+  for (const key of path.slice(0, -1)) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return integerField(current, path[path.length - 1]);
+}
+
+function eventGraphRevision(
+  event: WeeklyPlanningStableV5DebugTraceEvent,
+  fallback: number,
+): number {
+  return integerField(event.data, 'graphRevision')
+    ?? integerField(event.data, 'expectedRevision')
+    ?? nestedIntegerField(event.data, ['input', 'graph', 'revision'])
+    ?? nestedIntegerField(event.data, ['runtimeSession', 'graph', 'revision'])
+    ?? nestedIntegerField(event.data, ['result', 'graph', 'revision'])
+    ?? fallback;
+}
+
+function inputGraphRevision(params: WeeklyPlanningStableV5TraceInput): number {
+  const events = params.debugTraceEvents ?? [];
+  for (const stage of ['runtime_session_context_prepared', 'semantic_pipeline_input']) {
+    const event = events.find((candidate) => candidate.stage === stage);
+    if (!event) continue;
+    const revision = integerField(event.data, 'graphRevision')
+      ?? integerField(event.data, 'expectedRevision')
+      ?? nestedIntegerField(event.data, ['runtimeSession', 'graph', 'revision'])
+      ?? nestedIntegerField(event.data, ['graph', 'revision']);
+    if (revision !== null) return revision;
+  }
+  return Math.max(0, params.graphRevision - 1);
+}
+
 function debugStageEntries(
   active: ActiveStableV5TraceSession,
   params: WeeklyPlanningStableV5TraceInput,
@@ -289,9 +334,45 @@ function debugStageEntries(
       },
       occurredAt,
       requestId: params.requestId,
-      stateRevision: params.graphRevision,
+      stateRevision: eventGraphRevision(event, params.graphRevision),
       severity: event.severity,
     }));
+}
+
+function createDiscardEvent(
+  active: ActiveStableV5TraceSession,
+  params: WeeklyPlanningStableV5TraceInput,
+  occurredAt: string,
+): WeeklyPlanningTraceInternalEventEntry | null {
+  if (params.errorCode === 'stale_async_result_discarded') {
+    return eventEntry(active, {
+      eventType: 'stale_async_result_discarded',
+      payload: {
+        runtime: 'stable_v5',
+        outcome: params.outcome,
+        graphRevision: params.graphRevision,
+      },
+      occurredAt,
+      requestId: params.requestId,
+      stateRevision: params.graphRevision,
+      severity: 'warn',
+    });
+  }
+  if (params.errorCode === 'commit_rejected') {
+    return eventEntry(active, {
+      eventType: 'request_cancelled',
+      payload: {
+        runtime: 'stable_v5',
+        reason: 'commit_rejected',
+        graphRevision: params.graphRevision,
+      },
+      occurredAt,
+      requestId: params.requestId,
+      stateRevision: params.graphRevision,
+      severity: 'warn',
+    });
+  }
+  return null;
 }
 
 function createTurnEntries(
@@ -309,7 +390,7 @@ function createTurnEntries(
     active.session.planningRangeEnd = params.planningRangeEnd;
   }
 
-  const previousRevision = Math.max(0, params.graphRevision - 1);
+  const previousRevision = inputGraphRevision(params);
   const entries: WeeklyPlanningTraceEntry[] = [
     turnEntry(active, {
       role: 'user',
@@ -367,6 +448,9 @@ function createTurnEntries(
     }),
   ];
 
+  const discardEvent = createDiscardEvent(active, params, occurredAt);
+  if (discardEvent) entries.push(discardEvent);
+
   if (params.previewCount > 0) {
     entries.push(eventEntry(active, {
       eventType: 'preview_generated',
@@ -392,6 +476,7 @@ function createTurnEntries(
   entries.push(snapshotEntry(active, {
     state: {
       runtime: 'stable_v5',
+      inputGraphRevision: previousRevision,
       graphRevision: params.graphRevision,
       graphSummary: params.graphSummary,
       compatibilityState: params.compatibilityState,
