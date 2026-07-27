@@ -26,6 +26,7 @@ import {
 
 const LOCAL_SESSIONS_KEY = 'studyplanner-weekly-planning-trace-sessions-v1';
 const LOCAL_ENTRIES_KEY = 'studyplanner-weekly-planning-trace-entries-v1';
+const FIRESTORE_ENTRIES_PER_BATCH = 440;
 
 function dateString(value: unknown): string | undefined {
   if (typeof value === 'string') return value;
@@ -123,6 +124,14 @@ function assertAuthenticatedFirestoreOwnership(params: {
   }
 }
 
+function entryChunks(entries: WeeklyPlanningTraceEntry[]): WeeklyPlanningTraceEntry[][] {
+  const chunks: WeeklyPlanningTraceEntry[][] = [];
+  for (let index = 0; index < entries.length; index += FIRESTORE_ENTRIES_PER_BATCH) {
+    chunks.push(entries.slice(index, index + FIRESTORE_ENTRIES_PER_BATCH));
+  }
+  return chunks;
+}
+
 export function createFirestoreWeeklyPlanningTraceRepository(
   firestoreDb: Firestore,
 ): WeeklyPlanningTraceRepository {
@@ -143,22 +152,26 @@ export function createFirestoreWeeklyPlanningTraceRepository(
         await upsertSession(session);
         return;
       }
-      if (entries.length > 450) throw new Error('trace batch is too large');
       assertAuthenticatedFirestoreOwnership({ session, entries });
 
-      const batch = writeBatch(firestoreDb);
-      batch.set(
-        doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
-        firestorePayload(session),
-        { merge: true },
-      );
-      entries.forEach((entry) => {
-        batch.set(
-          doc(firestoreDb, 'weekly_planning_trace_entries', entry.id),
-          firestorePayload(entry),
-        );
-      });
-      await batch.commit();
+      const chunks = entryChunks(entries);
+      for (const [chunkIndex, chunk] of chunks.entries()) {
+        const batch = writeBatch(firestoreDb);
+        chunk.forEach((entry) => {
+          batch.set(
+            doc(firestoreDb, 'weekly_planning_trace_entries', entry.id),
+            firestorePayload(entry),
+          );
+        });
+        if (chunkIndex === chunks.length - 1) {
+          batch.set(
+            doc(firestoreDb, 'weekly_planning_trace_sessions', session.id),
+            firestorePayload(session),
+            { merge: true },
+          );
+        }
+        await batch.commit();
+      }
     },
 
     async listSessions(userId) {
