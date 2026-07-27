@@ -208,7 +208,7 @@ describe('weeklyPlanningTurnSideEffects', () => {
     expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
   });
 
-  it('records and consumes a stale discarded execution trace', async () => {
+  it('records and consumes a stale discarded execution trace without a phantom assistant turn or preview', async () => {
     const services = createServices();
     const state = {
       ...createInitialPlanningIntakeState(),
@@ -236,11 +236,12 @@ describe('weeklyPlanningTurnSideEffects', () => {
     expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
       outcome: 'discarded_stale',
       errorCode: 'stale_async_result_discarded',
-      previewCount: 1,
+      previewCount: 0,
       compatibilityState: expect.objectContaining({
         status: 'draft_ready',
         __discardedExecution: expect.objectContaining({
           reason: 'stale',
+          resultMessage: '1件の候補を作りました。',
           candidateCount: 1,
         }),
         __stableV5DebugTrace: expect.objectContaining({
@@ -248,6 +249,9 @@ describe('weeklyPlanningTurnSideEffects', () => {
           events: [expect.objectContaining({ stage: 'runtime_branch_selected' })],
         }),
       }),
+    }));
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
+      assistantMessage: expect.anything(),
     }));
     expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
   });
