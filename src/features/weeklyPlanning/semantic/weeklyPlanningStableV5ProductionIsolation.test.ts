@@ -17,10 +17,13 @@ const STABLE_IMPORT_TOKENS = [
 const ALLOWED_PRODUCTION_ENTRYPOINTS = new Set([
   'weeklyPlanningTurnExecutor.ts',
   'weeklyPlanningOwnedStorage.ts',
-  'application/useWeeklyPlanningApplication.ts',
+  'application/weeklyPlanningSessionLifecycle.ts',
+  'application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.ts',
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',
   'application/weeklyPlanningStableV5RuntimeSession.ts',
   'application/weeklyPlanningStableV5SessionStorage.ts',
+  'application/weeklyPlanningTurnApplication.ts',
+  'application/weeklyPlanningTurnSideEffects.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',
 ]);
 
@@ -66,10 +69,13 @@ describe('Stable V5 production connection boundary', () => {
     expect(connectedEntrypoints).toEqual(new Set([
       'weeklyPlanningTurnExecutor.ts',
       'weeklyPlanningOwnedStorage.ts',
-      'application/useWeeklyPlanningApplication.ts',
+      'application/weeklyPlanningSessionLifecycle.ts',
+      'application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.ts',
       'application/weeklyPlanningStableV5RuntimeExecutor.ts',
       'application/weeklyPlanningStableV5RuntimeSession.ts',
       'application/weeklyPlanningStableV5SessionStorage.ts',
+      'application/weeklyPlanningTurnApplication.ts',
+      'application/weeklyPlanningTurnSideEffects.ts',
       'trace/weeklyPlanningStableV5TraceRuntime.ts',
     ]));
   });
