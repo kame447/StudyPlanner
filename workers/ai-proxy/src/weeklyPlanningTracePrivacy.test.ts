@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WEEKLY_PLANNING_TRACE_EVENT_TYPES,
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  encodeWeeklyPlanningTraceDebugChunkBase64,
 } from '../../../shared/weeklyPlanningTraceContract';
 import {
   WEEKLY_PLANNING_TRACE_POLICY_VERSION,
@@ -62,9 +63,10 @@ function validTurnEntry(overrides: Record<string, unknown> = {}): Record<string,
 }
 
 function validDebugEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  const dataChunk = 'A'.repeat(
+  const base64 = 'A'.repeat(
     Math.ceil(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes / 3) * 4,
   );
+  const dataChunk = encodeWeeklyPlanningTraceDebugChunkBase64(base64);
   return validTurnEntry({
     kind: 'internal_event',
     eventType: 'stable_v5_debug_stage',
@@ -219,6 +221,7 @@ describe('weekly planning trace privacy boundary', () => {
     expect(prepared.entries[0].eventType).toBe('stable_v5_debug_stage');
     expect(payload.dataChunk).toBe(sourcePayload.dataChunk);
     expect(String(payload.dataChunk).length).toBeLessThan(4_000);
+    expect(String(payload.dataChunk).split('.').every((run) => run.length <= 20)).toBe(true);
   });
 
   it('accepts production date-only and 24:00 range values at the server write boundary', () => {
