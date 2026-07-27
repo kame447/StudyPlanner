@@ -36,6 +36,26 @@ describe('isWeeklyPlanningTraceEntry', () => {
     })).toBe(true);
   });
 
+  it('Stable V5 debug stage eventを受理する', () => {
+    expect(isWeeklyPlanningTraceEntry({
+      ...baseEntry(),
+      kind: 'internal_event',
+      eventType: 'stable_v5_debug_stage',
+      payload: {
+        debugSchemaVersion: 1,
+        debugSequence: 0,
+        stage: 'semantic_provider_request',
+        stageOccurredAt: '2026-07-27T00:00:00.000Z',
+        data: {
+          request: {
+            messages: [{ role: 'system', content: 'full prompt' }],
+          },
+        },
+      },
+      severity: 'debug',
+    })).toBe(true);
+  });
+
   it('不正なsnapshot reasonをsafe discardする', () => {
     expect(isWeeklyPlanningTraceEntry({
       ...baseEntry(),
@@ -71,5 +91,4 @@ describe('isWeeklyPlanningTraceEntry', () => {
       turnIndex: 0,
     })).toBe(false);
   });
-
 });
