@@ -205,4 +205,4 @@ src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts
 
 ## 13. Task operation
 
-`tasks/`直下には未完了taskだけを置く。完了範囲は`tasks/closed/`、契約変更で不要になったtaskは`tasks/superseded/`へ移す。current queueはroadmapだけを正とし、PR merge後はbaseline、contract、roadmap、task placementを同期する。
+`tasks/`直下には未完了taskだけを置く。完了範囲は`tasks/closed/`、契約変更で不要になったtaskは`tasks/superseded/`へ移す。current queueはroadmapを正とし、PR merge後はbaseline、contract、roadmap、task placementを同期する。
