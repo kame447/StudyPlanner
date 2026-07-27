@@ -1,7 +1,7 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-24
+Updated: 2026-07-27
 Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
 
 - Runtime and local persistence: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
@@ -182,7 +182,12 @@ clear conversationとreset sessionの境界修正
 clear後のstructured planning state・preview・draft・identity維持テスト
 owner-bound storage decodeの純粋化
 storage read時の無副作用テスト
+session復元・scope同期・明示reset・runtime切替resetのapplication lifecycle分離
+turn実行・Graph finalize/discard・commit/failure traceのapplication service分離
+session lifecycle、turn application、turn side effectのfocused unit test
 ```
+
+`useWeeklyPlanningApplication`は状態とUI向け操作のcomposition rootに限定し、AI semantic executor、Fact Graph lifecycle、trace repository、Stable V5 storageの実装詳細を直接所有しない。AI semantic normalizerとdeterministic coreの責務境界は変更していない。
 
 GitHub ActionsはPR #86でも`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない。focused test、full Vitest、typecheck、buildは未確認であり、PR #86はDraftのまま維持する。
 
