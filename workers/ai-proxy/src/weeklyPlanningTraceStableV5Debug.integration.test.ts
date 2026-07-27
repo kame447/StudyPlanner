@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../shared/weeklyPlanningTraceContract';
+import {
+  WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING,
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  encodeWeeklyPlanningTraceDebugChunkBase64,
+} from '../../../shared/weeklyPlanningTraceContract';
 
 const fakeFirestore = vi.hoisted(() => {
   const sessions = new Map<string, Record<string, unknown>>();
@@ -160,8 +164,9 @@ describe('Stable V5 debug trace server boundary', () => {
     const sessionId = String(firstStart.body.sessionId);
     const logicalConversationId = String(firstStart.body.logicalConversationId);
     const rawChunk = 'x'.repeat(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes);
-    const dataChunk = btoa(rawChunk);
+    const dataChunk = encodeWeeklyPlanningTraceDebugChunkBase64(btoa(rawChunk));
     expect(dataChunk.length).toBeLessThan(4_000);
+    expect(dataChunk.split('.').every((run) => run.length <= 20)).toBe(true);
 
     const appended = await handleWeeklyPlanningTraceApi(
       new Request('https://example.test/weekly-planning-trace/append', {
@@ -192,7 +197,7 @@ describe('Stable V5 debug trace server boundary', () => {
               stage: 'runtime_turn_input',
               stageOccurredAt: NOW,
               sourceSanitizerTruncated: false,
-              encoding: 'base64-utf8-json',
+              encoding: WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING,
               chunkIndex: 0,
               chunkCount: 1,
               totalSerializedBytes: rawChunk.length,
