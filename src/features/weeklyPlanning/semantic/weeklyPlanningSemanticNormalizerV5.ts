@@ -3,6 +3,9 @@ import type {
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
+  recordWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
@@ -38,6 +41,7 @@ export interface WeeklyPlanningSemanticNormalizerInputV5 {
   userText: string;
   recentConversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
   publicStateSummary?: Record<string, unknown>;
+  traceRequestId?: string;
 }
 
 export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
@@ -72,6 +76,18 @@ function byteLength(value: unknown): number {
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   return 'Unknown Stable V5 semantic provider error.';
+}
+
+function errorDetails(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack ?? null,
+      cause: error.cause ?? null,
+    };
+  }
+  return { value: error };
 }
 
 function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): ChatMessage[] {
@@ -116,22 +132,63 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const requestBytes: number[] = [];
       const responseLengths: number[] = [];
       const baseMessages = createBaseMessages(input);
-      const call = async (messages: ChatMessage[]): Promise<string> => {
-        requestBytes.push(byteLength({
-          purpose: 'weekly_planning_semantic_normalizer',
-          messages,
-          responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-          maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
-        }));
-        const response = await client.createChatCompletion({
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.traceRequestId,
+        stage: 'semantic_normalizer_prepared',
+        data: {
+          normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+          schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+          input,
+          request: {
+            purpose: 'weekly_planning_semantic_normalizer',
+            messages: baseMessages,
+            temperature: 0,
+            responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
+            maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+          },
+        },
+      });
+
+      const call = async (
+        messages: ChatMessage[],
+        attempt: 'initial' | 'repair',
+      ): Promise<string> => {
+        const request = {
           messages,
           temperature: 0,
           responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
           purpose: 'weekly_planning_semantic_normalizer',
           maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
+        };
+        const bytes = byteLength(request);
+        requestBytes.push(bytes);
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_provider_request',
+          data: { attempt, requestBytes: bytes, request },
         });
-        responseLengths.push(response.length);
-        return response;
+        try {
+          const response = await client.createChatCompletion(request);
+          responseLengths.push(response.length);
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_provider_response',
+            data: {
+              attempt,
+              responseLength: response.length,
+              rawResponse: response,
+            },
+          });
+          return response;
+        } catch (error) {
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_provider_error',
+            severity: 'error',
+            data: { attempt, error: errorDetails(error) },
+          });
+          throw error;
+        }
       };
 
       const diagnostics = (params: {
@@ -154,9 +211,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
 
       let initialResponse: string;
       try {
-        initialResponse = await call(baseMessages);
+        initialResponse = await call(baseMessages, 'initial');
       } catch (error) {
-        return {
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'provider_failure',
           document: null,
           diagnostics: diagnostics({
@@ -166,11 +223,28 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             providerError: errorMessage(error),
           }),
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_normalizer_decision',
+          severity: 'error',
+          data: result,
+        });
+        return result;
       }
 
       const initialParse = parseWeeklyPlanningSemanticDocumentV5(initialResponse);
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.traceRequestId,
+        stage: 'semantic_validation_result',
+        data: {
+          attempt: 'initial',
+          accepted: Boolean(initialParse.document),
+          errors: initialParse.errors,
+          parsedDocument: initialParse.document,
+        },
+      });
       if (initialParse.document) {
-        return {
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
           document: initialParse.document,
           diagnostics: diagnostics({
@@ -180,6 +254,12 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             providerError: null,
           }),
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_normalizer_decision',
+          data: result,
+        });
+        return result;
       }
 
       const repairMessages = createRepairMessages({
@@ -187,12 +267,22 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         invalidResponse: initialResponse,
         validationErrors: initialParse.errors,
       });
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.traceRequestId,
+        stage: 'semantic_repair_prepared',
+        severity: 'warn',
+        data: {
+          invalidResponse: initialResponse,
+          validationErrors: initialParse.errors,
+          repairMessages,
+        },
+      });
 
       let repairedResponse: string;
       try {
-        repairedResponse = await call(repairMessages);
+        repairedResponse = await call(repairMessages, 'repair');
       } catch (error) {
-        return {
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'provider_failure',
           document: null,
           diagnostics: diagnostics({
@@ -202,11 +292,29 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             providerError: errorMessage(error),
           }),
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_normalizer_decision',
+          severity: 'error',
+          data: result,
+        });
+        return result;
       }
 
       const repairedParse = parseWeeklyPlanningSemanticDocumentV5(repairedResponse);
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.traceRequestId,
+        stage: 'semantic_validation_result',
+        severity: repairedParse.document ? 'info' : 'error',
+        data: {
+          attempt: 'repair',
+          accepted: Boolean(repairedParse.document),
+          errors: repairedParse.errors,
+          parsedDocument: repairedParse.document,
+        },
+      });
       if (!repairedParse.document) {
-        return {
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'rejected',
           document: null,
           diagnostics: diagnostics({
@@ -219,9 +327,16 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             providerError: null,
           }),
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_normalizer_decision',
+          severity: 'error',
+          data: result,
+        });
+        return result;
       }
 
-      return {
+      const result: WeeklyPlanningSemanticNormalizerResultV5 = {
         status: 'accepted',
         document: repairedParse.document,
         diagnostics: diagnostics({
@@ -231,6 +346,12 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           providerError: null,
         }),
       };
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.traceRequestId,
+        stage: 'semantic_normalizer_decision',
+        data: result,
+      });
+      return result;
     },
   };
 }
