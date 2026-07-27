@@ -31,11 +31,13 @@ export interface WeeklyPlanningTraceSanitizeResult {
 }
 
 const DEFAULT_OPTIONS: Required<WeeklyPlanningTraceSanitizeOptions> = {
-  maxDepth: 8,
-  maxArrayItems: 100,
-  maxObjectKeys: 100,
-  maxStringLength: 4_000,
-  maxSerializedBytes: 48_000,
+  maxDepth: 16,
+  maxArrayItems: 5_000,
+  maxObjectKeys: 5_000,
+  // A 350,000-byte chunk expands to at most 466,668 Base64 characters.
+  // Keep the common sanitizer above that bound so persisted debug chunks stay lossless.
+  maxStringLength: 600_000,
+  maxSerializedBytes: 800_000,
 };
 
 function normalizedKey(key: string): string {
@@ -56,7 +58,7 @@ export function sanitizeWeeklyPlanningTraceValue(
   options: WeeklyPlanningTraceSanitizeOptions = {},
 ): WeeklyPlanningTraceSanitizeResult {
   const limits = { ...DEFAULT_OPTIONS, ...options };
-  const seen = new WeakSet<object>();
+  const activePath = new WeakSet<object>();
   let truncated = false;
 
   function visit(value: unknown, depth: number): unknown {
@@ -80,39 +82,44 @@ export function sanitizeWeeklyPlanningTraceValue(
       return TRUNCATED_VALUE;
     }
 
-    if (Array.isArray(value)) {
-      const items = value.slice(0, limits.maxArrayItems).map((item) => visit(item, depth + 1));
-      if (value.length > limits.maxArrayItems) {
-        truncated = true;
-        items.push(TRUNCATED_VALUE);
-      }
-      return items;
-    }
-
     if (value instanceof Date) return value.toISOString();
 
     if (typeof value === 'object') {
-      if (seen.has(value)) {
+      if (activePath.has(value)) {
         truncated = true;
         return CIRCULAR_VALUE;
       }
-      seen.add(value);
+      activePath.add(value);
+      try {
+        if (Array.isArray(value)) {
+          const items = value
+            .slice(0, limits.maxArrayItems)
+            .map((item) => visit(item, depth + 1));
+          if (value.length > limits.maxArrayItems) {
+            truncated = true;
+            items.push(TRUNCATED_VALUE);
+          }
+          return items;
+        }
 
-      const entries = Object.entries(value as Record<string, unknown>);
-      const result: Record<string, unknown> = {};
-      for (const [index, [key, entryValue]] of entries.entries()) {
-        if (index >= limits.maxObjectKeys) {
-          truncated = true;
-          result.__truncated__ = TRUNCATED_VALUE;
-          break;
+        const entries = Object.entries(value as Record<string, unknown>);
+        const result: Record<string, unknown> = {};
+        for (const [index, [key, entryValue]] of entries.entries()) {
+          if (index >= limits.maxObjectKeys) {
+            truncated = true;
+            result.__truncated__ = TRUNCATED_VALUE;
+            break;
+          }
+          if (isForbiddenWeeklyPlanningTraceKey(key)) {
+            continue;
+          }
+          const sanitized = visit(entryValue, depth + 1);
+          if (sanitized !== undefined) result[key] = sanitized;
         }
-        if (isForbiddenWeeklyPlanningTraceKey(key)) {
-          continue;
-        }
-        const sanitized = visit(entryValue, depth + 1);
-        if (sanitized !== undefined) result[key] = sanitized;
+        return result;
+      } finally {
+        activePath.delete(value);
       }
-      return result;
     }
 
     return String(value);
@@ -133,12 +140,20 @@ export function sanitizeWeeklyPlanningTraceValue(
 }
 
 export function containsForbiddenWeeklyPlanningTraceKey(value: unknown): boolean {
-  if (Array.isArray(value)) {
-    return value.some(containsForbiddenWeeklyPlanningTraceKey);
+  const visited = new WeakSet<object>();
+
+  function contains(current: unknown): boolean {
+    if (!current || typeof current !== 'object') return false;
+    if (visited.has(current)) return false;
+    visited.add(current);
+    if (Array.isArray(current)) {
+      return current.some(contains);
+    }
+    return Object.entries(current as Record<string, unknown>).some(
+      ([key, entryValue]) => isForbiddenWeeklyPlanningTraceKey(key)
+        || contains(entryValue),
+    );
   }
-  if (!value || typeof value !== 'object') return false;
-  return Object.entries(value as Record<string, unknown>).some(
-    ([key, entryValue]) => isForbiddenWeeklyPlanningTraceKey(key)
-      || containsForbiddenWeeklyPlanningTraceKey(entryValue),
-  );
+
+  return contains(value);
 }

@@ -1,8 +1,8 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+Updated: 2026-07-27
+Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
 
 - Runtime and local persistence: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
 - Semantic V5 contract: [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md)
@@ -59,7 +59,26 @@ browser reload中の未完了request
 → pending ownershipを保存しない
 ```
 
-`clear conversation`、`reset session`、runtime mode change、account profile resetは別操作として扱う。same conversationを維持した`clear conversation`後も、PlanningState revisionをsequence下限としてturn/request IDを再利用しない。
+`clear conversation`、`reset session`、runtime mode change、account profile resetは別操作として扱う。
+
+`clear conversation`は画面に表示されるuser/assistant message履歴と最後のassistant表示だけを消す。次は維持する。
+
+```text
+conversation ID
+request sequence
+compatibility intake state
+Stable V5 Fact Graph
+preview candidates
+draft blocks
+approvalに関する作業状態
+planning mode
+persisted Stable V5 session
+trace continuity
+```
+
+`clear conversation`から`reset session`を呼ばない。Fact Graph、runtime session、persisted session、trace sessionを削除しない。同じconversationを継続し、次のturnは消去前より大きいrequest sequenceを使用する。
+
+`reset session`は「最初からやり直す」操作である。messages、intake、preview、draft、pending approval、request sequence、conversation identity、Fact Graph、persisted Stable V5 sessionを初期化し、新しいconversationとして開始する。
 
 ## 5. Stable V5 local persistence
 
@@ -121,6 +140,8 @@ previewはexplicit authorizationとreadiness gate通過後だけ生成する。a
 
 local stateはversion、owner、payloadを同一envelopeとして保存する。owner不一致、cross-user draft、破損payloadを破棄する。userまたはweek scope切替renderで旧stateを新keyへ保存しない。approval ledgerもuser別に分離する。
 
+versioned payloadのdecodeは純粋処理として行い、検証のためにlive localStorage keyへpayloadを一時書込みしてはならない。保存領域への書込みは明示的なsaveまたはlegacy migrationのcommit境界だけで行う。
+
 Stable V5 trace continuity、application session、approval ledger、personalization profile、quality trace server repositoryは別schema、別key、別責務として管理する。
 
 ## 9. cloud synced conversation session
@@ -150,6 +171,38 @@ raw Firebase UID、email、表示名をserver trace documentへ保存しない�
 
 code implementation、production connection、automated verification、browser verification、cloud sync、operational deploymentを同一視しない。
 
-## 12. Task operation
+## 12. current implementation status
+
+PR #83は`main`へmerge済みである。trace continuity、controller sequence continuity、remote server handle continuityの実装はmain baseline `14e2184856fdbdb1f6513735e9eae3efb45c9822`へ含まれる。
+
+Draft PR #86、branch `agent/studyplanner-refactor`で次を変更中である。
+
+```text
+clear conversationとreset sessionの境界修正
+clear後のstructured planning state・preview・draft・identity維持テスト
+owner-bound storage decodeの純粋化
+storage read時の無副作用テスト
+session復元・scope同期・明示reset・runtime切替resetのapplication lifecycle分離
+turn実行・Graph finalize/discard・commit/failure traceのapplication service分離
+session lifecycle、turn application、turn side effectのfocused unit test
+```
+
+`useWeeklyPlanningApplication`は状態とUI向け操作のcomposition rootに限定し、AI semantic executor、Fact Graph lifecycle、trace repository、Stable V5 storageの実装詳細を直接所有しない。AI semantic normalizerとdeterministic coreの責務境界は変更していない。
+
+PR #86のfocused verificationには少なくとも次を含める。
+
+```text
+src/features/weeklyPlanning/__tests__/weeklyPlanningConversationClear.integration.test.ts
+src/features/weeklyPlanning/application/weeklyPlanningSessionLifecycle.test.ts
+src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts
+src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.test.ts
+src/features/weeklyPlanning/weeklyPlanningOwnedStorage.test.ts
+src/features/weeklyPlanning/weeklyPlanningStorageDecoder.test.ts
+src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts
+```
+
+最新確認head `368ec5116a0586dd22574294c424a0edcddf5366`のGitHub Actions run `30227401870`も`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない。focused test、full Vitest、typecheck、buildは未確認であり、PR #86はDraftのまま維持する。検証未実施の状態をtest成功またはrefactor完了と記録しない。
+
+## 13. Task operation
 
 `tasks/`直下には未完了taskだけを置く。完了範囲は`tasks/closed/`、契約変更で不要になったtaskは`tasks/superseded/`へ移す。current queueはroadmapを正とし、PR merge後はbaseline、contract、roadmap、task placementを同期する。

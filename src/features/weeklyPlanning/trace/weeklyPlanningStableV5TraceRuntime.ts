@@ -1,4 +1,5 @@
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
+import type { WeeklyPlanningStableV5DebugTraceEvent } from './weeklyPlanningStableV5DebugTrace';
 import {
   getWeeklyPlanningTraceRepository,
   isWeeklyPlanningTraceEnabled,
@@ -20,6 +21,20 @@ import {
 
 const SESSION_RETENTION_DAYS = 90;
 const SNAPSHOT_RETENTION_DAYS = 30;
+const DEBUG_INLINE_MAX_BYTES = 350_000;
+const DEBUG_CHUNK_BYTES = 350_000;
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const POST_CANONICALIZATION_STAGES = new Set([
+  'semantic_canonicalization_evaluated',
+  'scheduler_compilation_evaluated',
+  'semantic_pipeline_decision',
+  'runtime_semantic_result_received',
+  'runtime_graph_staged',
+  'runtime_scheduler_dialogue_evaluated',
+  'runtime_preview_scheduler_evaluated',
+  'runtime_branch_selected',
+  'runtime_turn_output',
+]);
 
 interface ActiveStableV5TraceSession {
   session: WeeklyPlanningTraceSession;
@@ -40,6 +55,7 @@ export interface WeeklyPlanningStableV5TraceInput {
   graphRevision: number;
   graphSummary: Record<string, unknown>;
   compatibilityState?: unknown;
+  debugTraceEvents?: WeeklyPlanningStableV5DebugTraceEvent[];
   previewCount: number;
   planningRangeStart?: string;
   planningRangeEnd?: string;
@@ -268,6 +284,174 @@ function snapshotEntry(
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function integerField(value: unknown, key: string): number | null {
+  if (!isRecord(value)) return null;
+  const candidate = value[key];
+  return Number.isInteger(candidate) && Number(candidate) >= 0 ? Number(candidate) : null;
+}
+
+function nestedIntegerField(value: unknown, path: string[]): number | null {
+  let current: unknown = value;
+  for (const key of path.slice(0, -1)) {
+    if (!isRecord(current)) return null;
+    current = current[key];
+  }
+  return integerField(current, path[path.length - 1]);
+}
+
+function eventGraphRevision(
+  event: WeeklyPlanningStableV5DebugTraceEvent,
+  inputRevision: number,
+  outputRevision: number,
+): number {
+  return integerField(event.data, 'graphRevision')
+    ?? integerField(event.data, 'expectedRevision')
+    ?? nestedIntegerField(event.data, ['graph', 'revision'])
+    ?? nestedIntegerField(event.data, ['input', 'graph', 'revision'])
+    ?? nestedIntegerField(event.data, ['runtimeSession', 'graph', 'revision'])
+    ?? nestedIntegerField(event.data, ['result', 'graph', 'revision'])
+    ?? nestedIntegerField(event.data, ['stagedGraph', 'revision'])
+    ?? nestedIntegerField(event.data, ['schedulerInput', 'graph', 'revision'])
+    ?? (POST_CANONICALIZATION_STAGES.has(event.stage) ? outputRevision : inputRevision);
+}
+
+function inputGraphRevision(params: WeeklyPlanningStableV5TraceInput): number {
+  const events = params.debugTraceEvents ?? [];
+  for (const stage of ['runtime_session_context_prepared', 'semantic_pipeline_input']) {
+    const event = events.find((candidate) => candidate.stage === stage);
+    if (!event) continue;
+    const revision = integerField(event.data, 'graphRevision')
+      ?? integerField(event.data, 'expectedRevision')
+      ?? nestedIntegerField(event.data, ['runtimeSession', 'graph', 'revision'])
+      ?? nestedIntegerField(event.data, ['graph', 'revision']);
+    if (revision !== null) return revision;
+  }
+  return Math.max(0, params.graphRevision - 1);
+}
+
+function prepareDebugData(value: unknown) {
+  return sanitizeWeeklyPlanningTraceValue(value, {
+    maxDepth: 256,
+    maxArrayItems: 1_000_000,
+    maxObjectKeys: 1_000_000,
+    maxStringLength: 100_000_000,
+    maxSerializedBytes: Number.MAX_SAFE_INTEGER,
+  });
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let output = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const hasSecond = index + 1 < bytes.length;
+    const hasThird = index + 2 < bytes.length;
+    const second = hasSecond ? bytes[index + 1] : 0;
+    const third = hasThird ? bytes[index + 2] : 0;
+    const value = (first << 16) | (second << 8) | third;
+    output += BASE64_ALPHABET[(value >> 18) & 63];
+    output += BASE64_ALPHABET[(value >> 12) & 63];
+    output += hasSecond ? BASE64_ALPHABET[(value >> 6) & 63] : '=';
+    output += hasThird ? BASE64_ALPHABET[value & 63] : '=';
+  }
+  return output;
+}
+
+function debugEventPayloads(event: WeeklyPlanningStableV5DebugTraceEvent): unknown[] {
+  const prepared = prepareDebugData(event.data);
+  const serialized = JSON.stringify(prepared.value) ?? 'null';
+  const bytes = new TextEncoder().encode(serialized);
+  const common = {
+    debugSchemaVersion: event.schemaVersion,
+    debugSequence: event.sequence,
+    stage: event.stage,
+    stageOccurredAt: event.occurredAt,
+    sourceSanitizerTruncated: prepared.truncated,
+  };
+  if (bytes.byteLength <= DEBUG_INLINE_MAX_BYTES) {
+    return [{
+      ...common,
+      storage: 'inline_json',
+      serializedBytes: bytes.byteLength,
+      data: prepared.value,
+    }];
+  }
+
+  const chunkCount = Math.ceil(bytes.byteLength / DEBUG_CHUNK_BYTES);
+  return Array.from({ length: chunkCount }, (_, chunkIndex) => {
+    const start = chunkIndex * DEBUG_CHUNK_BYTES;
+    const chunk = bytes.slice(start, Math.min(bytes.byteLength, start + DEBUG_CHUNK_BYTES));
+    return {
+      ...common,
+      storage: 'base64_utf8_json_chunk',
+      encoding: 'base64-utf8-json',
+      chunkIndex,
+      chunkCount,
+      totalSerializedBytes: bytes.byteLength,
+      chunkBytes: chunk.byteLength,
+      dataChunk: encodeBase64(chunk),
+    };
+  });
+}
+
+function debugStageEntries(
+  active: ActiveStableV5TraceSession,
+  params: WeeklyPlanningStableV5TraceInput,
+  occurredAt: string,
+  inputRevision: number,
+): WeeklyPlanningTraceInternalEventEntry[] {
+  return (params.debugTraceEvents ?? [])
+    .slice()
+    .sort((left, right) => left.sequence - right.sequence)
+    .flatMap((event) => debugEventPayloads(event).map((payload) => eventEntry(active, {
+      eventType: 'stable_v5_debug_stage',
+      payload,
+      occurredAt,
+      requestId: params.requestId,
+      stateRevision: eventGraphRevision(event, inputRevision, params.graphRevision),
+      severity: event.severity,
+    })));
+}
+
+function createDiscardEvent(
+  active: ActiveStableV5TraceSession,
+  params: WeeklyPlanningStableV5TraceInput,
+  occurredAt: string,
+): WeeklyPlanningTraceInternalEventEntry | null {
+  if (params.errorCode === 'stale_async_result_discarded') {
+    return eventEntry(active, {
+      eventType: 'stale_async_result_discarded',
+      payload: {
+        runtime: 'stable_v5',
+        outcome: params.outcome,
+        graphRevision: params.graphRevision,
+      },
+      occurredAt,
+      requestId: params.requestId,
+      stateRevision: params.graphRevision,
+      severity: 'warn',
+    });
+  }
+  if (params.errorCode === 'commit_rejected') {
+    return eventEntry(active, {
+      eventType: 'request_cancelled',
+      payload: {
+        runtime: 'stable_v5',
+        reason: 'commit_rejected',
+        graphRevision: params.graphRevision,
+      },
+      occurredAt,
+      requestId: params.requestId,
+      stateRevision: params.graphRevision,
+      severity: 'warn',
+    });
+  }
+  return null;
+}
+
 function createTurnEntries(
   active: ActiveStableV5TraceSession,
   params: WeeklyPlanningStableV5TraceInput,
@@ -283,62 +467,67 @@ function createTurnEntries(
     active.session.planningRangeEnd = params.planningRangeEnd;
   }
 
-  const previousRevision = Math.max(0, params.graphRevision - 1);
-  const entries: WeeklyPlanningTraceEntry[] = [
-    turnEntry(active, {
-      role: 'user',
-      content: params.userText,
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: previousRevision,
-    }),
-    eventEntry(active, {
-      eventType: 'user_turn_received',
-      payload: {
-        runtime: 'stable_v5',
-        conversationId: params.conversationId,
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: previousRevision,
-    }),
-    eventEntry(active, {
-      eventType: 'interpreter_started',
-      payload: {
-        runtime: 'stable_v5',
-        previousGraphRevision: previousRevision,
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: previousRevision,
-      severity: 'debug',
-    }),
-    eventEntry(active, {
-      eventType: 'interpreter_completed',
-      payload: {
-        runtime: 'stable_v5',
-        outcome: params.outcome,
-        graphRevision: params.graphRevision,
-        ...(params.errorCode ? { errorCode: params.errorCode } : {}),
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: params.graphRevision,
-      severity: params.errorCode ? 'error' : 'info',
-    }),
-    eventEntry(active, {
-      eventType: 'dialogue_planned',
-      payload: {
-        runtime: 'stable_v5',
-        outcome: params.outcome,
-        previewCount: params.previewCount,
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: params.graphRevision,
-      severity: params.errorCode ? 'warn' : 'info',
-    }),
-  ];
+  const previousRevision = inputGraphRevision(params);
+  const entries: WeeklyPlanningTraceEntry[] = [];
+  entries.push(turnEntry(active, {
+    role: 'user',
+    content: params.userText,
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: previousRevision,
+  }));
+  entries.push(eventEntry(active, {
+    eventType: 'user_turn_received',
+    payload: {
+      runtime: 'stable_v5',
+      conversationId: params.conversationId,
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: previousRevision,
+  }));
+  entries.push(eventEntry(active, {
+    eventType: 'interpreter_started',
+    payload: {
+      runtime: 'stable_v5',
+      previousGraphRevision: previousRevision,
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: previousRevision,
+    severity: 'debug',
+  }));
+
+  const debugEntries = debugStageEntries(active, params, occurredAt, previousRevision);
+  entries.push(...debugEntries);
+  entries.push(eventEntry(active, {
+    eventType: 'interpreter_completed',
+    payload: {
+      runtime: 'stable_v5',
+      outcome: params.outcome,
+      graphRevision: params.graphRevision,
+      ...(params.errorCode ? { errorCode: params.errorCode } : {}),
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: params.graphRevision,
+    severity: params.errorCode ? 'error' : 'info',
+  }));
+  entries.push(eventEntry(active, {
+    eventType: 'dialogue_planned',
+    payload: {
+      runtime: 'stable_v5',
+      outcome: params.outcome,
+      previewCount: params.previewCount,
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: params.graphRevision,
+    severity: params.errorCode ? 'warn' : 'info',
+  }));
+
+  const discardEvent = createDiscardEvent(active, params, occurredAt);
+  if (discardEvent) entries.push(discardEvent);
 
   if (params.previewCount > 0) {
     entries.push(eventEntry(active, {
@@ -365,9 +554,17 @@ function createTurnEntries(
   entries.push(snapshotEntry(active, {
     state: {
       runtime: 'stable_v5',
+      inputGraphRevision: previousRevision,
       graphRevision: params.graphRevision,
       graphSummary: params.graphSummary,
       compatibilityState: params.compatibilityState,
+      debugTraceSummary: params.debugTraceEvents
+        ? {
+            storage: 'stable_v5_debug_stage_entries',
+            eventCount: params.debugTraceEvents.length,
+            persistedEntryCount: debugEntries.length,
+          }
+        : undefined,
     },
     occurredAt,
     requestId: params.requestId,

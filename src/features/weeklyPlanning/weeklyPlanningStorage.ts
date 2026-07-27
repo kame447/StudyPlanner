@@ -678,6 +678,30 @@ function serializablePlanningState(state: PlanningState): PlanningState {
   };
 }
 
+export function decodeWeeklyPlanningStatePayload(
+  parsedValue: unknown,
+  weekStartDate: string,
+): PlanningState {
+  const storedState = isRecord(parsedValue) && 'version' in parsedValue
+    ? parsedValue.version === STORAGE_VERSION
+      ? parseStoredPlanningState(parsedValue.state)
+      : null
+    : migrateLegacyPlanningState(parsedValue);
+  if (!storedState) return createInitialPlanningState(weekStartDate);
+  return {
+    ...storedState,
+    weekStartDate,
+    conversationRequestSequence: storedState.conversationRequestSequence ?? 0,
+    pendingTurn: undefined,
+    pendingApproval: undefined,
+    draftBlocks: storedState.draftBlocks.filter((block) => block.status === 'draft'),
+    previewCandidates: storedState.previewCandidates ?? [],
+    intakeState: storedState.intakeState
+      ? sanitizeStoredIntakeState(storedState.intakeState) as PlanningIntakeState
+      : undefined,
+  };
+}
+
 export function loadWeeklyPlanningState(
   userId: string,
   weekStartDate: string,
@@ -688,24 +712,7 @@ export function loadWeeklyPlanningState(
     const rawValue = window.localStorage.getItem(getStorageKey(userId, weekStartDate));
     if (!rawValue) return createInitialPlanningState(weekStartDate);
     const parsedValue: unknown = JSON.parse(rawValue);
-    const storedState = isRecord(parsedValue) && 'version' in parsedValue
-      ? parsedValue.version === STORAGE_VERSION
-        ? parseStoredPlanningState(parsedValue.state)
-        : null
-      : migrateLegacyPlanningState(parsedValue);
-    if (!storedState) return createInitialPlanningState(weekStartDate);
-    return {
-      ...storedState,
-      weekStartDate,
-      conversationRequestSequence: storedState.conversationRequestSequence ?? 0,
-      pendingTurn: undefined,
-      pendingApproval: undefined,
-      draftBlocks: storedState.draftBlocks.filter((block) => block.status === 'draft'),
-      previewCandidates: storedState.previewCandidates ?? [],
-      intakeState: storedState.intakeState
-        ? sanitizeStoredIntakeState(storedState.intakeState) as PlanningIntakeState
-        : undefined,
-    };
+    return decodeWeeklyPlanningStatePayload(parsedValue, weekStartDate);
   } catch {
     return createInitialPlanningState(weekStartDate);
   }

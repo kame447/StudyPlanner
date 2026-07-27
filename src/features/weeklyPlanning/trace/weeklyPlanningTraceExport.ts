@@ -33,11 +33,26 @@ export interface WeeklyPlanningRoleplayCandidate {
   turns: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
+export interface WeeklyPlanningStableV5DebugStageExport {
+  requestId: string | undefined;
+  debugSequence: number;
+  stage: string;
+  stageOccurredAt: string;
+  severity: WeeklyPlanningTraceInternalEventEntry['severity'];
+  stateRevision: number | undefined;
+  storage: 'inline_json' | 'reassembled_base64_utf8_json';
+  sourceEntryIds: string[];
+  sourceSanitizerTruncated: boolean;
+  data?: unknown;
+  reconstructionError?: string;
+}
+
 export interface WeeklyPlanningTraceExportBundle {
   exportedAt: string;
   schemaVersion: number;
   session: WeeklyPlanningTraceSession;
   entries: WeeklyPlanningTraceEntry[];
+  stableV5DebugStages: WeeklyPlanningStableV5DebugStageExport[];
   evaluationFixtureCandidate: WeeklyPlanningEvaluationFixtureCandidate;
   roleplayCandidate: WeeklyPlanningRoleplayCandidate;
 }
@@ -104,6 +119,196 @@ function sanitizedSession(session: WeeklyPlanningTraceSession): WeeklyPlanningTr
   const value = sanitizeWeeklyPlanningTraceValue(session).value;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...session };
   return value as WeeklyPlanningTraceSession;
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return Number.isInteger(value) && Number(value) >= 0 ? Number(value) : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function decodeBase64(value: string): Uint8Array {
+  if (value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new Error('invalid-base64');
+  }
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+interface OrderedDebugStageExport {
+  order: number;
+  value: WeeklyPlanningStableV5DebugStageExport;
+}
+
+function inlineDebugStage(
+  entry: WeeklyPlanningTraceInternalEventEntry,
+  payload: Record<string, unknown>,
+): OrderedDebugStageExport | null {
+  const debugSequence = nonNegativeInteger(payload.debugSequence);
+  const stage = stringValue(payload.stage);
+  const stageOccurredAt = stringValue(payload.stageOccurredAt);
+  if (debugSequence === null || !stage || !stageOccurredAt) return null;
+  return {
+    order: entry.sequence,
+    value: {
+      requestId: entry.requestId,
+      debugSequence,
+      stage,
+      stageOccurredAt,
+      severity: entry.severity,
+      stateRevision: entry.stateRevision,
+      storage: 'inline_json',
+      sourceEntryIds: [entry.id],
+      sourceSanitizerTruncated: payload.sourceSanitizerTruncated === true,
+      data: payload.data,
+    },
+  };
+}
+
+function chunkGroupKey(
+  entry: WeeklyPlanningTraceInternalEventEntry,
+  payload: Record<string, unknown>,
+): string | null {
+  const debugSequence = nonNegativeInteger(payload.debugSequence);
+  const stage = stringValue(payload.stage);
+  const stageOccurredAt = stringValue(payload.stageOccurredAt);
+  if (debugSequence === null || !stage || !stageOccurredAt) return null;
+  return JSON.stringify([
+    entry.requestId ?? null,
+    debugSequence,
+    stage,
+    stageOccurredAt,
+  ]);
+}
+
+function reassembleDebugChunkGroup(
+  entries: WeeklyPlanningTraceInternalEventEntry[],
+): OrderedDebugStageExport | null {
+  const sortedByEntry = entries.slice().sort((left, right) => left.sequence - right.sequence);
+  const first = sortedByEntry[0];
+  if (!first) return null;
+  const firstPayload = eventPayloadRecord(first);
+  const debugSequence = nonNegativeInteger(firstPayload.debugSequence);
+  const stage = stringValue(firstPayload.stage);
+  const stageOccurredAt = stringValue(firstPayload.stageOccurredAt);
+  const chunkCount = nonNegativeInteger(firstPayload.chunkCount);
+  if (debugSequence === null || !stage || !stageOccurredAt || chunkCount === null || chunkCount < 1) {
+    return null;
+  }
+
+  const byIndex = new Map<number, WeeklyPlanningTraceInternalEventEntry[]>();
+  for (const entry of sortedByEntry) {
+    const index = nonNegativeInteger(eventPayloadRecord(entry).chunkIndex);
+    if (index === null) continue;
+    const current = byIndex.get(index) ?? [];
+    current.push(entry);
+    byIndex.set(index, current);
+  }
+
+  let reconstructionError: string | undefined;
+  const orderedEntries: WeeklyPlanningTraceInternalEventEntry[] = [];
+  for (let index = 0; index < chunkCount; index += 1) {
+    const matches = byIndex.get(index) ?? [];
+    if (matches.length === 0) {
+      reconstructionError = `missing-chunk:${index}/${chunkCount}`;
+      break;
+    }
+    if (matches.length > 1) {
+      reconstructionError = `duplicate-chunk:${index}/${chunkCount}`;
+      break;
+    }
+    orderedEntries.push(matches[0]);
+  }
+
+  let data: unknown;
+  if (!reconstructionError) {
+    try {
+      const chunks = orderedEntries.map((entry, index) => {
+        const payload = eventPayloadRecord(entry);
+        const value = stringValue(payload.dataChunk);
+        if (!value) throw new Error(`missing-data:${index}`);
+        return decodeBase64(value);
+      });
+      const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+      const reconstructed = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        reconstructed.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      const expectedBytes = nonNegativeInteger(firstPayload.totalSerializedBytes);
+      if (expectedBytes !== null && expectedBytes !== totalBytes) {
+        reconstructionError = `serialized-byte-length-mismatch:${totalBytes}/${expectedBytes}`;
+      } else {
+        data = JSON.parse(new TextDecoder().decode(reconstructed));
+      }
+    } catch (error) {
+      reconstructionError = error instanceof Error
+        ? `reconstruction-failed:${error.message}`
+        : 'reconstruction-failed:unknown';
+    }
+  }
+
+  const value: WeeklyPlanningStableV5DebugStageExport = {
+    requestId: first.requestId,
+    debugSequence,
+    stage,
+    stageOccurredAt,
+    severity: first.severity,
+    stateRevision: first.stateRevision,
+    storage: 'reassembled_base64_utf8_json',
+    sourceEntryIds: orderedEntries.length > 0
+      ? orderedEntries.map((entry) => entry.id)
+      : sortedByEntry.map((entry) => entry.id),
+    sourceSanitizerTruncated: sortedByEntry.some(
+      (entry) => eventPayloadRecord(entry).sourceSanitizerTruncated === true,
+    ),
+  };
+  if (reconstructionError) value.reconstructionError = reconstructionError;
+  else value.data = data;
+
+  return { order: first.sequence, value };
+}
+
+export function createWeeklyPlanningStableV5DebugStageExport(
+  entries: readonly WeeklyPlanningTraceEntry[],
+): WeeklyPlanningStableV5DebugStageExport[] {
+  const safeEntries = sanitizedEntries(entries);
+  const debugEntries = internalEvents(safeEntries)
+    .filter((entry) => entry.eventType === 'stable_v5_debug_stage')
+    .sort((left, right) => left.sequence - right.sequence);
+  const ordered: OrderedDebugStageExport[] = [];
+  const chunkGroups = new Map<string, WeeklyPlanningTraceInternalEventEntry[]>();
+
+  for (const entry of debugEntries) {
+    const payload = eventPayloadRecord(entry);
+    if (payload.storage === 'inline_json') {
+      const stage = inlineDebugStage(entry, payload);
+      if (stage) ordered.push(stage);
+      continue;
+    }
+    if (payload.storage !== 'base64_utf8_json_chunk') continue;
+    const key = chunkGroupKey(entry, payload);
+    if (!key) continue;
+    const group = chunkGroups.get(key) ?? [];
+    group.push(entry);
+    chunkGroups.set(key, group);
+  }
+
+  for (const group of chunkGroups.values()) {
+    const stage = reassembleDebugChunkGroup(group);
+    if (stage) ordered.push(stage);
+  }
+
+  return ordered
+    .sort((left, right) => left.order - right.order)
+    .map((item) => item.value);
 }
 
 export function createWeeklyPlanningEvaluationFixtureCandidate(
@@ -187,6 +392,7 @@ export function createWeeklyPlanningTraceExportBundle(
     schemaVersion: safeSession.schemaVersion,
     session: safeSession,
     entries: safeEntries,
+    stableV5DebugStages: createWeeklyPlanningStableV5DebugStageExport(safeEntries),
     evaluationFixtureCandidate: createWeeklyPlanningEvaluationFixtureCandidate(
       safeSession,
       safeEntries,

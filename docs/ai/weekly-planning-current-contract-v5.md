@@ -1,10 +1,11 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / active for Stable V5 trial and remaining migration
-Updated: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+Updated: 2026-07-27
+Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
 
 - Runtime state: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
+- Development full debug trace: [weekly-planning-stable-v5-full-debug-trace.md](weekly-planning-stable-v5-full-debug-trace.md)
 - Schema registry: [weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)
 - Stable V5 migration plan: [strategy/weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md)
 - Implementation status: [strategy/weekly-planning-semantic-stable-v5-implementation-status.md](strategy/weekly-planning-semantic-stable-v5-implementation-status.md)
@@ -12,7 +13,7 @@ Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
 - Availability architecture: [weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md)
 - Roadmap: [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)
 
-この文書はsemantic v5とStable V5 runtime trialの最優先contractである。runtime接続、browser persistence、conversation identity、trace continuity、rollbackについてはruntime trial contractを優先する。schemaの実在世代と廃止条件はschema registryを正とする。
+この文書はsemantic v5とStable V5 runtime trialの最優先contractである。runtime接続、browser persistence、conversation identity、trace continuity、rollbackについてはruntime trial contractを優先する。schemaの実在世代と廃止条件はschema registryを正とする。実ユーザー投入前の観測内容についてはdevelopment full debug trace contractを優先する。
 
 ## 1. 意味解釈境界
 
@@ -149,17 +150,31 @@ local trace session ID: browser側の連続trace entry列
 server trace handle: server repository上のcanonical session identity
 ```
 
-同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDとPlanningState revisionから単調なsequence下限を復元して次番号を発行する。`clear_conversation`でmessagesが空になっても過去のrequest IDへ戻らない。
+同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDとPlanningState revisionから単調なsequence下限を復元して次番号を発行する。
+
+`clear_conversation`は画面に表示されるmessage履歴と最後のassistant表示だけを消す。同じconversation ID、request sequence、compatibility intake state、Fact Graph、preview、draft、approval作業状態、planning mode、persisted Stable V5 session、trace continuityを維持する。`clear_conversation`から`reset_session`を呼ばず、runtime、Graph、persisted session、trace sessionを削除しない。messagesが空になっても過去のrequest IDへ戻らない。
+
+`reset_session`は「最初からやり直す」操作である。messages、intake、preview、draft、approval、request sequence、conversation identity、Fact Graph、persisted Stable V5 sessionを初期化し、新しいconversationを発行する。
 
 Stable V5 browser envelopeはowner、week、conversationに拘束し、完了済みPlanningState、Fact Graph、preview、draftを一体保存する。pending turn / approval中の半端なstateは保存しない。不正envelopeを部分復元しない。
+
+versioned payloadのdecodeは純粋処理として行い、検証のためにlive localStorage keyへpayloadを一時書込みしない。明示的saveまたはlegacy migration commit以外で保存領域を変更しない。
 
 これは同一browser内の保存であり、server/cross-device Graph persistenceではない。旧stateからGraph V5へのmigration decoderは未実装である。
 
 ## 10. trace、privacy、observability
 
-Stable V5 traceはuser/assistant turn、structured internal event、snapshot、preview、failureを既存repositoryへ保存する。raw provider response、stack trace、external event本文を保存しない。
+Stable V5 traceはuser/assistant turn、structured internal event、snapshot、preview、failureを既存repositoryへ保存する。
 
-physical trace continuityのscopeは`owner ID + logical conversation ID`とする。同じscopeでは、module memory消失、ページ再読込、remote repository再生成、30分を超えるidleがあっても同じlocal trace session、連続sequence、連続turn index、同じserver-issued handleへ追記する。idle時間をconversation終了条件にしない。
+production向けの平常契約ではraw provider response、stack trace、external event本文を保存しない。ただし実ユーザー投入前のデバッグ期間は、[weekly-planning-stable-v5-full-debug-trace.md](weekly-planning-stable-v5-full-debug-trace.md)を優先し、credentialを除くprompt、provider raw response、stack、AI semantic document、Graph、validation、repair、canonicalization、scheduler、dialogue、preview、全判断基準を暗号化せず保存する。
+
+full debug traceは各logical stageを独立した`stable_v5_debug_stage` internal eventとして同じrequestIdへ保存する。大容量stageはUTF-8 JSONをbase64 chunkへ分割し、全chunkを保存する。state snapshotにはevent本文を重複保存せず要約だけを残す。
+
+staleまたはcommit rejectで実行結果を破棄した場合もdebug stageを保存する。ただし破棄されたassistant messageやcandidateを実際のassistant turn、preview、`hasPreview`として記録しない。
+
+基礎traceのinput revisionは最終revisionから推測せず、runtimeが実際に使用したGraph revisionをdebug stageから取得する。実入力revisionを取得できない旧traceだけは互換fallbackとして`graphRevision - 1`を使用する。
+
+physical trace continuityのscopeは`owner ID + logical conversation ID`とする。同じscopeでは、module memory消失、ページ再読込、remote repository再生成、30分を超えるidle、表示message履歴の消去があっても同じlocal trace session、連続sequence、連続turn index、同じserver-issued handleへ追記する。idle時間または空のmessage配列をconversation終了条件にしない。
 
 metadata-only cursorからsession ID、entry sequence、turn index、recent request IDを復元する。cursorへconversation本文、Graph、semantic documentを保存しない。trace counterとrequest dedupeはrepository append成功後だけcommitし、write failureはsequenceを消費しない。
 
@@ -203,9 +218,15 @@ preview / approval / Plan save                  runtime connected
 browser conversation / Graph persistence        implemented
 staged Graph atomic commit                       implemented
 Stable V5 trace recording                        implemented
-trace continuity across reload / idle            fixed on current branch
-controller ID continuity after clear / reload    fixed on current branch
-remote server handle continuity                  fixed on current branch
+trace continuity across reload / idle            merged to main in PR #83
+controller ID continuity after clear / reload    merged to main in PR #83
+remote server handle continuity                  merged to main in PR #83
+message-only clear conversation boundary         implemented in Draft PR #86
+pure owner-bound storage decoder                 implemented in Draft PR #86
+full request-scoped debug stage trace             implemented in Draft PR #86
+oversized debug stage chunk reconstruction        implemented in Draft PR #86
+actual input Graph revision trace                 implemented in Draft PR #86
+stale / commit-rejected execution trace           implemented in Draft PR #86
 default runtime                                  legacy
 server / cross-device Graph persistence          not implemented
 old state migration decoder                      not implemented
@@ -214,5 +235,7 @@ Stable V5 actual AI real-eval                     not confirmed
 full browser roleplay                             not confirmed
 default cutover                                   not started
 ```
+
+PR #86のfocused test、full Vitest、typecheck、buildは未確認である。GitHub Actionsはstep 0件・logsなしでrunner起動前に失敗しており、code test failureとは判定しない。PR #86はDraftのまま維持する。
 
 七視点監査は[audits/20260724-stable-v5-trace-continuity/final-overseer.md](audits/20260724-stable-v5-trace-continuity/final-overseer.md)を参照する。

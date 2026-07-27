@@ -315,14 +315,7 @@ export function weeklyPlanningReducer(
     case 'clear_conversation':
       return withMutation(state, {
         ...state,
-        mode: state.draftBlocks.length > 0
-          ? 'awaiting_approval'
-          : (state.previewCandidates?.length ?? 0) > 0
-            ? 'draft_created'
-            : 'idle',
         messages: [],
-        intakeState: undefined,
-        pendingTurn: undefined,
         lastAssistantMessage: undefined,
       });
 

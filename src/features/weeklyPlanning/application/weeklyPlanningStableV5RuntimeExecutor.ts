@@ -8,6 +8,9 @@ import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGen
 import type { WeeklyPlanningMessage } from '../types';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
 import {
+  recordWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type {
@@ -38,6 +41,7 @@ import {
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import {
   scheduleWeeklyPlanningStableV5Preview,
+  WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
 } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import {
   commitWeeklyPlanningStableV5RuntimeGraph,
@@ -377,11 +381,45 @@ function blockingQuestionCode(
   return compilation.issues.find((issue: GenericSchedulerInputIssue) => issue.blocking)?.code;
 }
 
+function traceBranch(params: {
+  requestId: string;
+  branch: string;
+  basis: unknown;
+  output: unknown;
+  severity?: 'debug' | 'info' | 'warn' | 'error';
+}): void {
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.requestId,
+    stage: 'runtime_branch_selected',
+    severity: params.severity ?? 'info',
+    data: {
+      branch: params.branch,
+      basis: params.basis,
+      output: params.output,
+    },
+  });
+}
+
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
   const aiConfig = getAiConfig();
   const configError = getAiConfigValidationMessage(aiConfig);
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_configuration_evaluated',
+    severity: aiConfig.provider === 'rules' || configError ? 'error' : 'info',
+    data: {
+      provider: aiConfig.provider,
+      baseUrl: aiConfig.baseUrl,
+      model: aiConfig.model,
+      configError,
+      criteria: {
+        rulesProviderRejected: true,
+        validConfigurationRequired: true,
+      },
+    },
+  });
   if (aiConfig.provider === 'rules' || configError) {
     throw new Error(configError ?? 'Stable V5にはAI structured output接続が必要です。');
   }
@@ -390,10 +428,42 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     ownerId: input.userId,
     conversationId: input.conversationId,
   });
+  const activeWindowsBefore = activePlanningWindows(runtimeSession.graph);
   const fallbackHorizon = resolvePlanningHorizon({
     graph: runtimeSession.graph,
     selectedDate: input.selectedDate,
   });
+  const recentConversation = input.messages
+    .slice(-RECENT_TURN_LIMIT)
+    .map(({ role, content }) => ({ role, content }));
+  const stateSummary = publicStateSummary(runtimeSession.graph, input.messages);
+  const initialSchedulerContext = schedulerContext({
+    ownerId: input.userId,
+    selectedDate: input.selectedDate,
+    horizon: fallbackHorizon,
+  });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_session_context_prepared',
+    data: {
+      runtimeSession,
+      graphRevision: runtimeSession.graph.revision,
+      activePlanningWindows: activeWindowsBefore,
+      selectedDate: input.selectedDate,
+      fallbackHorizon,
+      horizonCriteria: {
+        moreThanOneActiveWindow: 'return null',
+        noActiveWindow: `selectedDate plus ${DEFAULT_PLANNING_DAY_COUNT - 1} days`,
+        explicitStartEnd: 'valid dates and start <= end',
+        otherwise: 'resolveCanonicalDateExpression(window.value, selectedDate)',
+      },
+      recentTurnLimit: RECENT_TURN_LIMIT,
+      recentConversation,
+      publicStateSummary: stateSummary,
+      schedulerContext: initialSchedulerContext,
+    },
+  });
+
   const normalizer = createWeeklyPlanningSemanticNormalizerV5(
     createOpenAiCompatibleClient(aiConfig),
   );
@@ -404,21 +474,24 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     turnId: input.traceRequestId,
     expectedRevision: runtimeSession.graph.revision,
     userText: input.userText,
-    recentConversation: input.messages.slice(-RECENT_TURN_LIMIT).map(({ role, content }) => ({
-      role,
-      content,
-    })),
-    publicStateSummary: publicStateSummary(runtimeSession.graph, input.messages),
-    schedulerContext: schedulerContext({
-      ownerId: input.userId,
-      selectedDate: input.selectedDate,
-      horizon: fallbackHorizon,
-    }),
+    recentConversation,
+    publicStateSummary: stateSummary,
+    schedulerContext: initialSchedulerContext,
+  });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_semantic_result_received',
+    severity: semantic.status === 'normalization_rejected'
+      || semantic.status === 'provider_failure'
+      || semantic.status === 'canonicalization_rejected'
+      ? 'error'
+      : 'info',
+    data: semantic,
   });
 
   if (semantic.status === 'provider_failure') {
     const message = 'AIに接続できなかったため、入力内容は変更していません。接続を確認してもう一度送ってください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -429,10 +502,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'provider_failure',
+      basis: { semanticStatus: semantic.status },
+      output,
+      severity: 'error',
+    });
+    return output;
   }
   if (semantic.status === 'normalization_rejected') {
     const message = 'AIの構造化結果を安全に採用できませんでした。内容を少し言い換えて、もう一度送ってください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -443,10 +524,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'normalization_rejected',
+      basis: { semanticStatus: semantic.status, normalization: semantic.normalization },
+      output,
+      severity: 'error',
+    });
+    return output;
   }
   if (semantic.status === 'canonicalization_rejected') {
     const message = '直前の会話状態とAIの構造化結果が一致しなかったため、変更を反映していません。もう一度送ってください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -457,6 +546,19 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'canonicalization_rejected',
+      basis: {
+        semanticStatus: semantic.status,
+        expectedRevision: runtimeSession.graph.revision,
+        actualInputGraphRevision: runtimeSession.graph.revision,
+        canonicalization: semantic.canonicalization,
+      },
+      output,
+      severity: 'error',
+    });
+    return output;
   }
 
   commitWeeklyPlanningStableV5RuntimeGraph({
@@ -464,6 +566,20 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     conversationId: input.conversationId,
     graph: semantic.graph,
   });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_graph_staged',
+    data: {
+      ownerId: input.userId,
+      conversationId: input.conversationId,
+      requestId: input.traceRequestId,
+      previousGraphRevision: runtimeSession.graph.revision,
+      stagedGraph: semantic.graph,
+      canonicalization: semantic.canonicalization,
+    },
+  });
+
+  const activeWindowsAfter = activePlanningWindows(semantic.graph);
   const horizon = resolvePlanningHorizon({
     graph: semantic.graph,
     selectedDate: input.selectedDate,
@@ -480,17 +596,62 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     timetableTermId: input.timetableTermId,
     horizon,
   });
+  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
   const compilation = compileGenericSchedulerInput({
-    graph: createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph),
+    graph: activeGraph,
     context,
     externalSources: sources,
   });
   const dialogue = decideWeeklyPlanningStableDialogueV5(compilation);
   const authorized = semantic.normalization.document?.planningIntent === 'create_plan';
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_scheduler_dialogue_evaluated',
+    severity: dialogue.status === 'ask_question' ? 'warn' : 'info',
+    data: {
+      activePlanningWindows: activeWindowsAfter,
+      resolvedHorizon: horizon,
+      horizonCriteria: {
+        moreThanOneActiveWindow: 'return null',
+        noActiveWindow: `selectedDate plus ${DEFAULT_PLANNING_DAY_COUNT - 1} days`,
+        explicitStartEnd: 'valid dates and start <= end',
+        otherwise: 'resolveCanonicalDateExpression(window.value, selectedDate)',
+      },
+      schedulerInput: {
+        graph: activeGraph,
+        context,
+        externalSources: sources,
+      },
+      compilation,
+      dialogue,
+      dialoguePolicyCriteria: {
+        blockingIssuesFirst: true,
+        domainPriority: [
+          'planning_horizon',
+          'availability',
+          'commitment',
+          'task_date_rule',
+          'work_item',
+          'relation',
+          'deduplication',
+        ],
+        blockingIssueSortKey: 'domainPriority|domain|code|factId',
+        readyForPreview: 'no blocking issue and compilation.status === ready and compilation.input exists',
+        otherwise: 'nothing_to_schedule',
+      },
+      firstBlockingIssueCodeInCompilationOrder: blockingQuestionCode(compilation) ?? null,
+      selectedQuestion: dialogue.status === 'ask_question' ? dialogue.question : null,
+      authorization: {
+        planningIntent: semantic.normalization.document?.planningIntent ?? null,
+        criterion: 'planningIntent === create_plan',
+        authorized,
+      },
+    },
+  });
 
   if (dialogue.status === 'ask_question') {
     const message = renderQuestion(semantic.graph, dialogue.question);
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -502,10 +663,22 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'ask_question',
+      basis: {
+        dialogue,
+        renderedQuestion: message,
+        issueLabel: issueTaskLabel(semantic.graph, dialogue.question),
+      },
+      output,
+      severity: 'warn',
+    });
+    return output;
   }
   if (dialogue.status === 'nothing_to_schedule' || !compilation.input) {
     const message = '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -516,10 +689,22 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'nothing_to_schedule',
+      basis: {
+        dialogueStatus: dialogue.status,
+        compilationStatus: compilation.status,
+        compilationInputExists: Boolean(compilation.input),
+      },
+      output,
+      severity: 'warn',
+    });
+    return output;
   }
   if (!authorized) {
     const message = '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -530,18 +715,48 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'authorization_required',
+      basis: {
+        planningIntent: semantic.normalization.document?.planningIntent ?? null,
+        criterion: 'planningIntent !== create_plan',
+      },
+      output,
+    });
+    return output;
   }
 
-  const preview = scheduleWeeklyPlanningStableV5Preview({
+  const previewInput = {
     input: compilation.input,
     graph: semantic.graph,
     plans: input.plans,
     scheduleTemplates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
+  };
+  const preview = scheduleWeeklyPlanningStableV5Preview(previewInput);
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_preview_scheduler_evaluated',
+    severity: preview.status === 'ready' ? 'info' : 'warn',
+    data: {
+      schedulerVersion: WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
+      input: previewInput,
+      defaultsAndCriteria: {
+        dayStartTime: '09:00',
+        dayEndTime: '22:00',
+        breakMinutes: 10,
+        defaultSessionMinutes: 60,
+        existingPlanBufferMinutes: 10,
+        splittableThresholdMinutes: 120,
+        allOrNothing: 'any unscheduled work item returns insufficient_capacity with no partial candidates',
+      },
+      result: preview,
+    },
   });
   if (preview.status === 'insufficient_capacity') {
     const message = '指定された期間と空き時間には、すべての作業を安全に配置できませんでした。期間を広げるか、作業量または利用できる時間を調整してください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -553,10 +768,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'preview_insufficient_capacity',
+      basis: preview,
+      output,
+      severity: 'warn',
+    });
+    return output;
   }
   if (preview.status === 'empty') {
     const message = '固定予定は把握しましたが、新しく配置する作業がありません。予定に入れたい作業を教えてください。';
-    return {
+    const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
@@ -567,6 +790,14 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: [],
     };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'preview_empty',
+      basis: preview,
+      output,
+      severity: 'warn',
+    });
+    return output;
   }
 
   console.info('[WeeklyPlanning Stable V5] turn completed', {
@@ -578,7 +809,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     candidateCount: preview.candidates.length,
   });
   const message = `${preview.candidates.length}件の仮予定候補を作りました。内容を確認して、問題なければ仮予定へ追加してください。`;
-  return {
+  const output = {
     state: compatibilityState({
       previousState: input.previousState,
       userText: input.userText,
@@ -589,6 +820,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     message,
     draftCandidates: preview.candidates,
   };
+  traceBranch({
+    requestId: input.traceRequestId,
+    branch: 'preview_ready',
+    basis: {
+      compilationStatus: compilation.status,
+      dialogueStatus: dialogue.status,
+      authorized,
+      preview,
+    },
+    output,
+  });
+  return output;
 }
 
 export function getWeeklyPlanningStableV5BlockingIssueCode(

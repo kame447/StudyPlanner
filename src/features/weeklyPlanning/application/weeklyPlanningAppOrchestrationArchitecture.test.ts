@@ -28,11 +28,17 @@ describe('weekly planning application boundary', () => {
     expect(connector).toContain('onApproveWeeklyDraftBlocks={application.approveDraftBlocks}');
   });
 
-  it('owns turn control and approval orchestration in the application layer', () => {
+  it('keeps the hook as a composition root and delegates turn orchestration', () => {
     const application = source('./useWeeklyPlanningApplication.ts');
+    const turnApplication = source('./weeklyPlanningTurnApplication.ts');
+    const sessionLifecycle = source('./weeklyPlanningSessionLifecycle.ts');
     const approval = source('./weeklyPlanningApprovalApplication.ts');
 
-    expect(application).toContain('submitWeeklyPlanningControlledTurn');
+    expect(application).toContain('submitWeeklyPlanningApplicationTurn');
+    expect(application).not.toContain('submitWeeklyPlanningControlledTurn');
+    expect(turnApplication).toContain('submitWeeklyPlanningControlledTurn');
+    expect(application).toContain('synchronizeWeeklyPlanningApplicationSession');
+    expect(sessionLifecycle).toContain('resetWeeklyPlanningControlledSession');
     expect(application).toContain('approveWeeklyPlanningDraftBlocks');
     expect(approval).toContain('executeInterruptibleWeeklyDraftApproval');
     expect(approval).toContain('validateWeeklyPreviewApproval');
