@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../shared/weeklyPlanningTraceContract';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
@@ -6,6 +7,9 @@ import {
 import {
   setWeeklyPlanningTraceRepositoryForTests,
 } from './weeklyPlanningTraceRepository';
+import {
+  loadWeeklyPlanningStableV5TraceCursor,
+} from './weeklyPlanningStableV5TraceSessionStorage';
 import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceRepository,
@@ -223,6 +227,75 @@ describe('Stable V5 trace runtime', () => {
     expect(harness.writes).toHaveLength(1);
     expect(harness.writes[0].entries[0].sequence).toBe(0);
     expect(harness.writes[0].session.entryCount).toBe(harness.writes[0].entries.length);
+  });
+
+  it('persists zero-count identity before the first append and reuses it after failure plus reload', async () => {
+    const storageHarness = createMemoryStorageHarness();
+    const restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
+    const harness = createRepositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const input = traceInput();
+
+    try {
+      await recordWeeklyPlanningStableV5TurnTrace(input);
+      expect(harness.writes).toHaveLength(0);
+
+      const provisional = loadWeeklyPlanningStableV5TraceCursor({
+        userId: input.userId,
+        conversationId: input.conversationId,
+      });
+      expect(provisional).not.toBeNull();
+      expect(provisional?.session).toMatchObject({
+        logicalConversationId: input.conversationId,
+        turnCount: 0,
+        entryCount: 0,
+      });
+      expect(provisional?.nextSequence).toBe(0);
+      expect(provisional?.nextTurnIndex).toBe(0);
+
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      await recordWeeklyPlanningStableV5TurnTrace(input);
+
+      expect(harness.writes).toHaveLength(1);
+      expect(harness.writes[0].session.id).toBe(provisional?.session.id);
+      expect(harness.writes[0].entries[0].sequence).toBe(0);
+    } finally {
+      resetWeeklyPlanningStableV5TraceRuntimeForTest();
+      restoreWindow();
+    }
+  });
+
+  it('chunks full debug data below the Worker string-redaction boundary', async () => {
+    const harness = createRepositoryHarness();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({
+      debugTraceEvents: [{
+        schemaVersion: 1,
+        sequence: 0,
+        requestId: 'conversation-1:request:1',
+        stage: 'runtime_turn_input',
+        severity: 'debug',
+        occurredAt: '2026-07-27T00:00:00.000Z',
+        data: { large: 'x'.repeat(20_000) },
+      }],
+    }));
+
+    const debugEntries = harness.writes[0].entries.filter(
+      (entry) => entry.kind === 'internal_event'
+        && entry.eventType === 'stable_v5_debug_stage',
+    );
+    expect(debugEntries.length).toBeGreaterThan(1);
+    debugEntries.forEach((entry) => {
+      if (entry.kind !== 'internal_event') throw new Error('expected internal event');
+      const payload = entry.payload as Record<string, unknown>;
+      expect(payload.storage).toBe('base64_utf8_json_chunk');
+      expect(payload.chunkBytes).toBeLessThanOrEqual(
+        WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes,
+      );
+      expect(String(payload.dataChunk).length).toBeLessThan(4_000);
+    });
   });
 
   it('marks failed Stable V5 turns without storing raw error details', async () => {
