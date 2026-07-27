@@ -20,6 +20,8 @@ collectorは同時実行requestを混在させない。完了または失敗時�
 
 ```text
 runtime_turn_input
+runtime_configuration_evaluated
+runtime_session_context_prepared
 semantic_pipeline_input
 semantic_normalizer_prepared
 semantic_provider_request
@@ -34,6 +36,11 @@ contextual_answer_binding_evaluated
 semantic_canonicalization_evaluated
 scheduler_compilation_evaluated
 semantic_pipeline_decision
+runtime_semantic_result_received
+runtime_graph_staged
+runtime_scheduler_dialogue_evaluated
+runtime_preview_scheduler_evaluated
+runtime_branch_selected
 runtime_turn_output
 runtime_turn_threw
 ```
@@ -48,7 +55,13 @@ contextual short-answer bindingでは、直前assistant message、文字列一�
 
 canonicalizationでは、入力Graph、AI semantic document、conversation/turn/expected revision、contextual bindingと通常canonicalizerのどちらを使ったか、result status、diff、local IDからcanonical fact IDへの対応、rejection errorを保存する。ここでの`diff`を採用operation一覧として扱う。
 
-schedulerでは、active Graph view、scheduler context、external source snapshot、compile結果、選択statusとその根拠を保存する。runtime出力ではcompatibility state、質問、lastQuestionContext、draft authorization、preview件数、failure、assistant messageを保存する。
+runtimeでは、AI設定の採否、commit前Graph、active planning window、計画期間解決規則、選択日、recent conversation、public state summary、staged Graphを保存する。API key等のcredentialは保存しない。
+
+最終schedulerでは、active Graph view、resolved horizon、named time period、existing plans、時間割、calendar source失敗、compile結果を保存する。semantic pipeline内の予備compileと、runtimeで外部予定を加えた最終compileを別stageとして記録する。
+
+dialogueでは、全issue、blocking判定、domain priority、sort key、選択されたquestion、質問対象label、rendered messageを保存する。作成許可についてはAI documentのplanning intentと`planningIntent === create_plan`という判定式を保存する。
+
+previewでは、scheduler version、全入力、既存予定、時間割、day start/end、break、session分割、buffer、all-or-nothing規則、候補、未配置work itemを保存する。各return分岐ではbranch名、判断根拠、最終compatibility state、assistant message、candidateを保存する。
 
 ## 4. 保存場所
 
@@ -83,6 +96,8 @@ API key、authorization、password、cookie等のcredential fieldは従来どお
 collectorについて、stage順序、record時clone、consume-once、request IDなしの無視を検証する。
 
 semantic normalizerについて、完全なsystem/user messages、raw initial response、parse result、invalid initial response、repair messages、raw repaired responseを検証する。
+
+runtime executorについて、configuration、session context、semantic result、staged Graph、最終scheduler/dialogue、preview、return branchを検証する。
 
 turn side effectについて、request-local debug event列が既存state snapshotへ埋め込まれ、保存後にcollectorから消費されることを検証する。
 
