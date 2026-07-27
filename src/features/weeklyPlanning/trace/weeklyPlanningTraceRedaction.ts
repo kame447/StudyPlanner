@@ -34,7 +34,9 @@ const DEFAULT_OPTIONS: Required<WeeklyPlanningTraceSanitizeOptions> = {
   maxDepth: 16,
   maxArrayItems: 5_000,
   maxObjectKeys: 5_000,
-  maxStringLength: 250_000,
+  // A 350,000-byte chunk expands to at most 466,668 Base64 characters.
+  // Keep the common sanitizer above that bound so persisted debug chunks stay lossless.
+  maxStringLength: 600_000,
   maxSerializedBytes: 800_000,
 };
 
