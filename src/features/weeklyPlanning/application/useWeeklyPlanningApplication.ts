@@ -9,15 +9,11 @@ import type {
   WeeklyPlanningMessage,
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
-import {
-  executeWeeklyPlanningTurn,
-  type WeeklyPlanningTurnSubmissionResult,
-} from '../weeklyPlanningTurnExecutor';
+import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
 import {
   cancelWeeklyPlanningControlledTurn,
   clearWeeklyPlanningControlledConversation,
   createWeeklyPlanningControllerSession,
-  submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
 import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
@@ -31,7 +27,6 @@ import {
   saveWeeklyPlanningApprovalOperations,
 } from './weeklyPlanningApprovalLedgerStorage';
 import {
-  isWeeklyPlanningStableV5RuntimeEnabled,
   WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
 } from './weeklyPlanningRuntimeMode';
 import {
@@ -40,15 +35,7 @@ import {
   restoreWeeklyPlanningApplicationSession,
   synchronizeWeeklyPlanningApplicationSession,
 } from './weeklyPlanningSessionLifecycle';
-import {
-  bindWeeklyPlanningStableV5RuntimeSessionScope,
-} from './weeklyPlanningStableV5RuntimeSession';
-import {
-  discardWeeklyPlanningApplicationTurn,
-  finalizeWeeklyPlanningApplicationTurn,
-  recordCommittedWeeklyPlanningApplicationTurn,
-  recordFailedWeeklyPlanningApplicationTurn,
-} from './weeklyPlanningTurnSideEffects';
+import { submitWeeklyPlanningApplicationTurn } from './weeklyPlanningTurnApplication';
 
 export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
@@ -189,63 +176,17 @@ export function useWeeklyPlanningApplication({
   async function submitTurn(userText: string): Promise<WeeklyPlanningTurnSubmissionResult> {
     const session = controllerSessionRef.current;
     if (!userId || !session) return { accepted: false, draftCandidates: [] };
-
-    return submitWeeklyPlanningControlledTurn({
+    return submitWeeklyPlanningApplicationTurn({
       session,
       ownerId: userId,
       userText,
+      selectedDate,
+      plans,
+      scheduleTemplates,
+      timetableTermId,
+      weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
-      async execute({ snapshot, pending, userText: controlledUserText }) {
-        if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-          bindWeeklyPlanningStableV5RuntimeSessionScope({
-            ownerId: userId,
-            weekStartDate: snapshot.weekStartDate,
-            conversationId: pending.conversationId,
-          });
-        }
-        return executeWeeklyPlanningTurn({
-          previousState: snapshot.intakeState,
-          messages: snapshot.messages,
-          userText: controlledUserText,
-          selectedDate,
-          userId,
-          plans,
-          scheduleTemplates,
-          timetableTermId,
-          conversationId: pending.conversationId,
-          traceRequestId: pending.requestId,
-          weekStartsOn,
-        });
-      },
-      commitExecutionResult({ pending }) {
-        finalizeWeeklyPlanningApplicationTurn({ ownerId: userId, pending });
-      },
-      discardExecutionResult({ pending }) {
-        discardWeeklyPlanningApplicationTurn(pending);
-      },
-      onCommittedTurn({ pending, userText: committedUserText, result, committed }) {
-        saveOwnedWeeklyPlanningState(ownerId, committed);
-        const traceWrite = recordCommittedWeeklyPlanningApplicationTurn({
-          ownerId,
-          pending,
-          userText: committedUserText,
-          result,
-        });
-        if (traceWrite) void traceWrite;
-      },
-      onFailedTurn({ pending, userText: failedUserText, error, failedState, assistantMessage }) {
-        discardWeeklyPlanningApplicationTurn(pending);
-        saveOwnedWeeklyPlanningState(ownerId, failedState);
-        const traceWrite = recordFailedWeeklyPlanningApplicationTurn({
-          ownerId,
-          pending,
-          userText: failedUserText,
-          error,
-          assistantMessage,
-        });
-        if (traceWrite) void traceWrite;
-      },
     });
   }
 
