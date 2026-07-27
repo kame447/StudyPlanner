@@ -36,6 +36,7 @@ function createServices(overrides: Partial<WeeklyPlanningTurnApplicationServices
     finalizeTurn: vi.fn(),
     discardTurn: vi.fn(),
     recordCommittedTurn: vi.fn(() => null),
+    recordDiscardedTurn: vi.fn(() => null),
     recordFailedTurn: vi.fn(() => null),
     ...overrides,
   } as WeeklyPlanningTurnApplicationServices;
@@ -109,6 +110,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       userText: '来週の予定を作りたい',
       result: expect.objectContaining({ state: resultState }),
     }));
+    expect(services.recordDiscardedTurn).not.toHaveBeenCalled();
     expect(store.getState().intakeState).toBe(resultState);
   });
 
@@ -157,6 +159,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       conversationId: 'conversation-1',
       requestId: 'conversation-1:request:1',
     }));
+    expect(services.recordDiscardedTurn).not.toHaveBeenCalled();
     expect(services.saveOwnedState).toHaveBeenCalledWith('user-1', store.getState());
     expect(services.recordFailedTurn).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
