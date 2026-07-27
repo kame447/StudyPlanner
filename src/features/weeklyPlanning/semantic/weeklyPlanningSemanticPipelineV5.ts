@@ -31,6 +31,9 @@ import type {
   WeeklyPlanningSemanticNormalizerResultV5,
   WeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
+import {
+  recordWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
 
 export const WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5 =
   'weekly-planning-semantic-pipeline-v5' as const;
@@ -71,6 +74,68 @@ function schedulerStatus(
   return 'scheduler_needs_resolution';
 }
 
+function contextualInferenceRules(publicStateSummary?: Record<string, unknown>) {
+  const lastAssistantMessage = publicStateSummary?.lastAssistantMessage;
+  const text = typeof lastAssistantMessage === 'string' ? lastAssistantMessage : null;
+  return {
+    lastAssistantMessage: text,
+    rules: [
+      {
+        code: 'missing_effort_estimate',
+        criterion: 'lastAssistantMessage.includes("合計でどれくらい時間")',
+        matched: text?.includes('合計でどれくらい時間') ?? false,
+      },
+      {
+        code: 'quantity_role_unresolved',
+        criterion: 'lastAssistantMessage.includes("今回進めたい量ですか")',
+        matched: text?.includes('今回進めたい量ですか') ?? false,
+      },
+    ],
+  };
+}
+
+function contextualBindingObservations(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  normalization: WeeklyPlanningSemanticNormalizerResultV5;
+  expectedRevision: number;
+  userText: string;
+}) {
+  const document = params.normalization.document;
+  const normalizedUserText = params.userText
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[。！？!?]+$/g, '');
+  const wholeTurnTaskSourceMatch = document?.tasks.some((task) =>
+    task.sourceText
+      .normalize('NFKC')
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/[。！？!?]+$/g, '') === normalizedUserText) ?? false;
+  return {
+    criteriaVersion: 'weeklyPlanningStableV5ContextualAnswer:isMinimalContextualReply',
+    observations: {
+      userTextLength: params.userText.trim().length,
+      userTextLengthAtMost40: params.userText.trim().length > 0
+        && params.userText.trim().length <= 40,
+      wholeTurnTaskSourceMatch,
+      expectedRevision: params.expectedRevision,
+      graphRevision: params.graph.revision,
+      revisionMatches: params.expectedRevision === params.graph.revision,
+      planningIntent: document?.planningIntent ?? null,
+      planningIntentIsNotCreatePlan: document?.planningIntent !== 'create_plan',
+      planningWindowIsNull: document?.planningWindow === null,
+      taskCount: document?.tasks.length ?? 0,
+      relationCount: document?.relations.length ?? 0,
+      availabilityDeclarationCount: document?.availabilityDeclarations.length ?? 0,
+      constraintSourceRequestCount: document?.constraintSourceRequests.length ?? 0,
+      uncertaintyCount: document?.uncertainties.length ?? 0,
+      correctionCount: document?.corrections.length ?? 0,
+      decisionCount: document?.decisions.length ?? 0,
+    },
+  };
+}
+
 export function createWeeklyPlanningSemanticPipelineV5(
   normalizer: WeeklyPlanningSemanticNormalizerV5,
 ): {
@@ -81,10 +146,34 @@ export function createWeeklyPlanningSemanticPipelineV5(
   return {
     async run(input) {
       const graph = input.graph ?? createEmptyWeeklyPlanningFactGraphV5();
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'semantic_pipeline_input',
+        data: {
+          pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          expectedRevision: input.expectedRevision,
+          graph,
+          userText: input.userText,
+          recentConversation: input.recentConversation,
+          publicStateSummary: input.publicStateSummary,
+          schedulerContext: input.schedulerContext,
+          externalSources: input.externalSources,
+        },
+      });
+
       const normalization = await normalizer.normalize({
         userText: input.userText,
         recentConversation: input.recentConversation,
         publicStateSummary: input.publicStateSummary,
+        traceRequestId: input.turnId,
+      });
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'semantic_normalization_completed',
+        severity: normalization.status === 'accepted' ? 'info' : 'error',
+        data: normalization,
       });
 
       if (normalization.status === 'provider_failure') {
@@ -93,7 +182,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
           status: 'provider_failure',
           diagnostics: normalization.diagnostics,
         });
-        return {
+        const result: WeeklyPlanningSemanticPipelineResultV5 = {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
           status: 'provider_failure',
           graph,
@@ -101,6 +190,17 @@ export function createWeeklyPlanningSemanticPipelineV5(
           canonicalization: null,
           scheduler: null,
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.turnId,
+          stage: 'semantic_pipeline_decision',
+          severity: 'error',
+          data: {
+            selectedStatus: result.status,
+            basis: 'normalization.status === provider_failure',
+            result,
+          },
+        });
+        return result;
       }
       if (!normalization.document) {
         recordWeeklyPlanningStableV5FailureDiagnostics({
@@ -108,7 +208,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
           status: 'normalization_rejected',
           diagnostics: normalization.diagnostics,
         });
-        return {
+        const result: WeeklyPlanningSemanticPipelineResultV5 = {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
           status: 'normalization_rejected',
           graph,
@@ -116,11 +216,38 @@ export function createWeeklyPlanningSemanticPipelineV5(
           canonicalization: null,
           scheduler: null,
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.turnId,
+          stage: 'semantic_pipeline_decision',
+          severity: 'error',
+          data: {
+            selectedStatus: result.status,
+            basis: 'normalization.document is null',
+            result,
+          },
+        });
+        return result;
       }
 
+      const inferenceRules = contextualInferenceRules(input.publicStateSummary);
       const contextualQuestionCode = inferWeeklyPlanningStableV5ContextualQuestionCode(
         input.publicStateSummary,
       );
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'contextual_question_inference',
+        data: {
+          ...inferenceRules,
+          selectedQuestionCode: contextualQuestionCode,
+        },
+      });
+
+      const bindingObservations = contextualBindingObservations({
+        graph,
+        normalization,
+        expectedRevision: input.expectedRevision,
+        userText: input.userText,
+      });
       const contextualAnswer = contextualQuestionCode
         ? applyWeeklyPlanningStableV5ContextualAnswer({
             graph,
@@ -132,23 +259,52 @@ export function createWeeklyPlanningSemanticPipelineV5(
             userText: input.userText,
           })
         : null;
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'contextual_answer_binding_evaluated',
+        data: {
+          questionCode: contextualQuestionCode,
+          ...bindingObservations,
+          contextualAnswerApplied: Boolean(contextualAnswer),
+          contextualAnswerResult: contextualAnswer,
+        },
+      });
+
+      const canonicalizationContext = {
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        expectedRevision: input.expectedRevision,
+      };
       const canonicalization = contextualAnswer
         ?? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
           graph,
           document: normalization.document,
-          context: {
-            conversationId: input.conversationId,
-            turnId: input.turnId,
-            expectedRevision: input.expectedRevision,
-          },
+          context: canonicalizationContext,
         });
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'semantic_canonicalization_evaluated',
+        severity: canonicalization.status === 'rejected' ? 'error' : 'info',
+        data: {
+          branch: contextualAnswer ? 'contextual_answer_binding' : 'semantic_canonicalizer',
+          input: {
+            graph,
+            document: normalization.document,
+            context: canonicalizationContext,
+          },
+          result: canonicalization,
+          adoptedOperations: canonicalization.diff,
+          localReferenceResolution: canonicalization.localToFactId,
+          rejectionErrors: canonicalization.errors,
+        },
+      });
       if (canonicalization.status === 'rejected') {
         recordWeeklyPlanningStableV5FailureDiagnostics({
           turnId: input.turnId,
           status: 'canonicalization_rejected',
           diagnostics: normalization.diagnostics,
         });
-        return {
+        const result: WeeklyPlanningSemanticPipelineResultV5 = {
           pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
           status: 'canonicalization_rejected',
           graph,
@@ -156,23 +312,62 @@ export function createWeeklyPlanningSemanticPipelineV5(
           canonicalization,
           scheduler: null,
         };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.turnId,
+          stage: 'semantic_pipeline_decision',
+          severity: 'error',
+          data: {
+            selectedStatus: result.status,
+            basis: 'canonicalization.status === rejected',
+            result,
+          },
+        });
+        return result;
       }
 
+      const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(canonicalization.graph);
       const scheduler = compileGenericSchedulerInput({
-        graph: createWeeklyPlanningActiveSchedulerGraphViewV5(canonicalization.graph),
+        graph: activeGraph,
         context: input.schedulerContext,
         externalSources: input.externalSources,
       });
-      return {
+      const status = canonicalization.status === 'duplicate'
+        ? 'duplicate_turn'
+        : schedulerStatus(scheduler);
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'scheduler_compilation_evaluated',
+        severity: scheduler.status === 'ready' ? 'info' : 'warn',
+        data: {
+          input: {
+            graph: activeGraph,
+            context: input.schedulerContext,
+            externalSources: input.externalSources,
+          },
+          result: scheduler,
+          selectedPipelineStatus: status,
+          statusBasis: canonicalization.status === 'duplicate'
+            ? 'canonicalization.status === duplicate'
+            : `scheduler.status === ${scheduler.status}`,
+        },
+      });
+      const result: WeeklyPlanningSemanticPipelineResultV5 = {
         pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
-        status: canonicalization.status === 'duplicate'
-          ? 'duplicate_turn'
-          : schedulerStatus(scheduler),
+        status,
         graph: canonicalization.graph,
         normalization,
         canonicalization,
         scheduler,
       };
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'semantic_pipeline_decision',
+        data: {
+          selectedStatus: result.status,
+          result,
+        },
+      });
+      return result;
     },
   };
 }
