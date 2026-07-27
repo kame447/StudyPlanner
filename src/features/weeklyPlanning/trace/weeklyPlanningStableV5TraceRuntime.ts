@@ -1,4 +1,5 @@
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
+import type { WeeklyPlanningStableV5DebugTraceEvent } from './weeklyPlanningStableV5DebugTrace';
 import {
   getWeeklyPlanningTraceRepository,
   isWeeklyPlanningTraceEnabled,
@@ -40,6 +41,7 @@ export interface WeeklyPlanningStableV5TraceInput {
   graphRevision: number;
   graphSummary: Record<string, unknown>;
   compatibilityState?: unknown;
+  debugTraceEvents?: WeeklyPlanningStableV5DebugTraceEvent[];
   previewCount: number;
   planningRangeStart?: string;
   planningRangeEnd?: string;
@@ -268,6 +270,30 @@ function snapshotEntry(
   };
 }
 
+function debugStageEntries(
+  active: ActiveStableV5TraceSession,
+  params: WeeklyPlanningStableV5TraceInput,
+  occurredAt: string,
+): WeeklyPlanningTraceInternalEventEntry[] {
+  return (params.debugTraceEvents ?? [])
+    .slice()
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((event) => eventEntry(active, {
+      eventType: 'stable_v5_debug_stage',
+      payload: {
+        debugSchemaVersion: event.schemaVersion,
+        debugSequence: event.sequence,
+        stage: event.stage,
+        stageOccurredAt: event.occurredAt,
+        data: event.data,
+      },
+      occurredAt,
+      requestId: params.requestId,
+      stateRevision: params.graphRevision,
+      severity: event.severity,
+    }));
+}
+
 function createTurnEntries(
   active: ActiveStableV5TraceSession,
   params: WeeklyPlanningStableV5TraceInput,
@@ -313,6 +339,7 @@ function createTurnEntries(
       stateRevision: previousRevision,
       severity: 'debug',
     }),
+    ...debugStageEntries(active, params, occurredAt),
     eventEntry(active, {
       eventType: 'interpreter_completed',
       payload: {
@@ -368,6 +395,12 @@ function createTurnEntries(
       graphRevision: params.graphRevision,
       graphSummary: params.graphSummary,
       compatibilityState: params.compatibilityState,
+      debugTraceSummary: params.debugTraceEvents
+        ? {
+            storage: 'stable_v5_debug_stage_entries',
+            eventCount: params.debugTraceEvents.length,
+          }
+        : undefined,
     },
     occurredAt,
     requestId: params.requestId,
