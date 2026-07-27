@@ -20,6 +20,9 @@ import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGra
 import {
   takeWeeklyPlanningStableV5FailureDiagnostics,
 } from './semantic/weeklyPlanningStableV5FailureDiagnostics';
+import {
+  recordWeeklyPlanningStableV5DebugTrace,
+} from './trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningMessage } from './types';
 
 const RECENT_TURN_LIMIT = 6;
@@ -88,10 +91,21 @@ export async function executeWeeklyPlanningTurn(
       traceRequestId: input.traceRequestId,
     });
     const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
-    if (!recordedFailure) return result;
+    if (!recordedFailure) {
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.traceRequestId,
+        stage: 'turn_executor_result_projected',
+        data: {
+          branch: 'no_recorded_failure',
+          criteria: 'failure diagnostics repository returned null',
+          result,
+        },
+      });
+      return result;
+    }
 
     const failureCode = `stable_v5_${recordedFailure.status}` as WeeklyPlanningTurnFailureCode;
-    return {
+    const projected: WeeklyPlanningTurnExecutionResult = {
       ...result,
       state: {
         ...result.state,
@@ -114,6 +128,24 @@ export async function executeWeeklyPlanningTurn(
         },
       },
     };
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: input.traceRequestId,
+      stage: 'turn_executor_result_projected',
+      severity: 'error',
+      data: {
+        branch: 'recorded_failure_projected',
+        criteria: {
+          recordedFailureExists: true,
+          projectedStatus: 'revision_pending',
+          questionsCleared: true,
+          draftAuthorizationCleared: true,
+        },
+        recordedFailure,
+        originalResult: result,
+        projectedResult: projected,
+      },
+    });
+    return projected;
   }
 
   const pipelineInput = {
