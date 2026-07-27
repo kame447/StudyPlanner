@@ -60,7 +60,7 @@ function document(params: {
       value: 'today',
       start: null,
       end: null,
-      sourceText: '今日',
+      sourceText: params.sourceText,
     },
     tasks: params.tasks,
     relations: [],
