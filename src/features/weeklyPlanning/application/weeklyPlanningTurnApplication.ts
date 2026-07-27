@@ -45,6 +45,7 @@ const defaultServices: WeeklyPlanningTurnApplicationServices = {
 
 export interface SubmitWeeklyPlanningApplicationTurnParams {
   session: WeeklyPlanningControllerSession;
+  userId: string;
   ownerId: string;
   userText: string;
   selectedDate: string;
@@ -62,14 +63,14 @@ export function submitWeeklyPlanningApplicationTurn(
 ): Promise<WeeklyPlanningTurnSubmissionResult> {
   return services.submitControlledTurn({
     session: params.session,
-    ownerId: params.ownerId,
+    ownerId: params.userId,
     userText: params.userText,
     getState: params.getState,
     dispatch: params.dispatch,
     async execute({ snapshot, pending, userText }) {
       if (services.isStableV5Enabled()) {
         services.bindStableV5SessionScope({
-          ownerId: params.ownerId,
+          ownerId: params.userId,
           weekStartDate: snapshot.weekStartDate,
           conversationId: pending.conversationId,
         });
@@ -79,7 +80,7 @@ export function submitWeeklyPlanningApplicationTurn(
         messages: snapshot.messages,
         userText,
         selectedDate: params.selectedDate,
-        userId: params.ownerId,
+        userId: params.userId,
         plans: params.plans,
         scheduleTemplates: params.scheduleTemplates,
         timetableTermId: params.timetableTermId,
@@ -89,7 +90,7 @@ export function submitWeeklyPlanningApplicationTurn(
       });
     },
     commitExecutionResult({ pending }) {
-      services.finalizeTurn({ ownerId: params.ownerId, pending });
+      services.finalizeTurn({ ownerId: params.userId, pending });
     },
     discardExecutionResult({ pending }) {
       services.discardTurn(pending);
