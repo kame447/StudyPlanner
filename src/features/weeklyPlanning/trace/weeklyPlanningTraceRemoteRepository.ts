@@ -1,4 +1,8 @@
 import {
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  measureWeeklyPlanningTraceJsonBytes,
+} from '../../../../shared/weeklyPlanningTraceContract';
+import {
   isWeeklyPlanningTraceEntry,
   type WeeklyPlanningTraceEntry,
   type WeeklyPlanningTraceRepository,
@@ -9,17 +13,28 @@ import {
   type WeeklyPlanningTraceApiClient,
   type WeeklyPlanningTraceServerHandle,
 } from './weeklyPlanningTracePrivacyClient';
+import {
+  loadWeeklyPlanningStableV5TraceCursor,
+  saveWeeklyPlanningStableV5TraceCursor,
+} from './weeklyPlanningStableV5TraceSessionStorage';
 
 const SERVER_HANDLE_STORAGE_VERSION =
   'studyplanner-weekly-planning-trace-server-handle-v1' as const;
 const SERVER_HANDLE_STORAGE_PREFIX = 'studyplanner.weeklyPlanning.trace.serverHandle.v1.';
 const SERVER_HANDLE_KEYS = ['version', 'localSessionId', 'serverHandle'] as const;
 const HANDLE_KEYS = ['sessionId', 'logicalConversationId'] as const;
+const STABLE_V5_LOCAL_SESSION_PREFIX = 'weekly-trace-stable-v5-';
+const CLIENT_DOCUMENT_TARGET_BYTES = 48 * 1024;
 
 interface StoredServerHandle {
   version: typeof SERVER_HANDLE_STORAGE_VERSION;
   localSessionId: string;
   serverHandle: WeeklyPlanningTraceServerHandle;
+}
+
+interface CanonicalTracePayload {
+  session: WeeklyPlanningTraceSession;
+  entries: WeeklyPlanningTraceEntry[];
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -123,6 +138,53 @@ function startMetadata(session: WeeklyPlanningTraceSession): Record<string, unkn
   };
 }
 
+function initialStableV5Session(session: WeeklyPlanningTraceSession): WeeklyPlanningTraceSession {
+  return {
+    id: session.id,
+    logicalConversationId: session.logicalConversationId,
+    userId: session.userId,
+    status: 'active',
+    startedAt: session.startedAt,
+    lastActivityAt: session.startedAt,
+    ...(session.planningRangeStart ? { planningRangeStart: session.planningRangeStart } : {}),
+    ...(session.planningRangeEnd ? { planningRangeEnd: session.planningRangeEnd } : {}),
+    turnCount: 0,
+    entryCount: 0,
+    hasPreview: false,
+    hasApprovalFailure: false,
+    hasFallback: false,
+    hasError: false,
+    appVersion: session.appVersion,
+    schemaVersion: session.schemaVersion,
+    expireAt: session.expireAt,
+  };
+}
+
+function persistStableV5SessionIdentity(session: WeeklyPlanningTraceSession): void {
+  if (!session.id.startsWith(STABLE_V5_LOCAL_SESSION_PREFIX)) return;
+  const existing = loadWeeklyPlanningStableV5TraceCursor({
+    userId: session.userId,
+    conversationId: session.logicalConversationId,
+  });
+  if (existing) return;
+
+  const initial = initialStableV5Session(session);
+  const saved = saveWeeklyPlanningStableV5TraceCursor({
+    userId: session.userId,
+    conversationId: session.logicalConversationId,
+    session: initial,
+    nextSequence: 0,
+    nextTurnIndex: 0,
+    lastActivityMs: Date.parse(initial.lastActivityAt),
+    requestIds: [],
+  });
+  if (!saved) {
+    console.warn('[WeeklyPlanningTrace] failed to persist Stable V5 session identity', {
+      conversationId: session.logicalConversationId,
+    });
+  }
+}
+
 function canonicalSession(
   session: WeeklyPlanningTraceSession,
   handle: WeeklyPlanningTraceServerHandle,
@@ -224,6 +286,79 @@ function rejectsStoredServerHandle(error: unknown): boolean {
   ].some((marker) => message.includes(marker));
 }
 
+function batchSession(
+  session: WeeklyPlanningTraceSession,
+  allEntries: readonly WeeklyPlanningTraceEntry[],
+  batchEntries: readonly WeeklyPlanningTraceEntry[],
+): WeeklyPlanningTraceSession {
+  const maxSequence = batchEntries.reduce(
+    (latest, entry) => Math.max(latest, entry.sequence),
+    -1,
+  );
+  const entryCount = maxSequence + 1;
+  const appendedTurnCount = allEntries.filter((entry) => entry.kind === 'turn').length;
+  const previousTurnCount = Math.max(0, session.turnCount - appendedTurnCount);
+  const includedTurnCount = allEntries.filter(
+    (entry) => entry.kind === 'turn' && entry.sequence < entryCount,
+  ).length;
+  return {
+    ...session,
+    entryCount,
+    turnCount: previousTurnCount + includedTurnCount,
+  };
+}
+
+function assertClientDocumentSize(entry: WeeklyPlanningTraceEntry): void {
+  const bytes = measureWeeklyPlanningTraceJsonBytes(entry);
+  if (bytes > CLIENT_DOCUMENT_TARGET_BYTES) {
+    throw new Error(
+      `trace entry exceeds the client document target (${bytes}/${CLIENT_DOCUMENT_TARGET_BYTES})`,
+    );
+  }
+}
+
+function splitCanonicalPayload(
+  canonical: CanonicalTracePayload,
+): CanonicalTracePayload[] {
+  if (canonical.entries.length === 0) return [canonical];
+  canonical.entries.forEach(assertClientDocumentSize);
+
+  const batches: CanonicalTracePayload[] = [];
+  let entries: WeeklyPlanningTraceEntry[] = [];
+
+  const payloadFor = (candidateEntries: WeeklyPlanningTraceEntry[]): CanonicalTracePayload => ({
+    session: batchSession(canonical.session, canonical.entries, candidateEntries),
+    entries: candidateEntries,
+  });
+
+  for (const entry of canonical.entries) {
+    const candidateEntries = [...entries, entry];
+    const candidate = payloadFor(candidateEntries);
+    const exceedsCount = candidateEntries.length
+      > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxEntriesPerRequest;
+    const exceedsTarget = measureWeeklyPlanningTraceJsonBytes(candidate)
+      > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientBatchTargetBytes;
+
+    if ((exceedsCount || exceedsTarget) && entries.length > 0) {
+      batches.push(payloadFor(entries));
+      entries = [entry];
+    } else {
+      entries = candidateEntries;
+    }
+
+    const singleOrCurrent = payloadFor(entries);
+    const bytes = measureWeeklyPlanningTraceJsonBytes(singleOrCurrent);
+    if (bytes > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxRequestBodyBytes) {
+      throw new Error(
+        `trace append payload exceeds the request limit (${bytes}/${WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxRequestBodyBytes})`,
+      );
+    }
+  }
+
+  if (entries.length > 0) batches.push(payloadFor(entries));
+  return batches;
+}
+
 export function createRemoteWeeklyPlanningTraceRepository(
   client: WeeklyPlanningTraceApiClient = createWeeklyPlanningTraceApiClient(),
 ): WeeklyPlanningTraceRepository {
@@ -236,6 +371,7 @@ export function createRemoteWeeklyPlanningTraceRepository(
   }
 
   function serverHandle(session: WeeklyPlanningTraceSession): Promise<WeeklyPlanningTraceServerHandle> {
+    persistStableV5SessionIdentity(session);
     const existing = handlesByLocalSessionId.get(session.id);
     if (existing) return existing;
 
@@ -264,15 +400,24 @@ export function createRemoteWeeklyPlanningTraceRepository(
   async function canonicalPayload(params: {
     session: WeeklyPlanningTraceSession;
     entries: WeeklyPlanningTraceEntry[];
-  }): Promise<{
-    session: WeeklyPlanningTraceSession;
-    entries: WeeklyPlanningTraceEntry[];
-  }> {
+  }): Promise<CanonicalTracePayload> {
     const handle = await serverHandle(params.session);
     return {
       session: canonicalSession(params.session, handle),
       entries: params.entries.map((entry) => canonicalEntry(entry, handle)),
     };
+  }
+
+  async function appendCanonicalBatches(canonical: CanonicalTracePayload): Promise<void> {
+    const batches = splitCanonicalPayload(canonical);
+    for (const batch of batches) {
+      try {
+        await client.append(batch);
+      } catch (error) {
+        if (rejectsStoredServerHandle(error)) throw error;
+        await client.append(batch);
+      }
+    }
   }
 
   async function appendWithHandleRecovery(params: {
@@ -281,16 +426,13 @@ export function createRemoteWeeklyPlanningTraceRepository(
   }): Promise<WeeklyPlanningTraceSession> {
     let canonical = await canonicalPayload(params);
     try {
-      await client.append(canonical);
+      await appendCanonicalBatches(canonical);
       return canonical.session;
     } catch (error) {
-      if (!rejectsStoredServerHandle(error)) {
-        await client.append(canonical);
-        return canonical.session;
-      }
+      if (!rejectsStoredServerHandle(error)) throw error;
       forgetServerHandle(params.session);
       canonical = await canonicalPayload(params);
-      await client.append(canonical);
+      await appendCanonicalBatches(canonical);
       return canonical.session;
     }
   }
