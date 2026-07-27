@@ -51,6 +51,7 @@ function baseParams() {
         '2026-07-27',
         'conversation-1',
       ),
+      userId: 'user-1',
       ownerId: 'user-1',
       userText: '来週の予定を作りたい',
       selectedDate: '2026-07-27',
@@ -109,6 +110,28 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       result: expect.objectContaining({ state: resultState }),
     }));
     expect(store.getState().intakeState).toBe(resultState);
+  });
+
+  it('keeps authenticated runtime identity separate from normalized storage ownership', async () => {
+    const { store, params } = baseParams();
+    params.ownerId = 'normalized-owner';
+    const services = createServices();
+
+    await submitWeeklyPlanningApplicationTurn(params, services);
+
+    expect(services.bindStableV5SessionScope).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'user-1',
+    }));
+    expect(services.executeTurn).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+    }));
+    expect(services.finalizeTurn).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'user-1',
+    }));
+    expect(services.saveOwnedState).toHaveBeenCalledWith('normalized-owner', store.getState());
+    expect(services.recordCommittedTurn).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: 'normalized-owner',
+    }));
   });
 
   it('does not bind Stable V5 runtime when the legacy runtime is active', async () => {
