@@ -159,7 +159,7 @@ describe('Stable V5 debug trace server boundary', () => {
       sessionId: firstStart.body.sessionId,
       logicalConversationId: firstStart.body.logicalConversationId,
     });
-    expect(fakeFirestore.sessions).toHaveLength(1);
+    expect(fakeFirestore.sessions.size).toBe(1);
 
     const sessionId = String(firstStart.body.sessionId);
     const logicalConversationId = String(firstStart.body.logicalConversationId);
@@ -213,8 +213,8 @@ describe('Stable V5 debug trace server boundary', () => {
     );
 
     expect(appended.status).toBe(200);
-    expect(fakeFirestore.sessions).toHaveLength(1);
-    expect(fakeFirestore.entries).toHaveLength(1);
+    expect(fakeFirestore.sessions.size).toBe(1);
+    expect(fakeFirestore.entries.size).toBe(1);
 
     const listed = await handleWeeklyPlanningTraceApi(
       new Request('https://example.test/weekly-planning-trace/admin/sessions'),
