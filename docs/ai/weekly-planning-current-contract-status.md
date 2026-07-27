@@ -201,7 +201,7 @@ src/features/weeklyPlanning/weeklyPlanningStorageDecoder.test.ts
 src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts
 ```
 
-GitHub ActionsはPR #86でも`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない。focused test、full Vitest、typecheck、buildは未確認であり、PR #86はDraftのまま維持する。検証未実施の状態をtest成功またはrefactor完了と記録しない。
+最新確認head `368ec5116a0586dd22574294c424a0edcddf5366`のGitHub Actions run `30227401870`も`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない。focused test、full Vitest、typecheck、buildは未確認であり、PR #86はDraftのまま維持する。検証未実施の状態をtest成功またはrefactor完了と記録しない。
 
 ## 13. Task operation
 
