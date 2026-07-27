@@ -34,14 +34,19 @@ export const WEEKLY_PLANNING_TRACE_EVENT_TYPES = [
 export type WeeklyPlanningTraceEventTypeContract =
   typeof WEEKLY_PLANNING_TRACE_EVENT_TYPES[number];
 
+export const WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING =
+  'base64-utf8-json-dotted-20' as const;
+
 export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxRequestBodyBytes: 512 * 1024,
   maxEntriesPerRequest: 100,
   maxDocumentBytes: 64 * 1024,
   clientDocumentTargetBytes: 48 * 1024,
   clientBatchTargetBytes: 384 * 1024,
-  // Base64 expansion keeps the transported string below the Worker 4,000-character redaction cap.
+  // Base64 expansion plus separators remains below the Worker 4,000-character string cap.
   debugRawChunkBytes: 2_700,
+  // Runs shorter than the Worker token-redaction threshold preserve the encoded chunk.
+  debugBase64RunCharacters: 20,
 } as const;
 
 export function getWeeklyPlanningTraceUtf8ByteLength(value: string): number {
@@ -50,4 +55,21 @@ export function getWeeklyPlanningTraceUtf8ByteLength(value: string): number {
 
 export function measureWeeklyPlanningTraceJsonBytes(value: unknown): number {
   return getWeeklyPlanningTraceUtf8ByteLength(JSON.stringify(value));
+}
+
+export function encodeWeeklyPlanningTraceDebugChunkBase64(
+  base64: string,
+): string {
+  const width = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugBase64RunCharacters;
+  const segments: string[] = [];
+  for (let index = 0; index < base64.length; index += width) {
+    segments.push(base64.slice(index, index + width));
+  }
+  return segments.join('.');
+}
+
+export function decodeWeeklyPlanningTraceDebugChunkBase64(
+  encoded: string,
+): string {
+  return encoded.replace(/\./g, '');
 }
