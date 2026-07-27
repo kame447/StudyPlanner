@@ -274,7 +274,6 @@ describe('Stable V5 trace runtime', () => {
       debugTraceEvents: [{
         schemaVersion: 1,
         sequence: 0,
-        requestId: 'conversation-1:request:1',
         stage: 'runtime_turn_input',
         severity: 'debug',
         occurredAt: '2026-07-27T00:00:00.000Z',
