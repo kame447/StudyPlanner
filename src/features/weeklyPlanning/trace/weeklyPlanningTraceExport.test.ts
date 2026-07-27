@@ -114,7 +114,7 @@ describe('weeklyPlanningTraceExport', () => {
     const midpoint = Math.ceil(bytes.length / 2);
     const chunks = [bytes.slice(0, midpoint), bytes.slice(midpoint)];
     const debugEntries: WeeklyPlanningTraceEntry[] = chunks.map((chunk, index) => ({
-      ...baseEntry(10 + index),
+      ...baseEntry(5 + index),
       id: `session-1-debug-${index}`,
       kind: 'internal_event' as const,
       eventType: 'stable_v5_debug_stage' as const,
@@ -138,15 +138,16 @@ describe('weeklyPlanningTraceExport', () => {
       stateRevision: 2,
     }));
 
-    expect(createWeeklyPlanningStableV5DebugStageExport(debugEntries)).toEqual([
+    const stages = createWeeklyPlanningStableV5DebugStageExport(debugEntries);
+    expect(stages).toEqual([
       expect.objectContaining({
         requestId: 'request-debug',
         debugSequence: 2,
         stage: 'runtime_turn_output',
-        reconstructionError: undefined,
         data: source,
       }),
     ]);
+    expect(stages[0]?.reconstructionError).toBeUndefined();
   });
 
   it('payload欠落eventをexport bundleから除外する', () => {
