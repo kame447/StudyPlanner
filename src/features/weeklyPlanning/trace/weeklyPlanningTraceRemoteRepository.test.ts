@@ -10,7 +10,7 @@ import {
 import type { WeeklyPlanningTraceApiClient } from './weeklyPlanningTracePrivacyClient';
 import { createRemoteWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRemoteRepository';
 import type {
-  WeeklyPlanningTraceEntry,
+  WeeklyPlanningTraceInternalEventEntry,
   WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
 
@@ -40,7 +40,7 @@ const SESSION: WeeklyPlanningTraceSession = {
   expireAt: '2027-01-17T00:00:00.000Z',
 };
 
-function entry(sequence: number): WeeklyPlanningTraceEntry {
+function entry(sequence: number): WeeklyPlanningTraceInternalEventEntry {
   return {
     id: `${LOCAL_SESSION_ID}-${String(sequence).padStart(8, '0')}`,
     sessionId: LOCAL_SESSION_ID,
@@ -58,7 +58,10 @@ function entry(sequence: number): WeeklyPlanningTraceEntry {
   };
 }
 
-function debugEntry(sequence: number, dataChunkLength = 3_600): WeeklyPlanningTraceEntry {
+function debugEntry(
+  sequence: number,
+  dataChunkLength = 3_600,
+): WeeklyPlanningTraceInternalEventEntry {
   return {
     ...entry(sequence),
     eventType: 'stable_v5_debug_stage',
