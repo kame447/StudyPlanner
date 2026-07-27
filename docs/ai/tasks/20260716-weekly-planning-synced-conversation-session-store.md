@@ -1,82 +1,125 @@
-# 週単位の週間計画sessionを別端末同期する
+# Stable V5 conversation・Fact Graphをcloud sessionへ同期する
 
-Status: open / blocked by current-time boundary
-Priority: P1
+Status: active / local persistence complete, cloud repository not started
+Priority: P2
 Created: 2026-07-16
-Updated: 2026-07-19
+Updated: 2026-07-28
 Tracking: Issue #47
-Parent: `docs/ai/strategy/weekly-planning-personalization-history-and-optimization-design.md`
-Depends on: `20260716-weekly-planning-midweek-current-time-start-boundary.md`
-Blocks:
-- `20260716-weekly-planning-consultation-reset-and-invalidation.md`
-- `20260716-weekly-planning-history-feature-extraction.md`
+Depends on: none
+Blocks: `20260728-weekly-planning-personalization-rollout.md`
 
-## 目的
+## 1. 現在地
 
-現在のlocalStorage中心の会話保存を、同一利用者が別端末でも直近の週間計画相談を再開できる週単位session storeへ移行する。
+同一browser profile内では、owner + week scopeのlocal envelopeへ次を保存・復元できる。
 
-PR #48で実装したaccount-linked personalization profileとは別の保存責務である。profileの別端末復元が完了していても、messages、intake state、preview参照を含むconversation session同期は完了していない。
+- conversation ID
+- messages
+- compatibility intake state
+- Fact Graph V5
+- preview candidates
+- draft blocks
+- PlanningState revision
 
-## session単位
+未実装:
+
+- 端末Aから端末Bへの復元
+- cloud authoritative revision
+- multi-client conflict resolution
+- offline queue/reconciliation
+- local envelopeの一度限りmigration
+- cloud retention/account deletion
+- server-side proposal/Graph repository
+
+current-time boundaryはscheduler safetyの独立taskであり、cloud repository実装の技術的前提にはしない。
+
+## 2. Session identity
 
 ```text
-sessionKey = userId + weekStartDate
+ownerId + planningWeekScope
+→ active conversation session
 ```
 
-conversation sessionの週境界と、実際の配置対象であるplanning horizonを分離して保存する。
+session scopeの`weekStartDate`と、実際の配置対象であるplanning horizonは別fieldで保持する。
 
-## 保存対象
+必要なmetadata:
 
-- schema version
+- schema generation
 - owner ID
-- week start date
-- planning horizon
-- messages
-- intake state
-- session status
-- 未承認仮予定への参照
-- feature extraction version
-- revision
+- week scope
+- conversation ID
+- Fact Graph V5 revision
+- PlanningState revision
+- messages/preview/draft revision
+- status: `active | completed | invalidated | abandoned`
 - createdAt / updatedAt
+- optimistic concurrency token
+- migration source/version
 
-`pendingTurn`、`pendingApproval`、`assumptionProposalRecords`などsession-localで永続化禁止の値は除外する。
+永続化禁止:
 
-## 要件
+- active Promise
+- `pendingTurn`
+- `pendingApproval`
+- session-local proposal record
+- raw credential/provider response
+- browser-only lock object
 
-- クラウド側を共有の正本とする
-- localStorageはoffline cacheまたは一度限りの移行元として扱う
-- 更新競合を検出するrevisionを持つ
-- 別週のsessionを混ぜない
-- 利用者切替時に他利用者のsessionを表示・再保存しない
-- 既存localStorageデータを失わず一度だけ移行する
-- 完全会話の保持件数・期間を設定可能にする
-- profile repository、quality trace、approval ledgerとcollection・権限・削除責務を分離する
-- 保存失敗を現在の画面上session消失へつなげない
+## 3. Consistency contract
 
-## 完了条件
+- cloudを共有正本とし、localStorageはoffline cacheまたはmigration sourceとする
+- conversation、Graph、messages、preview、draftを同じrevision boundaryでcommitする
+- stale revisionによる上書きを拒否する
+- owner/week/conversation mismatchをfail closedにする
+- offline writeはoperation ID付きでat-least-once再送可能にする
+- conflictを黙ってlast-write-winsで消さない
+- reset/invalidationをidempotent operationにする
+- local UI stateはcloud一時障害で即時消失させない
+- quality trace、approval ledger、personalization profileとはcollection/identity/retentionを分離する
 
-- [ ] 端末Aで作成した直近sessionを端末Bで復元できる
-- [ ] messages、intake state、preview参照を同一revisionとして保存する
-- [ ] 週を切り替えると別sessionが表示される
-- [ ] session weekとplanning horizonが独立して復元される
-- [ ] localStorageのみの既存sessionを一度だけ移行できる
-- [ ] 永続化禁止フィールドがクラウドへ保存されない
-- [ ] offline時はcacheを利用し、再接続時の競合を明示的に処理する
-- [ ] owner不一致、cross-user payload、破損schemaをfail closedで破棄する
-- [ ] 認可ルールで本人以外が読み書きできない
-- [ ] 保存失敗で現在の画面上sessionを消さない
-- [ ] retryで古いrevisionが新しいsessionを上書きしない
-- [ ] account deletion cascadeと保持期限の対象になる
+## 4. Migration
 
-## 対象外
+- current local envelopeをpure decoderで読む
+- migration markerをcloudへ原子的に保存
+- 同じlocal payloadの再送で重複sessionを作らない
+- cloudに新しいrevisionがある場合はlocalを上書き元にしない
+- migration成功後もrollback期間中はlocal cacheを安全に読める
+- raw conversationをAIへ再投入してFact Graphを再生成しない
 
-- 長期profileの集計
-- placement score
-- contextual bandit
-- 完全会話の最終保持期間に関する法務判断
-- ChatGPT同等の全文検索UI
-- 相談resetの派生観測無効化
+## 5. Test matrix
 
-## 実装上の注意
+- 端末A作成 → 端末B復元
+- 同じ端末のreload
+- 2tab同時更新
+- 2端末同時更新
+- offline編集 → reconnect
+- stale revision retry
+- resetと旧writeのrace
+- owner切替
+- week切替
+- corrupted/unknown schema
+- local migration再実行
+- cloud save failure時のlocal continuity
+- account deletion/retention
 
-UI componentがbackend APIを直接操作せず、session repositoryを介する。保存形式にはschema versionとrevisionを持たせる。profile storeとconversation session storeを同じdocumentへ統合しない。
+## 6. 完了条件
+
+- [ ] cloud repository schemaとsecurity rulesを実装
+- [ ] conversation/Graph/preview/draftをatomic revisionで保存
+- [ ] 別端末から復元
+- [ ] stale revisionとmulti-client conflictを明示処理
+- [ ] offline cache/reconciliationを実装
+- [ ] local envelope migrationをidempotentに実装
+- [ ] owner/week/conversation mismatchを拒否
+- [ ] reset/invalidationをcloud operationへ接続
+- [ ] retention/account deletionを実装
+- [ ] Emulatorでrulesとconcurrencyを検証
+- [ ] focused/full/typecheck/build/diff checkがgreen
+- [ ] 2tab・2端末の実環境確認を完了
+
+## 7. 対象外
+
+- personalization aggregate/score
+- quality trace本文の保存
+- approval operation ledgerの統合
+- 全文検索UI
+- raw conversationからのAI migration
