@@ -158,7 +158,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           messages,
           temperature: 0,
           responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-          purpose: 'weekly_planning_semantic_normalizer',
+          purpose: 'weekly_planning_semantic_normalizer' as const,
           maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
         };
         const bytes = byteLength(request);
