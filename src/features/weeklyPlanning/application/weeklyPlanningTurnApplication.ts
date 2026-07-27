@@ -16,6 +16,7 @@ import {
   discardWeeklyPlanningApplicationTurn,
   finalizeWeeklyPlanningApplicationTurn,
   recordCommittedWeeklyPlanningApplicationTurn,
+  recordDiscardedWeeklyPlanningApplicationTurn,
   recordFailedWeeklyPlanningApplicationTurn,
 } from './weeklyPlanningTurnSideEffects';
 
@@ -28,6 +29,7 @@ export interface WeeklyPlanningTurnApplicationServices {
   finalizeTurn: typeof finalizeWeeklyPlanningApplicationTurn;
   discardTurn: typeof discardWeeklyPlanningApplicationTurn;
   recordCommittedTurn: typeof recordCommittedWeeklyPlanningApplicationTurn;
+  recordDiscardedTurn: typeof recordDiscardedWeeklyPlanningApplicationTurn;
   recordFailedTurn: typeof recordFailedWeeklyPlanningApplicationTurn;
 }
 
@@ -40,6 +42,7 @@ const defaultServices: WeeklyPlanningTurnApplicationServices = {
   finalizeTurn: finalizeWeeklyPlanningApplicationTurn,
   discardTurn: discardWeeklyPlanningApplicationTurn,
   recordCommittedTurn: recordCommittedWeeklyPlanningApplicationTurn,
+  recordDiscardedTurn: recordDiscardedWeeklyPlanningApplicationTurn,
   recordFailedTurn: recordFailedWeeklyPlanningApplicationTurn,
 };
 
@@ -92,8 +95,17 @@ export function submitWeeklyPlanningApplicationTurn(
     commitExecutionResult({ pending }) {
       services.finalizeTurn({ ownerId: params.userId, pending });
     },
-    discardExecutionResult({ pending }) {
+    discardExecutionResult({ pending, userText, result, reason }) {
       services.discardTurn(pending);
+      if (reason === 'failed') return;
+      const traceWrite = services.recordDiscardedTurn({
+        ownerId: params.ownerId,
+        pending,
+        userText,
+        result,
+        reason,
+      });
+      if (traceWrite) void traceWrite;
     },
     onCommittedTurn({ pending, userText, result, committed }) {
       services.saveOwnedState(params.ownerId, committed);
