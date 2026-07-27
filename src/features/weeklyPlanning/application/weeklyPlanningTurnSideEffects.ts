@@ -1,6 +1,10 @@
 import {
   recordWeeklyPlanningStableV5TurnTrace,
 } from '../trace/weeklyPlanningStableV5TraceRuntime';
+import {
+  WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+  takeWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
 import type {
   WeeklyPlanningMessage,
   WeeklyPlanningPendingTurn,
@@ -57,6 +61,22 @@ function stableV5TraceContext(
   };
 }
 
+function compatibilityStateWithDebugTrace(
+  requestId: string,
+  compatibilityState?: Record<string, unknown>,
+): unknown {
+  const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+  if (events.length === 0) return compatibilityState;
+  return {
+    ...(compatibilityState ?? {}),
+    __stableV5DebugTrace: {
+      schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+      eventCount: events.length,
+      events,
+    },
+  };
+}
+
 export function finalizeWeeklyPlanningApplicationTurn(params: {
   ownerId: string;
   pending: WeeklyPlanningPendingTurn;
@@ -94,6 +114,10 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const trace = stableV5TraceContext(params.pending.conversationId, services);
+  const compatibilityState = compatibilityStateWithDebugTrace(
+    params.pending.requestId,
+    params.result.state as unknown as Record<string, unknown>,
+  );
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
@@ -105,7 +129,7 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
       : params.result.state.status,
     graphRevision: trace.graphRevision,
     graphSummary: trace.graphSummary,
-    compatibilityState: params.result.state,
+    compatibilityState,
     previewCount: params.result.draftCandidates.length,
     planningRangeStart: trace.planningRangeStart,
     planningRangeEnd: trace.planningRangeEnd,
@@ -121,6 +145,7 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const trace = stableV5TraceContext(params.pending.conversationId, services);
+  const compatibilityState = compatibilityStateWithDebugTrace(params.pending.requestId);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
@@ -130,6 +155,7 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
     outcome: 'failed',
     graphRevision: trace.graphRevision,
     graphSummary: trace.graphSummary,
+    ...(compatibilityState ? { compatibilityState } : {}),
     previewCount: 0,
     planningRangeStart: trace.planningRangeStart,
     planningRangeEnd: trace.planningRangeEnd,
