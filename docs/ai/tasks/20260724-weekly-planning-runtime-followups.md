@@ -1,74 +1,105 @@
-# Stable V5 runtime trial 残課題
+# Stable V5 runtime 残課題
 
-Status: active
-最終更新: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+Status: active / five independent work units
+Priority: P1-P2
+Updated: 2026-07-28
 
-## 目的
+Depends on:
+- current trace blocker: `20260727-weekly-planning-trace-empty-session-recovery.md`
+- adoption gates: `20260728-weekly-planning-stable-v5-verification-and-cutover.md`
 
-2026-07-24のtrace continuity七視点監査で発見した、PR #83の修正範囲を超えるruntime課題を管理する。trace session分裂、30分idle split、controller連番再利用、remote handle再発行、write failure sequence gapは本taskの前提として修正済みとする。
+## 1. このtaskに含めるもの
 
-## P1: cross-tab sequence coordination
+Stable V5のfeature-flagged runtime接続、local persistence、request ownership、basic trace continuityより後に残るcross-cutting workだけを管理する。
 
-同一owner・week・conversationを複数tabで同時操作した場合、各tabが同じpersisted application stateまたはtrace cursorを読み、同じrequest、turn、trace sequenceを発行する可能性がある。
+次は別taskで扱う。
 
-要求:
+- current-time placement boundary
+- cloud conversation/Graph repository
+- trace production operations/pagination
+- approval production rollout
+- personalization learning pipeline
+- external source production adapter
 
-- browser-wideまたはserver-authoritativeな排他境界を持つ。
-- request、turn、message、trace entryのsequenceを一transactionで予約する。
-- Web Locks未対応環境のfallbackを定義する。
-- lock取得不能時に重複IDを発行せずfail closedにする。
-- two-tab integration testを追加する。
-- remote immutable entry conflictを正常な競合として観測できるようにする。
+## 2. P1: cross-tab sequence coordination
 
-## P1: dialogue grounding
+同一owner・week・conversationを複数tabで同時操作すると、両tabが同じpersisted revisionを読み、同じrequest/turn/message/trace sequenceを発行し得る。
 
-実トレースでは第二turnで「院試」「ハードウェア」「OSnetwork」を受理しているが、assistantは第一turnと同じ一般質問を返している。
+要件:
 
-要求:
+- browser-wideまたはserver-authoritative reservation
+- request、turn、message、trace entryの一意なsequence
+- Web Locks未対応時のfallback
+- lock/reservation不能時はduplicate IDを発行せずfail closed
+- two-tab integration/browser test
+- immutable entry conflictを観測可能な競合として分類
+- cloud session repository導入時に二重authorityを作らない
 
-- accepted fact diffをacknowledgementへ反映する。
-- 受理したtask、category、componentを無視して同じ一般文だけを返さない。
-- acknowledgementと次の不足質問を分離する。
-- multi-turn roleplay fixtureを追加する。
-- trace snapshotのaccepted factsとassistant文面のgroundingを評価する。
+## 3. P1: accepted fact dialogue grounding
 
-## P1: final trace delivery durability
+実トレースで第二turnのtask/category/componentを受理しても、assistantが第一turnと同じ一般質問だけを返す場合がある。
 
-application turn commit後のtrace writeはbest-effort side effectである。commit直後にtabまたはbrowserを閉じた場合、会話状態は保存済みでも最後のtrace appendが完了せず、監査ログの末尾だけが欠落する可能性がある。
+要件:
 
-要求:
+- accepted fact diffをacknowledgementへ反映
+- 受理済みtask/component/workloadを無視しない
+- acknowledgementと次の不足質問を分離
+- 同じmissing targetを無変化で再質問する場合は理由を持つ
+- graph diff、question plan、assistant文面を同じfixtureで比較
+- generic taskとexam-specific wordingを混同しない
 
-- application commitをtrace成功へ同期させず、利用者操作をblockしない。
-- unsent metadataとredacted payloadのdurable queue境界を定義する。
-- `sendBeacon`、service worker、IndexedDB queue、server-side ingestion queueを比較する。
-- reload後のat-least-once deliveryとimmutable entry idempotencyを利用する。
-- owner変更、利用停止、削除要求時のqueue破棄を定義する。
-- abrupt-close integration testまたはbrowser testを追加する。
+## 4. P1: final trace delivery durability
 
-## P2: trace source semantics
+application turn commit直後のtrace appendはbest effortであり、tab/browser closeで末尾だけ欠落し得る。
 
-`responseSource=system`はdeterministic rendererを表しているが、発話理解がAI semantic normalizerを経由した事実を表せない。
+要件:
 
-要求:
+- planning operationをtrace成功へ同期させない
+- redacted payloadのdurable outbox
+- immutable entry IDによるat-least-once delivery
+- IndexedDB、service worker、sendBeacon、server ingestion queueを比較
+- reload/reconnect後の再送
+- owner変更、consent撤回、account deletion時のqueue破棄
+- abrupt-close browser test
+- duplicate/partial batch再送の収束
 
-- renderer sourceとsemantic interpretation sourceを別fieldまたはeventへ分離する。
-- export schema、admin viewer、evaluation fixtureの互換性を維持する。
-- legacy、Stable V5、provider failureを識別する。
-- raw provider responseは保存しない。
+## 5. P2: trace source semantics
 
-## P2: explicit reset cleanup
+`responseSource=system`はrenderer sourceを示すが、AI semantic normalizerを経由した事実を表せない。
 
-新conversationまたは明示resetではlocal trace cursorを削除するが、保存済みserver handle mappingと過去sessionのstatus更新は別lifecycleである。historical sessionを自動mergeしない一方、不要なlocal mappingを無期限に残さないcleanup契約が必要である。
+要件:
 
-要求:
+- semantic interpretation sourceとrenderer sourceを分離
+- model/provider/versionはbounded metadataで保持
+- legacy、Stable V5、provider failureを識別
+- export/admin/evaluation fixture互換
+- raw provider responseを通常trace metadataへ保存しない
+- full debug traceと通常quality eventを混同しない
 
-- explicit reset時に旧local cursorとserver handle mappingを同じowner scopeで削除する。
-- remote sessionを`completed`または`abandoned`へ更新する条件を定義する。
-- cleanup failureが新conversation開始を妨げない。
-- logout、account deletion、trace consent撤回と同じ削除境界へ接続する。
-- stale mapping pruning testを追加する。
+## 6. P2: explicit reset cleanup
 
-## 完了条件
+新conversationまたはexplicit resetではapplication cursorを消すが、server handle mapping、remote session status、durable outboxは別lifecycleである。
 
-各項目は独立PRに分割できる。実装、focused test、full test、typecheck、build、browserまたはmulti-tab verification、対応MD更新を完了した項目だけclosedへ移す。
+要件:
+
+- old local cursor/handle mapping/outboxを同じowner scopeでcleanup
+- remote sessionを`completed | abandoned | failed`へ遷移させる条件
+- cleanup failureが新conversation開始を妨げない
+- logout、consent撤回、account deletionへ接続
+- stale mapping pruning
+- clear conversationではcleanupしない
+- resetとcloud session invalidationの責務を分離
+
+## 7. Work unit完了条件
+
+各sectionは独立PRにできる。sectionごとに次を満たした時だけ完了記録へ分離する。
+
+- implementation
+- focused test
+- related full suite
+- typecheck/typecheck:build/build/diff check
+- browserまたはmulti-tab verification
+- trace/admin export確認
+- canonical MD同期
+
+一部sectionが完了しても本task全体をclosedにしない。完了sectionはclosed completion recordへ切り出し、未完了sectionだけ本taskへ残す。
