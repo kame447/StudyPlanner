@@ -21,6 +21,9 @@ import {
 
 const SESSION_RETENTION_DAYS = 90;
 const SNAPSHOT_RETENTION_DAYS = 30;
+const DEBUG_INLINE_MAX_BYTES = 350_000;
+const DEBUG_CHUNK_BYTES = 350_000;
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 interface ActiveStableV5TraceSession {
   session: WeeklyPlanningTraceSession;
@@ -315,6 +318,70 @@ function inputGraphRevision(params: WeeklyPlanningStableV5TraceInput): number {
   return Math.max(0, params.graphRevision - 1);
 }
 
+function prepareDebugData(value: unknown) {
+  return sanitizeWeeklyPlanningTraceValue(value, {
+    maxDepth: 256,
+    maxArrayItems: 1_000_000,
+    maxObjectKeys: 1_000_000,
+    maxStringLength: 100_000_000,
+    maxSerializedBytes: Number.MAX_SAFE_INTEGER,
+  });
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let output = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const hasSecond = index + 1 < bytes.length;
+    const hasThird = index + 2 < bytes.length;
+    const second = hasSecond ? bytes[index + 1] : 0;
+    const third = hasThird ? bytes[index + 2] : 0;
+    const value = (first << 16) | (second << 8) | third;
+    output += BASE64_ALPHABET[(value >> 18) & 63];
+    output += BASE64_ALPHABET[(value >> 12) & 63];
+    output += hasSecond ? BASE64_ALPHABET[(value >> 6) & 63] : '=';
+    output += hasThird ? BASE64_ALPHABET[value & 63] : '=';
+  }
+  return output;
+}
+
+function debugEventPayloads(event: WeeklyPlanningStableV5DebugTraceEvent): unknown[] {
+  const prepared = prepareDebugData(event.data);
+  const serialized = JSON.stringify(prepared.value) ?? 'null';
+  const bytes = new TextEncoder().encode(serialized);
+  const common = {
+    debugSchemaVersion: event.schemaVersion,
+    debugSequence: event.sequence,
+    stage: event.stage,
+    stageOccurredAt: event.occurredAt,
+    sourceSanitizerTruncated: prepared.truncated,
+  };
+  if (bytes.byteLength <= DEBUG_INLINE_MAX_BYTES) {
+    return [{
+      ...common,
+      storage: 'inline_json',
+      serializedBytes: bytes.byteLength,
+      data: prepared.value,
+    }];
+  }
+
+  const chunkCount = Math.ceil(bytes.byteLength / DEBUG_CHUNK_BYTES);
+  return Array.from({ length: chunkCount }, (_, chunkIndex) => {
+    const start = chunkIndex * DEBUG_CHUNK_BYTES;
+    const chunk = bytes.slice(start, Math.min(bytes.byteLength, start + DEBUG_CHUNK_BYTES));
+    return {
+      ...common,
+      storage: 'base64_utf8_json_chunk',
+      encoding: 'base64-utf8-json',
+      chunkIndex,
+      chunkCount,
+      totalSerializedBytes: bytes.byteLength,
+      chunkBytes: chunk.byteLength,
+      dataChunk: encodeBase64(chunk),
+    };
+  });
+}
+
 function debugStageEntries(
   active: ActiveStableV5TraceSession,
   params: WeeklyPlanningStableV5TraceInput,
@@ -323,20 +390,14 @@ function debugStageEntries(
   return (params.debugTraceEvents ?? [])
     .slice()
     .sort((left, right) => left.sequence - right.sequence)
-    .map((event) => eventEntry(active, {
+    .flatMap((event) => debugEventPayloads(event).map((payload) => eventEntry(active, {
       eventType: 'stable_v5_debug_stage',
-      payload: {
-        debugSchemaVersion: event.schemaVersion,
-        debugSequence: event.sequence,
-        stage: event.stage,
-        stageOccurredAt: event.occurredAt,
-        data: event.data,
-      },
+      payload,
       occurredAt,
       requestId: params.requestId,
       stateRevision: eventGraphRevision(event, params.graphRevision),
       severity: event.severity,
-    }));
+    })));
 }
 
 function createDiscardEvent(
@@ -391,6 +452,7 @@ function createTurnEntries(
   }
 
   const previousRevision = inputGraphRevision(params);
+  const debugEntries = debugStageEntries(active, params, occurredAt);
   const entries: WeeklyPlanningTraceEntry[] = [
     turnEntry(active, {
       role: 'user',
@@ -420,7 +482,7 @@ function createTurnEntries(
       stateRevision: previousRevision,
       severity: 'debug',
     }),
-    ...debugStageEntries(active, params, occurredAt),
+    ...debugEntries,
     eventEntry(active, {
       eventType: 'interpreter_completed',
       payload: {
@@ -484,6 +546,7 @@ function createTurnEntries(
         ? {
             storage: 'stable_v5_debug_stage_entries',
             eventCount: params.debugTraceEvents.length,
+            persistedEntryCount: debugEntries.length,
           }
         : undefined,
     },
