@@ -31,11 +31,11 @@ export interface WeeklyPlanningTraceSanitizeResult {
 }
 
 const DEFAULT_OPTIONS: Required<WeeklyPlanningTraceSanitizeOptions> = {
-  maxDepth: 8,
-  maxArrayItems: 100,
-  maxObjectKeys: 100,
-  maxStringLength: 4_000,
-  maxSerializedBytes: 48_000,
+  maxDepth: 16,
+  maxArrayItems: 5_000,
+  maxObjectKeys: 5_000,
+  maxStringLength: 250_000,
+  maxSerializedBytes: 800_000,
 };
 
 function normalizedKey(key: string): string {
