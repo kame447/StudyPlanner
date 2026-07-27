@@ -38,6 +38,7 @@ export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxRequestBodyBytes: 512 * 1024,
   maxEntriesPerRequest: 100,
   maxDocumentBytes: 64 * 1024,
+  clientDocumentTargetBytes: 48 * 1024,
   clientBatchTargetBytes: 384 * 1024,
   debugRawChunkBytes: 24 * 1024,
 } as const;
