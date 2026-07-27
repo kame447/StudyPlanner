@@ -189,6 +189,18 @@ session lifecycle、turn application、turn side effectのfocused unit test
 
 `useWeeklyPlanningApplication`は状態とUI向け操作のcomposition rootに限定し、AI semantic executor、Fact Graph lifecycle、trace repository、Stable V5 storageの実装詳細を直接所有しない。AI semantic normalizerとdeterministic coreの責務境界は変更していない。
 
+PR #86のfocused verificationには少なくとも次を含める。
+
+```text
+src/features/weeklyPlanning/__tests__/weeklyPlanningConversationClear.integration.test.ts
+src/features/weeklyPlanning/application/weeklyPlanningSessionLifecycle.test.ts
+src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.test.ts
+src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.test.ts
+src/features/weeklyPlanning/weeklyPlanningOwnedStorage.test.ts
+src/features/weeklyPlanning/weeklyPlanningStorageDecoder.test.ts
+src/features/weeklyPlanning/weeklyPlanningTurnController.test.ts
+```
+
 GitHub ActionsはPR #86でも`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない。focused test、full Vitest、typecheck、buildは未確認であり、PR #86はDraftのまま維持する。
 
 ## 13. Task operation
