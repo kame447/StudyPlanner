@@ -4,6 +4,10 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import {
+  resetWeeklyPlanningStableV5DebugTraceForTest,
+  takeWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -124,6 +128,7 @@ import {
 describe('Stable V5 runtime executor', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    resetWeeklyPlanningStableV5DebugTraceForTest();
     normalizeMock.mockReset();
     normalizeMock.mockResolvedValue(acceptedResult(document()));
   });
@@ -154,6 +159,31 @@ describe('Stable V5 runtime executor', () => {
       endTime: '10:00',
       title: '部屋の掃除 60分',
     });
+
+    const events = takeWeeklyPlanningStableV5DebugTrace('request-1');
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'runtime_configuration_evaluated' }),
+      expect.objectContaining({ stage: 'runtime_session_context_prepared' }),
+      expect.objectContaining({ stage: 'runtime_semantic_result_received' }),
+      expect.objectContaining({ stage: 'runtime_graph_staged' }),
+      expect.objectContaining({
+        stage: 'runtime_scheduler_dialogue_evaluated',
+        data: expect.objectContaining({
+          dialogue: expect.objectContaining({ status: 'ready_for_preview' }),
+          authorization: expect.objectContaining({ authorized: true }),
+        }),
+      }),
+      expect.objectContaining({
+        stage: 'runtime_preview_scheduler_evaluated',
+        data: expect.objectContaining({
+          result: expect.objectContaining({ status: 'ready' }),
+        }),
+      }),
+      expect.objectContaining({
+        stage: 'runtime_branch_selected',
+        data: expect.objectContaining({ branch: 'preview_ready' }),
+      }),
+    ]));
   });
 
   it('accepts 今日 as the planning window and asks for the missing work instead of rejecting normalization', async () => {
@@ -180,5 +210,14 @@ describe('Stable V5 runtime executor', () => {
     );
     expect(result.message).not.toContain('構造化結果を安全に採用できませんでした');
     expect(result.draftCandidates).toEqual([]);
+
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-today')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_branch_selected',
+          data: expect.objectContaining({ branch: 'nothing_to_schedule' }),
+        }),
+      ]),
+    );
   });
 });
