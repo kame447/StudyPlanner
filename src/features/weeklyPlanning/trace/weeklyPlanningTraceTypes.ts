@@ -41,6 +41,7 @@ export type WeeklyPlanningTraceEventType =
   | 'approval_completed'
   | 'request_cancelled'
   | 'stale_async_result_discarded'
+  | 'stable_v5_debug_stage'
   | 'trace_write_failed';
 
 export type WeeklyPlanningTraceSeverity = 'debug' | 'info' | 'warn' | 'error';
@@ -172,6 +173,7 @@ const EVENT_TYPES = new Set<WeeklyPlanningTraceEventType>([
   'approval_completed',
   'request_cancelled',
   'stale_async_result_discarded',
+  'stable_v5_debug_stage',
   'trace_write_failed',
 ]);
 
@@ -204,35 +206,35 @@ export function isWeeklyPlanningTraceEntry(value: unknown): value is WeeklyPlann
   const record = value as Record<string, unknown>;
   if (!hasValidBase(record)) return false;
 
-    if (record.kind === 'turn') {
-  const validSource = record.responseSource === 'ai'
-    || record.responseSource === 'deterministic_fallback'
-    || record.responseSource === 'rules'
-    || record.responseSource === 'system';
-  return (record.role === 'user' || record.role === 'assistant')
-    && typeof record.content === 'string'
-    && Number.isInteger(record.turnIndex)
-    && Number(record.turnIndex) >= 0
-    && (record.role === 'assistant' ? validSource : record.responseSource === undefined);
-}
+  if (record.kind === 'turn') {
+    const validSource = record.responseSource === 'ai'
+      || record.responseSource === 'deterministic_fallback'
+      || record.responseSource === 'rules'
+      || record.responseSource === 'system';
+    return (record.role === 'user' || record.role === 'assistant')
+      && typeof record.content === 'string'
+      && Number.isInteger(record.turnIndex)
+      && Number(record.turnIndex) >= 0
+      && (record.role === 'assistant' ? validSource : record.responseSource === undefined);
+  }
 
-if (record.kind === 'internal_event') {
-  return Object.prototype.hasOwnProperty.call(record, 'payload')
-    && record.payload !== undefined
-    && typeof record.eventType === 'string'
-    && EVENT_TYPES.has(record.eventType as WeeklyPlanningTraceEventType)
-    && (record.severity === 'debug'
-      || record.severity === 'info'
-      || record.severity === 'warn'
-      || record.severity === 'error');
-}
+  if (record.kind === 'internal_event') {
+    return Object.prototype.hasOwnProperty.call(record, 'payload')
+      && record.payload !== undefined
+      && typeof record.eventType === 'string'
+      && EVENT_TYPES.has(record.eventType as WeeklyPlanningTraceEventType)
+      && (record.severity === 'debug'
+        || record.severity === 'info'
+        || record.severity === 'warn'
+        || record.severity === 'error');
+  }
 
-if (record.kind === 'state_snapshot') {
-  return Object.prototype.hasOwnProperty.call(record, 'state')
-    && record.state !== undefined
-    && typeof record.snapshotReason === 'string'
-    && SNAPSHOT_REASONS.has(record.snapshotReason as WeeklyPlanningTraceSnapshotReason);
-}
+  if (record.kind === 'state_snapshot') {
+    return Object.prototype.hasOwnProperty.call(record, 'state')
+      && record.state !== undefined
+      && typeof record.snapshotReason === 'string'
+      && SNAPSHOT_REASONS.has(record.snapshotReason as WeeklyPlanningTraceSnapshotReason);
+  }
 
   return false;
 }
