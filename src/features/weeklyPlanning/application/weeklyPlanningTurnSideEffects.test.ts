@@ -12,6 +12,7 @@ import {
   discardWeeklyPlanningApplicationTurn,
   finalizeWeeklyPlanningApplicationTurn,
   recordCommittedWeeklyPlanningApplicationTurn,
+  recordDiscardedWeeklyPlanningApplicationTurn,
   recordFailedWeeklyPlanningApplicationTurn,
   type WeeklyPlanningTurnSideEffectServices,
 } from './weeklyPlanningTurnSideEffects';
@@ -202,6 +203,50 @@ describe('weeklyPlanningTurnSideEffects', () => {
             expect.objectContaining({ sequence: 1, stage: 'semantic_canonicalization_evaluated' }),
           ],
         },
+      }),
+    }));
+    expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
+  });
+
+  it('records and consumes a stale discarded execution trace', async () => {
+    const services = createServices();
+    const state = {
+      ...createInitialPlanningIntakeState(),
+      status: 'draft_ready' as const,
+    };
+    beginWeeklyPlanningStableV5DebugTrace(pending.requestId);
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'runtime_branch_selected',
+      data: { branch: 'preview_ready' },
+    });
+
+    await recordDiscardedWeeklyPlanningApplicationTurn({
+      ownerId: 'user-1',
+      pending,
+      userText: 'この条件で予定を作って',
+      result: {
+        state,
+        message: '1件の候補を作りました。',
+        draftCandidates: [{} as never],
+      },
+      reason: 'stale',
+    }, services);
+
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'discarded_stale',
+      errorCode: 'stale_async_result_discarded',
+      previewCount: 1,
+      compatibilityState: expect.objectContaining({
+        status: 'draft_ready',
+        __discardedExecution: expect.objectContaining({
+          reason: 'stale',
+          candidateCount: 1,
+        }),
+        __stableV5DebugTrace: expect.objectContaining({
+          eventCount: 1,
+          events: [expect.objectContaining({ stage: 'runtime_branch_selected' })],
+        }),
       }),
     }));
     expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
