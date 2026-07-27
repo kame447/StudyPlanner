@@ -122,6 +122,9 @@ describe('Stable V5 trace runtime debug stages', () => {
 
     expect(harness.writes).toHaveLength(1);
     const entries = harness.writes[0].entries;
+    expect(entries.map((entry) => entry.sequence)).toEqual(
+      Array.from({ length: entries.length }, (_, index) => index),
+    );
     const userTurn = entries.find(
       (entry) => entry.kind === 'turn' && entry.role === 'user',
     );
@@ -151,7 +154,7 @@ describe('Stable V5 trace runtime debug stages', () => {
         },
       },
       {
-        stateRevision: 4,
+        stateRevision: 3,
         payload: {
           debugSequence: 1,
           stage: 'semantic_provider_request',
