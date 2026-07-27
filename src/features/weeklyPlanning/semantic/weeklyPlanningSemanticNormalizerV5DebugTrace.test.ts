@@ -13,7 +13,7 @@ import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemant
 function document(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-    planningIntent: 'update_context',
+    planningIntent: 'discuss',
     planningWindow: null,
     tasks: [],
     relations: [],
