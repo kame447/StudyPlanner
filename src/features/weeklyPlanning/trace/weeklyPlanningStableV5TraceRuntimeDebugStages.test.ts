@@ -47,6 +47,22 @@ function debugEvent(params: {
   };
 }
 
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function recordPayload(entry: WeeklyPlanningTraceEntry): Record<string, unknown> {
+  if (entry.kind !== 'internal_event' || !entry.payload || typeof entry.payload !== 'object') {
+    throw new Error('expected an internal event payload');
+  }
+  return entry.payload as Record<string, unknown>;
+}
+
 beforeEach(() => {
   resetWeeklyPlanningStableV5TraceRuntimeForTest();
 });
@@ -130,6 +146,7 @@ describe('Stable V5 trace runtime debug stages', () => {
         payload: {
           debugSequence: 0,
           stage: 'runtime_session_context_prepared',
+          storage: 'inline_json',
           data: { graphRevision: 3 },
         },
       },
@@ -138,6 +155,7 @@ describe('Stable V5 trace runtime debug stages', () => {
         payload: {
           debugSequence: 1,
           stage: 'semantic_provider_request',
+          storage: 'inline_json',
           data: {
             request: {
               messages: [
@@ -158,10 +176,70 @@ describe('Stable V5 trace runtime debug stages', () => {
         debugTraceSummary: {
           storage: 'stable_v5_debug_stage_entries',
           eventCount: 2,
+          persistedEntryCount: 2,
         },
       },
     });
     expect(JSON.stringify(snapshot)).not.toContain('complete system prompt');
+  });
+
+  it('chunks and reconstructs an oversized stage without dropping its JSON data', async () => {
+    const harness = createRepositoryHarness();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const rawResponse = 'あ'.repeat(400_000);
+
+    await recordWeeklyPlanningStableV5TurnTrace({
+      userId: 'owner-1',
+      conversationId: 'conversation-large',
+      requestId: 'conversation-large:request:1',
+      userText: '大きい応答を記録する',
+      assistantMessage: '記録しました。',
+      outcome: 'revision_pending',
+      graphRevision: 1,
+      graphSummary: {},
+      debugTraceEvents: [
+        debugEvent({
+          sequence: 0,
+          stage: 'semantic_provider_response',
+          data: { attempt: 'initial', rawResponse },
+        }),
+      ],
+      previewCount: 0,
+    });
+
+    const stages = harness.writes[0].entries.filter(
+      (entry) => entry.kind === 'internal_event'
+        && entry.eventType === 'stable_v5_debug_stage',
+    );
+    expect(stages.length).toBeGreaterThan(1);
+    expect(stages.every((entry) => recordPayload(entry).storage === 'base64_utf8_json_chunk')).toBe(true);
+    expect(stages.every(
+      (entry) => new TextEncoder().encode(JSON.stringify(entry)).byteLength < 800_000,
+    )).toBe(true);
+
+    const ordered = stages
+      .slice()
+      .sort((left, right) => Number(recordPayload(left).chunkIndex) - Number(recordPayload(right).chunkIndex));
+    const decodedChunks = ordered.map((entry) => decodeBase64(String(recordPayload(entry).dataChunk)));
+    const totalBytes = decodedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const reconstructed = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of decodedChunks) {
+      reconstructed.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const parsed = JSON.parse(new TextDecoder().decode(reconstructed));
+    expect(parsed).toEqual({ attempt: 'initial', rawResponse });
+
+    const snapshot = harness.writes[0].entries.find((entry) => entry.kind === 'state_snapshot');
+    expect(snapshot).toMatchObject({
+      state: {
+        debugTraceSummary: {
+          eventCount: 1,
+          persistedEntryCount: stages.length,
+        },
+      },
+    });
   });
 
   it('records stale execution disposal without a phantom assistant turn or preview', async () => {
