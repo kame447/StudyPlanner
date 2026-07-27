@@ -64,16 +64,22 @@ function stableV5TraceContext(
 function compatibilityStateWithDebugTrace(
   requestId: string,
   compatibilityState?: Record<string, unknown>,
+  metadata?: Record<string, unknown>,
 ): unknown {
   const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
-  if (events.length === 0) return compatibilityState;
+  if (events.length === 0 && !metadata) return compatibilityState;
   return {
     ...(compatibilityState ?? {}),
-    __stableV5DebugTrace: {
-      schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
-      eventCount: events.length,
-      events,
-    },
+    ...(metadata ?? {}),
+    ...(events.length > 0
+      ? {
+          __stableV5DebugTrace: {
+            schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+            eventCount: events.length,
+            events,
+          },
+        }
+      : {}),
   };
 }
 
@@ -133,6 +139,45 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
     previewCount: params.result.draftCandidates.length,
     planningRangeStart: trace.planningRangeStart,
     planningRangeEnd: trace.planningRangeEnd,
+  });
+}
+
+export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
+  ownerId: string;
+  pending: WeeklyPlanningPendingTurn;
+  userText: string;
+  result: WeeklyPlanningTurnExecutionResult;
+  reason: 'stale' | 'commit_rejected';
+}, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
+  if (!services.isStableV5Enabled()) return null;
+  const trace = stableV5TraceContext(params.pending.conversationId, services);
+  const compatibilityState = compatibilityStateWithDebugTrace(
+    params.pending.requestId,
+    params.result.state as unknown as Record<string, unknown>,
+    {
+      __discardedExecution: {
+        reason: params.reason,
+        pending: params.pending,
+        candidateCount: params.result.draftCandidates.length,
+      },
+    },
+  );
+  return services.recordTurnTrace({
+    userId: params.ownerId,
+    conversationId: params.pending.conversationId,
+    requestId: params.pending.requestId,
+    userText: params.userText,
+    assistantMessage: params.result.message,
+    outcome: `discarded_${params.reason}`,
+    graphRevision: trace.graphRevision,
+    graphSummary: trace.graphSummary,
+    compatibilityState,
+    previewCount: params.result.draftCandidates.length,
+    planningRangeStart: trace.planningRangeStart,
+    planningRangeEnd: trace.planningRangeEnd,
+    errorCode: params.reason === 'stale'
+      ? 'stale_async_result_discarded'
+      : 'commit_rejected',
   });
 }
 
