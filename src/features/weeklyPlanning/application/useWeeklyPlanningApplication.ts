@@ -2,9 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Plan, PlanDraft, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import { useWeeklyPlanningPersonalization } from '../personalization/WeeklyPlanningPersonalizationContext';
-import {
-  recordWeeklyPlanningStableV5TurnTrace,
-} from '../trace/weeklyPlanningStableV5TraceRuntime';
 import type {
   PlanningState,
   WeeklyPlanDraftBlock,
@@ -45,11 +42,13 @@ import {
 } from './weeklyPlanningSessionLifecycle';
 import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
-  discardWeeklyPlanningStableV5StagedGraph,
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
-  getWeeklyPlanningStableV5RuntimeSession,
-  hasWeeklyPlanningStableV5StagedGraphForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
+import {
+  discardWeeklyPlanningApplicationTurn,
+  finalizeWeeklyPlanningApplicationTurn,
+  recordCommittedWeeklyPlanningApplicationTurn,
+  recordFailedWeeklyPlanningApplicationTurn,
+} from './weeklyPlanningTurnSideEffects';
 
 export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
@@ -81,28 +80,6 @@ export interface WeeklyPlanningApplication {
 interface ApprovalLedgerState {
   ownerId: string;
   operations: WeeklyDraftApprovalOperation[];
-}
-
-function stableV5TraceContext(conversationId: string) {
-  const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
-  const graph = runtime?.graph;
-  const activeFactIds = new Set(
-    graph?.factLifecycles
-      .filter((entry) => entry.status === 'active')
-      .map((entry) => entry.factId) ?? [],
-  );
-  const planningWindow = graph?.planningWindows.find((fact) => activeFactIds.has(fact.id));
-  return {
-    graphRevision: graph?.revision ?? 0,
-    graphSummary: {
-      taskCount: graph?.tasks.length ?? 0,
-      workloadCount: graph?.workloads.length ?? 0,
-      availabilityCount: graph?.availabilityDeclarations.length ?? 0,
-      activeFactCount: activeFactIds.size,
-    },
-    planningRangeStart: planningWindow?.start ?? undefined,
-    planningRangeEnd: planningWindow?.end ?? undefined,
-  };
 }
 
 export function useWeeklyPlanningApplication({
@@ -242,67 +219,32 @@ export function useWeeklyPlanningApplication({
         });
       },
       commitExecutionResult({ pending }) {
-        if (!isWeeklyPlanningStableV5RuntimeEnabled()) return;
-        if (!hasWeeklyPlanningStableV5StagedGraphForTest({
-          conversationId: pending.conversationId,
-          requestId: pending.requestId,
-        })) {
-          return;
-        }
-        finalizeWeeklyPlanningStableV5RuntimeGraph({
-          ownerId: userId,
-          conversationId: pending.conversationId,
-          requestId: pending.requestId,
-        });
+        finalizeWeeklyPlanningApplicationTurn({ ownerId: userId, pending });
       },
       discardExecutionResult({ pending }) {
-        if (!isWeeklyPlanningStableV5RuntimeEnabled()) return;
-        discardWeeklyPlanningStableV5StagedGraph({
-          conversationId: pending.conversationId,
-          requestId: pending.requestId,
-        });
+        discardWeeklyPlanningApplicationTurn(pending);
       },
       onCommittedTurn({ pending, userText: committedUserText, result, committed }) {
         saveOwnedWeeklyPlanningState(ownerId, committed);
-        if (!isWeeklyPlanningStableV5RuntimeEnabled()) return;
-        const trace = stableV5TraceContext(pending.conversationId);
-        void recordWeeklyPlanningStableV5TurnTrace({
-          userId: ownerId,
-          conversationId: pending.conversationId,
-          requestId: pending.requestId,
+        const traceWrite = recordCommittedWeeklyPlanningApplicationTurn({
+          ownerId,
+          pending,
           userText: committedUserText,
-          assistantMessage: result.message,
-          outcome: result.draftCandidates.length > 0 ? 'preview_ready' : result.state.status,
-          graphRevision: trace.graphRevision,
-          graphSummary: trace.graphSummary,
-          compatibilityState: result.state,
-          previewCount: result.draftCandidates.length,
-          planningRangeStart: trace.planningRangeStart,
-          planningRangeEnd: trace.planningRangeEnd,
+          result,
         });
+        if (traceWrite) void traceWrite;
       },
       onFailedTurn({ pending, userText: failedUserText, error, failedState, assistantMessage }) {
-        discardWeeklyPlanningStableV5StagedGraph({
-          conversationId: pending.conversationId,
-          requestId: pending.requestId,
-        });
+        discardWeeklyPlanningApplicationTurn(pending);
         saveOwnedWeeklyPlanningState(ownerId, failedState);
-        if (!isWeeklyPlanningStableV5RuntimeEnabled()) return;
-        const trace = stableV5TraceContext(pending.conversationId);
-        void recordWeeklyPlanningStableV5TurnTrace({
-          userId: ownerId,
-          conversationId: pending.conversationId,
-          requestId: pending.requestId,
+        const traceWrite = recordFailedWeeklyPlanningApplicationTurn({
+          ownerId,
+          pending,
           userText: failedUserText,
-          assistantMessage: assistantMessage.content,
-          outcome: 'failed',
-          graphRevision: trace.graphRevision,
-          graphSummary: trace.graphSummary,
-          previewCount: 0,
-          planningRangeStart: trace.planningRangeStart,
-          planningRangeEnd: trace.planningRangeEnd,
-          errorCode: error instanceof Error ? error.name : 'unknown-error',
+          error,
+          assistantMessage,
         });
+        if (traceWrite) void traceWrite;
       },
     });
   }
