@@ -9,11 +9,12 @@ import {
 
 function errorDetails(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
+    const errorWithCause = error as Error & { cause?: unknown };
     return {
       name: error.name,
       message: error.message,
       stack: error.stack ?? null,
-      cause: error.cause ?? null,
+      cause: errorWithCause.cause ?? null,
     };
   }
   return { value: error };
