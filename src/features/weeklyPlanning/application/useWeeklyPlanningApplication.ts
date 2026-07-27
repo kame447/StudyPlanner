@@ -178,7 +178,8 @@ export function useWeeklyPlanningApplication({
     if (!userId || !session) return { accepted: false, draftCandidates: [] };
     return submitWeeklyPlanningApplicationTurn({
       session,
-      ownerId: userId,
+      userId,
+      ownerId,
       userText,
       selectedDate,
       plans,
