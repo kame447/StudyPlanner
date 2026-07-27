@@ -24,6 +24,17 @@ const SNAPSHOT_RETENTION_DAYS = 30;
 const DEBUG_INLINE_MAX_BYTES = 350_000;
 const DEBUG_CHUNK_BYTES = 350_000;
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const POST_CANONICALIZATION_STAGES = new Set([
+  'semantic_canonicalization_evaluated',
+  'scheduler_compilation_evaluated',
+  'semantic_pipeline_decision',
+  'runtime_semantic_result_received',
+  'runtime_graph_staged',
+  'runtime_scheduler_dialogue_evaluated',
+  'runtime_preview_scheduler_evaluated',
+  'runtime_branch_selected',
+  'runtime_turn_output',
+]);
 
 interface ActiveStableV5TraceSession {
   session: WeeklyPlanningTraceSession;
@@ -294,14 +305,18 @@ function nestedIntegerField(value: unknown, path: string[]): number | null {
 
 function eventGraphRevision(
   event: WeeklyPlanningStableV5DebugTraceEvent,
-  fallback: number,
+  inputRevision: number,
+  outputRevision: number,
 ): number {
   return integerField(event.data, 'graphRevision')
     ?? integerField(event.data, 'expectedRevision')
+    ?? nestedIntegerField(event.data, ['graph', 'revision'])
     ?? nestedIntegerField(event.data, ['input', 'graph', 'revision'])
     ?? nestedIntegerField(event.data, ['runtimeSession', 'graph', 'revision'])
     ?? nestedIntegerField(event.data, ['result', 'graph', 'revision'])
-    ?? fallback;
+    ?? nestedIntegerField(event.data, ['stagedGraph', 'revision'])
+    ?? nestedIntegerField(event.data, ['schedulerInput', 'graph', 'revision'])
+    ?? (POST_CANONICALIZATION_STAGES.has(event.stage) ? outputRevision : inputRevision);
 }
 
 function inputGraphRevision(params: WeeklyPlanningStableV5TraceInput): number {
@@ -386,6 +401,7 @@ function debugStageEntries(
   active: ActiveStableV5TraceSession,
   params: WeeklyPlanningStableV5TraceInput,
   occurredAt: string,
+  inputRevision: number,
 ): WeeklyPlanningTraceInternalEventEntry[] {
   return (params.debugTraceEvents ?? [])
     .slice()
@@ -395,7 +411,7 @@ function debugStageEntries(
       payload,
       occurredAt,
       requestId: params.requestId,
-      stateRevision: eventGraphRevision(event, params.graphRevision),
+      stateRevision: eventGraphRevision(event, inputRevision, params.graphRevision),
       severity: event.severity,
     })));
 }
@@ -452,63 +468,63 @@ function createTurnEntries(
   }
 
   const previousRevision = inputGraphRevision(params);
-  const debugEntries = debugStageEntries(active, params, occurredAt);
-  const entries: WeeklyPlanningTraceEntry[] = [
-    turnEntry(active, {
-      role: 'user',
-      content: params.userText,
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: previousRevision,
-    }),
-    eventEntry(active, {
-      eventType: 'user_turn_received',
-      payload: {
-        runtime: 'stable_v5',
-        conversationId: params.conversationId,
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: previousRevision,
-    }),
-    eventEntry(active, {
-      eventType: 'interpreter_started',
-      payload: {
-        runtime: 'stable_v5',
-        previousGraphRevision: previousRevision,
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: previousRevision,
-      severity: 'debug',
-    }),
-    ...debugEntries,
-    eventEntry(active, {
-      eventType: 'interpreter_completed',
-      payload: {
-        runtime: 'stable_v5',
-        outcome: params.outcome,
-        graphRevision: params.graphRevision,
-        ...(params.errorCode ? { errorCode: params.errorCode } : {}),
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: params.graphRevision,
-      severity: params.errorCode ? 'error' : 'info',
-    }),
-    eventEntry(active, {
-      eventType: 'dialogue_planned',
-      payload: {
-        runtime: 'stable_v5',
-        outcome: params.outcome,
-        previewCount: params.previewCount,
-      },
-      occurredAt,
-      requestId: params.requestId,
-      stateRevision: params.graphRevision,
-      severity: params.errorCode ? 'warn' : 'info',
-    }),
-  ];
+  const entries: WeeklyPlanningTraceEntry[] = [];
+  entries.push(turnEntry(active, {
+    role: 'user',
+    content: params.userText,
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: previousRevision,
+  }));
+  entries.push(eventEntry(active, {
+    eventType: 'user_turn_received',
+    payload: {
+      runtime: 'stable_v5',
+      conversationId: params.conversationId,
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: previousRevision,
+  }));
+  entries.push(eventEntry(active, {
+    eventType: 'interpreter_started',
+    payload: {
+      runtime: 'stable_v5',
+      previousGraphRevision: previousRevision,
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: previousRevision,
+    severity: 'debug',
+  }));
+
+  const debugEntries = debugStageEntries(active, params, occurredAt, previousRevision);
+  entries.push(...debugEntries);
+  entries.push(eventEntry(active, {
+    eventType: 'interpreter_completed',
+    payload: {
+      runtime: 'stable_v5',
+      outcome: params.outcome,
+      graphRevision: params.graphRevision,
+      ...(params.errorCode ? { errorCode: params.errorCode } : {}),
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: params.graphRevision,
+    severity: params.errorCode ? 'error' : 'info',
+  }));
+  entries.push(eventEntry(active, {
+    eventType: 'dialogue_planned',
+    payload: {
+      runtime: 'stable_v5',
+      outcome: params.outcome,
+      previewCount: params.previewCount,
+    },
+    occurredAt,
+    requestId: params.requestId,
+    stateRevision: params.graphRevision,
+    severity: params.errorCode ? 'warn' : 'info',
+  }));
 
   const discardEvent = createDiscardEvent(active, params, occurredAt);
   if (discardEvent) entries.push(discardEvent);
