@@ -1,15 +1,14 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / active
-最終更新: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+最終更新: 2026-07-28
+Reviewed branch baseline: `51809873980d9ded953fd6f0614547b79fe71182`
 
-- Runtime and local persistence: [../weekly-planning-stable-v5-runtime-trial-contract.md](../weekly-planning-stable-v5-runtime-trial-contract.md)
-- Current contract status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
-- Semantic V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
-- Trace continuity audit: [../audits/20260724-stable-v5-trace-continuity/final-overseer.md](../audits/20260724-stable-v5-trace-continuity/final-overseer.md)
-- Cloud session store: [../tasks/20260716-weekly-planning-synced-conversation-session-store.md](../tasks/20260716-weekly-planning-synced-conversation-session-store.md)
-- Approval rollout: [../tasks/20260718-weekly-planning-approval-operational-rollout.md](../tasks/20260718-weekly-planning-approval-operational-rollout.md)
+- Runtime contract: [../weekly-planning-stable-v5-runtime-trial-contract.md](../weekly-planning-stable-v5-runtime-trial-contract.md)
+- Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
+- Semantic V5 queue: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
+- Active-task inventory: [../audits/20260728-weekly-planning-active-task-inventory.md](../audits/20260728-weekly-planning-active-task-inventory.md)
+- Current trace audit: [../audits/20260727-stable-v5-trace-empty-session-seven-audit.md](../audits/20260727-stable-v5-trace-empty-session-seven-audit.md)
 
 ## 1. Statusの読み方
 
@@ -21,197 +20,209 @@ module implemented
 → browser verified
 → cloud synced
 → operationally deployed
+→ default enabled
 ```
 
-上記を同一視しない。PR本文または過去completion recordのtest成功は、その時点のheadに対する記録であり、現在の`main`、実browser、本番Firestore設定へ自動継承しない。
+各段階を同一視しない。過去commitの成功結果を現在headへ自動継承しない。
 
 ## 2. 現在の実装基盤
 
-### 2.1 semanticと対話
+### Semantic/runtime
 
 実装済み:
 
-```text
-AI-only initial semantic interpretation
-Stable V5 direct schema / validator / canonicalizer
-Fact Graph V5 lifecycle
-short-answer contextual binding
-deterministic missing priority / dialogue
-provider failure時のfail closed
-parser fallback禁止
-```
+- AI-only initial semantic interpretation
+- Stable V5 strict schema / validator / one repair
+- direct lifecycle canonicalizer / Fact Graph V5
+- active read view / generic work item / scheduler input
+- deterministic readiness / dialogue / preview scheduler
+- existing preview / approval / Plan save bridge
+- feature-flagged runtime mode and rollback boundary
 
-PR #77とPR #79は`main`へ統合済みである。Stable V5はfeature flag付きで既存UIへ接続済みであり、defaultは環境変数で変更されない限りlegacyである。
-
-### 2.2 previewとapproval
+### Application/persistence
 
 実装済み:
 
-```text
-session-owned preview
-request ownership / stale result rejection
-preview revision freshness
-approval専用save boundary
-server transaction idempotency
-deterministic Plan ID
-owner-bound local storage
-```
+- application request ownership
+- request/week/revision stale discard
+- close/reopen session continuity
+- clear conversationとreset sessionの分離
+- owner/week/conversation-bound local envelope
+- conversation、Graph、messages、preview、draftのreload復元
+- application lifecycle、turn application、side effect分離
+
+未実装:
+
+- cloud authoritative conversation/Graph repository
+- cross-tab sequence reservation
+- cross-device conflict resolution
+
+### Trace
+
+実装済み:
+
+- server-authoritative structural IDs
+- owner-scoped server handle continuity
+- Stable V5 debug stage transport
+- redaction、HMAC subject、admin export
+- current branchでempty-session root causesを修正
 
 未完了:
 
-```text
-実browser close / reopen / reload / IME / focus / reset / week switch
-本番Firestore rules deploy
-approval operation / item TTL
-Firestore Emulator rules / transaction tests
-2tab・2端末相当の確認
-```
+- current branch final automated verification
+- production secret/TTL/Rules/Worker deploy
+- final-turn durable delivery
+- pagination/versioned decoder
+- production admin/browser verification
 
-### 2.3 Stable V5 local persistence
+### Approval
 
-2026-07-23以後、conversation、Fact Graph、preview、draftをownerとweekへ拘束したlocal envelopeへ同時保存する。ページ再読込後は同じconversation IDとGraph revisionを復元する。pending request ownershipは保存しない。
+実装・自動検証済み:
 
-これは同一browser profile内のlocal persistenceであり、cloud authoritative session storeではない。
+- transaction idempotency
+- deterministic Plan ID
+- operation/item ledger
+- recovery/fail-closed boundary
 
-### 2.4 quality trace continuity
+未完了:
 
-PR #83以前はphysical trace session ID、sequence、turn index、request dedupe、server handleがruntimeまたはrepository instance memoryへ依存し、同じconversationがreload、30分idle、repository再生成で別ログへ分割された。`clear_conversation`後のreloadではrequest IDも再利用し得た。
+- production Rules/TTL
+- Emulator concurrency
+- 2tab/2device verification
 
-PR #83で次を修正する。
+### Personalization
 
-```text
-user ID + conversation IDのcontinuity scope
-stable local physical session identity
-sequence / turn index continuity
-PlanningState revisionによるcontroller sequence下限
-bounded request dedupe
-idle timeout split廃止
-server-issued handle persistence
-repository recreation後のhandle再利用
-structural rejection時だけhandle再発行
-transient failure時のsame-payload retry
-append成功後だけcounter commit
-```
+Foundation実装済み:
 
-過去分割済みlogsは自動mergeしない。abrupt page close時の最終trace durabilityは後続課題である。
+- account-linked profile schema
+- week-start setting
+- origin/confidence/scope/expiry
+- profile v2 placement parameter schema
 
-### 2.5 personalization
+未実装:
 
-account-linked profile foundationは実装済みである。week start、origin、confidence、scope、confirmedAt、expiresAt、settings変更、profile resetを持つ。一時的な相談条件をlongitudinal profileへ自動昇格しない。
-
-未完了は、current-time boundary、cloud session sync、相談resetと派生観測無効化、plan/actual observation、時間減衰、不確実性、placement score、data governanceである。
+- planning/outcome observations
+- reset validity propagation
+- time-decayed aggregate
+- personalized candidate ordering
+- production governance
 
 ## 3. Current queue
 
-`docs/ai/tasks/`直下には未完了taskだけを置く。semantic V5固有queueはsemantic V5 roadmapを正とし、それ以外を本roadmapで管理する。
+`docs/ai/tasks/`直下のtask recordは次の9件だけをcurrent queueとする。
 
-### P0: regression and scheduler safety
+### P0: current blocker
 
-1. PR #83 trace conversation continuity
-   - 同一logical conversationを一つのphysical trace sessionへ継続する。
-   - reload、1時間idle、clear後reload、remote repository recreation、write failureを回帰testする。
-   - focused tests、full suite、TypeScript、build、browser reload確認を完了する。
-   - 七視点監査とcanonical MDを同期する。
+1. [trace empty-session recovery](../tasks/20260727-weekly-planning-trace-empty-session-recovery.md)
+   - implementation complete
+   - first verification: focused 65 passed、trace full 1 failed、typecheck 1 error
+   - two test-contract fixes applied; rerun required
+   - greenになるまでPR ready/merge禁止
 
-2. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
-   - 明示開始がない今週計画で、現在時刻より前へ候補を生成しない。
-   - request単位のcurrentDateTimeとplanning horizon開始境界を確立する。
+### P0: scheduler safety
 
-### P1: production boundary and data governance
+2. [current-time start boundary](../tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
+   - Stable V5 schedulerが当日の現在時刻より前へ配置し得る
+   - request-scoped clock snapshotとearliest placement boundaryを実装する
 
-3. `20260716-weekly-planning-entrypoint-request-ownership.md`
-   - controller/envelope実装後のbrowser verificationを完了する。
+### P1: adoption/runtime integrity
 
-4. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
-   - traceの本番secret、TTL、削除、限定閲覧、audit、privacy/legal reviewを完了する。
-   - abrupt page close時のfinal-turn durabilityを別work unitとして評価する。
+3. [Stable V5 verification and cutover](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+   - actual AI real-eval
+   - browser roleplay
+   - old-state migration/dry-run
+   - shadow/rollback/default cutover
+4. [Stable V5 runtime followups](../tasks/20260724-weekly-planning-runtime-followups.md)
+   - cross-tab sequence
+   - accepted-fact grounding
+   - final trace durability
+   - trace source semantics
+   - reset cleanup
 
-5. `20260716-weekly-planning-longitudinal-personalization-data-governance.md`
-   - 同意、保持、訂正、削除、権限、監査、本番運用を完了する。
+### P1-P2: production boundaries
 
-6. `20260718-weekly-planning-approval-operational-rollout.md`
-   - 本番rules、operation/item TTL、Emulator、multi-client確認を完了する。
+5. [cloud conversation session store](../tasks/20260716-weekly-planning-synced-conversation-session-store.md)
+6. [trace production privacy/lifecycle/scalability](../tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
+7. [approval operational rollout](../tasks/20260718-weekly-planning-approval-operational-rollout.md)
+8. [external source production adapter](../tasks/20260728-weekly-planning-external-source-production-adapter.md)
 
-7. `20260716-weekly-planning-synced-conversation-session-store.md`
-   - cloudを共有正本とする週単位session repositoryを実装する。
-   - 別端末復元、revision競合、offline cache、local migrationを扱う。
-   - local persistence完了を本task完了へ読み替えない。
+### P2+: learning/personalization
 
-8. `20260716-weekly-planning-consultation-reset-and-invalidation.md`
-   - cloud session store確立後に、相談resetと未承認仮予定・派生観測の無効化を原子的に実装する。
+9. [personalization rollout](../tasks/20260728-weekly-planning-personalization-rollout.md)
 
-### P2: observation and maintainability
+旧分割taskはclosedまたはsupersededへ移動済みであり、current queueとして使用しない。
 
-9. `20260716-weekly-planning-history-feature-extraction.md`
-   - 計画、承認、実績をversion付き観測へ変換する。
-
-10. `20260716-weekly-planning-trace-scalability-and-schema-migration.md`
-    - pagination、query cost、index、archive、schema decoderを設計する。
-
-11. `20260716-weekly-planning-controller-ui-responsibility-split.md`
-    - conversation controller、preview controller、view componentへ責務を分離する。
-
-### P3: profile aggregation
-
-12. `20260716-weekly-planning-user-profile-time-decay.md`
-    - 有効観測だけから、時間減衰、観測数、不確実性を持つ再計算可能profileを構築する。
-
-### P4: personalized selection
-
-13. `20260716-weekly-planning-personalized-placement-scoring.md`
-    - hard constraints通過後の候補だけを個人別scoreで並べ替える。
-    - profile不足または計算失敗時は現行heuristicへ戻す。
-
-## 4. 実装依存順
+## 4. 依存順
 
 ```text
-Stable V5 runtime + local persistence
-→ PR #83 trace continuity
-→ current-time start boundary
-→ cloud synced weekly session store
-→ consultation reset / invalidation
-→ planning and outcome observations
-→ decayed profile aggregation
-→ personalized placement score
+trace empty-session recovery green
+→ current-time hard boundary
+→ Stable V5 actual AI/browser verification
+→ external source adapter verification
+→ migration/shadow/rollback
+→ default cutover decision
 ```
 
-trace privacy、approval rollout、personalization data governanceは並行P1で進める。ただし、同意前にaccount-linked observationまたはprofileを作成しない。
+Cloud/personalization:
+
+```text
+cloud conversation/Graph repository
+→ planning/outcome observation
+→ reset validity propagation
+→ time-decayed aggregate
+→ personalized ordering
+```
+
+Parallel production operations:
+
+```text
+trace secret/TTL/access/pagination
+approval Rules/TTL/multi-client
+```
+
+cross-tab sequence coordinationはcloud session authority設計と整合させる。browser lockとserver revisionの二重正本を作らない。
 
 ## 5. Decision gates
 
-### 5.1 semantic ownership — decided
+### AI semantic ownership
 
-raw user textの意味構造化はAI interpreterだけが担当する。deterministic coreはschema、reference、revision、conflict、readiness、feasibilityを管理する。provider failureでもparserへfallbackしない。
+raw user textの初期意味構造化はAIだけが担当する。deterministic coreはschema、reference、revision、conflict、readiness、feasibility、scheduler、saveを管理する。provider failureでparserへfallbackしない。
 
-### 5.2 Stable V5 persistence — local implemented / cloud incomplete
+### Current-time safety
 
-同一browser profile内ではconversationとGraphを同時復元する。別端末、cloud revision、offline conflict、migrationはP1 session storeへ残る。
+明示開始がない当日計画ではrequest時刻より前へ配置しない。personalization scoreでこの境界を変更しない。
 
-### 5.3 trace identity — fix in PR #83
+### Session authority
 
-physical trace sessionはlogical conversationへ一対一で拘束する。idle timeを会話終了条件にしない。controller IDはmessagesが消去されてもrevision下限より後を発行する。server handleはrepository lifetimeを越えて継続し、明示的structural rejection時だけ再発行する。
+現在はlocal envelopeだけが実装済み。別端末/cloud revision/offline conflictを実装するまでcloud syncedと記載しない。
 
-### 5.4 week start — foundation implemented
+### Trace authority
 
-初回選択をaccount-linked profileへ保存し、以後の「今週」「来週」に適用する。発話中の具体日付を優先する。
+logical conversationに対するlocal session identity、server handle、entry sequenceを継続する。session/startだけ成功したempty artifactを実活動として表示しない。current trace taskがgreenかつmain deploy後のadmin確認が完了するまでIssue #89をcloseしない。
 
-### 5.5 personalized data — operational work incomplete
+### Default cutover
 
-quality trace、conversation session、personalization profile、approval ledgerを別schema、別repository、別identity、別削除責務で管理する。原会話をそのままlongitudinal profileとして使用しない。
+次が残る場合、Stable V5をdefaultへしない。
 
-## 6. PR #83 merge gate
+- automated verification failure
+- current-time boundary未実装
+- actual AI real-eval未実施
+- browser roleplay未実施
+- trace split/loss
+- migration/rollback未検証
+- unresolved blocker/major audit finding
+
+## 6. Task placement rule
 
 ```text
-focused trace tests success
-full test suite success
-TypeScript success
-Vite production build success
-git diff --check success
-七視点監査更新
-canonical MD更新
-unresolved review thread 0
-browser reload・1時間idle・clear後reloadで同一ログ継続確認
-admin export確認
+completed work unit
+→ tasks/closed/
+
+unfinished work absorbed by another current task
+→ tasks/superseded/
+
+independent current execution target
+→ tasks/ root
 ```
 
-PR #83は上記完了までDraftを維持する。GitHub Actionsがstep 0件でrunner起動前に失敗した場合、code test failureとは区別するが、成功証跡としても扱わない。browser verificationを実行できない場合は未確認と明示し、automated verificationだけで採用可と断定しない。
+browser/production verificationだけが残る過去implementation taskをrootへ放置しない。未実装workをclosedへ偽装しない。root一覧を変更する場合はroadmap、semantic roadmap、docs index、task inventoryを同じ変更で同期する。
