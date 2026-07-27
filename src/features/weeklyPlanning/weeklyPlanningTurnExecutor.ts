@@ -5,7 +5,7 @@ import {
 } from './application/weeklyPlanningRuntimeMode';
 import {
   executeWeeklyPlanningStableV5RuntimeTurn,
-} from './application/weeklyPlanningStableV5RuntimeExecutor';
+} from './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
 import { createAiWeeklyPlanningDialogueRenderer } from './dialogue/weeklyPlanningAiDialogueRenderer';
 import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDialogueRenderer';
 import { createAiWeeklyPlanningInterpreter } from './intake/weeklyPlanningAiInterpreter';
