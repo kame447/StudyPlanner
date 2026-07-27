@@ -1,4 +1,8 @@
-import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../shared/weeklyPlanningTraceContract';
+import {
+  WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING,
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  encodeWeeklyPlanningTraceDebugChunkBase64,
+} from '../../../../shared/weeklyPlanningTraceContract';
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
 import type { WeeklyPlanningStableV5DebugTraceEvent } from './weeklyPlanningStableV5DebugTrace';
 import {
@@ -396,12 +400,12 @@ function debugEventPayloads(event: WeeklyPlanningStableV5DebugTraceEvent): unkno
     return {
       ...common,
       storage: 'base64_utf8_json_chunk',
-      encoding: 'base64-utf8-json',
+      encoding: WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING,
       chunkIndex,
       chunkCount,
       totalSerializedBytes: bytes.byteLength,
       chunkBytes: chunk.byteLength,
-      dataChunk: encodeBase64(chunk),
+      dataChunk: encodeWeeklyPlanningTraceDebugChunkBase64(encodeBase64(chunk)),
     };
   });
 }
