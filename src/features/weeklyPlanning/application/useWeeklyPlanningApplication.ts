@@ -20,8 +20,6 @@ import {
   cancelWeeklyPlanningControlledTurn,
   clearWeeklyPlanningControlledConversation,
   createWeeklyPlanningControllerSession,
-  resetWeeklyPlanningControlledSession,
-  resetWeeklyPlanningControllerSession,
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
@@ -40,19 +38,18 @@ import {
   WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
 } from './weeklyPlanningRuntimeMode';
 import {
+  resetWeeklyPlanningApplicationForRuntimeModeChange,
+  resetWeeklyPlanningApplicationSession,
+  restoreWeeklyPlanningApplicationSession,
+  synchronizeWeeklyPlanningApplicationSession,
+} from './weeklyPlanningSessionLifecycle';
+import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
-  clearWeeklyPlanningStableV5RuntimeSession,
-  clearWeeklyPlanningStableV5RuntimeSessionsForScope,
   discardWeeklyPlanningStableV5StagedGraph,
   finalizeWeeklyPlanningStableV5RuntimeGraph,
   getWeeklyPlanningStableV5RuntimeSession,
   hasWeeklyPlanningStableV5StagedGraphForTest,
-  hydrateWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
-import {
-  clearWeeklyPlanningStableV5PersistedSession,
-  loadWeeklyPlanningStableV5PersistedSession,
-} from './weeklyPlanningStableV5SessionStorage';
 
 export interface UseWeeklyPlanningApplicationInput {
   userId: string | null | undefined;
@@ -84,23 +81,6 @@ export interface WeeklyPlanningApplication {
 interface ApprovalLedgerState {
   ownerId: string;
   operations: WeeklyDraftApprovalOperation[];
-}
-
-function restoreStableV5RuntimeSession(ownerId: string, weekStartDate: string) {
-  if (!isWeeklyPlanningStableV5RuntimeEnabled()) return null;
-  const persisted = loadWeeklyPlanningStableV5PersistedSession({
-    ownerId,
-    weekStartDate,
-  });
-  if (!persisted) return null;
-  hydrateWeeklyPlanningStableV5RuntimeSession({
-    ownerId,
-    weekStartDate,
-    conversationId: persisted.conversationId,
-    graph: persisted.graph,
-    updatedAt: Date.parse(persisted.savedAt),
-  });
-  return persisted;
 }
 
 function stableV5TraceContext(conversationId: string) {
@@ -148,7 +128,10 @@ export function useWeeklyPlanningApplication({
   }));
 
   if (!controllerSessionRef.current) {
-    const restored = restoreStableV5RuntimeSession(ownerId, planningState.weekStartDate);
+    const restored = restoreWeeklyPlanningApplicationSession(
+      ownerId,
+      planningState.weekStartDate,
+    );
     controllerSessionRef.current = createWeeklyPlanningControllerSession(
       ownerId,
       planningState.weekStartDate,
@@ -167,20 +150,11 @@ export function useWeeklyPlanningApplication({
   useEffect(() => {
     const session = controllerSessionRef.current;
     if (!session) return;
-    const restored = restoreStableV5RuntimeSession(ownerId, planningState.weekStartDate);
-    const scopeChanged = session.ownerId !== ownerId
-      || session.weekStartDate !== planningState.weekStartDate;
-    const conversationChanged = Boolean(
-      restored?.conversationId && session.conversationId !== restored.conversationId,
-    );
-    if (scopeChanged || conversationChanged) {
-      resetWeeklyPlanningControllerSession(
-        session,
-        ownerId,
-        planningState.weekStartDate,
-        restored?.conversationId,
-      );
-    }
+    synchronizeWeeklyPlanningApplicationSession({
+      session,
+      ownerId,
+      weekStartDate: planningState.weekStartDate,
+    });
   }, [ownerId, planningState.weekStartDate]);
 
   useEffect(() => {
@@ -205,12 +179,7 @@ export function useWeeklyPlanningApplication({
     const handleRuntimeModeChange = () => {
       const session = controllerSessionRef.current;
       if (!session) return;
-      clearWeeklyPlanningStableV5PersistedSession({
-        ownerId,
-        weekStartDate: getPlanningState().weekStartDate,
-      });
-      clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
-      resetWeeklyPlanningControlledSession({
+      resetWeeklyPlanningApplicationForRuntimeModeChange({
         session,
         ownerId,
         getState: getPlanningState,
@@ -341,11 +310,7 @@ export function useWeeklyPlanningApplication({
   function resetSession(): void {
     const session = controllerSessionRef.current;
     if (!session) return;
-    const weekStartDate = getPlanningState().weekStartDate;
-    clearWeeklyPlanningStableV5PersistedSession({ ownerId, weekStartDate });
-    clearWeeklyPlanningStableV5RuntimeSession(session.conversationId);
-    clearWeeklyPlanningStableV5RuntimeSessionsForScope({ ownerId, weekStartDate });
-    resetWeeklyPlanningControlledSession({
+    resetWeeklyPlanningApplicationSession({
       session,
       ownerId,
       getState: getPlanningState,
