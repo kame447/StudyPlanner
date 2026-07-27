@@ -3,6 +3,9 @@ import {
   beginWeeklyPlanningStableV5DebugTrace,
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
+import type {
+  WeeklyPlanningTurnExecutionResult,
+} from '../weeklyPlanningTurnExecutor';
 import {
   executeWeeklyPlanningStableV5RuntimeTurn as executeWeeklyPlanningStableV5RuntimeTurnCore,
   type ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
@@ -44,7 +47,9 @@ function emptyCompatibilityState(): PlanningIntakeState {
   };
 }
 
-function duplicateTurnResult(input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput) {
+function duplicateTurnResult(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+): WeeklyPlanningTurnExecutionResult {
   const previous = input.previousState ?? emptyCompatibilityState();
   const message = '同じ送信はすでに処理済みのため、予定を重複して作成しませんでした。';
   return {
@@ -52,7 +57,7 @@ function duplicateTurnResult(input: ExecuteWeeklyPlanningStableV5RuntimeTurnInpu
       ...previous,
       shouldCreateDraft: false,
       shouldSavePlan: false,
-      draftGenerationIntent: 'not_requested' as const,
+      draftGenerationIntent: 'not_requested',
     },
     message,
     draftCandidates: [],
@@ -69,7 +74,7 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
 
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-) {
+): Promise<WeeklyPlanningTurnExecutionResult> {
   beginWeeklyPlanningStableV5DebugTrace(input.traceRequestId);
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
