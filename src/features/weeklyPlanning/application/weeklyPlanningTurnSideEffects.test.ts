@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
+  beginWeeklyPlanningStableV5DebugTrace,
+  peekWeeklyPlanningStableV5DebugTraceForTest,
+  recordWeeklyPlanningStableV5DebugTrace,
+  resetWeeklyPlanningStableV5DebugTraceForTest,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningPendingTurn } from '../types';
 import {
   discardWeeklyPlanningApplicationTurn,
@@ -53,6 +59,10 @@ function createServices(overrides: Partial<WeeklyPlanningTurnSideEffectServices>
     ...overrides,
   } as WeeklyPlanningTurnSideEffectServices;
 }
+
+afterEach(() => {
+  resetWeeklyPlanningStableV5DebugTraceForTest();
+});
 
 describe('weeklyPlanningTurnSideEffects', () => {
   it('does nothing when Stable V5 is disabled', async () => {
@@ -142,6 +152,59 @@ describe('weeklyPlanningTurnSideEffects', () => {
       planningRangeStart: '2026-07-27',
       planningRangeEnd: '2026-08-02',
     }));
+  });
+
+  it('embeds and consumes the request-scoped Stable V5 debug trace', async () => {
+    const services = createServices();
+    const state = {
+      ...createInitialPlanningIntakeState(),
+      status: 'revision_pending' as const,
+    };
+    beginWeeklyPlanningStableV5DebugTrace(pending.requestId);
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'semantic_provider_request',
+      data: {
+        messages: [{ role: 'system', content: 'full system message' }],
+      },
+    });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'semantic_canonicalization_evaluated',
+      data: {
+        adoptedOperations: {
+          fromRevision: 3,
+          toRevision: 4,
+          added: [{ kind: 'effort_estimate', id: 'effort-1' }],
+        },
+      },
+    });
+
+    await recordCommittedWeeklyPlanningApplicationTurn({
+      ownerId: 'user-1',
+      pending,
+      userText: '3時間ぐらいかな',
+      result: {
+        state,
+        message: '計画期間が複数あります。',
+        draftCandidates: [],
+      },
+    }, services);
+
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+      compatibilityState: expect.objectContaining({
+        status: 'revision_pending',
+        __stableV5DebugTrace: {
+          schemaVersion: 1,
+          eventCount: 2,
+          events: [
+            expect.objectContaining({ sequence: 0, stage: 'semantic_provider_request' }),
+            expect.objectContaining({ sequence: 1, stage: 'semantic_canonicalization_evaluated' }),
+          ],
+        },
+      }),
+    }));
+    expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
   });
 
   it('records failed trace without compatibility state or preview', async () => {
