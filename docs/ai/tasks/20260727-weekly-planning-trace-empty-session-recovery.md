@@ -1,17 +1,18 @@
 # Stable V5 trace 空session重複の修復
 
-Status: implementation complete / automated verification pending
+Status: implementation complete / first verification failed / fixes applied / rerun required
 Priority: blocker
 Issue: #89
 Branch: `agent/trace-empty-session-seven-audit`
 Audit: `docs/ai/audits/20260727-stable-v5-trace-empty-session-seven-audit.md`
+Task inventory: `docs/ai/audits/20260728-weekly-planning-active-task-inventory.md`
 Base: `259c50b0becda18007f76709aa81b56db4997e97`
 
-## 目的
+## 1. 目的
 
 同一logical conversationに`turnCount=0`かつ`entryCount=0`のserver trace sessionが複数作成される不具合を修正し、Stable V5 full debug traceをWorkerへ実際に保存できるようにする。
 
-## 根本原因
+## 2. 根本原因
 
 - frontendのevent catalogとWorker allowlistが不一致
 - frontend debug chunk上限350KBとWorker document上限64KiBが不一致
@@ -20,7 +21,7 @@ Base: `259c50b0becda18007f76709aa81b56db4997e97`
 - session start成功後、append失敗前のlocal identity cursorが未保存
 - admin viewerが空sessionを未export activityとして表示
 
-## 実装済み
+## 3. 実装済み
 
 1. event catalogとtransport limitsをshared contractへ統合
 2. `stable_v5_debug_stage`をWorkerで受理
@@ -35,26 +36,60 @@ Base: `259c50b0becda18007f76709aa81b56db4997e97`
 11. runtime、remote repository、Worker API、admin list、exportの結合testを追加
 12. historical empty documentsは自動削除・自動mergeしない
 
-## 対象外
+## 4. 初回automated verification結果
 
-- historical empty sessionの物理削除
-- 異なるlogical conversationの統合
-- cross-tab sequence coordination
-- abrupt close時のdurable delivery
-- dialogue grounding
-- trace source semantics再設計
+2026-07-28に利用者環境で実行。
 
-対象外は`20260724-weekly-planning-runtime-followups.md`で継続管理する。
+成功:
 
-## Automated verification
+- focused trace: 9 files / 65 tests passed
+- `npm run typecheck:build`: passed
+- `npm run build`: passed
+- build warningは既存のdynamic/static importとchunk size warning
 
-未実施。次をすべて通すまでclosedへ移さない。
+失敗:
+
+- trace directory full: 18 files中1 file failure、79 tests中1 test failure
+- `npm run typecheck`: 1 error
+
+### Failure F1: old test decoder
+
+```text
+weeklyPlanningStableV5TraceRuntimeDebugStages.test.ts
+InvalidCharacterError: Invalid character
+```
+
+production encodingを`base64-utf8-json-dotted-20`へ変更したが、既存test helperが`.`を除去せず直接`atob()`していた。
+
+修正:
+
+- 独自decoderを共通`decodeWeeklyPlanningTraceDebugChunkBase64`へ接続
+- production exportとtestが同じdecode contractを使用
+
+### Failure F2: fixture union typing
+
+```text
+weeklyPlanningTraceRemoteRepository.test.ts
+TS2322: eventType does not exist in WeeklyPlanningTraceTurnEntry
+```
+
+`entry()`が`WeeklyPlanningTraceEntry` unionを返し、それをspreadしたdebug fixtureをTypeScriptがturnの可能性ありと判定した。
+
+修正:
+
+- `entry()`と`debugEntry()`の戻り値を`WeeklyPlanningTraceInternalEventEntry`へ固定
+- production型を緩めずtest fixtureを正しくnarrow
+
+両修正はbranchへ反映済み。再実行結果が得られるまで本taskをclosedへ移さない。
+
+## 5. 再検証コマンド
 
 ```bash
 npm run test:run -- \
   src/features/weeklyPlanning/trace/weeklyPlanningTraceArchive.test.ts \
   src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository.test.ts \
   src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime.test.ts \
+  src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntimeDebugStages.test.ts \
   src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRemoteContinuity.integration.test.ts \
   src/features/weeklyPlanning/trace/weeklyPlanningTraceExport.test.ts \
   src/features/weeklyPlanning/trace/weeklyPlanningTraceExportStableV5Debug.test.ts \
@@ -69,7 +104,7 @@ npm run build
 git diff --check origin/main...HEAD
 ```
 
-## 実機verification
+## 6. 実機verification
 
 mainへ統合・deploy後、同じconversationへ入力して管理者viewerで次を確認する。
 
@@ -81,11 +116,32 @@ JSON exportでstableV5DebugStagesを再構成可能
 再読込・retry後もsession件数が増えない
 ```
 
-## 完了条件
+## 7. 対象外
 
-- 七視点監査のBLOCKERをすべて解消
-- focused tests、trace full tests、typecheck、typecheck:build、build、diff check成功
-- task本文へ検証結果とmerge SHAを記録
-- 本taskを`docs/ai/tasks/closed/`へ移動
-- current contract/status/docs indexを同期
-- 実機確認前はIssue #89をcloseしない
+- historical empty sessionの物理削除
+- 異なるlogical conversationの統合
+- cross-tab sequence coordination
+- abrupt close時のdurable delivery
+- dialogue grounding
+- trace source semantics再設計
+
+対象外は`20260724-weekly-planning-runtime-followups.md`で継続管理する。
+
+## 8. 完了条件
+
+- [x] 七視点監査を作成
+- [x] code implementation
+- [x] focused trace 65 tests success at first verification
+- [ ] rerun後のfocused tests success
+- [ ] trace full tests success
+- [ ] `npm run typecheck` success
+- [x] first verificationで`typecheck:build` success
+- [x] first verificationでbuild success
+- [ ] final headでtypecheck:build/buildを再確認
+- [ ] final headでdiff check success
+- [ ] task本文へ最終検証結果を記録
+- [ ] 本taskを`docs/ai/tasks/closed/`へ移動
+- [ ] current contract/status/docs indexを同期
+- [ ] main deploy後のadmin実機確認
+
+実機確認前はIssue #89をcloseしない。automated verificationがredの間はPRをready/mergeしない。
