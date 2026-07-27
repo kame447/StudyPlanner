@@ -158,6 +158,7 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
       __discardedExecution: {
         reason: params.reason,
         pending: params.pending,
+        resultMessage: params.result.message,
         candidateCount: params.result.draftCandidates.length,
       },
     },
@@ -167,12 +168,11 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
     userText: params.userText,
-    assistantMessage: params.result.message,
     outcome: `discarded_${params.reason}`,
     graphRevision: trace.graphRevision,
     graphSummary: trace.graphSummary,
     compatibilityState,
-    previewCount: params.result.draftCandidates.length,
+    previewCount: 0,
     planningRangeStart: trace.planningRangeStart,
     planningRangeEnd: trace.planningRangeEnd,
     errorCode: params.reason === 'stale'
