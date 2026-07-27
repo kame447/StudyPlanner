@@ -1,5 +1,9 @@
 import { getCloudflareAiProxyUrl } from '../../../lib/aiConfig';
 import { getFirebaseAuth } from '../../../lib/firebaseClient';
+import type {
+  WeeklyPlanningTraceEntry,
+  WeeklyPlanningTraceSession,
+} from './weeklyPlanningTraceTypes';
 
 export const WEEKLY_PLANNING_TRACE_POLICY_VERSION = '2026-07-18-v1';
 
@@ -26,11 +30,16 @@ export interface WeeklyPlanningTraceSessionStartInput {
   session: Record<string, unknown>;
 }
 
+export interface WeeklyPlanningTraceAppendInput {
+  session: WeeklyPlanningTraceSession;
+  entries: WeeklyPlanningTraceEntry[];
+}
+
 export interface WeeklyPlanningTraceApiClient {
   getPolicyStatus(): Promise<WeeklyPlanningTracePolicyStatus>;
   acceptPolicy(): Promise<WeeklyPlanningTracePolicyStatus>;
   startSession(input: WeeklyPlanningTraceSessionStartInput): Promise<WeeklyPlanningTraceServerHandle>;
-  append(payload: Record<string, unknown>): Promise<void>;
+  append(payload: WeeklyPlanningTraceAppendInput): Promise<void>;
   deleteCurrentUserTrace(): Promise<{ deletedSessions: number; deletedEntries: number }>;
   listAdminSessions(): Promise<Record<string, unknown>[]>;
   listAdminEntries(sessionId: string): Promise<Record<string, unknown>[]>;
