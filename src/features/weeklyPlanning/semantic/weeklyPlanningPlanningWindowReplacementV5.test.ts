@@ -3,11 +3,18 @@ import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import {
+  createActiveLifecycleEntriesV5,
+} from './weeklyPlanningFactLifecycleV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
+  type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
   canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import {
+  canonicalizeWeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningSemanticCanonicalizerV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type SemanticTaskV5,
@@ -70,6 +77,74 @@ function document(params: {
     corrections: [],
     decisions: [],
   };
+}
+
+function documentWithoutPlanningWindow(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'discuss',
+    planningWindow: null,
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+function legacyApplyWithoutPlanningWindowReplacement(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  semanticDocument: WeeklyPlanningSemanticDocumentV5;
+  conversationId: string;
+  turnId: string;
+}): WeeklyPlanningFactGraphV5 {
+  const result = canonicalizeWeeklyPlanningSemanticDocumentV5({
+    graph: params.graph,
+    document: params.semanticDocument,
+    context: {
+      conversationId: params.conversationId,
+      turnId: params.turnId,
+      expectedRevision: params.graph.revision,
+    },
+  });
+  if (result.status !== 'applied' || !result.diff) {
+    throw new Error(result.errors.join(','));
+  }
+  return {
+    ...result.graph,
+    factLifecycles: [
+      ...result.graph.factLifecycles,
+      ...createActiveLifecycleEntriesV5({
+        added: result.diff.added,
+        revision: result.diff.toRevision,
+      }),
+    ],
+  };
+}
+
+function legacyGraphWithDuplicatedActivePlanningWindows(): WeeklyPlanningFactGraphV5 {
+  const first = legacyApplyWithoutPlanningWindowReplacement({
+    graph: createEmptyWeeklyPlanningFactGraphV5(),
+    semanticDocument: document({
+      windowLocalId: 'window-old',
+      sourceText: '以前の今日の計画',
+      tasks: [minuteTask('task-old', '以前の復習', 30)],
+    }),
+    conversationId: 'conversation-corrupted',
+    turnId: 'turn-legacy-1',
+  });
+  return legacyApplyWithoutPlanningWindowReplacement({
+    graph: first,
+    semanticDocument: document({
+      windowLocalId: 'window-latest',
+      sourceText: '新しい今日の計画',
+      tasks: [minuteTask('task-latest', '新しい復習', 45)],
+    }),
+    conversationId: 'conversation-corrupted',
+    turnId: 'turn-legacy-2',
+  });
 }
 
 const schedulerContext = {
@@ -201,6 +276,55 @@ describe('Stable V5 planning window replacement', () => {
       expect.objectContaining({ code: 'ambiguous_planning_window' }),
     ]));
     expect(createWeeklyPlanningActiveSchedulerGraphViewV5(second.graph).planningWindows)
+      .toHaveLength(1);
+  });
+
+  it('repairs a persisted graph with duplicated active windows even when the next AI output has no window', () => {
+    const corrupted = legacyGraphWithDuplicatedActivePlanningWindows();
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(corrupted).planningWindows)
+      .toHaveLength(2);
+
+    const repaired = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+      graph: corrupted,
+      document: documentWithoutPlanningWindow(),
+      context: {
+        conversationId: 'conversation-corrupted',
+        turnId: 'turn-repair',
+        expectedRevision: corrupted.revision,
+      },
+    });
+    if (repaired.status !== 'applied') throw new Error(repaired.errors.join(','));
+
+    const activeWindows = createWeeklyPlanningActiveSchedulerGraphViewV5(repaired.graph)
+      .planningWindows;
+    expect(activeWindows).toHaveLength(1);
+    expect(activeWindows[0]?.source.turnId).toBe('turn-legacy-2');
+    expect(repaired.diff?.superseded).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'planning_window' }),
+    ]));
+  });
+
+  it('removes ambiguous_planning_window from the pipeline for a persisted corrupted graph', async () => {
+    const corrupted = legacyGraphWithDuplicatedActivePlanningWindows();
+    const pipeline = createWeeklyPlanningSemanticPipelineV5({
+      normalize: async () => acceptedResult(documentWithoutPlanningWindow()),
+    });
+
+    const result = await pipeline.run({
+      graph: corrupted,
+      conversationId: 'conversation-corrupted',
+      turnId: 'turn-repair-pipeline',
+      expectedRevision: corrupted.revision,
+      userText: 'そのまま続けて',
+      recentConversation: [],
+      publicStateSummary: {},
+      schedulerContext,
+    });
+
+    expect(result.scheduler?.issues).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ambiguous_planning_window' }),
+    ]));
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph).planningWindows)
       .toHaveLength(1);
   });
 });
