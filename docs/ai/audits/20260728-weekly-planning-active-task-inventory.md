@@ -1,9 +1,9 @@
 # weeklyPlanning active task 全件棚卸し
 
-Status: complete / placement changes in progress
+Status: complete / placement synchronized / verification pending
 Date: 2026-07-28
 Branch: `agent/trace-empty-session-seven-audit`
-Reviewed branch baseline: `c0c728c726eb47587eac2782704673b45ad44a4a`
+Reviewed branch baseline: `2a2b9bad4e9e72826beddfa7551267065de6e660`
 
 ## 1. 監査範囲
 
@@ -30,9 +30,9 @@ Reviewed branch baseline: `c0c728c726eb47587eac2782704673b45ad44a4a`
 
 PRがmerge済みという理由だけではclosedにしない。逆に、実装済みtaskをbrowser verificationだけのためにrootへ残さず、残る検証を現行verification taskへ移管する。
 
-## 2. 判定結果
+## 2. 判定・配置結果
 
-### 2.1 closedへ移す4件
+### 2.1 closedへ移した4件
 
 | task | 判定根拠 | 残件の移管先 |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ PRがmerge済みという理由だけではclosedにしない。逆に、実装�
 | `20260722-weekly-planning-external-source-atomic-retry.md` | atomic success/failure、retry、validation、scheduler failure contractをPR #77で実装・自動検証済み | production adapterは新しいadapter task |
 | `20260722-weekly-planning-specific-date-and-personalization-profile.md` | task date rule、曜日集合、resolver、scheduler input、profile schema v2のfoundationをPR #77で実装・自動検証済み | real-eval/cutoverとpersonalization rolloutへ分離 |
 
-### 2.2 supersededへ移す8件
+### 2.2 supersededへ移した8件
 
 | task | 統合先 | 理由 |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ PRがmerge済みという理由だけではclosedにしない。逆に、実装�
 | `20260722-weekly-planning-generic-semantic-v5-migration.md` | `20260728-weekly-planning-stable-v5-verification-and-cutover.md` | feature-flagged runtime接続は完了し、残件はreal-eval、browser roleplay、migration、shadow、cutoverである |
 | `20260722-weekly-planning-v5-date-real-eval.md` | 同上 | Alpha/V2専用の旧評価記録であり、現在はStable V5全体のactual AI evalへ統合する |
 
-### 2.3 rootに残して現状へ修正する6件
+### 2.3 rootに残して現状へ修正した6件
 
 | task | 現在残る問題 |
 | --- | --- |
@@ -65,7 +65,7 @@ PRがmerge済みという理由だけではclosedにしない。逆に、実装�
 | `20260724-weekly-planning-runtime-followups.md` | cross-tab sequence、dialogue grounding、final trace durability、source semantics、reset cleanupが未完了 |
 | `20260727-weekly-planning-trace-empty-session-recovery.md` | 実装済みだが、初回検証でtrace full test 1件とtypecheck 1件が失敗。修正後の再検証前 |
 
-### 2.4 新しくrootへ置く統合task 3件
+### 2.4 rootへ追加した統合task 3件
 
 | task | 役割 |
 | --- | --- |
@@ -75,7 +75,7 @@ PRがmerge済みという理由だけではclosedにしない。逆に、実装�
 
 ## 3. 整理後のroot task一覧
 
-整理後、`docs/ai/tasks/`直下のtask recordは次の9件だけとする。
+`docs/ai/tasks/`直下のtask recordは次の9件だけである。
 
 1. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
 2. `20260716-weekly-planning-synced-conversation-session-store.md`
@@ -104,13 +104,19 @@ PRがmerge済みという理由だけではclosedにしない。逆に、実装�
 1. runtime debug stage testの独自`decodeBase64`が、新contractの`.`区切りを除去していなかった
 2. remote repository testのfixture helperがunion型を返し、`internal_event`へnarrowされていなかった
 
-production実装を戻さず、testを共通decoderと明示的`WeeklyPlanningTraceInternalEventEntry`へ合わせる。再検証が完了するまでcurrent trace taskをclosedへ移さない。
+production実装を戻さず、testを共通decoderと明示的`WeeklyPlanningTraceInternalEventEntry`へ合わせた。再検証が完了するまでcurrent trace taskをclosedへ移さない。
 
-## 5. 完了条件
+## 5. 同期結果
 
-- 18件すべての配置が本監査表と一致する
-- root task 9件のStatus、残件、依存関係、完了条件が現行Stable V5へ更新される
-- closed/superseded recordが移管先を明示する
-- roadmap、semantic V5 roadmap、docs indexが同じroot一覧を参照する
-- trace test修正後にfocused/full/typecheck/typecheck:build/build/diff checkを再実行する
-- redの状態でcurrent trace task、Issue #89、PRを完了扱いにしない
+- [x] 18件すべてを分類
+- [x] closed 4件を移動
+- [x] superseded 8件を移動
+- [x] root継続6件を現行contractへ更新
+- [x] 統合task 3件を追加
+- [x] roadmapを同じ9件へ同期
+- [x] semantic V5 roadmapを同期
+- [x] docs indexを同期
+- [x] current contract statusを同期
+- [x] trace test failure 2件へ修正を反映
+- [ ] focused/full/typecheck/typecheck:build/build/diff checkをfinal headで再実行
+- [ ] redの状態でcurrent trace task、Issue #89、PRを完了扱いにしない
