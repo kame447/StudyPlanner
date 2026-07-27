@@ -149,13 +149,14 @@ describe('weeklyPlanningTurnSideEffects', () => {
         activeFactCount: 2,
       },
       compatibilityState: state,
+      debugTraceEvents: [],
       previewCount: 2,
       planningRangeStart: '2026-07-27',
       planningRangeEnd: '2026-08-02',
     }));
   });
 
-  it('embeds and consumes the request-scoped Stable V5 debug trace', async () => {
+  it('passes ordered debug stages separately and leaves only a summary in the snapshot', async () => {
     const services = createServices();
     const state = {
       ...createInitialPlanningIntakeState(),
@@ -198,12 +199,13 @@ describe('weeklyPlanningTurnSideEffects', () => {
         __stableV5DebugTrace: {
           schemaVersion: 1,
           eventCount: 2,
-          events: [
-            expect.objectContaining({ sequence: 0, stage: 'semantic_provider_request' }),
-            expect.objectContaining({ sequence: 1, stage: 'semantic_canonicalization_evaluated' }),
-          ],
+          storage: 'stable_v5_debug_stage_entries',
         },
       }),
+      debugTraceEvents: [
+        expect.objectContaining({ sequence: 0, stage: 'semantic_provider_request' }),
+        expect.objectContaining({ sequence: 1, stage: 'semantic_canonicalization_evaluated' }),
+      ],
     }));
     expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
   });
@@ -246,9 +248,12 @@ describe('weeklyPlanningTurnSideEffects', () => {
         }),
         __stableV5DebugTrace: expect.objectContaining({
           eventCount: 1,
-          events: [expect.objectContaining({ stage: 'runtime_branch_selected' })],
+          storage: 'stable_v5_debug_stage_entries',
         }),
       }),
+      debugTraceEvents: [
+        expect.objectContaining({ stage: 'runtime_branch_selected' }),
+      ],
     }));
     expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
       assistantMessage: expect.anything(),
@@ -275,6 +280,7 @@ describe('weeklyPlanningTurnSideEffects', () => {
 
     expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
       outcome: 'failed',
+      debugTraceEvents: [],
       previewCount: 0,
       errorCode: 'TypeError',
       assistantMessage: '更新できませんでした。',
