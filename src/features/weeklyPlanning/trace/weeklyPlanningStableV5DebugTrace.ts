@@ -39,6 +39,14 @@ function cloneTraceData(value: unknown): unknown {
   }
 }
 
+function cloneEvents(
+  events: WeeklyPlanningStableV5DebugTraceEvent[] | undefined,
+): WeeklyPlanningStableV5DebugTraceEvent[] {
+  return events?.map(
+    (event) => cloneTraceData(event) as WeeklyPlanningStableV5DebugTraceEvent,
+  ) ?? [];
+}
+
 function trimOldestTraceIfNeeded(): void {
   while (activeTraces.size > MAX_ACTIVE_REQUESTS) {
     const oldestRequestId = activeTraces.keys().next().value;
@@ -88,20 +96,28 @@ export function recordWeeklyPlanningStableV5DebugTrace(params: {
   active.events.push(event);
 }
 
+export function readWeeklyPlanningStableV5DebugTrace(
+  requestId: string,
+): WeeklyPlanningStableV5DebugTraceEvent[] {
+  return cloneEvents(activeTraces.get(requestId)?.events);
+}
+
+export function clearWeeklyPlanningStableV5DebugTrace(requestId: string): void {
+  activeTraces.delete(requestId);
+}
+
 export function takeWeeklyPlanningStableV5DebugTrace(
   requestId: string,
 ): WeeklyPlanningStableV5DebugTraceEvent[] {
-  const active = activeTraces.get(requestId);
-  activeTraces.delete(requestId);
-  return active ? active.events.map((event) => cloneTraceData(event) as WeeklyPlanningStableV5DebugTraceEvent) : [];
+  const events = readWeeklyPlanningStableV5DebugTrace(requestId);
+  clearWeeklyPlanningStableV5DebugTrace(requestId);
+  return events;
 }
 
 export function peekWeeklyPlanningStableV5DebugTraceForTest(
   requestId: string,
 ): WeeklyPlanningStableV5DebugTraceEvent[] {
-  return activeTraces.get(requestId)?.events.map(
-    (event) => cloneTraceData(event) as WeeklyPlanningStableV5DebugTraceEvent,
-  ) ?? [];
+  return readWeeklyPlanningStableV5DebugTrace(requestId);
 }
 
 export function resetWeeklyPlanningStableV5DebugTraceForTest(): void {
