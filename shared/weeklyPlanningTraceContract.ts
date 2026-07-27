@@ -40,7 +40,8 @@ export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxDocumentBytes: 64 * 1024,
   clientDocumentTargetBytes: 48 * 1024,
   clientBatchTargetBytes: 384 * 1024,
-  debugRawChunkBytes: 24 * 1024,
+  // Base64 expansion keeps the transported string below the Worker 4,000-character redaction cap.
+  debugRawChunkBytes: 2_700,
 } as const;
 
 export function getWeeklyPlanningTraceUtf8ByteLength(value: string): number {
