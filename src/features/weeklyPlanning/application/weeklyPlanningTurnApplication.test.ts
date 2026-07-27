@@ -57,7 +57,7 @@ function baseParams() {
       plans: [],
       scheduleTemplates: [],
       timetableTermId: '2026-full-year',
-      weekStartsOn: 1 as const,
+      weekStartsOn: 'monday' as const,
       getState: store.getState,
       dispatch: store.dispatch,
     },
@@ -93,7 +93,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       timetableTermId: '2026-full-year',
       conversationId: 'conversation-1',
       traceRequestId: 'conversation-1:request:1',
-      weekStartsOn: 1,
+      weekStartsOn: 'monday',
     }));
     expect(services.finalizeTurn).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
