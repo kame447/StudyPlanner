@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   collectWeeklyPlanningTraceAdminEntryPages,
   type WeeklyPlanningTraceAdminEntryPageFetcher,
@@ -17,10 +17,14 @@ function entry(sequence: number): Record<string, unknown> {
 describe('paginated weekly planning trace admin entries', () => {
   it('256 entriesを20件以下のpageへ分けて全件集約する', async () => {
     const totalEntryCount = 256;
-    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async ({
+    const requestedLimits: number[] = [];
+    let callCount = 0;
+    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async ({
       afterSequence,
       limit,
     }) => {
+      callCount += 1;
+      requestedLimits.push(limit);
       const start = afterSequence + 1;
       const endExclusive = Math.min(totalEntryCount, start + limit);
       return {
@@ -33,22 +37,21 @@ describe('paginated weekly planning trace admin entries', () => {
         missingSequenceCount: 0,
       };
     };
-    const fetchPage = vi.fn(implementation);
 
     const entries = await collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage);
 
     expect(entries).toHaveLength(256);
-    expect(fetchPage).toHaveBeenCalledTimes(13);
-    expect(fetchPage.mock.calls.every(([params]) => params.limit === 20)).toBe(true);
+    expect(callCount).toBe(13);
+    expect(requestedLimits.every((limit) => limit === 20)).toBe(true);
     expect(entries[0]?.sequence).toBe(0);
     expect(entries[255]?.sequence).toBe(255);
   });
 
   it('欠落entryがあれば全page確認後に部分結果を拒否する', async () => {
-    let callIndex = 0;
-    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
-      callIndex += 1;
-      return callIndex === 1
+    let callCount = 0;
+    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
+      callCount += 1;
+      return callCount === 1
         ? {
             entries: [entry(0), entry(2)],
             totalEntryCount: 4,
@@ -62,18 +65,17 @@ describe('paginated weekly planning trace admin entries', () => {
             missingSequenceCount: 0,
           };
     };
-    const fetchPage = vi.fn(implementation);
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/1件欠落/);
-    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(callCount).toBe(2);
   });
 
   it('page間でtotalEntryCountが変わるresponseを拒否する', async () => {
-    let callIndex = 0;
-    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
-      callIndex += 1;
-      return callIndex === 1
+    let callCount = 0;
+    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
+      callCount += 1;
+      return callCount === 1
         ? {
             entries: [entry(0)],
             totalEntryCount: 2,
@@ -87,24 +89,26 @@ describe('paginated weekly planning trace admin entries', () => {
             missingSequenceCount: 0,
           };
     };
-    const fetchPage = vi.fn(implementation);
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/総件数がpage間で変化/);
-    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(callCount).toBe(2);
   });
 
   it('進まないcursorを拒否して無限loopを防ぐ', async () => {
-    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async () => ({
-      entries: [entry(0)],
-      totalEntryCount: 2,
-      nextAfterSequence: -1,
-      missingSequenceCount: 0,
-    });
-    const fetchPage = vi.fn(implementation);
+    let callCount = 0;
+    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
+      callCount += 1;
+      return {
+        entries: [entry(0)],
+        totalEntryCount: 2,
+        nextAfterSequence: -1,
+        missingSequenceCount: 0,
+      };
+    };
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/cursorが不正/);
-    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(callCount).toBe(1);
   });
 });
