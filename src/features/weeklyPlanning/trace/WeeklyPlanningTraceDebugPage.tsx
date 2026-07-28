@@ -1,10 +1,15 @@
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { hasUnexportedWeeklyPlanningTraceActivity } from './weeklyPlanningTraceArchive';
+import {
+  createWeeklyPlanningTraceAdminDiagnostics,
+  hasUnexportedWeeklyPlanningTraceActivity,
+  hasWeeklyPlanningTraceActivity,
+} from './weeklyPlanningTraceArchive';
 import { weeklyPlanningTraceLocalDate } from './weeklyPlanningTraceDate';
 import { createWeeklyPlanningTraceExportBundle } from './weeklyPlanningTraceExport';
 import { getWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRepository';
 import type {
+  WeeklyPlanningTraceAdminDiagnostics,
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceSession,
   WeeklyPlanningTraceSessionStatus,
@@ -15,6 +20,15 @@ interface WeeklyPlanningTraceDebugPageProps {
 }
 
 type TraceViewMode = 'conversation' | 'events' | 'snapshots' | 'raw';
+
+const EMPTY_DIAGNOSTICS: WeeklyPlanningTraceAdminDiagnostics = {
+  rawCount: 0,
+  mappedCount: 0,
+  malformedCount: 0,
+  activityCount: 0,
+  emptyCount: 0,
+  unexportedCount: 0,
+};
 
 const STATUS_OPTIONS: Array<{ value: '' | WeeklyPlanningTraceSessionStatus; label: string }> = [
   { value: '', label: 'すべて' },
@@ -90,11 +104,11 @@ function entriesForMode(
   return [];
 }
 
-
 export function WeeklyPlanningTraceDebugPage({
   onBack,
 }: WeeklyPlanningTraceDebugPageProps) {
   const [sessions, setSessions] = useState<WeeklyPlanningTraceSession[]>([]);
+  const [diagnostics, setDiagnostics] = useState(EMPTY_DIAGNOSTICS);
   const [entriesBySession, setEntriesBySession] = useState<
     Record<string, WeeklyPlanningTraceEntry[]>
   >({});
@@ -109,6 +123,7 @@ export function WeeklyPlanningTraceDebugPage({
   const [onlyPreviews, setOnlyPreviews] = useState(false);
   const [onlyApprovalFailures, setOnlyApprovalFailures] = useState(false);
   const [onlyStale, setOnlyStale] = useState(false);
+  const [showEmptySessions, setShowEmptySessions] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingEntriesSessionId, setLoadingEntriesSessionId] = useState('');
   const [exportingSessionId, setExportingSessionId] = useState('');
@@ -116,18 +131,22 @@ export function WeeklyPlanningTraceDebugPage({
 
   async function loadSessions(): Promise<void> {
     setLoadingSessions(true);
+    setError('');
     try {
-      const nextSessions = await getWeeklyPlanningTraceRepository().listSessionsForAdmin();
-      const sessionsWithUnexportedActivity = nextSessions.filter(
-        hasUnexportedWeeklyPlanningTraceActivity,
-      );
-      setSessions(sessionsWithUnexportedActivity);
+      const repository = getWeeklyPlanningTraceRepository();
+      const result = repository.listSessionsForAdminWithDiagnostics
+        ? await repository.listSessionsForAdminWithDiagnostics()
+        : await repository.listSessionsForAdmin().then((listed) => ({
+            sessions: listed,
+            diagnostics: createWeeklyPlanningTraceAdminDiagnostics({
+              rawCount: listed.length,
+              mappedSessions: listed,
+            }),
+          }));
+      setSessions(result.sessions);
+      setDiagnostics(result.diagnostics);
       setExpandedSessionId((current) =>
-        current && sessionsWithUnexportedActivity.some((session) => session.id === current)
-          ? current
-          : '',
-      );
-      setError('');
+        current && result.sessions.some((session) => session.id === current) ? current : '');
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'sessionを取得できませんでした。');
     } finally {
@@ -144,7 +163,6 @@ export function WeeklyPlanningTraceDebugPage({
   ): Promise<WeeklyPlanningTraceEntry[]> {
     const cached = entriesBySession[session.id];
     if (cached) return cached;
-
     setLoadingEntriesSessionId(session.id);
     try {
       const nextEntries = await getWeeklyPlanningTraceRepository().listEntries(
@@ -152,7 +170,6 @@ export function WeeklyPlanningTraceDebugPage({
         session.id,
       );
       setEntriesBySession((current) => ({ ...current, [session.id]: nextEntries }));
-      setError('');
       return nextEntries;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。');
@@ -194,14 +211,13 @@ export function WeeklyPlanningTraceDebugPage({
         session.id,
         new Date().toISOString(),
       );
-      setSessions((current) => current.filter((item) => item.id !== session.id));
+      await loadSessions();
       setEntriesBySession((current) => {
         const next = { ...current };
         delete next[session.id];
         return next;
       });
       setExpandedSessionId((current) => current === session.id ? '' : current);
-      setError('');
     } catch (exportError) {
       setError(
         exportError instanceof Error
@@ -214,7 +230,11 @@ export function WeeklyPlanningTraceDebugPage({
   }
 
   const visibleSessions = useMemo(() => sessions.filter((session) => {
-    if (!hasUnexportedWeeklyPlanningTraceActivity(session)) return false;
+    if (showEmptySessions) {
+      if (hasWeeklyPlanningTraceActivity(session)) return false;
+    } else if (!hasUnexportedWeeklyPlanningTraceActivity(session)) {
+      return false;
+    }
     if (statusFilter && session.status !== statusFilter) return false;
     const normalizedUserFilter = userFilter.trim().toLowerCase();
     if (normalizedUserFilter
@@ -239,6 +259,7 @@ export function WeeklyPlanningTraceDebugPage({
     onlyPreviews,
     onlyStale,
     sessions,
+    showEmptySessions,
     statusFilter,
     userFilter,
   ]);
@@ -253,9 +274,8 @@ export function WeeklyPlanningTraceDebugPage({
       <header className="panel">
         <h1>週間計画ログ</h1>
         <p>
-          未exportの活動があるsessionを新しい順に表示します。JSON export後は一度一覧から
-          除外しますが、新しいturnが追記された場合は再び表示します。Firestore上のsessionと
-          entryは削除しません。
+          通常一覧では未exportの活動があるsessionだけを表示します。empty sessionは削除せず、
+          診断表示へ切り替えて確認できます。
         </p>
         <div className="button-row">
           <button
@@ -269,7 +289,24 @@ export function WeeklyPlanningTraceDebugPage({
         </div>
       </header>
 
-      {error ? <div className="app-notice error">{error}</div> : null}
+      {error ? <div className="app-notice error">取得失敗: {error}</div> : null}
+
+      <section className="panel" aria-label="trace診断件数">
+        <h2>診断</h2>
+        <p>
+          raw {diagnostics.rawCount} / mapped {diagnostics.mappedCount} / malformed {diagnostics.malformedCount}
+          {' / '}activity {diagnostics.activityCount} / empty {diagnostics.emptyCount}
+          {' / '}unexported {diagnostics.unexportedCount} / rendered {visibleSessions.length}
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={showEmptySessions}
+            onChange={(event) => setShowEmptySessions(event.target.checked)}
+          />
+          empty sessionを診断表示する
+        </label>
+      </section>
 
       <section className="panel">
         <h2>Filter</h2>
@@ -286,7 +323,9 @@ export function WeeklyPlanningTraceDebugPage({
             <span>Status</span>
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as '' | WeeklyPlanningTraceSessionStatus)}
+              onChange={(event) => setStatusFilter(
+                event.target.value as '' | WeeklyPlanningTraceSessionStatus,
+              )}
             >
               {STATUS_OPTIONS.map((option) => (
                 <option key={option.value || 'all'} value={option.value}>{option.label}</option>
@@ -313,7 +352,7 @@ export function WeeklyPlanningTraceDebugPage({
 
       <section className="weekly-planning-trace-stream" aria-label="週間計画ログ一覧">
         <div className="weekly-planning-trace-stream-heading">
-          <h2>未exportの活動があるSessions</h2>
+          <h2>{showEmptySessions ? 'Empty Sessions' : '未exportの活動があるSessions'}</h2>
           <span>{visibleSessions.length}件</span>
         </div>
 
@@ -324,7 +363,7 @@ export function WeeklyPlanningTraceDebugPage({
           </div>
         ) : null}
 
-        {!loadingSessions && visibleSessions.length === 0 ? (
+        {!error && !loadingSessions && visibleSessions.length === 0 ? (
           <div className="panel admin-state-card">
             <strong>条件に一致するsessionはありません</strong>
           </div>
