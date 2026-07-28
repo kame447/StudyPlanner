@@ -1,4 +1,5 @@
 import { getCloudflareAiProxyUrl } from '../../../lib/aiConfig';
+import { createPaginatedAdminWeeklyPlanningTraceRepository } from './weeklyPlanningTracePaginatedAdminRepository';
 import { createRemoteWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRemoteRepository';
 import {
   createNoopWeeklyPlanningTraceRepository,
@@ -29,6 +30,8 @@ export function configureWeeklyPlanningTraceRepository(): void {
   }
 
   setWeeklyPlanningTraceRepositoryForTests(
-    createRemoteWeeklyPlanningTraceRepository(),
+    createPaginatedAdminWeeklyPlanningTraceRepository(
+      createRemoteWeeklyPlanningTraceRepository(),
+    ),
   );
 }
