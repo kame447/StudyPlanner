@@ -189,12 +189,19 @@ async function fetchAdminEntryPage(params: {
   };
 }
 
+function isBoundedEntryCount(value: number): boolean {
+  return Number.isSafeInteger(value)
+    && value >= 0
+    && value <= WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxEntryCount;
+}
+
 export async function collectWeeklyPlanningTraceAdminEntryPages(
   sessionId: string,
   fetchPage: AdminEntryPageFetcher = fetchAdminEntryPage,
 ): Promise<Record<string, unknown>[]> {
   const entriesById = new Map<string, Record<string, unknown>>();
   let afterSequence = -1;
+  let expectedTotalEntryCount: number | null = null;
   let missingSequenceCount = 0;
 
   for (
@@ -207,6 +214,23 @@ export async function collectWeeklyPlanningTraceAdminEntryPages(
       afterSequence,
       limit: WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.defaultPageSize,
     });
+    if (!isBoundedEntryCount(page.totalEntryCount)) {
+      throw new Error('週間計画traceのentry総件数が不正です。');
+    }
+    if (expectedTotalEntryCount === null) {
+      expectedTotalEntryCount = page.totalEntryCount;
+    } else if (page.totalEntryCount !== expectedTotalEntryCount) {
+      throw new Error('週間計画traceのentry総件数がpage間で変化しました。');
+    }
+    if (!Number.isSafeInteger(page.missingSequenceCount)
+      || page.missingSequenceCount < 0
+      || page.missingSequenceCount > WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPageSize) {
+      throw new Error('週間計画traceの欠落entry件数が不正です。');
+    }
+    if (page.entries.length > WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPageSize) {
+      throw new Error('週間計画traceのentry pageが上限を超えています。');
+    }
+
     page.entries.forEach((entry) => {
       const id = typeof entry.id === 'string' ? entry.id : '';
       if (id) entriesById.set(id, entry);
@@ -214,10 +238,16 @@ export async function collectWeeklyPlanningTraceAdminEntryPages(
     missingSequenceCount += page.missingSequenceCount;
 
     if (page.nextAfterSequence === null) {
-      if (missingSequenceCount > 0) {
+      const expected = expectedTotalEntryCount ?? 0;
+      const inferredMissing = Math.max(0, expected - entriesById.size);
+      const totalMissing = Math.max(missingSequenceCount, inferredMissing);
+      if (totalMissing > 0) {
         throw new Error(
-          `週間計画traceのentryが${missingSequenceCount}件欠落しています。再取得してください。`,
+          `週間計画traceのentryが${totalMissing}件欠落しています。再取得してください。`,
         );
+      }
+      if (entriesById.size !== expected) {
+        throw new Error('週間計画traceのentry件数がsession metadataと一致しません。');
       }
       return Array.from(entriesById.values());
     }
@@ -268,10 +298,13 @@ export function createPaginatedAdminWeeklyPlanningTraceRepository(
         }
         throw error;
       }
-      return records
+      const entries = records
         .map(entryFromRemote)
-        .filter((entry): entry is WeeklyPlanningTraceEntry => Boolean(entry))
-        .sort((left, right) => left.sequence - right.sequence);
+        .filter((entry): entry is WeeklyPlanningTraceEntry => Boolean(entry));
+      if (entries.length !== records.length) {
+        throw new Error('週間計画traceのentry schemaが不正です。');
+      }
+      return entries.sort((left, right) => left.sequence - right.sequence);
     },
   };
 }
