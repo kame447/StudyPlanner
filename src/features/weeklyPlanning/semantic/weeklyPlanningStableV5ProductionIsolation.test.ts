@@ -25,6 +25,7 @@ const ALLOWED_PRODUCTION_ENTRYPOINTS = new Set([
   'application/weeklyPlanningTurnApplication.ts',
   'application/weeklyPlanningTurnSideEffects.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',
+  'trace/weeklyPlanningTraceRemoteRepository.ts',
 ]);
 
 function sourceFiles(root: string): string[] {
@@ -77,6 +78,7 @@ describe('Stable V5 production connection boundary', () => {
       'application/weeklyPlanningTurnApplication.ts',
       'application/weeklyPlanningTurnSideEffects.ts',
       'trace/weeklyPlanningStableV5TraceRuntime.ts',
+      'trace/weeklyPlanningTraceRemoteRepository.ts',
     ]));
   });
 });

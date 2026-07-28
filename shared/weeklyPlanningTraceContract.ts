@@ -34,6 +34,16 @@ export const WEEKLY_PLANNING_TRACE_EVENT_TYPES = [
 export type WeeklyPlanningTraceEventTypeContract =
   typeof WEEKLY_PLANNING_TRACE_EVENT_TYPES[number];
 
+export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-28-v2' as const;
+export const WEEKLY_PLANNING_TRACE_WORKER_REVISION =
+  'weekly-planning-trace-20260728-001' as const;
+
+export const WEEKLY_PLANNING_TRACE_HEADERS = {
+  contractVersion: 'X-StudyPlanner-Trace-Contract-Version',
+  workerRevision: 'X-StudyPlanner-Trace-Worker-Revision',
+  correlationId: 'X-StudyPlanner-Trace-Correlation-Id',
+} as const;
+
 export const WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING =
   'base64-utf8-json-dotted-20' as const;
 
@@ -43,9 +53,7 @@ export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxDocumentBytes: 64 * 1024,
   clientDocumentTargetBytes: 48 * 1024,
   clientBatchTargetBytes: 384 * 1024,
-  // Base64 expansion plus separators remains below the Worker 4,000-character string cap.
   debugRawChunkBytes: 2_700,
-  // Runs shorter than the Worker token-redaction threshold preserve the encoded chunk.
   debugBase64RunCharacters: 20,
 } as const;
 

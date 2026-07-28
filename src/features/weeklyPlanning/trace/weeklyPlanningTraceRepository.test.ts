@@ -60,36 +60,34 @@ const ENTRIES: WeeklyPlanningTraceEntry[] = [
 describe('createInMemoryWeeklyPlanningTraceRepository', () => {
   it('entryをsequence順で返し、他userからは参照できない', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
-
     await repository.appendEntries({ session: SESSION, entries: ENTRIES });
-
     expect((await repository.listEntries('user-1', 'session-1')).map((entry) => entry.sequence))
       .toEqual([0, 1]);
     expect(await repository.getSession('user-2', 'session-1')).toBeNull();
     expect(await repository.listEntries('user-2', 'session-1')).toEqual([]);
   });
 
-  it('管理者一覧では複数userのsessionを更新日時順で返す', async () => {
+  it('管理者一覧と診断件数を更新日時順で返す', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
-    const newerSession: WeeklyPlanningTraceSession = {
+    const newerSession = {
       ...SESSION,
       id: 'session-2',
       logicalConversationId: 'conversation-2',
       userId: 'user-2',
       lastActivityAt: '2026-07-15T00:00:03.000Z',
     };
-
     await repository.upsertSession(SESSION);
     await repository.upsertSession(newerSession);
-
     expect((await repository.listSessionsForAdmin()).map((session) => session.id))
       .toEqual(['session-2', 'session-1']);
+    expect(await repository.listSessionsForAdminWithDiagnostics?.()).toMatchObject({
+      diagnostics: { rawCount: 2, mappedCount: 2, activityCount: 2, emptyCount: 0 },
+    });
   });
 
   it('archive後もsessionとentryを保持し、後続upsertでarchive状態を失わない', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
     const archivedAt = '2026-07-15T00:05:00.000Z';
-
     await repository.appendEntries({ session: SESSION, entries: ENTRIES });
     await repository.archiveSessionForAdmin(SESSION.id, archivedAt);
     await repository.upsertSession({
@@ -97,10 +95,8 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
       lastActivityAt: '2026-07-15T00:06:00.000Z',
       entryCount: 3,
     });
-
     const archivedSession = (await repository.listSessionsForAdmin())
       .find((session) => session.id === SESSION.id);
-
     expect(archivedSession?.archivedAt).toBe(archivedAt);
     expect(archivedSession?.entryCount).toBe(3);
     expect(await repository.listEntries(SESSION.userId, SESSION.id)).toHaveLength(2);
@@ -108,7 +104,6 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
 
   it('存在しないsessionのarchiveを拒否する', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
-
     await expect(repository.archiveSessionForAdmin(
       'missing-session',
       '2026-07-15T00:05:00.000Z',
@@ -117,11 +112,9 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
 
   it('同一内容のretryは冪等で、異なる内容の上書きを拒否する', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
-
     await repository.appendEntries({ session: SESSION, entries: ENTRIES });
     await repository.appendEntries({ session: SESSION, entries: ENTRIES });
     expect(await repository.listEntries('user-1', 'session-1')).toHaveLength(2);
-
     const conflictingEntry: WeeklyPlanningTraceEntry = {
       ...ENTRIES[0],
       kind: 'internal_event',
@@ -135,20 +128,20 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
 
   it('sessionとentryのownership不一致を拒否する', async () => {
     const repository = createInMemoryWeeklyPlanningTraceRepository();
-    const foreignEntry: WeeklyPlanningTraceEntry = {
-      ...ENTRIES[0],
-      userId: 'user-2',
-    };
-
+    const foreignEntry: WeeklyPlanningTraceEntry = { ...ENTRIES[0], userId: 'user-2' };
     await expect(repository.appendEntries({ session: SESSION, entries: [foreignEntry] }))
       .rejects.toThrow('trace ownership mismatch');
   });
 });
 
 describe('resolveWeeklyPlanningTraceEnabled', () => {
-  it('未設定とtrueは有効、明示falseだけ無効にする', () => {
-    expect(resolveWeeklyPlanningTraceEnabled(undefined)).toBe(true);
-    expect(resolveWeeklyPlanningTraceEnabled('true')).toBe(true);
-    expect(resolveWeeklyPlanningTraceEnabled('false')).toBe(false);
+  it('未設定はdevelopmentだけ有効にする', () => {
+    expect(resolveWeeklyPlanningTraceEnabled(undefined, true)).toBe(true);
+    expect(resolveWeeklyPlanningTraceEnabled(undefined, false)).toBe(false);
+  });
+
+  it('明示trueとfalseを環境に関係なく尊重する', () => {
+    expect(resolveWeeklyPlanningTraceEnabled('true', false)).toBe(true);
+    expect(resolveWeeklyPlanningTraceEnabled('false', true)).toBe(false);
   });
 });

@@ -18,7 +18,6 @@ export type WeeklyPlanningTraceResponseSource =
   | 'system';
 
 export type WeeklyPlanningTraceEventType = WeeklyPlanningTraceEventTypeContract;
-
 export type WeeklyPlanningTraceSeverity = 'debug' | 'info' | 'warn' | 'error';
 
 export type WeeklyPlanningTraceSnapshotReason =
@@ -106,6 +105,20 @@ export interface WeeklyPlanningTraceSessionPatch {
   hasError: boolean;
 }
 
+export interface WeeklyPlanningTraceAdminDiagnostics {
+  rawCount: number;
+  mappedCount: number;
+  malformedCount: number;
+  activityCount: number;
+  emptyCount: number;
+  unexportedCount: number;
+}
+
+export interface WeeklyPlanningTraceAdminSessionResult {
+  sessions: WeeklyPlanningTraceSession[];
+  diagnostics: WeeklyPlanningTraceAdminDiagnostics;
+}
+
 export interface WeeklyPlanningTraceRepository {
   upsertSession(session: WeeklyPlanningTraceSession): Promise<void>;
   appendEntries(params: {
@@ -114,6 +127,7 @@ export interface WeeklyPlanningTraceRepository {
   }): Promise<void>;
   listSessions(userId: string): Promise<WeeklyPlanningTraceSession[]>;
   listSessionsForAdmin(): Promise<WeeklyPlanningTraceSession[]>;
+  listSessionsForAdminWithDiagnostics?(): Promise<WeeklyPlanningTraceAdminSessionResult>;
   archiveSessionForAdmin(sessionId: string, archivedAt: string): Promise<void>;
   getSession(userId: string, sessionId: string): Promise<WeeklyPlanningTraceSession | null>;
   listEntries(userId: string, sessionId: string): Promise<WeeklyPlanningTraceEntry[]>;

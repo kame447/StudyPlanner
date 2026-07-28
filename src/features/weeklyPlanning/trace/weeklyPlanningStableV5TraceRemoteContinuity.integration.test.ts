@@ -46,7 +46,7 @@ function clientHarness() {
     async append(payload) {
       if (failuresRemaining > 0) {
         failuresRemaining -= 1;
-        throw new Error('injected append failure');
+        throw new TypeError('injected network failure');
       }
       appendCalls.push(structuredClone(payload));
     },

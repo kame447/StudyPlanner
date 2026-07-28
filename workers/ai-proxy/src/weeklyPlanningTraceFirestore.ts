@@ -33,9 +33,7 @@ const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
-
-const workerSafeFetch: typeof fetch = (input, init) =>
-  globalThis.fetch(input, init);
+const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 function base64Url(value: Uint8Array | string): string {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
@@ -50,8 +48,8 @@ function base64Url(value: Uint8Array | string): string {
 }
 
 function pemToArrayBuffer(pem: string): ArrayBuffer {
-  const normalized = pem.replace(/\\n/g, '\n');
-  const base64 = normalized
+  const base64 = pem
+    .replace(/\\n/g, '\n')
     .replace(/-----BEGIN PRIVATE KEY-----/g, '')
     .replace(/-----END PRIVATE KEY-----/g, '')
     .replace(/\s+/g, '');
@@ -64,10 +62,6 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function isIsoTimestampField(key: string): boolean {
-  return key === 'expireAt';
-}
-
 function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
   if (value === null || value === undefined) return { nullValue: null };
   if (typeof value === 'boolean') return { booleanValue: value };
@@ -78,7 +72,7 @@ function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
       : { doubleValue: value };
   }
   if (typeof value === 'string') {
-    if (isIsoTimestampField(key) && Number.isFinite(new Date(value).getTime())) {
+    if (key === 'expireAt' && Number.isFinite(new Date(value).getTime())) {
       return { timestampValue: value };
     }
     return { stringValue: value };
@@ -87,21 +81,21 @@ function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
     return { arrayValue: { values: value.map((item) => encodeFirestoreValue(item)) } };
   }
   if (typeof value === 'object') {
-    const fields: Record<string, FirestoreValue> = {};
-    Object.entries(value as Record<string, unknown>).forEach(([entryKey, entryValue]) => {
-      if (entryValue !== undefined) fields[entryKey] = encodeFirestoreValue(entryValue, entryKey);
-    });
-    return { mapValue: { fields } };
+    return {
+      mapValue: {
+        fields: encodeFirestoreFields(value as Record<string, unknown>),
+      },
+    };
   }
   return { stringValue: String(value) };
 }
 
 function encodeFirestoreFields(value: Record<string, unknown>): Record<string, FirestoreValue> {
-  const fields: Record<string, FirestoreValue> = {};
-  Object.entries(value).forEach(([key, entryValue]) => {
-    if (entryValue !== undefined) fields[key] = encodeFirestoreValue(entryValue, key);
-  });
-  return fields;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .map(([key, entryValue]) => [key, encodeFirestoreValue(entryValue, key)]),
+  );
 }
 
 function decodeFirestoreValue(value: FirestoreValue | undefined): unknown {
@@ -134,9 +128,19 @@ function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+function comparableDocument(value: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...value };
+  delete normalized.id;
+  delete normalized.expireAt;
+  return normalized;
 }
 
 export class WeeklyPlanningTraceFirestoreClient {
@@ -155,14 +159,24 @@ export class WeeklyPlanningTraceFirestoreClient {
     return value;
   }
 
+  private documentsBase(): string {
+    return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents`;
+  }
+
+  private documentName(collection: string, id: string): string {
+    return `projects/${this.projectId()}/databases/(default)/documents/${collection}/${id}`;
+  }
+
   private async serviceAccountToken(): Promise<string> {
     const now = Date.now();
     if (this.accessToken && now + TOKEN_EARLY_REFRESH_MS < this.accessTokenExpiresAt) {
       return this.accessToken;
     }
+
     const email = this.env.FIREBASE_SERVICE_ACCOUNT_EMAIL?.trim();
     const privateKey = this.env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY?.trim();
     if (!email || !privateKey) throw new Error('Firebase service account is not configured');
+
     const issuedAt = Math.floor(now / 1000);
     const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const claims = base64Url(JSON.stringify({
@@ -196,15 +210,12 @@ export class WeeklyPlanningTraceFirestoreClient {
       }),
     });
     if (!response.ok) throw new Error('Firebase service account token exchange failed');
+
     const payload = await response.json() as OAuthTokenResponse;
     if (!payload.access_token) throw new Error('Firebase service account token was empty');
     this.accessToken = payload.access_token;
     this.accessTokenExpiresAt = now + Math.max(60, payload.expires_in ?? 3600) * 1000;
     return this.accessToken;
-  }
-
-  private documentsBase(): string {
-    return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents`;
   }
 
   private async request(url: string, init: RequestInit = {}): Promise<Response> {
@@ -258,36 +269,29 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!Number.isSafeInteger(maximum) || maximum < 0) {
       throw new Error('Firestore maximum integer is invalid');
     }
-    const baseValue = { ...value };
-    delete baseValue[fieldPath];
-    await this.setDocument(collection, id, baseValue, Object.keys(baseValue));
-
-    const documentName = [
-      'projects',
-      this.projectId(),
-      'databases',
-      '(default)',
-      'documents',
-      collection,
-      id,
-    ].join('/');
-    const response = await this.request(
-      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents:commit`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          writes: [{
-            transform: {
-              document: documentName,
-              fieldTransforms: [{
-                fieldPath,
-                maximum: { integerValue: String(maximum) },
-              }],
+    const updateValue = { ...value };
+    delete updateValue[fieldPath];
+    const response = await this.request(`${this.documentsBase()}:commit`, {
+      method: 'POST',
+      body: JSON.stringify({
+        writes: [
+          {
+            update: {
+              name: this.documentName(collection, id),
+              fields: encodeFirestoreFields(updateValue),
             },
-          }],
-        }),
-      },
-    );
+            updateMask: { fieldPaths: Object.keys(updateValue) },
+            currentDocument: { exists: true },
+          },
+          {
+            transform: {
+              document: this.documentName(collection, id),
+              fieldTransforms: [{ fieldPath, maximum: { integerValue: String(maximum) } }],
+            },
+          },
+        ],
+      }),
+    });
     if (!response.ok) throw new Error(`Firestore maximum transform failed: ${response.status}`);
   }
 
@@ -310,18 +314,73 @@ export class WeeklyPlanningTraceFirestoreClient {
     }
 
     const existing = await this.getDocument(collection, id);
-    if (!existing) {
+    if (!existing
+      || stableJson(comparableDocument(existing)) !== stableJson(comparableDocument(value))) {
       throw new Error(`immutable trace document conflict: ${collection}/${id}`);
     }
-    const normalizedExisting = { ...existing };
-    const normalizedValue = { ...value };
-    delete normalizedExisting.id;
-    delete normalizedValue.id;
-    delete normalizedExisting.expireAt;
-    delete normalizedValue.expireAt;
-    if (stableJson(normalizedExisting) !== stableJson(normalizedValue)) {
-      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+  }
+
+  async commitTraceAppend(params: {
+    entryCollection: string;
+    entries: Array<{ id: string; value: Record<string, unknown> }>;
+    sessionCollection: string;
+    sessionId: string;
+    sessionValue: Record<string, unknown>;
+    maximumFieldPath: string;
+    maximum: number;
+  }): Promise<void> {
+    if (!Number.isSafeInteger(params.maximum) || params.maximum < 0) {
+      throw new Error('Firestore maximum integer is invalid');
     }
+
+    const sessionValue = { ...params.sessionValue };
+    delete sessionValue[params.maximumFieldPath];
+    const writes = [
+      ...params.entries.map((entry) => ({
+        update: {
+          name: this.documentName(params.entryCollection, entry.id),
+          fields: encodeFirestoreFields(entry.value),
+        },
+        currentDocument: { exists: false },
+      })),
+      {
+        update: {
+          name: this.documentName(params.sessionCollection, params.sessionId),
+          fields: encodeFirestoreFields(sessionValue),
+        },
+        updateMask: { fieldPaths: Object.keys(sessionValue) },
+        currentDocument: { exists: true },
+      },
+      {
+        transform: {
+          document: this.documentName(params.sessionCollection, params.sessionId),
+          fieldTransforms: [{
+            fieldPath: params.maximumFieldPath,
+            maximum: { integerValue: String(params.maximum) },
+          }],
+        },
+      },
+    ];
+
+    const response = await this.request(`${this.documentsBase()}:commit`, {
+      method: 'POST',
+      body: JSON.stringify({ writes }),
+    });
+    if (response.ok) return;
+    if (response.status !== 409) {
+      throw new Error(`Firestore atomic trace append failed: ${response.status}`);
+    }
+
+    const entryMatches = await Promise.all(params.entries.map(async (entry) => {
+      const existing = await this.getDocument(params.entryCollection, entry.id);
+      return Boolean(existing)
+        && stableJson(comparableDocument(existing as Record<string, unknown>))
+          === stableJson(comparableDocument(entry.value));
+    }));
+    const session = await this.getDocument(params.sessionCollection, params.sessionId);
+    const storedCount = Number(session?.[params.maximumFieldPath] ?? -1);
+    if (entryMatches.every(Boolean) && storedCount >= params.maximum) return;
+    throw new Error('immutable trace document conflict: atomic append');
   }
 
   async queryDocuments(
@@ -357,7 +416,10 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!response.ok) throw new Error(`Firestore query failed: ${response.status}`);
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => result.document
-      ? [{ ...decodeFirestoreFields(result.document.fields ?? {}), id: documentId(result.document.name) }]
+      ? [{
+          ...decodeFirestoreFields(result.document.fields ?? {}),
+          id: documentId(result.document.name),
+        }]
       : []);
   }
 
@@ -381,7 +443,8 @@ export class WeeklyPlanningTraceFirestoreClient {
       while (true) {
         const documents = await this.queryDocuments(collection, [{ field, value }]);
         if (documents.length === 0) break;
-        await Promise.all(documents.map((document) => this.deleteDocument(collection, String(document.id))));
+        await Promise.all(documents.map((document) =>
+          this.deleteDocument(collection, String(document.id))));
         deleted += documents.length;
         if (documents.length < QUERY_BATCH_SIZE) break;
       }
