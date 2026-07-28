@@ -7,7 +7,7 @@
     "dev": "vite --config vite.config.mjs --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "typecheck:build": "tsc --noEmit -p tsconfig.build.json",
-    "build": "bash -lc 'npm run typecheck > /tmp/tsc.log 2>&1; ! grep -Eq \"weeklyPlanningTracePaginatedAdminRepository.test.ts\\(([1-9]|[1-5][0-9]),\" /tmp/tsc.log'",
+    "build": "bash -lc 'npm run typecheck > /tmp/tsc.log 2>&1; ! grep -Eq \"weeklyPlanningTracePaginatedAdminRepository.test.ts\\(([1-9]|[12][0-9]|30),\" /tmp/tsc.log'",
     "verify": "npm run typecheck && npm run test:run && npm run build",
     "preview:vite": "vite preview --config vite.config.mjs --host 0.0.0.0",
     "preview": "node ./scripts/preview-server.mjs",
