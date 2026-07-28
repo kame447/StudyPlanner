@@ -242,7 +242,7 @@ export function WeeklyPlanningTraceDebugPage({
   }
 
   async function exportSession(session: WeeklyPlanningTraceSession): Promise<void> {
-    const archiveAfterExport = hasUnexportedWeeklyPlanningTraceActivity(session);
+    const archiveAfterExport = !hasArchivedWeeklyPlanningTraceActivity(session);
     setExportingSessionId(session.id);
     setError('');
     try {
