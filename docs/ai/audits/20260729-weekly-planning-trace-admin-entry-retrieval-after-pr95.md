@@ -14,50 +14,55 @@
 
 mainの訂正版は、停止境界をremote write完了前のどこかへ戻し、`/session/start`と`/append`を未確定として分離し、empty-session filterの直接関与を強い推定へ下げている。この訂正は妥当である。
 
-GitHubの到達可能なmain履歴では、報告書追加commit `bab6eb0`と訂正commit `e62b06b`を確認できた。提示された追加の`+1/-1`差分は到達可能なmain履歴から特定できなかったため、存在を推測せず、現在のmain本文を最終版として監査した。
+ただし、同報告はPR #94直後のProduction保存障害を扱ったhistorical reportであり、PR #95後に観測された症状の説明には直接使えない。現在は管理画面が`turns 6 / entries 256`のsession metadataを取得できているため、当該sessionの保存と`/admin/sessions`は成功している。一方、session展開時のentry本文取得だけが失敗している。観測できた停止境界は`/weekly-planning-trace/admin/entries`である。
 
-ただし、この報告書はPR #94直後のProduction保存障害を扱ったhistorical reportであり、PR #95後の現在の症状を説明する根拠にはならない。現在は管理画面が`turns 6 / entries 256`のsession metadataを取得できているため、trace writeと`/admin/sessions`は少なくとも当該sessionについて成功している。一方、session展開時だけ`週間計画traceサーバーへ接続できませんでした。`となる。現在の停止境界は`/admin/entries`取得である。
+## 原因評価
 
-## 現在の根本原因
+旧frontendは`/weekly-planning-trace/admin/entries`を1回だけ呼び、sessionの全entryを単一responseで受け取っていた。
 
-frontendは`/weekly-planning-trace/admin/entries`を1回だけ呼び、sessionの全entryを単一responseで受け取る。
+旧Workerはsessionの`entryCount`を最大500まで読み、queryで回収できなかったsequenceごとにFirestore document GETを実行した後、取得した全entryをredactionして単一JSON responseへ載せていた。256-entry sessionでは、query結果やdocument状態によって多数のFirestore GET、redaction、serialize、response生成が1requestへ集中し得る。
 
-Workerはsessionの`entryCount`を最大500まで読み、queryで回収できなかったsequenceごとにFirestore document GETを`Promise.all`で実行する。その後、取得した全entryをredactionして単一JSON responseへ載せる。
+frontendで観測された`trace_network_failure`相当の文言は、通常のHTTP error envelopeではなくfetch自体がresponseを受け取れなかった場合に生成される。したがって、旧全件取得経路がWorkerのresourceまたはruntime境界で中断した可能性が最も高い。ただし、旧endpointの実環境response、Worker invocation log、subrequest数は取得できていないため、これを実証済みの単一根本原因とは扱わない。
 
-今回のsessionは256 entriesである。この経路は、query結果が部分的な場合には1request内で最大256件のFirestore subrequestを発生させ得る。queryが全件返っても、最大48KiBを目標とするdebug entryを256件まとめてredaction・serialize・response化する。どちらもWorkerのresource/runtime境界を超えてrequest自体が中断する余地がある。
-
-通常のHTTP error responseを受けた場合、frontendはstatusとerror codeを保持する。今回表示された`trace_network_failure`相当の文言はfetch自体がresponseを受け取れなかった場合に生成されるため、Worker実行中断という観測と整合する。
-
-管理画面には別の表示上の契約違反もあった。`listEntries`が失敗してもsession単位の失敗状態を保持せず、空配列のまま`entryはありません。`を表示していた。そのため、通信失敗を正常な0件と誤認させていた。
+一方、管理画面の表示上の契約違反はコードから確定した。`listEntries`が失敗してもsession単位の失敗状態を保持せず、空配列のまま`entryはありません。`と空Raw JSONを表示していたため、通信失敗を正常な0件として誤表示していた。
 
 ## 修正
 
 既存の全件取得endpointは後方互換用に残し、追加endpoint `/weekly-planning-trace/admin/entries/page`を実装した。
 
-新endpointはsequenceをcursorとして扱い、1requestにつき最大20 documentだけを取得する。session metadataの`entryCount`が256でも、1request内のentry GETは20件を超えない。欠落documentがあってもcursorはpage末尾まで進め、無限再試行しない。
+新endpointはsequenceをcursorとして扱い、1requestにつき最大20 documentだけを取得する。session metadataの`entryCount`が256でも、1request内のentry GETは20件を超えない。欠落documentがある場合もpage末尾までcursorを進め、同じ欠落sequenceを無限再試行しない。
 
-frontendにはpaginated admin repository decoratorを追加した。20件ずつ取得して最大500件まで集約し、cursorが進まない場合とpage数超過をfail closedで拒否する。未更新Workerが新endpointを404で返す場合に限り、既存の全件endpointへfallbackする。
+frontendにはpaginated admin repository decoratorを追加した。20件ずつ最大500件まで集約し、総件数のpage間変化、page上限超過、cursor非進行、不正な欠落件数、不正schemaをfail closedで拒否する。Workerが欠落documentを報告した場合は残存entryを最後まで確認するが、部分的なtimelineやJSONを正常結果として返さず、最終的に取得失敗とする。
 
-管理画面はsessionごとのentry取得errorを保持するよう変更した。取得失敗時は`entryはありません。`とRaw JSONを表示せず、`entry取得失敗`と再試行操作を表示する。session一覧取得のglobal errorとentry詳細取得のsession-local errorも分離した。
+未更新Workerが新endpointを`404 / trace_endpoint_not_found`で返す場合に限り、既存の全件endpointへfallbackする。それ以外の404、認証失敗、storage失敗、contract mismatchではfallbackせず、その失敗を保持する。
 
-Worker revisionを`weekly-planning-trace-20260729-002`へ更新した。contract versionは既存endpointを破壊しない追加変更であるため`2026-07-28-v2`を維持する。これにより、PagesとWorkerのdeploy順序が一時的に前後しても既存機能を直ちに全面停止させない。
+管理画面はsessionごとのentry取得errorを保持するよう変更した。取得失敗時は`entryはありません。`とRaw JSONを表示せず、`entry取得失敗`と再試行操作を表示する。JSON exportは全entryの取得に成功した場合だけ実行し、取得失敗時はarchiveしない。
+
+Worker revisionを`weekly-planning-trace-20260729-002`へ更新した。contract versionは既存endpointを破壊しない追加変更であるため`2026-07-28-v2`を維持する。
 
 ## 追加test
 
-frontend testでは、実症状と同じ256 entriesを20件以下の13 pageへ分割し、全件を一度ずつ集約できることを固定した。欠落entryがある場合の継続と、進まないcursorの拒否も確認対象にした。
+frontend testでは、実症状と同じ256 entriesを20件以下の13 pageへ分割して全件集約できること、欠落entryがある場合に部分結果を拒否すること、page間で総件数が変化した場合に拒否すること、cursor非進行を拒否することを固定した。
 
-Worker testでは、`entryCount=256`かつ要求limitが100でも、1pageのFirestore GETが20回に制限され、次cursorが19になる契約を固定した。2page目が20から39まで進むことと、欠落documentを数えながらcursorを進めることも確認対象にした。
+Worker testでは、`entryCount=256`かつ要求limitが100でも1pageのFirestore GETが20回に制限され、次cursorが19になること、2page目が20から39まで進むこと、欠落documentを数えながらcursorを進めることを固定した。
 
-## 現時点の検証
+## 検証結果
 
-新しいWorker page loaderは、256件のsessionでも1pageあたり20 documentだけを読み、次cursorを19にする単体実行を確認した。frontend collectorは256 entriesを13 pageで重複なく集約する単体実行を確認した。新規frontend moduleとWorker moduleはstrict TypeScriptの分離検査を通過した。
+Cloudflare Pagesの同一build環境で、一時的にbuild commandへ次の4工程を直列化して実行し、commit `15387f8`で成功した。
 
-Cloudflare Pagesのbranch previewは最新UI修正を含むheadでbuild成功した。一方、GitHub Actionsはrunner起動前に終了してstepsが0件であり、full test、repository全体のtypecheck、typecheck:buildをGitHub Actionsの成功証跡としては取得できていない。
+```text
+npm run typecheck
+npm run typecheck:build
+npm run test:run
+vite build --config vite.config.mjs
+```
+
+検証後は`package.json`の通常build commandへ戻し、一時診断scriptも削除した。通常のVite buildはcommit `066e163`で成功している。GitHub Actionsはrunner起動前に終了してstepsが0件だったため、成功証跡には使用していない。
 
 ## 残るdeploy gate
 
 source修正だけではProductionは直らない。`workers/ai-proxy/wrangler.jsonc`を使用してWorkerをdeployし、その後Pagesを更新する必要がある。
 
-Productionでは既存の256-entry sessionを展開し、Conversation、Events、State snapshots、Raw redacted JSON、JSON exportの各経路を確認する。`/admin/entries/page`が複数回200を返し、各responseのentry数が20以下で、最後のcursorがnullになることを確認する。
+Productionでは認証済みhealth probeでcontract version、Worker revision、CORS response headersを確認する。その後、既存の256-entry sessionを展開し、Conversation、Events、State snapshots、Raw redacted JSON、JSON exportの各経路を確認する。`/admin/entries/page`が複数回200を返し、各responseのentry数が20以下で、最後のcursorがnullになることも確認する。
 
-Issue #89はProductionで既存sessionを展開できるまでOPENを維持する。
+Issue #89はProductionで既存sessionを完全に取得・表示・exportできるまでOPENを維持する。PR #96もWorker deployとProduction確認が終わるまでDraft・merge不可とする。
