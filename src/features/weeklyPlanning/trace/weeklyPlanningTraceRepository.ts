@@ -16,6 +16,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirestoreDb } from '../../../lib/firebaseClient';
+import { createWeeklyPlanningTraceAdminDiagnostics } from './weeklyPlanningTraceArchive';
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
 import {
   isWeeklyPlanningTraceEntry,
@@ -63,10 +64,7 @@ function normalizedSession(value: unknown): WeeklyPlanningTraceSession | null {
 function normalizedEntry(value: unknown): WeeklyPlanningTraceEntry | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const normalized = {
-    ...record,
-    expireAt: dateString(record.expireAt),
-  };
+  const normalized = { ...record, expireAt: dateString(record.expireAt) };
   return isWeeklyPlanningTraceEntry(normalized) ? normalized : null;
 }
 
@@ -98,10 +96,7 @@ function preserveArchiveState(
   next: WeeklyPlanningTraceSession,
 ): WeeklyPlanningTraceSession {
   const archivedAt = next.archivedAt ?? current?.archivedAt;
-  return {
-    ...next,
-    ...(archivedAt ? { archivedAt } : {}),
-  };
+  return { ...next, ...(archivedAt ? { archivedAt } : {}) };
 }
 
 function authenticatedTraceUserId(): string {
@@ -115,11 +110,9 @@ function assertAuthenticatedFirestoreOwnership(params: {
   entries?: WeeklyPlanningTraceEntry[];
 }): void {
   const authenticatedUserId = authenticatedTraceUserId();
-  if (params.session.userId !== authenticatedUserId) {
-    throw new Error('trace ownership mismatch');
-  }
-  if ((params.entries ?? []).some((entry) =>
-    entry.userId !== authenticatedUserId || entry.sessionId !== params.session.id)) {
+  if (params.session.userId !== authenticatedUserId
+    || (params.entries ?? []).some((entry) =>
+      entry.userId !== authenticatedUserId || entry.sessionId !== params.session.id)) {
     throw new Error('trace ownership mismatch');
   }
 }
@@ -130,6 +123,13 @@ function entryChunks(entries: WeeklyPlanningTraceEntry[]): WeeklyPlanningTraceEn
     chunks.push(entries.slice(index, index + FIRESTORE_ENTRIES_PER_BATCH));
   }
   return chunks;
+}
+
+function adminResult(sessions: WeeklyPlanningTraceSession[], rawCount = sessions.length) {
+  return {
+    sessions,
+    diagnostics: createWeeklyPlanningTraceAdminDiagnostics({ rawCount, mappedSessions: sessions }),
+  };
 }
 
 export function createFirestoreWeeklyPlanningTraceRepository(
@@ -144,16 +144,19 @@ export function createFirestoreWeeklyPlanningTraceRepository(
     );
   }
 
+  async function listAdmin() {
+    const snapshot = await getDocs(collection(firestoreDb, 'weekly_planning_trace_sessions'));
+    return adminResult(sessionsFromSnapshot(snapshot), snapshot.size);
+  }
+
   return {
     upsertSession,
-
     async appendEntries({ session, entries }) {
       if (entries.length === 0) {
         await upsertSession(session);
         return;
       }
       assertAuthenticatedFirestoreOwnership({ session, entries });
-
       const chunks = entryChunks(entries);
       for (const [chunkIndex, chunk] of chunks.entries()) {
         const batch = writeBatch(firestoreDb);
@@ -173,7 +176,6 @@ export function createFirestoreWeeklyPlanningTraceRepository(
         await batch.commit();
       }
     },
-
     async listSessions(userId) {
       const snapshot = await getDocs(query(
         collection(firestoreDb, 'weekly_planning_trace_sessions'),
@@ -181,19 +183,11 @@ export function createFirestoreWeeklyPlanningTraceRepository(
       ));
       return sessionsFromSnapshot(snapshot);
     },
-
-    async listSessionsForAdmin() {
-      const snapshot = await getDocs(collection(firestoreDb, 'weekly_planning_trace_sessions'));
-      return sessionsFromSnapshot(snapshot);
-    },
-
+    async listSessionsForAdmin() { return (await listAdmin()).sessions; },
+    listSessionsForAdminWithDiagnostics: listAdmin,
     async archiveSessionForAdmin(sessionId, archivedAt) {
-      await updateDoc(
-        doc(firestoreDb, 'weekly_planning_trace_sessions', sessionId),
-        { archivedAt },
-      );
+      await updateDoc(doc(firestoreDb, 'weekly_planning_trace_sessions', sessionId), { archivedAt });
     },
-
     async getSession(userId, sessionId) {
       const snapshot = await getDoc(doc(
         firestoreDb,
@@ -204,7 +198,6 @@ export function createFirestoreWeeklyPlanningTraceRepository(
       const session = normalizedSession({ ...snapshot.data(), id: snapshot.id });
       return session?.userId === userId ? session : null;
     },
-
     async listEntries(userId, sessionId) {
       const snapshot = await getDocs(query(
         collection(firestoreDb, 'weekly_planning_trace_entries'),
@@ -249,9 +242,14 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
     ]);
   }
 
+  async function listAdmin() {
+    const raw = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
+    const sessions = sortSessions(raw.filter((value) => Boolean(normalizedSession(value))));
+    return adminResult(sessions, raw.length);
+  }
+
   return {
     upsertSession,
-
     async appendEntries({ session, entries }) {
       if (entries.some((entry) => entry.userId !== session.userId || entry.sessionId !== session.id)) {
         throw new Error('trace ownership mismatch');
@@ -269,16 +267,12 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
       });
       writeLocalArray(LOCAL_ENTRIES_KEY, Array.from(byId.values()));
     },
-
     async listSessions(userId) {
       return sortSessions(readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY)
         .filter((session) => session.userId === userId));
     },
-
-    async listSessionsForAdmin() {
-      return sortSessions(readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY));
-    },
-
+    async listSessionsForAdmin() { return (await listAdmin()).sessions; },
+    listSessionsForAdminWithDiagnostics: listAdmin,
     async archiveSessionForAdmin(sessionId, archivedAt) {
       const sessions = readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY);
       const current = sessions.find((session) => session.id === sessionId);
@@ -286,12 +280,10 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
       writeLocalArray(LOCAL_SESSIONS_KEY, sessions.map((session) =>
         session.id === sessionId ? { ...session, archivedAt } : session));
     },
-
     async getSession(userId, sessionId) {
       return readLocalArray<WeeklyPlanningTraceSession>(LOCAL_SESSIONS_KEY)
         .find((session) => session.userId === userId && session.id === sessionId) ?? null;
     },
-
     async listEntries(userId, sessionId) {
       return readLocalArray<WeeklyPlanningTraceEntry>(LOCAL_ENTRIES_KEY)
         .filter((entry) => entry.userId === userId && entry.sessionId === sessionId)
@@ -302,11 +294,13 @@ export function createLocalWeeklyPlanningTraceRepository(): WeeklyPlanningTraceR
 }
 
 export function createNoopWeeklyPlanningTraceRepository(): WeeklyPlanningTraceRepository {
+  const empty = () => adminResult([]);
   return {
     async upsertSession() {},
     async appendEntries() {},
     async listSessions() { return []; },
     async listSessionsForAdmin() { return []; },
+    async listSessionsForAdminWithDiagnostics() { return empty(); },
     async archiveSessionForAdmin() {},
     async getSession() { return null; },
     async listEntries() { return []; },
@@ -317,7 +311,6 @@ function serializeWeeklyPlanningTraceWrites(
   delegate: WeeklyPlanningTraceRepository,
 ): WeeklyPlanningTraceRepository {
   const queues = new Map<string, Promise<void>>();
-
   function enqueue(sessionId: string, operation: () => Promise<void>): Promise<void> {
     const previous = queues.get(sessionId) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(operation);
@@ -326,32 +319,23 @@ function serializeWeeklyPlanningTraceWrites(
       if (queues.get(sessionId) === next) queues.delete(sessionId);
     });
   }
-
   return {
-    upsertSession(session) {
-      return enqueue(session.id, () => delegate.upsertSession(session));
-    },
+    upsertSession(session) { return enqueue(session.id, () => delegate.upsertSession(session)); },
     appendEntries(params) {
       return enqueue(params.session.id, () => delegate.appendEntries(params));
     },
-    listSessions(userId) {
-      return delegate.listSessions(userId);
-    },
-    listSessionsForAdmin() {
-      return delegate.listSessionsForAdmin();
+    listSessions: (userId) => delegate.listSessions(userId),
+    listSessionsForAdmin: () => delegate.listSessionsForAdmin(),
+    async listSessionsForAdminWithDiagnostics() {
+      return delegate.listSessionsForAdminWithDiagnostics
+        ? delegate.listSessionsForAdminWithDiagnostics()
+        : adminResult(await delegate.listSessionsForAdmin());
     },
     archiveSessionForAdmin(sessionId, archivedAt) {
-      return enqueue(
-        sessionId,
-        () => delegate.archiveSessionForAdmin(sessionId, archivedAt),
-      );
+      return enqueue(sessionId, () => delegate.archiveSessionForAdmin(sessionId, archivedAt));
     },
-    getSession(userId, sessionId) {
-      return delegate.getSession(userId, sessionId);
-    },
-    listEntries(userId, sessionId) {
-      return delegate.listEntries(userId, sessionId);
-    },
+    getSession: (userId, sessionId) => delegate.getSession(userId, sessionId),
+    listEntries: (userId, sessionId) => delegate.listEntries(userId, sessionId),
   };
 }
 
@@ -359,13 +343,17 @@ let repository: WeeklyPlanningTraceRepository | undefined;
 
 export function resolveWeeklyPlanningTraceEnabled(
   configuredValue: string | undefined,
+  isDevelopment = false,
 ): boolean {
-  return configuredValue !== 'false';
+  if (configuredValue === 'true') return true;
+  if (configuredValue === 'false') return false;
+  return isDevelopment;
 }
 
 export function isWeeklyPlanningTraceEnabled(): boolean {
   return resolveWeeklyPlanningTraceEnabled(
     import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED,
+    import.meta.env.DEV,
   );
 }
 
