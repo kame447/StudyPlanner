@@ -9,7 +9,7 @@
     "ALLOWED_GEMINI_MODELS": "gemini-1.5-flash",
     "GEMINI_MODEL": "gemini-1.5-flash",
     "ENVIRONMENT": "production",
-    "WEEKLY_PLANNING_TRACE_WORKER_REVISION": "weekly-planning-trace-20260728-001"
+    "WEEKLY_PLANNING_TRACE_WORKER_REVISION": "weekly-planning-trace-20260729-002"
   },
   "durable_objects": {
     "bindings": [
