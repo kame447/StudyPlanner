@@ -28,6 +28,14 @@ export function hasUnexportedWeeklyPlanningTraceActivity(
   return session.lastActivityAt.localeCompare(session.archivedAt) > 0;
 }
 
+export function hasArchivedWeeklyPlanningTraceActivity(
+  session: WeeklyPlanningTraceSession,
+): boolean {
+  return Boolean(session.archivedAt)
+    && hasWeeklyPlanningTraceActivity(session)
+    && !hasUnexportedWeeklyPlanningTraceActivity(session);
+}
+
 export function createWeeklyPlanningTraceAdminDiagnostics(params: {
   rawCount: number;
   mappedSessions: readonly WeeklyPlanningTraceSession[];
