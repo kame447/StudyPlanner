@@ -1,59 +1,76 @@
-# 週途中の週間計画で現在時刻より前へ配置しない
+# Stable V5で現在時刻より前へ予定を配置しない
 
-Status: open / next implementation
-Priority: P0
+Status: active / unimplemented hard-safety boundary
+Priority: P0 after `20260727-weekly-planning-trace-empty-session-recovery.md`
 Created: 2026-07-16
-Updated: 2026-07-19
+Updated: 2026-07-28
 Tracking: Issue #47
-Parent: `docs/ai/strategy/weekly-planning-personalization-history-and-optimization-design.md`
 Depends on: none
-Blocks: `20260716-weekly-planning-synced-conversation-session-store.md`
 
-## 目的
+## 1. 現在の実装差分
 
-週の途中で「今週の予定を立てたい」と依頼された場合、明示的な開始日時がなければ、現在時刻より前へ新しい予定を配置しない。
+`weeklyPlanningStableV5PreviewScheduler.ts`はplanning horizon内の日付ごとに既定`09:00–22:00`のplacement windowを作る。scheduler inputまたはruntime contextにrequest開始時刻がなく、当日の現在時刻より前を除外しない。
 
-これは個人最適化ではなくschedulerのhard safety boundaryである。profile、履歴集計、placement scoreより先に実装する。
+したがって、午後に「今日」「今週」の計画を作ると、空いていれば同日09:00から候補を生成し得る。
 
-## 基本仕様
+これはpersonalizationではなくhard safety boundaryである。profile、履歴、scoreより先に実装する。
 
-開始可能時刻は次の優先順位で解決する。
+## 2. 固定contract
 
-1. 明示された開始日時
-2. 明示された開始日 + session policyの開始時刻
-3. request開始時に固定した現在日時 + 60分の準備猶予
+開始可能境界の優先順位:
 
-解決後はschedulerの配置粒度へ切り上げる。
+1. userが明示した将来の開始日時
+2. userが明示した開始日 + explicit/default day start
+3. request開始時に一度だけ固定した`currentDateTime` + preparation buffer
 
-## 対象
+- preparation buffer初期値は60分
+- scheduler粒度へ切り上げる
+- 同一request内でclockを再取得しない
+- 明示開始が過去なら黙って現在へ補正せず、確認または再調整へ倒す
+- planning sessionの`weekStartDate`と配置可能horizon開始を分離する
 
-- request単位で一貫した`currentDateTime`をcontextへ注入する
-- planning horizonの開始日時を解決する純粋関数
-- 現在より前の日付・時刻をavailabilityから除外する
-- 明示された開始日時が過去の場合は黙って置換せず確認へ倒す
-- timezone、日付境界、週末のテスト
-- session weekとplanning horizonを分離する型境界
+## 3. 実装範囲
 
-## 対象外
+- application request contextへIANA timezone付き`currentDateTime`を注入
+- pureなplanning start boundary resolver
+- Stable V5 generic scheduler inputまたはpreview scheduler inputへresolved earliest startを追加
+- 当日windowのstartをearliest startまでclip
+- 経過済みの日付を候補から除外
+- explicit future startを優先
+- explicit past startをblocking issue化
+- reload/retryでも同じrequest identity内では同じclock snapshotを使う
 
-- 60分の準備猶予の個人最適化
-- 別端末同期
-- 過去の実績入力
-- scheduler全体の配置アルゴリズム変更
-- profile更新
+## 4. Test matrix
 
-## 完了条件
+- 朝・昼・夜の同日計画
+- 60分bufferとscheduler粒度の切上げ
+- day endを超えた場合の翌日移行
+- 日跨ぎ、週末、月跨ぎ、年跨ぎ
+- JSTとDSTを持つtimezone
+- explicit future/past start
+- non-consecutive allowed date
+- availability windowとearliest startの交差
+- fixed plan/timetable後のslot
+- insufficient capacity atomic rejection
+- fake clockによる再現可能性
 
-- [ ] 明示開始日時が現在より後なら、その日時を優先する
-- [ ] 明示開始日時がなければ、現在 + 60分以降だけを候補にする
-- [ ] 配置粒度へ正しく切り上げる
-- [ ] 経過済みの日付へ候補を生成しない
-- [ ] 過去の明示指定を黙って現在時刻へ置換しない
-- [ ] 同一request内で異なる現在時刻を再取得しない
-- [ ] 日跨ぎ、週末、timezoneの回帰テストを追加する
-- [ ] 既存の明示的な計画期間指定を壊さない
-- [ ] 個人profileが未設定でも同じ安全境界が働く
+## 5. 完了条件
 
-## 実装上の注意
+- [ ] request単位clock snapshotをapplication boundaryで作る
+- [ ] Stable V5 schedulerが同日現在時刻より前へ配置しない
+- [ ] 経過済み日付へ候補を生成しない
+- [ ] explicit future startを優先する
+- [ ] explicit past startを無言で補正しない
+- [ ] timezone/date boundary testを追加する
+- [ ] existing plan、availability、task date eligibilityを壊さない
+- [ ] legacy pathへ場当たり的な`new Date()`分岐を追加しない
+- [ ] focused/full/typecheck/build/diff checkがgreen
+- [ ] 実browserで現在時刻境界を確認する
 
-`new Date()`を複数層で直接呼ばず、request単位で解決した現在日時をcontextへ注入する。時間境界の判断と候補配置を分離し、schedulerに個別例外を散らさない。
+## 6. 対象外
+
+- buffer時間のpersonalization
+- cloud session sync
+- 過去実績の入力
+- scheduler全体のscore変更
+- user profile更新

@@ -1,3 +1,8 @@
+import {
+  WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING,
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  encodeWeeklyPlanningTraceDebugChunkBase64,
+} from '../../../../shared/weeklyPlanningTraceContract';
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
 import type { WeeklyPlanningStableV5DebugTraceEvent } from './weeklyPlanningStableV5DebugTrace';
 import {
@@ -21,8 +26,8 @@ import {
 
 const SESSION_RETENTION_DAYS = 90;
 const SNAPSHOT_RETENTION_DAYS = 30;
-const DEBUG_INLINE_MAX_BYTES = 350_000;
-const DEBUG_CHUNK_BYTES = 350_000;
+const DEBUG_INLINE_MAX_BYTES = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes;
+const DEBUG_CHUNK_BYTES = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes;
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const POST_CANONICALIZATION_STAGES = new Set([
   'semantic_canonicalization_evaluated',
@@ -152,6 +157,7 @@ function ensureSession(
   const restored = restoreSession(params);
   const next = restored ?? createSession(params, now);
   activeSessions.set(key, next);
+  if (!restored) persistSession(next);
   return next;
 }
 
@@ -180,7 +186,7 @@ function commitWorkingSession(
 }
 
 function persistSession(active: ActiveStableV5TraceSession): void {
-  saveWeeklyPlanningStableV5TraceCursor({
+  const saved = saveWeeklyPlanningStableV5TraceCursor({
     userId: active.session.userId,
     conversationId: active.session.logicalConversationId,
     session: active.session,
@@ -189,6 +195,13 @@ function persistSession(active: ActiveStableV5TraceSession): void {
     lastActivityMs: active.lastActivityMs,
     requestIds: active.requestIds,
   });
+  if (!saved) {
+    console.warn('[WeeklyPlanning Stable V5 Trace] cursor persistence failed', {
+      conversationId: active.session.logicalConversationId,
+      entryCount: active.session.entryCount,
+      turnCount: active.session.turnCount,
+    });
+  }
 }
 
 function commonEntry(
@@ -387,12 +400,12 @@ function debugEventPayloads(event: WeeklyPlanningStableV5DebugTraceEvent): unkno
     return {
       ...common,
       storage: 'base64_utf8_json_chunk',
-      encoding: 'base64-utf8-json',
+      encoding: WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING,
       chunkIndex,
       chunkCount,
       totalSerializedBytes: bytes.byteLength,
       chunkBytes: chunk.byteLength,
-      dataChunk: encodeBase64(chunk),
+      dataChunk: encodeWeeklyPlanningTraceDebugChunkBase64(encodeBase64(chunk)),
     };
   });
 }

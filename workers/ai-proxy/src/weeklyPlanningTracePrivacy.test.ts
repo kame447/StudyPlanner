@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  WEEKLY_PLANNING_TRACE_EVENT_TYPES,
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  encodeWeeklyPlanningTraceDebugChunkBase64,
+} from '../../../shared/weeklyPlanningTraceContract';
+import {
   WEEKLY_PLANNING_TRACE_POLICY_VERSION,
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningTracePlanningRangeBoundary,
@@ -55,6 +60,34 @@ function validTurnEntry(overrides: Record<string, unknown> = {}): Record<string,
     turnIndex: 0,
     ...overrides,
   };
+}
+
+function validDebugEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const base64 = 'A'.repeat(
+    Math.ceil(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes / 3) * 4,
+  );
+  const dataChunk = encodeWeeklyPlanningTraceDebugChunkBase64(base64);
+  return validTurnEntry({
+    kind: 'internal_event',
+    eventType: 'stable_v5_debug_stage',
+    payload: {
+      storage: 'base64_utf8_json_chunk',
+      debugSchemaVersion: 1,
+      debugSequence: 0,
+      stage: 'runtime_turn_input',
+      stageOccurredAt: OCCURRED_AT,
+      chunkIndex: 0,
+      chunkCount: 1,
+      totalSerializedBytes: WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes,
+      chunkBytes: WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes,
+      dataChunk,
+    },
+    severity: 'debug',
+    role: undefined,
+    content: undefined,
+    turnIndex: undefined,
+    ...overrides,
+  });
 }
 
 describe('weekly planning trace privacy boundary', () => {
@@ -170,6 +203,25 @@ describe('weekly planning trace privacy boundary', () => {
     'not-a-date',
   ])('rejects the invalid planning range boundary %s', (value) => {
     expect(isWeeklyPlanningTracePlanningRangeBoundary(value)).toBe(false);
+  });
+
+  it('accepts the shared Stable V5 debug event without truncating its chunk string', () => {
+    expect(WEEKLY_PLANNING_TRACE_EVENT_TYPES).toContain('stable_v5_debug_stage');
+    const entry = validDebugEntry();
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: validSession(),
+      entries: [entry],
+    }, { token: 'wpt_token', epoch: '100' }, {
+      sessionId: SESSION_ID,
+      logicalConversationId: CONVERSATION_ID,
+    }, OCCURRED_AT);
+
+    const payload = prepared.entries[0].payload as Record<string, unknown>;
+    const sourcePayload = entry.payload as Record<string, unknown>;
+    expect(prepared.entries[0].eventType).toBe('stable_v5_debug_stage');
+    expect(payload.dataChunk).toBe(sourcePayload.dataChunk);
+    expect(String(payload.dataChunk).length).toBeLessThan(4_000);
+    expect(String(payload.dataChunk).split('.').every((run) => run.length <= 20)).toBe(true);
   });
 
   it('accepts production date-only and 24:00 range values at the server write boundary', () => {

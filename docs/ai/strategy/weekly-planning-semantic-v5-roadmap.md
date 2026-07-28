@@ -1,254 +1,241 @@
-# 週間計画 汎用意味モデル v5 ロードマップ
+# 週間計画 汎用意味モデル Stable V5 ロードマップ
 
 Status: canonical / active post-runtime-integration queue
-最終更新: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
+最終更新: 2026-07-28
 
 - [Runtime trial contract](../weekly-planning-stable-v5-runtime-trial-contract.md)
 - [Current contract](../weekly-planning-current-contract-v5.md)
 - [Implementation status](weekly-planning-semantic-stable-v5-implementation-status.md)
-- [Stable V5 migration plan](weekly-planning-semantic-stable-v5-migration-plan.md)
-- [Schema registry](../../architecture/weekly-planning-semantic-schema-registry.md)
-- [Trace continuity七視点監査](../audits/20260724-stable-v5-trace-continuity/final-overseer.md)
-
-この文書はsemantic V5移行streamのqueue正本である。Stable V5 direct moduleとfeature-flagged runtime connectionはmainへ導入済みである。現在の中心課題はPR #83のtrace continuity検証、real-eval、browser roleplay、shadow、migration、default cutoverである。
+- [Migration plan](weekly-planning-semantic-stable-v5-migration-plan.md)
+- [Active-task inventory](../audits/20260728-weekly-planning-active-task-inventory.md)
+- [Verification/cutover task](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+- [Trace empty-session completion](../tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
 
 ## 1. 到達済みruntime
 
 ```text
 自然文
 → Stable V5 AI Semantic Normalizer
+→ strict runtime validation / max one repair
 → WeeklyPlanningSemanticDocumentV5
-→ direct runtime validation
 → direct lifecycle canonicalizer
 → WeeklyPlanningFactGraphV5
 → active fact read view
 → generic scheduler input
-→ readiness / acknowledgement / question policy
-→ deterministic preview scheduler
-→ preview / approval / save
+→ deterministic readiness / dialogue / preview scheduler
+→ existing preview / approval / Plan save
 ```
 
-browser内ではconversation、PlanningState、Fact Graph、preview、draftを一体復元する。Graph更新はrequest単位にstageし、PlanningState commit受理後だけfinalizeする。default runtimeはlegacyである。
+Feature flagで既存UIへ接続済み。browser内ではconversation、PlanningState、Fact Graph、preview、draftを一体復元する。Graph更新はrequest単位にstageし、PlanningState commit受理後だけfinalizeする。default runtimeはlegacyである。
 
 ## 2. Gate status
 
-### V5-A: documents and schema generations
+### V5-A: schema/document generation
 
 Status: complete
 
-- architecture V5、schema overview、availability architecture、current contract、migration plan、roadmap、schema registryを正本化した。
-- pre-V5、Alpha 1、Alpha 2、Stable V5、Fact Graph V1/V2/V5の責務と廃止条件を分離した。
-- Stable識別子を確定した。
+- Stable semantic document、JSON Schema、validator、normalizer
+- generic task/component/workload/effort/temporal/recurrence/relation
+- availability、fixed commitment、source request
+- non-consecutive date、weekday set、task date eligibility
+- provider failure fail closed、parser fallback禁止
 
-### V5-B: direct Stable semantic document
-
-Status: runtime connected
-
-- generic task、component、workload、effort、temporal、recurrence、relationを分離した。
-- constraint level、availability declaration、named time period、source requestを扱う。
-- non-consecutive dateとweekday集合をclosed schemaで扱う。
-- Stable schema、prompt、validator、normalizerをAlpha projectionなしで実装した。
-- 最大一回repair、provider failure fail-closed、parser fallbackなしを実装した。
-
-Remaining:
-
-- full automated verificationの継続運用
-- Stable V5 actual AI real-eval
-
-### V5-C: Fact Graph lifecycle and transaction
-
-Status: runtime connected
-
-- direct Fact Graph V5、formal ID、revision、atomic canonicalizationを実装した。
-- active / superseded / removed lifecycleを実装した。
-- correction / decision transactionを実装した。
-- active read view、resolver、scheduler inputへ接続した。
-- staged GraphとPlanningState commitの原子的境界を実装した。
-
-Remaining:
-
-- proposal decisionの外部proposal ledgerへの実適用
-- 依存fact一括終了transaction
-- server repository persistence
-
-### V5-D: dialogue and scheduler
-
-Status: runtime connected
-
-- accepted fact diff、readiness、質問選択、authorization、preview gateをdeterministic coreへ置いた。
-- existing plan、timetable、fixed commitment、availability、task date eligibilityをschedulerへ統合した。
-- partial preview禁止、buffer、split、non-study PlanTypeを実装した。
-
-Remaining:
-
-- accepted fact acknowledgementのgrounding回帰強化
-- exam/general rendererの最終統合
-- full browser roleplay
-
-### V5-E: browser persistence and identity
-
-Status: browser persistence implemented / trace continuity fixed on PR #83 branch / verification pending
-
-- owner・week・conversation拘束のStable V5 envelopeを実装した。
-- conversation、Graph、preview、draftを一体復元する。
-- pending turn / approvalの半端なsnapshotを保存しない。
-- controllerは復元message IDとPlanningState revisionから次turn/request sequenceの単調下限を再構成する。
-- `clear_conversation`後にmessagesが空でも同じconversation内のrequest IDを再利用しない。
-- traceはmetadata-only cursorから同じlocal session、entry sequence、turn index、recent request dedupeへ復帰する。
-- 30分idleをphysical trace session終了条件から除外した。
-- append失敗時にsequenceを消費しないtransactional trace writeを実装した。
-- server-issued handleをowner・local sessionに拘束して保存し、remote repository再生成後も再利用する。
-- structural rejection時だけhandleを再発行し、一時的network failureでは同じcanonical payloadを再送する。
-
-Remaining:
-
-- focused/full/typecheck/buildの成功証跡
-- branch previewでreload・1時間idle・clear後reloadを実操作
-- admin exportが一つのsessionになることの確認
-- cross-tab同時実行のbrowser-wide sequence reservation
-- abrupt page close時の最終trace durability
-- server / cross-device Graph persistence
-
-### V5-F: external source acquisition
-
-Status: pure module complete / production adapter remaining
-
-- `success(events)`と`failure(reason)`へ限定した。
-- empty successとfailureを区別する。
-- partial resultを上位へ渡さない。
-- temporary failureを自動再試行する。
-- owner mismatchまたは不正eventでimport全体を拒否する。
-
-Remaining:
-
-- calendar production adapter
-- operational retry metrics
-
-### V5-G: real-eval and shadow
-
-Status: harness/module implemented / production invocation not connected
-
-- Stable V5専用real-eval harnessを実装した。
-- version付きread-only shadow evaluatorを実装した。
-- raw response、raw conversation、semantic本文、external event本文をreportへ保存しない。
-
-Remaining:
+Remaining adoption check:
 
 - actual AI real-eval
-- sampling、retention、timeout、privacy gate
-- production shadow invocation
+
+### V5-B: Fact Graph lifecycle/transaction
+
+Status: runtime connected
+
+- active/superseded/removed lifecycle
+- formal IDs/revision/diff
+- request-scoped staged Graph
+- active read viewとscheduler input
+- correction/decision transaction modules
+
+Remaining:
+
+- proposal decisionのproduction ledger適用
+- dependent fact batch termination
+- cloud/server Graph repository
+- old-state migration decoder
+
+### V5-C: dialogue/scheduler
+
+Status: runtime connected
+
+- deterministic missing priority/question policy
+- explicit create authorization
+- accepted fact diff
+- preview gate
+- existing plan/timetable/fixed commitment/availability
+- task date eligibility
+- partial preview禁止
+- insufficient capacity atomic rejection
+
+Remaining:
+
+- request時刻より前へ配置しないhard boundary
+- accepted fact acknowledgement grounding
+- full browser roleplay
+- external source production adapter
+
+### V5-D: application/persistence
+
+Status: local persistence connected
+
+- conversation/Graph/messages/preview/draft local envelope
+- owner/week/conversation/revision validation
+- request/turn/controller sequence recovery
+- clear conversationとreset sessionの分離
+- stale async result discard
+- application lifecycle/turn/side-effect separation
+
+Remaining:
+
+- cross-tab sequence coordination
+- cloud/cross-device repository
+- offline conflict/reconciliation
+- final trace durable outbox
+
+### V5-E: quality trace
+
+Status: implementation and automated verification complete / post-merge browser verification pending
+
+Completed:
+
+- frontend/Worker event catalog drift修正
+- debug document/string/token limits整合
+- request entry/byte batching
+- zero-count identity persistence
+- server handle reuse after failed append
+- empty artifactの未export除外
+- focused 46 tests passed
+- trace full 79 tests passed
+- typecheck、typecheck:build、production build、diff check passed
+
+Remaining:
+
+- main deploy後のsame-conversation admin viewer確認
+- Issue #89 close判断
+- production secret/TTL/Rules/Worker rollout
+
+### V5-F: external source
+
+Status: pure loader complete / production adapter pending
+
+- atomic success/failure
+- empty success区別
+- bounded retry
+- partial result非公開
+- owner/shape validation
+
+Remaining:
+
+- production calendar adapter
+- pagination/auth/metrics
+- browser verification
+
+### V5-G: real-eval/shadow
+
+Status: harness exists / Stable V5 actual execution pending
+
+Remaining:
+
+- production schemaによるactual AI eval
+- date、short answer、correction、availability、source、authorization、preview coverage
+- sampling/timeout/retention/privacy gate
+- read-only production shadow invocation
 
 ### V5-H: persisted migration
 
 Status: design documented / implementation not started
 
-- old envelope decoder
+- versioned old envelope decoder
 - deterministic migration input
-- migration metadata
 - idempotent atomic persist
 - dry-run report
 - rollback fixture
 
-raw conversationからAIでSemanticDocumentを再生成してmigrationしない。
+raw conversationをAIへ再投入してSemanticDocumentを作り直さない。
 
-### V5-I: default cutover and legacy deletion
+### V5-I: default cutover/legacy deletion
 
 Status: not started
 
 - cutover rehearsal
-- session generation migration
 - rollback verification
 - default runtime decision
 - observation period
-- old prompt / command / exam adapter / Alpha runtime依存削除
+- legacy runtime dependency deletion
 
-## 3. 現在の進捗
-
-```text
-V5-A documents / schema registry       complete
-V5-B direct semantic runtime           connected
-V5-C Fact Graph lifecycle              connected
-V5-D dialogue / scheduler              connected
-V5-E browser persistence               implemented
-V5-E trace continuity                  fixed on PR #83 branch / verification pending
-V5-F external source                   module complete / adapter pending
-V5-G real-eval / shadow                harness ready / execution pending
-V5-H persisted migration               not started
-V5-I default cutover                    not started
-```
-
-## 4. 現在の依存順
+## 3. Current execution order
 
 ```text
-PR #83 focused trace tests
-→ full Vitest / typecheck / production build
-→ branch preview reload・idle・clear後再送
-→ admin export continuity確認
+current-time hard boundary
 → Stable V5 actual AI real-eval
-→ full browser roleplay
-→ read-only production shadow
-→ old state migration decoder / dry-run
-→ server / cross-device persistence decision
-→ cutover rehearsal / rollback verification
+→ browser roleplay
+→ external source production adapter verification
+→ accepted-fact grounding
+→ old-state migration/dry-run
+→ read-only shadow
+→ rollback rehearsal
 → default cutover decision
 → observation period
-→ legacy runtime deletion
+→ legacy deletion
 ```
 
-## 5. 直近priority
+Cloud path:
 
-### P0: trace continuity verification
+```text
+cloud conversation/Graph repository
+→ cross-device conflict handling
+→ proposal/observation persistence
+→ personalization rollout
+```
 
-- controller、reducer、traceを跨ぐ二turn結合test
-- runtime memory loss後の同一sessionと連続sequence
-- 1時間idle後の同一session
-- clear conversation + reload後のrequest ID非再利用
-- remote repository再生成後のserver handle再利用
-- stale handleとtransient append failure
-- focused test、full test、typecheck、build
-- browserでreload、idle、clear後再送
-- admin exportが一つのsessionになることを確認
+Parallel production operation:
 
-### P1: dialogue grounding
+```text
+trace production deploy + Issue #89 post-merge verification
+```
 
-第二turnでacceptedした「院試」「ハードウェア」「OSnetwork」等をacknowledgementへ反映し、同じ一般質問だけを繰り返さない回帰を追加する。
+## 4. Current active records
 
-### P1: cross-tab coordination
+Semantic V5 streamで参照するroot task:
 
-同一owner・week・conversationを複数tabで同時操作した場合にrequest、turn、trace sequenceを一意に予約する。Web Locksまたはserver-authoritative reservationを比較し、fallback時のfail-closed動作を決める。
+- [current-time boundary](../tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
+- [verification/migration/cutover](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+- [runtime followups](../tasks/20260724-weekly-planning-runtime-followups.md)
+- [cloud session store](../tasks/20260716-weekly-planning-synced-conversation-session-store.md)
+- [external source production adapter](../tasks/20260728-weekly-planning-external-source-production-adapter.md)
+- [trace production operations](../tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
 
-### P1: final trace durability
+次のrecordsはcurrent root queueではない。
 
-turn commit直後にpageを閉じた場合も最終traceを失わないdelivery境界を設計する。`sendBeacon`、service worker queue、server-side ingestion queueを比較し、会話commitをtrace成功へ同期させない方針を維持する。
+- `tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md`
+- `tasks/superseded/20260722-weekly-planning-generic-semantic-v5-migration.md`
+- `tasks/superseded/20260722-weekly-planning-v5-date-real-eval.md`
+- `tasks/closed/20260722-weekly-planning-specific-date-and-personalization-profile.md`
+- `tasks/closed/20260722-weekly-planning-external-source-atomic-retry.md`
 
-### P2: actual AI real-eval / roleplay
+## 5. Default cutover禁止条件
 
-Stable V5専用schemaで実AIを実行し、date、short answer、correction、availability、source request、authorization、previewまで確認する。
+次のいずれかが残る場合、defaultをStable V5へ変更しない。
 
-### P3: migration / shadow
+- parser fallbackが存在する
+- AIがmissing/readiness/scheduler/saveを直接決定する
+- GraphとPlanningState commitが非原子的
+- request/current-time identityが不安定
+- current時刻より前へ配置する
+- same conversation traceが実環境で分裂またはappendされない
+- external failureを予定0件として扱う
+- actual AI eval未実施
+- browser roleplay未実施
+- migration/rollback未検証
+- unresolved blocker/major audit finding
 
-old state decoderとdry-run fixtureを実装し、real-eval後にread-only shadowを接続する。
+## 6. 完了記録の扱い
 
-## 6. default cutover禁止条件
-
-次のいずれかが残る場合、default runtimeをStable V5へ切り替えない。
-
-- AIがinternal command、missing、readiness、preview、scheduler、saveを決める。
-- parser fallbackが復活する。
-- GraphとPlanningStateのcommitが非原子的である。
-- owner、week、conversation、preview freshnessを検証しない。
-- conversation復元後にturn/request/message IDを再利用する。
-- clear後のreloadでrequest IDを再利用する。
-- 同一conversationのtraceがreload、idle、repository再生成で分裂する。
-- append failureがsequence gapを作る。
-- external failureを予定0件として扱う。
-- actual AI real-eval、full browser roleplay、rollback verification、七視点監査が未完了である。
-
-## 7. current active records
-
-- [20260724-weekly-planning-runtime-followups.md](../tasks/20260724-weekly-planning-runtime-followups.md)
-- [20260722-weekly-planning-external-source-atomic-retry.md](../tasks/20260722-weekly-planning-external-source-atomic-retry.md)
-- [20260722-weekly-planning-specific-date-and-personalization-profile.md](../tasks/20260722-weekly-planning-specific-date-and-personalization-profile.md)
-
-完了済みtaskは`tasks/closed/`、契約変更で実行対象外になったtaskは`tasks/superseded/`へ移す。
+feature implementation、runtime connection、verification、production adoptionを一つのtaskへ混ぜない。完了済みfoundationはclosed、別current trackerへ吸収した旧work unitはsupersededへ置く。rootには現在独立して実行するtaskだけを置く。

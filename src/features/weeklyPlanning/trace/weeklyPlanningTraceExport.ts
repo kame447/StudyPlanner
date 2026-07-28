@@ -130,10 +130,11 @@ function stringValue(value: unknown): string | null {
 }
 
 function decodeBase64(value: string): Uint8Array {
-  if (value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+  const normalized = value.replace(/\./g, '');
+  if (normalized.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
     throw new Error('invalid-base64');
   }
-  const binary = atob(value);
+  const binary = atob(normalized);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);

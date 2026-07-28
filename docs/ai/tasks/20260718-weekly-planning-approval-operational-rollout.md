@@ -1,39 +1,85 @@
-# 週間計画approval永続化を本番運用へ展開する
+# 週間計画approval永続化をproduction運用へ展開する
 
-Status: planned
-Priority: P1
+Status: active / implementation verified, production operation pending
+Priority: P1 operations
 Requirement IDs: DA-PREVIEW-001
-Updated: 2026-07-18
+Updated: 2026-07-28
 Depends on: `closed/20260716-weekly-planning-approval-persistence-and-idempotency.md`
 
-## 1. 目的
+## 1. 現在地
 
-PR #60、#62、#63で実装・自動検証したserver-side idempotencyを、本番Firestore設定と実環境検証まで完了させる。
+PR #60、#62、#63、#65で次を実装・自動検証済み。
 
-## 2. Scope
+- approval専用save boundary
+- deterministic Plan ID
+- server transaction idempotency
+- operation/item ledger
+- progress monotonicity
+- failed item recovery
+- owner/session/preview revision binding
+- restored draft approval lifecycle
+- local owner-bound ledger
+- save side effect isolation
 
-- `firestore.rules`を本番projectへdeployする。
-- 次のcollection groupで`expiresAt` TTL policyを有効化する。
+未完了はproduction Firestore設定とmulti-client実環境検証である。module test成功をoperational deploymentへ読み替えない。
+
+## 2. Production scope
+
+- `firestore.rules`を対象projectへdeployしrevision/日時を記録
+- TTL policyを次のcollection groupでenable
   - `weekly_planning_approval_operations`
   - `weekly_planning_approval_items`
-- Firestore Emulatorでowner、identity、進捗単調性、同時transaction、復旧、fail-closed rulesを検証する。
-- 2tab・2端末相当で同じapproval itemを同時保存し、Planが一件だけになることを確認する。
-- transaction途中失敗、finalize失敗、reload、storage消去後の再試行を確認する。
-- operation/item双方がTTL対象となり、親だけ削除されてitemが残らないことを確認する。
+- Firestore Emulator rules test
+- transaction concurrency/integration test
+- 2tab・2端末相当の同時approval
+- transaction途中失敗、response loss、finalize失敗、reload、localStorage消去後retry
+- operationだけTTL削除されitemが残る、または逆のorphanを防ぐretention contract
+- account deletion cascade
 
-## 3. Acceptance criteria
+## 3. Security・consistency contract
 
-- 本番rules deployのproject、revision、日時が記録されている。
-- 両collection groupのTTL policyがenabledである。
-- Emulator rules testとtransaction integration testがCIでgreenである。
-- multi-client実環境確認でduplicate Planが発生しない。
-- failed item、missing Plan、ownership mismatchがfail closedとなる。
-- operationally deployedと記載するのは上記完了後だけとする。
+- owner以外のoperation/item read/writeを拒否
+- preview/session/revision mismatchをfail closed
+- operation progressを後退させない
+- same item retryは同じdeterministic Plan IDへ収束
+- repositoryが返した実Plan IDをledgerへ記録
+- client ledgerをserver authorityの代替にしない
+- failed itemをsuccessとしてfinalizeしない
+- missing Planまたはidentity mismatchを自動修復名目で別Planへ付け替えない
 
-## 4. Out of scope
+## 4. Test matrix
 
-- approval domainの再設計
-- Plan provenance schema変更
-- local ledgerの削除
+- same item simultaneous save
+- different items same operation
+- same item different tabs/devices
+- response loss after Plan commit
+- operation update failure
+- item finalize failure
+- reload/local cache loss
+- owner switch
+- stale preview
+- pending assumption
+- Rules deny
+- TTL and orphan cleanup
+- account deletion
+
+## 5. 完了条件
+
+- [ ] production Rules deploy記録を保存
+- [ ] operation/item TTLをenable
+- [ ] Emulator rules/transaction testsをCIへ追加
+- [ ] 2tab・2端末でduplicate Planが発生しない
+- [ ] response loss/retryが同じPlanへ収束
+- [ ] failed/missing/owner mismatchがfail closed
+- [ ] account deletionとTTL orphan処理を確認
+- [ ] focused/full/typecheck/build/diff checkがgreen
+- [ ] production runbookを更新
+- [ ] 実環境確認後だけ`operationally deployed`と記録
+
+## 6. 対象外
+
+- approval domain再設計
+- Plan provenance schemaの全面変更
 - personalization profile
-- trace privacy rollout
+- quality trace rollout
+- local ledger即時削除

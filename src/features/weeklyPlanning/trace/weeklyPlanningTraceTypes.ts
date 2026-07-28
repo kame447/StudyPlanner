@@ -1,3 +1,8 @@
+import {
+  WEEKLY_PLANNING_TRACE_EVENT_TYPES,
+  type WeeklyPlanningTraceEventTypeContract,
+} from '../../../../shared/weeklyPlanningTraceContract';
+
 export const WEEKLY_PLANNING_TRACE_SCHEMA_VERSION = 1;
 
 export type WeeklyPlanningTraceSessionStatus =
@@ -12,37 +17,7 @@ export type WeeklyPlanningTraceResponseSource =
   | 'rules'
   | 'system';
 
-export type WeeklyPlanningTraceEventType =
-  | 'user_turn_received'
-  | 'interpreter_started'
-  | 'interpreter_completed'
-  | 'candidate_accepted'
-  | 'candidate_rejected'
-  | 'assumption_proposed'
-  | 'assumption_accepted'
-  | 'assumption_rejected'
-  | 'assumption_superseded'
-  | 'correction_applied'
-  | 'correction_rejected'
-  | 'relative_constraint_resolved'
-  | 'relative_constraint_rejected'
-  | 'readiness_evaluated'
-  | 'feasibility_evaluated'
-  | 'dialogue_planned'
-  | 'fallback_used'
-  | 'preview_gate_evaluated'
-  | 'preview_generated'
-  | 'preview_rejected_stale'
-  | 'preview_rejected_pending_assumption'
-  | 'draft_promoted'
-  | 'approval_started'
-  | 'approval_item_saved'
-  | 'approval_item_failed'
-  | 'approval_completed'
-  | 'request_cancelled'
-  | 'stale_async_result_discarded'
-  | 'stable_v5_debug_stage'
-  | 'trace_write_failed';
+export type WeeklyPlanningTraceEventType = WeeklyPlanningTraceEventTypeContract;
 
 export type WeeklyPlanningTraceSeverity = 'debug' | 'info' | 'warn' | 'error';
 
@@ -144,38 +119,9 @@ export interface WeeklyPlanningTraceRepository {
   listEntries(userId: string, sessionId: string): Promise<WeeklyPlanningTraceEntry[]>;
 }
 
-const EVENT_TYPES = new Set<WeeklyPlanningTraceEventType>([
-  'user_turn_received',
-  'interpreter_started',
-  'interpreter_completed',
-  'candidate_accepted',
-  'candidate_rejected',
-  'assumption_proposed',
-  'assumption_accepted',
-  'assumption_rejected',
-  'assumption_superseded',
-  'correction_applied',
-  'correction_rejected',
-  'relative_constraint_resolved',
-  'relative_constraint_rejected',
-  'readiness_evaluated',
-  'feasibility_evaluated',
-  'dialogue_planned',
-  'fallback_used',
-  'preview_gate_evaluated',
-  'preview_generated',
-  'preview_rejected_stale',
-  'preview_rejected_pending_assumption',
-  'draft_promoted',
-  'approval_started',
-  'approval_item_saved',
-  'approval_item_failed',
-  'approval_completed',
-  'request_cancelled',
-  'stale_async_result_discarded',
-  'stable_v5_debug_stage',
-  'trace_write_failed',
-]);
+const EVENT_TYPES = new Set<WeeklyPlanningTraceEventType>(
+  WEEKLY_PLANNING_TRACE_EVENT_TYPES,
+);
 
 const SNAPSHOT_REASONS = new Set<WeeklyPlanningTraceSnapshotReason>([
   'turn_completed',

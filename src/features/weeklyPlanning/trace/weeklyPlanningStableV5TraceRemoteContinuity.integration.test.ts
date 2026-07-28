@@ -5,6 +5,7 @@ import {
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import type {
   WeeklyPlanningTraceApiClient,
+  WeeklyPlanningTraceAppendInput,
   WeeklyPlanningTraceServerHandle,
   WeeklyPlanningTraceSessionStartInput,
 } from './weeklyPlanningTracePrivacyClient';
@@ -21,8 +22,9 @@ const SERVER_CONVERSATION_ID = 'weekly-conversation-223e4567-e89b-52d3-a456-4266
 
 function clientHarness() {
   const startCalls: WeeklyPlanningTraceSessionStartInput[] = [];
-  const appendCalls: Record<string, unknown>[] = [];
+  const appendCalls: WeeklyPlanningTraceAppendInput[] = [];
   const handles = new Map<string, WeeklyPlanningTraceServerHandle>();
+  let failuresRemaining = 0;
   const client: WeeklyPlanningTraceApiClient = {
     async getPolicyStatus() {
       return { policyVersion: 'test', accepted: true, acceptedAt: '2026-07-24T00:00:00.000Z' };
@@ -42,6 +44,10 @@ function clientHarness() {
       return handle;
     },
     async append(payload) {
+      if (failuresRemaining > 0) {
+        failuresRemaining -= 1;
+        throw new Error('injected append failure');
+      }
       appendCalls.push(structuredClone(payload));
     },
     async deleteCurrentUserTrace() {
@@ -51,7 +57,14 @@ function clientHarness() {
     async listAdminEntries() { return []; },
     async archiveAdminSession() {},
   };
-  return { client, startCalls, appendCalls };
+  return {
+    client,
+    startCalls,
+    appendCalls,
+    failNext(count = 1) {
+      failuresRemaining = count;
+    },
+  };
 }
 
 function input(requestSequence: number) {
@@ -107,11 +120,8 @@ describe('Stable V5 trace remote continuity', () => {
     }));
 
     expect(harness.appendCalls).toHaveLength(2);
-    const first = harness.appendCalls[0] as {
-      session: { id: string; logicalConversationId: string };
-      entries: Array<{ sequence: number; sessionId: string; logicalConversationId: string }>;
-    };
-    const second = harness.appendCalls[1] as typeof first;
+    const first = harness.appendCalls[0];
+    const second = harness.appendCalls[1];
     expect(second.session.id).toBe(first.session.id);
     expect(second.session.logicalConversationId).toBe(first.session.logicalConversationId);
     expect(second.entries[0].sequence).toBe(first.entries.length);
@@ -119,5 +129,35 @@ describe('Stable V5 trace remote continuity', () => {
     expect(second.entries.every(
       (entry) => entry.logicalConversationId === first.session.logicalConversationId,
     )).toBe(true);
+  });
+
+  it('does not issue a second session after start succeeds but the first append fails', async () => {
+    const harness = clientHarness();
+    // Remote repository retries transient append once, so fail both attempts.
+    harness.failNext(2);
+    setWeeklyPlanningTraceRepositoryForTests(
+      createRemoteWeeklyPlanningTraceRepository(harness.client),
+    );
+
+    await recordWeeklyPlanningStableV5TurnTrace(input(1));
+    expect(harness.startCalls).toHaveLength(1);
+    expect(harness.appendCalls).toHaveLength(0);
+    const firstIdempotencyKey = harness.startCalls[0].idempotencyKey;
+
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    setWeeklyPlanningTraceRepositoryForTests(
+      createRemoteWeeklyPlanningTraceRepository(harness.client),
+    );
+    await recordWeeklyPlanningStableV5TurnTrace(input(1));
+
+    expect(harness.startCalls).toHaveLength(1);
+    expect(harness.startCalls[0].idempotencyKey).toBe(firstIdempotencyKey);
+    expect(harness.appendCalls).toHaveLength(1);
+    expect(harness.appendCalls[0].session).toMatchObject({
+      id: SERVER_SESSION_ID,
+      logicalConversationId: SERVER_CONVERSATION_ID,
+      entryCount: harness.appendCalls[0].entries.length,
+    });
+    expect(harness.appendCalls[0].entries[0].sequence).toBe(0);
   });
 });

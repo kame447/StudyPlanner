@@ -1,32 +1,30 @@
 # weeklyPlanning documentation index
 
 Status: canonical / active
-最終更新: 2026-07-24
-Reviewed main baseline: `a669b166db30fa3f355371c089062eb5cf4e3987`
-Current change: Draft PR #83 trace conversation continuity
+最終更新: 2026-07-28
+Current branch: `agent/trace-empty-session-seven-audit`
 
 ## 1. 現行判断に使用する文書
 
 | document | role |
 | --- | --- |
-| [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md) | Stable V5の実環境接続、runtime mode、browser persistence、conversation identity、trace continuity、rollbackの正本 |
-| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | semantic V5とStable V5 trialの最優先contract。AI/core責務、汎用task、scheduler、storage、trace、移行規則 |
+| [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md) | Stable V5 runtime mode、browser persistence、conversation identity、rollbackの正本 |
+| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | AI/core責務、semantic V5、scheduler、storage、traceの最優先contract |
 | [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | request ownership、preview、approval、trace、personalization、cloud sessionのstatus overlay |
-| [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md) | semantic V5以外を含むcurrent queue、priority、運用gate |
-| [../architecture/weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md) | pre-V5、Alpha、Stable V5、Fact Graph世代、runtime依存、廃止条件の正本 |
-| [strategy/weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md) | direct Stable V5統合済み範囲、残るmigration、shadow、rollback、cutover gate |
-| [strategy/weekly-planning-semantic-stable-v5-implementation-status.md](strategy/weekly-planning-semantic-stable-v5-implementation-status.md) | 現在の実装到達点、browser persistence、trace continuity、test coverage、未完了範囲 |
-| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | runtime integration後のsemantic V5 queue、依存順、default cutover禁止条件 |
-| [../architecture/weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md) | Stable V5意味文書とscheduler入力の構造 |
-| [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md) | SemanticDocument、Fact Graph、dialogue、generic work item architecture |
-| [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | availability、fixed commitment、external source、scheduler境界 |
-| [../architecture/weekly-planning-conversation-trace.md](../architecture/weekly-planning-conversation-trace.md) | trace event、privacy、retention、admin exportの基礎契約。Stable V5 identityはruntime contractを優先 |
-| [audits/20260724-stable-v5-trace-continuity/final-overseer.md](audits/20260724-stable-v5-trace-continuity/final-overseer.md) | 同一conversationのtrace分裂に関する七視点監査と最終gate |
-| [tasks/20260724-weekly-planning-runtime-followups.md](tasks/20260724-weekly-planning-runtime-followups.md) | cross-tab、dialogue grounding、trace source semantics、final-turn durabilityのactive follow-up |
-| [../testing/weekly-planning-roleplay-test-plan.md](../testing/weekly-planning-roleplay-test-plan.md) | scenario IDとstrict contract |
-| [../testing/weekly-planning-roleplay-status.md](../testing/weekly-planning-roleplay-status.md) | module、production、自動検証、browser coverageのstatus |
+| [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md) | 全体current queueと依存順 |
+| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | Stable V5 verification、migration、shadow、cutover queue |
+| [strategy/weekly-planning-semantic-stable-v5-implementation-status.md](strategy/weekly-planning-semantic-stable-v5-implementation-status.md) | Stable V5実装到達点と未完了gate |
+| [../architecture/weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md) | semantic/Fact Graph世代と廃止条件 |
+| [../architecture/weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md) | Stable V5 documentとscheduler入力構造 |
+| [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md) | Fact Graph、dialogue、generic work item architecture |
+| [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | availability、fixed commitment、external source境界 |
+| [../architecture/weekly-planning-conversation-trace.md](../architecture/weekly-planning-conversation-trace.md) | trace privacy、retention、admin exportの基礎契約 |
+| [audits/20260727-stable-v5-trace-empty-session-seven-audit.md](audits/20260727-stable-v5-trace-empty-session-seven-audit.md) | 空session重複の七視点監査 |
+| [audits/20260728-weekly-planning-active-task-inventory.md](audits/20260728-weekly-planning-active-task-inventory.md) | root task 18件の全件分類と配置正本 |
+| [../testing/weekly-planning-roleplay-test-plan.md](../testing/weekly-planning-roleplay-test-plan.md) | roleplay scenarioとstrict contract |
+| [../testing/weekly-planning-roleplay-status.md](../testing/weekly-planning-roleplay-status.md) | module、production、自動、browser verification status |
 
-v4以前のarchitecture、旧task、過去PR本文はhistorical sourceである。typed command、deterministic parser fallback、exam専用state、Stable V5 production未接続、Graph memory-only、30分idleでtraceを分割する記述が現行文書と競合する場合は採用しない。
+v4以前のarchitecture、旧task、過去PR本文はhistorical sourceである。現行contractと競合する記述をcurrent判断へ使用しない。
 
 ## 2. 読む順序
 
@@ -35,76 +33,83 @@ weekly-planning-stable-v5-runtime-trial-contract.md
 → weekly-planning-current-contract-v5.md
 → weekly-planning-current-contract-status.md
 → weekly-planning-semantic-schema-registry.md
-→ weekly-planning-semantic-stable-v5-migration-plan.md
 → weekly-planning-semantic-stable-v5-implementation-status.md
 → weekly-planning-semantic-v5-roadmap.md
 → weekly-planning-roadmap.md
-→ architecture V5 documents
-→ active task / audit
-→ historical records
+→ active-task-inventory.md
+→ 対象active task
+→ historical closed/superseded records
 ```
 
-## 3. current baseline
+## 3. active task root
 
-実装済み:
+`docs/ai/tasks/`直下のtask recordは次の8件だけをcurrent execution targetとする。
+
+### P0-P1 safety / adoption
+
+1. [20260716-weekly-planning-midweek-current-time-start-boundary.md](tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
+   - current time以前へ配置し得るhard-safety gap
+2. [20260728-weekly-planning-stable-v5-verification-and-cutover.md](tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+   - actual AI eval、browser roleplay、migration、shadow、rollback、cutover
+3. [20260724-weekly-planning-runtime-followups.md](tasks/20260724-weekly-planning-runtime-followups.md)
+   - cross-tab、grounding、final trace durability、source semantics、reset cleanup
+
+### P1-P2 production boundaries
+
+4. [20260716-weekly-planning-synced-conversation-session-store.md](tasks/20260716-weekly-planning-synced-conversation-session-store.md)
+   - cloud authoritative conversation/Fact Graph repository
+5. [20260728-weekly-planning-external-source-production-adapter.md](tasks/20260728-weekly-planning-external-source-production-adapter.md)
+   - verified atomic loaderのproduction adapter接続
+6. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
+   - secret、deploy、TTL、delete、access、pagination、decoder、Issue #89 post-merge確認
+7. [20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
+   - Rules、TTL、Emulator、multi-client verification
+
+### Later personalization
+
+8. [20260728-weekly-planning-personalization-rollout.md](tasks/20260728-weekly-planning-personalization-rollout.md)
+   - observation、reset validity、time decay、score、governance
+
+`codex-task-guide.md`と`task-brief-template.md`はtask recordではないためrootに置く。
+
+## 4. 直近closed record
+
+[closed/20260727-weekly-planning-trace-empty-session-recovery.md](tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
+
+最終確認:
 
 ```text
-Stable V5 direct schema / prompt / validator / normalizer
-Fact Graph V5 lifecycle and direct canonicalizer
-active read view / generic scheduler input
-readiness / deterministic dialogue / preview scheduler
-existing preview / approval / Plan save integration
-request-scoped staged Graph atomic commit
-owner-week-conversation browser persistence
-conversation / Graph / preview / draft restoration
-Stable V5 trace repository integration
-controller turn/request sequence recovery after reload
-PlanningState revisionによるclear後のID再利用防止
-trace session / entry sequence continuity after reload
-1時間idle後の同一trace continuity
-server-issued handle continuity after repository recreation
-write failure retry without sequence consumption
+focused: 5 files / 46 tests passed
+trace full: 18 files / 79 tests passed
+typecheck: passed
+typecheck:build: passed
+production build: passed
+git diff --check: passed
 ```
 
-default runtimeはlegacyである。Stable V5はfeature-flagged trialである。
+main deploy後の管理者viewer確認だけをtrace production operations taskとIssue #89へ移管した。
 
-未完了:
+## 5. placement rule
 
 ```text
-automated verification成功証跡
-branch previewでreload・idle・clear後再送確認
-admin export確認
-cross-tab sequence coordination
-abrupt page close時の最終trace durability
-accepted fact dialogue grounding
-Stable V5 actual AI real-eval
-full browser roleplay
-production shadow invocation
-server / cross-device Graph persistence
-old state migration decoder / dry-run
-default cutover
-legacy runtime deletion
+実装・必要検証が完了
+→ tasks/closed/
+
+未完了だが別の現行taskへ統合済み
+→ tasks/superseded/
+
+現在独立して実行する問題
+→ tasks/ root
 ```
 
-## 4. active queue
-
-semantic V5のqueueと依存順は[weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)、全体queueは[weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)を正とする。直近はPR #83のfocused test、full test、typecheck、build、branch preview export verificationである。
-
-完了済みtaskは`tasks/closed/`、契約変更で不要になったtaskは`tasks/superseded/`へ移す。root `tasks/`には実行対象だけを置く。
-
-## 5. 主要な完了記録
-
-- PR #77: Stable V5 feature-flagged runtime integration
-- PR #79: Stable V5 conversation / Fact Graph browser persistence and staged Graph atomic commit
-- PR #75: AI-only semantic boundary and seven-audit completion
-- PR #69: trace server-authoritative structural IDs
-- PR #68: legacy runtime responsibility boundary and final audit
+browser/production verificationだけが残る場合、過去のimplementation taskをrootへ残さず、現行verification/operations taskへ移管する。未実装内容を虚偽のclosedへ移さない。
 
 ## 6. 運用規則
 
-- 実装変更後はruntime contract、current contract、implementation status、roadmap、active taskを同期する。
-- `module implemented`、`runtime connected`、`browser persisted`、`automated verified`、`browser verified`、`default enabled`を区別する。
+- module implemented、runtime connected、local persisted、automated verified、browser verified、cloud synced、operationally deployedを区別する。
 - 実行していないtest、build、real-eval、browser verificationを成功済みと書かない。
-- runnerがstep開始前に失敗した場合は実行基盤failureとtest failureを区別する。
-- traceを変更する場合はconversation ID、local session ID、server handle、request ID、entry sequence、privacy、retention、server authorityを一つの結合境界として監査する。
-- PR merge後はbaselineと文書を同じturnで更新する。
+- runnerがstep開始前に失敗した場合はexecution infrastructure failureとcode test failureを区別する。
+- trace変更時はconversation ID、local session ID、server handle、request ID、entry sequence、privacy、retention、server authorityを一つの結合境界として監査する。
+- root taskを追加する場合はroadmapと本indexを同じ変更で更新する。
+- task完了または統合時は同じ変更で`closed/`または`superseded/`へ移す。
+- main merge後にbaseline、verification evidence、active task一覧を更新する。

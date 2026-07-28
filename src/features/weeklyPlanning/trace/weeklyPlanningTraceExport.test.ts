@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  encodeWeeklyPlanningTraceDebugChunkBase64,
+} from '../../../../shared/weeklyPlanningTraceContract';
+import {
   createWeeklyPlanningEvaluationFixtureCandidate,
   createWeeklyPlanningRoleplayCandidate,
+  createWeeklyPlanningStableV5DebugStageExport,
   createWeeklyPlanningTraceExportBundle,
 } from './weeklyPlanningTraceExport';
 import type {
@@ -102,6 +106,48 @@ describe('weeklyPlanningTraceExport', () => {
     expect(candidate.requiresHumanReview).toBe(true);
     expect(candidate.turns[0]?.content).toContain('[EMAIL]');
     expect(candidate.turns[0]?.content).toContain('[URL]');
+  });
+
+  it('transport-safe base64 debug chunksを順序通り再構成する', () => {
+    const source = { runtime: 'stable_v5', values: Array.from({ length: 20 }, (_, index) => index) };
+    const bytes = new TextEncoder().encode(JSON.stringify(source));
+    const midpoint = Math.ceil(bytes.length / 2);
+    const chunks = [bytes.slice(0, midpoint), bytes.slice(midpoint)];
+    const debugEntries: WeeklyPlanningTraceEntry[] = chunks.map((chunk, index) => ({
+      ...baseEntry(5 + index),
+      id: `session-1-debug-${index}`,
+      kind: 'internal_event' as const,
+      eventType: 'stable_v5_debug_stage' as const,
+      payload: {
+        storage: 'base64_utf8_json_chunk',
+        debugSchemaVersion: 1,
+        debugSequence: 2,
+        stage: 'runtime_turn_output',
+        stageOccurredAt: '2026-07-15T00:00:10.000Z',
+        sourceSanitizerTruncated: false,
+        chunkIndex: index,
+        chunkCount: chunks.length,
+        totalSerializedBytes: bytes.length,
+        chunkBytes: chunk.length,
+        dataChunk: encodeWeeklyPlanningTraceDebugChunkBase64(
+          btoa(String.fromCharCode(...chunk)),
+        ),
+      },
+      severity: 'debug' as const,
+      requestId: 'request-debug',
+      stateRevision: 2,
+    }));
+
+    const stages = createWeeklyPlanningStableV5DebugStageExport(debugEntries);
+    expect(stages).toEqual([
+      expect.objectContaining({
+        requestId: 'request-debug',
+        debugSequence: 2,
+        stage: 'runtime_turn_output',
+        data: source,
+      }),
+    ]);
+    expect(stages[0]?.reconstructionError).toBeUndefined();
   });
 
   it('payload欠落eventをexport bundleから除外する', () => {

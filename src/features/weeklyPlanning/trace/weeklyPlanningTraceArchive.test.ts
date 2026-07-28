@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { hasUnexportedWeeklyPlanningTraceActivity } from './weeklyPlanningTraceArchive';
+import {
+  hasUnexportedWeeklyPlanningTraceActivity,
+  hasWeeklyPlanningTraceActivity,
+} from './weeklyPlanningTraceArchive';
 import type { WeeklyPlanningTraceSession } from './weeklyPlanningTraceTypes';
 
 const SESSION: WeeklyPlanningTraceSession = {
@@ -21,8 +24,33 @@ const SESSION: WeeklyPlanningTraceSession = {
 };
 
 describe('hasUnexportedWeeklyPlanningTraceActivity', () => {
-  it('未archiveのsessionを表示対象にする', () => {
+  it('未archiveで活動があるsessionを表示対象にする', () => {
+    expect(hasWeeklyPlanningTraceActivity(SESSION)).toBe(true);
     expect(hasUnexportedWeeklyPlanningTraceActivity(SESSION)).toBe(true);
+  });
+
+  it('未archiveでもturnとentryが0件の空sessionを表示対象にしない', () => {
+    const emptySession = {
+      ...SESSION,
+      turnCount: 0,
+      entryCount: 0,
+    };
+
+    expect(hasWeeklyPlanningTraceActivity(emptySession)).toBe(false);
+    expect(hasUnexportedWeeklyPlanningTraceActivity(emptySession)).toBe(false);
+  });
+
+  it('turnだけまたはentryだけが存在する部分sessionは活動ありとして扱う', () => {
+    expect(hasUnexportedWeeklyPlanningTraceActivity({
+      ...SESSION,
+      turnCount: 1,
+      entryCount: 0,
+    })).toBe(true);
+    expect(hasUnexportedWeeklyPlanningTraceActivity({
+      ...SESSION,
+      turnCount: 0,
+      entryCount: 1,
+    })).toBe(true);
   });
 
   it('archive後に活動がなければ非表示にする', () => {

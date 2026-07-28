@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  measureWeeklyPlanningTraceJsonBytes,
+} from '../../../../shared/weeklyPlanningTraceContract';
+import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import type { WeeklyPlanningTraceApiClient } from './weeklyPlanningTracePrivacyClient';
 import { createRemoteWeeklyPlanningTraceRepository } from './weeklyPlanningTraceRemoteRepository';
 import type {
-  WeeklyPlanningTraceEntry,
+  WeeklyPlanningTraceInternalEventEntry,
   WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
 
@@ -36,7 +40,7 @@ const SESSION: WeeklyPlanningTraceSession = {
   expireAt: '2027-01-17T00:00:00.000Z',
 };
 
-function entry(sequence: number): WeeklyPlanningTraceEntry {
+function entry(sequence: number): WeeklyPlanningTraceInternalEventEntry {
   return {
     id: `${LOCAL_SESSION_ID}-${String(sequence).padStart(8, '0')}`,
     sessionId: LOCAL_SESSION_ID,
@@ -51,6 +55,29 @@ function entry(sequence: number): WeeklyPlanningTraceEntry {
     observedAt: NOW,
     schemaVersion: 1,
     expireAt: '2027-01-17T00:00:00.000Z',
+  };
+}
+
+function debugEntry(
+  sequence: number,
+  dataChunkLength = 3_600,
+): WeeklyPlanningTraceInternalEventEntry {
+  return {
+    ...entry(sequence),
+    eventType: 'stable_v5_debug_stage',
+    payload: {
+      storage: 'base64_utf8_json_chunk',
+      debugSchemaVersion: 1,
+      debugSequence: sequence,
+      stage: 'runtime_turn_input',
+      stageOccurredAt: NOW,
+      chunkIndex: 0,
+      chunkCount: 1,
+      totalSerializedBytes: 2_700,
+      chunkBytes: 2_700,
+      dataChunk: 'A'.repeat(dataChunkLength),
+    },
+    severity: 'debug',
   };
 }
 
@@ -168,6 +195,74 @@ describe('createRemoteWeeklyPlanningTraceRepository', () => {
         sessionId: SERVER_SESSION_ID,
       })],
     }));
+  });
+
+  it('keeps the issued server handle after both transient append attempts fail', async () => {
+    const apiClient = client();
+    vi.mocked(apiClient.append)
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce(undefined);
+    const firstRepository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+
+    await expect(firstRepository.appendEntries({ session: SESSION, entries: [entry(0)] }))
+      .rejects.toThrow(/temporary network failure/);
+
+    const secondRepository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+    await secondRepository.appendEntries({ session: SESSION, entries: [entry(0)] });
+
+    expect(apiClient.startSession).toHaveBeenCalledTimes(1);
+    expect(apiClient.append).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(apiClient.append).mock.calls[2]?.[0])
+      .toEqual(vi.mocked(apiClient.append).mock.calls[0]?.[0]);
+  });
+
+  it('splits more than one hundred entries into monotonic append batches', async () => {
+    const apiClient = client();
+    const repository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+    const entries = Array.from({ length: 205 }, (_, sequence) => entry(sequence));
+
+    await repository.appendEntries({
+      session: { ...SESSION, turnCount: 0, entryCount: entries.length },
+      entries,
+    });
+
+    const payloads = vi.mocked(apiClient.append).mock.calls.map(([payload]) => payload);
+    expect(payloads).toHaveLength(3);
+    expect(payloads.map((payload) => payload.entries.length)).toEqual([100, 100, 5]);
+    expect(payloads.map((payload) => payload.session.entryCount)).toEqual([100, 200, 205]);
+    payloads.forEach((payload) => {
+      expect(payload.entries.length).toBeLessThanOrEqual(
+        WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxEntriesPerRequest,
+      );
+      expect(measureWeeklyPlanningTraceJsonBytes(payload)).toBeLessThanOrEqual(
+        WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxRequestBodyBytes,
+      );
+    });
+  });
+
+  it('splits a sub-100-entry debug payload by serialized request bytes', async () => {
+    const apiClient = client();
+    const repository = createRemoteWeeklyPlanningTraceRepository(apiClient);
+    const entries = Array.from({ length: 95 }, (_, sequence) => debugEntry(sequence, 3_900));
+
+    await repository.appendEntries({
+      session: { ...SESSION, turnCount: 0, entryCount: entries.length },
+      entries,
+    });
+
+    const payloads = vi.mocked(apiClient.append).mock.calls.map(([payload]) => payload);
+    expect(payloads.length).toBeGreaterThan(1);
+    expect(payloads.reduce((sum, payload) => sum + payload.entries.length, 0)).toBe(95);
+    payloads.forEach((payload) => {
+      expect(payload.entries.length).toBeLessThan(100);
+      expect(measureWeeklyPlanningTraceJsonBytes(payload)).toBeLessThanOrEqual(
+        WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxRequestBodyBytes,
+      );
+    });
+    expect(payloads.map((payload) => payload.session.entryCount))
+      .toEqual([...payloads.map((payload) => payload.session.entryCount)].sort((a, b) => a - b));
+    expect(payloads[payloads.length - 1]?.session.entryCount).toBe(95);
   });
 
   it('refreshes a stale persisted server handle and retries append once', async () => {

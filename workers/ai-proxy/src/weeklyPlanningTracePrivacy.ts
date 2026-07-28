@@ -1,8 +1,15 @@
+import {
+  WEEKLY_PLANNING_TRACE_EVENT_TYPES,
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+} from '../../../shared/weeklyPlanningTraceContract';
+
 export const WEEKLY_PLANNING_TRACE_POLICY_VERSION = '2026-07-18-v1';
 export const WEEKLY_PLANNING_TRACE_RETENTION_DAYS = 180;
 export const WEEKLY_PLANNING_TRACE_EPOCH_DAYS = 30;
-export const MAX_TRACE_ENTRIES_PER_REQUEST = 100;
-export const MAX_TRACE_DOCUMENT_BYTES = 64 * 1024;
+export const MAX_TRACE_ENTRIES_PER_REQUEST =
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxEntriesPerRequest;
+export const MAX_TRACE_DOCUMENT_BYTES =
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRACE_EPOCH_MS = WEEKLY_PLANNING_TRACE_EPOCH_DAYS * DAY_MS;
@@ -372,18 +379,7 @@ function requireTraceEntryCount(value: unknown): number {
 
 const TRACE_SESSION_STATUSES = new Set(['active', 'completed', 'abandoned', 'failed']);
 const TRACE_RESPONSE_SOURCES = new Set(['ai', 'deterministic_fallback', 'rules', 'system']);
-const TRACE_EVENT_TYPES = new Set([
-  'user_turn_received', 'interpreter_started', 'interpreter_completed',
-  'candidate_accepted', 'candidate_rejected', 'assumption_proposed',
-  'assumption_accepted', 'assumption_rejected', 'assumption_superseded',
-  'correction_applied', 'correction_rejected', 'relative_constraint_resolved',
-  'relative_constraint_rejected', 'readiness_evaluated', 'feasibility_evaluated',
-  'dialogue_planned', 'fallback_used', 'preview_gate_evaluated',
-  'preview_generated', 'preview_rejected_stale',
-  'preview_rejected_pending_assumption', 'draft_promoted', 'approval_started',
-  'approval_item_saved', 'approval_item_failed', 'approval_completed',
-  'request_cancelled', 'stale_async_result_discarded', 'trace_write_failed',
-]);
+const TRACE_EVENT_TYPES = new Set<string>(WEEKLY_PLANNING_TRACE_EVENT_TYPES);
 const TRACE_SEVERITIES = new Set(['debug', 'info', 'warn', 'error']);
 const TRACE_SNAPSHOT_REASONS = new Set([
   'turn_completed', 'correction_applied', 'preview_generated',
