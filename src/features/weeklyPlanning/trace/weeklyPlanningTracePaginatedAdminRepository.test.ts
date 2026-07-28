@@ -42,19 +42,23 @@ describe('paginated weekly planning trace admin entries', () => {
   });
 
   it('欠落entryがあれば全page確認後に部分結果を拒否する', async () => {
-    const fetchPage = vi.fn()
-      .mockResolvedValueOnce({
-        entries: [entry(0), entry(2)],
-        totalEntryCount: 4,
-        nextAfterSequence: 2,
-        missingSequenceCount: 1,
-      })
-      .mockResolvedValueOnce({
-        entries: [entry(3)],
-        totalEntryCount: 4,
-        nextAfterSequence: null,
-        missingSequenceCount: 0,
-      });
+    let callIndex = 0;
+    const fetchPage = vi.fn(async () => {
+      callIndex += 1;
+      return callIndex === 1
+        ? {
+            entries: [entry(0), entry(2)],
+            totalEntryCount: 4,
+            nextAfterSequence: 2,
+            missingSequenceCount: 1,
+          }
+        : {
+            entries: [entry(3)],
+            totalEntryCount: 4,
+            nextAfterSequence: null,
+            missingSequenceCount: 0,
+          };
+    });
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/1件欠落/);
@@ -62,22 +66,26 @@ describe('paginated weekly planning trace admin entries', () => {
   });
 
   it('page間でtotalEntryCountが変わるresponseを拒否する', async () => {
-    const fetchPage = vi.fn()
-      .mockResolvedValueOnce({
-        entries: [entry(0)],
-        totalEntryCount: 2,
-        nextAfterSequence: 0,
-        missingSequenceCount: 0,
-      })
-      .mockResolvedValueOnce({
-        entries: [entry(1)],
-        totalEntryCount: 3,
-        nextAfterSequence: null,
-        missingSequenceCount: 0,
-      });
+    let callIndex = 0;
+    const fetchPage = vi.fn(async () => {
+      callIndex += 1;
+      return callIndex === 1
+        ? {
+            entries: [entry(0)],
+            totalEntryCount: 2,
+            nextAfterSequence: 0,
+            missingSequenceCount: 0,
+          }
+        : {
+            entries: [entry(1)],
+            totalEntryCount: 3,
+            nextAfterSequence: null,
+            missingSequenceCount: 0,
+          };
+    });
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
-      .rejects.toThrow(/総件数が変化/);
+      .rejects.toThrow(/総件数がpage間で変化/);
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
