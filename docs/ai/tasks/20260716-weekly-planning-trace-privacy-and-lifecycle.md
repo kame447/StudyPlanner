@@ -1,12 +1,13 @@
 # 週間計画traceのproduction privacy・lifecycle・scalabilityを完了する
 
 Status: active / core implemented, production operations pending
-Priority: P1 after `20260727-weekly-planning-trace-empty-session-recovery.md`
+Priority: P1 operations
 Requirement IDs: P7-TRACE-001
 Updated: 2026-07-28
 
 Absorbs:
 - `superseded/20260716-weekly-planning-trace-scalability-and-schema-migration.md`
+- post-merge verification from `closed/20260727-weekly-planning-trace-empty-session-recovery.md`
 
 ## 1. 実装・自動検証済み
 
@@ -25,6 +26,7 @@ Absorbs:
 - frontend/Worker共通event catalogとtransport limit
 - Stable V5 full debug chunkのprivacy-safe encoding
 - append batchingとsession identity continuity
+- empty-session recoveryのfocused 46 tests、trace full 79 tests、typecheck、typecheck:build、build、diff check成功
 
 実装済みであっても、Firestore TTL policy、production secret、Worker/Rules deploy、実browser、削除運用が未確認のためoperationally deployedではない。
 
@@ -53,6 +55,23 @@ Absorbs:
 - privacy noticeと実保存fieldの一致
 - legal/privacy review: 未成年者、要配慮情報、国外利用、委託先
 - full debug traceにraw credential/provider secretを保存しない回帰
+
+### Issue #89 post-merge verification
+
+main merge/deploy後、同じlogical conversationへ実入力し、管理者viewerとJSON exportで次を確認する。
+
+```text
+session件数 = 1
+turnCount > 0
+entryCount > 0
+stableV5DebugStagesを再構成可能
+reload/retry後もsession件数が増えない
+標準未export一覧へhistorical empty artifactを表示しない
+```
+
+- 上記確認前にIssue #89をcloseしない
+- historical empty documentsを自動mergeまたは自動deleteしない
+- 実環境で再発した場合は本taskを完了扱いにせず、同じIssue #89で継続する
 
 ## 3. Scalability・schema compatibility
 
@@ -89,6 +108,7 @@ Absorbs:
 - corrupt entryの部分表示
 - archive後の新規activity
 - production full debug append/export
+- same conversationのempty/duplicate session非再発
 
 ## 5. 完了条件
 
@@ -103,6 +123,7 @@ Absorbs:
 - [ ] privacy/legal review recordを保存
 - [ ] focused/full/typecheck/typecheck:build/build/diff checkがgreen
 - [ ] 実browserでconsent、append、admin export、archive、deleteを確認
+- [ ] main deploy後にIssue #89のsame-conversation verificationを完了
 - [ ] production enable後にempty/duplicate sessionが再発しないことを確認
 
 ## 6. 対象外
