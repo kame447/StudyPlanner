@@ -17,18 +17,18 @@ import {
 
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 
-type AdminEntryPage = {
+export type WeeklyPlanningTraceAdminEntryPage = {
   entries: Record<string, unknown>[];
   totalEntryCount: number;
   nextAfterSequence: number | null;
   missingSequenceCount: number;
 };
 
-type AdminEntryPageFetcher = (params: {
+export type WeeklyPlanningTraceAdminEntryPageFetcher = (params: {
   sessionId: string;
   afterSequence: number;
   limit: number;
-}) => Promise<AdminEntryPage>;
+}) => Promise<WeeklyPlanningTraceAdminEntryPage>;
 
 interface TraceApiEnvelope {
   ok?: boolean;
@@ -88,7 +88,7 @@ async function fetchAdminEntryPage(params: {
   sessionId: string;
   afterSequence: number;
   limit: number;
-}): Promise<AdminEntryPage> {
+}): Promise<WeeklyPlanningTraceAdminEntryPage> {
   const requestCorrelationId = correlationId();
   const currentUser = getFirebaseAuth()?.currentUser;
   if (!currentUser) {
@@ -197,7 +197,7 @@ function isBoundedEntryCount(value: number): boolean {
 
 export async function collectWeeklyPlanningTraceAdminEntryPages(
   sessionId: string,
-  fetchPage: AdminEntryPageFetcher = fetchAdminEntryPage,
+  fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = fetchAdminEntryPage,
 ): Promise<Record<string, unknown>[]> {
   const entriesById = new Map<string, Record<string, unknown>>();
   let afterSequence = -1;
