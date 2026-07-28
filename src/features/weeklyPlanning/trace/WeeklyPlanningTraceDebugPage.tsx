@@ -112,6 +112,7 @@ export function WeeklyPlanningTraceDebugPage({
   const [entriesBySession, setEntriesBySession] = useState<
     Record<string, WeeklyPlanningTraceEntry[]>
   >({});
+  const [entryErrorsBySession, setEntryErrorsBySession] = useState<Record<string, string>>({});
   const [expandedSessionId, setExpandedSessionId] = useState('');
   const [viewMode, setViewMode] = useState<TraceViewMode>('conversation');
   const [statusFilter, setStatusFilter] = useState<'' | WeeklyPlanningTraceSessionStatus>('');
@@ -164,6 +165,12 @@ export function WeeklyPlanningTraceDebugPage({
     const cached = entriesBySession[session.id];
     if (cached) return cached;
     setLoadingEntriesSessionId(session.id);
+    setEntryErrorsBySession((current) => {
+      if (!(session.id in current)) return current;
+      const next = { ...current };
+      delete next[session.id];
+      return next;
+    });
     try {
       const nextEntries = await getWeeklyPlanningTraceRepository().listEntries(
         session.userId,
@@ -172,7 +179,8 @@ export function WeeklyPlanningTraceDebugPage({
       setEntriesBySession((current) => ({ ...current, [session.id]: nextEntries }));
       return nextEntries;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。');
+      const message = loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。';
+      setEntryErrorsBySession((current) => ({ ...current, [session.id]: message }));
       throw loadError;
     } finally {
       setLoadingEntriesSessionId((current) => current === session.id ? '' : current);
@@ -213,6 +221,11 @@ export function WeeklyPlanningTraceDebugPage({
       );
       await loadSessions();
       setEntriesBySession((current) => {
+        const next = { ...current };
+        delete next[session.id];
+        return next;
+      });
+      setEntryErrorsBySession((current) => {
         const next = { ...current };
         delete next[session.id];
         return next;
@@ -372,6 +385,7 @@ export function WeeklyPlanningTraceDebugPage({
         {visibleSessions.map((session) => {
           const expanded = expandedSessionId === session.id;
           const entries = entriesBySession[session.id] ?? [];
+          const entryError = entryErrorsBySession[session.id] ?? '';
           const loadingEntries = loadingEntriesSessionId === session.id;
           const exporting = exportingSessionId === session.id;
           const rangeLabel = planningRangeLabel(session);
@@ -427,9 +441,24 @@ export function WeeklyPlanningTraceDebugPage({
                   </div>
 
                   {loadingEntries ? <p>timelineを読み込んでいます...</p> : null}
-                  {!loadingEntries && entries.length === 0 ? <p>entryはありません。</p> : null}
+                  {entryError ? (
+                    <div className="app-notice error">
+                      entry取得失敗: {entryError}
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={loadingEntries}
+                        onClick={() => { void loadEntries(session).catch(() => undefined); }}
+                      >
+                        再試行
+                      </button>
+                    </div>
+                  ) : null}
+                  {!loadingEntries && !entryError && entries.length === 0
+                    ? <p>entryはありません。</p>
+                    : null}
 
-                  {viewMode === 'raw' && !loadingEntries ? (
+                  {!entryError && (viewMode === 'raw' && !loadingEntries ? (
                     <pre className="trace-entry">
                       {safeJson(createWeeklyPlanningTraceExportBundle(session, entries))}
                     </pre>
@@ -450,7 +479,7 @@ export function WeeklyPlanningTraceDebugPage({
                         </article>
                       ))}
                     </div>
-                  )}
+                  ))}
                 </div>
               ) : null}
             </article>
