@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createWeeklyPlanningTraceAdminDiagnostics,
   hasUnexportedWeeklyPlanningTraceActivity,
   hasWeeklyPlanningTraceActivity,
 } from './weeklyPlanningTraceArchive';
@@ -23,19 +24,14 @@ const SESSION: WeeklyPlanningTraceSession = {
   expireAt: '2026-10-13T00:00:00.000Z',
 };
 
-describe('hasUnexportedWeeklyPlanningTraceActivity', () => {
+describe('weekly planning trace archive and diagnostics', () => {
   it('未archiveで活動があるsessionを表示対象にする', () => {
     expect(hasWeeklyPlanningTraceActivity(SESSION)).toBe(true);
     expect(hasUnexportedWeeklyPlanningTraceActivity(SESSION)).toBe(true);
   });
 
-  it('未archiveでもturnとentryが0件の空sessionを表示対象にしない', () => {
-    const emptySession = {
-      ...SESSION,
-      turnCount: 0,
-      entryCount: 0,
-    };
-
+  it('未archiveでもturnとentryが0件の空sessionを通常表示しない', () => {
+    const emptySession = { ...SESSION, turnCount: 0, entryCount: 0 };
     expect(hasWeeklyPlanningTraceActivity(emptySession)).toBe(false);
     expect(hasUnexportedWeeklyPlanningTraceActivity(emptySession)).toBe(false);
   });
@@ -53,17 +49,34 @@ describe('hasUnexportedWeeklyPlanningTraceActivity', () => {
     })).toBe(true);
   });
 
-  it('archive後に活動がなければ非表示にする', () => {
+  it('archive後の新しい活動だけを再表示する', () => {
     expect(hasUnexportedWeeklyPlanningTraceActivity({
       ...SESSION,
       archivedAt: '2026-07-15T00:00:03.000Z',
     })).toBe(false);
-  });
-
-  it('archive後に新しいturnが追記されたsessionを再表示する', () => {
     expect(hasUnexportedWeeklyPlanningTraceActivity({
       ...SESSION,
       archivedAt: '2026-07-15T00:00:01.000Z',
     })).toBe(true);
+  });
+
+  it('raw、mapping、activity、empty、unexportedの件数を分離する', () => {
+    const empty = { ...SESSION, id: 'empty', turnCount: 0, entryCount: 0 };
+    const archived = {
+      ...SESSION,
+      id: 'archived',
+      archivedAt: '2026-07-15T00:00:03.000Z',
+    };
+    expect(createWeeklyPlanningTraceAdminDiagnostics({
+      rawCount: 4,
+      mappedSessions: [SESSION, empty, archived],
+    })).toEqual({
+      rawCount: 4,
+      mappedCount: 3,
+      malformedCount: 1,
+      activityCount: 2,
+      emptyCount: 1,
+      unexportedCount: 1,
+    });
   });
 });
