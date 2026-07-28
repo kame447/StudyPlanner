@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import {
-  collectWeeklyPlanningTraceAdminEntryPages,
-  type WeeklyPlanningTraceAdminEntryPageFetcher,
-} from './weeklyPlanningTracePaginatedAdminRepository';
+import { collectWeeklyPlanningTraceAdminEntryPages } from './weeklyPlanningTracePaginatedAdminRepository';
 
 const SESSION_ID = 'weekly-trace-123e4567-e89b-52d3-a456-426614174000';
+
+type TestPageFetcher = (params: {
+  sessionId: string;
+  afterSequence: number;
+  limit: number;
+}) => Promise<{
+  entries: Record<string, unknown>[];
+  totalEntryCount: number;
+  nextAfterSequence: number | null;
+  missingSequenceCount: number;
+}>;
 
 function entry(sequence: number): Record<string, unknown> {
   return {
@@ -19,10 +27,7 @@ describe('paginated weekly planning trace admin entries', () => {
     const totalEntryCount = 256;
     const requestedLimits: number[] = [];
     let callCount = 0;
-    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async ({
-      afterSequence,
-      limit,
-    }) => {
+    const fetchPage: TestPageFetcher = async ({ afterSequence, limit }) => {
       callCount += 1;
       requestedLimits.push(limit);
       const start = afterSequence + 1;
@@ -49,7 +54,7 @@ describe('paginated weekly planning trace admin entries', () => {
 
   it('欠落entryがあれば全page確認後に部分結果を拒否する', async () => {
     let callCount = 0;
-    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
+    const fetchPage: TestPageFetcher = async () => {
       callCount += 1;
       return callCount === 1
         ? {
@@ -73,7 +78,7 @@ describe('paginated weekly planning trace admin entries', () => {
 
   it('page間でtotalEntryCountが変わるresponseを拒否する', async () => {
     let callCount = 0;
-    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
+    const fetchPage: TestPageFetcher = async () => {
       callCount += 1;
       return callCount === 1
         ? {
@@ -97,7 +102,7 @@ describe('paginated weekly planning trace admin entries', () => {
 
   it('進まないcursorを拒否して無限loopを防ぐ', async () => {
     let callCount = 0;
-    const fetchPage: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
+    const fetchPage: TestPageFetcher = async () => {
       callCount += 1;
       return {
         entries: [entry(0)],
