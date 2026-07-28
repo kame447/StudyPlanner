@@ -7,7 +7,7 @@
     "dev": "vite --config vite.config.mjs --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "typecheck:build": "tsc --noEmit -p tsconfig.build.json",
-    "build": "bash -lc 'npm run typecheck > /tmp/tsc.log 2>&1; ! grep -q weeklyPlanningTracePaginatedAdminRepository.test.ts /tmp/tsc.log'",
+    "build": "npm run typecheck",
     "verify": "npm run typecheck && npm run test:run && npm run build",
     "preview:vite": "vite preview --config vite.config.mjs --host 0.0.0.0",
     "preview": "node ./scripts/preview-server.mjs",
