@@ -41,7 +41,7 @@ describe('paginated weekly planning trace admin entries', () => {
     expect(entries[255]?.sequence).toBe(255);
   });
 
-  it('欠落entryがあってもcursorを進めて残存entryを回収する', async () => {
+  it('欠落entryがあれば全page確認後に部分結果を拒否する', async () => {
     const fetchPage = vi.fn()
       .mockResolvedValueOnce({
         entries: [entry(0), entry(2)],
@@ -56,9 +56,8 @@ describe('paginated weekly planning trace admin entries', () => {
         missingSequenceCount: 0,
       });
 
-    const entries = await collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage);
-
-    expect(entries.map((item) => item.sequence)).toEqual([0, 2, 3]);
+    await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
+      .rejects.toThrow(/1件欠落/);
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
