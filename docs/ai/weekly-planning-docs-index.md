@@ -2,8 +2,7 @@
 
 Status: canonical / active
 最終更新: 2026-07-28
-Reviewed branch baseline: `e4ed85b0304ff563fdb80a447db06c9696c2a410`
-Current change: Stable V5 trace empty-session recovery and active-task inventory
+Current branch: `agent/trace-empty-session-seven-audit`
 
 ## 1. 現行判断に使用する文書
 
@@ -44,46 +43,59 @@ weekly-planning-stable-v5-runtime-trial-contract.md
 
 ## 3. active task root
 
-`docs/ai/tasks/`直下のtask recordは次の9件だけをcurrent execution targetとする。
+`docs/ai/tasks/`直下のtask recordは次の8件だけをcurrent execution targetとする。
 
-### P0-P1 blockers / safety
+### P0-P1 safety / adoption
 
-1. [20260727-weekly-planning-trace-empty-session-recovery.md](tasks/20260727-weekly-planning-trace-empty-session-recovery.md)
-   - code implemented
-   - first verificationでtrace full test 1件とtypecheck 1件が失敗
-   - fixture修正済み、rerun待ち
-2. [20260716-weekly-planning-midweek-current-time-start-boundary.md](tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
+1. [20260716-weekly-planning-midweek-current-time-start-boundary.md](tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
    - current time以前へ配置し得るhard-safety gap
-
-### P1-P2 runtime / adoption
-
-3. [20260728-weekly-planning-stable-v5-verification-and-cutover.md](tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+2. [20260728-weekly-planning-stable-v5-verification-and-cutover.md](tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
    - actual AI eval、browser roleplay、migration、shadow、rollback、cutover
-4. [20260724-weekly-planning-runtime-followups.md](tasks/20260724-weekly-planning-runtime-followups.md)
+3. [20260724-weekly-planning-runtime-followups.md](tasks/20260724-weekly-planning-runtime-followups.md)
    - cross-tab、grounding、final trace durability、source semantics、reset cleanup
-5. [20260716-weekly-planning-synced-conversation-session-store.md](tasks/20260716-weekly-planning-synced-conversation-session-store.md)
+
+### P1-P2 production boundaries
+
+4. [20260716-weekly-planning-synced-conversation-session-store.md](tasks/20260716-weekly-planning-synced-conversation-session-store.md)
    - cloud authoritative conversation/Fact Graph repository
-6. [20260728-weekly-planning-external-source-production-adapter.md](tasks/20260728-weekly-planning-external-source-production-adapter.md)
+5. [20260728-weekly-planning-external-source-production-adapter.md](tasks/20260728-weekly-planning-external-source-production-adapter.md)
    - verified atomic loaderのproduction adapter接続
-
-### Production operations / later personalization
-
-7. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
-   - secret、deploy、TTL、delete、access、pagination、decoder
-8. [20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
+6. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
+   - secret、deploy、TTL、delete、access、pagination、decoder、Issue #89 post-merge確認
+7. [20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
    - Rules、TTL、Emulator、multi-client verification
-9. [20260728-weekly-planning-personalization-rollout.md](tasks/20260728-weekly-planning-personalization-rollout.md)
+
+### Later personalization
+
+8. [20260728-weekly-planning-personalization-rollout.md](tasks/20260728-weekly-planning-personalization-rollout.md)
    - observation、reset validity、time decay、score、governance
 
 `codex-task-guide.md`と`task-brief-template.md`はtask recordではないためrootに置く。
 
-## 4. placement rule
+## 4. 直近closed record
+
+[closed/20260727-weekly-planning-trace-empty-session-recovery.md](tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
+
+最終確認:
+
+```text
+focused: 5 files / 46 tests passed
+trace full: 18 files / 79 tests passed
+typecheck: passed
+typecheck:build: passed
+production build: passed
+git diff --check: passed
+```
+
+main deploy後の管理者viewer確認だけをtrace production operations taskとIssue #89へ移管した。
+
+## 5. placement rule
 
 ```text
 実装・必要検証が完了
 → tasks/closed/
 
-未完了だが別current taskへ統合済み
+未完了だが別の現行taskへ統合済み
 → tasks/superseded/
 
 現在独立して実行する問題
@@ -91,20 +103,6 @@ weekly-planning-stable-v5-runtime-trial-contract.md
 ```
 
 browser/production verificationだけが残る場合、過去のimplementation taskをrootへ残さず、現行verification/operations taskへ移管する。未実装内容を虚偽のclosedへ移さない。
-
-## 5. 現在のverification gate
-
-2026-07-28のtrace初回検証:
-
-```text
-focused trace: 9 files / 65 tests passed
-trace full: 1 failed / 78 passed
-npm run typecheck: 1 error
-npm run typecheck:build: passed
-npm run build: passed
-```
-
-失敗はdotted-base64へ追随していない旧test decoderと、union型のtest fixtureである。branchで修正済みだが、再実行結果が得られるまでtrace task、Issue #89、PRを完了扱いにしない。
 
 ## 6. 運用規則
 
