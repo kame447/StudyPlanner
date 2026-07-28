@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createWeeklyPlanningTraceAdminDiagnostics,
+  hasArchivedWeeklyPlanningTraceActivity,
   hasUnexportedWeeklyPlanningTraceActivity,
   hasWeeklyPlanningTraceActivity,
 } from './weeklyPlanningTraceArchive';
@@ -28,12 +29,14 @@ describe('weekly planning trace archive and diagnostics', () => {
   it('未archiveで活動があるsessionを表示対象にする', () => {
     expect(hasWeeklyPlanningTraceActivity(SESSION)).toBe(true);
     expect(hasUnexportedWeeklyPlanningTraceActivity(SESSION)).toBe(true);
+    expect(hasArchivedWeeklyPlanningTraceActivity(SESSION)).toBe(false);
   });
 
   it('未archiveでもturnとentryが0件の空sessionを通常表示しない', () => {
     const emptySession = { ...SESSION, turnCount: 0, entryCount: 0 };
     expect(hasWeeklyPlanningTraceActivity(emptySession)).toBe(false);
     expect(hasUnexportedWeeklyPlanningTraceActivity(emptySession)).toBe(false);
+    expect(hasArchivedWeeklyPlanningTraceActivity(emptySession)).toBe(false);
   });
 
   it('turnだけまたはentryだけが存在する部分sessionは活動ありとして扱う', () => {
@@ -49,15 +52,22 @@ describe('weekly planning trace archive and diagnostics', () => {
     })).toBe(true);
   });
 
-  it('archive後の新しい活動だけを再表示する', () => {
-    expect(hasUnexportedWeeklyPlanningTraceActivity({
+  it('archive済みで新しい活動がないsessionだけをarchive一覧対象にする', () => {
+    const archived = {
       ...SESSION,
       archivedAt: '2026-07-15T00:00:03.000Z',
-    })).toBe(false);
-    expect(hasUnexportedWeeklyPlanningTraceActivity({
+    };
+    expect(hasUnexportedWeeklyPlanningTraceActivity(archived)).toBe(false);
+    expect(hasArchivedWeeklyPlanningTraceActivity(archived)).toBe(true);
+  });
+
+  it('archive後に新しい活動があれば未export一覧へ戻す', () => {
+    const changedAfterArchive = {
       ...SESSION,
       archivedAt: '2026-07-15T00:00:01.000Z',
-    })).toBe(true);
+    };
+    expect(hasUnexportedWeeklyPlanningTraceActivity(changedAfterArchive)).toBe(true);
+    expect(hasArchivedWeeklyPlanningTraceActivity(changedAfterArchive)).toBe(false);
   });
 
   it('raw、mapping、activity、empty、unexportedの件数を分離する', () => {
