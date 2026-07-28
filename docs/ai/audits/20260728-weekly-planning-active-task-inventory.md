@@ -1,9 +1,8 @@
 # weeklyPlanning active task 全件棚卸し
 
-Status: complete / placement synchronized / verification pending
+Status: complete / placement synchronized / final automated verification passed
 Date: 2026-07-28
 Branch: `agent/trace-empty-session-seven-audit`
-Reviewed branch baseline: `2a2b9bad4e9e72826beddfa7551267065de6e660`
 
 ## 1. 監査範囲
 
@@ -28,42 +27,42 @@ Reviewed branch baseline: `2a2b9bad4e9e72826beddfa7551267065de6e660`
 → tasks/ root
 ```
 
-PRがmerge済みという理由だけではclosedにしない。逆に、実装済みtaskをbrowser verificationだけのためにrootへ残さず、残る検証を現行verification taskへ移管する。
+PRがmerge済みという理由だけではclosedにしない。逆に、実装済みtaskをbrowser verificationだけのためにrootへ残さず、残る検証を現行verification/operations taskへ移管する。
 
 ## 2. 判定・配置結果
 
-### 2.1 closedへ移した4件
+### 2.1 closedへ移した5件
 
 | task | 判定根拠 | 残件の移管先 |
 | --- | --- | --- |
-| `20260716-weekly-planning-controller-ui-responsibility-split.md` | PR #50でapplication orchestrationを抽出し、PR #86でsession lifecycle・turn application・side effectを分離した | browser/cutover確認はStable V5 verification task |
-| `20260716-weekly-planning-entrypoint-request-ownership.md` | implementation record上、module・production connection・automated verificationが完了。request envelope、stale discard、IME、focusを実装済み | 実browser確認はStable V5 verification task |
-| `20260722-weekly-planning-external-source-atomic-retry.md` | atomic success/failure、retry、validation、scheduler failure contractをPR #77で実装・自動検証済み | production adapterは新しいadapter task |
-| `20260722-weekly-planning-specific-date-and-personalization-profile.md` | task date rule、曜日集合、resolver、scheduler input、profile schema v2のfoundationをPR #77で実装・自動検証済み | real-eval/cutoverとpersonalization rolloutへ分離 |
+| `20260716-weekly-planning-controller-ui-responsibility-split.md` | PR #50とPR #86でapplication/controller責務を分離 | browser/cutover確認はStable V5 verification task |
+| `20260716-weekly-planning-entrypoint-request-ownership.md` | request envelope、stale discard、IME、focusを実装・自動検証済み | 実browser確認はStable V5 verification task |
+| `20260722-weekly-planning-external-source-atomic-retry.md` | atomic success/failure、retry、validationをPR #77で実装・自動検証済み | production adapter task |
+| `20260722-weekly-planning-specific-date-and-personalization-profile.md` | task date rule、scheduler input、profile schema v2を実装・自動検証済み | real-eval/cutoverとpersonalization rollout |
+| `20260727-weekly-planning-trace-empty-session-recovery.md` | focused 46、trace full 79、typecheck、typecheck:build、build、diff checkがfinal headで成功 | post-merge admin確認はtrace production taskとIssue #89 |
 
 ### 2.2 supersededへ移した8件
 
 | task | 統合先 | 理由 |
 | --- | --- | --- |
-| `20260716-weekly-planning-consultation-reset-and-invalidation.md` | `20260728-weekly-planning-personalization-rollout.md` | cloud session・observation・profile invalidationと同じtransaction chainで実装する必要がある |
-| `20260716-weekly-planning-history-feature-extraction.md` | 同上 | planning/outcome observationだけを単独着手せず、version・validity・retentionを一つのrolloutで管理する |
-| `20260716-weekly-planning-longitudinal-personalization-data-governance.md` | 同上 | foundation済み部分と未実装の同意・TTL・削除・aggregationが混在している |
-| `20260716-weekly-planning-user-profile-time-decay.md` | 同上 | observation schema未実装のため独立実行不能で、rollout phaseへ統合する |
-| `20260716-weekly-planning-personalized-placement-scoring.md` | 同上 | profile aggregation後のphaseであり、独立root taskとして現在実行しない |
-| `20260716-weekly-planning-trace-scalability-and-schema-migration.md` | `20260716-weekly-planning-trace-privacy-and-lifecycle.md` | pagination、decoder、archive、indexはtrace production operationの同じ保存境界で扱う |
-| `20260722-weekly-planning-generic-semantic-v5-migration.md` | `20260728-weekly-planning-stable-v5-verification-and-cutover.md` | feature-flagged runtime接続は完了し、残件はreal-eval、browser roleplay、migration、shadow、cutoverである |
-| `20260722-weekly-planning-v5-date-real-eval.md` | 同上 | Alpha/V2専用の旧評価記録であり、現在はStable V5全体のactual AI evalへ統合する |
+| `20260716-weekly-planning-consultation-reset-and-invalidation.md` | `20260728-weekly-planning-personalization-rollout.md` | cloud session・observation・profile invalidationと同じtransaction chainで実装する |
+| `20260716-weekly-planning-history-feature-extraction.md` | 同上 | planning/outcome observation、version、validity、retentionを一元管理する |
+| `20260716-weekly-planning-longitudinal-personalization-data-governance.md` | 同上 | foundation済み部分と未実装operationが混在していた |
+| `20260716-weekly-planning-user-profile-time-decay.md` | 同上 | observation schema前提の後続phaseである |
+| `20260716-weekly-planning-personalized-placement-scoring.md` | 同上 | profile aggregation後の後続phaseである |
+| `20260716-weekly-planning-trace-scalability-and-schema-migration.md` | `20260716-weekly-planning-trace-privacy-and-lifecycle.md` | pagination、decoder、archive、indexはtrace operationと同じ保存境界で扱う |
+| `20260722-weekly-planning-generic-semantic-v5-migration.md` | `20260728-weekly-planning-stable-v5-verification-and-cutover.md` | runtime接続済みで、残件はreal-eval、migration、shadow、cutoverである |
+| `20260722-weekly-planning-v5-date-real-eval.md` | 同上 | Alpha/V2専用記録をStable V5 actual AI evalへ統合した |
 
-### 2.3 rootに残して現状へ修正した6件
+### 2.3 rootに残して現状へ修正した5件
 
 | task | 現在残る問題 |
 | --- | --- |
-| `20260716-weekly-planning-midweek-current-time-start-boundary.md` | Stable V5 preview schedulerが09:00開始のdate windowを使い、request時刻より前を除外していない |
-| `20260716-weekly-planning-synced-conversation-session-store.md` | Stable V5 session/Fact GraphはlocalStorageのみで、別端末・cloud revision・offline conflictが未実装 |
-| `20260716-weekly-planning-trace-privacy-and-lifecycle.md` | production secret、TTL、Rules/Worker deploy、削除確認、pagination、decoder、privacy/legal reviewが未完了 |
-| `20260718-weekly-planning-approval-operational-rollout.md` | production Rules/TTL、Emulator、multi-client transaction確認が未完了 |
-| `20260724-weekly-planning-runtime-followups.md` | cross-tab sequence、dialogue grounding、final trace durability、source semantics、reset cleanupが未完了 |
-| `20260727-weekly-planning-trace-empty-session-recovery.md` | 実装済みだが、初回検証でtrace full test 1件とtypecheck 1件が失敗。修正後の再検証前 |
+| `20260716-weekly-planning-midweek-current-time-start-boundary.md` | Stable V5 schedulerが現在時刻より前を除外していない |
+| `20260716-weekly-planning-synced-conversation-session-store.md` | 別端末・cloud revision・offline conflictが未実装 |
+| `20260716-weekly-planning-trace-privacy-and-lifecycle.md` | production deploy、TTL、削除、pagination、privacy/legal、Issue #89 post-merge確認が未完了 |
+| `20260718-weekly-planning-approval-operational-rollout.md` | production Rules/TTL、Emulator、multi-client確認が未完了 |
+| `20260724-weekly-planning-runtime-followups.md` | cross-tab、grounding、final trace durability、source semantics、reset cleanupが未完了 |
 
 ### 2.4 rootへ追加した統合task 3件
 
@@ -71,52 +70,62 @@ PRがmerge済みという理由だけではclosedにしない。逆に、実装�
 | --- | --- |
 | `20260728-weekly-planning-personalization-rollout.md` | observation、reset propagation、time decay、score、consent/retentionを依存順で一元管理 |
 | `20260728-weekly-planning-stable-v5-verification-and-cutover.md` | actual AI real-eval、browser roleplay、migration、shadow、rollback、default cutoverを一元管理 |
-| `20260728-weekly-planning-external-source-production-adapter.md` | 完了済みatomic loaderを実calendar adapterとproduction metricsへ接続 |
+| `20260728-weekly-planning-external-source-production-adapter.md` | atomic loaderを実calendar adapterとproduction metricsへ接続 |
 
 ## 3. 整理後のroot task一覧
 
-`docs/ai/tasks/`直下のtask recordは次の9件だけである。
+`docs/ai/tasks/`直下のtask recordは次の8件だけである。
 
 1. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
 2. `20260716-weekly-planning-synced-conversation-session-store.md`
 3. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
 4. `20260718-weekly-planning-approval-operational-rollout.md`
 5. `20260724-weekly-planning-runtime-followups.md`
-6. `20260727-weekly-planning-trace-empty-session-recovery.md`
-7. `20260728-weekly-planning-personalization-rollout.md`
-8. `20260728-weekly-planning-stable-v5-verification-and-cutover.md`
-9. `20260728-weekly-planning-external-source-production-adapter.md`
+6. `20260728-weekly-planning-personalization-rollout.md`
+7. `20260728-weekly-planning-stable-v5-verification-and-cutover.md`
+8. `20260728-weekly-planning-external-source-production-adapter.md`
 
-`20260727-weekly-planning-trace-empty-session-recovery.md`は自動検証が全てgreenになった時点でclosedへ移し、rootは8件になる。
+## 4. Trace empty-session最終verification
 
-## 4. 今回のverification failure
+2026-07-28、利用者環境でfinal branch headを実行した。
 
-利用者が実行した検証結果:
+```text
+focused verification:
+  Test Files 5 passed
+  Tests 46 passed
 
-- focused trace: 9 files / 65 tests passed
-- trace directory full: 18 files中1 file failure、79 tests中1 test failure
-- `npm run typecheck`: 1 error
-- `npm run typecheck:build`: passed
-- `npm run build`: passed
+trace directory full:
+  Test Files 18 passed
+  Tests 79 passed
 
-失敗原因:
+npm run typecheck:
+  passed
 
-1. runtime debug stage testの独自`decodeBase64`が、新contractの`.`区切りを除去していなかった
-2. remote repository testのfixture helperがunion型を返し、`internal_event`へnarrowされていなかった
+npm run typecheck:build:
+  passed
 
-production実装を戻さず、testを共通decoderと明示的`WeeklyPlanningTraceInternalEventEntry`へ合わせた。再検証が完了するまでcurrent trace taskをclosedへ移さない。
+npm run build:
+  passed
+
+git diff --check origin/main...HEAD:
+  passed (no output)
+```
+
+Buildのdynamic/static importと500KB chunk warningは非blockerである。Test中のcursor persistence warningとinjected write failureは失敗回復fixtureで意図的に発生し、全assertionは成功した。
 
 ## 5. 同期結果
 
 - [x] 18件すべてを分類
-- [x] closed 4件を移動
+- [x] closed 5件を移動
 - [x] superseded 8件を移動
-- [x] root継続6件を現行contractへ更新
+- [x] root継続5件を現行contractへ更新
 - [x] 統合task 3件を追加
-- [x] roadmapを同じ9件へ同期
+- [x] roadmapをactive 8件へ同期
 - [x] semantic V5 roadmapを同期
 - [x] docs indexを同期
 - [x] current contract statusを同期
-- [x] trace test failure 2件へ修正を反映
-- [ ] focused/full/typecheck/typecheck:build/build/diff checkをfinal headで再実行
-- [ ] redの状態でcurrent trace task、Issue #89、PRを完了扱いにしない
+- [x] trace focused/full/typecheck/typecheck:build/build/diff checkがfinal headでgreen
+- [x] trace implementation taskをclosedへ移動
+- [ ] main deploy後にIssue #89のsame-conversation admin確認
+
+Issue #89は最後の実環境確認が完了するまでopenを維持する。
