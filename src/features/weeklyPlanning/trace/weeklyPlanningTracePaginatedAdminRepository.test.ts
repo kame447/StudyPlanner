@@ -61,6 +61,26 @@ describe('paginated weekly planning trace admin entries', () => {
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
+  it('page間でtotalEntryCountが変わるresponseを拒否する', async () => {
+    const fetchPage = vi.fn()
+      .mockResolvedValueOnce({
+        entries: [entry(0)],
+        totalEntryCount: 2,
+        nextAfterSequence: 0,
+        missingSequenceCount: 0,
+      })
+      .mockResolvedValueOnce({
+        entries: [entry(1)],
+        totalEntryCount: 3,
+        nextAfterSequence: null,
+        missingSequenceCount: 0,
+      });
+
+    await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
+      .rejects.toThrow(/総件数が変化/);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
   it('進まないcursorを拒否して無限loopを防ぐ', async () => {
     const fetchPage = vi.fn(async () => ({
       entries: [entry(0)],
