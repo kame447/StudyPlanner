@@ -38,7 +38,9 @@ const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, i
 function base64Url(value: Uint8Array | string): string {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
   let binary = '';
-  bytes.forEach((item) => { binary += String.fromCharCode(item); });
+  bytes.forEach((item) => {
+    binary += String.fromCharCode(item);
+  });
   return btoa(binary)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -46,8 +48,8 @@ function base64Url(value: Uint8Array | string): string {
 }
 
 function pemToArrayBuffer(pem: string): ArrayBuffer {
-  const normalized = pem.replace(/\\n/g, '\n');
-  const base64 = normalized
+  const base64 = pem
+    .replace(/\\n/g, '\n')
     .replace(/-----BEGIN PRIVATE KEY-----/g, '')
     .replace(/-----END PRIVATE KEY-----/g, '')
     .replace(/\s+/g, '');
@@ -60,10 +62,6 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function isIsoTimestampField(key: string): boolean {
-  return key === 'expireAt';
-}
-
 function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
   if (value === null || value === undefined) return { nullValue: null };
   if (typeof value === 'boolean') return { booleanValue: value };
@@ -74,7 +72,7 @@ function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
       : { doubleValue: value };
   }
   if (typeof value === 'string') {
-    if (isIsoTimestampField(key) && Number.isFinite(new Date(value).getTime())) {
+    if (key === 'expireAt' && Number.isFinite(new Date(value).getTime())) {
       return { timestampValue: value };
     }
     return { stringValue: value };
@@ -83,21 +81,21 @@ function encodeFirestoreValue(value: unknown, key = ''): FirestoreValue {
     return { arrayValue: { values: value.map((item) => encodeFirestoreValue(item)) } };
   }
   if (typeof value === 'object') {
-    const fields: Record<string, FirestoreValue> = {};
-    Object.entries(value as Record<string, unknown>).forEach(([entryKey, entryValue]) => {
-      if (entryValue !== undefined) fields[entryKey] = encodeFirestoreValue(entryValue, entryKey);
-    });
-    return { mapValue: { fields } };
+    return {
+      mapValue: {
+        fields: encodeFirestoreFields(value as Record<string, unknown>),
+      },
+    };
   }
   return { stringValue: String(value) };
 }
 
 function encodeFirestoreFields(value: Record<string, unknown>): Record<string, FirestoreValue> {
-  const fields: Record<string, FirestoreValue> = {};
-  Object.entries(value).forEach(([key, entryValue]) => {
-    if (entryValue !== undefined) fields[key] = encodeFirestoreValue(entryValue, key);
-  });
-  return fields;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .map(([key, entryValue]) => [key, encodeFirestoreValue(entryValue, key)]),
+  );
 }
 
 function decodeFirestoreValue(value: FirestoreValue | undefined): unknown {
@@ -107,8 +105,12 @@ function decodeFirestoreValue(value: FirestoreValue | undefined): unknown {
   if ('doubleValue' in value) return value.doubleValue;
   if ('timestampValue' in value) return value.timestampValue;
   if ('stringValue' in value) return value.stringValue;
-  if ('arrayValue' in value) return (value.arrayValue?.values ?? []).map(decodeFirestoreValue);
-  if ('mapValue' in value) return decodeFirestoreFields(value.mapValue?.fields ?? {});
+  if ('arrayValue' in value) {
+    return (value.arrayValue?.values ?? []).map(decodeFirestoreValue);
+  }
+  if ('mapValue' in value) {
+    return decodeFirestoreFields(value.mapValue?.fields ?? {});
+  }
   return null;
 }
 
@@ -126,8 +128,10 @@ function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -155,16 +159,12 @@ export class WeeklyPlanningTraceFirestoreClient {
     return value;
   }
 
+  private documentsBase(): string {
+    return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents`;
+  }
+
   private documentName(collection: string, id: string): string {
-    return [
-      'projects',
-      this.projectId(),
-      'databases',
-      '(default)',
-      'documents',
-      collection,
-      id,
-    ].join('/');
+    return `projects/${this.projectId()}/databases/(default)/documents/${collection}/${id}`;
   }
 
   private async serviceAccountToken(): Promise<string> {
@@ -172,9 +172,11 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (this.accessToken && now + TOKEN_EARLY_REFRESH_MS < this.accessTokenExpiresAt) {
       return this.accessToken;
     }
+
     const email = this.env.FIREBASE_SERVICE_ACCOUNT_EMAIL?.trim();
     const privateKey = this.env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY?.trim();
     if (!email || !privateKey) throw new Error('Firebase service account is not configured');
+
     const issuedAt = Math.floor(now / 1000);
     const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const claims = base64Url(JSON.stringify({
@@ -203,20 +205,17 @@ export class WeeklyPlanningTraceFirestoreClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth-type:jwt-bearer'.replace('type', 'grant-type'),
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         assertion,
       }),
     });
     if (!response.ok) throw new Error('Firebase service account token exchange failed');
+
     const payload = await response.json() as OAuthTokenResponse;
     if (!payload.access_token) throw new Error('Firebase service account token was empty');
     this.accessToken = payload.access_token;
     this.accessTokenExpiresAt = now + Math.max(60, payload.expires_in ?? 3600) * 1000;
     return this.accessToken;
-  }
-
-  private documentsBase(): string {
-    return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents`;
   }
 
   private async request(url: string, init: RequestInit = {}): Promise<Response> {
@@ -252,7 +251,10 @@ export class WeeklyPlanningTraceFirestoreClient {
     const query = params.size > 0 ? `?${params.toString()}` : '';
     const response = await this.request(
       `${this.documentsBase()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}${query}`,
-      { method: 'PATCH', body: JSON.stringify({ fields: encodeFirestoreFields(value) }) },
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
+      },
     );
     if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
   }
@@ -267,8 +269,8 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!Number.isSafeInteger(maximum) || maximum < 0) {
       throw new Error('Firestore maximum integer is invalid');
     }
-    const baseValue = { ...value };
-    delete baseValue[fieldPath];
+    const updateValue = { ...value };
+    delete updateValue[fieldPath];
     const response = await this.request(`${this.documentsBase()}:commit`, {
       method: 'POST',
       body: JSON.stringify({
@@ -276,9 +278,9 @@ export class WeeklyPlanningTraceFirestoreClient {
           {
             update: {
               name: this.documentName(collection, id),
-              fields: encodeFirestoreFields(baseValue),
+              fields: encodeFirestoreFields(updateValue),
             },
-            updateMask: { fieldPaths: Object.keys(baseValue) },
+            updateMask: { fieldPaths: Object.keys(updateValue) },
             currentDocument: { exists: true },
           },
           {
@@ -301,12 +303,16 @@ export class WeeklyPlanningTraceFirestoreClient {
     const params = new URLSearchParams({ documentId: id });
     const response = await this.request(
       `${this.documentsBase()}/${encodeURIComponent(collection)}?${params.toString()}`,
-      { method: 'POST', body: JSON.stringify({ fields: encodeFirestoreFields(value) }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
+      },
     );
     if (response.ok) return;
     if (response.status !== 409) {
       throw new Error(`Firestore immutable write failed: ${response.status}`);
     }
+
     const existing = await this.getDocument(collection, id);
     if (!existing
       || stableJson(comparableDocument(existing)) !== stableJson(comparableDocument(value))) {
@@ -326,6 +332,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!Number.isSafeInteger(params.maximum) || params.maximum < 0) {
       throw new Error('Firestore maximum integer is invalid');
     }
+
     const sessionValue = { ...params.sessionValue };
     delete sessionValue[params.maximumFieldPath];
     const writes = [
@@ -354,6 +361,7 @@ export class WeeklyPlanningTraceFirestoreClient {
         },
       },
     ];
+
     const response = await this.request(`${this.documentsBase()}:commit`, {
       method: 'POST',
       body: JSON.stringify({ writes }),
@@ -366,7 +374,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     const entryMatches = await Promise.all(params.entries.map(async (entry) => {
       const existing = await this.getDocument(params.entryCollection, entry.id);
       return Boolean(existing)
-        && stableJson(comparableDocument(existing!))
+        && stableJson(comparableDocument(existing as Record<string, unknown>))
           === stableJson(comparableDocument(entry.value));
     }));
     const session = await this.getDocument(params.sessionCollection, params.sessionId);
@@ -408,7 +416,10 @@ export class WeeklyPlanningTraceFirestoreClient {
     if (!response.ok) throw new Error(`Firestore query failed: ${response.status}`);
     const payload = await response.json() as FirestoreRunQueryResult[];
     return payload.flatMap((result) => result.document
-      ? [{ ...decodeFirestoreFields(result.document.fields ?? {}), id: documentId(result.document.name) }]
+      ? [{
+          ...decodeFirestoreFields(result.document.fields ?? {}),
+          id: documentId(result.document.name),
+        }]
       : []);
   }
 
