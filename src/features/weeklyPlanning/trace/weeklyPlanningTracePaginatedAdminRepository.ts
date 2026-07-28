@@ -195,6 +195,7 @@ export async function collectWeeklyPlanningTraceAdminEntryPages(
 ): Promise<Record<string, unknown>[]> {
   const entriesById = new Map<string, Record<string, unknown>>();
   let afterSequence = -1;
+  let missingSequenceCount = 0;
 
   for (
     let pageIndex = 0;
@@ -210,8 +211,14 @@ export async function collectWeeklyPlanningTraceAdminEntryPages(
       const id = typeof entry.id === 'string' ? entry.id : '';
       if (id) entriesById.set(id, entry);
     });
+    missingSequenceCount += page.missingSequenceCount;
 
     if (page.nextAfterSequence === null) {
+      if (missingSequenceCount > 0) {
+        throw new Error(
+          `週間計画traceのentryが${missingSequenceCount}件欠落しています。再取得してください。`,
+        );
+      }
       return Array.from(entriesById.values());
     }
     if (!Number.isSafeInteger(page.nextAfterSequence)
