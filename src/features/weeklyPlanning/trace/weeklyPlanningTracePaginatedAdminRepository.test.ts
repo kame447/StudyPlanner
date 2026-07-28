@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { collectWeeklyPlanningTraceAdminEntryPages } from './weeklyPlanningTracePaginatedAdminRepository';
+import {
+  collectWeeklyPlanningTraceAdminEntryPages,
+  type WeeklyPlanningTraceAdminEntryPageFetcher,
+} from './weeklyPlanningTracePaginatedAdminRepository';
 
 const SESSION_ID = 'weekly-trace-123e4567-e89b-52d3-a456-426614174000';
 
@@ -14,10 +17,9 @@ function entry(sequence: number): Record<string, unknown> {
 describe('paginated weekly planning trace admin entries', () => {
   it('256 entriesを20件以下のpageへ分けて全件集約する', async () => {
     const totalEntryCount = 256;
-    const fetchPage = vi.fn(async ({ afterSequence, limit }: {
-      sessionId: string;
-      afterSequence: number;
-      limit: number;
+    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async ({
+      afterSequence,
+      limit,
     }) => {
       const start = afterSequence + 1;
       const endExclusive = Math.min(totalEntryCount, start + limit);
@@ -30,7 +32,8 @@ describe('paginated weekly planning trace admin entries', () => {
         nextAfterSequence: endExclusive < totalEntryCount ? endExclusive - 1 : null,
         missingSequenceCount: 0,
       };
-    });
+    };
+    const fetchPage = vi.fn(implementation);
 
     const entries = await collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage);
 
@@ -43,7 +46,7 @@ describe('paginated weekly planning trace admin entries', () => {
 
   it('欠落entryがあれば全page確認後に部分結果を拒否する', async () => {
     let callIndex = 0;
-    const fetchPage = vi.fn(async () => {
+    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
       callIndex += 1;
       return callIndex === 1
         ? {
@@ -58,7 +61,8 @@ describe('paginated weekly planning trace admin entries', () => {
             nextAfterSequence: null,
             missingSequenceCount: 0,
           };
-    });
+    };
+    const fetchPage = vi.fn(implementation);
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/1件欠落/);
@@ -67,7 +71,7 @@ describe('paginated weekly planning trace admin entries', () => {
 
   it('page間でtotalEntryCountが変わるresponseを拒否する', async () => {
     let callIndex = 0;
-    const fetchPage = vi.fn(async () => {
+    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async () => {
       callIndex += 1;
       return callIndex === 1
         ? {
@@ -82,7 +86,8 @@ describe('paginated weekly planning trace admin entries', () => {
             nextAfterSequence: null,
             missingSequenceCount: 0,
           };
-    });
+    };
+    const fetchPage = vi.fn(implementation);
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/総件数がpage間で変化/);
@@ -90,12 +95,13 @@ describe('paginated weekly planning trace admin entries', () => {
   });
 
   it('進まないcursorを拒否して無限loopを防ぐ', async () => {
-    const fetchPage = vi.fn(async () => ({
+    const implementation: WeeklyPlanningTraceAdminEntryPageFetcher = async () => ({
       entries: [entry(0)],
       totalEntryCount: 2,
       nextAfterSequence: -1,
       missingSequenceCount: 0,
-    }));
+    });
+    const fetchPage = vi.fn(implementation);
 
     await expect(collectWeeklyPlanningTraceAdminEntryPages(SESSION_ID, fetchPage))
       .rejects.toThrow(/cursorが不正/);
