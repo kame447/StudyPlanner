@@ -2,7 +2,6 @@
 
 Status: canonical / active post-runtime-integration queue
 最終更新: 2026-07-28
-Reviewed branch baseline: `87ada19cc74ff4d85da464bda94169d91663e81b`
 
 - [Runtime trial contract](../weekly-planning-stable-v5-runtime-trial-contract.md)
 - [Current contract](../weekly-planning-current-contract-v5.md)
@@ -10,6 +9,7 @@ Reviewed branch baseline: `87ada19cc74ff4d85da464bda94169d91663e81b`
 - [Migration plan](weekly-planning-semantic-stable-v5-migration-plan.md)
 - [Active-task inventory](../audits/20260728-weekly-planning-active-task-inventory.md)
 - [Verification/cutover task](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+- [Trace empty-session completion](../tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
 
 ## 1. 到達済みruntime
 
@@ -101,28 +101,25 @@ Remaining:
 
 ### V5-E: quality trace
 
-Status: empty-session fix implemented / final verification pending
+Status: implementation and automated verification complete / post-merge browser verification pending
 
-Current branch fixes:
+Completed:
 
-- frontend/Worker event catalog drift
-- debug document/string/token limits
+- frontend/Worker event catalog drift修正
+- debug document/string/token limits整合
 - request entry/byte batching
 - zero-count identity persistence
 - server handle reuse after failed append
 - empty artifactの未export除外
+- focused 46 tests passed
+- trace full 79 tests passed
+- typecheck、typecheck:build、production build、diff check passed
 
-First verification:
+Remaining:
 
-```text
-focused trace: 65 passed
-trace full: 1 failed
-npm run typecheck: 1 error
-typecheck:build: passed
-build: passed
-```
-
-失敗fixtureを修正済み。rerun前なのでgateはopenのまま。
+- main deploy後のsame-conversation admin viewer確認
+- Issue #89 close判断
+- production secret/TTL/Rules/Worker rollout
 
 ### V5-F: external source
 
@@ -176,8 +173,7 @@ Status: not started
 ## 3. Current execution order
 
 ```text
-trace empty-session final green
-→ current-time hard boundary
+current-time hard boundary
 → Stable V5 actual AI real-eval
 → browser roleplay
 → external source production adapter verification
@@ -199,19 +195,26 @@ cloud conversation/Graph repository
 → personalization rollout
 ```
 
+Parallel production operation:
+
+```text
+trace production deploy + Issue #89 post-merge verification
+```
+
 ## 4. Current active records
 
 Semantic V5 streamで参照するroot task:
 
-- [trace empty-session recovery](../tasks/20260727-weekly-planning-trace-empty-session-recovery.md)
 - [current-time boundary](../tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
 - [verification/migration/cutover](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
 - [runtime followups](../tasks/20260724-weekly-planning-runtime-followups.md)
 - [cloud session store](../tasks/20260716-weekly-planning-synced-conversation-session-store.md)
 - [external source production adapter](../tasks/20260728-weekly-planning-external-source-production-adapter.md)
+- [trace production operations](../tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
 
-次の旧recordsはcurrent queueではない。
+次のrecordsはcurrent root queueではない。
 
+- `tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md`
 - `tasks/superseded/20260722-weekly-planning-generic-semantic-v5-migration.md`
 - `tasks/superseded/20260722-weekly-planning-v5-date-real-eval.md`
 - `tasks/closed/20260722-weekly-planning-specific-date-and-personalization-profile.md`
@@ -226,12 +229,11 @@ Semantic V5 streamで参照するroot task:
 - GraphとPlanningState commitが非原子的
 - request/current-time identityが不安定
 - current時刻より前へ配置する
-- same conversation traceが分裂またはappendされない
+- same conversation traceが実環境で分裂またはappendされない
 - external failureを予定0件として扱う
 - actual AI eval未実施
 - browser roleplay未実施
 - migration/rollback未検証
-- automated verificationがred
 - unresolved blocker/major audit finding
 
 ## 6. 完了記録の扱い
