@@ -36,12 +36,19 @@ export type WeeklyPlanningTraceEventTypeContract =
 
 export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-28-v2' as const;
 export const WEEKLY_PLANNING_TRACE_WORKER_REVISION =
-  'weekly-planning-trace-20260728-001' as const;
+  'weekly-planning-trace-20260729-002' as const;
 
 export const WEEKLY_PLANNING_TRACE_HEADERS = {
   contractVersion: 'X-StudyPlanner-Trace-Contract-Version',
   workerRevision: 'X-StudyPlanner-Trace-Worker-Revision',
   correlationId: 'X-StudyPlanner-Trace-Correlation-Id',
+} as const;
+
+export const WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING = {
+  defaultPageSize: 20,
+  maxPageSize: 20,
+  maxEntryCount: 500,
+  maxPages: 25,
 } as const;
 
 export const WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING =
