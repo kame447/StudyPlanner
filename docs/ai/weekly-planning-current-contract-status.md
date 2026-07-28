@@ -2,13 +2,12 @@
 
 Status: canonical / active status overlay
 Updated: 2026-07-28
-Reviewed branch baseline: `f8e4904dd1038a77df1220363fd35b222bb74bd5`
 
 - Runtime contract: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
 - Semantic contract: [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md)
 - Roadmap: [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
 - Active-task inventory: [audits/20260728-weekly-planning-active-task-inventory.md](audits/20260728-weekly-planning-active-task-inventory.md)
-- Current trace audit: [audits/20260727-stable-v5-trace-empty-session-seven-audit.md](audits/20260727-stable-v5-trace-empty-session-seven-audit.md)
+- Trace empty-session completion: [tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md](tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
 
 ## 1. 優先順位
 
@@ -127,31 +126,30 @@ same owner + same logical conversation + no explicit reset
 → monotonic entry/turn sequence
 ```
 
-PR #83でreload、idle、repository recreation時のcontinuityを実装したが、PR #86のfull debug trace追加後、frontend/Worker/transport/privacy contract driftにより`session/start`だけ成功してappendが拒否される経路が発生した。
+Implemented and automated verified:
 
-Current branchで次を修正済み:
-
-- shared event catalog/limits
-- Stable V5 debug eventのWorker受理
-- document/string/token-redaction-safe chunk encoding
-- entry/byte batching
+- reload、idle、repository recreation時のcontinuity
+- frontend/Worker shared event catalog
+- Stable V5 debug event受理
+- document/string/token-redaction-safe dotted base64 chunks
+- entry count/request byte batching
 - zero-count identity先行保存
-- failed append後のsame handle reuse
-- empty artifactの未export除外
+- failed append後のsame server handle reuse
+- empty artifactの標準未export除外
+- focused 5 files / 46 tests passed
+- trace full 18 files / 79 tests passed
+- `typecheck`、`typecheck:build`、production build、`git diff --check` passed
 
-First verification:
+Test中のcursor persistence warningとinjected write failureは、storage未導入harnessまたは失敗回復fixtureで意図的に発生し、assertionは全件成功した。
 
-```text
-focused trace: 9 files / 65 tests passed
-trace full: 1 failed / 78 passed
-npm run typecheck: 1 error
-npm run typecheck:build: passed
-npm run build: passed
-```
+Remaining production verification:
 
-失敗した旧test decoderとunion fixtureは修正済み。再実行前なのでautomated verifiedとは記載しない。main deploy後にadmin viewerでsame conversation 1 sessionかつturn/entry > 0を確認するまでIssue #89をcloseしない。
+- main deploy後、same logical conversationのsession件数が1である
+- `turnCount > 0`、`entryCount > 0`
+- JSON exportでStable V5 debug stagesを再構成できる
+- reload/retry後もsession件数が増えない
 
-Historical empty sessionsは自動mergeしない。標準未export一覧には表示しない。
+Issue #89は上記確認が完了するまでopenとする。historical empty sessionsは自動merge/deleteしない。
 
 ## 8. Trace privacy/operations
 
@@ -174,6 +172,7 @@ Production未完了:
 - admin browser verification
 - pagination/index/versioned decoder
 - privacy/legal review
+- Issue #89 post-merge confirmation
 
 ## 9. External source
 
@@ -226,17 +225,16 @@ Foundation実装済み:
 
 ## 12. Active task root
 
-Current execution targetは次の9件だけ。
+Current execution targetは次の8件だけ。
 
-1. `20260727-weekly-planning-trace-empty-session-recovery.md`
-2. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
-3. `20260728-weekly-planning-stable-v5-verification-and-cutover.md`
-4. `20260724-weekly-planning-runtime-followups.md`
-5. `20260716-weekly-planning-synced-conversation-session-store.md`
-6. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
-7. `20260718-weekly-planning-approval-operational-rollout.md`
-8. `20260728-weekly-planning-external-source-production-adapter.md`
-9. `20260728-weekly-planning-personalization-rollout.md`
+1. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
+2. `20260728-weekly-planning-stable-v5-verification-and-cutover.md`
+3. `20260724-weekly-planning-runtime-followups.md`
+4. `20260716-weekly-planning-synced-conversation-session-store.md`
+5. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
+6. `20260718-weekly-planning-approval-operational-rollout.md`
+7. `20260728-weekly-planning-external-source-production-adapter.md`
+8. `20260728-weekly-planning-personalization-rollout.md`
 
 実装完了済みtaskはclosedへ、別trackerへ統合した未完了taskはsupersededへ移動済み。
 
@@ -244,11 +242,10 @@ Current execution targetは次の9件だけ。
 
 次が残る場合、Stable V5をdefaultへ変更しない。
 
-- automated verification failure
 - current-time boundary未実装
 - actual AI real-eval未実施
 - browser roleplay未実施
-- trace append/split issue
+- trace append/split issueの実環境再発
 - external source adapter未検証
 - migration/rollback未検証
 - unresolved blocker/major audit finding
