@@ -38,17 +38,21 @@ frontendにはpaginated admin repository decoratorを追加した。20件ずつ�
 
 管理画面はsessionごとのentry取得errorを保持するよう変更した。取得失敗時は`entryはありません。`とRaw JSONを表示せず、`entry取得失敗`と再試行操作を表示する。JSON exportは全entryの取得に成功した場合だけ実行し、取得失敗時はarchiveしない。
 
+さらに、session一覧を`未export`、`アーカイブ済み`、`Empty`の3区分へ変更した。アーカイブ済みsessionはFirestoreから削除せず、`archivedAt`が最後の活動以降である間はアーカイブ済み一覧へ表示する。そこからConversation、Events、State snapshots、Raw JSONを再表示し、archive状態を変更せずJSONを再エクスポートできる。archive後に新しいactivityが追加されたsessionは未export一覧へ戻り、再エクスポート時に`archivedAt`を更新する。empty sessionの既存export・archive動作も維持する。
+
 Worker revisionを`weekly-planning-trace-20260729-002`へ更新した。contract versionは既存endpointを破壊しない追加変更であるため`2026-07-28-v2`を維持する。
 
 ## 追加test
 
 frontend testでは、実症状と同じ256 entriesを20件以下の13 pageへ分割して全件集約できること、欠落entryがある場合に部分結果を拒否すること、page間で総件数が変化した場合に拒否すること、cursor非進行を拒否することを固定した。
 
+archive判定testでは、未archive session、empty session、活動の一部だけが保存されたsession、archive済みで新規activityがないsession、archive後に新規activityがあるsessionを分離した。これにより、archive済み一覧へ表示する条件と未export一覧へ戻す条件を固定した。
+
 Worker testでは、`entryCount=256`かつ要求limitが100でも1pageのFirestore GETが20回に制限され、次cursorが19になること、2page目が20から39まで進むこと、欠落documentを数えながらcursorを進めることを固定した。
 
 ## 検証結果
 
-Cloudflare Pagesの同一build環境で、一時的にbuild commandへ次の4工程を直列化して実行し、commit `15387f8`で成功した。
+Cloudflare Pagesの同一build環境で、一時的にbuild commandへ次の4工程を直列化して実行し、アーカイブ済み一覧・再エクスポート・empty session回帰修正を含むcommit `af86f9d`で成功した。
 
 ```text
 npm run typecheck
@@ -57,7 +61,7 @@ npm run test:run
 vite build --config vite.config.mjs
 ```
 
-検証後は`package.json`の通常build commandへ戻し、一時診断scriptも削除した。通常のVite buildはcommit `066e163`で成功している。GitHub Actionsはrunner起動前に終了してstepsが0件だったため、成功証跡には使用していない。
+検証後は`package.json`の通常build commandへ戻した。通常のVite buildはcommit `1d14af2`で成功している。GitHub Actionsはrunner起動前に終了してstepsが0件だったため、成功証跡には使用していない。
 
 ## 残るdeploy gate
 
@@ -65,4 +69,6 @@ source修正だけではProductionは直らない。`workers/ai-proxy/wrangler.j
 
 Productionでは認証済みhealth probeでcontract version、Worker revision、CORS response headersを確認する。その後、既存の256-entry sessionを展開し、Conversation、Events、State snapshots、Raw redacted JSON、JSON exportの各経路を確認する。`/admin/entries/page`が複数回200を返し、各responseのentry数が20以下で、最後のcursorがnullになることも確認する。
 
-Issue #89はProductionで既存sessionを完全に取得・表示・exportできるまでOPENを維持する。PR #96もWorker deployとProduction確認が終わるまでDraft・merge不可とする。
+加えて、export後にsessionが未export一覧からアーカイブ済み一覧へ移動し、アーカイブ済み一覧から同じentryを再表示・再エクスポートできることを確認する。再エクスポートでは`archivedAt`が変更されないこと、archive後に新規activityが追加された場合は未export一覧へ戻ることも確認する。
+
+Issue #89はProductionで既存sessionを完全に取得・表示・export・再表示できるまでOPENを維持する。PR #96もWorker deployとProduction確認が終わるまでDraft・merge不可とする。
