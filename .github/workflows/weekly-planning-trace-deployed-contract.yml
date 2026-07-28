@@ -1,0 +1,29 @@
+name: Weekly Planning Trace Deployed Contract
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Verify required secrets
+        env:
+          TRACE_BASE_URL: ${{ secrets.WEEKLY_PLANNING_TRACE_BASE_URL }}
+          TRACE_ID_TOKEN: ${{ secrets.WEEKLY_PLANNING_TRACE_ID_TOKEN }}
+        run: |
+          test -n "$TRACE_BASE_URL"
+          test -n "$TRACE_ID_TOKEN"
+      - name: Verify deployed trace contract
+        env:
+          TRACE_BASE_URL: ${{ secrets.WEEKLY_PLANNING_TRACE_BASE_URL }}
+          TRACE_ID_TOKEN: ${{ secrets.WEEKLY_PLANNING_TRACE_ID_TOKEN }}
+        run: node scripts/verify-weekly-planning-trace-deployed-contract.mjs
