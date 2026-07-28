@@ -2,13 +2,12 @@
 
 Status: canonical / active
 最終更新: 2026-07-28
-Reviewed branch baseline: `51809873980d9ded953fd6f0614547b79fe71182`
 
 - Runtime contract: [../weekly-planning-stable-v5-runtime-trial-contract.md](../weekly-planning-stable-v5-runtime-trial-contract.md)
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - Semantic V5 queue: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
 - Active-task inventory: [../audits/20260728-weekly-planning-active-task-inventory.md](../audits/20260728-weekly-planning-active-task-inventory.md)
-- Current trace audit: [../audits/20260727-stable-v5-trace-empty-session-seven-audit.md](../audits/20260727-stable-v5-trace-empty-session-seven-audit.md)
+- Trace empty-session completion: [../tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md](../tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
 
 ## 1. Statusの読み方
 
@@ -59,21 +58,26 @@ module implemented
 
 ### Trace
 
-実装済み:
+実装・自動検証済み:
 
 - server-authoritative structural IDs
 - owner-scoped server handle continuity
 - Stable V5 debug stage transport
 - redaction、HMAC subject、admin export
-- current branchでempty-session root causesを修正
+- frontend/Worker event catalog統合
+- document/string/token-redaction-safe chunk encoding
+- request entry/byte batching
+- zero-count identity persistence
+- failed append後のsame handle reuse
+- empty artifactの未export除外
+- focused 46 tests、trace full 79 tests、typecheck、typecheck:build、build、diff check成功
 
 未完了:
 
-- current branch final automated verification
 - production secret/TTL/Rules/Worker deploy
+- Issue #89 post-merge admin verification
 - final-turn durable delivery
 - pagination/versioned decoder
-- production admin/browser verification
 
 ### Approval
 
@@ -109,30 +113,22 @@ Foundation実装済み:
 
 ## 3. Current queue
 
-`docs/ai/tasks/`直下のtask recordは次の9件だけをcurrent queueとする。
-
-### P0: current blocker
-
-1. [trace empty-session recovery](../tasks/20260727-weekly-planning-trace-empty-session-recovery.md)
-   - implementation complete
-   - first verification: focused 65 passed、trace full 1 failed、typecheck 1 error
-   - two test-contract fixes applied; rerun required
-   - greenになるまでPR ready/merge禁止
+`docs/ai/tasks/`直下のtask recordは次の8件だけをcurrent queueとする。
 
 ### P0: scheduler safety
 
-2. [current-time start boundary](../tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
+1. [current-time start boundary](../tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
    - Stable V5 schedulerが当日の現在時刻より前へ配置し得る
    - request-scoped clock snapshotとearliest placement boundaryを実装する
 
 ### P1: adoption/runtime integrity
 
-3. [Stable V5 verification and cutover](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
+2. [Stable V5 verification and cutover](../tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
    - actual AI real-eval
    - browser roleplay
    - old-state migration/dry-run
    - shadow/rollback/default cutover
-4. [Stable V5 runtime followups](../tasks/20260724-weekly-planning-runtime-followups.md)
+3. [Stable V5 runtime followups](../tasks/20260724-weekly-planning-runtime-followups.md)
    - cross-tab sequence
    - accepted-fact grounding
    - final trace durability
@@ -141,22 +137,21 @@ Foundation実装済み:
 
 ### P1-P2: production boundaries
 
-5. [cloud conversation session store](../tasks/20260716-weekly-planning-synced-conversation-session-store.md)
-6. [trace production privacy/lifecycle/scalability](../tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
-7. [approval operational rollout](../tasks/20260718-weekly-planning-approval-operational-rollout.md)
-8. [external source production adapter](../tasks/20260728-weekly-planning-external-source-production-adapter.md)
+4. [cloud conversation session store](../tasks/20260716-weekly-planning-synced-conversation-session-store.md)
+5. [trace production privacy/lifecycle/scalability](../tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
+6. [approval operational rollout](../tasks/20260718-weekly-planning-approval-operational-rollout.md)
+7. [external source production adapter](../tasks/20260728-weekly-planning-external-source-production-adapter.md)
 
 ### P2+: learning/personalization
 
-9. [personalization rollout](../tasks/20260728-weekly-planning-personalization-rollout.md)
+8. [personalization rollout](../tasks/20260728-weekly-planning-personalization-rollout.md)
 
 旧分割taskはclosedまたはsupersededへ移動済みであり、current queueとして使用しない。
 
 ## 4. 依存順
 
 ```text
-trace empty-session recovery green
-→ current-time hard boundary
+current-time hard boundary
 → Stable V5 actual AI/browser verification
 → external source adapter verification
 → migration/shadow/rollback
@@ -176,7 +171,7 @@ cloud conversation/Graph repository
 Parallel production operations:
 
 ```text
-trace secret/TTL/access/pagination
+trace secret/TTL/access/pagination + Issue #89 post-merge verification
 approval Rules/TTL/multi-client
 ```
 
@@ -198,17 +193,16 @@ raw user textの初期意味構造化はAIだけが担当する。deterministic 
 
 ### Trace authority
 
-logical conversationに対するlocal session identity、server handle、entry sequenceを継続する。session/startだけ成功したempty artifactを実活動として表示しない。current trace taskがgreenかつmain deploy後のadmin確認が完了するまでIssue #89をcloseしない。
+logical conversationに対するlocal session identity、server handle、entry sequenceを継続する。session/startだけ成功したempty artifactを実活動として表示しない。implementationと自動検証は完了したが、main deploy後のsame-conversation admin確認が終わるまでIssue #89をcloseしない。
 
 ### Default cutover
 
 次が残る場合、Stable V5をdefaultへしない。
 
-- automated verification failure
 - current-time boundary未実装
 - actual AI real-eval未実施
 - browser roleplay未実施
-- trace split/loss
+- trace split/lossの実環境再発
 - migration/rollback未検証
 - unresolved blocker/major audit finding
 
