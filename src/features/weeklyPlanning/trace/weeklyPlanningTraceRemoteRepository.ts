@@ -2,14 +2,11 @@ import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   measureWeeklyPlanningTraceJsonBytes,
 } from '../../../../shared/weeklyPlanningTraceContract';
-import {
-  isWeeklyPlanningTraceEntry,
-  type WeeklyPlanningTraceEntry,
-  type WeeklyPlanningTraceRepository,
-  type WeeklyPlanningTraceSession,
-} from './weeklyPlanningTraceTypes';
+import { createWeeklyPlanningTraceAdminDiagnostics } from './weeklyPlanningTraceArchive';
 import {
   createWeeklyPlanningTraceApiClient,
+  isWeeklyPlanningTraceRetriableError,
+  isWeeklyPlanningTraceServerHandleRejection,
   type WeeklyPlanningTraceApiClient,
   type WeeklyPlanningTraceServerHandle,
 } from './weeklyPlanningTracePrivacyClient';
@@ -17,6 +14,12 @@ import {
   loadWeeklyPlanningStableV5TraceCursor,
   saveWeeklyPlanningStableV5TraceCursor,
 } from './weeklyPlanningStableV5TraceSessionStorage';
+import {
+  isWeeklyPlanningTraceEntry,
+  type WeeklyPlanningTraceEntry,
+  type WeeklyPlanningTraceRepository,
+  type WeeklyPlanningTraceSession,
+} from './weeklyPlanningTraceTypes';
 
 const SERVER_HANDLE_STORAGE_VERSION =
   'studyplanner-weekly-planning-trace-server-handle-v1' as const;
@@ -24,7 +27,6 @@ const SERVER_HANDLE_STORAGE_PREFIX = 'studyplanner.weeklyPlanning.trace.serverHa
 const SERVER_HANDLE_KEYS = ['version', 'localSessionId', 'serverHandle'] as const;
 const HANDLE_KEYS = ['sessionId', 'logicalConversationId'] as const;
 const STABLE_V5_LOCAL_SESSION_PREFIX = 'weekly-trace-stable-v5-';
-const CLIENT_DOCUMENT_TARGET_BYTES = 48 * 1024;
 
 interface StoredServerHandle {
   version: typeof SERVER_HANDLE_STORAGE_VERSION;
@@ -109,10 +111,7 @@ function sessionFromRemote(record: Record<string, unknown>): WeeklyPlanningTrace
 }
 
 function entryFromRemote(record: Record<string, unknown>): WeeklyPlanningTraceEntry | null {
-  const candidate = {
-    ...record,
-    userId: subjectAlias(record),
-  };
+  const candidate = { ...record, userId: subjectAlias(record) };
   return isWeeklyPlanningTraceEntry(candidate) ? candidate : null;
 }
 
@@ -189,11 +188,7 @@ function canonicalSession(
   session: WeeklyPlanningTraceSession,
   handle: WeeklyPlanningTraceServerHandle,
 ): WeeklyPlanningTraceSession {
-  return {
-    ...session,
-    id: handle.sessionId,
-    logicalConversationId: handle.logicalConversationId,
-  };
+  return { ...session, id: handle.sessionId, logicalConversationId: handle.logicalConversationId };
 }
 
 function canonicalEntry(
@@ -239,11 +234,7 @@ function loadStoredServerHandle(
     }
     return value.serverHandle;
   } catch {
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      // Ignore storage cleanup failures.
-    }
+    try { window.localStorage.removeItem(key); } catch { /* ignore */ }
     return null;
   }
 }
@@ -261,29 +252,13 @@ function saveStoredServerHandle(
   try {
     window.localStorage.setItem(serverHandleStorageKey(session), JSON.stringify(payload));
   } catch {
-    // Server handle continuity is best effort. Server-side ownership remains authoritative.
+    // Server handle continuity remains best effort.
   }
 }
 
 function clearStoredServerHandle(session: WeeklyPlanningTraceSession): void {
   if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem(serverHandleStorageKey(session));
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-}
-
-function rejectsStoredServerHandle(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return [
-    'trace session must be started before append',
-    'trace session ownership conflict',
-    'legacy trace session is read-only',
-    'trace session conversation conflict',
-    'trace session issuance conflict',
-    'stale server handle',
-  ].some((marker) => message.includes(marker));
+  try { window.localStorage.removeItem(serverHandleStorageKey(session)); } catch { /* ignore */ }
 }
 
 function batchSession(
@@ -291,41 +266,31 @@ function batchSession(
   allEntries: readonly WeeklyPlanningTraceEntry[],
   batchEntries: readonly WeeklyPlanningTraceEntry[],
 ): WeeklyPlanningTraceSession {
-  const maxSequence = batchEntries.reduce(
-    (latest, entry) => Math.max(latest, entry.sequence),
-    -1,
-  );
+  const maxSequence = batchEntries.reduce((latest, entry) => Math.max(latest, entry.sequence), -1);
   const entryCount = maxSequence + 1;
   const appendedTurnCount = allEntries.filter((entry) => entry.kind === 'turn').length;
   const previousTurnCount = Math.max(0, session.turnCount - appendedTurnCount);
   const includedTurnCount = allEntries.filter(
     (entry) => entry.kind === 'turn' && entry.sequence < entryCount,
   ).length;
-  return {
-    ...session,
-    entryCount,
-    turnCount: previousTurnCount + includedTurnCount,
-  };
+  return { ...session, entryCount, turnCount: previousTurnCount + includedTurnCount };
 }
 
 function assertClientDocumentSize(entry: WeeklyPlanningTraceEntry): void {
   const bytes = measureWeeklyPlanningTraceJsonBytes(entry);
-  if (bytes > CLIENT_DOCUMENT_TARGET_BYTES) {
+  if (bytes > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) {
     throw new Error(
-      `trace entry exceeds the client document target (${bytes}/${CLIENT_DOCUMENT_TARGET_BYTES})`,
+      `trace entry exceeds the client document target (${bytes}/${WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes})`,
     );
   }
 }
 
-function splitCanonicalPayload(
-  canonical: CanonicalTracePayload,
-): CanonicalTracePayload[] {
+function splitCanonicalPayload(canonical: CanonicalTracePayload): CanonicalTracePayload[] {
   if (canonical.entries.length === 0) return [canonical];
   canonical.entries.forEach(assertClientDocumentSize);
 
   const batches: CanonicalTracePayload[] = [];
   let entries: WeeklyPlanningTraceEntry[] = [];
-
   const payloadFor = (candidateEntries: WeeklyPlanningTraceEntry[]): CanonicalTracePayload => ({
     session: batchSession(canonical.session, canonical.entries, candidateEntries),
     entries: candidateEntries,
@@ -338,23 +303,19 @@ function splitCanonicalPayload(
       > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxEntriesPerRequest;
     const exceedsTarget = measureWeeklyPlanningTraceJsonBytes(candidate)
       > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientBatchTargetBytes;
-
     if ((exceedsCount || exceedsTarget) && entries.length > 0) {
       batches.push(payloadFor(entries));
       entries = [entry];
     } else {
       entries = candidateEntries;
     }
-
-    const singleOrCurrent = payloadFor(entries);
-    const bytes = measureWeeklyPlanningTraceJsonBytes(singleOrCurrent);
+    const bytes = measureWeeklyPlanningTraceJsonBytes(payloadFor(entries));
     if (bytes > WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxRequestBodyBytes) {
       throw new Error(
         `trace append payload exceeds the request limit (${bytes}/${WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxRequestBodyBytes})`,
       );
     }
   }
-
   if (entries.length > 0) batches.push(payloadFor(entries));
   return batches;
 }
@@ -364,13 +325,26 @@ export function createRemoteWeeklyPlanningTraceRepository(
 ): WeeklyPlanningTraceRepository {
   const sessionsById = new Map<string, WeeklyPlanningTraceSession>();
   const handlesByLocalSessionId = new Map<string, Promise<WeeklyPlanningTraceServerHandle>>();
+  let compatibility: Promise<void> | null = null;
+
+  function ensureCompatibility(): Promise<void> {
+    if (!client.getHealth) return Promise.resolve();
+    compatibility ??= client.getHealth().then(() => undefined).catch((error) => {
+      compatibility = null;
+      throw error;
+    });
+    return compatibility;
+  }
 
   function forgetServerHandle(session: WeeklyPlanningTraceSession): void {
     handlesByLocalSessionId.delete(session.id);
     clearStoredServerHandle(session);
   }
 
-  function serverHandle(session: WeeklyPlanningTraceSession): Promise<WeeklyPlanningTraceServerHandle> {
+  async function serverHandle(
+    session: WeeklyPlanningTraceSession,
+  ): Promise<WeeklyPlanningTraceServerHandle> {
+    await ensureCompatibility();
     persistStableV5SessionIdentity(session);
     const existing = handlesByLocalSessionId.get(session.id);
     if (existing) return existing;
@@ -409,12 +383,11 @@ export function createRemoteWeeklyPlanningTraceRepository(
   }
 
   async function appendCanonicalBatches(canonical: CanonicalTracePayload): Promise<void> {
-    const batches = splitCanonicalPayload(canonical);
-    for (const batch of batches) {
+    for (const batch of splitCanonicalPayload(canonical)) {
       try {
         await client.append(batch);
       } catch (error) {
-        if (rejectsStoredServerHandle(error)) throw error;
+        if (!isWeeklyPlanningTraceRetriableError(error)) throw error;
         await client.append(batch);
       }
     }
@@ -429,7 +402,7 @@ export function createRemoteWeeklyPlanningTraceRepository(
       await appendCanonicalBatches(canonical);
       return canonical.session;
     } catch (error) {
-      if (!rejectsStoredServerHandle(error)) throw error;
+      if (!isWeeklyPlanningTraceServerHandleRejection(error)) throw error;
       forgetServerHandle(params.session);
       canonical = await canonicalPayload(params);
       await appendCanonicalBatches(canonical);
@@ -437,38 +410,47 @@ export function createRemoteWeeklyPlanningTraceRepository(
     }
   }
 
+  async function adminResult() {
+    await ensureCompatibility();
+    const response = await client.listAdminSessions();
+    const raw = Array.isArray(response)
+      ? { sessions: response, rawCount: response.length }
+      : response;
+    const sessions = raw.sessions
+      .map(sessionFromRemote)
+      .filter((session): session is WeeklyPlanningTraceSession => Boolean(session))
+      .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+    sessions.forEach((session) => sessionsById.set(session.id, session));
+    return {
+      sessions,
+      diagnostics: createWeeklyPlanningTraceAdminDiagnostics({
+        rawCount: raw.rawCount,
+        mappedSessions: sessions,
+      }),
+    };
+  }
+
   return {
     async upsertSession(session) {
       const canonicalSessionValue = await appendWithHandleRecovery({ session, entries: [] });
       sessionsById.set(canonicalSessionValue.id, { ...canonicalSessionValue });
     },
-
     async appendEntries({ session, entries }) {
       const canonicalSessionValue = await appendWithHandleRecovery({ session, entries });
       sessionsById.set(canonicalSessionValue.id, { ...canonicalSessionValue });
     },
-
-    async listSessions() {
-      return [];
-    },
-
-    async listSessionsForAdmin() {
-      const sessions = (await client.listAdminSessions())
-        .map(sessionFromRemote)
-        .filter((session): session is WeeklyPlanningTraceSession => Boolean(session));
-      sessions.forEach((session) => sessionsById.set(session.id, session));
-      return sessions.sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
-    },
-
+    async listSessions() { return []; },
+    async listSessionsForAdmin() { return (await adminResult()).sessions; },
+    listSessionsForAdminWithDiagnostics: adminResult,
     async archiveSessionForAdmin(sessionId) {
+      await ensureCompatibility();
       await client.archiveAdminSession(sessionId);
     },
-
     async getSession(_userId, sessionId) {
       return sessionsById.get(sessionId) ?? null;
     },
-
     async listEntries(_userId, sessionId) {
+      await ensureCompatibility();
       return (await client.listAdminEntries(sessionId))
         .map(entryFromRemote)
         .filter((entry): entry is WeeklyPlanningTraceEntry => Boolean(entry))
