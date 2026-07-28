@@ -1,0 +1,49 @@
+import {
+  WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
+  WEEKLY_PLANNING_TRACE_HEADERS,
+  WEEKLY_PLANNING_TRACE_WORKER_REVISION,
+} from '../../../shared/weeklyPlanningTraceContract';
+import worker, { AiQuotaDurableObject } from './worker';
+import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
+
+export { AiQuotaDurableObject };
+
+function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
+  const correlationId = request.headers.get(WEEKLY_PLANNING_TRACE_HEADERS.correlationId)?.trim();
+  const configuredRevision = typeof env.WEEKLY_PLANNING_TRACE_WORKER_REVISION === 'string'
+    ? env.WEEKLY_PLANNING_TRACE_WORKER_REVISION.trim()
+    : '';
+  return {
+    [WEEKLY_PLANNING_TRACE_HEADERS.contractVersion]: WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
+    [WEEKLY_PLANNING_TRACE_HEADERS.workerRevision]:
+      configuredRevision || WEEKLY_PLANNING_TRACE_WORKER_REVISION,
+    ...(correlationId ? { [WEEKLY_PLANNING_TRACE_HEADERS.correlationId]: correlationId } : {}),
+    'Access-Control-Allow-Headers': [
+      'Authorization',
+      'Content-Type',
+      WEEKLY_PLANNING_TRACE_HEADERS.contractVersion,
+      WEEKLY_PLANNING_TRACE_HEADERS.correlationId,
+    ].join(', '),
+    'Access-Control-Expose-Headers': [
+      WEEKLY_PLANNING_TRACE_HEADERS.contractVersion,
+      WEEKLY_PLANNING_TRACE_HEADERS.workerRevision,
+      WEEKLY_PLANNING_TRACE_HEADERS.correlationId,
+      'X-StudyPlanner-Proxy-Version',
+    ].join(', '),
+  };
+}
+
+export default {
+  async fetch(request: Request, env: Record<string, unknown>): Promise<Response> {
+    const response = await worker.fetch(request, env as never);
+    if (!isWeeklyPlanningTracePath(new URL(request.url).pathname)) return response;
+
+    const headers = new Headers(response.headers);
+    Object.entries(traceHeaders(request, env)).forEach(([key, value]) => headers.set(key, value));
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  },
+};
