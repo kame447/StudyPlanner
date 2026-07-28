@@ -28,6 +28,8 @@ Workerはsessionの`entryCount`を最大500まで読み、queryで回収でき�
 
 通常のHTTP error responseを受けた場合、frontendはstatusとerror codeを保持する。今回表示された`trace_network_failure`相当の文言はfetch自体がresponseを受け取れなかった場合に生成されるため、Worker実行中断という観測と整合する。
 
+管理画面には別の表示上の契約違反もあった。`listEntries`が失敗してもsession単位の失敗状態を保持せず、空配列のまま`entryはありません。`を表示していた。そのため、通信失敗を正常な0件と誤認させていた。
+
 ## 修正
 
 既存の全件取得endpointは後方互換用に残し、追加endpoint `/weekly-planning-trace/admin/entries/page`を実装した。
@@ -36,6 +38,8 @@ Workerはsessionの`entryCount`を最大500まで読み、queryで回収でき�
 
 frontendにはpaginated admin repository decoratorを追加した。20件ずつ取得して最大500件まで集約し、cursorが進まない場合とpage数超過をfail closedで拒否する。未更新Workerが新endpointを404で返す場合に限り、既存の全件endpointへfallbackする。
 
+管理画面はsessionごとのentry取得errorを保持するよう変更した。取得失敗時は`entryはありません。`とRaw JSONを表示せず、`entry取得失敗`と再試行操作を表示する。session一覧取得のglobal errorとentry詳細取得のsession-local errorも分離した。
+
 Worker revisionを`weekly-planning-trace-20260729-002`へ更新した。contract versionは既存endpointを破壊しない追加変更であるため`2026-07-28-v2`を維持する。これにより、PagesとWorkerのdeploy順序が一時的に前後しても既存機能を直ちに全面停止させない。
 
 ## 追加test
@@ -43,6 +47,12 @@ Worker revisionを`weekly-planning-trace-20260729-002`へ更新した。contract
 frontend testでは、実症状と同じ256 entriesを20件以下の13 pageへ分割し、全件を一度ずつ集約できることを固定した。欠落entryがある場合の継続と、進まないcursorの拒否も確認対象にした。
 
 Worker testでは、`entryCount=256`かつ要求limitが100でも、1pageのFirestore GETが20回に制限され、次cursorが19になる契約を固定した。2page目が20から39まで進むことと、欠落documentを数えながらcursorを進めることも確認対象にした。
+
+## 現時点の検証
+
+新しいWorker page loaderは、256件のsessionでも1pageあたり20 documentだけを読み、次cursorを19にする単体実行を確認した。frontend collectorは256 entriesを13 pageで重複なく集約する単体実行を確認した。新規frontend moduleとWorker moduleはstrict TypeScriptの分離検査を通過した。
+
+Cloudflare Pagesのbranch previewは最新UI修正を含むheadでbuild成功した。一方、GitHub Actionsはrunner起動前に終了してstepsが0件であり、full test、repository全体のtypecheck、typecheck:buildをGitHub Actionsの成功証跡としては取得できていない。
 
 ## 残るdeploy gate
 
