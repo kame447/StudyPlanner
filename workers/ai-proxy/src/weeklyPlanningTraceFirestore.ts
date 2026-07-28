@@ -33,16 +33,12 @@ const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TOKEN_EARLY_REFRESH_MS = 60_000;
 const QUERY_BATCH_SIZE = 500;
-
-const workerSafeFetch: typeof fetch = (input, init) =>
-  globalThis.fetch(input, init);
+const workerSafeFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 function base64Url(value: Uint8Array | string): string {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
   let binary = '';
-  bytes.forEach((item) => {
-    binary += String.fromCharCode(item);
-  });
+  bytes.forEach((item) => { binary += String.fromCharCode(item); });
   return btoa(binary)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -111,12 +107,8 @@ function decodeFirestoreValue(value: FirestoreValue | undefined): unknown {
   if ('doubleValue' in value) return value.doubleValue;
   if ('timestampValue' in value) return value.timestampValue;
   if ('stringValue' in value) return value.stringValue;
-  if ('arrayValue' in value) {
-    return (value.arrayValue?.values ?? []).map(decodeFirestoreValue);
-  }
-  if ('mapValue' in value) {
-    return decodeFirestoreFields(value.mapValue?.fields ?? {});
-  }
+  if ('arrayValue' in value) return (value.arrayValue?.values ?? []).map(decodeFirestoreValue);
+  if ('mapValue' in value) return decodeFirestoreFields(value.mapValue?.fields ?? {});
   return null;
 }
 
@@ -134,9 +126,17 @@ function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+    return `{${Object.keys(record).sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+function comparableDocument(value: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...value };
+  delete normalized.id;
+  delete normalized.expireAt;
+  return normalized;
 }
 
 export class WeeklyPlanningTraceFirestoreClient {
@@ -153,6 +153,18 @@ export class WeeklyPlanningTraceFirestoreClient {
     const value = this.env.FIREBASE_PROJECT_ID?.trim();
     if (!value) throw new Error('FIREBASE_PROJECT_ID is not configured');
     return value;
+  }
+
+  private documentName(collection: string, id: string): string {
+    return [
+      'projects',
+      this.projectId(),
+      'databases',
+      '(default)',
+      'documents',
+      collection,
+      id,
+    ].join('/');
   }
 
   private async serviceAccountToken(): Promise<string> {
@@ -191,7 +203,7 @@ export class WeeklyPlanningTraceFirestoreClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        grant_type: 'urn:ietf:params:oauth-type:jwt-bearer'.replace('type', 'grant-type'),
         assertion,
       }),
     });
@@ -240,10 +252,7 @@ export class WeeklyPlanningTraceFirestoreClient {
     const query = params.size > 0 ? `?${params.toString()}` : '';
     const response = await this.request(
       `${this.documentsBase()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}${query}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
-      },
+      { method: 'PATCH', body: JSON.stringify({ fields: encodeFirestoreFields(value) }) },
     );
     if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
   }
@@ -260,34 +269,27 @@ export class WeeklyPlanningTraceFirestoreClient {
     }
     const baseValue = { ...value };
     delete baseValue[fieldPath];
-    await this.setDocument(collection, id, baseValue, Object.keys(baseValue));
-
-    const documentName = [
-      'projects',
-      this.projectId(),
-      'databases',
-      '(default)',
-      'documents',
-      collection,
-      id,
-    ].join('/');
-    const response = await this.request(
-      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(this.projectId())}/databases/(default)/documents:commit`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          writes: [{
-            transform: {
-              document: documentName,
-              fieldTransforms: [{
-                fieldPath,
-                maximum: { integerValue: String(maximum) },
-              }],
+    const response = await this.request(`${this.documentsBase()}:commit`, {
+      method: 'POST',
+      body: JSON.stringify({
+        writes: [
+          {
+            update: {
+              name: this.documentName(collection, id),
+              fields: encodeFirestoreFields(baseValue),
             },
-          }],
-        }),
-      },
-    );
+            updateMask: { fieldPaths: Object.keys(baseValue) },
+            currentDocument: { exists: true },
+          },
+          {
+            transform: {
+              document: this.documentName(collection, id),
+              fieldTransforms: [{ fieldPath, maximum: { integerValue: String(maximum) } }],
+            },
+          },
+        ],
+      }),
+    });
     if (!response.ok) throw new Error(`Firestore maximum transform failed: ${response.status}`);
   }
 
@@ -299,29 +301,78 @@ export class WeeklyPlanningTraceFirestoreClient {
     const params = new URLSearchParams({ documentId: id });
     const response = await this.request(
       `${this.documentsBase()}/${encodeURIComponent(collection)}?${params.toString()}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ fields: encodeFirestoreFields(value) }),
-      },
+      { method: 'POST', body: JSON.stringify({ fields: encodeFirestoreFields(value) }) },
     );
     if (response.ok) return;
     if (response.status !== 409) {
       throw new Error(`Firestore immutable write failed: ${response.status}`);
     }
-
     const existing = await this.getDocument(collection, id);
-    if (!existing) {
+    if (!existing
+      || stableJson(comparableDocument(existing)) !== stableJson(comparableDocument(value))) {
       throw new Error(`immutable trace document conflict: ${collection}/${id}`);
     }
-    const normalizedExisting = { ...existing };
-    const normalizedValue = { ...value };
-    delete normalizedExisting.id;
-    delete normalizedValue.id;
-    delete normalizedExisting.expireAt;
-    delete normalizedValue.expireAt;
-    if (stableJson(normalizedExisting) !== stableJson(normalizedValue)) {
-      throw new Error(`immutable trace document conflict: ${collection}/${id}`);
+  }
+
+  async commitTraceAppend(params: {
+    entryCollection: string;
+    entries: Array<{ id: string; value: Record<string, unknown> }>;
+    sessionCollection: string;
+    sessionId: string;
+    sessionValue: Record<string, unknown>;
+    maximumFieldPath: string;
+    maximum: number;
+  }): Promise<void> {
+    if (!Number.isSafeInteger(params.maximum) || params.maximum < 0) {
+      throw new Error('Firestore maximum integer is invalid');
     }
+    const sessionValue = { ...params.sessionValue };
+    delete sessionValue[params.maximumFieldPath];
+    const writes = [
+      ...params.entries.map((entry) => ({
+        update: {
+          name: this.documentName(params.entryCollection, entry.id),
+          fields: encodeFirestoreFields(entry.value),
+        },
+        currentDocument: { exists: false },
+      })),
+      {
+        update: {
+          name: this.documentName(params.sessionCollection, params.sessionId),
+          fields: encodeFirestoreFields(sessionValue),
+        },
+        updateMask: { fieldPaths: Object.keys(sessionValue) },
+        currentDocument: { exists: true },
+      },
+      {
+        transform: {
+          document: this.documentName(params.sessionCollection, params.sessionId),
+          fieldTransforms: [{
+            fieldPath: params.maximumFieldPath,
+            maximum: { integerValue: String(params.maximum) },
+          }],
+        },
+      },
+    ];
+    const response = await this.request(`${this.documentsBase()}:commit`, {
+      method: 'POST',
+      body: JSON.stringify({ writes }),
+    });
+    if (response.ok) return;
+    if (response.status !== 409) {
+      throw new Error(`Firestore atomic trace append failed: ${response.status}`);
+    }
+
+    const entryMatches = await Promise.all(params.entries.map(async (entry) => {
+      const existing = await this.getDocument(params.entryCollection, entry.id);
+      return Boolean(existing)
+        && stableJson(comparableDocument(existing!))
+          === stableJson(comparableDocument(entry.value));
+    }));
+    const session = await this.getDocument(params.sessionCollection, params.sessionId);
+    const storedCount = Number(session?.[params.maximumFieldPath] ?? -1);
+    if (entryMatches.every(Boolean) && storedCount >= params.maximum) return;
+    throw new Error('immutable trace document conflict: atomic append');
   }
 
   async queryDocuments(
@@ -381,7 +432,8 @@ export class WeeklyPlanningTraceFirestoreClient {
       while (true) {
         const documents = await this.queryDocuments(collection, [{ field, value }]);
         if (documents.length === 0) break;
-        await Promise.all(documents.map((document) => this.deleteDocument(collection, String(document.id))));
+        await Promise.all(documents.map((document) =>
+          this.deleteDocument(collection, String(document.id))));
         deleted += documents.length;
         if (documents.length < QUERY_BATCH_SIZE) break;
       }
