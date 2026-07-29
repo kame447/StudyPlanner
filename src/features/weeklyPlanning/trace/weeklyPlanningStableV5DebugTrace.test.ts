@@ -12,14 +12,15 @@ afterEach(() => {
 });
 
 describe('Stable V5 debug trace collector', () => {
-  it('stores a bounded stage projection instead of cloning the full runtime graph', () => {
+  it('stores a bounded provider projection without cloning the runtime graph', () => {
     beginWeeklyPlanningStableV5DebugTrace('request-1');
+    const prompt = `${'system-rule\n'.repeat(1_200)}Use recentConversation and publicStateSummary`;
     const source = {
       attempt: 'initial',
-      requestBytes: 321,
+      requestBytes: new TextEncoder().encode(prompt).byteLength,
       request: {
         messages: [
-          { role: 'system', content: 'complete system instructions' },
+          { role: 'system', content: prompt },
           { role: 'user', content: '3時間ぐらいかな' },
         ],
         purpose: 'weekly_planning_semantic_normalizer',
@@ -46,10 +47,12 @@ describe('Stable V5 debug trace collector', () => {
       stage: 'semantic_provider_request',
       data: {
         attempt: 'initial',
-        requestBytes: 321,
         request: {
           messages: expect.arrayContaining([
-            expect.objectContaining({ content: 'complete system instructions' }),
+            expect.objectContaining({ content: expect.stringContaining(
+              'Use recentConversation and publicStateSummary',
+            ) }),
+            expect.objectContaining({ content: '3時間ぐらいかな' }),
           ]),
           purpose: 'weekly_planning_semantic_normalizer',
           maxCompletionTokens: 3200,
@@ -57,7 +60,63 @@ describe('Stable V5 debug trace collector', () => {
       },
     });
     expect(JSON.stringify(recorded[0].data)).not.toContain('task-999');
-    expect(JSON.stringify(recorded[0].data)).not.toContain('"graph"');
+    expect(recorded[0].data).not.toHaveProperty('graph');
+  });
+
+  it('removes full graph and scheduler input from every heavy runtime stage', () => {
+    beginWeeklyPlanningStableV5DebugTrace('request-heavy');
+    const graph = {
+      revision: 7,
+      tasks: Array.from({ length: 1_000 }, (_, index) => ({ id: `task-${index}` })),
+    };
+    const schedulerInput = {
+      horizon: { startDate: '2026-07-29', endDate: '2026-08-04', timeZone: 'Asia/Tokyo' },
+      graphRevision: 7,
+      movableWorkItems: Array.from({ length: 500 }, (_, index) => ({ id: `work-${index}` })),
+      availabilityWindows: [],
+      fixedTaskReservations: [],
+      sourceSelections: [],
+    };
+
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: 'request-heavy',
+      stage: 'scheduler_compilation_evaluated',
+      data: {
+        input: { context: { currentDate: '2026-07-29', timeZone: 'Asia/Tokyo' }, graph },
+        result: { status: 'ready', input: schedulerInput, issues: [] },
+        selectedPipelineStatus: 'scheduler_ready',
+      },
+    });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: 'request-heavy',
+      stage: 'runtime_semantic_result_received',
+      data: {
+        graph,
+        normalization: { status: 'accepted', document: { planningIntent: 'create_plan', tasks: [] } },
+        canonicalization: { status: 'applied', diff: { fromRevision: 6, toRevision: 7 }, graph },
+        scheduler: { status: 'ready', input: schedulerInput, issues: [] },
+        status: 'scheduler_ready',
+      },
+    });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: 'request-heavy',
+      stage: 'runtime_graph_staged',
+      data: {
+        previousGraphRevision: 6,
+        canonicalization: { status: 'applied', diff: { fromRevision: 6, toRevision: 7 }, graph },
+      },
+    });
+
+    const events = peekWeeklyPlanningStableV5DebugTraceForTest('request-heavy');
+    expect(events).toHaveLength(3);
+    for (const event of events) {
+      const serialized = JSON.stringify(event.data);
+      expect(serialized).not.toContain('task-999');
+      expect(serialized).not.toContain('work-499');
+    }
+    expect(events[0]?.data).not.toHaveProperty('input');
+    expect(events[1]?.data).not.toHaveProperty('graph');
+    expect(events[2]?.data).not.toHaveProperty('canonicalization.graph');
   });
 
   it('keeps the head, tail, original byte count and checksum for a large AI response', () => {
