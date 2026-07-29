@@ -4,11 +4,13 @@ import {
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
 import worker, { AiQuotaDurableObject } from './worker';
+import { handleWeeklyPlanningTraceAdminArchive } from './weeklyPlanningTraceAdminArchive';
 import { handleWeeklyPlanningTraceAdminEntriesPage } from './weeklyPlanningTraceAdminEntriesPage';
 import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
 
 export { AiQuotaDurableObject };
 
+const ADMIN_ARCHIVE_PATH = '/weekly-planning-trace/admin/archive';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 
 function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
@@ -41,7 +43,9 @@ export default {
     const pathname = new URL(request.url).pathname;
     const response = pathname === ADMIN_ENTRY_PAGE_PATH
       ? await handleWeeklyPlanningTraceAdminEntriesPage(request, env)
-      : await worker.fetch(request, env as never);
+      : pathname === ADMIN_ARCHIVE_PATH
+        ? await handleWeeklyPlanningTraceAdminArchive(request, env)
+        : await worker.fetch(request, env as never);
     if (!isWeeklyPlanningTracePath(pathname)) return response;
 
     const headers = new Headers(response.headers);
