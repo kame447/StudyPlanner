@@ -36,4 +36,18 @@ describe('collectWeeklyPlanningTraceAdminEntryPages', () => {
       nextAfterSequence: -1,
     }))).rejects.toThrow(/ページ送り情報が不正/);
   });
+
+  it('fails closed instead of exporting only the first 500 entries', async () => {
+    const fetchPage = vi.fn(async (afterSequence: number) => {
+      const start = afterSequence + 1;
+      return {
+        entries: Array.from({ length: 20 }, (_, index) => ({ sequence: start + index })),
+        nextAfterSequence: start + 19,
+      };
+    });
+
+    await expect(collectWeeklyPlanningTraceAdminEntryPages(fetchPage))
+      .rejects.toThrow(/最大ページ数を超え/);
+    expect(fetchPage).toHaveBeenCalledTimes(25);
+  });
 });
