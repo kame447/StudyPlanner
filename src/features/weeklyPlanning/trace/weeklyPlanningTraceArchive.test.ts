@@ -52,22 +52,37 @@ describe('weekly planning trace archive and diagnostics', () => {
     })).toBe(true);
   });
 
-  it('archive済みで新しい活動がないsessionだけをarchive一覧対象にする', () => {
+  it('export済みentry数が現在値と一致するsessionをarchive一覧対象にする', () => {
     const archived = {
       ...SESSION,
       archivedAt: '2026-07-15T00:00:03.000Z',
+      archivedEntryCount: 4,
     };
     expect(hasUnexportedWeeklyPlanningTraceActivity(archived)).toBe(false);
     expect(hasArchivedWeeklyPlanningTraceActivity(archived)).toBe(true);
   });
 
-  it('archive後に新しい活動があれば未export一覧へ戻す', () => {
-    const changedAfterArchive = {
+  it('archive更新と同時にentryが増えても未export一覧から隠さない', () => {
+    const appendedDuringArchive = {
+      ...SESSION,
+      entryCount: 5,
+      lastActivityAt: '2026-07-15T00:00:02.000Z',
+      archivedAt: '2026-07-15T00:00:03.000Z',
+      archivedEntryCount: 4,
+    };
+    expect(hasUnexportedWeeklyPlanningTraceActivity(appendedDuringArchive)).toBe(true);
+    expect(hasArchivedWeeklyPlanningTraceActivity(appendedDuringArchive)).toBe(false);
+  });
+
+  it('旧sessionはarchivedAtとlastActivityAtの比較へfallbackする', () => {
+    expect(hasUnexportedWeeklyPlanningTraceActivity({
+      ...SESSION,
+      archivedAt: '2026-07-15T00:00:03.000Z',
+    })).toBe(false);
+    expect(hasUnexportedWeeklyPlanningTraceActivity({
       ...SESSION,
       archivedAt: '2026-07-15T00:00:01.000Z',
-    };
-    expect(hasUnexportedWeeklyPlanningTraceActivity(changedAfterArchive)).toBe(true);
-    expect(hasArchivedWeeklyPlanningTraceActivity(changedAfterArchive)).toBe(false);
+    })).toBe(true);
   });
 
   it('raw、mapping、activity、empty、unexportedの件数を分離する', () => {
@@ -76,6 +91,7 @@ describe('weekly planning trace archive and diagnostics', () => {
       ...SESSION,
       id: 'archived',
       archivedAt: '2026-07-15T00:00:03.000Z',
+      archivedEntryCount: 4,
     };
     expect(createWeeklyPlanningTraceAdminDiagnostics({
       rawCount: 4,
