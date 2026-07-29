@@ -4,6 +4,7 @@ import {
   type WeeklyPlanningTraceEntry,
   type WeeklyPlanningTraceInternalEventEntry,
   type WeeklyPlanningTraceSession,
+  type WeeklyPlanningTraceTurnDiagnosticEntry,
 } from './weeklyPlanningTraceTypes';
 
 export interface WeeklyPlanningEvaluationFixtureCandidate {
@@ -52,6 +53,7 @@ export interface WeeklyPlanningTraceExportBundle {
   schemaVersion: number;
   session: WeeklyPlanningTraceSession;
   entries: WeeklyPlanningTraceEntry[];
+  turnDiagnostics: WeeklyPlanningTraceTurnDiagnosticEntry[];
   stableV5DebugStages: WeeklyPlanningStableV5DebugStageExport[];
   evaluationFixtureCandidate: WeeklyPlanningEvaluationFixtureCandidate;
   roleplayCandidate: WeeklyPlanningRoleplayCandidate;
@@ -63,6 +65,30 @@ function internalEvents(
   return entries.filter(
     (entry): entry is WeeklyPlanningTraceInternalEventEntry => entry.kind === 'internal_event',
   );
+}
+
+function turnDiagnostics(
+  entries: readonly WeeklyPlanningTraceEntry[],
+): WeeklyPlanningTraceTurnDiagnosticEntry[] {
+  return entries.filter(
+    (entry): entry is WeeklyPlanningTraceTurnDiagnosticEntry => entry.kind === 'turn_diagnostic',
+  );
+}
+
+function conversationTurns(
+  entries: readonly WeeklyPlanningTraceEntry[],
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  return entries.flatMap((entry) => {
+    if (entry.kind === 'turn') return [{ role: entry.role, content: entry.content }];
+    if (entry.kind !== 'turn_diagnostic') return [];
+    const turns: Array<{ role: 'user' | 'assistant'; content: string }> = [
+      { role: 'user', content: entry.userInput.text },
+    ];
+    if (entry.assistantOutput.text !== null) {
+      turns.push({ role: 'assistant', content: entry.assistantOutput.text });
+    }
+    return turns;
+  });
 }
 
 function eventPayloadRecord(entry: WeeklyPlanningTraceInternalEventEntry): Record<string, unknown> {
@@ -318,48 +344,57 @@ export function createWeeklyPlanningEvaluationFixtureCandidate(
 ): WeeklyPlanningEvaluationFixtureCandidate {
   const safeEntries = sanitizedEntries(entries);
   const events = internalEvents(safeEntries);
+  const diagnostics = turnDiagnostics(safeEntries);
   const fallback = events.find((entry) => entry.eventType === 'fallback_used');
+  const diagnosticFallback = diagnostics.find((entry) => entry.diagnostics.fallback !== null);
   const finalStateRevision = safeEntries.reduce<number | null>(
     (latest, entry) => typeof entry.stateRevision === 'number'
       ? Math.max(latest ?? entry.stateRevision, entry.stateRevision)
       : latest,
     null,
   );
-  const latencyValues = events
+  const legacyLatencies = events
     .map((event) => finiteLatency(eventPayloadRecord(event)))
     .filter((value): value is number => value !== null);
+  const diagnosticLatencies = diagnostics
+    .map((entry) => entry.diagnostics.durationMs)
+    .filter((value): value is number => value !== null);
+  const latencyValues = [...legacyLatencies, ...diagnosticLatencies];
+  const diagnosticEventTypes = diagnostics.map(
+    (entry) => `turn_diagnostic:${entry.decision.status}`,
+  );
 
   return {
     caseId: `trace:${session.id}`,
     requirementIds: requirementIdsFromEvents(events),
-    turns: safeEntries
-      .filter((entry) => entry.kind === 'turn')
-      .map((entry) => ({ role: entry.role, content: entry.content })),
+    turns: conversationTurns(safeEntries),
     strictResults: {
-      staleAsyncDiscarded: events.some((entry) => entry.eventType === 'stale_async_result_discarded'),
+      staleAsyncDiscarded: diagnostics.some((entry) => entry.diagnostics.stale)
+        || events.some((entry) => entry.eventType === 'stale_async_result_discarded'),
       stalePreviewRejected: events.some((entry) =>
         entry.eventType === 'preview_rejected_stale'
           || (entry.eventType === 'preview_gate_evaluated'
             && eventPayloadRecord(entry).allowed === false
             && String(eventPayloadRecord(entry).reason ?? '').includes('stale')),
       ),
-      previewCompleted: events.some((entry) => entry.eventType === 'preview_generated'),
+      previewCompleted: diagnostics.some((entry) => entry.diagnostics.previewCount > 0)
+        || events.some((entry) => entry.eventType === 'preview_generated'),
       duplicateSaveSuppressed: events
         .filter((entry) => entry.eventType === 'approval_completed')
         .some((entry) => hasSkippedDuplicate(entry.payload)),
     },
     rubricInput: {
       sessionStatus: session.status,
-      eventTypes: events.map((entry) => entry.eventType),
+      eventTypes: [...events.map((entry) => entry.eventType), ...diagnosticEventTypes],
       finalStateRevision,
     },
-    callCount: events.filter((entry) => entry.eventType === 'interpreter_completed').length,
+    callCount: diagnostics.length
+      + events.filter((entry) => entry.eventType === 'interpreter_completed').length,
     latency: latencyValues.length > 0
       ? latencyValues.reduce((sum, value) => sum + value, 0)
       : null,
-    fallbackCategory: fallback
-      ? String(eventPayloadRecord(fallback).category ?? 'unknown')
-      : null,
+    fallbackCategory: diagnosticFallback?.diagnostics.fallback
+      ?? (fallback ? String(eventPayloadRecord(fallback).category ?? 'unknown') : null),
   };
 }
 
@@ -372,12 +407,10 @@ export function createWeeklyPlanningRoleplayCandidate(
     candidateId: `roleplay:${session.id}`,
     requiresHumanReview: true,
     sourceSchemaVersion: session.schemaVersion,
-    turns: safeEntries
-      .filter((entry) => entry.kind === 'turn')
-      .map((entry) => ({
-        role: entry.role,
-        content: anonymizeRoleplayText(entry.content),
-      })),
+    turns: conversationTurns(safeEntries).map((entry) => ({
+      role: entry.role,
+      content: anonymizeRoleplayText(entry.content),
+    })),
   };
 }
 
@@ -393,6 +426,7 @@ export function createWeeklyPlanningTraceExportBundle(
     schemaVersion: safeSession.schemaVersion,
     session: safeSession,
     entries: safeEntries,
+    turnDiagnostics: turnDiagnostics(safeEntries),
     stableV5DebugStages: createWeeklyPlanningStableV5DebugStageExport(safeEntries),
     evaluationFixtureCandidate: createWeeklyPlanningEvaluationFixtureCandidate(
       safeSession,
