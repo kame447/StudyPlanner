@@ -27,6 +27,7 @@ export const WEEKLY_PLANNING_TRACE_EVENT_TYPES = [
   'approval_completed',
   'request_cancelled',
   'stale_async_result_discarded',
+  // Legacy schema v1 only. New Stable V5 writes use turn_diagnostic documents.
   'stable_v5_debug_stage',
   'trace_write_failed',
 ] as const;
@@ -34,9 +35,9 @@ export const WEEKLY_PLANNING_TRACE_EVENT_TYPES = [
 export type WeeklyPlanningTraceEventTypeContract =
   typeof WEEKLY_PLANNING_TRACE_EVENT_TYPES[number];
 
-export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-28-v2' as const;
+export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-29-v3' as const;
 export const WEEKLY_PLANNING_TRACE_WORKER_REVISION =
-  'weekly-planning-trace-20260729-003' as const;
+  'weekly-planning-trace-20260729-004' as const;
 
 export const WEEKLY_PLANNING_TRACE_HEADERS = {
   contractVersion: 'X-StudyPlanner-Trace-Contract-Version',
@@ -49,10 +50,8 @@ export const WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING = {
   maxPageSize: 20,
   maxEntryCount: 500,
   maxPages: 25,
+  maxResponseBytes: 256 * 1024,
 } as const;
-
-export const WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING =
-  'base64-utf8-json-dotted-20' as const;
 
 export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxRequestBodyBytes: 512 * 1024,
@@ -60,8 +59,6 @@ export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxDocumentBytes: 64 * 1024,
   clientDocumentTargetBytes: 48 * 1024,
   clientBatchTargetBytes: 384 * 1024,
-  debugRawChunkBytes: 2_700,
-  debugBase64RunCharacters: 20,
 } as const;
 
 export function getWeeklyPlanningTraceUtf8ByteLength(value: string): number {
@@ -70,21 +67,4 @@ export function getWeeklyPlanningTraceUtf8ByteLength(value: string): number {
 
 export function measureWeeklyPlanningTraceJsonBytes(value: unknown): number {
   return getWeeklyPlanningTraceUtf8ByteLength(JSON.stringify(value));
-}
-
-export function encodeWeeklyPlanningTraceDebugChunkBase64(
-  base64: string,
-): string {
-  const width = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugBase64RunCharacters;
-  const segments: string[] = [];
-  for (let index = 0; index < base64.length; index += width) {
-    segments.push(base64.slice(index, index + width));
-  }
-  return segments.join('.');
-}
-
-export function decodeWeeklyPlanningTraceDebugChunkBase64(
-  encoded: string,
-): string {
-  return encoded.replace(/\./g, '');
 }
