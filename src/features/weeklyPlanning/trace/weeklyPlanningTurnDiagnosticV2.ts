@@ -6,6 +6,7 @@ import type {
   WeeklyPlanningTraceAiValidationResult,
   WeeklyPlanningTraceParserDecision,
   WeeklyPlanningTraceRelevantBusyInterval,
+  WeeklyPlanningTraceRejectedOperation,
   WeeklyPlanningTraceResponseSource,
   WeeklyPlanningTraceTurnDiagnosticEntry,
 } from './weeklyPlanningTraceTypes';
@@ -132,11 +133,12 @@ function matchedTextFromCriterion(value: unknown): string | null {
 
 function parserDecisions(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+  userText: string,
 ): WeeklyPlanningTraceParserDecision[] {
   const inference = latestEventData(events, 'contextual_question_inference');
   const binding = latestEventData(events, 'contextual_answer_binding_evaluated');
   const rules = Array.isArray(inference.rules) ? inference.rules : [];
-  const inputText = stringValue(inference.lastAssistantMessage);
+  const precedingAssistantText = stringValue(inference.lastAssistantMessage);
   const selectedQuestionCode = stringValue(inference.selectedQuestionCode);
   const selectedRule = rules
     .map(record)
@@ -148,7 +150,7 @@ function parserDecisions(
     const matched = rule.matched === true;
     return {
       parser: 'stable_v5_contextual_question',
-      inputText,
+      inputText: precedingAssistantText,
       matchedText: matched ? matchedTextFromCriterion(rule.criterion) : null,
       candidateOperation: matched
         ? { questionCode: stringValue(rule.code) }
@@ -164,8 +166,7 @@ function parserDecisions(
   if (selectedQuestionCode !== null || Object.keys(binding).length > 0) {
     decisions.push({
       parser: 'stable_v5_contextual_answer_binding',
-      inputText: stringValue(binding.observations && record(binding.observations).userText)
-        ?? null,
+      inputText: userText,
       matchedText: selectedRule ? matchedTextFromCriterion(selectedRule.criterion) : null,
       candidateOperation: contextualResult,
       accepted: contextualApplied,
@@ -229,6 +230,16 @@ function firstError(
   return { type: errorCode, message: errorCode };
 }
 
+function firstProviderError(
+  events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+): { type: string; message: string } | null {
+  for (const data of eventData(events, 'semantic_provider_error')) {
+    const found = errorFromValue(data);
+    if (found) return found;
+  }
+  return null;
+}
+
 function durationMs(events: readonly WeeklyPlanningStableV5DebugTraceEvent[]): number | null {
   const times = events
     .map((event) => Date.parse(event.occurredAt))
@@ -244,6 +255,41 @@ function responseSource(outcome: string): WeeklyPlanningTraceResponseSource {
   return outcome.includes('fallback') ? 'deterministic_fallback' : 'ai';
 }
 
+function rejectedOperations(params: {
+  validations: WeeklyPlanningTraceAiValidationResult[];
+  aiCandidates: unknown[];
+  canonicalizationBranch: string | null;
+  canonicalizationErrors: string[];
+}): WeeklyPlanningTraceRejectedOperation[] {
+  const rejected: WeeklyPlanningTraceRejectedOperation[] = [];
+  params.validations
+    .filter((result) => !result.accepted)
+    .forEach((result) => {
+      rejected.push({
+        operation: {
+          source: 'ai',
+          attempt: result.attempt,
+          structuredResult: result.structuredResult,
+        },
+        reason: result.errors.length > 0
+          ? `schema validation failed: ${result.errors.join('; ')}`
+          : 'schema validation rejected the AI response',
+      });
+    });
+  if (params.canonicalizationBranch === 'contextual_answer_binding') {
+    params.aiCandidates.forEach((candidate) => {
+      rejected.push({
+        operation: { source: 'ai', candidate },
+        reason: 'contextual parser result took precedence over the AI candidate for this turn',
+      });
+    });
+  }
+  params.canonicalizationErrors.forEach((reason) => {
+    rejected.push({ operation: null, reason });
+  });
+  return rejected;
+}
+
 export function createWeeklyPlanningTurnDiagnosticV2(
   input: CreateTurnDiagnosticInput,
 ): WeeklyPlanningTraceTurnDiagnosticEntry {
@@ -256,21 +302,22 @@ export function createWeeklyPlanningTurnDiagnosticV2(
   const canonicalResult = record(canonicalization.result);
   const branch = latestEventData(events, 'runtime_branch_selected');
   const pipelineDecision = latestEventData(events, 'semantic_pipeline_decision');
-  const acceptedOperations = Array.isArray(canonicalization.adoptedOperations)
+  const canonicalizationBranch = stringValue(canonicalization.branch);
+  const finalOperations = Array.isArray(canonicalization.adoptedOperations)
     ? canonicalization.adoptedOperations
     : canonicalization.adoptedOperations == null
       ? []
       : [canonicalization.adoptedOperations];
-  const rejectionErrors = Array.isArray(canonicalization.rejectionErrors)
+  const canonicalizationErrors = Array.isArray(canonicalization.rejectionErrors)
     ? canonicalization.rejectionErrors.filter((item): item is string => typeof item === 'string')
     : [];
   const validations = validationResults(events);
   const latestAccepted = [...validations].reverse().find((item) => item.accepted);
+  const aiCandidates = operationCandidates(latestAccepted?.structuredResult);
   const recentConversation = Array.isArray(pipelineInput.recentConversation)
     ? messages(pipelineInput.recentConversation)
     : [];
   const counts = record(runtimeInput.inputCounts);
-  const providerErrors = eventData(events, 'semantic_provider_error');
   const rawResponses = eventData(events, 'semantic_provider_response').map((data) => ({
     attempt: stringValue(data.attempt) ?? 'unknown',
     text: stringValue(data.rawResponse) ?? '',
@@ -280,6 +327,9 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     ?? stringValue(branch.branch)
     ?? input.outcome;
   const error = firstError(events, input.errorCode);
+  const acceptedSource = canonicalizationBranch === 'contextual_answer_binding'
+    ? 'parser'
+    : 'ai';
 
   return {
     id: input.id,
@@ -307,16 +357,24 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       },
       rawResponses,
       structuredResults: validations,
-      candidateOperations: operationCandidates(latestAccepted?.structuredResult),
-      error: providerErrors.map(errorFromValue).find((value) => value !== null) ?? null,
+      candidateOperations: aiCandidates,
+      error: firstProviderError(events),
     },
-    parsers: parserDecisions(events),
+    parsers: parserDecisions(events, input.userText),
     decision: {
       status,
-      acceptedOperations,
-      rejectedOperations: rejectionErrors.map((reason) => ({ operation: null, reason })),
-      finalOperations: acceptedOperations,
-      precedence: stringValue(canonicalization.branch),
+      acceptedOperations: finalOperations.map((operation) => ({
+        source: acceptedSource,
+        operation,
+      })),
+      rejectedOperations: rejectedOperations({
+        validations,
+        aiCandidates,
+        canonicalizationBranch,
+        canonicalizationErrors,
+      }),
+      finalOperations,
+      precedence: canonicalizationBranch,
       reason: stringValue(pipelineDecision.basis) ?? stringValue(branch.branch),
       stateDiff: canonicalization.adoptedOperations ?? null,
     },
