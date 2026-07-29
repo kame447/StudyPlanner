@@ -64,7 +64,6 @@ function validDiagnosticEntry(overrides: Record<string, unknown> = {}): Record<s
     id: `${SESSION_ID}-00000000`,
     sessionId: SESSION_ID,
     logicalConversationId: CONVERSATION_ID,
-    userId: 'firebase-user-123',
     sequence: 0,
     requestId: 'request-1',
     occurredAt: OCCURRED_AT,
@@ -111,7 +110,10 @@ function validDiagnosticEntry(overrides: Record<string, unknown> = {}): Record<s
     }],
     decision: {
       status: 'accepted',
-      acceptedOperations: [{ operation: 'set_planning_window' }],
+      acceptedOperations: [{
+        source: 'ai',
+        operation: { operation: 'set_planning_window' },
+      }],
       rejectedOperations: [],
       finalOperations: [{ operation: 'set_planning_window' }],
       precedence: 'semantic_canonicalizer',
@@ -170,7 +172,7 @@ describe('weekly planning trace privacy boundary', () => {
 
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {
     const epochMs = 30 * 24 * 60 * 60 * 1000;
-    const reference = new Date('2026-07-18T00:00:00.000Z');
+    const reference = new Date(OCCURRED_AT);
     const epochStart = new Date(Math.floor(reference.getTime() / epochMs) * epochMs);
     const beforeRotation = new Date(epochStart.getTime() + 29 * 24 * 60 * 60 * 1000);
     const afterRotation = new Date(epochStart.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -182,24 +184,53 @@ describe('weekly planning trace privacy boundary', () => {
     expect(weeklyPlanningTraceExpireAt(reference)).toBe('2027-01-14T00:00:00.000Z');
   });
 
-  it('keeps recursive redaction only for legacy documents', () => {
+  it('keeps recursive redaction for legacy documents', () => {
     const redacted = redactWeeklyPlanningTraceValue({
       userId: 'raw-user',
       traceSubjectToken: 'wpt_internal-token',
+      traceSubjectEpoch: '100',
       nested: {
         email: 'person@example.com',
         content: '連絡先は person@example.com / 090-1234-5678 https://example.com/path?token=secret',
+        requestToken: 'abcdefghijklmnopqrstuvwxyz1234567890',
         uuid: '123e4567-e89b-12d3-a456-426614174000',
       },
     });
     const output = serialized(redacted);
 
     expect(output).not.toContain('raw-user');
+    expect(output).not.toContain('wpt_internal-token');
+    expect(output).not.toContain('traceSubjectEpoch');
     expect(output).not.toContain('person@example.com');
     expect(output).not.toContain('090-1234-5678');
     expect(output).not.toContain('token=secret');
+    expect(output).not.toContain('123e4567-e89b-12d3-a456-426614174000');
     expect(output).toContain('[EMAIL]');
     expect(output).toContain('[PHONE]');
+    expect(output).toContain('[QUERY_REDACTED]');
+  });
+
+  it('prepares legacy session and entry documents without raw account identifiers', async () => {
+    const subject = await createWeeklyPlanningTraceSubject(
+      'firebase-user-123',
+      '100',
+      { '100': 'a'.repeat(32) },
+    );
+    const prepared = prepareWeeklyPlanningTraceWrite({
+      session: validSession({ schemaVersion: 1, userId: 'firebase-user-123' }),
+      entries: [validLegacyTurnEntry({
+        userId: 'firebase-user-123',
+        content: 'person@example.com',
+      })],
+    }, subject, OCCURRED_AT);
+    const output = serialized(prepared);
+
+    expect(output).not.toContain('firebase-user-123');
+    expect(output).not.toContain('person@example.com');
+    expect(prepared.session.traceSubjectToken).toBe(subject.token);
+    expect(prepared.entries[0].traceSubjectEpoch).toBe('100');
+    expect(prepared.entries[0].policyVersion).toBe(WEEKLY_PLANNING_TRACE_POLICY_VERSION);
+    expect(prepared.entries[0].expireAt).toBe('2027-01-14T00:00:00.000Z');
   });
 
   it('stores schema v2 diagnostic text as supplied while dropping account identity', async () => {
@@ -370,5 +401,23 @@ describe('weekly planning trace privacy boundary', () => {
       session: validSession(),
       entries: [validDiagnosticEntry({ userInput: { text: 123 } })],
     }, { token: 'wpt_token', epoch: '100' })).toThrow(/turn diagnostic entry schema/);
+  });
+
+  it.each([
+    ['invalid turn role', { role: 'admin' }],
+    ['non-string turn content', { content: 123 }],
+    [
+      'unknown internal event',
+      { kind: 'internal_event', eventType: 'unknown', payload: {}, severity: 'info' },
+    ],
+    [
+      'snapshot without state',
+      { kind: 'state_snapshot', snapshotReason: 'manual_capture', state: undefined },
+    ],
+  ])('rejects legacy %s at the server write boundary', (_label, overrides) => {
+    expect(() => prepareWeeklyPlanningTraceWrite({
+      session: validSession({ schemaVersion: 1 }),
+      entries: [validLegacyTurnEntry(overrides)],
+    }, { token: 'wpt_token', epoch: '100' })).toThrow(/entry/);
   });
 });
