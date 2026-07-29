@@ -121,7 +121,10 @@ function sessionFromRemote(record: Record<string, unknown>): WeeklyPlanningTrace
 }
 
 function entryFromRemote(record: Record<string, unknown>): WeeklyPlanningTraceEntry | null {
-  const candidate = { ...record, userId: subjectAlias(record) };
+  const isTurnDiagnosticV2 = record.kind === 'turn_diagnostic' && record.schemaVersion === 2;
+  const candidate = isTurnDiagnosticV2
+    ? { ...record }
+    : { ...record, userId: subjectAlias(record) };
   return isWeeklyPlanningTraceEntry(candidate) ? candidate : null;
 }
 
@@ -278,10 +281,13 @@ function batchSession(
 ): WeeklyPlanningTraceSession {
   const maxSequence = batchEntries.reduce((latest, entry) => Math.max(latest, entry.sequence), -1);
   const entryCount = maxSequence + 1;
-  const appendedTurnCount = allEntries.filter((entry) => entry.kind === 'turn').length;
+  const appendedTurnCount = allEntries.filter(
+    (entry) => entry.kind === 'turn' || entry.kind === 'turn_diagnostic',
+  ).length;
   const previousTurnCount = Math.max(0, session.turnCount - appendedTurnCount);
   const includedTurnCount = allEntries.filter(
-    (entry) => entry.kind === 'turn' && entry.sequence < entryCount,
+    (entry) => (entry.kind === 'turn' || entry.kind === 'turn_diagnostic')
+      && entry.sequence < entryCount,
   ).length;
   return { ...session, entryCount, turnCount: previousTurnCount + includedTurnCount };
 }
