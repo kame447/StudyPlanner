@@ -30,6 +30,8 @@ const MAX_GENERIC_ARRAY_ITEMS = 40;
 const MAX_GENERIC_OBJECT_KEYS = 50;
 const MAX_GENERIC_DEPTH = 5;
 const MAX_GENERIC_STRING_BYTES = 2_000;
+const MAX_CONTEXT_MESSAGE_BYTES = 1_500;
+const MAX_PROVIDER_MESSAGE_BYTES = 20_000;
 const MAX_RAW_RESPONSE_BYTES = 4_000;
 const activeTraces = new Map<string, ActiveWeeklyPlanningStableV5DebugTrace>();
 
@@ -70,8 +72,18 @@ function truncateUtf8(value: string, maxBytes: number): string {
   const bytes = utf8Bytes(value);
   if (bytes.byteLength <= maxBytes) return value;
   const marker = '…[trace truncated]';
-  const markerBytes = utf8ByteLength(marker);
-  return `${decodeUtf8Prefix(bytes, Math.max(0, maxBytes - markerBytes))}${marker}`;
+  return `${decodeUtf8Prefix(bytes, Math.max(0, maxBytes - utf8ByteLength(marker)))}${marker}`;
+}
+
+function headTailUtf8(value: string, maxBytes: number): string {
+  const bytes = utf8Bytes(value);
+  if (bytes.byteLength <= maxBytes) return value;
+  const checksum = fnv1a32(value);
+  const marker = `\n[trace head-tail originalBytes=${bytes.byteLength} checksum=${checksum}]\n`;
+  const contentBudget = Math.max(256, maxBytes - utf8ByteLength(marker));
+  const headBudget = Math.floor(contentBudget * 0.65);
+  const tailBudget = contentBudget - headBudget;
+  return `${decodeUtf8Prefix(bytes, headBudget)}${marker}${decodeUtf8Suffix(bytes, tailBudget)}`;
 }
 
 function fnv1a32(value: string): string {
@@ -95,13 +107,8 @@ function projectedRawResponse(value: unknown): Record<string, unknown> {
       rawResponseChecksum: checksum,
     };
   }
-  const metadata = `[trace head-tail originalBytes=${bytes.byteLength} checksum=${checksum}]`;
-  const metadataBytes = utf8ByteLength(metadata) + 2;
-  const contentBudget = Math.max(400, MAX_RAW_RESPONSE_BYTES - metadataBytes);
-  const headBudget = Math.floor(contentBudget * 0.65);
-  const tailBudget = contentBudget - headBudget;
   return {
-    rawResponse: `${decodeUtf8Prefix(bytes, headBudget)}\n${metadata}\n${decodeUtf8Suffix(bytes, tailBudget)}`,
+    rawResponse: headTailUtf8(text, MAX_RAW_RESPONSE_BYTES),
     rawResponseOriginalBytes: bytes.byteLength,
     rawResponseTruncated: true,
     rawResponseChecksum: checksum,
@@ -139,13 +146,22 @@ function compactUnknown(value: unknown, depth = 0): unknown {
   return String(value);
 }
 
-function compactMessages(value: unknown, limit = 8): Array<{ role: string; content: string }> {
+function compactMessages(
+  value: unknown,
+  limit = 8,
+  maxContentBytes = MAX_CONTEXT_MESSAGE_BYTES,
+): Array<{ role: string; content: string }> {
   if (!Array.isArray(value)) return [];
   return value.slice(-limit).flatMap((item) => {
     const candidate = record(item);
     const role = stringValue(candidate.role);
     const content = stringValue(candidate.content);
-    return role && content ? [{ role: truncateUtf8(role, 64), content: truncateUtf8(content, 1_500) }] : [];
+    return role && content
+      ? [{
+          role: truncateUtf8(role, 64),
+          content: headTailUtf8(content, maxContentBytes),
+        }]
+      : [];
   });
 }
 
@@ -192,18 +208,110 @@ function issueProjection(value: unknown): unknown[] {
   });
 }
 
+function canonicalizationProjection(value: unknown): Record<string, unknown> {
+  const canonicalization = record(value);
+  const graph = record(canonicalization.graph);
+  const localToFactId = record(
+    canonicalization.localToFactId ?? canonicalization.localReferenceResolution,
+  );
+  return {
+    status: stringValue(canonicalization.status),
+    diff: compactUnknown(canonicalization.diff ?? canonicalization.adoptedOperations),
+    errors: compactUnknown(canonicalization.errors ?? canonicalization.rejectionErrors),
+    graphRevision: numberValue(graph.revision),
+    localReferenceCount: Object.keys(localToFactId).length,
+    localReferenceResolution: compactUnknown(localToFactId),
+  };
+}
+
+function schedulerResultProjection(value: unknown): Record<string, unknown> {
+  const result = record(value);
+  const input = record(result.input);
+  const movableWorkItems = Array.isArray(input.movableWorkItems) ? input.movableWorkItems : [];
+  const availabilityWindows = Array.isArray(input.availabilityWindows) ? input.availabilityWindows : [];
+  const fixedTaskReservations = Array.isArray(input.fixedTaskReservations)
+    ? input.fixedTaskReservations
+    : [];
+  const sourceSelections = Array.isArray(input.sourceSelections) ? input.sourceSelections : [];
+  return {
+    status: stringValue(result.status),
+    issues: issueProjection(result.issues),
+    issueCount: Array.isArray(result.issues) ? result.issues.length : 0,
+    horizon: compactUnknown(input.horizon),
+    graphRevision: numberValue(input.graphRevision),
+    movableWorkItemCount: movableWorkItems.length,
+    availabilityWindowCount: availabilityWindows.length,
+    fixedTaskReservationCount: fixedTaskReservations.length,
+    sourceSelectionCount: sourceSelections.length,
+  };
+}
+
+function schedulerCompilationProjection(data: Record<string, unknown>): Record<string, unknown> {
+  const input = record(data.input);
+  const context = record(input.context);
+  return {
+    selectedPipelineStatus: stringValue(data.selectedPipelineStatus),
+    statusBasis: stringValue(data.statusBasis),
+    context: {
+      currentDate: stringValue(context.currentDate),
+      planningStartDate: stringValue(context.planningStartDate),
+      planningEndDate: stringValue(context.planningEndDate),
+      timeZone: stringValue(context.timeZone),
+    },
+    externalSources: externalSourceProjection(input.externalSources),
+    result: schedulerResultProjection(data.result),
+  };
+}
+
+function semanticResultProjection(data: Record<string, unknown>): Record<string, unknown> {
+  const normalization = record(data.normalization);
+  const document = record(normalization.document);
+  const canonicalization = record(data.canonicalization);
+  const scheduler = record(data.scheduler);
+  const graph = record(data.graph);
+  return {
+    pipelineVersion: stringValue(data.pipelineVersion),
+    status: stringValue(data.status),
+    graphRevision: numberValue(graph.revision),
+    normalization: {
+      status: stringValue(normalization.status),
+      diagnostics: compactUnknown(normalization.diagnostics),
+      document: {
+        planningIntent: stringValue(document.planningIntent),
+        planningWindow: compactUnknown(document.planningWindow),
+        taskCount: Array.isArray(document.tasks) ? document.tasks.length : 0,
+        relationCount: Array.isArray(document.relations) ? document.relations.length : 0,
+        availabilityDeclarationCount: Array.isArray(document.availabilityDeclarations)
+          ? document.availabilityDeclarations.length
+          : 0,
+        constraintSourceRequestCount: Array.isArray(document.constraintSourceRequests)
+          ? document.constraintSourceRequests.length
+          : 0,
+        uncertaintyCount: Array.isArray(document.uncertainties) ? document.uncertainties.length : 0,
+        correctionCount: Array.isArray(document.corrections) ? document.corrections.length : 0,
+        decisionCount: Array.isArray(document.decisions) ? document.decisions.length : 0,
+      },
+    },
+    canonicalization: canonicalizationProjection(canonicalization),
+    scheduler: schedulerResultProjection(scheduler),
+  };
+}
+
 function schedulerProjection(data: Record<string, unknown>): Record<string, unknown> {
   const schedulerInput = record(data.schedulerInput);
   const compilation = record(data.compilation);
   const dialogue = record(data.dialogue);
-  const selectedQuestion = record(data.selectedQuestion);
+  const selectedQuestion = record(data.selectedQuestion ?? dialogue.selectedQuestion);
   const authorization = record(data.authorization);
   const context = record(schedulerInput.context);
+  const externalSources = Array.isArray(data.externalSources)
+    ? data.externalSources
+    : schedulerInput.externalSources;
   return {
-    selectedDate: stringValue(context.currentDate),
-    timeZone: stringValue(context.timeZone),
+    selectedDate: stringValue(data.selectedDate) ?? stringValue(context.currentDate),
+    timeZone: stringValue(data.timeZone) ?? stringValue(context.timeZone),
     resolvedHorizon: compactUnknown(data.resolvedHorizon),
-    externalSources: externalSourceProjection(schedulerInput.externalSources),
+    externalSources: externalSourceProjection(externalSources),
     compilation: {
       status: stringValue(compilation.status),
       issueCount: Array.isArray(compilation.issues) ? compilation.issues.length : 0,
@@ -211,8 +319,9 @@ function schedulerProjection(data: Record<string, unknown>): Record<string, unkn
     },
     dialogue: {
       status: stringValue(dialogue.status),
-      selectedQuestionCode: stringValue(selectedQuestion.code),
-      selectedQuestion: compactUnknown(data.selectedQuestion),
+      selectedQuestionCode:
+        stringValue(data.selectedQuestionCode) ?? stringValue(selectedQuestion.code),
+      selectedQuestion: compactUnknown(data.selectedQuestion ?? dialogue.selectedQuestion),
     },
     authorization: {
       planningIntent: stringValue(authorization.planningIntent),
@@ -224,7 +333,7 @@ function schedulerProjection(data: Record<string, unknown>): Record<string, unkn
 }
 
 function previewProjection(data: Record<string, unknown>): Record<string, unknown> {
-  const result = record(data.result);
+  const result = Object.keys(record(data.result)).length > 0 ? record(data.result) : data;
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
   const unscheduled = Array.isArray(result.unscheduledWorkItems)
     ? result.unscheduledWorkItems
@@ -232,13 +341,13 @@ function previewProjection(data: Record<string, unknown>): Record<string, unknow
       ? result.unscheduled
       : [];
   return {
-    schedulerVersion: stringValue(data.schedulerVersion),
+    schedulerVersion: stringValue(data.schedulerVersion) ?? stringValue(result.schedulerVersion),
     status: stringValue(result.status),
-    candidateCount: candidates.length,
+    candidateCount: numberValue(data.candidateCount) ?? candidates.length,
     candidates: candidates.slice(0, 20).map((candidate) => compactUnknown(candidate)),
-    unscheduledCount: unscheduled.length,
+    unscheduledCount: numberValue(data.unscheduledCount) ?? unscheduled.length,
     unscheduledWorkItems: unscheduled.slice(0, 20).map((item) => compactUnknown(item)),
-    defaultsAndCriteria: compactUnknown(data.defaultsAndCriteria),
+    defaultsAndCriteria: compactUnknown(data.defaultsAndCriteria ?? result.defaultsAndCriteria),
   };
 }
 
@@ -247,12 +356,35 @@ function outputProjection(value: unknown): Record<string, unknown> {
   const state = record(output.state);
   return {
     message: stringValue(output.message),
-    stateStatus: stringValue(state.status),
-    questionCount: Array.isArray(state.questions) ? state.questions.length : 0,
-    shouldCreateDraft: state.shouldCreateDraft === true,
-    draftGenerationIntent: stringValue(state.draftGenerationIntent),
-    previewCandidateCount: Array.isArray(output.draftCandidates) ? output.draftCandidates.length : 0,
+    stateStatus: stringValue(output.stateStatus) ?? stringValue(state.status),
+    questionCount: numberValue(output.questionCount)
+      ?? (Array.isArray(state.questions) ? state.questions.length : 0),
+    shouldCreateDraft: output.shouldCreateDraft === true || state.shouldCreateDraft === true,
+    draftGenerationIntent:
+      stringValue(output.draftGenerationIntent) ?? stringValue(state.draftGenerationIntent),
+    previewCandidateCount: numberValue(output.previewCandidateCount)
+      ?? (Array.isArray(output.draftCandidates) ? output.draftCandidates.length : 0),
     failure: compactUnknown(output.failure),
+  };
+}
+
+function branchBasisProjection(value: unknown): Record<string, unknown> {
+  const basis = record(value);
+  const preview = record(basis.preview);
+  const candidates = Array.isArray(preview.candidates) ? preview.candidates : [];
+  const unscheduled = Array.isArray(preview.unscheduledWorkItemIds)
+    ? preview.unscheduledWorkItemIds
+    : [];
+  return {
+    authorized: basis.authorized === true,
+    compilationStatus: stringValue(basis.compilationStatus),
+    dialogueStatus: stringValue(basis.dialogueStatus),
+    preview: {
+      schedulerVersion: stringValue(preview.schedulerVersion),
+      status: stringValue(preview.status),
+      candidateCount: candidates.length,
+      unscheduledCount: unscheduled.length,
+    },
   };
 }
 
@@ -262,7 +394,7 @@ function projectStageData(stage: string, value: unknown): unknown {
     case 'runtime_turn_input':
       return {
         runtime: stringValue(data.runtime),
-        userText: truncateUtf8(stringValue(data.userText) ?? '', 4_000),
+        userText: headTailUtf8(stringValue(data.userText) ?? '', 4_000),
         selectedDate: stringValue(data.selectedDate),
         timetableTermId: stringValue(data.timetableTermId),
         inputCounts: compactUnknown(data.inputCounts),
@@ -287,7 +419,7 @@ function projectStageData(stage: string, value: unknown): unknown {
       return {
         pipelineVersion: stringValue(data.pipelineVersion),
         expectedRevision: numberValue(data.expectedRevision),
-        userText: truncateUtf8(stringValue(data.userText) ?? '', 4_000),
+        userText: headTailUtf8(stringValue(data.userText) ?? '', 4_000),
         recentConversation: compactMessages(data.recentConversation),
         publicStateSummary: compactUnknown(data.publicStateSummary),
         schedulerContext: compactUnknown(data.schedulerContext),
@@ -311,7 +443,7 @@ function projectStageData(stage: string, value: unknown): unknown {
         attempt: stringValue(data.attempt),
         requestBytes: numberValue(data.requestBytes),
         request: {
-          messages: compactMessages(request.messages, 6),
+          messages: compactMessages(request.messages, 6, MAX_PROVIDER_MESSAGE_BYTES),
           purpose: stringValue(request.purpose),
           responseFormat: compactUnknown(request.responseFormat),
           maxCompletionTokens: numberValue(request.maxCompletionTokens),
@@ -323,6 +455,12 @@ function projectStageData(stage: string, value: unknown): unknown {
         attempt: stringValue(data.attempt),
         responseLength: numberValue(data.responseLength),
         ...projectedRawResponse(data.rawResponse),
+      };
+    case 'semantic_repair_prepared':
+      return {
+        attempt: stringValue(data.attempt),
+        invalidResponse: headTailUtf8(stringValue(data.invalidResponse) ?? '', MAX_RAW_RESPONSE_BYTES),
+        validationErrors: compactUnknown(data.validationErrors),
       };
     case 'semantic_provider_error':
     case 'runtime_turn_threw':
@@ -337,6 +475,11 @@ function projectStageData(stage: string, value: unknown): unknown {
         errors: compactUnknown(data.errors),
         parsedDocument: compactUnknown(data.parsedDocument),
       };
+    case 'semantic_normalizer_decision':
+      return {
+        status: stringValue(data.status),
+        diagnostics: compactUnknown(data.diagnostics),
+      };
     case 'contextual_question_inference':
     case 'contextual_answer_binding_evaluated':
       return compactUnknown(data);
@@ -350,10 +493,14 @@ function projectStageData(stage: string, value: unknown): unknown {
         rejectionErrors: compactUnknown(data.rejectionErrors),
       };
     }
+    case 'scheduler_compilation_evaluated':
+      return schedulerCompilationProjection(data);
+    case 'runtime_semantic_result_received':
+      return semanticResultProjection(data);
     case 'runtime_graph_staged':
       return {
         previousGraphRevision: numberValue(data.previousGraphRevision),
-        canonicalization: compactUnknown(data.canonicalization),
+        canonicalization: canonicalizationProjection(data.canonicalization),
       };
     case 'runtime_scheduler_dialogue_evaluated':
       return schedulerProjection(data);
@@ -362,13 +509,17 @@ function projectStageData(stage: string, value: unknown): unknown {
     case 'runtime_branch_selected':
       return {
         branch: stringValue(data.branch),
-        basis: compactUnknown(data.basis),
+        basis: branchBasisProjection(data.basis),
         output: outputProjection(data.output),
       };
     case 'runtime_turn_output':
       return { finalDecision: compactUnknown(data.finalDecision) };
     case 'runtime_duplicate_turn_suppressed':
-      return compactUnknown(data);
+      return {
+        criterion: stringValue(data.criterion),
+        coreExecutorInvoked: data.coreExecutorInvoked === true,
+        previewCandidateCount: numberValue(data.previewCandidateCount),
+      };
     case 'semantic_pipeline_decision':
       return {
         selectedStatus: stringValue(data.selectedStatus),
@@ -382,7 +533,10 @@ function projectStageData(stage: string, value: unknown): unknown {
         projectedResult: outputProjection(data.projectedResult),
       };
     default:
-      return compactUnknown(data);
+      return {
+        traceProjectionUnsupportedStage: true,
+        availableKeys: Object.keys(data).slice(0, 20),
+      };
   }
 }
 
@@ -402,7 +556,7 @@ function boundedProjection(stage: string, value: unknown): unknown {
     traceProjectionTruncated: true,
     stage,
     originalProjectedBytes: bytes,
-    summary: compactUnknown(projected, MAX_GENERIC_DEPTH - 1),
+    availableKeys: Object.keys(record(projected)).slice(0, 20),
   };
 }
 
