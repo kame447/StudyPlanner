@@ -205,7 +205,8 @@ function latestEventData(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
   stage: string,
 ): Record<string, unknown> {
-  return eventData(events, stage).at(-1) ?? {};
+  const values = eventData(events, stage);
+  return values[values.length - 1] ?? {};
 }
 
 function hasEvent(
@@ -283,7 +284,7 @@ function rawResponse(
   item: Record<string, unknown>,
   index: number,
   tracker: TruncationTracker,
-  maxBytes = NORMAL_LIMITS.textBytes,
+  maxBytes: number = NORMAL_LIMITS.textBytes,
 ): WeeklyPlanningTraceAiRawResponse {
   const source = stringValue(item.rawResponse) ?? '';
   const declaredOriginalBytes = numberValue(item.rawResponseOriginalBytes);
@@ -511,7 +512,7 @@ function busyIntervals(
 ): WeeklyPlanningTraceRelevantBusyInterval[] {
   const runtime = latestEventData(events, 'runtime_scheduler_dialogue_evaluated');
   const sources = schedulerSourceValues(runtime);
-  const totalCount = sources.reduce((count, sourceValue) => {
+  const totalCount = sources.reduce<number>((count, sourceValue) => {
     const sourceEvents = record(sourceValue).events;
     return count + (Array.isArray(sourceEvents) ? sourceEvents.length : 0);
   }, 0);
