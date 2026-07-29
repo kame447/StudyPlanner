@@ -9,6 +9,7 @@ Implementation complete / Verification pending
 - Issue #89
 - PR #97
 - Branch: `agent/trace-log-schema-simplification`
+- Implementation head: `0947c3a552709b86923c85b8ecedc69abd047331`
 
 ## 目的
 
@@ -100,7 +101,7 @@ Implementation complete / Verification pending
 
 ## GitHub上で確認できた検証
 
-- Cloudflare Pages source build: commit `f7990c1` で成功
+- Cloudflare Pages source build: implementation head `0947c3a` の結果を確認中
 - 最新GitHub Actions run `#1327`: failure
 - Actions jobはstep/logなしで終了しており、コード由来の失敗内容は取得不能
 - GitHub上ではローカルtypecheck、full test、Worker deploy、Production負荷確認を実行していない
