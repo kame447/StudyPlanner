@@ -136,6 +136,9 @@ function requirementIdsFromEvents(
 
 function sanitizedEntries(entries: readonly WeeklyPlanningTraceEntry[]): WeeklyPlanningTraceEntry[] {
   return entries.flatMap((entry) => {
+    if (entry.kind === 'turn_diagnostic' && entry.schemaVersion === 2) {
+      return [entry];
+    }
     const value = sanitizeWeeklyPlanningTraceValue(entry).value;
     return isWeeklyPlanningTraceEntry(value) ? [value] : [];
   });
