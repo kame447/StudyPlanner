@@ -5,17 +5,21 @@ import {
 } from '../../../../shared/weeklyPlanningTraceContract';
 import { getCloudflareAiProxyUrl } from '../../../lib/aiConfig';
 import { getFirebaseAuth } from '../../../lib/firebaseClient';
+import { createWeeklyPlanningTraceAdminDiagnostics } from './weeklyPlanningTraceArchive';
 import {
   WeeklyPlanningTraceApiError,
   type WeeklyPlanningTraceErrorCategory,
+  type WeeklyPlanningTraceRequestStage,
 } from './weeklyPlanningTracePrivacyClient';
 import {
   isWeeklyPlanningTraceEntry,
   type WeeklyPlanningTraceEntry,
   type WeeklyPlanningTraceRepository,
+  type WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
 
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
+const ADMIN_ARCHIVE_PATH = '/weekly-planning-trace/admin/archive';
 
 export type WeeklyPlanningTraceAdminEntryPage = {
   entries: Record<string, unknown>[];
@@ -61,7 +65,8 @@ function correlationId(): string {
 function categoryForStatus(status: number): WeeklyPlanningTraceErrorCategory {
   if (status === 401 || status === 403) return 'auth';
   if (status === 412) return 'policy';
-  if (status === 409 || status === 426) return 'contract';
+  if (status === 409) return 'conflict';
+  if (status === 426) return 'contract';
   if (status === 400 || status === 404 || status === 413 || status === 422) return 'validation';
   if (status === 429) return 'rate_limit';
   if (status >= 500) return 'internal';
@@ -84,18 +89,18 @@ function pageCursor(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) ? value : Number.NaN;
 }
 
-async function fetchAdminEntryPage(params: {
-  sessionId: string;
-  afterSequence: number;
-  limit: number;
-}): Promise<WeeklyPlanningTraceAdminEntryPage> {
+async function authenticatedAdminPost(
+  path: string,
+  stage: Extract<WeeklyPlanningTraceRequestStage, 'admin_entries' | 'admin_archive'>,
+  body: Record<string, unknown>,
+): Promise<TraceApiEnvelope> {
   const requestCorrelationId = correlationId();
   const currentUser = getFirebaseAuth()?.currentUser;
   if (!currentUser) {
     throw new WeeklyPlanningTraceApiError(
       'ログイン状態を確認できませんでした。もう一度ログインしてください。',
       {
-        stage: 'admin_entries',
+        stage,
         status: null,
         code: 'trace_auth_unavailable',
         category: 'auth',
@@ -108,7 +113,7 @@ async function fetchAdminEntryPage(params: {
   const idToken = await currentUser.getIdToken();
   let response: Response;
   try {
-    response = await fetch(`${traceApiBaseUrl()}${ADMIN_ENTRY_PAGE_PATH}`, {
+    response = await fetch(`${traceApiBaseUrl()}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,13 +122,13 @@ async function fetchAdminEntryPage(params: {
           WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
         [WEEKLY_PLANNING_TRACE_HEADERS.correlationId]: requestCorrelationId,
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify(body),
     });
   } catch {
     throw new WeeklyPlanningTraceApiError(
       '週間計画traceサーバーへ接続できませんでした。',
       {
-        stage: 'admin_entries',
+        stage,
         status: null,
         code: 'trace_network_failure',
         category: 'network',
@@ -152,7 +157,7 @@ async function fetchAdminEntryPage(params: {
         ? payload.error.trim()
         : `週間計画の会話記録を処理できませんでした（${response.status}）。`,
       {
-        stage: 'admin_entries',
+        stage,
         status: response.status,
         code: typeof payload.errorCode === 'string'
           ? payload.errorCode
@@ -169,7 +174,7 @@ async function fetchAdminEntryPage(params: {
     throw new WeeklyPlanningTraceApiError(
       '週間計画traceのfrontendとWorkerの契約versionが一致しません。',
       {
-        stage: 'admin_entries',
+        stage,
         status: response.status,
         code: 'trace_contract_mismatch',
         category: 'contract',
@@ -180,13 +185,33 @@ async function fetchAdminEntryPage(params: {
       },
     );
   }
+  return payload;
+}
 
+async function fetchAdminEntryPage(params: {
+  sessionId: string;
+  afterSequence: number;
+  limit: number;
+}): Promise<WeeklyPlanningTraceAdminEntryPage> {
+  const payload = await authenticatedAdminPost(
+    ADMIN_ENTRY_PAGE_PATH,
+    'admin_entries',
+    params,
+  );
   return {
     entries: recordArray(payload.entries),
     totalEntryCount: finiteCount(payload.totalEntryCount),
     nextAfterSequence: pageCursor(payload.nextAfterSequence),
     missingSequenceCount: finiteCount(payload.missingSequenceCount),
   };
+}
+
+async function archiveAdminSessionSnapshot(params: {
+  sessionId: string;
+  expectedLastActivityAt: string;
+  expectedEntryCount: number;
+}): Promise<void> {
+  await authenticatedAdminPost(ADMIN_ARCHIVE_PATH, 'admin_archive', params);
 }
 
 function isBoundedEntryCount(value: number): boolean {
@@ -286,25 +311,67 @@ function isPageEndpointUnavailable(error: unknown): boolean {
 export function createPaginatedAdminWeeklyPlanningTraceRepository(
   base: WeeklyPlanningTraceRepository,
 ): WeeklyPlanningTraceRepository {
+  const sessionsById = new Map<string, WeeklyPlanningTraceSession>();
+  const loadedEntryCountsBySessionId = new Map<string, number>();
+  const listWithDiagnostics = base.listSessionsForAdminWithDiagnostics?.bind(base);
+
+  function rememberSessions(sessions: readonly WeeklyPlanningTraceSession[]): void {
+    sessions.forEach((session) => sessionsById.set(session.id, session));
+  }
+
   return {
     ...base,
+    async listSessionsForAdmin() {
+      const sessions = await base.listSessionsForAdmin();
+      rememberSessions(sessions);
+      return sessions;
+    },
+    async listSessionsForAdminWithDiagnostics() {
+      const result = listWithDiagnostics
+        ? await listWithDiagnostics()
+        : await base.listSessionsForAdmin().then((sessions) => ({
+            sessions,
+            diagnostics: createWeeklyPlanningTraceAdminDiagnostics({
+              rawCount: sessions.length,
+              mappedSessions: sessions,
+            }),
+          }));
+      rememberSessions(result.sessions);
+      return result;
+    },
     async listEntries(userId, sessionId) {
-      let records: Record<string, unknown>[];
+      let entries: WeeklyPlanningTraceEntry[];
       try {
-        records = await collectWeeklyPlanningTraceAdminEntryPages(sessionId);
-      } catch (error) {
-        if (isPageEndpointUnavailable(error)) {
-          return await base.listEntries(userId, sessionId);
+        const records = await collectWeeklyPlanningTraceAdminEntryPages(sessionId);
+        entries = records
+          .map(entryFromRemote)
+          .filter((entry): entry is WeeklyPlanningTraceEntry => Boolean(entry));
+        if (entries.length !== records.length) {
+          throw new Error('週間計画traceのentry schemaが不正です。');
         }
-        throw error;
+        entries.sort((left, right) => left.sequence - right.sequence);
+      } catch (error) {
+        if (!isPageEndpointUnavailable(error)) throw error;
+        entries = await base.listEntries(userId, sessionId);
       }
-      const entries = records
-        .map(entryFromRemote)
-        .filter((entry): entry is WeeklyPlanningTraceEntry => Boolean(entry));
-      if (entries.length !== records.length) {
-        throw new Error('週間計画traceのentry schemaが不正です。');
+      loadedEntryCountsBySessionId.set(sessionId, entries.length);
+      return entries;
+    },
+    async archiveSessionForAdmin(sessionId, archivedAt) {
+      const session = sessionsById.get(sessionId);
+      const expectedEntryCount = loadedEntryCountsBySessionId.get(sessionId);
+      if (!session || expectedEntryCount === undefined) {
+        throw new Error(
+          'archive対象のexport snapshotを確認できません。sessionを再読込してから再度exportしてください。',
+        );
       }
-      return entries.sort((left, right) => left.sequence - right.sequence);
+      await archiveAdminSessionSnapshot({
+        sessionId,
+        expectedLastActivityAt: session.lastActivityAt,
+        expectedEntryCount,
+      });
+      sessionsById.set(sessionId, { ...session, archivedAt });
+      loadedEntryCountsBySessionId.delete(sessionId);
     },
   };
 }
