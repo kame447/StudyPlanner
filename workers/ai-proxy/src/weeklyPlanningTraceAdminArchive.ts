@@ -181,9 +181,6 @@ export function resolveWeeklyPlanningTraceArchiveEntryCount(
 ): WeeklyPlanningTraceArchiveEntryCountResolution {
   const storedEntryCount = safeEntryCount(target.entryCount);
   if (storedEntryCount === null) return { ok: false, reason: 'stored_count_invalid' };
-  if (requestedEntryCount === undefined) {
-    return { ok: true, archivedEntryCount: storedEntryCount };
-  }
   const requested = safeEntryCount(requestedEntryCount);
   if (requested === null) return { ok: false, reason: 'requested_count_invalid' };
   if (requested > storedEntryCount) return { ok: false, reason: 'requested_count_ahead' };
@@ -274,7 +271,7 @@ export async function handleWeeklyPlanningTraceAdminArchive(
           'trace_archive_snapshot_ahead', 'conflict');
       }
       return errorResponse(request, env, context, 400,
-        'archive entry count is invalid',
+        'export済みentry件数を確認できません。最新版の管理画面から再度exportしてください。',
         'trace_archive_entry_count_invalid', 'validation');
     }
 
