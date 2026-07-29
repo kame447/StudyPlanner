@@ -4,6 +4,7 @@ import {
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
   measureWeeklyPlanningTraceJsonBytes,
 } from '../../../shared/weeklyPlanningTraceContract';
+import { safeWeeklyPlanningTraceDocumentsForAdmin } from './weeklyPlanningTraceApi';
 import {
   WeeklyPlanningTraceFirestoreClient,
   type WeeklyPlanningTraceFirestoreEnv,
@@ -21,7 +22,7 @@ const TRACE_SESSIONS = 'weekly_planning_trace_sessions';
 const TRACE_ENTRIES = 'weekly_planning_trace_entries';
 const TRACE_ACCESS_AUDIT = 'weekly_planning_trace_access_audit';
 const ADMINS = 'admins';
-const ENDPOINT = '/weekly-planning-trace/admin/entries/page';
+const MAX_ADMIN_REQUEST_BODY_BYTES = 16 * 1024;
 
 export interface WeeklyPlanningTraceAdminEntriesPageEnv
   extends WeeklyPlanningTraceFirestoreEnv {
@@ -68,6 +69,10 @@ interface EntryRequestDiagnostics {
   requestedEndSequence: number | null;
   pageSize: number | null;
   responseBytes: number | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function allowedOrigins(env: WeeklyPlanningTraceAdminEntriesPageEnv): Set<string> {
@@ -188,6 +193,20 @@ async function requireFirebaseSession(
   return { uid: user.localId };
 }
 
+async function parseBoundedRequestBody(request: Request): Promise<Record<string, unknown>> {
+  const declaredLength = Number.parseInt(request.headers.get('Content-Length') ?? '', 10);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_ADMIN_REQUEST_BODY_BYTES) {
+    throw new Error('trace admin request body is too large');
+  }
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_ADMIN_REQUEST_BODY_BYTES) {
+    throw new Error('trace admin request body is too large');
+  }
+  const parsed = JSON.parse(text) as unknown;
+  if (!isRecord(parsed)) throw new Error('trace admin request body is invalid');
+  return parsed;
+}
+
 function nonNegativeInteger(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -224,6 +243,11 @@ function normalizedEntry(
 }
 
 function documentForAdmin(document: Record<string, unknown>): Record<string, unknown> {
+  const isTurnDiagnosticV2 = document.kind === 'turn_diagnostic' && document.schemaVersion === 2;
+  if (!isTurnDiagnosticV2) {
+    return safeWeeklyPlanningTraceDocumentsForAdmin([document])[0] ?? {};
+  }
+
   const {
     traceSubjectToken,
     traceSubjectEpoch,
@@ -243,10 +267,11 @@ function boundedEntries(
   const selected: Record<string, unknown>[] = [];
   let responseBytes = measureWeeklyPlanningTraceJsonBytes([]);
   for (const entry of entries) {
-    const candidate = [...selected, documentForAdmin(entry)];
-    const candidateBytes = measureWeeklyPlanningTraceJsonBytes(candidate);
+    const safeEntry = documentForAdmin(entry);
+    const entryBytes = measureWeeklyPlanningTraceJsonBytes(safeEntry);
+    const candidateBytes = responseBytes + entryBytes + (selected.length > 0 ? 1 : 0);
     if (candidateBytes > WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxResponseBytes) break;
-    selected.push(candidate[candidate.length - 1]);
+    selected.push(safeEntry);
     responseBytes = candidateBytes;
   }
   if (entries.length > 0 && selected.length === 0) {
@@ -369,7 +394,7 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
         'trace閲覧権限がありません。', 'trace_reader_forbidden', 'auth');
     }
 
-    const body = await request.json() as Record<string, unknown>;
+    const body = await parseBoundedRequestBody(request);
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
     diagnostics.sessionId = sessionId || null;
     if (!isWeeklyPlanningTraceSessionId(sessionId)
@@ -420,7 +445,7 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : 'trace page request failed';
     console.error('[Weekly Planning Trace] admin entry page failed', {
-      endpoint: ENDPOINT,
+      endpoint: new URL(request.url).pathname,
       sessionId: diagnostics.sessionId,
       afterSequence: diagnostics.afterSequence,
       requestedRange: diagnostics.requestedStartSequence === null
@@ -442,7 +467,7 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
         'trace_storage_unavailable', 'storage', true);
     }
     if (message.includes('invalid') || message.includes('required')
-      || message.includes('byte limit')) {
+      || message.includes('byte limit') || message.includes('too large')) {
       return errorResponse(request, env, context, 400,
         message, 'trace_validation_failed', 'validation');
     }
