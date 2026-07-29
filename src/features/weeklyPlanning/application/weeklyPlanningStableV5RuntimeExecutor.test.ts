@@ -80,6 +80,59 @@ function todayOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+function recognizedTasksWithoutWorkloadsDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'window-today-with-tasks',
+      kind: 'relative_day',
+      value: 'today',
+      start: null,
+      end: null,
+      sourceText: '今日の予定',
+    },
+    tasks: [
+      {
+        localId: 'task-research',
+        category: 'study',
+        title: '午前：研究を進める',
+        study: {
+          purpose: 'research',
+          contextLabel: '研究',
+          components: [],
+        },
+        workloads: [],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [],
+        sourceText: '午前中は研究を進める',
+      },
+      {
+        localId: 'task-exam',
+        category: 'study',
+        title: '午後：院試の勉強',
+        study: {
+          purpose: 'exam',
+          contextLabel: '院試',
+          components: [],
+        },
+        workloads: [],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [],
+        sourceText: '午後は院試の勉強',
+      },
+    ],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
 function acceptedResult(semanticDocument: WeeklyPlanningSemanticDocumentV5) {
   return {
     status: 'accepted' as const,
@@ -94,6 +147,25 @@ function acceptedResult(semanticDocument: WeeklyPlanningSemanticDocumentV5) {
       responseLengths: [100],
       latencyMs: 1,
       validationErrors: [],
+      providerError: null,
+    },
+  };
+}
+
+function rejectedResult() {
+  return {
+    status: 'rejected' as const,
+    document: null,
+    diagnostics: {
+      schemaVersion: 'weekly-planning-semantic-v5' as const,
+      jsonSchemaName: 'weekly_planning_semantic_document_v5' as const,
+      normalizerVersion: 'weekly-planning-semantic-normalizer-v5' as const,
+      attemptCount: 2,
+      repairAttempted: true,
+      requestBytes: [100, 200],
+      responseLengths: [100, 100],
+      latencyMs: 1,
+      validationErrors: ['initial:missing-start', 'repair:cannot-combine-with-clock'],
       providerError: null,
     },
   };
@@ -218,6 +290,89 @@ describe('Stable V5 runtime executor', () => {
         expect.objectContaining({
           stage: 'runtime_branch_selected',
           data: expect.objectContaining({ branch: 'nothing_to_schedule' }),
+        }),
+      ]),
+    );
+  });
+
+  it('acknowledges recognized tasks and asks only for their missing workload', async () => {
+    normalizeMock.mockResolvedValueOnce(acceptedResult(recognizedTasksWithoutWorkloadsDocument()));
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [
+        { role: 'user', content: '今日の予定を立ててください' },
+        {
+          role: 'assistant',
+          content: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+        },
+      ],
+      userText: '午前中は研究進めるのと、午後は院試の勉強かな',
+      selectedDate: '2026-07-30',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-recognized-tasks',
+      traceRequestId: 'request-recognized-tasks',
+    });
+
+    expect(result.state).toMatchObject({
+      status: 'revision_pending',
+      shouldCreateDraft: false,
+      lastQuestionContext: {
+        targetSlot: 'stable_v5:missing_schedulable_work',
+        intent: 'missing_schedulable_work',
+      },
+    });
+    expect(result.message).toContain('「午前：研究を進める」');
+    expect(result.message).toContain('「午後：院試の勉強」');
+    expect(result.message).toContain('それぞれどれくらい進めたいですか');
+    expect(result.message).not.toBe(
+      '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+    );
+    expect(result.draftCandidates).toEqual([]);
+
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-recognized-tasks')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_branch_selected',
+          data: expect.objectContaining({
+            branch: 'nothing_to_schedule',
+            recognizedTaskTitles: [
+              '午前：研究を進める',
+              '午後：院試の勉強',
+            ],
+            questionCode: 'missing_schedulable_work',
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('attributes normalization rejection to the structured processing failure, not user wording', async () => {
+    normalizeMock.mockResolvedValueOnce(rejectedResult());
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [],
+      userText: '今日中に三つの作業を合計8時間やりたいです',
+      selectedDate: '2026-07-30',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-normalization-rejected',
+      traceRequestId: 'request-normalization-rejected',
+    });
+
+    expect(result.message).toContain('構造化処理に失敗しました');
+    expect(result.message).toContain('同じ内容をそのまま');
+    expect(result.message).not.toContain('言い換えて');
+    expect(result.draftCandidates).toEqual([]);
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-normalization-rejected')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_branch_selected',
+          data: expect.objectContaining({ branch: 'normalization_rejected' }),
         }),
       ]),
     );
