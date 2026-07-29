@@ -176,7 +176,9 @@ describe('Stable V5 runtime executor', () => {
       expect.objectContaining({
         stage: 'runtime_preview_scheduler_evaluated',
         data: expect.objectContaining({
-          result: expect.objectContaining({ status: 'ready' }),
+          status: 'ready',
+          candidateCount: 1,
+          unscheduledCount: 0,
         }),
       }),
       expect.objectContaining({
