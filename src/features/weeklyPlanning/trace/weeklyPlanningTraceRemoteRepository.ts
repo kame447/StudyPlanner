@@ -47,6 +47,14 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function nonNegativeIntegerValue(value: unknown): number | undefined {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= 0
+    ? value
+    : undefined;
+}
+
 function booleanValue(value: unknown): boolean {
   return value === true;
 }
@@ -74,6 +82,7 @@ function sessionFromRemote(record: Record<string, unknown>): WeeklyPlanningTrace
   const lastActivityAt = stringValue(record.lastActivityAt);
   const appVersion = stringValue(record.appVersion);
   const expireAt = stringValue(record.expireAt);
+  const archivedEntryCount = nonNegativeIntegerValue(record.archivedEntryCount);
   if (!id
     || !logicalConversationId
     || !['active', 'completed', 'abandoned', 'failed'].includes(status ?? '')
@@ -92,6 +101,7 @@ function sessionFromRemote(record: Record<string, unknown>): WeeklyPlanningTrace
     lastActivityAt,
     ...(stringValue(record.endedAt) ? { endedAt: stringValue(record.endedAt) } : {}),
     ...(stringValue(record.archivedAt) ? { archivedAt: stringValue(record.archivedAt) } : {}),
+    ...(archivedEntryCount !== undefined ? { archivedEntryCount } : {}),
     ...(stringValue(record.planningRangeStart)
       ? { planningRangeStart: stringValue(record.planningRangeStart) }
       : {}),

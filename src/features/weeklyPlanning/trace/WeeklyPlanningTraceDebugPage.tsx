@@ -2,6 +2,7 @@ import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   createWeeklyPlanningTraceAdminDiagnostics,
+  hasArchivedWeeklyPlanningTraceActivity,
   hasUnexportedWeeklyPlanningTraceActivity,
   hasWeeklyPlanningTraceActivity,
 } from './weeklyPlanningTraceArchive';
@@ -20,6 +21,7 @@ interface WeeklyPlanningTraceDebugPageProps {
 }
 
 type TraceViewMode = 'conversation' | 'events' | 'snapshots' | 'raw';
+type SessionListMode = 'unexported' | 'archived' | 'empty';
 
 const EMPTY_DIAGNOSTICS: WeeklyPlanningTraceAdminDiagnostics = {
   rawCount: 0,
@@ -43,6 +45,12 @@ const VIEW_MODES: Array<{ value: TraceViewMode; label: string }> = [
   { value: 'events', label: 'Events' },
   { value: 'snapshots', label: 'State snapshots' },
   { value: 'raw', label: 'Raw redacted JSON' },
+];
+
+const SESSION_LIST_MODES: Array<{ value: SessionListMode; label: string; heading: string }> = [
+  { value: 'unexported', label: '未export', heading: '未exportの活動があるSessions' },
+  { value: 'archived', label: 'アーカイブ済み', heading: 'アーカイブ済みSessions' },
+  { value: 'empty', label: 'Empty', heading: 'Empty Sessions' },
 ];
 
 function downloadJson(filename: string, value: unknown): void {
@@ -104,6 +112,27 @@ function entriesForMode(
   return [];
 }
 
+function sessionMatchesListMode(
+  session: WeeklyPlanningTraceSession,
+  mode: SessionListMode,
+): boolean {
+  if (mode === 'empty') return !hasWeeklyPlanningTraceActivity(session);
+  if (mode === 'archived') return hasArchivedWeeklyPlanningTraceActivity(session);
+  return hasUnexportedWeeklyPlanningTraceActivity(session);
+}
+
+function sessionListHeading(mode: SessionListMode): string {
+  return SESSION_LIST_MODES.find((option) => option.value === mode)?.heading
+    ?? '週間計画Sessions';
+}
+
+function exportButtonLabel(session: WeeklyPlanningTraceSession, exporting: boolean): string {
+  if (exporting) return 'export中...';
+  if (hasArchivedWeeklyPlanningTraceActivity(session)) return 'JSONを再エクスポート';
+  if (session.archivedAt) return 'JSON exportして再アーカイブ';
+  return 'JSON exportしてアーカイブ';
+}
+
 export function WeeklyPlanningTraceDebugPage({
   onBack,
 }: WeeklyPlanningTraceDebugPageProps) {
@@ -112,8 +141,10 @@ export function WeeklyPlanningTraceDebugPage({
   const [entriesBySession, setEntriesBySession] = useState<
     Record<string, WeeklyPlanningTraceEntry[]>
   >({});
+  const [entryErrorsBySession, setEntryErrorsBySession] = useState<Record<string, string>>({});
   const [expandedSessionId, setExpandedSessionId] = useState('');
   const [viewMode, setViewMode] = useState<TraceViewMode>('conversation');
+  const [sessionListMode, setSessionListMode] = useState<SessionListMode>('unexported');
   const [statusFilter, setStatusFilter] = useState<'' | WeeklyPlanningTraceSessionStatus>('');
   const [userFilter, setUserFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -123,7 +154,6 @@ export function WeeklyPlanningTraceDebugPage({
   const [onlyPreviews, setOnlyPreviews] = useState(false);
   const [onlyApprovalFailures, setOnlyApprovalFailures] = useState(false);
   const [onlyStale, setOnlyStale] = useState(false);
-  const [showEmptySessions, setShowEmptySessions] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingEntriesSessionId, setLoadingEntriesSessionId] = useState('');
   const [exportingSessionId, setExportingSessionId] = useState('');
@@ -164,6 +194,12 @@ export function WeeklyPlanningTraceDebugPage({
     const cached = entriesBySession[session.id];
     if (cached) return cached;
     setLoadingEntriesSessionId(session.id);
+    setEntryErrorsBySession((current) => {
+      if (!(session.id in current)) return current;
+      const next = { ...current };
+      delete next[session.id];
+      return next;
+    });
     try {
       const nextEntries = await getWeeklyPlanningTraceRepository().listEntries(
         session.userId,
@@ -172,7 +208,8 @@ export function WeeklyPlanningTraceDebugPage({
       setEntriesBySession((current) => ({ ...current, [session.id]: nextEntries }));
       return nextEntries;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。');
+      const message = loadError instanceof Error ? loadError.message : 'traceを取得できませんでした。';
+      setEntryErrorsBySession((current) => ({ ...current, [session.id]: message }));
       throw loadError;
     } finally {
       setLoadingEntriesSessionId((current) => current === session.id ? '' : current);
@@ -189,6 +226,11 @@ export function WeeklyPlanningTraceDebugPage({
     void loadEntries(session).catch(() => undefined);
   }
 
+  function selectSessionListMode(mode: SessionListMode): void {
+    setSessionListMode(mode);
+    setExpandedSessionId('');
+  }
+
   async function enableStaleFilter(checked: boolean): Promise<void> {
     setOnlyStale(checked);
     if (!checked) return;
@@ -199,20 +241,29 @@ export function WeeklyPlanningTraceDebugPage({
     }
   }
 
-  async function exportAndArchive(session: WeeklyPlanningTraceSession): Promise<void> {
+  async function exportSession(session: WeeklyPlanningTraceSession): Promise<void> {
+    const archiveAfterExport = !hasArchivedWeeklyPlanningTraceActivity(session);
     setExportingSessionId(session.id);
+    setError('');
     try {
       const entries = await loadEntries(session);
       downloadJson(
         `weekly-planning-trace-${session.id}.json`,
         createWeeklyPlanningTraceExportBundle(session, entries),
       );
+      if (!archiveAfterExport) return;
+
       await getWeeklyPlanningTraceRepository().archiveSessionForAdmin(
         session.id,
         new Date().toISOString(),
       );
       await loadSessions();
       setEntriesBySession((current) => {
+        const next = { ...current };
+        delete next[session.id];
+        return next;
+      });
+      setEntryErrorsBySession((current) => {
         const next = { ...current };
         delete next[session.id];
         return next;
@@ -229,12 +280,13 @@ export function WeeklyPlanningTraceDebugPage({
     }
   }
 
+  const archivedCount = useMemo(
+    () => sessions.filter(hasArchivedWeeklyPlanningTraceActivity).length,
+    [sessions],
+  );
+
   const visibleSessions = useMemo(() => sessions.filter((session) => {
-    if (showEmptySessions) {
-      if (hasWeeklyPlanningTraceActivity(session)) return false;
-    } else if (!hasUnexportedWeeklyPlanningTraceActivity(session)) {
-      return false;
-    }
+    if (!sessionMatchesListMode(session, sessionListMode)) return false;
     if (statusFilter && session.status !== statusFilter) return false;
     const normalizedUserFilter = userFilter.trim().toLowerCase();
     if (normalizedUserFilter
@@ -258,8 +310,8 @@ export function WeeklyPlanningTraceDebugPage({
     onlyFallbacks,
     onlyPreviews,
     onlyStale,
+    sessionListMode,
     sessions,
-    showEmptySessions,
     statusFilter,
     userFilter,
   ]);
@@ -274,8 +326,8 @@ export function WeeklyPlanningTraceDebugPage({
       <header className="panel">
         <h1>週間計画ログ</h1>
         <p>
-          通常一覧では未exportの活動があるsessionだけを表示します。empty sessionは削除せず、
-          診断表示へ切り替えて確認できます。
+          未export、アーカイブ済み、empty sessionを切り替えて確認できます。
+          アーカイブ済みsessionは削除されず、保持期限内であれば再表示・再エクスポートできます。
         </p>
         <div className="button-row">
           <button
@@ -296,16 +348,21 @@ export function WeeklyPlanningTraceDebugPage({
         <p>
           raw {diagnostics.rawCount} / mapped {diagnostics.mappedCount} / malformed {diagnostics.malformedCount}
           {' / '}activity {diagnostics.activityCount} / empty {diagnostics.emptyCount}
-          {' / '}unexported {diagnostics.unexportedCount} / rendered {visibleSessions.length}
+          {' / '}unexported {diagnostics.unexportedCount} / archived {archivedCount}
+          {' / '}rendered {visibleSessions.length}
         </p>
-        <label>
-          <input
-            type="checkbox"
-            checked={showEmptySessions}
-            onChange={(event) => setShowEmptySessions(event.target.checked)}
-          />
-          empty sessionを診断表示する
-        </label>
+        <div className="segmented-control" aria-label="session表示区分">
+          {SESSION_LIST_MODES.map((mode) => (
+            <button
+              key={mode.value}
+              className={sessionListMode === mode.value ? 'segment active' : 'segment'}
+              type="button"
+              onClick={() => selectSessionListMode(mode.value)}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="panel">
@@ -352,7 +409,7 @@ export function WeeklyPlanningTraceDebugPage({
 
       <section className="weekly-planning-trace-stream" aria-label="週間計画ログ一覧">
         <div className="weekly-planning-trace-stream-heading">
-          <h2>{showEmptySessions ? 'Empty Sessions' : '未exportの活動があるSessions'}</h2>
+          <h2>{sessionListHeading(sessionListMode)}</h2>
           <span>{visibleSessions.length}件</span>
         </div>
 
@@ -372,6 +429,7 @@ export function WeeklyPlanningTraceDebugPage({
         {visibleSessions.map((session) => {
           const expanded = expandedSessionId === session.id;
           const entries = entriesBySession[session.id] ?? [];
+          const entryError = entryErrorsBySession[session.id] ?? '';
           const loadingEntries = loadingEntriesSessionId === session.id;
           const exporting = exportingSessionId === session.id;
           const rangeLabel = planningRangeLabel(session);
@@ -393,6 +451,9 @@ export function WeeklyPlanningTraceDebugPage({
                   <code>{session.userId}</code>
                   <small>conversation {session.logicalConversationId}</small>
                   {rangeLabel ? <small>計画範囲 {rangeLabel}</small> : null}
+                  {session.archivedAt
+                    ? <small>最終archive {formattedDate(session.archivedAt)}</small>
+                    : null}
                 </span>
                 {expanded
                   ? <ChevronUp aria-hidden="true" size={20} strokeWidth={2} />
@@ -402,14 +463,19 @@ export function WeeklyPlanningTraceDebugPage({
               {expanded ? (
                 <div className="trace-session-detail">
                   <div className="trace-session-actions">
-                    <span>開始 {formattedDate(session.startedAt)}</span>
+                    <span>
+                      開始 {formattedDate(session.startedAt)}
+                      {session.archivedAt
+                        ? ` / 最終archive ${formattedDate(session.archivedAt)}`
+                        : ''}
+                    </span>
                     <button
                       className="primary-button"
                       type="button"
                       disabled={exporting || loadingEntries}
-                      onClick={() => { void exportAndArchive(session); }}
+                      onClick={() => { void exportSession(session); }}
                     >
-                      {exporting ? 'export中...' : 'JSON exportしてアーカイブ'}
+                      {exportButtonLabel(session, exporting)}
                     </button>
                   </div>
 
@@ -427,9 +493,24 @@ export function WeeklyPlanningTraceDebugPage({
                   </div>
 
                   {loadingEntries ? <p>timelineを読み込んでいます...</p> : null}
-                  {!loadingEntries && entries.length === 0 ? <p>entryはありません。</p> : null}
+                  {entryError ? (
+                    <div className="app-notice error">
+                      entry取得失敗: {entryError}
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={loadingEntries}
+                        onClick={() => { void loadEntries(session).catch(() => undefined); }}
+                      >
+                        再試行
+                      </button>
+                    </div>
+                  ) : null}
+                  {!loadingEntries && !entryError && entries.length === 0
+                    ? <p>entryはありません。</p>
+                    : null}
 
-                  {viewMode === 'raw' && !loadingEntries ? (
+                  {!entryError && (viewMode === 'raw' && !loadingEntries ? (
                     <pre className="trace-entry">
                       {safeJson(createWeeklyPlanningTraceExportBundle(session, entries))}
                     </pre>
@@ -450,7 +531,7 @@ export function WeeklyPlanningTraceDebugPage({
                         </article>
                       ))}
                     </div>
-                  )}
+                  ))}
                 </div>
               ) : null}
             </article>

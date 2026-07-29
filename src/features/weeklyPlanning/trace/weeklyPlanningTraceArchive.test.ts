@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createWeeklyPlanningTraceAdminDiagnostics,
+  hasArchivedWeeklyPlanningTraceActivity,
   hasUnexportedWeeklyPlanningTraceActivity,
   hasWeeklyPlanningTraceActivity,
 } from './weeklyPlanningTraceArchive';
@@ -28,12 +29,14 @@ describe('weekly planning trace archive and diagnostics', () => {
   it('未archiveで活動があるsessionを表示対象にする', () => {
     expect(hasWeeklyPlanningTraceActivity(SESSION)).toBe(true);
     expect(hasUnexportedWeeklyPlanningTraceActivity(SESSION)).toBe(true);
+    expect(hasArchivedWeeklyPlanningTraceActivity(SESSION)).toBe(false);
   });
 
   it('未archiveでもturnとentryが0件の空sessionを通常表示しない', () => {
     const emptySession = { ...SESSION, turnCount: 0, entryCount: 0 };
     expect(hasWeeklyPlanningTraceActivity(emptySession)).toBe(false);
     expect(hasUnexportedWeeklyPlanningTraceActivity(emptySession)).toBe(false);
+    expect(hasArchivedWeeklyPlanningTraceActivity(emptySession)).toBe(false);
   });
 
   it('turnだけまたはentryだけが存在する部分sessionは活動ありとして扱う', () => {
@@ -49,7 +52,29 @@ describe('weekly planning trace archive and diagnostics', () => {
     })).toBe(true);
   });
 
-  it('archive後の新しい活動だけを再表示する', () => {
+  it('export済みentry数が現在値と一致するsessionをarchive一覧対象にする', () => {
+    const archived = {
+      ...SESSION,
+      archivedAt: '2026-07-15T00:00:03.000Z',
+      archivedEntryCount: 4,
+    };
+    expect(hasUnexportedWeeklyPlanningTraceActivity(archived)).toBe(false);
+    expect(hasArchivedWeeklyPlanningTraceActivity(archived)).toBe(true);
+  });
+
+  it('archive更新と同時にentryが増えても未export一覧から隠さない', () => {
+    const appendedDuringArchive = {
+      ...SESSION,
+      entryCount: 5,
+      lastActivityAt: '2026-07-15T00:00:02.000Z',
+      archivedAt: '2026-07-15T00:00:03.000Z',
+      archivedEntryCount: 4,
+    };
+    expect(hasUnexportedWeeklyPlanningTraceActivity(appendedDuringArchive)).toBe(true);
+    expect(hasArchivedWeeklyPlanningTraceActivity(appendedDuringArchive)).toBe(false);
+  });
+
+  it('旧sessionはarchivedAtとlastActivityAtの比較へfallbackする', () => {
     expect(hasUnexportedWeeklyPlanningTraceActivity({
       ...SESSION,
       archivedAt: '2026-07-15T00:00:03.000Z',
@@ -66,6 +91,7 @@ describe('weekly planning trace archive and diagnostics', () => {
       ...SESSION,
       id: 'archived',
       archivedAt: '2026-07-15T00:00:03.000Z',
+      archivedEntryCount: 4,
     };
     expect(createWeeklyPlanningTraceAdminDiagnostics({
       rawCount: 4,

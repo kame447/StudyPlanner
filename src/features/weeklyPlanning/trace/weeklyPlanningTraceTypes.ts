@@ -38,6 +38,7 @@ export interface WeeklyPlanningTraceSession {
   lastActivityAt: string;
   endedAt?: string;
   archivedAt?: string;
+  archivedEntryCount?: number;
   planningRangeStart?: string;
   planningRangeEnd?: string;
   turnCount: number;

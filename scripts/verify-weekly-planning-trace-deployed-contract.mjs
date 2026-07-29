@@ -1,6 +1,7 @@
 const baseUrl = process.env.TRACE_BASE_URL?.trim().replace(/\/$/, '');
 const idToken = process.env.TRACE_ID_TOKEN?.trim();
 const contractVersion = '2026-07-28-v2';
+const expectedWorkerRevision = 'weekly-planning-trace-20260729-003';
 const contractHeader = 'X-StudyPlanner-Trace-Contract-Version';
 const correlationHeader = 'X-StudyPlanner-Trace-Correlation-Id';
 const workerRevisionHeader = 'X-StudyPlanner-Trace-Worker-Revision';
@@ -32,8 +33,10 @@ if (responseContract !== contractVersion) {
 if (responseCorrelation !== correlationId) {
   throw new Error(`trace correlation mismatch: expected ${correlationId}, received ${responseCorrelation}`);
 }
-if (typeof workerRevision !== 'string' || !workerRevision.trim()) {
-  throw new Error('trace worker revision is missing');
+if (workerRevision !== expectedWorkerRevision) {
+  throw new Error(
+    `trace worker revision mismatch: expected ${expectedWorkerRevision}, received ${workerRevision}`,
+  );
 }
 if (body.storageLayoutVersion !== 2) {
   throw new Error(`trace storage layout mismatch: ${body.storageLayoutVersion}`);
