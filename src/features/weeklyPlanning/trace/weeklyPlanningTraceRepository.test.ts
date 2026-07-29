@@ -116,11 +116,19 @@ describe('createInMemoryWeeklyPlanningTraceRepository', () => {
     await repository.appendEntries({ session: SESSION, entries: ENTRIES });
     expect(await repository.listEntries('user-1', 'session-1')).toHaveLength(2);
     const conflictingEntry: WeeklyPlanningTraceEntry = {
-      ...ENTRIES[0],
+      id: 'session-1-00000001',
+      sessionId: 'session-1',
+      logicalConversationId: 'conversation-1',
+      userId: 'user-1',
+      sequence: 1,
       kind: 'internal_event',
       eventType: 'fallback_used',
       payload: { category: 'conflict' },
       severity: 'warn',
+      occurredAt: '2026-07-15T00:00:01.000Z',
+      observedAt: '2026-07-15T00:00:01.000Z',
+      schemaVersion: 1,
+      expireAt: '2026-10-13T00:00:00.000Z',
     };
     await expect(repository.appendEntries({ session: SESSION, entries: [conflictingEntry] }))
       .rejects.toThrow('append-only trace entry conflict');
