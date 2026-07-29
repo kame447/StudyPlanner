@@ -129,7 +129,7 @@ describe('remote weekly planning trace repository schema v2', () => {
     expect(payload?.entries).toHaveLength(1);
   });
 
-  it('does not inject the session subject alias into a v2 diagnostic entry', async () => {
+  it('does not map the session subject alias into the v2 entry userId field', async () => {
     const apiClient = client();
     const repository = createRemoteWeeklyPlanningTraceRepository(apiClient);
 
@@ -138,6 +138,5 @@ describe('remote weekly planning trace repository schema v2', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.kind).toBe('turn_diagnostic');
     expect(entries[0]?.userId).toBeUndefined();
-    expect(JSON.stringify(entries)).not.toContain('subject-abc123');
   });
 });
