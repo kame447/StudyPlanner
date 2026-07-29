@@ -39,6 +39,10 @@ export interface WeeklyPlanningStableV5TraceInput {
   planningRangeStart?: string;
   planningRangeEnd?: string;
   errorCode?: string;
+  /** Legacy caller metadata accepted during migration. It is intentionally ignored and never persisted. */
+  graphRevision?: number;
+  graphSummary?: Record<string, unknown>;
+  compatibilityState?: unknown;
 }
 
 const activeSessions = new Map<string, ActiveStableV5TraceSession>();
