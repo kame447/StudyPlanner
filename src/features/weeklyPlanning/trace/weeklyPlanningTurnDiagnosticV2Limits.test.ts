@@ -12,7 +12,7 @@ function event(
   data: unknown,
 ): WeeklyPlanningStableV5DebugTraceEvent {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sequence,
     stage,
     occurredAt: new Date(Date.UTC(2026, 6, 29) + sequence).toISOString(),
@@ -30,6 +30,7 @@ describe('weekly planning turn diagnostic limits', () => {
     }));
     const events: WeeklyPlanningStableV5DebugTraceEvent[] = [
       event(0, 'runtime_turn_input', {
+        selectedDate: '2026-08-01',
         inputCounts: { existingPlanCount: 5_000, scheduleTemplateCount: 500 },
       }),
       event(1, 'semantic_pipeline_input', {
@@ -52,6 +53,9 @@ describe('weekly planning turn diagnostic limits', () => {
       ...Array.from({ length: 5 }, (_, index) => event(20 + index, 'semantic_provider_response', {
         attempt: `attempt-${index}`,
         rawResponse: longText,
+        rawResponseOriginalBytes: new TextEncoder().encode(longText).byteLength,
+        rawResponseTruncated: true,
+        rawResponseChecksum: 'fnv1a32:test',
       })),
       ...Array.from({ length: 5 }, (_, index) => event(30 + index, 'semantic_validation_result', {
         attempt: `attempt-${index}`,
@@ -90,9 +94,24 @@ describe('weekly planning turn diagnostic limits', () => {
         rejectionErrors: Array.from({ length: 100 }, () => longText),
       }),
       event(43, 'runtime_scheduler_dialogue_evaluated', {
-        schedulerInput: {
-          externalSources: [{ kind: 'existing_plan', events: busyEvents }],
+        selectedDate: '2026-08-01',
+        timeZone: 'Asia/Tokyo',
+        resolvedHorizon: { startDate: '2026-08-01', endDate: '2026-08-07' },
+        externalSources: [{
+          kind: 'existing_plan',
+          status: 'success',
+          eventCount: busyEvents.length,
+          events: busyEvents,
+        }],
+        compilation: {
+          status: 'needs_resolution',
+          issues: Array.from({ length: 100 }, (_, index) => ({
+            code: `issue-${index}`,
+            domain: 'availability',
+            blocking: true,
+          })),
         },
+        dialogue: { status: 'ask_question', selectedQuestionCode: 'issue-0' },
       }),
     ];
 
@@ -112,20 +131,15 @@ describe('weekly planning turn diagnostic limits', () => {
       previewCount: 0,
       debugTraceEvents: events,
     });
-    const truncation = (diagnostic.diagnostics as typeof diagnostic.diagnostics & {
-      truncation: {
-        applied: boolean;
-        fields: string[];
-        originalCounts: Record<string, number>;
-      };
-    }).truncation;
+    const truncation = diagnostic.diagnostics.truncation;
 
     expect(measureWeeklyPlanningTraceJsonBytes(diagnostic))
       .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
-    expect(truncation.applied).toBe(true);
-    expect(truncation.fields).toContain('constraintContext.relevantBusyIntervals');
-    expect(truncation.originalCounts['constraintContext.relevantBusyIntervals']).toBe(500);
+    expect(truncation?.applied).toBe(true);
+    expect(truncation?.fields).toContain('constraintContext.relevantBusyIntervals');
+    expect(truncation?.originalCounts['constraintContext.relevantBusyIntervals']).toBe(500);
     expect(diagnostic.constraintContext.relevantBusyIntervals.length).toBeLessThanOrEqual(100);
+    expect(diagnostic.constraintContext.scheduler?.issues.length).toBeLessThanOrEqual(30);
     expect(diagnostic.aiInterpreter.rawResponses.length).toBeLessThanOrEqual(2);
     expect(diagnostic.aiInterpreter.input.requests.length).toBeLessThanOrEqual(2);
   });
