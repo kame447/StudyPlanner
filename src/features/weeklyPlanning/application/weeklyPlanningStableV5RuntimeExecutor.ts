@@ -318,6 +318,33 @@ function publicStateSummary(
   };
 }
 
+function missingSchedulableWorkQuestion(
+  graph: WeeklyPlanningFactGraphV5,
+): { message: string; questionCode?: string; taskTitles: string[] } {
+  const taskTitles = createWeeklyPlanningActiveSchedulerGraphViewV5(graph).tasks
+    .map((task) => task.title.trim())
+    .filter(Boolean);
+  if (taskTitles.length === 0) {
+    return {
+      message: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+      taskTitles,
+    };
+  }
+
+  const visibleTitles = taskTitles.slice(0, 3).map((title) => `「${title}」`).join('、');
+  const summary = taskTitles.length > 3
+    ? `${visibleTitles}など${taskTitles.length}件のタスク`
+    : visibleTitles;
+  const question = taskTitles.length === 1
+    ? 'その作業をどれくらい進めたいですか？'
+    : 'それぞれどれくらい進めたいですか？';
+  return {
+    message: `${summary}は把握しました。${question}「2時間」「30ページ」「20問」のように、量を教えてください。`,
+    questionCode: 'missing_schedulable_work',
+    taskTitles,
+  };
+}
+
 function issueTaskLabel(
   graph: WeeklyPlanningFactGraphV5,
   issue: WeeklyPlanningStableQuestionV5,
@@ -512,7 +539,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return output;
   }
   if (semantic.status === 'normalization_rejected') {
-    const message = 'AIの構造化結果を安全に採用できませんでした。内容を少し言い換えて、もう一度送ってください。';
+    const message = '入力内容は保持していますが、予定条件の構造化処理に失敗しました。同じ内容をそのままもう一度送ってください。';
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -677,13 +704,15 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return output;
   }
   if (dialogue.status === 'nothing_to_schedule' || !compilation.input) {
-    const message = '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。';
+    const missingWork = missingSchedulableWorkQuestion(semantic.graph);
+    const message = missingWork.message;
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
         userText: input.userText,
         message,
         draftCandidates: [],
+        questionCode: missingWork.questionCode,
         authorized,
       }),
       message,
@@ -696,6 +725,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         dialogueStatus: dialogue.status,
         compilationStatus: compilation.status,
         compilationInputExists: Boolean(compilation.input),
+        recognizedTaskTitles: missingWork.taskTitles,
+        questionCode: missingWork.questionCode ?? null,
       },
       output,
       severity: 'warn',
