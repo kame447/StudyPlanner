@@ -105,6 +105,9 @@ export interface WeeklyPlanningTraceAiRequest {
 export interface WeeklyPlanningTraceAiRawResponse {
   attempt: string;
   text: string;
+  originalBytes?: number;
+  truncated?: boolean;
+  checksum?: string | null;
 }
 
 export interface WeeklyPlanningTraceAiValidationResult {
@@ -133,6 +136,45 @@ export interface WeeklyPlanningTraceRelevantBusyInterval {
   start: string;
   end: string;
   source: string;
+}
+
+export interface WeeklyPlanningTraceSchedulerSourceSummary {
+  kind: string;
+  status: string;
+  failureKind: string | null;
+  eventCount: number;
+}
+
+export interface WeeklyPlanningTraceSchedulerIssueSummary {
+  code: string | null;
+  domain: string | null;
+  factId: string | null;
+  blocking: boolean;
+}
+
+export interface WeeklyPlanningTraceSchedulerSummary {
+  selectedDate: string | null;
+  timeZone: string | null;
+  planningHorizon: unknown;
+  externalSources: WeeklyPlanningTraceSchedulerSourceSummary[];
+  compilationStatus: string | null;
+  issues: WeeklyPlanningTraceSchedulerIssueSummary[];
+  dialogueStatus: string | null;
+  selectedQuestionCode: string | null;
+  preview: {
+    schedulerVersion: string | null;
+    status: string | null;
+    candidateCount: number;
+    unscheduledCount: number;
+    representativeCandidates: unknown[];
+  } | null;
+  duplicateSuppressed: boolean;
+}
+
+export interface WeeklyPlanningTraceTruncationMetadata {
+  applied: boolean;
+  fields: string[];
+  originalCounts: Record<string, number>;
 }
 
 export interface WeeklyPlanningTraceTurnDiagnosticEntry extends WeeklyPlanningTraceEntryBase {
@@ -174,6 +216,7 @@ export interface WeeklyPlanningTraceTurnDiagnosticEntry extends WeeklyPlanningTr
     existingPlanCount: number;
     scheduleTemplateCount: number;
     relevantBusyIntervals: WeeklyPlanningTraceRelevantBusyInterval[];
+    scheduler?: WeeklyPlanningTraceSchedulerSummary;
   };
   assistantOutput: {
     text: string | null;
@@ -189,6 +232,7 @@ export interface WeeklyPlanningTraceTurnDiagnosticEntry extends WeeklyPlanningTr
     outcome: string;
     previewCount: number;
     stale: boolean;
+    truncation?: WeeklyPlanningTraceTruncationMetadata;
   };
 }
 
