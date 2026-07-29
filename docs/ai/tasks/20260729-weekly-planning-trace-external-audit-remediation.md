@@ -2,7 +2,7 @@
 
 ## 状態
 
-Implementation complete / Verification pending
+Implementation complete / Full tests and build passed / Typecheck and Production verification pending
 
 ## 対象
 
@@ -11,6 +11,7 @@ Implementation complete / Verification pending
 - Branch: `agent/trace-log-schema-simplification`
 - Initial implementation head: `0947c3a552709b86923c85b8ecedc69abd047331`
 - Regression remediation head: `5b2a19e94400694a743399875ce535654dffaa17`
+- Verified source head: `b9fd76f5d92a1c54c34599488906b7c4f80be662`
 
 ## 目的
 
@@ -136,27 +137,40 @@ Implementation complete / Verification pending
 6. `trace_write_failed` event allowlistを復元
 7. heavy runtime stageがGraph全体を保持する経路を専用projectionへ変更
 
-この是正後のfocused/full test、typecheckは再実行待ちであり、成功扱いにはしない。
+## 2026-07-30 修正後ローカル検証
+
+利用者環境で修正後headを再実行し、次を確認した。
+
+- Test Files: 244 passed / 7 skipped / 0 failed
+- Tests: 1704 passed / 19 skipped / 5 todo / 0 failed
+- Full Vitest duration: 17.11s
+- Vite production build: passed
+- Production build duration: 4.22s
+- 1996 modules transformed
+
+テスト中の`trace auth user is unavailable`、cursor persistence failure、意図的write failureのstderrは、対応するtest自体が成功しており、失敗注入・認証なしtest環境の観測ログである。今回の検証gateを失敗させるものではない。ただしstderr量が多いため、別途test loggerの抑制・明示mock化候補として扱う。
+
+buildには既存のdynamic/static import重複警告と、main chunk 1.37MBのsize warningが残る。今回のtrace修正に固有のbuild failureではないため、本taskのblockerにはしない。
+
+添付結果には`npm run typecheck`および`npm run typecheck:build`の出力が含まれていないため、型検査は未確認として維持する。
 
 ## GitHub上で確認できた検証
 
-- Cloudflare Pages source build: commit `5b2a19e94400694a743399875ce535654dffaa17` で成功
+- Cloudflare Pages source build: commit `b9fd76f5d92a1c54c34599488906b7c4f80be662` で成功
 - GitHub Actionsはrunner jobのstep開始前にfailureとなり、step/logが存在しない
-- GitHub上ではローカルtypecheck、full test、Worker deploy、Production負荷確認を実行していない
+- 修正後のfull testsとVite production buildは利用者環境で成功
+- Worker deploy、Production負荷確認は未実行
 
 ## 未完了の検証gate
 
-- focused trace tests再実行
-- full test suite再実行
 - `npm run typecheck`
 - `npm run typecheck:build`
-- `npm run build`再実行
 - Worker deploy
 - 2 turn / 100 turn / 500+ entry / large AI response / many busy intervals / write failure and reload recovery
 - Worker CPU、Firestore read/write、admin request数のProduction確認
 
 ## close条件
 
-実装は完了したが、検証gateとProduction確認は未完了である。このファイルはまだ`docs/ai/tasks/closed/`へ移動せず、Issue #89もopen、PR #97もDraftを維持する。
+実装、full tests、buildは完了したが、型検査とProduction確認は未完了である。このファイルはまだ`docs/ai/tasks/closed/`へ移動せず、Issue #89もopen、PR #97もDraftを維持する。
 
 上記検証がすべて成功した場合にのみ、このファイルを`docs/ai/tasks/closed/`へ移動し、Issue #89をcloseする。
