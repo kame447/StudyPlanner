@@ -6,12 +6,17 @@ import type {
   WeeklyPlanningStableV5DebugTraceEvent,
 } from './weeklyPlanningStableV5DebugTrace';
 import type {
+  WeeklyPlanningTraceAiRawResponse,
   WeeklyPlanningTraceAiRequest,
   WeeklyPlanningTraceAiValidationResult,
   WeeklyPlanningTraceParserDecision,
   WeeklyPlanningTraceRelevantBusyInterval,
   WeeklyPlanningTraceRejectedOperation,
   WeeklyPlanningTraceResponseSource,
+  WeeklyPlanningTraceSchedulerIssueSummary,
+  WeeklyPlanningTraceSchedulerSourceSummary,
+  WeeklyPlanningTraceSchedulerSummary,
+  WeeklyPlanningTraceTruncationMetadata,
   WeeklyPlanningTraceTurnDiagnosticEntry,
 } from './weeklyPlanningTraceTypes';
 
@@ -33,12 +38,6 @@ interface CreateTurnDiagnosticInput {
   debugTraceEvents?: readonly WeeklyPlanningStableV5DebugTraceEvent[];
 }
 
-interface TruncationMetadata {
-  applied: boolean;
-  fields: string[];
-  originalCounts: Record<string, number>;
-}
-
 interface TruncationTracker {
   fields: Set<string>;
   originalCounts: Record<string, number>;
@@ -46,7 +45,7 @@ interface TruncationTracker {
 
 type DiagnosticWithTruncation = WeeklyPlanningTraceTurnDiagnosticEntry & {
   diagnostics: WeeklyPlanningTraceTurnDiagnosticEntry['diagnostics'] & {
-    truncation: TruncationMetadata;
+    truncation: WeeklyPlanningTraceTruncationMetadata;
   };
 };
 
@@ -63,6 +62,9 @@ const NORMAL_LIMITS = {
   parserDecisions: 12,
   decisionOperations: 10,
   busyIntervals: 100,
+  schedulerIssues: 30,
+  schedulerSources: 10,
+  previewCandidates: 20,
   unknownBytes: 4_000,
   operationBytes: 1_500,
   stateDiffBytes: 6_000,
@@ -84,6 +86,32 @@ function numberValue(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function utf8(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+function byteLength(value: string): number {
+  return utf8(value).byteLength;
+}
+
+function prefix(value: string, maxBytes: number): string {
+  return new TextDecoder().decode(utf8(value).slice(0, Math.max(0, maxBytes)));
+}
+
+function suffix(value: string, maxBytes: number): string {
+  const bytes = utf8(value);
+  return new TextDecoder().decode(bytes.slice(Math.max(0, bytes.byteLength - maxBytes)));
+}
+
+function fnv1a32(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const item of utf8(value)) {
+    hash ^= item;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a32:${hash.toString(16).padStart(8, '0')}`;
+}
+
 function markField(tracker: TruncationTracker, field: string): void {
   tracker.fields.add(field);
 }
@@ -101,24 +129,9 @@ function markCount(
 }
 
 function truncateUtf8Text(value: string, maxBytes: number): string {
-  const encoder = new TextEncoder();
-  if (encoder.encode(value).byteLength <= maxBytes) return value;
-  const suffix = '…[trace truncated]';
-  const suffixBytes = encoder.encode(suffix).byteLength;
-  const contentBudget = Math.max(0, maxBytes - suffixBytes);
-  let low = 0;
-  let high = value.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (encoder.encode(value.slice(0, middle)).byteLength <= contentBudget) {
-      low = middle;
-    } else {
-      high = middle - 1;
-    }
-  }
-  let end = low;
-  if (end > 0 && /[\uD800-\uDBFF]/.test(value.charAt(end - 1))) end -= 1;
-  return `${value.slice(0, end)}${suffix}`;
+  if (byteLength(value) <= maxBytes) return value;
+  const marker = '…[trace truncated]';
+  return `${prefix(value, Math.max(0, maxBytes - byteLength(marker)))}${marker}`;
 }
 
 function boundedText(
@@ -155,13 +168,17 @@ function boundedUnknown(
     markField(tracker, field);
     return { traceTruncated: true, reason: 'unserializable' };
   }
-  const originalBytes = new TextEncoder().encode(serialized).byteLength;
+  const originalBytes = byteLength(serialized);
   if (originalBytes <= maxBytes) return value;
   markField(tracker, field);
+  const markerBudget = Math.min(256, Math.max(64, Math.floor(maxBytes * 0.15)));
+  const contentBudget = Math.max(128, maxBytes - markerBudget);
   return {
     traceTruncated: true,
     originalBytes,
-    jsonPreview: truncateUtf8Text(serialized, Math.max(256, maxBytes - 128)),
+    jsonHead: prefix(serialized, Math.floor(contentBudget * 0.65)),
+    jsonTail: suffix(serialized, Math.floor(contentBudget * 0.35)),
+    checksum: fnv1a32(serialized),
   };
 }
 
@@ -170,19 +187,18 @@ function limitedArray<T>(
   maxItems: number,
   tracker: TruncationTracker,
   field: string,
+  preferTail = false,
 ): T[] {
   if (values.length <= maxItems) return [...values];
   markCount(tracker, field, values.length);
-  return values.slice(0, maxItems);
+  return preferTail ? values.slice(-maxItems) : values.slice(0, maxItems);
 }
 
 function eventData(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
   stage: string,
 ): Record<string, unknown>[] {
-  return events
-    .filter((event) => event.stage === stage)
-    .map((event) => record(event.data));
+  return events.filter((event) => event.stage === stage).map((event) => record(event.data));
 }
 
 function latestEventData(
@@ -190,6 +206,13 @@ function latestEventData(
   stage: string,
 ): Record<string, unknown> {
   return eventData(events, stage).at(-1) ?? {};
+}
+
+function hasEvent(
+  events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+  stage: string,
+): boolean {
+  return events.some((event) => event.stage === stage);
 }
 
 function messages(
@@ -207,19 +230,9 @@ function messages(
     const content = stringValue(candidate.content);
     return role !== null && content !== null ? [{ role, content }] : [];
   });
-  let selected = parsed;
-  if (parsed.length > maxItems) {
-    markCount(tracker, field, parsed.length);
-    selected = preferTail ? parsed.slice(-maxItems) : parsed.slice(0, maxItems);
-  }
-  return selected.map((message, index) => ({
+  return limitedArray(parsed, maxItems, tracker, field, preferTail).map((message, index) => ({
     role: boundedText(message.role, 128, tracker, `${field}[${index}].role`),
-    content: boundedText(
-      message.content,
-      maxTextBytes,
-      tracker,
-      `${field}[${index}].content`,
-    ),
+    content: boundedText(message.content, maxTextBytes, tracker, `${field}[${index}].content`),
   }));
 }
 
@@ -227,13 +240,12 @@ function aiRequests(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
   tracker: TruncationTracker,
 ): WeeklyPlanningTraceAiRequest[] {
-  const data = limitedArray(
+  return limitedArray(
     eventData(events, 'semantic_provider_request'),
     NORMAL_LIMITS.requestCount,
     tracker,
     'aiInterpreter.input.requests',
-  );
-  return data.map((item, index) => {
+  ).map((item, index) => {
     const request = record(item.request);
     return {
       attempt: boundedText(
@@ -267,31 +279,74 @@ function aiRequests(
   });
 }
 
+function rawResponse(
+  item: Record<string, unknown>,
+  index: number,
+  tracker: TruncationTracker,
+  maxBytes = NORMAL_LIMITS.textBytes,
+): WeeklyPlanningTraceAiRawResponse {
+  const source = stringValue(item.rawResponse) ?? '';
+  const declaredOriginalBytes = numberValue(item.rawResponseOriginalBytes);
+  const originalBytes = declaredOriginalBytes ?? byteLength(source);
+  const declaredTruncated = item.rawResponseTruncated === true;
+  const checksum = stringValue(item.rawResponseChecksum) ?? fnv1a32(source);
+  if (byteLength(source) <= maxBytes) {
+    if (declaredTruncated) markField(tracker, `aiInterpreter.rawResponses[${index}].text`);
+    return {
+      attempt: boundedText(
+        stringValue(item.attempt) ?? 'unknown',
+        256,
+        tracker,
+        `aiInterpreter.rawResponses[${index}].attempt`,
+      ),
+      text: source,
+      originalBytes,
+      truncated: declaredTruncated,
+      checksum,
+    };
+  }
+  markField(tracker, `aiInterpreter.rawResponses[${index}].text`);
+  const metadata = `[trace head-tail originalBytes=${originalBytes} checksum=${checksum}]`;
+  const contentBudget = Math.max(400, maxBytes - byteLength(metadata) - 2);
+  return {
+    attempt: boundedText(
+      stringValue(item.attempt) ?? 'unknown',
+      256,
+      tracker,
+      `aiInterpreter.rawResponses[${index}].attempt`,
+    ),
+    text: `${prefix(source, Math.floor(contentBudget * 0.65))}\n${metadata}\n${suffix(source, Math.floor(contentBudget * 0.35))}`,
+    originalBytes,
+    truncated: true,
+    checksum,
+  };
+}
+
+function rawResponses(
+  events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+  tracker: TruncationTracker,
+): WeeklyPlanningTraceAiRawResponse[] {
+  return limitedArray(
+    eventData(events, 'semantic_provider_response'),
+    NORMAL_LIMITS.rawResponses,
+    tracker,
+    'aiInterpreter.rawResponses',
+  ).map((item, index) => rawResponse(item, index, tracker));
+}
+
 function validationResults(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
   tracker: TruncationTracker,
 ): WeeklyPlanningTraceAiValidationResult[] {
-  const data = limitedArray(
+  return limitedArray(
     eventData(events, 'semantic_validation_result'),
     NORMAL_LIMITS.validationResults,
     tracker,
     'aiInterpreter.structuredResults',
-  );
-  return data.map((item, index) => {
-    const rawErrors = Array.isArray(item.errors)
+  ).map((item, index) => {
+    const allErrors = Array.isArray(item.errors)
       ? item.errors.filter((error): error is string => typeof error === 'string')
       : [];
-    const errors = limitedArray(
-      rawErrors,
-      NORMAL_LIMITS.validationErrors,
-      tracker,
-      `aiInterpreter.structuredResults[${index}].errors`,
-    ).map((error, errorIndex) => boundedText(
-      error,
-      500,
-      tracker,
-      `aiInterpreter.structuredResults[${index}].errors[${errorIndex}]`,
-    ));
     return {
       attempt: boundedText(
         stringValue(item.attempt) ?? 'unknown',
@@ -300,7 +355,17 @@ function validationResults(
         `aiInterpreter.structuredResults[${index}].attempt`,
       ),
       accepted: item.accepted === true,
-      errors,
+      errors: limitedArray(
+        allErrors,
+        NORMAL_LIMITS.validationErrors,
+        tracker,
+        `aiInterpreter.structuredResults[${index}].errors`,
+      ).map((error, errorIndex) => boundedText(
+        error,
+        500,
+        tracker,
+        `aiInterpreter.structuredResults[${index}].errors[${errorIndex}]`,
+      )),
       structuredResult: boundedUnknown(
         item.parsedDocument ?? null,
         NORMAL_LIMITS.unknownBytes,
@@ -311,17 +376,14 @@ function validationResults(
   });
 }
 
-function operationCandidates(
-  value: unknown,
-  tracker: TruncationTracker,
-): unknown[] {
+function operationCandidates(value: unknown, tracker: TruncationTracker): unknown[] {
   const document = record(value);
-  const result: unknown[] = [];
+  const candidates: unknown[] = [];
   if (document.planningIntent !== undefined) {
-    result.push({ kind: 'planning_intent', value: document.planningIntent });
+    candidates.push({ kind: 'planning_intent', value: document.planningIntent });
   }
   if (document.planningWindow !== null && document.planningWindow !== undefined) {
-    result.push({ kind: 'planning_window', value: document.planningWindow });
+    candidates.push({ kind: 'planning_window', value: document.planningWindow });
   }
   const groups = [
     ['task', document.tasks],
@@ -333,11 +395,10 @@ function operationCandidates(
     ['decision', document.decisions],
   ] as const;
   groups.forEach(([kind, values]) => {
-    if (!Array.isArray(values)) return;
-    values.forEach((item) => result.push({ kind, value: item }));
+    if (Array.isArray(values)) values.forEach((item) => candidates.push({ kind, value: item }));
   });
   return limitedArray(
-    result,
+    candidates,
     NORMAL_LIMITS.candidateOperations,
     tracker,
     'aiInterpreter.candidateOperations',
@@ -351,8 +412,7 @@ function operationCandidates(
 
 function matchedTextFromCriterion(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const match = value.match(/includes\(["'](.+)["']\)/);
-  return match?.[1] ?? null;
+  return value.match(/includes\(["'](.+)["']\)/)?.[1] ?? null;
 }
 
 function parserDecisions(
@@ -363,26 +423,22 @@ function parserDecisions(
   const inference = latestEventData(events, 'contextual_question_inference');
   const binding = latestEventData(events, 'contextual_answer_binding_evaluated');
   const allRules = Array.isArray(inference.rules) ? inference.rules : [];
-  const rules = limitedArray(
+  const selectedQuestionCode = stringValue(inference.selectedQuestionCode);
+  const selectedRule = allRules.map(record)
+    .find((rule) => stringValue(rule.code) === selectedQuestionCode);
+  const decisions = limitedArray(
     allRules,
     NORMAL_LIMITS.parserDecisions,
     tracker,
     'parsers',
-  );
-  const precedingAssistantText = stringValue(inference.lastAssistantMessage);
-  const selectedQuestionCode = stringValue(inference.selectedQuestionCode);
-  const selectedRule = allRules
-    .map(record)
-    .find((rule) => stringValue(rule.code) === selectedQuestionCode);
-  const contextualApplied = binding.contextualAnswerApplied === true;
-  const contextualResult = binding.contextualAnswerResult ?? null;
-  const decisions: WeeklyPlanningTraceParserDecision[] = rules.map((item, index) => {
+  ).map((item, index): WeeklyPlanningTraceParserDecision => {
     const rule = record(item);
     const matched = rule.matched === true;
+    const selected = matched && stringValue(rule.code) === selectedQuestionCode;
     return {
       parser: 'stable_v5_contextual_question',
       inputText: boundedNullableText(
-        precedingAssistantText,
+        stringValue(inference.lastAssistantMessage),
         NORMAL_LIMITS.shortTextBytes,
         tracker,
         `parsers[${index}].inputText`,
@@ -401,11 +457,9 @@ function parserDecisions(
             `parsers[${index}].candidateOperation`,
           )
         : null,
-      accepted: matched && stringValue(rule.code) === selectedQuestionCode,
+      accepted: selected,
       reason: matched
-        ? stringValue(rule.code) === selectedQuestionCode
-          ? null
-          : 'another matching contextual rule took precedence'
+        ? selected ? null : 'another matching contextual rule took precedence'
         : 'configured substring was not present in the preceding assistant message',
     };
   });
@@ -425,13 +479,13 @@ function parserDecisions(
         `parsers[${decisions.length}].matchedText`,
       ),
       candidateOperation: boundedUnknown(
-        contextualResult,
+        binding.contextualAnswerResult ?? null,
         NORMAL_LIMITS.operationBytes,
         tracker,
         `parsers[${decisions.length}].candidateOperation`,
       ),
-      accepted: contextualApplied,
-      reason: contextualApplied
+      accepted: binding.contextualAnswerApplied === true,
+      reason: binding.contextualAnswerApplied === true
         ? null
         : selectedQuestionCode === null
           ? 'no contextual question rule matched'
@@ -445,15 +499,18 @@ function parserDecisions(
   return decisions;
 }
 
+function schedulerSourceValues(runtime: Record<string, unknown>): unknown[] {
+  if (Array.isArray(runtime.externalSources)) return runtime.externalSources;
+  const schedulerInput = record(runtime.schedulerInput);
+  return Array.isArray(schedulerInput.externalSources) ? schedulerInput.externalSources : [];
+}
+
 function busyIntervals(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
   tracker: TruncationTracker,
 ): WeeklyPlanningTraceRelevantBusyInterval[] {
   const runtime = latestEventData(events, 'runtime_scheduler_dialogue_evaluated');
-  const schedulerInput = record(runtime.schedulerInput);
-  const sources = Array.isArray(schedulerInput.externalSources)
-    ? schedulerInput.externalSources
-    : [];
+  const sources = schedulerSourceValues(runtime);
   const totalCount = sources.reduce((count, sourceValue) => {
     const sourceEvents = record(sourceValue).events;
     return count + (Array.isArray(sourceEvents) ? sourceEvents.length : 0);
@@ -461,7 +518,6 @@ function busyIntervals(
   if (totalCount > NORMAL_LIMITS.busyIntervals) {
     markCount(tracker, 'constraintContext.relevantBusyIntervals', totalCount);
   }
-
   const result: WeeklyPlanningTraceRelevantBusyInterval[] = [];
   for (const sourceValue of sources) {
     const source = record(sourceValue);
@@ -487,6 +543,117 @@ function busyIntervals(
   return result;
 }
 
+function sourceSummaries(
+  runtime: Record<string, unknown>,
+  tracker: TruncationTracker,
+): WeeklyPlanningTraceSchedulerSourceSummary[] {
+  return limitedArray(
+    schedulerSourceValues(runtime),
+    NORMAL_LIMITS.schedulerSources,
+    tracker,
+    'constraintContext.scheduler.externalSources',
+  ).map((sourceValue) => {
+    const source = record(sourceValue);
+    const events = Array.isArray(source.events) ? source.events : [];
+    return {
+      kind: stringValue(source.kind) ?? 'unknown',
+      status: stringValue(source.status) ?? 'unknown',
+      failureKind: stringValue(source.failureKind),
+      eventCount: numberValue(source.eventCount) ?? events.length,
+    };
+  });
+}
+
+function issueSummaries(
+  runtime: Record<string, unknown>,
+  tracker: TruncationTracker,
+): WeeklyPlanningTraceSchedulerIssueSummary[] {
+  const compilation = record(runtime.compilation);
+  const issues = Array.isArray(compilation.issues) ? compilation.issues : [];
+  return limitedArray(
+    issues,
+    NORMAL_LIMITS.schedulerIssues,
+    tracker,
+    'constraintContext.scheduler.issues',
+  ).map((issueValue) => {
+    const issue = record(issueValue);
+    return {
+      code: stringValue(issue.code),
+      domain: stringValue(issue.domain),
+      factId: stringValue(issue.factId),
+      blocking: issue.blocking === true,
+    };
+  });
+}
+
+function schedulerSummary(
+  events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+  tracker: TruncationTracker,
+): WeeklyPlanningTraceSchedulerSummary {
+  const runtimeInput = latestEventData(events, 'runtime_turn_input');
+  const runtime = latestEventData(events, 'runtime_scheduler_dialogue_evaluated');
+  const schedulerInput = record(runtime.schedulerInput);
+  const context = Object.keys(record(runtime.schedulerContext)).length > 0
+    ? record(runtime.schedulerContext)
+    : record(schedulerInput.context);
+  const compilation = record(runtime.compilation);
+  const dialogue = record(runtime.dialogue);
+  const projectedDialogue = record(runtime.dialogue);
+  const selectedQuestion = Object.keys(record(runtime.selectedQuestion)).length > 0
+    ? record(runtime.selectedQuestion)
+    : record(projectedDialogue.selectedQuestion);
+  const previewEvent = latestEventData(events, 'runtime_preview_scheduler_evaluated');
+  const previewResult = Object.keys(record(previewEvent.result)).length > 0
+    ? record(previewEvent.result)
+    : previewEvent;
+  const candidates = Array.isArray(previewResult.candidates) ? previewResult.candidates : [];
+  const unscheduled = Array.isArray(previewResult.unscheduledWorkItems)
+    ? previewResult.unscheduledWorkItems
+    : Array.isArray(previewResult.unscheduled)
+      ? previewResult.unscheduled
+      : [];
+  const previewExists = Object.keys(previewEvent).length > 0;
+  return {
+    selectedDate: stringValue(runtime.selectedDate)
+      ?? stringValue(context.currentDate)
+      ?? stringValue(runtimeInput.selectedDate),
+    timeZone: stringValue(runtime.timeZone) ?? stringValue(context.timeZone),
+    planningHorizon: boundedUnknown(
+      runtime.resolvedHorizon ?? runtime.planningHorizon ?? null,
+      1_000,
+      tracker,
+      'constraintContext.scheduler.planningHorizon',
+    ),
+    externalSources: sourceSummaries(runtime, tracker),
+    compilationStatus: stringValue(compilation.status),
+    issues: issueSummaries(runtime, tracker),
+    dialogueStatus: stringValue(dialogue.status),
+    selectedQuestionCode: stringValue(record(runtime.dialogue).selectedQuestionCode)
+      ?? stringValue(selectedQuestion.code)
+      ?? stringValue(runtime.firstBlockingIssueCodeInCompilationOrder),
+    preview: previewExists
+      ? {
+          schedulerVersion: stringValue(previewEvent.schedulerVersion),
+          status: stringValue(previewResult.status),
+          candidateCount: numberValue(previewEvent.candidateCount) ?? candidates.length,
+          unscheduledCount: numberValue(previewEvent.unscheduledCount) ?? unscheduled.length,
+          representativeCandidates: limitedArray(
+            candidates.length > 0 ? candidates : (Array.isArray(previewEvent.candidates) ? previewEvent.candidates : []),
+            NORMAL_LIMITS.previewCandidates,
+            tracker,
+            'constraintContext.scheduler.preview.representativeCandidates',
+          ).map((candidate, index) => boundedUnknown(
+            candidate,
+            1_000,
+            tracker,
+            `constraintContext.scheduler.preview.representativeCandidates[${index}]`,
+          )),
+        }
+      : null,
+    duplicateSuppressed: hasEvent(events, 'runtime_duplicate_turn_suppressed'),
+  };
+}
+
 function errorFromValue(
   value: unknown,
   tracker: TruncationTracker,
@@ -494,11 +661,13 @@ function errorFromValue(
 ): { type: string; message: string } | null {
   const candidate = record(value);
   const nested = isRecord(candidate.error) ? candidate.error : candidate;
-  const message = stringValue(nested.message);
+  const message = stringValue(nested.message)
+    ?? stringValue(nested.traceCode)
+    ?? stringValue(nested.code);
   if (!message) return null;
   return {
     type: boundedText(
-      stringValue(nested.name) ?? stringValue(nested.type) ?? 'Error',
+      stringValue(nested.name) ?? stringValue(nested.type) ?? stringValue(nested.code) ?? 'Error',
       256,
       tracker,
       `${field}.type`,
@@ -518,6 +687,9 @@ function firstError(
       if (found) return found;
     }
   }
+  const projection = latestEventData(events, 'turn_executor_result_projected');
+  const recordedFailure = errorFromValue(projection.recordedFailure, tracker, 'diagnostics.error');
+  if (recordedFailure) return recordedFailure;
   if (!errorCode) return null;
   return {
     type: boundedText(errorCode, 256, tracker, 'diagnostics.error.type'),
@@ -537,8 +709,7 @@ function firstProviderError(
 }
 
 function durationMs(events: readonly WeeklyPlanningStableV5DebugTraceEvent[]): number | null {
-  const times = events
-    .map((event) => Date.parse(event.occurredAt))
+  const times = events.map((event) => Date.parse(event.occurredAt))
     .filter((value) => Number.isFinite(value));
   if (times.length < 2) {
     const decision = latestEventData(events, 'semantic_normalizer_decision');
@@ -547,8 +718,20 @@ function durationMs(events: readonly WeeklyPlanningStableV5DebugTraceEvent[]): n
   return Math.max(...times) - Math.min(...times);
 }
 
-function responseSource(outcome: string): WeeklyPlanningTraceResponseSource {
-  return outcome.includes('fallback') ? 'deterministic_fallback' : 'ai';
+function responseSource(
+  outcome: string,
+  events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+  hasError: boolean,
+): WeeklyPlanningTraceResponseSource {
+  if (outcome.includes('fallback')) return 'deterministic_fallback';
+  if (hasError
+    || hasEvent(events, 'runtime_turn_threw')
+    || hasEvent(events, 'runtime_duplicate_turn_suppressed')) return 'system';
+  const branch = stringValue(latestEventData(events, 'runtime_branch_selected').branch);
+  if (branch === 'provider_failure'
+    || branch === 'normalization_rejected'
+    || branch === 'canonicalization_rejected') return 'system';
+  return 'rules';
 }
 
 function rejectedOperations(params: {
@@ -559,25 +742,23 @@ function rejectedOperations(params: {
   tracker: TruncationTracker;
 }): WeeklyPlanningTraceRejectedOperation[] {
   const rejected: WeeklyPlanningTraceRejectedOperation[] = [];
-  params.validations
-    .filter((result) => !result.accepted)
-    .forEach((result) => {
-      rejected.push({
-        operation: boundedUnknown({
-          source: 'ai',
-          attempt: result.attempt,
-          structuredResult: result.structuredResult,
-        }, NORMAL_LIMITS.operationBytes, params.tracker, 'decision.rejectedOperations.operation'),
-        reason: boundedText(
-          result.errors.length > 0
-            ? `schema validation failed: ${result.errors.join('; ')}`
-            : 'schema validation rejected the AI response',
-          NORMAL_LIMITS.shortTextBytes,
-          params.tracker,
-          'decision.rejectedOperations.reason',
-        ),
-      });
+  params.validations.filter((result) => !result.accepted).forEach((result) => {
+    rejected.push({
+      operation: boundedUnknown({
+        source: 'ai',
+        attempt: result.attempt,
+        structuredResult: result.structuredResult,
+      }, NORMAL_LIMITS.operationBytes, params.tracker, 'decision.rejectedOperations.operation'),
+      reason: boundedText(
+        result.errors.length > 0
+          ? `schema validation failed: ${result.errors.join('; ')}`
+          : 'schema validation rejected the AI response',
+        NORMAL_LIMITS.shortTextBytes,
+        params.tracker,
+        'decision.rejectedOperations.reason',
+      ),
     });
+  });
   if (params.canonicalizationBranch === 'contextual_answer_binding') {
     params.aiCandidates.forEach((candidate) => {
       rejected.push({
@@ -610,7 +791,7 @@ function rejectedOperations(params: {
   );
 }
 
-function metadata(tracker: TruncationTracker): TruncationMetadata {
+function metadata(tracker: TruncationTracker): WeeklyPlanningTraceTruncationMetadata {
   return {
     applied: tracker.fields.size > 0,
     fields: [...tracker.fields].sort(),
@@ -618,235 +799,152 @@ function metadata(tracker: TruncationTracker): TruncationMetadata {
   };
 }
 
-function compactMessages(
-  values: Array<{ role: string; content: string }>,
-  count: number,
-  textBytes: number,
-  tracker: TruncationTracker,
-  field: string,
-): Array<{ role: string; content: string }> {
-  const selected = values.length > count ? values.slice(-count) : values;
-  if (selected.length !== values.length) markCount(tracker, field, values.length);
-  return selected.map((message, index) => ({
-    role: boundedText(message.role, 64, tracker, `${field}[${index}].role`),
-    content: boundedText(message.content, textBytes, tracker, `${field}[${index}].content`),
-  }));
-}
-
-function compactDiagnostic(
+function compact(
   entry: DiagnosticWithTruncation,
   tracker: TruncationTracker,
-  minimal = false,
+  minimal: boolean,
 ): DiagnosticWithTruncation {
-  const messageCount = minimal ? 2 : 4;
-  const messageBytes = minimal ? 500 : 750;
-  const operationCount = minimal ? 2 : 4;
-  const operationBytes = minimal ? 300 : 500;
-  const parserCount = minimal ? 2 : 6;
-  const busyCount = minimal ? 20 : 30;
-
   markField(tracker, minimal ? 'diagnostics.minimalCompaction' : 'diagnostics.emergencyCompaction');
-  const acceptedParsers = entry.parsers.filter((parser) => parser.accepted);
-  const parserPool = [...acceptedParsers, ...entry.parsers.filter((parser) => !parser.accepted)];
-  const parsers = limitedArray(parserPool, parserCount, tracker, 'parsers').map((parser, index) => ({
-    ...parser,
-    inputText: boundedNullableText(parser.inputText, 500, tracker, `parsers[${index}].inputText`),
-    matchedText: boundedNullableText(parser.matchedText, 300, tracker, `parsers[${index}].matchedText`),
-    candidateOperation: boundedUnknown(
-      parser.candidateOperation,
-      operationBytes,
-      tracker,
-      `parsers[${index}].candidateOperation`,
-    ),
-    reason: boundedNullableText(parser.reason, 500, tracker, `parsers[${index}].reason`),
-  }));
-
+  const textBytes = minimal ? 500 : 1_500;
+  const operationBytes = minimal ? 300 : 600;
+  const operationCount = minimal ? 1 : 4;
+  const parserCount = minimal ? 1 : 6;
+  const scheduler = entry.constraintContext.scheduler;
   const compacted: DiagnosticWithTruncation = {
     ...entry,
-    userInput: {
-      text: boundedText(entry.userInput.text, minimal ? 1_000 : 2_000, tracker, 'userInput.text'),
-    },
+    userInput: { text: boundedText(entry.userInput.text, textBytes, tracker, 'userInput.text') },
     aiInterpreter: {
       ...entry.aiInterpreter,
       input: {
-        userText: boundedText(
-          entry.aiInterpreter.input.userText,
-          minimal ? 1_000 : 2_000,
-          tracker,
-          'aiInterpreter.input.userText',
-        ),
-        conversationContext: compactMessages(
+        userText: boundedText(entry.aiInterpreter.input.userText, textBytes, tracker,
+          'aiInterpreter.input.userText'),
+        conversationContext: limitedArray(
           entry.aiInterpreter.input.conversationContext,
-          messageCount,
-          messageBytes,
+          minimal ? 2 : 4,
           tracker,
           'aiInterpreter.input.conversationContext',
+          true,
+        ).map((message, index) => ({
+          role: boundedText(message.role, 64, tracker,
+            `aiInterpreter.input.conversationContext[${index}].role`),
+          content: boundedText(message.content, minimal ? 400 : 750, tracker,
+            `aiInterpreter.input.conversationContext[${index}].content`),
+        })),
+        planningStateSummary: minimal ? null : boundedUnknown(
+          entry.aiInterpreter.input.planningStateSummary,
+          1_000,
+          tracker,
+          'aiInterpreter.input.planningStateSummary',
         ),
-        planningStateSummary: minimal
-          ? null
-          : boundedUnknown(
-              entry.aiInterpreter.input.planningStateSummary,
-              1_000,
-              tracker,
-              'aiInterpreter.input.planningStateSummary',
-            ),
-        requests: limitedArray(
+        requests: minimal ? [] : limitedArray(
           entry.aiInterpreter.input.requests,
-          minimal ? 1 : 2,
+          1,
           tracker,
           'aiInterpreter.input.requests',
         ).map((request, index) => ({
           ...request,
-          messages: compactMessages(
-            request.messages,
-            minimal ? 2 : 3,
-            messageBytes,
-            tracker,
-            `aiInterpreter.input.requests[${index}].messages`,
-          ),
-          responseFormat: minimal
-            ? null
-            : boundedUnknown(
-                request.responseFormat,
-                500,
-                tracker,
-                `aiInterpreter.input.requests[${index}].responseFormat`,
-              ),
+          messages: limitedArray(request.messages, 3, tracker,
+            `aiInterpreter.input.requests[${index}].messages`).map((message, messageIndex) => ({
+            role: boundedText(message.role, 64, tracker,
+              `aiInterpreter.input.requests[${index}].messages[${messageIndex}].role`),
+            content: boundedText(message.content, 600, tracker,
+              `aiInterpreter.input.requests[${index}].messages[${messageIndex}].content`),
+          })),
+          responseFormat: boundedUnknown(request.responseFormat, 500, tracker,
+            `aiInterpreter.input.requests[${index}].responseFormat`),
         })),
       },
       rawResponses: limitedArray(
         entry.aiInterpreter.rawResponses,
-        minimal ? 1 : 2,
+        1,
         tracker,
         'aiInterpreter.rawResponses',
-      ).map((response, index) => ({
-        ...response,
-        text: boundedText(
-          response.text,
-          minimal ? 1_000 : 1_500,
-          tracker,
-          `aiInterpreter.rawResponses[${index}].text`,
-        ),
-      })),
-      structuredResults: limitedArray(
+      ).map((response, index) => rawResponse({
+        attempt: response.attempt,
+        rawResponse: response.text,
+        rawResponseOriginalBytes: response.originalBytes,
+        rawResponseTruncated: response.truncated,
+        rawResponseChecksum: response.checksum,
+      }, index, tracker, minimal ? 700 : 1_500)),
+      structuredResults: minimal ? [] : limitedArray(
         entry.aiInterpreter.structuredResults,
-        minimal ? 1 : 2,
+        1,
         tracker,
         'aiInterpreter.structuredResults',
       ).map((result, index) => ({
         ...result,
-        errors: limitedArray(result.errors, minimal ? 3 : 5, tracker,
-          `aiInterpreter.structuredResults[${index}].errors`)
-          .map((error, errorIndex) => boundedText(
-            error,
-            300,
-            tracker,
-            `aiInterpreter.structuredResults[${index}].errors[${errorIndex}]`,
-          )),
-        structuredResult: minimal
-          ? null
-          : boundedUnknown(
-              result.structuredResult,
-              1_500,
-              tracker,
-              `aiInterpreter.structuredResults[${index}].structuredResult`,
-            ),
+        errors: limitedArray(result.errors, 5, tracker,
+          `aiInterpreter.structuredResults[${index}].errors`),
+        structuredResult: boundedUnknown(result.structuredResult, 1_000, tracker,
+          `aiInterpreter.structuredResults[${index}].structuredResult`),
       })),
       candidateOperations: limitedArray(
         entry.aiInterpreter.candidateOperations,
         operationCount,
         tracker,
         'aiInterpreter.candidateOperations',
-      ).map((operation, index) => boundedUnknown(
-        operation,
-        operationBytes,
-        tracker,
-        `aiInterpreter.candidateOperations[${index}]`,
-      )),
-      error: entry.aiInterpreter.error
-        ? {
-            type: boundedText(entry.aiInterpreter.error.type, 128, tracker, 'aiInterpreter.error.type'),
-            message: boundedText(entry.aiInterpreter.error.message, 500, tracker, 'aiInterpreter.error.message'),
-          }
-        : null,
+      ).map((value, index) => boundedUnknown(value, operationBytes, tracker,
+        `aiInterpreter.candidateOperations[${index}]`)),
     },
-    parsers,
+    parsers: limitedArray(
+      [...entry.parsers.filter((item) => item.accepted), ...entry.parsers.filter((item) => !item.accepted)],
+      parserCount,
+      tracker,
+      'parsers',
+    ).map((item, index) => ({
+      ...item,
+      inputText: boundedNullableText(item.inputText, 400, tracker, `parsers[${index}].inputText`),
+      matchedText: boundedNullableText(item.matchedText, 300, tracker, `parsers[${index}].matchedText`),
+      candidateOperation: boundedUnknown(item.candidateOperation, operationBytes, tracker,
+        `parsers[${index}].candidateOperation`),
+      reason: boundedNullableText(item.reason, 400, tracker, `parsers[${index}].reason`),
+    })),
     decision: {
       ...entry.decision,
-      acceptedOperations: limitedArray(
-        entry.decision.acceptedOperations,
-        operationCount,
-        tracker,
-        'decision.acceptedOperations',
-      ).map((operation, index) => boundedUnknown(
-        operation,
-        operationBytes,
-        tracker,
-        `decision.acceptedOperations[${index}]`,
-      )),
-      rejectedOperations: limitedArray(
-        entry.decision.rejectedOperations,
-        operationCount,
-        tracker,
-        'decision.rejectedOperations',
-      ).map((operation, index) => ({
-        operation: boundedUnknown(
-          operation.operation,
-          operationBytes,
-          tracker,
-          `decision.rejectedOperations[${index}].operation`,
-        ),
-        reason: boundedText(
-          operation.reason,
-          500,
-          tracker,
-          `decision.rejectedOperations[${index}].reason`,
-        ),
+      acceptedOperations: limitedArray(entry.decision.acceptedOperations, operationCount, tracker,
+        'decision.acceptedOperations').map((value, index) => boundedUnknown(value, operationBytes,
+        tracker, `decision.acceptedOperations[${index}]`)),
+      rejectedOperations: minimal ? [] : limitedArray(entry.decision.rejectedOperations,
+        operationCount, tracker, 'decision.rejectedOperations').map((value, index) => ({
+        operation: boundedUnknown(value.operation, operationBytes, tracker,
+          `decision.rejectedOperations[${index}].operation`),
+        reason: boundedText(value.reason, 400, tracker,
+          `decision.rejectedOperations[${index}].reason`),
       })),
-      finalOperations: limitedArray(
-        entry.decision.finalOperations,
-        operationCount,
-        tracker,
-        'decision.finalOperations',
-      ).map((operation, index) => boundedUnknown(
-        operation,
-        operationBytes,
-        tracker,
-        `decision.finalOperations[${index}]`,
-      )),
-      stateDiff: boundedUnknown(
-        entry.decision.stateDiff,
-        minimal ? 1_500 : 2_000,
-        tracker,
-        'decision.stateDiff',
-      ),
+      finalOperations: minimal ? [] : limitedArray(entry.decision.finalOperations,
+        operationCount, tracker, 'decision.finalOperations').map((value, index) => boundedUnknown(
+        value, operationBytes, tracker, `decision.finalOperations[${index}]`)),
+      stateDiff: boundedUnknown(entry.decision.stateDiff, minimal ? 1_000 : 2_000, tracker,
+        'decision.stateDiff'),
     },
     constraintContext: {
       ...entry.constraintContext,
-      relevantBusyIntervals: limitedArray(
-        entry.constraintContext.relevantBusyIntervals,
-        busyCount,
-        tracker,
-        'constraintContext.relevantBusyIntervals',
-      ),
+      relevantBusyIntervals: limitedArray(entry.constraintContext.relevantBusyIntervals,
+        minimal ? 10 : 30, tracker, 'constraintContext.relevantBusyIntervals'),
+      ...(scheduler ? {
+        scheduler: {
+          ...scheduler,
+          issues: limitedArray(scheduler.issues, minimal ? 5 : 10, tracker,
+            'constraintContext.scheduler.issues'),
+          preview: scheduler.preview ? {
+            ...scheduler.preview,
+            representativeCandidates: minimal ? [] : limitedArray(
+              scheduler.preview.representativeCandidates,
+              5,
+              tracker,
+              'constraintContext.scheduler.preview.representativeCandidates',
+            ).map((value, index) => boundedUnknown(value, 500, tracker,
+              `constraintContext.scheduler.preview.representativeCandidates[${index}]`)),
+          } : null,
+        },
+      } : {}),
     },
     assistantOutput: {
       ...entry.assistantOutput,
-      text: boundedNullableText(
-        entry.assistantOutput.text,
-        minimal ? 1_000 : 2_000,
-        tracker,
-        'assistantOutput.text',
-      ),
+      text: boundedNullableText(entry.assistantOutput.text, textBytes, tracker, 'assistantOutput.text'),
     },
     diagnostics: {
       ...entry.diagnostics,
-      error: entry.diagnostics.error
-        ? {
-            type: boundedText(entry.diagnostics.error.type, 128, tracker, 'diagnostics.error.type'),
-            message: boundedText(entry.diagnostics.error.message, 500, tracker, 'diagnostics.error.message'),
-          }
-        : null,
       truncation: metadata(tracker),
     },
   };
@@ -860,65 +958,26 @@ function fitDiagnosticToTarget(
 ): DiagnosticWithTruncation {
   entry.diagnostics.truncation = metadata(tracker);
   if (measureWeeklyPlanningTraceJsonBytes(entry)
-    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) {
-    return entry;
-  }
-
-  const compacted = compactDiagnostic(entry, tracker);
+    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) return entry;
+  const compacted = compact(entry, tracker, false);
   if (measureWeeklyPlanningTraceJsonBytes(compacted)
-    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) {
-    return compacted;
-  }
-
-  const minimal = compactDiagnostic(compacted, tracker, true);
+    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) return compacted;
+  const minimal = compact(compacted, tracker, true);
   if (measureWeeklyPlanningTraceJsonBytes(minimal)
-    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) {
-    return minimal;
-  }
-
+    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes) return minimal;
   markField(tracker, 'diagnostics.lastResortCompaction');
-  const lastResort: DiagnosticWithTruncation = {
-    ...minimal,
-    userInput: { text: boundedText(minimal.userInput.text, 500, tracker, 'userInput.text') },
-    aiInterpreter: {
-      ...minimal.aiInterpreter,
-      input: {
-        userText: boundedText(minimal.aiInterpreter.input.userText, 500, tracker,
-          'aiInterpreter.input.userText'),
-        conversationContext: [],
-        planningStateSummary: null,
-        requests: [],
-      },
-      rawResponses: minimal.aiInterpreter.rawResponses.slice(0, 1).map((response) => ({
-        ...response,
-        text: boundedText(response.text, 500, tracker, 'aiInterpreter.rawResponses[0].text'),
-      })),
-      structuredResults: [],
-      candidateOperations: [],
-    },
-    parsers: minimal.parsers.filter((parser) => parser.accepted).slice(0, 1),
-    decision: {
-      ...minimal.decision,
-      acceptedOperations: [],
-      rejectedOperations: [],
-      finalOperations: [],
-      stateDiff: boundedUnknown(minimal.decision.stateDiff, 1_000, tracker, 'decision.stateDiff'),
-    },
-    constraintContext: {
-      ...minimal.constraintContext,
-      relevantBusyIntervals: minimal.constraintContext.relevantBusyIntervals.slice(0, 10),
-    },
-    assistantOutput: {
-      ...minimal.assistantOutput,
-      text: boundedNullableText(minimal.assistantOutput.text, 500, tracker, 'assistantOutput.text'),
-    },
-    diagnostics: {
-      ...minimal.diagnostics,
-      truncation: metadata(tracker),
-    },
-  };
-  lastResort.diagnostics.truncation = metadata(tracker);
-  return lastResort;
+  minimal.aiInterpreter.rawResponses = [];
+  minimal.aiInterpreter.candidateOperations = [];
+  minimal.parsers = minimal.parsers.filter((item) => item.accepted).slice(0, 1);
+  minimal.decision.acceptedOperations = [];
+  minimal.decision.rejectedOperations = [];
+  minimal.decision.finalOperations = [];
+  minimal.constraintContext.relevantBusyIntervals = [];
+  if (minimal.constraintContext.scheduler?.preview) {
+    minimal.constraintContext.scheduler.preview.representativeCandidates = [];
+  }
+  minimal.diagnostics.truncation = metadata(tracker);
+  return minimal;
 }
 
 export function createWeeklyPlanningTurnDiagnosticV2(
@@ -966,34 +1025,12 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     true,
   );
   const counts = record(runtimeInput.inputCounts);
-  const rawResponseData = limitedArray(
-    eventData(events, 'semantic_provider_response'),
-    NORMAL_LIMITS.rawResponses,
-    tracker,
-    'aiInterpreter.rawResponses',
-  );
-  const rawResponses = rawResponseData.map((data, index) => ({
-    attempt: boundedText(
-      stringValue(data.attempt) ?? 'unknown',
-      256,
-      tracker,
-      `aiInterpreter.rawResponses[${index}].attempt`,
-    ),
-    text: boundedText(
-      stringValue(data.rawResponse) ?? '',
-      NORMAL_LIMITS.textBytes,
-      tracker,
-      `aiInterpreter.rawResponses[${index}].text`,
-    ),
-  }));
   const status = stringValue(canonicalResult.status)
     ?? stringValue(pipelineDecision.selectedStatus)
     ?? stringValue(branch.branch)
     ?? input.outcome;
   const error = firstError(events, tracker, input.errorCode);
-  const acceptedSource = canonicalizationBranch === 'contextual_answer_binding'
-    ? 'parser'
-    : 'ai';
+  const acceptedSource = canonicalizationBranch === 'contextual_answer_binding' ? 'parser' : 'ai';
   const rejected = rejectedOperations({
     validations,
     aiCandidates,
@@ -1001,7 +1038,6 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     canonicalizationErrors,
     tracker,
   });
-
   const entry: DiagnosticWithTruncation = {
     id: input.id,
     sessionId: input.sessionId,
@@ -1019,31 +1055,15 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       text: boundedText(input.userText, NORMAL_LIMITS.textBytes, tracker, 'userInput.text'),
     },
     aiInterpreter: {
-      provider: boundedNullableText(
-        stringValue(configuration.provider),
-        256,
-        tracker,
-        'aiInterpreter.provider',
-      ),
-      model: boundedNullableText(
-        stringValue(configuration.model),
-        256,
-        tracker,
-        'aiInterpreter.model',
-      ),
-      promptVersion: boundedNullableText(
-        stringValue(prepared.normalizerVersion),
-        256,
-        tracker,
-        'aiInterpreter.promptVersion',
-      ),
+      provider: boundedNullableText(stringValue(configuration.provider), 256, tracker,
+        'aiInterpreter.provider'),
+      model: boundedNullableText(stringValue(configuration.model), 256, tracker,
+        'aiInterpreter.model'),
+      promptVersion: boundedNullableText(stringValue(prepared.normalizerVersion), 256, tracker,
+        'aiInterpreter.promptVersion'),
       input: {
-        userText: boundedText(
-          input.userText,
-          NORMAL_LIMITS.textBytes,
-          tracker,
-          'aiInterpreter.input.userText',
-        ),
+        userText: boundedText(input.userText, NORMAL_LIMITS.textBytes, tracker,
+          'aiInterpreter.input.userText'),
         conversationContext: recentConversation,
         planningStateSummary: boundedUnknown(
           pipelineInput.publicStateSummary ?? null,
@@ -1053,7 +1073,7 @@ export function createWeeklyPlanningTurnDiagnosticV2(
         ),
         requests: aiRequests(events, tracker),
       },
-      rawResponses,
+      rawResponses: rawResponses(events, tracker),
       structuredResults: validations,
       candidateOperations: aiCandidates,
       error: firstProviderError(events, tracker),
@@ -1067,12 +1087,7 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       }, NORMAL_LIMITS.operationBytes, tracker, `decision.acceptedOperations[${index}]`)),
       rejectedOperations: rejected,
       finalOperations,
-      precedence: boundedNullableText(
-        canonicalizationBranch,
-        500,
-        tracker,
-        'decision.precedence',
-      ),
+      precedence: boundedNullableText(canonicalizationBranch, 500, tracker, 'decision.precedence'),
       reason: boundedNullableText(
         stringValue(pipelineDecision.basis) ?? stringValue(branch.branch),
         NORMAL_LIMITS.shortTextBytes,
@@ -1090,15 +1105,12 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       existingPlanCount: numberValue(counts.existingPlanCount) ?? 0,
       scheduleTemplateCount: numberValue(counts.scheduleTemplateCount) ?? 0,
       relevantBusyIntervals: busyIntervals(events, tracker),
+      scheduler: schedulerSummary(events, tracker),
     },
     assistantOutput: {
-      text: boundedNullableText(
-        input.assistantMessage ?? null,
-        NORMAL_LIMITS.textBytes,
-        tracker,
-        'assistantOutput.text',
-      ),
-      responseSource: responseSource(input.outcome),
+      text: boundedNullableText(input.assistantMessage ?? null, NORMAL_LIMITS.textBytes, tracker,
+        'assistantOutput.text'),
+      responseSource: responseSource(input.outcome, events, Boolean(error)),
     },
     diagnostics: {
       durationMs: durationMs(events),
@@ -1113,6 +1125,5 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       truncation: metadata(tracker),
     },
   };
-
   return fitDiagnosticToTarget(entry, tracker);
 }
