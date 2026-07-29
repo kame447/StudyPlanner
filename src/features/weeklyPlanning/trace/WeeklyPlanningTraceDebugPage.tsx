@@ -484,7 +484,7 @@ export function WeeklyPlanningTraceDebugPage({
                   {!loadingEntries && !entryError && entries.length === 0 ? <p>entryはありません。</p> : null}
                   {!entryError && viewMode === 'raw' && !loadingEntries ? (
                     <pre className="trace-entry">{safeJson({
-                      partial: page?.nextAfterSequence !== null,
+                      partial: Boolean(page && page.nextAfterSequence !== null),
                       loadedEntryCount: entries.length,
                       totalEntryCount: page?.totalEntryCount ?? session.entryCount,
                       entries,
@@ -513,7 +513,7 @@ export function WeeklyPlanningTraceDebugPage({
                       ))}
                     </div>
                   )}
-                  {page?.nextAfterSequence !== null ? (
+                  {page && page.nextAfterSequence !== null ? (
                     <button className="ghost-button" type="button" disabled={loadingEntries} onClick={() => { void loadMore(session); }}>
                       さらに20件読み込む
                     </button>
