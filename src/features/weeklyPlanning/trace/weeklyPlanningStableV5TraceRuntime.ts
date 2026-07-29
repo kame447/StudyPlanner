@@ -11,6 +11,12 @@ import {
 } from './weeklyPlanningStableV5TraceSessionStorage';
 import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2';
 import {
+  clearWeeklyPlanningTraceOutboxForTest,
+  enqueueWeeklyPlanningTraceOutboxItem,
+  listWeeklyPlanningTraceOutboxItems,
+  removeWeeklyPlanningTraceOutboxItem,
+} from './weeklyPlanningTraceOutbox';
+import {
   WEEKLY_PLANNING_TRACE_SCHEMA_VERSION,
   type WeeklyPlanningTraceEntry,
   type WeeklyPlanningTraceSession,
@@ -75,9 +81,7 @@ function createSession(params: WeeklyPlanningStableV5TraceInput, now: string) {
     status: 'active',
     startedAt: now,
     lastActivityAt: now,
-    ...(params.planningRangeStart
-      ? { planningRangeStart: params.planningRangeStart }
-      : {}),
+    ...(params.planningRangeStart ? { planningRangeStart: params.planningRangeStart } : {}),
     ...(params.planningRangeEnd ? { planningRangeEnd: params.planningRangeEnd } : {}),
     turnCount: 0,
     entryCount: 0,
@@ -132,7 +136,6 @@ function ensureSession(
   const key = sessionKey(params.userId, params.conversationId);
   const current = activeSessions.get(key);
   if (current) return current;
-
   const restored = restoreSession(params);
   const next = restored ?? createSession(params, now);
   activeSessions.set(key, next);
@@ -199,13 +202,11 @@ function createTurnDiagnosticEntry(
   active.session.hasFallback ||= params.outcome.includes('fallback');
   active.session.hasError ||= Boolean(params.errorCode)
     || params.outcome === 'failed'
-    || params.outcome === 'provider_failure';
-  if (params.planningRangeStart) {
-    active.session.planningRangeStart = params.planningRangeStart;
-  }
-  if (params.planningRangeEnd) {
-    active.session.planningRangeEnd = params.planningRangeEnd;
-  }
+    || params.outcome.includes('provider_failure')
+    || params.outcome.includes('normalization_rejected')
+    || params.outcome.includes('canonicalization_rejected');
+  if (params.planningRangeStart) active.session.planningRangeStart = params.planningRangeStart;
+  if (params.planningRangeEnd) active.session.planningRangeEnd = params.planningRangeEnd;
 
   return createWeeklyPlanningTurnDiagnosticV2({
     id: `${active.session.id}-${String(sequence).padStart(8, '0')}`,
@@ -243,6 +244,72 @@ async function appendWorkingSession(
   persistSession(active);
 }
 
+async function writeTraceInput(
+  active: ActiveStableV5TraceSession,
+  params: WeeklyPlanningStableV5TraceInput,
+  occurredAt: string,
+): Promise<void> {
+  if (active.requestIds.has(params.requestId)) return;
+  const working = cloneWorkingSession(active);
+  const entry = createTurnDiagnosticEntry(working, params, occurredAt);
+  await appendWorkingSession(active, working, [entry]);
+}
+
+function outboxIdentity(params: WeeklyPlanningStableV5TraceInput) {
+  return {
+    userId: params.userId,
+    conversationId: params.conversationId,
+    requestId: params.requestId,
+  };
+}
+
+function enqueueFailedInput(
+  params: WeeklyPlanningStableV5TraceInput,
+  occurredAt: string,
+  error: unknown,
+): void {
+  const result = enqueueWeeklyPlanningTraceOutboxItem({
+    version: 'studyplanner-weekly-planning-trace-outbox-v1',
+    occurredAt,
+    input: params,
+  });
+  console.warn('[WeeklyPlanning Stable V5 Trace] write queued in outbox', {
+    conversationId: params.conversationId,
+    requestId: params.requestId,
+    saved: result.saved,
+    overflowed: result.overflowed,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+async function flushOutbox(
+  active: ActiveStableV5TraceSession,
+  params: WeeklyPlanningStableV5TraceInput,
+): Promise<boolean> {
+  const pending = listWeeklyPlanningTraceOutboxItems({
+    userId: params.userId,
+    conversationId: params.conversationId,
+  });
+  for (const item of pending) {
+    if (active.requestIds.has(item.input.requestId)) {
+      removeWeeklyPlanningTraceOutboxItem(outboxIdentity(item.input));
+      continue;
+    }
+    try {
+      await writeTraceInput(active, item.input, item.occurredAt);
+      removeWeeklyPlanningTraceOutboxItem(outboxIdentity(item.input));
+    } catch (error) {
+      console.warn('[WeeklyPlanning Stable V5 Trace] outbox retry failed', {
+        conversationId: item.input.conversationId,
+        requestId: item.input.requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function recordWeeklyPlanningStableV5TurnTrace(
   params: WeeklyPlanningStableV5TraceInput,
 ): Promise<void> {
@@ -250,21 +317,24 @@ export async function recordWeeklyPlanningStableV5TurnTrace(
   const occurredAt = nowIso();
   const active = ensureSession(params, occurredAt);
   const operation = active.writeQueue.catch(() => undefined).then(async () => {
-    if (active.requestIds.has(params.requestId)) return;
-    const working = cloneWorkingSession(active);
-    const entry = createTurnDiagnosticEntry(working, params, occurredAt);
-    await appendWorkingSession(active, working, [entry]);
+    const flushed = await flushOutbox(active, params);
+    if (!flushed) {
+      enqueueFailedInput(params, occurredAt, new Error('older trace outbox item is still pending'));
+      return;
+    }
+    if (active.requestIds.has(params.requestId)) {
+      removeWeeklyPlanningTraceOutboxItem(outboxIdentity(params));
+      return;
+    }
+    try {
+      await writeTraceInput(active, params, occurredAt);
+      removeWeeklyPlanningTraceOutboxItem(outboxIdentity(params));
+    } catch (error) {
+      enqueueFailedInput(params, occurredAt, error);
+    }
   });
   active.writeQueue = operation.catch(() => undefined);
-
-  try {
-    await operation;
-  } catch (error) {
-    console.warn('[WeeklyPlanning Stable V5 Trace] write failed', {
-      conversationId: params.conversationId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  await operation;
 }
 
 export function clearWeeklyPlanningStableV5TraceSession(params: {
@@ -282,4 +352,5 @@ export function resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest(): void {
 export function resetWeeklyPlanningStableV5TraceRuntimeForTest(): void {
   activeSessions.clear();
   clearAllWeeklyPlanningStableV5TraceCursorsForTest();
+  clearWeeklyPlanningTraceOutboxForTest();
 }
