@@ -3,6 +3,7 @@
 Date: 2026-07-30
 Issue: #98
 Branch: `agent/stable-v5-dialogue-repair-seven-audit`
+PR: #99
 Source trace: `weekly-trace-fbda7e10-9506-590c-bac3-1c56629613d2`
 Main before change: `1c822a6458284df7b17e67294923d6c63edb2895`
 
@@ -64,7 +65,7 @@ normalization failure文言も不適切である。原因は利用者入力で�
 
 2ターン目の`morning`と`afternoon`はtask-specific `preferred_window`としてFact Graphへ保存される。しかし現行preview schedulerは、fixed reservation、availability window、task date eligibilityだけを配置制約として使い、task-specific preferred windowを配置候補の優先順へ反映しない。
 
-したがって今回の二つの表面不具合を修正しても、後続のpreviewが「研究は午前、院試は午後」という意味を守らない可能性がある。これはscheduler input contractの拡張を要し、今回のrepair・dialogue修正と同じ差分へ混在させるとレビュー単位が肥大化するため、Issue #98のmerge blockerにはしない。ただし別Issueへ切り出すべき残課題である。
+したがって今回の二つの表面不具合を修正しても、後続のpreviewが「研究は午前、院試は午後」という意味を守らない可能性がある。これはscheduler input contractの拡張を要し、今回のrepair・dialogue修正と同じ差分へ混在させるとレビュー単位が肥大化するため、Issue #98のmerge blockerにはしない。Issue #100として別管理へ切り出した。
 
 ## 監査6: 観測性・信頼境界・privacy
 
@@ -92,21 +93,40 @@ repair instructionへ追加する規則は一般化し、今回の固有task名�
 - normalization rejected時に「言い換えて」を返さない
 - 正常preview生成を維持する
 
-GitHub上には同一目的のopen PR・branchが存在しない。過去PRはすでにclosedであり、Issue #89はtrace transport/adminの別責務である。Issue #98、branch `agent/stable-v5-dialogue-repair-seven-audit`、一つのPRへ集約する。
+GitHub上には同一目的のopen PR・branchが存在しなかった。過去PRはすでにclosedであり、Issue #89はtrace transport/adminの別責務である。Issue #98、branch `agent/stable-v5-dialogue-repair-seven-audit`、PR #99へ集約した。
 
 ## 実装修正の確定範囲
 
-今回修正するのは次の三点である。
+今回修正したのは次の三点である。
 
-1. semantic normalizerのbase/repair instructionへ一般化されたtemporal・priority修復規則を追加する。
-2. Stable V5 runtimeのempty分岐をtask-awareにし、既知taskを明示してworkloadを質問する。
-3. normalization rejectedの利用者向けmessageを、内部構造化失敗と入力保持を正確に示す文言へ変更する。
+1. semantic normalizerのbase/repair instructionへ一般化されたtemporal・priority修復規則を追加した。
+2. Stable V5 runtimeのempty分岐をtask-awareにし、既知taskを明示してworkloadを質問するようにした。
+3. normalization rejectedの利用者向けmessageを、内部構造化失敗と入力保持を正確に示す文言へ変更した。
 
-## 完了条件
+## 実装後の七視点再判定
 
-- 上記回帰testが追加される
-- focused testが成功する
-- full test、typecheck、typecheck:build、build、diff checkが成功する、または実行不能理由を明記する
-- task Markdownを`docs/ai/tasks/closed/`へ移動する
-- auditとclosed taskが最終実装内容に同期する
-- PRを作成し、Issue #98へ検証結果を記録する
+アーキテクチャは、empty compilation時だけactive Fact Graphを参照する局所変更であり、normalizerやschedulerへ対話責務を逆流させていないためPASSとした。
+
+Schema・validator・repair契約は、validatorを緩和せずrepair側へ意味境界を追加した。priorityをrelationとして保持し、clockの発明を禁止し、named periodとclockの排他を明示したためPASSとした。
+
+状態原子性は変更していない。normalization rejected時のGraph非更新と、accepted時のみcommitする既存境界を維持しているためPASSとした。
+
+対話UXは、taskが0件なら従来の一般質問、taskが1件以上なら認識済みtask名と不足する量を示す分岐へ変更した。normalization failureも「言い換え」を要求しないためPASSとした。
+
+Scheduler意味保持は今回の対象外であり、Issue #100がOPENである。したがってIssue #98の範囲ではPASS、システム全体では残余MAJORとした。
+
+観測性は、`nothing_to_schedule` branchのbasisへrecognized task titlesとquestion codeを追加し、原因切り分けを強化した。raw provider outputやvalidator errorを利用者へ露出していないためPASSとした。
+
+Test・文書・merge hygieneは、runtime回帰testとnormalizer repair回帰testを追加し、一つのIssue・branch・PRへ集約した。PRはmainからbehind 0、mergeableである。ただしGitHub Actionsは二つのworkflowともjob step 0件のままfailure終了し、実行ログが生成されていない。既知のActions月間枠枯渇と整合するため、test成功とは判定しない。
+
+## 検証記録
+
+Cloudflare PagesはPR head `9d5f0f5c9318c50474e25ca2ce8088146891e152`のpreview deploy成功を報告した。これはproduction bundleのbuild経路が成立した証拠として扱うが、`npm run typecheck`と`npm run test:run`の成功証拠にはしない。
+
+GitHub Actions CI run `30477837167`とStable V5 Semantic Eval run `30477837139`はfailureで完了したが、各jobはstepsが空で、job logも生成されていない。コードまたはtest assertionが実行されて失敗した証拠はない。同時に、focused test、full test、typecheck、typecheck:build、diff checkの成功証拠もない。
+
+ローカル環境は使用しておらず、ローカルtestは実行していない。PR #99は自動検証未完了のためdraftのまま維持する。
+
+## 完了判定
+
+実装、回帰test追加、七視点事後監査、別責務Issue #100への切り出し、PR作成まで完了した。task Markdownはclosedへ移す。ただしPR mergeの判断は、Actions枠復旧後または人間のローカル環境で`npm run typecheck && npm run test:run && npm run build && git diff --check origin/main...HEAD`が成功した後に行う。
