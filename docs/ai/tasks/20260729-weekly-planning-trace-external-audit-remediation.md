@@ -101,8 +101,8 @@ Implementation complete / Verification pending
 
 ## GitHub上で確認できた検証
 
-- Cloudflare Pages source build: implementation head `0947c3a` の結果を確認中
-- 最新GitHub Actions run `#1327`: failure
+- Cloudflare Pages build: commit `c2c85ee36c51bdc862c1ec7233403f7810d51acb` で成功
+- GitHub Actions run `#1330`: failure
 - Actions jobはstep/logなしで終了しており、コード由来の失敗内容は取得不能
 - GitHub上ではローカルtypecheck、full test、Worker deploy、Production負荷確認を実行していない
 
