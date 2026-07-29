@@ -118,56 +118,50 @@ describe('weeklyPlanningTurnSideEffects', () => {
     expect(services.finalizeRuntimeGraph).not.toHaveBeenCalled();
   });
 
-  it('records committed trace from the committed graph summary', async () => {
+  it('records only the committed turn fields needed by the compact trace schema', async () => {
     const services = createServices();
-    const state = {
-      ...createInitialPlanningIntakeState(),
-      status: 'draft_ready' as const,
-    };
 
     await recordCommittedWeeklyPlanningApplicationTurn({
       ownerId: 'user-1',
       pending,
       userText: 'この条件で作成して',
       result: {
-        state,
+        state: {
+          ...createInitialPlanningIntakeState(),
+          status: 'draft_ready' as const,
+        },
         message: '仮予定を作成しました。',
         draftCandidates: [{} as never, {} as never],
       },
     }, services);
 
-    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.recordTurnTrace).toHaveBeenCalledWith({
       userId: 'user-1',
       conversationId: 'conversation-1',
       requestId: 'conversation-1:request:2',
+      userText: 'この条件で作成して',
+      assistantMessage: '仮予定を作成しました。',
       outcome: 'preview_ready',
-      graphRevision: 4,
-      graphSummary: {
-        taskCount: 2,
-        workloadCount: 1,
-        availabilityCount: 1,
-        activeFactCount: 2,
-      },
-      compatibilityState: state,
       debugTraceEvents: [],
       previewCount: 2,
       planningRangeStart: '2026-07-27',
       planningRangeEnd: '2026-08-02',
+      errorCode: undefined,
+    });
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
+      graphSummary: expect.anything(),
+      compatibilityState: expect.anything(),
     }));
   });
 
-  it('passes ordered debug stages separately and leaves only a summary in the snapshot', async () => {
+  it('passes ordered debug stages without copying compatibility state', async () => {
     const services = createServices();
-    const state = {
-      ...createInitialPlanningIntakeState(),
-      status: 'revision_pending' as const,
-    };
     beginWeeklyPlanningStableV5DebugTrace(pending.requestId);
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: pending.requestId,
       stage: 'semantic_provider_request',
       data: {
-        messages: [{ role: 'system', content: 'full system message' }],
+        request: { messages: [{ role: 'system', content: 'full system message' }] },
       },
     });
     recordWeeklyPlanningStableV5DebugTrace({
@@ -187,35 +181,57 @@ describe('weeklyPlanningTurnSideEffects', () => {
       pending,
       userText: '3時間ぐらいかな',
       result: {
-        state,
+        state: {
+          ...createInitialPlanningIntakeState(),
+          status: 'revision_pending' as const,
+        },
         message: '計画期間が複数あります。',
         draftCandidates: [],
       },
     }, services);
 
     expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
-      compatibilityState: expect.objectContaining({
-        status: 'revision_pending',
-        __stableV5DebugTrace: {
-          schemaVersion: 1,
-          eventCount: 2,
-          storage: 'stable_v5_debug_stage_entries',
-        },
-      }),
       debugTraceEvents: [
         expect.objectContaining({ sequence: 0, stage: 'semantic_provider_request' }),
         expect.objectContaining({ sequence: 1, stage: 'semantic_canonicalization_evaluated' }),
       ],
     }));
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
+      compatibilityState: expect.anything(),
+    }));
     expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
   });
 
-  it('records and consumes a stale discarded execution trace without a phantom assistant turn or preview', async () => {
+  it('records controlled execution failure as an error diagnostic with assistant output', async () => {
     const services = createServices();
-    const state = {
-      ...createInitialPlanningIntakeState(),
-      status: 'draft_ready' as const,
-    };
+
+    await recordCommittedWeeklyPlanningApplicationTurn({
+      ownerId: 'user-1',
+      pending,
+      userText: '続けて',
+      result: {
+        state: {
+          ...createInitialPlanningIntakeState(),
+          status: 'revision_pending' as const,
+        },
+        message: 'AIに接続できませんでした。',
+        draftCandidates: [],
+        failure: {
+          code: 'ai_provider_error',
+          traceCode: 'weekly_planning_provider_failure',
+        },
+      },
+    }, services);
+
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+      assistantMessage: 'AIに接続できませんでした。',
+      outcome: 'ai_provider_error',
+      errorCode: 'weekly_planning_provider_failure',
+    }));
+  });
+
+  it('records and consumes a stale discarded execution without a phantom assistant output', async () => {
+    const services = createServices();
     beginWeeklyPlanningStableV5DebugTrace(pending.requestId);
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: pending.requestId,
@@ -228,7 +244,10 @@ describe('weeklyPlanningTurnSideEffects', () => {
       pending,
       userText: 'この条件で予定を作って',
       result: {
-        state,
+        state: {
+          ...createInitialPlanningIntakeState(),
+          status: 'draft_ready' as const,
+        },
         message: '1件の候補を作りました。',
         draftCandidates: [{} as never],
       },
@@ -239,29 +258,18 @@ describe('weeklyPlanningTurnSideEffects', () => {
       outcome: 'discarded_stale',
       errorCode: 'stale_async_result_discarded',
       previewCount: 0,
-      compatibilityState: expect.objectContaining({
-        status: 'draft_ready',
-        __discardedExecution: expect.objectContaining({
-          reason: 'stale',
-          resultMessage: '1件の候補を作りました。',
-          candidateCount: 1,
-        }),
-        __stableV5DebugTrace: expect.objectContaining({
-          eventCount: 1,
-          storage: 'stable_v5_debug_stage_entries',
-        }),
-      }),
       debugTraceEvents: [
         expect.objectContaining({ stage: 'runtime_branch_selected' }),
       ],
     }));
     expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
       assistantMessage: expect.anything(),
+      compatibilityState: expect.anything(),
     }));
     expect(peekWeeklyPlanningStableV5DebugTraceForTest(pending.requestId)).toEqual([]);
   });
 
-  it('records failed trace without compatibility state or preview', async () => {
+  it('records failed trace with assistant output and no application state', async () => {
     const services = createServices();
     const error = new TypeError('invalid response');
 
@@ -284,6 +292,9 @@ describe('weeklyPlanningTurnSideEffects', () => {
       previewCount: 0,
       errorCode: 'TypeError',
       assistantMessage: '更新できませんでした。',
+    }));
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
+      compatibilityState: expect.anything(),
     }));
   });
 });
