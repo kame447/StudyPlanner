@@ -34,9 +34,6 @@ export interface WeeklyPlanningStableV5TraceInput {
   userText: string;
   assistantMessage?: string;
   outcome: string;
-  graphRevision: number;
-  graphSummary: Record<string, unknown>;
-  compatibilityState?: unknown;
   debugTraceEvents?: WeeklyPlanningStableV5DebugTraceEvent[];
   previewCount: number;
   planningRangeStart?: string;
