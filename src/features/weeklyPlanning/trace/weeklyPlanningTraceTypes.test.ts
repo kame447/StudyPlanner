@@ -15,6 +15,61 @@ function baseEntry() {
   };
 }
 
+function turnDiagnostic(overrides: Record<string, unknown> = {}) {
+  return {
+    ...baseEntry(),
+    userId: undefined,
+    schemaVersion: 2,
+    kind: 'turn_diagnostic',
+    traceSchema: 'weekly-planning-turn-diagnostic-v2',
+    turnIndex: 0,
+    userInput: { text: '来週、英語を3時間やりたい' },
+    aiInterpreter: {
+      provider: 'openai',
+      model: 'gpt-test',
+      promptVersion: 'v5',
+      input: {
+        userText: '来週、英語を3時間やりたい',
+        conversationContext: [],
+        planningStateSummary: { taskCount: 0 },
+        requests: [],
+      },
+      rawResponses: [],
+      structuredResults: [],
+      candidateOperations: [],
+      error: null,
+    },
+    parsers: [],
+    decision: {
+      status: 'accepted',
+      acceptedOperations: [],
+      rejectedOperations: [],
+      finalOperations: [],
+      precedence: null,
+      reason: null,
+      stateDiff: null,
+    },
+    constraintContext: {
+      existingPlanCount: 0,
+      scheduleTemplateCount: 0,
+      relevantBusyIntervals: [],
+    },
+    assistantOutput: {
+      text: '条件を整理しました。',
+      responseSource: 'ai',
+    },
+    diagnostics: {
+      durationMs: 100,
+      fallback: null,
+      error: null,
+      outcome: 'revision_pending',
+      previewCount: 0,
+      stale: false,
+    },
+    ...overrides,
+  };
+}
+
 describe('isWeeklyPlanningTraceEntry', () => {
   it('有限catalogにないevent typeをsafe discardする', () => {
     expect(isWeeklyPlanningTraceEntry({
@@ -36,7 +91,7 @@ describe('isWeeklyPlanningTraceEntry', () => {
     })).toBe(true);
   });
 
-  it('Stable V5 debug stage eventを受理する', () => {
+  it('legacy Stable V5 debug stage eventを受理する', () => {
     expect(isWeeklyPlanningTraceEntry({
       ...baseEntry(),
       kind: 'internal_event',
@@ -54,6 +109,21 @@ describe('isWeeklyPlanningTraceEntry', () => {
       },
       severity: 'debug',
     })).toBe(true);
+  });
+
+  it('schema v2の1ターン診断recordを受理する', () => {
+    expect(isWeeklyPlanningTraceEntry(turnDiagnostic())).toBe(true);
+  });
+
+  it('schema v2でAI request配列が欠けたrecordをsafe discardする', () => {
+    const entry = turnDiagnostic();
+    const ai = entry.aiInterpreter as Record<string, unknown>;
+    ai.input = {
+      userText: '来週、英語を3時間やりたい',
+      conversationContext: [],
+      planningStateSummary: {},
+    };
+    expect(isWeeklyPlanningTraceEntry(entry)).toBe(false);
   });
 
   it('不正なsnapshot reasonをsafe discardする', () => {

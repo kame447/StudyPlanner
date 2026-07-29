@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  WEEKLY_PLANNING_TRACE_EVENT_TYPES,
-  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
-  encodeWeeklyPlanningTraceDebugChunkBase64,
-} from '../../../shared/weeklyPlanningTraceContract';
-import {
   WEEKLY_PLANNING_TRACE_POLICY_VERSION,
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningTracePlanningRangeBoundary,
@@ -30,6 +25,7 @@ function validSession(overrides: Record<string, unknown> = {}): Record<string, u
   return {
     id: SESSION_ID,
     logicalConversationId: CONVERSATION_ID,
+    userId: 'firebase-user-123',
     status: 'active',
     startedAt: OCCURRED_AT,
     lastActivityAt: OCCURRED_AT,
@@ -40,16 +36,17 @@ function validSession(overrides: Record<string, unknown> = {}): Record<string, u
     hasFallback: false,
     hasError: false,
     appVersion: 'test',
-    schemaVersion: 1,
+    schemaVersion: 2,
     ...overrides,
   };
 }
 
-function validTurnEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function validLegacyTurnEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: `${SESSION_ID}-00000000`,
     sessionId: SESSION_ID,
     logicalConversationId: CONVERSATION_ID,
+    userId: 'firebase-user-123',
     sequence: 0,
     occurredAt: OCCURRED_AT,
     observedAt: OCCURRED_AT,
@@ -62,32 +59,86 @@ function validTurnEntry(overrides: Record<string, unknown> = {}): Record<string,
   };
 }
 
-function validDebugEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  const base64 = 'A'.repeat(
-    Math.ceil(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes / 3) * 4,
-  );
-  const dataChunk = encodeWeeklyPlanningTraceDebugChunkBase64(base64);
-  return validTurnEntry({
-    kind: 'internal_event',
-    eventType: 'stable_v5_debug_stage',
-    payload: {
-      storage: 'base64_utf8_json_chunk',
-      debugSchemaVersion: 1,
-      debugSequence: 0,
-      stage: 'runtime_turn_input',
-      stageOccurredAt: OCCURRED_AT,
-      chunkIndex: 0,
-      chunkCount: 1,
-      totalSerializedBytes: WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes,
-      chunkBytes: WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugRawChunkBytes,
-      dataChunk,
+function validDiagnosticEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: `${SESSION_ID}-00000000`,
+    sessionId: SESSION_ID,
+    logicalConversationId: CONVERSATION_ID,
+    sequence: 0,
+    requestId: 'request-1',
+    occurredAt: OCCURRED_AT,
+    observedAt: OCCURRED_AT,
+    schemaVersion: 2,
+    kind: 'turn_diagnostic',
+    traceSchema: 'weekly-planning-turn-diagnostic-v2',
+    turnIndex: 0,
+    userInput: { text: '来週、英語を3時間やりたい person@example.com' },
+    aiInterpreter: {
+      provider: 'openai',
+      model: 'gpt-test',
+      promptVersion: 'v5',
+      input: {
+        userText: '来週、英語を3時間やりたい person@example.com',
+        conversationContext: [],
+        planningStateSummary: { taskCount: 0 },
+        requests: [{
+          attempt: 'initial',
+          messages: [{ role: 'user', content: 'actual prompt' }],
+          purpose: 'weekly_planning_semantic_normalizer',
+          responseFormat: { type: 'json_schema' },
+          maxCompletionTokens: 3200,
+          requestBytes: 100,
+        }],
+      },
+      rawResponses: [{ attempt: 'initial', text: '{"tasks":[]}' }],
+      structuredResults: [{
+        attempt: 'initial',
+        accepted: true,
+        errors: [],
+        structuredResult: { tasks: [] },
+      }],
+      candidateOperations: [],
+      error: null,
     },
-    severity: 'debug',
-    role: undefined,
-    content: undefined,
-    turnIndex: undefined,
+    parsers: [{
+      parser: 'planning_range',
+      inputText: '来週、英語を3時間やりたい',
+      matchedText: '来週',
+      candidateOperation: { operation: 'set_planning_window' },
+      accepted: true,
+      reason: null,
+    }],
+    decision: {
+      status: 'accepted',
+      acceptedOperations: [{
+        source: 'ai',
+        operation: { operation: 'set_planning_window' },
+      }],
+      rejectedOperations: [],
+      finalOperations: [{ operation: 'set_planning_window' }],
+      precedence: 'semantic_canonicalizer',
+      reason: null,
+      stateDiff: [{ operation: 'set_planning_window' }],
+    },
+    constraintContext: {
+      existingPlanCount: 500,
+      scheduleTemplateCount: 20,
+      relevantBusyIntervals: [],
+    },
+    assistantOutput: {
+      text: '条件を整理しました。',
+      responseSource: 'ai',
+    },
+    diagnostics: {
+      durationMs: 100,
+      fallback: null,
+      error: null,
+      outcome: 'revision_pending',
+      previewCount: 0,
+      stale: false,
+    },
     ...overrides,
-  });
+  };
 }
 
 describe('weekly planning trace privacy boundary', () => {
@@ -121,7 +172,7 @@ describe('weekly planning trace privacy boundary', () => {
 
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {
     const epochMs = 30 * 24 * 60 * 60 * 1000;
-    const reference = new Date('2026-07-18T00:00:00.000Z');
+    const reference = new Date(OCCURRED_AT);
     const epochStart = new Date(Math.floor(reference.getTime() / epochMs) * epochMs);
     const beforeRotation = new Date(epochStart.getTime() + 29 * 24 * 60 * 60 * 1000);
     const afterRotation = new Date(epochStart.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -133,7 +184,7 @@ describe('weekly planning trace privacy boundary', () => {
     expect(weeklyPlanningTraceExpireAt(reference)).toBe('2027-01-14T00:00:00.000Z');
   });
 
-  it('removes identity keys and redacts common identifiers in nested content', () => {
+  it('keeps recursive redaction for legacy documents', () => {
     const redacted = redactWeeklyPlanningTraceValue({
       userId: 'raw-user',
       traceSubjectToken: 'wpt_internal-token',
@@ -159,19 +210,19 @@ describe('weekly planning trace privacy boundary', () => {
     expect(output).toContain('[QUERY_REDACTED]');
   });
 
-  it('prepares session and entry documents without raw account identifiers', async () => {
+  it('prepares legacy session and entry documents without raw account identifiers', async () => {
     const subject = await createWeeklyPlanningTraceSubject(
       'firebase-user-123',
       '100',
       { '100': 'a'.repeat(32) },
     );
     const prepared = prepareWeeklyPlanningTraceWrite({
-      session: validSession({ userId: 'firebase-user-123' }),
-      entries: [validTurnEntry({
+      session: validSession({ schemaVersion: 1, userId: 'firebase-user-123' }),
+      entries: [validLegacyTurnEntry({
         userId: 'firebase-user-123',
         content: 'person@example.com',
       })],
-    }, subject, '2026-07-18T00:00:00.000Z');
+    }, subject, OCCURRED_AT);
     const output = serialized(prepared);
 
     expect(output).not.toContain('firebase-user-123');
@@ -180,6 +231,78 @@ describe('weekly planning trace privacy boundary', () => {
     expect(prepared.entries[0].traceSubjectEpoch).toBe('100');
     expect(prepared.entries[0].policyVersion).toBe(WEEKLY_PLANNING_TRACE_POLICY_VERSION);
     expect(prepared.entries[0].expireAt).toBe('2027-01-14T00:00:00.000Z');
+  });
+
+  it('stores schema v2 diagnostic text as supplied while dropping account identity', async () => {
+    const subject = await createWeeklyPlanningTraceSubject(
+      'firebase-user-123',
+      '100',
+      { '100': 'a'.repeat(32) },
+    );
+    const prepared = prepareWeeklyPlanningTraceWrite({
+      session: validSession(),
+      entries: [validDiagnosticEntry()],
+    }, subject, OCCURRED_AT);
+    const output = serialized(prepared);
+
+    expect(output).not.toContain('firebase-user-123');
+    expect(output).toContain('person@example.com');
+    expect(prepared.entries).toHaveLength(1);
+    expect(prepared.entries[0].kind).toBe('turn_diagnostic');
+    expect(prepared.entries[0].traceSubjectToken).toBe(subject.token);
+    expect(prepared.entries[0].traceSubjectEpoch).toBe('100');
+    expect(prepared.entries[0].policyVersion).toBe(WEEKLY_PLANNING_TRACE_POLICY_VERSION);
+  });
+
+  it('rejects full application state and chunk metadata in a schema v2 diagnostic', () => {
+    const forbidden = [
+      { runtime: { plans: [{ id: 'plan-1' }] } },
+      { plans: [{ id: 'plan-1' }] },
+      { scheduleTemplates: [{ id: 'template-1' }] },
+      { dataChunk: 'abc' },
+      { chunkIndex: 0 },
+      { chunkCount: 1 },
+      { chunkBytes: 100 },
+      { totalSerializedBytes: 100 },
+      { debugSequence: 1 },
+      { debugSchemaVersion: 1 },
+      { nested: { userId: 'raw-user' } },
+    ];
+
+    forbidden.forEach((value) => {
+      expect(() => prepareWeeklyPlanningTraceServerWrite({
+        session: validSession(),
+        entries: [validDiagnosticEntry({
+          diagnostics: {
+            durationMs: 100,
+            fallback: null,
+            error: null,
+            outcome: 'revision_pending',
+            previewCount: 0,
+            stale: false,
+            ...value,
+          },
+        })],
+      }, { token: 'wpt_token', epoch: '100' }, {
+        sessionId: SESSION_ID,
+        logicalConversationId: CONVERSATION_ID,
+      }, OCCURRED_AT)).toThrow(/turn diagnostic entry schema/);
+    });
+  });
+
+  it('does not multiply one diagnostic into physical chunk entries', () => {
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: validSession({ entryCount: 1, turnCount: 1 }),
+      entries: [validDiagnosticEntry()],
+    }, { token: 'wpt_token', epoch: '100' }, {
+      sessionId: SESSION_ID,
+      logicalConversationId: CONVERSATION_ID,
+    }, OCCURRED_AT);
+
+    expect(prepared.entries).toHaveLength(1);
+    expect(prepared.session.entryCount).toBe(1);
+    expect(serialized(prepared)).not.toContain('base64_utf8_json_chunk');
+    expect(serialized(prepared)).not.toContain('dataChunk');
   });
 
   it.each([
@@ -205,23 +328,19 @@ describe('weekly planning trace privacy boundary', () => {
     expect(isWeeklyPlanningTracePlanningRangeBoundary(value)).toBe(false);
   });
 
-  it('accepts the shared Stable V5 debug event without truncating its chunk string', () => {
-    expect(WEEKLY_PLANNING_TRACE_EVENT_TYPES).toContain('stable_v5_debug_stage');
-    const entry = validDebugEntry();
+  it('retains read-only compatibility for a legacy turn write', () => {
     const prepared = prepareWeeklyPlanningTraceServerWrite({
-      session: validSession(),
-      entries: [entry],
+      session: validSession({ schemaVersion: 1 }),
+      entries: [validLegacyTurnEntry()],
     }, { token: 'wpt_token', epoch: '100' }, {
       sessionId: SESSION_ID,
       logicalConversationId: CONVERSATION_ID,
     }, OCCURRED_AT);
 
-    const payload = prepared.entries[0].payload as Record<string, unknown>;
-    const sourcePayload = entry.payload as Record<string, unknown>;
-    expect(prepared.entries[0].eventType).toBe('stable_v5_debug_stage');
-    expect(payload.dataChunk).toBe(sourcePayload.dataChunk);
-    expect(String(payload.dataChunk).length).toBeLessThan(4_000);
-    expect(String(payload.dataChunk).split('.').every((run) => run.length <= 20)).toBe(true);
+    expect(prepared.entries[0]).toMatchObject({
+      kind: 'turn',
+      content: 'hello',
+    });
   });
 
   it('accepts production date-only and 24:00 range values at the server write boundary', () => {
@@ -230,7 +349,7 @@ describe('weekly planning trace privacy boundary', () => {
         planningRangeStart: '2026-07-21',
         planningRangeEnd: '2026-07-27T24:00:00',
       }),
-      entries: [validTurnEntry()],
+      entries: [validDiagnosticEntry()],
     }, { token: 'wpt_token', epoch: '100' }, {
       sessionId: SESSION_ID,
       logicalConversationId: CONVERSATION_ID,
@@ -248,7 +367,7 @@ describe('weekly planning trace privacy boundary', () => {
         startedAt: '2026-07-21T09:00:00',
         planningRangeStart: '2026-07-21T09:00:00',
       }),
-      entries: [validTurnEntry()],
+      entries: [validDiagnosticEntry()],
     }, { token: 'wpt_token', epoch: '100' }, {
       sessionId: SESSION_ID,
       logicalConversationId: CONVERSATION_ID,
@@ -258,30 +377,30 @@ describe('weekly planning trace privacy boundary', () => {
   it('requires matching entry ownership and the current policy version', () => {
     expect(() => prepareWeeklyPlanningTraceWrite({
       session: validSession(),
-      entries: [validTurnEntry({
+      entries: [validDiagnosticEntry({
         sessionId: 'weekly-trace-223e4567-e89b-12d3-a456-426614174000',
       })],
     }, { token: 'wpt_token', epoch: '100' })).toThrow(/session mismatch/);
 
     expect(isWeeklyPlanningTracePolicyAccepted({
       version: WEEKLY_PLANNING_TRACE_POLICY_VERSION,
-      acceptedAt: '2026-07-18T00:00:00.000Z',
+      acceptedAt: OCCURRED_AT,
     })).toBe(true);
     expect(isWeeklyPlanningTracePolicyAccepted({
       version: 'old',
-      acceptedAt: '2026-07-18T00:00:00.000Z',
+      acceptedAt: OCCURRED_AT,
     })).toBe(false);
   });
 
-  it('rejects missing or invalid session schema at the write boundary', () => {
+  it('rejects missing or invalid session and diagnostic schemas', () => {
     expect(() => prepareWeeklyPlanningTraceWrite({
       session: validSession({ status: 'unknown' }),
-      entries: [validTurnEntry()],
+      entries: [validDiagnosticEntry()],
     }, { token: 'wpt_token', epoch: '100' })).toThrow(/session schema/);
     expect(() => prepareWeeklyPlanningTraceWrite({
-      session: validSession({ startedAt: 'not-a-date' }),
-      entries: [validTurnEntry()],
-    }, { token: 'wpt_token', epoch: '100' })).toThrow(/session schema/);
+      session: validSession(),
+      entries: [validDiagnosticEntry({ userInput: { text: 123 } })],
+    }, { token: 'wpt_token', epoch: '100' })).toThrow(/turn diagnostic entry schema/);
   });
 
   it.each([
@@ -295,10 +414,10 @@ describe('weekly planning trace privacy boundary', () => {
       'snapshot without state',
       { kind: 'state_snapshot', snapshotReason: 'manual_capture', state: undefined },
     ],
-  ])('rejects %s at the server write boundary', (_label, overrides) => {
+  ])('rejects legacy %s at the server write boundary', (_label, overrides) => {
     expect(() => prepareWeeklyPlanningTraceWrite({
-      session: validSession(),
-      entries: [validTurnEntry(overrides)],
+      session: validSession({ schemaVersion: 1 }),
+      entries: [validLegacyTurnEntry(overrides)],
     }, { token: 'wpt_token', epoch: '100' })).toThrow(/entry/);
   });
 });

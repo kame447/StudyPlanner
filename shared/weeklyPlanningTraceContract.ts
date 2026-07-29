@@ -25,7 +25,12 @@ export const WEEKLY_PLANNING_TRACE_EVENT_TYPES = [
   'approval_item_saved',
   'approval_item_failed',
   'approval_completed',
+  'approval_failed',
+  'save_started',
+  'save_completed',
+  'save_failed',
   'request_cancelled',
+  'failure',
   'stale_async_result_discarded',
   'stable_v5_debug_stage',
   'trace_write_failed',
@@ -34,9 +39,9 @@ export const WEEKLY_PLANNING_TRACE_EVENT_TYPES = [
 export type WeeklyPlanningTraceEventTypeContract =
   typeof WEEKLY_PLANNING_TRACE_EVENT_TYPES[number];
 
-export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-28-v2' as const;
+export const WEEKLY_PLANNING_TRACE_CONTRACT_VERSION = '2026-07-29-v4' as const;
 export const WEEKLY_PLANNING_TRACE_WORKER_REVISION =
-  'weekly-planning-trace-20260729-003' as const;
+  'weekly-planning-trace-20260729-005' as const;
 
 export const WEEKLY_PLANNING_TRACE_HEADERS = {
   contractVersion: 'X-StudyPlanner-Trace-Contract-Version',
@@ -47,10 +52,16 @@ export const WEEKLY_PLANNING_TRACE_HEADERS = {
 export const WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING = {
   defaultPageSize: 20,
   maxPageSize: 20,
-  maxEntryCount: 500,
+  maxEntryCount: 100_000,
   maxPages: 25,
+  maxAutoCollectedEntries: 500,
+  maxResponseBytes: 256 * 1024,
 } as const;
 
+/**
+ * Legacy schema-v1 chunk constants are retained only for read/export compatibility.
+ * New Stable V5 writes use one schema-v2 turn diagnostic and must not create chunks.
+ */
 export const WEEKLY_PLANNING_TRACE_DEBUG_CHUNK_ENCODING =
   'base64-utf8-json-dotted-20' as const;
 
@@ -60,7 +71,11 @@ export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   maxDocumentBytes: 64 * 1024,
   clientDocumentTargetBytes: 48 * 1024,
   clientBatchTargetBytes: 384 * 1024,
+  legacyDebugRawChunkBytes: 2_700,
+  legacyDebugBase64RunCharacters: 20,
+  /** @deprecated Legacy schema-v1 compatibility only. */
   debugRawChunkBytes: 2_700,
+  /** @deprecated Legacy schema-v1 compatibility only. */
   debugBase64RunCharacters: 20,
 } as const;
 
@@ -72,10 +87,9 @@ export function measureWeeklyPlanningTraceJsonBytes(value: unknown): number {
   return getWeeklyPlanningTraceUtf8ByteLength(JSON.stringify(value));
 }
 
-export function encodeWeeklyPlanningTraceDebugChunkBase64(
-  base64: string,
-): string {
-  const width = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.debugBase64RunCharacters;
+/** Legacy schema-v1 export helper. Do not use for new writes. */
+export function encodeWeeklyPlanningTraceDebugChunkBase64(base64: string): string {
+  const width = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.legacyDebugBase64RunCharacters;
   const segments: string[] = [];
   for (let index = 0; index < base64.length; index += width) {
     segments.push(base64.slice(index, index + width));
@@ -83,8 +97,7 @@ export function encodeWeeklyPlanningTraceDebugChunkBase64(
   return segments.join('.');
 }
 
-export function decodeWeeklyPlanningTraceDebugChunkBase64(
-  encoded: string,
-): string {
+/** Legacy schema-v1 export helper. Do not use for new writes. */
+export function decodeWeeklyPlanningTraceDebugChunkBase64(encoded: string): string {
   return encoded.replace(/\./g, '');
 }

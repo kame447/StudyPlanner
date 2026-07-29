@@ -14,7 +14,7 @@ const STABLE_IMPORT_TOKENS = [
   'weeklyPlanningStableV5Persistence',
 ] as const;
 
-const ALLOWED_PRODUCTION_ENTRYPOINTS = new Set([
+const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'weeklyPlanningTurnExecutor.ts',
   'weeklyPlanningOwnedStorage.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
@@ -25,7 +25,9 @@ const ALLOWED_PRODUCTION_ENTRYPOINTS = new Set([
   'application/weeklyPlanningTurnApplication.ts',
   'application/weeklyPlanningTurnSideEffects.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',
+  'trace/weeklyPlanningTraceOutbox.ts',
   'trace/weeklyPlanningTraceRemoteRepository.ts',
+  'trace/weeklyPlanningTurnDiagnosticV2.ts',
 ]);
 
 function sourceFiles(root: string): string[] {
@@ -49,9 +51,9 @@ function isTestSource(relativePath: string): boolean {
 }
 
 describe('Stable V5 production connection boundary', () => {
-  it('allows Stable V5 imports only through the audited runtime entrypoints', () => {
+  it('allows Stable V5 imports only through audited runtime and trace support modules', () => {
     const violations: string[] = [];
-    const connectedEntrypoints = new Set<string>();
+    const connectedImporters = new Set<string>();
     for (const path of sourceFiles(WEEKLY_PLANNING_ROOT)) {
       const relativePath = normalizedRelative(path);
       if (isTestSource(relativePath)) continue;
@@ -59,26 +61,14 @@ describe('Stable V5 production connection boundary', () => {
       const content = readFileSync(path, 'utf8');
       const usedTokens = STABLE_IMPORT_TOKENS.filter((token) => content.includes(token));
       if (usedTokens.length === 0) continue;
-      if (ALLOWED_PRODUCTION_ENTRYPOINTS.has(relativePath)) {
-        connectedEntrypoints.add(relativePath);
+      if (ALLOWED_PRODUCTION_IMPORTERS.has(relativePath)) {
+        connectedImporters.add(relativePath);
         continue;
       }
       usedTokens.forEach((token) => violations.push(`${relativePath}:${token}`));
     }
 
     expect(violations).toEqual([]);
-    expect(connectedEntrypoints).toEqual(new Set([
-      'weeklyPlanningTurnExecutor.ts',
-      'weeklyPlanningOwnedStorage.ts',
-      'application/weeklyPlanningSessionLifecycle.ts',
-      'application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.ts',
-      'application/weeklyPlanningStableV5RuntimeExecutor.ts',
-      'application/weeklyPlanningStableV5RuntimeSession.ts',
-      'application/weeklyPlanningStableV5SessionStorage.ts',
-      'application/weeklyPlanningTurnApplication.ts',
-      'application/weeklyPlanningTurnSideEffects.ts',
-      'trace/weeklyPlanningStableV5TraceRuntime.ts',
-      'trace/weeklyPlanningTraceRemoteRepository.ts',
-    ]));
+    expect(connectedImporters).toEqual(ALLOWED_PRODUCTION_IMPORTERS);
   });
 });

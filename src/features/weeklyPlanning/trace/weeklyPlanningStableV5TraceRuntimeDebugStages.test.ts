@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  decodeWeeklyPlanningTraceDebugChunkBase64,
-} from '../../../../shared/weeklyPlanningTraceContract';
-import {
   setWeeklyPlanningTraceRepositoryForTests,
 } from './weeklyPlanningTraceRepository';
 import {
@@ -13,6 +10,7 @@ import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceRepository,
   WeeklyPlanningTraceSession,
+  WeeklyPlanningTraceTurnDiagnosticEntry,
 } from './weeklyPlanningTraceTypes';
 
 function createRepositoryHarness() {
@@ -41,29 +39,20 @@ function debugEvent(params: {
   severity?: 'debug' | 'info' | 'warn' | 'error';
 }) {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     sequence: params.sequence,
     stage: params.stage,
-    occurredAt: `2026-07-27T00:00:0${params.sequence}.000Z`,
+    occurredAt: `2026-07-29T00:00:${String(params.sequence).padStart(2, '0')}.000Z`,
     severity: params.severity ?? 'debug' as const,
     data: params.data,
   };
 }
 
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(decodeWeeklyPlanningTraceDebugChunkBase64(value));
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function recordPayload(entry: WeeklyPlanningTraceEntry): Record<string, unknown> {
-  if (entry.kind !== 'internal_event' || !entry.payload || typeof entry.payload !== 'object') {
-    throw new Error('expected an internal event payload');
-  }
-  return entry.payload as Record<string, unknown>;
+function diagnostic(entries: WeeklyPlanningTraceEntry[]): WeeklyPlanningTraceTurnDiagnosticEntry {
+  expect(entries).toHaveLength(1);
+  const entry = entries[0];
+  if (entry.kind !== 'turn_diagnostic') throw new Error('expected turn diagnostic');
+  return entry;
 }
 
 beforeEach(() => {
@@ -75,8 +64,8 @@ afterEach(() => {
   setWeeklyPlanningTraceRepositoryForTests(undefined);
 });
 
-describe('Stable V5 trace runtime debug stages', () => {
-  it('stores each stage as an independent entry and uses the actual input graph revision', async () => {
+describe('Stable V5 compact diagnostic projection', () => {
+  it('stores actual AI request, raw response, parsed operations and validation separately', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
 
@@ -84,221 +73,255 @@ describe('Stable V5 trace runtime debug stages', () => {
       userId: 'owner-1',
       conversationId: 'conversation-1',
       requestId: 'conversation-1:request:4',
-      userText: '今回使う期間とは？',
-      assistantMessage: '予定を組む対象の日のことです。',
+      userText: '来週、英語を3時間やりたい',
+      assistantMessage: '条件を整理しました。',
       outcome: 'revision_pending',
-      graphRevision: 4,
-      graphSummary: { taskCount: 4 },
-      compatibilityState: {
-        status: 'revision_pending',
-        __stableV5DebugTrace: {
-          schemaVersion: 1,
-          eventCount: 2,
-          storage: 'stable_v5_debug_stage_entries',
-        },
-      },
       debugTraceEvents: [
         debugEvent({
           sequence: 0,
-          stage: 'runtime_session_context_prepared',
-          data: {
-            graphRevision: 3,
-            runtimeSession: { graph: { revision: 3 } },
-          },
+          stage: 'runtime_configuration_evaluated',
+          data: { provider: 'openai', model: 'gpt-test' },
         }),
         debugEvent({
           sequence: 1,
+          stage: 'semantic_normalizer_prepared',
+          data: { normalizerVersion: 'weekly-planning-semantic-normalizer-v5' },
+        }),
+        debugEvent({
+          sequence: 2,
+          stage: 'semantic_pipeline_input',
+          data: {
+            userText: '来週、英語を3時間やりたい',
+            recentConversation: [{ role: 'assistant', content: '何をしますか？' }],
+            publicStateSummary: { graphRevision: 3, taskCount: 0 },
+          },
+        }),
+        debugEvent({
+          sequence: 3,
           stage: 'semantic_provider_request',
           data: {
             attempt: 'initial',
+            requestBytes: 321,
             request: {
               messages: [
-                { role: 'system', content: 'complete system prompt' },
-                { role: 'user', content: 'complete user prompt' },
+                { role: 'system', content: 'actual system prompt' },
+                { role: 'user', content: 'actual structured user prompt' },
               ],
+              purpose: 'weekly_planning_semantic_normalizer',
+              responseFormat: { type: 'json_schema' },
+              maxCompletionTokens: 3200,
             },
+          },
+        }),
+        debugEvent({
+          sequence: 4,
+          stage: 'semantic_provider_response',
+          data: {
+            attempt: 'initial',
+            rawResponse: '{"planningWindow":{"sourceText":"来週"},"tasks":[{"sourceText":"英語を3時間"}]}',
+          },
+        }),
+        debugEvent({
+          sequence: 5,
+          stage: 'semantic_validation_result',
+          data: {
+            attempt: 'initial',
+            accepted: true,
+            errors: [],
+            parsedDocument: {
+              planningIntent: 'collect_requirements',
+              planningWindow: { sourceText: '来週' },
+              tasks: [{ sourceText: '英語を3時間' }],
+              relations: [],
+              availabilityDeclarations: [],
+              constraintSourceRequests: [],
+              uncertainties: [],
+              corrections: [],
+              decisions: [],
+            },
+          },
+        }),
+        debugEvent({
+          sequence: 6,
+          stage: 'semantic_canonicalization_evaluated',
+          data: {
+            branch: 'semantic_canonicalizer',
+            result: { status: 'accepted' },
+            adoptedOperations: [
+              { operation: 'set_planning_window', sourceText: '来週' },
+              { operation: 'add_task', sourceText: '英語を3時間' },
+            ],
+            rejectionErrors: [],
           },
         }),
       ],
       previewCount: 0,
     });
 
-    expect(harness.writes).toHaveLength(1);
-    const entries = harness.writes[0].entries;
-    expect(entries.map((entry) => entry.sequence)).toEqual(
-      Array.from({ length: entries.length }, (_, index) => index),
-    );
-    const userTurn = entries.find(
-      (entry) => entry.kind === 'turn' && entry.role === 'user',
-    );
-    const started = entries.find(
-      (entry) => entry.kind === 'internal_event'
-        && entry.eventType === 'interpreter_started',
-    );
-    expect(userTurn?.stateRevision).toBe(3);
-    expect(started).toMatchObject({
-      stateRevision: 3,
-      payload: { previousGraphRevision: 3 },
+    const entry = diagnostic(harness.writes[0].entries);
+    expect(entry.aiInterpreter).toMatchObject({
+      provider: 'openai',
+      model: 'gpt-test',
+      promptVersion: 'weekly-planning-semantic-normalizer-v5',
     });
-
-    const stages = entries.filter(
-      (entry) => entry.kind === 'internal_event'
-        && entry.eventType === 'stable_v5_debug_stage',
-    );
-    expect(stages).toHaveLength(2);
-    expect(stages).toMatchObject([
-      {
-        stateRevision: 3,
-        payload: {
-          debugSequence: 0,
-          stage: 'runtime_session_context_prepared',
-          storage: 'inline_json',
-          data: { graphRevision: 3 },
-        },
-      },
-      {
-        stateRevision: 3,
-        payload: {
-          debugSequence: 1,
-          stage: 'semantic_provider_request',
-          storage: 'inline_json',
-          data: {
-            request: {
-              messages: [
-                { role: 'system', content: 'complete system prompt' },
-                { role: 'user', content: 'complete user prompt' },
-              ],
-            },
-          },
-        },
-      },
+    expect(entry.aiInterpreter.input).toMatchObject({
+      userText: '来週、英語を3時間やりたい',
+      conversationContext: [{ role: 'assistant', content: '何をしますか？' }],
+      planningStateSummary: { graphRevision: 3, taskCount: 0 },
+    });
+    expect(entry.aiInterpreter.input.requests[0].messages).toEqual([
+      { role: 'system', content: 'actual system prompt' },
+      { role: 'user', content: 'actual structured user prompt' },
     ]);
-
-    const snapshot = entries.find((entry) => entry.kind === 'state_snapshot');
-    expect(snapshot).toMatchObject({
-      state: {
-        inputGraphRevision: 3,
-        graphRevision: 4,
-        debugTraceSummary: {
-          storage: 'stable_v5_debug_stage_entries',
-          eventCount: 2,
-          persistedEntryCount: 2,
-        },
-      },
+    expect(entry.aiInterpreter.rawResponses[0]).toMatchObject({
+      attempt: 'initial',
+      text: expect.stringContaining('planningWindow'),
+      truncated: false,
     });
-    expect(JSON.stringify(snapshot)).not.toContain('complete system prompt');
+    expect(entry.aiInterpreter.structuredResults).toEqual([
+      expect.objectContaining({ attempt: 'initial', accepted: true, errors: [] }),
+    ]);
+    expect(entry.aiInterpreter.candidateOperations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'planning_window' }),
+      expect.objectContaining({ kind: 'task' }),
+    ]));
   });
 
-  it('chunks and reconstructs an oversized stage without dropping its JSON data', async () => {
+  it('records parser name, matched text, candidate, acceptance and reason', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const rawResponse = 'あ'.repeat(400_000);
+
+    await recordWeeklyPlanningStableV5TurnTrace({
+      userId: 'owner-1',
+      conversationId: 'conversation-parser',
+      requestId: 'conversation-parser:request:1',
+      userText: '3時間です',
+      assistantMessage: '条件を整理しました。',
+      outcome: 'revision_pending',
+      debugTraceEvents: [
+        debugEvent({
+          sequence: 0,
+          stage: 'contextual_question_inference',
+          data: {
+            lastAssistantMessage: '英語を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？',
+            rules: [{
+              code: 'missing_effort_estimate',
+              criterion: 'lastAssistantMessage.includes("合計でどれくらい時間")',
+              matched: true,
+            }],
+            selectedQuestionCode: 'missing_effort_estimate',
+          },
+        }),
+        debugEvent({
+          sequence: 1,
+          stage: 'contextual_answer_binding_evaluated',
+          data: {
+            questionCode: 'missing_effort_estimate',
+            contextualAnswerApplied: true,
+            contextualAnswerResult: {
+              status: 'accepted',
+              diff: [{ operation: 'set_effort_minutes', minutes: 180 }],
+            },
+          },
+        }),
+        debugEvent({
+          sequence: 2,
+          stage: 'semantic_canonicalization_evaluated',
+          data: {
+            branch: 'contextual_answer_binding',
+            result: { status: 'accepted' },
+            adoptedOperations: [{ operation: 'set_effort_minutes', minutes: 180 }],
+            rejectionErrors: [],
+          },
+        }),
+      ],
+      previewCount: 0,
+    });
+
+    const entry = diagnostic(harness.writes[0].entries);
+    expect(entry.parsers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        parser: 'stable_v5_contextual_question',
+        matchedText: '合計でどれくらい時間',
+        accepted: true,
+      }),
+      expect.objectContaining({
+        parser: 'stable_v5_contextual_answer_binding',
+        matchedText: '合計でどれくらい時間',
+        accepted: true,
+      }),
+    ]));
+  });
+
+  it('stores a large raw AI response as head-tail metadata without chunks', async () => {
+    const harness = createRepositoryHarness();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const rawResponse = `HEAD-${'あ'.repeat(10_000)}-TAIL`;
 
     await recordWeeklyPlanningStableV5TurnTrace({
       userId: 'owner-1',
       conversationId: 'conversation-large',
       requestId: 'conversation-large:request:1',
-      userText: '大きい応答を記録する',
+      userText: '応答を記録する',
       assistantMessage: '記録しました。',
       outcome: 'revision_pending',
-      graphRevision: 1,
-      graphSummary: {},
-      debugTraceEvents: [
-        debugEvent({
-          sequence: 0,
-          stage: 'semantic_provider_response',
-          data: { attempt: 'initial', rawResponse },
-        }),
-      ],
+      debugTraceEvents: [debugEvent({
+        sequence: 0,
+        stage: 'semantic_provider_response',
+        data: { attempt: 'initial', rawResponse },
+      })],
       previewCount: 0,
     });
 
-    const stages = harness.writes[0].entries.filter(
-      (entry) => entry.kind === 'internal_event'
-        && entry.eventType === 'stable_v5_debug_stage',
-    );
-    expect(stages.length).toBeGreaterThan(1);
-    expect(stages.every((entry) => recordPayload(entry).storage === 'base64_utf8_json_chunk')).toBe(true);
-    expect(stages.every(
-      (entry) => new TextEncoder().encode(JSON.stringify(entry)).byteLength < 800_000,
-    )).toBe(true);
-
-    const ordered = stages
-      .slice()
-      .sort((left, right) => Number(recordPayload(left).chunkIndex) - Number(recordPayload(right).chunkIndex));
-    const decodedChunks = ordered.map((entry) => decodeBase64(String(recordPayload(entry).dataChunk)));
-    const totalBytes = decodedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const reconstructed = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of decodedChunks) {
-      reconstructed.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const parsed = JSON.parse(new TextDecoder().decode(reconstructed));
-    expect(parsed).toEqual({ attempt: 'initial', rawResponse });
-
-    const snapshot = harness.writes[0].entries.find((entry) => entry.kind === 'state_snapshot');
-    expect(snapshot).toMatchObject({
-      state: {
-        debugTraceSummary: {
-          eventCount: 1,
-          persistedEntryCount: stages.length,
-        },
-      },
-    });
+    const entry = diagnostic(harness.writes[0].entries);
+    const response = entry.aiInterpreter.rawResponses[0];
+    const serialized = JSON.stringify(entry);
+    expect(response.truncated).toBe(true);
+    expect(response.originalBytes).toBe(new TextEncoder().encode(rawResponse).byteLength);
+    expect(response.checksum).toMatch(/^fnv1a32:/);
+    expect(response.text).toContain('HEAD-');
+    expect(response.text).toContain('-TAIL');
+    expect(response.text).not.toBe(rawResponse);
+    expect(serialized).not.toContain('dataChunk');
+    expect(serialized).not.toContain('chunkIndex');
+    expect(serialized).not.toContain('base64_utf8_json_chunk');
   });
 
-  it('records stale execution disposal without a phantom assistant turn or preview', async () => {
+  it('records stale disposal inside the same logical diagnostic record', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
 
     await recordWeeklyPlanningStableV5TurnTrace({
       userId: 'owner-1',
-      conversationId: 'conversation-1',
-      requestId: 'conversation-1:request:5',
+      conversationId: 'conversation-stale',
+      requestId: 'conversation-stale:request:1',
       userText: 'この条件で予定を作って',
       outcome: 'discarded_stale',
-      graphRevision: 3,
-      graphSummary: { taskCount: 4 },
-      compatibilityState: {
-        __discardedExecution: {
-          reason: 'stale',
-          resultMessage: '候補を作りました。',
-          candidateCount: 1,
-        },
-      },
-      debugTraceEvents: [
-        debugEvent({
-          sequence: 0,
-          stage: 'runtime_session_context_prepared',
-          data: { graphRevision: 2 },
-        }),
-        debugEvent({
-          sequence: 1,
-          stage: 'runtime_branch_selected',
-          data: { branch: 'preview_ready' },
-        }),
-      ],
+      debugTraceEvents: [debugEvent({
+        sequence: 0,
+        stage: 'runtime_branch_selected',
+        data: { branch: 'preview_ready' },
+      })],
       previewCount: 0,
       errorCode: 'stale_async_result_discarded',
     });
 
-    const entries = harness.writes[0].entries;
-    expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        kind: 'internal_event',
-        eventType: 'stale_async_result_discarded',
-        severity: 'warn',
-      }),
-    ]));
-    expect(entries.some(
-      (entry) => entry.kind === 'internal_event'
-        && entry.eventType === 'preview_generated',
-    )).toBe(false);
-    expect(entries.filter((entry) => entry.kind === 'turn')).toMatchObject([
-      { role: 'user', content: 'この条件で予定を作って' },
-    ]);
-    expect(harness.writes[0].session.hasPreview).toBe(false);
-    expect(harness.writes[0].session.hasError).toBe(true);
+    const entry = diagnostic(harness.writes[0].entries);
+    expect(entry.assistantOutput.text).toBeNull();
+    expect(entry.assistantOutput.responseSource).toBe('system');
+    expect(entry.diagnostics).toMatchObject({
+      stale: true,
+      previewCount: 0,
+      error: {
+        type: 'stale_async_result_discarded',
+        message: 'stale_async_result_discarded',
+      },
+    });
+    expect(harness.writes[0].session).toMatchObject({
+      entryCount: 1,
+      turnCount: 1,
+      hasPreview: false,
+      hasError: true,
+    });
   });
 });

@@ -13,7 +13,8 @@ function cloneSession(session: WeeklyPlanningTraceSession): WeeklyPlanningTraceS
 function cloneEntry(entry: WeeklyPlanningTraceEntry): WeeklyPlanningTraceEntry {
   if (entry.kind === 'turn') return { ...entry };
   if (entry.kind === 'internal_event') return { ...entry, payload: structuredClone(entry.payload) };
-  return { ...entry, state: structuredClone(entry.state) };
+  if (entry.kind === 'state_snapshot') return { ...entry, state: structuredClone(entry.state) };
+  return structuredClone(entry);
 }
 
 function sortedSessions(sessions: Iterable<WeeklyPlanningTraceSession>): WeeklyPlanningTraceSession[] {

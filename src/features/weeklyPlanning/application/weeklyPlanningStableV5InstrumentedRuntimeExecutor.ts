@@ -16,15 +16,12 @@ import {
 
 function errorDetails(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
-    const errorWithCause = error as Error & { cause?: unknown };
     return {
       name: error.name,
       message: error.message,
-      stack: error.stack ?? null,
-      cause: errorWithCause.cause ?? null,
     };
   }
-  return { value: error };
+  return { name: 'UnknownError', message: String(error) };
 }
 
 function emptyCompatibilityState(): PlanningIntakeState {
@@ -72,6 +69,19 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
   );
 }
 
+function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
+  return {
+    compatibilityStatus: result.state.status,
+    questions: result.state.questions,
+    lastQuestionContext: result.state.lastQuestionContext ?? null,
+    shouldCreateDraft: result.state.shouldCreateDraft,
+    draftGenerationIntent: result.state.draftGenerationIntent,
+    previewCandidateCount: result.draftCandidates.length,
+    failure: result.failure ?? null,
+    assistantMessage: result.message,
+  };
+}
+
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
@@ -81,16 +91,13 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     stage: 'runtime_turn_input',
     data: {
       runtime: 'stable_v5',
-      input,
-      decisionInputs: {
-        previousCompatibilityState: input.previousState,
-        recentMessages: input.messages,
-        selectedDate: input.selectedDate,
-        existingPlans: input.plans,
-        scheduleTemplates: input.scheduleTemplates,
-        timetableTermId: input.timetableTermId ?? null,
-        conversationId: input.conversationId,
-        requestId: input.traceRequestId,
+      userText: input.userText,
+      selectedDate: input.selectedDate,
+      timetableTermId: input.timetableTermId ?? null,
+      inputCounts: {
+        recentMessageCount: input.messages.length,
+        existingPlanCount: input.plans.length,
+        scheduleTemplateCount: input.scheduleTemplates.length,
       },
     },
   });
@@ -102,31 +109,16 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       stage: 'runtime_duplicate_turn_suppressed',
       severity: 'warn',
       data: {
-        conversationId: input.conversationId,
-        requestId: input.traceRequestId,
         criterion: 'runtime graph already contains conversationId:requestId in appliedTurnKeys',
         coreExecutorInvoked: false,
         previewCandidateCount: 0,
-        result,
       },
     });
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
       severity: 'warn',
-      data: {
-        result,
-        finalDecision: {
-          compatibilityStatus: result.state.status,
-          questions: result.state.questions,
-          lastQuestionContext: result.state.lastQuestionContext ?? null,
-          shouldCreateDraft: false,
-          draftGenerationIntent: 'not_requested',
-          previewCandidateCount: 0,
-          failure: null,
-          assistantMessage: result.message,
-        },
-      },
+      data: { finalDecision: finalDecision(result) },
     });
     return result;
   }
@@ -137,19 +129,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
       severity: result.failure ? 'error' : 'info',
-      data: {
-        result,
-        finalDecision: {
-          compatibilityStatus: result.state.status,
-          questions: result.state.questions,
-          lastQuestionContext: result.state.lastQuestionContext ?? null,
-          shouldCreateDraft: result.state.shouldCreateDraft,
-          draftGenerationIntent: result.state.draftGenerationIntent,
-          previewCandidateCount: result.draftCandidates.length,
-          failure: result.failure ?? null,
-          assistantMessage: result.message,
-        },
-      },
+      data: { finalDecision: finalDecision(result) },
     });
     return result;
   } catch (error) {
@@ -157,10 +137,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       requestId: input.traceRequestId,
       stage: 'runtime_turn_threw',
       severity: 'error',
-      data: {
-        input,
-        error: errorDetails(error),
-      },
+      data: { error: errorDetails(error) },
     });
     throw error;
   }

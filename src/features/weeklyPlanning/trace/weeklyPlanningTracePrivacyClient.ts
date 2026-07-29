@@ -1,4 +1,5 @@
 import {
+  WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING,
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
 } from '../../../../shared/weeklyPlanningTraceContract';
@@ -314,6 +315,32 @@ function recordArray(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
+export async function collectWeeklyPlanningTraceAdminEntryPages(
+  fetchPage: (afterSequence: number) => Promise<Record<string, unknown>>,
+): Promise<Record<string, unknown>[]> {
+  const entries: Record<string, unknown>[] = [];
+  let afterSequence = -1;
+
+  for (let pageIndex = 0;
+    pageIndex < WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPages;
+    pageIndex += 1) {
+    const payload = await fetchPage(afterSequence);
+    entries.push(...recordArray(payload.entries));
+
+    if (payload.nextAfterSequence === null) return entries;
+    const nextAfterSequence = payload.nextAfterSequence;
+    if (typeof nextAfterSequence !== 'number'
+      || !Number.isSafeInteger(nextAfterSequence)
+      || nextAfterSequence <= afterSequence
+      || nextAfterSequence >= WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxEntryCount) {
+      throw new Error('週間計画traceのページ送り情報が不正です。');
+    }
+    afterSequence = nextAfterSequence;
+  }
+
+  throw new Error('週間計画traceが取得可能な最大ページ数を超えました。');
+}
+
 function serverHandle(payload: TraceApiEnvelope): WeeklyPlanningTraceServerHandle {
   const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
   const logicalConversationId = typeof payload.logicalConversationId === 'string'
@@ -377,12 +404,19 @@ export function createWeeklyPlanningTraceApiClient(): WeeklyPlanningTraceApiClie
       return { sessions, rawCount: numericCount(payload.rawCount) || sessions.length };
     },
     async listAdminEntries(sessionId) {
-      const payload = await authenticatedTraceRequest(
-        '/weekly-planning-trace/admin/entries',
-        'admin_entries',
-        { method: 'POST', body: JSON.stringify({ sessionId }) },
-      );
-      return recordArray(payload.entries);
+      return collectWeeklyPlanningTraceAdminEntryPages(async (afterSequence) =>
+        authenticatedTraceRequest(
+          '/weekly-planning-trace/admin/entries',
+          'admin_entries',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              sessionId,
+              afterSequence,
+              limit: WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxPageSize,
+            }),
+          },
+        ));
     },
     async archiveAdminSession(sessionId) {
       await authenticatedTraceRequest('/weekly-planning-trace/admin/archive', 'admin_archive', {

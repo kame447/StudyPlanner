@@ -11,6 +11,7 @@ import { isWeeklyPlanningTracePath } from './weeklyPlanningTraceApi';
 export { AiQuotaDurableObject };
 
 const ADMIN_ARCHIVE_PATH = '/weekly-planning-trace/admin/archive';
+const ADMIN_ENTRIES_PATH = '/weekly-planning-trace/admin/entries';
 const ADMIN_ENTRY_PAGE_PATH = '/weekly-planning-trace/admin/entries/page';
 
 function traceHeaders(request: Request, env: Record<string, unknown>): Record<string, string> {
@@ -41,7 +42,7 @@ function traceHeaders(request: Request, env: Record<string, unknown>): Record<st
 export default {
   async fetch(request: Request, env: Record<string, unknown>): Promise<Response> {
     const pathname = new URL(request.url).pathname;
-    const response = pathname === ADMIN_ENTRY_PAGE_PATH
+    const response = pathname === ADMIN_ENTRY_PAGE_PATH || pathname === ADMIN_ENTRIES_PATH
       ? await handleWeeklyPlanningTraceAdminEntriesPage(request, env)
       : pathname === ADMIN_ARCHIVE_PATH
         ? await handleWeeklyPlanningTraceAdminArchive(request, env)

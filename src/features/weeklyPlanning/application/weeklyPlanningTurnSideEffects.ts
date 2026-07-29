@@ -2,9 +2,7 @@ import {
   recordWeeklyPlanningStableV5TurnTrace,
 } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import {
-  WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
   takeWeeklyPlanningStableV5DebugTrace,
-  type WeeklyPlanningStableV5DebugTraceEvent,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type {
   WeeklyPlanningMessage,
@@ -37,12 +35,11 @@ const defaultServices: WeeklyPlanningTurnSideEffectServices = {
   recordTurnTrace: recordWeeklyPlanningStableV5TurnTrace,
 };
 
-function stableV5TraceContext(
+function stableV5PlanningRange(
   conversationId: string,
   services: WeeklyPlanningTurnSideEffectServices,
 ) {
-  const runtime = services.getRuntimeSession(conversationId);
-  const graph = runtime?.graph;
+  const graph = services.getRuntimeSession(conversationId)?.graph;
   const activeFactIds = new Set(
     graph?.factLifecycles
       .filter((entry) => entry.status === 'active')
@@ -50,41 +47,9 @@ function stableV5TraceContext(
   );
   const planningWindow = graph?.planningWindows.find((fact) => activeFactIds.has(fact.id));
   return {
-    graphRevision: graph?.revision ?? 0,
-    graphSummary: {
-      taskCount: graph?.tasks.length ?? 0,
-      workloadCount: graph?.workloads.length ?? 0,
-      availabilityCount: graph?.availabilityDeclarations.length ?? 0,
-      activeFactCount: activeFactIds.size,
-    },
     planningRangeStart: planningWindow?.start ?? undefined,
     planningRangeEnd: planningWindow?.end ?? undefined,
   };
-}
-
-function compatibilityStateWithDebugTraceSummary(
-  compatibilityState: Record<string, unknown> | undefined,
-  events: WeeklyPlanningStableV5DebugTraceEvent[],
-  metadata?: Record<string, unknown>,
-): unknown {
-  if (events.length === 0 && !metadata) return compatibilityState;
-  return {
-    ...(compatibilityState ?? {}),
-    ...(metadata ?? {}),
-    ...(events.length > 0
-      ? {
-          __stableV5DebugTrace: {
-            schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
-            eventCount: events.length,
-            storage: 'stable_v5_debug_stage_entries',
-          },
-        }
-      : {}),
-  };
-}
-
-function takeDebugTrace(requestId: string): WeeklyPlanningStableV5DebugTraceEvent[] {
-  return takeWeeklyPlanningStableV5DebugTrace(requestId);
 }
 
 export function finalizeWeeklyPlanningApplicationTurn(params: {
@@ -123,28 +88,23 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
   result: WeeklyPlanningTurnExecutionResult;
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
-  const trace = stableV5TraceContext(params.pending.conversationId, services);
-  const debugTraceEvents = takeDebugTrace(params.pending.requestId);
-  const compatibilityState = compatibilityStateWithDebugTraceSummary(
-    params.result.state as unknown as Record<string, unknown>,
-    debugTraceEvents,
-  );
+  const range = stableV5PlanningRange(params.pending.conversationId, services);
+  const debugTraceEvents = takeWeeklyPlanningStableV5DebugTrace(params.pending.requestId);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
     userText: params.userText,
     assistantMessage: params.result.message,
-    outcome: params.result.draftCandidates.length > 0
-      ? 'preview_ready'
-      : params.result.state.status,
-    graphRevision: trace.graphRevision,
-    graphSummary: trace.graphSummary,
-    compatibilityState,
+    outcome: params.result.failure?.code
+      ?? (params.result.draftCandidates.length > 0
+        ? 'preview_ready'
+        : params.result.state.status),
     debugTraceEvents,
     previewCount: params.result.draftCandidates.length,
-    planningRangeStart: trace.planningRangeStart,
-    planningRangeEnd: trace.planningRangeEnd,
+    planningRangeStart: range.planningRangeStart,
+    planningRangeEnd: range.planningRangeEnd,
+    errorCode: params.result.failure?.traceCode,
   });
 }
 
@@ -156,33 +116,18 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
   reason: 'stale' | 'commit_rejected';
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
-  const trace = stableV5TraceContext(params.pending.conversationId, services);
-  const debugTraceEvents = takeDebugTrace(params.pending.requestId);
-  const compatibilityState = compatibilityStateWithDebugTraceSummary(
-    params.result.state as unknown as Record<string, unknown>,
-    debugTraceEvents,
-    {
-      __discardedExecution: {
-        reason: params.reason,
-        pending: params.pending,
-        resultMessage: params.result.message,
-        candidateCount: params.result.draftCandidates.length,
-      },
-    },
-  );
+  const range = stableV5PlanningRange(params.pending.conversationId, services);
+  const debugTraceEvents = takeWeeklyPlanningStableV5DebugTrace(params.pending.requestId);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
     userText: params.userText,
     outcome: `discarded_${params.reason}`,
-    graphRevision: trace.graphRevision,
-    graphSummary: trace.graphSummary,
-    compatibilityState,
     debugTraceEvents,
     previewCount: 0,
-    planningRangeStart: trace.planningRangeStart,
-    planningRangeEnd: trace.planningRangeEnd,
+    planningRangeStart: range.planningRangeStart,
+    planningRangeEnd: range.planningRangeEnd,
     errorCode: params.reason === 'stale'
       ? 'stale_async_result_discarded'
       : 'commit_rejected',
@@ -197,9 +142,8 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
   assistantMessage: WeeklyPlanningMessage;
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
-  const trace = stableV5TraceContext(params.pending.conversationId, services);
-  const debugTraceEvents = takeDebugTrace(params.pending.requestId);
-  const compatibilityState = compatibilityStateWithDebugTraceSummary(undefined, debugTraceEvents);
+  const range = stableV5PlanningRange(params.pending.conversationId, services);
+  const debugTraceEvents = takeWeeklyPlanningStableV5DebugTrace(params.pending.requestId);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
@@ -207,13 +151,10 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
     userText: params.userText,
     assistantMessage: params.assistantMessage.content,
     outcome: 'failed',
-    graphRevision: trace.graphRevision,
-    graphSummary: trace.graphSummary,
-    ...(compatibilityState ? { compatibilityState } : {}),
     debugTraceEvents,
     previewCount: 0,
-    planningRangeStart: trace.planningRangeStart,
-    planningRangeEnd: trace.planningRangeEnd,
+    planningRangeStart: range.planningRangeStart,
+    planningRangeEnd: range.planningRangeEnd,
     errorCode: params.error instanceof Error ? params.error.name : 'unknown-error',
   });
 }
