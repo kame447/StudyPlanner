@@ -8,7 +8,7 @@ function event(
   data: unknown,
 ): WeeklyPlanningStableV5DebugTraceEvent {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sequence,
     stage,
     occurredAt: `2026-07-29T00:00:${String(sequence).padStart(2, '0')}.000Z`,
@@ -18,7 +18,7 @@ function event(
 }
 
 describe('createWeeklyPlanningTurnDiagnosticV2', () => {
-  it('records parser precedence, rejected AI candidates and the applied fact diff', () => {
+  it('records parser precedence, scheduler reasoning and the applied fact diff', () => {
     const stateDiff = {
       fromRevision: 3,
       toRevision: 4,
@@ -28,6 +28,7 @@ describe('createWeeklyPlanningTurnDiagnosticV2', () => {
     };
     const events: WeeklyPlanningStableV5DebugTraceEvent[] = [
       event(0, 'runtime_turn_input', {
+        selectedDate: '2026-08-03',
         inputCounts: { existingPlanCount: 500, scheduleTemplateCount: 20 },
       }),
       event(1, 'semantic_validation_result', {
@@ -70,15 +71,32 @@ describe('createWeeklyPlanningTurnDiagnosticV2', () => {
         rejectionErrors: [],
       }),
       event(5, 'runtime_scheduler_dialogue_evaluated', {
-        schedulerInput: {
-          externalSources: [{
-            kind: 'existing_plan',
-            events: [{
-              start: { date: '2026-08-03', time: '18:00' },
-              end: { date: '2026-08-03', time: '20:00' },
-            }],
+        selectedDate: '2026-08-03',
+        timeZone: 'Asia/Tokyo',
+        resolvedHorizon: { startDate: '2026-08-03', endDate: '2026-08-09' },
+        externalSources: [{
+          kind: 'existing_plan',
+          status: 'success',
+          eventCount: 1,
+          events: [{
+            start: { date: '2026-08-03', time: '18:00' },
+            end: { date: '2026-08-03', time: '20:00' },
+          }],
+        }],
+        compilation: {
+          status: 'needs_resolution',
+          issues: [{
+            code: 'missing_effort_estimate',
+            domain: 'work_item',
+            factId: 'task-1',
+            blocking: true,
           }],
         },
+        dialogue: {
+          status: 'ask_question',
+          selectedQuestionCode: 'missing_effort_estimate',
+        },
+        firstBlockingIssueCodeInCompilationOrder: 'missing_effort_estimate',
       }),
     ];
 
@@ -120,7 +138,7 @@ describe('createWeeklyPlanningTurnDiagnosticV2', () => {
     ]));
     expect(diagnostic.decision.finalOperations).toEqual([stateDiff]);
     expect(diagnostic.decision.stateDiff).toEqual(stateDiff);
-    expect(diagnostic.constraintContext).toEqual({
+    expect(diagnostic.constraintContext).toMatchObject({
       existingPlanCount: 500,
       scheduleTemplateCount: 20,
       relevantBusyIntervals: [{
@@ -129,10 +147,32 @@ describe('createWeeklyPlanningTurnDiagnosticV2', () => {
         end: '20:00',
         source: 'existing_plan',
       }],
+      scheduler: {
+        selectedDate: '2026-08-03',
+        timeZone: 'Asia/Tokyo',
+        planningHorizon: { startDate: '2026-08-03', endDate: '2026-08-09' },
+        compilationStatus: 'needs_resolution',
+        dialogueStatus: 'ask_question',
+        selectedQuestionCode: 'missing_effort_estimate',
+        duplicateSuppressed: false,
+      },
     });
+    expect(diagnostic.constraintContext.scheduler?.externalSources).toEqual([{
+      kind: 'existing_plan',
+      status: 'success',
+      failureKind: null,
+      eventCount: 1,
+    }]);
+    expect(diagnostic.constraintContext.scheduler?.issues).toEqual([{
+      code: 'missing_effort_estimate',
+      domain: 'work_item',
+      factId: 'task-1',
+      blocking: true,
+    }]);
+    expect(diagnostic.assistantOutput.responseSource).toBe('rules');
   });
 
-  it('records schema validation rejection without storing stack or full runtime state', () => {
+  it('records schema validation rejection as a system error without stack or full runtime state', () => {
     const diagnostic = createWeeklyPlanningTurnDiagnosticV2({
       id: 'trace-1-00000000',
       sessionId: 'trace-1',
@@ -183,9 +223,10 @@ describe('createWeeklyPlanningTurnDiagnosticV2', () => {
       type: 'ProviderError',
       message: 'invalid response',
     });
+    expect(diagnostic.assistantOutput.responseSource).toBe('system');
     expect(JSON.stringify(diagnostic)).not.toContain('secret stack');
-    expect(JSON.stringify(diagnostic)).not.toContain('plans');
-    expect(JSON.stringify(diagnostic)).not.toContain('scheduleTemplates');
-    expect(JSON.stringify(diagnostic)).not.toContain('userId');
+    expect(JSON.stringify(diagnostic)).not.toContain('"plans"');
+    expect(JSON.stringify(diagnostic)).not.toContain('"scheduleTemplates"');
+    expect(JSON.stringify(diagnostic)).not.toContain('"userId"');
   });
 });
