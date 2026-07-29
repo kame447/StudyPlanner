@@ -9,7 +9,8 @@ Implementation complete / Verification pending
 - Issue #89
 - PR #97
 - Branch: `agent/trace-log-schema-simplification`
-- Implementation head: `0947c3a552709b86923c85b8ecedc69abd047331`
+- Initial implementation head: `0947c3a552709b86923c85b8ecedc69abd047331`
+- Regression remediation head: `5b2a19e94400694a743399875ce535654dffaa17`
 
 ## 目的
 
@@ -23,6 +24,8 @@ Implementation complete / Verification pending
 
 - request-local collectorをstage別allowlist projectionへ変更
 - Graph全体、全予定、全時間割、scheduler/previewの巨大input/resultをcollectorへ保持しない
+- `scheduler_compilation_evaluated`、`runtime_semantic_result_received`、`runtime_graph_staged`も専用projectionへ変更
+- 未登録stageはgeneric cloneせず、stage名と利用可能keyだけを記録
 - 1 event 32KB、1 request 128KB、64 eventsの上限を設定
 - 上限超過を`trace_collector_truncated`とdiagnosticのtruncation metadataへ記録
 
@@ -46,6 +49,8 @@ Implementation complete / Verification pending
 - 上限内は全文保存
 - 上限超過時はhead、tail、original byte count、checksum、`truncated=true`を保存
 - JSON末尾やvalidation失敗位置を確認可能にした
+- provider requestは通常サイズの実送信promptを維持し、上限超過時だけhead-tail化する
+- repair requestはinvalid responseとvalidation errorを別途保持する
 - 旧「1万文字を全文保存」testをhead-tail契約へ更新
 
 ### 4. error・response sourceを誤分類していた
@@ -86,33 +91,66 @@ Implementation complete / Verification pending
 - 成功後にだけsequence、turn count、request IDをcommit
 - outbox overflowをconsole diagnosticsへ明示
 
+## legacy互換
+
+新規schema v2の書込み削減と、schema v1の読取り互換を分離する。
+
+- `approval_item_saved`、`approval_item_failed`、`trace_write_failed`などの既存event allowlistを維持
+- schema v1のBase64 chunk encode/decode helperをread/export互換専用として維持
+- schema v2の新規書込みではBase64 chunkを生成しない
+- in-memory repositoryは`turn_diagnostic`をstate snapshotと誤認せずcloneする
+
 ## 追加・更新test
 
 - bounded stage projectionと巨大Graph非保存
+- heavy runtime stageからGraph・scheduler input全体を除外
+- provider promptの必要箇所とuser promptを保持
 - AI raw responseのhead-tail、original bytes、checksum
 - scheduler source、issue、dialogue、preview情報
 - rules/system response source分類
 - provider failureのsession error反映
 - 48KB document上限とtruncation metadata
 - 500件超の部分export拒否
+- legacy chunk export互換
+- approval item eventとwrite failure event互換
 - write failure後のpersistent outbox再送
 - reload後も同一session、sequence 0から再開
 - stale disposalとduplicate suppression
+- Stable V5 production import boundaryへtrace support moduleを明示登録
+
+## 2026-07-29 ローカル検証結果と是正
+
+利用者環境の全Vitest実行では、変更前headに対して次の結果だった。
+
+- Test Files: 6 failed / 238 passed / 7 skipped
+- Tests: 7 failed / 1696 passed / 19 skipped / 5 todo
+- Vite production build: passed
+
+確認された失敗と是正:
+
+1. preview eventの旧nested expectationをcompact projectionへ更新
+2. provider requestで必要なsystem prompt末尾が失われる問題をhead-tail保持へ修正
+3. trace outbox / diagnostic moduleをaudited Stable V5 importerへ追加
+4. legacy Base64 chunk export helperを復元
+5. approval item event allowlistを復元
+6. `trace_write_failed` event allowlistを復元
+7. heavy runtime stageがGraph全体を保持する経路を専用projectionへ変更
+
+この是正後のfocused/full test、typecheckは再実行待ちであり、成功扱いにはしない。
 
 ## GitHub上で確認できた検証
 
-- Cloudflare Pages build: commit `c2c85ee36c51bdc862c1ec7233403f7810d51acb` で成功
-- GitHub Actions run `#1330`: failure
-- Actions jobはstep/logなしで終了しており、コード由来の失敗内容は取得不能
+- Cloudflare Pages source build: commit `5b2a19e94400694a743399875ce535654dffaa17` で成功
+- GitHub Actionsはrunner jobのstep開始前にfailureとなり、step/logが存在しない
 - GitHub上ではローカルtypecheck、full test、Worker deploy、Production負荷確認を実行していない
 
 ## 未完了の検証gate
 
-- focused trace tests
-- full test suite
+- focused trace tests再実行
+- full test suite再実行
 - `npm run typecheck`
 - `npm run typecheck:build`
-- `npm run build`のローカル再確認
+- `npm run build`再実行
 - Worker deploy
 - 2 turn / 100 turn / 500+ entry / large AI response / many busy intervals / write failure and reload recovery
 - Worker CPU、Firestore read/write、admin request数のProduction確認
