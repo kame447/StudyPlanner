@@ -300,13 +300,7 @@ describe('Stable V5 runtime executor', () => {
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: undefined,
-      messages: [
-        { role: 'user', content: '今日の予定を立ててください' },
-        {
-          role: 'assistant',
-          content: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
-        },
-      ],
+      messages: [],
       userText: '午前中は研究進めるのと、午後は院試の勉強かな',
       selectedDate: '2026-07-30',
       userId: 'owner-1',
@@ -338,11 +332,13 @@ describe('Stable V5 runtime executor', () => {
           stage: 'runtime_branch_selected',
           data: expect.objectContaining({
             branch: 'nothing_to_schedule',
-            recognizedTaskTitles: [
-              '午前：研究を進める',
-              '午後：院試の勉強',
-            ],
-            questionCode: 'missing_schedulable_work',
+            basis: expect.objectContaining({
+              recognizedTaskTitles: [
+                '午前：研究を進める',
+                '午後：院試の勉強',
+              ],
+              questionCode: 'missing_schedulable_work',
+            }),
           }),
         }),
       ]),
