@@ -73,6 +73,10 @@ export const WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS = {
   clientBatchTargetBytes: 384 * 1024,
   legacyDebugRawChunkBytes: 2_700,
   legacyDebugBase64RunCharacters: 20,
+  /** @deprecated Legacy schema-v1 compatibility only. */
+  debugRawChunkBytes: 2_700,
+  /** @deprecated Legacy schema-v1 compatibility only. */
+  debugBase64RunCharacters: 20,
 } as const;
 
 export function getWeeklyPlanningTraceUtf8ByteLength(value: string): number {
