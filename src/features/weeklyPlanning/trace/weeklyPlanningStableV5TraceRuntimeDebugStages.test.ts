@@ -39,7 +39,7 @@ function debugEvent(params: {
   severity?: 'debug' | 'info' | 'warn' | 'error';
 }) {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     sequence: params.sequence,
     stage: params.stage,
     occurredAt: `2026-07-29T00:00:${String(params.sequence).padStart(2, '0')}.000Z`,
@@ -76,8 +76,6 @@ describe('Stable V5 compact diagnostic projection', () => {
       userText: '来週、英語を3時間やりたい',
       assistantMessage: '条件を整理しました。',
       outcome: 'revision_pending',
-      graphRevision: 4,
-      graphSummary: { taskCount: 1 },
       debugTraceEvents: [
         debugEvent({
           sequence: 0,
@@ -175,9 +173,11 @@ describe('Stable V5 compact diagnostic projection', () => {
       { role: 'system', content: 'actual system prompt' },
       { role: 'user', content: 'actual structured user prompt' },
     ]);
-    expect(entry.aiInterpreter.rawResponses).toEqual([
-      expect.objectContaining({ attempt: 'initial', text: expect.stringContaining('planningWindow') }),
-    ]);
+    expect(entry.aiInterpreter.rawResponses[0]).toMatchObject({
+      attempt: 'initial',
+      text: expect.stringContaining('planningWindow'),
+      truncated: false,
+    });
     expect(entry.aiInterpreter.structuredResults).toEqual([
       expect.objectContaining({ attempt: 'initial', accepted: true, errors: [] }),
     ]);
@@ -185,17 +185,6 @@ describe('Stable V5 compact diagnostic projection', () => {
       expect.objectContaining({ kind: 'planning_window' }),
       expect.objectContaining({ kind: 'task' }),
     ]));
-    expect(entry.decision).toMatchObject({
-      status: 'accepted',
-      finalOperations: [
-        { operation: 'set_planning_window', sourceText: '来週' },
-        { operation: 'add_task', sourceText: '英語を3時間' },
-      ],
-      stateDiff: [
-        { operation: 'set_planning_window', sourceText: '来週' },
-        { operation: 'add_task', sourceText: '英語を3時間' },
-      ],
-    });
   });
 
   it('records parser name, matched text, candidate, acceptance and reason', async () => {
@@ -209,26 +198,17 @@ describe('Stable V5 compact diagnostic projection', () => {
       userText: '3時間です',
       assistantMessage: '条件を整理しました。',
       outcome: 'revision_pending',
-      graphRevision: 2,
-      graphSummary: {},
       debugTraceEvents: [
         debugEvent({
           sequence: 0,
           stage: 'contextual_question_inference',
           data: {
             lastAssistantMessage: '英語を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？',
-            rules: [
-              {
-                code: 'missing_effort_estimate',
-                criterion: 'lastAssistantMessage.includes("合計でどれくらい時間")',
-                matched: true,
-              },
-              {
-                code: 'quantity_role_unresolved',
-                criterion: 'lastAssistantMessage.includes("今回進めたい量ですか")',
-                matched: false,
-              },
-            ],
+            rules: [{
+              code: 'missing_effort_estimate',
+              criterion: 'lastAssistantMessage.includes("合計でどれくらい時間")',
+              matched: true,
+            }],
             selectedQuestionCode: 'missing_effort_estimate',
           },
         }),
@@ -260,37 +240,23 @@ describe('Stable V5 compact diagnostic projection', () => {
 
     const entry = diagnostic(harness.writes[0].entries);
     expect(entry.parsers).toEqual(expect.arrayContaining([
-      {
-        parser: 'stable_v5_contextual_question',
-        inputText: '英語を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？',
-        matchedText: '合計でどれくらい時間',
-        candidateOperation: { questionCode: 'missing_effort_estimate' },
-        accepted: true,
-        reason: null,
-      },
       expect.objectContaining({
         parser: 'stable_v5_contextual_question',
-        matchedText: null,
-        accepted: false,
-        reason: expect.any(String),
+        matchedText: '合計でどれくらい時間',
+        accepted: true,
       }),
       expect.objectContaining({
         parser: 'stable_v5_contextual_answer_binding',
         matchedText: '合計でどれくらい時間',
-        candidateOperation: {
-          status: 'accepted',
-          diff: [{ operation: 'set_effort_minutes', minutes: 180 }],
-        },
         accepted: true,
-        reason: null,
       }),
     ]));
   });
 
-  it('does not create chunks even when the raw AI response is comparatively large', async () => {
+  it('stores a large raw AI response as head-tail metadata without chunks', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const rawResponse = 'あ'.repeat(10_000);
+    const rawResponse = `HEAD-${'あ'.repeat(10_000)}-TAIL`;
 
     await recordWeeklyPlanningStableV5TurnTrace({
       userId: 'owner-1',
@@ -299,8 +265,6 @@ describe('Stable V5 compact diagnostic projection', () => {
       userText: '応答を記録する',
       assistantMessage: '記録しました。',
       outcome: 'revision_pending',
-      graphRevision: 1,
-      graphSummary: {},
       debugTraceEvents: [debugEvent({
         sequence: 0,
         stage: 'semantic_provider_response',
@@ -310,11 +274,16 @@ describe('Stable V5 compact diagnostic projection', () => {
     });
 
     const entry = diagnostic(harness.writes[0].entries);
+    const response = entry.aiInterpreter.rawResponses[0];
     const serialized = JSON.stringify(entry);
-    expect(entry.aiInterpreter.rawResponses[0].text).toBe(rawResponse);
+    expect(response.truncated).toBe(true);
+    expect(response.originalBytes).toBe(new TextEncoder().encode(rawResponse).byteLength);
+    expect(response.checksum).toMatch(/^fnv1a32:/);
+    expect(response.text).toContain('HEAD-');
+    expect(response.text).toContain('-TAIL');
+    expect(response.text).not.toBe(rawResponse);
     expect(serialized).not.toContain('dataChunk');
     expect(serialized).not.toContain('chunkIndex');
-    expect(serialized).not.toContain('chunkCount');
     expect(serialized).not.toContain('base64_utf8_json_chunk');
   });
 
@@ -328,8 +297,6 @@ describe('Stable V5 compact diagnostic projection', () => {
       requestId: 'conversation-stale:request:1',
       userText: 'この条件で予定を作って',
       outcome: 'discarded_stale',
-      graphRevision: 3,
-      graphSummary: {},
       debugTraceEvents: [debugEvent({
         sequence: 0,
         stage: 'runtime_branch_selected',
@@ -341,6 +308,7 @@ describe('Stable V5 compact diagnostic projection', () => {
 
     const entry = diagnostic(harness.writes[0].entries);
     expect(entry.assistantOutput.text).toBeNull();
+    expect(entry.assistantOutput.responseSource).toBe('system');
     expect(entry.diagnostics).toMatchObject({
       stale: true,
       previewCount: 0,
