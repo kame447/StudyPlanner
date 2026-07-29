@@ -14,6 +14,7 @@ import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceSession,
   WeeklyPlanningTraceSessionStatus,
+  WeeklyPlanningTraceTurnDiagnosticEntry,
 } from './weeklyPlanningTraceTypes';
 
 interface WeeklyPlanningTraceDebugPageProps {
@@ -43,8 +44,8 @@ const STATUS_OPTIONS: Array<{ value: '' | WeeklyPlanningTraceSessionStatus; labe
 const VIEW_MODES: Array<{ value: TraceViewMode; label: string }> = [
   { value: 'conversation', label: 'Conversation' },
   { value: 'events', label: 'Events' },
-  { value: 'snapshots', label: 'State snapshots' },
-  { value: 'raw', label: 'Raw redacted JSON' },
+  { value: 'snapshots', label: 'State diff' },
+  { value: 'raw', label: 'Raw JSON' },
 ];
 
 const SESSION_LIST_MODES: Array<{ value: SessionListMode; label: string; heading: string }> = [
@@ -61,18 +62,6 @@ function downloadJson(filename: string, value: unknown): void {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function entryTitle(entry: WeeklyPlanningTraceEntry): string {
-  if (entry.kind === 'turn') return `${entry.role} turn`;
-  if (entry.kind === 'internal_event') return entry.eventType;
-  return `snapshot: ${entry.snapshotReason}`;
-}
-
-function entryBody(entry: WeeklyPlanningTraceEntry): unknown {
-  if (entry.kind === 'turn') return entry.content;
-  if (entry.kind === 'internal_event') return entry.payload;
-  return entry.state;
 }
 
 function safeJson(value: unknown): string {
@@ -93,23 +82,65 @@ function planningRangeLabel(session: WeeklyPlanningTraceSession): string | null 
   return `${session.planningRangeStart ?? '未設定'} - ${session.planningRangeEnd ?? '未設定'}`;
 }
 
+function isDiagnostic(
+  entry: WeeklyPlanningTraceEntry,
+): entry is WeeklyPlanningTraceTurnDiagnosticEntry {
+  return entry.kind === 'turn_diagnostic';
+}
+
 function includesStaleEvent(entries: readonly WeeklyPlanningTraceEntry[]): boolean {
-  return entries.some((entry) => entry.kind === 'internal_event' && (
-    entry.eventType === 'stale_async_result_discarded'
-    || entry.eventType === 'preview_rejected_stale'
-    || (entry.eventType === 'preview_gate_evaluated'
-      && safeJson(entry.payload).toLowerCase().includes('stale'))
-  ));
+  return entries.some((entry) => isDiagnostic(entry)
+    ? entry.diagnostics.stale
+    : entry.kind === 'internal_event' && (
+      entry.eventType === 'stale_async_result_discarded'
+      || entry.eventType === 'preview_rejected_stale'
+      || (entry.eventType === 'preview_gate_evaluated'
+        && safeJson(entry.payload).toLowerCase().includes('stale'))
+    ));
 }
 
 function entriesForMode(
   entries: readonly WeeklyPlanningTraceEntry[],
   mode: TraceViewMode,
 ): WeeklyPlanningTraceEntry[] {
-  if (mode === 'conversation') return entries.filter((entry) => entry.kind === 'turn');
-  if (mode === 'events') return entries.filter((entry) => entry.kind === 'internal_event');
-  if (mode === 'snapshots') return entries.filter((entry) => entry.kind === 'state_snapshot');
+  if (mode === 'conversation') {
+    return entries.filter((entry) => entry.kind === 'turn' || isDiagnostic(entry));
+  }
+  if (mode === 'events') {
+    return entries.filter((entry) => entry.kind === 'internal_event' || isDiagnostic(entry));
+  }
+  if (mode === 'snapshots') {
+    return entries.filter((entry) => entry.kind === 'state_snapshot' || isDiagnostic(entry));
+  }
   return [];
+}
+
+function entryTitle(entry: WeeklyPlanningTraceEntry, mode: TraceViewMode): string {
+  if (isDiagnostic(entry)) {
+    if (mode === 'conversation') return `turn ${entry.turnIndex} conversation`;
+    if (mode === 'snapshots') return `turn ${entry.turnIndex} state diff`;
+    return `turn ${entry.turnIndex} AI / parser / decision`;
+  }
+  if (entry.kind === 'turn') return `${entry.role} turn`;
+  if (entry.kind === 'internal_event') return entry.eventType;
+  return `snapshot: ${entry.snapshotReason}`;
+}
+
+function diagnosticEventBody(entry: WeeklyPlanningTraceTurnDiagnosticEntry): unknown {
+  return {
+    aiInterpreter: entry.aiInterpreter,
+    parsers: entry.parsers,
+    decision: entry.decision,
+    constraintContext: entry.constraintContext,
+    diagnostics: entry.diagnostics,
+  };
+}
+
+function legacyEntryBody(entry: WeeklyPlanningTraceEntry): unknown {
+  if (entry.kind === 'turn') return entry.content;
+  if (entry.kind === 'internal_event') return entry.payload;
+  if (entry.kind === 'state_snapshot') return entry.state;
+  return entry;
 }
 
 function sessionMatchesListMode(
@@ -188,14 +219,11 @@ export function WeeklyPlanningTraceDebugPage({
     void loadSessions();
   }, []);
 
-  async function loadEntries(
-    session: WeeklyPlanningTraceSession,
-  ): Promise<WeeklyPlanningTraceEntry[]> {
+  async function loadEntries(session: WeeklyPlanningTraceSession): Promise<WeeklyPlanningTraceEntry[]> {
     const cached = entriesBySession[session.id];
     if (cached) return cached;
     setLoadingEntriesSessionId(session.id);
     setEntryErrorsBySession((current) => {
-      if (!(session.id in current)) return current;
       const next = { ...current };
       delete next[session.id];
       return next;
@@ -226,21 +254,6 @@ export function WeeklyPlanningTraceDebugPage({
     void loadEntries(session).catch(() => undefined);
   }
 
-  function selectSessionListMode(mode: SessionListMode): void {
-    setSessionListMode(mode);
-    setExpandedSessionId('');
-  }
-
-  async function enableStaleFilter(checked: boolean): Promise<void> {
-    setOnlyStale(checked);
-    if (!checked) return;
-    try {
-      await Promise.all(sessions.map((session) => loadEntries(session)));
-    } catch {
-      // loadEntries already exposes a finite UI error.
-    }
-  }
-
   async function exportSession(session: WeeklyPlanningTraceSession): Promise<void> {
     const archiveAfterExport = !hasArchivedWeeklyPlanningTraceActivity(session);
     setExportingSessionId(session.id);
@@ -252,7 +265,6 @@ export function WeeklyPlanningTraceDebugPage({
         createWeeklyPlanningTraceExportBundle(session, entries),
       );
       if (!archiveAfterExport) return;
-
       await getWeeklyPlanningTraceRepository().archiveSessionForAdmin(
         session.id,
         new Date().toISOString(),
@@ -263,21 +275,20 @@ export function WeeklyPlanningTraceDebugPage({
         delete next[session.id];
         return next;
       });
-      setEntryErrorsBySession((current) => {
-        const next = { ...current };
-        delete next[session.id];
-        return next;
-      });
-      setExpandedSessionId((current) => current === session.id ? '' : current);
+      setExpandedSessionId('');
     } catch (exportError) {
-      setError(
-        exportError instanceof Error
-          ? exportError.message
-          : 'exportまたはアーカイブに失敗しました。',
-      );
+      setError(exportError instanceof Error
+        ? exportError.message
+        : 'exportまたはアーカイブに失敗しました。');
     } finally {
       setExportingSessionId((current) => current === session.id ? '' : current);
     }
+  }
+
+  async function enableStaleFilter(checked: boolean): Promise<void> {
+    setOnlyStale(checked);
+    if (!checked) return;
+    await Promise.all(sessions.map((session) => loadEntries(session))).catch(() => undefined);
   }
 
   const archivedCount = useMemo(
@@ -325,20 +336,10 @@ export function WeeklyPlanningTraceDebugPage({
 
       <header className="panel">
         <h1>週間計画ログ</h1>
-        <p>
-          未export、アーカイブ済み、empty sessionを切り替えて確認できます。
-          アーカイブ済みsessionは削除されず、保持期限内であれば再表示・再エクスポートできます。
-        </p>
-        <div className="button-row">
-          <button
-            className="ghost-button"
-            type="button"
-            disabled={loadingSessions}
-            onClick={() => { void loadSessions(); }}
-          >
-            {loadingSessions ? '読込中...' : '再読込'}
-          </button>
-        </div>
+        <p>schema v2は1ユーザーターンを1件の診断レコードとして表示します。旧sessionはlegacy traceとして読み取り専用で表示します。</p>
+        <button className="ghost-button" type="button" disabled={loadingSessions} onClick={() => { void loadSessions(); }}>
+          {loadingSessions ? '読込中...' : '再読込'}
+        </button>
       </header>
 
       {error ? <div className="app-notice error">取得失敗: {error}</div> : null}
@@ -353,12 +354,10 @@ export function WeeklyPlanningTraceDebugPage({
         </p>
         <div className="segmented-control" aria-label="session表示区分">
           {SESSION_LIST_MODES.map((mode) => (
-            <button
-              key={mode.value}
-              className={sessionListMode === mode.value ? 'segment active' : 'segment'}
-              type="button"
-              onClick={() => selectSessionListMode(mode.value)}
-            >
+            <button key={mode.value} className={sessionListMode === mode.value ? 'segment active' : 'segment'} type="button" onClick={() => {
+              setSessionListMode(mode.value);
+              setExpandedSessionId('');
+            }}>
               {mode.label}
             </button>
           ))}
@@ -370,33 +369,16 @@ export function WeeklyPlanningTraceDebugPage({
         <div className="field-row">
           <label className="field">
             <span>User／conversation</span>
-            <input
-              value={userFilter}
-              onChange={(event) => setUserFilter(event.target.value)}
-              placeholder="user IDまたはconversation ID"
-            />
+            <input value={userFilter} onChange={(event) => setUserFilter(event.target.value)} placeholder="subject aliasまたはconversation ID" />
           </label>
           <label className="field">
             <span>Status</span>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(
-                event.target.value as '' | WeeklyPlanningTraceSessionStatus,
-              )}
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value || 'all'} value={option.value}>{option.label}</option>
-              ))}
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as '' | WeeklyPlanningTraceSessionStatus)}>
+              {STATUS_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
             </select>
           </label>
-          <label className="field">
-            <span>From</span>
-            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>To</span>
-            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          </label>
+          <label className="field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+          <label className="field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         </div>
         <div className="field-row">
           <label><input type="checkbox" checked={onlyErrors} onChange={(event) => setOnlyErrors(event.target.checked)} /> errorあり</label>
@@ -413,18 +395,7 @@ export function WeeklyPlanningTraceDebugPage({
           <span>{visibleSessions.length}件</span>
         </div>
 
-        {loadingSessions && sessions.length === 0 ? (
-          <div className="panel admin-state-card">
-            <strong>読み込み中</strong>
-            <p>週間計画sessionを取得しています。</p>
-          </div>
-        ) : null}
-
-        {!error && !loadingSessions && visibleSessions.length === 0 ? (
-          <div className="panel admin-state-card">
-            <strong>条件に一致するsessionはありません</strong>
-          </div>
-        ) : null}
+        {!error && !loadingSessions && visibleSessions.length === 0 ? <div className="panel admin-state-card"><strong>条件に一致するsessionはありません</strong></div> : null}
 
         {visibleSessions.map((session) => {
           const expanded = expandedSessionId === session.id;
@@ -432,106 +403,62 @@ export function WeeklyPlanningTraceDebugPage({
           const entryError = entryErrorsBySession[session.id] ?? '';
           const loadingEntries = loadingEntriesSessionId === session.id;
           const exporting = exportingSessionId === session.id;
-          const rangeLabel = planningRangeLabel(session);
           const visibleEntries = entriesForMode(entries, viewMode);
-
           return (
             <article className="panel trace-session-panel" key={session.id}>
-              <button
-                className="trace-session-summary"
-                type="button"
-                aria-expanded={expanded}
-                onClick={() => toggleSession(session)}
-              >
+              <button className="trace-session-summary" type="button" aria-expanded={expanded} onClick={() => toggleSession(session)}>
                 <span className="trace-session-summary-main">
                   <strong>{formattedDate(session.lastActivityAt)}</strong>
-                  <span>
-                    {session.status} / turns {session.turnCount} / entries {session.entryCount}
-                  </span>
+                  <span>{session.status} / logical turns {session.turnCount} / entries {session.entryCount} / schema {session.schemaVersion}</span>
                   <code>{session.userId}</code>
                   <small>conversation {session.logicalConversationId}</small>
-                  {rangeLabel ? <small>計画範囲 {rangeLabel}</small> : null}
-                  {session.archivedAt
-                    ? <small>最終archive {formattedDate(session.archivedAt)}</small>
-                    : null}
+                  {planningRangeLabel(session) ? <small>計画範囲 {planningRangeLabel(session)}</small> : null}
                 </span>
-                {expanded
-                  ? <ChevronUp aria-hidden="true" size={20} strokeWidth={2} />
-                  : <ChevronDown aria-hidden="true" size={20} strokeWidth={2} />}
+                {expanded ? <ChevronUp aria-hidden="true" size={20} strokeWidth={2} /> : <ChevronDown aria-hidden="true" size={20} strokeWidth={2} />}
               </button>
 
               {expanded ? (
                 <div className="trace-session-detail">
                   <div className="trace-session-actions">
-                    <span>
-                      開始 {formattedDate(session.startedAt)}
-                      {session.archivedAt
-                        ? ` / 最終archive ${formattedDate(session.archivedAt)}`
-                        : ''}
-                    </span>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={exporting || loadingEntries}
-                      onClick={() => { void exportSession(session); }}
-                    >
+                    <span>開始 {formattedDate(session.startedAt)}</span>
+                    <button className="primary-button" type="button" disabled={exporting || loadingEntries} onClick={() => { void exportSession(session); }}>
                       {exportButtonLabel(session, exporting)}
                     </button>
                   </div>
-
                   <div className="segmented-control" aria-label="trace表示モード">
                     {VIEW_MODES.map((mode) => (
-                      <button
-                        key={mode.value}
-                        className={viewMode === mode.value ? 'segment active' : 'segment'}
-                        type="button"
-                        onClick={() => setViewMode(mode.value)}
-                      >
-                        {mode.label}
-                      </button>
+                      <button key={mode.value} className={viewMode === mode.value ? 'segment active' : 'segment'} type="button" onClick={() => setViewMode(mode.value)}>{mode.label}</button>
                     ))}
                   </div>
-
                   {loadingEntries ? <p>timelineを読み込んでいます...</p> : null}
-                  {entryError ? (
-                    <div className="app-notice error">
-                      entry取得失敗: {entryError}
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        disabled={loadingEntries}
-                        onClick={() => { void loadEntries(session).catch(() => undefined); }}
-                      >
-                        再試行
-                      </button>
-                    </div>
-                  ) : null}
-                  {!loadingEntries && !entryError && entries.length === 0
-                    ? <p>entryはありません。</p>
-                    : null}
-
-                  {!entryError && (viewMode === 'raw' && !loadingEntries ? (
-                    <pre className="trace-entry">
-                      {safeJson(createWeeklyPlanningTraceExportBundle(session, entries))}
-                    </pre>
+                  {entryError ? <div className="app-notice error">entry取得失敗: {entryError}</div> : null}
+                  {!loadingEntries && !entryError && entries.length === 0 ? <p>entryはありません。</p> : null}
+                  {!entryError && viewMode === 'raw' && !loadingEntries ? (
+                    <pre className="trace-entry">{safeJson(createWeeklyPlanningTraceExportBundle(session, entries))}</pre>
                   ) : (
                     <div className="weekly-planning-trace-entry-list">
                       {visibleEntries.map((entry) => (
-                        <article className={`trace-entry trace-entry--${entry.kind}`} key={entry.id}>
-                          <header>
-                            <strong>#{entry.sequence} {entryTitle(entry)}</strong>
-                            <span>{formattedDate(entry.occurredAt)}</span>
-                          </header>
-                          <small>
-                            revision {entry.stateRevision ?? '-'} / request {entry.requestId ?? '-'}
-                          </small>
-                          {entry.kind === 'turn'
-                            ? <p>{entry.content}</p>
-                            : <pre>{safeJson(entryBody(entry))}</pre>}
+                        <article className={`trace-entry trace-entry--${entry.kind}`} key={`${entry.id}:${viewMode}`}>
+                          <header><strong>#{entry.sequence} {entryTitle(entry, viewMode)}</strong><span>{formattedDate(entry.occurredAt)}</span></header>
+                          <small>request {entry.requestId ?? '-'}</small>
+                          {isDiagnostic(entry) && viewMode === 'conversation' ? (
+                            <>
+                              <p><strong>user:</strong> {entry.userInput.text}</p>
+                              <p><strong>assistant:</strong> {entry.assistantOutput.text ?? '(no assistant output)'}</p>
+                            </>
+                          ) : isDiagnostic(entry) && viewMode === 'events' ? (
+                            <pre>{safeJson(diagnosticEventBody(entry))}</pre>
+                          ) : isDiagnostic(entry) && viewMode === 'snapshots' ? (
+                            <pre>{safeJson(entry.decision.stateDiff)}</pre>
+                          ) : entry.kind === 'turn' ? (
+                            <p>{entry.content}</p>
+                          ) : (
+                            <pre>{safeJson(legacyEntryBody(entry))}</pre>
+                          )}
                         </article>
                       ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               ) : null}
             </article>
