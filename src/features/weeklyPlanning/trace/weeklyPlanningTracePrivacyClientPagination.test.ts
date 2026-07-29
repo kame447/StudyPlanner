@@ -26,7 +26,7 @@ describe('collectWeeklyPlanningTraceAdminEntryPages', () => {
 
     expect(entries).toHaveLength(42);
     expect(entries[0]?.sequence).toBe(0);
-    expect(entries.at(-1)?.sequence).toBe(41);
+    expect(entries[entries.length - 1]?.sequence).toBe(41);
     expect(fetchPage.mock.calls.map(([cursor]) => cursor)).toEqual([-1, 19, 39]);
   });
 
