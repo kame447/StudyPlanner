@@ -1,7 +1,7 @@
 const baseUrl = process.env.TRACE_BASE_URL?.trim().replace(/\/$/, '');
 const idToken = process.env.TRACE_ID_TOKEN?.trim();
 const contractVersion = '2026-07-28-v2';
-const expectedWorkerRevision = 'weekly-planning-trace-20260729-002';
+const expectedWorkerRevision = 'weekly-planning-trace-20260729-003';
 const contractHeader = 'X-StudyPlanner-Trace-Contract-Version';
 const correlationHeader = 'X-StudyPlanner-Trace-Correlation-Id';
 const workerRevisionHeader = 'X-StudyPlanner-Trace-Worker-Revision';
