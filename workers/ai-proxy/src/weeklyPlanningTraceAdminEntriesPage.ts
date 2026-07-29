@@ -2,8 +2,8 @@ import {
   WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING,
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
+  measureWeeklyPlanningTraceJsonBytes,
 } from '../../../shared/weeklyPlanningTraceContract';
-import { safeWeeklyPlanningTraceDocumentsForAdmin } from './weeklyPlanningTraceApi';
 import {
   WeeklyPlanningTraceFirestoreClient,
   type WeeklyPlanningTraceFirestoreEnv,
@@ -56,6 +56,18 @@ export interface WeeklyPlanningTraceAdminEntryPage {
   totalEntryCount: number;
   nextAfterSequence: number | null;
   missingSequenceCount: number;
+  responseBytes: number;
+  requestedStartSequence: number;
+  requestedEndSequence: number;
+}
+
+interface EntryRequestDiagnostics {
+  sessionId: string | null;
+  afterSequence: number | null;
+  requestedStartSequence: number | null;
+  requestedEndSequence: number | null;
+  pageSize: number | null;
+  responseBytes: number | null;
 }
 
 function allowedOrigins(env: WeeklyPlanningTraceAdminEntriesPageEnv): Set<string> {
@@ -211,6 +223,38 @@ function normalizedEntry(
   return { ...entry, id: expectedId, sessionId, sequence };
 }
 
+function documentForAdmin(document: Record<string, unknown>): Record<string, unknown> {
+  const {
+    traceSubjectToken,
+    traceSubjectEpoch,
+    actorToken,
+    actorEpoch,
+    ...safe
+  } = document;
+  const subjectAlias = typeof traceSubjectToken === 'string'
+    ? `subject-${traceSubjectToken.slice(-12)}`
+    : undefined;
+  return subjectAlias ? { ...safe, subjectAlias } : safe;
+}
+
+function boundedEntries(
+  entries: Record<string, unknown>[],
+): { entries: Record<string, unknown>[]; responseBytes: number } {
+  const selected: Record<string, unknown>[] = [];
+  let responseBytes = measureWeeklyPlanningTraceJsonBytes([]);
+  for (const entry of entries) {
+    const candidate = [...selected, documentForAdmin(entry)];
+    const candidateBytes = measureWeeklyPlanningTraceJsonBytes(candidate);
+    if (candidateBytes > WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxResponseBytes) break;
+    selected.push(candidate[candidate.length - 1]);
+    responseBytes = candidateBytes;
+  }
+  if (entries.length > 0 && selected.length === 0) {
+    throw new Error('trace admin entry page exceeds response byte limit');
+  }
+  return { entries: selected, responseBytes };
+}
+
 export async function loadWeeklyPlanningTraceAdminEntryPage(
   firestore: AdminEntryReader,
   sessionId: string,
@@ -234,12 +278,20 @@ export async function loadWeeklyPlanningTraceAdminEntryPage(
     sessionId,
     sequence,
   )));
-  const entries = loaded.filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  const present = loaded.filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  const bounded = boundedEntries(present);
+  const lastReturnedSequence = bounded.entries.length > 0
+    ? Number(bounded.entries[bounded.entries.length - 1].sequence)
+    : endExclusive - 1;
+  const hasMore = lastReturnedSequence + 1 < totalEntryCount;
   return {
-    entries,
+    entries: bounded.entries,
     totalEntryCount,
-    nextAfterSequence: endExclusive < totalEntryCount ? endExclusive - 1 : null,
-    missingSequenceCount: loaded.length - entries.length,
+    nextAfterSequence: hasMore ? lastReturnedSequence : null,
+    missingSequenceCount: loaded.length - present.length,
+    responseBytes: bounded.responseBytes,
+    requestedStartSequence: startSequence,
+    requestedEndSequence: Math.max(startSequence - 1, endExclusive - 1),
   };
 }
 
@@ -268,6 +320,11 @@ async function appendAccessAudit(
   });
 }
 
+function errorType(caught: unknown): string {
+  if (caught instanceof Error && caught.name) return caught.name;
+  return typeof caught;
+}
+
 export async function handleWeeklyPlanningTraceAdminEntriesPage(
   request: Request,
   rawEnv: Record<string, unknown>,
@@ -276,6 +333,14 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
   const context: TraceRequestContext = {
     correlationId: correlationId(request),
     workerRevision: workerRevision(env),
+  };
+  const diagnostics: EntryRequestDiagnostics = {
+    sessionId: null,
+    afterSequence: null,
+    requestedStartSequence: null,
+    requestedEndSequence: null,
+    pageSize: null,
+    responseBytes: null,
   };
   const origin = corsOrigin(request, env);
   if (origin === '') {
@@ -306,6 +371,7 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
 
     const body = await request.json() as Record<string, unknown>;
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+    diagnostics.sessionId = sessionId || null;
     if (!isWeeklyPlanningTraceSessionId(sessionId)
       && !isWeeklyPlanningLegacyTraceSessionHandle(sessionId)) {
       return errorResponse(request, env, context, 400,
@@ -318,11 +384,14 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
         && body.afterSequence >= -1
         ? body.afterSequence
         : Number.NaN;
+    diagnostics.afterSequence = Number.isSafeInteger(afterSequence) ? afterSequence : null;
     if (!Number.isSafeInteger(afterSequence)
       || afterSequence >= WEEKLY_PLANNING_TRACE_ADMIN_ENTRY_PAGING.maxEntryCount) {
       return errorResponse(request, env, context, 400,
         'afterSequence is invalid', 'trace_admin_entry_cursor_invalid', 'validation');
     }
+    const requestedPageSize = pageLimit(body.limit);
+    diagnostics.pageSize = requestedPageSize;
 
     const target = await firestore.getDocument(TRACE_SESSIONS, sessionId);
     if (!target) {
@@ -335,20 +404,36 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
       sessionId,
       target,
       afterSequence,
-      pageLimit(body.limit),
+      requestedPageSize,
     );
+    diagnostics.requestedStartSequence = page.requestedStartSequence;
+    diagnostics.requestedEndSequence = page.requestedEndSequence;
+    diagnostics.responseBytes = page.responseBytes;
     return jsonResponse(request, env, context, 200, {
       ok: true,
-      entries: safeWeeklyPlanningTraceDocumentsForAdmin(page.entries),
+      entries: page.entries,
       totalEntryCount: page.totalEntryCount,
       nextAfterSequence: page.nextAfterSequence,
       missingSequenceCount: page.missingSequenceCount,
+      responseBytes: page.responseBytes,
     });
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : 'trace page request failed';
     console.error('[Weekly Planning Trace] admin entry page failed', {
       endpoint: ENDPOINT,
+      sessionId: diagnostics.sessionId,
+      afterSequence: diagnostics.afterSequence,
+      requestedRange: diagnostics.requestedStartSequence === null
+        ? null
+        : {
+            start: diagnostics.requestedStartSequence,
+            end: diagnostics.requestedEndSequence,
+          },
+      pageSize: diagnostics.pageSize,
+      responseBytes: diagnostics.responseBytes,
       correlationId: context.correlationId,
+      workerRevision: context.workerRevision,
+      errorType: errorType(caught),
       message,
     });
     if (message.includes('Firestore')) {
@@ -356,7 +441,8 @@ export async function handleWeeklyPlanningTraceAdminEntriesPage(
         '週間計画traceの保存先から取得できませんでした。',
         'trace_storage_unavailable', 'storage', true);
     }
-    if (message.includes('invalid') || message.includes('required')) {
+    if (message.includes('invalid') || message.includes('required')
+      || message.includes('byte limit')) {
       return errorResponse(request, env, context, 400,
         message, 'trace_validation_failed', 'validation');
     }
