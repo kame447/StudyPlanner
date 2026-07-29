@@ -217,15 +217,22 @@ describe('weeklyPlanningTurnSideEffects', () => {
         message: 'AIに接続できませんでした。',
         draftCandidates: [],
         failure: {
-          code: 'ai_provider_error',
+          code: 'stable_v5_provider_failure',
+          userMessage: 'AIに接続できませんでした。',
           traceCode: 'weekly_planning_provider_failure',
+          diagnostics: {
+            attemptCount: 1,
+            repairAttempted: false,
+            validationErrorCategories: [],
+            providerErrorCategory: 'provider_error',
+          },
         },
       },
     }, services);
 
     expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
       assistantMessage: 'AIに接続できませんでした。',
-      outcome: 'ai_provider_error',
+      outcome: 'stable_v5_provider_failure',
       errorCode: 'weekly_planning_provider_failure',
     }));
   });
