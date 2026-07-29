@@ -74,7 +74,10 @@ const diagnostic: WeeklyPlanningTraceTurnDiagnosticEntry = {
   }],
   decision: {
     status: 'accepted',
-    acceptedOperations: [{ operation: 'set_planning_window' }],
+    acceptedOperations: [{
+      source: 'ai',
+      operation: { operation: 'set_planning_window' },
+    }],
     rejectedOperations: [],
     finalOperations: [{ operation: 'set_planning_window' }],
     precedence: 'semantic_canonicalizer',
@@ -122,5 +125,26 @@ describe('weekly planning trace schema v2 export', () => {
     ]);
     expect(JSON.stringify(bundle)).not.toContain('dataChunk');
     expect(JSON.stringify(bundle)).not.toContain('base64_utf8_json_chunk');
+  });
+
+  it('keeps raw user, AI request and AI response text in the v2 JSON payload', () => {
+    const rawDiagnostic = structuredClone(diagnostic);
+    rawDiagnostic.userInput.text = 'person@example.comへ連絡する';
+    rawDiagnostic.aiInterpreter.input.userText = 'person@example.comへ連絡する';
+    rawDiagnostic.aiInterpreter.input.requests[0].messages = [{
+      role: 'user',
+      content: 'raw prompt 123e4567-e89b-52d3-a456-426614174000',
+    }];
+    rawDiagnostic.aiInterpreter.rawResponses = [{
+      attempt: 'initial',
+      text: 'raw response person@example.com',
+    }];
+
+    const bundle = createWeeklyPlanningTraceExportBundle(session, [rawDiagnostic]);
+    const output = JSON.stringify(bundle.entries);
+
+    expect(output).toContain('person@example.comへ連絡する');
+    expect(output).toContain('raw prompt 123e4567-e89b-52d3-a456-426614174000');
+    expect(output).toContain('raw response person@example.com');
   });
 });
