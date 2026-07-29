@@ -45,6 +45,106 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+function priorityDocument(params: {
+  invalidTemporalConstraint: boolean;
+}): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'window-today',
+      kind: 'absolute',
+      value: '2026-07-30',
+      start: '2026-07-30',
+      end: '2026-07-30',
+      sourceText: '今日中に',
+    },
+    tasks: [
+      {
+        localId: 'task-research',
+        category: 'study',
+        title: '卒業研究',
+        study: {
+          purpose: 'research',
+          contextLabel: '卒業研究',
+          components: [],
+        },
+        workloads: [
+          {
+            localId: 'workload-research',
+            quantityRole: 'target',
+            amount: 4,
+            unitCode: 'hour',
+            unitLabel: '時間',
+            rangeStart: null,
+            rangeEnd: null,
+            perOccurrence: false,
+            periodExpression: null,
+            sourceText: '卒業研究を4時間',
+          },
+        ],
+        effortEstimates: [],
+        temporalConstraints: params.invalidTemporalConstraint
+          ? [
+              {
+                localId: 'constraint-research-priority',
+                targetLocalId: 'task-research',
+                kind: 'earliest_start',
+                constraintLevel: 'unknown',
+                dateExpression: 'today',
+                namedTimePeriod: 'morning',
+                startTime: null,
+                endTime: null,
+                precision: 'unspecified',
+                sourceText: '優先順位は卒業研究',
+              },
+            ]
+          : [],
+        recurrence: [],
+        sourceText: '卒業研究を4時間',
+      },
+      {
+        localId: 'task-planner',
+        category: 'non_study',
+        title: 'StudyPlannerのログ確認',
+        study: null,
+        workloads: [
+          {
+            localId: 'workload-planner',
+            quantityRole: 'target',
+            amount: 2,
+            unitCode: 'hour',
+            unitLabel: '時間',
+            rangeStart: null,
+            rangeEnd: null,
+            perOccurrence: false,
+            periodExpression: null,
+            sourceText: 'StudyPlannerのログ確認を2時間',
+          },
+        ],
+        effortEstimates: [],
+        temporalConstraints: [],
+        recurrence: [],
+        sourceText: 'StudyPlannerのログ確認を2時間',
+      },
+    ],
+    relations: [
+      {
+        localId: 'priority-research-planner',
+        kind: 'priority_over',
+        fromLocalId: 'task-research',
+        toLocalId: 'task-planner',
+        sourceText: '優先順位は卒業研究、StudyPlannerの順',
+      },
+    ],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
 function client(sequence: Array<string | Error>): {
   value: OpenAiCompatibleClient;
   calls: Array<Record<string, unknown>>;
@@ -106,6 +206,9 @@ describe('Stable V5 semantic normalizer', () => {
     expect(system).toContain('Do not collapse gaps into a continuous date range');
     expect(system).toContain('水曜と金曜から日曜 becomes days [wed, fri, sat, sun]');
     expect(system).toContain('one recurrence fact');
+    expect(system).toContain('Priority and ordering statements describe task relations only');
+    expect(system).toContain('Never invent a clock time from priority');
+    expect(system).toContain('namedTimePeriod must be null');
   });
 
   it('repairs at most once and never falls back to a parser', async () => {
@@ -125,6 +228,40 @@ describe('Stable V5 semantic normalizer', () => {
     const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
     expect(repairInstruction).toContain('Stable V5 JSON document only');
     expect(repairInstruction).toContain('save decisions');
+  });
+
+  it('repairs a priority-derived missing-start without inventing a clock', async () => {
+    const invalid = JSON.stringify(priorityDocument({ invalidTemporalConstraint: true }));
+    const repaired = JSON.stringify(priorityDocument({ invalidTemporalConstraint: false }));
+    const fake = client([invalid, repaired]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
+      userText: '卒業研究を4時間、StudyPlannerのログ確認を2時間やりたいです。優先順位は卒業研究、StudyPlannerの順です。',
+      traceRequestId: 'trace-priority-repair',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.relations).toEqual([
+      expect.objectContaining({
+        kind: 'priority_over',
+        fromLocalId: 'task-research',
+        toLocalId: 'task-planner',
+      }),
+    ]);
+    expect(result.document?.tasks[0].temporalConstraints).toEqual([]);
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 2,
+      repairAttempted: true,
+      validationErrors: ['document.tasks[0].temporalConstraints[0]:missing-start'],
+    });
+
+    const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
+    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
+    expect(repairInstruction).toContain('Never invent a clock time');
+    expect(repairInstruction).toContain('remove the unsupported earliest_start');
+    expect(repairInstruction).toContain('Priority and ordering language must remain task relations');
+    expect(repairInstruction).toContain('namedTimePeriod cannot coexist with startTime or endTime');
+    expect(repairInstruction).toContain('document.tasks[0].temporalConstraints[0]:missing-start');
   });
 
   it('rejects when the single repair remains invalid', async () => {
