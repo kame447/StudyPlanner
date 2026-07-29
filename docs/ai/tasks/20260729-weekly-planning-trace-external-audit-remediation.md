@@ -2,7 +2,7 @@
 
 ## 状態
 
-In progress
+Implementation complete / Verification pending
 
 ## 対象
 
@@ -14,82 +14,110 @@ In progress
 
 週間計画traceを、障害原因を後から特定できる十分な情報を維持しつつ、ブラウザ・Worker・Firestoreへ不要なCPU、メモリ、read/write負荷を与えない構造へ修正する。
 
-## 外部監査で確定した未解決事項
+## 外部監査で確定した事項と実装結果
 
-1. 保存前に巨大データを何度も複製している
-2. 障害解析に必要なscheduler・preview情報を永続ログへ保存していない
-3. AI生出力を先頭側だけで切り捨て、欠落範囲と末尾を確認できない
-4. error、outcome、assistant response sourceを実際の分岐どおり分類できていない
-5. 501件目以降のentryを管理画面が黙って取得対象外にする
-6. stale filterなどの管理画面操作が全sessionの大量取得を発生させる
-7. trace保存失敗時に診断情報を再送できず消失する
+### 1. 保存前に巨大データを何度も複製していた
 
-## 完了条件
+実装済み。
 
-### 1. 取得前projection
+- request-local collectorをstage別allowlist projectionへ変更
+- Graph全体、全予定、全時間割、scheduler/previewの巨大input/resultをcollectorへ保持しない
+- 1 event 32KB、1 request 128KB、64 eventsの上限を設定
+- 上限超過を`trace_collector_truncated`とdiagnosticのtruncation metadataへ記録
 
-- debug collectorへ渡された巨大Graph、全予定、全時間割、scheduler input/result、preview input/resultをそのままcloneしない
-- stageごとに許可した小さい診断projectionだけをrequest-local collectorへ保存する
-- collector内の1 eventと1 request全体にbyte・件数上限を設ける
-- 上限超過は明示的なtruncation metadataとして残す
+### 2. scheduler・preview情報が不足していた
 
-### 2. scheduler / preview観測性
+実装済み。
 
-1 turn diagnosticから次を確認できること。
+1 turn diagnosticへ次を追加した。
 
-- selectedDateとtimeZone
-- planning horizonと解決元
+- selectedDate、timeZone、planning horizon
 - external sourceごとのstatus、failure kind、event count
-- scheduler compilation status
-- blocking issue code、domain、fact ID、blocking判定
-- dialogue statusと選択質問code
-- preview scheduler version、status、候補数、未配置数、代表配置
-- duplicate suppressionの有無
+- compilation statusとblocking issueのcode/domain/fact ID
+- dialogue statusとselected question code
+- preview scheduler version、status、candidate count、unscheduled count、代表候補
+- duplicate suppression
 
-### 3. AI生出力
+### 3. AI生出力を先頭だけで切り捨てていた
 
-- 上限内なら全文を保存する
-- 上限超過時は先頭・末尾、元byte数、checksum、truncated=trueを保存する
-- validation失敗原因となる末尾を失わない
-- testの期待値を実契約と一致させる
+実装済み。
 
-### 4. 分類
+- 上限内は全文保存
+- 上限超過時はhead、tail、original byte count、checksum、`truncated=true`を保存
+- JSON末尾やvalidation失敗位置を確認可能にした
+- 旧「1万文字を全文保存」testをhead-tail契約へ更新
 
-- AIが生成した応答、rules/coreが生成した応答、system failure、deterministic fallbackを区別する
-- provider failure、normalization rejection、canonicalization rejection、runtime throwをerrorとしてsession metadataへ反映する
-- outcome、error code、response sourceを同一branch情報から決定する
+### 4. error・response sourceを誤分類していた
 
-### 5. entry上限
+実装済み。
 
-- 取得可能上限を超えるsessionを正常な全件取得として返さない
-- totalEntryCount、retrieved count、truncated/unsupported countを明示する
-- 部分timelineを完全なRaw JSONとしてexport・archiveしない
+- deterministic fallback、system failure、rules/core responseを分離
+- provider failure、normalization rejection、canonicalization rejection、runtime throwをsession `hasError`へ反映
+- duplicate suppression、stale disposal、failure responseを`system`として記録
 
-### 6. 管理画面負荷
+### 5. 501件目以降を黙って取得対象外にしていた
 
-- stale filterで全sessionを同時取得しない
-- session展開時は必要ページだけ取得する
-- export時だけ逐次全ページ取得し、並列集中を避ける
-- pageごとの認証・監査write回数を必要最小限にする
+実装済み。
 
-### 7. 保存失敗耐性
+- Workerの実件数上限をstorage契約と同じ100,000へ変更し、500へ丸めない
+- 管理画面の部分表示へloaded count、total count、partial flagを表示
+- 全件collectorは500件を超えてcursorが残る場合に明示的に失敗
+- entry数がsession metadataと一致しない場合はexport・archiveしない
 
-- 失敗したcompact diagnostic inputをbrowser persistent outboxへ保存する
-- 次回起動・次turnで古い順に再送する
-- request IDとsequenceのidempotencyを維持する
-- outbox件数・byte上限とoverflow診断を設ける
+### 6. 管理画面が大量リクエストを発生させていた
 
-## 検証gate
+実装済み。
+
+- stale filterによる全sessionの`Promise.all`取得を削除
+- session展開時は最初の20件だけ取得
+- 追加取得は利用者が「さらに20件読み込む」を押した場合だけ実行
+- export時だけ単一sessionを逐次取得
+- 未読sessionはstale filterのために暗黙取得しない
+- 各明示page accessは従来どおり認証・access audit対象とし、不要な背景page access自体を発生させない
+
+### 7. 保存失敗時にログが消失していた
+
+実装済み。
+
+- browser persistent outboxを追加
+- 失敗したcompact inputを最大10件・1件192KB・合計1MBで保持
+- 次回turnまたは再読込後に古い順で再送
+- 成功後にだけsequence、turn count、request IDをcommit
+- outbox overflowをconsole diagnosticsへ明示
+
+## 追加・更新test
+
+- bounded stage projectionと巨大Graph非保存
+- AI raw responseのhead-tail、original bytes、checksum
+- scheduler source、issue、dialogue、preview情報
+- rules/system response source分類
+- provider failureのsession error反映
+- 48KB document上限とtruncation metadata
+- 500件超の部分export拒否
+- write failure後のpersistent outbox再送
+- reload後も同一session、sequence 0から再開
+- stale disposalとduplicate suppression
+
+## GitHub上で確認できた検証
+
+- Cloudflare Pages source build: commit `f7990c1` で成功
+- 最新GitHub Actions run `#1327`: failure
+- Actions jobはstep/logなしで終了しており、コード由来の失敗内容は取得不能
+- GitHub上ではローカルtypecheck、full test、Worker deploy、Production負荷確認を実行していない
+
+## 未完了の検証gate
 
 - focused trace tests
 - full test suite
 - `npm run typecheck`
 - `npm run typecheck:build`
-- `npm run build`
-- diff check
+- `npm run build`のローカル再確認
+- Worker deploy
 - 2 turn / 100 turn / 500+ entry / large AI response / many busy intervals / write failure and reload recovery
 - Worker CPU、Firestore read/write、admin request数のProduction確認
 
 ## close条件
 
-上記7項目の実装・回帰test・検証が完了し、PR #97のProduction確認まで成功した場合にのみ、このファイルを`docs/ai/tasks/closed/`へ移動し、Issue #89をcloseする。
+実装は完了したが、検証gateとProduction確認は未完了である。このファイルはまだ`docs/ai/tasks/closed/`へ移動せず、Issue #89もopen、PR #97もDraftを維持する。
+
+上記検証がすべて成功した場合にのみ、このファイルを`docs/ai/tasks/closed/`へ移動し、Issue #89をcloseする。
