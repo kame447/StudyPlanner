@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadWeeklyPlanningTraceAdminEntryPage } from './weeklyPlanningTraceAdminEntriesPage';
 
 const SESSION_ID = 'weekly-trace-123e4567-e89b-52d3-a456-426614174000';
+const CONVERSATION_ID = 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000';
 
 function storedEntry(sequence: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -76,7 +77,7 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(JSON.stringify(page.entries)).toContain('英語を3時間');
   });
 
-  it('does not recursively redact raw diagnostic text during admin retrieval', async () => {
+  it('does not recursively redact raw schema v2 diagnostic text during admin retrieval', async () => {
     const getDocument = vi.fn(async () => storedEntry(0, {
       traceSubjectToken: 'wpt_internal-secret',
       traceSubjectEpoch: '100',
@@ -101,11 +102,46 @@ describe('weekly planning trace admin entry page loader', () => {
     expect(output).toContain('subjectAlias');
   });
 
+  it('keeps recursive identifier redaction for legacy entries', async () => {
+    const getDocument = vi.fn(async () => storedEntry(0, {
+      traceSubjectToken: 'wpt_internal-secret',
+      traceSubjectEpoch: '100',
+      logicalConversationId: CONVERSATION_ID,
+      userId: 'firebase-user-123',
+      kind: 'internal_event',
+      schemaVersion: 1,
+      eventType: 'stable_v5_debug_stage',
+      severity: 'debug',
+      payload: {
+        nested: {
+          email: 'person@example.com',
+          note: '連絡先は person@example.com',
+        },
+      },
+    }));
+
+    const page = await loadWeeklyPlanningTraceAdminEntryPage(
+      { getDocument },
+      SESSION_ID,
+      { entryCount: 1, schemaVersion: 1 },
+      -1,
+      20,
+    );
+    const output = JSON.stringify(page.entries);
+
+    expect(output).not.toContain('firebase-user-123');
+    expect(output).not.toContain('person@example.com');
+    expect(output).toContain('[EMAIL]');
+    expect(output).not.toContain('wpt_internal-secret');
+    expect(output).toContain('subjectAlias');
+  });
+
   it('stops before exceeding the response byte limit and advances by the returned sequence', async () => {
     const getDocument = vi.fn(async (_collection: string, id: string) => {
       const sequence = Number(id.slice(-8));
       return storedEntry(sequence, {
         kind: 'turn_diagnostic',
+        schemaVersion: 2,
         payload: 'x'.repeat(40_000),
       });
     });
