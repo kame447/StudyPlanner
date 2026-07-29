@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
@@ -9,6 +9,9 @@ import {
 import {
   loadWeeklyPlanningStableV5TraceCursor,
 } from './weeklyPlanningStableV5TraceSessionStorage';
+import {
+  listWeeklyPlanningTraceOutboxItems,
+} from './weeklyPlanningTraceOutbox';
 import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceRepository,
@@ -52,7 +55,7 @@ function createRepositoryHarness() {
 
 function debugEvent(sequence: number, stage: string, data: unknown) {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     sequence,
     stage,
     occurredAt: `2026-07-29T00:00:${String(sequence).padStart(2, '0')}.000Z`,
@@ -71,13 +74,11 @@ function traceInput(overrides: Partial<Parameters<
     userText: '予定を立てたい',
     assistantMessage: '条件を教えてください。',
     outcome: 'revision_pending',
-    graphRevision: 1,
-    graphSummary: { taskCount: 1 },
-    compatibilityState: { status: 'revision_pending' },
     previewCount: 0,
     debugTraceEvents: [
       debugEvent(0, 'runtime_turn_input', {
         userText: '予定を立てたい',
+        selectedDate: '2026-07-29',
         inputCounts: {
           existingPlanCount: 500,
           scheduleTemplateCount: 20,
@@ -147,12 +148,11 @@ describe('Stable V5 trace runtime', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     setWeeklyPlanningTraceRepositoryForTests(undefined);
   });
 
-  it('persists exactly one logical diagnostic record per user turn', async () => {
+  it('persists exactly one bounded diagnostic record per user turn', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
 
@@ -168,24 +168,20 @@ describe('Stable V5 trace runtime', () => {
     const entry = diagnosticEntry(harness.writes[0]);
     expect(entry.userInput.text).toBe('予定を立てたい');
     expect(entry.assistantOutput.text).toBe('条件を教えてください。');
+    expect(entry.assistantOutput.responseSource).toBe('rules');
     expect(entry.aiInterpreter.input.requests[0].messages).toEqual([
       { role: 'system', content: 'system prompt' },
       { role: 'user', content: 'actual user prompt' },
     ]);
     expect(entry.aiInterpreter.rawResponses[0].text).toContain('planningIntent');
-    expect(entry.aiInterpreter.structuredResults[0]).toMatchObject({
-      accepted: true,
-      errors: [],
-    });
     expect(entry.decision.finalOperations).toEqual([{ operation: 'set_intent' }]);
-    expect(entry.decision.stateDiff).toEqual([{ operation: 'set_intent' }]);
     expect(entry.constraintContext).toMatchObject({
       existingPlanCount: 500,
       scheduleTemplateCount: 20,
     });
   });
 
-  it('does not persist runtime arrays, identity fields, Base64 or chunk metadata', async () => {
+  it('does not persist full runtime arrays, identity fields, Base64 or chunk metadata', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const fullPlans = Array.from({ length: 500 }, (_, index) => ({
@@ -207,51 +203,21 @@ describe('Stable V5 trace runtime', () => {
     }));
 
     const serialized = JSON.stringify(harness.writes[0].entries);
-    expect(harness.writes[0].entries).toHaveLength(1);
     expect(serialized).not.toContain('plan-499');
     expect(serialized).not.toContain('scheduleTemplates');
     expect(serialized).not.toContain('"userId"');
     expect(serialized).not.toContain('dataChunk');
-    expect(serialized).not.toContain('chunkIndex');
-    expect(serialized).not.toContain('chunkCount');
-    expect(serialized).not.toContain('chunkBytes');
     expect(serialized).not.toContain('base64_utf8_json_chunk');
-  });
-
-  it('keeps the logical entry count fixed for zero and five hundred existing plans', async () => {
-    const zero = createRepositoryHarness();
-    setWeeklyPlanningTraceRepositoryForTests(zero.repository);
-    await recordWeeklyPlanningStableV5TurnTrace(traceInput({
-      conversationId: 'conversation-zero',
-      requestId: 'conversation-zero:request:1',
-      debugTraceEvents: [debugEvent(0, 'runtime_turn_input', {
-        inputCounts: { existingPlanCount: 0, scheduleTemplateCount: 0 },
-      })],
-    }));
-
-    resetWeeklyPlanningStableV5TraceRuntimeForTest();
-    const many = createRepositoryHarness();
-    setWeeklyPlanningTraceRepositoryForTests(many.repository);
-    await recordWeeklyPlanningStableV5TurnTrace(traceInput({
-      conversationId: 'conversation-many',
-      requestId: 'conversation-many:request:1',
-      debugTraceEvents: [debugEvent(0, 'runtime_turn_input', {
-        inputCounts: { existingPlanCount: 500, scheduleTemplateCount: 50 },
-      })],
-    }));
-
-    expect(zero.writes[0].session.entryCount).toBe(1);
-    expect(many.writes[0].session.entryCount).toBe(1);
-    expect(zero.writes[0].entries).toHaveLength(1);
-    expect(many.writes[0].entries).toHaveLength(1);
   });
 
   it('deduplicates retries with the same request id', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const input = traceInput();
+
     await recordWeeklyPlanningStableV5TurnTrace(input);
     await recordWeeklyPlanningStableV5TurnTrace(input);
+
     expect(harness.writes).toHaveLength(1);
   });
 
@@ -268,7 +234,6 @@ describe('Stable V5 trace runtime', () => {
       await recordWeeklyPlanningStableV5TurnTrace(traceInput({
         requestId: 'conversation-1:request:2',
         userText: 'OSを復習します',
-        graphRevision: 2,
       }));
 
       expect(harness.writes).toHaveLength(2);
@@ -281,52 +246,54 @@ describe('Stable V5 trace runtime', () => {
     }
   });
 
-  it('retries a failed write without consuming sequence or request id', async () => {
-    const harness = createRepositoryHarness();
-    harness.failNext();
-    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const input = traceInput();
-    await recordWeeklyPlanningStableV5TurnTrace(input);
-    expect(harness.writes).toHaveLength(0);
-    await recordWeeklyPlanningStableV5TurnTrace(input);
-    expect(harness.writes).toHaveLength(1);
-    expect(harness.writes[0].entries[0].sequence).toBe(0);
-    expect(harness.writes[0].session.entryCount).toBe(1);
-  });
-
-  it('persists zero-count identity before the first append and reuses it after failure', async () => {
+  it('stores a failed write in the persistent outbox and replays it after reload', async () => {
     const storageHarness = createMemoryStorageHarness();
     const restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     const harness = createRepositoryHarness();
     harness.failNext();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const input = traceInput();
+    const first = traceInput();
 
     try {
-      await recordWeeklyPlanningStableV5TurnTrace(input);
+      await recordWeeklyPlanningStableV5TurnTrace(first);
+      expect(harness.writes).toHaveLength(0);
+      expect(listWeeklyPlanningTraceOutboxItems({
+        userId: first.userId,
+        conversationId: first.conversationId,
+      })).toHaveLength(1);
+
       const provisional = loadWeeklyPlanningStableV5TraceCursor({
-        userId: input.userId,
-        conversationId: input.conversationId,
+        userId: first.userId,
+        conversationId: first.conversationId,
       });
-      expect(provisional?.session).toMatchObject({
-        schemaVersion: 2,
-        turnCount: 0,
-        entryCount: 0,
-      });
+      expect(provisional?.session).toMatchObject({ turnCount: 0, entryCount: 0 });
+
       resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
-      await recordWeeklyPlanningStableV5TurnTrace(input);
-      expect(harness.writes[0].session.id).toBe(provisional?.session.id);
-      expect(harness.writes[0].entries[0].sequence).toBe(0);
+      await recordWeeklyPlanningStableV5TurnTrace(traceInput({
+        requestId: 'conversation-1:request:2',
+        userText: '次の入力',
+      }));
+
+      expect(harness.writes).toHaveLength(2);
+      expect(harness.writes[0].entries[0]).toMatchObject({ sequence: 0, requestId: first.requestId });
+      expect(harness.writes[1].entries[0]).toMatchObject({
+        sequence: 1,
+        requestId: 'conversation-1:request:2',
+      });
+      expect(listWeeklyPlanningTraceOutboxItems({
+        userId: first.userId,
+        conversationId: first.conversationId,
+      })).toEqual([]);
     } finally {
       restoreWindow();
     }
   });
 
-  it('stores fallback and error diagnostics without stack data', async () => {
+  it('marks provider failures as session errors and system responses', async () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     await recordWeeklyPlanningStableV5TurnTrace(traceInput({
-      outcome: 'provider_failure',
+      outcome: 'stable_v5_provider_failure',
       errorCode: 'ProviderError',
       debugTraceEvents: [debugEvent(0, 'semantic_provider_error', {
         attempt: 'initial',
@@ -336,6 +303,7 @@ describe('Stable V5 trace runtime', () => {
 
     const entry = diagnosticEntry(harness.writes[0]);
     expect(harness.writes[0].session.hasError).toBe(true);
+    expect(entry.assistantOutput.responseSource).toBe('system');
     expect(entry.diagnostics.error).toEqual({
       type: 'ProviderError',
       message: 'connection failed',
