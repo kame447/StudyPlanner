@@ -8,6 +8,14 @@ function timestamp(value: string): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function archivedEntryCount(session: WeeklyPlanningTraceSession): number | null {
+  return typeof session.archivedEntryCount === 'number'
+    && Number.isSafeInteger(session.archivedEntryCount)
+    && session.archivedEntryCount >= 0
+    ? session.archivedEntryCount
+    : null;
+}
+
 export function hasWeeklyPlanningTraceActivity(
   session: WeeklyPlanningTraceSession,
 ): boolean {
@@ -19,6 +27,11 @@ export function hasUnexportedWeeklyPlanningTraceActivity(
 ): boolean {
   if (!hasWeeklyPlanningTraceActivity(session)) return false;
   if (!session.archivedAt) return true;
+
+  const exportedEntryCount = archivedEntryCount(session);
+  if (exportedEntryCount !== null) {
+    return session.entryCount !== exportedEntryCount;
+  }
 
   const lastActivityAt = timestamp(session.lastActivityAt);
   const archivedAt = timestamp(session.archivedAt);
