@@ -7,6 +7,7 @@ import {
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   boundWeeklyPlanningDialogueRendererTraceForTransport,
+  type WeeklyPlanningDialogueRendererTrace,
 } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type {
   WeeklyPlanningMessage,
@@ -58,7 +59,9 @@ function withoutRendererTrace(value: unknown): unknown {
 
 function compactTraceEventForPersistence(
   event: WeeklyPlanningStableV5DebugTraceEvent,
+  hasDedicatedRendererTrace: boolean,
 ): WeeklyPlanningStableV5DebugTraceEvent | null {
+  if (!hasDedicatedRendererTrace) return event;
   if (DUPLICATED_RENDERER_DEBUG_STAGES.has(event.stage)) return null;
   if (event.stage !== 'turn_executor_result_projected' || !isRecord(event.data)) return event;
   const data = event.data;
@@ -79,12 +82,23 @@ function compactTraceEventForPersistence(
   };
 }
 
-function debugTraceEventsForPersistence(requestId: string): WeeklyPlanningStableV5DebugTraceEvent[] {
+function debugTraceEventsForPersistence(
+  requestId: string,
+  hasDedicatedRendererTrace: boolean,
+): WeeklyPlanningStableV5DebugTraceEvent[] {
   return takeWeeklyPlanningStableV5DebugTrace(requestId)
     .flatMap((event) => {
-      const compacted = compactTraceEventForPersistence(event);
+      const compacted = compactTraceEventForPersistence(event, hasDedicatedRendererTrace);
       return compacted ? [compacted] : [];
     });
+}
+
+function rendererTraceForPersistence(
+  result: WeeklyPlanningTurnExecutionResult,
+): WeeklyPlanningDialogueRendererTrace | undefined {
+  return result.dialogueRendererTrace
+    ? boundWeeklyPlanningDialogueRendererTraceForTransport(result.dialogueRendererTrace)
+    : undefined;
 }
 
 function stableV5PlanningRange(
@@ -141,7 +155,11 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId);
+  const dialogueRendererTrace = rendererTraceForPersistence(params.result);
+  const debugTraceEvents = debugTraceEventsForPersistence(
+    params.pending.requestId,
+    Boolean(dialogueRendererTrace),
+  );
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
@@ -151,13 +169,7 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
     ...(params.result.responseSource
       ? { responseSource: params.result.responseSource }
       : {}),
-    ...(params.result.dialogueRendererTrace
-      ? {
-          dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(
-            params.result.dialogueRendererTrace,
-          ),
-        }
-      : {}),
+    ...(dialogueRendererTrace ? { dialogueRendererTrace } : {}),
     outcome: params.result.failure?.code
       ?? (params.result.draftCandidates.length > 0
         ? 'preview_ready'
@@ -179,12 +191,18 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId);
+  const dialogueRendererTrace = rendererTraceForPersistence(params.result);
+  const debugTraceEvents = debugTraceEventsForPersistence(
+    params.pending.requestId,
+    Boolean(dialogueRendererTrace),
+  );
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
     userText: params.userText,
+    responseSource: 'system',
+    ...(dialogueRendererTrace ? { dialogueRendererTrace } : {}),
     outcome: `discarded_${params.reason}`,
     debugTraceEvents,
     previewCount: 0,
@@ -205,7 +223,7 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId);
+  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, false);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
