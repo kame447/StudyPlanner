@@ -69,6 +69,28 @@ function renderedRuntimeResult() {
   return {
     ...runtimeResult(),
     responseSource: 'deterministic_fallback' as const,
+    dialogueRendererTrace: {
+      actionId: 'stable-v5:conversation-1:request:4:question',
+      actionKind: 'question' as const,
+      questionCode: null,
+      request: {
+        purpose: 'weekly_planning_renderer' as const,
+        requiredLabels: [],
+        fallbackText: '確認してください。',
+        previewCount: 0,
+      },
+      response: {
+        status: 'fallback' as const,
+        reason: 'provider_error',
+        rawResponse: null,
+        renderedText: null,
+      },
+      decision: {
+        branch: 'deterministic_fallback' as const,
+        responseSource: 'deterministic_fallback' as const,
+        finalMessage: '確認してください。',
+      },
+    },
   };
 }
 
@@ -99,7 +121,7 @@ describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
       stage: 'turn_executor_result_projected',
       data: expect.objectContaining({
         branch: 'no_recorded_failure',
-        result: renderedRuntimeResult(),
+        projectedResult: renderedRuntimeResult(),
       }),
     }));
   });
@@ -128,6 +150,11 @@ describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
       failure: {
         code: 'stable_v5_canonicalization_rejected',
         traceCode: 'validation=invalid_reference',
+      },
+      dialogueRendererTrace: {
+        request: null,
+        response: { status: 'bypassed', reason: 'system_message' },
+        decision: { branch: 'system_message_bypass', responseSource: 'system' },
       },
     });
     expect(recordTraceMock).toHaveBeenCalledWith(expect.objectContaining({
