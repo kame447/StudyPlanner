@@ -10,6 +10,7 @@ import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlannin
 import type { WeeklyPlanningPendingTurn } from '../types';
 import {
   recordCommittedWeeklyPlanningApplicationTurn,
+  recordDiscardedWeeklyPlanningApplicationTurn,
   type WeeklyPlanningTurnSideEffectServices,
 } from './weeklyPlanningTurnSideEffects';
 
@@ -159,6 +160,28 @@ describe('weeklyPlanningTurnSideEffects renderer trace', () => {
       : null;
     expect(projectedResult).not.toEqual(expect.objectContaining({
       dialogueRendererTrace: expect.anything(),
+    }));
+  });
+
+  it('keeps attempted renderer diagnostics for a stale result without persisting assistant output', async () => {
+    const { recordTurnTrace, services } = createServices();
+
+    await recordDiscardedWeeklyPlanningApplicationTurn({
+      ownerId: 'owner-1',
+      pending,
+      userText: '予定を作りたい',
+      result: executionResult(),
+      reason: 'stale',
+    }, services);
+
+    expect(recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+      responseSource: 'system',
+      dialogueRendererTrace: rendererTrace,
+      outcome: 'discarded_stale',
+      errorCode: 'stale_async_result_discarded',
+    }));
+    expect(recordTurnTrace).toHaveBeenCalledWith(expect.not.objectContaining({
+      assistantMessage: expect.anything(),
     }));
   });
 });
