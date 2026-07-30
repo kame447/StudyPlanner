@@ -7,6 +7,10 @@ import {
   executeWeeklyPlanningStableV5RuntimeTurn,
 } from './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
 import { createAiWeeklyPlanningDialogueRenderer } from './dialogue/weeklyPlanningAiDialogueRenderer';
+import {
+  createAiWeeklyPlanningStableV5DialogueRenderer,
+  type WeeklyPlanningStableV5DialogueActionKind,
+} from './dialogue/weeklyPlanningStableV5AiDialogueRenderer';
 import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDialogueRenderer';
 import { createAiWeeklyPlanningInterpreter } from './intake/weeklyPlanningAiInterpreter';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
@@ -23,9 +27,16 @@ import {
 import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from './trace/weeklyPlanningStableV5DebugTrace';
+import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningMessage } from './types';
 
 const RECENT_TURN_LIMIT = 6;
+const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
+  'AIに接続できなかったため',
+  '入力内容は保持していますが、予定条件の構造化処理に失敗しました',
+  '直前の会話状態とAIの構造化結果が一致しなかったため',
+  '同じ送信はすでに処理済みのため',
+] as const;
 
 export interface WeeklyPlanningTurnExecutionInput {
   previousState?: PlanningIntakeState;
@@ -66,11 +77,132 @@ export interface WeeklyPlanningTurnExecutionResult {
   draftCandidates: WeeklyDraftCandidate[];
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
+  responseSource?: WeeklyPlanningTraceResponseSource;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {
   accepted: boolean;
   draftCandidates: WeeklyDraftCandidate[];
+}
+
+function stableV5QuestionCode(state: PlanningIntakeState): string | null {
+  const targetSlot = state.lastQuestionContext?.targetSlot;
+  return targetSlot?.startsWith('stable_v5:')
+    ? targetSlot.slice('stable_v5:'.length)
+    : null;
+}
+
+function stableV5DialogueActionKind(
+  result: WeeklyPlanningTurnExecutionResult,
+): WeeklyPlanningStableV5DialogueActionKind {
+  if (result.draftCandidates.length > 0) return 'preview_ready';
+  if (result.state.questions.length > 0) return 'question';
+  return 'status';
+}
+
+function isStableV5SystemResult(result: WeeklyPlanningTurnExecutionResult): boolean {
+  return Boolean(result.failure)
+    || result.responseSource === 'system'
+    || STABLE_V5_SYSTEM_MESSAGE_PREFIXES.some((prefix) => result.message.startsWith(prefix));
+}
+
+async function renderStableV5AssistantMessage(params: {
+  input: WeeklyPlanningTurnExecutionInput;
+  result: WeeklyPlanningTurnExecutionResult;
+}): Promise<WeeklyPlanningTurnExecutionResult> {
+  if (isStableV5SystemResult(params.result)) {
+    const result = { ...params.result, responseSource: 'system' as const };
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.input.traceRequestId,
+      stage: 'dialogue_renderer_decision',
+      data: {
+        branch: 'system_message_bypass',
+        responseSource: result.responseSource,
+        message: result.message,
+      },
+    });
+    return result;
+  }
+
+  const actionKind = stableV5DialogueActionKind(params.result);
+  const questionCode = stableV5QuestionCode(params.result.state);
+  const actionId = [
+    'stable-v5',
+    params.input.traceRequestId,
+    questionCode ?? actionKind,
+  ].join(':');
+  const renderInput = {
+    actionId,
+    actionKind,
+    questionCode,
+    fallbackText: params.result.message,
+    previewCount: params.result.draftCandidates.length,
+  } as const;
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.input.traceRequestId,
+    stage: 'dialogue_renderer_request',
+    data: {
+      purpose: 'weekly_planning_stable_v5_dialogue_renderer',
+      input: renderInput,
+    },
+  });
+
+  const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(getAiConfig()).render(
+    renderInput,
+  );
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.input.traceRequestId,
+    stage: 'dialogue_renderer_response',
+    severity: rendered.status === 'rendered' ? 'info' : 'warn',
+    data: {
+      actionId,
+      status: rendered.status,
+      reason: rendered.status === 'fallback' ? rendered.reason : null,
+      rawResponse: rendered.rawResponse,
+    },
+  });
+
+  if (rendered.status === 'fallback') {
+    const result = {
+      ...params.result,
+      responseSource: 'deterministic_fallback' as const,
+    };
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.input.traceRequestId,
+      stage: 'dialogue_renderer_decision',
+      severity: 'warn',
+      data: {
+        branch: 'deterministic_fallback',
+        actionId,
+        reason: rendered.reason,
+        responseSource: result.responseSource,
+        message: result.message,
+      },
+    });
+    return result;
+  }
+
+  const state = params.result.state.questions.length > 0
+    ? { ...params.result.state, questions: [rendered.text] }
+    : params.result.state;
+  const result = {
+    ...params.result,
+    state,
+    message: rendered.text,
+    responseSource: 'ai' as const,
+  };
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.input.traceRequestId,
+    stage: 'dialogue_renderer_decision',
+    data: {
+      branch: 'ai_rendered',
+      actionId,
+      responseSource: result.responseSource,
+      message: result.message,
+      preservedQuestionContext: result.state.lastQuestionContext ?? null,
+    },
+  });
+  return result;
 }
 
 export async function executeWeeklyPlanningTurn(
@@ -92,16 +224,17 @@ export async function executeWeeklyPlanningTurn(
     });
     const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
     if (!recordedFailure) {
+      const renderedResult = await renderStableV5AssistantMessage({ input, result });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
         stage: 'turn_executor_result_projected',
         data: {
           branch: 'no_recorded_failure',
           criteria: 'failure diagnostics repository returned null',
-          result,
+          result: renderedResult,
         },
       });
-      return result;
+      return renderedResult;
     }
 
     const failureCode = `stable_v5_${recordedFailure.status}` as WeeklyPlanningTurnFailureCode;
@@ -127,6 +260,7 @@ export async function executeWeeklyPlanningTurn(
           providerErrorCategory: recordedFailure.providerErrorCategory,
         },
       },
+      responseSource: 'system',
     };
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
