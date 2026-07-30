@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { requiredLabelsForStableV5Dialogue } from './weeklyPlanningStableV5DialogueContext';
+import {
+  isStableV5QuestionLikeText,
+  requiredLabelsForStableV5Dialogue,
+} from './weeklyPlanningStableV5DialogueContext';
 
 describe('Stable V5 dialogue context', () => {
   it('extracts an unquoted deterministic target for quantity-role questions', () => {
@@ -21,5 +24,12 @@ describe('Stable V5 dialogue context', () => {
       questionCode: 'invalid_planning_horizon',
       fallbackText: 'いつからいつまでの予定を作るか教えてください。',
     })).toEqual([]);
+  });
+
+  it('treats a deterministic information request without a question code as a question action', () => {
+    expect(isStableV5QuestionLikeText(
+      '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+    )).toBe(true);
+    expect(isStableV5QuestionLikeText('2件の仮予定候補を作りました。')).toBe(false);
   });
 });
