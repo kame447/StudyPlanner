@@ -15,7 +15,9 @@ import type {
 } from './weeklyPlanningTraceTypes';
 
 type PersistedRendererDiagnostic = WeeklyPlanningTraceTurnDiagnosticEntry & {
-  dialogueRenderer?: WeeklyPlanningDialogueRendererTrace;
+  diagnostics: WeeklyPlanningTraceTurnDiagnosticEntry['diagnostics'] & {
+    dialogueRenderer?: WeeklyPlanningDialogueRendererTrace;
+  };
 };
 
 function createRepositoryHarness() {
@@ -104,10 +106,10 @@ describe('Stable V5 renderer trace persistence', () => {
     expect(harness.writes).toHaveLength(1);
     const entry = diagnosticEntry(harness.writes[0].entries);
     expect(entry.assistantOutput.responseSource).toBe('ai');
-    expect(entry.dialogueRenderer).toEqual(trace);
-    expect(entry.dialogueRenderer?.request?.purpose).toBe('weekly_planning_renderer');
-    expect(entry.dialogueRenderer?.response.rawResponse).toContain('どちらの量ですか');
-    expect(entry.dialogueRenderer?.decision).toMatchObject({
+    expect(entry.diagnostics.dialogueRenderer).toEqual(trace);
+    expect(entry.diagnostics.dialogueRenderer?.request?.purpose).toBe('weekly_planning_renderer');
+    expect(entry.diagnostics.dialogueRenderer?.response.rawResponse).toContain('どちらの量ですか');
+    expect(entry.diagnostics.dialogueRenderer?.decision).toMatchObject({
       branch: 'ai_rendered',
       responseSource: 'ai',
       finalMessage: 'どちらの量ですか？',
@@ -135,7 +137,7 @@ describe('Stable V5 renderer trace persistence', () => {
     const entry = diagnosticEntry(harness.writes[0].entries);
     expect(entry.assistantOutput.responseSource).toBe('deterministic_fallback');
     expect(entry.diagnostics.fallback).toBe('provider_error');
-    expect(entry.dialogueRenderer?.response).toMatchObject({
+    expect(entry.diagnostics.dialogueRenderer?.response).toMatchObject({
       status: 'fallback',
       reason: 'provider_error',
     });
