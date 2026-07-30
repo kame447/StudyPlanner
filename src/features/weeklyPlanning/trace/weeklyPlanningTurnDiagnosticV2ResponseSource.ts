@@ -79,7 +79,6 @@ const MINIMAL_RENDERER_LIMITS: RendererTraceLimits = {
 };
 
 const CLIENT_TARGET_BYTES = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes;
-const SERVER_SAFE_BYTES = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes - 2_048;
 
 function utf8Bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
@@ -189,6 +188,131 @@ function fitsClientTarget(entry: WeeklyPlanningTurnDiagnosticV2WithRendererTrace
   return measureWeeklyPlanningTraceJsonBytes(entry) <= CLIENT_TARGET_BYTES;
 }
 
+function forceFitClientTarget(
+  entry: WeeklyPlanningTurnDiagnosticV2WithRendererTrace,
+): WeeklyPlanningTurnDiagnosticV2WithRendererTrace {
+  if (fitsClientTarget(entry)) return entry;
+
+  const withoutRawResponses: WeeklyPlanningTurnDiagnosticV2WithRendererTrace = {
+    ...entry,
+    aiInterpreter: {
+      ...entry.aiInterpreter,
+      rawResponses: [],
+    },
+  };
+  if (fitsClientTarget(withoutRawResponses)) return withoutRawResponses;
+
+  const scheduler = withoutRawResponses.constraintContext.scheduler;
+  const withoutOptionalCollections: WeeklyPlanningTurnDiagnosticV2WithRendererTrace = {
+    ...withoutRawResponses,
+    aiInterpreter: {
+      ...withoutRawResponses.aiInterpreter,
+      input: {
+        ...withoutRawResponses.aiInterpreter.input,
+        planningStateSummary: null,
+        requests: [],
+      },
+      structuredResults: [],
+      candidateOperations: [],
+    },
+    parsers: [],
+    decision: {
+      ...withoutRawResponses.decision,
+      acceptedOperations: [],
+      rejectedOperations: [],
+      finalOperations: [],
+      stateDiff: null,
+    },
+    constraintContext: {
+      ...withoutRawResponses.constraintContext,
+      relevantBusyIntervals: [],
+      ...(scheduler ? {
+        scheduler: {
+          ...scheduler,
+          externalSources: [],
+          issues: [],
+          preview: scheduler.preview
+            ? { ...scheduler.preview, representativeCandidates: [] }
+            : null,
+        },
+      } : {}),
+    },
+  };
+  if (fitsClientTarget(withoutOptionalCollections)) return withoutOptionalCollections;
+
+  const shortenedText: WeeklyPlanningTurnDiagnosticV2WithRendererTrace = {
+    ...withoutOptionalCollections,
+    userInput: {
+      text: truncateUtf8(withoutOptionalCollections.userInput.text, 500),
+    },
+    aiInterpreter: {
+      ...withoutOptionalCollections.aiInterpreter,
+      input: {
+        ...withoutOptionalCollections.aiInterpreter.input,
+        userText: truncateUtf8(withoutOptionalCollections.aiInterpreter.input.userText, 500),
+        conversationContext: [],
+      },
+    },
+    assistantOutput: {
+      ...withoutOptionalCollections.assistantOutput,
+      text: boundedNullableText(withoutOptionalCollections.assistantOutput.text, 500),
+    },
+    diagnostics: {
+      ...withoutOptionalCollections.diagnostics,
+      fallback: null,
+    },
+  };
+  if (fitsClientTarget(shortenedText)) return shortenedText;
+
+  return {
+    ...shortenedText,
+    userInput: {
+      text: truncateUtf8(shortenedText.userInput.text, 128),
+    },
+    aiInterpreter: {
+      ...shortenedText.aiInterpreter,
+      provider: boundedNullableText(shortenedText.aiInterpreter.provider, 128),
+      model: boundedNullableText(shortenedText.aiInterpreter.model, 128),
+      promptVersion: boundedNullableText(shortenedText.aiInterpreter.promptVersion, 128),
+      input: {
+        userText: truncateUtf8(shortenedText.aiInterpreter.input.userText, 128),
+        conversationContext: [],
+        planningStateSummary: null,
+        requests: [],
+      },
+      rawResponses: [],
+      structuredResults: [],
+      candidateOperations: [],
+    },
+    parsers: [],
+    decision: {
+      ...shortenedText.decision,
+      acceptedOperations: [],
+      rejectedOperations: [],
+      finalOperations: [],
+      stateDiff: null,
+    },
+    constraintContext: {
+      existingPlanCount: shortenedText.constraintContext.existingPlanCount,
+      scheduleTemplateCount: shortenedText.constraintContext.scheduleTemplateCount,
+      relevantBusyIntervals: [],
+    },
+    assistantOutput: {
+      ...shortenedText.assistantOutput,
+      text: boundedNullableText(shortenedText.assistantOutput.text, 128),
+    },
+    diagnostics: {
+      ...shortenedText.diagnostics,
+      fallback: null,
+      truncation: {
+        applied: true,
+        fields: ['diagnostics.wrapperEmergencyCompaction'],
+        originalCounts: {},
+      },
+    },
+  };
+}
+
 function fitWithoutRenderer(params: {
   entry: BaseDiagnostic;
   responseSource: WeeklyPlanningTraceResponseSource | undefined;
@@ -218,11 +342,7 @@ function fitWithoutRenderer(params: {
   if (fitsClientTarget(compact)) return compact;
 
   const minimal = withRendererTrace(params.entry, params.responseSource, undefined, null);
-  if (measureWeeklyPlanningTraceJsonBytes(minimal) <= SERVER_SAFE_BYTES) return minimal;
-
-  // The base diagnostic is already fitted by createBaseWeeklyPlanningTurnDiagnosticV2.
-  // This branch is defensive and preserves writeability over optional renderer metadata.
-  return params.entry as WeeklyPlanningTurnDiagnosticV2WithRendererTrace;
+  return forceFitClientTarget(minimal);
 }
 
 export function createWeeklyPlanningTurnDiagnosticV2(
