@@ -71,7 +71,7 @@ describe('turn diagnostic explicit response source', () => {
     expect(entry.diagnostics.dialogueRenderer).toEqual(rendererTrace);
   });
 
-  it('bounds renderer output before persistence', () => {
+  it('bounds renderer output without consuming the Worker transport headroom', () => {
     const entry = createWeeklyPlanningTurnDiagnosticV2(input('ai', {
       ...rendererTrace,
       request: {
@@ -82,7 +82,7 @@ describe('turn diagnostic explicit response source', () => {
       response: {
         status: 'rendered',
         reason: null,
-        rawResponse: 'x'.repeat(20_000),
+        rawResponse: 'あ'.repeat(20_000),
         renderedText: 'あ'.repeat(10_000),
       },
       decision: {
@@ -95,8 +95,9 @@ describe('turn diagnostic explicit response source', () => {
     expect(entry.diagnostics.dialogueRenderer?.response.rawResponse).toContain('[trace truncated]');
     expect(entry.diagnostics.dialogueRenderer?.response.renderedText).toContain('[trace truncated]');
     expect(entry.diagnostics.dialogueRenderer?.decision.finalMessage).toContain('[trace truncated]');
+    expect(JSON.stringify(entry)).not.toContain('\uFFFD');
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(
-      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
   });
 });
