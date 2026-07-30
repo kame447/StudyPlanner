@@ -100,4 +100,26 @@ describe('turn diagnostic explicit response source', () => {
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
   });
+
+  it('keeps an oversized base diagnostic under the client target after source override', () => {
+    const large = input('deterministic_fallback');
+    large.debugTraceEvents = Array.from({ length: 32 }, (_, sequence) => ({
+      schemaVersion: 2 as const,
+      sequence,
+      stage: 'semantic_provider_response',
+      occurredAt: `2026-07-30T00:00:${String(sequence).padStart(2, '0')}.000Z`,
+      severity: 'debug' as const,
+      data: {
+        attempt: `attempt-${sequence}`,
+        rawResponse: 'あ'.repeat(10_000),
+      },
+    }));
+
+    const entry = createWeeklyPlanningTurnDiagnosticV2(large);
+
+    expect(entry.assistantOutput.responseSource).toBe('deterministic_fallback');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
+    );
+  });
 });
