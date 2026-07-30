@@ -96,6 +96,7 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
     requestId: params.pending.requestId,
     userText: params.userText,
     assistantMessage: params.result.message,
+    responseSource: params.result.responseSource,
     outcome: params.result.failure?.code
       ?? (params.result.draftCandidates.length > 0
         ? 'preview_ready'
@@ -150,6 +151,7 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
     requestId: params.pending.requestId,
     userText: params.userText,
     assistantMessage: params.assistantMessage.content,
+    responseSource: 'system',
     outcome: 'failed',
     debugTraceEvents,
     previewCount: 0,
