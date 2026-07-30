@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  createMemoryStorageHarness,
+  installWeeklyPlanningTestStorage,
+} from '../testUtils/weeklyPlanningApplicationTestHarness';
 import type { WeeklyPlanningDialogueRendererTrace } from './weeklyPlanningDialogueRendererTrace';
 import {
   recordWeeklyPlanningStableV5TurnTrace,
   resetWeeklyPlanningStableV5TraceRuntimeForTest,
+  resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest,
 } from './weeklyPlanningStableV5TraceRuntime';
 import {
   setWeeklyPlanningTraceRepositoryForTests,
 } from './weeklyPlanningTraceRepository';
+import {
+  listWeeklyPlanningTraceOutboxItems,
+} from './weeklyPlanningTraceOutbox';
 import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceRepository,
@@ -25,16 +33,29 @@ function createRepositoryHarness() {
     session: WeeklyPlanningTraceSession;
     entries: WeeklyPlanningTraceEntry[];
   }> = [];
+  let failuresRemaining = 0;
   const repository: WeeklyPlanningTraceRepository = {
     async upsertSession() {},
-    async appendEntries(params) { writes.push(structuredClone(params)); },
+    async appendEntries(params) {
+      if (failuresRemaining > 0) {
+        failuresRemaining -= 1;
+        throw new Error('injected trace write failure');
+      }
+      writes.push(structuredClone(params));
+    },
     async listSessions() { return []; },
     async listSessionsForAdmin() { return []; },
     async archiveSessionForAdmin() {},
     async getSession() { return null; },
     async listEntries() { return []; },
   };
-  return { repository, writes };
+  return {
+    repository,
+    writes,
+    failNext(count = 1) {
+      failuresRemaining = count;
+    },
+  };
 }
 
 function rendererTrace(
@@ -67,6 +88,24 @@ function rendererTrace(
   };
 }
 
+function traceInput(overrides: Partial<Parameters<
+  typeof recordWeeklyPlanningStableV5TurnTrace
+>[0]> = {}) {
+  return {
+    userId: 'owner-1',
+    conversationId: 'conversation-1',
+    requestId: 'conversation-1:request:1',
+    userText: '院試の勉強を進めたい',
+    assistantMessage: 'どちらの量ですか？',
+    responseSource: 'ai' as const,
+    dialogueRendererTrace: rendererTrace('rendered'),
+    outcome: 'revision_pending',
+    previewCount: 0,
+    debugTraceEvents: [],
+    ...overrides,
+  };
+}
+
 function diagnosticEntry(entries: WeeklyPlanningTraceEntry[]): PersistedRendererDiagnostic {
   const entry = entries[0];
   if (!entry || entry.kind !== 'turn_diagnostic') {
@@ -90,18 +129,7 @@ describe('Stable V5 renderer trace persistence', () => {
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const trace = rendererTrace('rendered');
 
-    await recordWeeklyPlanningStableV5TurnTrace({
-      userId: 'owner-1',
-      conversationId: 'conversation-1',
-      requestId: 'conversation-1:request:1',
-      userText: '院試の勉強を進めたい',
-      assistantMessage: 'どちらの量ですか？',
-      responseSource: 'ai',
-      dialogueRendererTrace: trace,
-      outcome: 'revision_pending',
-      previewCount: 0,
-      debugTraceEvents: [],
-    });
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ dialogueRendererTrace: trace }));
 
     expect(harness.writes).toHaveLength(1);
     const entry = diagnosticEntry(harness.writes[0].entries);
@@ -120,18 +148,11 @@ describe('Stable V5 renderer trace persistence', () => {
     const harness = createRepositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
 
-    await recordWeeklyPlanningStableV5TurnTrace({
-      userId: 'owner-1',
-      conversationId: 'conversation-1',
-      requestId: 'conversation-1:request:1',
-      userText: '院試の勉強を進めたい',
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({
       assistantMessage: '今回進めたい量か、残っている全体量か教えてください。',
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace: rendererTrace('fallback'),
-      outcome: 'revision_pending',
-      previewCount: 0,
-      debugTraceEvents: [],
-    });
+    }));
 
     expect(harness.writes[0].session.hasFallback).toBe(true);
     const entry = diagnosticEntry(harness.writes[0].entries);
@@ -141,5 +162,40 @@ describe('Stable V5 renderer trace persistence', () => {
       status: 'fallback',
       reason: 'provider_error',
     });
+  });
+
+  it('preserves renderer details when a failed write is replayed from the persistent outbox', async () => {
+    const storageHarness = createMemoryStorageHarness();
+    const restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
+    const harness = createRepositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const first = traceInput();
+
+    try {
+      await recordWeeklyPlanningStableV5TurnTrace(first);
+      expect(harness.writes).toHaveLength(0);
+      expect(listWeeklyPlanningTraceOutboxItems({
+        userId: first.userId,
+        conversationId: first.conversationId,
+      })[0]?.input.dialogueRendererTrace).toEqual(first.dialogueRendererTrace);
+
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      await recordWeeklyPlanningStableV5TurnTrace(traceInput({
+        requestId: 'conversation-1:request:2',
+        userText: '次の入力',
+      }));
+
+      expect(harness.writes).toHaveLength(2);
+      const replayed = diagnosticEntry(harness.writes[0].entries);
+      expect(replayed.requestId).toBe(first.requestId);
+      expect(replayed.diagnostics.dialogueRenderer).toEqual(first.dialogueRendererTrace);
+      expect(listWeeklyPlanningTraceOutboxItems({
+        userId: first.userId,
+        conversationId: first.conversationId,
+      })).toEqual([]);
+    } finally {
+      restoreWindow();
+    }
   });
 });
