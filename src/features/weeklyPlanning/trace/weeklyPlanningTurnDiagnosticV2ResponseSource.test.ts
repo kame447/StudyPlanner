@@ -64,7 +64,7 @@ describe('turn diagnostic explicit response source', () => {
 
     expect(entry.assistantOutput.responseSource).toBe('deterministic_fallback');
     expect(entry.diagnostics.fallback).toBe('provider_error');
-    expect(entry.dialogueRenderer).toEqual(rendererTrace);
+    expect(entry.diagnostics.dialogueRenderer).toEqual(rendererTrace);
   });
 
   it('bounds renderer output before persistence', () => {
@@ -83,8 +83,8 @@ describe('turn diagnostic explicit response source', () => {
       },
     }));
 
-    expect(entry.dialogueRenderer?.response.rawResponse).toContain('[trace truncated]');
-    expect(entry.dialogueRenderer?.response.renderedText).toContain('[trace truncated]');
-    expect(entry.dialogueRenderer?.decision.finalMessage).toContain('[trace truncated]');
+    expect(entry.diagnostics.dialogueRenderer?.response.rawResponse).toContain('[trace truncated]');
+    expect(entry.diagnostics.dialogueRenderer?.response.renderedText).toContain('[trace truncated]');
+    expect(entry.diagnostics.dialogueRenderer?.decision.finalMessage).toContain('[trace truncated]');
   });
 });
