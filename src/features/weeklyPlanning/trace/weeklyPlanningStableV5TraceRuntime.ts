@@ -9,7 +9,7 @@ import {
   loadWeeklyPlanningStableV5TraceCursor,
   saveWeeklyPlanningStableV5TraceCursor,
 } from './weeklyPlanningStableV5TraceSessionStorage';
-import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2';
+import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2ResponseSource';
 import {
   clearWeeklyPlanningTraceOutboxForTest,
   enqueueWeeklyPlanningTraceOutboxItem,
@@ -19,6 +19,7 @@ import {
 import {
   WEEKLY_PLANNING_TRACE_SCHEMA_VERSION,
   type WeeklyPlanningTraceEntry,
+  type WeeklyPlanningTraceResponseSource,
   type WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
 
@@ -39,6 +40,7 @@ export interface WeeklyPlanningStableV5TraceInput {
   requestId: string;
   userText: string;
   assistantMessage?: string;
+  responseSource?: WeeklyPlanningTraceResponseSource;
   outcome: string;
   debugTraceEvents?: WeeklyPlanningStableV5DebugTraceEvent[];
   previewCount: number;
@@ -199,7 +201,8 @@ function createTurnDiagnosticEntry(
   active.session.turnCount += 1;
   active.requestIds.add(params.requestId);
   active.session.hasPreview ||= params.previewCount > 0;
-  active.session.hasFallback ||= params.outcome.includes('fallback');
+  active.session.hasFallback ||= params.outcome.includes('fallback')
+    || params.responseSource === 'deterministic_fallback';
   active.session.hasError ||= Boolean(params.errorCode)
     || params.outcome === 'failed'
     || params.outcome.includes('provider_failure')
@@ -220,6 +223,7 @@ function createTurnDiagnosticEntry(
     expireAt: expireAt(occurredAt, SESSION_RETENTION_DAYS),
     userText: params.userText,
     assistantMessage: params.assistantMessage,
+    responseSource: params.responseSource,
     outcome: params.outcome,
     previewCount: params.previewCount,
     errorCode: params.errorCode,
