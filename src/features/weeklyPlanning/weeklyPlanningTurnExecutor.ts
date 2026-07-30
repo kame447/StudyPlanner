@@ -31,6 +31,7 @@ import {
 import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from './trace/weeklyPlanningStableV5DebugTrace';
+import type { WeeklyPlanningDialogueRendererTrace } from './trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTraceTypes';
 import type { WeeklyPlanningMessage } from './types';
 
@@ -82,6 +83,7 @@ export interface WeeklyPlanningTurnExecutionResult {
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;
+  dialogueRendererTrace?: WeeklyPlanningDialogueRendererTrace;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {
@@ -112,12 +114,37 @@ function isStableV5SystemResult(result: WeeklyPlanningTurnExecutionResult): bool
     || STABLE_V5_SYSTEM_MESSAGE_PREFIXES.some((prefix) => result.message.startsWith(prefix));
 }
 
+function systemDialogueRendererTrace(message: string): WeeklyPlanningDialogueRendererTrace {
+  return {
+    actionId: null,
+    actionKind: null,
+    questionCode: null,
+    request: null,
+    response: {
+      status: 'bypassed',
+      reason: 'system_message',
+      rawResponse: null,
+      renderedText: null,
+    },
+    decision: {
+      branch: 'system_message_bypass',
+      responseSource: 'system',
+      finalMessage: message,
+    },
+  };
+}
+
 async function renderStableV5AssistantMessage(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
 }): Promise<WeeklyPlanningTurnExecutionResult> {
   if (isStableV5SystemResult(params.result)) {
-    const result = { ...params.result, responseSource: 'system' as const };
+    const dialogueRendererTrace = systemDialogueRendererTrace(params.result.message);
+    const result = {
+      ...params.result,
+      responseSource: 'system' as const,
+      dialogueRendererTrace,
+    };
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.input.traceRequestId,
       stage: 'dialogue_renderer_decision',
@@ -173,9 +200,32 @@ async function renderStableV5AssistantMessage(params: {
   });
 
   if (rendered.status === 'fallback') {
+    const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
+      actionId,
+      actionKind,
+      questionCode,
+      request: {
+        purpose: 'weekly_planning_renderer',
+        requiredLabels: [...renderInput.requiredLabels],
+        fallbackText: renderInput.fallbackText,
+        previewCount: renderInput.previewCount,
+      },
+      response: {
+        status: 'fallback',
+        reason: rendered.reason,
+        rawResponse: rendered.rawResponse,
+        renderedText: null,
+      },
+      decision: {
+        branch: 'deterministic_fallback',
+        responseSource: 'deterministic_fallback',
+        finalMessage: params.result.message,
+      },
+    };
     const result = {
       ...params.result,
       responseSource: 'deterministic_fallback' as const,
+      dialogueRendererTrace,
     };
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.input.traceRequestId,
@@ -195,11 +245,34 @@ async function renderStableV5AssistantMessage(params: {
   const state = params.result.state.questions.length > 0
     ? { ...params.result.state, questions: [rendered.text] }
     : params.result.state;
+  const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
+    actionId,
+    actionKind,
+    questionCode,
+    request: {
+      purpose: 'weekly_planning_renderer',
+      requiredLabels: [...renderInput.requiredLabels],
+      fallbackText: renderInput.fallbackText,
+      previewCount: renderInput.previewCount,
+    },
+    response: {
+      status: 'rendered',
+      reason: null,
+      rawResponse: rendered.rawResponse,
+      renderedText: rendered.text,
+    },
+    decision: {
+      branch: 'ai_rendered',
+      responseSource: 'ai',
+      finalMessage: rendered.text,
+    },
+  };
   const result = {
     ...params.result,
     state,
     message: rendered.text,
     responseSource: 'ai' as const,
+    dialogueRendererTrace,
   };
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
@@ -241,7 +314,7 @@ export async function executeWeeklyPlanningTurn(
         data: {
           branch: 'no_recorded_failure',
           criteria: 'failure diagnostics repository returned null',
-          result: renderedResult,
+          projectedResult: renderedResult,
         },
       });
       return renderedResult;
@@ -271,6 +344,7 @@ export async function executeWeeklyPlanningTurn(
         },
       },
       responseSource: 'system',
+      dialogueRendererTrace: systemDialogueRendererTrace(result.message),
     };
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
