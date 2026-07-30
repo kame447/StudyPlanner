@@ -96,7 +96,9 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
     requestId: params.pending.requestId,
     userText: params.userText,
     assistantMessage: params.result.message,
-    responseSource: params.result.responseSource,
+    ...(params.result.responseSource
+      ? { responseSource: params.result.responseSource }
+      : {}),
     outcome: params.result.failure?.code
       ?? (params.result.draftCandidates.length > 0
         ? 'preview_ready'
