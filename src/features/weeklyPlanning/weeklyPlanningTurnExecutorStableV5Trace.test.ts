@@ -5,10 +5,12 @@ const {
   executeRuntimeMock,
   takeFailureMock,
   recordTraceMock,
+  renderDialogueMock,
 } = vi.hoisted(() => ({
   executeRuntimeMock: vi.fn(),
   takeFailureMock: vi.fn(),
   recordTraceMock: vi.fn(),
+  renderDialogueMock: vi.fn(),
 }));
 
 vi.mock('./application/weeklyPlanningRuntimeMode', () => ({
@@ -25,6 +27,12 @@ vi.mock('./semantic/weeklyPlanningStableV5FailureDiagnostics', () => ({
 
 vi.mock('./trace/weeklyPlanningStableV5DebugTrace', () => ({
   recordWeeklyPlanningStableV5DebugTrace: recordTraceMock,
+}));
+
+vi.mock('./dialogue/weeklyPlanningStableV5AiDialogueRenderer', () => ({
+  createAiWeeklyPlanningStableV5DialogueRenderer: () => ({
+    render: renderDialogueMock,
+  }),
 }));
 
 import { executeWeeklyPlanningTurn } from './weeklyPlanningTurnExecutor';
@@ -57,12 +65,25 @@ function runtimeResult() {
   };
 }
 
+function renderedRuntimeResult() {
+  return {
+    ...runtimeResult(),
+    responseSource: 'deterministic_fallback' as const,
+  };
+}
+
 describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
   beforeEach(() => {
     executeRuntimeMock.mockReset();
     takeFailureMock.mockReset();
     recordTraceMock.mockReset();
+    renderDialogueMock.mockReset();
     executeRuntimeMock.mockResolvedValue(runtimeResult());
+    renderDialogueMock.mockResolvedValue({
+      status: 'fallback',
+      reason: 'provider_error',
+      rawResponse: null,
+    });
   });
 
   it('records the no-failure projection branch', async () => {
@@ -72,13 +93,13 @@ describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
 
     const result = await executeWeeklyPlanningTurn(input());
 
-    expect(result).toEqual(runtimeResult());
+    expect(result).toEqual(renderedRuntimeResult());
     expect(recordTraceMock).toHaveBeenCalledWith(expect.objectContaining({
       requestId: 'conversation-1:request:4',
       stage: 'turn_executor_result_projected',
       data: expect.objectContaining({
         branch: 'no_recorded_failure',
-        result: runtimeResult(),
+        result: renderedRuntimeResult(),
       }),
     }));
   });
