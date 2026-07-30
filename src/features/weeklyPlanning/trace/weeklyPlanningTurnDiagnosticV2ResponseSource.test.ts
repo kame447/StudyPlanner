@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import {
+  WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
+  measureWeeklyPlanningTraceJsonBytes,
+} from '../../../../shared/weeklyPlanningTraceContract';
 import type { WeeklyPlanningDialogueRendererTrace } from './weeklyPlanningDialogueRendererTrace';
 import {
   createWeeklyPlanningTurnDiagnosticV2,
@@ -70,21 +74,29 @@ describe('turn diagnostic explicit response source', () => {
   it('bounds renderer output before persistence', () => {
     const entry = createWeeklyPlanningTurnDiagnosticV2(input('ai', {
       ...rendererTrace,
+      request: {
+        ...rendererTrace.request!,
+        requiredLabels: Array.from({ length: 50 }, (_, index) => `対象${index}${'あ'.repeat(300)}`),
+        fallbackText: 'あ'.repeat(10_000),
+      },
       response: {
         status: 'rendered',
         reason: null,
-        rawResponse: 'x'.repeat(5_000),
-        renderedText: 'y'.repeat(3_000),
+        rawResponse: 'x'.repeat(20_000),
+        renderedText: 'あ'.repeat(10_000),
       },
       decision: {
         branch: 'ai_rendered',
         responseSource: 'ai',
-        finalMessage: 'z'.repeat(3_000),
+        finalMessage: 'あ'.repeat(10_000),
       },
     }));
 
     expect(entry.diagnostics.dialogueRenderer?.response.rawResponse).toContain('[trace truncated]');
     expect(entry.diagnostics.dialogueRenderer?.response.renderedText).toContain('[trace truncated]');
     expect(entry.diagnostics.dialogueRenderer?.decision.finalMessage).toContain('[trace truncated]');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
+    );
   });
 });
