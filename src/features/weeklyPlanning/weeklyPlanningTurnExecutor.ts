@@ -11,6 +11,9 @@ import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
   type WeeklyPlanningStableV5DialogueActionKind,
 } from './dialogue/weeklyPlanningStableV5AiDialogueRenderer';
+import {
+  requiredLabelsForStableV5Dialogue,
+} from './dialogue/weeklyPlanningStableV5DialogueContext';
 import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDialogueRenderer';
 import { createAiWeeklyPlanningInterpreter } from './intake/weeklyPlanningAiInterpreter';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
@@ -135,6 +138,10 @@ async function renderStableV5AssistantMessage(params: {
     actionId,
     actionKind,
     questionCode,
+    requiredLabels: requiredLabelsForStableV5Dialogue({
+      questionCode,
+      fallbackText: params.result.message,
+    }),
     fallbackText: params.result.message,
     previewCount: params.result.draftCandidates.length,
   } as const;
@@ -142,7 +149,7 @@ async function renderStableV5AssistantMessage(params: {
     requestId: params.input.traceRequestId,
     stage: 'dialogue_renderer_request',
     data: {
-      purpose: 'weekly_planning_stable_v5_dialogue_renderer',
+      purpose: 'weekly_planning_renderer',
       input: renderInput,
     },
   });
