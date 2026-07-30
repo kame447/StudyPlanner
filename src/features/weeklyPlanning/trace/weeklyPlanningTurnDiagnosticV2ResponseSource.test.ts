@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2ResponseSource';
+import {
+  createWeeklyPlanningTurnDiagnosticV2,
+  type CreateWeeklyPlanningTurnDiagnosticV2WithResponseSourceInput,
+} from './weeklyPlanningTurnDiagnosticV2ResponseSource';
 
-function input(responseSource: 'ai' | 'deterministic_fallback') {
+function input(
+  responseSource: 'ai' | 'deterministic_fallback',
+): CreateWeeklyPlanningTurnDiagnosticV2WithResponseSourceInput {
   return {
     id: 'trace-1-00000000',
     sessionId: 'trace-1',
@@ -18,7 +23,7 @@ function input(responseSource: 'ai' | 'deterministic_fallback') {
     outcome: 'revision_pending',
     previewCount: 0,
     debugTraceEvents: [],
-  } as const;
+  };
 }
 
 describe('turn diagnostic explicit response source', () => {
