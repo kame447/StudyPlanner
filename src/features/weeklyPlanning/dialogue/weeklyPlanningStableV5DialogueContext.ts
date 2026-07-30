@@ -19,6 +19,11 @@ function quotedLabels(value: string): string[] {
     .filter((label): label is string => Boolean(label));
 }
 
+export function isStableV5QuestionLikeText(text: string): boolean {
+  return /[？?]/.test(text)
+    || /(?:教えてください|確認してください|どちらを採用しますか|どれを使うか)/.test(text);
+}
+
 export function requiredLabelsForStableV5Dialogue(params: {
   questionCode: string | null;
   fallbackText: string;
