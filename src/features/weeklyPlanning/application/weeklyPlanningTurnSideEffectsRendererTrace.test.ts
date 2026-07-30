@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
+  beginWeeklyPlanningStableV5DebugTrace,
+  recordWeeklyPlanningStableV5DebugTrace,
+  resetWeeklyPlanningStableV5DebugTraceForTest,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningPendingTurn } from '../types';
 import {
@@ -40,38 +45,51 @@ const rendererTrace: WeeklyPlanningDialogueRendererTrace = {
   },
 };
 
+function createServices() {
+  const recordTurnTrace = vi.fn(async () => undefined);
+  const services: WeeklyPlanningTurnSideEffectServices = {
+    isStableV5Enabled: vi.fn(() => true),
+    hasStagedGraph: vi.fn(() => true),
+    finalizeRuntimeGraph: vi.fn(),
+    discardStagedGraph: vi.fn(),
+    getRuntimeSession: vi.fn(() => ({
+      ownerId: 'owner-1',
+      weekStartDate: '2026-07-27',
+      conversationId: 'conversation-1',
+      graph: createEmptyWeeklyPlanningFactGraphV5(),
+      updatedAt: Date.parse('2026-07-30T00:00:00.000Z'),
+    })),
+    recordTurnTrace,
+  };
+  return { recordTurnTrace, services };
+}
+
+function executionResult(trace: WeeklyPlanningDialogueRendererTrace = rendererTrace) {
+  return {
+    state: {
+      ...createInitialPlanningIntakeState(),
+      status: 'revision_pending' as const,
+    },
+    message: '整理できました。',
+    draftCandidates: [],
+    responseSource: 'ai' as const,
+    dialogueRendererTrace: trace,
+  };
+}
+
+afterEach(() => {
+  resetWeeklyPlanningStableV5DebugTraceForTest();
+});
+
 describe('weeklyPlanningTurnSideEffects renderer trace', () => {
   it('forwards the adopted renderer trace with the committed turn', async () => {
-    const recordTurnTrace = vi.fn(async () => undefined);
-    const services: WeeklyPlanningTurnSideEffectServices = {
-      isStableV5Enabled: vi.fn(() => true),
-      hasStagedGraph: vi.fn(() => true),
-      finalizeRuntimeGraph: vi.fn(),
-      discardStagedGraph: vi.fn(),
-      getRuntimeSession: vi.fn(() => ({
-        ownerId: 'owner-1',
-        weekStartDate: '2026-07-27',
-        conversationId: 'conversation-1',
-        graph: createEmptyWeeklyPlanningFactGraphV5(),
-        updatedAt: Date.parse('2026-07-30T00:00:00.000Z'),
-      })),
-      recordTurnTrace,
-    };
+    const { recordTurnTrace, services } = createServices();
 
     await recordCommittedWeeklyPlanningApplicationTurn({
       ownerId: 'owner-1',
       pending,
       userText: '予定を作りたい',
-      result: {
-        state: {
-          ...createInitialPlanningIntakeState(),
-          status: 'revision_pending',
-        },
-        message: '整理できました。',
-        draftCandidates: [],
-        responseSource: 'ai',
-        dialogueRendererTrace: rendererTrace,
-      },
+      result: executionResult(),
     }, services);
 
     expect(recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
@@ -79,6 +97,65 @@ describe('weeklyPlanningTurnSideEffects renderer trace', () => {
       dialogueRendererTrace: rendererTrace,
       assistantMessage: '整理できました。',
       outcome: 'revision_pending',
+    }));
+  });
+
+  it('bounds renderer details and removes duplicated renderer debug stages before outbox storage', async () => {
+    const { recordTurnTrace, services } = createServices();
+    const largeTrace: WeeklyPlanningDialogueRendererTrace = {
+      ...rendererTrace,
+      response: {
+        ...rendererTrace.response,
+        rawResponse: 'あ'.repeat(20_000),
+      },
+    };
+    beginWeeklyPlanningStableV5DebugTrace(pending.requestId);
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'dialogue_renderer_request',
+      data: { input: largeTrace.request },
+    });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'dialogue_renderer_response',
+      data: { rawResponse: largeTrace.response.rawResponse },
+    });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'dialogue_renderer_decision',
+      data: { branch: 'ai_rendered' },
+    });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: pending.requestId,
+      stage: 'turn_executor_result_projected',
+      data: {
+        branch: 'no_recorded_failure',
+        projectedResult: executionResult(largeTrace),
+      },
+    });
+
+    await recordCommittedWeeklyPlanningApplicationTurn({
+      ownerId: 'owner-1',
+      pending,
+      userText: '予定を作りたい',
+      result: executionResult(largeTrace),
+    }, services);
+
+    const recorded = recordTurnTrace.mock.calls[0]?.[0];
+    expect(recorded?.dialogueRendererTrace?.response.rawResponse).toContain('[trace truncated]');
+    expect(recorded?.debugTraceEvents.map((event) => event.stage)).not.toEqual(expect.arrayContaining([
+      'dialogue_renderer_request',
+      'dialogue_renderer_response',
+      'dialogue_renderer_decision',
+    ]));
+    const projection = recorded?.debugTraceEvents.find(
+      (event) => event.stage === 'turn_executor_result_projected',
+    );
+    const projectedResult = projection?.data && typeof projection.data === 'object'
+      ? (projection.data as Record<string, unknown>).projectedResult
+      : null;
+    expect(projectedResult).not.toEqual(expect.objectContaining({
+      dialogueRendererTrace: expect.anything(),
     }));
   });
 });
