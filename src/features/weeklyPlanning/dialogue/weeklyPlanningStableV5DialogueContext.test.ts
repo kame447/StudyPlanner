@@ -12,10 +12,10 @@ describe('Stable V5 dialogue context', () => {
     })).toEqual(['分野1']);
   });
 
-  it('preserves every quoted task label in a missing-work question', () => {
+  it('preserves task labels but not quoted examples in a missing-work question', () => {
     expect(requiredLabelsForStableV5Dialogue({
       questionCode: 'missing_schedulable_work',
-      fallbackText: '「研究」、「院試の勉強」は把握しました。それぞれどれくらい進めたいですか？',
+      fallbackText: '「研究」、「院試の勉強」は把握しました。それぞれどれくらい進めたいですか？「2時間」「30ページ」「20問」のように、量を教えてください。',
     })).toEqual(['研究', '院試の勉強']);
   });
 
