@@ -53,7 +53,7 @@ describe('Stable V5 AI dialogue renderer', () => {
     expect(client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
       temperature: 0.2,
       responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
-      purpose: 'weekly_planning_stable_v5_dialogue_renderer',
+      purpose: 'weekly_planning_renderer',
     }));
     const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const payload = JSON.parse(request.messages[1].content) as Record<string, unknown>;
