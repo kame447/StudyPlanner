@@ -14,6 +14,7 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
+  requiredLabels: string[];
   fallbackText: string;
   previewCount: number;
 }
@@ -108,8 +109,9 @@ function createSystemPrompt(): string {
     'Return exactly the same actionId.',
     'Do not add, remove, split, or merge questions.',
     'Do not infer a new task, quantity, date, clock time, availability, priority, constraint, schedule placement, preview, approval, or save result.',
-    'Preserve every task or component name enclosed in Japanese quotation marks in fallbackText.',
+    'Preserve every string in requiredLabels exactly in the rendered text.',
     'When actionKind is question, keep it as one clear question or one direct request for the missing information.',
+    'When actionKind is not question, do not turn the response into a question.',
     'When actionKind is preview_ready, include the exact Arabic previewCount followed by 件 and state only that preview candidates were created.',
     'Do not output Markdown, URLs, instructions to change settings, or requests for sensitive information.',
     'Use a calm conversational tone. Avoid internal terms, error codes, JSON keys, and implementation details.',
@@ -121,6 +123,7 @@ function createUserPrompt(input: WeeklyPlanningStableV5DialogueRenderInput): str
     actionId: input.actionId,
     actionKind: input.actionKind,
     questionCode: input.questionCode,
+    requiredLabels: input.requiredLabels,
     fallbackText: input.fallbackText,
     previewCount: input.previewCount,
     constraints: {
@@ -147,15 +150,48 @@ function addsUnsupportedExpression(
   return expressions(rendered, pattern).some((expression) => !allowed.has(expression));
 }
 
-function quotedLabels(value: string): string[] {
-  return [...value.matchAll(/「([^」]{1,100})」/g)]
-    .map((match) => match[1].trim())
-    .filter(Boolean);
-}
-
 function hasQuestionIntent(text: string): boolean {
   return /[？?]/.test(text)
     || /(?:教えてください|どちら|どれくらい|何を|何日|何時|いつ|ありますか|ですか|ますか|でしょうか)/.test(text);
+}
+
+function includesEveryGroup(text: string, groups: readonly (readonly string[])[]): boolean {
+  return groups.every((group) => group.some((term) => text.includes(term)));
+}
+
+function preservesQuestionMeaning(text: string, questionCode: string | null): boolean {
+  switch (questionCode) {
+    case 'invalid_planning_horizon':
+    case 'ambiguous_planning_window':
+      return includesEveryGroup(text, [['期間', 'いつ', '日']]);
+    case 'missing_schedulable_work':
+      return includesEveryGroup(text, [['量', '時間', 'ページ', '問']]);
+    case 'quantity_role_unresolved':
+      return includesEveryGroup(text, [['今回'], ['残', '全体']]);
+    case 'missing_effort_estimate':
+      return includesEveryGroup(text, [['時間', '所要'], ['かか', '見積']]);
+    case 'ambiguous_effort_estimate':
+      return includesEveryGroup(text, [['所要時間', '見積'], ['一つ', 'どれ']]);
+    case 'missing_availability_date_scope':
+    case 'missing_commitment_date_scope':
+      return includesEveryGroup(text, [['日', 'いつ']]);
+    case 'missing_time_bounds':
+    case 'invalid_time_interval':
+    case 'invalid_commitment_interval':
+      return includesEveryGroup(text, [['開始'], ['終了']]);
+    case 'named_time_period_unresolved':
+      return includesEveryGroup(text, [['何時', '時'], ['から'], ['まで']]);
+    case 'conflicting_task_date_rule':
+      return includesEveryGroup(text, [['行う'], ['行わない'], ['どちら']]);
+    case 'constraint_source_unavailable':
+    case 'active_constraint_source_missing':
+      return includesEveryGroup(text, [['時間割', '登録済み予定', 'カレンダー'], ['確認', '使う']]);
+    case 'orphan_relation_task':
+    case 'self_relation':
+      return includesEveryGroup(text, [['先', '順序']]);
+    default:
+      return true;
+  }
 }
 
 function isGroundedText(
@@ -166,10 +202,12 @@ function isGroundedText(
     if (!hasQuestionIntent(text)) return false;
     const questionMarks = (text.match(/[？?]/g) ?? []).length;
     if (questionMarks > 1) return false;
+  } else if (/[？?]/.test(text)) {
+    return false;
   }
 
-  const labels = quotedLabels(input.fallbackText);
-  if (labels.some((label) => !text.includes(label))) return false;
+  if (input.requiredLabels.some((label) => !text.includes(label))) return false;
+  if (!preservesQuestionMeaning(text, input.questionCode)) return false;
 
   const expectedTerms = GROUNDING_TERMS.filter((term) => input.fallbackText.includes(term));
   if (expectedTerms.length > 0 && !expectedTerms.some((term) => text.includes(term))) {
