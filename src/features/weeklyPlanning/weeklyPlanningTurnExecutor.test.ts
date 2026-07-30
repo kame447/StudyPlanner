@@ -182,6 +182,27 @@ describe('executeWeeklyPlanningTurn', () => {
       intent: 'quantity_role_unresolved',
     });
     expect(result.responseSource).toBe('ai');
+    expect(result.dialogueRendererTrace).toMatchObject({
+      actionKind: 'question',
+      questionCode: 'quantity_role_unresolved',
+      request: {
+        purpose: 'weekly_planning_renderer',
+        requiredLabels: ['院試の勉強'],
+        fallbackText: stableV5QuestionResult().message,
+        previewCount: 0,
+      },
+      response: {
+        status: 'rendered',
+        reason: null,
+        rawResponse: '{"actionId":"ok"}',
+        renderedText: result.message,
+      },
+      decision: {
+        branch: 'ai_rendered',
+        responseSource: 'ai',
+        finalMessage: result.message,
+      },
+    });
     expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
       actionKind: 'question',
       questionCode: 'quantity_role_unresolved',
@@ -192,6 +213,13 @@ describe('executeWeeklyPlanningTurn', () => {
     expect(recordStableV5DebugTraceMock).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'dialogue_renderer_decision',
       data: expect.objectContaining({ branch: 'ai_rendered', responseSource: 'ai' }),
+    }));
+    expect(recordStableV5DebugTraceMock).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'turn_executor_result_projected',
+      data: expect.objectContaining({
+        branch: 'no_recorded_failure',
+        projectedResult: result,
+      }),
     }));
   });
 
@@ -209,6 +237,19 @@ describe('executeWeeklyPlanningTurn', () => {
     expect(result.message).toBe(stableV5QuestionResult().message);
     expect(result.state.questions).toEqual([stableV5QuestionResult().message]);
     expect(result.responseSource).toBe('deterministic_fallback');
+    expect(result.dialogueRendererTrace).toMatchObject({
+      response: {
+        status: 'fallback',
+        reason: 'provider_error',
+        rawResponse: null,
+        renderedText: null,
+      },
+      decision: {
+        branch: 'deterministic_fallback',
+        responseSource: 'deterministic_fallback',
+        finalMessage: stableV5QuestionResult().message,
+      },
+    });
   });
 
   it('does not send Stable V5 system and normalization failure messages to the dialogue renderer', async () => {
@@ -237,6 +278,11 @@ describe('executeWeeklyPlanningTurn', () => {
 
     expect(result.responseSource).toBe('system');
     expect(result.failure?.code).toBe('stable_v5_normalization_rejected');
+    expect(result.dialogueRendererTrace).toMatchObject({
+      request: null,
+      response: { status: 'bypassed', reason: 'system_message' },
+      decision: { branch: 'system_message_bypass', responseSource: 'system' },
+    });
     expect(stableV5RendererMock).not.toHaveBeenCalled();
   });
 });
