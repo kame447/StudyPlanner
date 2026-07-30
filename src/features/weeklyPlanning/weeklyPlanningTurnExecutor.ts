@@ -12,6 +12,7 @@ import {
   type WeeklyPlanningStableV5DialogueActionKind,
 } from './dialogue/weeklyPlanningStableV5AiDialogueRenderer';
 import {
+  isStableV5QuestionLikeText,
   requiredLabelsForStableV5Dialogue,
 } from './dialogue/weeklyPlanningStableV5DialogueContext';
 import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDialogueRenderer';
@@ -99,7 +100,9 @@ function stableV5DialogueActionKind(
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningStableV5DialogueActionKind {
   if (result.draftCandidates.length > 0) return 'preview_ready';
-  if (result.state.questions.length > 0) return 'question';
+  if (result.state.questions.length > 0 || isStableV5QuestionLikeText(result.message)) {
+    return 'question';
+  }
   return 'status';
 }
 
