@@ -9,7 +9,7 @@ import {
   loadWeeklyPlanningStableV5TraceCursor,
   saveWeeklyPlanningStableV5TraceCursor,
 } from './weeklyPlanningStableV5TraceSessionStorage';
-import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2';
+import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2ResponseSource';
 import {
   clearWeeklyPlanningTraceOutboxForTest,
   enqueueWeeklyPlanningTraceOutboxItem,
