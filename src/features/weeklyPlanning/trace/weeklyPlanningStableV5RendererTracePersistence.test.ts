@@ -169,6 +169,32 @@ describe('Stable V5 renderer trace persistence', () => {
     });
   });
 
+  it('preserves attempted renderer diagnostics for a stale turn without assistant output', async () => {
+    const harness = createRepositoryHarness();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const trace = rendererTrace('rendered');
+
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({
+      assistantMessage: undefined,
+      responseSource: 'system',
+      dialogueRendererTrace: trace,
+      outcome: 'discarded_stale',
+      errorCode: 'stale_async_result_discarded',
+    }));
+
+    expect(harness.writes[0].session.hasError).toBe(true);
+    const entry = diagnosticEntry(harness.writes[0].entries);
+    expect(entry.assistantOutput).toEqual({
+      text: null,
+      responseSource: 'system',
+    });
+    expect(entry.diagnostics.stale).toBe(true);
+    expect(entry.diagnostics.dialogueRenderer?.decision).toMatchObject({
+      branch: 'ai_rendered',
+      responseSource: 'ai',
+    });
+  });
+
   it('preserves renderer details when a failed write is replayed from the persistent outbox', async () => {
     const harness = createRepositoryHarness();
     harness.failNext();
