@@ -25,6 +25,11 @@ const DATE_SET_NORMALIZATION_INSTRUCTION_V5 = [
   'For a repeating task on explicitly named weekdays, create one recurrence fact with kind weekly and a single days array using only sun, mon, tue, wed, thu, fri, sat.',
   'Expand weekday ranges before returning JSON. For example, 水曜と金曜から日曜 becomes days [wed, fri, sat, sun]. Keep the entire weekday set in one recurrence fact rather than splitting it into multiple recurrence facts.',
 ].join('\n');
+const TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5 = [
+  'Priority and ordering statements describe task relations only. Represent them with priority_over, before, after, or sequence relations as appropriate. Never convert priority or list order into a temporal constraint.',
+  'Use earliest_start or latest_end only when the user explicitly provides the corresponding clock boundary. Never invent a clock time from priority, task order, a named time period, or a default schedule.',
+  'For a named time period without an exact clock, use preferred_window when it is a task preference and leave startTime and endTime null. When an exact clock is present, namedTimePeriod must be null.',
+].join('\n');
 const CONTEXTUAL_ANSWER_INSTRUCTION_V5 = [
   'Use recentConversation and publicStateSummary to interpret short answers to the immediately preceding assistant question.',
   'When the preceding question asks for the total time required and the user answers only a duration such as 3時間です, return exactly one minimal task containing exactly one effortEstimate with that duration in minutes. The task and target may use response-local IDs; the application core binds the structured answer to the single unresolved public fact.',
@@ -98,6 +103,7 @@ function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): Cha
       content: [
         createWeeklyPlanningSemanticSystemPromptV5(),
         DATE_SET_NORMALIZATION_INSTRUCTION_V5,
+        TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5,
         CONTEXTUAL_ANSWER_INSTRUCTION_V5,
         AUTHORIZATION_INSTRUCTION_V5,
       ].join('\n'),
@@ -118,6 +124,13 @@ function createRepairMessages(params: {
       role: 'user',
       content: JSON.stringify({
         instruction: 'Return the complete corrected Stable V5 JSON document only. Preserve the user meaning. Do not invent external events, facts, commands, questions, readiness decisions, preview decisions, schedule placements, approval decisions, or save decisions.',
+        repairRules: [
+          'Never invent a clock time that is not explicitly supported by the user text or recent conversation.',
+          'If missing-start or missing-end is reported and the source text has no explicit clock boundary, remove the unsupported earliest_start or latest_end constraint, or replace it with a semantically supported constraint kind. Do not add a guessed clock.',
+          'Priority and ordering language must remain task relations. Do not repair a priority relation by adding temporal constraints.',
+          'A namedTimePeriod cannot coexist with startTime or endTime. Preserve a named period with null clock fields and preferred_window when the user expressed a preference; preserve an explicit clock by setting namedTimePeriod to null.',
+          'Make the smallest correction needed to satisfy validation while preserving only facts supported by the user.',
+        ],
         validationErrors: params.validationErrors,
       }),
     },
