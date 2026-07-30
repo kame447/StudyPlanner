@@ -114,14 +114,19 @@ function diagnosticEntry(entries: WeeklyPlanningTraceEntry[]): PersistedRenderer
   return entry as PersistedRendererDiagnostic;
 }
 
+let restoreStorage: (() => void) | undefined;
+
 describe('Stable V5 renderer trace persistence', () => {
   beforeEach(() => {
+    restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
   });
 
   afterEach(() => {
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     setWeeklyPlanningTraceRepositoryForTests(undefined);
+    restoreStorage?.();
+    restoreStorage = undefined;
   });
 
   it('persists renderer request, raw response and final decision in the turn diagnostic', async () => {
@@ -165,37 +170,31 @@ describe('Stable V5 renderer trace persistence', () => {
   });
 
   it('preserves renderer details when a failed write is replayed from the persistent outbox', async () => {
-    const storageHarness = createMemoryStorageHarness();
-    const restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     const harness = createRepositoryHarness();
     harness.failNext();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const first = traceInput();
 
-    try {
-      await recordWeeklyPlanningStableV5TurnTrace(first);
-      expect(harness.writes).toHaveLength(0);
-      expect(listWeeklyPlanningTraceOutboxItems({
-        userId: first.userId,
-        conversationId: first.conversationId,
-      })[0]?.input.dialogueRendererTrace).toEqual(first.dialogueRendererTrace);
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(harness.writes).toHaveLength(0);
+    expect(listWeeklyPlanningTraceOutboxItems({
+      userId: first.userId,
+      conversationId: first.conversationId,
+    })[0]?.input.dialogueRendererTrace).toEqual(first.dialogueRendererTrace);
 
-      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
-      await recordWeeklyPlanningStableV5TurnTrace(traceInput({
-        requestId: 'conversation-1:request:2',
-        userText: '次の入力',
-      }));
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({
+      requestId: 'conversation-1:request:2',
+      userText: '次の入力',
+    }));
 
-      expect(harness.writes).toHaveLength(2);
-      const replayed = diagnosticEntry(harness.writes[0].entries);
-      expect(replayed.requestId).toBe(first.requestId);
-      expect(replayed.diagnostics.dialogueRenderer).toEqual(first.dialogueRendererTrace);
-      expect(listWeeklyPlanningTraceOutboxItems({
-        userId: first.userId,
-        conversationId: first.conversationId,
-      })).toEqual([]);
-    } finally {
-      restoreWindow();
-    }
+    expect(harness.writes).toHaveLength(2);
+    const replayed = diagnosticEntry(harness.writes[0].entries);
+    expect(replayed.requestId).toBe(first.requestId);
+    expect(replayed.diagnostics.dialogueRenderer).toEqual(first.dialogueRendererTrace);
+    expect(listWeeklyPlanningTraceOutboxItems({
+      userId: first.userId,
+      conversationId: first.conversationId,
+    })).toEqual([]);
   });
 });
