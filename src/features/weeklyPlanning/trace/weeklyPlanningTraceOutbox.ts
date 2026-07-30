@@ -43,6 +43,53 @@ function storage(): Storage | null {
   }
 }
 
+function validResponseSource(value: unknown): boolean {
+  return value === undefined
+    || value === 'ai'
+    || value === 'deterministic_fallback'
+    || value === 'rules'
+    || value === 'system';
+}
+
+function validNullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+function validRendererTrace(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)
+    || !validNullableString(value.actionId)
+    || (value.actionKind !== null
+      && value.actionKind !== 'question'
+      && value.actionKind !== 'status'
+      && value.actionKind !== 'preview_ready')
+    || !validNullableString(value.questionCode)
+    || !isRecord(value.response)
+    || (value.response.status !== 'rendered'
+      && value.response.status !== 'fallback'
+      && value.response.status !== 'bypassed')
+    || !validNullableString(value.response.reason)
+    || !validNullableString(value.response.rawResponse)
+    || !validNullableString(value.response.renderedText)
+    || !isRecord(value.decision)
+    || (value.decision.branch !== 'ai_rendered'
+      && value.decision.branch !== 'deterministic_fallback'
+      && value.decision.branch !== 'system_message_bypass')
+    || !validResponseSource(value.decision.responseSource)
+    || typeof value.decision.responseSource !== 'string'
+    || typeof value.decision.finalMessage !== 'string') {
+    return false;
+  }
+  if (value.request === null) return true;
+  return isRecord(value.request)
+    && value.request.purpose === 'weekly_planning_renderer'
+    && Array.isArray(value.request.requiredLabels)
+    && value.request.requiredLabels.every((label) => typeof label === 'string')
+    && typeof value.request.fallbackText === 'string'
+    && Number.isSafeInteger(value.request.previewCount)
+    && Number(value.request.previewCount) >= 0;
+}
+
 function validInput(value: unknown): value is WeeklyPlanningStableV5TraceInput {
   if (!isRecord(value)) return false;
   return typeof value.userId === 'string'
@@ -54,6 +101,8 @@ function validInput(value: unknown): value is WeeklyPlanningStableV5TraceInput {
     && Number.isSafeInteger(value.previewCount)
     && value.previewCount >= 0
     && (value.assistantMessage === undefined || typeof value.assistantMessage === 'string')
+    && validResponseSource(value.responseSource)
+    && validRendererTrace(value.dialogueRendererTrace)
     && (value.planningRangeStart === undefined || typeof value.planningRangeStart === 'string')
     && (value.planningRangeEnd === undefined || typeof value.planningRangeEnd === 'string')
     && (value.errorCode === undefined || typeof value.errorCode === 'string')
