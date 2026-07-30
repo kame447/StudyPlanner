@@ -46,7 +46,9 @@ const rendererTrace: WeeklyPlanningDialogueRendererTrace = {
 };
 
 function createServices() {
-  const recordTurnTrace = vi.fn(async () => undefined);
+  const recordTurnTrace = vi.fn<WeeklyPlanningTurnSideEffectServices['recordTurnTrace']>(
+    async () => undefined,
+  );
   const services: WeeklyPlanningTurnSideEffectServices = {
     isStableV5Enabled: vi.fn(() => true),
     hasStagedGraph: vi.fn(() => true),
@@ -143,12 +145,13 @@ describe('weeklyPlanningTurnSideEffects renderer trace', () => {
 
     const recorded = recordTurnTrace.mock.calls[0]?.[0];
     expect(recorded?.dialogueRendererTrace?.response.rawResponse).toContain('[trace truncated]');
-    expect(recorded?.debugTraceEvents.map((event) => event.stage)).not.toEqual(expect.arrayContaining([
+    const persistedStages = recorded?.debugTraceEvents?.map((event) => event.stage) ?? [];
+    expect(persistedStages).not.toEqual(expect.arrayContaining([
       'dialogue_renderer_request',
       'dialogue_renderer_response',
       'dialogue_renderer_decision',
     ]));
-    const projection = recorded?.debugTraceEvents.find(
+    const projection = recorded?.debugTraceEvents?.find(
       (event) => event.stage === 'turn_executor_result_projected',
     );
     const projectedResult = projection?.data && typeof projection.data === 'object'
