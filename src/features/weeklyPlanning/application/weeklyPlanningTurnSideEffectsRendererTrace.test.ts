@@ -50,12 +50,13 @@ describe('weeklyPlanningTurnSideEffects renderer trace', () => {
       discardStagedGraph: vi.fn(),
       getRuntimeSession: vi.fn(() => ({
         ownerId: 'owner-1',
+        weekStartDate: '2026-07-27',
         conversationId: 'conversation-1',
         graph: createEmptyWeeklyPlanningFactGraphV5(),
         updatedAt: Date.parse('2026-07-30T00:00:00.000Z'),
       })),
       recordTurnTrace,
-    } as WeeklyPlanningTurnSideEffectServices;
+    };
 
     await recordCommittedWeeklyPlanningApplicationTurn({
       ownerId: 'owner-1',
