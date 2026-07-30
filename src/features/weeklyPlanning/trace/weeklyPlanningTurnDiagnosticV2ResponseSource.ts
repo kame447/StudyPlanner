@@ -13,7 +13,9 @@ export type CreateWeeklyPlanningTurnDiagnosticV2WithResponseSourceInput = BaseCr
 };
 
 export type WeeklyPlanningTurnDiagnosticV2WithRendererTrace = BaseDiagnostic & {
-  dialogueRenderer?: WeeklyPlanningDialogueRendererTrace;
+  diagnostics: BaseDiagnostic['diagnostics'] & {
+    dialogueRenderer?: WeeklyPlanningDialogueRendererTrace;
+  };
 };
 
 function boundedText(value: string, maxLength: number): string {
@@ -64,9 +66,6 @@ export function createWeeklyPlanningTurnDiagnosticV2(
   const explicitFallback = effectiveResponseSource === 'deterministic_fallback';
   return {
     ...entry,
-    ...(dialogueRendererTrace
-      ? { dialogueRenderer: boundedDialogueRendererTrace(dialogueRendererTrace) }
-      : {}),
     assistantOutput: {
       ...entry.assistantOutput,
       ...(effectiveResponseSource ? { responseSource: effectiveResponseSource } : {}),
@@ -76,6 +75,9 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       fallback: explicitFallback
         ? dialogueRendererTrace?.response.reason ?? 'deterministic_fallback'
         : entry.diagnostics.fallback,
+      ...(dialogueRendererTrace
+        ? { dialogueRenderer: boundedDialogueRendererTrace(dialogueRendererTrace) }
+        : {}),
     },
   };
 }
