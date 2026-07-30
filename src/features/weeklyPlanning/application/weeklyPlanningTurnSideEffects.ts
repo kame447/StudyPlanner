@@ -99,6 +99,9 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
     ...(params.result.responseSource
       ? { responseSource: params.result.responseSource }
       : {}),
+    ...(params.result.dialogueRendererTrace
+      ? { dialogueRendererTrace: params.result.dialogueRendererTrace }
+      : {}),
     outcome: params.result.failure?.code
       ?? (params.result.draftCandidates.length > 0
         ? 'preview_ready'
