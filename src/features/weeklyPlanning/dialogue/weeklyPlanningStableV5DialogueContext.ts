@@ -19,6 +19,12 @@ function quotedLabels(value: string): string[] {
     .filter((label): label is string => Boolean(label));
 }
 
+function recognizedTaskLabels(questionCode: string | null, fallbackText: string): string[] {
+  if (questionCode !== 'missing_schedulable_work') return [];
+  const acceptedTaskSummary = fallbackText.split('は把握しました。', 1)[0];
+  return quotedLabels(acceptedTaskSummary);
+}
+
 export function isStableV5QuestionLikeText(text: string): boolean {
   return /[？?]/.test(text)
     || /(?:教えてください|確認してください|どちらを採用しますか|どれを使うか)/.test(text);
@@ -28,7 +34,7 @@ export function requiredLabelsForStableV5Dialogue(params: {
   questionCode: string | null;
   fallbackText: string;
 }): string[] {
-  const labels = new Set(quotedLabels(params.fallbackText));
+  const labels = new Set(recognizedTaskLabels(params.questionCode, params.fallbackText));
   const pattern = params.questionCode
     ? QUESTION_TARGET_PATTERNS[params.questionCode]
     : undefined;
