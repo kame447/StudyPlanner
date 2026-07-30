@@ -51,8 +51,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function withoutRendererTrace(value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const { dialogueRendererTrace: _dialogueRendererTrace, ...rest } = value;
-  return rest;
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => key !== 'dialogueRendererTrace'),
+  );
 }
 
 function compactTraceEventForPersistence(
