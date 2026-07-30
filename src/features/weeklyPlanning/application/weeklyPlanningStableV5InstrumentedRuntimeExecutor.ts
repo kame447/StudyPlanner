@@ -58,6 +58,7 @@ function duplicateTurnResult(
     },
     message,
     draftCandidates: [],
+    responseSource: 'system',
   };
 }
 
@@ -79,6 +80,7 @@ function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
     previewCandidateCount: result.draftCandidates.length,
     failure: result.failure ?? null,
     assistantMessage: result.message,
+    responseSource: result.responseSource ?? null,
   };
 }
 
