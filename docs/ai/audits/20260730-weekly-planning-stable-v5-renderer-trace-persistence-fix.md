@@ -1,14 +1,15 @@
 # Stable V5 renderer trace persistence 修正記録
 
-Status: implementation complete / local verification pending
-Date: 2026-07-30
+Status: implementation revised / local re-verification pending
+Date: 2026-07-31
 Issue: #103
+PR: #104
 Branch: `agent/stable-v5-renderer-trace-persistence`
 Base: `ee0dbc0006e3b82e950d0a4b3e4c720de41cd1c6`
 
 ## 対象
 
-PR #102で追加したAI dialogue rendererのtrace経路だけを対象とする。session作成、保存先選択、Worker transport、管理APIの既存問題は本修正へ混在させない。
+PR #102で追加したAI dialogue rendererのtrace経路だけを対象とする。session作成、保存先選択、管理APIの既存障害は本修正へ混在させない。ただし今回の追加が既存transport、outbox、Worker schema、管理画面、exportへ回帰を起こさないかは確認対象に含める。
 
 ## 確認した不具合
 
@@ -16,6 +17,9 @@ PR #102で追加したAI dialogue rendererのtrace経路だけを対象とする
 2. rendererのrequest、raw response、fallback reason、final decisionはdebug traceへ書かれるだけで、1ターン診断レコードへ永続化されなかった。
 3. `responseSource: deterministic_fallback`でもturn diagnosticの`diagnostics.fallback`がnullになり、sessionの`hasFallback`と不整合だった。
 4. executor単体testはdebug trace recorderをmockしており、side effectからrepository appendまでの欠落を検出できなかった。
+5. 追加test fixtureのruntime sessionに必須`weekStartDate`がなく、focused testは通る一方でtypecheckが失敗した。
+6. renderer追加後のサイズ判定が64KB server limitだけを見ていた。Workerがsubject token、policy version、expiry等を後付けするため、client側で64KB近くまで使うとserver preparation後にwriteが拒否される可能性があった。
+7. UTF-8文字列をbyte境界で単純切断すると、複数byte文字の途中でU+FFFDが混入する可能性があった。
 
 ## 修正内容
 
@@ -24,18 +28,53 @@ PR #102で追加したAI dialogue rendererのtrace経路だけを対象とする
 - renderer traceにaction、決定済み質問情報、fallback文、raw response、採用文、fallback理由、最終sourceと最終文面を保持する。
 - application side effectからStable V5 trace runtimeへrenderer traceを明示的に渡す。
 - 1ターン診断レコードの`diagnostics.dialogueRenderer`へサイズ制限付きで保存する。
-- Events表示は既存の`diagnostics`表示経路を使用するため、追加UI分岐なしでrenderer情報を確認できる。
+- renderer情報をnormal、compact、minimalの順で縮小し、48KB client targetへ収まらなければ任意のrenderer詳細だけを省略する。assistant text、response source、fallback判定は保持する。
+- UTF-8 code point境界まで戻して切り詰め、置換文字の混入を避ける。
 - deterministic fallback時は`diagnostics.fallback`へrenderer reasonを保存し、sessionとturnのfallback判定を一致させる。
+- outbox保存時にresponse sourceとrenderer payloadのshapeを検証し、failed writeの再送でもrenderer情報を保持する。
+- typecheck失敗の原因だったtest fixtureへ`weekStartDate`を追加し、不必要な型assertionを除去した。
+
+## 別領域への回帰監査
+
+### アプリケーション状態・対話処理
+
+renderer traceはexecution resultの追加optional fieldであり、Fact Graph、質問code、scheduler、preview候補、commit判定を変更しない。表示文とstateの既存更新経路にも追加mutationはない。
+
+### committed／discarded／failed turn
+
+committed turnだけが採用済みrenderer traceを保存する。staleまたはcommit rejectedのdiscarded turnは従来どおりassistant outputを保存せず、failed turnはsystem responseを保存する。discard／failed経路へrendererの生出力を誤って付加しない。
+
+### outbox・再送
+
+outbox item全体の既存上限を維持し、追加fieldのshapeも検証する。write失敗後のreloadと再送でrenderer request、response、decisionが失われない統合testを追加した。
+
+### Worker・保存上限
+
+Workerのschema validatorは`diagnostics`内のoptional追加fieldを受理し、禁止key検査を再帰適用する。新しいWorker互換testでserver preparation後もrenderer diagnosticが保持され、64KB hard limit内に収まることを確認対象にした。
+
+### 管理画面・export
+
+管理画面Eventsはturn diagnosticの`diagnostics`全体を表示するため、新しい専用UI分岐なしでrenderer情報が見える。schema v2 exportはturn diagnosticをそのまま保持するため、`diagnostics.dialogueRenderer`もJSONへ含まれる。Conversation表示とState diff表示の既存内容は変更しない。
+
+### privacy
+
+API key、authorization header、provider configurationはrenderer traceへ格納しない。追加するraw responseはrendererの文字列出力のみで、既存のtrace同意・アクセス制御・保持期間を変更しない。
 
 ## 追加・更新した検証
 
-- AI採用、deterministic fallback、system bypass時のexecutor result検証
-- 正常系`projectedResult`の回帰検証
-- side effectによるrenderer trace伝播検証
-- diagnosticへのrenderer trace格納とサイズ制限検証
-- trace runtimeからrepository appendまでの統合検証
-- deterministic fallback時のsession／turn整合性検証
+- AI採用、deterministic fallback、system bypass時のexecutor result
+- 正常系`projectedResult`
+- side effectによるrenderer trace伝播
+- diagnosticへのrenderer trace格納、UTF-8切り詰め、48KB client target
+- trace runtimeからrepository appendまでの統合経路
+- failed writeからoutbox再送までのrenderer trace保持
+- deterministic fallback時のsession／turn整合性
+- Worker schemaとserver preparation後のrenderer diagnostic保持
+
+## ローカル検証履歴
+
+修正前headではfocused test 7 files／29 testsが通過した。`npm run typecheck`と`npm run verify`は追加test fixtureの`weekStartDate`不足により停止した。fixtureと追加監査指摘を修正したため、最新headで再実行が必要である。
 
 ## 未確認
 
-GitHub Actionsは利用しない。ローカル環境でfocused test、typecheck、full verifyを実行するまで成功とは判定しない。
+GitHub Actionsは利用しない。最新headに対するfocused test、typecheck、full `npm run verify`は人間のローカル環境で再実行するまで成功とは判定しない。Productionでsession自体が作られない既存障害は本修正だけでは確定・解消していない。
