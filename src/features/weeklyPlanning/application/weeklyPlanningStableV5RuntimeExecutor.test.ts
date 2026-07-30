@@ -333,11 +333,13 @@ describe('Stable V5 runtime executor', () => {
           data: expect.objectContaining({
             branch: 'nothing_to_schedule',
             basis: expect.objectContaining({
-              recognizedTaskTitles: [
-                '午前：研究を進める',
-                '午後：院試の勉強',
-              ],
-              questionCode: 'missing_schedulable_work',
+              compilationStatus: 'empty',
+              dialogueStatus: 'nothing_to_schedule',
+            }),
+            output: expect.objectContaining({
+              message: expect.stringContaining('「午前：研究を進める」'),
+              stateStatus: 'revision_pending',
+              questionCount: 1,
             }),
           }),
         }),
