@@ -65,7 +65,7 @@ function pipelineOutput(): WeeklyPlanningBehaviorAwarePipelineOutput {
 }
 
 function stableV5QuestionResult() {
-  const fallback = '「院試の勉強」の量は、今回進めたい量ですか、それとも残っている全体量ですか？';
+  const fallback = '院試の勉強の量は、今回進めたい量ですか、それとも残っている全体量ですか？';
   return {
     state: {
       ...createInitialPlanningIntakeState(),
@@ -185,6 +185,7 @@ describe('executeWeeklyPlanningTurn', () => {
     expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
       actionKind: 'question',
       questionCode: 'quantity_role_unresolved',
+      requiredLabels: ['院試の勉強'],
       fallbackText: stableV5QuestionResult().message,
       previewCount: 0,
     }));
