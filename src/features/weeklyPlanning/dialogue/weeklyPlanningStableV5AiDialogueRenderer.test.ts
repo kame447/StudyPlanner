@@ -21,7 +21,8 @@ function input(
     actionId: 'stable-v5:request-1:quantity_role_unresolved',
     actionKind: 'question',
     questionCode: 'quantity_role_unresolved',
-    fallbackText: '「院試の勉強」の量は、今回進めたい量ですか、それとも残っている全体量ですか？',
+    requiredLabels: ['院試の勉強'],
+    fallbackText: '院試の勉強の量は、今回進めたい量ですか、それとも残っている全体量ですか？',
     previewCount: 0,
     ...overrides,
   };
@@ -61,6 +62,7 @@ describe('Stable V5 AI dialogue renderer', () => {
       actionId: 'stable-v5:request-1:quantity_role_unresolved',
       actionKind: 'question',
       questionCode: 'quantity_role_unresolved',
+      requiredLabels: ['院試の勉強'],
       previewCount: 0,
     });
     expect(request.messages[1].content).not.toContain('apiKey');
@@ -81,16 +83,27 @@ describe('Stable V5 AI dialogue renderer', () => {
     });
   });
 
-  it('falls back when the model omits a quoted task target', async () => {
-    const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(
+  it('falls back when the model omits the deterministic target or changes question meaning', async () => {
+    const targetOmitted = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
       clientReturning(JSON.stringify({
         actionId: 'stable-v5:request-1:quantity_role_unresolved',
         text: '今回進めたい量ですか、それとも残っている全体量ですか？',
       })),
     );
+    const meaningChanged = createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(JSON.stringify({
+        actionId: 'stable-v5:request-1:quantity_role_unresolved',
+        text: '院試の勉強は何時間進めたいですか？',
+      })),
+    );
 
-    await expect(renderer.render(input())).resolves.toMatchObject({
+    await expect(targetOmitted.render(input())).resolves.toMatchObject({
+      status: 'fallback',
+      reason: 'ungrounded_text',
+    });
+    await expect(meaningChanged.render(input())).resolves.toMatchObject({
       status: 'fallback',
       reason: 'ungrounded_text',
     });
@@ -111,11 +124,12 @@ describe('Stable V5 AI dialogue renderer', () => {
     });
   });
 
-  it('requires the exact candidate count for a preview-ready response', async () => {
+  it('requires the exact candidate count and forbids a new question for preview-ready output', async () => {
     const previewInput = input({
       actionId: 'stable-v5:request-preview:preview_ready',
       actionKind: 'preview_ready',
       questionCode: null,
+      requiredLabels: [],
       fallbackText: '2件の仮予定候補を作りました。内容を確認して、問題なければ仮予定へ追加してください。',
       previewCount: 2,
     });
@@ -126,16 +140,27 @@ describe('Stable V5 AI dialogue renderer', () => {
         text: '2件の仮予定候補を作りました。内容を確認してください。',
       })),
     );
-    const rejected = createAiWeeklyPlanningStableV5DialogueRenderer(
+    const countOmitted = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
       clientReturning(JSON.stringify({
         actionId: previewInput.actionId,
         text: '仮予定候補を作りました。内容を確認してください。',
       })),
     );
+    const questionAdded = createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(JSON.stringify({
+        actionId: previewInput.actionId,
+        text: '2件の仮予定候補を作りました。追加しますか？',
+      })),
+    );
 
     await expect(accepted.render(previewInput)).resolves.toMatchObject({ status: 'rendered' });
-    await expect(rejected.render(previewInput)).resolves.toMatchObject({
+    await expect(countOmitted.render(previewInput)).resolves.toMatchObject({
+      status: 'fallback',
+      reason: 'ungrounded_text',
+    });
+    await expect(questionAdded.render(previewInput)).resolves.toMatchObject({
       status: 'fallback',
       reason: 'ungrounded_text',
     });
