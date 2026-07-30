@@ -78,8 +78,23 @@ const MINIMAL_RENDERER_LIMITS: RendererTraceLimits = {
   includeRawResponse: false,
 };
 
+const CLIENT_TARGET_BYTES = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes;
+const SERVER_SAFE_BYTES = WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes - 2_048;
+
 function utf8Bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
+}
+
+function decodeUtf8Prefix(bytes: Uint8Array, maxBytes: number): string {
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  for (let length = Math.min(bytes.byteLength, Math.max(0, maxBytes)); length >= 0; length -= 1) {
+    try {
+      return decoder.decode(bytes.slice(0, length));
+    } catch {
+      // A UTF-8 code point was cut in the middle. Back up to the previous boundary.
+    }
+  }
+  return '';
 }
 
 function truncateUtf8(value: string, maxBytes: number): string {
@@ -88,11 +103,8 @@ function truncateUtf8(value: string, maxBytes: number): string {
   if (maxBytes <= 0) return '';
   const marker = '…[trace truncated]';
   const markerBytes = utf8Bytes(marker).byteLength;
-  if (maxBytes <= markerBytes) {
-    return new TextDecoder().decode(bytes.slice(0, maxBytes));
-  }
-  const prefix = new TextDecoder().decode(bytes.slice(0, maxBytes - markerBytes));
-  return `${prefix}${marker}`;
+  if (maxBytes <= markerBytes) return decodeUtf8Prefix(bytes, maxBytes);
+  return `${decodeUtf8Prefix(bytes, maxBytes - markerBytes)}${marker}`;
 }
 
 function boundedNullableText(value: string | null, maxBytes: number): string | null {
@@ -173,6 +185,46 @@ function markRendererCompaction(
   };
 }
 
+function fitsClientTarget(entry: WeeklyPlanningTurnDiagnosticV2WithRendererTrace): boolean {
+  return measureWeeklyPlanningTraceJsonBytes(entry) <= CLIENT_TARGET_BYTES;
+}
+
+function fitWithoutRenderer(params: {
+  entry: BaseDiagnostic;
+  responseSource: WeeklyPlanningTraceResponseSource | undefined;
+  fallback: string | null;
+  omittedForSize: boolean;
+}): WeeklyPlanningTurnDiagnosticV2WithRendererTrace {
+  const candidate = withRendererTrace(
+    params.entry,
+    params.responseSource,
+    undefined,
+    params.fallback,
+  );
+  const marked = params.omittedForSize
+    ? markRendererCompaction(candidate, 'diagnostics.dialogueRenderer.omittedForSize')
+    : candidate;
+  if (fitsClientTarget(marked)) return marked;
+
+  const compactFallback = params.responseSource === 'deterministic_fallback'
+    ? 'deterministic_fallback'
+    : params.entry.diagnostics.fallback;
+  const compact = withRendererTrace(
+    params.entry,
+    params.responseSource,
+    undefined,
+    compactFallback,
+  );
+  if (fitsClientTarget(compact)) return compact;
+
+  const minimal = withRendererTrace(params.entry, params.responseSource, undefined, null);
+  if (measureWeeklyPlanningTraceJsonBytes(minimal) <= SERVER_SAFE_BYTES) return minimal;
+
+  // The base diagnostic is already fitted by createBaseWeeklyPlanningTurnDiagnosticV2.
+  // This branch is defensive and preserves writeability over optional renderer metadata.
+  return params.entry as WeeklyPlanningTurnDiagnosticV2WithRendererTrace;
+}
+
 export function createWeeklyPlanningTurnDiagnosticV2(
   input: CreateWeeklyPlanningTurnDiagnosticV2WithResponseSourceInput,
 ): WeeklyPlanningTurnDiagnosticV2WithRendererTrace {
@@ -184,7 +236,12 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     ? dialogueRendererTrace?.response.reason ?? 'deterministic_fallback'
     : entry.diagnostics.fallback;
   if (!dialogueRendererTrace) {
-    return withRendererTrace(entry, effectiveResponseSource, undefined, fallback);
+    return fitWithoutRenderer({
+      entry,
+      responseSource: effectiveResponseSource,
+      fallback,
+      omittedForSize: false,
+    });
   }
 
   const normal = withRendererTrace(
@@ -193,10 +250,7 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     boundedDialogueRendererTrace(dialogueRendererTrace, NORMAL_RENDERER_LIMITS),
     fallback,
   );
-  if (measureWeeklyPlanningTraceJsonBytes(normal)
-    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes) {
-    return normal;
-  }
+  if (fitsClientTarget(normal)) return normal;
 
   const compact = markRendererCompaction(withRendererTrace(
     entry,
@@ -204,15 +258,20 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     boundedDialogueRendererTrace(dialogueRendererTrace, COMPACT_RENDERER_LIMITS),
     fallback,
   ), 'diagnostics.dialogueRenderer.compact');
-  if (measureWeeklyPlanningTraceJsonBytes(compact)
-    <= WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes) {
-    return compact;
-  }
+  if (fitsClientTarget(compact)) return compact;
 
-  return markRendererCompaction(withRendererTrace(
+  const minimal = markRendererCompaction(withRendererTrace(
     entry,
     effectiveResponseSource,
     boundedDialogueRendererTrace(dialogueRendererTrace, MINIMAL_RENDERER_LIMITS),
     fallback,
   ), 'diagnostics.dialogueRenderer.minimal');
+  if (fitsClientTarget(minimal)) return minimal;
+
+  return fitWithoutRenderer({
+    entry,
+    responseSource: effectiveResponseSource,
+    fallback,
+    omittedForSize: true,
+  });
 }
