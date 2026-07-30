@@ -253,7 +253,7 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           ],
           temperature: 0.2,
           responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
-          purpose: 'weekly_planning_stable_v5_dialogue_renderer',
+          purpose: 'weekly_planning_renderer',
         });
         return parseRendererResponse(rawResponse, input);
       } catch {
