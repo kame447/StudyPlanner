@@ -13,6 +13,9 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  readWeeklyPlanningPendingQuestionV5,
+} from './weeklyPlanningPendingQuestionV5';
+import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
 
@@ -31,10 +34,10 @@ const TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5 = [
   'For a named time period without an exact clock, use preferred_window when it is a task preference and leave startTime and endTime null. When an exact clock is present, namedTimePeriod must be null.',
 ].join('\n');
 const CONTEXTUAL_ANSWER_INSTRUCTION_V5 = [
-  'Use recentConversation and publicStateSummary to interpret short answers to the immediately preceding assistant question.',
-  'When the preceding question asks for the total time required and the user answers only a duration such as 3時間です, return exactly one minimal task containing exactly one effortEstimate with that duration in minutes. The task and target may use response-local IDs; the application core binds the structured answer to the single unresolved public fact.',
-  'When the preceding question asks whether a quantity is the current target, remaining total, or completed amount, return exactly one minimal task containing exactly one workload with quantityRole target, remaining, or completed. Preserve the amount and unit visible in publicStateSummary when the short answer does not restate them.',
-  'Do not select the target public fact yourself. Do not emit application commands or state mutations. Emit only the meaning of the short answer in the Stable V5 schema.',
+  'Use publicStateSummary.pendingQuestion as the authoritative machine-readable description of the immediately preceding application question. Do not infer the question identity or target from the assistant wording.',
+  'When pendingQuestion.questionCode is missing_effort_estimate and the user answers only a duration such as 3時間です, return exactly one minimal task containing exactly one effortEstimate with that duration in minutes. The application core binds the structured value to pendingQuestion.targetFactId.',
+  'When pendingQuestion.questionCode is quantity_role_unresolved and the user answers whether the quantity is the current target, remaining total, or completed amount, return exactly one minimal task containing exactly one workload with quantityRole target, remaining, or completed. Preserve the amount and unit visible in publicStateSummary when the short answer does not restate them.',
+  'Do not select a different public fact. Do not emit application commands or state mutations. Emit only the meaning of the short answer in the Stable V5 schema.',
 ].join('\n');
 const AUTHORIZATION_INSTRUCTION_V5 = [
   'When the user only authorizes creation from the already accepted public state, for example この条件で予定を作って or それで仮予定を作って, set planningIntent to create_plan and return empty arrays for tasks, relations, availabilityDeclarations, constraintSourceRequests, uncertainties, corrections, and decisions unless the same utterance explicitly adds or changes a fact.',
@@ -44,7 +47,7 @@ const AUTHORIZATION_INSTRUCTION_V5 = [
 const DIRECT_PLANNING_WINDOW_INSTRUCTION_V5 = [
   'Do not omit a whole-plan planningWindow that the current user states directly.',
   'For 今日, 明日, 明後日, 今週, and 来週 used as the requested plan range, preserve the symbolic values today, tomorrow, day_after_tomorrow, this_week, and next_week.',
-  'A short answer such as 明日 is a whole-plan planningWindow when the immediately preceding assistant question asks which period or date range to plan.',
+  'A short answer such as 明日 is a whole-plan planningWindow when publicStateSummary.pendingQuestion.questionCode asks for the planning horizon. Do not infer this from the assistant wording.',
   'Do not promote a date that only modifies one task, availability declaration, deadline, or exclusion into the whole-plan planningWindow.',
 ].join('\n');
 
@@ -122,16 +125,15 @@ function errorDetails(error: unknown): Record<string, unknown> {
   return { value: error };
 }
 
-function lastAssistantMessage(
+function pendingQuestionAsksForPlanningWindow(
   input: WeeklyPlanningSemanticNormalizerInputV5,
-): string {
-  return [...(input.recentConversation ?? [])]
-    .reverse()
-    .find((message) => message.role === 'assistant')?.content ?? '';
-}
-
-function asksForPlanningWindow(message: string): boolean {
-  return /(?:どの期間|いつからいつまで|作りたい範囲|計画期間|予定の範囲|何日の予定)/.test(message);
+): boolean {
+  const code = readWeeklyPlanningPendingQuestionV5(
+    input.publicStateSummary,
+  )?.questionCode;
+  return code === 'invalid_planning_horizon'
+    || code === 'ambiguous_planning_window'
+    || code === 'planning_period';
 }
 
 function isWholePlanRangeExpression(
@@ -154,7 +156,7 @@ function isWholePlanRangeExpression(
 
   return rangeBeforePlan.test(text)
     || planBeforeRange.test(text)
-    || (shortAnswer.test(text) && asksForPlanningWindow(lastAssistantMessage(input)));
+    || (shortAnswer.test(text) && pendingQuestionAsksForPlanningWindow(input));
 }
 
 function directPlanningWindowExpectation(
