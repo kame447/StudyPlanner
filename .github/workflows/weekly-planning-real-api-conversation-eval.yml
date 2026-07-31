@@ -3,10 +3,23 @@ name: Weekly Planning Real API Conversation Eval
 on:
   workflow_dispatch:
     inputs:
-      model:
-        description: OpenAI model override
-        required: false
-        type: string
+      run_real_api:
+        description: Run the OpenAI-backed conversation scenarios after all deterministic gates pass
+        required: true
+        default: false
+        type: boolean
+      scenario:
+        description: Scenario ID for a focused rerun, or all
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - tomorrow-natural-multiturn
+          - next-week-non-study-paraphrase
+          - wrong-unit-explicit-repair
+          - cross-task-correction-before-preview
+          - preview-correction-recompute
 
 permissions:
   contents: read
@@ -18,10 +31,9 @@ concurrency:
 jobs:
   foundation:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       TZ: Asia/Tokyo
-      VITE_WEEKLY_PLANNING_RUNTIME_MODE: stable_v5
 
     steps:
       - uses: actions/checkout@v4
@@ -34,34 +46,36 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Check diff whitespace
+        run: git diff --check origin/${{ github.event.repository.default_branch }}...HEAD
+
+      - name: Typecheck application
         run: npm run typecheck
+
+      - name: Typecheck production build graph
+        run: npm run typecheck:build
 
       - name: Run deterministic conversation foundation
         run: npm run test:weekly-ai:conversation:foundation
 
-      - name: Run deterministic safety tests
-        run: >-
-          npm run test:run --
-          src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
-          src/features/weeklyPlanning/semantic/weeklyPlanningStableV5MultiTurnPipeline.test.ts
-          src/features/weeklyPlanning/__tests__/weeklyPlanningControllerApprovalFlow.integration.test.ts
-          src/features/weeklyPlanning/preview/weeklyPlanningStableV5PreviewBlocks.test.ts
+      - name: Run full Vitest regression suite
+        run: npm run test:run
 
-      - name: Build
+      - name: Build production bundle
         run: npm run build
 
   real-api-conversation-eval:
+    if: ${{ inputs.run_real_api }}
     needs: foundation
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       TZ: Asia/Tokyo
       WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL: '1'
-      VITE_WEEKLY_PLANNING_RUNTIME_MODE: stable_v5
+      WEEKLY_PLANNING_REAL_API_CONVERSATION_SCENARIO: ${{ inputs.scenario }}
       VITE_AI_PROVIDER: openai
       VITE_AI_BASE_URL: https://api.openai.com/v1
-      VITE_AI_MODEL: ${{ github.event.inputs.model || vars.WEEKLY_PLANNING_EVAL_MODEL || 'gpt-5.4-mini' }}
+      VITE_AI_MODEL: gpt-5.4-mini
 
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +118,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-real-api-conversation-eval
+          name: weekly-planning-real-api-conversation-eval-${{ inputs.scenario }}
           path: artifacts/weekly-planning-real-api-conversation-eval/
           if-no-files-found: warn
           retention-days: 14
