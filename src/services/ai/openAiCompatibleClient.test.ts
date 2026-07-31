@@ -39,6 +39,7 @@ function lastRequestBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, un
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -94,5 +95,52 @@ describe('openAiCompatibleClient model routing', () => {
     const body = lastRequestBody(fetchMock);
     expect(body.model).toBe('gpt-5.4-mini');
     expect(body).not.toHaveProperty('purpose');
+  });
+
+  it('aborts a direct provider request after the configured timeout', async () => {
+    vi.useFakeTimers();
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    let requestSignal: AbortSignal | null = null;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        requestSignal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createOpenAiCompatibleClient({
+      ...config,
+      requestTimeoutMs: 25,
+    });
+    const request = client.createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const rejection = expect(request).rejects.toThrow(
+      'AI request timed out after 25 ms.',
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it('falls back to the bounded default timeout for invalid configuration', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+
+    const client = createOpenAiCompatibleClient({
+      ...config,
+      requestTimeoutMs: Number.NaN,
+    });
+    await client.createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal?.aborted).toBe(false);
   });
 });
