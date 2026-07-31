@@ -1,7 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  createOpenAiCompatibleClient,
+  type OpenAiCompatibleClient,
+} from '../../../services/ai/openAiCompatibleClient';
+import {
   WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
+  createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
@@ -18,9 +23,6 @@ import {
 import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
-import {
-  createEmptyWeeklyPlanningFactGraphV5,
-} from './weeklyPlanningFactGraphV5';
 
 const shouldRun = process.env.WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL === '1';
 const BASE_URL = process.env.WEEKLY_PLANNING_SEMANTIC_V5_EVAL_BASE_URL?.trim()
@@ -201,60 +203,48 @@ async function wait(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function requestOnce(token: string, userText: string): Promise<Response> {
-  return fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0,
-      max_completion_tokens: 4000,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            createWeeklyPlanningSemanticSystemPromptV5(),
-            DATE_SET_INSTRUCTION,
-          ].join('\n'),
-        },
-        {
-          role: 'user',
-          content: createWeeklyPlanningSemanticUserPromptV5({
-            userText,
-            publicStateSummary: {
-              currentDate: '2026-07-22',
-              selectedDate: '2026-07-22',
-              timeZone: 'Asia/Tokyo',
-            },
-          }),
-        },
-      ],
-      response_format: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-    }),
-  });
+function isRetryableProviderFailure(message: string): boolean {
+  return message.includes('status 429') || message === 'AI response was empty.';
 }
 
-async function callModel(token: string, userText: string): Promise<string> {
+async function callModel(
+  client: OpenAiCompatibleClient,
+  userText: string,
+): Promise<string> {
   const retryDelays = [0, 5_000, 20_000];
   let lastError = 'OpenAI request failed.';
   for (const retryDelay of retryDelays) {
     if (retryDelay > 0) await wait(retryDelay);
-    const response = await requestOnce(token, userText);
-    const raw = await response.text();
-    if (response.ok) {
-      const data = JSON.parse(raw) as {
-        choices?: Array<{ message?: { content?: string | null } }>;
-      };
-      const content = data.choices?.[0]?.message?.content?.trim();
-      if (content) return content;
-      lastError = 'OpenAI response had no content.';
-      continue;
+    try {
+      return await client.createChatCompletion({
+        temperature: 0,
+        maxCompletionTokens: 4_000,
+        responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              createWeeklyPlanningSemanticSystemPromptV5(),
+              DATE_SET_INSTRUCTION,
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: createWeeklyPlanningSemanticUserPromptV5({
+              userText,
+              publicStateSummary: {
+                currentDate: '2026-07-22',
+                selectedDate: '2026-07-22',
+                timeZone: 'Asia/Tokyo',
+              },
+            }),
+          },
+        ],
+      });
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'OpenAI request failed.';
+      if (!isRetryableProviderFailure(lastError)) break;
     }
-    lastError = `${response.status}: ${raw.slice(0, 500)}`;
-    if (response.status !== 429) break;
   }
   throw new Error(lastError);
 }
@@ -291,13 +281,20 @@ describe.skipIf(!shouldRun)('weekly planning Stable V5 real evaluation', () => {
   it('evaluates the direct Stable schema and canonicalizer', async () => {
     const token = process.env.OPENAI_API_KEY?.trim();
     if (!token) throw new Error('OPENAI_API_KEY is required.');
+    const client = createOpenAiCompatibleClient({
+      provider: 'openai',
+      baseUrl: BASE_URL,
+      model: MODEL,
+      apiKey: token,
+      requestTimeoutMs: 90_000,
+    });
     const outcomes: EvalOutcome[] = [];
 
     for (const [index, evalCase] of buildCases().entries()) {
       if (index > 0) await wait(2_000);
       const startedAt = performance.now();
       try {
-        const content = await callModel(token, evalCase.userText);
+        const content = await callModel(client, evalCase.userText);
         const parsed = parseWeeklyPlanningSemanticDocumentV5(content);
         let canonicalStatus: string | null = null;
         let canonicalErrors: string[] = [];
