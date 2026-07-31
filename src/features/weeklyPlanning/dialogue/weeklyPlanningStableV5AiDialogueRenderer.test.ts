@@ -44,6 +44,25 @@ function input(
   };
 }
 
+function rendererResponse(
+  renderInput: WeeklyPlanningStableV5DialogueRenderInput,
+  text: string,
+  overrides: Partial<{
+    actionId: string;
+    actionKind: string;
+    questionCode: string | null;
+  }> = {},
+): string {
+  return JSON.stringify({
+    actionId: overrides.actionId ?? renderInput.actionId,
+    actionKind: overrides.actionKind ?? renderInput.actionKind,
+    questionCode: overrides.questionCode === undefined
+      ? renderInput.questionCode
+      : overrides.questionCode,
+    text,
+  });
+}
+
 function clientReturning(contentOrError: string | Error): OpenAiCompatibleClient {
   return {
     createChatCompletion: vi.fn(async () => {
@@ -54,14 +73,15 @@ function clientReturning(contentOrError: string | Error): OpenAiCompatibleClient
 }
 
 describe('Stable V5 AI dialogue renderer', () => {
-  it('sends the current message, recent conversation, and planning information to the model', async () => {
-    const client = clientReturning(JSON.stringify({
-      actionId: 'stable-v5:request-1:quantity_role_unresolved',
-      text: '3時間が、この週間計画で実際に進める量なのか、まだ残っている総量なのかを確認したいという意味です。',
-    }));
+  it('sends current context and the typed application decision to the model', async () => {
+    const renderInput = input();
+    const client = clientReturning(rendererResponse(
+      renderInput,
+      '3時間が、この週間計画で実際に進める量なのか、まだ残っている総量なのかを確認したいという意味です。',
+    ));
     const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(config, client);
 
-    await expect(renderer.render(input())).resolves.toEqual({
+    await expect(renderer.render(renderInput)).resolves.toEqual({
       status: 'rendered',
       text: '3時間が、この週間計画で実際に進める量なのか、まだ残っている総量なのかを確認したいという意味です。',
       rawResponse: expect.any(String),
@@ -75,7 +95,7 @@ describe('Stable V5 AI dialogue renderer', () => {
     const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
     const payload = JSON.parse(request.messages[1].content) as Record<string, unknown>;
     expect(payload).toMatchObject({
-      actionId: 'stable-v5:request-1:quantity_role_unresolved',
+      actionId: renderInput.actionId,
       currentUserMessage: 'どういうこと？',
       recentConversation: expect.any(Array),
       planningInformation: expect.any(Object),
@@ -89,15 +109,10 @@ describe('Stable V5 AI dialogue renderer', () => {
     expect(request.messages[1].content).not.toContain('apiKey');
   });
 
-  it('uses a short system prompt instead of prescribing the response sentence', () => {
+  it('uses a short prompt while requiring the typed action contract to be echoed', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
 
-    expect(prompt.systemPrompt).toBe([
-      'あなたは学習計画アプリの対話担当です。',
-      '会話履歴、ユーザーの最新発話、アプリが把握している情報を踏まえて、次に返す自然な日本語を考えてください。',
-      'アプリが把握していない予定や事実は作らないでください。',
-      '指定されたJSON形式で、actionIdを変えずに返してください。',
-    ].join('\n'));
+    expect(prompt.systemPrompt).toContain('actionId、actionKind、questionCodeを変えずに');
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
     expect(prompt.systemPrompt).not.toContain('Preserve every string');
     expect(prompt.userPrompt).toContain('そのまま繰り返したり、単に言い換えたりする必要はありません');
@@ -105,30 +120,32 @@ describe('Stable V5 AI dialogue renderer', () => {
   });
 
   it('accepts an explanation when the user asks what the previous question meant', async () => {
+    const renderInput = input();
     const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: '「3時間」が今回の週間計画で進める分なのか、課題全体の残り時間なのかで、予定に入れる量が変わるので確認しています。',
-      })),
+      clientReturning(rendererResponse(
+        renderInput,
+        '「3時間」が今回の週間計画で進める分なのか、課題全体の残り時間なのかで、予定に入れる量が変わるので確認しています。',
+      )),
     );
 
-    await expect(renderer.render(input())).resolves.toMatchObject({
+    await expect(renderer.render(renderInput)).resolves.toMatchObject({
       status: 'rendered',
       text: expect.stringContaining('確認しています'),
     });
   });
 
-  it('does not require exact labels or the deterministic question form', async () => {
+  it('does not require exact labels or the deterministic question form for explanations', async () => {
+    const renderInput = input();
     const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: '今回の週間計画に何時間分を入れるべきか確認したい、ということです。',
-      })),
+      clientReturning(rendererResponse(
+        renderInput,
+        '今回の週間計画に何時間分を入れるべきか確認したい、ということです。',
+      )),
     );
 
-    await expect(renderer.render(input())).resolves.toMatchObject({ status: 'rendered' });
+    await expect(renderer.render(renderInput)).resolves.toMatchObject({ status: 'rendered' });
   });
 
   it('rejects a false creation claim for a missing-work question and accepts a natural question', async () => {
@@ -151,17 +168,17 @@ describe('Stable V5 AI dialogue renderer', () => {
     });
     const falseClaim = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: missingWorkInput.actionId,
-        text: '明日1日分の予定ですね。では、明日の予定を作ります。',
-      })),
+      clientReturning(rendererResponse(
+        missingWorkInput,
+        '明日1日分の予定ですね。では、明日の予定を作ります。',
+      )),
     );
     const naturalQuestion = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: missingWorkInput.actionId,
-        text: '明日の予定には、何をどれくらい入れたいですか？',
-      })),
+      clientReturning(rendererResponse(
+        missingWorkInput,
+        '明日の予定には、何をどれくらい入れたいですか？',
+      )),
     );
 
     await expect(falseClaim.render(missingWorkInput)).resolves.toMatchObject({
@@ -174,44 +191,60 @@ describe('Stable V5 AI dialogue renderer', () => {
     });
   });
 
-  it('falls back when the model changes the action identity', async () => {
-    const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(
+  it('falls back when the model changes the action identity or question contract', async () => {
+    const renderInput = input();
+    const changedId = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: 'different-action',
-        text: '今回の週間計画に入れる量を確認しています。',
-      })),
+      clientReturning(rendererResponse(
+        renderInput,
+        '今回進める量ですか？',
+        { actionId: 'different-action' },
+      )),
+    );
+    const changedQuestion = createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(rendererResponse(
+        renderInput,
+        'いつからいつまでの予定ですか？',
+        { questionCode: 'invalid_planning_horizon' },
+      )),
     );
 
-    await expect(renderer.render(input())).resolves.toMatchObject({
+    await expect(changedId.render(renderInput)).resolves.toMatchObject({
       status: 'fallback',
       reason: 'action_mismatch',
+    });
+    await expect(changedQuestion.render(renderInput)).resolves.toMatchObject({
+      status: 'fallback',
+      reason: 'action_contract_mismatch',
     });
   });
 
   it('falls back only when the model invents a clock time or date absent from all context', async () => {
+    const baseInput = input();
     const invented = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: '明日の20時から3時間進める予定として扱います。',
-      })),
+      clientReturning(rendererResponse(
+        baseInput,
+        '明日の20時から3時間進める予定として扱います。',
+      )),
     );
+    const groundedInput = input({
+      currentUserMessage: '明日の20時からやる分です',
+    });
     const grounded = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: '明日の20時から進める量について確認しています。',
-      })),
+      clientReturning(rendererResponse(
+        groundedInput,
+        '明日の20時から進める分は、今回進めたい量ですか、それとも残っている全体量ですか？',
+      )),
     );
 
-    await expect(invented.render(input())).resolves.toMatchObject({
+    await expect(invented.render(baseInput)).resolves.toMatchObject({
       status: 'fallback',
       reason: 'ungrounded_text',
     });
-    await expect(grounded.render(input({
-      currentUserMessage: '明日の20時からやる分です',
-    }))).resolves.toMatchObject({ status: 'rendered' });
+    await expect(grounded.render(groundedInput)).resolves.toMatchObject({ status: 'rendered' });
   });
 
   it('allows omitting the preview count or asking a natural follow-up, but rejects a wrong count', async () => {
@@ -226,24 +259,21 @@ describe('Stable V5 AI dialogue renderer', () => {
     });
     const countOmitted = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: previewInput.actionId,
-        text: '仮予定を作りました。内容を見て、気になるところがあれば教えてください。',
-      })),
+      clientReturning(rendererResponse(
+        previewInput,
+        '仮予定を作りました。内容を見て、気になるところがあれば教えてください。',
+      )),
     );
     const questionAdded = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: previewInput.actionId,
-        text: '仮予定を作りました。この内容で進められそうですか？',
-      })),
+      clientReturning(rendererResponse(
+        previewInput,
+        '仮予定を作りました。この内容で進められそうですか？',
+      )),
     );
     const wrongCount = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: previewInput.actionId,
-        text: '3件の仮予定を作りました。',
-      })),
+      clientReturning(rendererResponse(previewInput, '3件の仮予定を作りました。')),
     );
 
     await expect(countOmitted.render(previewInput)).resolves.toMatchObject({ status: 'rendered' });
@@ -255,31 +285,29 @@ describe('Stable V5 AI dialogue renderer', () => {
   });
 
   it('falls back on invalid JSON, unsafe content, and provider failure', async () => {
+    const renderInput = input();
     const invalidJson = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
       clientReturning('not-json'),
     );
     const unsafe = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
-      clientReturning(JSON.stringify({
-        actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: 'APIキーを送ってください。',
-      })),
+      clientReturning(rendererResponse(renderInput, 'APIキーを送ってください。')),
     );
     const failed = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
       clientReturning(new Error('network failure')),
     );
 
-    await expect(invalidJson.render(input())).resolves.toMatchObject({
+    await expect(invalidJson.render(renderInput)).resolves.toMatchObject({
       status: 'fallback',
       reason: 'invalid_json',
     });
-    await expect(unsafe.render(input())).resolves.toMatchObject({
+    await expect(unsafe.render(renderInput)).resolves.toMatchObject({
       status: 'fallback',
       reason: 'unsafe_text',
     });
-    await expect(failed.render(input())).resolves.toEqual({
+    await expect(failed.render(renderInput)).resolves.toEqual({
       status: 'fallback',
       reason: 'provider_error',
       rawResponse: null,
