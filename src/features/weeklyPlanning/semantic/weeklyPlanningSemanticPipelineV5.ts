@@ -89,11 +89,100 @@ function schedulerStatus(
   return 'scheduler_needs_resolution';
 }
 
+function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
+  return new Set(
+    graph.factLifecycles
+      .filter((entry) => entry.status === 'active')
+      .map((entry) => entry.factId),
+  );
+}
+
+function correctionTargetPublicFacts(
+  graph: WeeklyPlanningFactGraphV5,
+): Record<string, unknown> {
+  const activeIds = activeFactIds(graph);
+  return {
+    planningWindows: graph.planningWindows
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        kind: fact.kind,
+        value: fact.value,
+        start: fact.start,
+        end: fact.end,
+      })),
+    tasks: graph.tasks
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        category: fact.category,
+        title: fact.title,
+      })),
+    components: graph.components
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        taskPublicId: fact.taskId,
+        parentComponentPublicId: fact.parentComponentId,
+        role: fact.role,
+        label: fact.label,
+      })),
+    workloads: graph.workloads
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        taskPublicId: fact.taskId,
+        componentPublicId: fact.componentId,
+        quantityRole: fact.quantityRole,
+        amount: fact.amount,
+        unitCode: fact.unitCode,
+        unitLabel: fact.unitLabel,
+      })),
+    effortEstimates: graph.effortEstimates
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        taskPublicId: fact.taskId,
+        targetPublicId: fact.targetFactId,
+        kind: fact.kind,
+        minutes: fact.minutes,
+        unitCode: fact.unitCode,
+        precision: fact.precision,
+      })),
+    temporalConstraints: graph.temporalConstraints
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        taskPublicId: fact.taskId,
+        targetPublicId: fact.targetFactId,
+        kind: fact.kind,
+        constraintLevel: fact.constraintLevel,
+        dateExpression: fact.dateExpression,
+        namedTimePeriod: fact.namedTimePeriod,
+        startTime: fact.startTime,
+        endTime: fact.endTime,
+      })),
+    recurrences: graph.recurrences
+      .filter((fact) => activeIds.has(fact.id))
+      .map((fact) => ({
+        publicId: fact.id,
+        taskPublicId: fact.taskId,
+        targetPublicId: fact.targetFactId,
+        kind: fact.kind,
+        count: fact.count,
+        days: fact.days,
+      })),
+  };
+}
+
 function normalizerPublicStateSummary(
   summary: Record<string, unknown> | undefined,
+  graph: WeeklyPlanningFactGraphV5,
 ): Record<string, unknown> {
   return {
     ...(summary ?? {}),
+    ...correctionTargetPublicFacts(graph),
+    graphRevision: graph.revision,
     correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
   };
 }
@@ -218,7 +307,10 @@ export function createWeeklyPlanningSemanticPipelineV5(
   return {
     async run(input) {
       const graph = input.graph ?? createEmptyWeeklyPlanningFactGraphV5();
-      const publicStateSummary = normalizerPublicStateSummary(input.publicStateSummary);
+      const publicStateSummary = normalizerPublicStateSummary(
+        input.publicStateSummary,
+        graph,
+      );
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'semantic_pipeline_input',
