@@ -39,7 +39,9 @@ describe('weekly planning conversation eval scenario manifest', () => {
 
     const errors = validateWeeklyPlanningConversationEvalScenarioManifests(duplicated);
     expect(errors).toContain('duplicate scenario id: tomorrow-natural-multiturn');
-    expect(errors.some((error) => error.startsWith('duplicate initial utterance:'))).toBe(true);
+    expect(errors).toContain(
+      'tomorrow-natural-multiturn: duplicate initial utterance: 次の日の勉強計画を立てたいです',
+    );
     expect(errors).toContain('missing required capability: explicit_repair');
     expect(errors).toContain('missing required capability: preview_correction');
   });
