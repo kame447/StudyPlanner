@@ -35,6 +35,7 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'invalid_json'
   | 'invalid_shape'
   | 'action_mismatch'
+  | 'action_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text';
 
@@ -70,9 +71,16 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['actionId', 'text'],
+      required: ['actionId', 'actionKind', 'questionCode', 'text'],
       properties: {
         actionId: stringSchema(),
+        actionKind: {
+          type: 'string',
+          enum: ['question', 'status', 'preview_ready'],
+        },
+        questionCode: {
+          anyOf: [stringSchema(), { type: 'null' }],
+        },
         text: stringSchema(),
       },
     },
@@ -191,7 +199,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     'あなたは学習計画アプリの対話担当です。',
     '会話履歴、ユーザーの最新発話、アプリが把握している情報を踏まえて、次に返す自然な日本語を考えてください。',
     'アプリが把握していない予定や事実は作らないでください。',
-    '指定されたJSON形式で、actionIdを変えずに返してください。',
+    '指定されたJSON形式で、actionId、actionKind、questionCodeを変えずに返してください。',
   ].join('\n');
 
   const userPrompt = JSON.stringify({
@@ -209,6 +217,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     },
     request: [
       '上記の情報を踏まえて、現在のユーザーに返す自然な日本語を考えてください。',
+      'actionId、applicationDecision.actionKind、applicationDecision.questionCodeをそのままJSONへ返してください。',
       'planningStateSummaryのdecidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です。',
       'referenceResponseはアプリ側の参考情報であり、そのまま繰り返したり、単に言い換えたりする必要はありません。',
       '最新発話が説明要求や聞き返しなら、直前の質問を繰り返さず、何を確認したいのかを分かりやすく説明してください。',
@@ -311,6 +320,8 @@ function parseRendererResponse(
   if (
     !isRecord(parsed)
     || typeof parsed.actionId !== 'string'
+    || typeof parsed.actionKind !== 'string'
+    || (parsed.questionCode !== null && typeof parsed.questionCode !== 'string')
     || typeof parsed.text !== 'string'
   ) {
     return { status: 'fallback', reason: 'invalid_shape', rawResponse };
@@ -318,6 +329,12 @@ function parseRendererResponse(
 
   if (parsed.actionId !== input.actionId) {
     return { status: 'fallback', reason: 'action_mismatch', rawResponse };
+  }
+  if (
+    parsed.actionKind !== input.actionKind
+    || parsed.questionCode !== input.questionCode
+  ) {
+    return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
   }
 
   const text = parsed.text.replace(/\r\n/g, '\n').trim();
