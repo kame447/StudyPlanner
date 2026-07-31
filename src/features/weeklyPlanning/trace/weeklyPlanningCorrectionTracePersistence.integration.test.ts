@@ -212,7 +212,7 @@ describe('weekly planning correction trace persistence gate', () => {
       }],
     });
 
-    expect(diagnostic.diagnostics.truncation.applied).toBe(true);
+    expect(diagnostic.diagnostics.truncation?.applied).toBe(true);
     expect(measureWeeklyPlanningTraceJsonBytes(diagnostic)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
