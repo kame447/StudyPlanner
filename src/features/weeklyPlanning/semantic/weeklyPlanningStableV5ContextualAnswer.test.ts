@@ -221,7 +221,7 @@ describe('Stable V5 contextual answers', () => {
     }), { numRuns: 100 });
   });
 
-  it('rejects stale, missing, inactive, or non-minimal pending-question answers', () => {
+  it('returns null for stale, missing, or non-minimal pending-question shapes', () => {
     const base = {
       graph: graph({ quantityRole: 'target' }),
       document: answerDocument({ minutes: 180 }),
@@ -231,7 +231,7 @@ describe('Stable V5 contextual answers', () => {
       userText: '3時間です',
     };
 
-    const invalidInputs = [
+    const nonContextualInputs = [
       {
         ...base,
         pendingQuestion: pendingQuestion({
@@ -248,20 +248,39 @@ describe('Stable V5 contextual answers', () => {
       },
       {
         ...base,
-        pendingQuestion: pendingQuestion({
-          code: 'missing_effort_estimate',
-          targetFactId: 'unknown-workload',
-        }),
-      },
-      {
-        ...base,
         pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate' }),
         userText: '別件ですが、新しく数学を毎日3時間やる予定も追加してください',
       },
     ];
 
-    for (const invalidInput of invalidInputs) {
+    for (const invalidInput of nonContextualInputs) {
       expect(applyWeeklyPlanningStableV5ContextualAnswer(invalidInput)).toBeNull();
     }
+  });
+
+  it('rejects a contextual reply whose machine-selected target no longer exists', () => {
+    const initialGraph = graph({ quantityRole: 'target' });
+    const result = applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: initialGraph,
+      document: answerDocument({ minutes: 180 }),
+      pendingQuestion: pendingQuestion({
+        code: 'missing_effort_estimate',
+        targetFactId: 'unknown-workload',
+      }),
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 1,
+      userText: '3時間です',
+    });
+
+    expect(result).toEqual({
+      status: 'rejected',
+      graph: initialGraph,
+      diff: null,
+      errors: [
+        'contextual-answer-target-unavailable:missing_effort_estimate:unknown-workload',
+      ],
+      localToFactId: {},
+    });
   });
 });
