@@ -151,17 +151,21 @@ function pendingQuestion(params: {
   };
 }
 
+async function initialMathPipelineResult() {
+  return createWeeklyPlanningSemanticPipelineV5(
+    acceptedNormalizer(baseDocument()),
+  ).run({
+    conversationId: 'conversation-explicit-repair',
+    turnId: 'turn-1',
+    expectedRevision: 0,
+    userText: '来週、数学の問題を40問進めたいです',
+    schedulerContext,
+  });
+}
+
 describe('Stable V5 semantic pipeline explicit repair', () => {
   it('keeps the target after a wrong unit and applies the next valid duration reply', async () => {
-    const first = await createWeeklyPlanningSemanticPipelineV5(
-      acceptedNormalizer(baseDocument()),
-    ).run({
-      conversationId: 'conversation-explicit-repair',
-      turnId: 'turn-1',
-      expectedRevision: 0,
-      userText: '来週、数学の問題を40問進めたいです',
-      schedulerContext,
-    });
+    const first = await initialMathPipelineResult();
     expect(first.status).toBe('scheduler_needs_resolution');
     const workloadId = first.canonicalization?.localToFactId['workload-problems'];
     if (!workloadId) throw new Error('workload id was not created');
@@ -228,6 +232,44 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
     ]);
     expect(repaired.scheduler?.input?.movableWorkItems).toEqual([
       expect.objectContaining({ estimatedMinutes: 180 }),
+    ]);
+  });
+
+  it('rejects a short reply atomically when the pending target disappeared', async () => {
+    const first = await initialMathPipelineResult();
+    expect(first.status).toBe('scheduler_needs_resolution');
+
+    const rejected = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(shortReplyDocument({
+        sourceText: '3時間です',
+        amount: 3,
+        unitCode: 'hour',
+        unitLabel: '時間',
+      })),
+    ).run({
+      graph: first.graph,
+      conversationId: 'conversation-explicit-repair',
+      turnId: 'turn-stale-target',
+      expectedRevision: first.graph.revision,
+      userText: '3時間です',
+      publicStateSummary: pendingQuestion({
+        targetFactId: 'missing-workload',
+        graphRevision: first.graph.revision,
+      }),
+      schedulerContext,
+    });
+
+    expect(rejected.status).toBe('canonicalization_rejected');
+    expect(rejected.graph).toEqual(first.graph);
+    expect(rejected.graph.revision).toBe(first.graph.revision);
+    expect(rejected.graph.appliedTurnKeys).not.toContain(
+      'conversation-explicit-repair:turn-stale-target',
+    );
+    expect(rejected.graph.tasks).toEqual(first.graph.tasks);
+    expect(rejected.graph.workloads).toEqual(first.graph.workloads);
+    expect(rejected.graph.effortEstimates).toEqual([]);
+    expect(rejected.canonicalization?.errors).toEqual([
+      'contextual-answer-target-unavailable:missing_effort_estimate:missing-workload',
     ]);
   });
 });
