@@ -89,15 +89,17 @@ function resolvedTimeoutMs(configured: number | undefined): number {
     : DEFAULT_AI_REQUEST_TIMEOUT_MS;
 }
 
-async function fetchWithTimeout(
+async function runFetchWithTimeout<T>(
   input: RequestInfo | URL,
   init: RequestInit,
   timeoutMs: number,
-): Promise<Response> {
+  handleResponse: (response: Response) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    return await handleResponse(response);
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error(`AI request timed out after ${timeoutMs} ms.`);
@@ -162,31 +164,37 @@ export function createOpenAiCompatibleClient(
           const endpoint = proxyUrl.endsWith('/chat/completions')
             ? proxyUrl
             : `${proxyUrl.replace(/\/$/, '')}/chat/completions`;
-          const response = await fetchWithTimeout(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${idToken}`,
+          return await runFetchWithTimeout(
+            endpoint,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+              body: JSON.stringify(proxyBody),
             },
-            body: JSON.stringify(proxyBody),
-          }, requestTimeoutMs);
-          const result = (await response.json()) as AiProxyResponse;
-          const proxiedContent = result.content?.trim();
+            requestTimeoutMs,
+            async (response) => {
+              const result = (await response.json()) as AiProxyResponse;
+              const proxiedContent = result.content?.trim();
 
-          if (!proxiedContent) {
-            const responseMessage =
-              result.error || `AI proxy request failed with status ${response.status}.`;
+              if (!proxiedContent) {
+                const responseMessage =
+                  result.error || `AI proxy request failed with status ${response.status}.`;
 
-            console.error('[AI Proxy] response content missing', {
-              proxyUrl: endpoint,
-              responseMessage,
-              model: logModel,
-            });
+                console.error('[AI Proxy] response content missing', {
+                  proxyUrl: endpoint,
+                  responseMessage,
+                  model: logModel,
+                });
 
-            throw new Error(responseMessage);
-          }
+                throw new Error(responseMessage);
+              }
 
-          return proxiedContent;
+              return proxiedContent;
+            },
+          );
         } catch (error) {
           const responseMessage = extractUnknownErrorMessage(
             error,
@@ -214,7 +222,7 @@ export function createOpenAiCompatibleClient(
           ? {}
           : { max_completion_tokens: maxCompletionTokens }),
       };
-      const response = await fetchWithTimeout(
+      return runFetchWithTimeout(
         `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
         {
           method: 'POST',
@@ -225,20 +233,21 @@ export function createOpenAiCompatibleClient(
           body: JSON.stringify(payload),
         },
         requestTimeoutMs,
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`AI request failed with status ${response.status}.`);
+          }
+
+          const data = (await response.json()) as ChatCompletionResponse;
+          const content = data.choices?.[0]?.message?.content?.trim();
+
+          if (!content) {
+            throw new Error('AI response was empty.');
+          }
+
+          return content;
+        },
       );
-
-      if (!response.ok) {
-        throw new Error(`AI request failed with status ${response.status}.`);
-      }
-
-      const data = (await response.json()) as ChatCompletionResponse;
-      const content = data.choices?.[0]?.message?.content?.trim();
-
-      if (!content) {
-        throw new Error('AI response was empty.');
-      }
-
-      return content;
     },
   };
 }
