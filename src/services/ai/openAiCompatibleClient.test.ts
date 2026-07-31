@@ -33,6 +33,19 @@ function mockFetchOnce(response: unknown): ReturnType<typeof vi.fn> {
   return fetchMock;
 }
 
+function stalledJsonResponse(signal: AbortSignal | null | undefined): Response {
+  if (!(signal instanceof AbortSignal)) {
+    throw new Error('AI request did not include an AbortSignal.');
+  }
+  return {
+    ok: true,
+    status: 200,
+    json: () => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }),
+  } as Response;
+}
+
 function lastRequestBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
   const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
   return JSON.parse((call[1] as { body: string }).body) as Record<string, unknown>;
@@ -97,7 +110,7 @@ describe('openAiCompatibleClient model routing', () => {
     expect(body).not.toHaveProperty('purpose');
   });
 
-  it('aborts a direct provider request after the configured timeout', async () => {
+  it('aborts a direct provider connection after the configured timeout', async () => {
     vi.useFakeTimers();
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
@@ -126,6 +139,57 @@ describe('openAiCompatibleClient model routing', () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(init?.signal).toMatchObject({ aborted: true });
+  });
+
+  it('keeps the direct provider timeout active while reading the response body', async () => {
+    vi.useFakeTimers();
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      stalledJsonResponse(init?.signal));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createOpenAiCompatibleClient({
+      ...config,
+      requestTimeoutMs: 25,
+    });
+    const request = client.createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const rejection = expect(request).rejects.toThrow(
+      'AI request timed out after 25 ms.',
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the proxy timeout active while reading the response body', async () => {
+    vi.useFakeTimers();
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({
+      currentUser: { getIdToken: async () => 'id-token' },
+    } as unknown as ReturnType<typeof getFirebaseAuth>);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      stalledJsonResponse(init?.signal));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createOpenAiCompatibleClient({
+      ...config,
+      requestTimeoutMs: 25,
+    });
+    const request = client.createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+      purpose: 'weekly_planning_interpreter',
+    });
+    const rejection = expect(request).rejects.toThrow(
+      'AI request timed out after 25 ms.',
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the bounded default timeout for invalid configuration', async () => {
