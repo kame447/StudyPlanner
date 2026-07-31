@@ -12,17 +12,19 @@ import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
+  WeeklyPlanningPendingQuestionV5,
+} from './weeklyPlanningPendingQuestionV5';
+import {
+  isWeeklyPlanningContextualQuestionCodeV5,
+} from './weeklyPlanningPendingQuestionV5';
+import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
-
-export type WeeklyPlanningStableV5ContextualQuestionCode =
-  | 'missing_effort_estimate'
-  | 'quantity_role_unresolved';
 
 export interface WeeklyPlanningStableV5ContextualAnswerInput {
   graph: WeeklyPlanningFactGraphV5;
   document: WeeklyPlanningSemanticDocumentV5;
-  questionCode: WeeklyPlanningStableV5ContextualQuestionCode;
+  pendingQuestion: WeeklyPlanningPendingQuestionV5;
   conversationId: string;
   turnId: string;
   expectedRevision: number;
@@ -81,6 +83,10 @@ function isMinimalContextualReply(
     && text.length <= 40
     && hasWholeTurnTaskSource(input)
     && input.expectedRevision === input.graph.revision
+    && input.pendingQuestion.graphRevision === input.graph.revision
+    && isWeeklyPlanningContextualQuestionCodeV5(input.pendingQuestion.questionCode)
+    && typeof input.pendingQuestion.targetFactId === 'string'
+    && input.pendingQuestion.targetFactId.length > 0
     && input.document.planningIntent !== 'create_plan'
     && input.document.planningWindow === null
     && input.document.tasks.length === 1
@@ -98,23 +104,31 @@ function isActiveFact(graph: WeeklyPlanningFactGraphV5, factId: string): boolean
   );
 }
 
-function unresolvedWorkloads(
-  graph: WeeklyPlanningFactGraphV5,
-  code: WeeklyPlanningStableV5ContextualQuestionCode,
-): WorkloadFactV5[] {
-  return graph.workloads.filter((workload) => {
-    if (!isActiveFact(graph, workload.id)) return false;
-    if (code === 'quantity_role_unresolved') {
-      return workload.quantityRole === 'declared' || workload.quantityRole === 'unknown';
-    }
+function targetWorkload(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): WorkloadFactV5 | null {
+  const targetFactId = input.pendingQuestion.targetFactId;
+  if (!targetFactId || !isActiveFact(input.graph, targetFactId)) return null;
+  const workload = input.graph.workloads.find((fact) => fact.id === targetFactId) ?? null;
+  if (!workload) return null;
+  if (
+    input.pendingQuestion.questionCode === 'quantity_role_unresolved'
+    && workload.quantityRole !== 'declared'
+    && workload.quantityRole !== 'unknown'
+  ) {
+    return null;
+  }
+  if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
     const targetFactIds = new Set([
       workload.taskId,
       ...(workload.componentId ? [workload.componentId] : []),
     ]);
-    return !graph.effortEstimates.some((estimate) =>
-      isActiveFact(graph, estimate.id)
+    const alreadyEstimated = input.graph.effortEstimates.some((estimate) =>
+      isActiveFact(input.graph, estimate.id)
       && targetFactIds.has(estimate.targetFactId));
-  });
+    if (alreadyEstimated) return null;
+  }
+  return workload;
 }
 
 function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
@@ -174,11 +188,10 @@ function appliedResult(params: {
 function applyEffortAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
-  const targets = unresolvedWorkloads(input.graph, 'missing_effort_estimate');
+  const target = targetWorkload(input);
   const candidates = durationCandidates(input.document);
-  if (targets.length !== 1 || candidates.length !== 1) return null;
+  if (!target || candidates.length !== 1) return null;
 
-  const target = targets[0];
   const candidate = candidates[0];
   const nextRevision = input.graph.revision + 1;
   const id = contextualFactId({
@@ -234,11 +247,10 @@ function applyEffortAnswer(
 function applyQuantityRoleAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
-  const targets = unresolvedWorkloads(input.graph, 'quantity_role_unresolved');
+  const target = targetWorkload(input);
   const roles = quantityRoleCandidates(input.document);
-  if (targets.length !== 1 || roles.length !== 1) return null;
+  if (!target || roles.length !== 1) return null;
 
-  const target = targets[0];
   const nextRevision = input.graph.revision + 1;
   const id = contextualFactId({
     kind: 'workload',
@@ -304,20 +316,11 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
   if (!isMinimalContextualReply(input)) return null;
-  if (input.questionCode === 'missing_effort_estimate') return applyEffortAnswer(input);
-  return applyQuantityRoleAnswer(input);
-}
-
-export function inferWeeklyPlanningStableV5ContextualQuestionCode(
-  publicStateSummary?: Record<string, unknown>,
-): WeeklyPlanningStableV5ContextualQuestionCode | null {
-  const lastAssistantMessage = publicStateSummary?.lastAssistantMessage;
-  if (typeof lastAssistantMessage !== 'string') return null;
-  if (lastAssistantMessage.includes('合計でどれくらい時間')) {
-    return 'missing_effort_estimate';
+  if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
+    return applyEffortAnswer(input);
   }
-  if (lastAssistantMessage.includes('今回進めたい量ですか')) {
-    return 'quantity_role_unresolved';
+  if (input.pendingQuestion.questionCode === 'quantity_role_unresolved') {
+    return applyQuantityRoleAnswer(input);
   }
   return null;
 }
