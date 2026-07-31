@@ -10,6 +10,7 @@ import {
 const SESSION_ID = 'weekly-trace-123e4567-e89b-12d3-a456-426614174000';
 const CONVERSATION_ID = 'weekly-conversation-323e4567-e89b-12d3-a456-426614174000';
 const OCCURRED_AT = '2026-07-30T00:00:00.000Z';
+const FUTURE_FIELD_SENTINEL = 'renderer-prompt-field-added-after-trace-contract';
 
 function rendererDiagnostic() {
   return {
@@ -75,6 +76,14 @@ function rendererDiagnostic() {
           requiredLabels: ['院試の勉強'],
           fallbackText: '今回進めたい量か、残っている全体量か教えてください。',
           previewCount: 0,
+          promptContext: {
+            messages: [
+              { role: 'system', content: '返答を考えてください。' },
+              { role: 'user', content: '{"currentUserMessage":"どういうこと？"}' },
+            ],
+            requestBytes: 256,
+            futurePromptFieldAddedWithoutTraceSchemaChange: FUTURE_FIELD_SENTINEL,
+          },
         },
         response: {
           status: 'rendered',
@@ -111,13 +120,14 @@ describe('weekly planning renderer diagnostic Worker compatibility', () => {
         schemaVersion: 2,
       },
       entries: [rendererDiagnostic()],
-    }, { token: 'wpt_test-token', epoch: '100' }, {
+    }, { token: 'wpt_fixture', epoch: '100' }, {
       sessionId: SESSION_ID,
       logicalConversationId: CONVERSATION_ID,
     }, OCCURRED_AT);
 
     const diagnostics = prepared.entries[0].diagnostics as Record<string, unknown>;
     const renderer = diagnostics.dialogueRenderer as Record<string, unknown>;
+    const request = renderer.request as Record<string, unknown>;
     expect(renderer).toMatchObject({
       actionKind: 'question',
       questionCode: 'quantity_role_unresolved',
@@ -125,6 +135,9 @@ describe('weekly planning renderer diagnostic Worker compatibility', () => {
         branch: 'ai_rendered',
         responseSource: 'ai',
       },
+    });
+    expect(request.promptContext).toMatchObject({
+      futurePromptFieldAddedWithoutTraceSchemaChange: FUTURE_FIELD_SENTINEL,
     });
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
