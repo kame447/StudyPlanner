@@ -78,6 +78,17 @@ function rendererTrace(): WeeklyPlanningDialogueRendererTrace {
   };
 }
 
+function tracePromptContext(): {
+  messages: Array<{ role: string; content: string }>;
+  requestBytes: number;
+} {
+  const bounded = boundWeeklyPlanningDialogueRendererTraceForTransport(rendererTrace());
+  return bounded.request?.promptContext as {
+    messages: Array<{ role: string; content: string }>;
+    requestBytes: number;
+  };
+}
+
 afterEach(() => {
   resetWeeklyPlanningDialogueRendererPromptContextsForTest();
 });
@@ -94,11 +105,7 @@ describe('Stable V5 renderer prompt trace', () => {
 
     await renderer.render(renderInput);
     const actualRequest = vi.mocked(client.createChatCompletion).mock.calls[0][0];
-    const bounded = boundWeeklyPlanningDialogueRendererTraceForTransport(rendererTrace());
-    const promptContext = bounded.request?.promptContext as {
-      messages: Array<{ role: string; content: string }>;
-      requestBytes: number;
-    };
+    const promptContext = tracePromptContext();
 
     expect(promptContext.messages).toEqual(actualRequest.messages);
     expect(promptContext.requestBytes).toBeGreaterThan(0);
@@ -115,5 +122,24 @@ describe('Stable V5 renderer prompt trace', () => {
         },
       },
     });
+  });
+
+  it('keeps the attempted prompt when the renderer provider fails', async () => {
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => {
+        throw new Error('provider unavailable');
+      }),
+    };
+    const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(config, client);
+
+    await expect(renderer.render(renderInput)).resolves.toEqual({
+      status: 'fallback',
+      reason: 'provider_error',
+      rawResponse: null,
+    });
+    const actualRequest = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    const promptContext = tracePromptContext();
+    expect(promptContext.messages).toEqual(actualRequest.messages);
+    expect(promptContext.requestBytes).toBeGreaterThan(0);
   });
 });
