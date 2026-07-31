@@ -440,7 +440,14 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
   const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer(input);
   if (evaluation.status === 'applied') return evaluation.result;
-  if (evaluation.status === 'incompatible') {
+  if (
+    evaluation.status === 'incompatible'
+    && (
+      evaluation.reason === 'expected_single_duration'
+      || evaluation.reason === 'expected_single_quantity_role'
+      || evaluation.reason === 'duplicate_or_conflicting_turn'
+    )
+  ) {
     return applyIncompatibleReplyTurn(input);
   }
   return null;
