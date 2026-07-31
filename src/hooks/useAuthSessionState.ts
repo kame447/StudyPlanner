@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useRootManagedAuthentication } from '../components/RootManagedAuthenticationContext';
 import { authRepository } from '../repositories';
 import type { User, UserProfileDraft } from '../types/domain';
 import type { ShowNotice } from './useNoticeState';
@@ -28,6 +29,7 @@ interface UseAuthSessionStateResult {
 export function useAuthSessionState({
   showNotice,
 }: UseAuthSessionStateOptions): UseAuthSessionStateResult {
+  const rootManagedAuthentication = useRootManagedAuthentication();
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<User | null>(null);
 
@@ -39,11 +41,11 @@ export function useAuthSessionState({
         const currentUser = await authRepository.getCurrentUser();
 
         if (!currentUser) {
+          setUser(null);
           return;
         }
 
         setUser(currentUser);
-        setBooting(false);
 
         try {
           await loadPlannerData(currentUser.id);
@@ -93,7 +95,9 @@ export function useAuthSessionState({
     async (email: string, password: string) => {
       try {
         const currentUser = await authRepository.signInWithPassword(email, password);
-        setUser(currentUser);
+        if (!rootManagedAuthentication) {
+          setUser(currentUser);
+        }
         showNotice('ログインしました。', 'success');
         return currentUser;
       } catch (error) {
@@ -104,13 +108,15 @@ export function useAuthSessionState({
         return null;
       }
     },
-    [showNotice],
+    [rootManagedAuthentication, showNotice],
   );
 
   const signInWithGoogle = useCallback(async () => {
     try {
       const currentUser = await authRepository.signInWithGoogle();
-      setUser(currentUser);
+      if (!rootManagedAuthentication) {
+        setUser(currentUser);
+      }
       showNotice('Googleでログインしました。', 'success');
       return currentUser;
     } catch (error) {
@@ -120,7 +126,7 @@ export function useAuthSessionState({
       );
       return null;
     }
-  }, [showNotice]);
+  }, [rootManagedAuthentication, showNotice]);
 
   const sendPasswordReset = useCallback(
     async (email: string) => {
