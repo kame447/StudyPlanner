@@ -5,18 +5,24 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+  type WeeklyPlanningSemanticNormalizerInputV5,
   type WeeklyPlanningSemanticNormalizerResultV5,
   type WeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 import {
+  WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
   createWeeklyPlanningSemanticPipelineV5,
 } from './weeklyPlanningSemanticPipelineV5';
 
 function acceptedNormalizer(
   document: WeeklyPlanningSemanticDocumentV5,
+  capture?: { input: WeeklyPlanningSemanticNormalizerInputV5 | null },
 ): WeeklyPlanningSemanticNormalizerV5 {
   return {
-    async normalize(): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+    async normalize(
+      input: WeeklyPlanningSemanticNormalizerInputV5,
+    ): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+      if (capture) capture.input = structuredClone(input);
       return {
         status: 'accepted',
         document,
@@ -149,13 +155,36 @@ function activeIds(graph: {
   factLifecycles: Array<{ factId: string; status: string }>;
 }): Set<string> {
   return new Set(
-    graph.factLifecycles
+    graph.factLifycles
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
 }
 
 describe('Stable V5 semantic pipeline correction application', () => {
+  it('passes the machine-readable correction targeting contract to the normalizer', async () => {
+    const capture: { input: WeeklyPlanningSemanticNormalizerInputV5 | null } = {
+      input: null,
+    };
+    await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(initialDocument(), capture),
+    ).run({
+      conversationId: 'conversation-contract',
+      turnId: 'turn-1',
+      expectedRevision: 0,
+      userText: '数学の時間を訂正したい',
+      publicStateSummary: {
+        tasks: [{ publicId: 'task-public-1', title: '数学' }],
+      },
+      schedulerContext,
+    });
+
+    expect(capture.input?.publicStateSummary).toMatchObject({
+      tasks: [{ publicId: 'task-public-1', title: '数学' }],
+      correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
+    });
+  });
+
   it('applies a prior-turn public workload correction before scheduler compilation', async () => {
     const first = await createWeeklyPlanningSemanticPipelineV5(
       acceptedNormalizer(initialDocument()),
