@@ -56,6 +56,8 @@ function repositoryHarness() {
 function rendererTrace(): WeeklyPlanningDialogueRendererTrace {
   const rawResponse = JSON.stringify({
     actionId: 'stable-v5:tomorrow:missing_schedulable_work',
+    actionKind: 'question',
+    questionCode: 'missing_schedulable_work',
     text: '明日1日分の予定ですね。では、明日の予定を作ります。',
   });
   return {
@@ -99,22 +101,41 @@ function traceInput(requestId: string) {
     dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(rendererTrace()),
     outcome: 'revision_pending',
     previewCount: 0,
-    debugTraceEvents: [{
-      schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
-      sequence: 0,
-      stage: 'semantic_validation_result',
-      occurredAt: '2026-07-31T08:48:32.812Z',
-      severity: 'warn' as const,
-      data: {
-        attempt: 'initial',
-        accepted: false,
-        errors: [WINDOW_REPAIR_ERROR],
-        parsedDocument: {
-          planningIntent: 'create_plan',
-          planningWindow: null,
+    debugTraceEvents: [
+      {
+        schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+        sequence: 0,
+        stage: 'pending_question_resolved',
+        occurredAt: '2026-07-31T08:48:32.811Z',
+        severity: 'info' as const,
+        data: {
+          source: 'publicStateSummary.pendingQuestion',
+          rendererTextInspected: false,
+          pendingQuestion: {
+            actionId: 'stable-v5:previous:invalid_planning_horizon',
+            questionCode: 'invalid_planning_horizon',
+            targetFactId: null,
+            graphRevision: 0,
+          },
         },
       },
-    }],
+      {
+        schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+        sequence: 1,
+        stage: 'semantic_validation_result',
+        occurredAt: '2026-07-31T08:48:32.812Z',
+        severity: 'warn' as const,
+        data: {
+          attempt: 'initial',
+          accepted: false,
+          errors: [WINDOW_REPAIR_ERROR],
+          parsedDocument: {
+            planningIntent: 'create_plan',
+            planningWindow: null,
+          },
+        },
+      },
+    ],
   };
 }
 
@@ -144,7 +165,7 @@ describe('renderer action fallback storage contract', () => {
     restoreStorage = undefined;
   });
 
-  it('preserves semantic repair and false-creation fallback through outbox retry', async () => {
+  it('preserves semantic repair and typed renderer fallback through outbox retry', async () => {
     const harness = repositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const first = traceInput('conversation-tomorrow:request:1');
@@ -162,13 +183,13 @@ describe('renderer action fallback storage contract', () => {
 
     expect(harness.writes).toHaveLength(2);
     const replayed = harness.writes[0].entries[0];
-    expect(semanticResults(replayed)).toEqual([
+    expect(semanticResults(replayed)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         attempt: 'initial',
         accepted: false,
         errors: [WINDOW_REPAIR_ERROR],
       }),
-    ]);
+    ]));
     const renderer = rendererDiagnostic(replayed);
     expect(renderer).toMatchObject({
       actionKind: 'question',
@@ -182,7 +203,7 @@ describe('renderer action fallback storage contract', () => {
       response: {
         status: 'fallback',
         reason: 'ungrounded_text',
-        rawResponse: expect.stringContaining('明日の予定を作ります'),
+        rawResponse: expect.stringContaining('"questionCode":"missing_schedulable_work"'),
       },
       decision: {
         branch: 'deterministic_fallback',
