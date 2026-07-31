@@ -31,6 +31,26 @@ export interface WeeklyPlanningStableV5ContextualAnswerInput {
   userText: string;
 }
 
+export type WeeklyPlanningStableV5ContextualAnswerEvaluationStatus =
+  | 'not_contextual'
+  | 'incompatible'
+  | 'applied';
+
+export interface WeeklyPlanningStableV5ContextualAnswerEvaluation {
+  status: WeeklyPlanningStableV5ContextualAnswerEvaluationStatus;
+  reason:
+    | 'reply_shape_not_contextual'
+    | 'unsupported_question_code'
+    | 'target_unavailable'
+    | 'expected_single_duration'
+    | 'expected_single_quantity_role'
+    | 'duplicate_or_conflicting_turn'
+    | 'applied';
+  result: WeeklyPlanningSemanticCanonicalizationResultV5 | null;
+  questionCode: string;
+  targetFactId: string | null;
+}
+
 function stableHash(input: string): string {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -187,12 +207,12 @@ function appliedResult(params: {
 
 function applyEffortAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: WorkloadFactV5,
+  candidate: {
+    minutes: number;
+    precision: EffortEstimateFactV5['precision'];
+  },
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
-  const target = targetWorkload(input);
-  const candidates = durationCandidates(input.document);
-  if (!target || candidates.length !== 1) return null;
-
-  const candidate = candidates[0];
   const nextRevision = input.graph.revision + 1;
   const id = contextualFactId({
     kind: 'effort',
@@ -246,11 +266,9 @@ function applyEffortAnswer(
 
 function applyQuantityRoleAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: WorkloadFactV5,
+  role: SemanticQuantityRoleV5,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
-  const target = targetWorkload(input);
-  const roles = quantityRoleCandidates(input.document);
-  if (!target || roles.length !== 1) return null;
-
   const nextRevision = input.graph.revision + 1;
   const id = contextualFactId({
     kind: 'workload',
@@ -266,7 +284,7 @@ function applyQuantityRoleAnswer(
   const replacement: WorkloadFactV5 = {
     ...target,
     id,
-    quantityRole: roles[0],
+    quantityRole: role,
     source: {
       conversationId: input.conversationId,
       turnId: input.turnId,
@@ -312,15 +330,84 @@ function applyQuantityRoleAnswer(
   });
 }
 
+export function evaluateWeeklyPlanningStableV5ContextualAnswer(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): WeeklyPlanningStableV5ContextualAnswerEvaluation {
+  const base = {
+    questionCode: input.pendingQuestion.questionCode,
+    targetFactId: input.pendingQuestion.targetFactId,
+  };
+  if (!isMinimalContextualReply(input)) {
+    return {
+      ...base,
+      status: 'not_contextual',
+      reason: 'reply_shape_not_contextual',
+      result: null,
+    };
+  }
+  if (!isWeeklyPlanningContextualQuestionCodeV5(input.pendingQuestion.questionCode)) {
+    return {
+      ...base,
+      status: 'not_contextual',
+      reason: 'unsupported_question_code',
+      result: null,
+    };
+  }
+
+  const target = targetWorkload(input);
+  if (!target) {
+    return {
+      ...base,
+      status: 'incompatible',
+      reason: 'target_unavailable',
+      result: null,
+    };
+  }
+
+  if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
+    const candidates = durationCandidates(input.document);
+    if (candidates.length !== 1) {
+      return {
+        ...base,
+        status: 'incompatible',
+        reason: 'expected_single_duration',
+        result: null,
+      };
+    }
+    const result = applyEffortAnswer(input, target, candidates[0]);
+    return result
+      ? { ...base, status: 'applied', reason: 'applied', result }
+      : {
+          ...base,
+          status: 'incompatible',
+          reason: 'duplicate_or_conflicting_turn',
+          result: null,
+        };
+  }
+
+  const roles = quantityRoleCandidates(input.document);
+  if (roles.length !== 1) {
+    return {
+      ...base,
+      status: 'incompatible',
+      reason: 'expected_single_quantity_role',
+      result: null,
+    };
+  }
+  const result = applyQuantityRoleAnswer(input, target, roles[0]);
+  return result
+    ? { ...base, status: 'applied', reason: 'applied', result }
+    : {
+        ...base,
+        status: 'incompatible',
+        reason: 'duplicate_or_conflicting_turn',
+        result: null,
+      };
+}
+
 export function applyWeeklyPlanningStableV5ContextualAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
-  if (!isMinimalContextualReply(input)) return null;
-  if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
-    return applyEffortAnswer(input);
-  }
-  if (input.pendingQuestion.questionCode === 'quantity_role_unresolved') {
-    return applyQuantityRoleAnswer(input);
-  }
-  return null;
+  const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer(input);
+  return evaluation.status === 'applied' ? evaluation.result : null;
 }
