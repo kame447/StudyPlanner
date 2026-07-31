@@ -202,7 +202,7 @@ describe('Stable V5 contextual answers', () => {
       if (!result) throw new Error('valid machine-selected answer was rejected');
 
       expect(result.graph.revision).toBe(initialGraph.revision + 1);
-      expect(result.diff.superseded).toEqual([{ kind: 'workload', id: target.id }]);
+      expect(result.diff?.superseded).toEqual([{ kind: 'workload', id: target.id }]);
       expect(result.graph.workloads.at(-1)).toMatchObject({
         taskId: target.taskId,
         amount: target.amount,
