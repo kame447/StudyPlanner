@@ -81,7 +81,9 @@ describe('Stable V5 dialogue state summary', () => {
         planningWindows: expect.any(Array),
         tasks: [{ id: 'task-1', category: 'study', title: '院試' }],
         components: expect.any(Array),
-        workloads: expect.any(Array),
+        workloads: [],
+        availabilityDeclarations: [],
+        constraintSourceRequests: [],
       },
       currentQuestion: {
         questionCode: 'quantity_role_unresolved',
@@ -102,11 +104,13 @@ describe('Stable V5 dialogue state summary', () => {
         knownUnitLabel: '時間',
       }),
       expect.objectContaining({
-        kind: 'availabilityDeclarations',
+        sourceCollection: 'availabilityDeclarations',
+        kind: 'available',
         resolutionStatus: 'unresolved',
       }),
       expect.objectContaining({
-        kind: 'constraintSourceRequests',
+        sourceCollection: 'constraintSourceRequests',
+        kind: 'calendar',
         resolutionStatus: 'unresolved',
       }),
     ]));
