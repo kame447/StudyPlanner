@@ -1,0 +1,233 @@
+import { describe, expect, it } from 'vitest';
+import {
+  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type WeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningSemanticDocumentV5';
+import {
+  WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+  type WeeklyPlanningSemanticNormalizerResultV5,
+  type WeeklyPlanningSemanticNormalizerV5,
+} from './weeklyPlanningSemanticNormalizerV5';
+import {
+  createWeeklyPlanningSemanticPipelineV5,
+} from './weeklyPlanningSemanticPipelineV5';
+
+function acceptedNormalizer(
+  document: WeeklyPlanningSemanticDocumentV5,
+): WeeklyPlanningSemanticNormalizerV5 {
+  return {
+    async normalize(): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+      return {
+        status: 'accepted',
+        document,
+        diagnostics: {
+          schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+          jsonSchemaName: 'weekly_planning_semantic_document_v5',
+          normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+          attemptCount: 1,
+          repairAttempted: false,
+          requestBytes: [1],
+          responseLengths: [1],
+          latencyMs: 1,
+          validationErrors: [],
+          providerError: null,
+        },
+      };
+    },
+  };
+}
+
+function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'update_plan',
+    planningWindow: {
+      localId: 'window-1',
+      kind: 'absolute',
+      value: '2026-08-10',
+      start: '2026-08-10',
+      end: '2026-08-16',
+      sourceText: '来週',
+    },
+    tasks: [{
+      localId: 'task-math',
+      category: 'study',
+      title: '数学',
+      study: {
+        purpose: 'self_study',
+        contextLabel: null,
+        components: [],
+      },
+      workloads: [{
+        localId: 'workload-problems',
+        quantityRole: 'target',
+        amount: 40,
+        unitCode: 'problem',
+        unitLabel: '問',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: '数学の問題を40問',
+      }],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: '数学の問題を40問進めたい',
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+function shortReplyDocument(params: {
+  sourceText: string;
+  amount: number;
+  unitCode: 'page' | 'hour';
+  unitLabel: string;
+}): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'update_plan',
+    planningWindow: null,
+    tasks: [{
+      localId: `reply-task-${params.unitCode}`,
+      category: 'study',
+      title: '数学',
+      study: {
+        purpose: 'self_study',
+        contextLabel: null,
+        components: [],
+      },
+      workloads: [{
+        localId: `reply-workload-${params.unitCode}`,
+        quantityRole: 'unknown',
+        amount: params.amount,
+        unitCode: params.unitCode,
+        unitLabel: params.unitLabel,
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: params.sourceText,
+      }],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: params.sourceText,
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+const schedulerContext = {
+  ownerId: 'owner-explicit-repair',
+  currentDate: '2026-08-03',
+  planningStartDate: '2026-08-10',
+  planningEndDate: '2026-08-16',
+  timeZone: 'Asia/Tokyo',
+};
+
+function pendingQuestion(params: {
+  targetFactId: string;
+  graphRevision: number;
+}) {
+  return {
+    pendingQuestion: {
+      actionId: 'ask-effort',
+      questionCode: 'missing_effort_estimate',
+      targetFactId: params.targetFactId,
+      graphRevision: params.graphRevision,
+    },
+  };
+}
+
+describe('Stable V5 semantic pipeline explicit repair', () => {
+  it('keeps the target after a wrong unit and applies the next valid duration reply', async () => {
+    const first = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(baseDocument()),
+    ).run({
+      conversationId: 'conversation-explicit-repair',
+      turnId: 'turn-1',
+      expectedRevision: 0,
+      userText: '来週、数学の問題を40問進めたいです',
+      schedulerContext,
+    });
+    expect(first.status).toBe('scheduler_needs_resolution');
+    const workloadId = first.canonicalization?.localToFactId['workload-problems'];
+    if (!workloadId) throw new Error('workload id was not created');
+
+    const wrong = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(shortReplyDocument({
+        sourceText: '3ページです',
+        amount: 3,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      })),
+    ).run({
+      graph: first.graph,
+      conversationId: 'conversation-explicit-repair',
+      turnId: 'turn-2',
+      expectedRevision: first.graph.revision,
+      userText: '3ページです',
+      publicStateSummary: pendingQuestion({
+        targetFactId: workloadId,
+        graphRevision: first.graph.revision,
+      }),
+      schedulerContext,
+    });
+
+    expect(wrong.status).toBe('scheduler_needs_resolution');
+    expect(wrong.graph.revision).toBe(first.graph.revision + 1);
+    expect(wrong.graph.appliedTurnKeys).toContain(
+      'conversation-explicit-repair:turn-2',
+    );
+    expect(wrong.graph.tasks).toEqual(first.graph.tasks);
+    expect(wrong.graph.workloads).toEqual(first.graph.workloads);
+    expect(wrong.graph.effortEstimates).toEqual([]);
+    expect(wrong.graph.tasks.some((task) => task.title.includes('ページ'))).toBe(false);
+
+    const repaired = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(shortReplyDocument({
+        sourceText: '3時間です',
+        amount: 3,
+        unitCode: 'hour',
+        unitLabel: '時間',
+      })),
+    ).run({
+      graph: wrong.graph,
+      conversationId: 'conversation-explicit-repair',
+      turnId: 'turn-3',
+      expectedRevision: wrong.graph.revision,
+      userText: '3時間です',
+      publicStateSummary: pendingQuestion({
+        targetFactId: workloadId,
+        graphRevision: wrong.graph.revision,
+      }),
+      schedulerContext,
+    });
+
+    expect(repaired.status).toBe('scheduler_ready');
+    expect(repaired.graph.tasks).toEqual(first.graph.tasks);
+    expect(repaired.graph.workloads).toEqual(first.graph.workloads);
+    expect(repaired.graph.effortEstimates).toEqual([
+      expect.objectContaining({
+        taskId: first.graph.tasks[0]?.id,
+        minutes: 180,
+        kind: 'total_duration',
+      }),
+    ]);
+    expect(repaired.scheduler?.input?.movableWorkItems).toEqual([
+      expect.objectContaining({ estimatedMinutes: 180 }),
+    ]);
+  });
+});
