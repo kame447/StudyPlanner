@@ -176,7 +176,7 @@ describe('weekly planning preview correction lifecycle', () => {
       assistantText: '数学の時間を修正しました。仮予定を作り直します。',
     });
     expect(state.previewCandidates).toEqual([]);
-    expect(state.mode).toBe('draft_created');
+    expect(state.mode).toBe('collecting_tasks');
     expect(classifyWeeklyPlanningApprovalAvailability({
       blocks: oldBlocks,
       userId: USER_ID,
