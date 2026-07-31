@@ -75,6 +75,14 @@ GitHub Actionsが使用できない間は、1、2、7を保留し、driver、con
 - 類似表現・別タスク・別日付でも同じ構造が成立する。
 - transcriptを外部開発エージェントが確認し、不自然な定型反復や会話停止がない。
 
+## 現在のscenario群
+
+1. 明日の自然な複数ターン計画、既存予定回避、承認、保存。
+2. 別表現、来週、非学習タスク、承認、保存。
+3. 誤った単位回答、聞き返し、明示的修復、承認、保存。
+4. 英語と数学の対象を取り違えない複数訂正、承認、保存。
+5. preview後の作業量訂正、旧preview無効化、再preview、承認、保存。
+
 ## ループ記録
 
 ### Loop 0: 現状確認
@@ -93,8 +101,24 @@ GitHub Actionsが使用できない間は、1、2、7を保留し、driver、con
 
 原因: production実行adapterと、純粋な会話進行・判定ロジックの境界が分離されていなかった。
 
-対応: 決定論的conversation driver、進捗停止検出、human-readable transcript renderer、明示的修復contract、preview訂正contract、fake adapterの通常testを追加した。実API workflowは手動実行専用に変更した。
+対応: 決定論的conversation driver、進捗停止検出、human-readable transcript renderer、明示的修復contract、preview訂正contract、scenario能力manifest、fake adapter testを追加した。
 
-調査: correction intentのschema、canonicalization、transactionは存在する。一方、通常semantic pipelineがtransactionを適用する接続は現時点で確認できない。preview後訂正が失敗する場合の第一原因候補として扱う。
+類似確認: 通常会話、別表現、非学習、誤回答、複数タスク訂正、preview後訂正の5 scenarioを定義した。
 
-確認: GitHub Actionsは未使用。typecheck・test・buildは未実行。次は通常pipelineのcorrection適用境界を決定論的testで固定し、構造的に接続する。
+確認: コード作成済み。typecheck・test・buildは未実行。
+
+### Loop 2: cross-turn訂正の接続
+
+問題: correction intentをschemaとFact Graphへ保存できても、通常semantic pipelineが訂正transactionを適用していなかった。preview後訂正では旧Factがactiveのまま残る。
+
+原因: canonicalizationとlifecycle transactionの間にapplication層がなく、公開IDのtarget解決、replacementの親Fact再接続、重複container整理、失敗時rollbackが欠けていた。
+
+対応: generic correction applicationを追加した。exact publicIdとkindでtargetを解決し、replacementを既存taskへ再接続し、旧Factをsupersedeし、訂正intentと現在turnだけのcontainerを除去する。途中失敗時はturn前Graphへ戻す。
+
+AI契約: active Graphのplanning window、task、component、workload、effort estimate、temporal constraint、recurrenceをpublic factとして渡す。対象が一意ならexact publicIdを使い、曖昧なら推測せずuncertaintyを返すmachine contractを追加した。
+
+類似確認: 単一workload訂正、英語と数学の同時訂正、不明targetのrollback、pipelineからschedulerまでの訂正適用、normalizerへのcontract受け渡しを決定論的testとして追加した。
+
+確認: GitHub Actionsは使用していない。typecheck・test・buildは未実行。実API transcriptも未生成。
+
+次: 実行可能な環境で最初に`npm run test:weekly-ai:conversation:foundation`を実行する。通過後に実API suiteを回し、5 transcriptを人間判断する。失敗した最初の構造境界だけを次ループで修正する。
