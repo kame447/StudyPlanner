@@ -100,11 +100,10 @@ describe('openAiCompatibleClient model routing', () => {
   it('aborts a direct provider request after the configured timeout', async () => {
     vi.useFakeTimers();
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
-    let requestSignal: AbortSignal | null = null;
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
-      requestSignal = init?.signal as AbortSignal;
+      const signal = init?.signal;
       return new Promise<Response>((_resolve, reject) => {
-        requestSignal?.addEventListener('abort', () => reject(new Error('aborted')));
+        signal?.addEventListener('abort', () => reject(new Error('aborted')));
       });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -124,7 +123,9 @@ describe('openAiCompatibleClient model routing', () => {
     await rejection;
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(requestSignal?.aborted).toBe(true);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(true);
   });
 
   it('falls back to the bounded default timeout for invalid configuration', async () => {
