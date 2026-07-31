@@ -162,7 +162,7 @@ function activeIds(graph: {
 }
 
 describe('Stable V5 semantic pipeline correction application', () => {
-  it('passes the machine-readable correction targeting contract to the normalizer', async () => {
+  it('passes the machine-readable correction contract and active Graph facts', async () => {
     const capture: { input: WeeklyPlanningSemanticNormalizerInputV5 | null } = {
       input: null,
     };
@@ -174,15 +174,24 @@ describe('Stable V5 semantic pipeline correction application', () => {
       expectedRevision: 0,
       userText: '数学の時間を訂正したい',
       publicStateSummary: {
-        tasks: [{ publicId: 'task-public-1', title: '数学' }],
+        tasks: [{ publicId: 'stale-task-id', title: '古い表示' }],
       },
       schedulerContext,
     });
 
     expect(capture.input?.publicStateSummary).toMatchObject({
-      tasks: [{ publicId: 'task-public-1', title: '数学' }],
+      graphRevision: 0,
+      tasks: [],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrences: [],
       correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
     });
+    expect(capture.input?.publicStateSummary).not.toEqual(
+      expect.objectContaining({
+        tasks: [{ publicId: 'stale-task-id', title: '古い表示' }],
+      }),
+    );
   });
 
   it('applies a prior-turn public workload correction before scheduler compilation', async () => {
