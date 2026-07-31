@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
+  type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -102,6 +103,37 @@ function durationAnswer(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+function quantityRoleAnswer(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'discuss',
+    planningWindow: null,
+    tasks: [{
+      localId: 'answer-task',
+      category: 'study',
+      title: '直前の質問対象',
+      study: null,
+      workloads: [{
+        localId: 'answer-workload',
+        quantityRole: 'target',
+        amount: 80,
+        unitCode: 'word',
+        unitLabel: '語',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: '今回進めたい量です',
+      }],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: '今回進めたい量です',
+    }],
+    ...emptyCollections(),
+  };
+}
+
 function authorizationDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -135,6 +167,66 @@ function normalizer(sequence: WeeklyPlanningSemanticDocumentV5[]): WeeklyPlannin
         },
       };
     },
+  };
+}
+
+function declaredWorkloadGraph(): WeeklyPlanningFactGraphV5 {
+  const source = {
+    conversationId: 'conversation-1',
+    turnId: 'turn-1',
+    semanticLocalId: 'source-1',
+    sourceText: '問題集10ページと英単語80語',
+    origin: 'user' as const,
+  };
+  const specifications = [
+    { index: 1, title: '問題集', amount: 10, unitCode: 'page' as const, unitLabel: 'ページ' },
+    { index: 2, title: '英単語', amount: 80, unitCode: 'word' as const, unitLabel: '語' },
+  ];
+  const tasks: WeeklyPlanningFactGraphV5['tasks'] = specifications.map((specification) => ({
+    id: `task-${specification.index}`,
+    category: 'study',
+    title: specification.title,
+    source: {
+      ...source,
+      semanticLocalId: `source-${specification.index}`,
+      sourceText: specification.title,
+    },
+    createdRevision: 1,
+  }));
+  const workloads: WeeklyPlanningFactGraphV5['workloads'] = specifications.map(
+    (specification) => ({
+      id: `workload-${specification.index}`,
+      taskId: `task-${specification.index}`,
+      componentId: null,
+      quantityRole: 'declared',
+      amount: specification.amount,
+      unitCode: specification.unitCode,
+      unitLabel: specification.unitLabel,
+      rangeStart: null,
+      rangeEnd: null,
+      perOccurrence: false,
+      periodExpression: null,
+      source: {
+        ...source,
+        semanticLocalId: `source-${specification.index}`,
+        sourceText: specification.title,
+      },
+      createdRevision: 1,
+    }),
+  );
+  return {
+    ...createEmptyWeeklyPlanningFactGraphV5(),
+    revision: 1,
+    appliedTurnKeys: ['conversation-1:turn-1'],
+    tasks,
+    workloads,
+    factLifecycles: [...tasks, ...workloads].map((fact) => ({
+      factId: fact.id,
+      status: 'active' as const,
+      createdRevision: 1,
+      terminalRevision: null,
+      supersededByFactId: null,
+    })),
   };
 }
 
@@ -203,5 +295,35 @@ describe('Stable V5 multi-turn pipeline', () => {
     expect(third.graph.tasks).toHaveLength(1);
     expect(third.graph.workloads).toHaveLength(1);
     expect(third.graph.effortEstimates).toHaveLength(1);
+  });
+
+  it('does not bind a short reply from rendered text when machine pending state is absent', async () => {
+    const initialGraph = declaredWorkloadGraph();
+    const pipeline = createWeeklyPlanningSemanticPipelineV5(normalizer([
+      quantityRoleAnswer(),
+    ]));
+
+    const result = await pipeline.run({
+      graph: initialGraph,
+      conversationId: 'conversation-1',
+      turnId: 'turn-2-no-pending',
+      expectedRevision: initialGraph.revision,
+      userText: '今回進めたい量です',
+      recentConversation: [{
+        role: 'assistant',
+        content: '今回進めたい量ですか？',
+      }],
+      publicStateSummary: {
+        lastAssistantMessage: '今回進めたい量ですか？',
+      },
+      schedulerContext,
+    });
+
+    expect(result.status).toBe('canonicalization_rejected');
+    expect(result.canonicalization).toMatchObject({ status: 'rejected', diff: null });
+    expect(result.graph).toEqual(initialGraph);
+    expect(result.graph.appliedLifecycleOperationKeys).not.toContain(
+      'contextual:conversation-1:turn-2-no-pending',
+    );
   });
 });
