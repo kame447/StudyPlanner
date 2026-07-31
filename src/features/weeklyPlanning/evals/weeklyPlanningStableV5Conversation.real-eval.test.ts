@@ -69,6 +69,7 @@ import {
 } from './weeklyPlanningConversationEvalDriver';
 import {
   WEEKLY_PLANNING_CONVERSATION_EVAL_SCENARIO_MANIFESTS,
+  validateWeeklyPlanningConversationEvalScenarioExecution,
   type WeeklyPlanningConversationEvalScenarioManifest,
 } from './weeklyPlanningConversationEvalScenarioManifest';
 
@@ -358,6 +359,10 @@ function noOpTraceWriter(): null {
   return null;
 }
 
+function readAsyncCapture<T>(read: () => T): T {
+  return read();
+}
+
 class ConversationHarness {
   readonly scenario: ScenarioDefinition;
   readonly report: ScenarioReport;
@@ -473,8 +478,12 @@ class ConversationHarness {
       dispatch: this.store.dispatch,
     }, this.services);
 
-    const result = this.capture.latestResult;
-    const requestId = this.capture.traceRequestId;
+    const result = readAsyncCapture<WeeklyPlanningTurnExecutionResult | null>(
+      () => this.capture.latestResult,
+    );
+    const requestId = readAsyncCapture<string | null>(
+      () => this.capture.traceRequestId,
+    );
     if (!result || !requestId) {
       throw new Error(`Turn ${this.turnIndex} did not expose execution diagnostics.`);
     }
@@ -1027,6 +1036,12 @@ describe.skipIf(!shouldRun)(
         try {
           const harness = new ConversationHarness(scenario, report);
           await scenario.run(harness, report);
+          const executionErrors = validateWeeklyPlanningConversationEvalScenarioExecution({
+            manifest: scenario.manifest,
+            actualUserUtterances: report.turns.map((turn) => turn.userText),
+            checks: report.checks,
+          });
+          expect(executionErrors, executionErrors.join('\n')).toEqual([]);
           expect(allConversationEvalChecksPass(report.checks)).toBe(true);
           report.status = 'passed';
         } catch (error) {
