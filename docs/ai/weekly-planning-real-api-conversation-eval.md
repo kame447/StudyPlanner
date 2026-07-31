@@ -2,67 +2,100 @@
 
 ## 目的
 
-この基盤は、開発者がStudyPlannerの画面へ毎回文章を入力し、traceを手動で書き出す作業を減らすためのものです。GitHub Actions上から本番と同じ週間計画AI経路を複数ターン実行し、仮予定の生成、承認、保存までを一続きで検証します。
+この基盤は、開発者がStudyPlannerへ毎回文章を入力し、traceを手動で書き出す作業を減らすためのものです。
+本番と同じ週間計画AI経路を複数ターン実行し、質問、明示的修復、preview、preview後訂正、再preview、承認、保存までを一続きで確認します。
 
-単発のStructured Outputだけを評価する既存real-evalとは役割が異なります。この基盤はproduction entry pointである`executeWeeklyPlanningTurn`とapplication/controller境界を再利用します。
+単発のStructured Outputを評価する既存real-evalとは役割が異なります。この基盤は`submitWeeklyPlanningApplicationTurn`、controller、`executeWeeklyPlanningTurn`、Stable V5 runtime、preview、approval applicationを再利用します。
 
 ## 実行経路
 
 ```text
-固定scenario
-→ submitWeeklyPlanningApplicationTurn
-→ submitWeeklyPlanningControlledTurn
+固定scenarioと決定論的user driver
+→ application / controller
 → executeWeeklyPlanningTurn
-→ Stable V5 semantic normalizer
-→ OpenAI API structured output
+→ 意味解釈AI
 → validation / repair
 → Fact Graph V5
 → machine pending question
 → scheduler
+→ 返答生成AI
 → preview
+→ 訂正turn / Graph revision更新
+→ 旧preview無効化
+→ 再preview
 → draft block promotion
 → approval application
 → test repositoryへ保存
-→ completion / duplicate suppression
+→ duplicate suppression / completion
 ```
 
-AIが担当するのは発話の意味構造化と利用者向け文面です。期間解決、Fact Graph更新、質問対象、予定配置、承認、保存、重複抑止は既存のdeterministic coreを使用します。
+AI APIを使うのは、ユーザー発話の意味解釈と利用者向け返答生成だけです。
+テスト発話生成、ユーザー役、採点、合否判定、原因推定、修正判断には使用しません。
 
-## 基準scenario
+## scenario群
 
-最初のscenarioは、Production traceで失敗した「明日の予定立てたいです」を起点にします。
+現在は次の5本を定義しています。
+
+1. 明日の自然な複数ターン計画、既存予定回避、承認、保存。
+2. 別表現、来週、非学習タスク、承認、保存。
+3. 誤った単位回答、聞き返し、明示的修復、承認、保存。
+4. 英語と数学の対象を取り違えない複数訂正、承認、保存。
+5. preview後の作業量訂正、旧preview無効化、再preview、承認、保存。
+
+各scenarioのユーザー発話は固定です。アプリの日本語文面ではなく、machine question code、target fact、Graph revision、preview状態を使って次の発話を選びます。
+
+## 訂正の構造契約
+
+意味解釈AIには、active Graph上の公開可能なFactと訂正契約を渡します。
+
+- planning window
+- task
+- component
+- workload
+- effort estimate
+- temporal constraint
+- recurrence
+
+明示的な訂正では、対象Factのexact `publicId`とkindをcorrection targetへ設定します。replacementは現在turnで新しく述べられたFactだけです。対象を一意に決められない場合は推測せず、uncertaintyとして返します。
+
+canonicalization後はgeneric correction applicationが次を行います。
 
 ```text
-選択日: 2026-08-03
-ユーザー: 明日の予定立てたいです
-アプリ: machine pending questionに基づく質問
-ユーザー: 英語を2時間勉強したいです
-アプリ: 必要に応じて作業量または所要時間を確認
-ユーザー: machine question codeに対応する固定回答
-ユーザー: この条件で予定を作って
+publicIdとkindでtarget解決
+→ replacementを既存containerへ再接続
+→ 旧Factをsupersede
+→ correction intentをconsume
+→ 現在turnだけの重複containerをremove
+→ schedulerへ修正後active Graphを渡す
 ```
 
-予定対象日は2026-08-04です。同日18:00から20:00に既存のバイト予定を置き、生成候補が衝突しないことも確認します。
+途中でtarget解決やlifecycle操作に失敗した場合は、訂正turn前のGraphへ戻し、schedulerへ不完全なGraphを渡しません。
 
-## 合格条件
+## 決定論的foundation
 
-現在のscenarioでは、次を機械判定します。
+実APIを使わずに次を検証するtestを分離しています。
 
-- 複数ターンでpreviewへ到達する
-- normalization、canonicalization、provider failureが発生しない
-- `tomorrow`が2026-08-04へ解決される
-- 英語の合計120分が失われない
-- 既存予定18:00から20:00と重ならない
-- preview候補がdraft blockへ昇格する
-- approval後に全件が保存される
-- weekly-planning provenanceが保存される
-- 同じapprovalを再実行しても予定が増えない
-- 完了後にpending approvalとdraft blockが残らない
-- 各ターンのdebug traceがartifactへ保存される
+- machine questionに基づく会話進行
+- 同一状態反復の停止
+- human-readable transcript生成
+- 明示的修復contract
+- preview訂正とstale preview拒否contract
+- scenario能力manifestの網羅性
+- 単一Fact訂正
+- 複数タスク訂正
+- 不明targetの原子的rollback
+- semantic pipelineからschedulerまでの訂正適用
+- normalizerへの公開Factと訂正契約の受け渡し
 
-## 実行方法
+実行コマンド:
 
-通常のtestでは実APIを呼びません。明示的にopt-inした場合だけ実行します。
+```bash
+npm run test:weekly-ai:conversation:foundation
+```
+
+## 実API suite
+
+明示的にopt-inした場合だけ実行します。
 
 ```bash
 WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL=1 \
@@ -74,48 +107,72 @@ VITE_AI_API_KEY="$OPENAI_API_KEY" \
 npm run test:weekly-ai:conversation:real
 ```
 
-GitHub Actionsでは`.github/workflows/weekly-planning-real-api-conversation-eval.yml`を使用します。Repository Secretとして`OPENAI_API_KEY`が必要です。必要に応じてRepository Variable `WEEKLY_PLANNING_EVAL_MODEL`またはmanual dispatchのmodel入力でモデルを上書きできます。
-
-workflowはmain向けpull requestの関連変更、またはmanual dispatchで起動します。同じPR branchへのpushは`synchronize`として同じ検証を再実行し、mainへの通常pushでは実APIを自動実行しません。
-
 ## artifact
-
-実行結果は次へ出力します。
 
 ```text
 artifacts/weekly-planning-real-api-conversation-eval/
-  scenario.json
   report.json
   report.md
-  turn-01.json
-  turn-02.json
-  ...
-  approval.json
-  failure.txt
+  scenarios/
+    <scenario-id>/
+      transcript.md
+      report.json
+      turn-01.json
+      turn-02.json
+      preview-01.json
+      preview-02.json
+      approval.json
+      failure.txt
 ```
 
-各turn JSONにはユーザー入力、assistant返答、response source、failure code、question code、graph revision、preview件数、実行中に収集したStable V5 debug traceを含めます。debug traceから、実際のAI request、raw response、structured result、validation、repair、scheduler、renderer判断を追跡できます。
+各turnにはユーザー発話、assistant返答、response source、failure code、machine question、target fact、Graph revision、preview候補、Stable V5 debug traceを保存します。
+
+会話の自然さは別AIで採点しません。外部開発エージェントが`transcript.md`を読み、定型反復、質問の取り違え、会話停止、不自然な責任転嫁を判断します。
 
 API keyやAuthorization headerはartifactへ保存しません。
 
-## 外部エージェントによる修正ループ
+## workflow
 
-外部エージェントはGitHub Actionsのjob、step、artifactを読み、失敗したturnと契約境界を特定します。修正は同じIssue、branch、PRへ追加し、pushによって同じscenarioを再実行します。
+workflowは手動実行専用です。自動push・PR eventでは起動しません。
 
 ```text
-Actions実行
-→ artifact取得
-→ failure turn特定
-→ prompt / schema / validator / runtimeを修正
-→ deterministic test追加
-→ 同じbranchへpush
-→ real API scenario再実行
+foundation job
+→ typecheck
+→ 決定論的foundation test
+→既存safety test
+→ build
+
+real-api job
+→ foundation成功後のみ実行
+→ OpenAI Secret確認
+→ 5 scenario実行
+→ transcriptとtraceをartifact保存
 ```
 
-一時的なAI出力はartifactにだけ保存します。再現性があり、将来の回帰を防ぐべきケースだけを正式なfixtureまたはdeterministic testへ昇格します。
+GitHub Actionsが利用できない間も、workflow以外の実装と通常test基盤は進められます。
+
+## 自走修正ループ
+
+```text
+scenario実行
+→ transcriptとtraceを読む
+→ 最初に壊れた構造境界を特定
+→ 原因単位で修正
+→ 決定論的testと類似scenarioを追加
+→ 再実行
+→ ループ台帳を短文更新
+```
+
+ループ記録は`docs/ai/tasks/20260801-weekly-planning-autonomous-conversation-loop.md`へ残します。
 
 ## 境界
 
-この基盤はブラウザDOM、Firebase login UI、Production deployそのものは操作しません。ただし、AI意味解釈からcontroller、Fact Graph、scheduler、preview、approval、保存までのapplication経路を結合して検証します。
+この基盤はブラウザDOM、Firebase login UI、Production deployそのものは操作しません。
+AI意味解釈からcontroller、Fact Graph、scheduler、preview、訂正、approval、保存までのapplication結合経路を対象にします。
 
-ブラウザ固有の表示、入力イベント、認証、Production Worker revisionまで確認する場合は、後続段階としてPlaywright E2Eを追加します。
+ブラウザ固有の表示、入力イベント、認証、Production Worker revisionは後続のPlaywright E2E対象です。
+
+## 現在の検証状態
+
+GitHub Actionsは使用していません。typecheck、foundation test、既存test、build、実API suiteは未実行です。
+コードとtest定義を作成した段階であり、成功確認済みとは扱いません。
