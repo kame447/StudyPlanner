@@ -4,6 +4,9 @@ import {
   type JsonSchemaResponseFormat,
   type OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
+import {
+  rememberWeeklyPlanningDialogueRendererPromptContext,
+} from '../trace/weeklyPlanningDialogueRendererTrace';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -301,6 +304,20 @@ function parseRendererResponse(
   return { status: 'rendered', text, rawResponse };
 }
 
+function rendererPromptTraceContext(prompt: {
+  systemPrompt: string;
+  userPrompt: string;
+}): Record<string, unknown> {
+  const messages = [
+    { role: 'system', content: prompt.systemPrompt },
+    { role: 'user', content: prompt.userPrompt },
+  ];
+  return {
+    messages,
+    requestBytes: new TextEncoder().encode(JSON.stringify(messages)).byteLength,
+  };
+}
+
 export function createAiWeeklyPlanningStableV5DialogueRenderer(
   config: AiConfig = getAiConfig(),
   client: OpenAiCompatibleClient = createOpenAiCompatibleClient(config),
@@ -309,6 +326,10 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
     async render(input) {
       try {
         const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
+        rememberWeeklyPlanningDialogueRendererPromptContext(
+          input.actionId,
+          rendererPromptTraceContext(prompt),
+        );
         const rawResponse = await client.createChatCompletion({
           messages: [
             { role: 'system', content: prompt.systemPrompt },
