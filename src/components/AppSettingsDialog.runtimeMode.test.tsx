@@ -19,7 +19,7 @@ describe('AppSettingsDialog weekly planning runtime', () => {
       <AppSettingsDialog
         open
         themeMode="light"
-        themePalette="mint"
+        themePalette="forest"
         onChangeTheme={vi.fn()}
         onChangeThemePalette={vi.fn()}
         onClose={vi.fn()}
