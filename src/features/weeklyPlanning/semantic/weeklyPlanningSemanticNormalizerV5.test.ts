@@ -280,6 +280,22 @@ describe('Stable V5 semantic normalizer', () => {
     });
   });
 
+  it('does not promote a task-specific 明日 into the whole-plan planning window', async () => {
+    const fake = client([JSON.stringify(document())]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
+      userText: '数学は明日やる',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.planningWindow).toBeNull();
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 1,
+      repairAttempted: false,
+    });
+    expect(fake.calls).toHaveLength(1);
+  });
+
   it('repairs at most once and never falls back to a parser', async () => {
     const fake = client(['not-json', JSON.stringify(document())]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
