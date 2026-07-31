@@ -12,6 +12,7 @@ import { useWeeklyPlanningTracePolicy } from '../features/weeklyPlanning/trace/u
 import { getFirebaseAuth } from '../lib/firebaseClient';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
+import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
 import { SplashScreen } from './SplashScreen';
 
 function isPasswordUserWaitingForVerification(user: {
@@ -83,6 +84,14 @@ function AuthenticatedStudyPlannerApp({ userId }: { userId: string }) {
   );
 }
 
+function RootManagedUnauthenticatedApp() {
+  return (
+    <RootManagedAuthenticationProvider>
+      <App />
+    </RootManagedAuthenticationProvider>
+  );
+}
+
 export function StudyPlannerAppRoot() {
   const auth = useMemo(() => getFirebaseAuth(), []);
   const traceEnabled = isWeeklyPlanningTraceFeatureEnabled();
@@ -122,7 +131,7 @@ export function StudyPlannerAppRoot() {
   }
 
   if (authenticatedUserId === null) {
-    return <App />;
+    return <RootManagedUnauthenticatedApp />;
   }
 
   return <AuthenticatedStudyPlannerApp userId={authenticatedUserId} />;
