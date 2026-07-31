@@ -15,6 +15,7 @@ export interface OpenAiCompatibleClientConfig {
   baseUrl: string;
   model: string;
   apiKey: string;
+  requestTimeoutMs?: number;
 }
 
 export interface JsonSchemaResponseFormat {
@@ -49,6 +50,8 @@ interface AiProxyResponse {
   error?: string;
 }
 
+const DEFAULT_AI_REQUEST_TIMEOUT_MS = 90_000;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -78,6 +81,33 @@ function extractUnknownErrorMessage(
   return fallbackMessage;
 }
 
+function resolvedTimeoutMs(configured: number | undefined): number {
+  return typeof configured === 'number'
+    && Number.isFinite(configured)
+    && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_AI_REQUEST_TIMEOUT_MS;
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`AI request timed out after ${timeoutMs} ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export interface OpenAiCompatibleClient {
   createChatCompletion(input: {
     messages: ChatMessage[];
@@ -91,6 +121,7 @@ export interface OpenAiCompatibleClient {
 export function createOpenAiCompatibleClient(
   config: OpenAiCompatibleClientConfig,
 ): OpenAiCompatibleClient {
+  const requestTimeoutMs = resolvedTimeoutMs(config.requestTimeoutMs);
   return {
     async createChatCompletion({
       messages,
@@ -131,14 +162,14 @@ export function createOpenAiCompatibleClient(
           const endpoint = proxyUrl.endsWith('/chat/completions')
             ? proxyUrl
             : `${proxyUrl.replace(/\/$/, '')}/chat/completions`;
-          const response = await fetch(endpoint, {
+          const response = await fetchWithTimeout(endpoint, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${idToken}`,
             },
             body: JSON.stringify(proxyBody),
-          });
+          }, requestTimeoutMs);
           const result = (await response.json()) as AiProxyResponse;
           const proxiedContent = result.content?.trim();
 
@@ -183,14 +214,18 @@ export function createOpenAiCompatibleClient(
           ? {}
           : { max_completion_tokens: maxCompletionTokens }),
       };
-      const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`,
+      const response = await fetchWithTimeout(
+        `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+        requestTimeoutMs,
+      );
 
       if (!response.ok) {
         throw new Error(`AI request failed with status ${response.status}.`);
