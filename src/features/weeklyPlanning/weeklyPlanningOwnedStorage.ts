@@ -162,8 +162,10 @@ export function saveOwnedWeeklyPlanningState(
         graph: runtimeSession.graph,
         planningState: state,
       });
-      if (saved) removeStorageKey(key);
-      return;
+      if (saved) {
+        removeStorageKey(key);
+        return;
+      }
     }
   }
 
