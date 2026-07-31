@@ -330,6 +330,36 @@ function applyQuantityRoleAnswer(
   });
 }
 
+function applyIncompatibleReplyTurn(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): WeeklyPlanningSemanticCanonicalizationResultV5 {
+  const key = turnKey(input);
+  if (input.graph.appliedTurnKeys.includes(key)) {
+    return {
+      status: 'duplicate',
+      graph: input.graph,
+      diff: null,
+      errors: [],
+      localToFactId: {},
+    };
+  }
+  const nextRevision = input.graph.revision + 1;
+  return appliedResult({
+    graph: {
+      ...input.graph,
+      revision: nextRevision,
+      appliedTurnKeys: [...input.graph.appliedTurnKeys, key],
+    },
+    diff: {
+      fromRevision: input.graph.revision,
+      toRevision: nextRevision,
+      added: [],
+      superseded: [],
+      removed: [],
+    },
+  });
+}
+
 export function evaluateWeeklyPlanningStableV5ContextualAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningStableV5ContextualAnswerEvaluation {
@@ -409,5 +439,9 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
   const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer(input);
-  return evaluation.status === 'applied' ? evaluation.result : null;
+  if (evaluation.status === 'applied') return evaluation.result;
+  if (evaluation.status === 'incompatible') {
+    return applyIncompatibleReplyTurn(input);
+  }
+  return null;
 }
