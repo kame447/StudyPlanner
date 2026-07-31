@@ -23,20 +23,20 @@ function graph(params: {
   quantityRole: 'target' | 'declared';
   includeSecond?: boolean;
 }): WeeklyPlanningFactGraphV5 {
-  const tasks = [{
+  const tasks: WeeklyPlanningFactGraphV5['tasks'] = [{
     id: 'task-1',
-    category: 'study' as const,
+    category: 'study',
     title: '問題集',
     source: factSource,
     createdRevision: 1,
   }];
-  const workloads = [{
+  const workloads: WeeklyPlanningFactGraphV5['workloads'] = [{
     id: 'workload-1',
     taskId: 'task-1',
     componentId: null,
     quantityRole: params.quantityRole,
     amount: 10,
-    unitCode: 'page' as const,
+    unitCode: 'page',
     unitLabel: 'ページ',
     rangeStart: null,
     rangeEnd: null,
