@@ -10,8 +10,16 @@ export type WeeklyPlanningStableV5DialogueActionKind =
   | 'status'
   | 'preview_ready';
 
+export interface WeeklyPlanningStableV5DialogueConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
+  currentUserMessage: string;
+  recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];
+  planningInformation: Record<string, unknown> | null;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   requiredLabels: string[];
@@ -68,69 +76,140 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
   },
 };
 
-const MAX_RENDERED_TEXT_LENGTH = 320;
-const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|設定画面|外部サイト|リンクを開|貼り付けて|送信して|睡眠薬|服用|何錠|診断|病歴|住所|メールアドレス|電話番号|口座番号|クレジットカード)/i;
-const MARKDOWN_CONTENT = /```|^\s{0,3}(?:#{1,6}\s|[-*+]\s|\d+[.)]\s)/m;
+const MAX_RENDERED_TEXT_LENGTH = 800;
+const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*[0-5]?\d\s*分)?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
-const GROUNDING_TERMS = [
-  '計画期間',
-  '期間',
-  '作業量',
-  '量',
-  '所要時間',
-  '時間',
-  '開始時刻',
-  '終了時刻',
-  '空き時間',
-  '固定予定',
-  '予定',
-  '順序',
-  '優先',
-  '条件',
-  '仮予定',
-  '作業',
-  'タスク',
-  '分野',
-  'カレンダー',
-  '時間割',
-] as const;
+const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function createSystemPrompt(): string {
-  return [
-    'You are a Japanese dialogue renderer for a planning application.',
-    'Return JSON only and follow the response schema exactly.',
-    'The application has already decided the action, question target, scheduling state, preview state, and fallback meaning.',
-    'Rewrite fallbackText into natural, concise Japanese without changing its meaning.',
-    'Return exactly the same actionId.',
-    'Do not add, remove, split, or merge questions.',
-    'Do not infer a new task, quantity, date, clock time, availability, priority, constraint, schedule placement, preview, approval, or save result.',
-    'Preserve every string in requiredLabels exactly in the rendered text.',
-    'When actionKind is question, keep it as one clear question or one direct request for the missing information.',
-    'When actionKind is not question, do not turn the response into a question.',
-    'When actionKind is preview_ready, include the exact Arabic previewCount followed by 件 and state only that preview candidates were created.',
-    'Do not output Markdown, URLs, instructions to change settings, or requests for sensitive information.',
-    'Use a calm conversational tone. Avoid internal terms, error codes, JSON keys, and implementation details.',
-  ].join('\n');
+function arrayField(
+  value: Record<string, unknown> | null,
+  key: string,
+): unknown[] {
+  const field = value?.[key];
+  return Array.isArray(field) ? field : [];
 }
 
-function createUserPrompt(input: WeeklyPlanningStableV5DialogueRenderInput): string {
-  return JSON.stringify({
-    actionId: input.actionId,
-    actionKind: input.actionKind,
-    questionCode: input.questionCode,
-    requiredLabels: input.requiredLabels,
-    fallbackText: input.fallbackText,
-    previewCount: input.previewCount,
-    constraints: {
-      maximumCharacters: MAX_RENDERED_TEXT_LENGTH,
-      maximumQuestions: input.actionKind === 'question' ? 1 : 0,
+function isResolvedWorkload(value: unknown): boolean {
+  return isRecord(value) && value.quantityRole !== 'unknown';
+}
+
+function isResolvedDeclaration(value: unknown): boolean {
+  return isRecord(value) && value.resolutionStatus !== 'unresolved';
+}
+
+function createDecidedFacts(
+  planningInformation: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!planningInformation) return null;
+
+  return Object.fromEntries(
+    Object.entries(planningInformation)
+      .filter(([key]) => key !== 'uncertainties')
+      .map(([key, value]) => {
+        if (key === 'workloads' && Array.isArray(value)) {
+          return [key, value.filter(isResolvedWorkload)];
+        }
+        if (
+          (key === 'availabilityDeclarations' || key === 'constraintSourceRequests')
+          && Array.isArray(value)
+        ) {
+          return [key, value.filter(isResolvedDeclaration)];
+        }
+        return [key, value];
+      }),
+  );
+}
+
+function unresolvedWorkloadFields(
+  planningInformation: Record<string, unknown> | null,
+): Record<string, unknown>[] {
+  return arrayField(planningInformation, 'workloads')
+    .filter(isRecord)
+    .filter((workload) => workload.quantityRole === 'unknown')
+    .map((workload) => ({
+      kind: 'workload_field',
+      taskId: workload.taskId ?? null,
+      componentId: workload.componentId ?? null,
+      field: 'quantityRole',
+      knownAmount: workload.amount ?? null,
+      knownUnitLabel: workload.unitLabel ?? null,
+    }));
+}
+
+function unresolvedDeclarations(
+  planningInformation: Record<string, unknown> | null,
+  key: 'availabilityDeclarations' | 'constraintSourceRequests',
+): Record<string, unknown>[] {
+  return arrayField(planningInformation, key)
+    .filter(isRecord)
+    .filter((entry) => entry.resolutionStatus === 'unresolved')
+    .map((entry) => ({
+      sourceCollection: key,
+      ...entry,
+    }));
+}
+
+export function createWeeklyPlanningStableV5DialogueStateSummary(
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): Record<string, unknown> {
+  const planningInformation = input.planningInformation;
+
+  return {
+    decidedFacts: createDecidedFacts(planningInformation),
+    undecidedItems: [
+      ...arrayField(planningInformation, 'uncertainties'),
+      ...unresolvedWorkloadFields(planningInformation),
+      ...unresolvedDeclarations(planningInformation, 'availabilityDeclarations'),
+      ...unresolvedDeclarations(planningInformation, 'constraintSourceRequests'),
+    ],
+    currentQuestion: {
+      questionCode: input.questionCode,
+      relevantLabels: input.requiredLabels,
+      referenceResponse: input.fallbackText,
     },
-  });
+  };
+}
+
+export function createWeeklyPlanningStableV5DialoguePrompt(
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const systemPrompt = [
+    'あなたは学習計画アプリの対話担当です。',
+    '会話履歴、ユーザーの最新発話、アプリが把握している情報を踏まえて、次に返す自然な日本語を考えてください。',
+    'アプリが把握していない予定や事実は作らないでください。',
+    '指定されたJSON形式で、actionIdを変えずに返してください。',
+  ].join('\n');
+
+  const userPrompt = JSON.stringify({
+    actionId: input.actionId,
+    currentUserMessage: input.currentUserMessage,
+    recentConversation: input.recentConversation,
+    planningInformation: input.planningInformation,
+    planningStateSummary: createWeeklyPlanningStableV5DialogueStateSummary(input),
+    applicationDecision: {
+      actionKind: input.actionKind,
+      questionCode: input.questionCode,
+      relevantLabels: input.requiredLabels,
+      referenceResponse: input.fallbackText,
+      previewCount: input.previewCount,
+    },
+    request: [
+      '上記の情報を踏まえて、現在のユーザーに返す自然な日本語を考えてください。',
+      'planningStateSummaryのdecidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です。',
+      'referenceResponseはアプリ側の参考情報であり、そのまま繰り返したり、単に言い換えたりする必要はありません。',
+      '最新発話が説明要求や聞き返しなら、直前の質問を繰り返さず、何を確認したいのかを分かりやすく説明してください。',
+    ].join(''),
+  }, null, 2);
+
+  return { systemPrompt, userPrompt };
 }
 
 function normalizeProtectedExpression(value: string): string {
@@ -143,83 +222,21 @@ function expressions(value: string, pattern: RegExp): string[] {
 
 function addsUnsupportedExpression(
   rendered: string,
-  fallback: string,
+  groundingInformation: string,
   pattern: RegExp,
 ): boolean {
-  const allowed = new Set(expressions(fallback, pattern));
+  const allowed = new Set(expressions(groundingInformation, pattern));
   return expressions(rendered, pattern).some((expression) => !allowed.has(expression));
 }
 
-function hasQuestionIntent(text: string): boolean {
-  return /[？?]/.test(text)
-    || /(?:教えてください|どちら|どれくらい|何を|何日|何時|いつ|ありますか|ですか|ますか|でしょうか)/.test(text);
-}
-
-function includesEveryGroup(text: string, groups: readonly (readonly string[])[]): boolean {
-  return groups.every((group) => group.some((term) => text.includes(term)));
-}
-
-function preservesQuestionMeaning(text: string, questionCode: string | null): boolean {
-  switch (questionCode) {
-    case 'invalid_planning_horizon':
-    case 'ambiguous_planning_window':
-      return includesEveryGroup(text, [['期間', 'いつ', '日']]);
-    case 'missing_schedulable_work':
-      return includesEveryGroup(text, [['量', '時間', 'ページ', '問']]);
-    case 'quantity_role_unresolved':
-      return includesEveryGroup(text, [['今回'], ['残', '全体']]);
-    case 'missing_effort_estimate':
-      return includesEveryGroup(text, [['時間', '所要'], ['かか', '見積']]);
-    case 'ambiguous_effort_estimate':
-      return includesEveryGroup(text, [['所要時間', '見積'], ['一つ', 'どれ']]);
-    case 'missing_availability_date_scope':
-    case 'missing_commitment_date_scope':
-      return includesEveryGroup(text, [['日', 'いつ']]);
-    case 'missing_time_bounds':
-    case 'invalid_time_interval':
-    case 'invalid_commitment_interval':
-      return includesEveryGroup(text, [['開始'], ['終了']]);
-    case 'named_time_period_unresolved':
-      return includesEveryGroup(text, [['何時', '時'], ['から'], ['まで']]);
-    case 'conflicting_task_date_rule':
-      return includesEveryGroup(text, [['行う'], ['行わない'], ['どちら']]);
-    case 'constraint_source_unavailable':
-    case 'active_constraint_source_missing':
-      return includesEveryGroup(text, [['時間割', '登録済み予定', 'カレンダー'], ['確認', '使う']]);
-    case 'orphan_relation_task':
-    case 'self_relation':
-      return includesEveryGroup(text, [['先', '順序']]);
-    default:
-      return true;
-  }
-}
-
-function isGroundedText(
+function hasIncorrectPreviewCount(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
-  if (input.actionKind === 'question') {
-    if (!hasQuestionIntent(text)) return false;
-    const questionMarks = (text.match(/[？?]/g) ?? []).length;
-    if (questionMarks > 1) return false;
-  } else if (/[？?]/.test(text)) {
-    return false;
-  }
-
-  if (input.requiredLabels.some((label) => !text.includes(label))) return false;
-  if (!preservesQuestionMeaning(text, input.questionCode)) return false;
-
-  const expectedTerms = GROUNDING_TERMS.filter((term) => input.fallbackText.includes(term));
-  if (expectedTerms.length > 0 && !expectedTerms.some((term) => text.includes(term))) {
-    return false;
-  }
-
-  if (input.actionKind === 'preview_ready') {
-    if (input.previewCount <= 0) return false;
-    if (!text.includes(`${input.previewCount}件`) || !text.includes('仮予定')) return false;
-  }
-
-  return true;
+  if (input.actionKind !== 'preview_ready') return false;
+  const mentionedCounts = [...text.matchAll(PREVIEW_COUNT_EXPRESSION)]
+    .map((match) => Number(match[1]));
+  return mentionedCounts.some((count) => count !== input.previewCount);
 }
 
 function validateRenderedText(
@@ -230,19 +247,26 @@ function validateRenderedText(
     text.length === 0
     || text.length > MAX_RENDERED_TEXT_LENGTH
     || FORBIDDEN_CONTENT.test(text)
-    || MARKDOWN_CONTENT.test(text)
   ) {
     return 'unsafe_text';
   }
 
+  const groundingInformation = JSON.stringify({
+    currentUserMessage: input.currentUserMessage,
+    recentConversation: input.recentConversation,
+    planningInformation: input.planningInformation,
+    referenceResponse: input.fallbackText,
+    previewCount: input.previewCount,
+  });
   if (
-    addsUnsupportedExpression(text, input.fallbackText, CLOCK_EXPRESSION)
-    || addsUnsupportedExpression(text, input.fallbackText, DATE_EXPRESSION)
+    addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
+    || addsUnsupportedExpression(text, groundingInformation, DATE_EXPRESSION)
+    || hasIncorrectPreviewCount(text, input)
   ) {
     return 'ungrounded_text';
   }
 
-  return isGroundedText(text, input) ? null : 'ungrounded_text';
+  return null;
 }
 
 function parseRendererResponse(
@@ -284,12 +308,13 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
   return {
     async render(input) {
       try {
+        const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
         const rawResponse = await client.createChatCompletion({
           messages: [
-            { role: 'system', content: createSystemPrompt() },
-            { role: 'user', content: createUserPrompt(input) },
+            { role: 'system', content: prompt.systemPrompt },
+            { role: 'user', content: prompt.userPrompt },
           ],
-          temperature: 0.2,
+          temperature: 0.4,
           responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
           purpose: 'weekly_planning_renderer',
         });
