@@ -206,10 +206,22 @@ describe('Stable V5 machine pending question pipeline', () => {
       schedulerContext,
     });
 
-    expect(result.graph.workloads.at(-1)?.id).not.toBe('workload-2');
+    expect(result.canonicalization).toMatchObject({
+      status: 'applied',
+      diff: {
+        superseded: [],
+        removed: [],
+      },
+    });
+    expect(result.canonicalization?.localToFactId.answerTask).toBeUndefined();
+    expect(result.canonicalization?.localToFactId['answer-task']).toBeTruthy();
+    expect(result.canonicalization?.localToFactId['answer-workload']).not.toBe('workload-2');
     expect(result.graph.tasks).toHaveLength(3);
     expect(result.graph.factLifecycles).toEqual(expect.arrayContaining([
       expect.objectContaining({ factId: 'workload-2', status: 'active' }),
     ]));
+    expect(result.graph.appliedLifecycleOperationKeys).not.toContain(
+      'contextual:conversation-1:turn-2-no-pending',
+    );
   });
 });
