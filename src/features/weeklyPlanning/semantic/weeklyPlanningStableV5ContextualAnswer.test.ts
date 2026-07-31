@@ -9,7 +9,6 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   applyWeeklyPlanningStableV5ContextualAnswer,
-  inferWeeklyPlanningStableV5ContextualQuestionCode,
 } from './weeklyPlanningStableV5ContextualAnswer';
 
 const factSource = {
@@ -20,48 +19,77 @@ const factSource = {
   origin: 'user' as const,
 };
 
-function graph(quantityRole: 'target' | 'declared'): WeeklyPlanningFactGraphV5 {
-  return {
-    ...createEmptyWeeklyPlanningFactGraphV5(),
-    revision: 1,
-    appliedTurnKeys: ['conversation-1:turn-1'],
-    tasks: [{
-      id: 'task-1',
+function graph(params: {
+  quantityRole: 'target' | 'declared';
+  includeSecond?: boolean;
+}): WeeklyPlanningFactGraphV5 {
+  const tasks = [{
+    id: 'task-1',
+    category: 'study' as const,
+    title: '問題集',
+    source: factSource,
+    createdRevision: 1,
+  }];
+  const workloads = [{
+    id: 'workload-1',
+    taskId: 'task-1',
+    componentId: null,
+    quantityRole: params.quantityRole,
+    amount: 10,
+    unitCode: 'page' as const,
+    unitLabel: 'ページ',
+    rangeStart: null,
+    rangeEnd: null,
+    perOccurrence: false,
+    periodExpression: null,
+    source: factSource,
+    createdRevision: 1,
+  }];
+  if (params.includeSecond) {
+    tasks.push({
+      id: 'task-2',
       category: 'study',
-      title: '問題集',
-      source: factSource,
+      title: '英単語',
+      source: { ...factSource, semanticLocalId: 'source-2', sourceText: '英単語を80語' },
       createdRevision: 1,
-    }],
-    workloads: [{
-      id: 'workload-1',
-      taskId: 'task-1',
+    });
+    workloads.push({
+      id: 'workload-2',
+      taskId: 'task-2',
       componentId: null,
-      quantityRole,
-      amount: 10,
-      unitCode: 'page',
-      unitLabel: 'ページ',
+      quantityRole: params.quantityRole,
+      amount: 80,
+      unitCode: 'word',
+      unitLabel: '語',
       rangeStart: null,
       rangeEnd: null,
       perOccurrence: false,
       periodExpression: null,
-      source: factSource,
+      source: { ...factSource, semanticLocalId: 'source-2', sourceText: '英単語を80語' },
       createdRevision: 1,
-    }],
+    });
+  }
+  return {
+    ...createEmptyWeeklyPlanningFactGraphV5(),
+    revision: 1,
+    appliedTurnKeys: ['conversation-1:turn-1'],
+    tasks,
+    workloads,
     factLifecycles: [
-      {
-        factId: 'task-1',
-        status: 'active',
+      ...tasks.map((task) => ({
+        factId: task.id,
+        status: 'active' as const,
         createdRevision: 1,
         terminalRevision: null,
         supersededByFactId: null,
-      },
-      {
-        factId: 'workload-1',
-        status: 'active',
+      })),
+      ...workloads.map((workload) => ({
+        factId: workload.id,
+        status: 'active' as const,
         createdRevision: 1,
         terminalRevision: null,
         supersededByFactId: null,
-      },
+      })),
     ],
   };
 }
@@ -117,12 +145,25 @@ function answerDocument(params: {
   };
 }
 
+function pendingQuestion(params: {
+  code: 'missing_effort_estimate' | 'quantity_role_unresolved';
+  targetFactId?: string | null;
+  graphRevision?: number;
+}) {
+  return {
+    actionId: 'stable-v5:question-1',
+    questionCode: params.code,
+    targetFactId: params.targetFactId === undefined ? 'workload-1' : params.targetFactId,
+    graphRevision: params.graphRevision ?? 1,
+  };
+}
+
 describe('Stable V5 contextual answers', () => {
-  it('binds a short duration to the single unresolved workload', () => {
+  it('binds a short duration to the exact workload named by pending question', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: graph('target'),
+      graph: graph({ quantityRole: 'target' }),
       document: answerDocument({ minutes: 180 }),
-      questionCode: 'missing_effort_estimate',
+      pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate' }),
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
@@ -138,11 +179,11 @@ describe('Stable V5 contextual answers', () => {
     ]);
   });
 
-  it('supersedes the unresolved workload for a quantity-role answer', () => {
+  it('supersedes the exact unresolved workload for a quantity-role answer', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: graph('declared'),
+      graph: graph({ quantityRole: 'declared' }),
       document: answerDocument({ quantityRole: 'target' }),
-      questionCode: 'quantity_role_unresolved',
+      pendingQuestion: pendingQuestion({ code: 'quantity_role_unresolved' }),
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
@@ -160,37 +201,68 @@ describe('Stable V5 contextual answers', () => {
     ]));
   });
 
-  it('rejects a stale or non-minimal contextual answer', () => {
-    expect(applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: graph('target'),
-      document: answerDocument({ minutes: 180 }),
-      questionCode: 'missing_effort_estimate',
-      conversationId: 'conversation-1',
-      turnId: 'turn-2',
-      expectedRevision: 0,
-      userText: '3時間です',
-    })).toBeNull();
-
-    expect(applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: graph('target'),
-      document: answerDocument({ minutes: 180 }),
-      questionCode: 'missing_effort_estimate',
+  it('does not require a singleton unresolved set and never updates a different workload', () => {
+    const result = applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: graph({ quantityRole: 'declared', includeSecond: true }),
+      document: answerDocument({ quantityRole: 'target' }),
+      pendingQuestion: pendingQuestion({
+        code: 'quantity_role_unresolved',
+        targetFactId: 'workload-2',
+      }),
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
-      userText: '別件ですが、新しく数学を毎日3時間やる予定も追加してください',
-    })).toBeNull();
+      userText: '今回進めたい量です',
+    });
+
+    const last = result?.graph.workloads.at(-1);
+    expect(last).toMatchObject({
+      taskId: 'task-2',
+      amount: 80,
+      unitCode: 'word',
+      quantityRole: 'target',
+    });
+    expect(result?.graph.factLifecycles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ factId: 'workload-1', status: 'active' }),
+      expect.objectContaining({ factId: 'workload-2', status: 'superseded' }),
+    ]));
   });
 
-  it('infers only supported previous questions', () => {
-    expect(inferWeeklyPlanningStableV5ContextualQuestionCode({
-      lastAssistantMessage: '合計でどれくらい時間がかかりますか？',
-    })).toBe('missing_effort_estimate');
-    expect(inferWeeklyPlanningStableV5ContextualQuestionCode({
-      lastAssistantMessage: '今回進めたい量ですか？',
-    })).toBe('quantity_role_unresolved');
-    expect(inferWeeklyPlanningStableV5ContextualQuestionCode({
-      lastAssistantMessage: 'いつから始めますか？',
+  it('rejects stale, missing, inactive, or non-minimal pending-question answers', () => {
+    const base = {
+      graph: graph({ quantityRole: 'target' }),
+      document: answerDocument({ minutes: 180 }),
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 1,
+      userText: '3時間です',
+    };
+
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
+      ...base,
+      pendingQuestion: pendingQuestion({
+        code: 'missing_effort_estimate',
+        graphRevision: 0,
+      }),
+    })).toBeNull();
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
+      ...base,
+      pendingQuestion: pendingQuestion({
+        code: 'missing_effort_estimate',
+        targetFactId: null,
+      }),
+    })).toBeNull();
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
+      ...base,
+      pendingQuestion: pendingQuestion({
+        code: 'missing_effort_estimate',
+        targetFactId: 'unknown-workload',
+      }),
+    })).toBeNull();
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
+      ...base,
+      pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate' }),
+      userText: '別件ですが、新しく数学を毎日3時間やる予定も追加してください',
     })).toBeNull();
   });
 });
