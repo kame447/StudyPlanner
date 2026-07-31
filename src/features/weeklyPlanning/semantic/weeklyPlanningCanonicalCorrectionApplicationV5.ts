@@ -29,13 +29,6 @@ export interface WeeklyPlanningCanonicalCorrectionApplicationResultV5 {
   errors: string[];
 }
 
-type CorrectableFactKind =
-  | 'planning_window'
-  | 'workload'
-  | 'effort_estimate'
-  | 'temporal_constraint'
-  | 'recurrence';
-
 const CORRECTABLE_REPLACEMENT_KINDS = new Set<WeeklyPlanningFactKindV5>([
   'planning_window',
   'workload',
@@ -130,6 +123,21 @@ interface RebaseResult {
   errors: string[];
 }
 
+function registerOrphanTask(params: {
+  replacementTaskId: string;
+  targetTaskId: string;
+  addedIds: ReadonlySet<string>;
+  orphanTaskIds: Set<string>;
+  correctionId: string;
+}): string | null {
+  if (params.replacementTaskId === params.targetTaskId) return null;
+  if (!params.addedIds.has(params.replacementTaskId)) {
+    return `replacement-container-not-created-in-turn:${params.correctionId}:${params.replacementTaskId}`;
+  }
+  params.orphanTaskIds.add(params.replacementTaskId);
+  return null;
+}
+
 function rebaseReplacement(params: {
   graph: WeeklyPlanningFactGraphV5;
   correctionIntentFactId: string;
@@ -155,6 +163,15 @@ function rebaseReplacement(params: {
       orphanComponentIds: new Set(),
       supportFactIds: new Set(),
       errors: [`correction-replacement-not-resolved:${correction.id}`],
+    };
+  }
+  if (!params.addedIds.has(correction.replacementFactId)) {
+    return {
+      graph: params.graph,
+      orphanTaskIds: new Set(),
+      orphanComponentIds: new Set(),
+      supportFactIds: new Set(),
+      errors: [`correction-replacement-not-created-in-turn:${correction.id}`],
     };
   }
 
@@ -185,6 +202,7 @@ function rebaseReplacement(params: {
   const orphanTaskIds = new Set<string>();
   const orphanComponentIds = new Set<string>();
   const supportFactIds = new Set<string>();
+  const errors: string[] = [];
   let graph = params.graph;
 
   if (targetKind === 'workload') {
@@ -201,12 +219,26 @@ function rebaseReplacement(params: {
         errors: [`missing-workload-correction-fact:${correction.id}`],
       };
     }
-    if (replacement.taskId !== target.taskId) orphanTaskIds.add(replacement.taskId);
+    const orphanError = registerOrphanTask({
+      replacementTaskId: replacement.taskId,
+      targetTaskId: target.taskId,
+      addedIds: params.addedIds,
+      orphanTaskIds,
+      correctionId: correction.id,
+    });
+    if (orphanError) errors.push(orphanError);
     if (
       replacement.componentId
       && replacement.componentId !== target.componentId
-      && params.addedIds.has(replacement.componentId)
-    ) orphanComponentIds.add(replacement.componentId);
+    ) {
+      if (!params.addedIds.has(replacement.componentId)) {
+        errors.push(
+          `replacement-component-not-created-in-turn:${correction.id}:${replacement.componentId}`,
+        );
+      } else {
+        orphanComponentIds.add(replacement.componentId);
+      }
+    }
     graph = {
       ...graph,
       workloads: graph.workloads.map((fact) =>
@@ -228,11 +260,23 @@ function rebaseReplacement(params: {
         errors: [`missing-effort-correction-fact:${correction.id}`],
       };
     }
-    if (replacement.taskId !== target.taskId) orphanTaskIds.add(replacement.taskId);
-    if (
-      replacement.targetFactId !== target.targetFactId
-      && params.addedIds.has(replacement.targetFactId)
-    ) supportFactIds.add(replacement.targetFactId);
+    const orphanError = registerOrphanTask({
+      replacementTaskId: replacement.taskId,
+      targetTaskId: target.taskId,
+      addedIds: params.addedIds,
+      orphanTaskIds,
+      correctionId: correction.id,
+    });
+    if (orphanError) errors.push(orphanError);
+    if (replacement.targetFactId !== target.targetFactId) {
+      if (!params.addedIds.has(replacement.targetFactId)) {
+        errors.push(
+          `replacement-support-not-created-in-turn:${correction.id}:${replacement.targetFactId}`,
+        );
+      } else {
+        supportFactIds.add(replacement.targetFactId);
+      }
+    }
     graph = {
       ...graph,
       effortEstimates: graph.effortEstimates.map((fact) =>
@@ -254,11 +298,23 @@ function rebaseReplacement(params: {
         errors: [`missing-temporal-correction-fact:${correction.id}`],
       };
     }
-    if (replacement.taskId !== target.taskId) orphanTaskIds.add(replacement.taskId);
-    if (
-      replacement.targetFactId !== target.targetFactId
-      && params.addedIds.has(replacement.targetFactId)
-    ) supportFactIds.add(replacement.targetFactId);
+    const orphanError = registerOrphanTask({
+      replacementTaskId: replacement.taskId,
+      targetTaskId: target.taskId,
+      addedIds: params.addedIds,
+      orphanTaskIds,
+      correctionId: correction.id,
+    });
+    if (orphanError) errors.push(orphanError);
+    if (replacement.targetFactId !== target.targetFactId) {
+      if (!params.addedIds.has(replacement.targetFactId)) {
+        errors.push(
+          `replacement-support-not-created-in-turn:${correction.id}:${replacement.targetFactId}`,
+        );
+      } else {
+        supportFactIds.add(replacement.targetFactId);
+      }
+    }
     graph = {
       ...graph,
       temporalConstraints: graph.temporalConstraints.map((fact) =>
@@ -280,11 +336,23 @@ function rebaseReplacement(params: {
         errors: [`missing-recurrence-correction-fact:${correction.id}`],
       };
     }
-    if (replacement.taskId !== target.taskId) orphanTaskIds.add(replacement.taskId);
-    if (
-      replacement.targetFactId !== target.targetFactId
-      && params.addedIds.has(replacement.targetFactId)
-    ) supportFactIds.add(replacement.targetFactId);
+    const orphanError = registerOrphanTask({
+      replacementTaskId: replacement.taskId,
+      targetTaskId: target.taskId,
+      addedIds: params.addedIds,
+      orphanTaskIds,
+      correctionId: correction.id,
+    });
+    if (orphanError) errors.push(orphanError);
+    if (replacement.targetFactId !== target.targetFactId) {
+      if (!params.addedIds.has(replacement.targetFactId)) {
+        errors.push(
+          `replacement-support-not-created-in-turn:${correction.id}:${replacement.targetFactId}`,
+        );
+      } else {
+        supportFactIds.add(replacement.targetFactId);
+      }
+    }
     graph = {
       ...graph,
       recurrences: graph.recurrences.map((fact) =>
@@ -294,7 +362,7 @@ function rebaseReplacement(params: {
     };
   }
 
-  return { graph, orphanTaskIds, orphanComponentIds, supportFactIds, errors: [] };
+  return { graph, orphanTaskIds, orphanComponentIds, supportFactIds, errors };
 }
 
 function resolveCorrectionTargetInGraph(params: {
