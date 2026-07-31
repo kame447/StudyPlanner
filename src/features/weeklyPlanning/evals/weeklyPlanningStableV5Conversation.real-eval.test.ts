@@ -53,13 +53,31 @@ import {
   createInitialPlanningState,
   weeklyPlanningReducer,
 } from '../weeklyPlanningReducer';
+import {
+  allConversationEvalChecksPass,
+  evaluateExplicitRepairContract,
+  evaluatePreviewCorrectionContract,
+  type ConversationEvalPreviewSnapshot,
+  type ConversationEvalRepairSnapshot,
+} from './weeklyPlanningConversationEvalContracts';
+import {
+  driveConversationUntilPreview,
+  renderConversationEvalTranscript,
+  type ConversationEvalAdapter,
+  type ConversationEvalStateSnapshot,
+  type ConversationEvalSubmissionSnapshot,
+} from './weeklyPlanningConversationEvalDriver';
+import {
+  WEEKLY_PLANNING_CONVERSATION_EVAL_SCENARIO_MANIFESTS,
+  type WeeklyPlanningConversationEvalScenarioManifest,
+} from './weeklyPlanningConversationEvalScenarioManifest';
 
 const shouldRun =
   process.env.WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL === '1';
 
 const ARTIFACT_DIR = 'artifacts/weekly-planning-real-api-conversation-eval';
 const DEFAULT_AUTHORIZATION_TEXT = 'この条件で予定を作って';
-const MAX_TURNS_PER_SCENARIO = 14;
+const MAX_TURNS_PER_SCENARIO = 16;
 
 interface MachineQuestionSnapshot {
   code: string | null;
@@ -160,8 +178,7 @@ interface SuiteReport {
 }
 
 interface ScenarioDefinition {
-  id: string;
-  description: string;
+  manifest: WeeklyPlanningConversationEvalScenarioManifest;
   selectedDate: string;
   weekStartDate: string;
   existingPlans?: Plan[];
@@ -184,6 +201,14 @@ interface QuestionAnswerContext {
 
 type QuestionAnswerResolver = (context: QuestionAnswerContext) => string;
 
+function manifest(id: string): WeeklyPlanningConversationEvalScenarioManifest {
+  const found = WEEKLY_PLANNING_CONVERSATION_EVAL_SCENARIO_MANIFESTS.find(
+    (scenario) => scenario.id === id,
+  );
+  if (!found) throw new Error(`Missing conversation eval manifest: ${id}`);
+  return found;
+}
+
 function createStore(weekStartDate: string) {
   let state: PlanningState = createInitialPlanningState(weekStartDate);
   return {
@@ -201,6 +226,10 @@ function resetRuntime(): void {
   clearWeeklyPlanningSessionRuntime();
   resetWeeklyPlanningRuntimeModeForTest();
   setWeeklyPlanningRuntimeMode('stable_v5');
+}
+
+function previewCandidates(state: PlanningState): WeeklyDraftCandidate[] {
+  return [...(state.previewCandidates ?? [])];
 }
 
 function machineQuestion(state: PlanningState): MachineQuestionSnapshot {
@@ -299,6 +328,17 @@ function totalCandidateMinutes(candidates: readonly WeeklyDraftCandidate[]): num
   return candidates.reduce((total, candidate) => total + candidateMinutes(candidate), 0);
 }
 
+function candidateMinutesForLabel(
+  candidates: readonly WeeklyDraftCandidate[],
+  expectedLabel: string,
+): number {
+  const normalized = expectedLabel.replace(/\s+/g, '');
+  return candidates
+    .filter((candidate) =>
+      `${candidate.title}${candidate.field}`.replace(/\s+/g, '').includes(normalized))
+    .reduce((total, candidate) => total + candidateMinutes(candidate), 0);
+}
+
 function overlapsExistingPlan(candidate: WeeklyDraftCandidate, plan: Plan): boolean {
   if (candidate.date !== plan.date) return false;
   return (
@@ -325,7 +365,7 @@ class ConversationHarness {
   readonly conversationId: string;
   readonly store: ReturnType<typeof createStore>;
 
-  private readonly session;
+  private readonly session: ReturnType<typeof createWeeklyPlanningControllerSession>;
   private readonly capture: {
     latestResult: WeeklyPlanningTurnExecutionResult | null;
     traceRequestId: string | null;
@@ -337,8 +377,8 @@ class ConversationHarness {
     resetRuntime();
     this.scenario = scenario;
     this.report = report;
-    this.userId = `real-api-eval-${scenario.id}`;
-    this.conversationId = `weekly-conversation-real-api-${scenario.id}`;
+    this.userId = `real-api-eval-${scenario.manifest.id}`;
+    this.conversationId = `weekly-conversation-real-api-${scenario.manifest.id}`;
     this.store = createStore(scenario.weekStartDate);
     this.session = createWeeklyPlanningControllerSession(
       this.userId,
@@ -380,6 +420,34 @@ class ConversationHarness {
     return machineQuestion(this.state);
   }
 
+  stateSnapshot(): ConversationEvalStateSnapshot {
+    return {
+      machineQuestion: this.currentQuestion(),
+      graphRevision: this.latestGraph?.revision ?? null,
+      previewCount: previewCandidates(this.state).length,
+    };
+  }
+
+  repairSnapshot(): ConversationEvalRepairSnapshot {
+    return {
+      graphRevision: this.latestGraph?.revision ?? null,
+      previewCount: previewCandidates(this.state).length,
+      questionCode: this.currentQuestion().code,
+      targetFactId: this.currentQuestion().targetFactId,
+      activeTaskCount: graphSummary(this.latestGraph).tasks.length,
+      totalPreviewMinutes: totalCandidateMinutes(previewCandidates(this.state)),
+    };
+  }
+
+  previewSnapshot(): ConversationEvalPreviewSnapshot {
+    const candidates = previewCandidates(this.state);
+    return {
+      graphRevision: this.latestGraph?.revision ?? null,
+      previewKeys: candidates.map((candidate) => candidate.stableKey),
+      totalPreviewMinutes: totalCandidateMinutes(candidates),
+    };
+  }
+
   async submit(userText: string, label: string): Promise<SubmissionSnapshot> {
     if (this.turnIndex >= MAX_TURNS_PER_SCENARIO) {
       throw new Error(`Exceeded ${MAX_TURNS_PER_SCENARIO} turns.`);
@@ -388,13 +456,17 @@ class ConversationHarness {
     this.capture.latestResult = null;
     this.capture.traceRequestId = null;
 
+    const scenarioPlans = (this.scenario.existingPlans ?? []).map((plan) => ({
+      ...plan,
+      userId: this.userId,
+    }));
     const submission = await submitWeeklyPlanningApplicationTurn({
       session: this.session,
       userId: this.userId,
       ownerId: this.userId,
       userText,
       selectedDate: this.scenario.selectedDate,
-      plans: this.scenario.existingPlans ?? [],
+      plans: scenarioPlans,
       scheduleTemplates: [],
       weekStartsOn: 'monday',
       getState: this.store.getState,
@@ -445,33 +517,38 @@ class ConversationHarness {
     authorizationText?: string;
     authorizationLabel?: string;
   }): Promise<WeeklyDraftCandidate[]> {
-    let authorizationSent = false;
-    while (this.state.previewCandidates.length === 0) {
-      const question = this.currentQuestion();
-      let nextText: string;
-      let label: string;
-      if (question.code) {
-        nextText = params.answer({
-          question,
-          state: this.state,
-          graph: this.latestGraph,
-          turnCount: this.turnCount,
-        });
-        label = `answer:${question.code}`;
-      } else if (!authorizationSent) {
-        nextText = params.authorizationText ?? DEFAULT_AUTHORIZATION_TEXT;
-        label = params.authorizationLabel ?? 'authorize-preview';
-        authorizationSent = true;
-      } else {
-        throw new Error('Conversation stopped without a machine question or preview.');
-      }
-      await this.submit(nextText, label);
-    }
-    return [...this.state.previewCandidates];
+    const adapter: ConversationEvalAdapter = {
+      snapshot: () => this.stateSnapshot(),
+      submit: async (userText, label): Promise<ConversationEvalSubmissionSnapshot> => {
+        const submitted = await this.submit(userText, label);
+        return {
+          ...this.stateSnapshot(),
+          accepted: true,
+          turnIndex: submitted.turn.index,
+          label,
+          userText,
+          assistantText: submitted.turn.assistantText,
+          failureCode: submitted.turn.failureCode,
+        };
+      },
+    };
+
+    await driveConversationUntilPreview(adapter, {
+      answerQuestion: ({ question }) => params.answer({
+        question,
+        state: this.state,
+        graph: this.latestGraph,
+        turnCount: this.turnCount,
+      }),
+      authorizationText: params.authorizationText ?? DEFAULT_AUTHORIZATION_TEXT,
+      authorizationLabel: params.authorizationLabel,
+      maxTurns: MAX_TURNS_PER_SCENARIO - this.turnCount,
+    });
+    return previewCandidates(this.state);
   }
 
   recordPreview(label: string): WeeklyDraftCandidate[] {
-    const candidates = [...this.state.previewCandidates];
+    const candidates = previewCandidates(this.state);
     this.report.previews.push({
       label,
       graphRevision: this.latestGraph?.revision ?? null,
@@ -481,35 +558,39 @@ class ConversationHarness {
   }
 
   async approveCurrentPreview(): Promise<ApprovalReport> {
-    const candidates = [...this.state.previewCandidates];
+    const candidates = previewCandidates(this.state);
     if (candidates.length === 0) throw new Error('No preview candidates to approve.');
     const promotedBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
       candidates,
       userId: this.userId,
       createdAt: '2026-08-01T00:00:00.000Z',
     });
-    const availability = classifyWeeklyPlanningApprovalAvailability({
+    expect(classifyWeeklyPlanningApprovalAvailability({
       blocks: promotedBlocks,
       userId: this.userId,
-    });
-    expect(availability).toMatchObject({ kind: 'eligible' });
+    })).toMatchObject({ kind: 'eligible' });
     this.store.dispatch({ type: 'add_draft_blocks', blocks: promotedBlocks });
 
     const savedDrafts: PlanDraft[] = [];
     const savedPlans: Plan[] = [];
     const completedOperations: WeeklyDraftApprovalOperation[] = [];
     const ledgerOperations: WeeklyDraftApprovalOperation[] = [];
+    const scenarioId = this.scenario.manifest.id;
+    const scenarioPlans = (this.scenario.existingPlans ?? []).map((plan) => ({
+      ...plan,
+      userId: this.userId,
+    }));
     const approve = () => approveWeeklyPlanningDraftBlocks({
       userId: this.userId,
-      plans: [...(this.scenario.existingPlans ?? []), ...savedPlans],
+      plans: [...scenarioPlans, ...savedPlans],
       approvalOperations: ledgerOperations,
-      async saveWeeklyApprovedPlan(draft) {
+      saveWeeklyApprovedPlan: async (draft) => {
         savedDrafts.push(draft);
-        const plan = persistedPlan(draft, savedDrafts.length, this.scenario.id);
+        const plan = persistedPlan(draft, savedDrafts.length, scenarioId);
         savedPlans.push(plan);
         return plan;
       },
-      async completeWeeklyApprovalOperation(operation) {
+      completeWeeklyApprovalOperation: async (operation) => {
         completedOperations.push(operation);
       },
       getState: this.store.getState,
@@ -577,7 +658,6 @@ function defaultAnswer(params: {
 }
 
 function createExistingPlan(params: {
-  userId: string;
   id: string;
   title: string;
   date: string;
@@ -587,7 +667,7 @@ function createExistingPlan(params: {
   return {
     id: params.id,
     seriesId: '',
-    userId: params.userId,
+    userId: 'scenario-user-is-rebound-by-harness',
     title: params.title,
     subject: '',
     date: params.date,
@@ -606,13 +686,11 @@ function createExistingPlan(params: {
 
 const scenarios: ScenarioDefinition[] = [
   {
-    id: 'tomorrow-natural-multiturn',
-    description: '明日の計画を自然な複数ターンで作り、既存予定を避けて保存する。',
+    manifest: manifest('tomorrow-natural-multiturn'),
     selectedDate: '2026-08-03',
     weekStartDate: '2026-08-03',
     existingPlans: [
       createExistingPlan({
-        userId: 'real-api-eval-tomorrow-natural-multiturn',
         id: 'existing-baito',
         title: 'バイト',
         date: '2026-08-04',
@@ -630,13 +708,6 @@ const scenarios: ScenarioDefinition[] = [
         }),
       });
       harness.recordPreview('initial-preview');
-      expect(candidates.length).toBeGreaterThan(0);
-      expect(candidates.every((candidate) => candidate.date === '2026-08-04')).toBe(true);
-      expect(totalCandidateMinutes(candidates)).toBe(120);
-      expect(candidates.some((candidate) =>
-        (harness.scenario.existingPlans ?? []).some((plan) =>
-          overlapsExistingPlan(candidate, plan))),
-      ).toBe(false);
       const approval = await harness.approveCurrentPreview();
       report.checks = {
         multiTurn: report.turns.length >= 2,
@@ -653,8 +724,7 @@ const scenarios: ScenarioDefinition[] = [
     },
   },
   {
-    id: 'next-week-non-study-paraphrase',
-    description: '別表現と非学習タスクでも同じ会話構造でpreviewと保存まで進む。',
+    manifest: manifest('next-week-non-study-paraphrase'),
     selectedDate: '2026-08-03',
     weekStartDate: '2026-08-03',
     async run(harness, report) {
@@ -667,11 +737,6 @@ const scenarios: ScenarioDefinition[] = [
         }),
       });
       harness.recordPreview('initial-preview');
-      expect(candidates.length).toBeGreaterThan(0);
-      expect(totalCandidateMinutes(candidates)).toBe(60);
-      expect(candidates.every((candidate) =>
-        candidate.date >= '2026-08-10' && candidate.date <= '2026-08-16'),
-      ).toBe(true);
       const approval = await harness.approveCurrentPreview();
       report.checks = {
         multiTurn: report.turns.length >= 2,
@@ -679,13 +744,13 @@ const scenarios: ScenarioDefinition[] = [
         nextWeekResolved: candidates.every((candidate) =>
           candidate.date >= '2026-08-10' && candidate.date <= '2026-08-16'),
         workloadPreserved: totalCandidateMinutes(candidates) === 60,
-        nonStudyConversationCompleted: approval.savedPlanCount === candidates.length,
+        nonStudyTypePreserved: approval.savedPlans.every((plan) => plan.type === 'other'),
+        saved: approval.savedPlanCount === candidates.length,
       };
     },
   },
   {
-    id: 'wrong-unit-explicit-repair',
-    description: '所要時間質問へ誤った単位で答えた後、聞き返しと明示的修復で復帰する。',
+    manifest: manifest('wrong-unit-explicit-repair'),
     selectedDate: '2026-08-03',
     weekStartDate: '2026-08-03',
     async run(harness, report) {
@@ -712,36 +777,71 @@ const scenarios: ScenarioDefinition[] = [
         );
       }
 
-      const targetBefore = harness.currentQuestion().targetFactId;
-      const wrong = await harness.submit('3ページです', 'intentional-wrong-unit');
-      const questionAfterWrong = harness.currentQuestion();
-      expect(wrong.candidates).toEqual([]);
-      expect(questionAfterWrong.code).toBe('missing_effort_estimate');
-      expect(questionAfterWrong.targetFactId).toBe(targetBefore);
-      expect(wrong.turn.graph.tasks).toHaveLength(1);
-
+      const beforeWrongAnswer = harness.repairSnapshot();
+      await harness.submit('3ページです', 'intentional-wrong-unit');
+      const afterWrongAnswer = harness.repairSnapshot();
       await harness.submit(
         '違います。ページ数ではなく、数学40問の所要時間は合計3時間です',
         'explicit-repair',
       );
       const candidates = await harness.continueUntilPreview({ answer: normalAnswer });
       harness.recordPreview('repaired-preview');
-      expect(totalCandidateMinutes(candidates)).toBe(180);
+      const afterRepair = harness.repairSnapshot();
+      const repairChecks = evaluateExplicitRepairContract({
+        expectedQuestionCode: 'missing_effort_estimate',
+        expectedTargetFactId: beforeWrongAnswer.targetFactId,
+        activeTaskCountBeforeWrongAnswer: beforeWrongAnswer.activeTaskCount,
+        expectedRepairedTotalMinutes: 180,
+        beforeWrongAnswer,
+        afterWrongAnswer,
+        afterRepair,
+      });
       const approval = await harness.approveCurrentPreview();
       report.checks = {
-        wrongUnitNotAcceptedAsPreview: wrong.candidates.length === 0,
-        questionTargetPreserved:
-          questionAfterWrong.code === 'missing_effort_estimate'
-          && questionAfterWrong.targetFactId === targetBefore,
-        noSpuriousTaskAfterWrongAnswer: wrong.turn.graph.tasks.length === 1,
-        repairedWorkloadScheduled: totalCandidateMinutes(candidates) === 180,
+        ...repairChecks,
         saved: approval.savedPlanCount === candidates.length,
       };
     },
   },
   {
-    id: 'preview-correction-recompute',
-    description: 'preview表示後に条件を訂正し、旧previewを無効化して再preview・保存する。',
+    manifest: manifest('cross-task-correction-before-preview'),
+    selectedDate: '2026-08-03',
+    weekStartDate: '2026-08-03',
+    async run(harness, report) {
+      await harness.submit(
+        '来週、英語を2時間、数学を3時間やりたいです',
+        'start-with-two-tasks',
+      );
+      const correction = await harness.submit(
+        '訂正です。英語は3時間、数学は2時間です',
+        'cross-task-correction',
+      );
+      expect(correction.candidates).toEqual([]);
+      const candidates = await harness.continueUntilPreview({
+        answer: defaultAnswer({
+          taskText: '英語を3時間、数学を2時間やりたいです',
+          effortText: '英語3時間、数学2時間です',
+          planningWindowText: '来週です',
+        }),
+        authorizationText: '修正後の条件で予定を作って',
+      });
+      harness.recordPreview('corrected-preview');
+      const approval = await harness.approveCurrentPreview();
+      report.checks = {
+        twoActiveTasksRemain: correction.turn.graph.tasks.length === 2,
+        totalPreserved: totalCandidateMinutes(candidates) === 300,
+        englishCorrected: candidateMinutesForLabel(candidates, '英語') === 180,
+        mathCorrected: candidateMinutesForLabel(candidates, '数学') === 120,
+        noDuplicateTask: correction.turn.graph.tasks.filter((task) =>
+          task.title.includes('英語')).length === 1
+          && correction.turn.graph.tasks.filter((task) =>
+            task.title.includes('数学')).length === 1,
+        saved: approval.savedPlanCount === candidates.length,
+      };
+    },
+  },
+  {
+    manifest: manifest('preview-correction-recompute'),
     selectedDate: '2026-08-03',
     weekStartDate: '2026-08-03',
     async run(harness, report) {
@@ -749,8 +849,8 @@ const scenarios: ScenarioDefinition[] = [
         '来週、英語を2時間、数学を3時間やる予定を作ってください',
         'start-and-authorize',
       );
-      const initialCandidates = harness.state.previewCandidates.length > 0
-        ? [...harness.state.previewCandidates]
+      const initialCandidates = previewCandidates(harness.state).length > 0
+        ? previewCandidates(harness.state)
         : await harness.continueUntilPreview({
             answer: defaultAnswer({
               taskText: '英語を2時間、数学を3時間やりたいです',
@@ -759,27 +859,21 @@ const scenarios: ScenarioDefinition[] = [
             }),
           });
       harness.recordPreview('before-correction');
-      expect(totalCandidateMinutes(initialCandidates)).toBe(300);
+      const beforeCorrection = harness.previewSnapshot();
       const oldBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
         candidates: initialCandidates,
         userId: harness.userId,
         createdAt: '2026-08-01T00:00:00.000Z',
       });
-      const oldRevision = harness.latestGraph?.revision ?? null;
 
-      const correction = await harness.submit(
+      await harness.submit(
         '訂正です。数学は3時間ではなく1時間にしてください',
         'preview-correction',
       );
-      expect(correction.candidates).toEqual([]);
-      expect(harness.state.previewCandidates).toEqual([]);
-      expect(harness.latestGraph?.revision ?? null).not.toBe(oldRevision);
-      expect(classifyWeeklyPlanningApprovalAvailability({
+      const correctionTurn = harness.previewSnapshot();
+      const staleAvailability = classifyWeeklyPlanningApprovalAvailability({
         blocks: oldBlocks,
         userId: harness.userId,
-      })).toMatchObject({
-        kind: 'recompute_required',
-        reason: 'state_revision_mismatch',
       });
 
       const correctedCandidates = await harness.continueUntilPreview({
@@ -792,23 +886,23 @@ const scenarios: ScenarioDefinition[] = [
         authorizationLabel: 'reauthorize-corrected-preview',
       });
       harness.recordPreview('after-correction');
-      expect(totalCandidateMinutes(correctedCandidates)).toBe(180);
-      expect(correctedCandidates.map((candidate) => candidate.stableKey).sort())
-        .not.toEqual(initialCandidates.map((candidate) => candidate.stableKey).sort());
+      const afterCorrection = harness.previewSnapshot();
+      const correctionChecks = evaluatePreviewCorrectionContract({
+        expectedCorrectedTotalMinutes: 180,
+        beforeCorrection,
+        correctionTurn,
+        afterCorrection,
+      });
       const approval = await harness.approveCurrentPreview();
       report.checks = {
-        initialPreviewCreated: initialCandidates.length > 0,
-        oldPreviewCleared: correction.candidates.length === 0,
-        graphRevisionAdvanced: (harness.latestGraph?.revision ?? 0) > (oldRevision ?? -1),
-        oldPreviewRejected: classifyWeeklyPlanningApprovalAvailability({
-          blocks: oldBlocks,
-          userId: harness.userId,
-        }).kind === 'recompute_required',
-        correctedTotalApplied: totalCandidateMinutes(correctedCandidates) === 180,
-        previewRecomputed:
-          correctedCandidates.map((candidate) => candidate.stableKey).sort().join('|')
-          !== initialCandidates.map((candidate) => candidate.stableKey).sort().join('|'),
+        ...correctionChecks,
+        stalePreviewRejected:
+          staleAvailability.kind === 'recompute_required'
+          && staleAvailability.reason === 'state_revision_mismatch',
+        englishPreserved: candidateMinutesForLabel(correctedCandidates, '英語') === 120,
+        mathCorrected: candidateMinutesForLabel(correctedCandidates, '数学') === 60,
         saved: approval.savedPlanCount === correctedCandidates.length,
+        duplicateApprovalSuppressed: approval.duplicateApprovalAddedPlans === 0,
       };
     },
   },
@@ -816,8 +910,8 @@ const scenarios: ScenarioDefinition[] = [
 
 function createScenarioReport(scenario: ScenarioDefinition): ScenarioReport {
   return {
-    id: scenario.id,
-    description: scenario.description,
+    id: scenario.manifest.id,
+    description: scenario.manifest.description,
     selectedDate: scenario.selectedDate,
     weekStartDate: scenario.weekStartDate,
     status: 'running',
@@ -850,37 +944,24 @@ function writeScenarioArtifacts(report: ScenarioReport): void {
   }
   if (report.failure) writeFileSync(`${dir}/failure.txt`, report.failure);
 
-  const transcript = report.turns.flatMap((turn) => [
-    `## Turn ${turn.index}: ${turn.label}`,
-    '',
-    `ユーザー: ${turn.userText}`,
-    '',
-    `アプリ: ${turn.assistantText}`,
-    '',
-    `machine: question=${turn.machineQuestion.code ?? 'none'}, target=${turn.machineQuestion.targetFactId ?? 'none'}, graphRevision=${turn.graph.revision ?? 'none'}, preview=${turn.draftCandidates.length}`,
-    '',
-  ]).join('\n');
   writeFileSync(
     `${dir}/transcript.md`,
-    [
-      `# ${report.id}`,
-      '',
-      report.description,
-      '',
-      `Status: ${report.status}`,
-      '',
-      transcript || 'No turns.',
-      '## Checks',
-      '',
-      ...Object.entries(report.checks).map(
-        ([name, passed]) => `- ${passed ? 'PASS' : 'FAIL'}: ${name}`,
-      ),
-      '',
-      '## Failure',
-      '',
-      report.failure ?? 'none',
-      '',
-    ].join('\n'),
+    renderConversationEvalTranscript({
+      scenarioId: report.id,
+      description: report.description,
+      status: report.status,
+      turns: report.turns.map((turn) => ({
+        index: turn.index,
+        label: turn.label,
+        userText: turn.userText,
+        assistantText: turn.assistantText,
+        machineQuestion: turn.machineQuestion,
+        graphRevision: turn.graph.revision,
+        previewCount: turn.draftCandidates.length,
+      })),
+      checks: report.checks,
+      failure: report.failure,
+    }),
   );
 }
 
@@ -924,7 +1005,7 @@ function writeSuiteArtifacts(report: SuiteReport): void {
 describe.skipIf(!shouldRun)(
   'Weekly Planning Stable V5 real API conversation suite',
   () => {
-    it('runs natural dialogue, explicit repair, preview correction, approval, and save', async () => {
+    it('runs natural dialogue, explicit repair, cross-task correction, preview correction, approval, and save', async () => {
       const suite: SuiteReport = {
         generatedAt: new Date().toISOString(),
         status: 'running',
@@ -946,7 +1027,7 @@ describe.skipIf(!shouldRun)(
         try {
           const harness = new ConversationHarness(scenario, report);
           await scenario.run(harness, report);
-          expect(Object.values(report.checks).every(Boolean)).toBe(true);
+          expect(allConversationEvalChecksPass(report.checks)).toBe(true);
           report.status = 'passed';
         } catch (error) {
           report.status = 'failed';
