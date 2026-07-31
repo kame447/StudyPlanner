@@ -101,6 +101,7 @@ describe('Stable V5 AI dialogue renderer', () => {
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
     expect(prompt.systemPrompt).not.toContain('Preserve every string');
     expect(prompt.userPrompt).toContain('そのまま繰り返したり、単に言い換えたりする必要はありません');
+    expect(prompt.userPrompt).toContain('まだ実行されていない予定の作成・追加・保存');
   });
 
   it('accepts an explanation when the user asks what the previous question meant', async () => {
@@ -128,6 +129,49 @@ describe('Stable V5 AI dialogue renderer', () => {
     );
 
     await expect(renderer.render(input())).resolves.toMatchObject({ status: 'rendered' });
+  });
+
+  it('rejects a false creation claim for a missing-work question and accepts a natural question', async () => {
+    const missingWorkInput = input({
+      actionId: 'stable-v5:request-tomorrow:missing_schedulable_work',
+      currentUserMessage: '明日',
+      recentConversation: [
+        { role: 'user', content: '明日の予定立てたいです' },
+        { role: 'assistant', content: '明日の予定に入れたいことと量を教えてください。' },
+      ],
+      planningInformation: {
+        planningWindows: [{ kind: 'relative_day', value: 'tomorrow' }],
+        tasks: [],
+      },
+      actionKind: 'question',
+      questionCode: 'missing_schedulable_work',
+      requiredLabels: [],
+      fallbackText: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+      previewCount: 0,
+    });
+    const falseClaim = createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(JSON.stringify({
+        actionId: missingWorkInput.actionId,
+        text: '明日1日分の予定ですね。では、明日の予定を作ります。',
+      })),
+    );
+    const naturalQuestion = createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(JSON.stringify({
+        actionId: missingWorkInput.actionId,
+        text: '明日の予定には、何をどれくらい入れたいですか？',
+      })),
+    );
+
+    await expect(falseClaim.render(missingWorkInput)).resolves.toMatchObject({
+      status: 'fallback',
+      reason: 'ungrounded_text',
+    });
+    await expect(naturalQuestion.render(missingWorkInput)).resolves.toMatchObject({
+      status: 'rendered',
+      text: '明日の予定には、何をどれくらい入れたいですか？',
+    });
   });
 
   it('falls back when the model changes the action identity', async () => {
