@@ -3,6 +3,7 @@ import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningAction,
   WeeklyPlanningMessage,
+  WeeklyPlanningMode,
   WeeklyPlanningPendingApproval,
   WeeklyPlanningPendingTurn,
 } from './types';
@@ -34,6 +35,16 @@ function withMutation(state: PlanningState, next: Omit<PlanningState, 'revision'
 
 function getPendingDraftBlocks(blocks: WeeklyPlanDraftBlock[]): WeeklyPlanDraftBlock[] {
   return blocks.filter((block) => block.status === 'draft');
+}
+
+function modeAfterTurnCommit(
+  state: PlanningState,
+  draftCandidateCount: number,
+): WeeklyPlanningMode {
+  if (draftCandidateCount > 0) return 'draft_created';
+  if (getPendingDraftBlocks(state.draftBlocks).length > 0) return 'awaiting_approval';
+  if (state.messages.length > 0 || state.intakeState) return 'collecting_tasks';
+  return 'idle';
 }
 
 function samePendingTurn(
@@ -160,16 +171,18 @@ export function weeklyPlanningReducer(
       });
     }
 
-    case 'commit_turn':
+    case 'commit_turn': {
       if (!canCommitTurn(state, action.pending)) return state;
+      const draftCandidates = action.draftCandidates ?? [];
       return withMutation(state, {
         ...state,
         ...appendAssistantMessage(state, action.assistantMessage),
-        mode: (action.draftCandidates?.length ?? 0) > 0 ? 'draft_created' : state.mode,
+        mode: modeAfterTurnCommit(state, draftCandidates.length),
         intakeState: action.intakeState,
-        previewCandidates: action.draftCandidates ?? [],
+        previewCandidates: draftCandidates,
         pendingTurn: undefined,
       });
+    }
 
     case 'fail_turn':
       if (!canCommitTurn(state, action.pending)) return state;
