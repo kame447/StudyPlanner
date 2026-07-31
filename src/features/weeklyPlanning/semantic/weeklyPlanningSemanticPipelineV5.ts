@@ -2,7 +2,11 @@ import type {
   ExternalConstraintSourceSnapshot,
 } from './weeklyPlanningAvailabilityResolver';
 import {
+  applyWeeklyPlanningCanonicalCorrectionsV5,
+} from './weeklyPlanningCanonicalCorrectionApplicationV5';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
+  type WeeklyPlanningFactDiffEntryV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
@@ -74,6 +78,63 @@ function schedulerStatus(
   if (compilation.status === 'ready') return 'scheduler_ready';
   if (compilation.status === 'empty') return 'scheduler_empty';
   return 'scheduler_needs_resolution';
+}
+
+function uniqueDiffEntries(
+  entries: readonly WeeklyPlanningFactDiffEntryV5[],
+): WeeklyPlanningFactDiffEntryV5[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = `${entry.kind}:${entry.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function applyCanonicalCorrectionResult(params: {
+  originalGraph: WeeklyPlanningFactGraphV5;
+  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
+  operationKeyPrefix: string;
+}): {
+  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
+  application: ReturnType<typeof applyWeeklyPlanningCanonicalCorrectionsV5>;
+} {
+  const application = applyWeeklyPlanningCanonicalCorrectionsV5(params);
+  if (application.status === 'rejected') {
+    return {
+      application,
+      canonicalization: {
+        status: 'rejected',
+        graph: params.originalGraph,
+        diff: null,
+        errors: application.errors.map((error) => `correction-application:${error}`),
+        localToFactId: params.canonicalization.localToFactId,
+      },
+    };
+  }
+  if (application.status !== 'applied' || !params.canonicalization.diff) {
+    return { application, canonicalization: params.canonicalization };
+  }
+  return {
+    application,
+    canonicalization: {
+      ...params.canonicalization,
+      graph: application.graph,
+      diff: {
+        ...params.canonicalization.diff,
+        toRevision: application.graph.revision,
+        superseded: uniqueDiffEntries([
+          ...params.canonicalization.diff.superseded,
+          ...application.superseded,
+        ]),
+        removed: uniqueDiffEntries([
+          ...params.canonicalization.diff.removed,
+          ...application.removed,
+        ]),
+      },
+    },
+  };
 }
 
 function contextualBindingObservations(params: {
@@ -268,12 +329,28 @@ export function createWeeklyPlanningSemanticPipelineV5(
         turnId: input.turnId,
         expectedRevision: input.expectedRevision,
       };
-      const canonicalization = contextualAnswer
+      const baseCanonicalization = contextualAnswer
         ?? canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
           graph,
           document: normalization.document,
           context: canonicalizationContext,
         });
+      const correctionResult = applyCanonicalCorrectionResult({
+        originalGraph: graph,
+        canonicalization: baseCanonicalization,
+        operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
+      });
+      const canonicalization = correctionResult.canonicalization;
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'canonical_correction_application_evaluated',
+        severity: correctionResult.application.status === 'rejected' ? 'error' : 'info',
+        data: {
+          inputCanonicalization: baseCanonicalization,
+          application: correctionResult.application,
+          resultingCanonicalization: canonicalization,
+        },
+      });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'semantic_canonicalization_evaluated',
