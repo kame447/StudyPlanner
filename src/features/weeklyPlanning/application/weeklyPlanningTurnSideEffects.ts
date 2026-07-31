@@ -3,7 +3,12 @@ import {
 } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import {
   takeWeeklyPlanningStableV5DebugTrace,
+  type WeeklyPlanningStableV5DebugTraceEvent,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
+  boundWeeklyPlanningDialogueRendererTraceForTransport,
+  type WeeklyPlanningDialogueRendererTrace,
+} from '../trace/weeklyPlanningDialogueRendererTrace';
 import type {
   WeeklyPlanningMessage,
   WeeklyPlanningPendingTurn,
@@ -34,6 +39,67 @@ const defaultServices: WeeklyPlanningTurnSideEffectServices = {
   getRuntimeSession: getWeeklyPlanningStableV5RuntimeSession,
   recordTurnTrace: recordWeeklyPlanningStableV5TurnTrace,
 };
+
+const DUPLICATED_RENDERER_DEBUG_STAGES = new Set([
+  'dialogue_renderer_request',
+  'dialogue_renderer_response',
+  'dialogue_renderer_decision',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function withoutRendererTrace(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => key !== 'dialogueRendererTrace'),
+  );
+}
+
+function compactTraceEventForPersistence(
+  event: WeeklyPlanningStableV5DebugTraceEvent,
+  hasDedicatedRendererTrace: boolean,
+): WeeklyPlanningStableV5DebugTraceEvent | null {
+  if (!hasDedicatedRendererTrace) return event;
+  if (DUPLICATED_RENDERER_DEBUG_STAGES.has(event.stage)) return null;
+  if (event.stage !== 'turn_executor_result_projected' || !isRecord(event.data)) return event;
+  const data = event.data;
+  return {
+    ...event,
+    data: {
+      ...data,
+      ...(Object.prototype.hasOwnProperty.call(data, 'result')
+        ? { result: withoutRendererTrace(data.result) }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(data, 'projectedResult')
+        ? { projectedResult: withoutRendererTrace(data.projectedResult) }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(data, 'originalResult')
+        ? { originalResult: withoutRendererTrace(data.originalResult) }
+        : {}),
+    },
+  };
+}
+
+function debugTraceEventsForPersistence(
+  requestId: string,
+  hasDedicatedRendererTrace: boolean,
+): WeeklyPlanningStableV5DebugTraceEvent[] {
+  return takeWeeklyPlanningStableV5DebugTrace(requestId)
+    .flatMap((event) => {
+      const compacted = compactTraceEventForPersistence(event, hasDedicatedRendererTrace);
+      return compacted ? [compacted] : [];
+    });
+}
+
+function rendererTraceForPersistence(
+  result: WeeklyPlanningTurnExecutionResult,
+): WeeklyPlanningDialogueRendererTrace | undefined {
+  return result.dialogueRendererTrace
+    ? boundWeeklyPlanningDialogueRendererTraceForTransport(result.dialogueRendererTrace)
+    : undefined;
+}
 
 function stableV5PlanningRange(
   conversationId: string,
@@ -89,7 +155,11 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = takeWeeklyPlanningStableV5DebugTrace(params.pending.requestId);
+  const dialogueRendererTrace = rendererTraceForPersistence(params.result);
+  const debugTraceEvents = debugTraceEventsForPersistence(
+    params.pending.requestId,
+    Boolean(dialogueRendererTrace),
+  );
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
@@ -99,6 +169,7 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
     ...(params.result.responseSource
       ? { responseSource: params.result.responseSource }
       : {}),
+    ...(dialogueRendererTrace ? { dialogueRendererTrace } : {}),
     outcome: params.result.failure?.code
       ?? (params.result.draftCandidates.length > 0
         ? 'preview_ready'
@@ -120,12 +191,18 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = takeWeeklyPlanningStableV5DebugTrace(params.pending.requestId);
+  const dialogueRendererTrace = rendererTraceForPersistence(params.result);
+  const debugTraceEvents = debugTraceEventsForPersistence(
+    params.pending.requestId,
+    Boolean(dialogueRendererTrace),
+  );
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
     userText: params.userText,
+    responseSource: 'system',
+    ...(dialogueRendererTrace ? { dialogueRendererTrace } : {}),
     outcome: `discarded_${params.reason}`,
     debugTraceEvents,
     previewCount: 0,
@@ -146,7 +223,7 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
   if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = takeWeeklyPlanningStableV5DebugTrace(params.pending.requestId);
+  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, false);
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,

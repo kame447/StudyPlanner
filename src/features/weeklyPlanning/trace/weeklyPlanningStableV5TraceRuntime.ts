@@ -1,4 +1,5 @@
 import type { WeeklyPlanningStableV5DebugTraceEvent } from './weeklyPlanningStableV5DebugTrace';
+import type { WeeklyPlanningDialogueRendererTrace } from './weeklyPlanningDialogueRendererTrace';
 import {
   getWeeklyPlanningTraceRepository,
   isWeeklyPlanningTraceEnabled,
@@ -41,6 +42,7 @@ export interface WeeklyPlanningStableV5TraceInput {
   userText: string;
   assistantMessage?: string;
   responseSource?: WeeklyPlanningTraceResponseSource;
+  dialogueRendererTrace?: WeeklyPlanningDialogueRendererTrace;
   outcome: string;
   debugTraceEvents?: WeeklyPlanningStableV5DebugTraceEvent[];
   previewCount: number;
@@ -224,6 +226,7 @@ function createTurnDiagnosticEntry(
     userText: params.userText,
     assistantMessage: params.assistantMessage,
     responseSource: params.responseSource,
+    dialogueRendererTrace: params.dialogueRendererTrace,
     outcome: params.outcome,
     previewCount: params.previewCount,
     errorCode: params.errorCode,
