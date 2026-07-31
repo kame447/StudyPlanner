@@ -12,6 +12,9 @@ import {
   type WeeklyPlanningDialogueRendererTrace,
 } from './weeklyPlanningDialogueRendererTrace';
 import {
+  WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+} from './weeklyPlanningStableV5DebugTrace';
+import {
   recordWeeklyPlanningStableV5TurnTrace,
   resetWeeklyPlanningStableV5TraceRuntimeForTest,
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest,
@@ -23,6 +26,8 @@ import type {
   WeeklyPlanningTraceRepository,
   WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
+
+const WINDOW_REPAIR_ERROR = 'document.planningWindow:direct-user-range-omitted:tomorrow';
 
 function repositoryHarness() {
   const writes: Array<{
@@ -94,7 +99,22 @@ function traceInput(requestId: string) {
     dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(rendererTrace()),
     outcome: 'revision_pending',
     previewCount: 0,
-    debugTraceEvents: [],
+    debugTraceEvents: [{
+      schemaVersion: WEEKLY_PLANNING_STABLE_V5_DEBUG_TRACE_SCHEMA_VERSION,
+      sequence: 0,
+      stage: 'semantic_validation_result',
+      occurredAt: '2026-07-31T08:48:32.812Z',
+      severity: 'warn' as const,
+      data: {
+        attempt: 'initial',
+        accepted: false,
+        errors: [WINDOW_REPAIR_ERROR],
+        parsedDocument: {
+          planningIntent: 'create_plan',
+          planningWindow: null,
+        },
+      },
+    }],
   };
 }
 
@@ -102,6 +122,11 @@ function rendererDiagnostic(entry: WeeklyPlanningTraceEntry): Record<string, unk
   if (entry.kind !== 'turn_diagnostic') throw new Error('expected turn diagnostic');
   const diagnostics = entry.diagnostics as Record<string, unknown>;
   return diagnostics.dialogueRenderer as Record<string, unknown>;
+}
+
+function semanticResults(entry: WeeklyPlanningTraceEntry) {
+  if (entry.kind !== 'turn_diagnostic') throw new Error('expected turn diagnostic');
+  return entry.aiInterpreter.structuredResults;
 }
 
 let restoreStorage: (() => void) | undefined;
@@ -119,7 +144,7 @@ describe('renderer action fallback storage contract', () => {
     restoreStorage = undefined;
   });
 
-  it('preserves the false-creation fallback reason and prompt through outbox retry', async () => {
+  it('preserves semantic repair and false-creation fallback through outbox retry', async () => {
     const harness = repositoryHarness();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
     const first = traceInput('conversation-tomorrow:request:1');
@@ -137,6 +162,13 @@ describe('renderer action fallback storage contract', () => {
 
     expect(harness.writes).toHaveLength(2);
     const replayed = harness.writes[0].entries[0];
+    expect(semanticResults(replayed)).toEqual([
+      expect.objectContaining({
+        attempt: 'initial',
+        accepted: false,
+        errors: [WINDOW_REPAIR_ERROR],
+      }),
+    ]);
     const renderer = rendererDiagnostic(replayed);
     expect(renderer).toMatchObject({
       actionKind: 'question',
