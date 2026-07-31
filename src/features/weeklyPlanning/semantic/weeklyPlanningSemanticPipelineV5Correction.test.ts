@@ -208,8 +208,11 @@ describe('Stable V5 semantic pipeline correction application', () => {
     const oldWorkloadId = first.canonicalization?.localToFactId['workload-old'];
     if (!oldWorkloadId) throw new Error('old workload id missing');
 
+    const correctionCapture: {
+      input: WeeklyPlanningSemanticNormalizerInputV5 | null;
+    } = { input: null };
     const second = await createWeeklyPlanningSemanticPipelineV5(
-      acceptedNormalizer(correctionDocument(oldWorkloadId)),
+      acceptedNormalizer(correctionDocument(oldWorkloadId), correctionCapture),
     ).run({
       graph: first.graph,
       conversationId: 'conversation-correction',
@@ -219,6 +222,17 @@ describe('Stable V5 semantic pipeline correction application', () => {
       schedulerContext,
     });
 
+    expect(correctionCapture.input?.publicStateSummary).toMatchObject({
+      graphRevision: first.graph.revision,
+      workloads: [
+        expect.objectContaining({
+          publicId: oldWorkloadId,
+          amount: 3,
+          unitCode: 'hour',
+        }),
+      ],
+      correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
+    });
     expect(second.status).toBe('scheduler_ready');
     expect(second.canonicalization?.status).toBe('applied');
     const active = activeIds(second.graph);
