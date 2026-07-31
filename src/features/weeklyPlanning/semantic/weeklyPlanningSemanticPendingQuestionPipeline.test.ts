@@ -190,8 +190,9 @@ describe('Stable V5 machine pending question pipeline', () => {
   });
 
   it('does not bind a short reply when no machine pending question exists', async () => {
+    const graph = existingGraph();
     const result = await createWeeklyPlanningSemanticPipelineV5(normalizer()).run({
-      graph: existingGraph(),
+      graph,
       conversationId: 'conversation-1',
       turnId: 'turn-2-no-pending',
       expectedRevision: 1,
@@ -206,17 +207,12 @@ describe('Stable V5 machine pending question pipeline', () => {
       schedulerContext,
     });
 
+    expect(result.status).toBe('canonicalization_rejected');
     expect(result.canonicalization).toMatchObject({
-      status: 'applied',
-      diff: {
-        superseded: [],
-        removed: [],
-      },
+      status: 'rejected',
+      diff: null,
     });
-    expect(result.canonicalization?.localToFactId.answerTask).toBeUndefined();
-    expect(result.canonicalization?.localToFactId['answer-task']).toBeTruthy();
-    expect(result.canonicalization?.localToFactId['answer-workload']).not.toBe('workload-2');
-    expect(result.graph.tasks).toHaveLength(3);
+    expect(result.graph).toEqual(graph);
     expect(result.graph.factLifecycles).toEqual(expect.arrayContaining([
       expect.objectContaining({ factId: 'workload-2', status: 'active' }),
     ]));
