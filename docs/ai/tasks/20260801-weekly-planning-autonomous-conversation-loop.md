@@ -122,3 +122,11 @@ AI契約: active Graphのplanning window、task、component、workload、effort 
 確認: GitHub Actionsは使用していない。typecheck・test・buildは未実行。実API transcriptも未生成。
 
 次: 実行可能な環境で最初に`npm run test:weekly-ai:conversation:foundation`を実行する。通過後に実API suiteを回し、5 transcriptを人間判断する。失敗した最初の構造境界だけを次ループで修正する。
+
+## 実行停止時点
+
+現在できるようにしたこと: 5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、原子的rollback、transcriptとtraceのartifact定義。
+
+まだ確認できていないこと: TypeScript型整合、決定論的test結果、既存testへの影響、build、実APIの意味解釈、実際の返答自然さ、5 scenarioの完走。
+
+再開時の順序: foundation test、既存safety test、build、実API suite、transcript確認、最初の失敗原因の修正。
