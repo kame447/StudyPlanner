@@ -86,6 +86,67 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function arrayField(
+  value: Record<string, unknown> | null,
+  key: string,
+): unknown[] {
+  const field = value?.[key];
+  return Array.isArray(field) ? field : [];
+}
+
+function unresolvedWorkloadFields(
+  planningInformation: Record<string, unknown> | null,
+): Record<string, unknown>[] {
+  return arrayField(planningInformation, 'workloads')
+    .filter(isRecord)
+    .filter((workload) => workload.quantityRole === 'unknown')
+    .map((workload) => ({
+      kind: 'workload_field',
+      taskId: workload.taskId ?? null,
+      componentId: workload.componentId ?? null,
+      field: 'quantityRole',
+      knownAmount: workload.amount ?? null,
+      knownUnitLabel: workload.unitLabel ?? null,
+    }));
+}
+
+function unresolvedDeclarations(
+  planningInformation: Record<string, unknown> | null,
+  key: 'availabilityDeclarations' | 'constraintSourceRequests',
+): Record<string, unknown>[] {
+  return arrayField(planningInformation, key)
+    .filter(isRecord)
+    .filter((entry) => entry.resolutionStatus === 'unresolved')
+    .map((entry) => ({ kind: key, ...entry }));
+}
+
+export function createWeeklyPlanningStableV5DialogueStateSummary(
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): Record<string, unknown> {
+  const planningInformation = input.planningInformation;
+  const decidedFacts = planningInformation
+    ? Object.fromEntries(
+      Object.entries(planningInformation)
+        .filter(([key]) => key !== 'uncertainties'),
+    )
+    : null;
+
+  return {
+    decidedFacts,
+    undecidedItems: [
+      ...arrayField(planningInformation, 'uncertainties'),
+      ...unresolvedWorkloadFields(planningInformation),
+      ...unresolvedDeclarations(planningInformation, 'availabilityDeclarations'),
+      ...unresolvedDeclarations(planningInformation, 'constraintSourceRequests'),
+    ],
+    currentQuestion: {
+      questionCode: input.questionCode,
+      relevantLabels: input.requiredLabels,
+      referenceResponse: input.fallbackText,
+    },
+  };
+}
+
 export function createWeeklyPlanningStableV5DialoguePrompt(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): {
@@ -104,6 +165,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
     planningInformation: input.planningInformation,
+    planningStateSummary: createWeeklyPlanningStableV5DialogueStateSummary(input),
     applicationDecision: {
       actionKind: input.actionKind,
       questionCode: input.questionCode,
@@ -113,6 +175,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     },
     request: [
       '上記の情報を踏まえて、現在のユーザーに返す自然な日本語を考えてください。',
+      'planningStateSummaryのdecidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です。',
       'referenceResponseはアプリ側の参考情報であり、そのまま繰り返したり、単に言い換えたりする必要はありません。',
       '最新発話が説明要求や聞き返しなら、直前の質問を繰り返さず、何を確認したいのかを分かりやすく説明してください。',
     ].join(''),
