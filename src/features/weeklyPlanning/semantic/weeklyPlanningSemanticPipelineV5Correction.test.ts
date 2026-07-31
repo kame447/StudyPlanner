@@ -155,7 +155,7 @@ function activeIds(graph: {
   factLifecycles: Array<{ factId: string; status: string }>;
 }): Set<string> {
   return new Set(
-    graph.factLifycles
+    graph.factLifecycles
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
