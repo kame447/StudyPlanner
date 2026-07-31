@@ -90,6 +90,7 @@ function compatibilityState(params: {
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
   questionCode?: string;
+  questionFactId?: string;
   authorized: boolean;
 }): PlanningIntakeState {
   const previous = params.previousState ?? emptyCompatibilityState();
@@ -109,6 +110,7 @@ function compatibilityState(params: {
           kind: 'missing',
           targetSlot: `stable_v5:${params.questionCode}`,
           intent: params.questionCode,
+          topicId: params.questionFactId,
         }
       : undefined,
     shouldCreateDraft: hasDraft,
@@ -278,14 +280,33 @@ function externalSources(params: {
   ];
 }
 
+function pendingQuestionFromState(
+  state: PlanningIntakeState | undefined,
+  graphRevision: number,
+): Record<string, unknown> | null {
+  const context = state?.lastQuestionContext;
+  const targetSlot = context?.targetSlot;
+  if (!targetSlot?.startsWith('stable_v5:')) return null;
+  const questionCode = targetSlot.slice('stable_v5:'.length).trim();
+  if (!questionCode) return null;
+  return {
+    actionId: context?.actionId ?? null,
+    questionCode,
+    targetFactId: context?.topicId ?? null,
+    graphRevision,
+  };
+}
+
 function publicStateSummary(
   graph: WeeklyPlanningFactGraphV5,
   messages: readonly WeeklyPlanningMessage[],
+  previousState?: PlanningIntakeState,
 ): Record<string, unknown> {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   return {
     runtime: 'weekly-planning-stable-v5',
     graphRevision: graph.revision,
+    pendingQuestion: pendingQuestionFromState(previousState, graph.revision),
     planningWindows: active.planningWindows.map((fact) => ({
       publicId: fact.id,
       kind: fact.kind,
@@ -327,6 +348,7 @@ function missingSchedulableWorkQuestion(
   if (taskTitles.length === 0) {
     return {
       message: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+      questionCode: 'missing_schedulable_work',
       taskTitles,
     };
   }
@@ -463,7 +485,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   const recentConversation = input.messages
     .slice(-RECENT_TURN_LIMIT)
     .map(({ role, content }) => ({ role, content }));
-  const stateSummary = publicStateSummary(runtimeSession.graph, input.messages);
+  const stateSummary = publicStateSummary(
+    runtimeSession.graph,
+    input.messages,
+    input.previousState,
+  );
   const initialSchedulerContext = schedulerContext({
     ownerId: input.userId,
     selectedDate: input.selectedDate,
@@ -685,6 +711,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         message,
         draftCandidates: [],
         questionCode: dialogue.question.code,
+        questionFactId: dialogue.question.factId ?? undefined,
         authorized,
       }),
       message,
