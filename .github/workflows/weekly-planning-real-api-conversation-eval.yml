@@ -1,15 +1,6 @@
 name: Weekly Planning Real API Conversation Eval
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'src/features/weeklyPlanning/**'
-      - 'src/domain/**'
-      - 'src/types/**'
-      - 'package.json'
-      - '.github/workflows/weekly-planning-real-api-conversation-eval.yml'
   workflow_dispatch:
     inputs:
       model:
@@ -27,7 +18,7 @@ concurrency:
 jobs:
   real-api-conversation-eval:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     env:
       TZ: Asia/Tokyo
       WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL: '1'
@@ -58,6 +49,12 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Run deterministic conversation-eval foundation tests
+        run: >-
+          npm run test:run --
+          src/features/weeklyPlanning/evals/weeklyPlanningConversationEvalDriver.test.ts
+          src/features/weeklyPlanning/evals/weeklyPlanningConversationEvalContracts.test.ts
 
       - name: Run deterministic safety tests
         run: >-
