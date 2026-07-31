@@ -1,20 +1,16 @@
 name: Weekly Planning Stable V5 Semantic Eval
 
 on:
-  push:
-    branches:
-      - test/weekly-planning-semantic-schema-eval
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'src/features/weeklyPlanning/semantic/**'
-      - '.github/workflows/weekly-planning-semantic-schema-eval.yml'
   workflow_dispatch:
+    inputs:
+      model:
+        description: OpenAI model used for the direct semantic schema evaluation
+        required: true
+        default: gpt-5.4-mini
+        type: string
 
 permissions:
   contents: read
-  models: read
 
 concurrency:
   group: weekly-planning-semantic-stable-v5-eval-${{ github.ref }}
@@ -22,25 +18,42 @@ concurrency:
 
 jobs:
   real-eval:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
       WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL: '1'
-      GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      WEEKLY_PLANNING_SEMANTIC_V5_EVAL_BASE_URL: https://api.openai.com/v1
+      WEEKLY_PLANNING_SEMANTIC_V5_EVAL_MODEL: ${{ inputs.model }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
+      - name: Verify OpenAI secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "Repository secret OPENAI_API_KEY is required." >&2
+            exit 1
+          fi
+
       - name: Install dependencies
         run: npm ci
+
       - name: Run Stable V5 semantic evaluation
         id: eval
         continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: >-
           npm run test:run --
           src/features/weeklyPlanning/semantic/weeklyPlanningSemanticV5.real-eval.test.ts
+
       - name: Upload evaluation report
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,6 +61,8 @@ jobs:
           name: weekly-planning-semantic-v5-real-eval
           path: artifacts/weekly-planning-semantic-v5-real-eval.json
           if-no-files-found: warn
+          retention-days: 14
+
       - name: Propagate evaluation failure
         if: steps.eval.outcome == 'failure'
         run: exit 1
