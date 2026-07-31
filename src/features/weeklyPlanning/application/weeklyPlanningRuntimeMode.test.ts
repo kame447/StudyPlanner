@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getWeeklyPlanningRuntimeMode,
+  isWeeklyPlanningStableV5RuntimeEnabled,
   resetWeeklyPlanningRuntimeMode,
   resetWeeklyPlanningRuntimeModeForTest,
   setWeeklyPlanningRuntimeMode,
+  WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE,
   WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
   WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY,
 } from './weeklyPlanningRuntimeMode';
@@ -47,12 +49,14 @@ describe('weekly planning runtime mode', () => {
     vi.unstubAllGlobals();
   });
 
-  it('defaults to legacy and persists Stable V5 in session storage', () => {
+  it('locks the application runtime to Stable V5', () => {
     const runtime = createWindow();
     vi.stubGlobal('window', runtime.window);
 
-    expect(getWeeklyPlanningRuntimeMode()).toBe('legacy');
-    expect(setWeeklyPlanningRuntimeMode('stable_v5')).toBe('stable_v5');
+    expect(getWeeklyPlanningRuntimeMode()).toBe(WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE);
+    expect(isWeeklyPlanningStableV5RuntimeEnabled()).toBe(true);
+
+    expect(setWeeklyPlanningRuntimeMode('legacy')).toBe('stable_v5');
     expect(runtime.storage.get(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY)).toBe('stable_v5');
     expect(getWeeklyPlanningRuntimeMode()).toBe('stable_v5');
     expect(runtime.events[runtime.events.length - 1]?.type).toBe(
@@ -60,13 +64,14 @@ describe('weekly planning runtime mode', () => {
     );
   });
 
-  it('uses the URL override and can reset the stored mode', () => {
-    const runtime = createWindow('?weeklyPlanningRuntime=stable-v5');
+  it('ignores legacy URL and storage overrides and resets to Stable V5', () => {
+    const runtime = createWindow('?weeklyPlanningRuntime=legacy');
     runtime.storage.set(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY, 'legacy');
     vi.stubGlobal('window', runtime.window);
 
     expect(getWeeklyPlanningRuntimeMode()).toBe('stable_v5');
-    expect(resetWeeklyPlanningRuntimeMode()).toBe('legacy');
+    expect(isWeeklyPlanningStableV5RuntimeEnabled()).toBe(true);
+    expect(resetWeeklyPlanningRuntimeMode()).toBe('stable_v5');
     expect(runtime.storage.has(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY)).toBe(false);
   });
 });
