@@ -23,9 +23,13 @@ import {
 } from './weeklyPlanningFactGraphV5';
 
 const shouldRun = process.env.WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL === '1';
-const ENDPOINT = 'https://models.github.ai/inference/chat/completions';
+const BASE_URL = process.env.WEEKLY_PLANNING_SEMANTIC_V5_EVAL_BASE_URL?.trim()
+  || 'https://api.openai.com/v1';
+const ENDPOINT = BASE_URL.endsWith('/chat/completions')
+  ? BASE_URL
+  : `${BASE_URL.replace(/\/$/, '')}/chat/completions`;
 const MODEL = process.env.WEEKLY_PLANNING_SEMANTIC_V5_EVAL_MODEL?.trim()
-  || 'openai/gpt-4.1';
+  || 'gpt-5.4-mini';
 const DATE_SET_INSTRUCTION = [
   'For multiple non-consecutive explicit calendar dates that apply to one task, create one allowed_date temporal constraint per date. Do not collapse gaps into a continuous date range.',
   'For a repeating task on explicitly named weekdays, create one recurrence fact with kind weekly and a single days array using only sun, mon, tue, wed, thu, fri, sat.',
@@ -201,15 +205,13 @@ async function requestOnce(token: string, userText: string): Promise<Response> {
   return fetch(ENDPOINT, {
     method: 'POST',
     headers: {
-      Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      'X-GitHub-Api-Version': '2026-03-10',
     },
     body: JSON.stringify({
       model: MODEL,
       temperature: 0,
-      max_tokens: 4000,
+      max_completion_tokens: 4000,
       messages: [
         {
           role: 'system',
@@ -236,8 +238,8 @@ async function requestOnce(token: string, userText: string): Promise<Response> {
 }
 
 async function callModel(token: string, userText: string): Promise<string> {
-  const retryDelays = [0, 60_000, 120_000];
-  let lastError = 'GitHub Models request failed.';
+  const retryDelays = [0, 5_000, 20_000];
+  let lastError = 'OpenAI request failed.';
   for (const retryDelay of retryDelays) {
     if (retryDelay > 0) await wait(retryDelay);
     const response = await requestOnce(token, userText);
@@ -248,7 +250,7 @@ async function callModel(token: string, userText: string): Promise<string> {
       };
       const content = data.choices?.[0]?.message?.content?.trim();
       if (content) return content;
-      lastError = 'GitHub Models response had no content.';
+      lastError = 'OpenAI response had no content.';
       continue;
     }
     lastError = `${response.status}: ${raw.slice(0, 500)}`;
@@ -263,6 +265,7 @@ function writeReport(outcomes: EvalOutcome[]): void {
     'artifacts/weekly-planning-semantic-v5-real-eval.json',
     JSON.stringify({
       generatedAt: new Date().toISOString(),
+      endpoint: ENDPOINT,
       model: MODEL,
       semanticSchemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
       jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
@@ -286,12 +289,12 @@ function writeReport(outcomes: EvalOutcome[]): void {
 
 describe.skipIf(!shouldRun)('weekly planning Stable V5 real evaluation', () => {
   it('evaluates the direct Stable schema and canonicalizer', async () => {
-    const token = process.env.GITHUB_MODELS_TOKEN?.trim();
-    if (!token) throw new Error('GITHUB_MODELS_TOKEN is required.');
+    const token = process.env.OPENAI_API_KEY?.trim();
+    if (!token) throw new Error('OPENAI_API_KEY is required.');
     const outcomes: EvalOutcome[] = [];
 
     for (const [index, evalCase] of buildCases().entries()) {
-      if (index > 0) await wait(20_000);
+      if (index > 0) await wait(2_000);
       const startedAt = performance.now();
       try {
         const content = await callModel(token, evalCase.userText);
@@ -361,5 +364,5 @@ describe.skipIf(!shouldRun)('weekly planning Stable V5 real evaluation', () => {
       || outcome.canonicalStatus !== 'applied'
       || Object.values(outcome.metrics).some((value) => !value));
     expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
-  }, 25 * 60 * 1000);
+  }, 10 * 60 * 1000);
 });
