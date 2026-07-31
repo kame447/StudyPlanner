@@ -133,11 +133,23 @@ AI契約: active Graphのplanning window、task、component、workload、effort 
 
 確認: GitHub Actionsは使用していない。testは作成済みだが、typecheck・実行結果は未確認。
 
+### Loop 4: preview訂正後の状態整合
+
+問題: 訂正turnで旧preview候補を空にしても、PlanningState.modeが`draft_created`のまま残り得た。画面上は仮予定がある状態なのに実体は0件となる。
+
+原因: reducerの`commit_turn`がpreview候補を受け取らない場合、以前のmodeをそのまま保持していた。
+
+対応: commit後のpreview候補数、draft block、会話状態からmodeを再計算する共通境界へ変更した。旧preview消去後は`collecting_tasks`、再preview生成後は`draft_created`になる。
+
+類似確認: revision 3の旧preview表示、訂正turnで空化、revision 4で旧preview承認拒否、revision 5の再previewだけ承認可能、というapplication lifecycle testを追加した。
+
+確認: GitHub Actionsは使用していない。testは作成済みだが、typecheck・実行結果は未確認。
+
 次: 実行可能な環境で最初に`npm run test:weekly-ai:conversation:foundation`を実行する。通過後に実API suiteを回し、5 transcriptを人間判断する。失敗した最初の構造境界だけを次ループで修正する。
 
 ## 実行停止時点
 
-現在できるようにしたこと: 5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、誤単位回答のFact非採用、原子的rollback、transcriptとtraceのartifact定義。
+現在できるようにしたこと: 5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、誤単位回答のFact非採用、旧previewの無効化とmode再計算、原子的rollback、transcriptとtraceのartifact定義。
 
 まだ確認できていないこと: TypeScript型整合、決定論的test結果、既存testへの影響、build、実APIの意味解釈、実際の返答自然さ、5 scenarioの完走。
 
