@@ -4,41 +4,14 @@ export const WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY =
 export const WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT =
   'studyplanner:weekly-planning-runtime-mode-change' as const;
 
+/**
+ * `legacy` is retained only as an internal compatibility type for archived
+ * implementation and direct test-support imports. The application runtime is
+ * intentionally locked to Stable V5 and must not route through legacy code.
+ */
 export type WeeklyPlanningRuntimeMode = 'legacy' | 'stable_v5';
 
-let runtimeOverride: WeeklyPlanningRuntimeMode | null = null;
-
-function parseRuntimeMode(value: unknown): WeeklyPlanningRuntimeMode | null {
-  if (value === 'legacy') return 'legacy';
-  if (value === 'stable_v5' || value === 'stable-v5') return 'stable_v5';
-  return null;
-}
-
-function environmentDefault(): WeeklyPlanningRuntimeMode {
-  return parseRuntimeMode(import.meta.env.VITE_WEEKLY_PLANNING_RUNTIME_MODE) ?? 'legacy';
-}
-
-function queryOverride(): WeeklyPlanningRuntimeMode | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return parseRuntimeMode(
-      new URLSearchParams(window.location.search).get('weeklyPlanningRuntime'),
-    );
-  } catch {
-    return null;
-  }
-}
-
-function storedMode(): WeeklyPlanningRuntimeMode | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return parseRuntimeMode(
-      window.sessionStorage.getItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY),
-    );
-  } catch {
-    return null;
-  }
-}
+export const WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE = 'stable_v5' as const;
 
 function dispatchModeChange(mode: WeeklyPlanningRuntimeMode): void {
   if (
@@ -53,43 +26,51 @@ function dispatchModeChange(mode: WeeklyPlanningRuntimeMode): void {
   }));
 }
 
+/**
+ * Production/application callers always receive Stable V5.
+ *
+ * Environment variables, URL query parameters, session storage, and runtime
+ * setters are deliberately not allowed to downgrade the application to the
+ * broken legacy path. Legacy implementation remains available only through
+ * explicit internal/test-support imports.
+ */
 export function getWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
-  return queryOverride() ?? runtimeOverride ?? storedMode() ?? environmentDefault();
+  return WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE;
 }
 
 export function setWeeklyPlanningRuntimeMode(
-  mode: WeeklyPlanningRuntimeMode,
+  _mode: WeeklyPlanningRuntimeMode,
 ): WeeklyPlanningRuntimeMode {
-  runtimeOverride = mode;
   if (typeof window !== 'undefined') {
     try {
-      window.sessionStorage.setItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY, mode);
+      window.sessionStorage.setItem(
+        WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY,
+        WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE,
+      );
     } catch {
-      // runtimeOverride keeps the selected mode for the current tab.
+      // The application remains locked to Stable V5 even without storage.
     }
-    dispatchModeChange(mode);
+    dispatchModeChange(WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE);
   }
-  return mode;
+  return WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE;
 }
 
 export function resetWeeklyPlanningRuntimeMode(): WeeklyPlanningRuntimeMode {
-  const fallback = environmentDefault();
-  runtimeOverride = null;
   if (typeof window !== 'undefined') {
     try {
       window.sessionStorage.removeItem(WEEKLY_PLANNING_RUNTIME_MODE_STORAGE_KEY);
     } catch {
-      // Keep the environment default when storage is unavailable.
+      // The application remains locked to Stable V5 even without storage.
     }
-    dispatchModeChange(fallback);
+    dispatchModeChange(WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE);
   }
-  return fallback;
+  return WEEKLY_PLANNING_APPLICATION_RUNTIME_MODE;
 }
 
 export function resetWeeklyPlanningRuntimeModeForTest(): void {
-  runtimeOverride = null;
+  // No mutable application runtime override exists while Stable V5 is locked.
 }
 
 export function isWeeklyPlanningStableV5RuntimeEnabled(): boolean {
-  return getWeeklyPlanningRuntimeMode() === 'stable_v5';
+  return true;
 }
