@@ -15,6 +15,13 @@ export type WeeklyPlanningDialogueRendererTraceBranch =
   | 'deterministic_fallback'
   | 'system_message_bypass';
 
+/**
+ * Rendererへ実際に渡した入力のうち、固定request field以外の拡張情報。
+ * 新しいprompt fieldが追加されてもtrace schemaの同期漏れで消えないよう、
+ * JSON-safeな拡張領域として保持する。
+ */
+export type WeeklyPlanningDialogueRendererPromptContext = unknown;
+
 export interface WeeklyPlanningDialogueRendererTrace {
   actionId: string | null;
   actionKind: WeeklyPlanningDialogueRendererTraceActionKind | null;
@@ -24,6 +31,7 @@ export interface WeeklyPlanningDialogueRendererTrace {
     requiredLabels: string[];
     fallbackText: string;
     previewCount: number;
+    promptContext?: WeeklyPlanningDialogueRendererPromptContext;
   } | null;
   response: {
     status: WeeklyPlanningDialogueRendererTraceStatus;
@@ -53,6 +61,18 @@ function decodeUtf8Prefix(bytes: Uint8Array, maxBytes: number): string {
   return '';
 }
 
+function decodeUtf8Suffix(bytes: Uint8Array, maxBytes: number): string {
+  const start = Math.max(0, bytes.byteLength - Math.max(0, maxBytes));
+  for (let offset = start; offset <= bytes.byteLength; offset += 1) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(offset));
+    } catch {
+      // Advance when the suffix starts in the middle of a multi-byte code point.
+    }
+  }
+  return '';
+}
+
 function boundedText(value: string, maxBytes: number): string {
   const bytes = utf8Bytes(value);
   if (bytes.byteLength <= maxBytes) return value;
@@ -64,6 +84,31 @@ function boundedText(value: string, maxBytes: number): string {
 
 function boundedNullableText(value: string | null, maxBytes: number): string | null {
   return value === null ? null : boundedText(value, maxBytes);
+}
+
+function boundedJsonValue(value: unknown, maxBytes: number): unknown {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value) ?? 'null';
+  } catch {
+    return { traceTruncated: true, reason: 'unserializable' };
+  }
+  const bytes = utf8Bytes(serialized);
+  if (bytes.byteLength <= maxBytes) {
+    try {
+      return JSON.parse(serialized);
+    } catch {
+      return { traceTruncated: true, reason: 'invalid_serialized_json' };
+    }
+  }
+  const markerBudget = Math.min(512, Math.max(128, Math.floor(maxBytes * 0.15)));
+  const contentBudget = Math.max(256, maxBytes - markerBudget);
+  return {
+    traceTruncated: true,
+    originalBytes: bytes.byteLength,
+    jsonHead: decodeUtf8Prefix(bytes, Math.floor(contentBudget * 0.65)),
+    jsonTail: decodeUtf8Suffix(bytes, Math.floor(contentBudget * 0.35)),
+  };
 }
 
 export function boundWeeklyPlanningDialogueRendererTraceForTransport(
@@ -81,6 +126,9 @@ export function boundWeeklyPlanningDialogueRendererTraceForTransport(
             .map((label) => boundedText(label, 256)),
           fallbackText: boundedText(trace.request.fallbackText, 1_500),
           previewCount: trace.request.previewCount,
+          ...(trace.request.promptContext === undefined
+            ? {}
+            : { promptContext: boundedJsonValue(trace.request.promptContext, 12 * 1024) }),
         }
       : null,
     response: {
