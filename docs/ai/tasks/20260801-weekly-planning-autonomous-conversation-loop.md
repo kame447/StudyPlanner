@@ -121,11 +121,23 @@ AI契約: active Graphのplanning window、task、component、workload、effort 
 
 確認: GitHub Actionsは使用していない。typecheck・test・buildは未実行。実API transcriptも未生成。
 
+### Loop 3: 誤回答からの明示的修復
+
+問題: 所要時間を質問中に「3ページです」と答えると、所要時間には採用されないが、通常canonicalizerへ流れて別のtaskまたはworkloadとして追加され得た。
+
+原因: contextual answer APIが「会話外の新規入力」と「質問には答えているが型が違う入力」をどちらも`null`で返し、pipelineが両者を区別できなかった。
+
+対応: contextual replyを`not_contextual`、`incompatible`、`applied`へ型分類した。型不一致の短答はFactを追加せず、turn revisionとappliedTurnKeyだけを記録する。同じtargetの不足をschedulerへ残し、返答生成AIが聞き返せるようにした。
+
+類似確認: 数学40問の所要時間質問へ「3ページです」と答え、その後「3時間です」で元の数学taskへ180分を適用するpipeline testを追加した。誤回答後もtaskとworkloadは増えず、質問targetを保持するcontractも追加した。
+
+確認: GitHub Actionsは使用していない。testは作成済みだが、typecheck・実行結果は未確認。
+
 次: 実行可能な環境で最初に`npm run test:weekly-ai:conversation:foundation`を実行する。通過後に実API suiteを回し、5 transcriptを人間判断する。失敗した最初の構造境界だけを次ループで修正する。
 
 ## 実行停止時点
 
-現在できるようにしたこと: 5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、原子的rollback、transcriptとtraceのartifact定義。
+現在できるようにしたこと: 5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、誤単位回答のFact非採用、原子的rollback、transcriptとtraceのartifact定義。
 
 まだ確認できていないこと: TypeScript型整合、決定論的test結果、既存testへの影響、build、実APIの意味解釈、実際の返答自然さ、5 scenarioの完走。
 
