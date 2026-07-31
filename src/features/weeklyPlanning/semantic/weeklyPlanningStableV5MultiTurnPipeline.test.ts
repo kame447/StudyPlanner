@@ -164,14 +164,24 @@ describe('Stable V5 multi-turn pipeline', () => {
     expect(first.status).toBe('scheduler_needs_resolution');
     expect(first.graph.tasks).toHaveLength(1);
 
+    const missingEffortIssue = first.scheduler?.issues.find(
+      (issue) => issue.blocking && issue.code === 'missing_effort_estimate',
+    );
+    expect(missingEffortIssue?.factId).toBeTruthy();
+
     const second = await pipeline.run({
       graph: first.graph,
       conversationId: 'conversation-1',
       turnId: 'turn-2',
-      expectedRevision: 1,
+      expectedRevision: first.graph.revision,
       userText: '3時間です',
       publicStateSummary: {
-        lastAssistantMessage: '問題集をこの量だけ進めるのに、合計でどれくらい時間がかかりますか？',
+        pendingQuestion: {
+          actionId: 'stable-v5:turn-1:missing_effort_estimate',
+          questionCode: 'missing_effort_estimate',
+          targetFactId: missingEffortIssue?.factId ?? null,
+          graphRevision: first.graph.revision,
+        },
       },
       schedulerContext,
     });
@@ -184,7 +194,7 @@ describe('Stable V5 multi-turn pipeline', () => {
       graph: second.graph,
       conversationId: 'conversation-1',
       turnId: 'turn-3',
-      expectedRevision: 2,
+      expectedRevision: second.graph.revision,
       userText: 'この条件で予定を作って',
       schedulerContext,
     });
