@@ -50,6 +50,15 @@ const renderInput: WeeklyPlanningStableV5DialogueRenderInput = {
   previewCount: 0,
 };
 
+function rawResponse(): string {
+  return JSON.stringify({
+    actionId: renderInput.actionId,
+    actionKind: renderInput.actionKind,
+    questionCode: renderInput.questionCode,
+    text: '3時間が今回進める量なのか、残り全体なのかを確認しています。',
+  });
+}
+
 function rendererTrace(): WeeklyPlanningDialogueRendererTrace {
   return {
     actionId: renderInput.actionId,
@@ -64,10 +73,7 @@ function rendererTrace(): WeeklyPlanningDialogueRendererTrace {
     response: {
       status: 'rendered',
       reason: null,
-      rawResponse: JSON.stringify({
-        actionId: renderInput.actionId,
-        text: '3時間が今回進める量なのか、残り全体なのかを確認しています。',
-      }),
+      rawResponse: rawResponse(),
       renderedText: '3時間が今回進める量なのか、残り全体なのかを確認しています。',
     },
     decision: {
@@ -96,10 +102,7 @@ afterEach(() => {
 describe('Stable V5 renderer prompt trace', () => {
   it('captures the exact messages sent to the renderer and attaches them at the trace boundary', async () => {
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => JSON.stringify({
-        actionId: renderInput.actionId,
-        text: '3時間が今回進める量なのか、残り全体なのかを確認しています。',
-      })),
+      createChatCompletion: vi.fn(async () => rawResponse()),
     };
     const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(config, client);
 
@@ -114,6 +117,10 @@ describe('Stable V5 renderer prompt trace', () => {
       currentUserMessage: 'どういうこと？',
       recentConversation: renderInput.recentConversation,
       planningInformation: renderInput.planningInformation,
+      applicationDecision: {
+        actionKind: 'question',
+        questionCode: 'quantity_role_unresolved',
+      },
       planningStateSummary: {
         decidedFacts: expect.any(Object),
         undecidedItems: expect.any(Array),
