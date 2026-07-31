@@ -360,6 +360,20 @@ function applyIncompatibleReplyTurn(
   });
 }
 
+function rejectUnavailableTarget(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): WeeklyPlanningSemanticCanonicalizationResultV5 {
+  return {
+    status: 'rejected',
+    graph: input.graph,
+    diff: null,
+    errors: [
+      `contextual-answer-target-unavailable:${input.pendingQuestion.questionCode}:${input.pendingQuestion.targetFactId ?? 'none'}`,
+    ],
+    localToFactId: {},
+  };
+}
+
 export function evaluateWeeklyPlanningStableV5ContextualAnswer(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningStableV5ContextualAnswerEvaluation {
@@ -440,13 +454,14 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
 ): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
   const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer(input);
   if (evaluation.status === 'applied') return evaluation.result;
+  if (evaluation.status !== 'incompatible') return null;
+  if (evaluation.reason === 'target_unavailable') {
+    return rejectUnavailableTarget(input);
+  }
   if (
-    evaluation.status === 'incompatible'
-    && (
-      evaluation.reason === 'expected_single_duration'
-      || evaluation.reason === 'expected_single_quantity_role'
-      || evaluation.reason === 'duplicate_or_conflicting_turn'
-    )
+    evaluation.reason === 'expected_single_duration'
+    || evaluation.reason === 'expected_single_quantity_role'
+    || evaluation.reason === 'duplicate_or_conflicting_turn'
   ) {
     return applyIncompatibleReplyTurn(input);
   }
