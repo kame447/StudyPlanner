@@ -95,8 +95,6 @@ export function evaluatePreviewCorrectionContract(params: {
   };
 }
 
-export function allConversationEvalChecksPass(
-  checks: Readonly<Record<string, boolean>>,
-): boolean {
-  return Object.values(checks).every(Boolean);
+export function allConversationEvalChecksPass<T extends object>(checks: T): boolean {
+  return Object.values(checks as Record<string, boolean>).every(Boolean);
 }
