@@ -45,6 +45,26 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
+function tomorrowPlanningDocument(
+  includePlanningWindow: boolean,
+): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    ...document(),
+    planningWindow: includePlanningWindow
+      ? {
+          localId: 'window-tomorrow',
+          kind: 'relative_day',
+          value: 'tomorrow',
+          start: null,
+          end: null,
+          sourceText: '明日',
+        }
+      : null,
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+  };
+}
+
 function priorityDocument(params: {
   invalidTemporalConstraint: boolean;
 }): WeeklyPlanningSemanticDocumentV5 {
@@ -209,6 +229,55 @@ describe('Stable V5 semantic normalizer', () => {
     expect(system).toContain('Priority and ordering statements describe task relations only');
     expect(system).toContain('Never invent a clock time from priority');
     expect(system).toContain('namedTimePeriod must be null');
+    expect(system).toContain('Do not omit a whole-plan planningWindow');
+  });
+
+  it('repairs an omitted 明日 planning window instead of asking for the range again', async () => {
+    const omitted = JSON.stringify(tomorrowPlanningDocument(false));
+    const repaired = JSON.stringify(tomorrowPlanningDocument(true));
+    const fake = client([omitted, repaired]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
+      userText: '明日の予定立てたいです',
+      traceRequestId: 'trace-tomorrow-window-repair',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.planningWindow).toMatchObject({
+      kind: 'relative_day',
+      value: 'tomorrow',
+    });
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 2,
+      repairAttempted: true,
+      validationErrors: ['document.planningWindow:direct-user-range-omitted:tomorrow'],
+    });
+    expect(fake.calls).toHaveLength(2);
+    const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
+    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
+    expect(repairInstruction).toContain('direct-user-range-omitted');
+    expect(repairInstruction).toContain('relative_day/tomorrow for 明日');
+  });
+
+  it('treats 明日 as the plan range when it answers the immediately preceding range question', async () => {
+    const fake = client([JSON.stringify(tomorrowPlanningDocument(true))]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
+      userText: '明日',
+      recentConversation: [
+        { role: 'assistant', content: 'どの期間の予定を立てましょうか？' },
+      ],
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.planningWindow).toMatchObject({
+      kind: 'relative_day',
+      value: 'tomorrow',
+    });
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 1,
+      repairAttempted: false,
+    });
   });
 
   it('repairs at most once and never falls back to a parser', async () => {
