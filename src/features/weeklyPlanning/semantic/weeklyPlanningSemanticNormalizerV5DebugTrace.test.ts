@@ -55,7 +55,12 @@ describe('Stable V5 semantic normalizer debug trace', () => {
       ],
       publicStateSummary: {
         graphRevision: 2,
-        lastAssistantMessage: '院試の過去問を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？',
+        pendingQuestion: {
+          actionId: 'stable-v5:request-debug-1:missing_effort_estimate',
+          questionCode: 'missing_effort_estimate',
+          targetFactId: 'workload-1',
+          graphRevision: 2,
+        },
       },
       traceRequestId: 'request-debug-1',
     });
@@ -65,7 +70,10 @@ describe('Stable V5 semantic normalizer debug trace', () => {
     const response = events.find((event) => event.stage === 'semantic_provider_response');
     const validation = events.find((event) => event.stage === 'semantic_validation_result');
 
-    expect(JSON.stringify(request?.data)).toContain('Use recentConversation and publicStateSummary');
+    expect(JSON.stringify(request?.data)).toContain(
+      'Use publicStateSummary.pendingQuestion as the authoritative machine-readable description',
+    );
+    expect(JSON.stringify(request?.data)).toContain('missing_effort_estimate');
     expect(JSON.stringify(request?.data)).toContain('3時間ぐらいかな');
     expect(response?.data).toMatchObject({
       attempt: 'initial',
