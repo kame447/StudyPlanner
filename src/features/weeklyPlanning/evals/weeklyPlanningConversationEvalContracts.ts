@@ -15,6 +15,7 @@ export interface ConversationEvalPreviewSnapshot {
 
 export interface ConversationEvalRepairContractResult {
   wrongAnswerDidNotCreatePreview: boolean;
+  wrongAnswerTurnRecorded: boolean;
   questionCodePreserved: boolean;
   targetFactPreserved: boolean;
   noSpuriousTaskCreated: boolean;
@@ -34,6 +35,11 @@ export function evaluateExplicitRepairContract(params: {
 }): ConversationEvalRepairContractResult {
   return {
     wrongAnswerDidNotCreatePreview: params.afterWrongAnswer.previewCount === 0,
+    wrongAnswerTurnRecorded:
+      params.beforeWrongAnswer.graphRevision !== null
+      && params.afterWrongAnswer.graphRevision !== null
+      && params.afterWrongAnswer.graphRevision
+        > params.beforeWrongAnswer.graphRevision,
     questionCodePreserved:
       params.afterWrongAnswer.questionCode === params.expectedQuestionCode,
     targetFactPreserved:
@@ -43,8 +49,8 @@ export function evaluateExplicitRepairContract(params: {
         === params.activeTaskCountBeforeWrongAnswer,
     repairedRevisionAdvanced:
       params.afterRepair.graphRevision !== null
-      && params.beforeWrongAnswer.graphRevision !== null
-      && params.afterRepair.graphRevision > params.beforeWrongAnswer.graphRevision,
+      && params.afterWrongAnswer.graphRevision !== null
+      && params.afterRepair.graphRevision > params.afterWrongAnswer.graphRevision,
     repairedPreviewCreated: params.afterRepair.previewCount > 0,
     repairedTotalApplied:
       params.afterRepair.totalPreviewMinutes
