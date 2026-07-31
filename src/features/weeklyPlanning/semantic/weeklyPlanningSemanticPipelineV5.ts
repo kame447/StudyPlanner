@@ -44,6 +44,15 @@ import {
 export const WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5 =
   'weekly-planning-semantic-pipeline-v5' as const;
 
+export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
+  version: 'weekly-planning-correction-targeting-contract-v5',
+  targetIdentity: 'For an explicit correction of an accepted public fact, set correction.target.publicId to the exact publicId from publicStateSummary and set correction.target.kind to the matching fact kind.',
+  replacementIdentity: 'Create only the replacement fact stated by the user in the current semantic document and set correction.replacementLocalId to that fact localId.',
+  minimalDelta: 'Do not copy unrelated accepted facts from publicStateSummary. Include only facts newly stated or changed in the current utterance.',
+  multipleTargets: 'For multiple explicit corrections, emit one correction per exact target and do not exchange targets between tasks.',
+  ambiguity: 'When the corrected target cannot be identified uniquely from publicStateSummary, do not guess a publicId. Emit an uncertainty describing the unresolved correction target.',
+} as const;
+
 export interface WeeklyPlanningSemanticPipelineInputV5
   extends WeeklyPlanningSemanticNormalizerInputV5 {
   conversationId: string;
@@ -78,6 +87,15 @@ function schedulerStatus(
   if (compilation.status === 'ready') return 'scheduler_ready';
   if (compilation.status === 'empty') return 'scheduler_empty';
   return 'scheduler_needs_resolution';
+}
+
+function normalizerPublicStateSummary(
+  summary: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return {
+    ...(summary ?? {}),
+    correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
+  };
 }
 
 function uniqueDiffEntries(
@@ -200,6 +218,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
   return {
     async run(input) {
       const graph = input.graph ?? createEmptyWeeklyPlanningFactGraphV5();
+      const publicStateSummary = normalizerPublicStateSummary(input.publicStateSummary);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'semantic_pipeline_input',
@@ -211,7 +230,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
           graph,
           userText: input.userText,
           recentConversation: input.recentConversation,
-          publicStateSummary: input.publicStateSummary,
+          publicStateSummary,
           schedulerContext: input.schedulerContext,
           externalSources: input.externalSources,
         },
@@ -220,7 +239,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
       const normalization = await normalizer.normalize({
         userText: input.userText,
         recentConversation: input.recentConversation,
-        publicStateSummary: input.publicStateSummary,
+        publicStateSummary,
         traceRequestId: input.turnId,
       });
       recordWeeklyPlanningStableV5DebugTrace({
@@ -283,9 +302,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         return result;
       }
 
-      const pendingQuestion = readWeeklyPlanningPendingQuestionV5(
-        input.publicStateSummary,
-      );
+      const pendingQuestion = readWeeklyPlanningPendingQuestionV5(publicStateSummary);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'pending_question_resolved',
