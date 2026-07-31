@@ -46,6 +46,39 @@ export interface WeeklyPlanningDialogueRendererTrace {
   };
 }
 
+const MAX_PENDING_PROMPT_CONTEXTS = 128;
+const pendingPromptContexts = new Map<string, WeeklyPlanningDialogueRendererPromptContext>();
+
+function trimPendingPromptContexts(): void {
+  while (pendingPromptContexts.size > MAX_PENDING_PROMPT_CONTEXTS) {
+    const oldestActionId = pendingPromptContexts.keys().next().value;
+    if (typeof oldestActionId !== 'string') return;
+    pendingPromptContexts.delete(oldestActionId);
+  }
+}
+
+export function rememberWeeklyPlanningDialogueRendererPromptContext(
+  actionId: string,
+  promptContext: WeeklyPlanningDialogueRendererPromptContext,
+): void {
+  pendingPromptContexts.delete(actionId);
+  pendingPromptContexts.set(actionId, promptContext);
+  trimPendingPromptContexts();
+}
+
+function takeWeeklyPlanningDialogueRendererPromptContext(
+  actionId: string | null,
+): WeeklyPlanningDialogueRendererPromptContext | undefined {
+  if (!actionId) return undefined;
+  const promptContext = pendingPromptContexts.get(actionId);
+  pendingPromptContexts.delete(actionId);
+  return promptContext;
+}
+
+export function resetWeeklyPlanningDialogueRendererPromptContextsForTest(): void {
+  pendingPromptContexts.clear();
+}
+
 function utf8Bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
@@ -114,6 +147,8 @@ function boundedJsonValue(value: unknown, maxBytes: number): unknown {
 export function boundWeeklyPlanningDialogueRendererTraceForTransport(
   trace: WeeklyPlanningDialogueRendererTrace,
 ): WeeklyPlanningDialogueRendererTrace {
+  const rememberedPromptContext = takeWeeklyPlanningDialogueRendererPromptContext(trace.actionId);
+  const promptContext = trace.request?.promptContext ?? rememberedPromptContext;
   return {
     actionId: boundedNullableText(trace.actionId, 512),
     actionKind: trace.actionKind,
@@ -126,9 +161,9 @@ export function boundWeeklyPlanningDialogueRendererTraceForTransport(
             .map((label) => boundedText(label, 256)),
           fallbackText: boundedText(trace.request.fallbackText, 1_500),
           previewCount: trace.request.previewCount,
-          ...(trace.request.promptContext === undefined
+          ...(promptContext === undefined
             ? {}
-            : { promptContext: boundedJsonValue(trace.request.promptContext, 12 * 1024) }),
+            : { promptContext: boundedJsonValue(promptContext, 12 * 1024) }),
         }
       : null,
     response: {
