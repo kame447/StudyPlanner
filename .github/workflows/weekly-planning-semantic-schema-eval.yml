@@ -45,6 +45,7 @@ jobs:
       WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL: '1'
       WEEKLY_PLANNING_SEMANTIC_V5_EVAL_BASE_URL: https://api.openai.com/v1
       WEEKLY_PLANNING_SEMANTIC_V5_EVAL_MODEL: gpt-5.4-mini
+      VITE_CLOUDFLARE_AI_PROXY_URL: ''
 
     steps:
       - uses: actions/checkout@v4
