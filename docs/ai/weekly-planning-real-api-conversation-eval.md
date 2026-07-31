@@ -76,7 +76,7 @@ npm run test:weekly-ai:conversation:real
 
 GitHub Actionsでは`.github/workflows/weekly-planning-real-api-conversation-eval.yml`を使用します。Repository Secretとして`OPENAI_API_KEY`が必要です。必要に応じてRepository Variable `WEEKLY_PLANNING_EVAL_MODEL`またはmanual dispatchのmodel入力でモデルを上書きできます。
 
-workflowは`agent/weekly-ai-*` branchへの関連変更push、またはmanual dispatchで起動します。mainへの通常pushでは実APIを自動実行しません。
+workflowはmain向けpull requestの関連変更、またはmanual dispatchで起動します。同じPR branchへのpushは`synchronize`として同じ検証を再実行し、mainへの通常pushでは実APIを自動実行しません。
 
 ## artifact
 

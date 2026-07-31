@@ -1,9 +1,9 @@
 name: Weekly Planning Real API Conversation Eval
 
 on:
-  push:
+  pull_request:
     branches:
-      - 'agent/weekly-ai-*'
+      - main
     paths:
       - 'src/features/weeklyPlanning/**'
       - 'src/domain/**'
