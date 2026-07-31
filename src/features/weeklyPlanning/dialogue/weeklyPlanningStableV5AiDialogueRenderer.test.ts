@@ -108,7 +108,7 @@ describe('Stable V5 AI dialogue renderer', () => {
       config,
       clientReturning(JSON.stringify({
         actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: '「3時間」が今週やる分なのか、課題全体の残り時間なのかで、予定に入れる量が変わるので確認しています。',
+        text: '「3時間」が今回の週間計画で進める分なのか、課題全体の残り時間なのかで、予定に入れる量が変わるので確認しています。',
       })),
     );
 
@@ -123,7 +123,7 @@ describe('Stable V5 AI dialogue renderer', () => {
       config,
       clientReturning(JSON.stringify({
         actionId: 'stable-v5:request-1:quantity_role_unresolved',
-        text: '今週の予定に何時間分を入れるべきか確認したい、ということです。',
+        text: '今回の週間計画に何時間分を入れるべきか確認したい、ということです。',
       })),
     );
 
@@ -135,7 +135,7 @@ describe('Stable V5 AI dialogue renderer', () => {
       config,
       clientReturning(JSON.stringify({
         actionId: 'different-action',
-        text: '今週の予定に入れる量を確認しています。',
+        text: '今回の週間計画に入れる量を確認しています。',
       })),
     );
 
