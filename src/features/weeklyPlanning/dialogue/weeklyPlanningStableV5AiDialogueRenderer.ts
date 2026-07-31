@@ -94,6 +94,37 @@ function arrayField(
   return Array.isArray(field) ? field : [];
 }
 
+function isResolvedWorkload(value: unknown): boolean {
+  return isRecord(value) && value.quantityRole !== 'unknown';
+}
+
+function isResolvedDeclaration(value: unknown): boolean {
+  return isRecord(value) && value.resolutionStatus !== 'unresolved';
+}
+
+function createDecidedFacts(
+  planningInformation: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!planningInformation) return null;
+
+  return Object.fromEntries(
+    Object.entries(planningInformation)
+      .filter(([key]) => key !== 'uncertainties')
+      .map(([key, value]) => {
+        if (key === 'workloads' && Array.isArray(value)) {
+          return [key, value.filter(isResolvedWorkload)];
+        }
+        if (
+          (key === 'availabilityDeclarations' || key === 'constraintSourceRequests')
+          && Array.isArray(value)
+        ) {
+          return [key, value.filter(isResolvedDeclaration)];
+        }
+        return [key, value];
+      }),
+  );
+}
+
 function unresolvedWorkloadFields(
   planningInformation: Record<string, unknown> | null,
 ): Record<string, unknown>[] {
@@ -117,22 +148,19 @@ function unresolvedDeclarations(
   return arrayField(planningInformation, key)
     .filter(isRecord)
     .filter((entry) => entry.resolutionStatus === 'unresolved')
-    .map((entry) => ({ kind: key, ...entry }));
+    .map((entry) => ({
+      sourceCollection: key,
+      ...entry,
+    }));
 }
 
 export function createWeeklyPlanningStableV5DialogueStateSummary(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): Record<string, unknown> {
   const planningInformation = input.planningInformation;
-  const decidedFacts = planningInformation
-    ? Object.fromEntries(
-      Object.entries(planningInformation)
-        .filter(([key]) => key !== 'uncertainties'),
-    )
-    : null;
 
   return {
-    decidedFacts,
+    decidedFacts: createDecidedFacts(planningInformation),
     undecidedItems: [
       ...arrayField(planningInformation, 'uncertainties'),
       ...unresolvedWorkloadFields(planningInformation),
