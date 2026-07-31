@@ -63,6 +63,17 @@ export function conversationEvalProgressSignature(
   });
 }
 
+export function conversationEvalQuestionAttemptSignature(params: {
+  question: ConversationEvalMachineQuestion;
+  userText: string;
+}): string {
+  return JSON.stringify({
+    questionCode: params.question.code,
+    targetFactId: params.question.targetFactId,
+    userText: params.userText.trim(),
+  });
+}
+
 function assertUsableText(text: string, source: string): string {
   const normalized = text.trim();
   if (!normalized) {
@@ -82,6 +93,7 @@ export async function driveConversationUntilPreview(
 
   const submittedTurns: ConversationEvalSubmissionSnapshot[] = [];
   const seenQuestionStates = new Set<string>();
+  const seenQuestionAttempts = new Set<string>();
   let authorizationSent = false;
 
   while (true) {
@@ -107,6 +119,16 @@ export async function driveConversationUntilPreview(
         options.answerQuestion({ question, state, submittedTurns }),
         `answerQuestion(${question.code})`,
       );
+      const attemptSignature = conversationEvalQuestionAttemptSignature({
+        question,
+        userText,
+      });
+      if (seenQuestionAttempts.has(attemptSignature)) {
+        throw new Error(
+          `Conversation repeated the same answer for the same question target: ${attemptSignature}`,
+        );
+      }
+      seenQuestionAttempts.add(attemptSignature);
       label = `answer:${question.code}`;
     } else if (!authorizationSent) {
       userText = assertUsableText(
