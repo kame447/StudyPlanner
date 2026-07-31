@@ -9,7 +9,6 @@ import {
 import { createAiWeeklyPlanningDialogueRenderer } from './dialogue/weeklyPlanningAiDialogueRenderer';
 import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
-  createWeeklyPlanningStableV5DialoguePrompt,
   type WeeklyPlanningStableV5DialogueActionKind,
 } from './dialogue/weeklyPlanningStableV5AiDialogueRenderer';
 import {
@@ -286,14 +285,12 @@ async function renderStableV5AssistantMessage(params: {
     fallbackText: params.result.message,
     previewCount: params.result.draftCandidates.length,
   } as const;
-  const prompt = createWeeklyPlanningStableV5DialoguePrompt(renderInput);
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
     stage: 'dialogue_renderer_request',
     data: {
       purpose: 'weekly_planning_renderer',
       input: renderInput,
-      prompt,
     },
   });
 
