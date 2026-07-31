@@ -276,8 +276,12 @@ describe('Stable V5 runtime executor', () => {
     });
 
     expect(result.state).toMatchObject({
-      status: 'needs_scope',
+      status: 'revision_pending',
       shouldCreateDraft: false,
+      lastQuestionContext: {
+        targetSlot: 'stable_v5:missing_schedulable_work',
+        intent: 'missing_schedulable_work',
+      },
     });
     expect(result.message).toBe(
       '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
