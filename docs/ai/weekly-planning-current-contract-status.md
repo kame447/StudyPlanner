@@ -1,251 +1,143 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-28
+Updated: 2026-07-31
 
 - Runtime contract: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
 - Semantic contract: [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md)
 - Roadmap: [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
-- Active-task inventory: [audits/20260728-weekly-planning-active-task-inventory.md](audits/20260728-weekly-planning-active-task-inventory.md)
-- Trace empty-session completion: [tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md](tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
+- Active-task inventory: [audits/20260731-weekly-planning-active-task-inventory.md](audits/20260731-weekly-planning-active-task-inventory.md)
+- Semantic handoff audit: [audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md](audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md)
 
-## 1. 優先順位
-
-```text
-runtime/current contract
-→ current status
-→ roadmap
-→ active task root
-→ architecture/specの非競合部分
-→ closed/superseded/historical records
-```
-
-queueはroadmapとactive-task inventoryだけを正とする。過去PR本文、closed task、superseded taskに残るbranch名や未完了記述をcurrent statusとして使用しない。
-
-## 2. AI意味解釈とdeterministic core
+## 1. AI意味解釈とdeterministic core
 
 - raw user textの初期意味構造化はAI semantic normalizerだけが担当する。
-- provider failure、不正JSON、schema mismatch、repair failureでrules/parser fallbackへ戻さない。
-- AIはFact ID、revision、missing priority、question selection、readiness、scheduler、preview、approval、saveを決定しない。
-- deterministic coreはschema、reference、revision、lifecycle、conflict、readiness、feasibility、placement、save boundaryを管理する。
+- provider failure、不正JSON、schema/repair failureでparser fallbackへ戻さない。
+- deterministic coreはschema、reference、revision、lifecycle、question target、readiness、scheduler、preview、saveを管理する。
 - failed/rejected turnで以前のGraphとquestion contextを破壊しない。
 
-Stable V5 direct runtimeはfeature flag付きでexisting UIへ接続済み。defaultはlegacyであり、cutover gate完了前に変更しない。
+PR #107では、直前の質問をrenderer textから逆推定せず、次のmachine stateを正とする。
 
-## 3. Application sessionとrequest ownership
+```text
+pendingQuestion:
+  actionId
+  questionCode
+  targetFactId
+  graphRevision
+```
+
+short answerはこのtargetへだけ適用する。rendererの日本語表現は次turnの状態遷移へ使用しない。
+
+## 2. Semantic/Fact Graph status
+
+実装済み:
+
+- Stable V5 strict document、validator、max one repair
+- Fact Graph V5とactive/superseded/removed lifecycle
+- staged Graph commit
+- generic work item/scheduler input
+- planningWindow single-active enforcement
+
+PR #107で実装中・検証待ち:
+
+- `明日`planningWindow omission repair
+- machine pending question
+- exact target quantity/effort binding
+- renderer typed action contract
+
+未実装:
+
+- generic semantic turn delta
+- generic lifecycle applier
+- evidence coverage registry
+
+## 3. Dialogue renderer contract
+
+rendererへ会話履歴、current user message、Fact Graph summary、current questionを渡す。
+
+renderer responseは次をcore decisionと一致させる。
+
+```text
+actionId
+actionKind
+questionCode
+text
+```
+
+不一致、文脈にない日時、誤preview件数、未実行の作成・追加・保存claimではdeterministic fallbackへ戻す。ただし自然な説明と言い換えの自由度は維持する。
+
+## 4. Application/session
 
 実装済み:
 
 - conversation/turn/request/revision/week identity
-- one active request per conversation
-- stale result discard
-- modal close/unmountとsession cancellationの分離
-- selected week/reset/cancel後のold result拒否
-- Enter改行、Ctrl/Meta+Enter送信、IME guard、focus restoration
-- application lifecycle、turn application、turn side effect分離
-
-```text
-modal close / presentation unmount
-→ sessionとactive requestを維持
-→ ownership一致時だけresultをcommit
-
-week change / explicit reset / cancel / owner change
-→ old resultを現在stateへ適用しない
-```
-
-`clear conversation`は表示messagesだけを消し、conversation ID、request sequence、Fact Graph、preview、draft、trace continuityを維持する。
-
-`reset session`はmessages、intake、preview、draft、pending ownership、conversation identity、Fact Graph、persisted Stable V5 sessionを初期化し、新conversationを開始する。
-
-## 4. Stable V5 local persistence
-
-保存scope:
-
-```text
-owner ID + week scope
-```
-
-保存済み:
-
-- conversation ID
-- messages
-- compatibility intake state
-- Fact Graph V5
-- PlanningState revision
-- preview candidates
-- draft blocks
-- savedAt/schema version
-
-保存禁止:
-
-- active Promise
-- pending turn/approval
-- session-local proposal record
-- raw credential/provider response
-
-owner/week/conversation/revision mismatch、unknown version、corrupt payloadはfail closedで破棄する。
-
-これはsame browser profileのlocal persistenceであり、cloud/cross-device syncではない。cloud repositoryはactive taskとして未実装。
-
-## 5. Planning rangeとcurrent-time boundary
-
-week scopeとplacement horizonを同一視しない。
-
-- explicit date/range/weekdayはprofileより優先
-- account week-start settingは「今週」「来週」の解釈に使用
-- task date eligibilityはStable V5 scheduler inputへ接続済み
-- non-consecutive date、weekday set、exact exclusionを保持
+- one active request、stale discard
+- modal closeとcancelの分離
+- IME guard、focus restoration
+- owner/week/conversation-bound local envelope
+- Graph/messages/preview/draft復元
 
 未実装:
 
-- request時刻より前の同日slot除外
-- request-scoped clock snapshot
-- explicit past startのblocking clarification
+- cloud authoritative session
+- cross-tab/server sequence reservation
+- cross-device/offline conflict handling
 
-現在のStable V5 preview schedulerはdefault `09:00–22:00` windowを使い、当日の現在時刻でclipしない。これはP0 hard-safety taskである。
+## 5. Current-time boundary
 
-## 6. Previewとapproval
+request時刻より前の同日slot除外は未実装。Stable V5 previewは既定`09:00–22:00`を現在時刻でclipしないため、P0 taskとして残る。
 
-- explicit create authorizationとreadiness通過後だけpreviewを生成
-- partial placementは禁止
-- insufficient capacityでは候補全体を破棄
-- previewはowner、conversation、Graph revision、source factsへ拘束
-- stale/pending/owner mismatchをsave前に拒否
-- approvalはdedicated save boundary、deterministic Plan ID、server transaction idempotencyを使用
+## 6. Preview/approval
 
-Implementation/automated verificationは完了。production Rules/TTL、Emulator、2tab/2device verificationは未完了。
+preview/approval core idempotencyは実装済み。production Rules/TTL、Emulator、2tab/2端末検証は未完了。
 
-## 7. Quality trace continuity
-
-Current intended invariant:
-
-```text
-same owner + same logical conversation + no explicit reset
-→ same local trace session identity
-→ same server-issued handle
-→ monotonic entry/turn sequence
-```
-
-Implemented and automated verified:
-
-- reload、idle、repository recreation時のcontinuity
-- frontend/Worker shared event catalog
-- Stable V5 debug event受理
-- document/string/token-redaction-safe dotted base64 chunks
-- entry count/request byte batching
-- zero-count identity先行保存
-- failed append後のsame server handle reuse
-- empty artifactの標準未export除外
-- focused 5 files / 46 tests passed
-- trace full 18 files / 79 tests passed
-- `typecheck`、`typecheck:build`、production build、`git diff --check` passed
-
-Test中のcursor persistence warningとinjected write failureは、storage未導入harnessまたは失敗回復fixtureで意図的に発生し、assertionは全件成功した。
-
-Remaining production verification:
-
-- main deploy後、same logical conversationのsession件数が1である
-- `turnCount > 0`、`entryCount > 0`
-- JSON exportでStable V5 debug stagesを再構成できる
-- reload/retry後もsession件数が増えない
-
-Issue #89は上記確認が完了するまでopenとする。historical empty sessionsは自動merge/deleteしない。
-
-## 8. Trace privacy/operations
+## 7. Quality trace
 
 実装済み:
 
-- version付きconsent
-- HMAC pseudonymous subject
-- redaction
-- server-authoritative IDs
-- restricted admin endpoints/audit
-- account trace delete API
-- expireAt
+- same-handle recoveryとserver IDs
+- frontend/Worker event catalog
+- redaction/HMAC/admin export
+- request/entry size batching
+- renderer request、prompt context、raw response、fallback、final decision
+- persistent outbox/Worker境界の将来field・truncation test
 
-Production未完了:
+未完了:
 
-- secret ring registration/rotation
-- Worker/Rules deploy
-- Firestore TTL policy enable
-- deletion operation verification
-- admin browser verification
-- pagination/index/versioned decoder
-- privacy/legal review
-- Issue #89 post-merge confirmation
+- Issue #89 same-conversation production verification
+- production secret/TTL/Rules/Worker
+- abrupt-close final delivery
+- pagination/versioned decoder
 
-## 9. External source
+## 8. External source / Personalization
 
-Pure loaderは実装済み:
+External source pure loaderは実装済みだがproduction adapter未接続。Personalization foundationは実装済みだがobservation、aggregate、score、governanceは未実装。
 
-- atomic `success(events) | failure(reason)`
-- no partial result
-- bounded retry
-- failureをempty successとして扱わない
-- owner/shape validation
-
-未接続:
-
-- production calendar adapter
-- pagination/auth refresh/metrics
-- browser verification
-
-## 10. Cloud sessionとcross-tab
-
-未実装:
-
-- cloud authoritative conversation/Graph revision
-- cross-device restoration
-- offline reconciliation
-- local migration
-- 2tab/2device conflict handling
-- browser/server sequence reservation
-
-local persistenceとtrace continuityをcloud sync完了へ読み替えない。
-
-## 11. Personalization
-
-Foundation実装済み:
-
-- account-linked profile schema
-- week-start setting
-- origin/confidence/scope/expiry
-- profile v2 bounded placement parameter schema
-
-未実装:
-
-- planning/outcome observation
-- reset validity propagation
-- time-decayed aggregate
-- uncertainty/effective sample
-- personalized safe-candidate ordering
-- production consent/TTL/account deletion/audit
-
-旧5分割taskは一つのrollout taskへ統合した。
-
-## 12. Active task root
+## 9. Active task root
 
 Current execution targetは次の8件だけ。
 
-1. `20260716-weekly-planning-midweek-current-time-start-boundary.md`
-2. `20260728-weekly-planning-stable-v5-verification-and-cutover.md`
-3. `20260724-weekly-planning-runtime-followups.md`
-4. `20260716-weekly-planning-synced-conversation-session-store.md`
-5. `20260716-weekly-planning-trace-privacy-and-lifecycle.md`
-6. `20260718-weekly-planning-approval-operational-rollout.md`
-7. `20260728-weekly-planning-external-source-production-adapter.md`
-8. `20260728-weekly-planning-personalization-rollout.md`
+1. `20260731-weekly-planning-midweek-current-time-start-boundary.md`
+2. `20260731-weekly-planning-stable-v5-verification-and-cutover.md`
+3. `20260731-weekly-planning-runtime-followups.md`
+4. `20260731-weekly-planning-synced-conversation-session-store.md`
+5. `20260731-weekly-planning-trace-privacy-and-lifecycle.md`
+6. `20260731-weekly-planning-approval-operational-rollout.md`
+7. `20260731-weekly-planning-external-source-production-adapter.md`
+8. `20260731-weekly-planning-personalization-rollout.md`
 
-実装完了済みtaskはclosedへ、別trackerへ統合した未完了taskはsupersededへ移動済み。
+旧日付の8件は、未完了条件を再監査したうえで上記current recordsへ置換済みである。完了済みtaskの閉じ忘れは確認されなかった。
 
-## 13. Default cutover gate
+## 10. Default cutover gate
 
 次が残る場合、Stable V5をdefaultへ変更しない。
 
+- PR #107 automated verificationがred
+- renderer text依存の状態遷移
+- generic semantic handoffの重大欠陥
 - current-time boundary未実装
-- actual AI real-eval未実施
-- browser roleplay未実施
-- trace append/split issueの実環境再発
+- actual AI/browser未実施
+- trace split/loss再発
 - external source adapter未検証
 - migration/rollback未検証
 - unresolved blocker/major audit finding

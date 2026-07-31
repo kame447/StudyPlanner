@@ -13,6 +13,9 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  readWeeklyPlanningPendingQuestionV5,
+} from './weeklyPlanningPendingQuestionV5';
+import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
 
@@ -31,16 +34,42 @@ const TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5 = [
   'For a named time period without an exact clock, use preferred_window when it is a task preference and leave startTime and endTime null. When an exact clock is present, namedTimePeriod must be null.',
 ].join('\n');
 const CONTEXTUAL_ANSWER_INSTRUCTION_V5 = [
-  'Use recentConversation and publicStateSummary to interpret short answers to the immediately preceding assistant question.',
-  'When the preceding question asks for the total time required and the user answers only a duration such as 3時間です, return exactly one minimal task containing exactly one effortEstimate with that duration in minutes. The task and target may use response-local IDs; the application core binds the structured answer to the single unresolved public fact.',
-  'When the preceding question asks whether a quantity is the current target, remaining total, or completed amount, return exactly one minimal task containing exactly one workload with quantityRole target, remaining, or completed. Preserve the amount and unit visible in publicStateSummary when the short answer does not restate them.',
-  'Do not select the target public fact yourself. Do not emit application commands or state mutations. Emit only the meaning of the short answer in the Stable V5 schema.',
+  'Use publicStateSummary.pendingQuestion as the authoritative machine-readable description of the immediately preceding application question. Do not infer the question identity or target from the assistant wording.',
+  'When pendingQuestion.questionCode is missing_effort_estimate and the user answers only a duration such as 3時間です, return exactly one minimal task containing exactly one effortEstimate with that duration in minutes. The application core binds the structured value to pendingQuestion.targetFactId.',
+  'When pendingQuestion.questionCode is quantity_role_unresolved and the user answers whether the quantity is the current target, remaining total, or completed amount, return exactly one minimal task containing exactly one workload with quantityRole target, remaining, or completed. Preserve the amount and unit visible in publicStateSummary when the short answer does not restate them.',
+  'Do not select a different public fact. Do not emit application commands or state mutations. Emit only the meaning of the short answer in the Stable V5 schema.',
 ].join('\n');
 const AUTHORIZATION_INSTRUCTION_V5 = [
   'When the user only authorizes creation from the already accepted public state, for example この条件で予定を作って or それで仮予定を作って, set planningIntent to create_plan and return empty arrays for tasks, relations, availabilityDeclarations, constraintSourceRequests, uncertainties, corrections, and decisions unless the same utterance explicitly adds or changes a fact.',
   'Do not copy accepted tasks or constraints from publicStateSummary into a creation-authorization response. publicStateSummary is context, not a request to re-emit existing facts.',
   'When the user provides new planning facts and requests creation in the same utterance, set planningIntent to create_plan and include only those newly stated facts.',
 ].join('\n');
+const DIRECT_PLANNING_WINDOW_INSTRUCTION_V5 = [
+  'Do not omit a whole-plan planningWindow that the current user states directly.',
+  'For 今日, 明日, 明後日, 今週, and 来週 used as the requested plan range, preserve the symbolic values today, tomorrow, day_after_tomorrow, this_week, and next_week.',
+  'A short answer such as 明日 is a whole-plan planningWindow when publicStateSummary.pendingQuestion.questionCode asks for the planning horizon. Do not infer this from the assistant wording.',
+  'Do not promote a date that only modifies one task, availability declaration, deadline, or exclusion into the whole-plan planningWindow.',
+].join('\n');
+
+interface DirectPlanningWindowExpectationV5 {
+  phrase: '今日' | '明日' | '明後日' | '今週' | '来週';
+  kind: 'relative_day' | 'relative_week';
+  value: 'today' | 'tomorrow' | 'day_after_tomorrow' | 'this_week' | 'next_week';
+}
+
+interface SemanticValidationAttemptV5 {
+  document: WeeklyPlanningSemanticDocumentV5 | null;
+  parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
+  errors: string[];
+}
+
+const DIRECT_PLANNING_WINDOWS_V5: readonly DirectPlanningWindowExpectationV5[] = [
+  { phrase: '明後日', kind: 'relative_day', value: 'day_after_tomorrow' },
+  { phrase: '明日', kind: 'relative_day', value: 'tomorrow' },
+  { phrase: '今日', kind: 'relative_day', value: 'today' },
+  { phrase: '来週', kind: 'relative_week', value: 'next_week' },
+  { phrase: '今週', kind: 'relative_week', value: 'this_week' },
+];
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
   userText: string;
@@ -96,6 +125,89 @@ function errorDetails(error: unknown): Record<string, unknown> {
   return { value: error };
 }
 
+function pendingQuestionAsksForPlanningWindow(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): boolean {
+  const code = readWeeklyPlanningPendingQuestionV5(
+    input.publicStateSummary,
+  )?.questionCode;
+  return code === 'invalid_planning_horizon'
+    || code === 'ambiguous_planning_window'
+    || code === 'planning_period';
+}
+
+function isWholePlanRangeExpression(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+  expectation: DirectPlanningWindowExpectationV5,
+): boolean {
+  const text = input.userText.replace(/\s+/g, '');
+  if (!text.includes(expectation.phrase)) return false;
+
+  const phrase = expectation.phrase;
+  const rangeBeforePlan = new RegExp(
+    `${phrase}(?:だけ|一日|1日)?(?:の)?(?:予定|計画|スケジュール)`,
+  );
+  const planBeforeRange = new RegExp(
+    `(?:予定|計画|スケジュール)(?:の期間|の範囲|は|を)?[^。！？!?]{0,8}${phrase}`,
+  );
+  const shortAnswer = new RegExp(
+    `^${phrase}(?:だけ|一日|1日)?(?:の予定)?(?:です|で|にします|にしたい)?[。.!！?？]*$`,
+  );
+
+  return rangeBeforePlan.test(text)
+    || planBeforeRange.test(text)
+    || (shortAnswer.test(text) && pendingQuestionAsksForPlanningWindow(input));
+}
+
+function directPlanningWindowExpectation(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): DirectPlanningWindowExpectationV5 | null {
+  const matches = DIRECT_PLANNING_WINDOWS_V5.filter(
+    (expectation) => isWholePlanRangeExpression(input, expectation),
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function planningWindowConformanceErrors(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+  document: WeeklyPlanningSemanticDocumentV5,
+): string[] {
+  const expected = directPlanningWindowExpectation(input);
+  if (!expected) return [];
+  if (!document.planningWindow) {
+    return [`document.planningWindow:direct-user-range-omitted:${expected.value}`];
+  }
+  if (
+    document.planningWindow.kind !== expected.kind
+    || document.planningWindow.value !== expected.value
+  ) {
+    return [
+      `document.planningWindow:direct-user-range-mismatch:expected-${expected.kind}:${expected.value}`,
+    ];
+  }
+  return [];
+}
+
+function validateSemanticResponse(
+  rawResponse: string,
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): SemanticValidationAttemptV5 {
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(rawResponse);
+  if (!parsed.document) {
+    return {
+      document: null,
+      parsedDocument: null,
+      errors: parsed.errors,
+    };
+  }
+  const conformanceErrors = planningWindowConformanceErrors(input, parsed.document);
+  return {
+    document: conformanceErrors.length === 0 ? parsed.document : null,
+    parsedDocument: parsed.document,
+    errors: conformanceErrors,
+  };
+}
+
 function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): ChatMessage[] {
   return [
     {
@@ -106,6 +218,7 @@ function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): Cha
         TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5,
         CONTEXTUAL_ANSWER_INSTRUCTION_V5,
         AUTHORIZATION_INSTRUCTION_V5,
+        DIRECT_PLANNING_WINDOW_INSTRUCTION_V5,
       ].join('\n'),
     },
     { role: 'user', content: createWeeklyPlanningSemanticUserPromptV5(input) },
@@ -129,6 +242,7 @@ function createRepairMessages(params: {
           'If missing-start or missing-end is reported and the source text has no explicit clock boundary, remove the unsupported earliest_start or latest_end constraint, or replace it with a semantically supported constraint kind. Do not add a guessed clock.',
           'Priority and ordering language must remain task relations. Do not repair a priority relation by adding temporal constraints.',
           'A namedTimePeriod cannot coexist with startTime or endTime. Preserve a named period with null clock fields and preferred_window when the user expressed a preference; preserve an explicit clock by setting namedTimePeriod to null.',
+          'When direct-user-range-omitted or direct-user-range-mismatch is reported, restore the explicitly stated whole-plan planningWindow. Use relative_day/tomorrow for 明日 and preserve other symbolic day or week values exactly as instructed.',
           'Make the smallest correction needed to satisfy validation while preserving only facts supported by the user.',
         ],
         validationErrors: params.validationErrors,
@@ -246,21 +360,21 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         return result;
       }
 
-      const initialParse = parseWeeklyPlanningSemanticDocumentV5(initialResponse);
+      const initialValidation = validateSemanticResponse(initialResponse, input);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
         stage: 'semantic_validation_result',
         data: {
           attempt: 'initial',
-          accepted: Boolean(initialParse.document),
-          errors: initialParse.errors,
-          parsedDocument: initialParse.document,
+          accepted: Boolean(initialValidation.document),
+          errors: initialValidation.errors,
+          parsedDocument: initialValidation.parsedDocument,
         },
       });
-      if (initialParse.document) {
+      if (initialValidation.document) {
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
-          document: initialParse.document,
+          document: initialValidation.document,
           diagnostics: diagnostics({
             attemptCount: 1,
             repairAttempted: false,
@@ -279,7 +393,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const repairMessages = createRepairMessages({
         baseMessages,
         invalidResponse: initialResponse,
-        validationErrors: initialParse.errors,
+        validationErrors: initialValidation.errors,
       });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
@@ -287,7 +401,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         severity: 'warn',
         data: {
           invalidResponse: initialResponse,
-          validationErrors: initialParse.errors,
+          validationErrors: initialValidation.errors,
           repairMessages,
         },
       });
@@ -302,7 +416,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           diagnostics: diagnostics({
             attemptCount: 2,
             repairAttempted: true,
-            validationErrors: initialParse.errors,
+            validationErrors: initialValidation.errors,
             providerError: errorMessage(error),
           }),
         };
@@ -315,19 +429,19 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         return result;
       }
 
-      const repairedParse = parseWeeklyPlanningSemanticDocumentV5(repairedResponse);
+      const repairedValidation = validateSemanticResponse(repairedResponse, input);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
         stage: 'semantic_validation_result',
-        severity: repairedParse.document ? 'info' : 'error',
+        severity: repairedValidation.document ? 'info' : 'error',
         data: {
           attempt: 'repair',
-          accepted: Boolean(repairedParse.document),
-          errors: repairedParse.errors,
-          parsedDocument: repairedParse.document,
+          accepted: Boolean(repairedValidation.document),
+          errors: repairedValidation.errors,
+          parsedDocument: repairedValidation.parsedDocument,
         },
       });
-      if (!repairedParse.document) {
+      if (!repairedValidation.document) {
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'rejected',
           document: null,
@@ -335,8 +449,8 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             attemptCount: 2,
             repairAttempted: true,
             validationErrors: [
-              ...initialParse.errors.map((value) => `initial:${value}`),
-              ...repairedParse.errors.map((value) => `repair:${value}`),
+              ...initialValidation.errors.map((value) => `initial:${value}`),
+              ...repairedValidation.errors.map((value) => `repair:${value}`),
             ],
             providerError: null,
           }),
@@ -352,11 +466,11 @@ export function createWeeklyPlanningSemanticNormalizerV5(
 
       const result: WeeklyPlanningSemanticNormalizerResultV5 = {
         status: 'accepted',
-        document: repairedParse.document,
+        document: repairedValidation.document,
         diagnostics: diagnostics({
           attemptCount: 2,
           repairAttempted: true,
-          validationErrors: initialParse.errors,
+          validationErrors: initialValidation.errors,
           providerError: null,
         }),
       };

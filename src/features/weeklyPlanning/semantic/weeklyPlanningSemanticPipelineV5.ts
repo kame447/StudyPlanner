@@ -21,8 +21,10 @@ import {
 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import {
   applyWeeklyPlanningStableV5ContextualAnswer,
-  inferWeeklyPlanningStableV5ContextualQuestionCode,
 } from './weeklyPlanningStableV5ContextualAnswer';
+import {
+  readWeeklyPlanningPendingQuestionV5,
+} from './weeklyPlanningPendingQuestionV5';
 import {
   recordWeeklyPlanningStableV5FailureDiagnostics,
 } from './weeklyPlanningStableV5FailureDiagnostics';
@@ -74,31 +76,12 @@ function schedulerStatus(
   return 'scheduler_needs_resolution';
 }
 
-function contextualInferenceRules(publicStateSummary?: Record<string, unknown>) {
-  const lastAssistantMessage = publicStateSummary?.lastAssistantMessage;
-  const text = typeof lastAssistantMessage === 'string' ? lastAssistantMessage : null;
-  return {
-    lastAssistantMessage: text,
-    rules: [
-      {
-        code: 'missing_effort_estimate',
-        criterion: 'lastAssistantMessage.includes("合計でどれくらい時間")',
-        matched: text?.includes('合計でどれくらい時間') ?? false,
-      },
-      {
-        code: 'quantity_role_unresolved',
-        criterion: 'lastAssistantMessage.includes("今回進めたい量ですか")',
-        matched: text?.includes('今回進めたい量ですか') ?? false,
-      },
-    ],
-  };
-}
-
 function contextualBindingObservations(params: {
   graph: WeeklyPlanningFactGraphV5;
   normalization: WeeklyPlanningSemanticNormalizerResultV5;
   expectedRevision: number;
   userText: string;
+  pendingQuestion: ReturnType<typeof readWeeklyPlanningPendingQuestionV5>;
 }) {
   const document = params.normalization.document;
   const normalizedUserText = params.userText
@@ -113,8 +96,18 @@ function contextualBindingObservations(params: {
       .replace(/\s+/g, '')
       .replace(/[。！？!?]+$/g, '') === normalizedUserText) ?? false;
   return {
-    criteriaVersion: 'weeklyPlanningStableV5ContextualAnswer:isMinimalContextualReply',
+    criteriaVersion: 'weeklyPlanningStableV5ContextualAnswer:machinePendingQuestion',
     observations: {
+      pendingQuestion: params.pendingQuestion,
+      pendingQuestionExists: Boolean(params.pendingQuestion),
+      pendingQuestionRevisionMatches:
+        params.pendingQuestion?.graphRevision === params.graph.revision,
+      pendingQuestionTargetExists: Boolean(
+        params.pendingQuestion?.targetFactId
+        && params.graph.workloads.some(
+          (workload) => workload.id === params.pendingQuestion?.targetFactId,
+        ),
+      ),
       userTextLength: params.userText.trim().length,
       userTextLengthAtMost40: params.userText.trim().length > 0
         && params.userText.trim().length <= 40,
@@ -229,16 +222,16 @@ export function createWeeklyPlanningSemanticPipelineV5(
         return result;
       }
 
-      const inferenceRules = contextualInferenceRules(input.publicStateSummary);
-      const contextualQuestionCode = inferWeeklyPlanningStableV5ContextualQuestionCode(
+      const pendingQuestion = readWeeklyPlanningPendingQuestionV5(
         input.publicStateSummary,
       );
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
-        stage: 'contextual_question_inference',
+        stage: 'pending_question_resolved',
         data: {
-          ...inferenceRules,
-          selectedQuestionCode: contextualQuestionCode,
+          source: 'publicStateSummary.pendingQuestion',
+          pendingQuestion,
+          rendererTextInspected: false,
         },
       });
 
@@ -247,12 +240,13 @@ export function createWeeklyPlanningSemanticPipelineV5(
         normalization,
         expectedRevision: input.expectedRevision,
         userText: input.userText,
+        pendingQuestion,
       });
-      const contextualAnswer = contextualQuestionCode
+      const contextualAnswer = pendingQuestion
         ? applyWeeklyPlanningStableV5ContextualAnswer({
             graph,
             document: normalization.document,
-            questionCode: contextualQuestionCode,
+            pendingQuestion,
             conversationId: input.conversationId,
             turnId: input.turnId,
             expectedRevision: input.expectedRevision,
@@ -263,7 +257,6 @@ export function createWeeklyPlanningSemanticPipelineV5(
         requestId: input.turnId,
         stage: 'contextual_answer_binding_evaluated',
         data: {
-          questionCode: contextualQuestionCode,
           ...bindingObservations,
           contextualAnswerApplied: Boolean(contextualAnswer),
           contextualAnswerResult: contextualAnswer,
@@ -291,6 +284,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
             graph,
             document: normalization.document,
             context: canonicalizationContext,
+            pendingQuestion,
           },
           result: canonicalization,
           adoptedOperations: canonicalization.diff,

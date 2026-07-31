@@ -35,6 +35,7 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'invalid_json'
   | 'invalid_shape'
   | 'action_mismatch'
+  | 'action_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text';
 
@@ -70,9 +71,16 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['actionId', 'text'],
+      required: ['actionId', 'actionKind', 'questionCode', 'text'],
       properties: {
         actionId: stringSchema(),
+        actionKind: {
+          type: 'string',
+          enum: ['question', 'status', 'preview_ready'],
+        },
+        questionCode: {
+          anyOf: [stringSchema(), { type: 'null' }],
+        },
         text: stringSchema(),
       },
     },
@@ -84,6 +92,9 @@ const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*[0-5]?\d\s*分)?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
+const EXPLANATION_REQUEST_EXPRESSION = /(?:どういう(?:こと|意味)|なぜ|なんで|理由|説明して|説明してください|分からない|わからない|つまり)/;
+const QUESTION_RESPONSE_EXPRESSION = /[?？]|(?:教えて(?:ください)?|確認させて(?:ください)?|確認したい|どれ|どの|どちら|何|いつ|どこ|どう|ありますか|ですか|ますか|でしょうか)/;
+const EXECUTION_CLAIM_EXPRESSION = /(?:(?:予定|仮予定|計画).{0,16}(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します)|(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します).{0,16}(?:予定|仮予定|計画))/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -188,7 +199,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     'あなたは学習計画アプリの対話担当です。',
     '会話履歴、ユーザーの最新発話、アプリが把握している情報を踏まえて、次に返す自然な日本語を考えてください。',
     'アプリが把握していない予定や事実は作らないでください。',
-    '指定されたJSON形式で、actionIdを変えずに返してください。',
+    '指定されたJSON形式で、actionId、actionKind、questionCodeを変えずに返してください。',
   ].join('\n');
 
   const userPrompt = JSON.stringify({
@@ -206,9 +217,11 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     },
     request: [
       '上記の情報を踏まえて、現在のユーザーに返す自然な日本語を考えてください。',
+      'actionId、applicationDecision.actionKind、applicationDecision.questionCodeをそのままJSONへ返してください。',
       'planningStateSummaryのdecidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です。',
       'referenceResponseはアプリ側の参考情報であり、そのまま繰り返したり、単に言い換えたりする必要はありません。',
       '最新発話が説明要求や聞き返しなら、直前の質問を繰り返さず、何を確認したいのかを分かりやすく説明してください。',
+      'applicationDecision.actionKindがquestionなら、説明要求への説明を除き、必要な情報を尋ねてください。まだ実行されていない予定の作成・追加・保存を開始または完了したとは言わないでください。',
     ].join(''),
   }, null, 2);
 
@@ -242,6 +255,26 @@ function hasIncorrectPreviewCount(
   return mentionedCounts.some((count) => count !== input.previewCount);
 }
 
+function isExplanationRequest(input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
+  return EXPLANATION_REQUEST_EXPRESSION.test(input.currentUserMessage);
+}
+
+function hasUnsupportedActionShape(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  if (
+    input.actionKind !== 'preview_ready'
+    && EXECUTION_CLAIM_EXPRESSION.test(text)
+    && !/[?？]|(?:ますか|でしょうか)/.test(text)
+  ) {
+    return true;
+  }
+  return input.actionKind === 'question'
+    && !isExplanationRequest(input)
+    && !QUESTION_RESPONSE_EXPRESSION.test(text);
+}
+
 function validateRenderedText(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -265,6 +298,7 @@ function validateRenderedText(
     addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
     || addsUnsupportedExpression(text, groundingInformation, DATE_EXPRESSION)
     || hasIncorrectPreviewCount(text, input)
+    || hasUnsupportedActionShape(text, input)
   ) {
     return 'ungrounded_text';
   }
@@ -286,6 +320,8 @@ function parseRendererResponse(
   if (
     !isRecord(parsed)
     || typeof parsed.actionId !== 'string'
+    || typeof parsed.actionKind !== 'string'
+    || (parsed.questionCode !== null && typeof parsed.questionCode !== 'string')
     || typeof parsed.text !== 'string'
   ) {
     return { status: 'fallback', reason: 'invalid_shape', rawResponse };
@@ -293,6 +329,12 @@ function parseRendererResponse(
 
   if (parsed.actionId !== input.actionId) {
     return { status: 'fallback', reason: 'action_mismatch', rawResponse };
+  }
+  if (
+    parsed.actionKind !== input.actionKind
+    || parsed.questionCode !== input.questionCode
+  ) {
+    return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
   }
 
   const text = parsed.text.replace(/\r\n/g, '\n').trim();

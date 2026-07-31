@@ -6,6 +6,8 @@ dist
 .env.*.local
 .cert
 .wrangler
+.stryker-tmp
+reports/stryker
 workers/ai-proxy/.dev.vars
 
 # Claude Code local settings
