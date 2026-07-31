@@ -5,6 +5,8 @@ const OUTBOX_KEY = 'studyplanner.weeklyPlanning.trace.outbox.v1';
 const MAX_OUTBOX_ITEMS = 10;
 const MAX_OUTBOX_ITEM_BYTES = 192 * 1024;
 const MAX_OUTBOX_TOTAL_BYTES = 1024 * 1024;
+const MAX_JSON_VALIDATION_DEPTH = 12;
+const MAX_JSON_COLLECTION_ITEMS = 1_000;
 
 export interface WeeklyPlanningTraceOutboxItem {
   version: typeof OUTBOX_VERSION;
@@ -55,6 +57,20 @@ function validNullableString(value: unknown): boolean {
   return value === null || typeof value === 'string';
 }
 
+function validJsonValue(value: unknown, depth = 0): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (depth >= MAX_JSON_VALIDATION_DEPTH) return false;
+  if (Array.isArray(value)) {
+    return value.length <= MAX_JSON_COLLECTION_ITEMS
+      && value.every((item) => validJsonValue(item, depth + 1));
+  }
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= MAX_JSON_COLLECTION_ITEMS
+    && entries.every(([, item]) => validJsonValue(item, depth + 1));
+}
+
 function validRendererTrace(value: unknown): boolean {
   if (value === undefined) return true;
   if (!isRecord(value)
@@ -87,7 +103,9 @@ function validRendererTrace(value: unknown): boolean {
     && value.request.requiredLabels.every((label) => typeof label === 'string')
     && typeof value.request.fallbackText === 'string'
     && Number.isSafeInteger(value.request.previewCount)
-    && Number(value.request.previewCount) >= 0;
+    && Number(value.request.previewCount) >= 0
+    && (value.request.promptContext === undefined
+      || validJsonValue(value.request.promptContext));
 }
 
 function validInput(value: unknown): value is WeeklyPlanningStableV5TraceInput {

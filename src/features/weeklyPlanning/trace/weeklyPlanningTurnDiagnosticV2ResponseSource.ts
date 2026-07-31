@@ -28,6 +28,7 @@ interface RendererTraceLimits {
   labelCount: number;
   labelBytes: number;
   fallbackTextBytes: number;
+  promptContextBytes: number;
   reasonBytes: number;
   rawResponseBytes: number;
   renderedTextBytes: number;
@@ -42,6 +43,7 @@ const NORMAL_RENDERER_LIMITS: RendererTraceLimits = {
   labelCount: 10,
   labelBytes: 256,
   fallbackTextBytes: 1_500,
+  promptContextBytes: 12 * 1024,
   reasonBytes: 512,
   rawResponseBytes: 3_500,
   renderedTextBytes: 1_500,
@@ -56,6 +58,7 @@ const COMPACT_RENDERER_LIMITS: RendererTraceLimits = {
   labelCount: 3,
   labelBytes: 128,
   fallbackTextBytes: 500,
+  promptContextBytes: 2 * 1024,
   reasonBytes: 256,
   rawResponseBytes: 0,
   renderedTextBytes: 500,
@@ -70,6 +73,7 @@ const MINIMAL_RENDERER_LIMITS: RendererTraceLimits = {
   labelCount: 0,
   labelBytes: 0,
   fallbackTextBytes: 0,
+  promptContextBytes: 0,
   reasonBytes: 128,
   rawResponseBytes: 0,
   renderedTextBytes: 0,
@@ -96,6 +100,18 @@ function decodeUtf8Prefix(bytes: Uint8Array, maxBytes: number): string {
   return '';
 }
 
+function decodeUtf8Suffix(bytes: Uint8Array, maxBytes: number): string {
+  const start = Math.max(0, bytes.byteLength - Math.max(0, maxBytes));
+  for (let offset = start; offset <= bytes.byteLength; offset += 1) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(offset));
+    } catch {
+      // Advance when the suffix starts in the middle of a multi-byte code point.
+    }
+  }
+  return '';
+}
+
 function truncateUtf8(value: string, maxBytes: number): string {
   const bytes = utf8Bytes(value);
   if (bytes.byteLength <= maxBytes) return value;
@@ -108,6 +124,32 @@ function truncateUtf8(value: string, maxBytes: number): string {
 
 function boundedNullableText(value: string | null, maxBytes: number): string | null {
   return value === null ? null : truncateUtf8(value, maxBytes);
+}
+
+function boundedJsonValue(value: unknown, maxBytes: number): unknown {
+  if (maxBytes <= 0) return undefined;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value) ?? 'null';
+  } catch {
+    return { traceTruncated: true, reason: 'unserializable' };
+  }
+  const bytes = utf8Bytes(serialized);
+  if (bytes.byteLength <= maxBytes) {
+    try {
+      return JSON.parse(serialized);
+    } catch {
+      return { traceTruncated: true, reason: 'invalid_serialized_json' };
+    }
+  }
+  const markerBudget = Math.min(512, Math.max(128, Math.floor(maxBytes * 0.15)));
+  const contentBudget = Math.max(256, maxBytes - markerBudget);
+  return {
+    traceTruncated: true,
+    originalBytes: bytes.byteLength,
+    jsonHead: decodeUtf8Prefix(bytes, Math.floor(contentBudget * 0.65)),
+    jsonTail: decodeUtf8Suffix(bytes, Math.floor(contentBudget * 0.35)),
+  };
 }
 
 function boundedDialogueRendererTrace(
@@ -126,6 +168,12 @@ function boundedDialogueRendererTrace(
             .map((label) => truncateUtf8(label, limits.labelBytes)),
           fallbackText: truncateUtf8(trace.request.fallbackText, limits.fallbackTextBytes),
           previewCount: trace.request.previewCount,
+          ...(trace.request.promptContext === undefined || limits.promptContextBytes <= 0
+            ? {}
+            : { promptContext: boundedJsonValue(
+                trace.request.promptContext,
+                limits.promptContextBytes,
+              ) }),
         }
       : null,
     response: {

@@ -15,6 +15,13 @@ export type WeeklyPlanningDialogueRendererTraceBranch =
   | 'deterministic_fallback'
   | 'system_message_bypass';
 
+/**
+ * Rendererへ実際に渡した入力のうち、固定request field以外の拡張情報。
+ * 新しいprompt fieldが追加されてもtrace schemaの同期漏れで消えないよう、
+ * JSON-safeな拡張領域として保持する。
+ */
+export type WeeklyPlanningDialogueRendererPromptContext = unknown;
+
 export interface WeeklyPlanningDialogueRendererTrace {
   actionId: string | null;
   actionKind: WeeklyPlanningDialogueRendererTraceActionKind | null;
@@ -24,6 +31,7 @@ export interface WeeklyPlanningDialogueRendererTrace {
     requiredLabels: string[];
     fallbackText: string;
     previewCount: number;
+    promptContext?: WeeklyPlanningDialogueRendererPromptContext;
   } | null;
   response: {
     status: WeeklyPlanningDialogueRendererTraceStatus;
@@ -38,6 +46,39 @@ export interface WeeklyPlanningDialogueRendererTrace {
   };
 }
 
+const MAX_PENDING_PROMPT_CONTEXTS = 128;
+const pendingPromptContexts = new Map<string, WeeklyPlanningDialogueRendererPromptContext>();
+
+function trimPendingPromptContexts(): void {
+  while (pendingPromptContexts.size > MAX_PENDING_PROMPT_CONTEXTS) {
+    const oldestActionId = pendingPromptContexts.keys().next().value;
+    if (typeof oldestActionId !== 'string') return;
+    pendingPromptContexts.delete(oldestActionId);
+  }
+}
+
+export function rememberWeeklyPlanningDialogueRendererPromptContext(
+  actionId: string,
+  promptContext: WeeklyPlanningDialogueRendererPromptContext,
+): void {
+  pendingPromptContexts.delete(actionId);
+  pendingPromptContexts.set(actionId, promptContext);
+  trimPendingPromptContexts();
+}
+
+function takeWeeklyPlanningDialogueRendererPromptContext(
+  actionId: string | null,
+): WeeklyPlanningDialogueRendererPromptContext | undefined {
+  if (!actionId) return undefined;
+  const promptContext = pendingPromptContexts.get(actionId);
+  pendingPromptContexts.delete(actionId);
+  return promptContext;
+}
+
+export function resetWeeklyPlanningDialogueRendererPromptContextsForTest(): void {
+  pendingPromptContexts.clear();
+}
+
 function utf8Bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
@@ -48,6 +89,18 @@ function decodeUtf8Prefix(bytes: Uint8Array, maxBytes: number): string {
       return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(0, length));
     } catch {
       // Back up when the byte limit cuts a multi-byte code point.
+    }
+  }
+  return '';
+}
+
+function decodeUtf8Suffix(bytes: Uint8Array, maxBytes: number): string {
+  const start = Math.max(0, bytes.byteLength - Math.max(0, maxBytes));
+  for (let offset = start; offset <= bytes.byteLength; offset += 1) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(offset));
+    } catch {
+      // Advance when the suffix starts in the middle of a multi-byte code point.
     }
   }
   return '';
@@ -66,9 +119,36 @@ function boundedNullableText(value: string | null, maxBytes: number): string | n
   return value === null ? null : boundedText(value, maxBytes);
 }
 
+function boundedJsonValue(value: unknown, maxBytes: number): unknown {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value) ?? 'null';
+  } catch {
+    return { traceTruncated: true, reason: 'unserializable' };
+  }
+  const bytes = utf8Bytes(serialized);
+  if (bytes.byteLength <= maxBytes) {
+    try {
+      return JSON.parse(serialized);
+    } catch {
+      return { traceTruncated: true, reason: 'invalid_serialized_json' };
+    }
+  }
+  const markerBudget = Math.min(512, Math.max(128, Math.floor(maxBytes * 0.15)));
+  const contentBudget = Math.max(256, maxBytes - markerBudget);
+  return {
+    traceTruncated: true,
+    originalBytes: bytes.byteLength,
+    jsonHead: decodeUtf8Prefix(bytes, Math.floor(contentBudget * 0.65)),
+    jsonTail: decodeUtf8Suffix(bytes, Math.floor(contentBudget * 0.35)),
+  };
+}
+
 export function boundWeeklyPlanningDialogueRendererTraceForTransport(
   trace: WeeklyPlanningDialogueRendererTrace,
 ): WeeklyPlanningDialogueRendererTrace {
+  const rememberedPromptContext = takeWeeklyPlanningDialogueRendererPromptContext(trace.actionId);
+  const promptContext = trace.request?.promptContext ?? rememberedPromptContext;
   return {
     actionId: boundedNullableText(trace.actionId, 512),
     actionKind: trace.actionKind,
@@ -81,6 +161,9 @@ export function boundWeeklyPlanningDialogueRendererTraceForTransport(
             .map((label) => boundedText(label, 256)),
           fallbackText: boundedText(trace.request.fallbackText, 1_500),
           previewCount: trace.request.previewCount,
+          ...(promptContext === undefined
+            ? {}
+            : { promptContext: boundedJsonValue(promptContext, 12 * 1024) }),
         }
       : null,
     response: {
