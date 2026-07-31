@@ -140,6 +140,54 @@ describe('weekly planning conversation eval driver', () => {
     expect(adapter.submitted).toHaveLength(1);
   });
 
+  it('stops when only revision advances while the same answer is repeated', async () => {
+    const adapter = new FakeAdapter(
+      state({
+        code: 'missing_effort_estimate',
+        targetFactId: 'workload-target',
+        actionId: 'action-1',
+        graphRevision: 3,
+      }),
+      (current) => ({
+        ...current,
+        graphRevision: (current.graphRevision ?? 0) + 1,
+      }),
+    );
+
+    await expect(driveConversationUntilPreview(adapter, {
+      authorizationText: 'この条件で予定を作って',
+      answerQuestion: () => '3ページです',
+    })).rejects.toThrow('repeated the same answer for the same question target');
+    expect(adapter.submitted).toHaveLength(1);
+  });
+
+  it('allows a changed repair answer for the same question target', async () => {
+    const adapter = new FakeAdapter(
+      state({
+        code: 'missing_effort_estimate',
+        targetFactId: 'workload-target',
+        actionId: 'action-1',
+        graphRevision: 3,
+      }),
+      (current, _userText, _label, turnIndex) => turnIndex === 1
+        ? { ...current, graphRevision: 4 }
+        : state({ graphRevision: 5, previewCount: 1 }),
+    );
+
+    const result = await driveConversationUntilPreview(adapter, {
+      authorizationText: 'この条件で予定を作って',
+      answerQuestion: ({ submittedTurns }) => submittedTurns.length === 0
+        ? '3ページです'
+        : '3時間です',
+    });
+
+    expect(result.finalState.previewCount).toBe(1);
+    expect(adapter.submitted.map((turn) => turn.userText)).toEqual([
+      '3ページです',
+      '3時間です',
+    ]);
+  });
+
   it('includes target identity and revision in the progress signature', () => {
     const first = state({
       code: 'missing_effort_estimate',
