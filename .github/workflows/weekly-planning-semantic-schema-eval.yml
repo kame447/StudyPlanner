@@ -2,12 +2,6 @@ name: Weekly Planning Stable V5 Semantic Eval
 
 on:
   workflow_dispatch:
-    inputs:
-      model:
-        description: OpenAI model used for the direct semantic schema evaluation
-        required: true
-        default: gpt-5.4-mini
-        type: string
 
 permissions:
   contents: read
@@ -23,7 +17,7 @@ jobs:
     env:
       WEEKLY_PLANNING_SEMANTIC_V5_REAL_EVAL: '1'
       WEEKLY_PLANNING_SEMANTIC_V5_EVAL_BASE_URL: https://api.openai.com/v1
-      WEEKLY_PLANNING_SEMANTIC_V5_EVAL_MODEL: ${{ inputs.model }}
+      WEEKLY_PLANNING_SEMANTIC_V5_EVAL_MODEL: gpt-5.4-mini
 
     steps:
       - uses: actions/checkout@v4
