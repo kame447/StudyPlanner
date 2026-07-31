@@ -125,7 +125,7 @@ describe('openAiCompatibleClient model routing', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(init?.signal).toBeInstanceOf(AbortSignal);
-    expect(init?.signal?.aborted).toBe(true);
+    expect(init?.signal).toMatchObject({ aborted: true });
   });
 
   it('falls back to the bounded default timeout for invalid configuration', async () => {
@@ -142,6 +142,6 @@ describe('openAiCompatibleClient model routing', () => {
 
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.signal).toBeInstanceOf(AbortSignal);
-    expect(init.signal?.aborted).toBe(false);
+    expect(init.signal).toMatchObject({ aborted: false });
   });
 });
