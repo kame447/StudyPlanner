@@ -9,8 +9,8 @@ Branch: `agent/weekly-ai-conversation-eval`
 ## 目的
 
 人間がStudyPlannerへ毎回文章を入力してtraceを渡す作業をなくす。
-GitHub Actions上で実際の週間計画AI経路を複数ターン実行し、会話開始からpreview訂正、承認、保存まで確認する。
-失敗時はartifactを外部開発エージェントが読み、原因を調査して同じbranchで修正する。
+実際の週間計画AI経路を複数ターン実行し、会話開始からpreview訂正、承認、保存まで確認する。
+失敗時はtranscriptとtraceを外部開発エージェントが読み、原因を調査して同じbranchで修正する。
 
 ## 必須要件
 
@@ -54,14 +54,16 @@ AI APIを使ってよいのは次の2用途だけである。
 
 ## 1ループの手順
 
-1. Actionsでscenario群を実行する。
+1. scenario群を実行する。
 2. artifactのtranscript、trace、状態差分を読む。
 3. 問題を短文で特定する。
 4. 具体的な構造原因を調査する。
 5. 原因単位で修正する。
 6. 決定論的回帰テストと類似scenarioを追加する。
-7. Actionsを再実行する。
+7. scenario群を再実行する。
 8. この台帳へ結果を追記する。
+
+GitHub Actionsが使用できない間は、1、2、7を保留し、driver、contract、scenario、artifact生成、通常テストの基盤を先に整備する。
 
 ## 完了条件
 
@@ -83,4 +85,16 @@ AI APIを使ってよいのは次の2用途だけである。
 
 対応: scenario registry、決定論的user driver、複数scenario artifact、preview後訂正phaseへ再設計する。
 
-確認: 未実施。次ループで基盤を修正してActionsを実行する。
+確認: 未実施。次ループで基盤を修正する。
+
+### Loop 1: Actions非依存の基盤分離
+
+問題: 実API test本体に会話driver、合否契約、transcript生成が混在し、Actions停止中は基盤自体を検証できない。
+
+原因: production実行adapterと、純粋な会話進行・判定ロジックの境界が分離されていなかった。
+
+対応: 決定論的conversation driver、進捗停止検出、human-readable transcript renderer、明示的修復contract、preview訂正contract、fake adapterの通常testを追加した。実API workflowは手動実行専用に変更した。
+
+調査: correction intentのschema、canonicalization、transactionは存在する。一方、通常semantic pipelineがtransactionを適用する接続は現時点で確認できない。preview後訂正が失敗する場合の第一原因候補として扱う。
+
+確認: GitHub Actionsは未使用。typecheck・test・buildは未実行。次は通常pipelineのcorrection適用境界を決定論的testで固定し、構造的に接続する。
