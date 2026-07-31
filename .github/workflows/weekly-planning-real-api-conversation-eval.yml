@@ -4,22 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       run_real_api:
-        description: Run the OpenAI-backed conversation scenarios after all deterministic gates pass
+        description: Run all OpenAI-backed conversation scenarios after every deterministic gate passes
         required: true
         default: false
         type: boolean
-      scenario:
-        description: Scenario ID for a focused rerun, or all
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - tomorrow-natural-multiturn
-          - next-week-non-study-paraphrase
-          - wrong-unit-explicit-repair
-          - cross-task-correction-before-preview
-          - preview-correction-recompute
 
 permissions:
   contents: read
@@ -72,7 +60,6 @@ jobs:
     env:
       TZ: Asia/Tokyo
       WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL: '1'
-      WEEKLY_PLANNING_REAL_API_CONVERSATION_SCENARIO: ${{ inputs.scenario }}
       VITE_AI_PROVIDER: openai
       VITE_AI_BASE_URL: https://api.openai.com/v1
       VITE_AI_MODEL: gpt-5.4-mini
@@ -118,7 +105,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-planning-real-api-conversation-eval-${{ inputs.scenario }}
+          name: weekly-planning-real-api-conversation-eval
           path: artifacts/weekly-planning-real-api-conversation-eval/
           if-no-files-found: warn
           retention-days: 14
