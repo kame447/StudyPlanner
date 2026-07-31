@@ -24,6 +24,7 @@ Branch: `agent/weekly-ai-conversation-eval`
 - 二重承認で予定が重複しないことを確認する。
 - 全会話、各turnのtrace、Graph revision、preview、保存結果をartifactへ残す。
 - 会話の自然さは別AIで採点せず、外部開発エージェントがtranscriptを読む。
+- アプリから呼ばれる週間計画runtimeはStable V5だけとし、legacyは内部test-supportからのみ直接利用する。
 
 ## AI API利用境界
 
@@ -74,6 +75,7 @@ GitHub Actionsが使用できない間は、1、2、7を保留し、driver、con
 - 承認・保存・重複抑止まで通る。
 - 類似表現・別タスク・別日付でも同じ構造が成立する。
 - transcriptを外部開発エージェントが確認し、不自然な定型反復や会話停止がない。
+- URL、storage、environment、UI操作からlegacy runtimeへ切り替えられない。
 
 ## 現在のscenario群
 
@@ -145,11 +147,25 @@ AI契約: active Graphのplanning window、task、component、workload、effort 
 
 確認: GitHub Actionsは使用していない。testは作成済みだが、typecheck・実行結果は未確認。
 
+### Loop 5: アプリruntimeをStable V5へ固定
+
+問題: Stable V5が実装済みでも、environment default、URL query、session storage、会話画面、設定画面からlegacy runtimeを選択できる導線が残っていた。
+
+原因: 移行期のtrial切替をproduction application境界へ残したままで、壊れているlegacy pipelineを利用者操作から再度有効化できた。
+
+対応: application runtime getterをStable V5固定にし、legacy指定のsetterもStable V5へ正規化した。environment、query、storageによるdowngradeを無効化し、会話画面と設定画面のlegacy選択UIを削除した。legacy実装自体とdirect test-support importは削除していない。
+
+類似確認: legacy queryとstorageを設定してもStable V5になるtest、`setWeeklyPlanningRuntimeMode('legacy')`がStable V5を返すtest、会話画面と設定画面に「現行方式」が存在しないUI testを追加した。
+
+確認: GitHub Actionsは使用していない。test定義はfoundation commandへ追加済みだが、typecheck・実行結果は未確認。
+
 次: 実行可能な環境で最初に`npm run test:weekly-ai:conversation:foundation`を実行する。通過後に実API suiteを回し、5 transcriptを人間判断する。失敗した最初の構造境界だけを次ループで修正する。
 
 ## 実行停止時点
 
-現在できるようにしたこと: 5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、誤単位回答のFact非採用、旧previewの無効化とmode再計算、原子的rollback、transcriptとtraceのartifact定義。
+現在できるようにしたこと: Stable V5のみのapplication runtime、5 scenarioの会話進行、明示的修復とpreview訂正の機械契約、cross-turn訂正のgeneric適用、誤単位回答のFact非採用、旧previewの無効化とmode再計算、原子的rollback、transcriptとtraceのartifact定義。
+
+内部に残していること: legacy pipeline実装、legacy向けunit test、direct test-support executor。アプリのruntime選択、URL、storage、environmentからは到達できない。
 
 まだ確認できていないこと: TypeScript型整合、決定論的test結果、既存testへの影響、build、実APIの意味解釈、実際の返答自然さ、5 scenarioの完走。
 
