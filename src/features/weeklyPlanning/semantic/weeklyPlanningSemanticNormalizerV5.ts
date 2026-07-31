@@ -142,23 +142,28 @@ function isWholePlanRangeExpression(
   if (!text.includes(expectation.phrase)) return false;
 
   const phrase = expectation.phrase;
-  const planNoun = new RegExp(`${phrase}(?:だけ|一日|1日)?(?:の)?(?:予定|計画|スケジュール)`);
-  const planCreation = /(?:(?:予定|計画|スケジュール).{0,16}(?:立て|作|組)|(?:立て|作|組).{0,16}(?:予定|計画|スケジュール))/;
+  const rangeBeforePlan = new RegExp(
+    `${phrase}(?:だけ|一日|1日)?(?:の)?(?:予定|計画|スケジュール)`,
+  );
+  const planBeforeRange = new RegExp(
+    `(?:予定|計画|スケジュール)(?:の期間|の範囲|は|を)?[^。！？!?]{0,8}${phrase}`,
+  );
   const shortAnswer = new RegExp(
     `^${phrase}(?:だけ|一日|1日)?(?:の予定)?(?:です|で|にします|にしたい)?[。.!！?？]*$`,
   );
 
-  return planNoun.test(text)
-    || planCreation.test(text)
+  return rangeBeforePlan.test(text)
+    || planBeforeRange.test(text)
     || (shortAnswer.test(text) && asksForPlanningWindow(lastAssistantMessage(input)));
 }
 
 function directPlanningWindowExpectation(
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ): DirectPlanningWindowExpectationV5 | null {
-  return DIRECT_PLANNING_WINDOWS_V5.find(
+  const matches = DIRECT_PLANNING_WINDOWS_V5.filter(
     (expectation) => isWholePlanRangeExpression(input, expectation),
-  ) ?? null;
+  );
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function planningWindowConformanceErrors(
