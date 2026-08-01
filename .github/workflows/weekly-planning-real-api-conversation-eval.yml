@@ -8,6 +8,11 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - '.github/weekly-planning-real-api-trigger'
 
 permissions:
   contents: read
@@ -55,7 +60,7 @@ jobs:
         run: npm run build
 
   real-api-conversation-eval:
-    if: ${{ inputs.run_real_api }}
+    if: ${{ github.event_name == 'push' || inputs.run_real_api }}
     needs: foundation
     runs-on: ubuntu-22.04
     timeout-minutes: 60
