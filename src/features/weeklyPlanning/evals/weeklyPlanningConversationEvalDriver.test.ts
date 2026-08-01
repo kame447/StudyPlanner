@@ -7,6 +7,9 @@ import {
   type ConversationEvalStateSnapshot,
   type ConversationEvalSubmissionSnapshot,
 } from './weeklyPlanningConversationEvalDriver';
+import {
+  WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO,
+} from './weeklyPlanningConversationEvalExecutionPolicy';
 
 function state(params: {
   code?: string | null;
@@ -186,6 +189,34 @@ describe('weekly planning conversation eval driver', () => {
       '3ページです',
       '3時間です',
     ]);
+  });
+
+  it('caps a scenario at eight turns even when a larger limit is requested', async () => {
+    const adapter = new FakeAdapter(
+      state({
+        code: 'missing_effort_estimate',
+        targetFactId: 'workload-0',
+        actionId: 'action-0',
+        graphRevision: 0,
+      }),
+      (_current, _userText, _label, turnIndex) => state({
+        code: 'missing_effort_estimate',
+        targetFactId: `workload-${turnIndex}`,
+        actionId: `action-${turnIndex}`,
+        graphRevision: turnIndex,
+      }),
+    );
+
+    await expect(driveConversationUntilPreview(adapter, {
+      authorizationText: 'この条件で予定を作って',
+      maxTurns: 100,
+      answerQuestion: ({ question }) => `所要時間です:${question.targetFactId}`,
+    })).rejects.toThrow(
+      `Preview was not created within ${WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO} turns.`,
+    );
+    expect(adapter.submitted).toHaveLength(
+      WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO,
+    );
   });
 
   it('includes target identity and revision in the progress signature', () => {
