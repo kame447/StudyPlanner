@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createOpenAiCompatibleClient } from './openAiCompatibleClient';
+import {
+  createOpenAiCompatibleClient,
+  resetOpenAiCompatibleClientRequestBudgetForTest,
+} from './openAiCompatibleClient';
 import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
@@ -54,7 +57,9 @@ function lastRequestBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, un
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
+  resetOpenAiCompatibleClientRequestBudgetForTest();
 });
 
 describe('openAiCompatibleClient model routing', () => {
@@ -190,6 +195,32 @@ describe('openAiCompatibleClient model routing', () => {
     await vi.advanceTimersByTimeAsync(25);
     await rejection;
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops before fetch when the process request budget is exhausted', async () => {
+    vi.stubEnv('VITE_AI_MAX_PROCESS_REQUESTS', '2');
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+    const client = createOpenAiCompatibleClient(config);
+
+    await client.createChatCompletion({ messages: [{ role: 'user', content: 'one' }] });
+    await client.createChatCompletion({ messages: [{ role: 'user', content: 'two' }] });
+    await expect(client.createChatCompletion({
+      messages: [{ role: 'user', content: 'three' }],
+    })).rejects.toThrow('AI process request budget exceeded: 2.');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores invalid process request limits instead of creating an accidental zero budget', async () => {
+    vi.stubEnv('VITE_AI_MAX_PROCESS_REQUESTS', 'invalid');
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+    const client = createOpenAiCompatibleClient(config);
+
+    await client.createChatCompletion({ messages: [{ role: 'user', content: 'one' }] });
+    await client.createChatCompletion({ messages: [{ role: 'user', content: 'two' }] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to the bounded default timeout for invalid configuration', async () => {
