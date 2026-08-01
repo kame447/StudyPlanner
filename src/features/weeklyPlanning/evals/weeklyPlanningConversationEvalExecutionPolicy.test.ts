@@ -4,6 +4,7 @@ import {
   evaluateWeeklyPlanningConversationTurnAiUsage,
   maximumWeeklyPlanningRealEvalRequestsForTurns,
   shouldContinueWeeklyPlanningRealEvalAfterScenario,
+  summarizeWeeklyPlanningConversationEvalAiUsage,
   WEEKLY_PLANNING_REAL_EVAL_MAX_API_REQUESTS_PER_TURN,
 } from './weeklyPlanningConversationEvalExecutionPolicy';
 
@@ -128,5 +129,36 @@ describe('weekly planning real API execution policy', () => {
     expect(() => maximumWeeklyPlanningRealEvalRequestsForTurns(-1)).toThrow(
       'Invalid turn count: -1',
     );
+  });
+
+  it('aggregates only executed turns and carries turn-level AI violations', () => {
+    const first = evaluateWeeklyPlanningConversationTurnAiUsage({
+      responseSource: 'ai',
+      semanticTrace: [{ stage: 'semantic_provider_request' }],
+      dialogueRendererTrace: rendererTrace(),
+    });
+    const second = evaluateWeeklyPlanningConversationTurnAiUsage({
+      responseSource: 'deterministic_fallback',
+      semanticTrace: [
+        { stage: 'semantic_provider_request' },
+        { stage: 'semantic_provider_request' },
+      ],
+      dialogueRendererTrace: rendererTrace({
+        status: 'fallback',
+        branch: 'deterministic_fallback',
+        responseSource: 'deterministic_fallback',
+      }),
+    });
+
+    expect(summarizeWeeklyPlanningConversationEvalAiUsage([first, second])).toEqual({
+      turnCount: 2,
+      semanticRequestCount: 3,
+      rendererRequestCount: 2,
+      totalRequestCount: 5,
+      maximumAllowedRequestCount: 6,
+      allTurnsUsedRequiredAiPaths: false,
+      withinSuiteRequestBudget: true,
+      errors: ['turn-2:assistant-response-did-not-use-ai-renderer'],
+    });
   });
 });
