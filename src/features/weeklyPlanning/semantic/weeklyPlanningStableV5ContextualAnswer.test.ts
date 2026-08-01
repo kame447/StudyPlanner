@@ -173,7 +173,7 @@ describe('Stable V5 contextual answers', () => {
     });
 
     const workloads = result?.graph.workloads ?? [];
-    expect(workloads.at(-1)).toMatchObject({
+    expect(workloads[workloads.length - 1]).toMatchObject({
       taskId: 'task-1',
       quantityRole: 'target',
       amount: 10,
@@ -203,7 +203,7 @@ describe('Stable V5 contextual answers', () => {
 
       expect(result.graph.revision).toBe(initialGraph.revision + 1);
       expect(result.diff?.superseded).toEqual([{ kind: 'workload', id: target.id }]);
-      expect(result.graph.workloads.at(-1)).toMatchObject({
+      expect(result.graph.workloads[result.graph.workloads.length - 1]).toMatchObject({
         taskId: target.taskId,
         amount: target.amount,
         unitCode: target.unitCode,
