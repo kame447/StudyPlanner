@@ -36,6 +36,7 @@ import {
 } from '../preview/weeklyPlanningPreviewBlocks';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlanningDialogueRendererTrace';
 import {
   resetWeeklyPlanningStableV5DebugTraceForTest,
   takeWeeklyPlanningStableV5DebugTrace,
@@ -67,6 +68,13 @@ import {
   type ConversationEvalStateSnapshot,
   type ConversationEvalSubmissionSnapshot,
 } from './weeklyPlanningConversationEvalDriver';
+import {
+  evaluateWeeklyPlanningConversationTurnAiUsage,
+  shouldContinueWeeklyPlanningRealEvalAfterScenario,
+  summarizeWeeklyPlanningConversationEvalAiUsage,
+  type WeeklyPlanningConversationEvalSuiteAiUsage,
+  type WeeklyPlanningConversationEvalTurnAiUsage,
+} from './weeklyPlanningConversationEvalExecutionPolicy';
 import {
   WEEKLY_PLANNING_CONVERSATION_EVAL_SCENARIO_MANIFESTS,
   validateWeeklyPlanningConversationEvalScenarioExecution,
@@ -134,6 +142,8 @@ interface TurnReport {
   graph: ActiveGraphSummary;
   draftCandidates: WeeklyDraftCandidate[];
   trace: unknown[];
+  dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace | null;
+  aiUsage: WeeklyPlanningConversationEvalTurnAiUsage;
 }
 
 interface PreviewReport {
@@ -175,7 +185,9 @@ interface SuiteReport {
     scoring: false;
     failureDiagnosis: false;
   };
+  apiUsage: WeeklyPlanningConversationEvalSuiteAiUsage;
   scenarios: ScenarioReport[];
+  notRunScenarioIds: string[];
 }
 
 interface ScenarioDefinition {
@@ -363,6 +375,12 @@ function readAsyncCapture<T>(read: () => T): T {
   return read();
 }
 
+function suiteAiUsage(report: SuiteReport): WeeklyPlanningConversationEvalSuiteAiUsage {
+  return summarizeWeeklyPlanningConversationEvalAiUsage(
+    report.scenarios.flatMap((scenario) => scenario.turns.map((turn) => turn.aiUsage)),
+  );
+}
+
 class ConversationHarness {
   readonly scenario: ScenarioDefinition;
   readonly report: ScenarioReport;
@@ -370,6 +388,7 @@ class ConversationHarness {
   readonly conversationId: string;
   readonly store: ReturnType<typeof createStore>;
 
+  private readonly suite: SuiteReport;
   private readonly session: ReturnType<typeof createWeeklyPlanningControllerSession>;
   private readonly capture: {
     latestResult: WeeklyPlanningTurnExecutionResult | null;
@@ -378,10 +397,11 @@ class ConversationHarness {
   private readonly services: WeeklyPlanningTurnApplicationServices;
   private turnIndex = 0;
 
-  constructor(scenario: ScenarioDefinition, report: ScenarioReport) {
+  constructor(scenario: ScenarioDefinition, report: ScenarioReport, suite: SuiteReport) {
     resetRuntime();
     this.scenario = scenario;
     this.report = report;
+    this.suite = suite;
     this.userId = `real-api-eval-${scenario.manifest.id}`;
     this.conversationId = `weekly-conversation-real-api-${scenario.manifest.id}`;
     this.store = createStore(scenario.weekStartDate);
@@ -488,6 +508,13 @@ class ConversationHarness {
       throw new Error(`Turn ${this.turnIndex} did not expose execution diagnostics.`);
     }
 
+    const trace = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const dialogueRendererTrace = result.dialogueRendererTrace ?? null;
+    const aiUsage = evaluateWeeklyPlanningConversationTurnAiUsage({
+      responseSource: result.responseSource ?? null,
+      semanticTrace: trace,
+      dialogueRendererTrace,
+    });
     const turn: TurnReport = {
       index: this.turnIndex,
       label,
@@ -501,9 +528,12 @@ class ConversationHarness {
       machineQuestion: this.currentQuestion(),
       graph: graphSummary(result.stableV5Graph),
       draftCandidates: [...submission.draftCandidates],
-      trace: takeWeeklyPlanningStableV5DebugTrace(requestId),
+      trace,
+      dialogueRendererTrace,
+      aiUsage,
     };
     this.report.turns.push(turn);
+    writeSuiteArtifacts(this.suite);
 
     if (!submission.accepted) {
       throw new Error(`Turn ${this.turnIndex} was rejected by the controller.`);
@@ -511,6 +541,11 @@ class ConversationHarness {
     if (result.failure) {
       throw new Error(
         `Turn ${this.turnIndex} failed: ${result.failure.code} ${result.failure.traceCode}`,
+      );
+    }
+    if (aiUsage.errors.length > 0) {
+      throw new Error(
+        `Turn ${this.turnIndex} violated real API usage policy: ${aiUsage.errors.join(', ')}`,
       );
     }
     return {
@@ -563,6 +598,7 @@ class ConversationHarness {
       graphRevision: this.latestGraph?.revision ?? null,
       candidates,
     });
+    writeSuiteArtifacts(this.suite);
     return candidates;
   }
 
@@ -632,6 +668,7 @@ class ConversationHarness {
       savedPlans,
     };
     this.report.approval = approval;
+    writeSuiteArtifacts(this.suite);
     return approval;
   }
 }
@@ -974,9 +1011,13 @@ function writeScenarioArtifacts(report: ScenarioReport): void {
   );
 }
 
-function writeSuiteArtifacts(report: SuiteReport): void {
+function prepareSuiteArtifacts(): void {
   rmSync(ARTIFACT_DIR, { recursive: true, force: true });
   mkdirSync(ARTIFACT_DIR, { recursive: true });
+}
+
+function writeSuiteArtifacts(report: SuiteReport): void {
+  report.apiUsage = suiteAiUsage(report);
   report.scenarios.forEach(writeScenarioArtifacts);
   writeFileSync(`${ARTIFACT_DIR}/report.json`, JSON.stringify(report, null, 2));
 
@@ -1002,6 +1043,14 @@ function writeSuiteArtifacts(report: SuiteReport): void {
       `Status: ${report.status}`,
       `Model: ${report.model}`,
       `Generated: ${report.generatedAt}`,
+      `Executed turns: ${report.apiUsage.turnCount}`,
+      `Semantic API requests: ${report.apiUsage.semanticRequestCount}`,
+      `Renderer API requests: ${report.apiUsage.rendererRequestCount}`,
+      `Total API requests: ${report.apiUsage.totalRequestCount}`,
+      `Maximum allowed requests for executed turns: ${report.apiUsage.maximumAllowedRequestCount}`,
+      `All turns used required AI paths: ${report.apiUsage.allTurnsUsedRequiredAiPaths}`,
+      `Within request budget: ${report.apiUsage.withinSuiteRequestBudget}`,
+      `Not run scenarios: ${report.notRunScenarioIds.join(', ') || 'none'}`,
       '',
       'AI API is used only for meaning interpretation and assistant response generation.',
       'Conversation naturalness is reviewed from transcripts by the external development agent.',
@@ -1027,14 +1076,22 @@ describe.skipIf(!shouldRun)(
           scoring: false,
           failureDiagnosis: false,
         },
+        apiUsage: summarizeWeeklyPlanningConversationEvalAiUsage([]),
         scenarios: [],
+        notRunScenarioIds: scenarios.map((scenario) => scenario.manifest.id),
       };
+      prepareSuiteArtifacts();
+      writeSuiteArtifacts(suite);
 
       for (const scenario of scenarios) {
         const report = createScenarioReport(scenario);
         suite.scenarios.push(report);
+        suite.notRunScenarioIds = scenarios
+          .map((candidate) => candidate.manifest.id)
+          .filter((id) => !suite.scenarios.some((executed) => executed.id === id));
+        writeSuiteArtifacts(suite);
         try {
-          const harness = new ConversationHarness(scenario, report);
+          const harness = new ConversationHarness(scenario, report, suite);
           await scenario.run(harness, report);
           const executionErrors = validateWeeklyPlanningConversationEvalScenarioExecution({
             manifest: scenario.manifest,
@@ -1051,18 +1108,30 @@ describe.skipIf(!shouldRun)(
             : String(error);
         } finally {
           resetRuntime();
+          writeSuiteArtifacts(suite);
+        }
+
+        if (!shouldContinueWeeklyPlanningRealEvalAfterScenario(report.status)) {
+          break;
         }
       }
 
-      suite.status = suite.scenarios.every((scenario) => scenario.status === 'passed')
-        ? 'passed'
-        : 'failed';
+      suite.apiUsage = suiteAiUsage(suite);
+      suite.status =
+        suite.scenarios.length === scenarios.length
+        && suite.scenarios.every((scenario) => scenario.status === 'passed')
+        && suite.apiUsage.allTurnsUsedRequiredAiPaths
+        && suite.apiUsage.withinSuiteRequestBudget
+          ? 'passed'
+          : 'failed';
       writeSuiteArtifacts(suite);
       console.info(
         '[weekly-planning-real-api-conversation-suite]',
         JSON.stringify({
           status: suite.status,
           model: suite.model,
+          apiUsage: suite.apiUsage,
+          notRunScenarioIds: suite.notRunScenarioIds,
           scenarios: suite.scenarios.map((scenario) => ({
             id: scenario.id,
             status: scenario.status,
@@ -1074,7 +1143,26 @@ describe.skipIf(!shouldRun)(
       );
 
       const failures = suite.scenarios.filter((scenario) => scenario.status !== 'passed');
-      expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
+      expect(
+        {
+          failures,
+          notRunScenarioIds: suite.notRunScenarioIds,
+          apiUsage: suite.apiUsage,
+        },
+        JSON.stringify({
+          failures,
+          notRunScenarioIds: suite.notRunScenarioIds,
+          apiUsage: suite.apiUsage,
+        }, null, 2),
+      ).toEqual({
+        failures: [],
+        notRunScenarioIds: [],
+        apiUsage: expect.objectContaining({
+          allTurnsUsedRequiredAiPaths: true,
+          withinSuiteRequestBudget: true,
+          errors: [],
+        }),
+      });
     }, 45 * 60 * 1000);
   },
 );
