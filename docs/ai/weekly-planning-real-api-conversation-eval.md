@@ -107,6 +107,35 @@ publicIdとkindでtarget解決
 - 修正後Graphから再計算したpreviewだけ承認できます。
 - 二重承認は既存approval operationで抑止します。
 
+## AI経路と費用境界
+
+real API suiteは構造結果だけでは合格しません。各turnで次を必須にします。
+
+- Stable V5 debug traceに`semantic_provider_request`が1件以上ある。
+- 意味解釈の初回応答が不正な場合に限りrepairを1回許可する。
+- semantic requestは1 turnあたり最大2件。
+- renderer requestは1 turnあたり最大1件。
+- 合計は1 turnあたり最大3件。
+- `responseSource`が`ai`である。
+- renderer traceのresponseが`rendered`、decision branchが`ai_rendered`である。
+
+`deterministic_fallback`、`rules`、`system_message_bypass`で予定まで進めても、自然なAI会話の実API検証としては失敗にします。
+
+suite reportには、実行済みturn数、semantic request数、renderer request数、合計request数、実行済みturnから導出した上限を保存します。token usageは共通AI clientがusage情報を返していないため、現時点では計測しません。
+
+## fail-fastとincremental artifact
+
+最初のfailed scenarioで残りのscenarioを停止します。未実行scenario IDは`report.json`と`report.md`へ残します。これにより、最初の失敗境界を特定する前にAPI費用を追加消費しません。
+
+artifactはsuite終了時だけでなく、次のたびに上書き保存します。
+
+- turn完了時。
+- preview記録時。
+- approval完了時。
+- scenario成功・失敗確定時。
+
+job timeoutやprovider停止が起きても、それ以前に完了したturnのtranscript、trace、renderer trace、AI request集計を保持します。
+
 ## 決定論的foundation
 
 実APIを使わずに次を検証します。
@@ -122,6 +151,7 @@ publicIdとkindでtarget解決
 - preview訂正、stale preview拒否、再preview。
 - owner分離、Stable V5保存昇格、保存拒否時の無損失staging。
 - 訂正traceのサイズ制限、未知field保持、Worker preparation、outbox再送、truncation。
+- real API suiteのAI-only経路、request budget、fail-fast policy。
 
 実行コマンド:
 
@@ -130,6 +160,32 @@ npm run test:weekly-ai:conversation:foundation
 ```
 
 通常CIでは、これに加えて`typecheck`、`typecheck:build`、全Vitest、production build、diff checkを実行します。
+
+## GitHub Actionsの準備
+
+Repository Actions Secretとして`OPENAI_API_KEY`が必要です。コード、workflow入力、artifactへAPI keyを記載してはいけません。
+
+GitHub上では次の場所へ登録します。
+
+```text
+Repository
+→ Settings
+→ Secrets and variables
+→ Actions
+→ New repository secret
+→ Name: OPENAI_API_KEY
+→ Secret: OpenAI API key
+```
+
+Secret未設定時は実API requestを開始せず、次をartifactへ残して停止します。
+
+```json
+{
+  "status": "blocked_missing_secret",
+  "requiredSecret": "OPENAI_API_KEY",
+  "apiRequestsStarted": 0
+}
+```
 
 ## 実API suite
 
@@ -144,7 +200,18 @@ VITE_AI_API_KEY="$OPENAI_API_KEY" \
 npm run test:weekly-ai:conversation:real
 ```
 
-GitHub Actionsでは`Weekly Planning Real API Conversation Eval`を手動実行し、`run_real_api=true`を選びます。foundation jobが成功した場合だけ実API jobへ進みます。
+GitHub Actionsでは次の手順です。
+
+```text
+Actions
+→ Weekly Planning Real API Conversation Eval
+→ Run workflow
+→ Branch: agent/weekly-ai-conversation-eval
+→ run_real_api: true
+→ Run workflow
+```
+
+foundation jobが成功した場合だけ実API jobへ進みます。
 
 単発semantic schemaの4ケースは別の`Weekly Planning Stable V5 Semantic Eval`で手動実行します。廃止中のGitHub Models依存は削除し、OpenAI Chat Completionsと`OPENAI_API_KEY`を使用します。こちらもmodelは`gpt-5.4-mini`固定です。
 
@@ -166,7 +233,7 @@ artifacts/weekly-planning-real-api-conversation-eval/
       failure.txt
 ```
 
-各turnにはユーザー発話、assistant返答、response source、failure code、machine question、target fact、Graph revision、preview候補、Stable V5 debug traceを保存します。
+各turnにはユーザー発話、assistant返答、response source、failure code、machine question、target fact、Graph revision、preview候補、Stable V5 debug trace、dialogue renderer trace、AI request集計を保存します。
 
 会話の自然さは別AIで採点しません。外部開発エージェントが`transcript.md`を読み、定型反復、質問の取り違え、会話停止、不自然な責任転嫁を判断します。API keyとAuthorization headerはartifactへ保存しません。
 
@@ -213,5 +280,7 @@ artifacts/weekly-planning-real-api-conversation-eval/
 - 全Vitest regression suite。
 - production build。
 - pull request diff check。
+- 実API suiteのAI-only経路、request budget、fail-fast pure policy。
+- real suiteへのincremental artifact接続。
 
-決定論的基盤は緑です。実API会話5 scenarioとOpenAI semantic schema 4ケースは、手動workflowをまだ実行していないため未確認です。transcriptの自然さ、OpenAI実応答、API使用量、Production Worker・ブラウザE2Eは成功確認済みとして扱いません。
+実APIworkflowのfoundationは成功しましたが、Repository Actions Secret `OPENAI_API_KEY`が未設定だったため、OpenAI requestは0件です。実API会話5 scenario、OpenAI semantic schema 4ケース、transcriptの自然さ、token usage・実費、Production Worker・ブラウザE2Eは成功確認済みとして扱いません。
