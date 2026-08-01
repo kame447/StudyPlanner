@@ -65,6 +65,7 @@ jobs:
       VITE_AI_PROVIDER: openai
       VITE_AI_BASE_URL: https://api.openai.com/v1
       VITE_AI_MODEL: gpt-5.4-mini
+      VITE_AI_MAX_PROCESS_REQUESTS: '120'
       VITE_CLOUDFLARE_AI_PROXY_URL: ''
 
     steps:
