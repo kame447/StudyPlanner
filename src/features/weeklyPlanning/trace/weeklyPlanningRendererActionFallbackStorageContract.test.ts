@@ -90,7 +90,9 @@ function rendererTrace(): WeeklyPlanningDialogueRendererTrace {
   };
 }
 
-function traceInput(requestId: string) {
+function traceInput(
+  requestId: string,
+): Parameters<typeof recordWeeklyPlanningStableV5TurnTrace>[0] {
   return {
     userId: 'owner-1',
     conversationId: 'conversation-tomorrow',
