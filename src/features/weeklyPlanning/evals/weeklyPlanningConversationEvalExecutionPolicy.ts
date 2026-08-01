@@ -17,6 +17,17 @@ export interface WeeklyPlanningConversationEvalTurnAiUsage {
   errors: string[];
 }
 
+export interface WeeklyPlanningConversationEvalSuiteAiUsage {
+  turnCount: number;
+  semanticRequestCount: number;
+  rendererRequestCount: number;
+  totalRequestCount: number;
+  maximumAllowedRequestCount: number;
+  allTurnsUsedRequiredAiPaths: boolean;
+  withinSuiteRequestBudget: boolean;
+  errors: string[];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -86,4 +97,46 @@ export function maximumWeeklyPlanningRealEvalRequestsForTurns(
     throw new Error(`Invalid turn count: ${turnCount}`);
   }
   return turnCount * WEEKLY_PLANNING_REAL_EVAL_MAX_API_REQUESTS_PER_TURN;
+}
+
+export function summarizeWeeklyPlanningConversationEvalAiUsage(
+  turns: readonly WeeklyPlanningConversationEvalTurnAiUsage[],
+): WeeklyPlanningConversationEvalSuiteAiUsage {
+  const semanticRequestCount = turns.reduce(
+    (total, turn) => total + turn.semanticRequestCount,
+    0,
+  );
+  const rendererRequestCount = turns.reduce(
+    (total, turn) => total + turn.rendererRequestCount,
+    0,
+  );
+  const totalRequestCount = semanticRequestCount + rendererRequestCount;
+  const maximumAllowedRequestCount = maximumWeeklyPlanningRealEvalRequestsForTurns(
+    turns.length,
+  );
+  const allTurnsUsedRequiredAiPaths = turns.every(
+    (turn) => turn.meaningInterpretationUsedAi && turn.assistantResponseUsedAi,
+  );
+  const withinSuiteRequestBudget =
+    turns.every((turn) => turn.withinPerTurnRequestBudget)
+    && totalRequestCount <= maximumAllowedRequestCount;
+  const errors = turns.flatMap((turn, index) =>
+    turn.errors.map((error) => `turn-${index + 1}:${error}`));
+
+  if (totalRequestCount > maximumAllowedRequestCount) {
+    errors.push(
+      `suite-api-request-budget-exceeded:${totalRequestCount}:${maximumAllowedRequestCount}`,
+    );
+  }
+
+  return {
+    turnCount: turns.length,
+    semanticRequestCount,
+    rendererRequestCount,
+    totalRequestCount,
+    maximumAllowedRequestCount,
+    allTurnsUsedRequiredAiPaths,
+    withinSuiteRequestBudget,
+    errors,
+  };
 }
