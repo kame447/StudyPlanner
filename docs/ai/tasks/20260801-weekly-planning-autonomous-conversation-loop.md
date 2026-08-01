@@ -171,6 +171,16 @@ manifestには能力ラベル、固定発話、実行必須発話、必須check�
 
 自己修正: semantic workflowへ一度自由model入力を追加したが、再現性と費用境界を弱めるため削除した。
 
+### Loop 13: 実API preflightとSecret境界
+
+結果: run `30679195853`でfoundationは全面成功したが、実API jobはRepository Secret `OPENAI_API_KEY`が空のためpreflightで停止した。OpenAI API requestは0件で、scenario、transcript、traceは未生成。
+
+原因: コード不具合やPRイベント制限ではなく、Repository Secretが未設定だった。ログ上の`OPENAI_API_KEY`は空で、`Verify OpenAI secret`が明示的に失敗した。
+
+対応: API keyをコード、workflow入力、artifactへ埋める回避は行わなかった。一時的なPR/push triggerは閉じてsentinelを削除し、workflowを手動opt-inへ戻した。今後はSecret不足時も`blocked_missing_secret`、必要Secret名、API request 0件を`report.md`と`report.json`へ残してartifact化する。
+
+思想確認: AI用途、合格条件、scenario期待値、製品コードを変更していない。外部設定不足を会話品質の失敗として扱わず、Secret設定後に同じ5 scenarioを再実行する。
+
 ## GitHub Actions結果
 
 複数ループで次を確認した。
@@ -180,8 +190,10 @@ manifestには能力ラベル、固定発話、実行必須発話、必須check�
 - production build: success。
 - pull request diff check: success。
 - 旧GitHub Models workflowが最新commitで自動起動しないこと: 確認済み。
+- 実API会話workflow foundation: success。
+- 実API会話OpenAI request: Secret未設定のため0件。
 
-CI run `30655265106`、`30655874845`、`30656198296`はsuccess。最後のrunではTypeScript、全test、build、diff checkがすべて成功した。
+主な成功runは`30658884680`、`30678971529`、`30679056181`、`30679370452`。run `30679195853`はfoundation成功、実API jobは`blocked_missing_secret`相当で停止した。
 
 ## 現在の到達点
 
@@ -198,6 +210,8 @@ CI run `30655265106`、`30655874845`、`30656198296`はsuccess。最後のrunで
 - trace永続化gate。
 - 通常CIのTypeScript、全test、build、diff success。
 - 廃止済みGitHub ModelsからOpenAI手動evalへの移行。
+- 実API workflowの決定論的foundation完走。
+- Secret不足時の明示的preflight停止とartifact定義。
 
 未確認:
 
@@ -208,11 +222,16 @@ CI run `30655265106`、`30655874845`、`30656198296`はsuccess。最後のrunで
 - Production Worker、Firebase auth、ブラウザDOM、Playwright E2E。
 - merge前のcommit squash。
 
+現在のblocker:
+
+- Repository Actions Secret `OPENAI_API_KEY`が未設定。
+
 ## 次の順序
 
-1. `Weekly Planning Real API Conversation Eval`を`run_real_api=true`で手動実行する。
-2. 5 scenarioのartifactとtranscriptを七視点監査する。
-3. 最初に壊れた境界だけを同じbranchで修正する。
-4. 会話suite通過後、`Weekly Planning Stable V5 Semantic Eval`の4ケースを実行する。
-5. 実API結果をこの台帳とPR本文へ追記する。
-6. 未確認のProduction・ブラウザ境界はIssue #108または関連Issueで継続する。
+1. Repository Actions Secretへ`OPENAI_API_KEY`を設定する。
+2. `Weekly Planning Real API Conversation Eval`を`run_real_api=true`で手動実行する。
+3. 5 scenarioのartifactとtranscriptを七視点監査する。
+4. 最初に壊れた境界だけを同じbranchで修正する。
+5. 会話suite通過後、`Weekly Planning Stable V5 Semantic Eval`の4ケースを実行する。
+6. 実API結果をこの台帳とPR本文へ追記する。
+7. 未確認のProduction・ブラウザ境界はIssue #108または関連Issueで継続する。
