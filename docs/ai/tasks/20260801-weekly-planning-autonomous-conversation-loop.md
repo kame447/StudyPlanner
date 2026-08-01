@@ -181,6 +181,22 @@ manifestには能力ラベル、固定発話、実行必須発話、必須check�
 
 思想確認: AI用途、合格条件、scenario期待値、製品コードを変更していない。外部設定不足を会話品質の失敗として扱わず、Secret設定後に同じ5 scenarioを再実行する。
 
+### Loop 14: 実API suiteのAI経路・費用・artifact境界
+
+問題: 既存suiteはrendererがdeterministic fallbackへ落ちても構造checkだけで通り得た。1 scenario失敗後も残りを実行し、artifactはsuite終了時まで書かれなかった。
+
+原因: real-eval専用のAI経路contract、request集計、fail-fast、incremental writeが独立した実行ポリシーとして存在しなかった。
+
+対応: 1 turnあたり意味解釈は最大2 request、返答生成は最大1 request、合計最大3 requestとするpure policyを追加した。semantic traceの`semantic_provider_request`とrenderer traceを検査し、全turnで意味解釈AIと`ai_rendered`返答AIの両方を必須化した。fallback、bypass、system responseはreal API会話成功として扱わない。
+
+運用: 最初のfailed scenarioで残りを停止し、未実行scenario IDをreportへ残す。turn、preview、approvalの更新ごとにscenario・suite artifactを書き、途中timeoutでも完了済みturnのtranscript、trace、AI usageを保持する。
+
+費用: 実行済みturnだけからsemantic request、renderer request、合計request、許容上限を集計する。上限超過またはAI経路違反はsuite failureとする。token usageは共通clientが返していないため未計測のまま明記する。
+
+確認: pure policy testとreal suite接続後、CI run `30679774395`、`30679922354`、`30680110265`でTypeScript、全Vitest、production build、diff checkが全面成功した。実API requestはSecret未設定のためまだ0件。
+
+思想確認: AI judgeやAI採点は追加していない。機械判定はAPI経路、request上限、状態・保存整合だけで、自然さはtranscriptを外部開発エージェントが読む。
+
 ## GitHub Actions結果
 
 複数ループで次を確認した。
@@ -192,8 +208,9 @@ manifestには能力ラベル、固定発話、実行必須発話、必須check�
 - 旧GitHub Models workflowが最新commitで自動起動しないこと: 確認済み。
 - 実API会話workflow foundation: success。
 - 実API会話OpenAI request: Secret未設定のため0件。
+- 実API suiteのAI経路・request budget・fail-fast pure policy: success。
 
-主な成功runは`30658884680`、`30678971529`、`30679056181`、`30679370452`。run `30679195853`はfoundation成功、実API jobは`blocked_missing_secret`相当で停止した。
+主な成功runは`30658884680`、`30678971529`、`30679056181`、`30679370452`、`30679522816`、`30679774395`、`30679922354`、`30680110265`。run `30679195853`はfoundation成功、実API jobは`blocked_missing_secret`相当で停止した。
 
 ## 現在の到達点
 
@@ -212,13 +229,14 @@ manifestには能力ラベル、固定発話、実行必須発話、必須check�
 - 廃止済みGitHub ModelsからOpenAI手動evalへの移行。
 - 実API workflowの決定論的foundation完走。
 - Secret不足時の明示的preflight停止とartifact定義。
+- real suiteのAI-only経路検査、request budget、fail-fast、incremental artifact。
 
 未確認:
 
 - 実API会話5 scenarioの完走。
 - OpenAI semantic schema 4ケースの実行結果。
 - transcriptの自然さ。
-- API request数、token usage、費用実測。
+- token usageと実費。
 - Production Worker、Firebase auth、ブラウザDOM、Playwright E2E。
 - merge前のcommit squash。
 
