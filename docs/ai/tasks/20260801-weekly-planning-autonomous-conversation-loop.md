@@ -1,255 +1,216 @@
 # 週間計画AI 自走会話改善ループ
 
-Status: active
-Date: 2026-08-01
-Issue: #108
-PR: #109
+Status: active  
+Date: 2026-08-01  
+Issue: #108  
+PR: #109  
 Branch: `agent/weekly-ai-conversation-eval`
 
 ## 目的
 
-人間がStudyPlannerへ毎回発話を入力してtraceを渡す作業を減らす。
-実際の週間計画AI application経路を複数ターン実行し、会話開始、質問、誤回答、明示的修復、preview訂正、承認、保存まで確認する。
-失敗時は外部開発エージェントがtranscript、trace、状態差分を読み、同じIssue・branch・Draft PRで原因単位の修正を続ける。
+Stable V5の実API経路を複数ターン動かし、質問、誤回答、明示的修復、preview訂正、再preview、承認、保存まで自動確認する。
+人間による毎回の入力とtrace受け渡しを減らす。
 
-## 思想境界
+## 固定方針
 
-- applicationから到達する週間計画runtimeはStable V5だけとする。
+- application経路はStable V5のみ。
 - AI APIは意味解釈と利用者向け返答生成だけに使う。
-- テスト発話、ユーザー役、採点、合否判定、原因推定にはAIを使わない。
-- assistant表示文面の部分一致で会話状態を推定しない。
-- 特定発話だけを通す正規表現、固定patch、期待値緩和、test削除で通さない。
-- 訂正targetを推測せず、exact public IDかuncertaintyを使う。
-- previewは承認前に確認可能で、訂正後の旧previewは承認できない。
-- 保存移行で利用者データを黙って捨てない。
-- 実APIの一時障害を決定論的CIの失敗と混同しない。
-- 実装者自身の説明を信用せず、各ループで七視点監査とActions結果を確認する。
+- ユーザー役、採点、合否判定、原因推定にはAIを使わない。
+- 会話状態をassistant文面の部分一致で推定しない。
+- 特定発話だけの例外、test削除、期待値緩和で通さない。
+- 訂正対象はexact public IDで解決し、曖昧なら推測しない。
+- preview訂正後の旧previewは承認不可。
+- owner切替、再読込、保存失敗でデータを黙って失わない。
+- 各ループで七視点監査を行い、自分の実装説明を信用しない。
 
 ## 七視点
 
-1. runtime入口: legacy downgradeや別経路が残っていないか。
-2. 対話進行: 質問対象、回答、停止条件、定型反復が正しいか。
-3. 意味状態: Fact Graph、revision、pending question、target identityが整合するか。
-4. 訂正・preview lifecycle: rollback、stale preview、再preview、承認が原子的か。
-5. テスト妥当性: scenarioが実際に能力を検査し、過学習していないか。
-6. 観測・再現性: trace、artifact、manifest、失敗境界が復元可能か。
-7. 運用・安全性: API費用、secret、CI trigger、owner分離、保存失敗が安全か。
+1. runtime入口
+2. 対話進行
+3. 意味状態・Fact Graph
+4. 訂正・preview lifecycle
+5. テスト妥当性・過学習
+6. trace・artifact・再現性
+7. API費用・Secret・保存・運用安全性
 
 ## 1ループ
 
 ```text
 七視点監査
 → 最初の失敗境界を1つに絞る
-→ 原因仮説を立てる
-→ 最小修正と強い回帰test
+→ 原因調査
+→ 最小修正と回帰test
 → GitHub Actions
-→ logとartifactを再監査
+→ log / artifact再監査
 → 思想整合を確認
-→ 次ループ
+→ 台帳更新
 ```
 
-同じ失敗へ複数の推測修正をまとめて入れない。Actions実行中は追加修正を重ねず、結果を待ってから次へ進む。
+Actions実行中は次の変更を重ねない。
 
-## 完了条件
+## scenario
 
-- 自然な複数ターン会話でpreviewまで進める。
-- 誤回答を別taskとして採用せず、聞き返しと明示的修復で復帰できる。
-- 複数taskで質問・訂正targetを取り違えない。
-- preview後訂正で旧previewを無効化し、修正版だけ承認できる。
-- 承認、保存、二重承認抑止まで通る。
-- 類似表現、非学習task、別日付でも同じ構造が成立する。
-- transcriptで不自然な定型反復、会話停止、責任転嫁がない。
-- URL、storage、environment、UIからlegacy runtimeへ切り替えられない。
-- traceがclient、outbox、Worker、server size gateを通過する。
-- owner切替、再読込、保存拒否でも他人のstate混入とデータ消失がない。
-
-## scenario群
-
-1. 明日の自然な複数ターン計画、既存予定回避、承認、保存。
-2. 別表現、来週、非学習task、承認、保存。
-3. 誤った単位回答、聞き返し、明示的修復、承認、保存。
-4. 英語と数学のtargetを取り違えない複数訂正、承認、保存。
-5. preview後の作業量訂正、旧preview無効化、再preview、承認、保存。
-
-manifestには能力ラベル、固定発話、実行必須発話、必須checkを持たせる。実際のtranscriptとcheckがmanifestからずれた場合は失敗とする。
+1. 明日の自然な複数ターン計画と既存予定回避。
+2. 来週・別表現・非学習task。
+3. 誤単位回答からの明示的修復。
+4. 英語と数学の複数target訂正。
+5. preview後訂正、旧preview無効化、再preview。
 
 ## ループ記録
 
-### Loop 0: 1 scenario直書きの解消
+### Loop 0: 1 scenario直書き
 
-問題: 初期実装は「明日の予定」1本だけで、修復、複数target、preview後訂正を表現できなかった。
+問題: 「明日の予定」1本だけだった。  
+対応: scenario registryと複数phaseへ分離。  
+結果: 修復・複数target・preview後訂正を表現可能。
 
-対応: scenario registry、決定論的user driver、複数scenario artifact、preview後phaseへ分離した。
+### Loop 1: APIなしで基盤を検証できない
 
-### Loop 1: 決定論的foundation分離
+問題: driver、判定、transcriptが実API testに混在。  
+対応: pure driver、contract、manifest、fake adapter testへ分離。  
+結果: foundationをAPIなしで実行可能。
 
-問題: 実API testへdriver、判定、transcript生成が混在し、APIなしでは基盤自体を検証できなかった。
+### Loop 2: cross-turn訂正がFact化だけで止まる
 
-対応: conversation driver、停止検出、transcript renderer、修復contract、preview訂正contract、scenario manifest、fake adapter testを純粋ロジックとして分離した。
+問題: correction intentを旧Factへ適用していなかった。  
+対応: target解決、replacement再接続、supersede、重複container除去、rollbackを追加。  
+結果: 単一・複数task訂正をschedulerまで反映。
 
-### Loop 2: cross-turn訂正の接続
+### Loop 3: 誤単位回答が別task化される
 
-問題: correction intentはFact化できても、通常semantic pipelineがlifecycle transactionを適用していなかった。
+問題: 「3ページです」が新規task/workloadへ流れ得た。  
+対応: contextual replyを`not_contextual / incompatible / applied`へ分類。  
+結果: Factを増やさず同じtargetへ聞き返し、「3時間です」で復帰。
 
-対応: public ID target解決、replacement再接続、旧Fact supersede、correction intent consume、現在turnの重複container除去、失敗時rollbackを行うgeneric correction applicationを追加した。
+### Loop 4: preview消去後も`draft_created`
 
-確認: 単一workload訂正、英語と数学の同時訂正、不明target rollback、scheduler反映を決定論的testへ追加した。
+問題: preview実体0件でもmodeだけ残った。  
+対応: preview・draft実体からmodeを再計算。  
+結果: 訂正後は`collecting_tasks`、再preview後は`draft_created`。
 
-### Loop 3: 誤単位回答の明示的修復
+### Loop 5: legacyへ戻れる入口
 
-問題: 所要時間質問へ「3ページです」と答えると、通常canonicalizerが別taskまたはworkloadとして追加し得た。
+問題: env、URL、storage、UIからlegacyを選択できた。  
+対応: getter/setterをStable V5固定、切替UI削除。  
+結果: legacy実装は内部test-supportだけに残した。
 
-対応: contextual replyを`not_contextual`、`incompatible`、`applied`へ分類した。型不一致はFactを増やさずturnだけ記録し、同じtargetの不足を維持する。
+### Loop 6: 初回Actions型エラー
 
-確認: 「3ページです」後に「3時間です」で元の数学40問へ180分を適用し、task/workloadが増えないpipeline testを追加した。
+問題: eval用interfaceと非同期captureで13件の型エラー。  
+対応: `any`やstrict緩和を使わず型境界を明示。  
+結果: TypeScript checks通過。
 
-### Loop 4: preview訂正後のmode整合
+### Loop 7: revisionだけ増える無限会話
 
-問題: previewを空にしても`draft_created`が残り得た。
+問題: 同じ質問・同じ回答でもrevision増加で停止検出を回避。  
+対応: question code、target、正規化回答のattempt signatureを追加。  
+結果: 同一回答は停止し、修正回答は許可。
 
-対応: preview候補、draft block、会話状態からcommit後modeを再計算した。旧preview消去後は`collecting_tasks`、再preview後は`draft_created`とする。
+### Loop 8: manifestと実行内容のずれ
 
-確認: 旧revision承認拒否、再previewだけ承認可能なapplication lifecycle testを追加した。
+問題: 能力ラベルを書いても実際に発話・checkを実行した保証がない。  
+対応: 必須発話順と必須checkをmanifestへ追加。  
+結果: transcriptとmanifestのずれを失敗扱い。
 
-### Loop 5: Stable V5 runtime固定
+### Loop 9: 訂正traceの保存未検証
 
-問題: environment、URL、session storage、会話画面、設定画面からlegacyへ戻せた。
+問題: 新しいdiagnosticのサイズ・再送・Worker保存が未検証。  
+対応: 48KB client、64KB server、outbox、unknown field、truncation testを追加。  
+結果: 巨大Graphを保存せずbounded diffを保持。
 
-対応: getterとsetterをStable V5へ固定し、legacy選択UIを削除した。legacy実装はdirect test-supportとして内部に残す。
+### Loop 10: Stable V5固定後の保存消失
 
-確認: legacy query・storage・setterでもStable V5になるtestとUI不在testを追加した。
+問題: session scope確立前や保存拒否時にstateが消えた。  
+対応: owner付きstaging、Stable V5昇格、失敗時退避、成功時のみ旧key削除。  
+結果: owner A/B、再読込、runtime lossを回帰固定。
 
-### Loop 6: Actions初回監査
+### Loop 11: 消失pending targetの再解釈
 
-結果: 初回CIは13件のTypeScript errorで停止した。製品仕様の失敗ではなく、eval用interfaceと非同期captureの型境界だった。
+問題: target不在でも「3時間です」を新規task化し得た。  
+対応: pipeline全体で原子的`canonicalization_rejected`。  
+結果: Graph、revision、applied turnを変更しない。
 
-対応: `any`化、strict緩和、test除外を行わず、具体interfaceと非同期callback後のread境界を明示した。
+### Loop 12: 廃止中GitHub ModelsでPRが赤い
 
-外部障害: 旧Semantic EvalはGitHub Models廃止brownoutのHTTP 410で失敗した。製品精度として扱わず、期待値も緩めなかった。
+問題: 外部410を製品回帰へ混在。  
+対応: 自動PR triggerを削除し、OpenAI手動evalへ移行。  
+結果: 決定論的CIと実API診断を分離。
 
-### Loop 7: 意味的な会話反復
+### Loop 13: 実API preflight
 
-問題: Graph revisionだけ増えると、同じquestion targetへ同じ回答を返し続けても状態signatureが変わり、停止検出をすり抜けた。
+結果: run `30679195853`でfoundation成功。Secret確認で停止。  
+原因: Repository Secret `OPENAI_API_KEY`未設定。  
+API request: 0件。  
+対応: keyをコードへ埋めず、`blocked_missing_secret` artifactを定義。
 
-対応: question code、target fact、正規化済み回答のattempt signatureを追加した。回答内容を変えた修復は許可する。
+### Loop 14: real suiteの安全性不足
 
-確認: revisionだけ増える同一回答を1回で停止し、「3ページ」から「3時間」への変更は通すtestを追加した。
+問題: fallbackでも通り得る、失敗後も残りを実行、artifactが最後まで残らない。  
+対応: AI-only経路検査、1 turn最大3 request、fail-fast、incremental artifact。  
+結果: 実行済みturnと未実行scenarioをreportへ保存。
 
-### Loop 8: scenario manifest drift
+### Loop 15: mainとの差分同期
 
-問題: manifestへ発話と能力を書いても、suiteが実際にその発話とcheckを実行した保証がなかった。
+問題: branchはmainより履歴上1 commit遅れ、手動workflowはbranch単体をcheckoutする。  
+対応: mainの起動再マウント修正8ファイルの内容をbranchへ同期。週間計画testはPR追加分を保持し、mainの型修正だけ統合。  
+結果: run `30680860590`で型、全test、build、diff check成功。  
+注記: connectorに安全なbranch merge操作がないため履歴上の`behind 1`表示は残るが、対象内容は同期済み。
 
-対応: `requiredUserUtterancesInOrder`と`requiredChecks`を追加し、suite終了時に実行結果との一致を検証した。
+### Loop 16: API費用上限
 
-### Loop 9: 訂正trace永続化gate
-
-問題: 新しい訂正diagnosticがclient size、outbox、Worker preparation、未知field、truncationを通る回帰がなかった。
-
-対応: 巨大Graph非保存、canonicalization diff保持、未知sentinel保持、48KB client target、64KB server limit、初回失敗outbox再送、大容量truncationを1本のintegration testで固定した。
-
-### Loop 10: Stable V5保存移行
-
-問題: runtime固定後、Stable V5 scope確立前の保存が黙って失われ、owner storageとapplication統合testが破れた。
-
-対応: owner付きstaging envelopeを移行入力として残し、scope確立後にStable V5 envelopeへ昇格する。Stable V5保存が拒否された場合はstagingへ退避し、成功時だけ旧keyを削除する。
-
-確認: owner A/B分離、legacy v2移行、Stable V5昇格、保存拒否後の再読込、runtime loss後のstale preview拒否を追加・更新した。
-
-### Loop 11: 消失pending targetの原子的拒否
-
-問題: binder単体がtarget不在を適用しなくても、後続の通常canonicalizerが「3時間です」を新規taskとして採用し得た。
-
-対応: machine-selected targetがGraphに存在しないminimal replyは、Graph、revision、applied turnを変えない`canonicalization_rejected`へ昇格した。
-
-確認: 正常な誤単位修復を維持しつつ、消失targetだけpipeline全体でrollbackするtestを追加した。
-
-### Loop 12: Actions運用境界
-
-問題: 旧Semantic EvalがPRごとに廃止中のGitHub Modelsへ接続し、HTTP 410で無関係な赤を作っていた。
-
-対応: PR自動triggerを削除し、評価4ケースと厳格なmetricsは残したままOpenAI Chat Completionsの手動workflowへ移した。会話suiteも手動opt-inとし、modelは両方`gpt-5.4-mini`固定、secretはstep環境だけへ渡す。
-
-自己修正: semantic workflowへ一度自由model入力を追加したが、再現性と費用境界を弱めるため削除した。
-
-### Loop 13: 実API preflightとSecret境界
-
-結果: run `30679195853`でfoundationは全面成功したが、実API jobはRepository Secret `OPENAI_API_KEY`が空のためpreflightで停止した。OpenAI API requestは0件で、scenario、transcript、traceは未生成。
-
-原因: コード不具合やPRイベント制限ではなく、Repository Secretが未設定だった。ログ上の`OPENAI_API_KEY`は空で、`Verify OpenAI secret`が明示的に失敗した。
-
-対応: API keyをコード、workflow入力、artifactへ埋める回避は行わなかった。一時的なPR/push triggerは閉じてsentinelを削除し、workflowを手動opt-inへ戻した。今後はSecret不足時も`blocked_missing_secret`、必要Secret名、API request 0件を`report.md`と`report.json`へ残してartifact化する。
-
-思想確認: AI用途、合格条件、scenario期待値、製品コードを変更していない。外部設定不足を会話品質の失敗として扱わず、Secret設定後に同じ5 scenarioを再実行する。
-
-### Loop 14: 実API suiteのAI経路・費用・artifact境界
-
-問題: 既存suiteはrendererがdeterministic fallbackへ落ちても構造checkだけで通り得た。1 scenario失敗後も残りを実行し、artifactはsuite終了時まで書かれなかった。
-
-原因: real-eval専用のAI経路contract、request集計、fail-fast、incremental writeが独立した実行ポリシーとして存在しなかった。
-
-対応: 1 turnあたり意味解釈は最大2 request、返答生成は最大1 request、合計最大3 requestとするpure policyを追加した。semantic traceの`semantic_provider_request`とrenderer traceを検査し、全turnで意味解釈AIと`ai_rendered`返答AIの両方を必須化した。fallback、bypass、system responseはreal API会話成功として扱わない。
-
-運用: 最初のfailed scenarioで残りを停止し、未実行scenario IDをreportへ残す。turn、preview、approvalの更新ごとにscenario・suite artifactを書き、途中timeoutでも完了済みturnのtranscript、trace、AI usageを保持する。
-
-費用: 実行済みturnだけからsemantic request、renderer request、合計request、許容上限を集計する。上限超過またはAI経路違反はsuite failureとする。token usageは共通clientが返していないため未計測のまま明記する。
-
-確認: pure policy testとreal suite接続後、CI run `30679774395`、`30679922354`、`30680110265`でTypeScript、全Vitest、production build、diff checkが全面成功した。実API requestはSecret未設定のためまだ0件。
-
-思想確認: AI judgeやAI採点は追加していない。機械判定はAPI経路、request上限、状態・保存整合だけで、自然さはtranscriptを外部開発エージェントが読む。
-
-## GitHub Actions結果
-
-複数ループで次を確認した。
-
-- TypeScript checks: success。
-- 全Vitest regression suite: success。
-- production build: success。
-- pull request diff check: success。
-- 旧GitHub Models workflowが最新commitで自動起動しないこと: 確認済み。
-- 実API会話workflow foundation: success。
-- 実API会話OpenAI request: Secret未設定のため0件。
-- 実API suiteのAI経路・request budget・fail-fast pure policy: success。
-
-主な成功runは`30658884680`、`30678971529`、`30679056181`、`30679370452`、`30679522816`、`30679774395`、`30679922354`、`30680110265`。run `30679195853`はfoundation成功、実API jobは`blocked_missing_secret`相当で停止した。
-
-## 現在の到達点
-
-完了済み:
-
-- Stable V5 application runtime固定。
-- 5 scenarioの決定論的会話driver。
-- 状態反復と意味的反復の停止。
-- cross-turn訂正のgeneric lifecycle application。
-- 誤単位回答からの明示的修復。
-- 消失pending targetの原子的拒否。
-- preview訂正、旧preview無効化、stale承認拒否、再preview。
-- owner付きstorage移行と保存失敗時staging。
-- trace永続化gate。
-- 通常CIのTypeScript、全test、build、diff success。
-- 廃止済みGitHub ModelsからOpenAI手動evalへの移行。
-- 実API workflowの決定論的foundation完走。
-- Secret不足時の明示的preflight停止とartifact定義。
-- real suiteのAI-only経路検査、request budget、fail-fast、incremental artifact。
-
-未確認:
-
-- 実API会話5 scenarioの完走。
-- OpenAI semantic schema 4ケースの実行結果。
+問題: 16 turn × 5 scenario × 3 requestで理論上240 requestだった。report判定だけではfetchを物理停止できなかった。  
+対応:
+
+- 共通driverを1 scenario最大8 turnへ制限。
+- suite最大40 turn、120 requestをcontract化。
+- 共通AI clientへ任意のprocess request circuit breakerを追加。
+- 会話workflowは`VITE_AI_MAX_PROCESS_REQUESTS=120`。
+- semantic 4ケースworkflowは`VITE_AI_MAX_PROCESS_REQUESTS=12`。
+- 上限到達後はfetch前に拒否。
+
+結果: run `30681177783`、`30681406369`、`30681543550`、`30681654965`で型、全test、build、diff check成功。  
+思想確認: Productionでは環境変数未設定のためbudget機構は無効。
+
+## Actions確認済み
+
+- TypeScript checks: success
+- 全Vitest regression suite: success
+- production build: success
+- diff check: success
+- real API workflow foundation: success
+- AI-only経路・request budget・fail-fast policy: success
+- main内容同期後のbranch単体CI: success
+
+## 現在できること
+
+- Stable V5だけでapplication会話を実行。
+- 5 scenarioを決定論的に自走。
+- 誤回答から聞き返し・修復。
+- 複数task訂正。
+- preview後訂正とstale承認拒否。
+- 承認、保存、二重承認抑止。
+- turnごとのtranscript、trace、renderer trace、request数をartifact保存。
+- 最初の失敗で停止。
+- 会話suite最大120 request、semantic suite最大12 requestで物理停止。
+
+## 未確認
+
+- OpenAI実API会話5 scenario。
+- OpenAI semantic schema 4ケース。
 - transcriptの自然さ。
 - token usageと実費。
 - Production Worker、Firebase auth、ブラウザDOM、Playwright E2E。
 - merge前のcommit squash。
 
-現在のblocker:
+## 現在のblocker
 
-- Repository Actions Secret `OPENAI_API_KEY`が未設定。
+Repository Actions Secret `OPENAI_API_KEY`が未設定。
 
-## 次の順序
+## Secret設定後の順序
 
-1. Repository Actions Secretへ`OPENAI_API_KEY`を設定する。
-2. `Weekly Planning Real API Conversation Eval`を`run_real_api=true`で手動実行する。
-3. 5 scenarioのartifactとtranscriptを七視点監査する。
-4. 最初に壊れた境界だけを同じbranchで修正する。
-5. 会話suite通過後、`Weekly Planning Stable V5 Semantic Eval`の4ケースを実行する。
-6. 実API結果をこの台帳とPR本文へ追記する。
-7. 未確認のProduction・ブラウザ境界はIssue #108または関連Issueで継続する。
+1. `Weekly Planning Real API Conversation Eval`をbranch `agent/weekly-ai-conversation-eval`、`run_real_api=true`で実行。
+2. artifactとtranscriptを七視点監査。
+3. 最初の失敗境界だけ修正。
+4. 会話suite通過後にsemantic 4ケースを実行。
+5. 台帳とPR本文を更新。
+6. 最終レビュー後にcommitをsquash。
