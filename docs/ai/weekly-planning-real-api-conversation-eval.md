@@ -2,16 +2,25 @@
 
 ## 目的
 
-この基盤は、人間がStudyPlannerへ発話を繰り返し入力してtraceを手動で書き出す作業を減らすためのものです。
-本番の週間計画application経路を固定scenarioで複数ターン実行し、質問、誤回答、明示的修復、preview、preview後訂正、再preview、承認、保存までを一続きで確認します。
+人間がStudyPlannerへ毎回発話を入力し、traceを手動で渡す作業を減らす。
+Stable V5のapplication経路を複数ターン実行し、質問、誤回答、明示的修復、preview、preview後訂正、再preview、承認、保存まで確認する。
 
-単発のStructured Outputを確認するsemantic real-evalとは役割を分けます。会話suiteは`submitWeeklyPlanningApplicationTurn`、controller、`executeWeeklyPlanningTurn`、Stable V5 runtime、scheduler、preview、approval applicationを再利用します。
+## 固定方針
 
-## 実行経路
+- applicationから到達する週間計画runtimeはStable V5のみ。
+- legacy実装は内部test-supportとして保持するが、env、URL、storage、UIからは選択できない。
+- AI APIは意味解釈と利用者向け返答生成だけに使う。
+- ユーザー役、採点、合否判定、原因推定にはAIを使わない。
+- assistant文面の部分一致で状態を推定しない。
+- 特定発話向けpatch、test削除、期待値緩和で通さない。
+- 会話の自然さは別AIで採点せず、外部開発エージェントがtranscriptを読む。
+
+## 対象経路
 
 ```text
 固定scenarioと決定論的user driver
-→ application / controller
+→ submitWeeklyPlanningApplicationTurn
+→ controller
 → executeWeeklyPlanningTurn
 → 意味解釈AI
 → schema validation / repair
@@ -20,152 +29,164 @@
 → scheduler
 → 返答生成AI
 → preview
-→ 訂正turn / Graph revision更新
-→ 旧preview無効化
-→ 再preview
+→ 訂正 / stale preview無効化 / 再preview
 → draft block promotion
 → approval application
-→ test repositoryへ保存
+→ test repository保存
 → duplicate suppression / completion
 ```
 
-AI APIを使うのは、ユーザー発話の意味解釈と利用者向け返答生成だけです。テスト発話生成、ユーザー役、採点、合否判定、原因推定、修正判断には使用しません。
+ブラウザDOM、Firebase login UI、Production deployそのものは対象外とする。
 
-## Stable V5 runtime境界
-
-applicationから到達する週間計画runtimeはStable V5へ固定しています。
-
-- environment variable、URL query、session storageからlegacyへ変更できません。
-- runtime setterへ`legacy`を渡してもStable V5へ正規化します。
-- 会話画面と設定画面からlegacy選択UIを削除しています。
-- legacy実装とdirect test-supportは削除せず、application経路からだけ隔離しています。
-
-旧保存形式はruntime選択には使いません。Stable V5 session scope確立前、またはStable V5 envelope保存が検証で拒否された場合のowner付きstagingと既存利用者データ移行にだけ使用します。Stable V5保存成功後はstaging keyを削除します。
-
-## scenario群
-
-現在は次の5本を定義しています。
+## scenario
 
 1. 明日の自然な複数ターン計画、既存予定回避、承認、保存。
-2. 別表現、来週、非学習タスク、承認、保存。
-3. 誤った単位回答、聞き返し、明示的修復、承認、保存。
-4. 英語と数学の対象を取り違えない複数訂正、承認、保存。
-5. preview後の作業量訂正、旧preview無効化、再preview、承認、保存。
+2. 来週・別表現・非学習task。
+3. 誤単位回答からの明示的修復。
+4. 英語と数学の複数target訂正。
+5. preview後訂正、旧preview無効化、再preview。
 
-各scenarioのユーザー役は固定発話と決定論的state machineです。assistant表示文面の部分一致ではなく、machine question code、target fact、Graph revision、preview状態を使います。
+ユーザー役は固定発話と決定論的state machineで動く。
+machine question code、target fact、Graph revision、preview状態を参照する。
+manifestの必須発話順と必須checkが実行結果と一致しない場合は失敗とする。
 
-scenario manifestには、能力ラベルだけでなく、実行必須発話と必須checkを持たせています。実際のtranscriptとcheckがmanifestからずれた場合は、scenarioが成功していてもsuiteを失敗させます。
+## 対話停止と修復
 
-## 会話停止検出
+次を別々に検出する。
 
-次の2種類を別々に検出します。
+- question、target、action、revision、preview数が変わらない状態反復。
+- revisionだけ増え、同じquestion targetへ同じ回答を繰り返す意味的反復。
 
-- question code、target、action、Graph revision、preview数が同一のまま繰り返す状態反復。
-- Graph revisionだけ増えても、同じquestion targetへ同じ固定回答を再送する意味的反復。
+所要時間質問への「3ページです」のような型不一致はtaskやworkloadとして採用しない。
+同じtargetを維持して聞き返し、その後の「3時間です」を元のtargetへ適用する。
 
-後者を検出することで、誤回答をno-op turnとして記録し続け、最大turn数までAPIを消費する状態を防ぎます。回答内容を修正した場合は同じtargetへの再回答を許可します。
+machine-selected targetがGraphから消失している場合は、通常canonicalizerへ流さず、Graph、revision、applied turnを変えない`canonicalization_rejected`とする。
 
-## 明示的修復
+## 訂正とpreview lifecycle
 
-pending questionへの短答は次へ分類します。
-
-```text
-not_contextual
-incompatible
-applied
-```
-
-所要時間質問へ「3ページです」と答えたような型不一致では、taskやworkloadを増やさず、質問targetを維持します。その後の「3時間です」は元のtargetへ適用します。
-
-machine-selected targetがGraphから消失している場合は、利用者の誤回答として消費しません。通常canonicalizerへ流して新規タスク化することもせず、Graph、revision、applied turnを変更しない`canonicalization_rejected`として原子的に停止します。
-
-## 訂正の構造契約
-
-意味解釈AIには、active Graph上の公開可能なFactと訂正契約を渡します。taskとcomponentはworkload等の所属文脈を特定するためにも提示します。
-
-明示的な訂正では、対象Factのexact `publicId`とkindをcorrection targetへ設定します。replacementは現在turnで新しく述べられたFactだけです。対象を一意に決められない場合は推測せず、uncertaintyとして返します。
-
-canonicalization後はgeneric correction applicationが次を行います。
+明示的訂正ではexact `publicId`とkindで対象を解決する。
+対象が一意でなければ推測せずuncertaintyを返す。
 
 ```text
 publicIdとkindでtarget解決
 → replacementを既存containerへ再接続
 → 旧Factをsupersede
 → correction intentをconsume
-→ 現在turnだけの重複containerをremove
-→ schedulerへ修正後active Graphを渡す
+→ 現在turnの重複containerをremove
+→ schedulerへ修正後Graphを渡す
 ```
 
-途中でtarget解決、replacement整合、lifecycle操作のいずれかに失敗した場合は、訂正turn前のGraphへ戻し、schedulerへ不完全なGraphを渡しません。
+途中失敗時は訂正turn前のGraphへrollbackする。
 
-## preview訂正
+preview後の訂正では旧previewを消去し、modeをpreview・draft実体から再計算する。
+旧revisionのdraft blockは承認できず、修正後Graphから作ったpreviewだけ承認できる。
+二重承認はapproval operationで抑止する。
 
-訂正turnでは旧previewを空にし、modeをpreview・draft実体から再計算します。
+## AI経路の合格条件
 
-- 旧preview消去後は`collecting_tasks`へ戻ります。
-- 旧Graph revisionのdraft blockは承認できません。
-- 修正後Graphから再計算したpreviewだけ承認できます。
-- 二重承認は既存approval operationで抑止します。
+構造結果だけでは合格にしない。各turnで次を必須とする。
 
-## AI経路と費用境界
+- Stable V5 traceに`semantic_provider_request`が1件以上ある。
+- semantic requestは初回とrepairを合わせて最大2件。
+- renderer requestは最大1件。
+- 合計は1 turn最大3件。
+- `responseSource`は`ai`。
+- renderer responseは`rendered`。
+- renderer decision branchは`ai_rendered`。
 
-real API suiteは構造結果だけでは合格しません。各turnで次を必須にします。
+`deterministic_fallback`、`rules`、`system_message_bypass`で予定まで進んでも、実API会話成功として扱わない。
 
-- Stable V5 debug traceに`semantic_provider_request`が1件以上ある。
-- 意味解釈の初回応答が不正な場合に限りrepairを1回許可する。
-- semantic requestは1 turnあたり最大2件。
-- renderer requestは1 turnあたり最大1件。
-- 合計は1 turnあたり最大3件。
-- `responseSource`が`ai`である。
-- renderer traceのresponseが`rendered`、decision branchが`ai_rendered`である。
+## 費用と停止上限
 
-`deterministic_fallback`、`rules`、`system_message_bypass`で予定まで進めても、自然なAI会話の実API検証としては失敗にします。
+- 1 scenario最大8 turn。
+- 5 scenario合計最大40 turn。
+- 会話suite最大120 AI request。
+- semantic 4ケースsuite最大12 AI request。
+- 最初のfailed scenarioで残りを停止する。
+- 上限はreport判定だけでなく、共通AI clientがfetch前に物理的に拒否する。
 
-suite reportには、実行済みturn数、semantic request数、renderer request数、合計request数、実行済みturnから導出した上限を保存します。token usageは共通AI clientがusage情報を返していないため、現時点では計測しません。
+会話workflowでは次を設定する。
 
-## fail-fastとincremental artifact
+```text
+VITE_AI_MAX_PROCESS_REQUESTS=120
+```
 
-最初のfailed scenarioで残りのscenarioを停止します。未実行scenario IDは`report.json`と`report.md`へ残します。これにより、最初の失敗境界を特定する前にAPI費用を追加消費しません。
+semantic workflowでは次を設定する。
 
-artifactはsuite終了時だけでなく、次のたびに上書き保存します。
+```text
+VITE_AI_MAX_PROCESS_REQUESTS=12
+```
+
+Productionではこの環境変数を設定しないため、request circuit breakerは無効である。
+
+## timeout
+
+共通AI clientはdirect OpenAIとWorker proxyの両方で90秒timeoutを持つ。
+接続待ちだけでなく、response bodyの解析停止も同じtimeout対象とする。
+
+## fail-fastとartifact
+
+最初のfailed scenarioで残りを停止し、未実行scenario IDをreportへ残す。
+
+artifactは次の各時点で上書き保存する。
 
 - turn完了時。
 - preview記録時。
 - approval完了時。
 - scenario成功・失敗確定時。
 
-job timeoutやprovider停止が起きても、それ以前に完了したturnのtranscript、trace、renderer trace、AI request集計を保持します。
+job timeoutが起きても、それ以前に完了したturnのtranscript、Stable V5 trace、renderer trace、request数を残す。
+
+```text
+artifacts/weekly-planning-real-api-conversation-eval/
+  report.json
+  report.md
+  scenarios/<scenario-id>/
+    transcript.md
+    report.json
+    turn-01.json
+    preview-01.json
+    approval.json
+    failure.txt
+```
+
+API keyとAuthorization headerはartifactへ保存しない。
+
+## 保存とtraceの安全性
+
+- owner付きstaging envelopeを使用する。
+- Stable V5 session scope確立後にStable V5 envelopeへ昇格する。
+- Stable V5保存拒否時はstagingへ退避する。
+- 保存成功時だけ旧keyを削除する。
+- 訂正traceへ巨大Graphを保存せず、bounded diffを保存する。
+- client 48KB、server 64KB、outbox再送、unknown field保持、truncationを回帰検証する。
 
 ## 決定論的foundation
-
-実APIを使わずに次を検証します。
-
-- Stable V5 runtime固定とlegacy UI不在。
-- machine questionに基づく会話進行。
-- 状態反復と意味的反復の停止。
-- human-readable transcript生成。
-- scenario manifestと実行内容の同期。
-- 誤単位回答からの明示的修復。
-- 消失pending targetの原子的拒否。
-- 単一Fact訂正、複数タスク訂正、不明target rollback。
-- preview訂正、stale preview拒否、再preview。
-- owner分離、Stable V5保存昇格、保存拒否時の無損失staging。
-- 訂正traceのサイズ制限、未知field保持、Worker preparation、outbox再送、truncation。
-- real API suiteのAI-only経路、request budget、fail-fast policy。
-
-実行コマンド:
 
 ```bash
 npm run test:weekly-ai:conversation:foundation
 ```
 
-通常CIでは、これに加えて`typecheck`、`typecheck:build`、全Vitest、production build、diff checkを実行します。
+主な検証対象:
 
-## GitHub Actionsの準備
+- Stable V5 runtime固定とlegacy UI不在。
+- 会話driverと状態・意味的反復停止。
+- scenario manifest同期。
+- 誤単位回答からの修復。
+- 消失pending targetの原子的拒否。
+- 単一・複数task訂正とrollback。
+- preview訂正、stale preview拒否、再preview。
+- owner storage移行と保存失敗fallback。
+- trace size、outbox、Worker、unknown field、truncation。
+- AI-only経路、request budget、fail-fast policy。
+- AI timeoutとprocess request circuit breaker。
 
-Repository Actions Secretとして`OPENAI_API_KEY`が必要です。コード、workflow入力、artifactへAPI keyを記載してはいけません。
+通常CIでは、これに加えてTypeScript checks、全Vitest、production build、diff checkを実行する。
 
-GitHub上では次の場所へ登録します。
+## Repository Secret
+
+Repository Actions Secretとして`OPENAI_API_KEY`が必要である。
+コード、workflow入力、artifactへkeyを記載しない。
 
 ```text
 Repository
@@ -177,7 +198,7 @@ Repository
 → Secret: OpenAI API key
 ```
 
-Secret未設定時は実API requestを開始せず、次をartifactへ残して停止します。
+Secret未設定時はAPI requestを開始せず、次をartifactへ残して停止する。
 
 ```json
 {
@@ -187,20 +208,7 @@ Secret未設定時は実API requestを開始せず、次をartifactへ残して�
 }
 ```
 
-## 実API suite
-
-明示的にopt-inした場合だけ実行します。modelは`gpt-5.4-mini`へ固定します。
-
-```bash
-WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL=1 \
-VITE_AI_PROVIDER=openai \
-VITE_AI_BASE_URL=https://api.openai.com/v1 \
-VITE_AI_MODEL=gpt-5.4-mini \
-VITE_AI_API_KEY="$OPENAI_API_KEY" \
-npm run test:weekly-ai:conversation:real
-```
-
-GitHub Actionsでは次の手順です。
+## GitHub Actions実行
 
 ```text
 Actions
@@ -211,76 +219,35 @@ Actions
 → Run workflow
 ```
 
-foundation jobが成功した場合だけ実API jobへ進みます。
+foundation jobが成功した場合だけ、direct OpenAIの5 scenarioへ進む。
+modelは`gpt-5.4-mini`固定である。
 
-単発semantic schemaの4ケースは別の`Weekly Planning Stable V5 Semantic Eval`で手動実行します。廃止中のGitHub Models依存は削除し、OpenAI Chat Completionsと`OPENAI_API_KEY`を使用します。こちらもmodelは`gpt-5.4-mini`固定です。
-
-## artifact
-
-```text
-artifacts/weekly-planning-real-api-conversation-eval/
-  report.json
-  report.md
-  scenarios/
-    <scenario-id>/
-      transcript.md
-      report.json
-      turn-01.json
-      turn-02.json
-      preview-01.json
-      preview-02.json
-      approval.json
-      failure.txt
-```
-
-各turnにはユーザー発話、assistant返答、response source、failure code、machine question、target fact、Graph revision、preview候補、Stable V5 debug trace、dialogue renderer trace、AI request集計を保存します。
-
-会話の自然さは別AIで採点しません。外部開発エージェントが`transcript.md`を読み、定型反復、質問の取り違え、会話停止、不自然な責任転嫁を判断します。API keyとAuthorization headerはartifactへ保存しません。
-
-## trace永続化gate
-
-訂正traceでは巨大Graphをそのまま保存しません。既存のcanonicalization diff、target解決、rejection errorをbounded diagnosticへ投影します。
-
-回帰テストでは次を通します。
-
-1. client diagnosticが`clientDocumentTargetBytes`以下。
-2. 初回append失敗時にoutboxへ残り、次回turnで再送される。
-3. `prepareWeeklyPlanningTraceServerWrite`を通過する。
-4. Worker preparation後も`maxDocumentBytes`以下。
-5. 未登録sentinelがschema同期漏れで消えない。
-6. 大容量diffでもturn全体を破棄せずtruncation metadataを残す。
-7. correction application内部の巨大Graphは永続化しない。
-
-## 自走修正ループ
-
-```text
-七視点監査
-→ 原因仮説を1つに絞る
-→ 最小修正と強い回帰test
-→ 自動CI
-→ logとartifactを再監査
-→ 思想整合を確認して次ループへ進む
-```
-
-七視点は、runtime入口、対話進行、意味状態、訂正・preview lifecycle、テスト妥当性、観測・再現性、運用・安全性です。失敗したtestの削除、期待値緩和、strictness低下、特定発話だけの例外追加は採用しません。
-
-ループ記録は`docs/ai/tasks/20260801-weekly-planning-autonomous-conversation-loop.md`へ残します。
-
-## 境界
-
-この基盤はブラウザDOM、Firebase login UI、Production deployそのものは操作しません。AI意味解釈からcontroller、Fact Graph、scheduler、preview、訂正、approval、保存までのapplication結合経路を対象にします。
-
-ブラウザ固有の表示、入力イベント、認証、Production Worker revisionは後続のPlaywright E2E対象です。
+semantic schema 4ケースは`Weekly Planning Stable V5 Semantic Eval`を手動実行する。
+こちらもOpenAI、`gpt-5.4-mini`、`OPENAI_API_KEY`を使用する。
 
 ## 現在の検証状態
 
-2026年8月1日時点で、PR #109の自動CIにより次が成功しています。
+GitHub Actionsで次を成功確認済み。
 
 - TypeScript checks。
 - 全Vitest regression suite。
 - production build。
-- pull request diff check。
-- 実API suiteのAI-only経路、request budget、fail-fast pure policy。
-- real suiteへのincremental artifact接続。
+- diff check。
+- real API workflow foundation。
+- AI-only経路・request budget・fail-fast policy。
+- incremental artifact接続。
+- 1 scenario 8 turn、suite 40 turn・120 requestの上限。
+- semantic suite 12 requestの上限。
+- fetch前のprocess request circuit breaker。
+- 最新mainの起動修正内容を同期したbranch単体CI。
 
-実APIworkflowのfoundationは成功しましたが、Repository Actions Secret `OPENAI_API_KEY`が未設定だったため、OpenAI requestは0件です。実API会話5 scenario、OpenAI semantic schema 4ケース、transcriptの自然さ、token usage・実費、Production Worker・ブラウザE2Eは成功確認済みとして扱いません。
+未確認:
+
+- OpenAI実API会話5 scenario。
+- OpenAI semantic schema 4ケース。
+- transcriptの自然さ。
+- token usageと実費。
+- Production Worker、Firebase auth、ブラウザDOM、Playwright E2E。
+
+現在のblockerはRepository Actions Secret `OPENAI_API_KEY`未設定である。
+preflight run `30679195853`ではfoundationが成功し、OpenAI request 0件で停止した。
