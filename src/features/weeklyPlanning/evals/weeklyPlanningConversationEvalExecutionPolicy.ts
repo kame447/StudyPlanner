@@ -6,6 +6,11 @@ export const WEEKLY_PLANNING_REAL_EVAL_MAX_RENDERER_REQUESTS_PER_TURN = 1;
 export const WEEKLY_PLANNING_REAL_EVAL_MAX_API_REQUESTS_PER_TURN =
   WEEKLY_PLANNING_REAL_EVAL_MAX_SEMANTIC_REQUESTS_PER_TURN
   + WEEKLY_PLANNING_REAL_EVAL_MAX_RENDERER_REQUESTS_PER_TURN;
+export const WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO = 8;
+export const WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_TURNS = 40;
+export const WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_API_REQUESTS =
+  WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_TURNS
+  * WEEKLY_PLANNING_REAL_EVAL_MAX_API_REQUESTS_PER_TURN;
 
 export interface WeeklyPlanningConversationEvalTurnAiUsage {
   semanticRequestCount: number;
@@ -23,6 +28,8 @@ export interface WeeklyPlanningConversationEvalSuiteAiUsage {
   rendererRequestCount: number;
   totalRequestCount: number;
   maximumAllowedRequestCount: number;
+  absoluteMaximumTurnCount: number;
+  absoluteMaximumRequestCount: number;
   allTurnsUsedRequiredAiPaths: boolean;
   withinSuiteRequestBudget: boolean;
   errors: string[];
@@ -96,7 +103,10 @@ export function maximumWeeklyPlanningRealEvalRequestsForTurns(
   if (!Number.isInteger(turnCount) || turnCount < 0) {
     throw new Error(`Invalid turn count: ${turnCount}`);
   }
-  return turnCount * WEEKLY_PLANNING_REAL_EVAL_MAX_API_REQUESTS_PER_TURN;
+  return Math.min(
+    turnCount * WEEKLY_PLANNING_REAL_EVAL_MAX_API_REQUESTS_PER_TURN,
+    WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_API_REQUESTS,
+  );
 }
 
 export function summarizeWeeklyPlanningConversationEvalAiUsage(
@@ -118,14 +128,26 @@ export function summarizeWeeklyPlanningConversationEvalAiUsage(
     (turn) => turn.meaningInterpretationUsedAi && turn.assistantResponseUsedAi,
   );
   const withinSuiteRequestBudget =
-    turns.every((turn) => turn.withinPerTurnRequestBudget)
-    && totalRequestCount <= maximumAllowedRequestCount;
+    turns.length <= WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_TURNS
+    && turns.every((turn) => turn.withinPerTurnRequestBudget)
+    && totalRequestCount <= maximumAllowedRequestCount
+    && totalRequestCount <= WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_API_REQUESTS;
   const errors = turns.flatMap((turn, index) =>
     turn.errors.map((error) => `turn-${index + 1}:${error}`));
 
+  if (turns.length > WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_TURNS) {
+    errors.push(
+      `suite-turn-budget-exceeded:${turns.length}:${WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_TURNS}`,
+    );
+  }
   if (totalRequestCount > maximumAllowedRequestCount) {
     errors.push(
       `suite-api-request-budget-exceeded:${totalRequestCount}:${maximumAllowedRequestCount}`,
+    );
+  }
+  if (totalRequestCount > WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_API_REQUESTS) {
+    errors.push(
+      `suite-absolute-api-request-budget-exceeded:${totalRequestCount}:${WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_API_REQUESTS}`,
     );
   }
 
@@ -135,6 +157,8 @@ export function summarizeWeeklyPlanningConversationEvalAiUsage(
     rendererRequestCount,
     totalRequestCount,
     maximumAllowedRequestCount,
+    absoluteMaximumTurnCount: WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_TURNS,
+    absoluteMaximumRequestCount: WEEKLY_PLANNING_REAL_EVAL_ABSOLUTE_MAX_API_REQUESTS,
     allTurnsUsedRequiredAiPaths,
     withinSuiteRequestBudget,
     errors,
