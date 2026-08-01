@@ -1,3 +1,7 @@
+import {
+  WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO,
+} from './weeklyPlanningConversationEvalExecutionPolicy';
+
 export interface ConversationEvalMachineQuestion {
   code: string | null;
   targetFactId: string | null;
@@ -86,10 +90,15 @@ export async function driveConversationUntilPreview(
   adapter: ConversationEvalAdapter,
   options: DriveConversationUntilPreviewOptions,
 ): Promise<DriveConversationUntilPreviewResult> {
-  const maxTurns = options.maxTurns ?? 12;
-  if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) {
+  const requestedMaxTurns =
+    options.maxTurns ?? WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO;
+  if (!Number.isSafeInteger(requestedMaxTurns) || requestedMaxTurns < 1) {
     throw new Error('maxTurns must be a positive safe integer.');
   }
+  const maxTurns = Math.min(
+    requestedMaxTurns,
+    WEEKLY_PLANNING_REAL_EVAL_MAX_TURNS_PER_SCENARIO,
+  );
 
   const submittedTurns: ConversationEvalSubmissionSnapshot[] = [];
   const seenQuestionStates = new Set<string>();
