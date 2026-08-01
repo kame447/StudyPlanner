@@ -51,6 +51,7 @@ interface AiProxyResponse {
 }
 
 const DEFAULT_AI_REQUEST_TIMEOUT_MS = 90_000;
+let processAiRequestCount = 0;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -87,6 +88,27 @@ function resolvedTimeoutMs(configured: number | undefined): number {
     && configured > 0
     ? Math.floor(configured)
     : DEFAULT_AI_REQUEST_TIMEOUT_MS;
+}
+
+function configuredProcessRequestLimit(): number | null {
+  const raw = (import.meta.env as Record<string, string | undefined>)
+    .VITE_AI_MAX_PROCESS_REQUESTS?.trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function claimProcessAiRequestBudget(): void {
+  const limit = configuredProcessRequestLimit();
+  if (limit === null) return;
+  if (processAiRequestCount >= limit) {
+    throw new Error(`AI process request budget exceeded: ${limit}.`);
+  }
+  processAiRequestCount += 1;
+}
+
+export function resetOpenAiCompatibleClientRequestBudgetForTest(): void {
+  processAiRequestCount = 0;
 }
 
 async function runFetchWithTimeout<T>(
@@ -164,6 +186,7 @@ export function createOpenAiCompatibleClient(
           const endpoint = proxyUrl.endsWith('/chat/completions')
             ? proxyUrl
             : `${proxyUrl.replace(/\/$/, '')}/chat/completions`;
+          claimProcessAiRequestBudget();
           return await runFetchWithTimeout(
             endpoint,
             {
@@ -222,6 +245,7 @@ export function createOpenAiCompatibleClient(
           ? {}
           : { max_completion_tokens: maxCompletionTokens }),
       };
+      claimProcessAiRequestBudget();
       return runFetchWithTimeout(
         `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
         {
