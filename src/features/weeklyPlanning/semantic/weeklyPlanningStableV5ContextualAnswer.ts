@@ -91,7 +91,6 @@ function correctionsOnlyRestatePendingTarget(
   if (!targetFactId) return false;
   return input.document.corrections.every((correction) =>
     correction.operation === 'replace'
-    && correction.target.kind === 'workload'
     && correction.target.publicId === targetFactId
     && correction.target.localId === null);
 }
