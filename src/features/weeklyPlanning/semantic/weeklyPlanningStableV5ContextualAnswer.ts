@@ -1,4 +1,8 @@
 import {
+  groundedDurationMinutesFromUserTextV5,
+  groundedQuantityRoleFromUserTextV5,
+} from './weeklyPlanningContextualAnswerGroundingV5';
+import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import type {
@@ -42,8 +46,8 @@ export interface WeeklyPlanningStableV5ContextualAnswerEvaluation {
     | 'reply_shape_not_contextual'
     | 'unsupported_question_code'
     | 'target_unavailable'
-    | 'expected_single_duration'
-    | 'expected_single_quantity_role'
+    | 'duration_not_grounded_in_user_text'
+    | 'quantity_role_not_grounded_in_user_text'
     | 'duplicate_or_conflicting_turn'
     | 'applied';
   result: WeeklyPlanningSemanticCanonicalizationResultV5 | null;
@@ -78,36 +82,18 @@ function turnKey(input: WeeklyPlanningStableV5ContextualAnswerInput): string {
   return `${input.conversationId}:${input.turnId}`;
 }
 
-function normalizeSourceText(text: string): string {
-  return text
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/g, '')
-    .replace(/[。！？!?]+$/g, '');
-}
-
-function hasWholeTurnTaskSource(
-  input: WeeklyPlanningStableV5ContextualAnswerInput,
-): boolean {
-  const normalizedUserText = normalizeSourceText(input.userText);
-  return input.document.tasks.some(
-    (task) => normalizeSourceText(task.sourceText) === normalizedUserText,
-  );
-}
-
 function isMinimalContextualReply(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
   const text = input.userText.trim();
   return text.length > 0
     && text.length <= 40
-    && hasWholeTurnTaskSource(input)
     && input.expectedRevision === input.graph.revision
     && input.pendingQuestion.graphRevision === input.graph.revision
     && isWeeklyPlanningContextualQuestionCodeV5(input.pendingQuestion.questionCode)
     && typeof input.pendingQuestion.targetFactId === 'string'
     && input.pendingQuestion.targetFactId.length > 0
-    && input.document.planningIntent !== 'create_plan'
+    && input.document.planningIntent === 'discuss'
     && input.document.planningWindow === null
     && input.document.tasks.length === 1
     && input.document.relations.length === 0
@@ -409,16 +395,24 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
   }
 
   if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
+    const groundedMinutes = groundedDurationMinutesFromUserTextV5(input.userText);
     const candidates = durationCandidates(input.document);
-    if (candidates.length !== 1) {
+    if (
+      groundedMinutes.length !== 1
+      || candidates.length !== 1
+      || Math.round(candidates[0].minutes) !== groundedMinutes[0]
+    ) {
       return {
         ...base,
         status: 'incompatible',
-        reason: 'expected_single_duration',
+        reason: 'duration_not_grounded_in_user_text',
         result: null,
       };
     }
-    const result = applyEffortAnswer(input, target, candidates[0]);
+    const result = applyEffortAnswer(input, target, {
+      ...candidates[0],
+      minutes: groundedMinutes[0],
+    });
     return result
       ? { ...base, status: 'applied', reason: 'applied', result }
       : {
@@ -429,16 +423,21 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
         };
   }
 
+  const groundedRole = groundedQuantityRoleFromUserTextV5(input.userText);
   const roles = quantityRoleCandidates(input.document);
-  if (roles.length !== 1) {
+  if (
+    groundedRole === null
+    || roles.length !== 1
+    || roles[0] !== groundedRole
+  ) {
     return {
       ...base,
       status: 'incompatible',
-      reason: 'expected_single_quantity_role',
+      reason: 'quantity_role_not_grounded_in_user_text',
       result: null,
     };
   }
-  const result = applyQuantityRoleAnswer(input, target, roles[0]);
+  const result = applyQuantityRoleAnswer(input, target, groundedRole);
   return result
     ? { ...base, status: 'applied', reason: 'applied', result }
     : {
@@ -459,8 +458,8 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
     return rejectUnavailableTarget(input);
   }
   if (
-    evaluation.reason === 'expected_single_duration'
-    || evaluation.reason === 'expected_single_quantity_role'
+    evaluation.reason === 'duration_not_grounded_in_user_text'
+    || evaluation.reason === 'quantity_role_not_grounded_in_user_text'
     || evaluation.reason === 'duplicate_or_conflicting_turn'
   ) {
     return applyIncompatibleReplyTurn(input);
