@@ -93,7 +93,7 @@ function isMinimalContextualReply(
     && isWeeklyPlanningContextualQuestionCodeV5(input.pendingQuestion.questionCode)
     && typeof input.pendingQuestion.targetFactId === 'string'
     && input.pendingQuestion.targetFactId.length > 0
-    && input.document.planningIntent === 'discuss'
+    && input.document.planningIntent !== 'create_plan'
     && input.document.planningWindow === null
     && input.document.tasks.length === 1
     && input.document.relations.length === 0
