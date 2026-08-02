@@ -8,6 +8,11 @@ on:
         required: true
         default: false
         type: boolean
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-real-api-trigger'
 
 permissions:
   contents: read
@@ -18,6 +23,7 @@ concurrency:
 
 jobs:
   foundation:
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'agent/weekly-ai-conversation-eval' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
@@ -55,7 +61,7 @@ jobs:
         run: npm run build
 
   real-api-conversation-eval:
-    if: ${{ inputs.run_real_api }}
+    if: ${{ (github.event_name == 'pull_request' && github.head_ref == 'agent/weekly-ai-conversation-eval') || inputs.run_real_api }}
     needs: foundation
     runs-on: ubuntu-22.04
     timeout-minutes: 60
