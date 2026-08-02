@@ -84,9 +84,12 @@ export function planningWindowCanonicalValueErrors(
     ];
   }
 
+  const isRelativeWindow =
+    window.kind === 'relative_day' || window.kind === 'relative_week';
   const sourceExpectation = relativeWindowSourceExpectationV5(window.sourceText);
   if (
-    sourceExpectation
+    isRelativeWindow
+    && sourceExpectation
     && (
       window.kind !== sourceExpectation.kind
       || window.value !== sourceExpectation.value
