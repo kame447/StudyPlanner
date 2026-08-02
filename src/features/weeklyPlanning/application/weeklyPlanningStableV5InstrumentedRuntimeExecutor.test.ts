@@ -113,7 +113,7 @@ describe('Stable V5 instrumented runtime result projection', () => {
     ]));
   });
 
-  it('projects the latest committed session graph rather than trusting the core result payload', async () => {
+  it('projects a newer committed session graph over a stale core result', async () => {
     hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId: 'owner-1',
       weekStartDate: '2026-07-27',
@@ -130,7 +130,10 @@ describe('Stable V5 instrumented runtime result projection', () => {
           'conversation-1:request-2',
         ]),
       });
-      return coreResult();
+      return {
+        ...coreResult(),
+        stableV5Graph: graph(1, ['conversation-1:request-1']),
+      };
     });
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn(input('request-2'));
@@ -151,6 +154,36 @@ describe('Stable V5 instrumented runtime result projection', () => {
           stage: 'runtime_turn_output',
           data: expect.objectContaining({
             finalDecision: expect.objectContaining({ graphRevision: 2 }),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('keeps a fresher core graph while the bound session commit is still behind', async () => {
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: 'owner-1',
+      weekStartDate: '2026-07-27',
+      conversationId: 'conversation-1',
+      graph: graph(0, []),
+    });
+    coreExecutorMock.mockResolvedValueOnce({
+      ...coreResult(),
+      stableV5Graph: graph(1, ['conversation-1:request-1']),
+    });
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn(input('request-1'));
+
+    expect(result.stableV5Graph).toMatchObject({
+      revision: 1,
+      appliedTurnKeys: ['conversation-1:request-1'],
+    });
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-1')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_turn_output',
+          data: expect.objectContaining({
+            finalDecision: expect.objectContaining({ graphRevision: 1 }),
           }),
         }),
       ]),
