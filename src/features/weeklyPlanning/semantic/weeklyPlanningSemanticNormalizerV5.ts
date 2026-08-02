@@ -6,6 +6,10 @@ import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
+  directWorkCoverageErrorsV5,
+  directWorkCoverageInstructionV5,
+} from './weeklyPlanningDirectWorkCoverageV5';
+import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
@@ -205,6 +209,7 @@ function semanticConformanceErrors(
 ): string[] {
   return [
     ...planningWindowConformanceErrors(input, document),
+    ...directWorkCoverageErrorsV5({ userText: input.userText, document }),
     ...taskBoundaryConformanceErrorsV5(document),
   ];
 }
@@ -240,6 +245,7 @@ function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): Cha
         CONTEXTUAL_ANSWER_INSTRUCTION_V5,
         AUTHORIZATION_INSTRUCTION_V5,
         DIRECT_PLANNING_WINDOW_INSTRUCTION_V5,
+        directWorkCoverageInstructionV5(),
         taskBoundaryInstructionV5(),
       ].join('\n'),
     },
@@ -266,6 +272,7 @@ function createRepairMessages(params: {
           'A namedTimePeriod cannot coexist with startTime or endTime. Preserve a named period with null clock fields and preferred_window when the user expressed a preference; preserve an explicit clock by setting namedTimePeriod to null.',
           'When canonical-relative-day or canonical-relative-week is reported, preserve the user meaning but replace the invented alias with one of the exact canonical relative day or week values from the system instruction.',
           'When direct-user-range-omitted or direct-user-range-mismatch is reported, restore the explicitly stated whole-plan planningWindow. Use relative_day/tomorrow for 明日 and preserve other symbolic day or week values exactly as instructed.',
+          'When direct-work-omitted is reported, restore every omitted explicitly quantified work item from the current user message with its original label, quantity, and unit. Do not remove another already correct item to do so.',
           'When parent-title-collides-with-subject or multiple-subjects-require-shared-context is reported, keep sibling subject components under one task only if the user explicitly stated a shared study context. Otherwise split the independent subjects into separate top-level tasks and keep each workload with the corresponding subject.',
           'Make the smallest correction needed to satisfy validation while preserving only facts supported by the user.',
         ],
