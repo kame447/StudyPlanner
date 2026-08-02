@@ -22,6 +22,10 @@ import {
 import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
+import {
+  taskBoundaryConformanceErrorsV5,
+  taskBoundaryInstructionV5,
+} from './weeklyPlanningTaskBoundaryContractV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
   'weekly-planning-semantic-normalizer-v5' as const;
@@ -195,6 +199,16 @@ function planningWindowConformanceErrors(
   return errors;
 }
 
+function semanticConformanceErrors(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+  document: WeeklyPlanningSemanticDocumentV5,
+): string[] {
+  return [
+    ...planningWindowConformanceErrors(input, document),
+    ...taskBoundaryConformanceErrorsV5(document),
+  ];
+}
+
 function validateSemanticResponse(
   rawResponse: string,
   input: WeeklyPlanningSemanticNormalizerInputV5,
@@ -207,7 +221,7 @@ function validateSemanticResponse(
       errors: parsed.errors,
     };
   }
-  const conformanceErrors = planningWindowConformanceErrors(input, parsed.document);
+  const conformanceErrors = semanticConformanceErrors(input, parsed.document);
   return {
     document: conformanceErrors.length === 0 ? parsed.document : null,
     parsedDocument: parsed.document,
@@ -226,6 +240,7 @@ function createBaseMessages(input: WeeklyPlanningSemanticNormalizerInputV5): Cha
         CONTEXTUAL_ANSWER_INSTRUCTION_V5,
         AUTHORIZATION_INSTRUCTION_V5,
         DIRECT_PLANNING_WINDOW_INSTRUCTION_V5,
+        taskBoundaryInstructionV5(),
       ].join('\n'),
     },
     { role: 'user', content: createWeeklyPlanningSemanticUserPromptV5(input) },
@@ -251,6 +266,7 @@ function createRepairMessages(params: {
           'A namedTimePeriod cannot coexist with startTime or endTime. Preserve a named period with null clock fields and preferred_window when the user expressed a preference; preserve an explicit clock by setting namedTimePeriod to null.',
           'When canonical-relative-day or canonical-relative-week is reported, preserve the user meaning but replace the invented alias with one of the exact canonical relative day or week values from the system instruction.',
           'When direct-user-range-omitted or direct-user-range-mismatch is reported, restore the explicitly stated whole-plan planningWindow. Use relative_day/tomorrow for 明日 and preserve other symbolic day or week values exactly as instructed.',
+          'When parent-title-collides-with-subject or multiple-subjects-require-shared-context is reported, keep sibling subject components under one task only if the user explicitly stated a shared study context. Otherwise split the independent subjects into separate top-level tasks and keep each workload with the corresponding subject.',
           'Make the smallest correction needed to satisfy validation while preserving only facts supported by the user.',
         ],
         validationErrors: params.validationErrors,
