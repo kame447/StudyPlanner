@@ -23,13 +23,13 @@ import {
   executeWeeklyPlanningStableV5RuntimeTurn,
 } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
 
-function input(requestId: string) {
+function input(requestId: string, userId = 'owner-1') {
   return {
     previousState: undefined,
     messages: [],
     userText: '今日の予定を作って',
     selectedDate: '2026-07-27',
-    userId: 'owner-1',
+    userId,
     plans: [],
     scheduleTemplates: [],
     conversationId: 'conversation-1',
@@ -61,7 +61,15 @@ function coreResult() {
   };
 }
 
-describe('Stable V5 instrumented runtime duplicate guard', () => {
+function graph(revision: number, appliedTurnKeys: string[]) {
+  return {
+    ...createEmptyWeeklyPlanningFactGraphV5(),
+    revision,
+    appliedTurnKeys,
+  };
+}
+
+describe('Stable V5 instrumented runtime result projection', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     resetWeeklyPlanningStableV5DebugTraceForTest();
@@ -74,11 +82,7 @@ describe('Stable V5 instrumented runtime duplicate guard', () => {
       ownerId: 'owner-1',
       weekStartDate: '2026-07-27',
       conversationId: 'conversation-1',
-      graph: {
-        ...createEmptyWeeklyPlanningFactGraphV5(),
-        revision: 1,
-        appliedTurnKeys: ['conversation-1:request-1'],
-      },
+      graph: graph(1, ['conversation-1:request-1']),
     });
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn(input('request-1'));
@@ -87,12 +91,17 @@ describe('Stable V5 instrumented runtime duplicate guard', () => {
     expect(result.draftCandidates).toEqual([]);
     expect(result.state.shouldCreateDraft).toBe(false);
     expect(result.message).toContain('予定を重複して作成しませんでした');
+    expect(result.stableV5Graph).toMatchObject({
+      revision: 1,
+      appliedTurnKeys: ['conversation-1:request-1'],
+    });
     expect(takeWeeklyPlanningStableV5DebugTrace('request-1')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           stage: 'runtime_duplicate_turn_suppressed',
           data: expect.objectContaining({
             coreExecutorInvoked: false,
+            graphRevision: 1,
             previewCandidateCount: 0,
           }),
         }),
@@ -100,22 +109,63 @@ describe('Stable V5 instrumented runtime duplicate guard', () => {
     );
   });
 
-  it('delegates a new request even when the conversation already has committed turns', async () => {
+  it('projects the latest committed session graph rather than trusting the core result payload', async () => {
     hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId: 'owner-1',
       weekStartDate: '2026-07-27',
       conversationId: 'conversation-1',
-      graph: {
-        ...createEmptyWeeklyPlanningFactGraphV5(),
-        revision: 1,
-        appliedTurnKeys: ['conversation-1:request-1'],
-      },
+      graph: graph(1, ['conversation-1:request-1']),
+    });
+    coreExecutorMock.mockImplementationOnce(async () => {
+      hydrateWeeklyPlanningStableV5RuntimeSession({
+        ownerId: 'owner-1',
+        weekStartDate: '2026-07-27',
+        conversationId: 'conversation-1',
+        graph: graph(2, [
+          'conversation-1:request-1',
+          'conversation-1:request-2',
+        ]),
+      });
+      return coreResult();
     });
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn(input('request-2'));
 
     expect(coreExecutorMock).toHaveBeenCalledTimes(1);
     expect(coreExecutorMock).toHaveBeenCalledWith(input('request-2'));
-    expect(result).toEqual(coreResult());
+    expect(result).toMatchObject(coreResult());
+    expect(result.stableV5Graph).toMatchObject({
+      revision: 2,
+      appliedTurnKeys: [
+        'conversation-1:request-1',
+        'conversation-1:request-2',
+      ],
+    });
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-2')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_turn_output',
+          data: expect.objectContaining({
+            finalDecision: expect.objectContaining({ graphRevision: 2 }),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('does not expose another owner runtime graph when the core result has none', async () => {
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: 'owner-1',
+      weekStartDate: '2026-07-27',
+      conversationId: 'conversation-1',
+      graph: graph(1, ['conversation-1:request-1']),
+    });
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn(
+      input('request-2', 'owner-2'),
+    );
+
+    expect(coreExecutorMock).toHaveBeenCalledTimes(1);
+    expect(result.stableV5Graph).toBeUndefined();
   });
 });
