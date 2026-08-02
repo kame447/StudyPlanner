@@ -70,6 +70,18 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
   );
 }
 
+function withCurrentSessionGraph(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+  result: WeeklyPlanningTurnExecutionResult,
+): WeeklyPlanningTurnExecutionResult {
+  const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
+  if (!session || session.ownerId !== input.userId) return result;
+  return {
+    ...result,
+    stableV5Graph: session.graph,
+  };
+}
+
 function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
   return {
     compatibilityStatus: result.state.status,
@@ -78,6 +90,7 @@ function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
     shouldCreateDraft: result.state.shouldCreateDraft,
     draftGenerationIntent: result.state.draftGenerationIntent,
     previewCandidateCount: result.draftCandidates.length,
+    graphRevision: result.stableV5Graph?.revision ?? null,
     failure: result.failure ?? null,
     assistantMessage: result.message,
     responseSource: result.responseSource ?? null,
@@ -105,7 +118,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (isDuplicateCommittedTurn(input)) {
-    const result = duplicateTurnResult(input);
+    const result = withCurrentSessionGraph(input, duplicateTurnResult(input));
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_duplicate_turn_suppressed',
@@ -113,6 +126,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       data: {
         criterion: 'runtime graph already contains conversationId:requestId in appliedTurnKeys',
         coreExecutorInvoked: false,
+        graphRevision: result.stableV5Graph?.revision ?? null,
         previewCandidateCount: 0,
       },
     });
@@ -126,7 +140,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   }
 
   try {
-    const result = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
+    const coreResult = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
+    const result = withCurrentSessionGraph(input, coreResult);
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
