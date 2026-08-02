@@ -12,6 +12,7 @@ import {
 } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
   getWeeklyPlanningStableV5RuntimeSession,
+  getWeeklyPlanningStableV5StagedGraph,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 function errorDetails(error: unknown): Record<string, unknown> {
@@ -74,6 +75,18 @@ function withFreshestAvailableGraph(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningTurnExecutionResult {
+  const stagedGraph = getWeeklyPlanningStableV5StagedGraph({
+    ownerId: input.userId,
+    conversationId: input.conversationId,
+    requestId: input.traceRequestId,
+  });
+  if (stagedGraph) {
+    return {
+      ...result,
+      stableV5Graph: stagedGraph,
+    };
+  }
+
   const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
   if (!session || session.ownerId !== input.userId) return result;
 
