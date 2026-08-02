@@ -1,6 +1,6 @@
 import type {
   SemanticTaskV5,
-  SemanticUnitCodeV5,
+  SemanticWorkloadUnitCodeV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
@@ -10,11 +10,11 @@ export const WEEKLY_PLANNING_DIRECT_WORK_COVERAGE_CONTRACT_V5 =
 export interface DirectWorkExpectationV5 {
   label: string;
   amount: number;
-  unitCode: SemanticUnitCodeV5;
+  unitCode: SemanticWorkloadUnitCodeV5;
   unitLabel: string;
 }
 
-const UNIT_BY_LABEL: Readonly<Record<string, SemanticUnitCodeV5>> = {
+const UNIT_BY_LABEL: Readonly<Record<string, SemanticWorkloadUnitCodeV5>> = {
   時間: 'hour',
   分: 'minute',
   問: 'problem',
@@ -22,9 +22,9 @@ const UNIT_BY_LABEL: Readonly<Record<string, SemanticUnitCodeV5>> = {
   語: 'word',
   章: 'chapter',
   回: 'session',
-  件: 'item',
-  枚: 'item',
-  冊: 'item',
+  件: 'custom',
+  枚: 'custom',
+  冊: 'custom',
 };
 
 function normalizeText(value: string): string {
@@ -83,7 +83,7 @@ export function extractDirectWorkExpectationsV5(
 function workloadMatches(
   expectation: DirectWorkExpectationV5,
   amount: number,
-  unitCode: SemanticUnitCodeV5,
+  unitCode: SemanticWorkloadUnitCodeV5,
 ): boolean {
   return unitCode === expectation.unitCode
     && Math.abs(amount - expectation.amount) < 1e-9;
