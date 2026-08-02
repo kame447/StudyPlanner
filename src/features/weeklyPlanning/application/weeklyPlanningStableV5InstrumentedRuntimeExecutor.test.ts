@@ -86,6 +86,7 @@ describe('Stable V5 instrumented runtime result projection', () => {
     });
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn(input('request-1'));
+    const trace = takeWeeklyPlanningStableV5DebugTrace('request-1');
 
     expect(coreExecutorMock).not.toHaveBeenCalled();
     expect(result.draftCandidates).toEqual([]);
@@ -95,18 +96,21 @@ describe('Stable V5 instrumented runtime result projection', () => {
       revision: 1,
       appliedTurnKeys: ['conversation-1:request-1'],
     });
-    expect(takeWeeklyPlanningStableV5DebugTrace('request-1')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          stage: 'runtime_duplicate_turn_suppressed',
-          data: expect.objectContaining({
-            coreExecutorInvoked: false,
-            graphRevision: 1,
-            previewCandidateCount: 0,
-          }),
+    expect(trace).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: 'runtime_duplicate_turn_suppressed',
+        data: expect.objectContaining({
+          coreExecutorInvoked: false,
+          previewCandidateCount: 0,
         }),
-      ]),
-    );
+      }),
+      expect.objectContaining({
+        stage: 'runtime_turn_output',
+        data: expect.objectContaining({
+          finalDecision: expect.objectContaining({ graphRevision: 1 }),
+        }),
+      }),
+    ]));
   });
 
   it('projects the latest committed session graph rather than trusting the core result payload', async () => {
