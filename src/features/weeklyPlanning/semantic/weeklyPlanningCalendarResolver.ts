@@ -1,9 +1,23 @@
-export const CANONICAL_RELATIVE_DATE_EXPRESSIONS = [
+export const CANONICAL_RELATIVE_DAY_EXPRESSIONS = [
   'today',
   'tomorrow',
   'day_after_tomorrow',
+] as const;
+
+export type CanonicalRelativeDayExpression =
+  (typeof CANONICAL_RELATIVE_DAY_EXPRESSIONS)[number];
+
+export const CANONICAL_RELATIVE_WEEK_EXPRESSIONS = [
   'this_week',
   'next_week',
+] as const;
+
+export type CanonicalRelativeWeekExpression =
+  (typeof CANONICAL_RELATIVE_WEEK_EXPRESSIONS)[number];
+
+export const CANONICAL_RELATIVE_DATE_EXPRESSIONS = [
+  ...CANONICAL_RELATIVE_DAY_EXPRESSIONS,
+  ...CANONICAL_RELATIVE_WEEK_EXPRESSIONS,
 ] as const;
 
 export type CanonicalRelativeDateExpression =
