@@ -207,6 +207,46 @@ API request: 0件。
 
 思想確認: Productionでは環境変数未設定のためbudget機構は無効。
 
+### Loop 17: 初回実API会話とplanning window語彙不整合
+
+実行: run `30745377735`。foundation、Secret確認、OpenAI接続は成功した。
+
+結果: scenario 1のturn 1でfail-fast。API requestは意味解釈1件、返答生成1件の合計2件。残り4 scenarioは未実行。
+
+会話:
+
+```text
+ユーザー: 次の日の勉強計画を立てたいです
+アプリ: いつからいつまでの予定を作るか教えてください。
+```
+
+七視点監査:
+
+1. runtime入口: Stable V5経路、Secret、direct OpenAIは正常。
+2. 対話進行: 期間を既に述べたのに再質問しており不正。
+3. 意味状態: AIは`relative_day / next_day`をaccepted Factとして追加したが、runtime resolverは`tomorrow`しか解決できなかった。
+4. lifecycle: preview前のため未到達。Graph commit自体は原子的だった。
+5. テスト妥当性: renderer fallbackを成功扱いせず、最初の実不整合で停止できた。
+6. 観測: semantic raw response、Graph、renderer trace、transcriptをartifactから復元できた。
+7. 運用: 2 requestでfail-fastし、費用上限は機能した。
+
+根本原因: `planningWindow.value`がschema・validatorでは任意文字列だった一方、calendar resolverは`today / tomorrow / day_after_tomorrow / this_week / next_week`だけを受理していた。rendererは誤ったmachine questionを自然に言い換えただけで、原因ではない。
+
+対応:
+
+- relative dayとrelative weekのcanonical語彙をcalendar resolverへ単一正本化。
+- normalizerのpost-schema contractで独自aliasを拒否。
+- `next_day`、`following_day`、`following_week`等は1回だけAI repairし、canonical値へ直す。
+- 「次の日」固有の文字列置換やdeterministic日本語parserは追加しない。
+- canonical day/week全値がruntime resolverで解決できるtestを追加。
+- 「次の日」「翌日」「翌週」の異なる表現を同じcontractで検証。
+
+自己監査: 初回testで`Array.at()`を使い現行TypeScript libと不整合になった。lib緩和や`any`を使わず配列末尾参照へ直した。
+
+決定論的結果: run `30745926382`でTypeScript、全Vitest、production build、diff checkが成功。
+
+次: 同じ5 scenarioを実API再実行し、scenario 1が次の質問へ進むかを確認する。
+
 ## Actions確認済み
 
 - TypeScript checks: success
@@ -216,6 +256,8 @@ API request: 0件。
 - real API workflow foundation: success
 - AI-only経路・request budget・fail-fast policy: success
 - main内容同期後のbranch単体CI: success
+- OpenAI Secret・direct API接続: success
+- canonical planning window repair contract: success
 
 ## 現在できること
 
@@ -228,10 +270,11 @@ API request: 0件。
 - turnごとのtranscript、trace、renderer trace、request数をartifact保存。
 - 最初の失敗で停止。
 - 会話suite最大120 request、semantic suite最大12 requestで物理停止。
+- 非canonicalなrelative day/week aliasをAI repairで正規語彙へ直す。
 
 ## 未確認
 
-- OpenAI実API会話5 scenario。
+- 修正後のOpenAI実API会話5 scenario。
 - OpenAI semantic schema 4ケース。
 - transcriptの自然さ。
 - token usageと実費。
@@ -240,11 +283,11 @@ API request: 0件。
 
 ## 現在のblocker
 
-Repository Actions Secret `OPENAI_API_KEY`が未設定。
+決定論的blockerはなし。実API再実行で次の失敗境界を確認する。
 
-## Secret設定後の順序
+## 次の順序
 
-1. `Weekly Planning Real API Conversation Eval`をbranch `agent/weekly-ai-conversation-eval`、`run_real_api=true`で実行。
+1. `Weekly Planning Real API Conversation Eval`を同じ5 scenarioで再実行。
 2. artifactとtranscriptを七視点監査。
 3. 最初の失敗境界だけ修正。
 4. 会話suite通過後にsemantic 4ケースを実行。
