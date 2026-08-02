@@ -167,8 +167,9 @@ describe('Stable V5 planning window canonical contract', () => {
       role: string;
       content: string;
     }>;
-    expect(repairMessages.at(-1)?.content).toContain(testCase.expectedError);
-    expect(repairMessages.at(-1)?.content).toContain(
+    const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '';
+    expect(repairMessage).toContain(testCase.expectedError);
+    expect(repairMessage).toContain(
       'replace the invented alias with one of the exact canonical',
     );
   });
