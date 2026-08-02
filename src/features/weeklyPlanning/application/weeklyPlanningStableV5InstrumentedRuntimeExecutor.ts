@@ -70,12 +70,18 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
   );
 }
 
-function withCurrentSessionGraph(
+function withFreshestAvailableGraph(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningTurnExecutionResult {
   const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
   if (!session || session.ownerId !== input.userId) return result;
+
+  const resultGraph = result.stableV5Graph;
+  if (resultGraph && resultGraph.revision >= session.graph.revision) {
+    return result;
+  }
+
   return {
     ...result,
     stableV5Graph: session.graph,
@@ -118,7 +124,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (isDuplicateCommittedTurn(input)) {
-    const result = withCurrentSessionGraph(input, duplicateTurnResult(input));
+    const result = withFreshestAvailableGraph(input, duplicateTurnResult(input));
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_duplicate_turn_suppressed',
@@ -140,7 +146,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 
   try {
     const coreResult = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
-    const result = withCurrentSessionGraph(input, coreResult);
+    const result = withFreshestAvailableGraph(input, coreResult);
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
