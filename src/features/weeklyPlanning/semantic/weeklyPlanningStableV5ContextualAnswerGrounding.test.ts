@@ -60,7 +60,22 @@ function document(params: {
   sourceText: string;
   quantityRole?: 'target';
   effortMinutes?: number;
+  correctionTargetPublicId?: string;
 }): WeeklyPlanningSemanticDocumentV5 {
+  const replacementWorkload = params.correctionTargetPublicId
+    ? [{
+        localId: 'reply-workload',
+        quantityRole: 'declared' as const,
+        amount: 2,
+        unitCode: 'hour' as const,
+        unitLabel: '時間',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: params.sourceText,
+      }]
+    : [];
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'discuss',
@@ -83,7 +98,7 @@ function document(params: {
             periodExpression: null,
             sourceText: params.sourceText,
           }]
-        : [],
+        : replacementWorkload,
       effortEstimates: params.effortMinutes
         ? [{
             localId: 'reply-effort',
@@ -103,7 +118,20 @@ function document(params: {
     availabilityDeclarations: [],
     constraintSourceRequests: [],
     uncertainties: [],
-    corrections: [],
+    corrections: params.correctionTargetPublicId
+      ? [{
+          localId: 'reply-correction',
+          target: {
+            kind: 'workload',
+            publicId: params.correctionTargetPublicId,
+            localId: null,
+            mention: '訂正',
+          },
+          operation: 'replace',
+          replacementLocalId: 'reply-workload',
+          sourceText: params.sourceText,
+        }]
+      : [],
     decisions: [],
   };
 }
@@ -200,5 +228,50 @@ describe('Stable V5 contextual answer source grounding', () => {
         kind: 'total_duration',
       }),
     ]);
+  });
+
+  it('treats an explicit correction as the pending answer when it targets the same workload', () => {
+    const initial = graph();
+    const result = applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: initial,
+      document: document({
+        sourceText: '英語の所要時間は合計3時間です',
+        effortMinutes: 180,
+        correctionTargetPublicId: 'workload-english',
+      }),
+      pendingQuestion: pendingQuestion('missing_effort_estimate'),
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 1,
+      userText: '違います。英語の所要時間は合計3時間です',
+    });
+
+    expect(result?.status).toBe('applied');
+    expect(result?.graph.tasks).toEqual(initial.tasks);
+    expect(result?.graph.workloads).toEqual(initial.workloads);
+    expect(result?.graph.effortEstimates).toEqual([
+      expect.objectContaining({
+        taskId: 'task-english',
+        minutes: 180,
+      }),
+    ]);
+  });
+
+  it('leaves a correction for another workload on the normal correction path', () => {
+    const result = applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: graph(),
+      document: document({
+        sourceText: '別の作業は3時間です',
+        effortMinutes: 180,
+        correctionTargetPublicId: 'workload-other',
+      }),
+      pendingQuestion: pendingQuestion('missing_effort_estimate'),
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 1,
+      userText: '別の作業は3時間です',
+    });
+
+    expect(result).toBeNull();
   });
 });
