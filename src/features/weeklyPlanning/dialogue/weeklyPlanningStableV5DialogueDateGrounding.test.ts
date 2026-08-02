@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   groundedDateExpressionsFromPlanningInformation,
-} from './weeklyPlanningStableV5DialogueDateGrounding';
+} from './weeklyPlanningDialogueDateGrounding';
 
 describe('Stable V5 dialogue date grounding', () => {
   it('derives Japanese display labels from canonical relative planning facts', () => {
