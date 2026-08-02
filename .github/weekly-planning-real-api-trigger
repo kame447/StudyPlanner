@@ -1,0 +1,5 @@
+triggered_at=2026-08-02T20:58:00+09:00
+loop=19
+workflow=weekly-planning-real-api-conversation-eval
+scope=all-five-scenarios
+reason=verify-canonical-date-renderer-grounding
