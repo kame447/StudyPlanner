@@ -31,7 +31,7 @@ function graph(): WeeklyPlanningFactGraphV5 {
     componentId: null,
     quantityRole: 'declared' as const,
     amount: 2,
-    unitCode: 'hour',
+    unitCode: 'hour' as const,
     unitLabel: '時間',
     rangeStart: null,
     rangeEnd: null,
