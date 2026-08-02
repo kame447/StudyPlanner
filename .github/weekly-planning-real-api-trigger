@@ -1,5 +1,0 @@
-triggered_at=2026-08-02T21:20:00+09:00
-loop=20
-workflow=weekly-planning-real-api-conversation-eval
-scope=all-five-scenarios
-reason=verify-owner-safe-runtime-graph-projection
