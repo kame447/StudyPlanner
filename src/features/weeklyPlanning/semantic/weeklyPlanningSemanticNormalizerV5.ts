@@ -13,6 +13,10 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  canonicalPlanningWindowInstructionV5,
+  planningWindowCanonicalValueErrors,
+} from './weeklyPlanningPlanningWindowCanonicalContractV5';
+import {
   readWeeklyPlanningPendingQuestionV5,
 } from './weeklyPlanningPendingQuestionV5';
 import {
@@ -45,6 +49,7 @@ const AUTHORIZATION_INSTRUCTION_V5 = [
   'When the user provides new planning facts and requests creation in the same utterance, set planningIntent to create_plan and include only those newly stated facts.',
 ].join('\n');
 const DIRECT_PLANNING_WINDOW_INSTRUCTION_V5 = [
+  canonicalPlanningWindowInstructionV5(),
   'Do not omit a whole-plan planningWindow that the current user states directly.',
   'For 今日, 明日, 明後日, 今週, and 来週 used as the requested plan range, preserve the symbolic values today, tomorrow, day_after_tomorrow, this_week, and next_week.',
   'A short answer such as 明日 is a whole-plan planningWindow when publicStateSummary.pendingQuestion.questionCode asks for the planning horizon. Do not infer this from the assistant wording.',
@@ -172,20 +177,22 @@ function planningWindowConformanceErrors(
   input: WeeklyPlanningSemanticNormalizerInputV5,
   document: WeeklyPlanningSemanticDocumentV5,
 ): string[] {
+  const errors = planningWindowCanonicalValueErrors(document.planningWindow);
   const expected = directPlanningWindowExpectation(input);
-  if (!expected) return [];
+  if (!expected) return errors;
   if (!document.planningWindow) {
-    return [`document.planningWindow:direct-user-range-omitted:${expected.value}`];
+    errors.push(`document.planningWindow:direct-user-range-omitted:${expected.value}`);
+    return errors;
   }
   if (
     document.planningWindow.kind !== expected.kind
     || document.planningWindow.value !== expected.value
   ) {
-    return [
+    errors.push(
       `document.planningWindow:direct-user-range-mismatch:expected-${expected.kind}:${expected.value}`,
-    ];
+    );
   }
-  return [];
+  return errors;
 }
 
 function validateSemanticResponse(
@@ -242,6 +249,7 @@ function createRepairMessages(params: {
           'If missing-start or missing-end is reported and the source text has no explicit clock boundary, remove the unsupported earliest_start or latest_end constraint, or replace it with a semantically supported constraint kind. Do not add a guessed clock.',
           'Priority and ordering language must remain task relations. Do not repair a priority relation by adding temporal constraints.',
           'A namedTimePeriod cannot coexist with startTime or endTime. Preserve a named period with null clock fields and preferred_window when the user expressed a preference; preserve an explicit clock by setting namedTimePeriod to null.',
+          'When canonical-relative-day or canonical-relative-week is reported, preserve the user meaning but replace the invented alias with one of the exact canonical relative day or week values from the system instruction.',
           'When direct-user-range-omitted or direct-user-range-mismatch is reported, restore the explicitly stated whole-plan planningWindow. Use relative_day/tomorrow for 明日 and preserve other symbolic day or week values exactly as instructed.',
           'Make the smallest correction needed to satisfy validation while preserving only facts supported by the user.',
         ],
