@@ -61,6 +61,7 @@ function document(params: {
   quantityRole?: 'target';
   effortMinutes?: number;
   correctionTargetPublicId?: string;
+  correctionTargetKind?: 'workload' | 'effort_estimate';
 }): WeeklyPlanningSemanticDocumentV5 {
   const replacementWorkload = params.correctionTargetPublicId
     ? [{
@@ -122,13 +123,15 @@ function document(params: {
       ? [{
           localId: 'reply-correction',
           target: {
-            kind: 'workload',
+            kind: params.correctionTargetKind ?? 'workload',
             publicId: params.correctionTargetPublicId,
             localId: null,
             mention: '訂正',
           },
           operation: 'replace',
-          replacementLocalId: 'reply-workload',
+          replacementLocalId: params.correctionTargetKind === 'effort_estimate'
+            ? 'reply-effort'
+            : 'reply-workload',
           sourceText: params.sourceText,
         }]
       : [],
@@ -230,7 +233,7 @@ describe('Stable V5 contextual answer source grounding', () => {
     ]);
   });
 
-  it('treats an explicit correction as the pending answer when it targets the same workload', () => {
+  it('uses the exact pending target even when the model correction kind is inconsistent', () => {
     const initial = graph();
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
       graph: initial,
@@ -238,6 +241,7 @@ describe('Stable V5 contextual answer source grounding', () => {
         sourceText: '英語の所要時間は合計3時間です',
         effortMinutes: 180,
         correctionTargetPublicId: 'workload-english',
+        correctionTargetKind: 'effort_estimate',
       }),
       pendingQuestion: pendingQuestion('missing_effort_estimate'),
       conversationId: 'conversation-1',
@@ -257,7 +261,7 @@ describe('Stable V5 contextual answer source grounding', () => {
     ]);
   });
 
-  it('leaves a correction for another workload on the normal correction path', () => {
+  it('leaves a correction for another public ID on the normal correction path', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
       graph: graph(),
       document: document({
