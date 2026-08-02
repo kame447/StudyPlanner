@@ -1,0 +1,3 @@
+trigger: latest-head-openai-eval
+requested-at: 2026-08-03
+scope: pr-109-seven-perspective-audit
