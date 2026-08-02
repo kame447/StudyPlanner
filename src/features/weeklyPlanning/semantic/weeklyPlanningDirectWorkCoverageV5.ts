@@ -1,0 +1,155 @@
+import type {
+  SemanticTaskV5,
+  SemanticUnitCodeV5,
+  WeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningSemanticDocumentV5';
+
+export const WEEKLY_PLANNING_DIRECT_WORK_COVERAGE_CONTRACT_V5 =
+  'weekly-planning-direct-work-coverage-v5' as const;
+
+export interface DirectWorkExpectationV5 {
+  label: string;
+  amount: number;
+  unitCode: SemanticUnitCodeV5;
+  unitLabel: string;
+}
+
+const UNIT_BY_LABEL: Readonly<Record<string, SemanticUnitCodeV5>> = {
+  時間: 'hour',
+  分: 'minute',
+  問: 'problem',
+  ページ: 'page',
+  語: 'word',
+  章: 'chapter',
+  回: 'session',
+  件: 'item',
+  枚: 'item',
+  冊: 'item',
+};
+
+function normalizeText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+function cleanedLabel(raw: string): string {
+  return raw
+    .replace(/^(?:今日|明日|明後日|今週|来週|次の日|翌日|翌週)(?:に|は|で|の)?/, '')
+    .replace(/^(?:そして|それから|さらに|あと|また)/, '')
+    .replace(/(?:を|は|が|に|で|の)?$/, '')
+    .trim();
+}
+
+function hasCorrectionCue(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /(?:訂正|修正|変更|ではなく|じゃなく|取り消|削除)/.test(normalized);
+}
+
+export function extractDirectWorkExpectationsV5(
+  userText: string,
+): DirectWorkExpectationV5[] {
+  if (hasCorrectionCue(userText)) return [];
+
+  const expectations: DirectWorkExpectationV5[] = [];
+  const segments = userText
+    .normalize('NFKC')
+    .split(/[、，,。\n]|(?:そして|それから|および|及び)/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  for (const segment of segments) {
+    const matches = [...segment.matchAll(/(\d+(?:\.\d+)?)\s*(時間|分|問|ページ|語|章|回|件|枚|冊)/g)];
+    if (matches.length !== 1) continue;
+    const match = matches[0];
+    const label = cleanedLabel(segment.slice(0, match.index));
+    const amount = Number(match[1]);
+    const unitLabel = match[2];
+    const unitCode = UNIT_BY_LABEL[unitLabel];
+    if (!label || !unitCode || !Number.isFinite(amount) || amount <= 0) continue;
+    expectations.push({ label, amount, unitCode, unitLabel });
+  }
+
+  const seen = new Set<string>();
+  return expectations.filter((expectation) => {
+    const key = `${normalizeText(expectation.label)}:${expectation.amount}:${expectation.unitCode}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function workloadMatches(
+  expectation: DirectWorkExpectationV5,
+  amount: number,
+  unitCode: SemanticUnitCodeV5,
+): boolean {
+  return unitCode === expectation.unitCode
+    && Math.abs(amount - expectation.amount) < 1e-9;
+}
+
+function taskCoversExpectation(
+  task: SemanticTaskV5,
+  expectation: DirectWorkExpectationV5,
+): boolean {
+  const expectedLabel = normalizeText(expectation.label);
+  const taskLabels = [task.title, task.sourceText]
+    .map(normalizeText)
+    .filter(Boolean);
+
+  if (
+    task.workloads.some((workload) =>
+      workloadMatches(expectation, workload.amount, workload.unitCode))
+    && taskLabels.some((label) => label.includes(expectedLabel) || expectedLabel.includes(label))
+  ) {
+    return true;
+  }
+
+  for (const component of task.study?.components ?? []) {
+    const componentLabels = [component.label, component.sourceText]
+      .map(normalizeText)
+      .filter(Boolean);
+    if (
+      component.workloads.some((workload) =>
+        workloadMatches(expectation, workload.amount, workload.unitCode))
+      && componentLabels.some((label) =>
+        label.includes(expectedLabel) || expectedLabel.includes(label))
+    ) {
+      return true;
+    }
+  }
+
+  if (expectation.unitCode === 'hour' || expectation.unitCode === 'minute') {
+    const expectedMinutes = expectation.unitCode === 'hour'
+      ? expectation.amount * 60
+      : expectation.amount;
+    return task.effortEstimates.some((estimate) =>
+      Math.abs(estimate.minutes - expectedMinutes) < 1e-9)
+      && taskLabels.some((label) =>
+        label.includes(expectedLabel) || expectedLabel.includes(label));
+  }
+
+  return false;
+}
+
+export function directWorkCoverageErrorsV5(params: {
+  userText: string;
+  document: WeeklyPlanningSemanticDocumentV5;
+}): string[] {
+  if (params.document.corrections.length > 0) return [];
+  const expectations = extractDirectWorkExpectationsV5(params.userText);
+  return expectations
+    .filter((expectation) =>
+      !params.document.tasks.some((task) => taskCoversExpectation(task, expectation)))
+    .map((expectation) =>
+      `document.tasks:direct-work-omitted:${expectation.label}:${expectation.amount}:${expectation.unitCode}`);
+}
+
+export function directWorkCoverageInstructionV5(): string {
+  return [
+    'Preserve every independently quantified work item stated in the current user message. Do not drop a later coordinated item after correctly extracting an earlier one.',
+    'Each explicit work label and its quantity must appear in the semantic document exactly with the stated meaning, either as its own top-level task or under an explicitly supported shared context.',
+    'Do not treat a repository state summary as permission to omit a newly stated work item.',
+  ].join(' ');
+}
