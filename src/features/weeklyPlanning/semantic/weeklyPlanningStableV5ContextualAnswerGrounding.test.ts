@@ -140,7 +140,8 @@ describe('Stable V5 contextual answer source grounding', () => {
     expect(result?.diff?.superseded).toEqual([
       { kind: 'workload', id: 'workload-english' },
     ]);
-    expect(result?.graph.workloads.at(-1)).toMatchObject({
+    const workloads = result?.graph.workloads ?? [];
+    expect(workloads[workloads.length - 1]).toMatchObject({
       taskId: 'task-english',
       quantityRole: 'target',
       amount: 2,
