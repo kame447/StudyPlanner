@@ -113,7 +113,6 @@ function isMinimalContextualReply(
     && input.document.relations.length === 0
     && input.document.availabilityDeclarations.length === 0
     && input.document.constraintSourceRequests.length === 0
-    && input.document.uncertainties.length === 0
     && correctionsOnlyRestatePendingTarget(input)
     && input.document.decisions.length === 0;
 }
