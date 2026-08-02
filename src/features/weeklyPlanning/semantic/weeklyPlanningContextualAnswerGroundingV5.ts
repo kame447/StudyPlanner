@@ -77,3 +77,10 @@ export function groundedQuantityRoleFromUserTextV5(
 
   return roles.size === 1 ? [...roles][0] : null;
 }
+
+export function hasWeeklyPlanningContextualScopeChangeCueV5(
+  text: string,
+): boolean {
+  const normalized = normalizedText(text);
+  return /(?:別件|新しく|新規|追加|もう一つ|もう1つ|ほかにも|他にも|別の(?:予定|作業|タスク)|毎日|毎週|毎月|平日|週末)/.test(normalized);
+}
