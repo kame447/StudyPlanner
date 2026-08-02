@@ -1,6 +1,7 @@
 import {
   groundedDurationMinutesFromUserTextV5,
   groundedQuantityRoleFromUserTextV5,
+  hasWeeklyPlanningContextualScopeChangeCueV5,
 } from './weeklyPlanningContextualAnswerGroundingV5';
 import {
   createActiveLifecycleEntriesV5,
@@ -88,6 +89,7 @@ function isMinimalContextualReply(
   const text = input.userText.trim();
   return text.length > 0
     && text.length <= 40
+    && !hasWeeklyPlanningContextualScopeChangeCueV5(text)
     && input.expectedRevision === input.graph.revision
     && input.pendingQuestion.graphRevision === input.graph.revision
     && isWeeklyPlanningContextualQuestionCodeV5(input.pendingQuestion.questionCode)
