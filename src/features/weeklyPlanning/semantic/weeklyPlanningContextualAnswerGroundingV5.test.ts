@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   groundedDurationMinutesFromUserTextV5,
   groundedQuantityRoleFromUserTextV5,
+  hasWeeklyPlanningContextualScopeChangeCueV5,
 } from './weeklyPlanningContextualAnswerGroundingV5';
 
 describe('Stable V5 contextual answer grounding', () => {
@@ -37,5 +38,15 @@ describe('Stable V5 contextual answer grounding', () => {
     ['今回の量か残りの量です', null],
   ])('grounds one quantity role from the current answer: %s', (text, expected) => {
     expect(groundedQuantityRoleFromUserTextV5(text)).toBe(expected);
+  });
+
+  it.each([
+    ['別件ですが、新しく数学を毎日3時間やる予定も追加してください', true],
+    ['別の予定も追加したいです', true],
+    ['毎日3時間です', true],
+    ['今回進めたい量です', false],
+    ['合計3時間です', false],
+  ])('detects whether the utterance introduces another planning scope: %s', (text, expected) => {
+    expect(hasWeeklyPlanningContextualScopeChangeCueV5(text)).toBe(expected);
   });
 });
