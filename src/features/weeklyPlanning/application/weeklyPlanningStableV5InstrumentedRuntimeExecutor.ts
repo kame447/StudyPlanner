@@ -126,7 +126,6 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       data: {
         criterion: 'runtime graph already contains conversationId:requestId in appliedTurnKeys',
         coreExecutorInvoked: false,
-        graphRevision: result.stableV5Graph?.revision ?? null,
         previewCandidateCount: 0,
       },
     });
