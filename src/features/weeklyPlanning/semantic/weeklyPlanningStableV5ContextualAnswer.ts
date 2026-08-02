@@ -83,6 +83,19 @@ function turnKey(input: WeeklyPlanningStableV5ContextualAnswerInput): string {
   return `${input.conversationId}:${input.turnId}`;
 }
 
+function correctionsOnlyRestatePendingTarget(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): boolean {
+  if (input.document.corrections.length === 0) return true;
+  const targetFactId = input.pendingQuestion.targetFactId;
+  if (!targetFactId) return false;
+  return input.document.corrections.every((correction) =>
+    correction.operation === 'replace'
+    && correction.target.kind === 'workload'
+    && correction.target.publicId === targetFactId
+    && correction.target.localId === null);
+}
+
 function isMinimalContextualReply(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
@@ -102,7 +115,7 @@ function isMinimalContextualReply(
     && input.document.availabilityDeclarations.length === 0
     && input.document.constraintSourceRequests.length === 0
     && input.document.uncertainties.length === 0
-    && input.document.corrections.length === 0
+    && correctionsOnlyRestatePendingTarget(input)
     && input.document.decisions.length === 0;
 }
 
