@@ -1,7 +1,7 @@
 # 週間計画AI 自走会話改善ループ
 
 Status: active
-Date: 2026-08-01
+Date: 2026-08-02
 Issue: #108
 PR: #109
 Branch: `agent/weekly-ai-conversation-eval`
@@ -16,8 +16,8 @@ Stable V5の実API経路を複数ターン動かし、質問、誤回答、明�
 - application経路はStable V5のみ。
 - AI APIは意味解釈と利用者向け返答生成だけに使う。
 - ユーザー役、採点、合否判定、原因推定にはAIを使わない。
-- 会話状態をassistant文面の部分一致で推定しない。
-- 特定発話だけの例外、test削除、期待値緩和で通さない。
+- assistant文面の部分一致で状態を推定しない。
+- 特定発話向け例外、test削除、期待値緩和で通さない。
 - 訂正対象はexact public IDで解決し、曖昧なら推測しない。
 - preview訂正後の旧previewは承認不可。
 - owner切替、再読込、保存失敗でデータを黙って失わない。
@@ -62,9 +62,9 @@ Actions実行中は次の変更を重ねない。
 
 問題: 「明日の予定」1本だけだった。
 
-対応: scenario registryと複数phaseへ分離。
+対応: scenario registry、複数phase、scenario別artifactへ分離。
 
-結果: 修復・複数target・preview後訂正を表現可能。
+結果: 修復、複数target、preview後訂正を表現可能。
 
 ### Loop 1: APIなしで基盤を検証できない
 
@@ -156,7 +156,7 @@ Actions実行中は次の変更を重ねない。
 
 ### Loop 12: 廃止中GitHub ModelsでPRが赤い
 
-問題: 外部410を製品回帰へ混在。
+問題: 外部HTTP 410を製品回帰へ混在。
 
 対応: 自動PR triggerを削除し、OpenAI手動evalへ移行。
 
@@ -164,11 +164,9 @@ Actions実行中は次の変更を重ねない。
 
 ### Loop 13: 実API preflight
 
-結果: run `30679195853`でfoundation成功。Secret確認で停止。
+実行: run `30679195853`。
 
-原因: Repository Secret `OPENAI_API_KEY`未設定。
-
-API request: 0件。
+結果: foundation成功、Repository Secret `OPENAI_API_KEY`未設定で停止。API requestは0件。
 
 対応: keyをコードへ埋めず、`blocked_missing_secret` artifactを定義。
 
@@ -182,9 +180,9 @@ API request: 0件。
 
 ### Loop 15: mainとの差分同期
 
-問題: branchはmainより履歴上1 commit遅れ、手動workflowはbranch単体をcheckoutする。
+問題: 手動workflowはbranch単体をcheckoutするが、branchはmainより履歴上1 commit遅れていた。
 
-対応: mainの起動再マウント修正8ファイルの内容をbranchへ同期。週間計画testはPR追加分を保持し、mainの型修正だけ統合。
+対応: mainの起動再マウント修正8ファイルの内容をbranchへ同期。
 
 結果: run `30680860590`で型、全test、build、diff check成功。
 
@@ -196,56 +194,70 @@ API request: 0件。
 
 対応:
 
-- 共通driverを1 scenario最大8 turnへ制限。
-- suite最大40 turn、120 requestをcontract化。
-- 共通AI clientへ任意のprocess request circuit breakerを追加。
-- 会話workflowは`VITE_AI_MAX_PROCESS_REQUESTS=120`。
-- semantic 4ケースworkflowは`VITE_AI_MAX_PROCESS_REQUESTS=12`。
+- 1 scenario最大8 turn。
+- suite最大40 turn、120 request。
+- semantic suite最大12 request。
+- 共通AI clientにprocess request circuit breaker。
 - 上限到達後はfetch前に拒否。
 
-結果: run `30681177783`、`30681406369`、`30681543550`、`30681654965`で型、全test、build、diff check成功。
+結果: run `30681177783`、`30681406369`、`30681543550`、`30681654965`で全面成功。
 
-思想確認: Productionでは環境変数未設定のためbudget機構は無効。
+思想確認: Productionでは上限環境変数未設定のためbudget機構は無効。
 
 ### Loop 17: 初回実API会話とplanning window語彙不整合
 
-実行: run `30745377735`。foundation、Secret確認、OpenAI接続は成功した。
+実行: run `30745377735`。
 
-結果: scenario 1のturn 1でfail-fast。API requestは意味解釈1件、返答生成1件の合計2件。残り4 scenarioは未実行。
-
-会話:
+結果: scenario 1 turn 1でfail-fast。意味解釈1件、返答生成1件、合計2 request。
 
 ```text
 ユーザー: 次の日の勉強計画を立てたいです
 アプリ: いつからいつまでの予定を作るか教えてください。
 ```
 
-七視点監査:
-
-1. runtime入口: Stable V5経路、Secret、direct OpenAIは正常。
-2. 対話進行: 期間を既に述べたのに再質問しており不正。
-3. 意味状態: AIは`relative_day / next_day`をaccepted Factとして追加したが、runtime resolverは`tomorrow`しか解決できなかった。
-4. lifecycle: preview前のため未到達。Graph commit自体は原子的だった。
-5. テスト妥当性: renderer fallbackを成功扱いせず、最初の実不整合で停止できた。
-6. 観測: semantic raw response、Graph、renderer trace、transcriptをartifactから復元できた。
-7. 運用: 2 requestでfail-fastし、費用上限は機能した。
-
-根本原因: `planningWindow.value`がschema・validatorでは任意文字列だった一方、calendar resolverは`today / tomorrow / day_after_tomorrow / this_week / next_week`だけを受理していた。rendererは誤ったmachine questionを自然に言い換えただけで、原因ではない。
+原因: AIは`relative_day / next_day`をschema上受理したが、runtime resolverは`tomorrow`しか解決できなかった。
 
 対応:
 
-- relative dayとrelative weekのcanonical語彙をcalendar resolverへ単一正本化。
-- normalizerのpost-schema contractで独自aliasを拒否。
-- `next_day`、`following_day`、`following_week`等は1回だけAI repairし、canonical値へ直す。
-- 「次の日」固有の文字列置換やdeterministic日本語parserは追加しない。
-- canonical day/week全値がruntime resolverで解決できるtestを追加。
-- 「次の日」「翌日」「翌週」の異なる表現を同じcontractで検証。
+- relative day/weekのcanonical語彙を単一正本化。
+- noncanonical aliasをpost-schema contractで拒否。
+- `next_day`、`following_day`、`following_week`を1回だけAI repair。
+- 「次の日」固有parserは追加しない。
+- 「次の日」「翌日」「翌週」を同じcontractで検証。
 
-自己監査: 初回testで`Array.at()`を使い現行TypeScript libと不整合になった。lib緩和や`any`を使わず配列末尾参照へ直した。
+自己監査: testで`Array.at()`を使い現行TS libと不整合。lib緩和や`any`を使わず修正。
 
-決定論的結果: run `30745926382`でTypeScript、全Vitest、production build、diff checkが成功。
+決定論的結果: run `30745926382`で全面成功。
 
-次: 同じ5 scenarioを実API再実行し、scenario 1が次の質問へ進むかを確認する。
+### Loop 18: canonical日付の表示表現をrendererが誤拒否
+
+実行: run `30746307987`。
+
+前進: `next_day`はrepairで`tomorrow`になり、horizonは`2026-08-04`へ解決。machine questionは`missing_schedulable_work`まで進んだ。
+
+AI返答:
+
+```text
+明日の勉強計画を作るために、まず入れたい作業内容と、だいたいどれくらい進めたいかを教えてください。
+```
+
+問題: 返答内容は自然でmachine stateにも一致したが、renderer safetyが`ungrounded_text`として拒否した。
+
+原因: grounding判定はユーザー表層の「次の日」と返答表層の「明日」を完全一致で比較した。planning informationにはcanonical `tomorrow`があるのに、その日本語表示を許可集合へ入れていなかった。
+
+対応:
+
+- canonical date factから許可表示を決定論的に導出。
+- `tomorrow→明日`、`next_week→来週`等を単一対応表で扱う。
+- valid ISO dateは`M月D日`表示を許可。
+- canonical factにない「明後日」等は引き続き拒否。
+- 日本語発話を再parser化せず、確定済みFactだけを根拠にする。
+
+自己監査: 初回helper名に`weeklyPlanningStableV5`を含め、production isolation監査が未監査接続として停止した。allowlistは増やさず、helperを汎用`weeklyPlanningDialogueDateGrounding`層へ移し、重複旧ファイルを削除した。
+
+決定論的結果: run `30747039416`でTypeScript、全Vitest、production isolation、build、diff checkが全面成功。
+
+次: 同じ5 scenarioを実API再実行し、scenario 1の2 turn目以降へ進むか確認する。
 
 ## Actions確認済み
 
@@ -253,11 +265,12 @@ API request: 0件。
 - 全Vitest regression suite: success
 - production build: success
 - diff check: success
+- Stable V5 production isolation: success
 - real API workflow foundation: success
-- AI-only経路・request budget・fail-fast policy: success
-- main内容同期後のbranch単体CI: success
 - OpenAI Secret・direct API接続: success
+- AI-only経路・request budget・fail-fast policy: success
 - canonical planning window repair contract: success
+- canonical date表示grounding: success
 
 ## 現在できること
 
@@ -270,11 +283,12 @@ API request: 0件。
 - turnごとのtranscript、trace、renderer trace、request数をartifact保存。
 - 最初の失敗で停止。
 - 会話suite最大120 request、semantic suite最大12 requestで物理停止。
-- 非canonicalなrelative day/week aliasをAI repairで正規語彙へ直す。
+- noncanonical relative date aliasをAI repair。
+- canonical date factから安全な日本語表示を導出。
 
 ## 未確認
 
-- 修正後のOpenAI実API会話5 scenario。
+- Loop 18修正後のOpenAI実API会話5 scenario。
 - OpenAI semantic schema 4ケース。
 - transcriptの自然さ。
 - token usageと実費。
