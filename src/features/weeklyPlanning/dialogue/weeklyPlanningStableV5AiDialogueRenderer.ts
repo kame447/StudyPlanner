@@ -9,7 +9,7 @@ import {
 } from '../trace/weeklyPlanningDialogueRendererTrace';
 import {
   groundedDateExpressionsFromPlanningInformation,
-} from './weeklyPlanningStableV5DialogueDateGrounding';
+} from './weeklyPlanningDialogueDateGrounding';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
