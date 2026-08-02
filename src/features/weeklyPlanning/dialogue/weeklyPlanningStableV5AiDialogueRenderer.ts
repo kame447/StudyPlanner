@@ -7,6 +7,9 @@ import {
 import {
   rememberWeeklyPlanningDialogueRendererPromptContext,
 } from '../trace/weeklyPlanningDialogueRendererTrace';
+import {
+  groundedDateExpressionsFromPlanningInformation,
+} from './weeklyPlanningStableV5DialogueDateGrounding';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -240,8 +243,14 @@ function addsUnsupportedExpression(
   rendered: string,
   groundingInformation: string,
   pattern: RegExp,
+  additionalAllowedValues: readonly string[] = [],
 ): boolean {
   const allowed = new Set(expressions(groundingInformation, pattern));
+  for (const value of additionalAllowedValues) {
+    for (const expression of expressions(value, pattern)) {
+      allowed.add(expression);
+    }
+  }
   return expressions(rendered, pattern).some((expression) => !allowed.has(expression));
 }
 
@@ -294,9 +303,17 @@ function validateRenderedText(
     referenceResponse: input.fallbackText,
     previewCount: input.previewCount,
   });
+  const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
+    input.planningInformation,
+  );
   if (
     addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
-    || addsUnsupportedExpression(text, groundingInformation, DATE_EXPRESSION)
+    || addsUnsupportedExpression(
+      text,
+      groundingInformation,
+      DATE_EXPRESSION,
+      groundedDateExpressions,
+    )
     || hasIncorrectPreviewCount(text, input)
     || hasUnsupportedActionShape(text, input)
   ) {
