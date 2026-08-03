@@ -200,17 +200,15 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
 } {
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。',
-    '会話履歴、ユーザーの最新発話、アプリが把握している情報を踏まえて、次に返す自然な日本語を考えてください。',
-    'アプリが把握していない予定や事実は作らないでください。',
-    '例示や補足であっても、入力にない作業名、数量、所要時間、時刻、日付を追加しないでください。',
-    '指定されたJSON形式で、actionId、actionKind、questionCodeを変えずに返してください。',
+    '会話とアプリ状態に基づいて、次の自然な日本語を返してください。',
+    '入力にない具体情報は、例としても補わないでください。',
+    '指定されたJSON形式とaction識別子を変更しないでください。',
   ].join('\n');
 
   const userPrompt = JSON.stringify({
     actionId: input.actionId,
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
-    planningInformation: input.planningInformation,
     planningStateSummary: createWeeklyPlanningStableV5DialogueStateSummary(input),
     applicationDecision: {
       actionKind: input.actionKind,
@@ -220,13 +218,10 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewCount: input.previewCount,
     },
     request: [
-      '上記の情報を踏まえて、現在のユーザーに返す自然な日本語を考えてください。',
-      'actionId、applicationDecision.actionKind、applicationDecision.questionCodeをそのままJSONへ返してください。',
-      'planningStateSummaryのdecidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です。',
-      'referenceResponseはアプリ側の参考情報であり、そのまま繰り返したり、単に言い換えたりする必要はありません。',
-      '最新発話が説明要求や聞き返しなら、直前の質問を繰り返さず、何を確認したいのかを分かりやすく説明してください。',
-      '必要情報を尋ねる際も、入力に存在しない具体例、仮の作業名、仮の数量や時間を挙げず、確認対象だけを尋ねてください。',
-      'applicationDecision.actionKindがquestionなら、説明要求への説明を除き、必要な情報を尋ねてください。まだ実行されていない予定の作成・追加・保存を開始または完了したとは言わないでください。',
+      '現在のユーザーに返す自然な日本語を一つ作成してください。',
+      'actionId、actionKind、questionCodeはapplicationDecisionどおりに返してください。',
+      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です。referenceResponseは参考であり、繰り返す必要はありません。',
+      '説明要求には説明し、questionでは必要情報だけを尋ね、未実行の作成・保存を完了したとは言わないでください。',
     ].join(''),
   }, null, 2);
 
