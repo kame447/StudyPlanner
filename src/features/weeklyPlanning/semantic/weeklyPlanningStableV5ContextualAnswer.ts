@@ -1,9 +1,4 @@
 import {
-  groundedDurationMinutesFromUserTextV5,
-  groundedQuantityRoleFromUserTextV5,
-  hasWeeklyPlanningContextualScopeChangeCueV5,
-} from './weeklyPlanningContextualAnswerGroundingV5';
-import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import type {
@@ -26,6 +21,21 @@ import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
 
+/*
+ * Semantic ownership boundary
+ *
+ * The semantic AI interprets the reply. This layer only verifies that the
+ * machine pending question still points to an active exact workload and that
+ * the accepted semantic document contains one compatible answer value.
+ *
+ * Never compare userText with phrases, units, labels, or quantities here. Never
+ * infer another target. A mismatch is rejected or recorded as an incompatible
+ * turn; it is not repaired by a deterministic natural-language parser.
+ *
+ * Canonical rationale:
+ * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
+ * - docs/ai/design/20260803-weekly-planning-semantic-ownership-phase2-design.md
+ */
 export interface WeeklyPlanningStableV5ContextualAnswerInput {
   graph: WeeklyPlanningFactGraphV5;
   document: WeeklyPlanningSemanticDocumentV5;
@@ -98,11 +108,7 @@ function correctionsOnlyRestatePendingTarget(
 function isMinimalContextualReply(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
-  const text = input.userText.trim();
-  return text.length > 0
-    && text.length <= 40
-    && !hasWeeklyPlanningContextualScopeChangeCueV5(text)
-    && input.expectedRevision === input.graph.revision
+  return input.expectedRevision === input.graph.revision
     && input.pendingQuestion.graphRevision === input.graph.revision
     && isWeeklyPlanningContextualQuestionCodeV5(input.pendingQuestion.questionCode)
     && typeof input.pendingQuestion.targetFactId === 'string'
@@ -134,19 +140,13 @@ function targetWorkload(
     input.pendingQuestion.questionCode === 'quantity_role_unresolved'
     && workload.quantityRole !== 'declared'
     && workload.quantityRole !== 'unknown'
-  ) {
-    return null;
-  }
-  if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
-    const targetFactIds = new Set([
-      workload.taskId,
-      ...(workload.componentId ? [workload.componentId] : []),
-    ]);
-    const alreadyEstimated = input.graph.effortEstimates.some((estimate) =>
+  ) return null;
+  if (
+    input.pendingQuestion.questionCode === 'missing_effort_estimate'
+    && input.graph.effortEstimates.some((estimate) =>
       isActiveFact(input.graph, estimate.id)
-      && targetFactIds.has(estimate.targetFactId));
-    if (alreadyEstimated) return null;
-  }
+      && estimate.targetFactId === workload.id)
+  ) return null;
   return workload;
 }
 
@@ -154,7 +154,7 @@ function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
   minutes: number;
   precision: EffortEstimateFactV5['precision'];
 }> {
-  const estimates = document.tasks.flatMap((task) =>
+  return document.tasks.flatMap((task) =>
     task.effortEstimates
       .filter((estimate) => Number.isFinite(estimate.minutes) && estimate.minutes > 0)
       .map((estimate) => ({
@@ -162,21 +162,6 @@ function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
         precision: estimate.precision,
       })),
   );
-  if (estimates.length > 0) return estimates;
-
-  return document.tasks.flatMap((task) => [
-    ...task.workloads,
-    ...(task.study?.components ?? []).flatMap((component) => component.workloads),
-  ]).flatMap((workload) => {
-    if (!Number.isFinite(workload.amount) || workload.amount <= 0) return [];
-    if (workload.unitCode === 'minute') {
-      return [{ minutes: workload.amount, precision: 'exact' as const }];
-    }
-    if (workload.unitCode === 'hour') {
-      return [{ minutes: workload.amount * 60, precision: 'exact' as const }];
-    }
-    return [];
-  });
 }
 
 function quantityRoleCandidates(
@@ -227,7 +212,7 @@ function applyEffortAnswer(
   const fact: EffortEstimateFactV5 = {
     id,
     taskId: target.taskId,
-    targetFactId: target.componentId ?? target.taskId,
+    targetFactId: target.id,
     kind: 'total_duration',
     minutes: candidate.minutes,
     unitCode: null,
@@ -408,13 +393,8 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
   }
 
   if (input.pendingQuestion.questionCode === 'missing_effort_estimate') {
-    const groundedMinutes = groundedDurationMinutesFromUserTextV5(input.userText);
     const candidates = durationCandidates(input.document);
-    if (
-      groundedMinutes.length !== 1
-      || candidates.length !== 1
-      || Math.round(candidates[0].minutes) !== groundedMinutes[0]
-    ) {
+    if (candidates.length !== 1) {
       return {
         ...base,
         status: 'incompatible',
@@ -422,10 +402,7 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
         result: null,
       };
     }
-    const result = applyEffortAnswer(input, target, {
-      ...candidates[0],
-      minutes: groundedMinutes[0],
-    });
+    const result = applyEffortAnswer(input, target, candidates[0]);
     return result
       ? { ...base, status: 'applied', reason: 'applied', result }
       : {
@@ -436,13 +413,8 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
         };
   }
 
-  const groundedRole = groundedQuantityRoleFromUserTextV5(input.userText);
   const roles = quantityRoleCandidates(input.document);
-  if (
-    groundedRole === null
-    || roles.length !== 1
-    || roles[0] !== groundedRole
-  ) {
+  if (roles.length !== 1) {
     return {
       ...base,
       status: 'incompatible',
@@ -450,7 +422,7 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
       result: null,
     };
   }
-  const result = applyQuantityRoleAnswer(input, target, groundedRole);
+  const result = applyQuantityRoleAnswer(input, target, roles[0]);
   return result
     ? { ...base, status: 'applied', reason: 'applied', result }
     : {
