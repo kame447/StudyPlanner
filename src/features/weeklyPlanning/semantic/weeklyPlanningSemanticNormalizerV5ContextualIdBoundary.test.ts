@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type {
-  ChatCompletionRequest,
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -9,6 +8,8 @@ import {
 import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
+
+type ClientRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
 
 function invalidPublicIdUncertainty(): string {
   return JSON.stringify({
@@ -69,7 +70,7 @@ function repairedLocalAnswer(): string {
 
 describe('Stable V5 contextual ID boundary', () => {
   it('repairs a public-ID local reference into minimal local answer facts', async () => {
-    const calls: ChatCompletionRequest[] = [];
+    const calls: ClientRequest[] = [];
     const responses = [invalidPublicIdUncertainty(), repairedLocalAnswer()];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(request) {
