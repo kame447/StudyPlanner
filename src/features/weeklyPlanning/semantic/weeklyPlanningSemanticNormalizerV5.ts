@@ -6,6 +6,9 @@ import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
+  createGroundedContextualAnswerDocumentV5,
+} from './weeklyPlanningContextualAnswerDocumentV5';
+import {
   directWorkCoverageErrorsV5,
   missingDirectWorkExpectationsV5,
 } from './weeklyPlanningDirectWorkCoverageV5';
@@ -234,6 +237,19 @@ function validateSemanticResponse(
   rawResponse: string,
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ): SemanticValidationAttemptV5 {
+  const grounded = createGroundedContextualAnswerDocumentV5({
+    userText: input.userText,
+    publicStateSummary: input.publicStateSummary,
+  });
+  if (grounded) {
+    return {
+      document: grounded.document,
+      parsedDocument: grounded.document,
+      errors: [],
+      algorithmicRepairs: grounded.repairs,
+    };
+  }
+
   const parsed = parseWeeklyPlanningSemanticDocumentV5(rawResponse);
   if (!parsed.document) {
     return {
