@@ -9,9 +9,15 @@ import {
   createGroundedContextualAnswerDocumentV5,
 } from './weeklyPlanningContextualAnswerDocumentV5';
 import {
+  createGroundedCreationAuthorizationDocumentV5,
+} from './weeklyPlanningCreationAuthorizationV5';
+import {
   directWorkCoverageErrorsV5,
   missingDirectWorkExpectationsV5,
 } from './weeklyPlanningDirectWorkCoverageV5';
+import {
+  normalizeExactDuplicateWorkloadPlacementV5,
+} from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -50,8 +56,6 @@ const TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5 = [
 ].join('\n');
 const CONTEXTUAL_ANSWER_INSTRUCTION_V5 =
   'Use publicStateSummary.pendingQuestion as the authoritative target for a short answer and emit only the minimal semantic value needed to answer it. Never infer the target from assistant wording or select another public fact.';
-const AUTHORIZATION_INSTRUCTION_V5 =
-  'When the user only authorizes creation from accepted state, set planningIntent to create_plan without repeating accepted facts. Include only facts explicitly added or changed in the current utterance.';
 const PLANNING_WINDOW_SCOPE_INSTRUCTION_V5 =
   'Treat a directly stated whole-plan range, including a short answer to a pending planning-horizon question, as planningWindow; do not promote task-specific dates.';
 
@@ -237,6 +241,16 @@ function validateSemanticResponse(
   rawResponse: string,
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ): SemanticValidationAttemptV5 {
+  const authorization = createGroundedCreationAuthorizationDocumentV5(input.userText);
+  if (authorization) {
+    return {
+      document: authorization,
+      parsedDocument: authorization,
+      errors: [],
+      algorithmicRepairs: ['creation-authorization-grounded-from-user-text'],
+    };
+  }
+
   const grounded = createGroundedContextualAnswerDocumentV5({
     userText: input.userText,
     publicStateSummary: input.publicStateSummary,
@@ -250,13 +264,14 @@ function validateSemanticResponse(
     };
   }
 
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(rawResponse);
+  const rawNormalization = normalizeExactDuplicateWorkloadPlacementV5(rawResponse);
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(rawNormalization.rawResponse);
   if (!parsed.document) {
     return {
       document: null,
       parsedDocument: null,
       errors: parsed.errors,
-      algorithmicRepairs: [],
+      algorithmicRepairs: rawNormalization.repairs,
     };
   }
 
@@ -266,7 +281,10 @@ function validateSemanticResponse(
     document: conformanceErrors.length === 0 ? normalized.document : null,
     parsedDocument: normalized.document,
     errors: conformanceErrors,
-    algorithmicRepairs: normalized.repairs,
+    algorithmicRepairs: [
+      ...rawNormalization.repairs,
+      ...normalized.repairs,
+    ],
   };
 }
 
@@ -281,7 +299,6 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
         DATE_SET_NORMALIZATION_INSTRUCTION_V5,
         TEMPORAL_RELATION_BOUNDARY_INSTRUCTION_V5,
         CONTEXTUAL_ANSWER_INSTRUCTION_V5,
-        AUTHORIZATION_INSTRUCTION_V5,
         PLANNING_WINDOW_SCOPE_INSTRUCTION_V5,
       ].join('\n'),
     },
