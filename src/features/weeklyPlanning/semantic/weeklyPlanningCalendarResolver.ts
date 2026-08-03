@@ -1,6 +1,7 @@
 export const CANONICAL_RELATIVE_DAY_EXPRESSIONS = [
   'today',
   'tomorrow',
+  'next_day',
   'day_after_tomorrow',
 ] as const;
 
@@ -157,8 +158,12 @@ export function resolveCanonicalDateExpression(params: {
     };
   }
 
-  if (params.expression === 'tomorrow' || params.expression === 'day_after_tomorrow') {
-    const offset = params.expression === 'tomorrow' ? 1 : 2;
+  if (
+    params.expression === 'tomorrow'
+    || params.expression === 'next_day'
+    || params.expression === 'day_after_tomorrow'
+  ) {
+    const offset = params.expression === 'day_after_tomorrow' ? 2 : 1;
     const date = addCalendarDays(params.currentDate, offset);
     return date
       ? { status: 'resolved', range: { start: date, end: date } }
