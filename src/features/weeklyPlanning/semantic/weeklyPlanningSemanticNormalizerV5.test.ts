@@ -132,7 +132,7 @@ describe('Stable V5 semantic normalizer', () => {
     });
   });
 
-  it('tells the AI it owns contextual meaning and workload-target duration', async () => {
+  it('tells the AI it owns contextual meaning and exact pending-target resolution', async () => {
     const fake = client([JSON.stringify(document())]);
     await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '40問に3時間かかります',
@@ -147,10 +147,14 @@ describe('Stable V5 semantic normalizer', () => {
 
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system).toContain('only component that interprets the meaning');
-    expect(system).toContain('pendingQuestion as the authoritative machine-readable identity');
-    expect(system).toContain('effortEstimate may target the exact task, component, or workload localId');
-    expect(system).toContain('Deterministic code will not reinterpret sourceText');
+    expect(system).toContain('You alone interpret user meaning and context');
+    expect(system).toContain('Treat publicStateSummary.pendingQuestion as authoritative');
+    expect(system).toContain('never infer its target from assistant wording');
+    expect(system).toContain('Every sourceText must be supported by current userText, not prior turns');
+    expect(system).toContain('For quantity_role_unresolved');
+    expect(system).toContain('do not return declared after resolution');
+    expect(system).toContain('For semantic_uncertainty');
+    expect(system).toContain('An effortEstimate may target the exact task, component, or workload localId');
   });
 
   it('does not manufacture an omitted planning window from the user wording', async () => {
