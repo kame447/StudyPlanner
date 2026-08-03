@@ -91,21 +91,15 @@ describe('Stable V5 semantic normalizer debug trace', () => {
     };
 
     expect(system).toContain(
-      'Use publicStateSummary.pendingQuestion as the authoritative machine-readable identity and target',
+      'Treat publicStateSummary.pendingQuestion as authoritative',
     );
-    expect(system).toContain('Never infer that target from assistant wording');
+    expect(system).toContain('never infer its target from assistant wording');
     expect(system).toContain(
-      'Every sourceText in a short-answer result must be supported by the current userText',
+      'Every sourceText must be supported by current userText, not prior turns',
     );
-    expect(system).toContain(
-      'When pendingQuestion.questionCode is quantity_role_unresolved',
-    );
-    expect(system).toContain(
-      'Do not return declared after the user has resolved the role',
-    );
-    expect(system).toContain(
-      'When pendingQuestion.questionCode is semantic_uncertainty',
-    );
+    expect(system).toContain('For quantity_role_unresolved');
+    expect(system).toContain('do not return declared after resolution');
+    expect(system).toContain('For semantic_uncertainty');
     expect(userPayload).toMatchObject({
       userText: '3時間ぐらいかな',
       publicStateSummary: {
