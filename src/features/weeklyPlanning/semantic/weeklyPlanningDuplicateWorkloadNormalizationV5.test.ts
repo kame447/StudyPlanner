@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
+import {
+  createWeeklyPlanningSemanticNormalizerV5,
+} from './weeklyPlanningSemanticNormalizerV5';
 
 function workload(localId: string, amount = 2) {
   return {
@@ -14,7 +18,7 @@ function workload(localId: string, amount = 2) {
     rangeEnd: null,
     perOccurrence: false,
     periodExpression: null,
-    sourceText: `作業を${amount}時間`,
+    sourceText: `分野1を${amount}時間`,
   };
 }
 
@@ -73,6 +77,34 @@ describe('Stable V5 duplicate workload placement normalization', () => {
     expect(result.repairs).toEqual([
       'duplicate-workload-removed-from-task:task-1:workload-1',
     ]);
+  });
+
+  it('accepts the normalized document without a second provider request', async () => {
+    const duplicated = workload('workload-1');
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => response({
+        taskWorkloads: [duplicated],
+        componentWorkloads: [[{ ...duplicated }]],
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '分野1を2時間進めます',
+      traceRequestId: 'duplicate-workload-receiver',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks[0]?.workloads).toEqual([]);
+    expect(result.document?.tasks[0]?.study?.components[0]?.workloads).toHaveLength(1);
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 1,
+      repairAttempted: false,
+      validationErrors: [],
+      algorithmicRepairs: [
+        'duplicate-workload-removed-from-task:task-1:workload-1',
+      ],
+    });
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('does not remove conflicting facts that happen to reuse one local ID', () => {
