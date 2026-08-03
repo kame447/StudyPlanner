@@ -61,9 +61,17 @@ export function relativeWindowSourceExpectationV5(
   sourceText: string,
 ): Omit<RelativeWindowSourceExpectationV5, 'phrases'> | null {
   const normalized = normalizeSourceText(sourceText);
-  const matched = RELATIVE_WINDOW_SOURCE_EXPECTATIONS_V5.find((expectation) =>
-    expectation.phrases.some((phrase) => normalized.includes(phrase)));
-  return matched ? { kind: matched.kind, value: matched.value } : null;
+  const matched = RELATIVE_WINDOW_SOURCE_EXPECTATIONS_V5
+    .filter((expectation) =>
+      expectation.phrases.some((phrase) => normalized.includes(phrase)))
+    .map(({ kind, value }) => ({ kind, value }));
+  const unique = new Map(
+    matched.map((expectation) => [
+      `${expectation.kind}:${expectation.value}`,
+      expectation,
+    ]),
+  );
+  return unique.size === 1 ? [...unique.values()][0] : null;
 }
 
 export function normalizePlanningWindowCanonicalV5(
