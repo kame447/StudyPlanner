@@ -120,6 +120,7 @@ describe('Stable V5 dialogue state summary', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
 
+    expect(payload).not.toHaveProperty('planningInformation');
     expect(payload).toMatchObject({
       currentUserMessage: 'どういうこと？',
       recentConversation: expect.any(Array),
@@ -132,7 +133,7 @@ describe('Stable V5 dialogue state summary', () => {
       },
     });
     expect(prompt.userPrompt).toContain(
-      'decidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です',
+      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です',
     );
   });
 });
