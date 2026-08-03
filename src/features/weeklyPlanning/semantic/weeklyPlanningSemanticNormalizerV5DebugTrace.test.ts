@@ -70,11 +70,38 @@ describe('Stable V5 semantic normalizer debug trace', () => {
     const response = events.find((event) => event.stage === 'semantic_provider_response');
     const validation = events.find((event) => event.stage === 'semantic_validation_result');
 
-    expect(JSON.stringify(request?.data)).toContain(
-      'Use publicStateSummary.pendingQuestion as the authoritative machine-readable description',
-    );
-    expect(JSON.stringify(request?.data)).toContain('missing_effort_estimate');
-    expect(JSON.stringify(request?.data)).toContain('3時間ぐらいかな');
+    const requestData = request?.data as {
+      request?: {
+        messages?: Array<{ role: string; content: string }>;
+      };
+    } | undefined;
+    const messages = requestData?.request?.messages ?? [];
+    const system = messages.find((message) => message.role === 'system')?.content ?? '';
+    const user = messages.find((message) => message.role === 'user')?.content ?? '{}';
+    const userPayload = JSON.parse(user) as {
+      userText?: string;
+      publicStateSummary?: {
+        graphRevision?: number;
+        pendingQuestion?: {
+          questionCode?: string;
+          targetFactId?: string;
+          graphRevision?: number;
+        };
+      };
+    };
+
+    expect(system).toContain('Use publicStateSummary.pendingQuestion as the authoritative target');
+    expect(userPayload).toMatchObject({
+      userText: '3時間ぐらいかな',
+      publicStateSummary: {
+        graphRevision: 2,
+        pendingQuestion: {
+          questionCode: 'missing_effort_estimate',
+          targetFactId: 'workload-1',
+          graphRevision: 2,
+        },
+      },
+    });
     expect(response?.data).toMatchObject({
       attempt: 'initial',
       rawResponse,
