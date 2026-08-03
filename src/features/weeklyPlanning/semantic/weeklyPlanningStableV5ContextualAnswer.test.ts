@@ -73,45 +73,60 @@ function graph(params: {
 function answerDocument(params: {
   minutes?: number;
   quantityRole?: 'target';
+  includeAdditionalTask?: boolean;
 }): WeeklyPlanningSemanticDocumentV5 {
+  const tasks: WeeklyPlanningSemanticDocumentV5['tasks'] = [{
+    localId: 'answer-task',
+    category: 'study',
+    title: '直前の質問対象',
+    study: null,
+    workloads: params.quantityRole
+      ? [{
+          localId: 'answer-workload',
+          quantityRole: params.quantityRole,
+          amount: 10,
+          unitCode: 'page',
+          unitLabel: 'ページ',
+          rangeStart: null,
+          rangeEnd: null,
+          perOccurrence: false,
+          periodExpression: null,
+          sourceText: '今回進めたい量です',
+        }]
+      : [],
+    effortEstimates: params.minutes
+      ? [{
+          localId: 'answer-effort',
+          targetLocalId: 'answer-task',
+          kind: 'total_duration',
+          minutes: params.minutes,
+          unitCode: null,
+          precision: 'exact',
+          sourceText: '3時間です',
+        }]
+      : [],
+    temporalConstraints: [],
+    recurrence: [],
+    sourceText: params.minutes ? '3時間です' : '今回進めたい量です',
+  }];
+  if (params.includeAdditionalTask) {
+    tasks.push({
+      localId: 'additional-task',
+      category: 'study',
+      title: '数学',
+      study: null,
+      workloads: [],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: '数学も追加する',
+    });
+  }
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'discuss',
     planningWindow: null,
-    tasks: [{
-      localId: 'answer-task',
-      category: 'study',
-      title: '直前の質問対象',
-      study: null,
-      workloads: params.quantityRole
-        ? [{
-            localId: 'answer-workload',
-            quantityRole: params.quantityRole,
-            amount: 10,
-            unitCode: 'page',
-            unitLabel: 'ページ',
-            rangeStart: null,
-            rangeEnd: null,
-            perOccurrence: false,
-            periodExpression: null,
-            sourceText: '今回進めたい量です',
-          }]
-        : [],
-      effortEstimates: params.minutes
-        ? [{
-            localId: 'answer-effort',
-            targetLocalId: 'answer-task',
-            kind: 'total_duration',
-            minutes: params.minutes,
-            unitCode: null,
-            precision: 'exact',
-            sourceText: '3時間です',
-          }]
-        : [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: params.minutes ? '3時間です' : '今回進めたい量です',
-    }],
+    tasks,
     relations: [],
     availabilityDeclarations: [],
     constraintSourceRequests: [],
@@ -141,7 +156,7 @@ const multipleTargetCase = fc.integer({ min: 2, max: 8 }).chain((workloadCount) 
   }));
 
 describe('Stable V5 contextual answers', () => {
-  it('binds a short duration to the exact workload named by pending question', () => {
+  it('binds an AI duration answer to the exact workload named by pending question', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
       graph: graph({ quantityRole: 'target' }),
       document: answerDocument({ minutes: 180 }),
@@ -149,19 +164,19 @@ describe('Stable V5 contextual answers', () => {
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
-      userText: '3時間です',
+      userText: 'any wording is observational only',
     });
 
     expect(result?.graph.effortEstimates).toEqual([
       expect.objectContaining({
         taskId: 'task-1',
-        targetFactId: 'task-1',
+        targetFactId: 'workload-1',
         minutes: 180,
       }),
     ]);
   });
 
-  it('supersedes the exact unresolved workload for a quantity-role answer', () => {
+  it('supersedes the exact unresolved workload for an AI quantity-role answer', () => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
       graph: graph({ quantityRole: 'declared' }),
       document: answerDocument({ quantityRole: 'target' }),
@@ -169,7 +184,7 @@ describe('Stable V5 contextual answers', () => {
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
-      userText: '今回進めたい量です',
+      userText: 'wording is not parsed',
     });
 
     const workloads = result?.graph.workloads ?? [];
@@ -197,7 +212,7 @@ describe('Stable V5 contextual answers', () => {
         conversationId: 'conversation-1',
         turnId: 'turn-2',
         expectedRevision: 1,
-        userText: '今回進めたい量です',
+        userText: 'not interpreted',
       });
       if (!result) throw new Error('valid machine-selected answer was rejected');
 
@@ -221,14 +236,14 @@ describe('Stable V5 contextual answers', () => {
     }), { numRuns: 100 });
   });
 
-  it('returns null for stale, missing, or non-minimal pending-question shapes', () => {
+  it('returns null for stale, missing, or non-minimal machine/document shapes', () => {
     const base = {
       graph: graph({ quantityRole: 'target' }),
       document: answerDocument({ minutes: 180 }),
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
-      userText: '3時間です',
+      userText: 'not interpreted',
     };
 
     const nonContextualInputs = [
@@ -249,7 +264,7 @@ describe('Stable V5 contextual answers', () => {
       {
         ...base,
         pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate' }),
-        userText: '別件ですが、新しく数学を毎日3時間やる予定も追加してください',
+        document: answerDocument({ minutes: 180, includeAdditionalTask: true }),
       },
     ];
 
@@ -270,7 +285,7 @@ describe('Stable V5 contextual answers', () => {
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
-      userText: '3時間です',
+      userText: 'not interpreted',
     });
 
     expect(result).toEqual({
