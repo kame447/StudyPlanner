@@ -1,3 +1,21 @@
+/*
+ * Semantic ownership boundary — P0 freeze
+ *
+ * This module currently reinterprets natural-language user text after the AI
+ * response. That is a known architecture regression, not an approved extension
+ * point. Do not add phrases, regular expressions, units, scenarios, or fallback
+ * branches here to make an individual conversation pass.
+ *
+ * User utterance meaning belongs to the semantic AI. Deterministic code may
+ * validate the AI-selected schema values and references, but must not infer a
+ * quantity role, correction, scope change, target, or duration from user text.
+ * The production callers of this helper are scheduled for removal after the
+ * Phase 2 schema/reference contract is fixed.
+ *
+ * Canonical rationale:
+ * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
+ * - docs/ai/audits/20260803-weekly-planning-semantic-ownership-phase0-phase1.md
+ */
 export type WeeklyPlanningGroundedQuantityRoleV5 =
   | 'target'
   | 'remaining'
