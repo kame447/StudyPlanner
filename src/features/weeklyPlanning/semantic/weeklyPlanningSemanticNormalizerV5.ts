@@ -27,17 +27,14 @@ export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
 
 const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'You are the only component that interprets the meaning of the user utterance, recent conversation, pending question, corrections, approvals, quantities, dates, and task boundaries.',
-  'Use publicStateSummary.pendingQuestion as the authoritative machine-readable identity and target of the immediately preceding application question. Never infer that target from assistant wording.',
-  'For a short answer, emit the minimal semantic facts needed to answer the pending question. Do not copy unrelated accepted facts from publicStateSummary.',
-  'Every sourceText in a short-answer result must be supported by the current userText. Do not reuse an earlier user utterance as if it were evidence for the current answer.',
-  'When pendingQuestion.questionCode is quantity_role_unresolved, inspect the exact target workload in publicStateSummary.workloads. If the current userText resolves the role, emit one minimal task or component workload with the same amount and unit and set quantityRole to target, remaining, or completed exactly as the current answer means. Do not return declared after the user has resolved the role.',
-  'When the current answer does not actually resolve quantity_role_unresolved, do not guess. Emit an uncertainty describing that the target workload role is still unresolved.',
-  'When pendingQuestion.questionCode is semantic_uncertainty, emit only the concrete semantic delta that resolves the targeted uncertainty. If the current answer still does not resolve it, keep the meaning uncertain instead of choosing a candidate.',
-  'An effortEstimate may target the exact task, component, or workload localId that the duration describes. For example, when a duration describes a quantified workload, target that workload localId.',
-  'When the user authorizes plan creation from the already accepted state, set planningIntent to create_plan and do not re-emit unrelated accepted facts.',
-  'Choose task boundaries, shared contexts, corrections, and relative planning-window values yourself from the full context. Deterministic code will not reinterpret sourceText or repair meaning for you.',
-  'Return only the Stable V5 JSON document. Do not return application commands, schedule placements, readiness decisions, preview decisions, save decisions, or prose.',
+  'You alone interpret user meaning and context; deterministic code only validates and applies your JSON.',
+  'Treat publicStateSummary.pendingQuestion as authoritative; never infer its target from assistant wording.',
+  'For short answers, return only facts needed for that target. Every sourceText must be supported by current userText, not prior turns.',
+  'For quantity_role_unresolved, copy the target workload amount and unit from state, then set quantityRole to target, remaining, or completed as the current answer means. If unresolved, emit uncertainty; do not return declared after resolution.',
+  'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty instead of choosing.',
+  'An effortEstimate may target the exact task, component, or workload localId it describes.',
+  'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
+  'Do not invent. Return Stable V5 JSON only, with no commands, scheduling, readiness, preview, save decision, or prose.',
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'For multiple non-consecutive explicit dates on one task, create one allowed_date constraint per date instead of a continuous range.',
