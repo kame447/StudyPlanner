@@ -18,7 +18,7 @@ const authorizationDocument = JSON.stringify({
 });
 
 describe('Stable V5 creation authorization prompt', () => {
-  it('instructs the model not to duplicate accepted public facts', async () => {
+  it('keeps accepted public facts out of a pure authorization response', async () => {
     const calls: Array<Record<string, unknown>> = [];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(input) {
@@ -42,7 +42,8 @@ describe('Stable V5 creation authorization prompt', () => {
     const messages = calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages.find((message) => message.role === 'system')?.content ?? '';
     expect(system).toContain('set planningIntent to create_plan');
-    expect(system).toContain('Do not copy accepted tasks or constraints');
-    expect(system).toContain('include only those newly stated facts');
+    expect(system).toContain('without repeating accepted facts');
+    expect(system).toContain('Include only facts explicitly added or changed in the current utterance');
+    expect(system).not.toContain('Do not copy accepted tasks or constraints');
   });
 });
