@@ -90,7 +90,7 @@ export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
   responseLengths: number[];
   latencyMs: number;
   validationErrors: string[];
-  algorithmicRepairs: string[];
+  algorithmicRepairs?: string[];
   providerError: string | null;
 }
 
