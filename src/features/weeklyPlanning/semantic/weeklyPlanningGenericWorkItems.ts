@@ -129,12 +129,18 @@ function actualRange(workload: WorkloadFact): GenericWorkItemQuantity['actualRan
   return { start: workload.rangeStart, end: workload.rangeEnd };
 }
 
+/*
+ * Exact reference matching only. The semantic AI has already selected the
+ * target. Scheduler compilation must not infer a target from labels or source
+ * text; it accepts only the task, component, or exact workload ID.
+ */
 function targetMatches(
   estimate: EffortEstimateFact,
   workload: WorkloadFact,
 ): boolean {
   return estimate.taskId === workload.taskId
-    && (estimate.targetFactId === workload.taskId
+    && (estimate.targetFactId === workload.id
+      || estimate.targetFactId === workload.taskId
       || estimate.targetFactId === workload.componentId);
 }
 
