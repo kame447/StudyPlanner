@@ -1,8 +1,12 @@
 import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
+import {
+  applyWeeklyPlanningFactLifecycleOperationV5,
+} from './weeklyPlanningFactLifecycleEngineV5';
 import type {
   EffortEstimateFactV5,
+  UncertaintyFactV5,
   WeeklyPlanningFactDiffV5,
   WeeklyPlanningFactGraphV5,
   WorkloadFactV5,
@@ -17,6 +21,9 @@ import type {
 import {
   isWeeklyPlanningContextualQuestionCodeV5,
 } from './weeklyPlanningPendingQuestionV5';
+import {
+  canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
+} from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
@@ -25,8 +32,9 @@ import type {
  * Semantic ownership boundary
  *
  * The semantic AI interprets the reply. This layer only verifies that the
- * machine pending question still points to an active exact workload and that
- * the accepted semantic document contains one compatible answer value.
+ * machine pending question still points to an active exact fact and that the
+ * accepted semantic document contains one compatible answer value or a
+ * concrete semantic delta that resolves one exact uncertainty.
  *
  * Never compare userText with phrases, units, labels, or quantities here. Never
  * infer another target. A mismatch is rejected or recorded as an incompatible
@@ -34,6 +42,7 @@ import type {
  *
  * Canonical rationale:
  * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
+ * - docs/ai/tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md
  * - docs/ai/design/20260803-weekly-planning-semantic-ownership-phase2-design.md
  */
 export interface WeeklyPlanningStableV5ContextualAnswerInput {
@@ -59,6 +68,7 @@ export interface WeeklyPlanningStableV5ContextualAnswerEvaluation {
     | 'target_unavailable'
     | 'duration_not_grounded_in_user_text'
     | 'quantity_role_not_grounded_in_user_text'
+    | 'uncertainty_not_resolved'
     | 'duplicate_or_conflicting_turn'
     | 'applied';
   result: WeeklyPlanningSemanticCanonicalizationResultV5 | null;
@@ -93,6 +103,10 @@ function turnKey(input: WeeklyPlanningStableV5ContextualAnswerInput): string {
   return `${input.conversationId}:${input.turnId}`;
 }
 
+function isSemanticUncertaintyQuestion(code: string): boolean {
+  return code === 'semantic_uncertainty';
+}
+
 function correctionsOnlyRestatePendingTarget(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
@@ -105,7 +119,7 @@ function correctionsOnlyRestatePendingTarget(
     && correction.target.localId === null);
 }
 
-function isMinimalContextualReply(
+function isMinimalWorkloadContextualReply(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
   return input.expectedRevision === input.graph.revision
@@ -121,6 +135,17 @@ function isMinimalContextualReply(
     && input.document.constraintSourceRequests.length === 0
     && correctionsOnlyRestatePendingTarget(input)
     && input.document.decisions.length === 0;
+}
+
+function isSemanticUncertaintyReplyEnvelope(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): boolean {
+  return input.expectedRevision === input.graph.revision
+    && input.pendingQuestion.graphRevision === input.graph.revision
+    && isSemanticUncertaintyQuestion(input.pendingQuestion.questionCode)
+    && typeof input.pendingQuestion.targetFactId === 'string'
+    && input.pendingQuestion.targetFactId.length > 0
+    && input.document.planningIntent !== 'create_plan';
 }
 
 function isActiveFact(graph: WeeklyPlanningFactGraphV5, factId: string): boolean {
@@ -150,6 +175,14 @@ function targetWorkload(
   return workload;
 }
 
+function targetUncertainty(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+): UncertaintyFactV5 | null {
+  const targetFactId = input.pendingQuestion.targetFactId;
+  if (!targetFactId || !isActiveFact(input.graph, targetFactId)) return null;
+  return input.graph.uncertainties.find((fact) => fact.id === targetFactId) ?? null;
+}
+
 function durationCandidates(document: WeeklyPlanningSemanticDocumentV5): Array<{
   minutes: number;
   precision: EffortEstimateFactV5['precision'];
@@ -174,6 +207,18 @@ function quantityRoleCandidates(
     .map((workload) => workload.quantityRole)
     .filter((role): role is SemanticQuantityRoleV5 =>
       role === 'target' || role === 'remaining' || role === 'completed');
+}
+
+function containsResolvedSemanticDelta(
+  document: WeeklyPlanningSemanticDocumentV5,
+): boolean {
+  return document.planningWindow !== null
+    || document.tasks.length > 0
+    || document.relations.length > 0
+    || document.availabilityDeclarations.length > 0
+    || document.constraintSourceRequests.length > 0
+    || document.corrections.length > 0
+    || document.decisions.length > 0;
 }
 
 function appliedResult(params: {
@@ -314,6 +359,64 @@ function applyQuantityRoleAnswer(
   });
 }
 
+function applySemanticUncertaintyAnswer(
+  input: WeeklyPlanningStableV5ContextualAnswerInput,
+  target: UncertaintyFactV5,
+): WeeklyPlanningSemanticCanonicalizationResultV5 | null {
+  const canonicalization = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+    graph: input.graph,
+    document: input.document,
+    context: {
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      expectedRevision: input.expectedRevision,
+    },
+  });
+  if (canonicalization.status !== 'applied' || !canonicalization.diff) {
+    return canonicalization.status === 'rejected' ? canonicalization : null;
+  }
+
+  const removal = applyWeeklyPlanningFactLifecycleOperationV5({
+    graph: canonicalization.graph,
+    expectedRevision: canonicalization.graph.revision,
+    operation: {
+      operationKey: `contextual-uncertainty:${turnKey(input)}:${target.id}`,
+      kind: 'remove',
+      targetFactId: target.id,
+    },
+  });
+  if (removal.status === 'rejected') {
+    return {
+      status: 'rejected',
+      graph: input.graph,
+      diff: null,
+      errors: removal.errors.map((error) => `uncertainty-resolution:${error}`),
+      localToFactId: canonicalization.localToFactId,
+    };
+  }
+  if (removal.status !== 'applied') return null;
+
+  return {
+    status: 'applied',
+    graph: removal.graph,
+    diff: {
+      fromRevision: input.graph.revision,
+      toRevision: removal.graph.revision,
+      added: canonicalization.diff.added,
+      superseded: [
+        ...canonicalization.diff.superseded,
+        ...removal.superseded,
+      ],
+      removed: [
+        ...canonicalization.diff.removed,
+        ...removal.removed,
+      ],
+    },
+    errors: [],
+    localToFactId: canonicalization.localToFactId,
+  };
+}
+
 function applyIncompatibleReplyTurn(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): WeeklyPlanningSemanticCanonicalizationResultV5 {
@@ -365,7 +468,48 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
     questionCode: input.pendingQuestion.questionCode,
     targetFactId: input.pendingQuestion.targetFactId,
   };
-  if (!isMinimalContextualReply(input)) {
+
+  if (isSemanticUncertaintyQuestion(input.pendingQuestion.questionCode)) {
+    if (!isSemanticUncertaintyReplyEnvelope(input)) {
+      return {
+        ...base,
+        status: 'not_contextual',
+        reason: 'reply_shape_not_contextual',
+        result: null,
+      };
+    }
+    const target = targetUncertainty(input);
+    if (!target) {
+      return {
+        ...base,
+        status: 'incompatible',
+        reason: 'target_unavailable',
+        result: null,
+      };
+    }
+    if (
+      input.document.uncertainties.length > 0
+      || !containsResolvedSemanticDelta(input.document)
+    ) {
+      return {
+        ...base,
+        status: 'incompatible',
+        reason: 'uncertainty_not_resolved',
+        result: null,
+      };
+    }
+    const result = applySemanticUncertaintyAnswer(input, target);
+    return result
+      ? { ...base, status: 'applied', reason: 'applied', result }
+      : {
+          ...base,
+          status: 'incompatible',
+          reason: 'duplicate_or_conflicting_turn',
+          result: null,
+        };
+  }
+
+  if (!isMinimalWorkloadContextualReply(input)) {
     return {
       ...base,
       status: 'not_contextual',
@@ -445,6 +589,7 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   if (
     evaluation.reason === 'duration_not_grounded_in_user_text'
     || evaluation.reason === 'quantity_role_not_grounded_in_user_text'
+    || evaluation.reason === 'uncertainty_not_resolved'
     || evaluation.reason === 'duplicate_or_conflicting_turn'
   ) {
     return applyIncompatibleReplyTurn(input);
