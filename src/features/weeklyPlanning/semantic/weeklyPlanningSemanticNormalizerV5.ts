@@ -30,7 +30,7 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'You alone interpret user meaning and context; deterministic code only validates and applies your JSON.',
   'Treat publicStateSummary.pendingQuestion as authoritative; never infer its target from assistant wording.',
   'For short answers, return only facts needed for that target. Every sourceText must be supported by current userText, not prior turns.',
-  'For quantity_role_unresolved, when resolved return one minimal task with one workload using fresh localIds, copy amount and unit from the target state, set quantityRole to target, remaining, or completed, and do not return declared after resolution. Never emit uncertainty for a resolved answer or put public Fact IDs in targetLocalId; if unresolved return no workload candidate.',
+  'Roles are fixed: target means the amount intended for this plan or current execution; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, if the current answer selects one role, return one minimal task with one workload using fresh localIds, copy amount and unit from the target state, and set that role. Never keep uncertainty for a resolved role, return declared, or put public Fact IDs in targetLocalId; if the role is still unresolved, return no workload candidate.',
   'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty instead of choosing.',
   'An effortEstimate may target the exact task, component, or workload localId it describes.',
   'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
@@ -163,7 +163,7 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('Keep either a named time period or exact clock fields, not both.');
   }
   if (errors.some((error) => error.includes('targetLocalId'))) {
-    directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. For a pending contextual answer, emit minimal local facts and let pendingQuestion bind the existing public target.');
+    directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. If a pending quantity-role answer selects target, remaining, or completed, remove the uncertainty and emit one minimal local task and workload; pendingQuestion binds the existing public target.');
   }
   if (errors.some((error) => error.includes('unknown-key') || error.includes('missing-key'))) {
     directives.push('Return exactly the required Stable V5 schema keys with no unknown keys.');
