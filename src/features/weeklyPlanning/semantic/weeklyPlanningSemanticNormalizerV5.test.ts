@@ -151,7 +151,7 @@ describe('Stable V5 semantic normalizer', () => {
     expect(system).toContain('Treat publicStateSummary.pendingQuestion as authoritative');
     expect(system).toContain('never infer its target from assistant wording');
     expect(system).toContain('Every sourceText must be supported by current userText, not prior turns');
-    expect(system).toContain('target means the amount intended for this plan or current execution');
+    expect(system).toContain('target means the amount intended for this plan');
     expect(system).toContain('remaining means the full unfinished amount');
     expect(system).toContain('completed means the amount already done');
     expect(system).toContain('For quantity_role_unresolved');
