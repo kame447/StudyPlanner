@@ -10,7 +10,7 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
-  canonicalPlanningWindowInstructionV5,
+  normalizePlanningWindowCanonicalV5,
   planningWindowCanonicalValueErrors,
   relativeWindowSourceExpectationV5,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
@@ -89,70 +89,106 @@ describe('Stable V5 planning window canonical contract', () => {
     expect(relativeWindowSourceExpectationV5(sourceText)).toEqual(expected);
   });
 
-  it('rejects invented aliases and valid canonical values with the wrong source meaning', () => {
-    expect(planningWindowCanonicalValueErrors(document({
+  it('normalizes a source-grounded alias or wrong valid value deterministically', () => {
+    const alias = document({
       kind: 'relative_day',
       value: 'next_day',
       sourceText: '次の日',
-    }).planningWindow)).toEqual([
+    }).planningWindow;
+    const mismatch = document({
+      kind: 'relative_week',
+      value: 'this_week',
+      sourceText: '翌週',
+    }).planningWindow;
+
+    expect(normalizePlanningWindowCanonicalV5(alias)).toMatchObject({
+      window: { kind: 'relative_day', value: 'tomorrow' },
+      repairs: [
+        'planning-window-source-canonicalized:planning-window-1:relative_day:next_day->relative_day:tomorrow',
+      ],
+    });
+    expect(normalizePlanningWindowCanonicalV5(mismatch)).toMatchObject({
+      window: { kind: 'relative_week', value: 'next_week' },
+    });
+  });
+
+  it('leaves ungrounded aliases for validation rather than guessing', () => {
+    const window = document({
+      kind: 'relative_day',
+      value: 'next_day',
+      sourceText: '次の期間',
+    }).planningWindow;
+
+    expect(normalizePlanningWindowCanonicalV5(window)).toEqual({
+      window,
+      repairs: [],
+    });
+    expect(planningWindowCanonicalValueErrors(window)).toEqual([
       'document.planningWindow.value:canonical-relative-day:next_day',
     ]);
-    expect(planningWindowCanonicalValueErrors(document({
-      kind: 'relative_week',
-      value: 'following_week',
-      sourceText: '翌週',
-    }).planningWindow)).toEqual([
-      'document.planningWindow.value:canonical-relative-week:following_week',
-    ]);
-    expect(planningWindowCanonicalValueErrors(document({
-      kind: 'relative_day',
-      value: 'day_after_tomorrow',
-      sourceText: '次の日',
-    }).planningWindow)).toEqual([
-      'document.planningWindow:source-meaning-mismatch:expected-relative_day:tomorrow',
-    ]);
-    expect(planningWindowCanonicalValueErrors(document({
-      kind: 'relative_day',
-      value: 'tomorrow',
-      sourceText: '翌日',
-    }).planningWindow)).toEqual([]);
   });
 
   it.each([
     {
       userText: '次の日の勉強計画を立てたいです',
       kind: 'relative_day' as const,
-      invalidValue: 'next_day',
+      value: 'day_after_tomorrow',
       canonicalValue: 'tomorrow',
       sourceText: '次の日',
-      expectedError: 'document.planningWindow.value:canonical-relative-day:next_day',
-    },
-    {
-      userText: '翌日の予定を作りたいです',
-      kind: 'relative_day' as const,
-      invalidValue: 'following_day',
-      canonicalValue: 'tomorrow',
-      sourceText: '翌日',
-      expectedError: 'document.planningWindow.value:canonical-relative-day:following_day',
     },
     {
       userText: '翌週の予定を組みたいです',
       kind: 'relative_week' as const,
-      invalidValue: 'following_week',
+      value: 'following_week',
       canonicalValue: 'next_week',
       sourceText: '翌週',
-      expectedError: 'document.planningWindow.value:canonical-relative-week:following_week',
     },
-  ])('repairs a noncanonical alias for $userText', async (testCase) => {
-    const invalid = document({
+  ])('normalizes $userText without a second AI request', async (testCase) => {
+    const initial = document({
       kind: testCase.kind,
-      value: testCase.invalidValue,
+      value: testCase.value,
       sourceText: testCase.sourceText,
     });
-    const repaired = document({
+    const fake = fakeClient([JSON.stringify(initial)]);
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText: testCase.userText,
+      traceRequestId: `canonical-window-${testCase.value}`,
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.planningWindow).toMatchObject({
       kind: testCase.kind,
       value: testCase.canonicalValue,
-      sourceText: testCase.sourceText,
+    });
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 1,
+      repairAttempted: false,
+      validationErrors: [],
+    });
+    expect(result.diagnostics.algorithmicRepairs).toHaveLength(1);
+    expect(fake.calls).toHaveLength(1);
+
+    const initialMessages = fake.calls[0].messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(initialMessages[0]?.content).not.toContain(
+      '次の日, 翌日, and 明日 mean tomorrow',
+    );
+    expect(initialMessages[0]?.content).not.toContain('following_week');
+  });
+
+  it('uses a targeted repair only when source evidence cannot determine the canonical value', async () => {
+    const invalid = document({
+      kind: 'relative_day',
+      value: 'next_day',
+      sourceText: '次の期間',
+    });
+    const repaired = document({
+      kind: 'relative_day',
+      value: 'tomorrow',
+      sourceText: '次の期間',
     });
     const fake = fakeClient([
       JSON.stringify(invalid),
@@ -160,80 +196,28 @@ describe('Stable V5 planning window canonical contract', () => {
     ]);
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
-      userText: testCase.userText,
-      traceRequestId: `canonical-window-${testCase.invalidValue}`,
+      userText: '次の期間の計画を作りたいです',
+      traceRequestId: 'canonical-window-ungrounded-alias',
     });
 
     expect(result.status).toBe('accepted');
-    expect(result.document?.planningWindow).toMatchObject({
-      kind: testCase.kind,
-      value: testCase.canonicalValue,
-    });
-    expect(result.diagnostics).toMatchObject({
-      attemptCount: 2,
-      repairAttempted: true,
-      validationErrors: [testCase.expectedError],
-    });
-    expect(fake.calls).toHaveLength(2);
-
-    const initialMessages = fake.calls[0].messages as Array<{
-      role: string;
-      content: string;
-    }>;
-    expect(initialMessages[0]?.content).toContain(
-      canonicalPlanningWindowInstructionV5(),
-    );
-
-    const repairMessages = fake.calls[1].messages as Array<{
-      role: string;
-      content: string;
-    }>;
-    const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '';
-    expect(repairMessage).toContain(testCase.expectedError);
-    expect(repairMessage).toContain(
-      'replace the invented alias with one of the exact canonical',
-    );
-  });
-
-  it('repairs a valid canonical value when it contradicts the source expression', async () => {
-    const mismatch = document({
-      kind: 'relative_day',
-      value: 'day_after_tomorrow',
-      sourceText: '次の日',
-    });
-    const repaired = document({
-      kind: 'relative_day',
-      value: 'tomorrow',
-      sourceText: '次の日',
-    });
-    const fake = fakeClient([
-      JSON.stringify(mismatch),
-      JSON.stringify(repaired),
-    ]);
-
-    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
-      userText: '次の日の勉強計画を立てたいです',
-      traceRequestId: 'canonical-window-source-meaning',
-    });
-
-    expect(result.status).toBe('accepted');
-    expect(result.document?.planningWindow).toMatchObject({
-      kind: 'relative_day',
-      value: 'tomorrow',
-    });
     expect(result.diagnostics).toMatchObject({
       attemptCount: 2,
       repairAttempted: true,
       validationErrors: [
-        'document.planningWindow:source-meaning-mismatch:expected-relative_day:tomorrow',
+        'document.planningWindow.value:canonical-relative-day:next_day',
       ],
     });
+
     const repairMessages = fake.calls[1].messages as Array<{
       role: string;
       content: string;
     }>;
-    expect(repairMessages[repairMessages.length - 1]?.content).toContain(
-      'source-meaning-mismatch:expected-relative_day:tomorrow',
-    );
+    const payload = JSON.parse(
+      repairMessages[repairMessages.length - 1]?.content ?? '{}',
+    ) as { requiredChanges?: string[] };
+    expect(payload.requiredChanges).toEqual([
+      'Correct only the planning-window kind or value required by the source meaning and listed error.',
+    ]);
   });
 });
