@@ -185,6 +185,21 @@ function client(sequence: Array<string | Error>): {
   };
 }
 
+function repairPayload(call: Record<string, unknown>): {
+  instruction?: string;
+  requiredChanges?: string[];
+  missingEvidence?: unknown[];
+  validationErrors?: string[];
+} {
+  const messages = call.messages as Array<{ role: string; content: string }>;
+  return JSON.parse(messages[messages.length - 1]?.content ?? '{}') as {
+    instruction?: string;
+    requiredChanges?: string[];
+    missingEvidence?: unknown[];
+    validationErrors?: string[];
+  };
+}
+
 describe('Stable V5 semantic normalizer', () => {
   it('uses the direct Stable V5 schema and records version metadata', async () => {
     const raw = JSON.stringify(document());
@@ -214,7 +229,7 @@ describe('Stable V5 semantic normalizer', () => {
     expect(responseFormat.json_schema?.name).toBe('weekly_planning_semantic_document_v5');
   });
 
-  it('preserves discontinuous dates and expands weekday ranges in the prompt', async () => {
+  it('keeps only generic date-set and temporal-boundary rules in the base prompt', async () => {
     const fake = client([JSON.stringify(document())]);
     await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '7月8日、10日、11日と、水曜と金曜から日曜にやりたい',
@@ -224,12 +239,14 @@ describe('Stable V5 semantic normalizer', () => {
     const system = messages.find((message) => message.role === 'system')?.content ?? '';
     expect(system).toContain('one allowed_date temporal constraint per date');
     expect(system).toContain('Do not collapse gaps into a continuous date range');
-    expect(system).toContain('水曜と金曜から日曜 becomes days [wed, fri, sat, sun]');
     expect(system).toContain('one recurrence fact');
+    expect(system).toContain('Expand weekday ranges');
     expect(system).toContain('Priority and ordering statements describe task relations only');
-    expect(system).toContain('Never invent a clock time from priority');
-    expect(system).toContain('namedTimePeriod must be null');
-    expect(system).toContain('Do not omit a whole-plan planningWindow');
+    expect(system).toContain('Use clock-bound temporal constraints only when the user explicitly provides');
+    expect(system).toContain('A named time period without an exact clock uses namedTimePeriod');
+    expect(system).toContain('Treat a directly stated whole-plan range');
+    expect(system).not.toContain('水曜と金曜から日曜 becomes');
+    expect(system).not.toContain('relative_day/tomorrow for 明日');
   });
 
   it('repairs an omitted 明日 planning window instead of asking for the range again', async () => {
@@ -253,10 +270,16 @@ describe('Stable V5 semantic normalizer', () => {
       validationErrors: ['document.planningWindow:direct-user-range-omitted:tomorrow'],
     });
     expect(fake.calls).toHaveLength(2);
-    const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
-    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
-    expect(repairInstruction).toContain('direct-user-range-omitted');
-    expect(repairInstruction).toContain('relative_day/tomorrow for 明日');
+    expect(repairPayload(fake.calls[1])).toEqual({
+      instruction: 'Return the complete corrected Stable V5 JSON document only. Apply only the required changes and do not invent facts or application decisions.',
+      requiredChanges: [
+        'Correct only the planning-window kind or value required by the source meaning and listed error.',
+      ],
+      missingEvidence: [],
+      validationErrors: [
+        'document.planningWindow:direct-user-range-omitted:tomorrow',
+      ],
+    });
   });
 
   it('repairs a short 明日 answer from machine pending state without reading rendered wording', async () => {
@@ -352,10 +375,13 @@ describe('Stable V5 semantic normalizer', () => {
       validationErrors: ['document:invalid-json'],
     });
     expect(fake.calls).toHaveLength(2);
-    const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
-    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
-    expect(repairInstruction).toContain('Stable V5 JSON document only');
-    expect(repairInstruction).toContain('save decisions');
+    const payload = repairPayload(fake.calls[1]);
+    expect(payload.instruction).toContain('Stable V5 JSON document only');
+    expect(payload.instruction).toContain('do not invent facts or application decisions');
+    expect(payload.requiredChanges).toEqual([
+      'Correct only the listed validation failures while preserving supported user meaning.',
+    ]);
+    expect(payload.validationErrors).toEqual(['document:invalid-json']);
   });
 
   it('repairs a priority-derived missing-start without inventing a clock', async () => {
@@ -383,13 +409,16 @@ describe('Stable V5 semantic normalizer', () => {
       validationErrors: ['document.tasks[0].temporalConstraints[0]:missing-start'],
     });
 
-    const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
-    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
-    expect(repairInstruction).toContain('Never invent a clock time');
-    expect(repairInstruction).toContain('remove the unsupported earliest_start');
-    expect(repairInstruction).toContain('Priority and ordering language must remain task relations');
-    expect(repairInstruction).toContain('namedTimePeriod cannot coexist with startTime or endTime');
-    expect(repairInstruction).toContain('document.tasks[0].temporalConstraints[0]:missing-start');
+    const payload = repairPayload(fake.calls[1]);
+    expect(payload.requiredChanges).toEqual([
+      'Remove or change unsupported temporal constraints instead of inventing a missing clock or date boundary.',
+    ]);
+    expect(payload.validationErrors).toEqual([
+      'document.tasks[0].temporalConstraints[0]:missing-start',
+    ]);
+    expect(JSON.stringify(payload)).not.toContain('planning-window kind');
+    expect(JSON.stringify(payload)).not.toContain('shared parent identity');
+    expect(JSON.stringify(payload)).not.toContain('missing evidence item');
   });
 
   it('rejects when the single repair remains invalid', async () => {
