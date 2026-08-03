@@ -41,7 +41,11 @@ function repairedLocalAnswer(): string {
       localId: 'answer-task',
       category: 'study',
       title: '直前の質問対象',
-      study: null,
+      study: {
+        purpose: 'self_study',
+        contextLabel: null,
+        components: [],
+      },
       workloads: [{
         localId: 'answer-workload',
         quantityRole: 'target',
@@ -110,6 +114,9 @@ describe('Stable V5 contextual ID boundary', () => {
     expect(result.document?.tasks).toEqual([
       expect.objectContaining({
         localId: 'answer-task',
+        study: expect.objectContaining({
+          purpose: 'self_study',
+        }),
         workloads: [
           expect.objectContaining({
             localId: 'answer-workload',
