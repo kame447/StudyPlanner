@@ -1,3 +1,20 @@
+/*
+ * Allowed deterministic normalization boundary
+ *
+ * This module may remove only a byte-equivalent semantic value duplicated under
+ * the same workload localId. It does not read user text and must not decide that
+ * different labels, units, quantities, roles, targets, or localIds mean the same
+ * thing. Any non-exact case must remain unchanged and be rejected or repaired by
+ * the semantic AI through the normal validation loop.
+ *
+ * Do not extend this code with fuzzy matching, unit conversion, label similarity,
+ * source-text inspection, or scenario-specific merging. Those are semantic
+ * decisions and belong to the AI-owned layer.
+ *
+ * Canonical rationale:
+ * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
+ * - docs/ai/audits/20260803-weekly-planning-semantic-ownership-phase0-phase1.md
+ */
 export const WEEKLY_PLANNING_DUPLICATE_WORKLOAD_NORMALIZATION_V5 =
   'weekly-planning-duplicate-workload-normalization-v5' as const;
 
