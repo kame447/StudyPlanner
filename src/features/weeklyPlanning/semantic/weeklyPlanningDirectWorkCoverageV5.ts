@@ -126,7 +126,7 @@ function taskCoversExpectation(
       ? expectation.amount * 60
       : expectation.amount;
     return task.effortEstimates.some((estimate) =>
-      Math.abs(estimate.minutes - expectedMinutes) < 1e-9)
+      Math.abs(estimate.minutes - expectedMinutes) < 1e-9
       && labelsMatch(expectation, taskLabels));
   }
 
