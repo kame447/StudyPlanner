@@ -90,7 +90,10 @@ describe('Stable V5 semantic normalizer debug trace', () => {
       };
     };
 
-    expect(system).toContain('Use publicStateSummary.pendingQuestion as the authoritative target');
+    expect(system).toContain(
+      'Use publicStateSummary.pendingQuestion as the authoritative machine-readable identity and target',
+    );
+    expect(system).toContain('Never infer that target from assistant wording');
     expect(userPayload).toMatchObject({
       userText: '3時間ぐらいかな',
       publicStateSummary: {
