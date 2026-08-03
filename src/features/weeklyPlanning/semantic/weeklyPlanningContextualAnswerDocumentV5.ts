@@ -32,9 +32,17 @@ interface PublicTaskV5 {
 interface PublicWorkloadV5 {
   publicId: string;
   taskPublicId: string;
+  componentPublicId: string | null;
   amount: number;
   unitCode: SemanticWorkloadUnitCodeV5;
   unitLabel: string;
+}
+
+interface PublicComponentV5 {
+  publicId: string;
+  taskPublicId: string;
+  parentComponentPublicId: string | null;
+  label: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,10 +104,37 @@ function readTargetWorkload(
   return {
     publicId,
     taskPublicId: value.taskPublicId,
+    componentPublicId: typeof value.componentPublicId === 'string'
+      ? value.componentPublicId
+      : null,
     amount: value.amount,
     unitCode,
     unitLabel: value.unitLabel.trim(),
   };
+}
+
+function readComponents(
+  publicStateSummary: Record<string, unknown>,
+  taskPublicId: string,
+): PublicComponentV5[] {
+  return records(publicStateSummary.components).flatMap((value) => {
+    if (
+      typeof value.publicId !== 'string'
+      || value.taskPublicId !== taskPublicId
+      || typeof value.label !== 'string'
+      || !value.label.trim()
+    ) {
+      return [];
+    }
+    return [{
+      publicId: value.publicId,
+      taskPublicId,
+      parentComponentPublicId: typeof value.parentComponentPublicId === 'string'
+        ? value.parentComponentPublicId
+        : null,
+      label: value.label.trim(),
+    }];
+  });
 }
 
 function emptyDocument(): WeeklyPlanningSemanticDocumentV5 {
@@ -196,6 +231,105 @@ function durationOnlyReply(userText: string): boolean {
     || /^(?:(?:約|およそ|だいたい))?\d+(?:\.\d+)?分(?:(?:くらい|ぐらい|ほど))?(?:です|だ|かかります|かかると思います|だと思います)?$/.test(text);
 }
 
+function hasCorrectionCue(userText: string): boolean {
+  return /(?:違います|違う|訂正|修正|間違|誤り|ではなく|じゃなく)/.test(
+    normalizedAnswerText(userText),
+  );
+}
+
+function hasSchedulingFactCue(userText: string): boolean {
+  const text = userText.normalize('NFKC');
+  return /(?:今日|明日|明後日|今週|来週|再来週|月曜|火曜|水曜|木曜|金曜|土曜|日曜|午前|午後|朝|昼|夕方|夜|寝る前|食事前|食事後)/.test(text)
+    || /\d{1,2}\s*時(?!間)/.test(text)
+    || /\d{1,2}\s*月\s*\d{1,2}\s*日/.test(text);
+}
+
+function targetComponentLabels(
+  components: PublicComponentV5[],
+  componentPublicId: string | null,
+): string[] {
+  if (!componentPublicId) return [];
+  const byId = new Map(components.map((component) => [component.publicId, component]));
+  const labels: string[] = [];
+  const visited = new Set<string>();
+  let current = byId.get(componentPublicId);
+  while (current && !visited.has(current.publicId)) {
+    visited.add(current.publicId);
+    labels.push(current.label);
+    current = current.parentComponentPublicId
+      ? byId.get(current.parentComponentPublicId)
+      : undefined;
+  }
+  return labels;
+}
+
+function normalizedIdentityCandidates(
+  task: PublicTaskV5,
+  components: PublicComponentV5[],
+  workload: PublicWorkloadV5,
+): string[] {
+  const taskCore = task.title
+    .normalize('NFKC')
+    .replace(/(?:の)?(?:問題|課題|学習|勉強|作業|執筆|確認|練習|復習|準備|対応|処理)?(?:を)?(?:進める|やる|取り組む|行う|実施する)?$/, '');
+  return [...new Set([
+    task.title,
+    taskCore,
+    ...targetComponentLabels(components, workload.componentPublicId),
+  ]
+    .map((value) => normalizedAnswerText(value))
+    .filter((value) => value.length >= 2))];
+}
+
+function mentionsTargetIdentity(
+  userText: string,
+  task: PublicTaskV5,
+  components: PublicComponentV5[],
+  workload: PublicWorkloadV5,
+): boolean {
+  const text = normalizedAnswerText(userText);
+  return normalizedIdentityCandidates(task, components, workload)
+    .some((candidate) => text.includes(candidate));
+}
+
+function mentionsTargetQuantity(
+  userText: string,
+  workload: PublicWorkloadV5,
+): boolean {
+  const text = userText.normalize('NFKC').replace(/\s+/g, '');
+  const amount = String(workload.amount).replace('.', '\\.');
+  const unit = workload.unitLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^0-9.])${amount}${unit}(?:$|[^0-9])`).test(text);
+}
+
+function minimalEffortCorrectionReply(userText: string): boolean {
+  const text = normalizedAnswerText(userText);
+  return /^(?:(?:違います|違う|訂正します|修正します))?(?:(?:合計|所要時間(?:は|が)?))?(?:(?:約|およそ|だいたい))?\d+(?:\.\d+)?時間(?:(?:半)|(?:\d+(?:\.\d+)?)分)?(?:(?:くらい|ぐらい|ほど))?(?:です|だ|かかります|かかると思います|だと思います)?$/.test(text)
+    || /^(?:(?:違います|違う|訂正します|修正します))?(?:(?:合計|所要時間(?:は|が)?))?(?:(?:約|およそ|だいたい))?\d+(?:\.\d+)?分(?:(?:くらい|ぐらい|ほど))?(?:です|だ|かかります|かかると思います|だと思います)?$/.test(text);
+}
+
+function explicitEffortRepairReply(params: {
+  userText: string;
+  task: PublicTaskV5;
+  components: PublicComponentV5[];
+  workload: PublicWorkloadV5;
+}): boolean {
+  if (
+    !hasCorrectionCue(params.userText)
+    || hasSchedulingFactCue(params.userText)
+    || groundedDurationMinutesFromUserTextV5(params.userText).length !== 1
+  ) {
+    return false;
+  }
+  if (minimalEffortCorrectionReply(params.userText)) return true;
+  return mentionsTargetQuantity(params.userText, params.workload)
+    && mentionsTargetIdentity(
+      params.userText,
+      params.task,
+      params.components,
+      params.workload,
+    );
+}
+
 function effortPrecision(userText: string): 'exact' | 'approximate' {
   const normalized = userText.normalize('NFKC').replace(/\s+/g, '');
   return /(?:約|およそ|だいたい|くらい|ぐらい|ほど)/.test(normalized)
@@ -219,7 +353,7 @@ export function createGroundedContextualAnswerDocumentV5(params: {
     || typeof summary.graphRevision !== 'number'
     || summary.graphRevision !== pendingQuestion.graphRevision
     || userText.length === 0
-    || userText.length > 40
+    || userText.length > 120
     || hasWeeklyPlanningContextualScopeChangeCueV5(userText)
   ) {
     return null;
@@ -229,11 +363,13 @@ export function createGroundedContextualAnswerDocumentV5(params: {
   if (!workload) return null;
   const task = readPublicTask(summary, workload.taskPublicId);
   if (!task) return null;
+  const components = readComponents(summary, workload.taskPublicId);
 
   if (pendingQuestion.questionCode === 'quantity_role_unresolved') {
     const role = groundedQuantityRoleFromUserTextV5(userText);
     if (
-      role === null
+      userText.length > 60
+      || role === null
       || !quantityRoleOnlyReply(userText, role)
       || !explicitDurationMatchesTarget(userText, workload)
     ) {
@@ -263,7 +399,12 @@ export function createGroundedContextualAnswerDocumentV5(params: {
   }
 
   const durations = groundedDurationMinutesFromUserTextV5(userText);
-  if (durations.length !== 1 || !durationOnlyReply(userText)) return null;
+  const isGroundedEffortReply = durations.length === 1
+    && (
+      durationOnlyReply(userText)
+      || explicitEffortRepairReply({ userText, task, components, workload })
+    );
+  if (!isGroundedEffortReply) return null;
   const document = emptyDocument();
   const contextualTask = taskShell(task, userText);
   contextualTask.effortEstimates.push({
