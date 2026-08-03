@@ -83,10 +83,18 @@ describe('Stable V5 explicit work evidence coverage', () => {
     ]);
   });
 
-  it('does not reinterpret replacement values in a correction as parallel new work', () => {
+  it('does not reinterpret replacement values as parallel new work', () => {
     expect(extractDirectWorkExpectationsV5(
       '修正します。演習は12問ではなく8問です',
     )).toEqual([]);
+  });
+
+  it('still extracts an independent addition from a mixed correction turn', () => {
+    expect(extractDirectWorkExpectationsV5(
+      '演習は12問ではなく8問に変更、レポートを2ページ追加します',
+    )).toEqual([
+      { label: 'レポート', amount: 2, unitCode: 'page', unitLabel: 'ページ' },
+    ]);
   });
 
   it('returns structured missing evidence instead of relying on a scenario prompt', () => {
