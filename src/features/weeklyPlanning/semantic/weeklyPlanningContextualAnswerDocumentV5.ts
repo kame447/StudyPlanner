@@ -3,6 +3,7 @@ import {
   SEMANTIC_WORKLOAD_UNIT_CODES_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type SemanticTaskCategoryV5,
+  type SemanticTaskV5,
   type SemanticWorkloadUnitCodeV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -115,14 +116,14 @@ function emptyDocument(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
-function taskShell(task: PublicTaskV5, sourceText: string) {
+function taskShell(task: PublicTaskV5, sourceText: string): SemanticTaskV5 {
   return {
     localId: 'contextual-task',
     category: task.category,
     title: task.title,
     study: task.category === 'study'
       ? {
-          purpose: 'unknown' as const,
+          purpose: 'unknown',
           contextLabel: null,
           components: [],
         }
