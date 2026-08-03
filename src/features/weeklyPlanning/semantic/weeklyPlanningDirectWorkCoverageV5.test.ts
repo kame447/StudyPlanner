@@ -6,26 +6,30 @@ import {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   directWorkCoverageErrorsV5,
-  directWorkCoverageInstructionV5,
   extractDirectWorkExpectationsV5,
+  missingDirectWorkExpectationsV5,
 } from './weeklyPlanningDirectWorkCoverageV5';
 
 function task(params: {
   localId: string;
   title: string;
   amount: number;
-  unitCode: 'hour' | 'problem';
+  unitCode: 'hour' | 'minute' | 'problem' | 'page' | 'custom';
   unitLabel: string;
+  category?: 'study' | 'non_study';
 }): SemanticTaskV5 {
+  const category = params.category ?? 'study';
   return {
     localId: params.localId,
-    category: 'study',
+    category,
     title: params.title,
-    study: {
-      purpose: 'self_study',
-      contextLabel: null,
-      components: [],
-    },
+    study: category === 'study'
+      ? {
+          purpose: 'self_study',
+          contextLabel: null,
+          components: [],
+        }
+      : null,
     workloads: [{
       localId: `workload-${params.localId}`,
       quantityRole: 'declared',
@@ -60,80 +64,100 @@ function document(tasks: SemanticTaskV5[]): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
-describe('Stable V5 direct work coverage contract', () => {
-  it('extracts every independently quantified clause from the latest user text', () => {
+describe('Stable V5 explicit work evidence coverage', () => {
+  it('extracts independently quantified work across domains and units', () => {
     expect(extractDirectWorkExpectationsV5(
-      '来週、英語を2時間、数学を3時間やりたいです',
+      'レポートを4ページ、演習を12問、片付けを30分進めたいです',
     )).toEqual([
-      { label: '英語', amount: 2, unitCode: 'hour', unitLabel: '時間' },
-      { label: '数学', amount: 3, unitCode: 'hour', unitLabel: '時間' },
+      { label: 'レポート', amount: 4, unitCode: 'page', unitLabel: 'ページ' },
+      { label: '演習', amount: 12, unitCode: 'problem', unitLabel: '問' },
+      { label: '片付け', amount: 30, unitCode: 'minute', unitLabel: '分' },
     ]);
+
     expect(extractDirectWorkExpectationsV5(
-      '数学の問題を40問進めたいです',
+      '申請書を2件；図を3枚；参考書を1冊確認する',
     )).toEqual([
-      { label: '数学の問題', amount: 40, unitCode: 'problem', unitLabel: '問' },
+      { label: '申請書', amount: 2, unitCode: 'custom', unitLabel: '件' },
+      { label: '図', amount: 3, unitCode: 'custom', unitLabel: '枚' },
+      { label: '参考書', amount: 1, unitCode: 'custom', unitLabel: '冊' },
     ]);
   });
 
-  it('does not reinterpret correction utterances as simultaneous required values', () => {
+  it('does not reinterpret replacement values in a correction as parallel new work', () => {
     expect(extractDirectWorkExpectationsV5(
-      '訂正です。数学は3時間ではなく1時間にしてください',
+      '修正します。演習は12問ではなく8問です',
     )).toEqual([]);
   });
 
-  it('reports only the explicit work item omitted from the semantic document', () => {
-    expect(directWorkCoverageErrorsV5({
-      userText: '来週、英語を2時間、数学を3時間やりたいです',
-      document: document([
-        task({
-          localId: 'task-english',
-          title: '英語',
-          amount: 2,
-          unitCode: 'hour',
-          unitLabel: '時間',
-        }),
-      ]),
+  it('returns structured missing evidence instead of relying on a scenario prompt', () => {
+    const input = document([
+      task({
+        localId: 'task-report',
+        title: 'レポート',
+        amount: 4,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+      }),
+      task({
+        localId: 'task-cleanup',
+        title: '片付け',
+        amount: 30,
+        unitCode: 'minute',
+        unitLabel: '分',
+        category: 'non_study',
+      }),
+    ]);
+
+    expect(missingDirectWorkExpectationsV5({
+      userText: 'レポートを4ページ、演習を12問、片付けを30分進めたいです',
+      document: input,
     })).toEqual([
-      'document.tasks:direct-work-omitted:数学:3:hour',
+      { label: '演習', amount: 12, unitCode: 'problem', unitLabel: '問' },
+    ]);
+    expect(directWorkCoverageErrorsV5({
+      userText: 'レポートを4ページ、演習を12問、片付けを30分進めたいです',
+      document: input,
+    })).toEqual([
+      'document.tasks:explicit-work-evidence-omitted:演習:12:problem',
     ]);
   });
 
-  it('accepts all explicit work items whether represented as separate tasks or shared components', () => {
+  it('accepts evidence represented either at task or component depth', () => {
     const grouped: SemanticTaskV5 = {
-      localId: 'task-exam',
+      localId: 'task-project',
       category: 'study',
-      title: '試験対策',
+      title: '研究準備',
       study: {
-        purpose: 'exam',
-        contextLabel: '試験',
+        purpose: 'research',
+        contextLabel: '研究準備',
         components: [
           {
-            localId: 'component-english',
+            localId: 'component-reading',
             parentLocalId: null,
-            role: 'subject',
-            label: '英語',
+            role: 'material',
+            label: '論文',
             workloads: [task({
-              localId: 'temp-english',
-              title: '英語',
-              amount: 2,
-              unitCode: 'hour',
-              unitLabel: '時間',
+              localId: 'temp-reading',
+              title: '論文',
+              amount: 3,
+              unitCode: 'custom',
+              unitLabel: '件',
             }).workloads[0]],
-            sourceText: '英語を2時間',
+            sourceText: '論文を3件',
           },
           {
-            localId: 'component-math',
+            localId: 'component-notes',
             parentLocalId: null,
-            role: 'subject',
-            label: '数学',
+            role: 'custom',
+            label: 'メモ',
             workloads: [task({
-              localId: 'temp-math',
-              title: '数学',
-              amount: 3,
-              unitCode: 'hour',
-              unitLabel: '時間',
+              localId: 'temp-notes',
+              title: 'メモ',
+              amount: 2,
+              unitCode: 'page',
+              unitLabel: 'ページ',
             }).workloads[0]],
-            sourceText: '数学を3時間',
+            sourceText: 'メモを2ページ',
           },
         ],
       },
@@ -141,17 +165,12 @@ describe('Stable V5 direct work coverage contract', () => {
       effortEstimates: [],
       temporalConstraints: [],
       recurrence: [],
-      sourceText: '試験対策として英語を2時間、数学を3時間',
+      sourceText: '研究準備として論文を3件、メモを2ページ',
     };
+
     expect(directWorkCoverageErrorsV5({
-      userText: '試験対策として、英語を2時間、数学を3時間やりたいです',
+      userText: '研究準備として、論文を3件、メモを2ページ進める',
       document: document([grouped]),
     })).toEqual([]);
-  });
-
-  it('states that later coordinated items must not be dropped', () => {
-    expect(directWorkCoverageInstructionV5()).toContain(
-      'Do not drop a later coordinated item',
-    );
   });
 });
