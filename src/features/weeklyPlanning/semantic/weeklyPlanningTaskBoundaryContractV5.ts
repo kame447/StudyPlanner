@@ -19,9 +19,14 @@ function normalizedLabel(value: string): string {
     .replace(/[\s\p{P}\p{S}]+/gu, '');
 }
 
+function rootComponents(task: SemanticTaskV5): SemanticStudyComponentV5[] {
+  return (task.study?.components ?? []).filter(
+    (component) => component.parentLocalId === null,
+  );
+}
+
 function quantifiedRootComponents(task: SemanticTaskV5): SemanticStudyComponentV5[] {
-  return (task.study?.components ?? []).filter((component) =>
-    component.parentLocalId === null && component.workloads.length > 0);
+  return rootComponents(task).filter((component) => component.workloads.length > 0);
 }
 
 function collidingRootComponent(
@@ -48,6 +53,8 @@ function referencesTask(
 ): boolean {
   return document.relations.some(
     (relation) => relation.fromLocalId === taskId || relation.toLocalId === taskId,
+  ) || document.uncertainties.some(
+    (uncertainty) => uncertainty.targetLocalId === taskId,
   ) || document.corrections.some(
     (correction) => correction.target.localId === taskId,
   ) || document.decisions.some(
@@ -55,12 +62,43 @@ function referencesTask(
   );
 }
 
+function componentsForRoot(
+  components: SemanticStudyComponentV5[],
+  rootId: string,
+): SemanticStudyComponentV5[] {
+  const byId = new Map(components.map((component) => [component.localId, component]));
+
+  return components.filter((component) => {
+    let current: SemanticStudyComponentV5 | undefined = component;
+    const visited = new Set<string>();
+    while (current) {
+      if (current.localId === rootId) return true;
+      if (!current.parentLocalId || visited.has(current.localId)) return false;
+      visited.add(current.localId);
+      current = byId.get(current.parentLocalId);
+    }
+    return false;
+  });
+}
+
+function allComponentsBelongToQuantifiedRoots(task: SemanticTaskV5): boolean {
+  const components = task.study?.components ?? [];
+  const coveredIds = new Set(
+    quantifiedRootComponents(task).flatMap((root) =>
+      componentsForRoot(components, root.localId).map((component) => component.localId)),
+  );
+  return coveredIds.size === components.length;
+}
+
 function canSplitTask(
   document: WeeklyPlanningSemanticDocumentV5,
   task: SemanticTaskV5,
 ): boolean {
+  const quantifiedRoots = quantifiedRootComponents(task);
   return Boolean(task.study)
-    && quantifiedRootComponents(task).length >= 2
+    && quantifiedRoots.length >= 2
+    && quantifiedRoots.length === rootComponents(task).length
+    && allComponentsBelongToQuantifiedRoots(task)
     && task.workloads.length === 0
     && task.effortEstimates.length === 0
     && task.temporalConstraints.length === 0
@@ -88,25 +126,6 @@ function uniqueTaskId(base: string, usedIds: Set<string>): string {
   }
   usedIds.add(candidate);
   return candidate;
-}
-
-function componentsForRoot(
-  components: SemanticStudyComponentV5[],
-  rootId: string,
-): SemanticStudyComponentV5[] {
-  const byId = new Map(components.map((component) => [component.localId, component]));
-
-  return components.filter((component) => {
-    let current: SemanticStudyComponentV5 | undefined = component;
-    const visited = new Set<string>();
-    while (current) {
-      if (current.localId === rootId) return true;
-      if (!current.parentLocalId || visited.has(current.localId)) return false;
-      visited.add(current.localId);
-      current = byId.get(current.parentLocalId);
-    }
-    return false;
-  });
 }
 
 function splitTaskByQuantifiedRoots(
@@ -140,6 +159,7 @@ export function normalizeTaskBoundariesV5(
   collectLocalIds(document, usedIds);
   const repairs: string[] = [];
   const tasks: SemanticTaskV5[] = [];
+  let changed = false;
 
   for (const task of document.tasks) {
     const colliding = collidingRootComponent(task);
@@ -152,12 +172,14 @@ export function normalizeTaskBoundariesV5(
       const title = task.study?.contextLabel?.trim() ?? task.title;
       tasks.push({ ...task, title });
       repairs.push(`task-parent-renamed-to-shared-context:${task.localId}`);
+      changed = true;
       continue;
     }
 
     if (canSplitTask(document, task)) {
       tasks.push(...splitTaskByQuantifiedRoots(task, usedIds));
       repairs.push(`task-container-split-by-independent-roots:${task.localId}`);
+      changed = true;
       continue;
     }
 
@@ -165,7 +187,7 @@ export function normalizeTaskBoundariesV5(
   }
 
   return {
-    document: tasks === document.tasks ? document : { ...document, tasks },
+    document: changed ? { ...document, tasks } : document,
     repairs,
   };
 }
