@@ -20,7 +20,7 @@ function graph(): WeeklyPlanningFactGraphV5 {
       conversationId: 'conversation-1',
       turnId: 'turn-1',
       semanticLocalId: 'task-1',
-      sourceText: '英語を2時間やりたいです',
+      sourceText: '英語40問',
       origin: 'user' as const,
     },
     createdRevision: 1,
@@ -29,10 +29,10 @@ function graph(): WeeklyPlanningFactGraphV5 {
     id: 'workload-english',
     taskId: task.id,
     componentId: null,
-    quantityRole: 'declared' as const,
-    amount: 2,
-    unitCode: 'hour' as const,
-    unitLabel: '時間',
+    quantityRole: 'target' as const,
+    amount: 40,
+    unitCode: 'problem' as const,
+    unitLabel: '問',
     rangeStart: null,
     rangeEnd: null,
     perOccurrence: false,
@@ -56,27 +56,7 @@ function graph(): WeeklyPlanningFactGraphV5 {
   };
 }
 
-function document(params: {
-  sourceText: string;
-  quantityRole?: 'target';
-  effortMinutes?: number;
-  correctionTargetPublicId?: string;
-  correctionTargetKind?: 'workload' | 'effort_estimate';
-}): WeeklyPlanningSemanticDocumentV5 {
-  const replacementWorkload = params.correctionTargetPublicId
-    ? [{
-        localId: 'reply-workload',
-        quantityRole: 'declared' as const,
-        amount: 2,
-        unitCode: 'hour' as const,
-        unitLabel: '時間',
-        rangeStart: null,
-        rangeEnd: null,
-        perOccurrence: false,
-        periodExpression: null,
-        sourceText: params.sourceText,
-      }]
-    : [];
+function durationDocument(minutes: number): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'discuss',
@@ -86,196 +66,88 @@ function document(params: {
       category: 'study',
       title: '英語',
       study: null,
-      workloads: params.quantityRole
-        ? [{
-            localId: 'reply-workload',
-            quantityRole: params.quantityRole,
-            amount: 2,
-            unitCode: 'hour',
-            unitLabel: '時間',
-            rangeStart: null,
-            rangeEnd: null,
-            perOccurrence: false,
-            periodExpression: null,
-            sourceText: params.sourceText,
-          }]
-        : replacementWorkload,
-      effortEstimates: params.effortMinutes
-        ? [{
-            localId: 'reply-effort',
-            targetLocalId: 'reply-task',
-            kind: 'total_duration',
-            minutes: params.effortMinutes,
-            unitCode: null,
-            precision: 'exact',
-            sourceText: params.sourceText,
-          }]
-        : [],
+      workloads: [],
+      effortEstimates: [{
+        localId: 'reply-effort',
+        targetLocalId: 'reply-task',
+        kind: 'total_duration',
+        minutes,
+        unitCode: null,
+        precision: 'exact',
+        sourceText: 'AI interpreted duration',
+      }],
       temporalConstraints: [],
       recurrence: [],
-      sourceText: params.sourceText,
+      sourceText: 'AI interpreted answer',
     }],
     relations: [],
     availabilityDeclarations: [],
     constraintSourceRequests: [],
     uncertainties: [],
-    corrections: params.correctionTargetPublicId
-      ? [{
-          localId: 'reply-correction',
-          target: {
-            kind: params.correctionTargetKind ?? 'workload',
-            publicId: params.correctionTargetPublicId,
-            localId: null,
-            mention: '訂正',
-          },
-          operation: 'replace',
-          replacementLocalId: params.correctionTargetKind === 'effort_estimate'
-            ? 'reply-effort'
-            : 'reply-workload',
-          sourceText: params.sourceText,
-        }]
-      : [],
+    corrections: [],
     decisions: [],
   };
 }
 
-function pendingQuestion(
-  questionCode: 'quantity_role_unresolved' | 'missing_effort_estimate',
-) {
+function pendingQuestion() {
   return {
     actionId: 'question-1',
-    questionCode,
+    questionCode: 'missing_effort_estimate' as const,
     targetFactId: 'workload-english',
     graphRevision: 1,
   };
 }
 
-describe('Stable V5 contextual answer source grounding', () => {
-  it('binds a grounded quantity role even when model sourceText copied the prior turn', () => {
-    const initial = graph();
+describe('Stable V5 contextual answer semantic ownership', () => {
+  it.each([
+    ['3ページです', 180],
+    ['2時間です', 180],
+    ['arbitrary wording', 120],
+  ])('uses accepted AI meaning without reparsing user text: %s', (userText, minutes) => {
     const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: initial,
-      document: document({
-        sourceText: '英語を2時間やりたいです',
-        quantityRole: 'target',
-      }),
-      pendingQuestion: pendingQuestion('quantity_role_unresolved'),
+      graph: graph(),
+      document: durationDocument(minutes),
+      pendingQuestion: pendingQuestion(),
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
-      userText: '今回進めたい量です',
+      userText,
     });
 
     expect(result?.status).toBe('applied');
-    expect(result?.graph.tasks).toEqual(initial.tasks);
-    expect(result?.diff?.superseded).toEqual([
-      { kind: 'workload', id: 'workload-english' },
-    ]);
-    const workloads = result?.graph.workloads ?? [];
-    expect(workloads[workloads.length - 1]).toMatchObject({
-      taskId: 'task-english',
-      quantityRole: 'target',
-      amount: 2,
-      unitCode: 'hour',
-    });
-  });
-
-  it('does not trust a hallucinated duration for a non-time user unit', () => {
-    const initial = graph();
-    const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: initial,
-      document: document({ sourceText: '3ページです', effortMinutes: 180 }),
-      pendingQuestion: pendingQuestion('missing_effort_estimate'),
-      conversationId: 'conversation-1',
-      turnId: 'turn-2',
-      expectedRevision: 1,
-      userText: '3ページです',
-    });
-
-    expect(result?.status).toBe('applied');
-    expect(result?.graph.revision).toBe(2);
-    expect(result?.graph.effortEstimates).toEqual([]);
-    expect(result?.graph.tasks).toEqual(initial.tasks);
-    expect(result?.graph.workloads).toEqual(initial.workloads);
-  });
-
-  it('does not apply a model duration that differs from the explicit user duration', () => {
-    const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: graph(),
-      document: document({ sourceText: '2時間です', effortMinutes: 180 }),
-      pendingQuestion: pendingQuestion('missing_effort_estimate'),
-      conversationId: 'conversation-1',
-      turnId: 'turn-2',
-      expectedRevision: 1,
-      userText: '2時間です',
-    });
-
-    expect(result?.graph.effortEstimates).toEqual([]);
-  });
-
-  it('applies one model duration only when it matches the explicit user duration', () => {
-    const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: graph(),
-      document: document({ sourceText: '2時間です', effortMinutes: 120 }),
-      pendingQuestion: pendingQuestion('missing_effort_estimate'),
-      conversationId: 'conversation-1',
-      turnId: 'turn-2',
-      expectedRevision: 1,
-      userText: '2時間です',
-    });
-
     expect(result?.graph.effortEstimates).toEqual([
       expect.objectContaining({
         taskId: 'task-english',
-        minutes: 120,
+        targetFactId: 'workload-english',
+        minutes,
         kind: 'total_duration',
       }),
     ]);
   });
 
-  it('uses the exact pending target even when the model correction kind is inconsistent', () => {
-    const initial = graph();
-    const result = applyWeeklyPlanningStableV5ContextualAnswer({
-      graph: initial,
-      document: document({
-        sourceText: '英語の所要時間は合計3時間です',
-        effortMinutes: 180,
-        correctionTargetPublicId: 'workload-english',
-        correctionTargetKind: 'effort_estimate',
-      }),
-      pendingQuestion: pendingQuestion('missing_effort_estimate'),
-      conversationId: 'conversation-1',
-      turnId: 'turn-2',
-      expectedRevision: 1,
-      userText: '違います。英語の所要時間は合計3時間です',
+  it('leaves a correction for another public ID on the normal correction path', () => {
+    const document = durationDocument(180);
+    document.corrections.push({
+      localId: 'reply-correction',
+      target: {
+        kind: 'workload',
+        publicId: 'workload-other',
+        localId: null,
+        mention: '別の作業',
+      },
+      operation: 'replace',
+      replacementLocalId: 'reply-effort',
+      sourceText: '別の作業は3時間です',
     });
 
-    expect(result?.status).toBe('applied');
-    expect(result?.graph.tasks).toEqual(initial.tasks);
-    expect(result?.graph.workloads).toEqual(initial.workloads);
-    expect(result?.graph.effortEstimates).toEqual([
-      expect.objectContaining({
-        taskId: 'task-english',
-        minutes: 180,
-      }),
-    ]);
-  });
-
-  it('leaves a correction for another public ID on the normal correction path', () => {
-    const result = applyWeeklyPlanningStableV5ContextualAnswer({
+    expect(applyWeeklyPlanningStableV5ContextualAnswer({
       graph: graph(),
-      document: document({
-        sourceText: '別の作業は3時間です',
-        effortMinutes: 180,
-        correctionTargetPublicId: 'workload-other',
-      }),
-      pendingQuestion: pendingQuestion('missing_effort_estimate'),
+      document,
+      pendingQuestion: pendingQuestion(),
       conversationId: 'conversation-1',
       turnId: 'turn-2',
       expectedRevision: 1,
       userText: '別の作業は3時間です',
-    });
-
-    expect(result).toBeNull();
+    })).toBeNull();
   });
 });
