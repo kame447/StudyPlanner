@@ -2,6 +2,9 @@ import type {
   PlanningWindowFact,
   TaskRelationFact,
 } from './weeklyPlanningFactGraph';
+import type {
+  UncertaintyFactV5,
+} from './weeklyPlanningFactGraphV5';
 import {
   compileGenericPlanningWorkItems,
   type GenericPlanningWorkItem,
@@ -43,6 +46,7 @@ export type WeeklyPlanningGenericSchedulerGraphView =
   & {
     readonly planningWindows: ReadonlyArray<PlanningWindowFact>;
     readonly relations: ReadonlyArray<TaskRelationFact>;
+    readonly uncertainties: ReadonlyArray<UncertaintyFactV5>;
   };
 
 export interface GenericSchedulerPlanningHorizon {
@@ -74,6 +78,18 @@ export interface GenericSchedulerInput {
 }
 
 export type GenericSchedulerInputIssue =
+  | {
+      domain: 'semantic_uncertainty';
+      code: 'semantic_uncertainty';
+      blocking: true;
+      factId: string;
+      details: {
+        targetFactId: string | null;
+        field: string;
+        reason: string;
+        sourceText: string;
+      };
+    }
   | {
       domain: 'planning_horizon';
       code: 'invalid_planning_horizon' | 'ambiguous_planning_window';
@@ -134,6 +150,23 @@ export interface GenericSchedulerInputCompilationResult {
 }
 
 export type GenericSchedulerInputContext = AvailabilityResolutionContext;
+
+function semanticUncertaintyIssues(
+  graph: WeeklyPlanningGenericSchedulerGraphView,
+): GenericSchedulerInputIssue[] {
+  return graph.uncertainties.map((uncertainty) => ({
+    domain: 'semantic_uncertainty' as const,
+    code: 'semantic_uncertainty' as const,
+    blocking: true as const,
+    factId: uncertainty.id,
+    details: {
+      targetFactId: uncertainty.targetFactId,
+      field: uncertainty.field,
+      reason: uncertainty.reason,
+      sourceText: uncertainty.source.sourceText,
+    },
+  }));
+}
 
 function validateHorizon(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
@@ -240,7 +273,10 @@ export function compileGenericSchedulerInput(params: {
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
 }): GenericSchedulerInputCompilationResult {
-  const issues: GenericSchedulerInputIssue[] = validateHorizon(params);
+  const issues: GenericSchedulerInputIssue[] = [
+    ...semanticUncertaintyIssues(params.graph),
+    ...validateHorizon(params),
+  ];
 
   const commitmentResolution = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
     graph: params.graph,
