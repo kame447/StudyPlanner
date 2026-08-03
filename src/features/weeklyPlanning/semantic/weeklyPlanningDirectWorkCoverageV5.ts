@@ -50,8 +50,6 @@ function hasCorrectionCue(text: string): boolean {
 export function extractDirectWorkExpectationsV5(
   userText: string,
 ): DirectWorkExpectationV5[] {
-  if (hasCorrectionCue(userText)) return [];
-
   const expectations: DirectWorkExpectationV5[] = [];
   const segments = userText
     .normalize('NFKC')
@@ -60,6 +58,7 @@ export function extractDirectWorkExpectationsV5(
     .filter(Boolean);
 
   for (const segment of segments) {
+    if (hasCorrectionCue(segment)) continue;
     const matches = [...segment.matchAll(/(\d+(?:\.\d+)?)\s*(時間|分|問|ページ|語|章|回|件|枚|冊)/g)];
     if (matches.length !== 1) continue;
     const match = matches[0];
@@ -137,7 +136,6 @@ export function missingDirectWorkExpectationsV5(params: {
   userText: string;
   document: WeeklyPlanningSemanticDocumentV5;
 }): DirectWorkExpectationV5[] {
-  if (params.document.corrections.length > 0) return [];
   return extractDirectWorkExpectationsV5(params.userText)
     .filter((expectation) =>
       !params.document.tasks.some((task) => taskCoversExpectation(task, expectation)));
