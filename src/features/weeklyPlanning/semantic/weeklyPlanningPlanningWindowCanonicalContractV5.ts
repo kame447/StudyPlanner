@@ -13,6 +13,13 @@ interface RelativeWindowSourceExpectationV5 {
   value: 'today' | 'tomorrow' | 'day_after_tomorrow' | 'this_week' | 'next_week';
 }
 
+interface RelativeWindowMatchV5 {
+  start: number;
+  end: number;
+  kind: RelativeWindowSourceExpectationV5['kind'];
+  value: RelativeWindowSourceExpectationV5['value'];
+}
+
 export interface PlanningWindowCanonicalNormalizationV5 {
   window: SemanticPlanningWindowV5 | null;
   repairs: string[];
@@ -57,18 +64,40 @@ function normalizeSourceText(text: string): string {
   return text.normalize('NFKC').replace(/\s+/g, '');
 }
 
+function relativeWindowMatchesV5(sourceText: string): RelativeWindowMatchV5[] {
+  const matches: RelativeWindowMatchV5[] = [];
+
+  for (const expectation of RELATIVE_WINDOW_SOURCE_EXPECTATIONS_V5) {
+    for (const phrase of expectation.phrases) {
+      let start = sourceText.indexOf(phrase);
+      while (start >= 0) {
+        matches.push({
+          start,
+          end: start + phrase.length,
+          kind: expectation.kind,
+          value: expectation.value,
+        });
+        start = sourceText.indexOf(phrase, start + 1);
+      }
+    }
+  }
+
+  return matches.filter((match) =>
+    !matches.some((other) =>
+      other !== match
+      && other.start <= match.start
+      && other.end >= match.end
+      && other.end - other.start > match.end - match.start));
+}
+
 export function relativeWindowSourceExpectationV5(
   sourceText: string,
 ): Omit<RelativeWindowSourceExpectationV5, 'phrases'> | null {
   const normalized = normalizeSourceText(sourceText);
-  const matched = RELATIVE_WINDOW_SOURCE_EXPECTATIONS_V5
-    .filter((expectation) =>
-      expectation.phrases.some((phrase) => normalized.includes(phrase)))
-    .map(({ kind, value }) => ({ kind, value }));
   const unique = new Map(
-    matched.map((expectation) => [
-      `${expectation.kind}:${expectation.value}`,
-      expectation,
+    relativeWindowMatchesV5(normalized).map(({ kind, value }) => [
+      `${kind}:${value}`,
+      { kind, value },
     ]),
   );
   return unique.size === 1 ? [...unique.values()][0] : null;
