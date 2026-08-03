@@ -50,6 +50,7 @@ import {
 
 const RECENT_TURN_LIMIT = 8;
 const DEFAULT_PLANNING_DAY_COUNT = 7;
+const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
 
 export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   previousState?: PlanningIntakeState;
@@ -334,6 +335,13 @@ function publicStateSummary(
       unitCode: workload.unitCode,
       unitLabel: workload.unitLabel,
     })),
+    uncertainties: active.uncertainties.map((uncertainty) => ({
+      publicId: uncertainty.id,
+      targetPublicId: uncertainty.targetFactId,
+      field: uncertainty.field,
+      reason: uncertainty.reason,
+      sourceText: uncertainty.source.sourceText,
+    })),
     lastAssistantMessage:
       [...messages].reverse().find((message) => message.role === 'assistant')?.content ?? null,
   };
@@ -384,12 +392,36 @@ function issueTaskLabel(
   return component?.label || task?.title || 'この予定';
 }
 
+function questionSourceExcerpt(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= QUESTION_SOURCE_EXCERPT_LIMIT) return normalized;
+  return `${normalized.slice(0, QUESTION_SOURCE_EXCERPT_LIMIT)}…`;
+}
+
+function semanticUncertaintyQuestion(
+  graph: WeeklyPlanningFactGraphV5,
+  question: WeeklyPlanningStableQuestionV5,
+): string {
+  const uncertainty = question.factId
+    ? graph.uncertainties.find((fact) => fact.id === question.factId)
+    : null;
+  const sourceText = uncertainty
+    ? questionSourceExcerpt(uncertainty.source.sourceText)
+    : '';
+  if (!sourceText) {
+    return '意味を一つに決められない条件があります。曖昧な部分だけ、もう少し具体的に教えてください。';
+  }
+  return `「${sourceText}」の意味を一つに決められませんでした。この部分だけ、もう少し具体的に教えてください。`;
+}
+
 function renderQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
 ): string {
   const label = issueTaskLabel(graph, question);
   switch (question.code) {
+    case 'semantic_uncertainty':
+      return semanticUncertaintyQuestion(graph, question);
     case 'invalid_planning_horizon':
       return 'いつからいつまでの予定を作るか教えてください。例: 今日、今週、来週、7月25日から7月31日。';
     case 'ambiguous_planning_window':
@@ -565,7 +597,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return output;
   }
   if (semantic.status === 'normalization_rejected') {
-    const message = '入力内容は保持していますが、予定条件の構造化処理に失敗しました。同じ内容をそのままもう一度送ってください。';
+    const message = 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。';
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -587,7 +619,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return output;
   }
   if (semantic.status === 'canonicalization_rejected') {
-    const message = '直前の会話状態とAIの構造化結果が一致しなかったため、変更を反映していません。もう一度送ってください。';
+    const message = '直前の会話状態と構造化結果が一致しなかったため、変更は反映していません。直前に確認していた項目だけ、短く一つ教えてください。';
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -680,6 +712,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       dialoguePolicyCriteria: {
         blockingIssuesFirst: true,
         domainPriority: [
+          'semantic_uncertainty',
           'planning_horizon',
           'availability',
           'commitment',
