@@ -97,8 +97,17 @@ describe('Stable V5 semantic normalizer debug trace', () => {
     expect(system).toContain(
       'Every sourceText must be supported by current userText, not prior turns',
     );
+    expect(system).toContain(
+      'target means the amount intended for this plan or current execution',
+    );
+    expect(system).toContain(
+      'remaining means the full unfinished amount',
+    );
+    expect(system).toContain(
+      'completed means the amount already done',
+    );
     expect(system).toContain('For quantity_role_unresolved');
-    expect(system).toContain('do not return declared after resolution');
+    expect(system).toContain('Never keep uncertainty for a resolved role');
     expect(system).toContain('For semantic_uncertainty');
     expect(userPayload).toMatchObject({
       userText: '3時間ぐらいかな',
