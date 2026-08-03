@@ -37,7 +37,7 @@ function normalizeText(value: string): string {
 function cleanedLabel(raw: string): string {
   return raw
     .replace(/^(?:今日|明日|明後日|今週|来週|次の日|翌日|翌週)(?:に|は|で|の)?/, '')
-    .replace(/^(?:そして|それから|さらに|あと|また)/, '')
+    .replace(/^(?:そして|それから|さらに|加えて|あと|また)/, '')
     .replace(/(?:を|は|が|に|で|の)?$/, '')
     .trim();
 }
@@ -55,7 +55,7 @@ export function extractDirectWorkExpectationsV5(
   const expectations: DirectWorkExpectationV5[] = [];
   const segments = userText
     .normalize('NFKC')
-    .split(/[、，,。\n]|(?:そして|それから|および|及び)/)
+    .split(/[、，,。；;\n・]|(?:そして|それから|さらに|加えて|および|及び)/)
     .map((segment) => segment.trim())
     .filter(Boolean);
 
@@ -89,32 +89,33 @@ function workloadMatches(
     && Math.abs(amount - expectation.amount) < 1e-9;
 }
 
+function labelsMatch(expectation: DirectWorkExpectationV5, labels: string[]): boolean {
+  const expectedLabel = normalizeText(expectation.label);
+  return labels
+    .map(normalizeText)
+    .filter(Boolean)
+    .some((label) => label.includes(expectedLabel) || expectedLabel.includes(label));
+}
+
 function taskCoversExpectation(
   task: SemanticTaskV5,
   expectation: DirectWorkExpectationV5,
 ): boolean {
-  const expectedLabel = normalizeText(expectation.label);
-  const taskLabels = [task.title, task.sourceText]
-    .map(normalizeText)
-    .filter(Boolean);
+  const taskLabels = [task.title, task.sourceText];
 
   if (
     task.workloads.some((workload) =>
       workloadMatches(expectation, workload.amount, workload.unitCode))
-    && taskLabels.some((label) => label.includes(expectedLabel) || expectedLabel.includes(label))
+    && labelsMatch(expectation, taskLabels)
   ) {
     return true;
   }
 
   for (const component of task.study?.components ?? []) {
-    const componentLabels = [component.label, component.sourceText]
-      .map(normalizeText)
-      .filter(Boolean);
     if (
       component.workloads.some((workload) =>
         workloadMatches(expectation, workload.amount, workload.unitCode))
-      && componentLabels.some((label) =>
-        label.includes(expectedLabel) || expectedLabel.includes(label))
+      && labelsMatch(expectation, [component.label, component.sourceText])
     ) {
       return true;
     }
@@ -126,30 +127,27 @@ function taskCoversExpectation(
       : expectation.amount;
     return task.effortEstimates.some((estimate) =>
       Math.abs(estimate.minutes - expectedMinutes) < 1e-9)
-      && taskLabels.some((label) =>
-        label.includes(expectedLabel) || expectedLabel.includes(label));
+      && labelsMatch(expectation, taskLabels));
   }
 
   return false;
+}
+
+export function missingDirectWorkExpectationsV5(params: {
+  userText: string;
+  document: WeeklyPlanningSemanticDocumentV5;
+}): DirectWorkExpectationV5[] {
+  if (params.document.corrections.length > 0) return [];
+  return extractDirectWorkExpectationsV5(params.userText)
+    .filter((expectation) =>
+      !params.document.tasks.some((task) => taskCoversExpectation(task, expectation)));
 }
 
 export function directWorkCoverageErrorsV5(params: {
   userText: string;
   document: WeeklyPlanningSemanticDocumentV5;
 }): string[] {
-  if (params.document.corrections.length > 0) return [];
-  const expectations = extractDirectWorkExpectationsV5(params.userText);
-  return expectations
-    .filter((expectation) =>
-      !params.document.tasks.some((task) => taskCoversExpectation(task, expectation)))
+  return missingDirectWorkExpectationsV5(params)
     .map((expectation) =>
-      `document.tasks:direct-work-omitted:${expectation.label}:${expectation.amount}:${expectation.unitCode}`);
-}
-
-export function directWorkCoverageInstructionV5(): string {
-  return [
-    'Preserve every independently quantified work item stated in the current user message. Do not drop a later coordinated item after correctly extracting an earlier one.',
-    'Each explicit work label and its quantity must appear in the semantic document exactly with the stated meaning, either as its own top-level task or under an explicitly supported shared context.',
-    'Do not treat a repository state summary as permission to omit a newly stated work item.',
-  ].join(' ');
+      `document.tasks:explicit-work-evidence-omitted:${expectation.label}:${expectation.amount}:${expectation.unitCode}`);
 }
