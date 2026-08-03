@@ -1,3 +1,20 @@
+/*
+ * Semantic ownership boundary — P0 freeze
+ *
+ * This module currently decides creation authorization by interpreting the
+ * user's natural-language utterance after the semantic AI has responded. That
+ * is a classified architecture regression and a Phase 3 removal target.
+ *
+ * Do not add phrases, regular expressions, polite forms, or scenario-specific
+ * branches here. Creation authorization must be represented explicitly by the
+ * AI semantic document. Deterministic code may then validate readiness,
+ * revision, stale preview, and duplicate approval, but must not infer intent
+ * from user wording or replace the AI response with another document.
+ *
+ * Canonical rationale:
+ * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
+ * - docs/ai/audits/20260803-weekly-planning-semantic-ownership-phase0-phase1.md
+ */
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
