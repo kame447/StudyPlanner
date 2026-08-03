@@ -134,7 +134,13 @@ describe('Stable V5 contextual ID boundary', () => {
     const systemPrompt = calls[0]?.messages[0]?.content ?? '';
     expect(systemPrompt).toContain('using fresh localIds');
     expect(systemPrompt).toContain(
-      'Never emit uncertainty for a resolved answer or put public Fact IDs in targetLocalId',
+      'target means the amount intended for this plan or current execution',
+    );
+    expect(systemPrompt).toContain(
+      'Never keep uncertainty for a resolved role',
+    );
+    expect(systemPrompt).toContain(
+      'put public Fact IDs in targetLocalId',
     );
 
     const repairMessages = calls[1]?.messages ?? [];
@@ -145,6 +151,11 @@ describe('Stable V5 contextual ID boundary', () => {
     expect(repairPayload.requiredChanges).toEqual([
       expect.stringContaining(
         'Never copy a publicStateSummary publicId into targetLocalId',
+      ),
+    ]);
+    expect(repairPayload.requiredChanges).toEqual([
+      expect.stringContaining(
+        'remove the uncertainty and emit one minimal local task and workload',
       ),
     ]);
   });
