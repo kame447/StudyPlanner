@@ -184,11 +184,6 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
       ...unresolvedDeclarations(planningInformation, 'availabilityDeclarations'),
       ...unresolvedDeclarations(planningInformation, 'constraintSourceRequests'),
     ],
-    currentQuestion: {
-      questionCode: input.questionCode,
-      relevantLabels: input.requiredLabels,
-      referenceResponse: input.fallbackText,
-    },
   };
 }
 
