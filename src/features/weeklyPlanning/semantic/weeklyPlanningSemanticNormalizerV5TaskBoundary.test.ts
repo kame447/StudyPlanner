@@ -31,22 +31,22 @@ function baseDocument(tasks: SemanticTaskV5[]): WeeklyPlanningSemanticDocumentV5
   };
 }
 
-function groupedInvalidDocument(): WeeklyPlanningSemanticDocumentV5 {
+function groupedDocument(): WeeklyPlanningSemanticDocumentV5 {
   return baseDocument([{
     localId: 'task-grouped',
     category: 'study',
-    title: '英語',
+    title: '物理',
     study: {
       purpose: 'self_study',
       contextLabel: null,
       components: [
         {
-          localId: 'component-english',
+          localId: 'component-physics',
           parentLocalId: null,
           role: 'subject',
-          label: '英語',
+          label: '物理',
           workloads: [{
-            localId: 'workload-english',
+            localId: 'workload-physics',
             quantityRole: 'declared',
             amount: 2,
             unitCode: 'hour',
@@ -55,17 +55,17 @@ function groupedInvalidDocument(): WeeklyPlanningSemanticDocumentV5 {
             rangeEnd: null,
             perOccurrence: false,
             periodExpression: null,
-            sourceText: '英語を2時間',
+            sourceText: '物理を2時間',
           }],
-          sourceText: '英語',
+          sourceText: '物理',
         },
         {
-          localId: 'component-math',
+          localId: 'component-chemistry',
           parentLocalId: null,
           role: 'subject',
-          label: '数学',
+          label: '化学',
           workloads: [{
-            localId: 'workload-math',
+            localId: 'workload-chemistry',
             quantityRole: 'declared',
             amount: 3,
             unitCode: 'hour',
@@ -74,9 +74,9 @@ function groupedInvalidDocument(): WeeklyPlanningSemanticDocumentV5 {
             rangeEnd: null,
             perOccurrence: false,
             periodExpression: null,
-            sourceText: '数学を3時間',
+            sourceText: '化学を3時間',
           }],
-          sourceText: '数学',
+          sourceText: '化学',
         },
       ],
     },
@@ -84,120 +84,51 @@ function groupedInvalidDocument(): WeeklyPlanningSemanticDocumentV5 {
     effortEstimates: [],
     temporalConstraints: [],
     recurrence: [],
-    sourceText: '英語を2時間、数学を3時間',
+    sourceText: '物理を2時間、化学を3時間',
   }]);
 }
 
-function independentTasksDocument(): WeeklyPlanningSemanticDocumentV5 {
-  return baseDocument([
-    {
-      localId: 'task-english',
-      category: 'study',
-      title: '英語',
-      study: {
-        purpose: 'self_study',
-        contextLabel: null,
-        components: [],
-      },
-      workloads: [{
-        localId: 'workload-english',
-        quantityRole: 'declared',
-        amount: 2,
-        unitCode: 'hour',
-        unitLabel: '時間',
-        rangeStart: null,
-        rangeEnd: null,
-        perOccurrence: false,
-        periodExpression: null,
-        sourceText: '英語を2時間',
-      }],
-      effortEstimates: [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: '英語を2時間',
-    },
-    {
-      localId: 'task-math',
-      category: 'study',
-      title: '数学',
-      study: {
-        purpose: 'self_study',
-        contextLabel: null,
-        components: [],
-      },
-      workloads: [{
-        localId: 'workload-math',
-        quantityRole: 'declared',
-        amount: 3,
-        unitCode: 'hour',
-        unitLabel: '時間',
-        rangeStart: null,
-        rangeEnd: null,
-        perOccurrence: false,
-        periodExpression: null,
-        sourceText: '数学を3時間',
-      }],
-      effortEstimates: [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: '数学を3時間',
-    },
-  ]);
-}
-
-function fakeClient(sequence: string[]) {
+function fakeClient(response: WeeklyPlanningSemanticDocumentV5) {
   const calls: Array<Record<string, unknown>> = [];
-  let index = 0;
   const client: OpenAiCompatibleClient = {
     async createChatCompletion(input) {
       calls.push(input as unknown as Record<string, unknown>);
-      const response = sequence[index++];
-      if (response === undefined) throw new Error('fake response sequence exhausted');
-      return response;
+      return JSON.stringify(response);
     },
   };
   return { client, calls };
 }
 
-describe('Stable V5 semantic normalizer task boundary repair', () => {
-  it('repairs independent quantified subjects into separate top-level tasks', async () => {
-    const fake = fakeClient([
-      JSON.stringify(groupedInvalidDocument()),
-      JSON.stringify(independentTasksDocument()),
-    ]);
+describe('Stable V5 semantic normalizer task boundary normalization', () => {
+  it('splits a structurally valid but mis-parented container without a second AI call', async () => {
+    const fake = fakeClient(groupedDocument());
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
-      userText: '来週、英語を2時間、数学を3時間やりたいです',
-      traceRequestId: 'task-boundary-repair',
+      userText: '来週、物理を2時間、化学を3時間進めたいです',
+      traceRequestId: 'task-boundary-normalization',
     });
 
     expect(result.status).toBe('accepted');
-    expect(result.document?.tasks.map((task) => task.title)).toEqual(['英語', '数学']);
-    expect(result.document?.tasks.map((task) => task.workloads[0]?.amount)).toEqual([2, 3]);
+    expect(result.document?.tasks.map((task) => task.title)).toEqual(['物理', '化学']);
+    expect(result.document?.tasks.flatMap((task) =>
+      task.study?.components.flatMap((component) =>
+        component.workloads.map((workload) => workload.amount)) ?? [])).toEqual([2, 3]);
     expect(result.diagnostics).toMatchObject({
-      attemptCount: 2,
-      repairAttempted: true,
-      validationErrors: [
-        'document.tasks.task-grouped:parent-title-collides-with-subject:英語',
-        'document.tasks.task-grouped:multiple-subjects-require-shared-context:英語|数学',
+      attemptCount: 1,
+      repairAttempted: false,
+      validationErrors: [],
+      algorithmicRepairs: [
+        'task-container-split-by-independent-roots:task-grouped',
       ],
     });
-    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls).toHaveLength(1);
 
     const initialMessages = fake.calls[0].messages as Array<{
       role: string;
       content: string;
     }>;
-    expect(initialMessages[0]?.content).toContain(
-      'create separate top-level tasks rather than sibling subject components',
-    );
-
-    const repairMessages = fake.calls[1].messages as Array<{
-      role: string;
-      content: string;
-    }>;
-    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
-    expect(repairInstruction).toContain('parent-title-collides-with-subject');
-    expect(repairInstruction).toContain('split the independent subjects into separate top-level tasks');
+    expect(initialMessages[0]?.content).not.toContain('物理');
+    expect(initialMessages[0]?.content).not.toContain('化学');
+    expect(initialMessages[0]?.content).not.toContain('split the independent subjects');
   });
 });
