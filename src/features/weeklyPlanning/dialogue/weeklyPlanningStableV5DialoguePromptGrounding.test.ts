@@ -46,15 +46,19 @@ function clientReturning(
 }
 
 describe('Stable V5 dialogue prompt grounding contract', () => {
-  it('explicitly forbids hypothetical task names and values in questions', () => {
+  it('states the no-invention invariant once and avoids raw state duplication', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
+    const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
+    const combined = `${prompt.systemPrompt}\n${prompt.userPrompt}`;
 
     expect(prompt.systemPrompt).toContain(
-      '例示や補足であっても、入力にない作業名、数量、所要時間、時刻、日付を追加しないでください',
+      '入力にない具体情報は、例としても補わないでください',
     );
-    expect(prompt.userPrompt).toContain(
-      '入力に存在しない具体例、仮の作業名、仮の数量や時間を挙げず',
-    );
+    expect(combined.match(/入力にない/g)).toHaveLength(1);
+    expect(payload).not.toHaveProperty('planningInformation');
+    expect(payload).toHaveProperty('planningStateSummary');
+    expect(prompt.userPrompt).not.toContain('仮の作業名');
+    expect(prompt.userPrompt).not.toContain('仮の数量');
   });
 
   it('accepts a grounded abstract question and still rejects invented examples', async () => {
