@@ -73,7 +73,7 @@ function clientReturning(contentOrError: string | Error): OpenAiCompatibleClient
 }
 
 describe('Stable V5 AI dialogue renderer', () => {
-  it('sends current context and the typed application decision to the model', async () => {
+  it('sends one state summary and the typed application decision to the model', async () => {
     const renderInput = input();
     const client = clientReturning(rendererResponse(
       renderInput,
@@ -98,7 +98,10 @@ describe('Stable V5 AI dialogue renderer', () => {
       actionId: renderInput.actionId,
       currentUserMessage: 'どういうこと？',
       recentConversation: expect.any(Array),
-      planningInformation: expect.any(Object),
+      planningStateSummary: {
+        decidedFacts: expect.any(Object),
+        undecidedItems: expect.any(Array),
+      },
       applicationDecision: {
         actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
@@ -106,17 +109,24 @@ describe('Stable V5 AI dialogue renderer', () => {
         previewCount: 0,
       },
     });
+    expect(payload).not.toHaveProperty('planningInformation');
+    expect(
+      payload.planningStateSummary as Record<string, unknown>,
+    ).not.toHaveProperty('currentQuestion');
     expect(request.messages[1].content).not.toContain('apiKey');
   });
 
-  it('uses a short prompt while requiring the typed action contract to be echoed', () => {
+  it('uses a short prompt while preserving the typed action and safety contracts', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
+    const combined = `${prompt.systemPrompt}\n${prompt.userPrompt}`;
 
-    expect(prompt.systemPrompt).toContain('actionId、actionKind、questionCodeを変えずに');
+    expect(prompt.systemPrompt).toContain('action識別子を変更しないでください');
+    expect(prompt.systemPrompt).toContain('入力にない具体情報は、例としても補わないでください');
+    expect(combined.match(/入力にない/g)).toHaveLength(1);
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
     expect(prompt.systemPrompt).not.toContain('Preserve every string');
-    expect(prompt.userPrompt).toContain('そのまま繰り返したり、単に言い換えたりする必要はありません');
-    expect(prompt.userPrompt).toContain('まだ実行されていない予定の作成・追加・保存');
+    expect(prompt.userPrompt).toContain('referenceResponseは参考であり、繰り返す必要はありません');
+    expect(prompt.userPrompt).toContain('未実行の作成・保存を完了したとは言わないでください');
   });
 
   it('accepts an explanation when the user asks what the previous question meant', async () => {
