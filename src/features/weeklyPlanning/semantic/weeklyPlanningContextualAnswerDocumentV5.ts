@@ -11,6 +11,7 @@ import {
   groundedDurationMinutesFromUserTextV5,
   groundedQuantityRoleFromUserTextV5,
   hasWeeklyPlanningContextualScopeChangeCueV5,
+  type WeeklyPlanningGroundedQuantityRoleV5,
 } from './weeklyPlanningContextualAnswerGroundingV5';
 import {
   isWeeklyPlanningContextualQuestionCodeV5,
@@ -154,6 +155,47 @@ function explicitDurationMatchesTarget(
     && Math.round(expected) === durations[0];
 }
 
+function normalizedAnswerText(userText: string): string {
+  return userText
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[、，。.!！?？]/g, '');
+}
+
+function quantityRoleOnlyReply(
+  userText: string,
+  role: WeeklyPlanningGroundedQuantityRoleV5,
+): boolean {
+  const text = normalizedAnswerText(userText)
+    .replace(/^(?:はい|ええ|うん|そうです|そうですね)/, '')
+    .replace(/\d+(?:\.\d+)?時間(?:(?:半)|(?:\d+(?:\.\d+)?)分)?/g, '')
+    .replace(/\d+(?:\.\d+)?分/g, '')
+    .replace(/^(?:それ|これ)(?:が|は)/, '')
+    .replace(/^(?:が|は)/, '');
+  const ending = '(?:です|だ|になります|にします)?';
+
+  if (role === 'target') {
+    return new RegExp(
+      `^(?:今回(?:の|に|で)?(?:進めたい|やりたい|取り組みたい|行いたい|実施したい)?(?:分|量)?|この(?:計画|予定|期間)(?:に|で|の)?(?:進めたい|やりたい|取り組みたい|行いたい|実施したい)?(?:分|量)?|目標量?|今回分)${ending}$`,
+    ).test(text);
+  }
+  if (role === 'remaining') {
+    return new RegExp(
+      `^(?:残り(?:の)?(?:全体)?(?:分|量)?|残量|残っている(?:全体)?(?:分|量)?|全体量|未完了(?:分|量)?|未消化(?:分|量)?)${ending}$`,
+    ).test(text);
+  }
+  return new RegExp(
+    `^(?:完了(?:済み)?(?:分|量)?|済んだ(?:分|量)?|終わった(?:分|量)?|やり終えた(?:分|量)?|進め終えた(?:分|量)?|実施済み(?:分|量)?|消化済み(?:分|量)?)${ending}$`,
+  ).test(text);
+}
+
+function durationOnlyReply(userText: string): boolean {
+  const text = normalizedAnswerText(userText);
+  return /^(?:(?:約|およそ|だいたい))?\d+(?:\.\d+)?時間(?:(?:半)|(?:\d+(?:\.\d+)?)分)?(?:(?:くらい|ぐらい|ほど))?(?:です|だ|かかります|かかると思います|だと思います)?$/.test(text)
+    || /^(?:(?:約|およそ|だいたい))?\d+(?:\.\d+)?分(?:(?:くらい|ぐらい|ほど))?(?:です|だ|かかります|かかると思います|だと思います)?$/.test(text);
+}
+
 function effortPrecision(userText: string): 'exact' | 'approximate' {
   const normalized = userText.normalize('NFKC').replace(/\s+/g, '');
   return /(?:約|およそ|だいたい|くらい|ぐらい|ほど)/.test(normalized)
@@ -190,7 +232,13 @@ export function createGroundedContextualAnswerDocumentV5(params: {
 
   if (pendingQuestion.questionCode === 'quantity_role_unresolved') {
     const role = groundedQuantityRoleFromUserTextV5(userText);
-    if (role === null || !explicitDurationMatchesTarget(userText, workload)) return null;
+    if (
+      role === null
+      || !quantityRoleOnlyReply(userText, role)
+      || !explicitDurationMatchesTarget(userText, workload)
+    ) {
+      return null;
+    }
     const document = emptyDocument();
     const contextualTask = taskShell(task, userText);
     contextualTask.workloads.push({
@@ -215,7 +263,7 @@ export function createGroundedContextualAnswerDocumentV5(params: {
   }
 
   const durations = groundedDurationMinutesFromUserTextV5(userText);
-  if (durations.length !== 1) return null;
+  if (durations.length !== 1 || !durationOnlyReply(userText)) return null;
   const document = emptyDocument();
   const contextualTask = taskShell(task, userText);
   contextualTask.effortEstimates.push({
