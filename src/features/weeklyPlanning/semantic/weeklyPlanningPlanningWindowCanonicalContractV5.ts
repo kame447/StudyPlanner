@@ -13,6 +13,11 @@ interface RelativeWindowSourceExpectationV5 {
   value: 'today' | 'tomorrow' | 'day_after_tomorrow' | 'this_week' | 'next_week';
 }
 
+export interface PlanningWindowCanonicalNormalizationV5 {
+  window: SemanticPlanningWindowV5 | null;
+  repairs: string[];
+}
+
 const RELATIVE_WINDOW_SOURCE_EXPECTATIONS_V5: readonly RelativeWindowSourceExpectationV5[] = [
   {
     phrases: ['次の次の日', '翌々日', '明後日'],
@@ -61,6 +66,32 @@ export function relativeWindowSourceExpectationV5(
   return matched ? { kind: matched.kind, value: matched.value } : null;
 }
 
+export function normalizePlanningWindowCanonicalV5(
+  window: SemanticPlanningWindowV5 | null,
+): PlanningWindowCanonicalNormalizationV5 {
+  if (!window || (window.kind !== 'relative_day' && window.kind !== 'relative_week')) {
+    return { window, repairs: [] };
+  }
+
+  const expected = relativeWindowSourceExpectationV5(window.sourceText);
+  if (!expected || (window.kind === expected.kind && window.value === expected.value)) {
+    return { window, repairs: [] };
+  }
+
+  return {
+    window: {
+      ...window,
+      kind: expected.kind,
+      value: expected.value,
+      start: null,
+      end: null,
+    },
+    repairs: [
+      `planning-window-source-canonicalized:${window.localId}:${window.kind}:${window.value}->${expected.kind}:${expected.value}`,
+    ],
+  };
+}
+
 export function planningWindowCanonicalValueErrors(
   window: SemanticPlanningWindowV5 | null,
 ): string[] {
@@ -101,13 +132,4 @@ export function planningWindowCanonicalValueErrors(
   }
 
   return [];
-}
-
-export function canonicalPlanningWindowInstructionV5(): string {
-  return [
-    `Canonical relative_day values are: ${CANONICAL_RELATIVE_DAY_EXPRESSIONS.join(', ')}.`,
-    `Canonical relative_week values are: ${CANONICAL_RELATIVE_WEEK_EXPRESSIONS.join(', ')}.`,
-    'Map equivalent user expressions to these values. 次の日, 翌日, and 明日 mean tomorrow; 次の次の日, 翌々日, and 明後日 mean day_after_tomorrow; 次の週, 次週, 翌週, and 来週 mean next_week.',
-    'Never invent aliases such as next_day, following_day, current_week, or following_week, and never replace a source expression with a different valid canonical meaning.',
-  ].join(' ');
 }
