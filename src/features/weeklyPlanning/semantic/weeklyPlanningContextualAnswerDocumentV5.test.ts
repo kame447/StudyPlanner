@@ -25,6 +25,7 @@ function summary(params: {
       category: 'study',
       title: '語学学習',
     }],
+    components: [],
     workloads: [{
       publicId: 'workload-language',
       taskPublicId: 'task-language',
@@ -33,6 +34,39 @@ function summary(params: {
       amount: 2,
       unitCode: 'hour',
       unitLabel: '時間',
+    }],
+  };
+}
+
+function explicitRepairSummary(): Record<string, unknown> {
+  return {
+    graphRevision: 2,
+    pendingQuestion: {
+      actionId: 'action-missing-effort',
+      questionCode: 'missing_effort_estimate',
+      targetFactId: 'workload-math',
+      graphRevision: 2,
+    },
+    tasks: [{
+      publicId: 'task-math',
+      category: 'study',
+      title: '数学の問題を進める',
+    }],
+    components: [{
+      publicId: 'component-math',
+      taskPublicId: 'task-math',
+      parentComponentPublicId: null,
+      role: 'subject',
+      label: '数学',
+    }],
+    workloads: [{
+      publicId: 'workload-math',
+      taskPublicId: 'task-math',
+      componentPublicId: 'component-math',
+      quantityRole: 'target',
+      amount: 40,
+      unitCode: 'problem',
+      unitLabel: '問',
     }],
   };
 }
@@ -97,6 +131,28 @@ describe('Stable V5 machine-targeted short answer document', () => {
   });
 
   it.each([
+    '違います。合計3時間です',
+    '違います。ページ数ではなく、数学40問の所要時間は合計3時間です',
+  ])('grounds an explicit repair to the exact machine-selected workload: %s', (userText) => {
+    const result = createGroundedContextualAnswerDocumentV5({
+      userText,
+      publicStateSummary: explicitRepairSummary(),
+    });
+
+    expect(result).toMatchObject({
+      document: {
+        tasks: [{
+          title: '数学の問題を進める',
+          effortEstimates: [{
+            kind: 'total_duration',
+            minutes: 180,
+          }],
+        }],
+      },
+    });
+  });
+
+  it.each([
     {
       userText: '今回進めたい量で、明日にします',
       state: summary({ questionCode: 'quantity_role_unresolved' }),
@@ -112,6 +168,14 @@ describe('Stable V5 machine-targeted short answer document', () => {
     {
       userText: '3時間です。夜にやります',
       state: summary({ questionCode: 'missing_effort_estimate' }),
+    },
+    {
+      userText: '違います。英語40問の所要時間は3時間です',
+      state: explicitRepairSummary(),
+    },
+    {
+      userText: '違います。数学40問の所要時間は明日3時間です',
+      state: explicitRepairSummary(),
     },
     {
       userText: '今回進めたい量です',
