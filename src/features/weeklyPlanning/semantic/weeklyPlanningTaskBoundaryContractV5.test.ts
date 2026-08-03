@@ -6,19 +6,20 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  normalizeTaskBoundariesV5,
   taskBoundaryConformanceErrorsV5,
-  taskBoundaryInstructionV5,
 } from './weeklyPlanningTaskBoundaryContractV5';
 
-function subject(
+function component(
   localId: string,
   label: string,
   hours: number,
+  role: SemanticStudyComponentV5['role'] = 'subject',
 ): SemanticStudyComponentV5 {
   return {
     localId,
     parentLocalId: null,
-    role: 'subject',
+    role,
     label,
     workloads: [{
       localId: `workload-${localId}`,
@@ -39,7 +40,7 @@ function subject(
 function task(params: {
   localId: string;
   title: string;
-  contextLabel: string | null;
+  contextLabel?: string | null;
   components: SemanticStudyComponentV5[];
 }): SemanticTaskV5 {
   return {
@@ -48,7 +49,7 @@ function task(params: {
     title: params.title,
     study: {
       purpose: 'self_study',
-      contextLabel: params.contextLabel,
+      contextLabel: params.contextLabel ?? null,
       components: params.components,
     },
     workloads: [],
@@ -59,13 +60,16 @@ function task(params: {
   };
 }
 
-function document(tasks: SemanticTaskV5[]): WeeklyPlanningSemanticDocumentV5 {
+function document(
+  tasks: SemanticTaskV5[],
+  relations: WeeklyPlanningSemanticDocumentV5['relations'] = [],
+): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'update_plan',
     planningWindow: null,
     tasks,
-    relations: [],
+    relations,
     availabilityDeclarations: [],
     constraintSourceRequests: [],
     uncertainties: [],
@@ -75,79 +79,120 @@ function document(tasks: SemanticTaskV5[]): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 task boundary contract', () => {
-  it('rejects sibling subjects grouped under one child title without a shared context', () => {
-    const errors = taskBoundaryConformanceErrorsV5(document([
+  it('splits a pure container when one child was incorrectly used as its parent identity', () => {
+    const input = document([
       task({
-        localId: 'task-grouped',
-        title: '英語',
-        contextLabel: null,
+        localId: 'task-collided',
+        title: '物理',
         components: [
-          subject('component-english', '英語', 2),
-          subject('component-math', '数学', 3),
+          component('component-physics', '物理', 2),
+          component('component-chemistry', '化学', 3),
         ],
       }),
-    ]));
+    ]);
 
-    expect(errors).toEqual([
-      'document.tasks.task-grouped:parent-title-collides-with-subject:英語',
-      'document.tasks.task-grouped:multiple-subjects-require-shared-context:英語|数学',
+    const normalized = normalizeTaskBoundariesV5(input);
+
+    expect(normalized.repairs).toEqual([
+      'task-container-split-by-independent-roots:task-collided',
+    ]);
+    expect(normalized.document.tasks.map((item) => item.title)).toEqual([
+      '物理',
+      '化学',
+    ]);
+    expect(taskBoundaryConformanceErrorsV5(normalized.document)).toEqual([]);
+  });
+
+  it('keeps multiple quantified children under a genuine shared parent identity', () => {
+    const input = document([
+      task({
+        localId: 'task-shared',
+        title: '資格試験対策',
+        components: [
+          component('component-law', '法規', 2),
+          component('component-theory', '理論', 3),
+        ],
+      }),
+    ]);
+
+    expect(normalizeTaskBoundariesV5(input)).toEqual({
+      document: input,
+      repairs: [],
+    });
+    expect(taskBoundaryConformanceErrorsV5(input)).toEqual([]);
+  });
+
+  it('uses an explicit shared context instead of splitting its children', () => {
+    const input = document([
+      task({
+        localId: 'task-context',
+        title: '統計',
+        contextLabel: '卒業研究',
+        components: [
+          component('component-statistics', '統計', 2),
+          component('component-writing', '執筆', 3, 'skill'),
+        ],
+      }),
+    ]);
+
+    const normalized = normalizeTaskBoundariesV5(input);
+
+    expect(normalized.document.tasks).toHaveLength(1);
+    expect(normalized.document.tasks[0]?.title).toBe('卒業研究');
+    expect(normalized.repairs).toEqual([
+      'task-parent-renamed-to-shared-context:task-context',
     ]);
   });
 
-  it('accepts multiple subjects under an explicit shared exam context', () => {
-    expect(taskBoundaryConformanceErrorsV5(document([
+  it('does not perform a lossy split when task-level relations depend on the container', () => {
+    const input = document(
+      [
+        task({
+          localId: 'task-related',
+          title: '設計',
+          components: [
+            component('component-design', '設計', 1, 'skill'),
+            component('component-implementation', '実装', 2, 'skill'),
+          ],
+        }),
+        task({
+          localId: 'task-review',
+          title: 'レビュー',
+          components: [],
+        }),
+      ],
+      [{
+        localId: 'relation-1',
+        kind: 'before',
+        fromLocalId: 'task-related',
+        toLocalId: 'task-review',
+        sourceText: '設計と実装の後にレビュー',
+      }],
+    );
+
+    const normalized = normalizeTaskBoundariesV5(input);
+
+    expect(normalized.repairs).toEqual([]);
+    expect(taskBoundaryConformanceErrorsV5(normalized.document)).toEqual([
+      'document.tasks.task-related:parent-title-collides-with-child:設計',
+    ]);
+  });
+
+  it('does not split ordinary child topics whose parent title is distinct', () => {
+    const input = document([
       task({
-        localId: 'task-exam',
-        title: '大学院入試対策',
-        contextLabel: '大学院入試',
+        localId: 'task-language',
+        title: '英語',
         components: [
-          subject('component-field-a', '専門分野A', 2),
-          subject('component-field-b', '専門分野B', 3),
+          component('component-grammar', '文法', 1, 'topic'),
+          component('component-reading', '長文', 1, 'skill'),
         ],
       }),
-    ]))).toEqual([]);
-  });
+    ]);
 
-  it('accepts independent subjects as separate top-level tasks', () => {
-    expect(taskBoundaryConformanceErrorsV5(document([
-      task({
-        localId: 'task-english',
-        title: '英語',
-        contextLabel: null,
-        components: [subject('component-english', '英語', 2)],
-      }),
-      task({
-        localId: 'task-math',
-        title: '数学',
-        contextLabel: null,
-        components: [subject('component-math', '数学', 3)],
-      }),
-    ]))).toEqual([]);
-  });
-
-  it('does not affect multiple non-subject components within one subject task', () => {
-    const grammar = {
-      ...subject('component-grammar', '文法', 1),
-      role: 'topic' as const,
-    };
-    const reading = {
-      ...subject('component-reading', '長文', 1),
-      role: 'skill' as const,
-    };
-    expect(taskBoundaryConformanceErrorsV5(document([
-      task({
-        localId: 'task-english',
-        title: '英語',
-        contextLabel: null,
-        components: [grammar, reading],
-      }),
-    ]))).toEqual([]);
-  });
-
-  it('states both the grouping permission and separation rule in the prompt contract', () => {
-    const instruction = taskBoundaryInstructionV5();
-    expect(instruction).toContain('explicitly names a shared exam, course, project');
-    expect(instruction).toContain('create separate top-level tasks');
-    expect(instruction).toContain('Never use one child subject label as the parent task title');
+    expect(normalizeTaskBoundariesV5(input)).toEqual({
+      document: input,
+      repairs: [],
+    });
   });
 });
