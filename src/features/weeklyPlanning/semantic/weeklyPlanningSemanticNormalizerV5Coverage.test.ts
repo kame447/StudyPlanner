@@ -9,32 +9,37 @@ import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 
-function task(title: string, hours: number): SemanticTaskV5 {
+function task(params: {
+  title: string;
+  amount: number;
+  unitCode: 'page' | 'problem';
+  unitLabel: string;
+}): SemanticTaskV5 {
   return {
-    localId: `task-${title}`,
+    localId: `task-${params.title}`,
     category: 'study',
-    title,
+    title: params.title,
     study: {
       purpose: 'self_study',
       contextLabel: null,
       components: [],
     },
     workloads: [{
-      localId: `workload-${title}`,
+      localId: `workload-${params.title}`,
       quantityRole: 'declared',
-      amount: hours,
-      unitCode: 'hour',
-      unitLabel: '時間',
+      amount: params.amount,
+      unitCode: params.unitCode,
+      unitLabel: params.unitLabel,
       rangeStart: null,
       rangeEnd: null,
       perOccurrence: false,
       periodExpression: null,
-      sourceText: `${title}を${hours}時間`,
+      sourceText: `${params.title}を${params.amount}${params.unitLabel}`,
     }],
     effortEstimates: [],
     temporalConstraints: [],
     recurrence: [],
-    sourceText: `${title}を${hours}時間`,
+    sourceText: `${params.title}を${params.amount}${params.unitLabel}`,
   };
 }
 
@@ -74,43 +79,73 @@ function fakeClient(sequence: WeeklyPlanningSemanticDocumentV5[]) {
   return { client, calls };
 }
 
-describe('Stable V5 semantic normalizer direct work coverage repair', () => {
-  it('repairs a schema-valid response that silently dropped one quantified task', async () => {
+describe('Stable V5 semantic normalizer evidence repair', () => {
+  it('requests only the missing structured evidence instead of adding a scenario rule to the base prompt', async () => {
+    const report = task({
+      title: 'レポート',
+      amount: 4,
+      unitCode: 'page',
+      unitLabel: 'ページ',
+    });
+    const exercises = task({
+      title: '演習',
+      amount: 12,
+      unitCode: 'problem',
+      unitLabel: '問',
+    });
     const fake = fakeClient([
-      document([task('英語', 2)]),
-      document([task('英語', 2), task('数学', 3)]),
+      document([report]),
+      document([report, exercises]),
     ]);
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
-      userText: '来週、英語を2時間、数学を3時間やる予定を作ってください',
-      traceRequestId: 'direct-work-coverage-repair',
+      userText: '来週、レポートを4ページ、演習を12問進める予定を作ってください',
+      traceRequestId: 'explicit-evidence-repair',
     });
 
     expect(result.status).toBe('accepted');
-    expect(result.document?.tasks.map((item) => item.title)).toEqual(['英語', '数学']);
+    expect(result.document?.tasks.map((item) => item.title)).toEqual([
+      'レポート',
+      '演習',
+    ]);
     expect(result.diagnostics).toMatchObject({
       attemptCount: 2,
       repairAttempted: true,
       validationErrors: [
-        'document.tasks:direct-work-omitted:数学:3:hour',
+        'document.tasks:explicit-work-evidence-omitted:演習:12:problem',
       ],
     });
     expect(fake.calls).toHaveLength(2);
 
-    const systemMessages = fake.calls[0].messages as Array<{
+    const baseMessages = fake.calls[0].messages as Array<{
       role: string;
       content: string;
     }>;
-    expect(systemMessages[0]?.content).toContain(
-      'Preserve every independently quantified work item',
-    );
+    expect(baseMessages[0]?.content).not.toContain('レポート');
+    expect(baseMessages[0]?.content).not.toContain('演習');
+    expect(baseMessages[0]?.content).not.toContain('Do not drop a later coordinated item');
+    expect(baseMessages[0]?.content).not.toContain('restore every omitted explicitly quantified work item');
 
     const repairMessages = fake.calls[1].messages as Array<{
       role: string;
       content: string;
     }>;
-    const repairInstruction = repairMessages[repairMessages.length - 1]?.content ?? '';
-    expect(repairInstruction).toContain('direct-work-omitted:数学:3:hour');
-    expect(repairInstruction).toContain('restore every omitted explicitly quantified work item');
+    const payload = JSON.parse(
+      repairMessages[repairMessages.length - 1]?.content ?? '{}',
+    ) as {
+      requiredChanges?: string[];
+      missingEvidence?: unknown[];
+      validationErrors?: string[];
+    };
+
+    expect(payload.requiredChanges).toEqual([
+      'Restore each listed missing evidence item without deleting or changing already valid items.',
+    ]);
+    expect(payload.missingEvidence).toEqual([
+      { label: '演習', amount: 12, unitCode: 'problem', unitLabel: '問' },
+    ]);
+    expect(JSON.stringify(payload)).not.toContain('clock');
+    expect(JSON.stringify(payload)).not.toContain('parent identity');
+    expect(JSON.stringify(payload)).not.toContain('planning-window');
   });
 });
