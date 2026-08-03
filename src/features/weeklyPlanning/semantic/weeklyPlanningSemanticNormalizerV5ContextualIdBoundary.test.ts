@@ -130,7 +130,8 @@ describe('Stable V5 contextual ID boundary', () => {
       'Never emit uncertainty for a resolved answer or put public Fact IDs in targetLocalId',
     );
 
-    const repairMessage = calls[1]?.messages.at(-1)?.content ?? '{}';
+    const repairMessages = calls[1]?.messages ?? [];
+    const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '{}';
     const repairPayload = JSON.parse(repairMessage) as {
       requiredChanges?: string[];
     };
