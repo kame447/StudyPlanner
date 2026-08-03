@@ -37,6 +37,20 @@ function component(
   };
 }
 
+function emptyComponent(
+  localId: string,
+  label: string,
+): SemanticStudyComponentV5 {
+  return {
+    localId,
+    parentLocalId: null,
+    role: 'topic',
+    label,
+    workloads: [],
+    sourceText: label,
+  };
+}
+
 function task(params: {
   localId: string;
   title: string;
@@ -173,9 +187,56 @@ describe('Stable V5 task boundary contract', () => {
     const normalized = normalizeTaskBoundariesV5(input);
 
     expect(normalized.repairs).toEqual([]);
+    expect(normalized.document).toBe(input);
     expect(taskBoundaryConformanceErrorsV5(normalized.document)).toEqual([
       'document.tasks.task-related:parent-title-collides-with-child:設計',
     ]);
+  });
+
+  it('does not drop an unquantified sibling root during normalization', () => {
+    const input = document([
+      task({
+        localId: 'task-with-note',
+        title: '分析',
+        components: [
+          component('component-analysis', '分析', 2, 'skill'),
+          component('component-writing', '執筆', 3, 'skill'),
+          emptyComponent('component-method', '方法の確認'),
+        ],
+      }),
+    ]);
+
+    const normalized = normalizeTaskBoundariesV5(input);
+
+    expect(normalized.repairs).toEqual([]);
+    expect(normalized.document).toBe(input);
+    expect(normalized.document.tasks[0]?.study?.components).toHaveLength(3);
+  });
+
+  it('does not remove a task identity that an uncertainty still targets', () => {
+    const input = document([
+      task({
+        localId: 'task-uncertain',
+        title: '収集',
+        components: [
+          component('component-collection', '収集', 1, 'skill'),
+          component('component-review', '確認', 2, 'skill'),
+        ],
+      }),
+    ]);
+    input.uncertainties.push({
+      localId: 'uncertainty-1',
+      targetLocalId: 'task-uncertain',
+      field: 'category',
+      reason: '分類を確認する必要がある',
+      sourceText: '分類は未確定',
+    });
+
+    const normalized = normalizeTaskBoundariesV5(input);
+
+    expect(normalized.repairs).toEqual([]);
+    expect(normalized.document).toBe(input);
+    expect(normalized.document.tasks[0]?.localId).toBe('task-uncertain');
   });
 
   it('does not split ordinary child topics whose parent title is distinct', () => {
