@@ -124,11 +124,11 @@ describe('Stable V5 renderer prompt trace', () => {
       planningStateSummary: {
         decidedFacts: expect.any(Object),
         undecidedItems: expect.any(Array),
-        currentQuestion: {
-          questionCode: 'quantity_role_unresolved',
-        },
       },
     });
+    expect(
+      (userPayload.planningStateSummary as Record<string, unknown>),
+    ).not.toHaveProperty('currentQuestion');
   });
 
   it('keeps the attempted prompt when the renderer provider fails', async () => {
