@@ -84,18 +84,13 @@ function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
   };
 }
 
-function shortReplyDocument(params: {
-  sourceText: string;
-  amount: number;
-  unitCode: 'page' | 'hour';
-  unitLabel: string;
-}): WeeklyPlanningSemanticDocumentV5 {
+function incompatiblePageReplyDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'update_plan',
     planningWindow: null,
     tasks: [{
-      localId: `reply-task-${params.unitCode}`,
+      localId: 'reply-task-page',
       category: 'study',
       title: '数学',
       study: {
@@ -104,21 +99,69 @@ function shortReplyDocument(params: {
         components: [],
       },
       workloads: [{
-        localId: `reply-workload-${params.unitCode}`,
+        localId: 'reply-workload-page',
         quantityRole: 'unknown',
-        amount: params.amount,
-        unitCode: params.unitCode,
-        unitLabel: params.unitLabel,
+        amount: 3,
+        unitCode: 'page',
+        unitLabel: 'ページ',
         rangeStart: null,
         rangeEnd: null,
         perOccurrence: false,
         periodExpression: null,
-        sourceText: params.sourceText,
+        sourceText: '3ページです',
       }],
       effortEstimates: [],
       temporalConstraints: [],
       recurrence: [],
-      sourceText: params.sourceText,
+      sourceText: '3ページです',
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+function durationReplyDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'update_plan',
+    planningWindow: null,
+    tasks: [{
+      localId: 'reply-task-duration',
+      category: 'study',
+      title: '数学',
+      study: {
+        purpose: 'self_study',
+        contextLabel: null,
+        components: [],
+      },
+      workloads: [{
+        localId: 'reply-workload-problems',
+        quantityRole: 'target',
+        amount: 40,
+        unitCode: 'problem',
+        unitLabel: '問',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: '数学の問題40問',
+      }],
+      effortEstimates: [{
+        localId: 'reply-effort-duration',
+        targetLocalId: 'reply-workload-problems',
+        kind: 'total_duration',
+        minutes: 180,
+        unitCode: null,
+        precision: 'exact',
+        sourceText: '3時間です',
+      }],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: '3時間です',
     }],
     relations: [],
     availabilityDeclarations: [],
@@ -164,19 +207,14 @@ async function initialMathPipelineResult() {
 }
 
 describe('Stable V5 semantic pipeline explicit repair', () => {
-  it('keeps the target after a wrong unit and applies the next valid duration reply', async () => {
+  it('keeps the target after an incompatible answer and applies the next AI-owned duration fact', async () => {
     const first = await initialMathPipelineResult();
     expect(first.status).toBe('scheduler_needs_resolution');
     const workloadId = first.canonicalization?.localToFactId['workload-problems'];
     if (!workloadId) throw new Error('workload id was not created');
 
     const wrong = await createWeeklyPlanningSemanticPipelineV5(
-      acceptedNormalizer(shortReplyDocument({
-        sourceText: '3ページです',
-        amount: 3,
-        unitCode: 'page',
-        unitLabel: 'ページ',
-      })),
+      acceptedNormalizer(incompatiblePageReplyDocument()),
     ).run({
       graph: first.graph,
       conversationId: 'conversation-explicit-repair',
@@ -201,12 +239,7 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
     expect(wrong.graph.tasks.some((task) => task.title.includes('ページ'))).toBe(false);
 
     const repaired = await createWeeklyPlanningSemanticPipelineV5(
-      acceptedNormalizer(shortReplyDocument({
-        sourceText: '3時間です',
-        amount: 3,
-        unitCode: 'hour',
-        unitLabel: '時間',
-      })),
+      acceptedNormalizer(durationReplyDocument()),
     ).run({
       graph: wrong.graph,
       conversationId: 'conversation-explicit-repair',
@@ -226,6 +259,7 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
     expect(repaired.graph.effortEstimates).toEqual([
       expect.objectContaining({
         taskId: first.graph.tasks[0]?.id,
+        targetFactId: workloadId,
         minutes: 180,
         kind: 'total_duration',
       }),
@@ -240,12 +274,7 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
     expect(first.status).toBe('scheduler_needs_resolution');
 
     const rejected = await createWeeklyPlanningSemanticPipelineV5(
-      acceptedNormalizer(shortReplyDocument({
-        sourceText: '3時間です',
-        amount: 3,
-        unitCode: 'hour',
-        unitLabel: '時間',
-      })),
+      acceptedNormalizer(durationReplyDocument()),
     ).run({
       graph: first.graph,
       conversationId: 'conversation-explicit-repair',
