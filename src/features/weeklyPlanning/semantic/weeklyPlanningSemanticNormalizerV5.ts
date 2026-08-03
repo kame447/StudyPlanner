@@ -16,6 +16,9 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
+  validateWeeklyPlanningSemanticEvidenceV5,
+} from './weeklyPlanningSemanticEvidenceV5';
+import {
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
@@ -110,7 +113,10 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-function validateSemanticResponse(rawResponse: string): SemanticValidationAttemptV5 {
+function validateSemanticResponse(
+  rawResponse: string,
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): SemanticValidationAttemptV5 {
   const rawNormalization = normalizeExactDuplicateWorkloadPlacementV5(rawResponse);
   const parsed = parseWeeklyPlanningSemanticDocumentV5(rawNormalization.rawResponse);
   if (!parsed.document) {
@@ -122,7 +128,13 @@ function validateSemanticResponse(rawResponse: string): SemanticValidationAttemp
     };
   }
 
-  const errors = planningWindowCanonicalValueErrors(parsed.document.planningWindow);
+  const errors = [
+    ...planningWindowCanonicalValueErrors(parsed.document.planningWindow),
+    ...validateWeeklyPlanningSemanticEvidenceV5({
+      document: parsed.document,
+      input,
+    }),
+  ];
   return {
     document: errors.length === 0 ? parsed.document : null,
     parsedDocument: parsed.document,
@@ -164,6 +176,9 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   }
   if (errors.some((error) => error.includes('targetLocalId'))) {
     directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. If a pending quantity-role answer selects target, remaining, or completed, remove the uncertainty and emit one minimal local task and workload; pendingQuestion binds the existing public target.');
+  }
+  if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
+    directives.push('Remove facts copied from previous turns when their sourceText is not contained in the current userText. For a pure create_plan authorization over accepted state, keep create_plan and return empty fact arrays. Do not invent replacement sourceText.');
   }
   if (errors.some((error) => error.includes('unknown-key') || error.includes('missing-key'))) {
     directives.push('Return exactly the required Stable V5 schema keys with no unknown keys.');
@@ -304,7 +319,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         return result;
       }
 
-      const initialValidation = validateSemanticResponse(initialResponse);
+      const initialValidation = validateSemanticResponse(initialResponse, input);
       algorithmicRepairs.push(...initialValidation.algorithmicRepairs);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
@@ -375,7 +390,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         return result;
       }
 
-      const repairedValidation = validateSemanticResponse(repairedResponse);
+      const repairedValidation = validateSemanticResponse(repairedResponse, input);
       algorithmicRepairs.push(...repairedValidation.algorithmicRepairs);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
