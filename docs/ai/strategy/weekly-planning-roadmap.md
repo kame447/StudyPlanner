@@ -9,6 +9,7 @@ Status: canonical / active
 - Active-task inventory: [../audits/20260731-weekly-planning-active-task-inventory.md](../audits/20260731-weekly-planning-active-task-inventory.md)
 - Semantic handoff audit: [../audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md](../audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md)
 - P0 architecture reset: [../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md](../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md)
+- Planned ambiguity repair: [../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md](../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md)
 
 ## 0. 最上位設計原則
 
@@ -25,6 +26,8 @@ Status: canonical / active
 - 作業、数量、所要時間、日付、時間帯、関係の意味構造化
 - 既存情報への訂正対象または回答対象の選択
 - 不確実性の明示
+- 確定部分と未確定部分の分離
+- 曖昧な対象・係り先・数量役割・照応先のclarification候補化
 
 ### 決定論的処理が担当するもの
 
@@ -35,6 +38,7 @@ Status: canonical / active
 - Fact Graph lifecycle、transaction、rollback
 - readiness、scheduler、preview、承認、保存、再読込
 - stale、二重処理、owner混線の拒否
+- resolved Factだけをscheduler viewへ公開すること
 
 ### 禁止事項
 
@@ -44,6 +48,8 @@ Status: canonical / active
 - provider failureまたはvalidation failure時にparser fallbackする
 - 特定発話、教科、数量、単位、scenarioを通すproduction patchを追加する
 - schema不足を後段の自然言語処理で隠す
+- 意味が一意に決まらない発話を、必ず確定済みFact型のどれかへ押し込む
+- semantic ambiguityをtechnical failureとして扱い、同じ発話の再送を要求する
 
 PR #109では、この原則に反する短答・訂正・承認の独自解釈が再導入されたため、実API改善ループを一旦停止し、P0 architecture resetを最優先とする。
 
@@ -84,6 +90,15 @@ PR #109で検証・是正中:
 - actual OpenAI multi-turn conversation eval
 - AI意味理解責務の回帰除去
 - schemaとvalidatorの対象参照修正
+
+P0 follow-upとして設計予定:
+
+- partial semantic acceptance
+- unresolved fact / ambiguity / clarification contract
+- technical failureとsemantic ambiguityの分離
+- clarification answerによる局所的な意味修復
+- resolved-only scheduler view
+- 同文再送ループの除去
 
 未完了:
 
@@ -136,29 +151,32 @@ Approval core idempotencyは実装済みだがproduction Rules/TTL/multi-client�
 ### P0: architecture integrity
 
 1. [AI semantic ownership reset](../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md)
+2. [partial semantic acceptance and clarification repair](../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md)
 
-このtaskが完了するまで、PR #109へ新しい自然言語正規表現、語句辞書、scenario固有semantic patchを追加しない。
+2は1の進行中branchへ直接実装を混入しない。PR #109の責務境界、schema、validator、formal bindingが収束した後、独立branchで着手する。1の成果が2の一部を吸収した場合は、重複実装せず残差だけを実行する。
+
+このP0群が完了するまで、PR #109へ新しい自然言語正規表現、語句辞書、scenario固有semantic patchを追加しない。
 
 ### P0: scheduler safety
 
-2. [current-time start boundary](../tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md)
+3. [current-time start boundary](../tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md)
 
 ### P1: adoption/runtime integrity
 
-3. [Stable V5 verification and cutover](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
-4. [Stable V5 runtime followups](../tasks/20260731-weekly-planning-runtime-followups.md)
-5. [autonomous conversation loop](../tasks/20260801-weekly-planning-autonomous-conversation-loop.md)
+4. [Stable V5 verification and cutover](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
+5. [Stable V5 runtime followups](../tasks/20260731-weekly-planning-runtime-followups.md)
+6. [autonomous conversation loop](../tasks/20260801-weekly-planning-autonomous-conversation-loop.md)
 
 ### P1-P2: production boundaries
 
-6. [cloud conversation session store](../tasks/20260731-weekly-planning-synced-conversation-session-store.md)
-7. [trace production privacy/lifecycle/scalability](../tasks/20260731-weekly-planning-trace-privacy-and-lifecycle.md)
-8. [approval operational rollout](../tasks/20260731-weekly-planning-approval-operational-rollout.md)
-9. [external source production adapter](../tasks/20260731-weekly-planning-external-source-production-adapter.md)
+7. [cloud conversation session store](../tasks/20260731-weekly-planning-synced-conversation-session-store.md)
+8. [trace production privacy/lifecycle/scalability](../tasks/20260731-weekly-planning-trace-privacy-and-lifecycle.md)
+9. [approval operational rollout](../tasks/20260731-weekly-planning-approval-operational-rollout.md)
+10. [external source production adapter](../tasks/20260731-weekly-planning-external-source-production-adapter.md)
 
 ### P2+: learning/personalization
 
-10. [personalization rollout](../tasks/20260731-weekly-planning-personalization-rollout.md)
+11. [personalization rollout](../tasks/20260731-weekly-planning-personalization-rollout.md)
 
 旧日付の重複taskは、内容を現在化した上でcurrent taskへ吸収し、root queueとして使用しない。
 
@@ -172,14 +190,26 @@ semantic patch freeze
 → schema / validator / binding redesign
 → rule-based semantic override removal
 → architecture regression tests
+→ partial semantic acceptance contract
+→ unresolved fact / ambiguity lifecycle
+→ clarification transaction / resolved-only scheduler view
 → OpenAI semantic eval
 → OpenAI conversation eval
+```
+
+PR #109と後続taskの境界:
+
+```text
+PR #109: AI semantic ownership reset / formal binding / staged runtime整合
+→ independent follow-up: partial acceptance / ambiguity repair
+→ actual conversation verificationの再開
 ```
 
 Stable V5 adoption:
 
 ```text
 AI semantic ownership reset
+→ partial semantic acceptance and clarification repair
 → current-time hard boundary
 → Stable V5 actual AI/browser verification
 → external source adapter verification
@@ -193,6 +223,9 @@ Structural semantic path:
 machine pending question
 → AI-readable contextual answer contract
 → exact formal target binding
+→ partial semantic result envelope
+→ ambiguity ID / unresolved lifecycle
+→ clarification answer transaction
 → generic semantic turn delta
 → generic lifecycle applier / coverage registry
 ```
@@ -227,8 +260,18 @@ raw user textの意味構造化と会話文脈解決はAIだけが担当する�
 - short answer、correction、authorization、task boundaryを独立判断するparser
 - provider failureまたはvalidation failureからのparser fallback
 - schema不足を隠すscenario固有補正
+- 一部だけ確定可能なAI responseを全体rejectする二値契約
+- semantic ambiguityとmalformed JSONを同じfailure statusへ畳み込む処理
+- unresolved Factをscheduler、preview、saveへ渡す処理
+- technical failure時にユーザーへ同文再送を要求する通常経路
 
 直前の質問種別と対象はrenderer textから逆推定せず、machine pending questionを正とする。ただしmachine pending questionは、AIへ文脈を伝え、AI出力との整合を検証するために使う。後段が回答の意味を独自生成するためには使わない。
+
+### Partial semantic acceptance
+
+一つのturnに確定部分と未確定部分が混在する場合、確定部分を保存し、未確定部分をstable ID付きのambiguityとして保持できなければならない。`accepted_with_ambiguity`と`clarification_required`は正常結果であり、normalization rejectionとして扱わない。
+
+clarification回答は対象ambiguityとGraph revisionへ結び付ける。無関係なFactを再生成せず、対象部分だけをresolveする。scheduler viewはresolved Factだけを公開する。
 
 ### Failure investigation order
 
@@ -237,10 +280,10 @@ raw user textの意味構造化と会話文脈解決はAIだけが担当する�
 ```text
 AIへ渡したcontext
 → AI raw responseの意味
-→ schema表現可能性
+→ complete / partial / clarificationのschema表現可能性
 → validator誤拒否
 → formal ID binding
-→ Fact Graph apply
+→ Fact Graph apply / unresolved lifecycle
 → dialogue / preview / approval / save
 ```
 
@@ -259,6 +302,8 @@ conversation、Graph revision、pending questionを同じsession revisionで保�
 次が残る場合、Stable V5をdefaultへしない。
 
 - semantic architecture gate red
+- partial semantic acceptance未設計または未検証
+- semantic ambiguityとtechnical failureが未分離
 - current-time boundary未実装
 - actual AI/browser未実施
 - renderer textが状態遷移へ影響する
