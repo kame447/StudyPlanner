@@ -47,6 +47,17 @@ function hasCorrectionCue(text: string): boolean {
   return /(?:訂正|修正|変更|ではなく|じゃなく|取り消|削除)/.test(normalized);
 }
 
+function hasNonScalarQuantitySyntax(
+  segment: string,
+  match: RegExpMatchArray,
+): boolean {
+  const index = match.index ?? 0;
+  const before = segment.slice(0, index);
+  const after = segment.slice(index + match[0].length);
+  return /\d+(?:\.\d+)?\s*(?:〜|～|~|-|から)\s*$/.test(before)
+    || /^\s*半/.test(after);
+}
+
 export function extractDirectWorkExpectationsV5(
   userText: string,
 ): DirectWorkExpectationV5[] {
@@ -62,6 +73,7 @@ export function extractDirectWorkExpectationsV5(
     const matches = [...segment.matchAll(/(\d+(?:\.\d+)?)\s*(時間|分|問|ページ|語|章|回|件|枚|冊)/g)];
     if (matches.length !== 1) continue;
     const match = matches[0];
+    if (hasNonScalarQuantitySyntax(segment, match)) continue;
     const label = cleanedLabel(segment.slice(0, match.index));
     const amount = Number(match[1]);
     const unitLabel = match[2];
