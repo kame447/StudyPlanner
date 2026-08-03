@@ -351,7 +351,7 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
-  it('attributes normalization rejection to the structured processing failure, not user wording', async () => {
+  it('attributes normalization rejection to internal processing and requests one recoverable item', async () => {
     normalizeMock.mockResolvedValueOnce(rejectedResult());
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
@@ -366,8 +366,10 @@ describe('Stable V5 runtime executor', () => {
       traceRequestId: 'request-normalization-rejected',
     });
 
-    expect(result.message).toContain('構造化処理に失敗しました');
-    expect(result.message).toContain('同じ内容をそのまま');
+    expect(result.message).toContain('こちらの処理で内容を安全に整理できなかった');
+    expect(result.message).toContain('予定条件には反映していません');
+    expect(result.message).toContain('一つだけ教えてください');
+    expect(result.message).not.toContain('同じ内容をそのまま');
     expect(result.message).not.toContain('言い換えて');
     expect(result.draftCandidates).toEqual([]);
     expect(takeWeeklyPlanningStableV5DebugTrace('request-normalization-rejected')).toEqual(
