@@ -1,5 +1,4 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
@@ -33,7 +32,10 @@ import {
   executeWeeklyPlanningTurn,
   type WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutor';
-import { createInitialPlanningState } from '../weeklyPlanningReducer';
+import {
+  createInitialPlanningState,
+  weeklyPlanningReducer,
+} from '../weeklyPlanningReducer';
 import {
   WEEKLY_PLANNING_RESUMABLE_CONVERSATION_VERSION,
   parseWeeklyPlanningResumableConversationCheckpoint,
@@ -64,19 +66,11 @@ function createStore(initialState: PlanningState) {
   return {
     getState: () => state,
     dispatch(action: WeeklyPlanningAction): PlanningState {
-      const { weeklyPlanningReducer } = requireReducer();
       state = weeklyPlanningReducer(state, action);
       return state;
     },
   };
 }
-
-function requireReducer(): typeof import('../weeklyPlanningReducer') {
-  // Kept behind one function so every turn uses the production reducer.
-  return { weeklyPlanningReducer: importedReducer };
-}
-
-import { weeklyPlanningReducer as importedReducer } from '../weeklyPlanningReducer';
 
 function initialCheckpoint(): WeeklyPlanningResumableConversationCheckpoint {
   const ownerId = requiredEnv('WEEKLY_PLANNING_RESUMABLE_OWNER_ID');
