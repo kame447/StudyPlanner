@@ -79,11 +79,7 @@ function initialCheckpoint(): WeeklyPlanningResumableConversationCheckpoint {
   const selectedDate = requiredEnv('WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE');
   const planningState = createInitialPlanningState(weekStartDate);
   resetRuntime();
-  const runtime = bindWeeklyPlanningStableV5RuntimeSessionScope({
-    ownerId,
-    weekStartDate,
-    conversationId,
-  });
+  const runtime = bindWeeklyPlanningStableV5RuntimeSessionScope({ ownerId, weekStartDate, conversationId });
   return {
     version: WEEKLY_PLANNING_RESUMABLE_CONVERSATION_VERSION,
     ownerId,
@@ -110,12 +106,15 @@ function writeOutputs(params: {
 }): void {
   mkdirSync(outputDir, { recursive: true });
   const checkpointPath = `${outputDir}/checkpoint.json`;
+  const latestTurn = params.checkpoint.turns[
+    params.checkpoint.turns.length - 1
+  ];
   writeFileSync(
     checkpointPath,
     serializeWeeklyPlanningResumableConversationCheckpoint(params.checkpoint),
   );
   writeFileSync(`${outputDir}/latest-turn.json`, `${JSON.stringify({
-    turn: params.checkpoint.turns.at(-1),
+    turn: latestTurn,
     failure: params.result.failure ?? null,
     dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
     trace: params.trace,
@@ -162,14 +161,16 @@ run('weekly planning resumable real API turn', () => {
       checkpoint.weekStartDate,
       checkpoint.conversationId,
     );
-    let resultCapture: WeeklyPlanningTurnExecutionResult | null = null;
-    let requestIdCapture: string | null = null;
+    const capture: {
+      result: WeeklyPlanningTurnExecutionResult | null;
+      requestId: string | null;
+    } = { result: null, requestId: null };
     const services: WeeklyPlanningTurnApplicationServices = {
       submitControlledTurn: submitWeeklyPlanningControlledTurn,
       executeTurn: async (input) => {
-        requestIdCapture = input.traceRequestId;
-        resultCapture = await executeWeeklyPlanningTurn(input);
-        return resultCapture;
+        capture.requestId = input.traceRequestId;
+        capture.result = await executeWeeklyPlanningTurn(input);
+        return capture.result;
       },
       isStableV5Enabled: () => true,
       bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
@@ -196,9 +197,11 @@ run('weekly planning resumable real API turn', () => {
     }, services);
 
     expect(submission.accepted).toBe(true);
-    expect(resultCapture).not.toBeNull();
-    expect(requestIdCapture).not.toBeNull();
-    const result = resultCapture as WeeklyPlanningTurnExecutionResult;
+    const result = capture.result;
+    const requestId = capture.requestId;
+    if (!result || !requestId) {
+      throw new Error('Turn did not expose execution diagnostics.');
+    }
     if (result.failure) {
       throw new Error(`Turn failed: ${result.failure.code} ${result.failure.traceCode}`);
     }
@@ -206,7 +209,6 @@ run('weekly planning resumable real API turn', () => {
     if (!runtime) throw new Error('Stable V5 runtime session disappeared after the turn.');
     const assistantText = store.getState().lastAssistantMessage ?? '';
     if (!assistantText.trim()) throw new Error('Assistant response was empty.');
-    const requestId = requestIdCapture as string;
     const trace = takeWeeklyPlanningStableV5DebugTrace(requestId);
     const nextCheckpoint: WeeklyPlanningResumableConversationCheckpoint = {
       ...checkpoint,
