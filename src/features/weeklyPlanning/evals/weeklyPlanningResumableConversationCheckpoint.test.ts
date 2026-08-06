@@ -49,7 +49,10 @@ describe('weeklyPlanningResumableConversationCheckpoint', () => {
   it('rejects an in-flight planning state', () => {
     const value = checkpoint();
     value.planningState.pendingTurn = {
+      conversationId: 'conversation-1',
+      turnId: 'turn-1',
       requestId: 'request-1',
+      weekStartDate: '2026-08-03',
       baseRevision: 0,
       startedAt: '2026-08-06T14:00:00.000Z',
     };
