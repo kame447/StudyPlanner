@@ -7,6 +7,7 @@ import {
 const CANONICAL_DATE_LABELS: Record<CanonicalRelativeDateExpression, string> = {
   today: '今日',
   tomorrow: '明日',
+  next_day: '翌日',
   day_after_tomorrow: '明後日',
   this_week: '今週',
   next_week: '来週',
