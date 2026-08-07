@@ -53,6 +53,22 @@ function matchesStoredConcern(
     && sameNullable(record.value, signal.value));
 }
 
+/**
+ * Removes accepted owner-context facts that a provider copied back into the
+ * current semantic delta.
+ *
+ * Concern records are value-stable owner facts. Re-emitting the same
+ * label/value does not create new information, even if the current utterance
+ * mentions the same entity for another reason. Dropping that redundant signal
+ * preserves the original source turn instead of allowing old concern content
+ * to acquire a new, weaker sourceText.
+ *
+ * goal_event is different because a relative date expression such as
+ * custom:2週間後 can resolve differently at a later observedDate. Therefore an
+ * exactly matching stored goal event is removed only when its emitted
+ * sourceText is not grounded in the current userText; grounded repetitions are
+ * left for normal semantic handling.
+ */
 export function normalizeCopiedUserContextDeltaV5(params: {
   rawResponse: string;
   userText: string;
@@ -74,8 +90,10 @@ export function normalizeCopiedUserContextDeltaV5(params: {
   if (Array.isArray(parsed.userContextFacts)) {
     parsed.userContextFacts = parsed.userContextFacts.filter((value, index) => {
       if (!isRecord(value)) return true;
-      if (grounded(value.sourceText, params.userText)) return true;
-      if (!matchesStoredFact(value, stored)) return true;
+      const storedMatch = matchesStoredFact(value, stored);
+      if (!storedMatch) return true;
+      const redundantConcern = value.kind === 'concern';
+      if (!redundantConcern && grounded(value.sourceText, params.userText)) return true;
       changed = true;
       repairs.push(`copied-user-context-fact-removed:${index}:${String(value.kind ?? 'unknown')}:${normalized(value.label)}`);
       return false;
@@ -89,7 +107,6 @@ export function normalizeCopiedUserContextDeltaV5(params: {
       if (Array.isArray(task.durableContextSignals)) {
         const signals = task.durableContextSignals.filter((value, signalIndex) => {
           if (!isRecord(value)) return true;
-          if (grounded(value.sourceText, params.userText)) return true;
           if (!matchesStoredConcern(task.label ?? task.title, value, stored)) return true;
           changed = true;
           repairs.push(`copied-task-concern-removed:${taskIndex}:${signalIndex}:${normalized(task.title)}`);
@@ -104,7 +121,6 @@ export function normalizeCopiedUserContextDeltaV5(params: {
         }
         const signals = componentValue.durableContextSignals.filter((value, signalIndex) => {
           if (!isRecord(value)) return true;
-          if (grounded(value.sourceText, params.userText)) return true;
           if (!matchesStoredConcern(componentValue.label, value, stored)) return true;
           changed = true;
           repairs.push(`copied-component-concern-removed:${taskIndex}:${componentIndex}:${signalIndex}:${normalized(componentValue.label)}`);
