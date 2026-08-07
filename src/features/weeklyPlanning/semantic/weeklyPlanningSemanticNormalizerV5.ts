@@ -39,6 +39,14 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
   'Do not invent. Return Stable V5 JSON only, with no commands, scheduling, readiness, preview, save decision, or prose.',
 ].join('\n');
+const CURRENT_TURN_DELTA_INSTRUCTION_V5 = [
+  'The returned SemanticDocument is a delta for current userText, not a snapshot of the already accepted plan.',
+  'publicStateSummary and recentConversation are read-only context. Never copy an accepted planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, or other fact merely because it appears there.',
+  'Emit a semantic fact only when current userText newly states it, changes it, explicitly corrects it, or explicitly decides it.',
+  'If current userText does not state or change the plan-wide period, return planningWindow null even when publicStateSummary already contains a planning window.',
+  'planningIntent update_plan or discuss does not require restating any accepted planningWindow or task. Existing accepted facts remain in application state without being repeated in this delta.',
+  'Every emitted sourceText must be a substring or directly grounded excerpt of current userText. Never use prior user or assistant text as sourceText for a current-turn fact.',
+].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'For multiple non-consecutive explicit dates on one task, create one allowed_date constraint per date instead of a continuous range.',
   'For explicitly named repeating weekdays, use one weekly recurrence with the complete days array.',
@@ -152,6 +160,7 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
       content: [
         createWeeklyPlanningSemanticSystemPromptV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
+        CURRENT_TURN_DELTA_INSTRUCTION_V5,
         TEMPORAL_STRUCTURE_INSTRUCTION_V5,
       ].join('\n'),
     },
@@ -178,7 +187,7 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. If a pending quantity-role answer selects target, remaining, or completed, remove the uncertainty and emit one minimal local task and workload; pendingQuestion binds the existing public target.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
-    directives.push('Remove facts copied from previous turns when their sourceText is not contained in the current userText. For a pure create_plan authorization over accepted state, keep create_plan and return empty fact arrays. Do not invent replacement sourceText.');
+    directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Do not invent replacement sourceText.');
   }
   if (errors.some((error) => error.includes('unknown-key') || error.includes('missing-key'))) {
     directives.push('Return exactly the required Stable V5 schema keys with no unknown keys.');
@@ -200,7 +209,7 @@ function createRepairMessages(params: {
     {
       role: 'user',
       content: JSON.stringify({
-        instruction: 'Return the complete corrected Stable V5 JSON document only. Do not invent facts or application decisions.',
+        instruction: 'Return the complete corrected Stable V5 JSON document only. Complete means all required JSON Schema top-level keys are present; it does not mean restating the accepted plan. The document must remain a delta for current userText. Do not invent facts or application decisions.',
         requiredChanges: repairDirectivesForErrors(params.validationErrors),
         validationErrors: params.validationErrors,
       }),
