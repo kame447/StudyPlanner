@@ -1,0 +1,33 @@
+name: Apply User Planning Context Integration
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/user-planning-context-integration.patch
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply integration patch
+        run: |
+          set -euo pipefail
+          git apply --check .github/user-planning-context-integration.patch
+          git apply .github/user-planning-context-integration.patch
+      - name: Commit integration
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/weeklyPlanning
+          git diff --cached --check
+          git commit -m "feat: integrate durable user planning context"
+          git push origin HEAD:agent/weekly-ai-conversation-eval
