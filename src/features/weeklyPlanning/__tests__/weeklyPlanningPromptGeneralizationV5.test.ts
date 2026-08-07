@@ -40,6 +40,40 @@ describe('Stable V5 prompt generalization contracts', () => {
     expect(system).not.toContain('Explicit daily/weekdays/weekends repetition');
   });
 
+  it('requires ambiguity-safe interpretation without hard-coding typo examples', () => {
+    const prompt = createWeeklyPlanningSemanticSystemPromptV5();
+    expect(prompt).toContain('Obvious spelling, kana/kanji, speech-input, or OCR noise');
+    expect(prompt).toContain('only when one reading is clearly supported');
+    expect(prompt).toContain('two or more plausible readings');
+    expect(prompt).toContain('emit uncertainty and do not create or modify the guessed fact');
+    expect(prompt).not.toContain('数楽ワーク');
+    expect(prompt).not.toContain('英語レボート');
+
+    const dialogue = createWeeklyPlanningStableV5DialoguePrompt({
+      actionId: 'ambiguity-1',
+      currentUserMessage: '入力が少し崩れています',
+      recentConversation: [],
+      planningInformation: {
+        uncertainties: [{
+          id: 'uncertainty-ambiguous',
+          targetFactId: null,
+          field: 'workload_target',
+          reason: 'quantity target has multiple plausible readings',
+          source: { sourceText: 'この部分' },
+        }],
+      },
+      actionKind: 'question',
+      questionCode: 'semantic_uncertainty',
+      requiredLabels: [],
+      fallbackText: '曖昧な部分だけ確認してください。',
+      previewCount: 0,
+    });
+    expect(dialogue.systemPrompt).toContain('意味が一意なら自然に理解');
+    expect(dialogue.systemPrompt).toContain('曖昧な部分だけを一つ確認');
+    expect(dialogue.userPrompt).toContain('意味を決め打ちせず');
+    expect(dialogue.userPrompt).toContain('一つの確認だけ');
+  });
+
   it('keeps breakdown and missing-quantity questions as distinct renderer intents', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt({
       actionId: 'action-1',

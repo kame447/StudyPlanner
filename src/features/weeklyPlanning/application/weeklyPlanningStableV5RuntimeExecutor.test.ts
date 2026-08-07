@@ -352,6 +352,46 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
+  it('keeps semantic ambiguity ahead of scheduling and asks only about the unclear fragment', async () => {
+    const ambiguous = document();
+    ambiguous.tasks = [];
+    ambiguous.planningWindow = null;
+    ambiguous.uncertainties = [{
+      localId: 'uncertainty-1',
+      targetLocalId: 'document',
+      field: 'workload_target',
+      reason: 'quantity target has multiple plausible readings',
+      sourceText: '数学のワークが、古典も…20ページくらい',
+    }];
+    normalizeMock.mockResolvedValueOnce(acceptedResult(ambiguous));
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [],
+      userText: '数学のワークが、古典も…20ページくらい',
+      selectedDate: '2026-08-08',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-ambiguous-input',
+      traceRequestId: 'request-ambiguous-input',
+    });
+
+    expect(result.state).toMatchObject({
+      status: 'revision_pending',
+      shouldCreateDraft: false,
+      lastQuestionContext: {
+        targetSlot: 'stable_v5:semantic_uncertainty',
+        intent: 'semantic_uncertainty',
+      },
+    });
+    expect(result.message).toContain('数学のワークが、古典も…20ページくらい');
+    expect(result.message).toContain('この部分だけ');
+    expect(result.message).not.toContain('数学を20ページ');
+    expect(result.message).not.toContain('古典を20ページ');
+    expect(result.draftCandidates).toEqual([]);
+  });
+
   it('attributes normalization rejection to internal processing and requests one recoverable item', async () => {
     normalizeMock.mockResolvedValueOnce(rejectedResult());
 

@@ -776,6 +776,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Use unitCode exam_year for 1年分 or 2年分 of past questions. Specific calendar years belong only in rangeStart and rangeEnd.',
     'Keep unrelated activities as separate tasks. Preserve before, after, dependency, priority, and sequence relations with response-local task IDs.',
     'Every task/component must set existingPublicId: use the exact publicId from publicStateSummary when current userText continues the same accepted entity, otherwise null. Do not create a duplicate task/component merely to add workload, effort, time, recurrence, or detail. If identity is ambiguous, emit uncertainty instead of guessing.',
+    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context; keep the original excerpt in sourceText. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',
     'External timetable, existing plan, and calendar contents are authoritative application data. Never reproduce, summarize, or invent their events.',
     'Create a constraintSourceRequest only when the user explicitly asks to use or stop using timetable, existing plans, or calendar. selector must be active.',
     'For an ambiguous source request, return an uncertainty targeting document field constraintSource instead of choosing a source.',
