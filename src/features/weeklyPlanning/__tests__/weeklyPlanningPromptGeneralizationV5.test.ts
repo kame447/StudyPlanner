@@ -49,6 +49,9 @@ describe('Stable V5 prompt generalization contracts', () => {
     expect(prompt).toContain('must have a uniquely supported semantic target');
     expect(prompt).toContain('more than one independently schedulable candidate');
     expect(prompt).toContain('do not assign, duplicate, distribute, or attach it by proximity');
+    expect(prompt).toContain('after two or more coordinated or listed candidate tasks/components');
+    expect(prompt).toContain('following standalone modifier phrase or sentence with no explicit target');
+    expect(prompt).toContain('MUST emit uncertainty for modifier_target');
     expect(prompt).not.toContain('数楽ワーク');
     expect(prompt).not.toContain('英語レボート');
 
