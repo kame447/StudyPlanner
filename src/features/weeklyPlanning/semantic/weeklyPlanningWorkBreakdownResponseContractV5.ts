@@ -13,7 +13,16 @@ function recordArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
-function pendingBreakdownTargetPublicId(
+function normalized(value: string): string {
+  return value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+}
+
+function grounded(sourceText: string, userText: string): boolean {
+  const evidence = normalized(sourceText);
+  return evidence.length > 0 && normalized(userText).includes(evidence);
+}
+
+export function readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
   publicStateSummary?: Record<string, unknown>,
 ): string | null {
   if (!publicStateSummary) return null;
@@ -31,12 +40,21 @@ function pendingBreakdownTargetPublicId(
 
 export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
+  userText: string;
   publicStateSummary?: Record<string, unknown>;
 }): string[] {
-  const targetPublicId = pendingBreakdownTargetPublicId(params.publicStateSummary);
+  const targetPublicId = readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
+    params.publicStateSummary,
+  );
   if (!targetPublicId) return [];
 
   const errors: string[] = [];
+  if (params.document.tasks.length !== 1) {
+    errors.push(
+      `document.tasks:work-breakdown-exact-target-only:count=${params.document.tasks.length}`,
+    );
+  }
+
   const targetEntries = params.document.tasks
     .map((task, index) => ({ task, index }))
     .filter(({ task }) => task.existingPublicId === targetPublicId);
@@ -45,15 +63,10 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
     errors.push(`document:work-breakdown-target-task-required:target=${targetPublicId}`);
   }
 
-  for (const [taskIndex, task] of params.document.tasks.entries()) {
-    if (task.existingPublicId && task.existingPublicId !== targetPublicId) {
-      errors.push(
-        `document.tasks[${taskIndex}]:work-breakdown-unrelated-existing-task:${task.existingPublicId}`,
-      );
-    }
-  }
-
   const target = targetEntries[0]?.task;
+  if (target && !grounded(target.sourceText, params.userText)) {
+    errors.push('document:work-breakdown-target-current-evidence-required');
+  }
   if (
     target?.decompositionStatus === 'decomposed'
     && target.category === 'study'
@@ -67,6 +80,9 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   }
   if ((params.document.userContextFacts ?? []).length > 0) {
     errors.push('document.userContextFacts:work-breakdown-current-delta-only');
+  }
+  if (params.document.relations.length > 0) {
+    errors.push('document.relations:work-breakdown-current-delta-only');
   }
 
   return errors;
