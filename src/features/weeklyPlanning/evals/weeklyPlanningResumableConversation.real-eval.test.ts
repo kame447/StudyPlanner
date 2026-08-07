@@ -107,6 +107,28 @@ function loadCheckpoint(): WeeklyPlanningResumableConversationCheckpoint {
   return parseWeeklyPlanningResumableConversationCheckpoint(readFileSync(path, 'utf8'));
 }
 
+function successfulTranscript(checkpoint: WeeklyPlanningResumableConversationCheckpoint): string {
+  return checkpoint.turns.flatMap((turn) => [
+    `## Turn ${turn.index}`,
+    '',
+    `ユーザー: ${turn.userText}`,
+    '',
+    `アプリ: ${turn.assistantText}`,
+    '',
+  ]).join('\n');
+}
+
+function writeResumeFile(params: {
+  checkpointPath: string;
+  checkpoint: WeeklyPlanningResumableConversationCheckpoint;
+}): void {
+  writeFileSync(`${outputDir}/resume.json`, `${JSON.stringify({
+    checkpointPath: params.checkpointPath,
+    conversationId: params.checkpoint.conversationId,
+    nextTurnIndex: params.checkpoint.turns.length + 1,
+  }, null, 2)}\n`);
+}
+
 function writeOutputs(params: {
   checkpoint: WeeklyPlanningResumableConversationCheckpoint;
   trace: unknown[];
@@ -127,27 +149,63 @@ function writeOutputs(params: {
     dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
     trace: params.trace,
   }, null, 2)}\n`);
-  const transcript = params.checkpoint.turns.flatMap((turn) => [
-    `## Turn ${turn.index}`,
-    '',
-    `ユーザー: ${turn.userText}`,
-    '',
-    `アプリ: ${turn.assistantText}`,
-    '',
-  ]).join('\n');
   writeFileSync(`${outputDir}/transcript.md`, [
     '# Weekly Planning Resumable Conversation',
     '',
     `Conversation ID: ${params.checkpoint.conversationId}`,
     `Graph revision: ${params.checkpoint.graph.revision}`,
     '',
-    transcript,
+    successfulTranscript(params.checkpoint),
   ].join('\n'));
-  writeFileSync(`${outputDir}/resume.json`, `${JSON.stringify({
+  writeResumeFile({ checkpointPath, checkpoint: params.checkpoint });
+}
+
+function writeFailureOutputs(params: {
+  checkpoint: WeeklyPlanningResumableConversationCheckpoint;
+  userText: string;
+  requestId: string;
+  trace: unknown[];
+  result: WeeklyPlanningTurnExecutionResult;
+}): void {
+  mkdirSync(outputDir, { recursive: true });
+  const checkpointPath = `${outputDir}/checkpoint.json`;
+  writeFileSync(
     checkpointPath,
-    conversationId: params.checkpoint.conversationId,
-    nextTurnIndex: params.checkpoint.turns.length + 1,
+    serializeWeeklyPlanningResumableConversationCheckpoint(params.checkpoint),
+  );
+  const failedAttempt = {
+    index: params.checkpoint.turns.length + 1,
+    userText: params.userText,
+    assistantText: params.result.message,
+    requestId: params.requestId,
+    responseSource: params.result.responseSource ?? null,
+    graphRevision: params.checkpoint.graph.revision,
+    committed: false,
+  };
+  writeFileSync(`${outputDir}/latest-turn.json`, `${JSON.stringify({
+    turn: null,
+    failedAttempt,
+    failure: params.result.failure ?? null,
+    dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
+    trace: params.trace,
   }, null, 2)}\n`);
+  writeFileSync(`${outputDir}/transcript.md`, [
+    '# Weekly Planning Resumable Conversation',
+    '',
+    `Conversation ID: ${params.checkpoint.conversationId}`,
+    `Graph revision: ${params.checkpoint.graph.revision}`,
+    '',
+    successfulTranscript(params.checkpoint),
+    `## Failed attempt ${failedAttempt.index}`,
+    '',
+    `ユーザー: ${failedAttempt.userText}`,
+    '',
+    `アプリ/システム: ${failedAttempt.assistantText}`,
+    '',
+    `Failure: ${params.result.failure?.code ?? 'unknown'}`,
+    '',
+  ].join('\n'));
+  writeResumeFile({ checkpointPath, checkpoint: params.checkpoint });
 }
 
 const run = shouldRun ? describe : describe.skip;
@@ -210,14 +268,15 @@ run('weekly planning resumable real API turn', () => {
     if (!result || !requestId) {
       throw new Error('Turn did not expose execution diagnostics.');
     }
+    const trace = takeWeeklyPlanningStableV5DebugTrace(requestId);
     if (result.failure) {
+      writeFailureOutputs({ checkpoint, userText, requestId, trace, result });
       throw new Error(`Turn failed: ${result.failure.code} ${result.failure.traceCode}`);
     }
     const runtime = getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId);
     if (!runtime) throw new Error('Stable V5 runtime session disappeared after the turn.');
     const assistantText = store.getState().lastAssistantMessage ?? '';
     if (!assistantText.trim()) throw new Error('Assistant response was empty.');
-    const trace = takeWeeklyPlanningStableV5DebugTrace(requestId);
     const nextCheckpoint: WeeklyPlanningResumableConversationCheckpoint = {
       ...checkpoint,
       planningState: structuredClone(store.getState()),
