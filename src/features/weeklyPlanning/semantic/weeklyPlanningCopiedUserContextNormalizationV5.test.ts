@@ -32,7 +32,7 @@ function normalize(params: {
 }
 
 describe('Stable V5 copied user context normalization', () => {
-  it('removes an ungrounded stored concern copied onto an existing component', () => {
+  it('removes a stored concern copied onto an existing component even when the entity mention is current-grounded', () => {
     const result = normalize({
       userText: '模試の方は数学を中心に、毎日2時間くらい取れたらと思ってます。',
       document: {
@@ -46,6 +46,38 @@ describe('Stable V5 copied user context normalization', () => {
               label: '数学',
               durableContextSignals: [{
                 localId: 'copied-concern',
+                kind: 'concern',
+                value: '結構まずい',
+                sourceText: '数学を中心に',
+              }],
+            }],
+          },
+        }],
+        userContextFacts: [],
+      },
+    });
+
+    const document = JSON.parse(result.rawResponse) as any;
+    expect(document.tasks[0].study.components[0].durableContextSignals).toEqual([]);
+    expect(result.repairs).toEqual([
+      'copied-component-concern-removed:0:0:0:数学',
+    ]);
+  });
+
+  it('treats an exact repeated concern as redundant instead of moving its provenance forward', () => {
+    const result = normalize({
+      userText: '数学が結構まずいので、今週も数学を中心にしたいです。',
+      document: {
+        tasks: [{
+          localId: 'task-local',
+          existingPublicId: 'task-public',
+          study: {
+            components: [{
+              localId: 'component-local',
+              existingPublicId: 'component-public',
+              label: '数学',
+              durableContextSignals: [{
+                localId: 'current-concern',
                 kind: 'concern',
                 value: '結構まずい',
                 sourceText: '数学が結構まずい',
@@ -64,9 +96,9 @@ describe('Stable V5 copied user context normalization', () => {
     ]);
   });
 
-  it('keeps a concern when the current user explicitly repeats it', () => {
+  it('keeps a genuinely changed concern value as a new current-turn delta', () => {
     const result = normalize({
-      userText: '数学が結構まずいので、今週も数学を中心にしたいです。',
+      userText: '数学は前よりかなり不安です。',
       document: {
         tasks: [{
           localId: 'task-local',
@@ -77,10 +109,10 @@ describe('Stable V5 copied user context normalization', () => {
               existingPublicId: 'component-public',
               label: '数学',
               durableContextSignals: [{
-                localId: 'current-concern',
+                localId: 'changed-concern',
                 kind: 'concern',
-                value: '結構まずい',
-                sourceText: '数学が結構まずい',
+                value: '前よりかなり不安',
+                sourceText: '数学は前よりかなり不安です',
               }],
             }],
           },
