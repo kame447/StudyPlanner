@@ -38,6 +38,9 @@ import {
   validateWeeklyPlanningSemanticEvidenceV5,
 } from './weeklyPlanningSemanticEvidenceV5';
 import {
+  validateWeeklyPlanningStandaloneModifierTargetsV5,
+} from './weeklyPlanningStandaloneModifierTargetV5';
+import {
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
@@ -179,6 +182,10 @@ function validateSemanticResponse(
       document: parsed.document,
       input,
     }),
+    ...validateWeeklyPlanningStandaloneModifierTargetsV5({
+      document: parsed.document,
+      userText: input.userText,
+    }),
   ];
   return {
     document: errors.length === 0 ? parsed.document : null,
@@ -241,6 +248,9 @@ function repairDirectivesForErrors(
   }
   if (errors.some((error) => error.includes('document.relations') && (error.includes('fromLocalId') || error.includes('toLocalId')))) {
     directives.push('Task relations may reference task localIds only. Do not convert a comparison of workload size or amount into priority/order/dependency unless the user explicitly stated that scheduling relation.');
+  }
+  if (errors.some((error) => error.includes('ambiguous-standalone-modifier-target'))) {
+    directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Remove the guessed modifier attachment. Keep the listed candidates, and emit one uncertainty with field modifier_target and the modifier excerpt as sourceText. Do not choose a candidate by order or proximity.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
     directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Do not invent replacement sourceText.');
