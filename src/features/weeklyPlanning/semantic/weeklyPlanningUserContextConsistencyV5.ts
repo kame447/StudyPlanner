@@ -28,7 +28,7 @@ export function validateWeeklyPlanningUserContextConsistencyV5(
       );
       if (!conflictingEvent) continue;
       errors.push(
-        `document.tasks[${taskIndex}].temporalConstraints[${constraintIndex}]:goal-event-and-work-deadline-share-evidence`,
+        `document.tasks[${taskIndex}].temporalConstraints[${constraintIndex}]:goal-event-and-work-deadline-share-evidence:keep-goal-event-and-remove-work-deadline-unless-distinct-explicit-completion-evidence-exists`,
       );
     }
   }
