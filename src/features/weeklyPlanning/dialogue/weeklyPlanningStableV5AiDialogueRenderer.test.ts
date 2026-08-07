@@ -125,7 +125,8 @@ describe('Stable V5 AI dialogue renderer', () => {
     expect(combined.match(/入力にない/g)).toHaveLength(1);
     expect(prompt.systemPrompt).not.toContain('Do not add, remove, split, or merge questions');
     expect(prompt.systemPrompt).not.toContain('Preserve every string');
-    expect(prompt.userPrompt).toContain('referenceResponseは参考であり、繰り返す必要はありません');
+    expect(prompt.userPrompt).toContain('referenceResponseはアプリが必要としている確認意図の参考');
+    expect(prompt.userPrompt).toContain('文型・列挙順・語句をコピーする必要はありません');
     expect(prompt.userPrompt).toContain('未実行の作成・保存を完了したとは言わないでください');
   });
 
