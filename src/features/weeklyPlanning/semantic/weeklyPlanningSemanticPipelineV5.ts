@@ -75,6 +75,10 @@ export type WeeklyPlanningSemanticPipelineStatusV5 =
   | 'scheduler_empty'
   | 'scheduler_ready';
 
+export function shouldApplyWeeklyPlanningExistingEntityBindingsV5(params: { contextualAnswer: boolean; questionCode: string | null }): boolean {
+  return !params.contextualAnswer || params.questionCode === 'semantic_uncertainty';
+}
+
 export interface WeeklyPlanningSemanticPipelineResultV5 {
   pipelineVersion: typeof WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5;
   status: WeeklyPlanningSemanticPipelineStatusV5;
@@ -447,10 +451,10 @@ export function createWeeklyPlanningSemanticPipelineV5(
           document: normalization.document,
           context: canonicalizationContext,
         });
-      const contextualDocumentNeedsEntityBinding = Boolean(
-        contextualAnswer && pendingQuestion?.questionCode === 'semantic_uncertainty',
-      );
-      const entityBindingApplication = !contextualAnswer || contextualDocumentNeedsEntityBinding
+      const entityBindingApplication = shouldApplyWeeklyPlanningExistingEntityBindingsV5({
+        contextualAnswer: Boolean(contextualAnswer),
+        questionCode: pendingQuestion?.questionCode ?? null,
+      })
         ? applyWeeklyPlanningExistingEntityBindingsV5({
             originalGraph: graph,
             document: normalization.document,
