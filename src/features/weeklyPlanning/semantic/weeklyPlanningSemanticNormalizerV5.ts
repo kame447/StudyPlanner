@@ -57,7 +57,7 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'Non-consecutive explicit dates use one allowed_date constraint per date; never merge them into a range.',
   'Explicit repeating weekdays use one weekly recurrence with all stated days.',
-  'Explicit daily/weekdays/weekends repetition must be represented by recurrence; do not encode repetition only in workload.periodExpression.',
+  'Any explicit recurring cadence represented in workload.periodExpression must also be represented by a matching recurrence; periodExpression never substitutes for recurrence.',
   'Priority and ordering are task relations, not clock constraints.',
   'Use clock fields only for boundaries explicitly supplied by the user.',
   'Named periods use namedTimePeriod; exact clocks use null namedTimePeriod.',

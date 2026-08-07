@@ -378,10 +378,10 @@ function missingSchedulableWorkQuestion(
     ? `${visibleTitles}など${taskTitles.length}件のタスク`
     : visibleTitles;
   const question = taskTitles.length === 1
-    ? 'その作業をどれくらい進めたいですか？'
-    : 'それぞれどれくらい進めたいですか？';
+    ? 'どこまで進めたいか、量や範囲が決まっていれば教えてください。'
+    : 'まず一つずつ整理したいので、どれから決めるか教えてください。選んだものについて、どこまで進めたいか確認します。';
   return {
-    message: `${summary}は把握しました。${question}「2時間」「30ページ」「20問」のように、量を教えてください。`,
+    message: `${summary}がありますね。${question}`,
     questionCode: 'missing_schedulable_work',
     taskTitles,
   };
@@ -417,6 +417,11 @@ function semanticUncertaintyQuestion(
   const uncertainty = question.factId
     ? graph.uncertainties.find((fact) => fact.id === question.factId)
     : null;
+  if (uncertainty?.field === 'work_breakdown' && uncertainty.targetFactId) {
+    const task = graph.tasks.find((fact) => fact.id === uncertainty.targetFactId);
+    const label = task?.title?.trim() || 'この予定';
+    return `「${label}」は、まず中身を分けて考えましょう。今残っているものをざっくり教えてもらえますか？`;
+  }
   const sourceText = uncertainty
     ? questionSourceExcerpt(uncertainty.source.sourceText)
     : '';
