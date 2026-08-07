@@ -57,16 +57,9 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'For a pending clarification, resolve only its exact target; if unresolved, emit uncertainty. For work_breakdown return only that existingPublicId task with its current structure, not unrelated accepted state or the old uncertainty.',
   'Quantity roles: target=planned amount, remaining=unfinished amount, completed=done amount. A resolved quantity-role answer returns only the needed local task/workload delta.',
   'Use localIds for references inside the response and exact existingPublicId only for accepted cross-turn task/component identity.',
+  'Before returning JSON, re-check user-visible entity names for an unambiguous ordinary reading; verbatim copying is not proof of canonicality, clean names must stay unchanged, and ambiguous corrections require uncertainty.',
   'Creation authorization uses planningIntent create_plan without replaying accepted facts.',
   'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',
-].join('\n');
-const ENTITY_CANONICALIZATION_INSTRUCTION_V5 = [
-  'Before returning JSON, perform a final semantic canonical-name review for every task title, study.contextLabel, and component label derived from current userText.',
-  'Treat this as interpretation, never as application-side string replacement: infer the intended ordinary Japanese reading from the whole utterance and conversation context, and do not use or assume a fixed typo dictionary.',
-  'When a source token is a clear kana/kanji conversion error, voicing error, speech-input error, OCR error, or one-character substitution and exactly one ordinary reading fits the surrounding planning meaning, emit only that corrected reading in canonical user-visible names while preserving the original token only inside sourceText.',
-  'A token being copied verbatim from userText is not evidence that it is already canonical. Explicitly check whether the copied form is a normal subject, material, task, or activity name in context before keeping it unchanged.',
-  'Do not rewrite already-natural names merely to make them more generic, formal, or familiar. Preserve clean user wording when there is no clear error.',
-  'If two or more plausible corrections remain and choosing one could change entity identity or modifier attachment, emit uncertainty instead of guessing.',
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'Non-consecutive explicit dates use separate allowed_date constraints.',
@@ -211,7 +204,6 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
       content: [
         createWeeklyPlanningSemanticSystemPromptV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
-        ENTITY_CANONICALIZATION_INSTRUCTION_V5,
         TEMPORAL_STRUCTURE_INSTRUCTION_V5,
       ].join('\n'),
     },
