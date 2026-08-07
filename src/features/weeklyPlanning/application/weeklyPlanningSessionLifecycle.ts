@@ -6,6 +6,7 @@ import {
 } from '../weeklyPlanningTurnController';
 import { isWeeklyPlanningStableV5RuntimeEnabled } from './weeklyPlanningRuntimeMode';
 import {
+  bindWeeklyPlanningStableV5RuntimeSessionScope,
   clearWeeklyPlanningStableV5RuntimeSession,
   clearWeeklyPlanningStableV5RuntimeSessionsForScope,
   hydrateWeeklyPlanningStableV5RuntimeSession,
@@ -20,6 +21,7 @@ export interface WeeklyPlanningSessionLifecycleServices {
   isStableV5Enabled: typeof isWeeklyPlanningStableV5RuntimeEnabled;
   loadPersistedSession: typeof loadWeeklyPlanningStableV5PersistedSession;
   hydrateRuntimeSession: typeof hydrateWeeklyPlanningStableV5RuntimeSession;
+  bindRuntimeSessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
   clearPersistedSession: typeof clearWeeklyPlanningStableV5PersistedSession;
   clearRuntimeSession: typeof clearWeeklyPlanningStableV5RuntimeSession;
   clearRuntimeSessionsForScope: typeof clearWeeklyPlanningStableV5RuntimeSessionsForScope;
@@ -31,6 +33,7 @@ const defaultServices: WeeklyPlanningSessionLifecycleServices = {
   isStableV5Enabled: isWeeklyPlanningStableV5RuntimeEnabled,
   loadPersistedSession: loadWeeklyPlanningStableV5PersistedSession,
   hydrateRuntimeSession: hydrateWeeklyPlanningStableV5RuntimeSession,
+  bindRuntimeSessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
   clearPersistedSession: clearWeeklyPlanningStableV5PersistedSession,
   clearRuntimeSession: clearWeeklyPlanningStableV5RuntimeSession,
   clearRuntimeSessionsForScope: clearWeeklyPlanningStableV5RuntimeSessionsForScope,
@@ -90,6 +93,13 @@ export function synchronizeWeeklyPlanningApplicationSession(params: {
       params.weekStartDate,
       restored?.conversationId,
     );
+  }
+  if (services.isStableV5Enabled()) {
+    services.bindRuntimeSessionScope({
+      ownerId: params.ownerId,
+      weekStartDate: params.weekStartDate,
+      conversationId: params.session.conversationId,
+    });
   }
   return restored;
 }

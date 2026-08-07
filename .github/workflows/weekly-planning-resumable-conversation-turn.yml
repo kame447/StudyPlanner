@@ -1,0 +1,156 @@
+name: Weekly Planning Resumable Conversation Turn
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_turn:
+        description: Actually call the real API and submit this turn
+        required: true
+        default: false
+        type: boolean
+      user_text:
+        description: One user utterance to submit
+        required: true
+        type: string
+      previous_run_id:
+        description: Previous run ID whose checkpoint artifact should be restored; leave empty for turn 1
+        required: false
+        type: string
+      conversation_id:
+        description: Stable logical conversation ID; required for turn 1
+        required: false
+        type: string
+      owner_id:
+        description: Test owner ID; required for turn 1
+        required: false
+        default: resumable-real-api-eval-user
+        type: string
+      week_start_date:
+        description: Monday date in YYYY-MM-DD; required for turn 1
+        required: false
+        type: string
+      selected_date:
+        description: Selected date in YYYY-MM-DD; required for turn 1
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: weekly-planning-resumable-${{ inputs.conversation_id || inputs.previous_run_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-and-optionally-run-one-turn:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+      OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation
+      ARTIFACT_NAME: weekly-planning-resumable-conversation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore previous checkpoint artifact
+        if: ${{ inputs.previous_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+        run: |
+          mkdir -p previous-artifact
+          gh run download "$PREVIOUS_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir previous-artifact
+          test -f previous-artifact/checkpoint.json
+
+      - name: Validate turn inputs without calling API
+        env:
+          PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+          CONVERSATION_ID: ${{ inputs.conversation_id }}
+          OWNER_ID: ${{ inputs.owner_id }}
+          WEEK_START_DATE: ${{ inputs.week_start_date }}
+          SELECTED_DATE: ${{ inputs.selected_date }}
+          USER_TEXT: ${{ inputs.user_text }}
+        run: |
+          test -n "$USER_TEXT"
+          if [ -n "$PREVIOUS_RUN_ID" ]; then
+            test -f previous-artifact/checkpoint.json
+          else
+            test -n "$CONVERSATION_ID"
+            test -n "$OWNER_ID"
+            echo "$WEEK_START_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            echo "$SELECTED_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          fi
+
+      - name: Typecheck resumable conversation implementation
+        run: npm run typecheck
+
+      - name: Stop before real API execution
+        if: ${{ !inputs.execute_turn }}
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          cat > "$OUTPUT_DIR/readiness.md" <<EOF
+          # Resumable conversation turn readiness
+
+          Status: ready_without_api_execution
+
+          This run validated checkout, dependencies, inputs, optional previous checkpoint download, and TypeScript compilation.
+          No StudyPlanner turn and no OpenAI API request were executed.
+          EOF
+
+      - name: Verify OpenAI secret
+        if: ${{ inputs.execute_turn }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+
+      - name: Execute exactly one real API conversation turn
+        if: ${{ inputs.execute_turn }}
+        env:
+          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ inputs.user_text }}
+          WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ${{ inputs.previous_run_id != '' && 'previous-artifact/checkpoint.json' || '' }}
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: ${{ inputs.owner_id }}
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: ${{ inputs.conversation_id }}
+          WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: ${{ inputs.week_start_date }}
+          WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: ${{ inputs.selected_date }}
+          VITE_AI_PROVIDER: openai
+          VITE_AI_BASE_URL: https://api.openai.com/v1
+          VITE_AI_MODEL: gpt-5.4-mini
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_MAX_PROCESS_REQUESTS: '3'
+          VITE_CLOUDFLARE_AI_PROXY_URL: ''
+        run: |
+          node ./node_modules/vitest/vitest.mjs \
+            --config vite.config.mjs run \
+            src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts \
+            --reporter=verbose
+
+      - name: Publish latest transcript to summary
+        if: ${{ always() && inputs.execute_turn }}
+        run: |
+          if [ -f "$OUTPUT_DIR/transcript.md" ]; then
+            cat "$OUTPUT_DIR/transcript.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload resumable conversation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-resumable-conversation
+          path: artifacts/weekly-planning-resumable-conversation/
+          if-no-files-found: error
+          retention-days: 30

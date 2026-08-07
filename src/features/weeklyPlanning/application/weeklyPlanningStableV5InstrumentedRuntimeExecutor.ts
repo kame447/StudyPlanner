@@ -12,6 +12,7 @@ import {
 } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
   getWeeklyPlanningStableV5RuntimeSession,
+  getWeeklyPlanningStableV5StagedGraph,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 function errorDetails(error: unknown): Record<string, unknown> {
@@ -70,6 +71,36 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
   );
 }
 
+function withFreshestAvailableGraph(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+  result: WeeklyPlanningTurnExecutionResult,
+): WeeklyPlanningTurnExecutionResult {
+  const stagedGraph = getWeeklyPlanningStableV5StagedGraph({
+    ownerId: input.userId,
+    conversationId: input.conversationId,
+    requestId: input.traceRequestId,
+  });
+  if (stagedGraph) {
+    return {
+      ...result,
+      stableV5Graph: stagedGraph,
+    };
+  }
+
+  const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
+  if (!session || session.ownerId !== input.userId) return result;
+
+  const resultGraph = result.stableV5Graph;
+  if (resultGraph && resultGraph.revision >= session.graph.revision) {
+    return result;
+  }
+
+  return {
+    ...result,
+    stableV5Graph: session.graph,
+  };
+}
+
 function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
   return {
     compatibilityStatus: result.state.status,
@@ -78,6 +109,7 @@ function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
     shouldCreateDraft: result.state.shouldCreateDraft,
     draftGenerationIntent: result.state.draftGenerationIntent,
     previewCandidateCount: result.draftCandidates.length,
+    graphRevision: result.stableV5Graph?.revision ?? null,
     failure: result.failure ?? null,
     assistantMessage: result.message,
     responseSource: result.responseSource ?? null,
@@ -105,7 +137,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (isDuplicateCommittedTurn(input)) {
-    const result = duplicateTurnResult(input);
+    const result = withFreshestAvailableGraph(input, duplicateTurnResult(input));
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_duplicate_turn_suppressed',
@@ -126,7 +158,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   }
 
   try {
-    const result = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
+    const coreResult = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
+    const result = withFreshestAvailableGraph(input, coreResult);
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',

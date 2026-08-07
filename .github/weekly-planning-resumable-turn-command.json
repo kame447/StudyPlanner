@@ -1,0 +1,11 @@
+{
+  "scenario": "typo-canonicalization-v1",
+  "turn": 1,
+  "attempt": 1,
+  "user_text": "来週、数楽ワークを20ページ進めたいです。",
+  "previous_run_id": "",
+  "conversation_id": "weekly-typo-canonicalization-20260808-01",
+  "owner_id": "resumable-real-api-eval-user-typo-1",
+  "week_start_date": "2026-08-10",
+  "selected_date": "2026-08-08"
+}

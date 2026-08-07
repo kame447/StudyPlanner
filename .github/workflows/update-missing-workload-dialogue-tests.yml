@@ -1,0 +1,24 @@
+name: Update Missing Workload Dialogue Tests
+on:
+  push:
+    branches: [agent/weekly-ai-conversation-eval]
+    paths:
+      - .github/update-missing-workload-dialogue-tests.py
+      - .github/workflows/update-missing-workload-dialogue-tests.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: agent/weekly-ai-conversation-eval, fetch-depth: 0}
+      - run: |
+          git fetch origin agent/weekly-ai-conversation-eval
+          git reset --hard origin/agent/weekly-ai-conversation-eval
+          python .github/update-missing-workload-dialogue-tests.py
+          git config user.name kame447
+          git config user.email 76802107+kame447@users.noreply.github.com
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+          git commit -m "test: assert one-at-a-time missing workload dialogue"
+          git push origin HEAD:agent/weekly-ai-conversation-eval

@@ -119,7 +119,8 @@ export function useWeeklyPlanningApplication({
       ownerId,
       weekStartDate: planningState.weekStartDate,
     });
-  }, [ownerId, planningState.weekStartDate]);
+    saveOwnedWeeklyPlanningState(ownerId, getPlanningState());
+  }, [getPlanningState, ownerId, planningState.weekStartDate]);
 
   useEffect(() => {
     if (approvalLedger.ownerId === ownerId) return;

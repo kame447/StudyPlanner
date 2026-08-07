@@ -27,6 +27,12 @@ import type {
   WeeklyPlanningTurnSubmissionResult,
 } from '../weeklyPlanningTurnExecutor';
 import {
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './weeklyPlanningStableV5RuntimeSession';
+import {
+  getWeeklyPlanningStableV5SessionStorageKeyForTest,
+} from './weeklyPlanningStableV5SessionStorage';
+import {
   useWeeklyPlanningApplication,
   type UseWeeklyPlanningApplicationInput,
   type WeeklyPlanningApplication,
@@ -116,6 +122,7 @@ describe('useWeeklyPlanningApplication', () => {
   let restoreWindow: () => void;
 
   beforeEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
     executeWeeklyPlanningTurnMock.mockReset();
@@ -123,6 +130,7 @@ describe('useWeeklyPlanningApplication', () => {
   });
 
   afterEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     clearWeeklyPlanningSessionRuntime();
     restoreWindow();
   });
@@ -235,15 +243,25 @@ describe('useWeeklyPlanningApplication', () => {
     await act(async () => {
       harness.ref.current!.createDraftBlocks([userABlock]);
     });
-    const userAKey = 'studyplanner.weeklyPlanning.user-a.2026-07-13';
-    const userBKey = 'studyplanner.weeklyPlanning.user-b.2026-07-13';
-    expect(storageHarness.values.get(userAKey)).toContain('user-a-draft');
+    const userACompatibilityKey = 'studyplanner.weeklyPlanning.user-a.2026-07-13';
+    const userBCompatibilityKey = 'studyplanner.weeklyPlanning.user-b.2026-07-13';
+    const userAStableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest(
+      'user-a',
+      '2026-07-13',
+    );
+    const userBStableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest(
+      'user-b',
+      '2026-07-13',
+    );
+    expect(storageHarness.values.get(userAStableKey)).toContain('user-a-draft');
+    expect(storageHarness.values.has(userACompatibilityKey)).toBe(false);
 
     await harness.update({ userId: 'user-b' });
 
     expect(harness.ref.current!.pendingDraftBlocks).toEqual([]);
-    expect(storageHarness.values.has(userBKey)).toBe(false);
-    expect(storageHarness.values.get(userAKey)).toContain('user-a-draft');
+    expect(storageHarness.values.has(userBStableKey)).toBe(false);
+    expect(storageHarness.values.has(userBCompatibilityKey)).toBe(false);
+    expect(storageHarness.values.get(userAStableKey)).toContain('user-a-draft');
 
     await harness.update({ userId: 'user-a' });
 
@@ -328,6 +346,7 @@ describe('useWeeklyPlanningApplication', () => {
     expect(firstHarness.ref.current!.approvalAvailability.kind).toBe('eligible');
     await firstHarness.unmount();
 
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     clearWeeklyPlanningSessionRuntime();
     const save = vi.fn(async (draft: PlanDraft) => persistedPlan(draft, 'unexpected-plan'));
     const restoredHarness = await renderApplicationHarness({ saveWeeklyApprovedPlan: save });

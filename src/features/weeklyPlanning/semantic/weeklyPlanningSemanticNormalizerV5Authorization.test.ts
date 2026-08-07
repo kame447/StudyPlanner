@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import {
+  createGroundedCreationAuthorizationDocumentV5,
+} from './weeklyPlanningCreationAuthorizationV5';
 import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
@@ -17,14 +20,18 @@ const authorizationDocument = JSON.stringify({
   decisions: [],
 });
 
-describe('Stable V5 creation authorization prompt', () => {
-  it('instructs the model not to duplicate accepted public facts', async () => {
-    const calls: Array<Record<string, unknown>> = [];
+describe('Stable V5 creation authorization ownership', () => {
+  it.each([
+    'この条件で予定を作って',
+    'その内容で仮予定を作成してください',
+    'これでスケジュールを組んでほしい',
+  ])('does not parse authorization before validating the AI response: %s', (userText) => {
+    expect(createGroundedCreationAuthorizationDocumentV5(userText)).toBeNull();
+  });
+
+  it('accepts creation authorization when the AI explicitly returns create_plan', async () => {
     const client: OpenAiCompatibleClient = {
-      async createChatCompletion(input) {
-        calls.push(input as unknown as Record<string, unknown>);
-        return authorizationDocument;
-      },
+      createChatCompletion: vi.fn(async () => authorizationDocument),
     };
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
@@ -35,14 +42,41 @@ describe('Stable V5 creation authorization prompt', () => {
       },
     });
 
-    expect(result.document).toMatchObject({
-      planningIntent: 'create_plan',
-      tasks: [],
+    expect(result).toMatchObject({
+      status: 'accepted',
+      document: {
+        planningIntent: 'create_plan',
+        planningWindow: null,
+        tasks: [],
+      },
+      diagnostics: {
+        attemptCount: 1,
+        repairAttempted: false,
+        validationErrors: [],
+      },
     });
-    const messages = calls[0].messages as Array<{ role: string; content: string }>;
-    const system = messages.find((message) => message.role === 'system')?.content ?? '';
-    expect(system).toContain('set planningIntent to create_plan');
-    expect(system).toContain('Do not copy accepted tasks or constraints');
-    expect(system).toContain('include only those newly stated facts');
+    expect(result.diagnostics.algorithmicRepairs ?? []).not.toContain(
+      'creation-authorization-grounded-from-user-text',
+    );
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not replace an invalid AI response with a rule-generated authorization document', async () => {
+    const invalid = JSON.stringify({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'create_plan',
+      planningWindow: null,
+    });
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => invalid),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: 'この条件で予定を作って',
+      publicStateSummary: { graphRevision: 2 },
+    });
+
+    expect(result.status).toBe('rejected');
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,13 +1,57 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / active
-最終更新: 2026-07-31
+最終更新: 2026-08-03
 
 - Runtime contract: [../weekly-planning-stable-v5-runtime-trial-contract.md](../weekly-planning-stable-v5-runtime-trial-contract.md)
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - Semantic V5 queue: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
 - Active-task inventory: [../audits/20260731-weekly-planning-active-task-inventory.md](../audits/20260731-weekly-planning-active-task-inventory.md)
 - Semantic handoff audit: [../audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md](../audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md)
+- P0 architecture reset: [../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md](../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md)
+- Planned ambiguity repair: [../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md](../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md)
+
+## 0. 最上位設計原則
+
+週間計画機能では、次を変更不能な根幹原則とする。
+
+> ユーザーの自然言語、会話文脈、指示・訂正・承認の意味理解はAIだけが担当する。決定論的な処理は、AIが出した意味表現に対する形式・参照・状態遷移・安全性の検証と適用だけを担当する。
+
+この原則は、個別scenarioの成功、短期的な実装容易性、prompt短縮、API費用、既存test維持より優先する。
+
+### AIが担当するもの
+
+- 現在発話の意味理解
+- 会話履歴を使った省略・照応・訂正・承認の理解
+- 作業、数量、所要時間、日付、時間帯、関係の意味構造化
+- 既存情報への訂正対象または回答対象の選択
+- 不確実性の明示
+- 確定部分と未確定部分の分離
+- 曖昧な対象・係り先・数量役割・照応先のclarification候補化
+
+### 決定論的処理が担当するもの
+
+- schema、型、列挙値、数値範囲、時刻形式
+- 参照先、参照種別、owner、revision、pending questionの整合性
+- AIが選択した対象の正式IDへの結び付け
+- 意味を変えない正規化と完全同一重複の除去
+- Fact Graph lifecycle、transaction、rollback
+- readiness、scheduler、preview、承認、保存、再読込
+- stale、二重処理、owner混線の拒否
+- resolved Factだけをscheduler viewへ公開すること
+
+### 禁止事項
+
+- AI出力とは別にユーザー文を正規表現・キーワード・辞書で再解釈する
+- AI出力を検証する前にルール側の意味文書へ置換する
+- 短答、訂正、作成承認、作業境界、数量欠落、日付意味を独立parserで判定する
+- provider failureまたはvalidation failure時にparser fallbackする
+- 特定発話、教科、数量、単位、scenarioを通すproduction patchを追加する
+- schema不足を後段の自然言語処理で隠す
+- 意味が一意に決まらない発話を、必ず確定済みFact型のどれかへ押し込む
+- semantic ambiguityをtechnical failureとして扱い、同じ発話の再送を要求する
+
+PR #109では、この原則に反する短答・訂正・承認の独自解釈が再導入されたため、実API改善ループを一旦停止し、P0 architecture resetを最優先とする。
 
 ## 1. Statusの読み方
 
@@ -38,12 +82,23 @@ module implemented
 - rendererへの会話・Fact context
 - renderer prompt/raw response/fallback/final decisionのtrace persistence
 
-PR #107で実装中:
+PR #109で検証・是正中:
 
-- `明日`planningWindow omission repair
 - machine-readable pending question
 - exact target short-answer binding
 - renderer typed action contract
+- actual OpenAI multi-turn conversation eval
+- AI意味理解責務の回帰除去
+- schemaとvalidatorの対象参照修正
+
+P0 follow-upとして設計予定:
+
+- partial semantic acceptance
+- unresolved fact / ambiguity / clarification contract
+- technical failureとsemantic ambiguityの分離
+- clarification answerによる局所的な意味修復
+- resolved-only scheduler view
+- 同文再送ループの除去
 
 未完了:
 
@@ -91,34 +146,70 @@ Approval core idempotencyは実装済みだがproduction Rules/TTL/multi-client�
 
 ## 3. Current queue
 
-`docs/ai/tasks/`直下のcurrent task recordは次の8件だけとする。
+`docs/ai/tasks/`直下のcurrent task recordは、roadmap上の独立実行単位だけとする。
+
+### P0: architecture integrity
+
+1. [AI semantic ownership reset](../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md)
+2. [partial semantic acceptance and clarification repair](../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md)
+
+2は1の進行中branchへ直接実装を混入しない。PR #109の責務境界、schema、validator、formal bindingが収束した後、独立branchで着手する。1の成果が2の一部を吸収した場合は、重複実装せず残差だけを実行する。
+
+このP0群が完了するまで、PR #109へ新しい自然言語正規表現、語句辞書、scenario固有semantic patchを追加しない。
 
 ### P0: scheduler safety
 
-1. [current-time start boundary](../tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md)
+3. [current-time start boundary](../tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md)
 
 ### P1: adoption/runtime integrity
 
-2. [Stable V5 verification and cutover](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
-3. [Stable V5 runtime followups](../tasks/20260731-weekly-planning-runtime-followups.md)
+4. [Stable V5 verification and cutover](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
+5. [Stable V5 runtime followups](../tasks/20260731-weekly-planning-runtime-followups.md)
+6. [autonomous conversation loop](../tasks/20260801-weekly-planning-autonomous-conversation-loop.md)
 
 ### P1-P2: production boundaries
 
-4. [cloud conversation session store](../tasks/20260731-weekly-planning-synced-conversation-session-store.md)
-5. [trace production privacy/lifecycle/scalability](../tasks/20260731-weekly-planning-trace-privacy-and-lifecycle.md)
-6. [approval operational rollout](../tasks/20260731-weekly-planning-approval-operational-rollout.md)
-7. [external source production adapter](../tasks/20260731-weekly-planning-external-source-production-adapter.md)
+7. [cloud conversation session store](../tasks/20260731-weekly-planning-synced-conversation-session-store.md)
+8. [trace production privacy/lifecycle/scalability](../tasks/20260731-weekly-planning-trace-privacy-and-lifecycle.md)
+9. [approval operational rollout](../tasks/20260731-weekly-planning-approval-operational-rollout.md)
+10. [external source production adapter](../tasks/20260731-weekly-planning-external-source-production-adapter.md)
 
 ### P2+: learning/personalization
 
-8. [personalization rollout](../tasks/20260731-weekly-planning-personalization-rollout.md)
+11. [personalization rollout](../tasks/20260731-weekly-planning-personalization-rollout.md)
 
-旧日付の8件は、内容を現在化した上で上記へ置換済みであり、root queueとして使用しない。
+旧日付の重複taskは、内容を現在化した上でcurrent taskへ吸収し、root queueとして使用しない。
 
 ## 4. 依存順
 
+Immediate architecture path:
+
 ```text
-PR #107 semantic handoff verification
+semantic patch freeze
+→ production semantic-path responsibility audit
+→ schema / validator / binding redesign
+→ rule-based semantic override removal
+→ architecture regression tests
+→ partial semantic acceptance contract
+→ unresolved fact / ambiguity lifecycle
+→ clarification transaction / resolved-only scheduler view
+→ OpenAI semantic eval
+→ OpenAI conversation eval
+```
+
+PR #109と後続taskの境界:
+
+```text
+PR #109: AI semantic ownership reset / formal binding / staged runtime整合
+→ independent follow-up: partial acceptance / ambiguity repair
+→ actual conversation verificationの再開
+```
+
+Stable V5 adoption:
+
+```text
+AI semantic ownership reset
+→ partial semantic acceptance and clarification repair
 → current-time hard boundary
 → Stable V5 actual AI/browser verification
 → external source adapter verification
@@ -130,7 +221,11 @@ Structural semantic path:
 
 ```text
 machine pending question
-→ exact target short-answer binding
+→ AI-readable contextual answer contract
+→ exact formal target binding
+→ partial semantic result envelope
+→ ambiguity ID / unresolved lifecycle
+→ clarification answer transaction
 → generic semantic turn delta
 → generic lifecycle applier / coverage registry
 ```
@@ -156,9 +251,43 @@ approval Rules/TTL/multi-client verification
 
 ### AI semantic ownership
 
-raw user textの初期意味構造化はAIだけが担当する。deterministic coreはschema、reference、revision、target binding、conflict、readiness、scheduler、saveを管理する。provider failureでparserへfallbackしない。
+raw user textの意味構造化と会話文脈解決はAIだけが担当する。deterministic coreはschema、reference、revision、formal target binding、conflict、readiness、scheduler、saveを管理する。
 
-直前の質問種別と対象はrenderer textから逆推定せず、machine pending questionを正とする。
+次が一つでも存在する場合、semantic architecture gateはredとする。
+
+- production経路でユーザー文を再解釈する正規表現・キーワード・辞書
+- validなAI responseを別の意味文書へ置換する処理
+- short answer、correction、authorization、task boundaryを独立判断するparser
+- provider failureまたはvalidation failureからのparser fallback
+- schema不足を隠すscenario固有補正
+- 一部だけ確定可能なAI responseを全体rejectする二値契約
+- semantic ambiguityとmalformed JSONを同じfailure statusへ畳み込む処理
+- unresolved Factをscheduler、preview、saveへ渡す処理
+- technical failure時にユーザーへ同文再送を要求する通常経路
+
+直前の質問種別と対象はrenderer textから逆推定せず、machine pending questionを正とする。ただしmachine pending questionは、AIへ文脈を伝え、AI出力との整合を検証するために使う。後段が回答の意味を独自生成するためには使わない。
+
+### Partial semantic acceptance
+
+一つのturnに確定部分と未確定部分が混在する場合、確定部分を保存し、未確定部分をstable ID付きのambiguityとして保持できなければならない。`accepted_with_ambiguity`と`clarification_required`は正常結果であり、normalization rejectionとして扱わない。
+
+clarification回答は対象ambiguityとGraph revisionへ結び付ける。無関係なFactを再生成せず、対象部分だけをresolveする。scheduler viewはresolved Factだけを公開する。
+
+### Failure investigation order
+
+実API失敗時は必ず次の順で確認する。
+
+```text
+AIへ渡したcontext
+→ AI raw responseの意味
+→ complete / partial / clarificationのschema表現可能性
+→ validator誤拒否
+→ formal ID binding
+→ Fact Graph apply / unresolved lifecycle
+→ dialogue / preview / approval / save
+```
+
+この確認前に新しい自然言語ルールを追加しない。
 
 ### Current-time safety
 
@@ -172,7 +301,9 @@ conversation、Graph revision、pending questionを同じsession revisionで保�
 
 次が残る場合、Stable V5をdefaultへしない。
 
-- PR #107 verification red
+- semantic architecture gate red
+- partial semantic acceptance未設計または未検証
+- semantic ambiguityとtechnical failureが未分離
 - current-time boundary未実装
 - actual AI/browser未実施
 - renderer textが状態遷移へ影響する
@@ -180,7 +311,24 @@ conversation、Graph revision、pending questionを同じsession revisionで保�
 - migration/rollback未検証
 - unresolved blocker/major audit finding
 
-## 6. Task placement rule
+## 6. Task MD運用
+
+今後の週間計画実装は、コード変更より先に必ずroadmap上の位置を決め、`docs/ai/tasks/`へtask MDを作成または更新する。
+
+各task MDには最低限、次を記載する。
+
+- 目的と非目的
+- roadmap上の位置と依存関係
+- 守る最上位設計原則
+- 変更対象と変更禁止範囲
+- 失敗原因の抽象化
+- 同じ原因で起こり得る別事例
+- 実装順序
+- テスト戦略
+- 受け入れ条件
+- 実測結果と未確認事項
+
+作業中は、各調査・実装・Actions・実API結果をそのtask MDへ追記する。口頭説明だけで状態を更新しない。
 
 ```text
 completed work unit
@@ -193,4 +341,4 @@ independent current execution target
 → tasks/ root
 ```
 
-merge時に完了taskの移動とcanonical文書同期を同じgateで確認する。
+完了時は、roadmap、task status、PR本文、実装、test、artifactを同じgateで同期する。

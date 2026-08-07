@@ -25,6 +25,7 @@ export function createWeeklyPlanningActiveSchedulerGraphViewV5(
     taskDateRules: filterActiveWeeklyPlanningFactsV5(graph, graph.taskDateRules),
     recurrences: filterActiveWeeklyPlanningFactsV5(graph, graph.recurrences),
     relations: filterActiveWeeklyPlanningFactsV5(graph, graph.relations),
+    uncertainties: filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties),
     availabilityDeclarations: filterActiveWeeklyPlanningFactsV5(
       graph,
       graph.availabilityDeclarations,

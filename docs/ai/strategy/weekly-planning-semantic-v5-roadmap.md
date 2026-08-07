@@ -1,7 +1,7 @@
 # 週間計画 汎用意味モデル Stable V5 ロードマップ
 
 Status: canonical / active post-runtime-integration queue
-最終更新: 2026-07-31
+最終更新: 2026-08-03
 
 - [Runtime trial contract](../weekly-planning-stable-v5-runtime-trial-contract.md)
 - [Current contract](../weekly-planning-current-contract-v5.md)
@@ -9,13 +9,41 @@ Status: canonical / active post-runtime-integration queue
 - [Active-task inventory](../audits/20260731-weekly-planning-active-task-inventory.md)
 - [Semantic handoff audit](../audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md)
 - [Verification/cutover task](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
+- [AI semantic ownership reset](../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md)
+- [Partial semantic acceptance and clarification repair](../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md)
+
+## 0. 非交渉の意味理解原則
+
+Stable V5では、ユーザーの自然言語と会話文脈の意味理解をAIだけが担当する。
+
+```text
+user utterance + recent conversation + machine-readable state
+→ AI semantic interpretation
+→ structural/reference/safety validation
+→ formal ID binding
+→ Fact Graph lifecycle
+```
+
+禁止する経路:
+
+```text
+user utterance
+→ regex / keyword / dictionary / parser
+→ AI responseを置換または上書き
+```
+
+決定論的処理は、AIが選んだ意味を再選択してはいけない。担当範囲はschema、reference、revision、owner、formal target binding、transaction、readiness、scheduler、preview、approval、saveに限定する。
+
+AIが意味的に正しい構造を返したのにschemaまたはvalidatorが拒否した場合、schema・validator・bindingを修正する。ユーザー文を後段で読み直して通してはいけない。
+
+AIが一部だけ確定できる場合は、確定部分を保存し、未確定部分を曖昧なまま表現できなければならない。意味的曖昧さは正常な部分解釈であり、malformed JSONやprovider failureと同じ失敗へ畳み込まない。
 
 ## 1. 到達済みruntime
 
 ```text
 自然文
 → Stable V5 AI Semantic Normalizer
-→ strict validation / max one repair
+→ strict validation / max one AI repair
 → SemanticDocument V5
 → lifecycle canonicalizer / Fact Graph V5
 → active read view
@@ -27,32 +55,52 @@ Status: canonical / active post-runtime-integration queue
 
 Feature flagで既存UIへ接続済み。Graph更新はrequest単位にstageし、PlanningState commit受理後だけfinalizeする。
 
-## 2. 2026-07-31 semantic handoff finding
+現runtimeは確定済みSemantic Document中心の契約であり、partial semantic result、unresolved fact、ambiguity lifecycle、clarification transactionは未実装である。
+
+## 2. semantic handoff findingと2026-08-03回帰
 
 従来はshort answerの質問種別をAI rendererが生成した日本語文面の部分一致から推定していた。また、既存Factへの回答を直接表すschemaがなく、minimal taskを生成してquestion code別binderで再結合していた。
 
-PR #107で次を実装中:
+machine-readable pending questionにより、question code、target fact、graph revisionを保持し、renderer文面をsemantic bindingへ使用しない方向へ進めた。
 
-- `publicStateSummary.pendingQuestion`をauthoritative machine stateにする
-- question code、target fact、graph revisionを保持
-- renderer文面をsemantic bindingへ使用しない
-- exact target workloadへshort answerを適用
-- renderer responseへ`actionId`、`actionKind`、`questionCode`を要求
-- `明日`planningWindow omissionを一度だけrepair
+しかしPR #109の実API失敗対応で、次の回帰が発生した。
+
+- short answerを正規表現で解釈し、AI出力より先に別の意味文書を生成
+- correctionを訂正語・作業名・数量で再解釈
+- creation authorizationを語句列挙で判定
+- user textから作業と数量を再抽出してAI出力を監査
+- task boundaryを後段で意味的に分割
+- relative date source textを読み直してAI出力を上書き
+
+「40問にかかる時間は3時間」の失敗では、AIの意味理解よりも、effort targetがworkloadを参照できないschema・validator制約が主要因だった。したがって、意味補正を増やすのではなく表現力と参照設計を修正する。
+
+追加で確認した設計欠陥は、発話を完全な確定済みFact集合として出力するか、全体をrejectするかの二値契約である。日付の係り先、対象、数量役割、照応先などが一意に決まらない場合に、AIが未確定のまま受理できる型が不足している。そのため、推測による押し込み、意味要素の欠落、validation failureが発生し得る。
 
 ## 3. Gate status
 
 ### V5-A: schema/document generation
 
-Status: runtime connected / coverage incomplete
+Status: runtime connected / P0 architecture reset and partial-result redesign required
 
 完了:
 
 - generic task/component/workload/effort/temporal/recurrence/relation
 - availability、fixed commitment、source request
 - provider failure fail closed、parser fallback禁止
+- machine-readable pending question context
 
-残件:
+P0残件:
+
+- effort estimateがworkloadを正式targetとして参照できる契約
+- short answerで既存task構造を再生成しない表現方法
+- correction、answer、authorizationの会話行為表現の再評価
+- AI outputを意味的に置換する経路の除去
+- architecture regression guard
+- complete / partial / clarification / structural failure / provider failureのresult envelope
+- unresolved fact、ambiguity、clarification targetのschema
+- valid partial responseをrejectしないvalidator契約
+
+後続残件:
 
 - generic semantic turn delta
 - evidence coverage registry
@@ -60,7 +108,7 @@ Status: runtime connected / coverage incomplete
 
 ### V5-B: Fact Graph lifecycle/transaction
 
-Status: runtime connected / generic update incomplete
+Status: runtime connected / generic update and unresolved lifecycle incomplete
 
 完了:
 
@@ -68,9 +116,19 @@ Status: runtime connected / generic update incomplete
 - formal IDs/revision/diff
 - staged Graph、active scheduler view
 - planningWindow single-active enforcement
-- exact target quantity/effort short-answer binding（PR #107、検証待ち）
+- machine pending questionのexact target保持
 
-残件:
+P0残件:
+
+- AIが選んだworkload targetへのeffort binding
+- AIの意味を変えないformal ID binding
+- schema変更時のcorrection application整合
+- resolved / ambiguous / incomplete / awaiting confirmation等のlifecycle
+- 同一turnの確定Factと未確定Factの原子的保存
+- unresolved Factを除外するresolved-only scheduler view
+- ambiguity IDとGraph revisionを使う局所解消transaction
+
+後続残件:
 
 - add/update/remove/uncertainty resolutionのgeneric lifecycle applier
 - dependent fact batch termination
@@ -79,7 +137,7 @@ Status: runtime connected / generic update incomplete
 
 ### V5-C: dialogue/scheduler
 
-Status: runtime connected / typed renderer contract in draft
+Status: runtime connected / actual AI verification blocked by P0
 
 完了:
 
@@ -87,9 +145,16 @@ Status: runtime connected / typed renderer contract in draft
 - create authorization、preview gate、partial preview禁止
 - renderer contextとtrace persistence
 
+P0残件:
+
+- semantic ambiguityを具体的な聞き返しへ変換するcontract
+- clarification回答を対象ambiguityだけへ適用するbinding
+- technical failure時に同文再送を要求しないcontrolled recovery
+- 同一input / failure class反復ループの防止
+
 残件:
 
-- PR #107 typed action contract verification
+- semantic ownership reset後のtyped action contract verification
 - current-time hard boundary
 - browser roleplay
 - external source production adapter
@@ -97,6 +162,11 @@ Status: runtime connected / typed renderer contract in draft
 ### V5-D: application/persistence
 
 Status: local persistence connected
+
+追加P0要件:
+
+- pending ambiguity、clarification target、Graph revisionのreload継続
+- close/reopen後も同じ局所修復を再開できること
 
 残件:
 
@@ -109,6 +179,14 @@ Status: local persistence connected
 
 Status: implementation verified / production verification pending
 
+追加P0要件:
+
+- AI raw responseとaccepted documentの意味差分を追跡可能にする
+- 後段のalgorithmic repairが意味要素を置換していないことをartifactで確認する
+- semantic ambiguityとstructural/provider failureを別statusで記録する
+- partial acceptanceで保存したresolved/unresolved差分を追跡する
+- clarification ID、target、解消revisionを追跡する
+
 残件:
 
 - Issue #89 same-conversation verification
@@ -118,16 +196,26 @@ Status: implementation verified / production verification pending
 ### V5-F-I
 
 - external source: pure loader complete / production adapter pending
-- real-eval/shadow: harness exists / actual execution pending
+- real-eval/shadow: harness exists / architecture resetとpartial-result contract後に再開
 - migration: design only
 - default cutover/legacy deletion: not started
 
 ## 4. Current execution order
 
 ```text
-PR #107 focused/full verification
+semantic patch freeze
+→ semantic-path responsibility inventory
+→ schema / validator / binding redesign
+→ AI output replacement経路の除去
+→ architecture regression tests
+→ partial semantic result envelope設計
+→ unresolved fact / ambiguity lifecycle
+→ clarification transaction / resolved-only scheduler view
+→ focused/full deterministic verification
+→ OpenAI semantic schema eval
+→ OpenAI conversation eval
+→ transcript / raw response audit
 → current-time hard boundary
-→ actual AI real-eval
 → browser roleplay
 → generic semantic turn delta / coverage
 → external source production verification
@@ -135,19 +223,68 @@ PR #107 focused/full verification
 → default cutover
 ```
 
-## 5. Current active records
+PR #109の進行中branchへpartial-result実装を並行混入しない。まずAI semantic ownership reset、schema・validator・formal bindingの整理を収束させ、その最新成果を基点に独立branchで後続taskを実施する。
+
+## 5. Failure investigation protocol
+
+実APIまたは会話testが失敗した場合は、必ず次の順で確認する。
+
+1. AIへ必要なcontextが渡ったか。
+2. AI raw responseの意味が正しいか。
+3. complete、partial、clarificationのいずれとして意味を表現できるか。
+4. schemaがその意味を表現できるか。
+5. validatorが正しい完全・部分構造を誤拒否していないか。
+6. formal ID bindingで対象が壊れていないか。
+7. Fact Graph applyまたはunresolved lifecycleで壊れていないか。
+8. dialogue、preview、approval、saveで壊れていないか。
+
+上記を確認する前に、ユーザー文を読む新しいregex、keyword list、dictionary、parserをproductionへ追加しない。
+
+次を混同しない。
+
+```text
+semantic ambiguity
+≠ structural schema failure
+≠ provider failure
+```
+
+semantic ambiguityでは、確定部分を保持し、対象を限定したclarificationへ進む。structural failureは最大1回のAI形式repair対象とする。provider failureは内部障害として扱い、ユーザーへ同じ文章の再送を要求しない。
+
+## 6. Current active records
+
+P0 current:
+
+- [AI semantic ownership reset](../tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md)
+
+P0 planned follow-up:
+
+- [Partial semantic acceptance and clarification repair](../tasks/20260803-weekly-planning-partial-semantic-acceptance-and-clarification-repair.md)
+
+このfollow-upはPR #109へ直接混入せず、semantic ownership resetの成果を基点に独立実施する。
+
+Blocked until P0 completes:
+
+- [autonomous conversation loop](../tasks/20260801-weekly-planning-autonomous-conversation-loop.md)
+- [verification/migration/cutover](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
+
+Following work:
 
 - [current-time boundary](../tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md)
-- [verification/migration/cutover](../tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md)
 - [runtime followups](../tasks/20260731-weekly-planning-runtime-followups.md)
 - [cloud session store](../tasks/20260731-weekly-planning-synced-conversation-session-store.md)
 - [external source adapter](../tasks/20260731-weekly-planning-external-source-production-adapter.md)
 - [trace operations](../tasks/20260731-weekly-planning-trace-privacy-and-lifecycle.md)
 
-## 6. Default cutover禁止条件
+## 7. Default cutover禁止条件
 
+- production経路にAIとは別の自然言語parserが存在する
+- validなAI responseを意味的に置換する後処理が存在する
 - renderer textからquestion/targetを推定する経路が残る
 - parser fallbackが存在する
+- 一部だけ確定可能な発話を全体rejectする契約が残る
+- semantic ambiguityとtechnical failureが同じstatusである
+- unresolved Factがscheduler、preview、saveへ混入する
+- technical failure時に同文再送を要求する
 - Graph/PlanningState commitが非原子的
 - current-time boundary未実装
 - trace split/loss再発
@@ -155,4 +292,10 @@ PR #107 focused/full verification
 - migration/rollback未検証
 - unresolved blocker/major finding
 
-完了foundationはclosed、別trackerへ吸収した旧work unitはsuperseded、rootには現在の独立taskだけを置く。
+## 8. Task MD gate
+
+semantic実装は、コード変更前に必ずroadmap上の位置を確定し、独立task MDを作成または更新する。
+
+最低限、目的、非目的、責務境界、禁止事項、抽象化した原因、別事例、実装順、テスト、受け入れ条件、実測結果を記録する。
+
+実装中は各ループをtask MDへ追記し、完了時はroadmap、task status、PR本文、test、artifactを同期する。完了foundationはclosed、別trackerへ吸収した旧work unitはsuperseded、rootには現在の独立taskだけを置く。

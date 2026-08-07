@@ -1,0 +1,102 @@
+# trigger: 2026-08-08 progress-first-v2
+name: Apply Progress-First And Typo Canonicalization
+
+on:
+  push:
+    branches: [agent/weekly-ai-conversation-eval]
+    paths:
+      - .github/workflows/apply-progress-first-and-typo-canonicalization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Restore normalizer and apply focused changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout e2b66d6aa4c23b48146bc4710540f361159baa41 -- src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, got {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          p = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
+          replace_once(
+              p,
+              "directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Remove the guessed modifier attachment. Keep the listed candidates, and emit one uncertainty with field modifier_target and the modifier excerpt as sourceText. Do not choose a candidate by order or proximity.');",
+              "directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Preserve every otherwise-valid current-turn fact from the invalid response, including its planningWindow and listed tasks/components, but remove the guessed modifier attachment only. Emit exactly one uncertainty for that modifier with targetLocalId exactly \\\"document\\\", field exactly \\\"modifier_target\\\", and the modifier excerpt as sourceText. Never use null or the string \\\"null\\\" for targetLocalId, and do not choose a candidate by order or proximity.');",
+          )
+
+          p = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts'
+          replace_once(
+              p,
+              "    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context; keep the original excerpt in sourceText. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',\n",
+              "    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context. When that correction is unambiguous, normalize semantic title, label, contextLabel, and other user-visible entity names to the corrected reading, while preserving the original verbatim excerpt only in sourceText. Do not keep an obvious typo as the canonical entity name. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',\n",
+          )
+
+          p = 'src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts'
+          replace_once(
+              p,
+              "      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めず、既に分かっている一つの作業について量・範囲を確認してください。semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず、その曖昧さを解消する一つの確認だけをしてください。',\n",
+              "      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めません。対象について現在の全体範囲や進捗をまだ把握していないなら、まずその教材・作業で自然な単位を使って、全体の範囲と現在どこまで終わっているかを一つの確認として尋ねてください。ページに固定せず、問題数、単語数、章、節、回、時間など、planningStateSummaryや会話から分かる対象に合う粒度を使ってください。完了済み・現在位置がすでにdecidedFactsまたはrecentConversationから分かる場合に限って、次に今回の計画期間でどこまで進めたいかを尋ねてください。semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず、その曖昧さを解消する一つの確認だけをしてください。',\n",
+          )
+          replace_once(
+              p,
+              "    '誤字や崩れた文でも意味が一意なら自然に理解して構いません。意味が複数通りあり得る場合は推測を事実として言い直さず、曖昧な部分だけを一つ確認してください。',\n",
+              "    '誤字や崩れた文でも意味が一意なら自然に補正して理解し、その補正後の自然な名称をユーザー向け文面で使ってください。明白な誤字をそのまま名称として繰り返さないでください。意味が複数通りあり得る場合は推測を事実として言い直さず、曖昧な部分だけを一つ確認してください。',\n",
+          )
+
+          p = 'src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts'
+          replace_once(
+              p,
+              "    expect(prompt).toContain('only when one reading is clearly supported');\n",
+              "    expect(prompt).toContain('only when one reading is clearly supported');\n    expect(prompt).toContain('normalize semantic title, label, contextLabel');\n    expect(prompt).toContain('preserving the original verbatim excerpt only in sourceText');\n    expect(prompt).toContain('Do not keep an obvious typo as the canonical entity name');\n",
+          )
+          replace_once(
+              p,
+              "    expect(dialogue.systemPrompt).toContain('意味が一意なら自然に理解');\n",
+              "    expect(dialogue.systemPrompt).toContain('意味が一意なら自然に補正して理解');\n    expect(dialogue.systemPrompt).toContain('補正後の自然な名称');\n    expect(dialogue.systemPrompt).toContain('明白な誤字をそのまま名称として繰り返さない');\n",
+          )
+          replace_once(
+              p,
+              "    expect(prompt.userPrompt).toContain('questionCodeがmissing_schedulable_workの場合は追加の分解を求めず');\n",
+              "    expect(prompt.userPrompt).toContain('questionCodeがmissing_schedulable_workの場合は追加の分解を求めません');\n",
+          )
+          replace_once(
+              p,
+              "    expect(prompt.userPrompt).toContain('量・範囲を確認してください');\n",
+              "    expect(prompt.userPrompt).toContain('現在の全体範囲や進捗をまだ把握していないなら');\n    expect(prompt.userPrompt).toContain('全体の範囲と現在どこまで終わっているか');\n    expect(prompt.userPrompt).toContain('ページに固定せず');\n    expect(prompt.userPrompt).toContain('問題数、単語数、章、節、回、時間');\n    expect(prompt.userPrompt).toContain('完了済み・現在位置がすでにdecidedFactsまたはrecentConversationから分かる場合に限って');\n    expect(prompt.userPrompt).toContain('今回の計画期間でどこまで進めたいか');\n",
+          )
+          PY
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Run focused regressions
+        run: node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningStandaloneModifierTargetV5.test.ts src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix: ask progress before target and canonicalize obvious typos'
+          git push origin HEAD:agent/weekly-ai-conversation-eval

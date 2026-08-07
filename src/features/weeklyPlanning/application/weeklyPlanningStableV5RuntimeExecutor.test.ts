@@ -284,7 +284,7 @@ describe('Stable V5 runtime executor', () => {
       },
     });
     expect(result.message).toBe(
-      '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',
     );
     expect(result.message).not.toContain('構造化結果を安全に採用できませんでした');
     expect(result.draftCandidates).toEqual([]);
@@ -323,10 +323,11 @@ describe('Stable V5 runtime executor', () => {
       },
     });
     expect(result.message).toContain('「午前：研究を進める」');
-    expect(result.message).toContain('「午後：院試の勉強」');
-    expect(result.message).toContain('それぞれどれくらい進めたいですか');
+    expect(result.message).not.toContain('「午後：院試の勉強」');
+    expect(result.message).toContain('どこまで進めたいですか');
+    expect(result.message).not.toContain('それぞれ');
     expect(result.message).not.toBe(
-      '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',
     );
     expect(result.draftCandidates).toEqual([]);
 
@@ -351,7 +352,47 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
-  it('attributes normalization rejection to the structured processing failure, not user wording', async () => {
+  it('keeps semantic ambiguity ahead of scheduling and asks only about the unclear fragment', async () => {
+    const ambiguous = document();
+    ambiguous.tasks = [];
+    ambiguous.planningWindow = null;
+    ambiguous.uncertainties = [{
+      localId: 'uncertainty-1',
+      targetLocalId: 'document',
+      field: 'workload_target',
+      reason: 'quantity target has multiple plausible readings',
+      sourceText: '数学のワークが、古典も…20ページくらい',
+    }];
+    normalizeMock.mockResolvedValueOnce(acceptedResult(ambiguous));
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [],
+      userText: '数学のワークが、古典も…20ページくらい',
+      selectedDate: '2026-08-08',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-ambiguous-input',
+      traceRequestId: 'request-ambiguous-input',
+    });
+
+    expect(result.state).toMatchObject({
+      status: 'revision_pending',
+      shouldCreateDraft: false,
+      lastQuestionContext: {
+        targetSlot: 'stable_v5:semantic_uncertainty',
+        intent: 'semantic_uncertainty',
+      },
+    });
+    expect(result.message).toContain('数学のワークが、古典も…20ページくらい');
+    expect(result.message).toContain('この部分だけ');
+    expect(result.message).not.toContain('数学を20ページ');
+    expect(result.message).not.toContain('古典を20ページ');
+    expect(result.draftCandidates).toEqual([]);
+  });
+
+  it('attributes normalization rejection to internal processing and requests one recoverable item', async () => {
     normalizeMock.mockResolvedValueOnce(rejectedResult());
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
@@ -366,8 +407,10 @@ describe('Stable V5 runtime executor', () => {
       traceRequestId: 'request-normalization-rejected',
     });
 
-    expect(result.message).toContain('構造化処理に失敗しました');
-    expect(result.message).toContain('同じ内容をそのまま');
+    expect(result.message).toContain('こちらの処理で内容を安全に整理できなかった');
+    expect(result.message).toContain('予定条件には反映していません');
+    expect(result.message).toContain('一つだけ教えてください');
+    expect(result.message).not.toContain('同じ内容をそのまま');
     expect(result.message).not.toContain('言い換えて');
     expect(result.draftCandidates).toEqual([]);
     expect(takeWeeklyPlanningStableV5DebugTrace('request-normalization-rejected')).toEqual(

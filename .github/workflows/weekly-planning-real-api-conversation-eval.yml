@@ -1,0 +1,142 @@
+name: Weekly Planning Real API Conversation Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_api:
+        description: Run all OpenAI-backed conversation scenarios after every deterministic gate passes
+        required: true
+        default: false
+        type: boolean
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/weekly-planning-real-api-trigger'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-planning-real-api-conversation-eval
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'agent/weekly-ai-conversation-eval' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      TZ: Asia/Tokyo
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check diff whitespace
+        run: git diff --check origin/${{ github.event.repository.default_branch }}...HEAD
+
+      - name: Typecheck application
+        run: npm run typecheck
+
+      - name: Typecheck production build graph
+        run: npm run typecheck:build
+
+      - name: Run deterministic conversation foundation
+        run: npm run test:weekly-ai:conversation:foundation
+
+      - name: Run full Vitest regression suite
+        run: npm run test:run
+
+      - name: Build production bundle
+        run: npm run build
+
+  real-api-conversation-eval:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_api }}
+    needs: foundation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      TZ: Asia/Tokyo
+      WEEKLY_PLANNING_REAL_API_CONVERSATION_EVAL: '1'
+      VITE_AI_PROVIDER: openai
+      VITE_AI_BASE_URL: https://api.openai.com/v1
+      VITE_AI_MODEL: gpt-5.4-mini
+      VITE_AI_MAX_PROCESS_REQUESTS: '120'
+      VITE_CLOUDFLARE_AI_PROXY_URL: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify OpenAI secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            output="artifacts/weekly-planning-real-api-conversation-eval"
+            mkdir -p "$output"
+            cat > "$output/report.md" <<'EOF'
+          # Weekly Planning Real API Conversation Eval
+
+          Status: `blocked_missing_secret`
+
+          The deterministic foundation passed, but the real API scenarios were not started because repository secret `OPENAI_API_KEY` is not configured.
+          EOF
+            cat > "$output/report.json" <<EOF
+          {
+            "status": "blocked_missing_secret",
+            "requiredSecret": "OPENAI_API_KEY",
+            "apiRequestsStarted": 0,
+            "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+            echo "Repository secret OPENAI_API_KEY is required." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run real API conversation evaluation
+        id: real_eval
+        continue-on-error: true
+        env:
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: npm run test:weekly-ai:conversation:real
+
+      - name: Publish report to job summary
+        if: always()
+        run: |
+          report="artifacts/weekly-planning-real-api-conversation-eval/report.md"
+          if [ -f "$report" ]; then
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No real API conversation report was generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-real-api-conversation-eval
+          path: artifacts/weekly-planning-real-api-conversation-eval/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Propagate real evaluation failure
+        if: steps.real_eval.outcome == 'failure'
+        run: exit 1
