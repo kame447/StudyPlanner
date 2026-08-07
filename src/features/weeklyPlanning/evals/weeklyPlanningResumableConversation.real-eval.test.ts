@@ -1,6 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  exportUserPlanningContextSnapshotV1,
+  hydrateUserPlanningContextSnapshotV1,
+  resetUserPlanningContextRuntimeForTestV1,
+} from '../../userPlanningContext/userPlanningContextSpace';
+import {
+  createEmptyUserPlanningContextSnapshotV1,
+} from '../../userPlanningContext/userPlanningContextTypes';
+import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   getWeeklyPlanningStableV5RuntimeSession,
   hydrateWeeklyPlanningStableV5RuntimeSession,
@@ -65,6 +73,7 @@ function resetRuntime(): void {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   resetWeeklyPlanningStableV5DebugTraceForTest();
   clearWeeklyPlanningSessionRuntime();
+  resetUserPlanningContextRuntimeForTestV1();
   resetWeeklyPlanningRuntimeModeForTest();
   setWeeklyPlanningRuntimeMode('stable_v5');
 }
@@ -96,6 +105,7 @@ function initialCheckpoint(): WeeklyPlanningResumableConversationCheckpoint {
     selectedDate,
     planningState,
     graph: runtime.graph,
+    userPlanningContext: createEmptyUserPlanningContextSnapshotV1(ownerId),
     turns: [],
     savedAt: new Date().toISOString(),
   };
@@ -147,6 +157,7 @@ function writeOutputs(params: {
     turn: latestTurn,
     failure: params.result.failure ?? null,
     dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
+    userPlanningContext: params.checkpoint.userPlanningContext,
     trace: params.trace,
   }, null, 2)}\n`);
   writeFileSync(`${outputDir}/transcript.md`, [
@@ -187,6 +198,7 @@ function writeFailureOutputs(params: {
     failedAttempt,
     failure: params.result.failure ?? null,
     dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
+    userPlanningContext: params.checkpoint.userPlanningContext,
     trace: params.trace,
   }, null, 2)}\n`);
   writeFileSync(`${outputDir}/transcript.md`, [
@@ -214,6 +226,7 @@ run('weekly planning resumable real API turn', () => {
   it('restores one conversation, submits exactly one user turn, and writes a new checkpoint', async () => {
     const checkpoint = loadCheckpoint();
     resetRuntime();
+    hydrateUserPlanningContextSnapshotV1(checkpoint.userPlanningContext);
     hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId: checkpoint.ownerId,
       weekStartDate: checkpoint.weekStartDate,
@@ -281,6 +294,10 @@ run('weekly planning resumable real API turn', () => {
       ...checkpoint,
       planningState: structuredClone(store.getState()),
       graph: runtime.graph,
+      userPlanningContext: exportUserPlanningContextSnapshotV1({
+        ownerId: checkpoint.ownerId,
+        currentDate: checkpoint.selectedDate,
+      }),
       turns: [
         ...checkpoint.turns,
         {

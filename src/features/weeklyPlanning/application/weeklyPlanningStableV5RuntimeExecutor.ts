@@ -3,6 +3,10 @@ import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import {
+  stageUserPlanningContextFactsV1,
+  userPlanningContextPromptSummaryV1,
+} from '../../userPlanningContext/userPlanningContextSpace';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningMessage } from '../types';
@@ -302,6 +306,8 @@ function publicStateSummary(
   graph: WeeklyPlanningFactGraphV5,
   messages: readonly WeeklyPlanningMessage[],
   previousState?: PlanningIntakeState,
+  ownerId?: string,
+  currentDate?: string,
 ): Record<string, unknown> {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
   return {
@@ -342,6 +348,9 @@ function publicStateSummary(
       reason: uncertainty.reason,
       sourceText: uncertainty.source.sourceText,
     })),
+    userPlanningContext: ownerId && currentDate
+      ? userPlanningContextPromptSummaryV1({ ownerId, currentDate })
+      : [],
     lastAssistantMessage:
       [...messages].reverse().find((message) => message.role === 'assistant')?.content ?? null,
   };
@@ -521,6 +530,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     runtimeSession.graph,
     input.messages,
     input.previousState,
+    input.userId,
+    input.selectedDate,
   );
   const initialSchedulerContext = schedulerContext({
     ownerId: input.userId,
@@ -645,6 +656,25 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return output;
   }
+
+  const userContextFacts = semantic.normalization.document?.userContextFacts ?? [];
+  stageUserPlanningContextFactsV1({
+    ownerId: input.userId,
+    conversationId: input.conversationId,
+    requestId: input.traceRequestId,
+    observedDate: input.selectedDate,
+    facts: userContextFacts,
+  });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_user_context_staged',
+    data: {
+      ownerId: input.userId,
+      conversationId: input.conversationId,
+      requestId: input.traceRequestId,
+      userContextFacts,
+    },
+  });
 
   commitWeeklyPlanningStableV5RuntimeGraph({
     ownerId: input.userId,

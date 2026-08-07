@@ -1,4 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import {
+  createEmptyUserPlanningContextSnapshotV1,
+  type UserPlanningContextSnapshotV1,
+} from '../../userPlanningContext/userPlanningContextTypes';
+import {
+  validateUserPlanningContextSnapshotV1,
+} from '../../userPlanningContext/userPlanningContextSpace';
 import type { PlanningState } from '../types';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
@@ -26,6 +33,7 @@ export interface WeeklyPlanningResumableConversationCheckpoint {
   selectedDate: string;
   planningState: PlanningState;
   graph: WeeklyPlanningFactGraphV5;
+  userPlanningContext: UserPlanningContextSnapshotV1;
   turns: WeeklyPlanningResumableConversationTurn[];
   savedAt: string;
 }
@@ -81,6 +89,12 @@ export function parseWeeklyPlanningResumableConversationCheckpoint(
   }
   const graphResult = parseWeeklyPlanningFactGraphV5(JSON.stringify(parsed.graph));
   if (!graphResult.graph) throw new Error('Checkpoint graph is invalid.');
+  const userPlanningContext = parsed.userPlanningContext === undefined
+    ? createEmptyUserPlanningContextSnapshotV1(parsed.ownerId)
+    : parsed.userPlanningContext;
+  if (!validateUserPlanningContextSnapshotV1(userPlanningContext, parsed.ownerId)) {
+    throw new Error('Checkpoint user planning context is invalid.');
+  }
   if (!Array.isArray(parsed.turns) || !parsed.turns.every(isTurn)) {
     throw new Error('Checkpoint turns are invalid.');
   }
@@ -104,6 +118,7 @@ export function parseWeeklyPlanningResumableConversationCheckpoint(
     selectedDate: parsed.selectedDate,
     planningState,
     graph: graphResult.graph,
+    userPlanningContext,
     turns,
     savedAt: parsed.savedAt,
   };
@@ -124,6 +139,7 @@ function checkpoint(): WeeklyPlanningResumableConversationCheckpoint {
     selectedDate: '2026-08-06',
     planningState: createInitialPlanningState('2026-08-03'),
     graph: createEmptyWeeklyPlanningFactGraphV5(),
+    userPlanningContext: createEmptyUserPlanningContextSnapshotV1('owner-1'),
     turns: [],
     savedAt: '2026-08-06T14:00:00.000Z',
   };

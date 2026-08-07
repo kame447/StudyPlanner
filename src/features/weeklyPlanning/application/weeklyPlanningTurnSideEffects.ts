@@ -1,4 +1,10 @@
 import {
+  discardStagedUserPlanningContextV1,
+  finalizeStagedUserPlanningContextV1,
+  hasStagedUserPlanningContextV1,
+  rollbackFinalizedUserPlanningContextV1,
+} from '../../userPlanningContext/userPlanningContextSpace';
+import {
   recordWeeklyPlanningStableV5TurnTrace,
 } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import {
@@ -123,17 +129,35 @@ export function finalizeWeeklyPlanningApplicationTurn(params: {
   pending: WeeklyPlanningPendingTurn;
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): void {
   if (!services.isStableV5Enabled()) return;
-  if (!services.hasStagedGraph({
-    conversationId: params.pending.conversationId,
-    requestId: params.pending.requestId,
-  })) {
-    return;
-  }
-  services.finalizeRuntimeGraph({
-    ownerId: params.ownerId,
+  const hasGraph = services.hasStagedGraph({
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
   });
+  const hasContext = hasStagedUserPlanningContextV1({
+    conversationId: params.pending.conversationId,
+    requestId: params.pending.requestId,
+  });
+  if (!hasGraph && !hasContext) return;
+
+  const contextReceipt = hasContext
+    ? finalizeStagedUserPlanningContextV1({
+        ownerId: params.ownerId,
+        conversationId: params.pending.conversationId,
+        requestId: params.pending.requestId,
+      })
+    : null;
+  try {
+    if (hasGraph) {
+      services.finalizeRuntimeGraph({
+        ownerId: params.ownerId,
+        conversationId: params.pending.conversationId,
+        requestId: params.pending.requestId,
+      });
+    }
+  } catch (error) {
+    rollbackFinalizedUserPlanningContextV1(contextReceipt);
+    throw error;
+  }
 }
 
 export function discardWeeklyPlanningApplicationTurn(
@@ -141,6 +165,10 @@ export function discardWeeklyPlanningApplicationTurn(
   services: WeeklyPlanningTurnSideEffectServices = defaultServices,
 ): void {
   if (!services.isStableV5Enabled()) return;
+  discardStagedUserPlanningContextV1({
+    conversationId: pending.conversationId,
+    requestId: pending.requestId,
+  });
   services.discardStagedGraph({
     conversationId: pending.conversationId,
     requestId: pending.requestId,

@@ -1,4 +1,8 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import {
+  USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
+  type UserPlanningContextSemanticFactV1,
+} from '../../userPlanningContext/userPlanningContextTypes';
 
 export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 =
   'weekly-planning-semantic-v5' as const;
@@ -286,6 +290,7 @@ export interface WeeklyPlanningSemanticDocumentV5 {
   relations: SemanticRelationV5[];
   availabilityDeclarations: SemanticAvailabilityDeclarationV5[];
   constraintSourceRequests: SemanticConstraintSourceRequestV5[];
+  userContextFacts?: UserPlanningContextSemanticFactV1[];
   uncertainties: SemanticUncertaintyV5[];
   corrections: SemanticCorrectionV5[];
   decisions: SemanticDecisionV5[];
@@ -601,6 +606,27 @@ const constraintSourceRequestSchema = {
   },
 } as const;
 
+const userContextFactSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'localId',
+    'kind',
+    'label',
+    'value',
+    'dateExpression',
+    'sourceText',
+  ],
+  properties: {
+    localId: { type: 'string' },
+    kind: { type: 'string', enum: USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 },
+    label: { type: 'string' },
+    value: nullableStringSchema,
+    dateExpression: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+} as const;
+
 export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
@@ -617,6 +643,7 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseForm
         'relations',
         'availabilityDeclarations',
         'constraintSourceRequests',
+        'userContextFacts',
         'uncertainties',
         'corrections',
         'decisions',
@@ -641,6 +668,10 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseForm
           type: 'array',
           items: constraintSourceRequestSchema,
         },
+        userContextFacts: {
+          type: 'array',
+          items: userContextFactSchema,
+        },
         uncertainties: { type: 'array', items: uncertaintySchema },
         corrections: { type: 'array', items: correctionSchema },
         decisions: { type: 'array', items: decisionSchema },
@@ -657,7 +688,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'The only top-level task categories are study, non_study, and unknown.',
     'Entrance exams, qualification exams, school exams, courses, homework, self-study, review, practice, learning habits, and research-as-learning are ordinary study tasks. Put the specific context in study.purpose and study.contextLabel, never in a special top-level task type.',
     'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. Use parentLocalId for hierarchy.',
-    'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, uncertainty, correction, and decision.',
+    'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, user context fact, uncertainty, correction, and decision.',
     'Attach each workload to the deepest task or component that it directly modifies. Never store labels and quantities in parallel arrays.',
     'Use quantityRole declared when an amount is stated but the utterance does not establish whether it is a target, remaining amount, or completed amount. Do not guess a stronger role.',
     'A time amount that states how much work exists, such as 30分勉強する or 掃除を1時間する, is a workload with unitCode minute or hour.',
@@ -666,6 +697,9 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Every temporal constraint must include constraintLevel hard, soft, or unknown and namedTimePeriod.',
     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences. Use unknown when the strength is not established.',
     'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',
+    'A date when an exam, presentation, competition, appointment, or other event itself occurs is not a work deadline. Put a durable event occurrence in userContextFacts with kind goal_event. Emit a task deadline only when the user explicitly states completion-by meaning for the work.',
+    'Use userContextFacts only for owner-level context useful beyond the current week. Use kind goal_event for a dated future event and kind concern for an ongoing concern or priority such as a weak subject. concern must have null dateExpression.',
+    'userContextFacts are current-turn deltas, not a copy of stored user context. Preserve label, optional value/dateExpression, and sourceText without inventing detail.',
     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target belongs in availabilityDeclarations.',
     'Use allowed_date when a task may be scheduled only on the specified date. Use excluded_date when that task must not be scheduled on the specified date. Both require dateExpression and null namedTimePeriod, startTime, and endTime.',
     'For a plan that covers only one specific day, use an absolute planningWindow whose start and end are the same date. For a whole day with no planning, use a hard unavailable availability declaration with that dateExpression and no clock bounds.',
@@ -680,7 +714,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'For an ambiguous source request, return an uncertainty targeting document field constraintSource instead of choosing a source.',
     'Use corrections and decisions only for explicit user corrections or explicit decisions about a previously presented public item. Otherwise return empty arrays.',
     'Do not invent facts. Preserve a short supporting excerpt in every sourceText.',
-    'Return empty availabilityDeclarations and constraintSourceRequests arrays when none are explicitly present.',
+    'Return empty availabilityDeclarations, constraintSourceRequests, and userContextFacts arrays when none are explicitly present.',
   ].join('\n');
 }
 
