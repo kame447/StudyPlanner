@@ -718,7 +718,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Describe user meaning only. Never emit application commands, reducer operations, database IDs, questions, missing-slot decisions, readiness decisions, preview decisions, schedule placements, approval decisions, or save decisions.',
     'The only top-level task categories are study, non_study, and unknown.',
     'Entrance exams, qualification exams, school exams, courses, homework, self-study, review, practice, learning habits, and research-as-learning are ordinary study tasks. Put the specific context in study.purpose and study.contextLabel, never in a special top-level task type.',
-    'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. Use parentLocalId for hierarchy.',
+    'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. parentLocalId is only for component-to-component hierarchy inside the same task: top-level components use null, child components use another component localId, and a task localId must never be used as parentLocalId.',
     'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, user context fact, uncertainty, correction, and decision.',
     'Attach each workload to the deepest task or component that it directly modifies. Never store labels and quantities in parallel arrays.',
     'Use quantityRole declared when an amount is stated but the utterance does not establish whether it is a target, remaining amount, or completed amount. Do not guess a stronger role.',

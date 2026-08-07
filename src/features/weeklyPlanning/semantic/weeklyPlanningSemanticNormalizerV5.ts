@@ -6,6 +6,9 @@ import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
+  normalizeContainingTaskComponentParentV5,
+} from './weeklyPlanningComponentParentNormalizationV5';
+import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
@@ -119,14 +122,21 @@ function validateSemanticResponse(
   rawResponse: string,
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ): SemanticValidationAttemptV5 {
-  const rawNormalization = normalizeExactDuplicateWorkloadPlacementV5(rawResponse);
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(rawNormalization.rawResponse);
+  const componentParentNormalization = normalizeContainingTaskComponentParentV5(rawResponse);
+  const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
+    componentParentNormalization.rawResponse,
+  );
+  const algorithmicRepairs = [
+    ...componentParentNormalization.repairs,
+    ...workloadNormalization.repairs,
+  ];
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(workloadNormalization.rawResponse);
   if (!parsed.document) {
     return {
       document: null,
       parsedDocument: null,
       errors: parsed.errors,
-      algorithmicRepairs: rawNormalization.repairs,
+      algorithmicRepairs,
     };
   }
 
@@ -141,7 +151,7 @@ function validateSemanticResponse(
     document: errors.length === 0 ? parsed.document : null,
     parsedDocument: parsed.document,
     errors,
-    algorithmicRepairs: rawNormalization.repairs,
+    algorithmicRepairs,
   };
 }
 
