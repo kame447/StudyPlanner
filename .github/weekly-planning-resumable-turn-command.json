@@ -1,9 +1,9 @@
 {
   "scenario": "alternate-decomposition-wording-v1",
-  "turn": 1,
+  "turn": 2,
   "attempt": 1,
-  "user_text": "来週、学校の提出物がいくつか残っていて、資格試験の勉強もしたいです。",
-  "previous_run_id": "",
+  "user_text": "英語レポートと化学プリントが残っています。レポートの方が量は多いです。",
+  "previous_run_id": "31200963843",
   "conversation_id": "weekly-alternate-decomposition-20260808-01",
   "owner_id": "resumable-real-api-eval-user-alt",
   "week_start_date": "2026-08-10",
