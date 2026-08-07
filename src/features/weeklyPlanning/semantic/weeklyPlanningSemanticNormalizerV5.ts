@@ -9,6 +9,9 @@ import {
   normalizeContainingTaskComponentParentV5,
 } from './weeklyPlanningComponentParentNormalizationV5';
 import {
+  normalizeCopiedUserContextDeltaV5,
+} from './weeklyPlanningCopiedUserContextNormalizationV5';
+import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
@@ -130,11 +133,19 @@ function validateSemanticResponse(
   rawResponse: string,
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ): SemanticValidationAttemptV5 {
-  const componentParentNormalization = normalizeContainingTaskComponentParentV5(rawResponse);
+  const copiedContextNormalization = normalizeCopiedUserContextDeltaV5({
+    rawResponse,
+    userText: input.userText,
+    publicStateSummary: input.publicStateSummary,
+  });
+  const componentParentNormalization = normalizeContainingTaskComponentParentV5(
+    copiedContextNormalization.rawResponse,
+  );
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
   const algorithmicRepairs = [
+    ...copiedContextNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
   ];
