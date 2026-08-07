@@ -140,7 +140,7 @@ describe('Stable V5 contextual ID boundary', () => {
       'Never keep uncertainty for a resolved role',
     );
     expect(systemPrompt).toContain(
-      'put public Fact IDs in targetLocalId',
+      'public Fact IDs in targetLocalId',
     );
 
     const repairMessages = calls[1]?.messages ?? [];
