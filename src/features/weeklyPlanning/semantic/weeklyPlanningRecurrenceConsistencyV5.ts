@@ -1,22 +1,21 @@
-import type {
-  SemanticRecurrenceKindV5,
-  WeeklyPlanningSemanticDocumentV5,
+import {
+  SEMANTIC_RECURRENCE_KINDS_V5,
+  type SemanticRecurrenceKindV5,
+  type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 
 export const WEEKLY_PLANNING_RECURRENCE_CONSISTENCY_VERSION_V5 =
   'weekly-planning-recurrence-consistency-v5' as const;
 
-const EXPLICIT_RECURRENCE_PERIODS = new Map<string, SemanticRecurrenceKindV5>([
-  ['daily', 'daily'],
-  ['weekdays', 'weekdays'],
-  ['weekends', 'weekends'],
-]);
+const RECURRENCE_KINDS = new Set<string>(SEMANTIC_RECURRENCE_KINDS_V5);
 
 function expectedRecurrence(periodExpression: string | null): SemanticRecurrenceKindV5 | null {
   if (!periodExpression) return null;
-  return EXPLICIT_RECURRENCE_PERIODS.get(
-    periodExpression.normalize('NFKC').trim().toLowerCase(),
-  ) ?? null;
+  const normalized = periodExpression.normalize('NFKC').trim().toLowerCase();
+  if (normalized.startsWith('custom:')) return 'custom';
+  return RECURRENCE_KINDS.has(normalized)
+    ? normalized as SemanticRecurrenceKindV5
+    : null;
 }
 
 export function validateWeeklyPlanningRecurrenceConsistencyV5(
