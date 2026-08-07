@@ -1,0 +1,332 @@
+diff --git a/src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts b/src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts
+index c4bb1b2..0000000 100644
+--- a/src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts
++++ b/src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts
+@@ -1,4 +1,8 @@
+ import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
++import {
++  USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
++  type UserPlanningContextSemanticFactV1,
++} from '../../userPlanningContext/userPlanningContextTypes';
+ 
+ export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 =
+   'weekly-planning-semantic-v5' as const;
+@@ -288,6 +292,7 @@ export interface WeeklyPlanningSemanticDocumentV5 {
+   availabilityDeclarations: SemanticAvailabilityDeclarationV5[];
+   constraintSourceRequests: SemanticConstraintSourceRequestV5[];
++  userContextFacts?: UserPlanningContextSemanticFactV1[];
+   uncertainties: SemanticUncertaintyV5[];
+   corrections: SemanticCorrectionV5[];
+   decisions: SemanticDecisionV5[];
+@@ -590,6 +595,27 @@ const constraintSourceRequestSchema = {
+   },
+ } as const;
+ 
++const userContextFactSchema = {
++  type: 'object',
++  additionalProperties: false,
++  required: [
++    'localId',
++    'kind',
++    'label',
++    'value',
++    'dateExpression',
++    'sourceText',
++  ],
++  properties: {
++    localId: { type: 'string' },
++    kind: { type: 'string', enum: USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 },
++    label: { type: 'string' },
++    value: nullableStringSchema,
++    dateExpression: nullableStringSchema,
++    ...sourceTextProperty,
++  },
++} as const;
++
+ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
+   type: 'json_schema',
+   json_schema: {
+@@ -609,6 +635,7 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
+         'relations',
+         'availabilityDeclarations',
+         'constraintSourceRequests',
++        'userContextFacts',
+         'uncertainties',
+         'corrections',
+         'decisions',
+@@ -631,6 +658,10 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFor
+           type: 'array',
+           items: constraintSourceRequestSchema,
+         },
++        userContextFacts: {
++          type: 'array',
++          items: userContextFactSchema,
++        },
+         uncertainties: { type: 'array', items: uncertaintySchema },
+         corrections: { type: 'array', items: correctionSchema },
+         decisions: { type: 'array', items: decisionSchema },
+@@ -650,7 +681,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
+     'Entrance exams, qualification exams, school exams, courses, homework, self-study, review, practice, learning habits, and research-as-learning are ordinary study tasks. Put the specific context in study.purpose and study.contextLabel, never in a special top-level task type.',
+     'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. Use parentLocalId for hierarchy.',
+-    'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, uncertainty, correction, and decision.',
++    'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, user context fact, uncertainty, correction, and decision.',
+     'Attach each workload to the deepest task or component that it directly modifies. Never store labels and quantities in parallel arrays.',
+     'Use quantityRole declared when an amount is stated but the utterance does not establish whether it is a target, remaining amount, or completed amount. Do not guess a stronger role.',
+     'A time amount that states how much work exists, such as 30分勉強する or 掃除を1時間する, is a workload with unitCode minute or hour.',
+@@ -660,6 +691,9 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
+     'Every temporal constraint must include constraintLevel hard, soft, or unknown and namedTimePeriod.',
+     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences. Use unknown when the strength is not established.',
+     'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',
++    'A date when an exam, presentation, competition, appointment, or other event itself occurs is not a work deadline. Put a durable event occurrence in userContextFacts with kind goal_event. Emit a task deadline only when the user explicitly states completion-by meaning for the work.',
++    'Use userContextFacts only for owner-level context useful beyond the current week. Use kind goal_event for a dated future event and kind concern for an ongoing concern or priority such as a weak subject. concern must have null dateExpression.',
++    'userContextFacts are current-turn deltas, not a copy of stored user context. Preserve label, optional value/dateExpression, and sourceText without inventing detail.',
+     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target belongs in availabilityDeclarations.',
+     'Use allowed_date when a task may be scheduled only on the specified date. Use excluded_date when that task must not be scheduled on the specified date. Both require dateExpression and null namedTimePeriod, startTime, and endTime.',
+     'For a plan that covers only one specific day, use an absolute planningWindow whose start and end are the same date. For a whole day with no planning, use a hard unavailable availability declaration with that dateExpression and no clock bounds.',
+@@ -675,7 +709,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
+     'For an ambiguous source request, return an uncertainty targeting document field constraintSource instead of choosing a source.',
+     'Use corrections and decisions only for explicit user corrections or explicit decisions about a previously presented public item. Otherwise return empty arrays.',
+     'Do not invent facts. Preserve a short supporting excerpt in every sourceText.',
+-    'Return empty availabilityDeclarations and constraintSourceRequests arrays when none are explicitly present.',
++    'Return empty availabilityDeclarations, constraintSourceRequests, and userContextFacts arrays when none are explicitly present.',
+   ].join('\n');
+ }
+diff --git a/src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts b/src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
+index dba73a2..0000000 100644
+--- a/src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
++++ b/src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
+@@ -4,6 +4,10 @@ import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfi
+ import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+ import type { Plan, ScheduleTemplate } from '../../../types/domain';
++import {
++  stageUserPlanningContextFactsV1,
++  userPlanningContextPromptSummaryV1,
++} from '../../userPlanningContext/userPlanningContextSpace';
+ import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+ import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
+ import type { WeeklyPlanningMessage } from '../types';
+@@ -291,6 +295,8 @@ function publicStateSummary(
+   graph: WeeklyPlanningFactGraphV5,
+   messages: readonly WeeklyPlanningMessage[],
+   previousState?: PlanningIntakeState,
++  ownerId?: string,
++  currentDate?: string,
+ ): Record<string, unknown> {
+   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+   return {
+@@ -329,6 +335,10 @@ function publicStateSummary(
+       sourceText: uncertainty.source.sourceText,
+     })),
++    userPlanningContext: ownerId && currentDate
++      ? userPlanningContextPromptSummaryV1({ ownerId, currentDate })
++      : [],
+     lastAssistantMessage:
+       [...messages].reverse().find((message) => message.role === 'assistant')?.content ?? null,
+   };
+@@ -565,6 +575,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
+     runtimeSession.graph,
+     input.messages,
+     input.previousState,
++    input.userId,
++    input.selectedDate,
+   );
+@@ -658,6 +670,25 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
+     return output;
+   }
+ 
++  const userContextFacts = semantic.normalization.document?.userContextFacts ?? [];
++  stageUserPlanningContextFactsV1({
++    ownerId: input.userId,
++    conversationId: input.conversationId,
++    requestId: input.traceRequestId,
++    observedDate: input.selectedDate,
++    facts: userContextFacts,
++  });
++  recordWeeklyPlanningStableV5DebugTrace({
++    requestId: input.traceRequestId,
++    stage: 'runtime_user_context_staged',
++    data: {
++      ownerId: input.userId,
++      conversationId: input.conversationId,
++      requestId: input.traceRequestId,
++      userContextFacts,
++    },
++  });
++
+   commitWeeklyPlanningStableV5RuntimeGraph({
+     ownerId: input.userId,
+     conversationId: input.conversationId,
+diff --git a/src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.ts b/src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.ts
+index eda943e..0000000 100644
+--- a/src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.ts
++++ b/src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.ts
+@@ -1,3 +1,10 @@
++import {
++  discardStagedUserPlanningContextV1,
++  finalizeStagedUserPlanningContextV1,
++  hasStagedUserPlanningContextV1,
++  rollbackFinalizedUserPlanningContextV1,
++} from '../../userPlanningContext/userPlanningContextSpace';
+ import {
+   recordWeeklyPlanningStableV5TurnTrace,
+ } from '../trace/weeklyPlanningStableV5TraceRuntime';
+@@ -127,17 +134,30 @@ export function finalizeWeeklyPlanningApplicationTurn(params: {
+ }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): void {
+   if (!services.isStableV5Enabled()) return;
+-  if (!services.hasStagedGraph({
++  const hasGraph = services.hasStagedGraph({
+     conversationId: params.pending.conversationId,
+     requestId: params.pending.requestId,
+-  })) {
+-    return;
+-  }
+-  services.finalizeRuntimeGraph({
+-    ownerId: params.ownerId,
++  });
++  const hasContext = hasStagedUserPlanningContextV1({
+     conversationId: params.pending.conversationId,
+     requestId: params.pending.requestId,
+   });
++  if (!hasGraph && !hasContext) return;
++
++  const contextReceipt = hasContext
++    ? finalizeStagedUserPlanningContextV1({
++        ownerId: params.ownerId,
++        conversationId: params.pending.conversationId,
++        requestId: params.pending.requestId,
++      })
++    : null;
++  try {
++    if (hasGraph) {
++      services.finalizeRuntimeGraph({
++        ownerId: params.ownerId,
++        conversationId: params.pending.conversationId,
++        requestId: params.pending.requestId,
++      });
++    }
++  } catch (error) {
++    rollbackFinalizedUserPlanningContextV1(contextReceipt);
++    throw error;
++  }
+ }
+ 
+ export function discardWeeklyPlanningApplicationTurn(
+@@ -146,6 +166,10 @@ export function discardWeeklyPlanningApplicationTurn(
+ ): void {
+   if (!services.isStableV5Enabled()) return;
++  discardStagedUserPlanningContextV1({
++    conversationId: pending.conversationId,
++    requestId: pending.requestId,
++  });
+   services.discardStagedGraph({
+     conversationId: pending.conversationId,
+     requestId: pending.requestId,
+diff --git a/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversationCheckpoint.test.ts b/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversationCheckpoint.test.ts
+index e27992d..0000000 100644
+--- a/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversationCheckpoint.test.ts
++++ b/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversationCheckpoint.test.ts
+@@ -1,4 +1,10 @@
+ import { describe, expect, it } from 'vitest';
++import {
++  createEmptyUserPlanningContextSnapshotV1,
++  type UserPlanningContextSnapshotV1,
++} from '../../userPlanningContext/userPlanningContextTypes';
++import { validateUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextSpace';
+ import type { PlanningState } from '../types';
+ import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+ import { parseWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
+@@ -28,6 +34,7 @@ export interface WeeklyPlanningResumableConversationCheckpoint {
+   selectedDate: string;
+   planningState: PlanningState;
+   graph: WeeklyPlanningFactGraphV5;
++  userPlanningContext: UserPlanningContextSnapshotV1;
+   turns: WeeklyPlanningResumableConversationTurn[];
+   savedAt: string;
+ }
+@@ -79,6 +86,13 @@ export function parseWeeklyPlanningResumableConversationCheckpoint(
+   const graphResult = parseWeeklyPlanningFactGraphV5(JSON.stringify(parsed.graph));
+   if (!graphResult.graph) throw new Error('Checkpoint graph is invalid.');
++  const userPlanningContext = parsed.userPlanningContext === undefined
++    ? createEmptyUserPlanningContextSnapshotV1(parsed.ownerId)
++    : parsed.userPlanningContext;
++  if (!validateUserPlanningContextSnapshotV1(userPlanningContext, parsed.ownerId)) {
++    throw new Error('Checkpoint user planning context is invalid.');
++  }
+   if (!Array.isArray(parsed.turns) || !parsed.turns.every(isTurn)) {
+     throw new Error('Checkpoint turns are invalid.');
+   }
+@@ -105,6 +119,7 @@ export function parseWeeklyPlanningResumableConversationCheckpoint(
+     selectedDate: parsed.selectedDate,
+     planningState,
+     graph: graphResult.graph,
++    userPlanningContext,
+     turns,
+     savedAt: parsed.savedAt,
+   };
+@@ -128,6 +143,7 @@ function checkpoint(): WeeklyPlanningResumableConversationCheckpoint {
+     selectedDate: '2026-08-06',
+     planningState: createInitialPlanningState('2026-08-03'),
+     graph: createEmptyWeeklyPlanningFactGraphV5(),
++    userPlanningContext: createEmptyUserPlanningContextSnapshotV1('owner-1'),
+     turns: [],
+     savedAt: '2026-08-06T14:00:00.000Z',
+   };
+diff --git a/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts b/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts
+index eaeb9ba..0000000 100644
+--- a/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts
++++ b/src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts
+@@ -1,5 +1,14 @@
+ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+ import { describe, expect, it } from 'vitest';
++import {
++  exportUserPlanningContextSnapshotV1,
++  hydrateUserPlanningContextSnapshotV1,
++  resetUserPlanningContextRuntimeForTestV1,
++} from '../../userPlanningContext/userPlanningContextSpace';
++import {
++  createEmptyUserPlanningContextSnapshotV1,
++} from '../../userPlanningContext/userPlanningContextTypes';
+ import {
+   bindWeeklyPlanningStableV5RuntimeSessionScope,
+   getWeeklyPlanningStableV5RuntimeSession,
+@@ -59,6 +68,7 @@ function resetRuntime(): void {
+   resetWeeklyPlanningStableV5DebugTraceForTest();
+   clearWeeklyPlanningSessionRuntime();
++  resetUserPlanningContextRuntimeForTestV1();
+   resetWeeklyPlanningRuntimeModeForTest();
+   setWeeklyPlanningRuntimeMode('stable_v5');
+ }
+@@ -92,6 +102,7 @@ function initialCheckpoint(): WeeklyPlanningResumableConversationCheckpoint {
+     selectedDate,
+     planningState,
+     graph: runtime.graph,
++    userPlanningContext: createEmptyUserPlanningContextSnapshotV1(ownerId),
+     turns: [],
+     savedAt: new Date().toISOString(),
+   };
+@@ -139,6 +150,7 @@ function writeOutputs(params: {
+     turn: latestTurn,
+     failure: params.result.failure ?? null,
+     dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,
++    userPlanningContext: params.checkpoint.userPlanningContext,
+     trace: params.trace,
+   }, null, 2)}\n`);
+@@ -209,6 +221,7 @@ run('weekly planning resumable real API turn', () => {
+   it('restores one conversation, submits exactly one user turn, and writes a new checkpoint', async () => {
+     const checkpoint = loadCheckpoint();
+     resetRuntime();
++    hydrateUserPlanningContextSnapshotV1(checkpoint.userPlanningContext);
+     hydrateWeeklyPlanningStableV5RuntimeSession({
+       ownerId: checkpoint.ownerId,
+       weekStartDate: checkpoint.weekStartDate,
+@@ -286,6 +299,10 @@ run('weekly planning resumable real API turn', () => {
+       ...checkpoint,
+       planningState: structuredClone(store.getState()),
+       graph: runtime.graph,
++      userPlanningContext: exportUserPlanningContextSnapshotV1({
++        ownerId: checkpoint.ownerId,
++        currentDate: checkpoint.selectedDate,
++      }),
+       turns: [
+         ...checkpoint.turns,
+         {
