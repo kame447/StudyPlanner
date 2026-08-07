@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import {
@@ -12,11 +13,21 @@ import {
 const SCENARIO_WORDS = ['夏休み', '共通テスト', '数学が結構まずい'];
 
 describe('Stable V5 prompt generalization contracts', () => {
-  it('describes unknown work breakdown generically without scenario labels', () => {
+  it('requires every provider task to classify planning granularity without scenario labels', () => {
     const prompt = createWeeklyPlanningSemanticSystemPromptV5();
-    expect(prompt).toContain('field work_breakdown');
-    expect(prompt).toContain('umbrella or category');
+    expect(prompt).toContain('Every task must classify decompositionStatus');
+    expect(prompt).toContain('needs_breakdown');
+    expect(prompt).toContain('collection, project, program, or category');
     for (const word of SCENARIO_WORDS) expect(prompt).not.toContain(word);
+
+    const schema = WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.schema as any;
+    const taskSchema = schema.properties.tasks.items;
+    expect(taskSchema.required).toContain('decompositionStatus');
+    expect(taskSchema.properties.decompositionStatus.enum).toEqual([
+      'atomic',
+      'decomposed',
+      'needs_breakdown',
+    ]);
   });
 
   it('states recurrence consistency as a generic cadence invariant', () => {
