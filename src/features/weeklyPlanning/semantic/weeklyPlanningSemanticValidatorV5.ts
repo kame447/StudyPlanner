@@ -2,6 +2,7 @@ import {
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
 } from '../../userPlanningContext/userPlanningContextTypes';
 import {
+  SEMANTIC_DURABLE_CONCERN_BASES_V5,
   SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -184,7 +185,7 @@ function validateDurableContextSignals(
         errors.push(`${signalPath}:expected-object`);
         return;
       }
-      if (!hasOnlyKeys(signal, ['localId', 'kind', 'value', 'sourceText'])) {
+      if (!hasOnlyKeys(signal, ['localId', 'kind', 'basis', 'value', 'sourceText'])) {
         errors.push(`${signalPath}:unknown-key`);
       }
       if (typeof signal.localId !== 'string' || !signal.localId.trim()) {
@@ -195,6 +196,10 @@ function validateDurableContextSignals(
         seen.add(signal.localId);
       }
       if (signal.kind !== 'concern') errors.push(`${signalPath}.kind:unsupported-value`);
+      if (signal.basis !== undefined
+        && !(SEMANTIC_DURABLE_CONCERN_BASES_V5 as readonly unknown[]).includes(signal.basis)) {
+        errors.push(`${signalPath}.basis:unsupported-value`);
+      }
       if (!(signal.value === null || typeof signal.value === 'string')) {
         errors.push(`${signalPath}.value:expected-string-or-null`);
       }

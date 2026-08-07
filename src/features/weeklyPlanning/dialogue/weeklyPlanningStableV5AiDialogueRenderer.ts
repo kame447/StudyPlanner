@@ -218,7 +218,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       '現在のユーザーに返す自然な日本語を一つ作成してください。',
       'actionId、actionKind、questionCodeはapplicationDecisionどおりに返してください。',
       'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です。referenceResponseはアプリが必要としている確認意図の参考であり、文型・列挙順・語句をコピーする必要はありません。',
-      'undecidedItemsにfieldがwork_breakdownの項目がある場合は、量や合計時間より先に、その対象の中身を分けるための一つの質問をしてください。',
+      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めず、既に分かっている一つの作業について量・範囲を確認してください。',
       '説明要求には説明し、questionでは必要情報だけを尋ね、未実行の作成・保存を完了したとは言わないでください。',
     ].join(''),
   }, null, 2);

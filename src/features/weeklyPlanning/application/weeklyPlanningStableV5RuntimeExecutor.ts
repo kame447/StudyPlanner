@@ -362,26 +362,30 @@ function publicStateSummary(
 function missingSchedulableWorkQuestion(
   graph: WeeklyPlanningFactGraphV5,
 ): { message: string; questionCode?: string; taskTitles: string[] } {
-  const taskTitles = createWeeklyPlanningActiveSchedulerGraphViewV5(graph).tasks
-    .map((task) => task.title.trim())
-    .filter(Boolean);
-  if (taskTitles.length === 0) {
+  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+  const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
+  const componentWithNoWorkload = active.components.find(
+    (component) => !active.workloads.some((workload) => workload.componentId === component.id),
+  );
+  if (componentWithNoWorkload) {
     return {
-      message: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
+      message: `「${componentWithNoWorkload.label}」は、どこまで進めたいですか？ページ数・問題数・範囲など、分かる形で教えてください。`,
       questionCode: 'missing_schedulable_work',
       taskTitles,
     };
   }
-
-  const visibleTitles = taskTitles.slice(0, 3).map((title) => `「${title}」`).join('、');
-  const summary = taskTitles.length > 3
-    ? `${visibleTitles}など${taskTitles.length}件のタスク`
-    : visibleTitles;
-  const question = taskTitles.length === 1
-    ? 'どこまで進めたいか、量や範囲が決まっていれば教えてください。'
-    : 'まず一つずつ整理したいので、どれから決めるか教えてください。選んだものについて、どこまで進めたいか確認します。';
+  const taskWithNoWorkload = active.tasks.find(
+    (task) => !active.workloads.some((workload) => workload.taskId === task.id),
+  );
+  if (taskWithNoWorkload) {
+    return {
+      message: `「${taskWithNoWorkload.title}」は、どこまで進めたいですか？量や範囲が分かれば教えてください。`,
+      questionCode: 'missing_schedulable_work',
+      taskTitles,
+    };
+  }
   return {
-    message: `${summary}がありますね。${question}`,
+    message: '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',
     questionCode: 'missing_schedulable_work',
     taskTitles,
   };

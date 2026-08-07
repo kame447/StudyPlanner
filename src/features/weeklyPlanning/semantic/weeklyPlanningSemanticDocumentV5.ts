@@ -154,9 +154,21 @@ export interface SemanticSourceEvidenceV5 {
   sourceText: string;
 }
 
+export const SEMANTIC_DURABLE_CONCERN_BASES_V5 = [
+  'difficulty',
+  'weakness',
+  'worry',
+  'low_confidence',
+  'behind',
+  'motivation_problem',
+] as const;
+export type SemanticDurableConcernBasisV5 =
+  (typeof SEMANTIC_DURABLE_CONCERN_BASES_V5)[number];
+
 export interface SemanticDurableContextSignalV5 extends SemanticSourceEvidenceV5 {
   localId: string;
   kind: 'concern';
+  basis?: SemanticDurableConcernBasisV5;
   value: string | null;
 }
 
@@ -359,10 +371,11 @@ const workloadSchema = {
 const durableContextSignalSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['localId', 'kind', 'value', 'sourceText'],
+  required: ['localId', 'kind', 'basis', 'value', 'sourceText'],
   properties: {
     localId: { type: 'string' },
     kind: { type: 'string', enum: ['concern'] },
+    basis: { type: 'string', enum: SEMANTIC_DURABLE_CONCERN_BASES_V5 },
     value: nullableStringSchema,
     ...sourceTextProperty,
   },
@@ -750,7 +763,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences. Use unknown when the strength is not established.',
     'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',
     'A date when an exam, presentation, competition, appointment, or other event itself occurs is not a work deadline. Put a durable event occurrence in userContextFacts with kind goal_event. Emit a task deadline only when the user explicitly states completion-by meaning for the work.',
-    'Every task and study component must return durableContextSignals, using an empty array when none apply. Emit a concern signal only when current userText explicitly describes a subjective or evaluative continuing difficulty, weakness, worry, confidence problem, being behind, or comparable concern relevant to later plans. A descriptive amount, relative size, frequency, duration, or workload comparison alone is not a concern. Preserve the concern wording in value or use null; do not invent a diagnosis or stronger priority.',
+    'Every task and study component must return durableContextSignals, using an empty array when none apply. A concern requires one explicit basis: difficulty, weakness, worry, low_confidence, behind, or motivation_problem. If no basis is supported by current userText, emit no concern. Descriptive amount, relative size, frequency, duration, or workload comparison alone supports none of these bases. Preserve the concern wording in value or use null; do not invent a diagnosis or stronger priority.',
     'Entity-local concern signals may coexist with the same task/component weekly facts. Do not omit a concern merely because the entity label already appears elsewhere in the document.',
     'Use top-level userContextFacts for owner-level context not naturally represented as an entity annotation, especially dated future goal_event occurrences. userContextFacts and durableContextSignals are current-turn deltas, never copies of stored user context.',
     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target belongs in availabilityDeclarations.',
