@@ -1,11 +1,11 @@
 {
   "scenario": "ambiguous-shared-quantity-v1",
   "turn": 1,
-  "attempt": 2,
+  "attempt": 3,
   "user_text": "来週、数学のワークと古典の課題を進めたいです。20ページくらい。",
   "previous_run_id": "",
-  "conversation_id": "weekly-ambiguous-shared-quantity-20260808-02",
-  "owner_id": "resumable-real-api-eval-user-ambiguous-2",
+  "conversation_id": "weekly-ambiguous-shared-quantity-20260808-03",
+  "owner_id": "resumable-real-api-eval-user-ambiguous-3",
   "week_start_date": "2026-08-10",
   "selected_date": "2026-08-08"
 }
