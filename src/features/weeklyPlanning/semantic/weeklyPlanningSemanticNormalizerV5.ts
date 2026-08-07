@@ -24,6 +24,7 @@ import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
+  readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5,
   validateWeeklyPlanningWorkBreakdownResponseContractV5,
 } from './weeklyPlanningWorkBreakdownResponseContractV5';
 import {
@@ -177,6 +178,7 @@ function validateSemanticResponse(
     ...validateWeeklyPlanningRecurrenceConsistencyV5(parsed.document),
     ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
       document: parsed.document,
+      userText: input.userText,
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({
@@ -208,8 +210,16 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
   ];
 }
 
-function repairDirectivesForErrors(errors: string[]): string[] {
+function repairDirectivesForErrors(
+  errors: string[],
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): string[] {
   const directives: string[] = [];
+  const pendingWorkBreakdownTarget =
+    readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(input.publicStateSummary);
+  if (pendingWorkBreakdownTarget) {
+    directives.push(`This turn answers the pending work_breakdown uncertainty for exact target ${pendingWorkBreakdownTarget}. Return exactly one task, bind it with existingPublicId to that target, and use current-userText evidence on that task. Put newly identified study constituents on that target task and mark it decomposed. Do not emit extra top-level tasks, prior planning state, old uncertainty, user context, or task relations in this focused resolution delta.`);
+  }
   if (errors.some((error) => error.includes('canonical-relative-'))) {
     directives.push('Use one allowed canonical relative-day or relative-week value that matches the original utterance and conversation context.');
   }
@@ -254,6 +264,7 @@ function createRepairMessages(params: {
   baseMessages: ChatMessage[];
   invalidResponse: string;
   validationErrors: string[];
+  input: WeeklyPlanningSemanticNormalizerInputV5;
 }): ChatMessage[] {
   return [
     ...params.baseMessages,
@@ -262,7 +273,7 @@ function createRepairMessages(params: {
       role: 'user',
       content: JSON.stringify({
         instruction: 'Return the complete corrected Stable V5 JSON document only. Complete means all required JSON Schema top-level keys are present; it does not mean restating the accepted plan. The document must remain a delta for current userText. Do not invent facts or application decisions.',
-        requiredChanges: repairDirectivesForErrors(params.validationErrors),
+        requiredChanges: repairDirectivesForErrors(params.validationErrors, params.input),
         validationErrors: params.validationErrors,
       }),
     },
@@ -416,6 +427,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         baseMessages,
         invalidResponse: initialResponse,
         validationErrors: initialValidation.errors,
+        input,
       });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
