@@ -10,6 +10,9 @@ import {
 import {
   validateWeeklyPlanningSemanticValueV5 as validateLegacySemanticValueV5,
 } from './weeklyPlanningSemanticValidatorLegacyV5';
+import {
+  validateWeeklyPlanningUserContextConsistencyV5,
+} from './weeklyPlanningUserContextConsistencyV5';
 
 /*
  * Semantic ownership boundary
@@ -21,14 +24,17 @@ import {
  * - effort estimates may target a workload inside the same task
  * - userContextFacts are validated separately and never canonicalized into the
  *   week-scoped PlanningFactGraph
+ * - one identical evidence span cannot simultaneously justify a goal-event
+ *   occurrence and a work-completion deadline at the same date; distinct
+ *   explicit completion evidence is required for both concepts to coexist
  *
  * The OpenAI JSON Schema requires userContextFacts on new provider responses.
  * The TypeScript/runtime wrapper accepts an omitted field only for pre-migration
  * fixtures/checkpoints and treats it as an empty delta.
  *
- * These checks never derive meaning from labels/sourceText. The AI has already
- * selected the semantic kind and targets; code verifies only structure,
- * supported values, local-ID isolation, and date-expression syntax.
+ * These checks never derive meaning from raw user text. The AI has already
+ * selected semantic kinds; code verifies structure and consistency of those
+ * structured claims.
  */
 export interface WeeklyPlanningSemanticValidationResultV5 {
   document: WeeklyPlanningSemanticDocumentV5 | null;
@@ -163,11 +169,16 @@ export function validateWeeklyPlanningSemanticValueV5(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
-  const errors = [...legacyErrors, ...contextErrors];
+  const structuralErrors = [...legacyErrors, ...contextErrors];
+  const document = structuralErrors.length === 0
+    ? value as unknown as WeeklyPlanningSemanticDocumentV5
+    : null;
+  const consistencyErrors = document
+    ? validateWeeklyPlanningUserContextConsistencyV5(document)
+    : [];
+  const errors = [...structuralErrors, ...consistencyErrors];
   return {
-    document: errors.length === 0
-      ? value as unknown as WeeklyPlanningSemanticDocumentV5
-      : null,
+    document: errors.length === 0 ? document : null,
     errors,
   };
 }
