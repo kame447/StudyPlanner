@@ -1,0 +1,30 @@
+name: Weekly Planning Task Granularity Targeted
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/weekly-planning-task-granularity-targeted.yml
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b --pretty false
+      - name: Run task granularity regressions
+        run: >-
+          npx vitest run
+          src/features/weeklyPlanning/semantic/weeklyPlanningTaskDecompositionNormalizationV5.test.ts
+          src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts
+          src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningRecurrenceConsistencyV5.test.ts
