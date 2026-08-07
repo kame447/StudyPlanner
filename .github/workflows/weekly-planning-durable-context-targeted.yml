@@ -1,0 +1,29 @@
+name: Weekly Planning Durable Context Targeted
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/weekly-planning-durable-context-targeted.yml
+
+jobs:
+  targeted:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run durable context regression subset
+        run: |
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run \
+            src/features/userPlanningContext/userPlanningContextSpace.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningUserContextConsistencyV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningDurableContextSignalsV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticSchemaGeneration.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts \
+            --reporter=verbose
