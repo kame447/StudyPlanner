@@ -1,3 +1,4 @@
+# trigger: 2026-08-08 progress-first
 name: Apply Progress-First And Typo Canonicalization
 
 on:
@@ -37,7 +38,6 @@ jobs:
                   raise SystemExit(f'{path}: expected one match, got {count}')
               p.write_text(text.replace(old, new, 1))
 
-          # Keep the already-verified ambiguity validator wiring, but repair document-level ambiguity correctly.
           p = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
           replace_once(
               p,
@@ -45,13 +45,11 @@ jobs:
               "directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Preserve every otherwise-valid current-turn fact from the invalid response, including its planningWindow and listed tasks/components, but remove the guessed modifier attachment only. Emit exactly one uncertainty for that modifier with targetLocalId exactly \\\"document\\\", field exactly \\\"modifier_target\\\", and the modifier excerpt as sourceText. Never use null or the string \\\"null\\\" for targetLocalId, and do not choose a candidate by order or proximity.');",
           )
 
-          # Canonicalize unambiguous typo/noise in semantic labels while retaining verbatim evidence in sourceText.
           p = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts'
           old = "    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context; keep the original excerpt in sourceText. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',\n"
           new = "    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context. When that correction is unambiguous, normalize semantic title, label, contextLabel, and other user-visible entity names to the corrected reading, while preserving the original verbatim excerpt only in sourceText. Do not keep an obvious typo as the canonical entity name. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',\n"
           replace_once(p, old, new)
 
-          # Progress-first dialogue: current scope/progress before weekly target, then target once progress is already known.
           p = 'src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts'
           old = "      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めず、既に分かっている一つの作業について量・範囲を確認してください。semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず、その曖昧さを解消する一つの確認だけをしてください。',\n"
           new = "      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めません。対象について現在の全体範囲や進捗をまだ把握していないなら、まずその教材・作業で自然な単位を使って、全体の範囲と現在どこまで終わっているかを一つの確認として尋ねてください。ページに固定せず、問題数、単語数、章、節、回、時間など、planningStateSummaryや会話から分かる対象に合う粒度を使ってください。完了済み・現在位置がすでにdecidedFactsまたはrecentConversationから分かる場合に限って、次に今回の計画期間でどこまで進めたいかを尋ねてください。semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず、その曖昧さを解消する一つの確認だけをしてください。',\n"
@@ -60,7 +58,6 @@ jobs:
           new = "    '誤字や崩れた文でも意味が一意なら自然に補正して理解し、その補正後の自然な名称をユーザー向け文面で使ってください。明白な誤字をそのまま名称として繰り返さないでください。意味が複数通りあり得る場合は推測を事実として言い直さず、曖昧な部分だけを一つ確認してください。',\n"
           replace_once(p, old, new)
 
-          # Generic regression assertions; no production special-casing of any concrete subject/unit.
           p = 'src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts'
           old = "    expect(prompt).toContain('only when one reading is clearly supported');\n"
           new = "    expect(prompt).toContain('only when one reading is clearly supported');\n    expect(prompt).toContain('normalize semantic title, label, contextLabel');\n    expect(prompt).toContain('preserving the original verbatim excerpt only in sourceText');\n    expect(prompt).toContain('Do not keep an obvious typo as the canonical entity name');\n"
