@@ -84,7 +84,7 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).toContain('Emit only facts stated or changed in current userText');
   });
 
-  it('repairs a copied accepted planning window by preserving current-turn facts only', async () => {
+  it('repairs a copied accepted planning window during a contextual turn while preserving current-turn facts', async () => {
     const staleWindow = {
       localId: 'window-copied',
       kind: 'relative_week' as const,
@@ -103,6 +103,11 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '数学を進めたい',
       publicStateSummary: {
+        pendingQuestion: {
+          actionId: 'ask-work',
+          questionCode: 'missing_schedulable_work',
+          graphRevision: 1,
+        },
         planningWindows: [{
           publicId: 'window-accepted',
           kind: 'relative_week',
