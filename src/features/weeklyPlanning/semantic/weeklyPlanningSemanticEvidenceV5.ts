@@ -95,7 +95,7 @@ function taskEvidence(
 function userContextEvidence(
   document: WeeklyPlanningSemanticDocumentV5,
 ): SourceEvidenceEntryV5[] {
-  return document.userContextFacts.map((fact, index) => ({
+  return (document.userContextFacts ?? []).map((fact, index) => ({
     path: `document.userContextFacts[${index}].sourceText`,
     sourceText: fact.sourceText,
   }));
