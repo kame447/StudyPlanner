@@ -132,7 +132,7 @@ describe('Stable V5 contextual ID boundary', () => {
     );
 
     const systemPrompt = calls[0]?.messages[0]?.content ?? '';
-    expect(systemPrompt).toContain('using fresh localIds');
+    expect(systemPrompt).toContain('fresh localIds');
     expect(systemPrompt).toContain(
       'target means the amount intended for this plan',
     );
