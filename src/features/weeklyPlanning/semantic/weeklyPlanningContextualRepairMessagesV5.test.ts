@@ -138,7 +138,8 @@ describe('Stable V5 contextual repair messages', () => {
     const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
     expect(repairMessages.map((message) => message.role)).toEqual(['system', 'user', 'user']);
     expect(repairMessages.some((message) => message.content === invalidOldBreakdown())).toBe(false);
-    const repairPayload = JSON.parse(repairMessages.at(-1)?.content ?? '{}');
+    const lastMessage = repairMessages[repairMessages.length - 1];
+    const repairPayload = JSON.parse(lastMessage?.content ?? '{}');
     expect(repairPayload.requiredChanges.join('\n')).toContain('exact target task-public');
   });
 
