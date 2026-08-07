@@ -1,11 +1,11 @@
 {
-  "scenario": "obvious-typo-input-v1",
+  "scenario": "ambiguous-shared-quantity-v1",
   "turn": 1,
   "attempt": 1,
-  "user_text": "来週、数楽ワークを20ページ進めたいです。",
+  "user_text": "来週、数学のワークと古典の課題を進めたいです。20ページくらい。",
   "previous_run_id": "",
-  "conversation_id": "weekly-obvious-typo-20260808-01",
-  "owner_id": "resumable-real-api-eval-user-typo",
+  "conversation_id": "weekly-ambiguous-shared-quantity-20260808-01",
+  "owner_id": "resumable-real-api-eval-user-ambiguous",
   "week_start_date": "2026-08-10",
   "selected_date": "2026-08-08"
 }
