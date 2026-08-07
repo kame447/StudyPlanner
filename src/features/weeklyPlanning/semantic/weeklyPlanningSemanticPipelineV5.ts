@@ -10,6 +10,9 @@ import {
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 import {
+  applyWeeklyPlanningExistingEntityBindingsV5,
+} from './weeklyPlanningExistingEntityBindingApplicationV5';
+import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
   type GenericSchedulerInputContext,
@@ -444,9 +447,28 @@ export function createWeeklyPlanningSemanticPipelineV5(
           document: normalization.document,
           context: canonicalizationContext,
         });
+      const entityBindingApplication = contextualAnswer
+        ? {
+            version: 'weekly-planning-existing-entity-binding-application-v5' as const,
+            status: 'not_applicable' as const,
+            canonicalization: baseCanonicalization,
+            errors: [],
+          }
+        : applyWeeklyPlanningExistingEntityBindingsV5({
+            originalGraph: graph,
+            document: normalization.document,
+            canonicalization: baseCanonicalization,
+          });
+      const boundCanonicalization = entityBindingApplication.canonicalization;
+      recordWeeklyPlanningStableV5DebugTrace({
+        requestId: input.turnId,
+        stage: 'existing_entity_binding_application_evaluated',
+        severity: entityBindingApplication.status === 'rejected' ? 'error' : 'info',
+        data: entityBindingApplication,
+      });
       const correctionResult = applyCanonicalCorrectionResult({
         originalGraph: graph,
-        canonicalization: baseCanonicalization,
+        canonicalization: boundCanonicalization,
         operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
       });
       const canonicalization = correctionResult.canonicalization;
@@ -455,7 +477,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         stage: 'canonical_correction_application_evaluated',
         severity: correctionResult.application.status === 'rejected' ? 'error' : 'info',
         data: {
-          inputCanonicalization: baseCanonicalization,
+          inputCanonicalization: boundCanonicalization,
           application: correctionResult.application,
           resultingCanonicalization: canonicalization,
         },

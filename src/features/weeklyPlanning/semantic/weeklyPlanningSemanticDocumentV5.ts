@@ -166,6 +166,7 @@ export interface SemanticWorkloadV5 extends SemanticSourceEvidenceV5 {
 
 export interface SemanticStudyComponentV5 extends SemanticSourceEvidenceV5 {
   localId: string;
+  existingPublicId?: string | null;
   parentLocalId: string | null;
   role: SemanticComponentRoleV5;
   label: string;
@@ -210,6 +211,7 @@ export interface SemanticRecurrenceV5 extends SemanticSourceEvidenceV5 {
 
 export interface SemanticTaskV5 extends SemanticSourceEvidenceV5 {
   localId: string;
+  existingPublicId?: string | null;
   category: SemanticTaskCategoryV5;
   title: string;
   study: SemanticStudyDetailsV5 | null;
@@ -362,6 +364,7 @@ const componentSchema = {
   additionalProperties: false,
   required: [
     'localId',
+    'existingPublicId',
     'parentLocalId',
     'role',
     'label',
@@ -371,6 +374,7 @@ const componentSchema = {
   ],
   properties: {
     localId: { type: 'string' },
+    existingPublicId: nullableStringSchema,
     parentLocalId: nullableStringSchema,
     role: { type: 'string', enum: SEMANTIC_COMPONENT_ROLES_V5 },
     label: { type: 'string' },
@@ -470,6 +474,7 @@ const taskSchema = {
   additionalProperties: false,
   required: [
     'localId',
+    'existingPublicId',
     'category',
     'title',
     'study',
@@ -482,6 +487,7 @@ const taskSchema = {
   ],
   properties: {
     localId: { type: 'string' },
+    existingPublicId: nullableStringSchema,
     category: { type: 'string', enum: SEMANTIC_TASK_CATEGORIES_V5 },
     title: { type: 'string' },
     study: { anyOf: [studySchema, { type: 'null' }] },
@@ -741,6 +747,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Keep relative date expressions symbolic. Do not calculate ISO dates. Normalize explicit clock times to HH:mm when certain.',
     'Use unitCode exam_year for 1年分 or 2年分 of past questions. Specific calendar years belong only in rangeStart and rangeEnd.',
     'Keep unrelated activities as separate tasks. Preserve before, after, dependency, priority, and sequence relations with response-local task IDs.',
+    'Every task/component must set existingPublicId: use the exact publicId from publicStateSummary when current userText continues the same accepted entity, otherwise null. Do not create a duplicate task/component merely to add workload, effort, time, recurrence, or detail. If identity is ambiguous, emit uncertainty instead of guessing.',
     'External timetable, existing plan, and calendar contents are authoritative application data. Never reproduce, summarize, or invent their events.',
     'Create a constraintSourceRequest only when the user explicitly asks to use or stop using timetable, existing plans, or calendar. selector must be active.',
     'For an ambiguous source request, return an uncertainty targeting document field constraintSource instead of choosing a source.',

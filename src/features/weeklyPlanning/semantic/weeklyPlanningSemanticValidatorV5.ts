@@ -80,17 +80,25 @@ function isValidWorkloadEffortTargetError(
   return workloadIdsInTask(task).has(estimate.targetLocalId);
 }
 
-function stripDurableContextSignals(value: Record<string, unknown>): Record<string, unknown> {
+function stripSemanticExtensions(value: Record<string, unknown>): Record<string, unknown> {
   const tasks = Array.isArray(value.tasks)
     ? value.tasks.map((task) => {
         if (!isRecord(task)) return task;
-        const { durableContextSignals: _taskSignals, ...taskRest } = task;
+        const {
+          durableContextSignals: _taskSignals,
+          existingPublicId: _taskExistingPublicId,
+          ...taskRest
+        } = task;
         if (!isRecord(taskRest.study) || !Array.isArray(taskRest.study.components)) {
           return taskRest;
         }
         const components = taskRest.study.components.map((component) => {
           if (!isRecord(component)) return component;
-          const { durableContextSignals: _componentSignals, ...componentRest } = component;
+          const {
+            durableContextSignals: _componentSignals,
+            existingPublicId: _componentExistingPublicId,
+            ...componentRest
+          } = component;
           return componentRest;
         });
         return {
@@ -116,6 +124,30 @@ function collectLocalIds(value: unknown, ids = new Set<string>()): Set<string> {
 function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
   const allowedKeys = new Set(allowed);
   return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function validateExistingPublicIds(value: Record<string, unknown>): string[] {
+  if (!Array.isArray(value.tasks)) return [];
+  const errors: string[] = [];
+  const validateId = (id: unknown, path: string): void => {
+    if (id === undefined) return;
+    if (!(id === null || (typeof id === 'string' && id.trim().length > 0))) {
+      errors.push(`${path}:expected-non-empty-string-or-null`);
+    }
+  };
+  value.tasks.forEach((task, taskIndex) => {
+    if (!isRecord(task)) return;
+    validateId(task.existingPublicId, `document.tasks[${taskIndex}].existingPublicId`);
+    if (!isRecord(task.study) || !Array.isArray(task.study.components)) return;
+    task.study.components.forEach((component, componentIndex) => {
+      if (!isRecord(component)) return;
+      validateId(
+        component.existingPublicId,
+        `document.tasks[${taskIndex}].study.components[${componentIndex}].existingPublicId`,
+      );
+    });
+  });
+  return errors;
 }
 
 function validateDurableContextSignals(
@@ -236,18 +268,24 @@ export function validateWeeklyPlanningSemanticValueV5(
   const weeklyValue = Object.fromEntries(
     Object.entries(value).filter(([key]) => key !== 'userContextFacts'),
   );
-  const legacyWeeklyValue = stripDurableContextSignals(weeklyValue);
+  const legacyWeeklyValue = stripSemanticExtensions(weeklyValue);
   const legacy = validateLegacySemanticValueV5(legacyWeeklyValue);
   const legacyErrors = legacy.errors.filter(
     (error) => !isValidWorkloadEffortTargetError(error, legacyWeeklyValue),
   );
   const baseLocalIds = collectLocalIds(legacyWeeklyValue);
+  const existingPublicIdErrors = validateExistingPublicIds(weeklyValue);
   const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
   const contextErrors = validateUserContextFacts(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
-  const structuralErrors = [...legacyErrors, ...signalErrors, ...contextErrors];
+  const structuralErrors = [
+    ...legacyErrors,
+    ...existingPublicIdErrors,
+    ...signalErrors,
+    ...contextErrors,
+  ];
   const document = structuralErrors.length === 0
     ? value as unknown as WeeklyPlanningSemanticDocumentV5
     : null;

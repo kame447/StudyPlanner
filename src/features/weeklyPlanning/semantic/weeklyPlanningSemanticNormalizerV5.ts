@@ -12,6 +12,12 @@ import {
   normalizeExactDuplicateWorkloadPlacementV5,
 } from './weeklyPlanningDuplicateWorkloadNormalizationV5';
 import {
+  validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
+} from './weeklyPlanningExistingEntityBindingV5';
+import {
+  validateWeeklyPlanningRecurrenceConsistencyV5,
+} from './weeklyPlanningRecurrenceConsistencyV5';
+import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
@@ -40,6 +46,7 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'If current userText does not state/change the plan-wide period, planningWindow must be null even when accepted state has one.',
   'Roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, a resolved answer emits one minimal task/workload with fresh localIds, target amount/unit, and selected role. Never keep uncertainty for a resolved role or use public Fact IDs in targetLocalId; unresolved emits no workload.',
   'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty.',
+  'existingPublicId is an exact reference to an accepted publicStateSummary task/component, never a localId. Use it for cross-turn continuation and null for new entities.',
   'An effortEstimate may target the exact task, component, or workload localId it describes.',
   'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
   'Do not invent. Return Stable V5 JSON only; no commands, scheduling, readiness, preview, save decisions, or prose.',
@@ -47,6 +54,7 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'Non-consecutive explicit dates use one allowed_date constraint per date; never merge them into a range.',
   'Explicit repeating weekdays use one weekly recurrence with all stated days.',
+  'Explicit daily/weekdays/weekends repetition must be represented by recurrence; do not encode repetition only in workload.periodExpression.',
   'Priority and ordering are task relations, not clock constraints.',
   'Use clock fields only for boundaries explicitly supplied by the user.',
   'Named periods use namedTimePeriod; exact clocks use null namedTimePeriod.',
@@ -142,6 +150,11 @@ function validateSemanticResponse(
 
   const errors = [
     ...planningWindowCanonicalValueErrors(parsed.document.planningWindow),
+    ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
+      document: parsed.document,
+      publicStateSummary: input.publicStateSummary,
+    }),
+    ...validateWeeklyPlanningRecurrenceConsistencyV5(parsed.document),
     ...validateWeeklyPlanningSemanticEvidenceV5({
       document: parsed.document,
       input,
@@ -188,6 +201,12 @@ function repairDirectivesForErrors(errors: string[]): string[] {
   }
   if (errors.some((error) => error.includes('targetLocalId'))) {
     directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. If a pending quantity-role answer selects target, remaining, or completed, remove the uncertainty and emit one minimal local task and workload; pendingQuestion binds the existing public target.');
+  }
+  if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
+    directives.push('For each continued accepted task/component, set existingPublicId to the exact candidate publicId from publicStateSummary. Keep existingPublicId null only for genuinely new entities. Never duplicate an accepted entity just to add current-turn facts.');
+  }
+  if (errors.some((error) => error.includes('explicit-recurrence-missing'))) {
+    directives.push('When a per-occurrence workload explicitly represents daily, weekdays, or weekends repetition, add the matching recurrence targeting the same task/component localId. periodExpression does not replace recurrence.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
     directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Do not invent replacement sourceText.');
