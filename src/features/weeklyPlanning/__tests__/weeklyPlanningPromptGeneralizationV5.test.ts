@@ -46,6 +46,9 @@ describe('Stable V5 prompt generalization contracts', () => {
     expect(prompt).toContain('only when one reading is clearly supported');
     expect(prompt).toContain('two or more plausible readings');
     expect(prompt).toContain('emit uncertainty and do not create or modify the guessed fact');
+    expect(prompt).toContain('must have a uniquely supported semantic target');
+    expect(prompt).toContain('more than one independently schedulable candidate');
+    expect(prompt).toContain('do not assign, duplicate, distribute, or attach it by proximity');
     expect(prompt).not.toContain('数楽ワーク');
     expect(prompt).not.toContain('英語レボート');
 
