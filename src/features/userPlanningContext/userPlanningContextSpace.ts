@@ -229,7 +229,9 @@ function recordIdentity(fact: UserPlanningContextSemanticFactV1): string {
   return [
     fact.kind,
     normalizeIdentityPart(fact.label),
-    fact.kind === 'goal_event' ? normalizeIdentityPart(fact.dateExpression) : '',
+    fact.kind === 'goal_event'
+      ? normalizeIdentityPart(fact.dateExpression)
+      : normalizeIdentityPart(fact.value),
   ].join('|');
 }
 
@@ -260,7 +262,9 @@ function mergeFacts(params: {
     const identity = [
       record.kind,
       normalizeIdentityPart(record.label),
-      record.kind === 'goal_event' ? normalizeIdentityPart(record.dateExpression) : '',
+      record.kind === 'goal_event'
+        ? normalizeIdentityPart(record.dateExpression)
+        : normalizeIdentityPart(record.value),
     ].join('|');
     byIdentity.set(identity, record);
   }

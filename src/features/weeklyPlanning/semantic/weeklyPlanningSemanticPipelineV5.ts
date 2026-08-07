@@ -447,18 +447,21 @@ export function createWeeklyPlanningSemanticPipelineV5(
           document: normalization.document,
           context: canonicalizationContext,
         });
-      const entityBindingApplication = contextualAnswer
-        ? {
+      const contextualDocumentNeedsEntityBinding = Boolean(
+        contextualAnswer && pendingQuestion?.questionCode === 'semantic_uncertainty',
+      );
+      const entityBindingApplication = !contextualAnswer || contextualDocumentNeedsEntityBinding
+        ? applyWeeklyPlanningExistingEntityBindingsV5({
+            originalGraph: graph,
+            document: normalization.document,
+            canonicalization: baseCanonicalization,
+          })
+        : {
             version: 'weekly-planning-existing-entity-binding-application-v5' as const,
             status: 'not_applicable' as const,
             canonicalization: baseCanonicalization,
             errors: [],
-          }
-        : applyWeeklyPlanningExistingEntityBindingsV5({
-            originalGraph: graph,
-            document: normalization.document,
-            canonicalization: baseCanonicalization,
-          });
+          };
       const boundCanonicalization = entityBindingApplication.canonicalization;
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
