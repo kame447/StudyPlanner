@@ -7,6 +7,9 @@ import {
   stageUserPlanningContextFactsV1,
   userPlanningContextPromptSummaryV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
+import {
+  collectUserPlanningContextFactsV5,
+} from '../semantic/weeklyPlanningDurableContextSignalsV5';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningMessage } from '../types';
@@ -657,7 +660,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return output;
   }
 
-  const userContextFacts = semantic.normalization.document?.userContextFacts ?? [];
+  const userContextFacts = semantic.normalization.document
+    ? collectUserPlanningContextFactsV5(semantic.normalization.document)
+    : [];
   stageUserPlanningContextFactsV1({
     ownerId: input.userId,
     conversationId: input.conversationId,

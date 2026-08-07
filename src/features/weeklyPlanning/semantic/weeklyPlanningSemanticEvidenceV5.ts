@@ -62,6 +62,10 @@ function componentEvidence(
       path: `${path}.workloads[${index}].sourceText`,
       sourceText: workload.sourceText,
     })),
+    ...(component.durableContextSignals ?? []).map((signal, index) => ({
+      path: `${path}.durableContextSignals[${index}].sourceText`,
+      sourceText: signal.sourceText,
+    })),
   ];
 }
 
@@ -87,6 +91,10 @@ function taskEvidence(
       path: `${path}.recurrence[${index}].sourceText`,
       sourceText: recurrence.sourceText,
     })),
+    ...(task.durableContextSignals ?? []).map((signal, index) => ({
+      path: `${path}.durableContextSignals[${index}].sourceText`,
+      sourceText: signal.sourceText,
+    })),
     ...(task.study?.components ?? []).flatMap((component, index) =>
       componentEvidence(component, `${path}.study.components[${index}]`)),
   ];
@@ -95,10 +103,23 @@ function taskEvidence(
 function userContextEvidence(
   document: WeeklyPlanningSemanticDocumentV5,
 ): SourceEvidenceEntryV5[] {
-  return (document.userContextFacts ?? []).map((fact, index) => ({
-    path: `document.userContextFacts[${index}].sourceText`,
-    sourceText: fact.sourceText,
-  }));
+  return [
+    ...(document.userContextFacts ?? []).map((fact, index) => ({
+      path: `document.userContextFacts[${index}].sourceText`,
+      sourceText: fact.sourceText,
+    })),
+    ...document.tasks.flatMap((task, taskIndex) => [
+      ...(task.durableContextSignals ?? []).map((signal, index) => ({
+        path: `document.tasks[${taskIndex}].durableContextSignals[${index}].sourceText`,
+        sourceText: signal.sourceText,
+      })),
+      ...(task.study?.components ?? []).flatMap((component, componentIndex) =>
+        (component.durableContextSignals ?? []).map((signal, index) => ({
+          path: `document.tasks[${taskIndex}].study.components[${componentIndex}].durableContextSignals[${index}].sourceText`,
+          sourceText: signal.sourceText,
+        }))),
+    ]),
+  ];
 }
 
 function collectSourceEvidence(

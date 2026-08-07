@@ -146,6 +146,12 @@ export interface SemanticSourceEvidenceV5 {
   sourceText: string;
 }
 
+export interface SemanticDurableContextSignalV5 extends SemanticSourceEvidenceV5 {
+  localId: string;
+  kind: 'concern';
+  value: string | null;
+}
+
 export interface SemanticWorkloadV5 extends SemanticSourceEvidenceV5 {
   localId: string;
   quantityRole: SemanticQuantityRoleV5;
@@ -164,6 +170,7 @@ export interface SemanticStudyComponentV5 extends SemanticSourceEvidenceV5 {
   role: SemanticComponentRoleV5;
   label: string;
   workloads: SemanticWorkloadV5[];
+  durableContextSignals?: SemanticDurableContextSignalV5[];
 }
 
 export interface SemanticStudyDetailsV5 {
@@ -210,6 +217,7 @@ export interface SemanticTaskV5 extends SemanticSourceEvidenceV5 {
   effortEstimates: SemanticEffortEstimateV5[];
   temporalConstraints: SemanticTemporalConstraintV5[];
   recurrence: SemanticRecurrenceV5[];
+  durableContextSignals?: SemanticDurableContextSignalV5[];
 }
 
 export interface SemanticPlanningWindowV5 extends SemanticSourceEvidenceV5 {
@@ -337,16 +345,37 @@ const workloadSchema = {
   },
 } as const;
 
+const durableContextSignalSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['localId', 'kind', 'value', 'sourceText'],
+  properties: {
+    localId: { type: 'string' },
+    kind: { type: 'string', enum: ['concern'] },
+    value: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+} as const;
+
 const componentSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['localId', 'parentLocalId', 'role', 'label', 'workloads', 'sourceText'],
+  required: [
+    'localId',
+    'parentLocalId',
+    'role',
+    'label',
+    'workloads',
+    'durableContextSignals',
+    'sourceText',
+  ],
   properties: {
     localId: { type: 'string' },
     parentLocalId: nullableStringSchema,
     role: { type: 'string', enum: SEMANTIC_COMPONENT_ROLES_V5 },
     label: { type: 'string' },
     workloads: { type: 'array', items: workloadSchema },
+    durableContextSignals: { type: 'array', items: durableContextSignalSchema },
     ...sourceTextProperty,
   },
 } as const;
@@ -448,6 +477,7 @@ const taskSchema = {
     'effortEstimates',
     'temporalConstraints',
     'recurrence',
+    'durableContextSignals',
     'sourceText',
   ],
   properties: {
@@ -459,6 +489,7 @@ const taskSchema = {
     effortEstimates: { type: 'array', items: effortEstimateSchema },
     temporalConstraints: { type: 'array', items: temporalConstraintSchema },
     recurrence: { type: 'array', items: recurrenceSchema },
+    durableContextSignals: { type: 'array', items: durableContextSignalSchema },
     ...sourceTextProperty,
   },
 } as const;
@@ -698,9 +729,9 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences. Use unknown when the strength is not established.',
     'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',
     'A date when an exam, presentation, competition, appointment, or other event itself occurs is not a work deadline. Put a durable event occurrence in userContextFacts with kind goal_event. Emit a task deadline only when the user explicitly states completion-by meaning for the work.',
-    'Use userContextFacts for owner-level context useful beyond the current week. After mapping weekly facts, independently check current userText for every explicit future event occurrence and every explicit ongoing difficulty, weakness, concern, or priority that can matter in later plans. Use goal_event for dated future events and concern for ongoing concerns or priorities; concern has null dateExpression.',
-    'A concern may coexist with a task or component for the same subject or activity. Do not omit durable concern merely because its label already appears in weekly facts. Preserve the user wording in value or use null; do not invent a diagnosis or stronger priority.',
-    'userContextFacts are current-turn deltas, not a copy of stored user context. Preserve label, optional value/dateExpression, and sourceText without inventing detail.',
+    'Every task and study component must return durableContextSignals, using an empty array when none apply. When current userText explicitly describes that entity as difficult, weak, worrying, behind, or otherwise an ongoing concern relevant to later plans, emit a concern signal on that entity. Preserve the concern wording in value or use null; do not invent a diagnosis or stronger priority.',
+    'Entity-local concern signals may coexist with the same task/component weekly facts. Do not omit a concern merely because the entity label already appears elsewhere in the document.',
+    'Use top-level userContextFacts for owner-level context not naturally represented as an entity annotation, especially dated future goal_event occurrences. userContextFacts and durableContextSignals are current-turn deltas, never copies of stored user context.',
     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target belongs in availabilityDeclarations.',
     'Use allowed_date when a task may be scheduled only on the specified date. Use excluded_date when that task must not be scheduled on the specified date. Both require dateExpression and null namedTimePeriod, startTime, and endTime.',
     'For a plan that covers only one specific day, use an absolute planningWindow whose start and end are the same date. For a whole day with no planning, use a hard unavailable availability declaration with that dateExpression and no clock bounds.',

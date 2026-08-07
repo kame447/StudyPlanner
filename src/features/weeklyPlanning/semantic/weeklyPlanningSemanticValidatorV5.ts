@@ -80,6 +80,28 @@ function isValidWorkloadEffortTargetError(
   return workloadIdsInTask(task).has(estimate.targetLocalId);
 }
 
+function stripDurableContextSignals(value: Record<string, unknown>): Record<string, unknown> {
+  const tasks = Array.isArray(value.tasks)
+    ? value.tasks.map((task) => {
+        if (!isRecord(task)) return task;
+        const { durableContextSignals: _taskSignals, ...taskRest } = task;
+        if (!isRecord(taskRest.study) || !Array.isArray(taskRest.study.components)) {
+          return taskRest;
+        }
+        const components = taskRest.study.components.map((component) => {
+          if (!isRecord(component)) return component;
+          const { durableContextSignals: _componentSignals, ...componentRest } = component;
+          return componentRest;
+        });
+        return {
+          ...taskRest,
+          study: { ...taskRest.study, components },
+        };
+      })
+    : value.tasks;
+  return { ...value, tasks };
+}
+
 function collectLocalIds(value: unknown, ids = new Set<string>()): Set<string> {
   if (Array.isArray(value)) {
     value.forEach((item) => collectLocalIds(item, ids));
@@ -94,6 +116,59 @@ function collectLocalIds(value: unknown, ids = new Set<string>()): Set<string> {
 function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
   const allowedKeys = new Set(allowed);
   return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function validateDurableContextSignals(
+  value: Record<string, unknown>,
+  occupiedLocalIds: Set<string>,
+): string[] {
+  if (!Array.isArray(value.tasks)) return [];
+  const errors: string[] = [];
+  const seen = new Set(occupiedLocalIds);
+  const validateSignals = (signalsValue: unknown, path: string): void => {
+    if (signalsValue === undefined) return;
+    if (!Array.isArray(signalsValue)) {
+      errors.push(`${path}:expected-array`);
+      return;
+    }
+    signalsValue.forEach((signal, index) => {
+      const signalPath = `${path}[${index}]`;
+      if (!isRecord(signal)) {
+        errors.push(`${signalPath}:expected-object`);
+        return;
+      }
+      if (!hasOnlyKeys(signal, ['localId', 'kind', 'value', 'sourceText'])) {
+        errors.push(`${signalPath}:unknown-key`);
+      }
+      if (typeof signal.localId !== 'string' || !signal.localId.trim()) {
+        errors.push(`${signalPath}.localId:expected-non-empty-string`);
+      } else if (seen.has(signal.localId)) {
+        errors.push(`${signalPath}.localId:duplicate-local-id`);
+      } else {
+        seen.add(signal.localId);
+      }
+      if (signal.kind !== 'concern') errors.push(`${signalPath}.kind:unsupported-value`);
+      if (!(signal.value === null || typeof signal.value === 'string')) {
+        errors.push(`${signalPath}.value:expected-string-or-null`);
+      }
+      if (typeof signal.sourceText !== 'string' || !signal.sourceText.trim()) {
+        errors.push(`${signalPath}.sourceText:expected-non-empty-string`);
+      }
+    });
+  };
+  value.tasks.forEach((task, taskIndex) => {
+    if (!isRecord(task)) return;
+    validateSignals(task.durableContextSignals, `document.tasks[${taskIndex}].durableContextSignals`);
+    if (!isRecord(task.study) || !Array.isArray(task.study.components)) return;
+    task.study.components.forEach((component, componentIndex) => {
+      if (!isRecord(component)) return;
+      validateSignals(
+        component.durableContextSignals,
+        `document.tasks[${taskIndex}].study.components[${componentIndex}].durableContextSignals`,
+      );
+    });
+  });
+  return errors;
 }
 
 function validateUserContextFacts(
@@ -161,15 +236,18 @@ export function validateWeeklyPlanningSemanticValueV5(
   const weeklyValue = Object.fromEntries(
     Object.entries(value).filter(([key]) => key !== 'userContextFacts'),
   );
-  const legacy = validateLegacySemanticValueV5(weeklyValue);
+  const legacyWeeklyValue = stripDurableContextSignals(weeklyValue);
+  const legacy = validateLegacySemanticValueV5(legacyWeeklyValue);
   const legacyErrors = legacy.errors.filter(
-    (error) => !isValidWorkloadEffortTargetError(error, weeklyValue),
+    (error) => !isValidWorkloadEffortTargetError(error, legacyWeeklyValue),
   );
+  const baseLocalIds = collectLocalIds(legacyWeeklyValue);
+  const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
   const contextErrors = validateUserContextFacts(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
-  const structuralErrors = [...legacyErrors, ...contextErrors];
+  const structuralErrors = [...legacyErrors, ...signalErrors, ...contextErrors];
   const document = structuralErrors.length === 0
     ? value as unknown as WeeklyPlanningSemanticDocumentV5
     : null;
