@@ -24,6 +24,9 @@ import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
+  validateWeeklyPlanningWorkBreakdownResponseContractV5,
+} from './weeklyPlanningWorkBreakdownResponseContractV5';
+import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
@@ -52,6 +55,7 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'If current userText does not state/change the plan-wide period, planningWindow must be null even when accepted state has one.',
   'Roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, a resolved answer emits one minimal task/workload with fresh localIds, target amount/unit, and selected role. Never keep uncertainty for a resolved role or use public Fact IDs in targetLocalId; unresolved emits no workload.',
   'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty.',
+  'When the pending semantic_uncertainty field is work_breakdown, resolve its targetPublicId from publicStateSummary.uncertainties and return only that exact target task using existingPublicId. Represent the current answer as that task's present structure; do not repeat unrelated accepted tasks, the accepted planning window, stored user context, or the old uncertainty. Use decomposed when constituents are now identified, atomic when the user clarifies it is one schedulable unit, and needs_breakdown only when the current answer is still insufficient.',
   'existingPublicId is an exact reference to an accepted publicStateSummary task/component, never a localId. Use it for cross-turn continuation and null for new entities.',
   'An effortEstimate may target the exact task, component, or workload localId it describes.',
   'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
@@ -61,7 +65,7 @@ const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'Non-consecutive explicit dates use one allowed_date constraint per date; never merge them into a range.',
   'Explicit repeating weekdays use one weekly recurrence with all stated days.',
   'Any explicit recurring cadence represented in workload.periodExpression must also be represented by a matching recurrence; periodExpression never substitutes for recurrence.',
-  'Priority and ordering are task relations, not clock constraints.',
+  'Priority and ordering are task relations, not clock constraints. Task relations reference task localIds only. A statement that one item has more or less work is not priority, order, or dependency unless the user explicitly states scheduling priority/order/dependency.',
   'Use clock fields only for boundaries explicitly supplied by the user.',
   'Named periods use namedTimePeriod; exact clocks use null namedTimePeriod.',
 ].join('\n');
@@ -171,6 +175,10 @@ function validateSemanticResponse(
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningRecurrenceConsistencyV5(parsed.document),
+    ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
+      document: parsed.document,
+      publicStateSummary: input.publicStateSummary,
+    }),
     ...validateWeeklyPlanningSemanticEvidenceV5({
       document: parsed.document,
       input,
@@ -222,7 +230,13 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     directives.push('For each continued accepted task/component, set existingPublicId to the exact candidate publicId from publicStateSummary. Keep existingPublicId null only for genuinely new entities. Never duplicate an accepted entity just to add current-turn facts.');
   }
   if (errors.some((error) => error.includes('explicit-recurrence-missing'))) {
-    directives.push('When a per-occurrence workload explicitly represents daily, weekdays, or weekends repetition, add the matching recurrence targeting the same task/component localId. periodExpression does not replace recurrence.');
+    directives.push('When a per-occurrence workload explicitly represents a recurring cadence, add the matching recurrence targeting the same task/component localId. periodExpression does not replace recurrence.');
+  }
+  if (errors.some((error) => error.includes('work-breakdown-'))) {
+    directives.push('This turn answers the pending work_breakdown uncertainty. Return only the exact target task identified by the pending uncertainty targetPublicId, using that ID as existingPublicId. Represent only the current user answer on that task. Do not copy the accepted planning window, unrelated accepted tasks, stored user context, or the old uncertainty. If constituents are identified, use decompositionStatus decomposed and encode them on the target task; if the user clarifies one schedulable unit, use atomic; use needs_breakdown only when the current answer itself remains insufficient.');
+  }
+  if (errors.some((error) => error.includes('document.relations') && (error.includes('fromLocalId') || error.includes('toLocalId')))) {
+    directives.push('Task relations may reference task localIds only. Do not convert a comparison of workload size or amount into priority/order/dependency unless the user explicitly stated that scheduling relation.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
     directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Do not invent replacement sourceText.');
