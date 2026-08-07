@@ -46,6 +46,14 @@ import {
 const shouldRun = process.env.WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN === '1';
 const outputDir = process.env.WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR
   ?? 'artifacts/weekly-planning-resumable-conversation';
+const DEFAULT_REAL_API_TURN_TIMEOUT_MS = 60_000;
+
+function resolveRealApiTurnTimeoutMs(): number {
+  const configured = Number(process.env.WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_REAL_API_TURN_TIMEOUT_MS;
+}
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -229,5 +237,5 @@ run('weekly planning resumable real API turn', () => {
       savedAt: new Date().toISOString(),
     };
     writeOutputs({ checkpoint: nextCheckpoint, trace, result });
-  });
+  }, resolveRealApiTurnTimeoutMs());
 });
