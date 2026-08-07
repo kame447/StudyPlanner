@@ -40,7 +40,7 @@ describe('Stable V5 prompt generalization contracts', () => {
     expect(system).not.toContain('Explicit daily/weekdays/weekends repetition');
   });
 
-  it('tells the renderer to ask one answerable breakdown question before totals', () => {
+  it('keeps breakdown and missing-quantity questions as distinct renderer intents', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt({
       actionId: 'action-1',
       currentUserMessage: '大きな作業を進めたいです。',
@@ -61,8 +61,9 @@ describe('Stable V5 prompt generalization contracts', () => {
       previewCount: 0,
     });
     expect(prompt.systemPrompt).toContain('一度に複数の独立した回答を要求せず');
-    expect(prompt.userPrompt).toContain('fieldがwork_breakdown');
-    expect(prompt.userPrompt).toContain('量や合計時間より先に');
+    expect(prompt.userPrompt).toContain('fieldがwork_breakdownの項目がある場合だけ');
+    expect(prompt.userPrompt).toContain('questionCodeがmissing_schedulable_workの場合は追加の分解を求めず');
+    expect(prompt.userPrompt).toContain('量・範囲を確認してください');
     expect(prompt.userPrompt).toContain('文型・列挙順・語句をコピーする必要はありません');
   });
 });
