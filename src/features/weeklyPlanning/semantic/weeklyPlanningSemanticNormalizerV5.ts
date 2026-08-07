@@ -60,13 +60,20 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'Creation authorization uses planningIntent create_plan without replaying accepted facts.',
   'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',
 ].join('\n');
+const ENTITY_CANONICALIZATION_INSTRUCTION_V5 = [
+  'Before returning JSON, perform a final semantic canonical-name review for every task title, study.contextLabel, and component label derived from current userText.',
+  'Treat this as interpretation, never as application-side string replacement: infer the intended ordinary Japanese reading from the whole utterance and conversation context, and do not use or assume a fixed typo dictionary.',
+  'When a source token is a clear kana/kanji conversion error, voicing error, speech-input error, OCR error, or one-character substitution and exactly one ordinary reading fits the surrounding planning meaning, emit only that corrected reading in canonical user-visible names while preserving the original token only inside sourceText.',
+  'A token being copied verbatim from userText is not evidence that it is already canonical. Explicitly check whether the copied form is a normal subject, material, task, or activity name in context before keeping it unchanged.',
+  'Do not rewrite already-natural names merely to make them more generic, formal, or familiar. Preserve clean user wording when there is no clear error.',
+  'If two or more plausible corrections remain and choosing one could change entity identity or modifier attachment, emit uncertainty instead of guessing.',
+].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'Non-consecutive explicit dates use separate allowed_date constraints.',
   'Any explicit recurring cadence in workload.periodExpression needs a matching recurrence; explicit weekdays belong in one weekly recurrence with its stated days.',
   'Task relations use task localIds and require explicit scheduling relation meaning; workload amount/size comparisons alone are not priority/order/dependency.',
   'Clock fields require explicit user clocks. Use either namedTimePeriod or exact clock fields, not both.',
 ].join('\n');
-
 
 interface SemanticValidationAttemptV5 {
   document: WeeklyPlanningSemanticDocumentV5 | null;
@@ -204,6 +211,7 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
       content: [
         createWeeklyPlanningSemanticSystemPromptV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
+        ENTITY_CANONICALIZATION_INSTRUCTION_V5,
         TEMPORAL_STRUCTURE_INSTRUCTION_V5,
       ].join('\n'),
     },
@@ -250,7 +258,7 @@ function repairDirectivesForErrors(
     directives.push('Task relations may reference task localIds only. Do not convert a comparison of workload size or amount into priority/order/dependency unless the user explicitly stated that scheduling relation.');
   }
   if (errors.some((error) => error.includes('ambiguous-standalone-modifier-target'))) {
-    directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Preserve every otherwise-valid current-turn fact from the invalid response, including its planningWindow and listed tasks/components, but remove the guessed modifier attachment only. Emit exactly one uncertainty for that modifier with targetLocalId exactly \"document\", field exactly \"modifier_target\", and the modifier excerpt as sourceText. Never use null or the string \"null\" for targetLocalId, and do not choose a candidate by order or proximity.');
+    directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Preserve every otherwise-valid current-turn fact from the invalid response, including its planningWindow and listed tasks/components, but remove the guessed modifier attachment only. Emit exactly one uncertainty for that modifier with targetLocalId exactly "document", field exactly "modifier_target", and the modifier excerpt as sourceText. Never use null or the string "null" for targetLocalId, and do not choose a candidate by order or proximity.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
     directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Do not invent replacement sourceText.');
