@@ -10,6 +10,14 @@ export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 =
 export const SEMANTIC_TASK_CATEGORIES_V5 = ['study', 'non_study', 'unknown'] as const;
 export type SemanticTaskCategoryV5 = (typeof SEMANTIC_TASK_CATEGORIES_V5)[number];
 
+export const SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5 = [
+  'atomic',
+  'decomposed',
+  'needs_breakdown',
+] as const;
+export type SemanticTaskDecompositionStatusV5 =
+  (typeof SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5)[number];
+
 export const SEMANTIC_STUDY_PURPOSES_V5 = [
   'exam',
   'course',
@@ -212,6 +220,7 @@ export interface SemanticRecurrenceV5 extends SemanticSourceEvidenceV5 {
 export interface SemanticTaskV5 extends SemanticSourceEvidenceV5 {
   localId: string;
   existingPublicId?: string | null;
+  decompositionStatus?: SemanticTaskDecompositionStatusV5;
   category: SemanticTaskCategoryV5;
   title: string;
   study: SemanticStudyDetailsV5 | null;
@@ -475,6 +484,7 @@ const taskSchema = {
   required: [
     'localId',
     'existingPublicId',
+    'decompositionStatus',
     'category',
     'title',
     'study',
@@ -488,6 +498,10 @@ const taskSchema = {
   properties: {
     localId: { type: 'string' },
     existingPublicId: nullableStringSchema,
+    decompositionStatus: {
+      type: 'string',
+      enum: SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5,
+    },
     category: { type: 'string', enum: SEMANTIC_TASK_CATEGORIES_V5 },
     title: { type: 'string' },
     study: { anyOf: [studySchema, { type: 'null' }] },
@@ -725,7 +739,7 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'The only top-level task categories are study, non_study, and unknown.',
     'Entrance exams, qualification exams, school exams, courses, homework, self-study, review, practice, learning habits, and research-as-learning are ordinary study tasks. Put the specific context in study.purpose and study.contextLabel, never in a special top-level task type.',
     'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. parentLocalId is only for component-to-component hierarchy inside the same task: top-level components use null, child components use another component localId, and a task localId must never be used as parentLocalId.',
-    'When a task is semantically an umbrella or category that naturally contains multiple materially different work items, but the constituent work is not yet stated, emit one uncertainty targeting that task with field work_breakdown. This records unknown task decomposition, not missing quantity. Do not invent constituent work and do not emit it for a task presented as one concrete schedulable unit.',
+    'Every task must classify decompositionStatus. Use atomic only when the user presents one schedulable work unit or no meaningful planning decomposition is needed. Use decomposed when constituent work is already identified in the semantic result. Use needs_breakdown when the task denotes a collection, project, program, or category containing independently schedulable work whose constituents are still unknown. Do not choose atomic merely because constituents were not stated, and never invent constituents.',
     'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, user context fact, uncertainty, correction, and decision.',
     'Attach each workload to the deepest task or component that it directly modifies. Never store labels and quantities in parallel arrays.',
     'Use quantityRole declared when an amount is stated but the utterance does not establish whether it is a target, remaining amount, or completed amount. Do not guess a stronger role.',

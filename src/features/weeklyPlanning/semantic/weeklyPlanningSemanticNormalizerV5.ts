@@ -21,6 +21,9 @@ import {
   validateWeeklyPlanningRecurrenceConsistencyV5,
 } from './weeklyPlanningRecurrenceConsistencyV5';
 import {
+  normalizeTaskDecompositionUncertaintiesV5,
+} from './weeklyPlanningTaskDecompositionNormalizationV5';
+import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
@@ -133,8 +136,9 @@ function validateSemanticResponse(
   rawResponse: string,
   input: WeeklyPlanningSemanticNormalizerInputV5,
 ): SemanticValidationAttemptV5 {
+  const decompositionNormalization = normalizeTaskDecompositionUncertaintiesV5(rawResponse);
   const copiedContextNormalization = normalizeCopiedUserContextDeltaV5({
-    rawResponse,
+    rawResponse: decompositionNormalization.rawResponse,
     userText: input.userText,
     publicStateSummary: input.publicStateSummary,
   });
@@ -145,6 +149,7 @@ function validateSemanticResponse(
     componentParentNormalization.rawResponse,
   );
   const algorithmicRepairs = [
+    ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,

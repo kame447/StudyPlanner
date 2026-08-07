@@ -1,8 +1,9 @@
 import {
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
 } from '../../userPlanningContext/userPlanningContextTypes';
-import type {
-  WeeklyPlanningSemanticDocumentV5,
+import {
+  SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5,
+  type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   isCanonicalDateExpressionSyntax,
@@ -87,6 +88,7 @@ function stripSemanticExtensions(value: Record<string, unknown>): Record<string,
         const {
           durableContextSignals: _taskSignals,
           existingPublicId: _taskExistingPublicId,
+          decompositionStatus: _taskDecompositionStatus,
           ...taskRest
         } = task;
         if (!isRecord(taskRest.study) || !Array.isArray(taskRest.study.components)) {
@@ -124,6 +126,19 @@ function collectLocalIds(value: unknown, ids = new Set<string>()): Set<string> {
 function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
   const allowedKeys = new Set(allowed);
   return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function validateTaskDecompositionStatuses(value: Record<string, unknown>): string[] {
+  if (!Array.isArray(value.tasks)) return [];
+  const allowed = new Set<unknown>(SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5);
+  const errors: string[] = [];
+  value.tasks.forEach((task, taskIndex) => {
+    if (!isRecord(task) || task.decompositionStatus === undefined) return;
+    if (!allowed.has(task.decompositionStatus)) {
+      errors.push(`document.tasks[${taskIndex}].decompositionStatus:unsupported-value`);
+    }
+  });
+  return errors;
 }
 
 function validateExistingPublicIds(value: Record<string, unknown>): string[] {
@@ -275,6 +290,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   );
   const baseLocalIds = collectLocalIds(legacyWeeklyValue);
   const existingPublicIdErrors = validateExistingPublicIds(weeklyValue);
+  const decompositionErrors = validateTaskDecompositionStatuses(weeklyValue);
   const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
   const contextErrors = validateUserContextFacts(
     value.userContextFacts ?? [],
@@ -283,6 +299,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   const structuralErrors = [
     ...legacyErrors,
     ...existingPublicIdErrors,
+    ...decompositionErrors,
     ...signalErrors,
     ...contextErrors,
   ];
