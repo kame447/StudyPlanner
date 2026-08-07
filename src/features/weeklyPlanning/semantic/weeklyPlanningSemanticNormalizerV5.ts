@@ -49,27 +49,21 @@ export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
 
 const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'You alone interpret user meaning and context; code only validates/applies JSON.',
-  'Treat publicStateSummary.pendingQuestion as authoritative; never infer its target from assistant wording.',
-  'For short answers, return only facts needed for that target. Every sourceText must be supported by current userText, not prior turns.',
-  'Current SemanticDocument is a delta: publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText.',
-  'If current userText does not state/change the plan-wide period, planningWindow must be null even when accepted state has one.',
-  'Roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, a resolved answer emits one minimal task/workload with fresh localIds, target amount/unit, and selected role. Never keep uncertainty for a resolved role or use public Fact IDs in targetLocalId; unresolved emits no workload.',
-  'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty.',
-  'When the pending semantic_uncertainty field is work_breakdown, resolve its targetPublicId from publicStateSummary.uncertainties and return only that exact target task using existingPublicId. Represent the current answer as the present structure of that task; do not repeat unrelated accepted tasks, the accepted planning window, stored user context, or the old uncertainty. Use decomposed when constituents are now identified, atomic when the user clarifies it is one schedulable unit, and needs_breakdown only when the current answer is still insufficient.',
-  'existingPublicId is an exact reference to an accepted publicStateSummary task/component, never a localId. Use it for cross-turn continuation and null for new entities.',
-  'An effortEstimate may target the exact task, component, or workload localId it describes.',
-  'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
-  'Do not invent. Return Stable V5 JSON only; no commands, scheduling, readiness, preview, save decisions, or prose.',
+  'AI alone interprets meaning; publicStateSummary.pendingQuestion is authoritative.',
+  'Return a minimal delta grounded in current userText; accepted state/recentConversation are context only, and every sourceText must come from current userText.',
+  'For a pending clarification, resolve only its exact target; if unresolved, emit uncertainty. For work_breakdown return only that existingPublicId task with its current structure, not unrelated accepted state or the old uncertainty.',
+  'Quantity roles: target=planned amount, remaining=unfinished amount, completed=done amount. A resolved quantity-role answer returns only the needed local task/workload delta.',
+  'Use localIds for references inside the response and exact existingPublicId only for accepted cross-turn task/component identity.',
+  'Creation authorization uses planningIntent create_plan without replaying accepted facts.',
+  'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
-  'Non-consecutive explicit dates use one allowed_date constraint per date; never merge them into a range.',
-  'Explicit repeating weekdays use one weekly recurrence with all stated days.',
-  'Any explicit recurring cadence represented in workload.periodExpression must also be represented by a matching recurrence; periodExpression never substitutes for recurrence.',
-  'Priority and ordering are task relations, not clock constraints. Task relations reference task localIds only. A statement that one item has more or less work is not priority, order, or dependency unless the user explicitly states scheduling priority/order/dependency.',
-  'Use clock fields only for boundaries explicitly supplied by the user.',
-  'Named periods use namedTimePeriod; exact clocks use null namedTimePeriod.',
+  'Non-consecutive explicit dates use separate allowed_date constraints.',
+  'Any explicit recurring cadence in workload.periodExpression needs a matching recurrence; explicit weekdays belong in one weekly recurrence with its stated days.',
+  'Task relations use task localIds and require explicit scheduling relation meaning; workload amount/size comparisons alone are not priority/order/dependency.',
+  'Clock fields require explicit user clocks. Use either namedTimePeriod or exact clock fields, not both.',
 ].join('\n');
+
 
 interface SemanticValidationAttemptV5 {
   document: WeeklyPlanningSemanticDocumentV5 | null;
