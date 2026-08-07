@@ -1,0 +1,29 @@
+name: Weekly Planning Provenance Targeted
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/weekly-planning-provenance-targeted.yml
+
+jobs:
+  targeted:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b --pretty false
+      - name: Run provenance regressions
+        run: |
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run \
+            src/features/weeklyPlanning/semantic/weeklyPlanningCopiedUserContextNormalizationV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5CopiedContext.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningBoundEntityEvidenceV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningCrossTurnEntityBindingV5.test.ts \
+            src/features/userPlanningContext/userPlanningContextSpace.test.ts \
+            --reporter=verbose
