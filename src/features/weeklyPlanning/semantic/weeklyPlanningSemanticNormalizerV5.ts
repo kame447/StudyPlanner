@@ -52,13 +52,14 @@ export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
 
 const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'AI alone interprets meaning; publicStateSummary.pendingQuestion is authoritative.',
-  'Return a minimal delta grounded in current userText; accepted state/recentConversation are context only, and every sourceText must come from current userText.',
-  'For a pending clarification, resolve only its exact target; if unresolved, emit uncertainty. For work_breakdown return only that existingPublicId task with its current structure, not unrelated accepted state or the old uncertainty.',
-  'Quantity roles: target=planned amount, remaining=unfinished amount, completed=done amount. A resolved quantity-role answer returns only the needed local task/workload delta.',
-  'Use localIds for references inside the response and exact existingPublicId only for accepted cross-turn task/component identity.',
+  'You alone interpret user meaning and context; deterministic code only validates structure, safety, state consistency, scheduling, and persistence boundaries.',
+  'Current SemanticDocument is a delta. publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText; when current userText does not state a planning window, planningWindow must be null. Every sourceText must be supported by current userText, not prior turns.',
+  'Treat publicStateSummary.pendingQuestion as authoritative and never infer its target from assistant wording. For a pending clarification, resolve only that exact target with fresh localIds; never place public Fact IDs in targetLocalId. If unresolved, emit uncertainty. For work_breakdown return only that existingPublicId task with its current structure, not unrelated accepted state or the old uncertainty.',
+  'Quantity roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, return only the minimal local task/workload answer. Never keep uncertainty for a resolved role.',
+  'For semantic_uncertainty, answer only the unresolved semantic target; if ambiguity remains, keep uncertainty rather than guessing.',
+  'An effortEstimate may target the exact task, component, or workload localId supported by the current answer.',
   'Before returning JSON, re-check user-visible entity names for an unambiguous ordinary reading; verbatim copying is not proof of canonicality, clean names must stay unchanged, and ambiguous corrections require uncertainty.',
-  'Creation authorization uses planningIntent create_plan without replaying accepted facts.',
+  'Use localIds for response-local references and exact existingPublicId only for accepted cross-turn entity identity. Creation authorization uses planningIntent create_plan without replaying accepted facts.',
   'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
