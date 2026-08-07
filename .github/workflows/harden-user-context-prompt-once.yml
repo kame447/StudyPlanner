@@ -1,0 +1,45 @@
+name: Harden User Context Prompt Once
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/harden-user-context-prompt-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync latest branch
+        run: |
+          set -euo pipefail
+          git fetch origin agent/weekly-ai-conversation-eval
+          git checkout -B agent/weekly-ai-conversation-eval origin/agent/weekly-ai-conversation-eval
+      - name: Strengthen generic durable-context extraction contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts')
+          text = path.read_text()
+          old = "    'Use userContextFacts only for owner-level context useful beyond the current week. Use kind goal_event for a dated future event and kind concern for an ongoing concern or priority such as a weak subject. concern must have null dateExpression.',\n    'userContextFacts are current-turn deltas, not a copy of stored user context. Preserve label, optional value/dateExpression, and sourceText without inventing detail.',"
+          new = "    'Use userContextFacts for owner-level context useful beyond the current week. After mapping weekly facts, independently check current userText for every explicit future event occurrence and every explicit ongoing difficulty, weakness, concern, or priority that can matter in later plans. Use goal_event for dated future events and concern for ongoing concerns or priorities; concern has null dateExpression.',\n    'A concern may coexist with a task or component for the same subject or activity. Do not omit durable concern merely because its label already appears in weekly facts. Preserve the user wording in value or use null; do not invent a diagnosis or stronger priority.',\n    'userContextFacts are current-turn deltas, not a copy of stored user context. Preserve label, optional value/dateExpression, and sourceText without inventing detail.',"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one prompt contract match, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts
+          git diff --cached --check
+          git commit -m "feat: harden durable user context extraction"
+          git push origin HEAD:agent/weekly-ai-conversation-eval
