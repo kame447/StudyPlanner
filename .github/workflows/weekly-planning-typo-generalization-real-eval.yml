@@ -1,0 +1,66 @@
+name: Weekly Planning Typo Generalization Real Eval
+
+on:
+  push:
+    branches: [agent/weekly-ai-conversation-eval]
+    paths:
+      - .github/workflows/weekly-planning-typo-generalization-real-eval.yml
+
+permissions:
+  contents: read
+
+jobs:
+  typo-matrix:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case_id: kanji-conversion
+            user_text: 来週、数楽ワークを20ページ進めたいです。
+          - case_id: katakana-voicing
+            user_text: 来週、英語のレボートを仕上げたいです。
+          - case_id: kanji-substitution
+            user_text: 来週、現代文の問代集を30問進めたいです。
+          - case_id: clean-control
+            user_text: 来週、化学のワークシートを10ページ進めたいです。
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify OpenAI secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+      - name: Execute one first-turn conversation
+        env:
+          TZ: Asia/Tokyo
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_PROVIDER: openai
+          VITE_AI_BASE_URL: https://api.openai.com/v1
+          VITE_AI_MODEL: gpt-5.4-mini
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_MAX_PROCESS_REQUESTS: 3
+          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ matrix.user_text }}
+          WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ''
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.case_id }}
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: typo-generalization-${{ matrix.case_id }}
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: typo-generalization-${{ matrix.case_id }}-20260808
+          WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: '2026-08-10'
+          WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: '2026-08-08'
+          WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '60000'
+        run: |
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts --reporter=verbose
+          echo '--- TRANSCRIPT ---'
+          cat artifacts/${{ matrix.case_id }}/transcript.md
+          echo '--- LATEST TURN ---'
+          cat artifacts/${{ matrix.case_id }}/latest-turn.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: typo-generalization-${{ matrix.case_id }}
+          path: artifacts/${{ matrix.case_id }}/
+          retention-days: 7
