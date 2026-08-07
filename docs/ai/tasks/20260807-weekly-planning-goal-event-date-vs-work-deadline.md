@@ -67,7 +67,9 @@ AIが計画上もっともらしいdeadlineを補うことは、`Do not invent f
 
 を分離して返せる。
 
-validatorは型・参照・sourceText groundingだけを検証し、意味を再解釈しない。
+validatorはraw user textの意味を再解釈しない。ただし、AI自身が返したstructured claims同士の整合性は検証する。同一dateExpression・同一sourceTextを `goal_event` とwork `deadline` の双方の根拠にしている場合、その1つの根拠だけでは「イベント発生日」と「作業完了日」という別conceptを同時に立証できないためfail-closedとする。
+
+両方が明示されている発話では、各factが別のgrounded sourceTextを持てるため共存可能である。したがってこれはkeyword/regexによる意味再解釈ではなく、AI出力内のevidence-consistency検証である。
 
 ### 6. 回帰・汎化
 
@@ -143,8 +145,10 @@ validatorは型・参照・sourceText groundingだけを検証し、意味を再
 特に数学が結構まずい
 → kind=concern
 → label=数学
-→ value=学習上の不安・優先度が高い
+→ value=発話にgroundされた懸念表現
 ```
+
+`concern` は同じ科目が現在turnのtask/componentとして存在していても共存できる。task/componentへ格納したことを理由に長期contextを落とさない。
 
 ### semantic contract
 
@@ -155,11 +159,13 @@ Stable V5 SemanticDocumentに `userContextFacts` を追加し、同じAI normali
 - concern等の長期文脈は `userContextFacts.concern`
 - current userTextにない過去contextを再出力しない
 - public user contextは参照用であり、そのままcurrent weekly factへコピーしない
+- 同一evidence spanをgoal-event occurrenceとwork deadlineの双方へ使った曖昧な二重分類は受理しない
+- event dateとwork deadlineを両方明示した場合は、それぞれの意味を支えるdistinct grounded evidenceを持たせる
 
 ### lifecycle
 
 1. AI normalizerがcurrent turnのsemantic deltaとuserContextFactsを返す。
-2. schema / source evidence validationを通す。
+2. schema / source evidence / structured claim consistency validationを通す。
 3. weekly graph canonicalizationが成功したturnだけ、user contextもcommitする。
 4. user contextはowner単位storeへupsertする。
 5. 次回以降のnormalizerへbounded summaryとして渡す。
@@ -177,6 +183,7 @@ weekly graphとuser contextのどちらかだけが失敗turnで更新される�
 - 過去contextは現在のhard constraintとして黙って再適用しない。
 - failed/rejected turnではweekly graphもuser contextも更新しない。
 - 特定の模試・科目・日付専用patchは作らない。
+- 同一structured evidenceでgoal_eventとdeadlineを二重主張したAI応答は受理しない。
 
 ## 実装・検証条件
 
@@ -186,7 +193,9 @@ weekly graphとuser contextのどちらかだけが失敗turnで更新される�
 - 試験までに特定範囲を終える → goal_eventと明示work deadlineを区別
 - 提出締切を述べる → 文意に応じたwork deadline
 - 単なる予定イベント日を述べる → goal_event
-- 「数学がかなり不安」 → concern
+- 継続的な科目の不安・弱点を述べる → concern
+- 同一sourceTextをgoal_eventとdeadlineへ二重使用 → rejected → AI repair
+- goal_eventと明示deadlineにdistinct evidenceがある → 共存可能
 - 翌週の新conversationでowner contextが読み込まれる
 - owner Aのcontextがowner Bへ漏れない
 - 壊れた/巨大context payloadをfail-closedで拒否
@@ -200,3 +209,32 @@ weekly graphとuser contextのどちらかだけが失敗turnで更新される�
 - 利用者向け返答が不自然に悪化していない
 
 ことを確認してからturn 3へ進む。
+
+## 実API再検証履歴
+
+### run 31165946552 — 不採用
+
+UserPlanningContextSpace導入後、同じturn 2をturn 1成功checkpointから再実行した。
+
+成功した点:
+
+- `goal_event` として `共通テスト模試` を抽出した
+- `dateExpression=custom:2週間後`
+- `observedDate=2026-08-07`
+- `resolvedDate=2026-08-21`
+- owner / conversation / request provenanceを保持した
+- Actionsをまたぐcheckpointへcontextを保存できた
+
+未解決だった点:
+
+1. AIは同じ `sourceText=2週間後に共通テスト模試もあるので` を、`goal_event` と `hard deadline` の両方へ出力した。
+2. validatorはこのstructured contradictionを受理し、weekly graphにもdeadlineが入った。
+3. `特に数学が結構まずいです` はtask componentには反映されたが、owner-level `concern` には出力されなかった。
+
+したがってturn 2は成功扱いにせず、会話を停止した。
+
+対応:
+
+- 同一dateExpression・同一sourceTextをgoal_eventとdeadlineへ二重使用した応答をsemantic consistency errorとして拒否する。
+- validation error自体に「distinct explicit completion evidenceがなければgoal_eventを残しdeadlineを除去する」修復条件を含め、既存の1回だけのAI repair経路へ流す。
+- concernについては、task/componentとowner-level contextが共存可能であり、長期的な不安・弱点・重点をcomponentへ入れたことを理由に省略しない契約を維持し、次回実APIで再確認する。
