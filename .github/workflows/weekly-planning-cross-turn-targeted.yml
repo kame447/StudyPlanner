@@ -1,0 +1,29 @@
+name: Weekly Planning Cross Turn Targeted
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/weekly-planning-cross-turn-targeted.yml
+
+jobs:
+  targeted:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b --pretty false
+      - name: Run targeted regressions
+        run: |
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run \
+            src/features/weeklyPlanning/semantic/weeklyPlanningCrossTurnEntityBindingV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticUserContextV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningDurableContextSignalsV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningUserContextConsistencyV5.test.ts \
+            src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5ComponentParent.test.ts \
+            --reporter=verbose
