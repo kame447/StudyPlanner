@@ -6,6 +6,7 @@ on:
       - agent/weekly-ai-conversation-eval
     paths:
       - .github/workflows/apply-component-parent-normalization-v5.yml
+      - .github/apply-component-parent-normalization-v5.py
 
 permissions:
   contents: write
