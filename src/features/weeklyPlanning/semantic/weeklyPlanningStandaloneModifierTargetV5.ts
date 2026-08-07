@@ -14,6 +14,18 @@ interface TaskEvidenceV5 {
   evidenceTexts: string[];
 }
 
+function normalizedText(value: string): string {
+  return value.toLocaleLowerCase();
+}
+
+function includesText(haystack: string, needle: string): boolean {
+  return normalizedText(haystack).includes(normalizedText(needle));
+}
+
+function lastIndexOfText(haystack: string, needle: string): number {
+  return normalizedText(haystack).lastIndexOf(normalizedText(needle));
+}
+
 function sentenceSegments(text: string): TextSegmentV5[] {
   const segments: TextSegmentV5[] = [];
   let start = 0;
@@ -35,7 +47,7 @@ function exactEvidenceTexts(task: SemanticTaskV5, userText: string): string[] {
     ...(task.study?.components.map((component) => component.sourceText) ?? []),
   ];
   return [...new Set(values.map((value) => value.trim()).filter((value) =>
-    value.length >= 2 && userText.includes(value),
+    value.length >= 2 && includesText(userText, value),
   ))];
 }
 
@@ -48,7 +60,7 @@ function taskEvidence(document: WeeklyPlanningSemanticDocumentV5, userText: stri
 
 function mentionedTaskIds(segment: string, evidence: TaskEvidenceV5[]): Set<string> {
   return new Set(evidence
-    .filter((entry) => entry.evidenceTexts.some((text) => segment.includes(text)))
+    .filter((entry) => entry.evidenceTexts.some((text) => includesText(segment, text)))
     .map((entry) => entry.taskLocalId));
 }
 
@@ -77,7 +89,7 @@ function hasModifierTargetUncertainty(
 ): boolean {
   return document.uncertainties.some((uncertainty) =>
     uncertainty.field === 'modifier_target'
-    && uncertainty.sourceText.trim() === sourceText.trim(),
+    && normalizedText(uncertainty.sourceText.trim()) === normalizedText(sourceText.trim()),
   );
 }
 
@@ -96,7 +108,7 @@ export function validateWeeklyPlanningStandaloneModifierTargetsV5(params: {
   for (const [sourceText, attachedOwners] of ownersBySource) {
     if (attachedOwners.size !== 1 || hasModifierTargetUncertainty(params.document, sourceText)) continue;
 
-    const sourceIndex = params.userText.lastIndexOf(sourceText);
+    const sourceIndex = lastIndexOfText(params.userText, sourceText);
     if (sourceIndex < 0) continue;
     const segmentIndex = segments.findIndex((segment) =>
       sourceIndex >= segment.start && sourceIndex < segment.end,
