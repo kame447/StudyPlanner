@@ -1,11 +1,11 @@
 {
-  "scenario": "high-school-senior-heavy-week-v1",
-  "turn": 3,
-  "attempt": 6,
-  "user_text": "数学のワークと古典の課題が残ってます。数学のワークの方が量は多いです。",
-  "previous_run_id": "31185890703",
-  "conversation_id": "weekly-conversation-7d8f0d8a-0e52-4a27-b3d8-202608070002",
-  "owner_id": "resumable-real-api-eval-user",
+  "scenario": "alternate-decomposition-wording-v1",
+  "turn": 1,
+  "attempt": 1,
+  "user_text": "来週、学校の提出物がいくつか残っていて、資格試験の勉強もしたいです。",
+  "previous_run_id": "",
+  "conversation_id": "weekly-alternate-decomposition-20260808-01",
+  "owner_id": "resumable-real-api-eval-user-alt",
   "week_start_date": "2026-08-10",
-  "selected_date": "2026-08-07"
+  "selected_date": "2026-08-08"
 }
