@@ -1,6 +1,7 @@
 {
   "scenario": "high-school-senior-heavy-week-v1",
   "turn": 2,
+  "attempt": 2,
   "user_text": "夏休みの課題もまだ終わってなくて、2週間後に共通テスト模試もあるので、その勉強も進めたいです。特に数学が結構まずいです。",
   "previous_run_id": "31154565862",
   "conversation_id": "weekly-conversation-7d8f0d8a-0e52-4a27-b3d8-202608070002",
