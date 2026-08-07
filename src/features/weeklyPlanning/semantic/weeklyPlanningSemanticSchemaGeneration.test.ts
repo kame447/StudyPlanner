@@ -165,9 +165,11 @@ describe('weekly planning semantic schema generations', () => {
       'constraintSourceRequests',
     ]);
     expect(difference(alpha1Required, alpha2Required)).toEqual([]);
-    expect(difference(Object.keys(stableProperties), Object.keys(alpha2Properties))).toEqual([]);
+    expect(difference(Object.keys(stableProperties), Object.keys(alpha2Properties))).toEqual([
+      'userContextFacts',
+    ]);
     expect(difference(Object.keys(alpha2Properties), Object.keys(stableProperties))).toEqual([]);
-    expect(difference(stableRequired, alpha2Required)).toEqual([]);
+    expect(difference(stableRequired, alpha2Required)).toEqual(['userContextFacts']);
     expect(difference(alpha2Required, stableRequired)).toEqual([]);
 
     const alpha1Temporal = temporalConstraintItems(alpha1Root);
