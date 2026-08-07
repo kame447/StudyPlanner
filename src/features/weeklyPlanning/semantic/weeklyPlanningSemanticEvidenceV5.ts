@@ -57,7 +57,9 @@ function componentEvidence(
   path: string,
 ): SourceEvidenceEntryV5[] {
   return [
-    { path: `${path}.sourceText`, sourceText: component.sourceText },
+    ...(component.existingPublicId
+      ? []
+      : [{ path: `${path}.sourceText`, sourceText: component.sourceText }]),
     ...component.workloads.map((workload, index) => ({
       path: `${path}.workloads[${index}].sourceText`,
       sourceText: workload.sourceText,
@@ -74,7 +76,9 @@ function taskEvidence(
   path: string,
 ): SourceEvidenceEntryV5[] {
   return [
-    { path: `${path}.sourceText`, sourceText: task.sourceText },
+    ...(task.existingPublicId
+      ? []
+      : [{ path: `${path}.sourceText`, sourceText: task.sourceText }]),
     ...task.workloads.map((workload, index) => ({
       path: `${path}.workloads[${index}].sourceText`,
       sourceText: workload.sourceText,
@@ -158,7 +162,6 @@ function collectSourceEvidence(
       path: `document.decisions[${index}].sourceText`,
       sourceText: decision.sourceText,
     })),
-    ...userContextEvidence(document),
   ];
 }
 
@@ -189,8 +192,8 @@ export function validateWeeklyPlanningSemanticEvidenceV5(params: {
     && hasAcceptedPublicFacts(params.input.publicStateSummary);
   if (!contextualTurn && !authorizationOverAcceptedState) return userContextErrors;
 
-  return groundingErrors(
-    collectSourceEvidence(params.document),
-    params.input.userText,
-  );
+  return [...new Set([
+    ...userContextErrors,
+    ...groundingErrors(collectSourceEvidence(params.document), params.input.userText),
+  ])];
 }
