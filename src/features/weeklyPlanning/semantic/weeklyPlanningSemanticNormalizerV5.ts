@@ -30,29 +30,23 @@ export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
 
 const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
-  'You alone interpret user meaning and context; deterministic code only validates and applies your JSON.',
+  'You alone interpret user meaning and context; code only validates/applies JSON.',
   'Treat publicStateSummary.pendingQuestion as authoritative; never infer its target from assistant wording.',
   'For short answers, return only facts needed for that target. Every sourceText must be supported by current userText, not prior turns.',
-  'Roles are fixed: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, if the current answer selects one role, return one minimal task with one workload using fresh localIds, copy amount and unit from the target state, and set that role. Never keep uncertainty for a resolved role, return declared, or put public Fact IDs in targetLocalId; if the role is still unresolved, return no workload candidate.',
-  'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty instead of choosing.',
+  'Current SemanticDocument is a delta: publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText.',
+  'If current userText does not state/change the plan-wide period, planningWindow must be null even when accepted state has one.',
+  'Roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, a resolved answer emits one minimal task/workload with fresh localIds, target amount/unit, and selected role. Never keep uncertainty for a resolved role or use public Fact IDs in targetLocalId; unresolved emits no workload.',
+  'For semantic_uncertainty, return only its resolving semantic delta; if still unresolved, emit uncertainty.',
   'An effortEstimate may target the exact task, component, or workload localId it describes.',
   'For creation authorization, use planningIntent create_plan without repeating accepted facts.',
-  'Do not invent. Return Stable V5 JSON only, with no commands, scheduling, readiness, preview, save decision, or prose.',
-].join('\n');
-const CURRENT_TURN_DELTA_INSTRUCTION_V5 = [
-  'The returned SemanticDocument is a delta for current userText, not a snapshot of the already accepted plan.',
-  'publicStateSummary and recentConversation are read-only context. Never copy an accepted planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, or other fact merely because it appears there.',
-  'Emit a semantic fact only when current userText newly states it, changes it, explicitly corrects it, or explicitly decides it.',
-  'If current userText does not state or change the plan-wide period, return planningWindow null even when publicStateSummary already contains a planning window.',
-  'planningIntent update_plan or discuss does not require restating any accepted planningWindow or task. Existing accepted facts remain in application state without being repeated in this delta.',
-  'Every emitted sourceText must be a substring or directly grounded excerpt of current userText. Never use prior user or assistant text as sourceText for a current-turn fact.',
+  'Do not invent. Return Stable V5 JSON only; no commands, scheduling, readiness, preview, save decisions, or prose.',
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
-  'For multiple non-consecutive explicit dates on one task, create one allowed_date constraint per date instead of a continuous range.',
-  'For explicitly named repeating weekdays, use one weekly recurrence with the complete days array.',
-  'Priority and ordering statements are task relations, not clock constraints.',
-  'Use clock fields only when the user explicitly supplied the corresponding clock boundary.',
-  'A named time period without an exact clock uses namedTimePeriod; an exact clock uses null namedTimePeriod.',
+  'Non-consecutive explicit dates use one allowed_date constraint per date; never merge them into a range.',
+  'Explicit repeating weekdays use one weekly recurrence with all stated days.',
+  'Priority and ordering are task relations, not clock constraints.',
+  'Use clock fields only for boundaries explicitly supplied by the user.',
+  'Named periods use namedTimePeriod; exact clocks use null namedTimePeriod.',
 ].join('\n');
 
 interface SemanticValidationAttemptV5 {
@@ -160,7 +154,6 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
       content: [
         createWeeklyPlanningSemanticSystemPromptV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
-        CURRENT_TURN_DELTA_INSTRUCTION_V5,
         TEMPORAL_STRUCTURE_INSTRUCTION_V5,
       ].join('\n'),
     },
