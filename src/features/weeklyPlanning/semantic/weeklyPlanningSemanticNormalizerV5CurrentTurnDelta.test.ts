@@ -78,10 +78,10 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(result.status).toBe('accepted');
     const messages = fake.calls[0].messages as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? '';
-    expect(system).toContain('delta for current userText, not a snapshot');
-    expect(system).toContain('publicStateSummary and recentConversation are read-only context');
-    expect(system).toContain('return planningWindow null');
-    expect(system).toContain('does not require restating any accepted planningWindow or task');
+    expect(system).toContain('Current SemanticDocument is a delta');
+    expect(system).toContain('publicStateSummary/recentConversation are context, not facts to copy');
+    expect(system).toContain('planningWindow must be null');
+    expect(system).toContain('Emit only facts stated or changed in current userText');
   });
 
   it('repairs a copied accepted planning window by preserving current-turn facts only', async () => {
