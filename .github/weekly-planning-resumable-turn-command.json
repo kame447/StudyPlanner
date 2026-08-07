@@ -1,11 +1,11 @@
 {
-  "scenario": "alternate-decomposition-wording-v1",
-  "turn": 2,
+  "scenario": "obvious-typo-input-v1",
+  "turn": 1,
   "attempt": 1,
-  "user_text": "英語レポートと化学プリントが残っています。レポートの方が量は多いです。",
-  "previous_run_id": "31200963843",
-  "conversation_id": "weekly-alternate-decomposition-20260808-01",
-  "owner_id": "resumable-real-api-eval-user-alt",
+  "user_text": "来週、数楽ワークを20ページ進めたいです。",
+  "previous_run_id": "",
+  "conversation_id": "weekly-obvious-typo-20260808-01",
+  "owner_id": "resumable-real-api-eval-user-typo",
   "week_start_date": "2026-08-10",
   "selected_date": "2026-08-08"
 }
