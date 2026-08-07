@@ -6,6 +6,7 @@ on:
       - agent/weekly-ai-conversation-eval
     paths:
       - .github/user-planning-context-integration.patch
+      - .github/workflows/apply-user-planning-context-integration.yml
 
 permissions:
   contents: write
