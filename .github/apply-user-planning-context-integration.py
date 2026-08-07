@@ -1,0 +1,352 @@
+from pathlib import Path
+
+
+def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+    p = Path(path)
+    text = p.read_text()
+    count = text.count(old)
+    if count != expected:
+        raise SystemExit(
+            f'{path}: expected {expected} match(es), found {count}: {old[:120]!r}'
+        )
+    p.write_text(text.replace(old, new))
+
+
+semantic = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts'
+replace_exact(
+    semantic,
+    "import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';\n",
+    "import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';\n"
+    "import {\n"
+    "  USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,\n"
+    "  type UserPlanningContextSemanticFactV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextTypes';\n",
+)
+replace_exact(
+    semantic,
+    "  constraintSourceRequests: SemanticConstraintSourceRequestV5[];\n"
+    "  uncertainties: SemanticUncertaintyV5[];",
+    "  constraintSourceRequests: SemanticConstraintSourceRequestV5[];\n"
+    "  userContextFacts?: UserPlanningContextSemanticFactV1[];\n"
+    "  uncertainties: SemanticUncertaintyV5[];",
+)
+replace_exact(
+    semantic,
+    "export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {",
+    "const userContextFactSchema = {\n"
+    "  type: 'object',\n"
+    "  additionalProperties: false,\n"
+    "  required: [\n"
+    "    'localId',\n"
+    "    'kind',\n"
+    "    'label',\n"
+    "    'value',\n"
+    "    'dateExpression',\n"
+    "    'sourceText',\n"
+    "  ],\n"
+    "  properties: {\n"
+    "    localId: { type: 'string' },\n"
+    "    kind: { type: 'string', enum: USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 },\n"
+    "    label: { type: 'string' },\n"
+    "    value: nullableStringSchema,\n"
+    "    dateExpression: nullableStringSchema,\n"
+    "    ...sourceTextProperty,\n"
+    "  },\n"
+    "} as const;\n\n"
+    "export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {",
+)
+replace_exact(
+    semantic,
+    "        'constraintSourceRequests',\n        'uncertainties',",
+    "        'constraintSourceRequests',\n        'userContextFacts',\n        'uncertainties',",
+)
+replace_exact(
+    semantic,
+    "        constraintSourceRequests: {\n"
+    "          type: 'array',\n"
+    "          items: constraintSourceRequestSchema,\n"
+    "        },\n"
+    "        uncertainties:",
+    "        constraintSourceRequests: {\n"
+    "          type: 'array',\n"
+    "          items: constraintSourceRequestSchema,\n"
+    "        },\n"
+    "        userContextFacts: {\n"
+    "          type: 'array',\n"
+    "          items: userContextFactSchema,\n"
+    "        },\n"
+    "        uncertainties:",
+)
+replace_exact(
+    semantic,
+    "Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, uncertainty, correction, and decision.",
+    "Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, user context fact, uncertainty, correction, and decision.",
+)
+replace_exact(
+    semantic,
+    "    'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',\n",
+    "    'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',\n"
+    "    'A date when an exam, presentation, competition, appointment, or other event itself occurs is not a work deadline. Put a durable event occurrence in userContextFacts with kind goal_event. Emit a task deadline only when the user explicitly states completion-by meaning for the work.',\n"
+    "    'Use userContextFacts only for owner-level context useful beyond the current week. Use kind goal_event for a dated future event and kind concern for an ongoing concern or priority such as a weak subject. concern must have null dateExpression.',\n"
+    "    'userContextFacts are current-turn deltas, not a copy of stored user context. Preserve label, optional value/dateExpression, and sourceText without inventing detail.',\n",
+)
+replace_exact(
+    semantic,
+    "Return empty availabilityDeclarations and constraintSourceRequests arrays when none are explicitly present.",
+    "Return empty availabilityDeclarations, constraintSourceRequests, and userContextFacts arrays when none are explicitly present.",
+)
+
+runtime = 'src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts'
+replace_exact(
+    runtime,
+    "import type { Plan, ScheduleTemplate } from '../../../types/domain';\n",
+    "import type { Plan, ScheduleTemplate } from '../../../types/domain';\n"
+    "import {\n"
+    "  stageUserPlanningContextFactsV1,\n"
+    "  userPlanningContextPromptSummaryV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextSpace';\n",
+)
+replace_exact(
+    runtime,
+    "  messages: readonly WeeklyPlanningMessage[],\n"
+    "  previousState?: PlanningIntakeState,\n"
+    "): Record<string, unknown> {",
+    "  messages: readonly WeeklyPlanningMessage[],\n"
+    "  previousState?: PlanningIntakeState,\n"
+    "  ownerId?: string,\n"
+    "  currentDate?: string,\n"
+    "): Record<string, unknown> {",
+)
+replace_exact(
+    runtime,
+    "    uncertainties: active.uncertainties.map((uncertainty) => ({\n"
+    "      publicId: uncertainty.id,\n"
+    "      targetPublicId: uncertainty.targetFactId,\n"
+    "      field: uncertainty.field,\n"
+    "      reason: uncertainty.reason,\n"
+    "      sourceText: uncertainty.source.sourceText,\n"
+    "    })),\n"
+    "    lastAssistantMessage:",
+    "    uncertainties: active.uncertainties.map((uncertainty) => ({\n"
+    "      publicId: uncertainty.id,\n"
+    "      targetPublicId: uncertainty.targetFactId,\n"
+    "      field: uncertainty.field,\n"
+    "      reason: uncertainty.reason,\n"
+    "      sourceText: uncertainty.source.sourceText,\n"
+    "    })),\n"
+    "    userPlanningContext: ownerId && currentDate\n"
+    "      ? userPlanningContextPromptSummaryV1({ ownerId, currentDate })\n"
+    "      : [],\n"
+    "    lastAssistantMessage:",
+)
+replace_exact(
+    runtime,
+    "  const stateSummary = publicStateSummary(\n"
+    "    runtimeSession.graph,\n"
+    "    input.messages,\n"
+    "    input.previousState,\n"
+    "  );",
+    "  const stateSummary = publicStateSummary(\n"
+    "    runtimeSession.graph,\n"
+    "    input.messages,\n"
+    "    input.previousState,\n"
+    "    input.userId,\n"
+    "    input.selectedDate,\n"
+    "  );",
+)
+replace_exact(
+    runtime,
+    "  commitWeeklyPlanningStableV5RuntimeGraph({\n"
+    "    ownerId: input.userId,",
+    "  const userContextFacts = semantic.normalization.document?.userContextFacts ?? [];\n"
+    "  stageUserPlanningContextFactsV1({\n"
+    "    ownerId: input.userId,\n"
+    "    conversationId: input.conversationId,\n"
+    "    requestId: input.traceRequestId,\n"
+    "    observedDate: input.selectedDate,\n"
+    "    facts: userContextFacts,\n"
+    "  });\n"
+    "  recordWeeklyPlanningStableV5DebugTrace({\n"
+    "    requestId: input.traceRequestId,\n"
+    "    stage: 'runtime_user_context_staged',\n"
+    "    data: {\n"
+    "      ownerId: input.userId,\n"
+    "      conversationId: input.conversationId,\n"
+    "      requestId: input.traceRequestId,\n"
+    "      userContextFacts,\n"
+    "    },\n"
+    "  });\n\n"
+    "  commitWeeklyPlanningStableV5RuntimeGraph({\n"
+    "    ownerId: input.userId,",
+)
+
+side = 'src/features/weeklyPlanning/application/weeklyPlanningTurnSideEffects.ts'
+replace_exact(
+    side,
+    "import {\n  recordWeeklyPlanningStableV5TurnTrace,\n}",
+    "import {\n"
+    "  discardStagedUserPlanningContextV1,\n"
+    "  finalizeStagedUserPlanningContextV1,\n"
+    "  hasStagedUserPlanningContextV1,\n"
+    "  rollbackFinalizedUserPlanningContextV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextSpace';\n"
+    "import {\n  recordWeeklyPlanningStableV5TurnTrace,\n}",
+)
+replace_exact(
+    side,
+    "  if (!services.hasStagedGraph({\n"
+    "    conversationId: params.pending.conversationId,\n"
+    "    requestId: params.pending.requestId,\n"
+    "  })) {\n"
+    "    return;\n"
+    "  }\n"
+    "  services.finalizeRuntimeGraph({\n"
+    "    ownerId: params.ownerId,\n"
+    "    conversationId: params.pending.conversationId,\n"
+    "    requestId: params.pending.requestId,\n"
+    "  });",
+    "  const hasGraph = services.hasStagedGraph({\n"
+    "    conversationId: params.pending.conversationId,\n"
+    "    requestId: params.pending.requestId,\n"
+    "  });\n"
+    "  const hasContext = hasStagedUserPlanningContextV1({\n"
+    "    conversationId: params.pending.conversationId,\n"
+    "    requestId: params.pending.requestId,\n"
+    "  });\n"
+    "  if (!hasGraph && !hasContext) return;\n\n"
+    "  const contextReceipt = hasContext\n"
+    "    ? finalizeStagedUserPlanningContextV1({\n"
+    "        ownerId: params.ownerId,\n"
+    "        conversationId: params.pending.conversationId,\n"
+    "        requestId: params.pending.requestId,\n"
+    "      })\n"
+    "    : null;\n"
+    "  try {\n"
+    "    if (hasGraph) {\n"
+    "      services.finalizeRuntimeGraph({\n"
+    "        ownerId: params.ownerId,\n"
+    "        conversationId: params.pending.conversationId,\n"
+    "        requestId: params.pending.requestId,\n"
+    "      });\n"
+    "    }\n"
+    "  } catch (error) {\n"
+    "    rollbackFinalizedUserPlanningContextV1(contextReceipt);\n"
+    "    throw error;\n"
+    "  }",
+)
+replace_exact(
+    side,
+    "  if (!services.isStableV5Enabled()) return;\n"
+    "  services.discardStagedGraph({",
+    "  if (!services.isStableV5Enabled()) return;\n"
+    "  discardStagedUserPlanningContextV1({\n"
+    "    conversationId: pending.conversationId,\n"
+    "    requestId: pending.requestId,\n"
+    "  });\n"
+    "  services.discardStagedGraph({",
+)
+
+checkpoint = 'src/features/weeklyPlanning/evals/weeklyPlanningResumableConversationCheckpoint.test.ts'
+replace_exact(
+    checkpoint,
+    "import { describe, expect, it } from 'vitest';\n",
+    "import { describe, expect, it } from 'vitest';\n"
+    "import {\n"
+    "  createEmptyUserPlanningContextSnapshotV1,\n"
+    "  type UserPlanningContextSnapshotV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextTypes';\n"
+    "import {\n"
+    "  validateUserPlanningContextSnapshotV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextSpace';\n",
+)
+replace_exact(
+    checkpoint,
+    "  graph: WeeklyPlanningFactGraphV5;\n  turns:",
+    "  graph: WeeklyPlanningFactGraphV5;\n"
+    "  userPlanningContext: UserPlanningContextSnapshotV1;\n"
+    "  turns:",
+)
+replace_exact(
+    checkpoint,
+    "  const graphResult = parseWeeklyPlanningFactGraphV5(JSON.stringify(parsed.graph));\n"
+    "  if (!graphResult.graph) throw new Error('Checkpoint graph is invalid.');\n"
+    "  if (!Array.isArray(parsed.turns)",
+    "  const graphResult = parseWeeklyPlanningFactGraphV5(JSON.stringify(parsed.graph));\n"
+    "  if (!graphResult.graph) throw new Error('Checkpoint graph is invalid.');\n"
+    "  const userPlanningContext = parsed.userPlanningContext === undefined\n"
+    "    ? createEmptyUserPlanningContextSnapshotV1(parsed.ownerId)\n"
+    "    : parsed.userPlanningContext;\n"
+    "  if (!validateUserPlanningContextSnapshotV1(userPlanningContext, parsed.ownerId)) {\n"
+    "    throw new Error('Checkpoint user planning context is invalid.');\n"
+    "  }\n"
+    "  if (!Array.isArray(parsed.turns)",
+)
+replace_exact(
+    checkpoint,
+    "    graph: graphResult.graph,\n    turns,",
+    "    graph: graphResult.graph,\n    userPlanningContext,\n    turns,",
+)
+replace_exact(
+    checkpoint,
+    "    graph: createEmptyWeeklyPlanningFactGraphV5(),\n    turns:",
+    "    graph: createEmptyWeeklyPlanningFactGraphV5(),\n"
+    "    userPlanningContext: createEmptyUserPlanningContextSnapshotV1('owner-1'),\n"
+    "    turns:",
+)
+
+realeval = 'src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts'
+replace_exact(
+    realeval,
+    "import { describe, expect, it } from 'vitest';\n",
+    "import { describe, expect, it } from 'vitest';\n"
+    "import {\n"
+    "  exportUserPlanningContextSnapshotV1,\n"
+    "  hydrateUserPlanningContextSnapshotV1,\n"
+    "  resetUserPlanningContextRuntimeForTestV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextSpace';\n"
+    "import {\n"
+    "  createEmptyUserPlanningContextSnapshotV1,\n"
+    "} from '../../userPlanningContext/userPlanningContextTypes';\n",
+)
+replace_exact(
+    realeval,
+    "  clearWeeklyPlanningSessionRuntime();\n  resetWeeklyPlanningRuntimeModeForTest();",
+    "  clearWeeklyPlanningSessionRuntime();\n"
+    "  resetUserPlanningContextRuntimeForTestV1();\n"
+    "  resetWeeklyPlanningRuntimeModeForTest();",
+)
+replace_exact(
+    realeval,
+    "    graph: runtime.graph,\n    turns:",
+    "    graph: runtime.graph,\n"
+    "    userPlanningContext: createEmptyUserPlanningContextSnapshotV1(ownerId),\n"
+    "    turns:",
+)
+replace_exact(
+    realeval,
+    "    dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,\n    trace:",
+    "    dialogueRendererTrace: params.result.dialogueRendererTrace ?? null,\n"
+    "    userPlanningContext: params.checkpoint.userPlanningContext,\n"
+    "    trace:",
+    expected=2,
+)
+replace_exact(
+    realeval,
+    "    const checkpoint = loadCheckpoint();\n"
+    "    resetRuntime();\n"
+    "    hydrateWeeklyPlanningStableV5RuntimeSession({",
+    "    const checkpoint = loadCheckpoint();\n"
+    "    resetRuntime();\n"
+    "    hydrateUserPlanningContextSnapshotV1(checkpoint.userPlanningContext);\n"
+    "    hydrateWeeklyPlanningStableV5RuntimeSession({",
+)
+replace_exact(
+    realeval,
+    "      graph: runtime.graph,\n      turns: [",
+    "      graph: runtime.graph,\n"
+    "      userPlanningContext: exportUserPlanningContextSnapshotV1({\n"
+    "        ownerId: checkpoint.ownerId,\n"
+    "        currentDate: checkpoint.selectedDate,\n"
+    "      }),\n"
+    "      turns: [",
+)
