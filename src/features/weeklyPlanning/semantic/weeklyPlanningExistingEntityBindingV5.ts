@@ -7,6 +7,9 @@ import type {
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from './weeklyPlanningActiveSchedulerGraphViewV5';
+import {
+  isWeeklyPlanningMachineContextualValidationEnvelopeV5,
+} from './weeklyPlanningContextualValidationBoundaryV5';
 
 export const WEEKLY_PLANNING_EXISTING_ENTITY_BINDING_VERSION_V5 =
   'weekly-planning-existing-entity-binding-v5' as const;
@@ -29,6 +32,8 @@ export function validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5
 }): string[] {
   const state = params.publicStateSummary;
   if (!state) return [];
+  if (isWeeklyPlanningMachineContextualValidationEnvelopeV5(params)) return [];
+
   const publicTasks = recordArray(state.tasks);
   const publicComponents = recordArray(state.components);
   const errors: string[] = [];
