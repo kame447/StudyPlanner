@@ -3,6 +3,7 @@ on:
   push:
     branches: [agent/weekly-ai-conversation-eval]
     paths: [.github/workflows/weekly-planning-contextual-rebase-concern-targeted.yml]
+# rerun after policy compaction
 jobs:
   targeted:
     runs-on: ubuntu-latest
