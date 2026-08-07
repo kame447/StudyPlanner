@@ -44,6 +44,9 @@ describe('Stable V5 prompt generalization contracts', () => {
     const prompt = createWeeklyPlanningSemanticSystemPromptV5();
     expect(prompt).toContain('Obvious spelling, kana/kanji, speech-input, or OCR noise');
     expect(prompt).toContain('only when one reading is clearly supported');
+    expect(prompt).toContain('normalize semantic title, label, contextLabel');
+    expect(prompt).toContain('preserving the original verbatim excerpt only in sourceText');
+    expect(prompt).toContain('Do not keep an obvious typo as the canonical entity name');
     expect(prompt).toContain('two or more plausible readings');
     expect(prompt).toContain('emit uncertainty and do not create or modify the guessed fact');
     expect(prompt).toContain('must have a uniquely supported semantic target');
@@ -74,7 +77,9 @@ describe('Stable V5 prompt generalization contracts', () => {
       fallbackText: '曖昧な部分だけ確認してください。',
       previewCount: 0,
     });
-    expect(dialogue.systemPrompt).toContain('意味が一意なら自然に理解');
+    expect(dialogue.systemPrompt).toContain('意味が一意なら自然に補正して理解');
+    expect(dialogue.systemPrompt).toContain('補正後の自然な名称');
+    expect(dialogue.systemPrompt).toContain('明白な誤字をそのまま名称として繰り返さない');
     expect(dialogue.systemPrompt).toContain('曖昧な部分だけを一つ確認');
     expect(dialogue.userPrompt).toContain('意味を決め打ちせず');
     expect(dialogue.userPrompt).toContain('一つの確認だけ');
@@ -102,8 +107,13 @@ describe('Stable V5 prompt generalization contracts', () => {
     });
     expect(prompt.systemPrompt).toContain('一度に複数の独立した回答を要求せず');
     expect(prompt.userPrompt).toContain('fieldがwork_breakdownの項目がある場合だけ');
-    expect(prompt.userPrompt).toContain('questionCodeがmissing_schedulable_workの場合は追加の分解を求めず');
-    expect(prompt.userPrompt).toContain('量・範囲を確認してください');
+    expect(prompt.userPrompt).toContain('questionCodeがmissing_schedulable_workの場合は追加の分解を求めません');
+    expect(prompt.userPrompt).toContain('現在の全体範囲や進捗をまだ把握していないなら');
+    expect(prompt.userPrompt).toContain('全体の範囲と現在どこまで終わっているか');
+    expect(prompt.userPrompt).toContain('ページに固定せず');
+    expect(prompt.userPrompt).toContain('問題数、単語数、章、節、回、時間');
+    expect(prompt.userPrompt).toContain('完了済み・現在位置がすでにdecidedFactsまたはrecentConversationから分かる場合に限って');
+    expect(prompt.userPrompt).toContain('今回の計画期間でどこまで進めたいか');
     expect(prompt.userPrompt).toContain('文型・列挙順・語句をコピーする必要はありません');
   });
 });
