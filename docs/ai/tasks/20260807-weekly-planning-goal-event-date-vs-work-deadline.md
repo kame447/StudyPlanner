@@ -16,7 +16,7 @@ Stable V5 normalizer は「共通テスト模試の勉強」をstudy taskとし�
 
 現行architectureでは `deadline` の例が「明日まで」のようなcompletion-by表現であり、temporal constraintはtaskがいつ行われる／完了するかを表す。したがって現在の解釈は意味的に強すぎる。
 
-同時に、現行SemanticDocumentには「将来の試験日・提出日・大会日など、作業ではないが計画判断へ影響する目標イベント日」を独立して表現するfact kindが見当たらない。このため単純にdeadlineを外すだけでは「2週間後」という重要な計画文脈を失う。
+同時に、現行SemanticDocumentには「将来の試験日・提出日・大会日など、作業ではないが計画判断へ影響する目標イベント日」を独立して表現するfact kindがない。このため単純にdeadlineを外すだけでは「2週間後」という重要な計画文脈を失う。
 
 ## 7視点監査
 
@@ -28,97 +28,175 @@ Stable V5 normalizer は「共通テスト模試の勉強」をstudy taskとし�
 
 AIが計画上もっともらしいdeadlineを補うことは、`Do not invent facts` と衝突する。
 
+また「特に数学が結構まずい」は、今週だけのscheduler制約ではなく、次回以降の計画でも優先順位や確認質問に使える利用者文脈である。
+
 ### 2. semantic model
 
 現行の中心概念はtask、component、workload、時間制約、relationである。
 
 `SemanticTemporalConstraint` はtaskをtargetに持ち、`deadline` はtask completion-byを表す。試験日そのものをここへ入れると、将来schedulerがその制約をwork completion deadlineとして扱う危険がある。
 
-一方、goal/event date専用のfact kindは現行V5 schemaにはない。
+一方、利用者本人に属する長期文脈を週別Fact Graphへ混ぜると、「今週の計画条件」と「次回にも再利用すべき履歴」が同一ライフサイクルになる。
+
+したがって週別Graphとは別に、owner単位の `UserPlanningContextSpace` を設ける。
 
 ### 3. scheduler・優先順位
 
 試験日や提出日は、残り日数を基にpriorityやpaceを考える重要情報になり得る。
 
-そのため「deadlineではないから捨てる」だけでは、将来の計画立案に必要な文脈を消す可能性がある。
+ただし、goal/event dateから自動でhard work deadlineを生成しない。schedulerへ直接hard constraintとして流さず、将来のplanning policyや対話AIが参照する文脈とする。
 
-ただし、event dateから自動でhard work deadlineを生成することも禁止する。必要なら別のplanning policyがevent dateを参照し、提案や質問へ使うべきである。
+必要なら「模試までにどこまで進めたいか」を別途確認し、その回答によって初めてwork deadline / workload targetを生成する。
 
 ### 4. 会話設計
 
-利用者がイベント日だけを述べた場合、アプリはその意味を保持したうえで、必要なら「模試までにどこまで進めたいか」を別途確認できるべきである。
+利用者がイベント日や継続的な不安・優先事項を述べた場合、アプリはその情報を保持したうえで、現在の週間計画には必要な追加条件だけを聞く。
 
-イベント日をすでにwork deadlineとみなすと、この確認を飛ばしてしまい、利用者が意図していない完了条件を内部で確定する。
+次回の計画では、保持情報を使って「前回、共通テスト模試が近く数学を優先したいと話していましたが、今週も数学を厚めにしますか」のような精度の高い確認が可能になる。
+
+ただし過去情報を現在のhard constraintとして黙って再適用しない。過去文脈は提案・確認材料であり、現在turnの明示条件とは区別する。
 
 ### 5. fail-closed・AI ownership
 
 後段のdeterministic codeが「試験という語だからdeadlineではない」とraw textを再解釈する修正は、single AI semantic ownershipに反する。
 
-AI promptだけで今回の表現を捨てさせることは可能だが、event dateを保持できないschema gapを隠す危険がある。
+同じsemantic normalizerのstructured outputに、週間Factとは別の `userContextFacts` を追加する。これにより追加AI呼び出しなしで、同じ意味解釈主体が
 
-したがって、semantic representationの方針を先に確定する必要がある。
+- 今週のtask/workload/constraint
+- 利用者に長期保持すべき文脈
+
+を分離して返せる。
+
+validatorは型・参照・sourceText groundingだけを検証し、意味を再解釈しない。
 
 ### 6. 回帰・汎化
 
 対象は模試だけではない。
 
-同じ問題は「2週間後に定期試験がある」「来月TOEICがある」「金曜に発表がある」「月末に大会がある」「8/10に論文提出がある」などで発生する。
+同じ設計で次を扱えるようにする。
 
-特定の試験名や「2週間後」をpromptへ例外追加する修正は禁止する。
+- 2週間後に定期試験がある
+- 来月TOEICがある
+- 金曜に発表がある
+- 月末に大会がある
+- 研究の締切が近い
+- 数学が苦手／英語を優先したい
+- 朝の方が集中しやすい等、今後の計画にも効く利用者傾向
 
-また、「提出締切」のようにイベント日とwork completion deadlineが実質一致するケースもあるため、すべての未来イベント表現からdeadlineを除く単純ルールにもしてはいけない。
+特定の試験名や「2週間後」専用分岐は禁止する。
+
+また「8/10までに論文を提出する」のような明示completion-byはwork deadlineとして保持し得る。goal eventとwork deadlineが同日でも、意味上は別factとして共存可能とする。
 
 ### 7. storage・互換性・変更規模
 
-新しいgoal/event fact kindを追加する場合、schema、validator、canonical Fact Graph、publicStateSummary、trace、readiness、scheduler入力境界、storage serializationまで影響範囲を監査する必要がある。
+`UserPlanningContextSpace` はweekStartDateではなくownerIdをキーにする。週間セッションを削除・切替しても消えない。
 
-一方、現段階でevent dateをsemantic deltaから落とすだけなら変更は小さいが、利用者が明示した重要情報を失う設計判断になる。
+各recordは最低限、次を持つ。
 
-この選択はテストケースだけから決めず、StudyPlannerの製品思想として決める必要がある。
+- stable record id
+- kind
+- ownerId
+- label / value
+- dateExpression（該当時）
+- sourceText
+- sourceConversationId
+- sourceTurnId
+- observedDate（相対日付の基準日）
+- recordedAt
+- status (`active` / `historical`)
 
-## 現時点で確定できる不変条件
+相対日付を文字列だけで保存すると、次週に「2週間後」の基準がずれるため `observedDate` を必須にする。解決可能な日付はcore側で絶対日付へ解決して併記してよいが、解決不能なcustom表現を勝手に推測しない。
+
+保存はowner境界、サイズ上限、unknown field拒否、壊れたpayloadのfail-closedを週間session storageと同等に持つ。
+
+## 採用方針
+
+### UserPlanningContextSpace を新設する
+
+週別 `PlanningFactGraphV5` とは独立した、owner単位の長期文脈ストアを作る。
+
+初期fact kindは以下とする。
+
+#### `goal_event`
+
+試験、発表、大会、面談など「その日自体に出来事がある」情報。
+
+例:
+
+```text
+2週間後に共通テスト模試がある
+→ kind=goal_event
+→ label=共通テスト模試
+→ dateExpression=custom:2週間後
+→ observedDate=2026-08-07
+```
+
+このfactだけではwork deadlineを生成しない。
+
+#### `concern`
+
+次回以降の計画でも優先順位・確認質問に有用な、利用者の継続的な懸念や重点。
+
+例:
+
+```text
+特に数学が結構まずい
+→ kind=concern
+→ label=数学
+→ value=学習上の不安・優先度が高い
+```
+
+### semantic contract
+
+Stable V5 SemanticDocumentに `userContextFacts` を追加し、同じAI normalizerが抽出する。
+
+- event occurrence dateは `userContextFacts.goal_event`
+- explicit completion-byはtask `temporalConstraints.deadline`
+- concern等の長期文脈は `userContextFacts.concern`
+- current userTextにない過去contextを再出力しない
+- public user contextは参照用であり、そのままcurrent weekly factへコピーしない
+
+### lifecycle
+
+1. AI normalizerがcurrent turnのsemantic deltaとuserContextFactsを返す。
+2. schema / source evidence validationを通す。
+3. weekly graph canonicalizationが成功したturnだけ、user contextもcommitする。
+4. user contextはowner単位storeへupsertする。
+5. 次回以降のnormalizerへbounded summaryとして渡す。
+6. 期限を過ぎたgoal_eventは削除せずhistoricalへ移し、通常promptへはactive中心で渡す。
+
+weekly graphとuser contextのどちらかだけが失敗turnで更新される状態は禁止する。
+
+## 確定不変条件
 
 - 「イベントがX日にある」だけでは、その準備taskのhard deadlineを確定しない。
 - 「X日までにこの作業を終える」はwork deadlineとして扱う。
+- event dateとwork deadlineは別conceptである。
 - AIはイベント日から暗黙のcompletion commitmentを作らない。
-- validatorを緩めて誤ったdeadlineを通す方向にはしない。
-- 特定の「模試」専用分岐は作らない。
+- 利用者に長期的に有用な情報は週別Graphではなくowner単位contextへ保存する。
+- 過去contextは現在のhard constraintとして黙って再適用しない。
+- failed/rejected turnではweekly graphもuser contextも更新しない。
+- 特定の模試・科目・日付専用patchは作らない。
 
-## 未確定の設計判断
+## 実装・検証条件
 
-### 案A: goal/event dateを新しいfactとして保持する
+最低限、次を回帰確認する。
 
-例として `goal_event` / `milestone` のようなfactを追加し、名称、日付表現、関連taskを保持する。
+- 試験日だけを述べる → goal_event、work deadlineなし
+- 試験までに特定範囲を終える → goal_eventと明示work deadlineを区別
+- 提出締切を述べる → 文意に応じたwork deadline
+- 単なる予定イベント日を述べる → goal_event
+- 「数学がかなり不安」 → concern
+- 翌週の新conversationでowner contextが読み込まれる
+- owner Aのcontextがowner Bへ漏れない
+- 壊れた/巨大context payloadをfail-closedで拒否
+- failed semantic turnでcontextが更新されない
 
-長所:
-- 利用者が明示した将来イベントを失わない。
-- 残り日数や優先度、逆算提案へ将来使える。
-- work deadlineと意味を分離できる。
+その後、実API会話turn 2を直前成功checkpointから再実行し、
 
-短所:
-- V5 schemaからFact Graph、public summary、storage等まで変更範囲が大きい。
-- schedulerへどう影響させるかを別途設計する必要がある。
+- `2週間後の共通テスト模試` がhard deadlineになっていない
+- goal_eventとしてowner contextへ保存されている
+- 数学のconcernが保持されている
+- 利用者向け返答が不自然に悪化していない
 
-### 案B: 現行V5ではevent dateをfact化せず、work deadlineではないものは保持しない
-
-長所:
-- 変更範囲が小さい。
-- 誤ったhard constraintを作らなくなる。
-
-短所:
-- 「2週間後」という利用者の重要情報を捨てる。
-- 後で残り日数を使った提案をするために再質問が必要になる。
-
-## 実装開始条件
-
-上記A/B、または別の既存表現を採用するかを製品方針として確定してから実装する。
-
-実装後は最低限、次の概念レベルで並列なケースを回帰確認する。
-
-- 試験日だけを述べる
-- 試験までに特定範囲を終えると述べる
-- 提出締切を述べる
-- 単なる予定イベント日を述べる
-- softな目標日を述べる
-
-その後、実API会話のturn 2を直前成功checkpointから再実行し、内部factと利用者向け返答を再監査する。
+ことを確認してからturn 3へ進む。
