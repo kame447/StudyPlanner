@@ -92,6 +92,15 @@ function taskEvidence(
   ];
 }
 
+function userContextEvidence(
+  document: WeeklyPlanningSemanticDocumentV5,
+): SourceEvidenceEntryV5[] {
+  return document.userContextFacts.map((fact, index) => ({
+    path: `document.userContextFacts[${index}].sourceText`,
+    sourceText: fact.sourceText,
+  }));
+}
+
 function collectSourceEvidence(
   document: WeeklyPlanningSemanticDocumentV5,
 ): SourceEvidenceEntryV5[] {
@@ -128,24 +137,39 @@ function collectSourceEvidence(
       path: `document.decisions[${index}].sourceText`,
       sourceText: decision.sourceText,
     })),
+    ...userContextEvidence(document),
   ];
+}
+
+function groundingErrors(
+  entries: SourceEvidenceEntryV5[],
+  userText: string,
+): string[] {
+  const normalizedUserText = normalized(userText);
+  return entries
+    .filter(({ sourceText }) => {
+      const evidence = normalized(sourceText);
+      return evidence.length > 0 && !normalizedUserText.includes(evidence);
+    })
+    .map(({ path }) => `${path}:not-grounded-in-current-user-text`);
 }
 
 export function validateWeeklyPlanningSemanticEvidenceV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   input: WeeklyPlanningSemanticEvidenceInputV5;
 }): string[] {
+  const userContextErrors = groundingErrors(
+    userContextEvidence(params.document),
+    params.input.userText,
+  );
   const contextualTurn = hasPendingQuestion(params.input.publicStateSummary);
   const authorizationOverAcceptedState =
     params.document.planningIntent === 'create_plan'
     && hasAcceptedPublicFacts(params.input.publicStateSummary);
-  if (!contextualTurn && !authorizationOverAcceptedState) return [];
+  if (!contextualTurn && !authorizationOverAcceptedState) return userContextErrors;
 
-  const userText = normalized(params.input.userText);
-  return collectSourceEvidence(params.document)
-    .filter(({ sourceText }) => {
-      const evidence = normalized(sourceText);
-      return evidence.length > 0 && !userText.includes(evidence);
-    })
-    .map(({ path }) => `${path}:not-grounded-in-current-user-text`);
+  return groundingErrors(
+    collectSourceEvidence(params.document),
+    params.input.userText,
+  );
 }
