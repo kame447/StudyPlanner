@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/weekly-planning-breakdown-resolution-targeted.yml
 
+# rerun after prompt syntax correction
 jobs:
   targeted:
     runs-on: ubuntu-latest
