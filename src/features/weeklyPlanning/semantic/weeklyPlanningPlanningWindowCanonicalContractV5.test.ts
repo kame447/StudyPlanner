@@ -43,16 +43,29 @@ describe('Stable V5 planning window validation boundary', () => {
     });
   });
 
-  it('rejects non-canonical values without choosing a replacement meaning', () => {
+  it('accepts every canonical relative-day value without reinterpreting sourceText', () => {
+    for (const value of CANONICAL_RELATIVE_DAY_EXPRESSIONS) {
+      expect(planningWindowCanonicalValueErrors({
+        localId: 'planning-window-1',
+        kind: 'relative_day',
+        value,
+        start: null,
+        end: null,
+        sourceText: '相対日付',
+      })).toEqual([]);
+    }
+  });
+
+  it('rejects a non-canonical value without choosing a replacement meaning', () => {
     expect(planningWindowCanonicalValueErrors({
       localId: 'planning-window-1',
       kind: 'relative_day',
-      value: 'next_day',
+      value: 'next_business_day',
       start: null,
       end: null,
-      sourceText: '次の日',
+      sourceText: '次の営業日',
     })).toEqual([
-      'document.planningWindow.value:canonical-relative-day:next_day',
+      'document.planningWindow.value:canonical-relative-day:next_business_day',
     ]);
   });
 });
