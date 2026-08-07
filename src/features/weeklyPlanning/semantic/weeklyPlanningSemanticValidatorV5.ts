@@ -22,14 +22,13 @@ import {
  * - userContextFacts are validated separately and never canonicalized into the
  *   week-scoped PlanningFactGraph
  *
+ * The OpenAI JSON Schema requires userContextFacts on new provider responses.
+ * The TypeScript/runtime wrapper accepts an omitted field only for pre-migration
+ * fixtures/checkpoints and treats it as an empty delta.
+ *
  * These checks never derive meaning from labels/sourceText. The AI has already
  * selected the semantic kind and targets; code verifies only structure,
  * supported values, local-ID isolation, and date-expression syntax.
- *
- * Canonical rationale:
- * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
- * - docs/ai/design/20260803-weekly-planning-semantic-ownership-phase2-design.md
- * - docs/ai/tasks/20260807-weekly-planning-goal-event-date-vs-work-deadline.md
  */
 export interface WeeklyPlanningSemanticValidationResultV5 {
   document: WeeklyPlanningSemanticDocumentV5 | null;
@@ -153,7 +152,6 @@ export function validateWeeklyPlanningSemanticValueV5(
 ): WeeklyPlanningSemanticValidationResultV5 {
   if (!isRecord(value)) return validateLegacySemanticValueV5(value);
 
-  const hasUserContextFacts = Object.prototype.hasOwnProperty.call(value, 'userContextFacts');
   const weeklyValue = Object.fromEntries(
     Object.entries(value).filter(([key]) => key !== 'userContextFacts'),
   );
@@ -161,9 +159,10 @@ export function validateWeeklyPlanningSemanticValueV5(
   const legacyErrors = legacy.errors.filter(
     (error) => !isValidWorkloadEffortTargetError(error, weeklyValue),
   );
-  const contextErrors = hasUserContextFacts
-    ? validateUserContextFacts(value.userContextFacts, collectLocalIds(weeklyValue))
-    : ['document.userContextFacts:missing-key'];
+  const contextErrors = validateUserContextFacts(
+    value.userContextFacts ?? [],
+    collectLocalIds(weeklyValue),
+  );
   const errors = [...legacyErrors, ...contextErrors];
   return {
     document: errors.length === 0
