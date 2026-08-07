@@ -69,7 +69,7 @@ describe('Stable V5 user context semantic consistency', () => {
       deadlineSourceText: sourceText,
       eventSourceText: sourceText,
     }))).toEqual([
-      'document.tasks[0].temporalConstraints[0]:goal-event-and-work-deadline-share-evidence',
+      'document.tasks[0].temporalConstraints[0]:goal-event-and-work-deadline-share-evidence:keep-goal-event-and-remove-work-deadline-unless-distinct-explicit-completion-evidence-exists',
     ]);
   });
 
