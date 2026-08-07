@@ -4,6 +4,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
+  type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   validateWeeklyPlanningSemanticEvidenceV5,
@@ -15,7 +16,7 @@ import {
   validateWeeklyPlanningSemanticValueV5,
 } from './weeklyPlanningSemanticValidatorV5';
 
-function baseDocument() {
+function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'update_plan',
@@ -28,7 +29,7 @@ function baseDocument() {
     uncertainties: [],
     corrections: [],
     decisions: [],
-  } as const;
+  };
 }
 
 describe('Stable V5 durable user planning context semantic boundary', () => {
@@ -93,11 +94,11 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
   });
 
   it('keeps current-turn grounding for durable context even outside pending-question turns', () => {
-    const document = {
+    const document: WeeklyPlanningSemanticDocumentV5 = {
       ...baseDocument(),
       userContextFacts: [{
         localId: 'context-event',
-        kind: 'goal_event' as const,
+        kind: 'goal_event',
         label: '資格試験',
         value: null,
         dateExpression: 'next_week',
