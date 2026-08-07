@@ -1,0 +1,43 @@
+name: Fix Natural Dialogue Test Expectation
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/fix-natural-dialogue-test-expectation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+          fetch-depth: 0
+      - name: Sync latest branch head
+        run: |
+          git fetch origin agent/weekly-ai-conversation-eval
+          git reset --hard origin/agent/weekly-ai-conversation-eval
+      - name: Update semantic assertion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.test.ts')
+          text = p.read_text()
+          old = "expect(prompt.userPrompt).toContain('referenceResponseは参考であり、繰り返す必要はありません');"
+          new = "expect(prompt.userPrompt).toContain('referenceResponseはアプリが必要としている確認意図の参考');\n    expect(prompt.userPrompt).toContain('文型・列挙順・語句をコピーする必要はありません');"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one assertion, got {text.count(old)}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "kame447"
+          git config user.email "76802107+kame447@users.noreply.github.com"
+          git add src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.test.ts
+          git commit -m "test: assert renderer reference intent semantically"
+          git push origin HEAD:agent/weekly-ai-conversation-eval
