@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/weekly-planning-contextual-repair-targeted.yml
 
+# rerun after Array.at compatibility fix
 jobs:
   targeted:
     runs-on: ubuntu-latest
