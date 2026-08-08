@@ -8,7 +8,7 @@
 
 export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: 'gpt-5.4-nano-2026-03-17',
-  weekly_planning_semantic_normalizer: 'gpt-5.4-nano-2026-03-17',
+  weekly_planning_semantic_normalizer: 'gpt-5.4-mini-2026-03-17',
   weekly_planning_renderer: 'gpt-5.4-mini-2026-03-17',
 };
 

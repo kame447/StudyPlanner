@@ -40,21 +40,13 @@ describe('Stable V5 prompt generalization contracts', () => {
     expect(system).not.toContain('Explicit daily/weekdays/weekends repetition');
   });
 
-  it('requires ambiguity-safe interpretation without hard-coding typo examples', () => {
+  it('forbids regression-specific typo instructions while preserving generic ambiguity guards', () => {
     const prompt = createWeeklyPlanningSemanticSystemPromptV5();
-    expect(prompt).toContain('Obvious spelling, kana/kanji, speech-input, or OCR noise');
-    expect(prompt).toContain('only when one reading is clearly supported');
-    expect(prompt).toContain('normalize semantic title, label, contextLabel');
-    expect(prompt).toContain('preserving the original verbatim excerpt only in sourceText');
-    expect(prompt).toContain('Do not keep an obvious typo as the canonical entity name');
-    expect(prompt).toContain('two or more plausible readings');
-    expect(prompt).toContain('emit uncertainty and do not create or modify the guessed fact');
+    expect(prompt).not.toContain('Obvious spelling, kana/kanji, speech-input, or OCR noise');
+    expect(prompt).not.toContain('Do not keep an obvious typo as the canonical entity name');
     expect(prompt).toContain('must have a uniquely supported semantic target');
     expect(prompt).toContain('more than one independently schedulable candidate');
     expect(prompt).toContain('do not assign, duplicate, distribute, or attach it by proximity');
-    expect(prompt).toContain('after two or more coordinated or listed candidate tasks/components');
-    expect(prompt).toContain('following standalone modifier phrase or sentence with no explicit target');
-    expect(prompt).toContain('MUST emit uncertainty for modifier_target');
     expect(prompt).not.toContain('数楽ワーク');
     expect(prompt).not.toContain('英語レボート');
 
@@ -77,11 +69,9 @@ describe('Stable V5 prompt generalization contracts', () => {
       fallbackText: '曖昧な部分だけ確認してください。',
       previewCount: 0,
     });
-    expect(dialogue.systemPrompt).toContain('意味が一意なら自然に補正して理解');
-    expect(dialogue.systemPrompt).toContain('補正後の自然な名称');
-    expect(dialogue.systemPrompt).toContain('明白な誤字をそのまま名称として繰り返さない');
-    expect(dialogue.systemPrompt).toContain('曖昧な部分だけを一つ確認');
-    expect(dialogue.userPrompt).toContain('意味を決め打ちせず');
+    expect(dialogue.systemPrompt).not.toContain('誤字や崩れた文でも意味が一意なら自然に補正');
+    expect(dialogue.systemPrompt).not.toContain('明白な誤字をそのまま名称として繰り返さない');
+    expect(dialogue.userPrompt).toContain('semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず');
     expect(dialogue.userPrompt).toContain('一つの確認だけ');
   });
 

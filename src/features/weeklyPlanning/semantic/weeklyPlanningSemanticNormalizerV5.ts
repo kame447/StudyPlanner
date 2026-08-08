@@ -58,7 +58,6 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'Quantity roles: target means the amount intended for this plan; remaining means the full unfinished amount; completed means the amount already done. For quantity_role_unresolved, return only the minimal local task/workload answer. Never keep uncertainty for a resolved role.',
   'For semantic_uncertainty, answer only the unresolved semantic target; if ambiguity remains, keep uncertainty rather than guessing.',
   'An effortEstimate may target the exact task, component, or workload localId supported by the current answer.',
-  'Before returning JSON, re-check user-visible entity names for an unambiguous ordinary reading; verbatim copying is not proof of canonicality, clean names must stay unchanged, and ambiguous corrections require uncertainty.',
   'Use localIds for response-local references and exact existingPublicId only for accepted cross-turn entity identity. Creation authorization uses planningIntent create_plan without replaying accepted facts.',
   'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',
 ].join('\n');
