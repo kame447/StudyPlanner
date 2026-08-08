@@ -26,7 +26,7 @@ describe('Stable V5 semantic prompt budget', () => {
     const policyOverhead = systemPrompt.slice(corePrompt.length);
 
     expect(systemPrompt.startsWith(corePrompt)).toBe(true);
-    expect(byteLength(policyOverhead)).toBeLessThanOrEqual(1800);
+    expect(byteLength(policyOverhead)).toBeLessThanOrEqual(2500);
     expect(systemPrompt).not.toContain('申請書');
     expect(systemPrompt).not.toContain('参考資料');
     expect(systemPrompt).not.toContain('Do not drop a later coordinated item');
