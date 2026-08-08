@@ -1,5 +1,6 @@
 name: Weekly Planning Typo Generalization Real Eval
-# A/B comparison only: same clean prompt/schema, no regression-specific typo instructions.
+# Architecture A/B/C only. The application prompt/schema are unchanged.
+# C uses a generic meaning-preserving text cleanup pass before the existing nano pipeline.
 
 on:
   push:
@@ -17,30 +18,66 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - model: gpt-5.4-nano
+          - mode: nano-direct
+            model: gpt-5.4-nano
             case_id: kanji-conversion
             user_text: 来週、数楽ワークを20ページ進めたいです。
-          - model: gpt-5.4-mini
+          - mode: mini-direct
+            model: gpt-5.4-mini
             case_id: kanji-conversion
             user_text: 来週、数楽ワークを20ページ進めたいです。
-          - model: gpt-5.4-nano
+          - mode: mini-preprocess-nano
+            model: gpt-5.4-nano
+            case_id: kanji-conversion
+            user_text: 来週、数楽ワークを20ページ進めたいです。
+          - mode: nano-direct
+            model: gpt-5.4-nano
             case_id: katakana-voicing
             user_text: 来週、英語のレボートを仕上げたいです。
-          - model: gpt-5.4-mini
+          - mode: mini-direct
+            model: gpt-5.4-mini
             case_id: katakana-voicing
             user_text: 来週、英語のレボートを仕上げたいです。
-          - model: gpt-5.4-nano
+          - mode: mini-preprocess-nano
+            model: gpt-5.4-nano
+            case_id: katakana-voicing
+            user_text: 来週、英語のレボートを仕上げたいです。
+          - mode: nano-direct
+            model: gpt-5.4-nano
             case_id: kanji-substitution
             user_text: 来週、現代文の問代集を30問進めたいです。
-          - model: gpt-5.4-mini
+          - mode: mini-direct
+            model: gpt-5.4-mini
             case_id: kanji-substitution
             user_text: 来週、現代文の問代集を30問進めたいです。
-          - model: gpt-5.4-nano
+          - mode: mini-preprocess-nano
+            model: gpt-5.4-nano
+            case_id: kanji-substitution
+            user_text: 来週、現代文の問代集を30問進めたいです。
+          - mode: nano-direct
+            model: gpt-5.4-nano
             case_id: clean-control
             user_text: 来週、化学のワークシートを10ページ進めたいです。
-          - model: gpt-5.4-mini
+          - mode: mini-direct
+            model: gpt-5.4-mini
             case_id: clean-control
             user_text: 来週、化学のワークシートを10ページ進めたいです。
+          - mode: mini-preprocess-nano
+            model: gpt-5.4-nano
+            case_id: clean-control
+            user_text: 来週、化学のワークシートを10ページ進めたいです。
+          - mode: nano-direct
+            model: gpt-5.4-nano
+            case_id: ambiguous-modifier
+            user_text: 来週、数学のワークと古典の課題を進めたいです。20ページくらい。
+          - mode: mini-direct
+            model: gpt-5.4-mini
+            case_id: ambiguous-modifier
+            user_text: 来週、数学のワークと古典の課題を進めたいです。20ページくらい。
+          - mode: mini-preprocess-nano
+            model: gpt-5.4-nano
+            case_id: ambiguous-modifier
+            user_text: 来週、数学のワークと古典の課題を進めたいです。20ページくらい。
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,6 +89,56 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: test -n "$OPENAI_API_KEY"
+      - name: Optionally normalize utterance with mini
+        id: preprocess
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ORIGINAL_TEXT: ${{ matrix.user_text }}
+          MODE: ${{ matrix.mode }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const original = process.env.ORIGINAL_TEXT;
+          const mode = process.env.MODE;
+          let normalized = original;
+
+          if (mode === 'mini-preprocess-nano') {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'gpt-5.4-mini',
+                messages: [
+                  {
+                    role: 'system',
+                    content: [
+                      'Normalize one Japanese user utterance while preserving its meaning exactly.',
+                      'Correct only high-confidence surface noise such as obvious typos, conversion mistakes, transcription/OCR errors, spacing, and punctuation.',
+                      'Do not add, remove, summarize, strengthen, weaken, disambiguate, or infer any task, quantity, date, priority, concern, modality, or relationship.',
+                      'If a correction is uncertain, leave that part unchanged.',
+                      'Return only the normalized utterance, with no explanation.',
+                    ].join(' '),
+                  },
+                  { role: 'user', content: original },
+                ],
+              }),
+            });
+            if (!response.ok) {
+              throw new Error(`preprocess failed: ${response.status} ${await response.text()}`);
+            }
+            const json = await response.json();
+            normalized = json.choices?.[0]?.message?.content?.trim();
+            if (!normalized) throw new Error('preprocess returned empty text');
+          }
+
+          fs.appendFileSync(process.env.GITHUB_ENV, `EVAL_USER_TEXT<<__TEXT__\n${normalized}\n__TEXT__\n`);
+          fs.writeFileSync('preprocess-result.json', JSON.stringify({ mode, original, normalized }, null, 2));
+          console.log(JSON.stringify({ mode, original, normalized }, null, 2));
+          NODE
       - name: Execute one first-turn conversation
         env:
           TZ: Asia/Tokyo
@@ -62,22 +149,26 @@ jobs:
           VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VITE_AI_MAX_PROCESS_REQUESTS: 3
           WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
-          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ matrix.user_text }}
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ env.EVAL_USER_TEXT }}
           WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ''
-          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.model }}/${{ matrix.case_id }}
-          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: typo-generalization-${{ matrix.model }}-${{ matrix.case_id }}
-          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: typo-generalization-${{ matrix.model }}-${{ matrix.case_id }}-20260808
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.mode }}/${{ matrix.case_id }}
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: typo-generalization-${{ matrix.mode }}-${{ matrix.case_id }}
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: typo-generalization-${{ matrix.mode }}-${{ matrix.case_id }}-20260808
           WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: '2026-08-10'
           WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: '2026-08-08'
           WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '60000'
         run: |
+          mkdir -p artifacts/${{ matrix.mode }}/${{ matrix.case_id }}
+          cp preprocess-result.json artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/preprocess-result.json
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts --reporter=verbose
+          echo '--- PREPROCESS ---'
+          cat artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/preprocess-result.json
           echo '--- TRANSCRIPT ---'
-          cat artifacts/${{ matrix.model }}/${{ matrix.case_id }}/transcript.md
+          cat artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/transcript.md
           echo '--- LATEST TURN ---'
-          cat artifacts/${{ matrix.model }}/${{ matrix.case_id }}/latest-turn.json
+          cat artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/latest-turn.json
       - uses: actions/upload-artifact@v4
         with:
-          name: typo-generalization-${{ matrix.model }}-${{ matrix.case_id }}
-          path: artifacts/${{ matrix.model }}/${{ matrix.case_id }}/
+          name: typo-generalization-${{ matrix.mode }}-${{ matrix.case_id }}
+          path: artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/
           retention-days: 7
