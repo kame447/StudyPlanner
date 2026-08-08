@@ -16,17 +16,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model:
-          - gpt-5.4-nano
-          - gpt-5.4-mini
         include:
-          - case_id: kanji-conversion
+          - model: gpt-5.4-nano
+            case_id: kanji-conversion
             user_text: 来週、数楽ワークを20ページ進めたいです。
-          - case_id: katakana-voicing
+          - model: gpt-5.4-mini
+            case_id: kanji-conversion
+            user_text: 来週、数楽ワークを20ページ進めたいです。
+          - model: gpt-5.4-nano
+            case_id: katakana-voicing
             user_text: 来週、英語のレボートを仕上げたいです。
-          - case_id: kanji-substitution
+          - model: gpt-5.4-mini
+            case_id: katakana-voicing
+            user_text: 来週、英語のレボートを仕上げたいです。
+          - model: gpt-5.4-nano
+            case_id: kanji-substitution
             user_text: 来週、現代文の問代集を30問進めたいです。
-          - case_id: clean-control
+          - model: gpt-5.4-mini
+            case_id: kanji-substitution
+            user_text: 来週、現代文の問代集を30問進めたいです。
+          - model: gpt-5.4-nano
+            case_id: clean-control
+            user_text: 来週、化学のワークシートを10ページ進めたいです。
+          - model: gpt-5.4-mini
+            case_id: clean-control
             user_text: 来週、化学のワークシートを10ページ進めたいです。
     steps:
       - uses: actions/checkout@v4
