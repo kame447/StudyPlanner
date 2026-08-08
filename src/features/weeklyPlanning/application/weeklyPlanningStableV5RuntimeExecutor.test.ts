@@ -284,7 +284,7 @@ describe('Stable V5 runtime executor', () => {
       },
     });
     expect(result.message).toBe(
-      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',
+      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     );
     expect(result.message).not.toContain('構造化結果を安全に採用できませんでした');
     expect(result.draftCandidates).toEqual([]);
@@ -324,10 +324,12 @@ describe('Stable V5 runtime executor', () => {
     });
     expect(result.message).toContain('「午前：研究を進める」');
     expect(result.message).not.toContain('「午後：院試の勉強」');
-    expect(result.message).toContain('どこまで進めたいですか');
+    expect(result.message).toContain('全体の範囲');
+    expect(result.message).toContain('今どこまで終わっているか');
+    expect(result.message).not.toContain('どこまで進めたいですか');
     expect(result.message).not.toContain('それぞれ');
     expect(result.message).not.toBe(
-      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',
+      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     );
     expect(result.draftCandidates).toEqual([]);
 

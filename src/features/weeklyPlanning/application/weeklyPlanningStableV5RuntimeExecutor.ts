@@ -369,7 +369,7 @@ function missingSchedulableWorkQuestion(
   );
   if (componentWithNoWorkload) {
     return {
-      message: `「${componentWithNoWorkload.label}」は、どこまで進めたいですか？ページ数・問題数・範囲など、分かる形で教えてください。`,
+      message: `「${componentWithNoWorkload.label}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。問題数・ページ数・単語数・章など、分かる単位で大丈夫です。`,
       questionCode: 'missing_schedulable_work',
       taskTitles,
     };
@@ -379,13 +379,13 @@ function missingSchedulableWorkQuestion(
   );
   if (taskWithNoWorkload) {
     return {
-      message: `「${taskWithNoWorkload.title}」は、どこまで進めたいですか？量や範囲が分かれば教えてください。`,
+      message: `「${taskWithNoWorkload.title}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。`,
       questionCode: 'missing_schedulable_work',
       taskTitles,
     };
   }
   return {
-    message: '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',
+    message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     questionCode: 'missing_schedulable_work',
     taskTitles,
   };
