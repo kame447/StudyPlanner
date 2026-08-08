@@ -1,5 +1,5 @@
 name: Weekly Planning Typo Generalization Real Eval
-# Clean mini comparison: no regression-specific typo instructions; inspect semantic names as well as job completion.
+# A/B comparison only: same clean prompt/schema, no regression-specific typo instructions.
 
 on:
   push:
@@ -16,6 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        model:
+          - gpt-5.4-nano
+          - gpt-5.4-mini
         include:
           - case_id: kanji-conversion
             user_text: 来週、数楽ワークを20ページ進めたいです。
@@ -42,26 +45,26 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VITE_AI_PROVIDER: openai
           VITE_AI_BASE_URL: https://api.openai.com/v1
-          VITE_AI_MODEL: gpt-5.4-mini
+          VITE_AI_MODEL: ${{ matrix.model }}
           VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VITE_AI_MAX_PROCESS_REQUESTS: 3
           WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
           WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ matrix.user_text }}
           WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ''
-          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.case_id }}
-          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: typo-generalization-${{ matrix.case_id }}
-          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: typo-generalization-${{ matrix.case_id }}-20260808
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.model }}/${{ matrix.case_id }}
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: typo-generalization-${{ matrix.model }}-${{ matrix.case_id }}
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: typo-generalization-${{ matrix.model }}-${{ matrix.case_id }}-20260808
           WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: '2026-08-10'
           WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: '2026-08-08'
           WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '60000'
         run: |
           node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts --reporter=verbose
           echo '--- TRANSCRIPT ---'
-          cat artifacts/${{ matrix.case_id }}/transcript.md
+          cat artifacts/${{ matrix.model }}/${{ matrix.case_id }}/transcript.md
           echo '--- LATEST TURN ---'
-          cat artifacts/${{ matrix.case_id }}/latest-turn.json
+          cat artifacts/${{ matrix.model }}/${{ matrix.case_id }}/latest-turn.json
       - uses: actions/upload-artifact@v4
         with:
-          name: typo-generalization-${{ matrix.case_id }}
-          path: artifacts/${{ matrix.case_id }}/
+          name: typo-generalization-${{ matrix.model }}-${{ matrix.case_id }}
+          path: artifacts/${{ matrix.model }}/${{ matrix.case_id }}/
           retention-days: 7
