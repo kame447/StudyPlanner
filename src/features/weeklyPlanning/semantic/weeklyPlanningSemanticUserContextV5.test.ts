@@ -113,7 +113,7 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     ]);
   });
 
-  it('repairs a provider response that copies old user context into a new turn', async () => {
+  it('removes a copied stored user-context fact deterministically without a second AI call', async () => {
     const stale = JSON.stringify({
       ...baseDocument(),
       userContextFacts: [{
@@ -125,13 +125,11 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
         sourceText: '数学が苦手です',
       }],
     });
-    const repaired = JSON.stringify(baseDocument());
-    const responses = [stale, repaired];
+    let callCount = 0;
     const client: OpenAiCompatibleClient = {
       async createChatCompletion() {
-        const response = responses.shift();
-        if (!response) throw new Error('response sequence exhausted');
-        return response;
+        callCount += 1;
+        return stale;
       },
     };
 
@@ -148,10 +146,14 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     });
 
     expect(result.status).toBe('accepted');
+    expect(callCount).toBe(1);
     expect(result.diagnostics).toMatchObject({
-      attemptCount: 2,
-      repairAttempted: true,
+      attemptCount: 1,
+      repairAttempted: false,
     });
+    expect(result.diagnostics.algorithmicRepairs).toContain(
+      'copied-user-context-fact-removed:0:concern:数学',
+    );
     expect(result.document?.userContextFacts ?? []).toEqual([]);
   });
 
