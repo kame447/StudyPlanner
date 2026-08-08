@@ -1,4 +1,5 @@
 name: Weekly Planning Typo Generalization Real Eval
+# Regression matrix for semantic typo canonicalization; inspect semantic names as well as job completion.
 
 on:
   push:
