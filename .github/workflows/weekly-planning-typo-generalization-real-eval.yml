@@ -90,7 +90,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: test -n "$OPENAI_API_KEY"
       - name: Optionally normalize utterance with mini
-        id: preprocess
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ORIGINAL_TEXT: ${{ matrix.user_text }}
@@ -99,45 +98,50 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
 
-          const original = process.env.ORIGINAL_TEXT;
-          const mode = process.env.MODE;
-          let normalized = original;
+          (async () => {
+            const original = process.env.ORIGINAL_TEXT;
+            const mode = process.env.MODE;
+            let normalized = original;
 
-          if (mode === 'mini-preprocess-nano') {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-                'content-type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'gpt-5.4-mini',
-                messages: [
-                  {
-                    role: 'system',
-                    content: [
-                      'Normalize one Japanese user utterance while preserving its meaning exactly.',
-                      'Correct only high-confidence surface noise such as obvious typos, conversion mistakes, transcription/OCR errors, spacing, and punctuation.',
-                      'Do not add, remove, summarize, strengthen, weaken, disambiguate, or infer any task, quantity, date, priority, concern, modality, or relationship.',
-                      'If a correction is uncertain, leave that part unchanged.',
-                      'Return only the normalized utterance, with no explanation.',
-                    ].join(' '),
-                  },
-                  { role: 'user', content: original },
-                ],
-              }),
-            });
-            if (!response.ok) {
-              throw new Error(`preprocess failed: ${response.status} ${await response.text()}`);
+            if (mode === 'mini-preprocess-nano') {
+              const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                  'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'gpt-5.4-mini',
+                  messages: [
+                    {
+                      role: 'system',
+                      content: [
+                        'Normalize one Japanese user utterance while preserving its meaning exactly.',
+                        'Correct only high-confidence surface noise such as obvious typos, conversion mistakes, transcription/OCR errors, spacing, and punctuation.',
+                        'Do not add, remove, summarize, strengthen, weaken, disambiguate, or infer any task, quantity, date, priority, concern, modality, or relationship.',
+                        'If a correction is uncertain, leave that part unchanged.',
+                        'Return only the normalized utterance, with no explanation.',
+                      ].join(' '),
+                    },
+                    { role: 'user', content: original },
+                  ],
+                }),
+              });
+              if (!response.ok) {
+                throw new Error(`preprocess failed: ${response.status} ${await response.text()}`);
+              }
+              const json = await response.json();
+              normalized = json.choices?.[0]?.message?.content?.trim();
+              if (!normalized) throw new Error('preprocess returned empty text');
             }
-            const json = await response.json();
-            normalized = json.choices?.[0]?.message?.content?.trim();
-            if (!normalized) throw new Error('preprocess returned empty text');
-          }
 
-          fs.appendFileSync(process.env.GITHUB_ENV, `EVAL_USER_TEXT<<__TEXT__\n${normalized}\n__TEXT__\n`);
-          fs.writeFileSync('preprocess-result.json', JSON.stringify({ mode, original, normalized }, null, 2));
-          console.log(JSON.stringify({ mode, original, normalized }, null, 2));
+            fs.appendFileSync(process.env.GITHUB_ENV, `EVAL_USER_TEXT<<__TEXT__\n${normalized}\n__TEXT__\n`);
+            fs.writeFileSync('preprocess-result.json', JSON.stringify({ mode, original, normalized }, null, 2));
+            console.log(JSON.stringify({ mode, original, normalized }, null, 2));
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
           NODE
       - name: Execute one first-turn conversation
         env:
@@ -149,7 +153,6 @@ jobs:
           VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VITE_AI_MAX_PROCESS_REQUESTS: 3
           WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
-          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ env.EVAL_USER_TEXT }}
           WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ''
           WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.mode }}/${{ matrix.case_id }}
           WEEKLY_PLANNING_RESUMABLE_OWNER_ID: typo-generalization-${{ matrix.mode }}-${{ matrix.case_id }}
@@ -160,7 +163,8 @@ jobs:
         run: |
           mkdir -p artifacts/${{ matrix.mode }}/${{ matrix.case_id }}
           cp preprocess-result.json artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/preprocess-result.json
-          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts --reporter=verbose
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT="$EVAL_USER_TEXT" \
+            node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts --reporter=verbose
           echo '--- PREPROCESS ---'
           cat artifacts/${{ matrix.mode }}/${{ matrix.case_id }}/preprocess-result.json
           echo '--- TRANSCRIPT ---'
