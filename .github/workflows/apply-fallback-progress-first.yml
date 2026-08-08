@@ -58,13 +58,13 @@ jobs:
           test = 'src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts'
           replace_once(
               test,
-              "      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',",
-              "      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',",
+              "    expect(result.message).toContain('どこまで進めたいですか');\n    expect(result.message).not.toContain('それぞれ');\n    expect(result.message).not.toBe(\n      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',\n    );",
+              "    expect(result.message).toContain('全体の範囲');\n    expect(result.message).toContain('今どこまで終わっているか');\n    expect(result.message).not.toContain('どこまで進めたいですか');\n    expect(result.message).not.toContain('それぞれ');\n    expect(result.message).not.toBe(\n      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',\n    );",
           )
           replace_once(
               test,
-              "    expect(result.message).toContain('どこまで進めたいですか');\n    expect(result.message).not.toContain('それぞれ');\n    expect(result.message).not.toBe(\n      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',\n    );",
-              "    expect(result.message).toContain('全体の範囲');\n    expect(result.message).toContain('今どこまで終わっているか');\n    expect(result.message).not.toContain('どこまで進めたいですか');\n    expect(result.message).not.toContain('それぞれ');\n    expect(result.message).not.toBe(\n      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',\n    );",
+              "      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',",
+              "      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',",
           )
           PY
       - name: Verify focused regression
