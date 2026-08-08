@@ -1,0 +1,87 @@
+name: Apply fallback progress-first guardrail
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - '.github/workflows/apply-fallback-progress-first.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply progress-first deterministic fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          runtime = 'src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts'
+          replace_once(
+              runtime,
+              "message: `「${componentWithNoWorkload.label}」は、どこまで進めたいですか？ページ数・問題数・範囲など、分かる形で教えてください。`,",
+              "message: `「${componentWithNoWorkload.label}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。問題数・ページ数・単語数・章など、分かる単位で大丈夫です。`,",
+          )
+          replace_once(
+              runtime,
+              "message: `「${taskWithNoWorkload.title}」は、どこまで進めたいですか？量や範囲が分かれば教えてください。`,",
+              "message: `「${taskWithNoWorkload.title}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。`,",
+          )
+          replace_once(
+              runtime,
+              "message: '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',",
+              "message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',",
+          )
+
+          test = 'src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts'
+          replace_once(
+              test,
+              "      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',",
+              "      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',",
+          )
+          replace_once(
+              test,
+              "    expect(result.message).toContain('どこまで進めたいですか');\n    expect(result.message).not.toContain('それぞれ');\n    expect(result.message).not.toBe(\n      '予定に入れる作業量がまだありません。まず一つ、どこまで進めたいか教えてください。',\n    );",
+              "    expect(result.message).toContain('全体の範囲');\n    expect(result.message).toContain('今どこまで終わっているか');\n    expect(result.message).not.toContain('どこまで進めたいですか');\n    expect(result.message).not.toContain('それぞれ');\n    expect(result.message).not.toBe(\n      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',\n    );",
+          )
+          PY
+      - name: Verify focused regression
+        run: |
+          npm run typecheck
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run \
+            src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts \
+            src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialoguePlanningGuardrails.test.ts
+          git diff --check
+      - name: Commit verified change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git add \
+            src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts \
+            src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+          git commit -m 'fix: keep fallback dialogue progress-first'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
