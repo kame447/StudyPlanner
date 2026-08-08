@@ -1,0 +1,71 @@
+name: Apply clean mini semantic comparison
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - '.github/workflows/apply-mini-semantic-clean-comparison.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply clean comparison patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected 1 match, got {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          doc = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts'
+          replace_once(doc,
+              "    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context. When that correction is unambiguous, normalize semantic title, label, contextLabel, and other user-visible entity names to the corrected reading, while preserving the original verbatim excerpt only in sourceText. Do not keep an obvious typo as the canonical entity name. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',\n",
+              '')
+
+          normalizer = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
+          replace_once(normalizer,
+              "  'Before returning JSON, re-check user-visible entity names for an unambiguous ordinary reading; verbatim copying is not proof of canonicality, clean names must stay unchanged, and ambiguous corrections require uncertainty.',\n",
+              '')
+
+          policy = 'workers/ai-proxy/src/modelPolicy.ts'
+          replace_once(policy,
+              "  weekly_planning_semantic_normalizer: 'gpt-5.4-nano-2026-03-17',",
+              "  weekly_planning_semantic_normalizer: 'gpt-5.4-mini-2026-03-17',")
+
+          policy_test = 'workers/ai-proxy/src/modelPolicy.test.ts'
+          replace_once(policy_test,
+              "    expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({\n      model: 'gpt-5.4-nano-2026-03-17',\n    });",
+              "    expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({\n      model: 'gpt-5.4-mini-2026-03-17',\n    });")
+          PY
+      - name: Verify
+        run: |
+          npm run typecheck
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run workers/ai-proxy/src/modelPolicy.test.ts src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticRequestBudgetV5.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
+          git diff --check
+      - name: Commit
+        run: |
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git add workers/ai-proxy/src/modelPolicy.ts workers/ai-proxy/src/modelPolicy.test.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts
+          git commit -m 'test: compare semantic normalizer on mini without regression prompts'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
