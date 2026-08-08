@@ -1,0 +1,87 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{path}: expected 1 match, got {count}')
+    p.write_text(text.replace(old, new, 1))
+
+
+doc = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts'
+replace_once(
+    doc,
+    "    'Obvious spelling, kana/kanji, speech-input, or OCR noise may be interpreted without clarification only when one reading is clearly supported by current userText and conversation context. When that correction is unambiguous, normalize semantic title, label, contextLabel, and other user-visible entity names to the corrected reading, while preserving the original verbatim excerpt only in sourceText. Do not keep an obvious typo as the canonical entity name. If two or more plausible readings would change task identity, the target of a quantity, or another planning fact, emit uncertainty and do not create or modify the guessed fact.',\n",
+    '',
+)
+
+normalizer = 'src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts'
+replace_once(
+    normalizer,
+    "  'Before returning JSON, re-check user-visible entity names for an unambiguous ordinary reading; verbatim copying is not proof of canonicality, clean names must stay unchanged, and ambiguous corrections require uncertainty.',\n",
+    '',
+)
+
+renderer = 'src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts'
+replace_once(
+    renderer,
+    "    '誤字や崩れた文でも意味が一意なら自然に補正して理解し、その補正後の自然な名称をユーザー向け文面で使ってください。明白な誤字をそのまま名称として繰り返さないでください。意味が複数通りあり得る場合は推測を事実として言い直さず、曖昧な部分だけを一つ確認してください。',\n",
+    '',
+)
+
+policy = 'workers/ai-proxy/src/modelPolicy.ts'
+replace_once(
+    policy,
+    "  weekly_planning_semantic_normalizer: 'gpt-5.4-nano-2026-03-17',",
+    "  weekly_planning_semantic_normalizer: 'gpt-5.4-mini-2026-03-17',",
+)
+
+policy_test = 'workers/ai-proxy/src/modelPolicy.test.ts'
+replace_once(
+    policy_test,
+    "    expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({\n      model: 'gpt-5.4-nano-2026-03-17',\n    });",
+    "    expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({\n      model: 'gpt-5.4-mini-2026-03-17',\n    });",
+)
+
+prompt_test = 'src/features/weeklyPlanning/__tests__/weeklyPlanningPromptGeneralizationV5.test.ts'
+p = Path(prompt_test)
+text = p.read_text()
+start = text.index("  it('requires ambiguity-safe interpretation without hard-coding typo examples', () => {")
+end = text.index("\n\n  it('keeps breakdown and missing-quantity questions as distinct renderer intents'", start)
+replacement = '''  it('forbids regression-specific typo instructions while preserving generic ambiguity guards', () => {
+    const prompt = createWeeklyPlanningSemanticSystemPromptV5();
+    expect(prompt).not.toContain('Obvious spelling, kana/kanji, speech-input, or OCR noise');
+    expect(prompt).not.toContain('Do not keep an obvious typo as the canonical entity name');
+    expect(prompt).toContain('must have a uniquely supported semantic target');
+    expect(prompt).toContain('more than one independently schedulable candidate');
+    expect(prompt).toContain('do not assign, duplicate, distribute, or attach it by proximity');
+    expect(prompt).not.toContain('数楽ワーク');
+    expect(prompt).not.toContain('英語レボート');
+
+    const dialogue = createWeeklyPlanningStableV5DialoguePrompt({
+      actionId: 'ambiguity-1',
+      currentUserMessage: '入力が少し崩れています',
+      recentConversation: [],
+      planningInformation: {
+        uncertainties: [{
+          id: 'uncertainty-ambiguous',
+          targetFactId: null,
+          field: 'workload_target',
+          reason: 'quantity target has multiple plausible readings',
+          source: { sourceText: 'この部分' },
+        }],
+      },
+      actionKind: 'question',
+      questionCode: 'semantic_uncertainty',
+      requiredLabels: [],
+      fallbackText: '曖昧な部分だけ確認してください。',
+      previewCount: 0,
+    });
+    expect(dialogue.systemPrompt).not.toContain('誤字や崩れた文でも意味が一意なら自然に補正');
+    expect(dialogue.systemPrompt).not.toContain('明白な誤字をそのまま名称として繰り返さない');
+    expect(dialogue.userPrompt).toContain('semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず');
+    expect(dialogue.userPrompt).toContain('一つの確認だけ');
+  });'''
+p.write_text(text[:start] + replacement + text[end:])
