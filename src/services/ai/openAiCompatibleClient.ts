@@ -105,10 +105,32 @@ function configuredProcessRequestLimit(): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function evalSemanticModel(purpose: AiChatPurpose | undefined): string | null {
+function isSemanticRepairRequest(
+  purpose: AiChatPurpose | undefined,
+  messages: ChatMessage[],
+): boolean {
+  if (purpose !== 'weekly_planning_semantic_normalizer') return false;
+  return messages.some((message) => message.role === 'assistant')
+    && messages.some(
+      (message) => message.role === 'user'
+        && message.content.includes('"validationErrors"')
+        && message.content.includes('"requiredChanges"'),
+    );
+}
+
+function evalSemanticModel(
+  purpose: AiChatPurpose | undefined,
+  messages: ChatMessage[],
+): string | null {
   if (purpose !== 'weekly_planning_semantic_normalizer') return null;
   const env = import.meta.env as Record<string, string | undefined>;
   if (env.VITE_AI_EVAL_ENABLE_PURPOSE_MODEL_OVERRIDE?.trim() !== '1') return null;
+
+  if (isSemanticRepairRequest(purpose, messages)) {
+    const repairModel = env.VITE_AI_EVAL_SEMANTIC_REPAIR_MODEL?.trim();
+    if (repairModel) return repairModel;
+  }
+
   return env.VITE_AI_EVAL_SEMANTIC_MODEL?.trim() || null;
 }
 
@@ -254,9 +276,10 @@ export function createOpenAiCompatibleClient(
       }
 
       // 直結(非 proxy / dev)経路では通常 config.model を使う。
-      // 実API A/B評価時だけ、明示的な opt-in env により semantic normalizer の model を
-      // 差し替えられる。renderer 等は config.model のままなので比較軸を一つに固定できる。
-      const directModel = evalSemanticModel(purpose) ?? config.model;
+      // 実API評価時だけ、明示的な opt-in env によりsemantic initial/repairを個別に差し替える。
+      // renderer等はconfig.modelのままなので、repair戦略だけを比較できる。
+      const semanticRepair = isSemanticRepairRequest(purpose, messages);
+      const directModel = evalSemanticModel(purpose, messages) ?? config.model;
       const payload: ChatCompletionRequest = {
         model: directModel,
         temperature,
@@ -275,9 +298,9 @@ export function createOpenAiCompatibleClient(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
           },
+          requestTimeoutMs,
           body: JSON.stringify(payload),
         },
-        requestTimeoutMs,
         async (response) => {
           if (!response.ok) {
             throw new Error(`AI request failed with status ${response.status}.`);
@@ -289,6 +312,9 @@ export function createOpenAiCompatibleClient(
           if (shouldCaptureEvalUsage()) {
             console.info('[AI Eval Usage]', JSON.stringify({
               purpose: purpose ?? 'general',
+              phase: purpose === 'weekly_planning_semantic_normalizer'
+                ? (semanticRepair ? 'repair' : 'initial')
+                : 'single',
               model: directModel,
               usage: data.usage ?? null,
             }));
