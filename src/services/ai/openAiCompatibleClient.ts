@@ -41,8 +41,15 @@ interface ChatCompletionChoice {
   };
 }
 
+interface ChatCompletionUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 interface ChatCompletionResponse {
   choices?: ChatCompletionChoice[];
+  usage?: ChatCompletionUsage;
 }
 
 interface AiProxyResponse {
@@ -96,6 +103,18 @@ function configuredProcessRequestLimit(): number | null {
   if (!raw) return null;
   const parsed = Number(raw);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function evalSemanticModel(purpose: AiChatPurpose | undefined): string | null {
+  if (purpose !== 'weekly_planning_semantic_normalizer') return null;
+  const env = import.meta.env as Record<string, string | undefined>;
+  if (env.VITE_AI_EVAL_ENABLE_PURPOSE_MODEL_OVERRIDE?.trim() !== '1') return null;
+  return env.VITE_AI_EVAL_SEMANTIC_MODEL?.trim() || null;
+}
+
+function shouldCaptureEvalUsage(): boolean {
+  return (import.meta.env as Record<string, string | undefined>)
+    .VITE_AI_EVAL_CAPTURE_USAGE?.trim() === '1';
 }
 
 function claimProcessAiRequestBudget(): void {
@@ -234,10 +253,12 @@ export function createOpenAiCompatibleClient(
         }
       }
 
-      // 直結(非 proxy / dev)経路: Worker が無いため config.model を dev-only fallback として使う。
-      // 用途別 routing は Worker のみが担うため、ここでは purpose を model へ解決しない。
+      // 直結(非 proxy / dev)経路では通常 config.model を使う。
+      // 実API A/B評価時だけ、明示的な opt-in env により semantic normalizer の model を
+      // 差し替えられる。renderer 等は config.model のままなので比較軸を一つに固定できる。
+      const directModel = evalSemanticModel(purpose) ?? config.model;
       const payload: ChatCompletionRequest = {
-        model: config.model,
+        model: directModel,
         temperature,
         messages,
         response_format: responseFormat,
@@ -264,6 +285,14 @@ export function createOpenAiCompatibleClient(
 
           const data = (await response.json()) as ChatCompletionResponse;
           const content = data.choices?.[0]?.message?.content?.trim();
+
+          if (shouldCaptureEvalUsage()) {
+            console.info('[AI Eval Usage]', JSON.stringify({
+              purpose: purpose ?? 'general',
+              model: directModel,
+              usage: data.usage ?? null,
+            }));
+          }
 
           if (!content) {
             throw new Error('AI response was empty.');
