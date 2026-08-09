@@ -1,0 +1,88 @@
+name: Weekly Planning Semantic Repair Model Eval
+# Compare repair strategy only:
+# initial semantic = gpt-5.4-mini in every arm
+# A: validator failure -> gpt-5.4-mini repair
+# B: validator failure -> gpt-5.6-luna repair
+# Renderer remains gpt-5.4-mini.
+
+on:
+  push:
+    branches: [agent/weekly-ai-conversation-eval]
+    paths:
+      - .github/workflows/weekly-planning-semantic-repair-model-eval.yml
+
+permissions:
+  contents: read
+
+jobs:
+  repair-matrix:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: mini-repair
+            repair_model: gpt-5.4-mini
+            repetition: 1
+          - mode: mini-repair
+            repair_model: gpt-5.4-mini
+            repetition: 2
+          - mode: mini-repair
+            repair_model: gpt-5.4-mini
+            repetition: 3
+          - mode: luna-repair
+            repair_model: gpt-5.6-luna
+            repetition: 1
+          - mode: luna-repair
+            repair_model: gpt-5.6-luna
+            repetition: 2
+          - mode: luna-repair
+            repair_model: gpt-5.6-luna
+            repetition: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify OpenAI secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+      - name: Execute controlled repair case
+        env:
+          TZ: Asia/Tokyo
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_PROVIDER: openai
+          VITE_AI_BASE_URL: https://api.openai.com/v1
+          VITE_AI_MODEL: gpt-5.4-mini
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_MAX_PROCESS_REQUESTS: 3
+          VITE_AI_EVAL_ENABLE_PURPOSE_MODEL_OVERRIDE: '1'
+          VITE_AI_EVAL_SEMANTIC_MODEL: gpt-5.4-mini
+          VITE_AI_EVAL_SEMANTIC_REPAIR_MODEL: ${{ matrix.repair_model }}
+          VITE_AI_EVAL_CAPTURE_USAGE: '1'
+          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
+          WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ''
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/${{ matrix.mode }}/run-${{ matrix.repetition }}
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: semantic-repair-${{ matrix.mode }}-${{ matrix.repetition }}
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: semantic-repair-${{ matrix.mode }}-${{ matrix.repetition }}-20260810
+          WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: '2026-08-10'
+          WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: '2026-08-10'
+          WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '120000'
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: '来週、数学のワークと古典の課題を進めたいです。20ページくらい。'
+        run: |
+          mkdir -p artifacts/${{ matrix.mode }}/run-${{ matrix.repetition }}
+          node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts --reporter=verbose
+          echo '--- TRANSCRIPT ---'
+          cat artifacts/${{ matrix.mode }}/run-${{ matrix.repetition }}/transcript.md
+          echo '--- LATEST TURN ---'
+          cat artifacts/${{ matrix.mode }}/run-${{ matrix.repetition }}/latest-turn.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semantic-repair-${{ matrix.mode }}-${{ matrix.repetition }}
+          path: artifacts/${{ matrix.mode }}/run-${{ matrix.repetition }}/
+          if-no-files-found: warn
+          retention-days: 7
