@@ -4,7 +4,6 @@ name: Weekly Planning Semantic Repair Model Eval
 # A: validator failure -> gpt-5.4-mini repair
 # B: validator failure -> gpt-5.6-luna repair
 # Renderer remains gpt-5.4-mini.
-# Rerun marker: routing timeout argument fixed.
 
 on:
   push:
@@ -47,6 +46,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Use GPT-5.6-compatible parameters in this eval checkout
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'src/services/ai/openAiCompatibleClient.ts';
+          let source = fs.readFileSync(path, 'utf8');
+          source = source.replace(
+            'model: directModel,\n        temperature,\n        messages,',
+            "model: directModel,\n        ...(directModel.startsWith('gpt-5.6-')\n          ? { reasoning_effort: 'none' }\n          : { temperature }),\n        messages,",
+          );
+          fs.writeFileSync(path, source);
+          NODE
       - name: Verify OpenAI secret
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
