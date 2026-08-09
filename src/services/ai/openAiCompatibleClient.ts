@@ -209,9 +209,6 @@ export function createOpenAiCompatibleClient(
 
         const idToken = await firebaseAuth.currentUser.getIdToken();
 
-        // 本番経路(Worker が single source of truth):
-        // purpose がある呼び出しは model 名を送らず、Worker が purpose から model を解決する。
-        // purpose 無しの既存呼び出し(general NL)は従来どおり config.model を送る。
         const proxyBody = {
           ...(purpose ? { purpose } : { model: config.model }),
           temperature,
@@ -275,9 +272,6 @@ export function createOpenAiCompatibleClient(
         }
       }
 
-      // 直結(非 proxy / dev)経路では通常 config.model を使う。
-      // 実API評価時だけ、明示的な opt-in env によりsemantic initial/repairを個別に差し替える。
-      // renderer等はconfig.modelのままなので、repair戦略だけを比較できる。
       const semanticRepair = isSemanticRepairRequest(purpose, messages);
       const directModel = evalSemanticModel(purpose, messages) ?? config.model;
       const payload: ChatCompletionRequest = {
@@ -298,9 +292,9 @@ export function createOpenAiCompatibleClient(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
           },
-          requestTimeoutMs,
           body: JSON.stringify(payload),
         },
+        requestTimeoutMs,
         async (response) => {
           if (!response.ok) {
             throw new Error(`AI request failed with status ${response.status}.`);
