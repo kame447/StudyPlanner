@@ -4,6 +4,7 @@ name: Weekly Planning Semantic Repair Model Eval
 # A: validator failure -> gpt-5.4-mini repair
 # B: validator failure -> gpt-5.6-luna repair
 # Renderer remains gpt-5.4-mini.
+# Rerun marker: routing timeout argument fixed.
 
 on:
   push:
