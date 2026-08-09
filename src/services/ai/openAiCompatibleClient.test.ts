@@ -115,6 +115,26 @@ describe('openAiCompatibleClient model routing', () => {
     expect(body).not.toHaveProperty('purpose');
   });
 
+  it('overrides only the direct semantic model when the eval override is explicitly enabled', async () => {
+    vi.stubEnv('VITE_AI_EVAL_ENABLE_PURPOSE_MODEL_OVERRIDE', '1');
+    vi.stubEnv('VITE_AI_EVAL_SEMANTIC_MODEL', 'gpt-5.4-nano');
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+    const client = createOpenAiCompatibleClient(config);
+
+    await client.createChatCompletion({
+      messages: [{ role: 'user', content: 'semantic' }],
+      purpose: 'weekly_planning_semantic_normalizer',
+    });
+    expect(lastRequestBody(fetchMock).model).toBe('gpt-5.4-nano');
+
+    await client.createChatCompletion({
+      messages: [{ role: 'user', content: 'renderer' }],
+      purpose: 'weekly_planning_renderer',
+    });
+    expect(lastRequestBody(fetchMock).model).toBe('gpt-5.4-mini');
+  });
+
   it('aborts a direct provider connection after the configured timeout', async () => {
     vi.useFakeTimers();
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
