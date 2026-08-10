@@ -84,7 +84,7 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(system).toContain('Emit only facts stated or changed in current userText');
   });
 
-  it('repairs a copied accepted planning window during a contextual turn while preserving current-turn facts', async () => {
+  it('removes a copied accepted planning window algorithmically while preserving current-turn facts', async () => {
     const staleWindow = {
       localId: 'window-copied',
       kind: 'relative_week' as const,
@@ -94,11 +94,7 @@ describe('Stable V5 current-turn semantic delta contract', () => {
       sourceText: '来週の予定',
     };
     const initial = currentTaskDocument(staleWindow);
-    const repaired = currentTaskDocument(null);
-    const fake = client([
-      JSON.stringify(initial),
-      JSON.stringify(repaired),
-    ]);
+    const fake = client([JSON.stringify(initial)]);
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '数学を進めたい',
@@ -119,17 +115,10 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     expect(result.status).toBe('accepted');
     expect(result.document?.planningWindow).toBeNull();
     expect(result.document?.tasks).toHaveLength(1);
-    expect(result.diagnostics.repairAttempted).toBe(true);
-    expect(fake.calls).toHaveLength(2);
-
-    const repairMessages = fake.calls[1].messages as Array<{ role: string; content: string }>;
-    const repairPayload = JSON.parse(repairMessages[repairMessages.length - 1]?.content ?? '{}') as {
-      instruction?: string;
-      requiredChanges?: string[];
-    };
-    expect(repairPayload.instruction).toContain('does not mean restating the accepted plan');
-    expect(repairPayload.instruction).toContain('delta for current userText');
-    expect(repairPayload.requiredChanges?.join('\n')).toContain('Set an unstated planningWindow to null');
-    expect(repairPayload.requiredChanges?.join('\n')).toContain('Keep newly stated current-turn facts');
+    expect(result.diagnostics.repairAttempted).toBe(false);
+    expect(fake.calls).toHaveLength(1);
+    expect(result.diagnostics.algorithmicRepairs).toEqual(
+      expect.arrayContaining([expect.stringContaining('copied-planning-window-removed')]),
+    );
   });
 });
