@@ -16,6 +16,19 @@ export const CANONICAL_RELATIVE_WEEK_EXPRESSIONS = [
 export type CanonicalRelativeWeekExpression =
   (typeof CANONICAL_RELATIVE_WEEK_EXPRESSIONS)[number];
 
+export const CANONICAL_WEEKDAY_DATE_EXPRESSIONS = [
+  'weekday:sunday',
+  'weekday:monday',
+  'weekday:tuesday',
+  'weekday:wednesday',
+  'weekday:thursday',
+  'weekday:friday',
+  'weekday:saturday',
+] as const;
+
+export type CanonicalWeekdayDateExpression =
+  (typeof CANONICAL_WEEKDAY_DATE_EXPRESSIONS)[number];
+
 export const CANONICAL_RELATIVE_DATE_EXPRESSIONS = [
   ...CANONICAL_RELATIVE_DAY_EXPRESSIONS,
   ...CANONICAL_RELATIVE_WEEK_EXPRESSIONS,
@@ -41,6 +54,15 @@ export type CalendarDateExpressionResolution =
 
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const CUSTOM_DATE_EXPRESSION_PATTERN = /^custom:.+$/;
+const WEEKDAY_INDEX_BY_EXPRESSION: Record<CanonicalWeekdayDateExpression, number> = {
+  'weekday:sunday': 0,
+  'weekday:monday': 1,
+  'weekday:tuesday': 2,
+  'weekday:wednesday': 3,
+  'weekday:thursday': 4,
+  'weekday:friday': 5,
+  'weekday:saturday': 6,
+};
 
 function parseCalendarDate(value: string): Date | null {
   const match = ISO_DATE_PATTERN.exec(value);
@@ -70,10 +92,18 @@ export function isValidCalendarDate(value: string): boolean {
   return parseCalendarDate(value) !== null;
 }
 
+export function canonicalWeekdayIndex(expression: string): number | null {
+  if (!(CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(expression)) {
+    return null;
+  }
+  return WEEKDAY_INDEX_BY_EXPRESSION[expression as CanonicalWeekdayDateExpression];
+}
+
 export function isCanonicalDateExpressionSyntax(value: string): boolean {
   return (
     isValidCalendarDate(value)
     || (CANONICAL_RELATIVE_DATE_EXPRESSIONS as readonly string[]).includes(value)
+    || (CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(value)
     || CUSTOM_DATE_EXPRESSION_PATTERN.test(value)
   );
 }
@@ -178,6 +208,17 @@ export function resolveCanonicalDateExpression(params: {
     const end = addCalendarDays(monday, offset + 6);
     return start && end
       ? { status: 'resolved', range: { start, end } }
+      : { status: 'invalid_current_date', range: null };
+  }
+
+  const weekdayIndex = canonicalWeekdayIndex(params.expression);
+  if (weekdayIndex !== null) {
+    const currentWeekday = calendarWeekday(params.currentDate);
+    if (currentWeekday === null) return { status: 'invalid_current_date', range: null };
+    const offset = (weekdayIndex - currentWeekday + 7) % 7;
+    const date = addCalendarDays(params.currentDate, offset);
+    return date
+      ? { status: 'resolved', range: { start: date, end: date } }
       : { status: 'invalid_current_date', range: null };
   }
 
