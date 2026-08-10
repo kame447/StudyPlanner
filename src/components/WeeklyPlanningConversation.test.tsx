@@ -1,16 +1,8 @@
-import { act, create } from 'react-test-renderer';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  getWeeklyPlanningRuntimeMode,
-  resetWeeklyPlanningRuntimeModeForTest,
-} from '../features/weeklyPlanning/application/weeklyPlanningRuntimeMode';
+import { describe, expect, it } from 'vitest';
 import { WeeklyPlanningConversation } from './WeeklyPlanningConversation';
 
 describe('WeeklyPlanningConversation', () => {
-  beforeEach(() => resetWeeklyPlanningRuntimeModeForTest());
-  afterEach(() => resetWeeklyPlanningRuntimeModeForTest());
-
   it('shows a typing indicator without duplicating an input composer', () => {
     const html = renderToStaticMarkup(
       <WeeklyPlanningConversation
@@ -28,20 +20,14 @@ describe('WeeklyPlanningConversation', () => {
     expect(html).not.toContain('textarea');
   });
 
-  it('shows the effective runtime and can select Stable V5 before a conversation starts', () => {
-    const renderer = create(
+  it('shows Stable V5 without exposing a legacy runtime selector', () => {
+    const html = renderToStaticMarkup(
       <WeeklyPlanningConversation messages={[]} isAnalyzing={false} />,
     );
-    const stableButton = renderer.root.findAllByType('button').find(
-      (button) => button.children.join('') === 'Stable V5',
-    );
-    expect(stableButton).toBeDefined();
 
-    act(() => stableButton?.props.onClick());
-
-    expect(getWeeklyPlanningRuntimeMode()).toBe('stable_v5');
-    expect(
-      renderer.root.findByProps({ 'aria-label': '週間計画AIの実行方式' }),
-    ).toBeDefined();
+    expect(html).toContain('Stable V5');
+    expect(html).not.toContain('現行方式');
+    expect(html).not.toContain('role="radiogroup"');
+    expect(html).not.toContain('role="radio"');
   });
 });

@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bindWeeklyPlanningStableV5RuntimeSessionScope,
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './application/weeklyPlanningStableV5RuntimeSession';
+import {
+  getWeeklyPlanningStableV5SessionStorageKeyForTest,
+} from './application/weeklyPlanningStableV5SessionStorage';
+import {
   createMemoryStorageHarness,
   createWeeklyPlanningTestDraftBlock,
   installWeeklyPlanningTestStorage,
@@ -29,13 +36,17 @@ describe('weeklyPlanningOwnedStorage', () => {
   let restoreWindow: () => void;
 
   beforeEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
   });
 
-  afterEach(() => restoreWindow());
+  afterEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    restoreWindow();
+  });
 
-  it('stores owner identity and planning payload in one versioned envelope', () => {
+  it('stores owner identity and planning payload in one versioned staging envelope', () => {
     const state = stateWithDraft('user-a');
 
     saveOwnedWeeklyPlanningState('user-a', state);
@@ -50,6 +61,26 @@ describe('weeklyPlanningOwnedStorage', () => {
     expect(envelope.version).toBe(3);
     expect(envelope.ownerId).toBe('user-a');
     expect(envelope.payload).toBeDefined();
+    expect(loadOwnedWeeklyPlanningState('user-a', WEEK_START).draftBlocks).toEqual(
+      state.draftBlocks,
+    );
+  });
+
+  it('promotes staging state to the Stable V5 session after scope binding', () => {
+    const state = stateWithDraft('user-a');
+    saveOwnedWeeklyPlanningState('user-a', state);
+    expect(storageHarness.values.has(key('user-a'))).toBe(true);
+
+    bindWeeklyPlanningStableV5RuntimeSessionScope({
+      ownerId: 'user-a',
+      weekStartDate: WEEK_START,
+      conversationId: 'weekly-conversation-storage-promotion',
+    });
+    saveOwnedWeeklyPlanningState('user-a', state);
+
+    const stableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest('user-a', WEEK_START);
+    expect(storageHarness.values.has(stableKey)).toBe(true);
+    expect(storageHarness.values.has(key('user-a'))).toBe(false);
     expect(loadOwnedWeeklyPlanningState('user-a', WEEK_START).draftBlocks).toEqual(
       state.draftBlocks,
     );
@@ -85,7 +116,7 @@ describe('weeklyPlanningOwnedStorage', () => {
     expect(storageHarness.values.has(key('user-b'))).toBe(false);
   });
 
-  it('migrates a valid legacy v2 payload to the owner-bound envelope', () => {
+  it('migrates a valid legacy v2 payload to the owner-bound staging envelope', () => {
     const state = stateWithDraft('user-a');
     storageHarness.values.set(
       key('user-a'),

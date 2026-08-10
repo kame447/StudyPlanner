@@ -9,7 +9,12 @@ import type {
 import type {
   GenericSchedulerInput,
 } from './weeklyPlanningGenericSchedulerInput';
-import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
+import {
+  calendarWeekday,
+  canonicalWeekdayIndex,
+  listCalendarDatesInclusive,
+  resolveCanonicalDateExpression,
+} from './weeklyPlanningCalendarResolver';
 
 export const WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION =
   'weekly-planning-stable-v5-preview-scheduler-v1' as const;
@@ -40,11 +45,23 @@ interface PlacementWindow {
   end: number;
 }
 
+interface PreferredPlacement {
+  dates: string[];
+  window: PlacementWindow | null;
+}
+
 const DEFAULT_DAY_START = '09:00';
 const DEFAULT_DAY_END = '22:00';
 const DEFAULT_BREAK_MINUTES = 10;
 const DEFAULT_SESSION_MINUTES = 60;
 const EXISTING_PLAN_BUFFER_MINUTES = 10;
+const DEFAULT_NAMED_TIME_PERIODS: Record<string, { startTime: string; endTime: string }> = {
+  morning: { startTime: '06:00', endTime: '12:00' },
+  afternoon: { startTime: '12:00', endTime: '17:00' },
+  evening: { startTime: '17:00', endTime: '21:00' },
+  night: { startTime: '21:00', endTime: '24:00' },
+  before_sleep: { startTime: '21:00', endTime: '24:00' },
+};
 
 function minutesFromTime(time: string): number {
   if (time === '24:00') return 24 * 60;
@@ -211,6 +228,33 @@ function placementWindowsByDate(params: {
   return result;
 }
 
+function hardAvailableWindowsByDate(params: {
+  input: GenericSchedulerInput;
+  dates: string[];
+}): Map<string, PlacementWindow[]> {
+  const dateSet = new Set(params.dates);
+  const result = new Map<string, PlacementWindow[]>();
+  params.input.availabilityWindows
+    .filter((window) =>
+      window.constraintLevel === 'hard'
+      && window.kind === 'available'
+      && window.start.date === window.end.date
+      && dateSet.has(window.start.date))
+    .forEach((window) => {
+      const start = minutesFromTime(window.start.time);
+      const end = minutesFromTime(window.end.time);
+      if (end <= start) return;
+      result.set(window.start.date, [
+        ...(result.get(window.start.date) ?? []),
+        { start, end },
+      ]);
+    });
+  for (const [date, windows] of result) {
+    result.set(date, windows.sort((left, right) => left.start - right.start));
+  }
+  return result;
+}
+
 function sessionChunks(item: GenericPlanningWorkItem): number[] {
   const total = item.estimatedMinutes ?? 0;
   if (total <= 0) return [];
@@ -244,15 +288,86 @@ function eligibleDates(params: {
   return allowed.filter((date) => params.dates.includes(date) && !excluded.has(date));
 }
 
+function datesForExpression(params: {
+  expression: string | null;
+  dates: string[];
+}): string[] | null {
+  if (!params.expression) return [...params.dates];
+  const weekdayIndex = canonicalWeekdayIndex(params.expression);
+  if (weekdayIndex !== null) {
+    return params.dates.filter((date) => calendarWeekday(date) === weekdayIndex);
+  }
+  if (params.expression.startsWith('custom:')) return null;
+  const resolved = resolveCanonicalDateExpression({
+    expression: params.expression,
+    currentDate: params.dates[0] ?? '',
+  });
+  if (resolved.status !== 'resolved') return null;
+  return params.dates.filter(
+    (date) => date >= resolved.range.start && date <= resolved.range.end,
+  );
+}
+
+function preferredPlacements(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  item: GenericPlanningWorkItem;
+  dates: string[];
+  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
+}): PreferredPlacement[] {
+  const activeIds = new Set(
+    params.graph.factLifecycles
+      .filter((entry) => entry.status === 'active')
+      .map((entry) => entry.factId),
+  );
+  const namedTimePeriods = params.namedTimePeriods ?? DEFAULT_NAMED_TIME_PERIODS;
+  return params.graph.temporalConstraints
+    .filter((constraint) =>
+      activeIds.has(constraint.id)
+      && constraint.taskId === params.item.taskId
+      && constraint.kind === 'preferred_window')
+    .flatMap((constraint) => {
+      const dates = datesForExpression({
+        expression: constraint.dateExpression,
+        dates: params.dates,
+      });
+      if (!dates || dates.length === 0) return [];
+
+      let window: PlacementWindow | null = null;
+      if (constraint.startTime && constraint.endTime) {
+        window = {
+          start: minutesFromTime(constraint.startTime),
+          end: minutesFromTime(constraint.endTime),
+        };
+      } else if (constraint.namedTimePeriod) {
+        const resolved = namedTimePeriods[constraint.namedTimePeriod];
+        if (!resolved) return [];
+        window = {
+          start: minutesFromTime(resolved.startTime),
+          end: minutesFromTime(resolved.endTime),
+        };
+      }
+      if (window && window.end <= window.start) return [];
+      return [{ dates, window }];
+    });
+}
+
 function findSlot(params: {
   dates: string[];
   duration: number;
   windowsByDate: Map<string, PlacementWindow[]>;
   busy: MinuteInterval[];
   breakMinutes: number;
+  overrideWindow?: PlacementWindow | null;
 }): MinuteInterval | null {
   for (const date of params.dates) {
-    const windows = params.windowsByDate.get(date) ?? [];
+    const baseWindows = params.windowsByDate.get(date) ?? [];
+    const windows = params.overrideWindow
+      ? baseWindows.flatMap((base) => {
+          const start = Math.max(base.start, params.overrideWindow!.start);
+          const end = Math.min(base.end, params.overrideWindow!.end);
+          return end > start ? [{ start, end }] : [];
+        })
+      : baseWindows;
     for (const window of windows) {
       let cursor = window.start;
       while (cursor + params.duration <= window.end) {
@@ -268,6 +383,46 @@ function findSlot(params: {
         if (!conflict) return candidate;
         cursor = Math.max(cursor + 1, conflict.end + params.breakMinutes);
       }
+    }
+  }
+  return null;
+}
+
+function intersectPlacementWindows(
+  bases: readonly PlacementWindow[],
+  preferred: PlacementWindow,
+): PlacementWindow[] {
+  return bases.flatMap((base) => {
+    const start = Math.max(base.start, preferred.start);
+    const end = Math.min(base.end, preferred.end);
+    return end > start ? [{ start, end }] : [];
+  });
+}
+
+function findPreferredSlot(params: {
+  placements: PreferredPlacement[];
+  duration: number;
+  windowsByDate: Map<string, PlacementWindow[]>;
+  hardAvailableByDate: Map<string, PlacementWindow[]>;
+  busy: MinuteInterval[];
+  breakMinutes: number;
+}): MinuteInterval | null {
+  for (const placement of params.placements) {
+    for (const date of placement.dates) {
+      const hardAvailable = params.hardAvailableByDate.get(date);
+      const windows = placement.window
+        ? hardAvailable
+          ? intersectPlacementWindows(hardAvailable, placement.window)
+          : [placement.window]
+        : hardAvailable ?? params.windowsByDate.get(date) ?? [];
+      const slot = findSlot({
+        dates: [date],
+        duration: params.duration,
+        windowsByDate: new Map([[date, windows]]),
+        busy: params.busy,
+        breakMinutes: params.breakMinutes,
+      });
+      if (slot) return slot;
     }
   }
   return null;
@@ -301,6 +456,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   dayStartTime?: string;
   dayEndTime?: string;
   breakMinutes?: number;
+  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
 }): WeeklyPlanningStableV5PreviewSchedulerResult {
   const dates = listCalendarDatesInclusive(
     params.input.horizon.startDate,
@@ -330,6 +486,10 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     dayStartTime: params.dayStartTime ?? DEFAULT_DAY_START,
     dayEndTime: params.dayEndTime ?? DEFAULT_DAY_END,
   });
+  const hardAvailableByDate = hardAvailableWindowsByDate({
+    input: params.input,
+    dates,
+  });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledWorkItemIds: string[] = [];
   const breakMinutes = params.breakMinutes ?? DEFAULT_BREAK_MINUTES;
@@ -337,11 +497,27 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   for (const item of params.input.movableWorkItems) {
     const chunks = sessionChunks(item);
     const allowedDates = eligibleDates({ input: params.input, item, dates });
+    const preferences = preferredPlacements({
+      graph: params.graph,
+      item,
+      dates: allowedDates,
+      namedTimePeriods: params.namedTimePeriods,
+    });
     const itemCandidates: WeeklyDraftCandidate[] = [];
     let failed = chunks.length === 0;
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
       const duration = chunks[chunkIndex];
-      const slot = findSlot({
+      const preferredSlot = preferences.length > 0
+        ? findPreferredSlot({
+            placements: preferences,
+            duration,
+            windowsByDate,
+            hardAvailableByDate,
+            busy,
+            breakMinutes,
+          })
+        : null;
+      const slot = preferredSlot ?? findSlot({
         dates: allowedDates,
         duration,
         windowsByDate,

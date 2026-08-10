@@ -85,11 +85,9 @@ describe('Stable V5 dialogue state summary', () => {
         availabilityDeclarations: [],
         constraintSourceRequests: [],
       },
-      currentQuestion: {
-        questionCode: 'quantity_role_unresolved',
-        relevantLabels: ['院試', '第2分野'],
-      },
+      undecidedItems: expect.any(Array),
     });
+    expect(summary).not.toHaveProperty('currentQuestion');
     expect(summary.decidedFacts).not.toHaveProperty('uncertainties');
     expect(summary.undecidedItems).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -116,23 +114,28 @@ describe('Stable V5 dialogue state summary', () => {
     ]));
   });
 
-  it('embeds the cross-turn state summary in the actual user prompt', () => {
+  it('embeds state once and keeps question context in applicationDecision', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
 
+    expect(payload).not.toHaveProperty('planningInformation');
     expect(payload).toMatchObject({
       currentUserMessage: 'どういうこと？',
       recentConversation: expect.any(Array),
       planningStateSummary: {
         decidedFacts: expect.any(Object),
         undecidedItems: expect.any(Array),
-        currentQuestion: {
-          questionCode: 'quantity_role_unresolved',
-        },
+      },
+      applicationDecision: {
+        questionCode: 'quantity_role_unresolved',
+        relevantLabels: ['院試', '第2分野'],
       },
     });
+    expect(
+      (payload.planningStateSummary as Record<string, unknown>),
+    ).not.toHaveProperty('currentQuestion');
     expect(prompt.userPrompt).toContain(
-      'decidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です',
+      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です',
     );
   });
 });

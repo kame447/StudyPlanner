@@ -1,0 +1,24 @@
+# 週間計画 AI テスト方針
+
+Status: canonical
+Updated: 2026-08-10
+
+週間計画の自動テストは、AIの自然言語理解や会話品質に唯一の正解があるとは仮定しない。自動化する対象は、決定論的に正誤を定義できる内部契約に限定する。
+
+自動テストで保証するのは、schemaと型、参照整合性、Fact Graph revisionとlifecycle、pending questionのformal target、transaction、scheduler input、preview、approval、save、persistence、recovery、trace、安全境界、request budgetである。日本語のfixtureを使う場合も、その文からAIが特定の意味構造を必ず返すことを正解として固定しない。fixtureは、deterministic codeがraw user textを再解釈しないこと、または既に与えられたAI出力を構造的に正しく検証することの確認にだけ使う。
+
+AI rendererについても、特定の日本語文面や語句を正解としてassertしない。自動テストではtyped application decisionとの整合、未根拠情報の拒否、action identity、安全性などの機械判定可能な境界だけを検証する。
+
+実APIを使う会話確認は、固定シナリオを自動採点するquality testとして扱わない。実際の発話を一ターンずつ与え、同一conversation checkpointを継続し、生成されたtranscriptと内部状態を読んで自然さ、文脈理解、聞き返し、訂正、予定作成までの流れを評価する。ハーネスが失敗として扱ってよいのは、turn rejection、provider failure、state corruption、checkpoint破損、request budget超過、必要なAI経路のbypassなど、実行上または決定論的契約上の失敗だけである。
+
+ただし、実API会話を人間の最終確認まで無監査で通し切るわけではない。開発エージェントは各turnでtranscript、semantic raw response、accepted document、validator/repair、formal binding、Fact Graph、dialogue decision、renderer resultを確認する。明確な意味誤認、文脈欠落、重複質問、誤binding、根拠のない具体化、不自然な反復、利用者が次に答える内容を判断できない質問、previewや保存状態との矛盾があれば、そのturnで会話進行を止め、原因層を特定して一般化した修正を行い、同じ会話地点を再実行する。
+
+修正先は症状ではなく原因層で決める。semantic raw responseが誤っている場合はsemantic context/prompt/contract、raw responseが正しくschemaやvalidatorが拒否する場合はschema/validator、formal targetやFact Graphで壊れる場合はbinding/lifecycle、machine dialogue decisionが不適切な場合はquestion/readiness policy、decisionは正しく文面だけ不自然な場合はrendererを修正する。raw user textを後段のregex、keyword、dictionaryで再解釈してAI出力を上書きしない。
+
+AI出力のstructural/reference/contract violationに対する通常repairは、gpt-5.4-miniで最大1回とする。semantic ambiguityをrepairで無理に確定させない。広範なdeterministic repairは導入せず、意味保存を機械的に保証できるcanonicalizationを実測に基づいて限定的に扱う場合だけ例外とする。
+
+会話品質に関する最終意思決定は人間が行う。開発エージェントはその前段で明確な問題を修正して一定水準まで持ち上げ、最終的な実API transcriptを人間へ提示する。単なる文体の好みだけを理由にAIの表現を固定化しない。
+
+過去のmodel比較、旧semantic schema、scenario固有oracle、固定期待文面を持つevalはcanonicalな回帰テストに含めない。モデル比較が再度必要になった場合は一時的な実験として分離し、結論が得られた後はactive test suiteから除去する。
+
+実API改善ループの詳細は `docs/ai/tasks/20260810-weekly-planning-human-reviewed-conversation-improvement-loop.md` を正とする。

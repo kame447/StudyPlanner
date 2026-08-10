@@ -11,7 +11,7 @@ describe('ai-proxy chat model policy', () => {
       model: 'gpt-5.4-nano-2026-03-17',
     });
     expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({
-      model: 'gpt-5.4-nano-2026-03-17',
+      model: 'gpt-5.4-mini-2026-03-17',
     });
     expect(resolveChatModel({ purpose: 'weekly_planning_renderer' })).toEqual({
       model: 'gpt-5.4-mini-2026-03-17',

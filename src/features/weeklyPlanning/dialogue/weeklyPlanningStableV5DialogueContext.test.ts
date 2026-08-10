@@ -26,6 +26,13 @@ describe('Stable V5 dialogue context', () => {
     })).toEqual([]);
   });
 
+  it('preserves the preview promotion control label in status rendering', () => {
+    expect(requiredLabelsForStableV5Dialogue({
+      questionCode: null,
+      fallbackText: '問題なければ下の「この内容で仮予定にする」ボタンを押してください。',
+    })).toEqual(['この内容で仮予定にする']);
+  });
+
   it('treats a deterministic information request without a question code as a question action', () => {
     expect(isStableV5QuestionLikeText(
       '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',

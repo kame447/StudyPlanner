@@ -1,10 +1,22 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import {
+  USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
+  type UserPlanningContextSemanticFactV1,
+} from '../../userPlanningContext/userPlanningContextTypes';
 
 export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 =
   'weekly-planning-semantic-v5' as const;
 
 export const SEMANTIC_TASK_CATEGORIES_V5 = ['study', 'non_study', 'unknown'] as const;
 export type SemanticTaskCategoryV5 = (typeof SEMANTIC_TASK_CATEGORIES_V5)[number];
+
+export const SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5 = [
+  'atomic',
+  'decomposed',
+  'needs_breakdown',
+] as const;
+export type SemanticTaskDecompositionStatusV5 =
+  (typeof SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5)[number];
 
 export const SEMANTIC_STUDY_PURPOSES_V5 = [
   'exam',
@@ -142,6 +154,24 @@ export interface SemanticSourceEvidenceV5 {
   sourceText: string;
 }
 
+export const SEMANTIC_DURABLE_CONCERN_BASES_V5 = [
+  'difficulty',
+  'weakness',
+  'worry',
+  'low_confidence',
+  'behind',
+  'motivation_problem',
+] as const;
+export type SemanticDurableConcernBasisV5 =
+  (typeof SEMANTIC_DURABLE_CONCERN_BASES_V5)[number];
+
+export interface SemanticDurableContextSignalV5 extends SemanticSourceEvidenceV5 {
+  localId: string;
+  kind: 'concern';
+  basis?: SemanticDurableConcernBasisV5;
+  value: string | null;
+}
+
 export interface SemanticWorkloadV5 extends SemanticSourceEvidenceV5 {
   localId: string;
   quantityRole: SemanticQuantityRoleV5;
@@ -156,10 +186,12 @@ export interface SemanticWorkloadV5 extends SemanticSourceEvidenceV5 {
 
 export interface SemanticStudyComponentV5 extends SemanticSourceEvidenceV5 {
   localId: string;
+  existingPublicId?: string | null;
   parentLocalId: string | null;
   role: SemanticComponentRoleV5;
   label: string;
   workloads: SemanticWorkloadV5[];
+  durableContextSignals?: SemanticDurableContextSignalV5[];
 }
 
 export interface SemanticStudyDetailsV5 {
@@ -199,6 +231,8 @@ export interface SemanticRecurrenceV5 extends SemanticSourceEvidenceV5 {
 
 export interface SemanticTaskV5 extends SemanticSourceEvidenceV5 {
   localId: string;
+  existingPublicId?: string | null;
+  decompositionStatus?: SemanticTaskDecompositionStatusV5;
   category: SemanticTaskCategoryV5;
   title: string;
   study: SemanticStudyDetailsV5 | null;
@@ -206,6 +240,7 @@ export interface SemanticTaskV5 extends SemanticSourceEvidenceV5 {
   effortEstimates: SemanticEffortEstimateV5[];
   temporalConstraints: SemanticTemporalConstraintV5[];
   recurrence: SemanticRecurrenceV5[];
+  durableContextSignals?: SemanticDurableContextSignalV5[];
 }
 
 export interface SemanticPlanningWindowV5 extends SemanticSourceEvidenceV5 {
@@ -286,6 +321,7 @@ export interface WeeklyPlanningSemanticDocumentV5 {
   relations: SemanticRelationV5[];
   availabilityDeclarations: SemanticAvailabilityDeclarationV5[];
   constraintSourceRequests: SemanticConstraintSourceRequestV5[];
+  userContextFacts?: UserPlanningContextSemanticFactV1[];
   uncertainties: SemanticUncertaintyV5[];
   corrections: SemanticCorrectionV5[];
   decisions: SemanticDecisionV5[];
@@ -332,16 +368,40 @@ const workloadSchema = {
   },
 } as const;
 
+const durableContextSignalSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['localId', 'kind', 'basis', 'value', 'sourceText'],
+  properties: {
+    localId: { type: 'string' },
+    kind: { type: 'string', enum: ['concern'] },
+    basis: { type: 'string', enum: SEMANTIC_DURABLE_CONCERN_BASES_V5 },
+    value: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+} as const;
+
 const componentSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['localId', 'parentLocalId', 'role', 'label', 'workloads', 'sourceText'],
+  required: [
+    'localId',
+    'existingPublicId',
+    'parentLocalId',
+    'role',
+    'label',
+    'workloads',
+    'durableContextSignals',
+    'sourceText',
+  ],
   properties: {
     localId: { type: 'string' },
+    existingPublicId: nullableStringSchema,
     parentLocalId: nullableStringSchema,
     role: { type: 'string', enum: SEMANTIC_COMPONENT_ROLES_V5 },
     label: { type: 'string' },
     workloads: { type: 'array', items: workloadSchema },
+    durableContextSignals: { type: 'array', items: durableContextSignalSchema },
     ...sourceTextProperty,
   },
 } as const;
@@ -436,6 +496,8 @@ const taskSchema = {
   additionalProperties: false,
   required: [
     'localId',
+    'existingPublicId',
+    'decompositionStatus',
     'category',
     'title',
     'study',
@@ -443,10 +505,16 @@ const taskSchema = {
     'effortEstimates',
     'temporalConstraints',
     'recurrence',
+    'durableContextSignals',
     'sourceText',
   ],
   properties: {
     localId: { type: 'string' },
+    existingPublicId: nullableStringSchema,
+    decompositionStatus: {
+      type: 'string',
+      enum: SEMANTIC_TASK_DECOMPOSITION_STATUSES_V5,
+    },
     category: { type: 'string', enum: SEMANTIC_TASK_CATEGORIES_V5 },
     title: { type: 'string' },
     study: { anyOf: [studySchema, { type: 'null' }] },
@@ -454,6 +522,7 @@ const taskSchema = {
     effortEstimates: { type: 'array', items: effortEstimateSchema },
     temporalConstraints: { type: 'array', items: temporalConstraintSchema },
     recurrence: { type: 'array', items: recurrenceSchema },
+    durableContextSignals: { type: 'array', items: durableContextSignalSchema },
     ...sourceTextProperty,
   },
 } as const;
@@ -601,6 +670,27 @@ const constraintSourceRequestSchema = {
   },
 } as const;
 
+const userContextFactSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'localId',
+    'kind',
+    'label',
+    'value',
+    'dateExpression',
+    'sourceText',
+  ],
+  properties: {
+    localId: { type: 'string' },
+    kind: { type: 'string', enum: USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 },
+    label: { type: 'string' },
+    value: nullableStringSchema,
+    dateExpression: nullableStringSchema,
+    ...sourceTextProperty,
+  },
+} as const;
+
 export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
@@ -617,6 +707,7 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseForm
         'relations',
         'availabilityDeclarations',
         'constraintSourceRequests',
+        'userContextFacts',
         'uncertainties',
         'corrections',
         'decisions',
@@ -641,6 +732,10 @@ export const WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5: JsonSchemaResponseForm
           type: 'array',
           items: constraintSourceRequestSchema,
         },
+        userContextFacts: {
+          type: 'array',
+          items: userContextFactSchema,
+        },
         uncertainties: { type: 'array', items: uncertaintySchema },
         corrections: { type: 'array', items: correctionSchema },
         decisions: { type: 'array', items: decisionSchema },
@@ -656,8 +751,9 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Describe user meaning only. Never emit application commands, reducer operations, database IDs, questions, missing-slot decisions, readiness decisions, preview decisions, schedule placements, approval decisions, or save decisions.',
     'The only top-level task categories are study, non_study, and unknown.',
     'Entrance exams, qualification exams, school exams, courses, homework, self-study, review, practice, learning habits, and research-as-learning are ordinary study tasks. Put the specific context in study.purpose and study.contextLabel, never in a special top-level task type.',
-    'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. Use parentLocalId for hierarchy.',
-    'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, uncertainty, correction, and decision.',
+    'Represent subjects, fields, materials, topics, chapters, sections, and skills as components. parentLocalId is only for component-to-component hierarchy inside the same task: top-level components use null, child components use another component localId, and a task localId must never be used as parentLocalId.',
+    'Every task must classify decompositionStatus. Use atomic only when the user presents one schedulable work unit or no meaningful planning decomposition is needed. Use decomposed when constituent work is already identified in the semantic result. Use needs_breakdown when the task denotes a collection, project, program, or category containing independently schedulable work whose constituents are still unknown. Do not choose atomic merely because constituents were not stated, and never invent constituents.',
+    'Assign a globally unique response-local localId to every planning window, task, component, workload, effort estimate, temporal constraint, recurrence, relation, availability declaration, source request, user context fact, uncertainty, correction, and decision.',
     'Attach each workload to the deepest task or component that it directly modifies. Never store labels and quantities in parallel arrays.',
     'Use quantityRole declared when an amount is stated but the utterance does not establish whether it is a target, remaining amount, or completed amount. Do not guess a stronger role.',
     'A time amount that states how much work exists, such as 30分勉強する or 掃除を1時間する, is a workload with unitCode minute or hour.',
@@ -666,21 +762,28 @@ export function createWeeklyPlanningSemanticSystemPromptV5(): string {
     'Every temporal constraint must include constraintLevel hard, soft, or unknown and namedTimePeriod.',
     'Use hard only when the user clearly states an immovable, mandatory, unavailable, or deadline constraint. Use soft for preferences. Use unknown when the strength is not established.',
     'Use deadline for completion-by expressions, latest_end for まで進める or まで作業する, earliest_start for から始める, and preferred_window for preferences.',
+    'A date when an exam, presentation, competition, appointment, or other event itself occurs is not a work deadline. Put a durable event occurrence in userContextFacts with kind goal_event. Emit a task deadline only when the user explicitly states completion-by meaning for the work.',
+    'Every task and study component must return durableContextSignals, using an empty array when none apply. A concern requires one explicit basis: difficulty, weakness, worry, low_confidence, behind, or motivation_problem. If no basis is supported by current userText, emit no concern. Descriptive amount, relative size, frequency, duration, or workload comparison alone supports none of these bases. Preserve the concern wording in value or use null; do not invent a diagnosis or stronger priority.',
+    'Entity-local concern signals may coexist with the same task/component weekly facts. Do not omit a concern merely because the entity label already appears elsewhere in the document.',
+    'Use top-level userContextFacts for owner-level context not naturally represented as an entity annotation, especially dated future goal_event occurrences. userContextFacts and durableContextSignals are current-turn deltas, never copies of stored user context.',
     'A task-specific time belongs in that task temporalConstraints. A plan-wide statement with no task target belongs in availabilityDeclarations.',
     'Use allowed_date when a task may be scheduled only on the specified date. Use excluded_date when that task must not be scheduled on the specified date. Both require dateExpression and null namedTimePeriod, startTime, and endTime.',
     'For a plan that covers only one specific day, use an absolute planningWindow whose start and end are the same date. For a whole day with no planning, use a hard unavailable availability declaration with that dateExpression and no clock bounds.',
     'planningWindow is only the period for the whole requested plan. A period modifying one workload belongs in that workload periodExpression.',
-    'Use dateExpression only for today, tomorrow, day_after_tomorrow, this_week, next_week, an explicit YYYY-MM-DD date, or custom:<original phrase>. Never put a Japanese time-of-day phrase in dateExpression.',
+    'Use dateExpression only for today, tomorrow, day_after_tomorrow, this_week, next_week, weekday:sunday, weekday:monday, weekday:tuesday, weekday:wednesday, weekday:thursday, weekday:friday, weekday:saturday, an explicit YYYY-MM-DD date, or custom:<original phrase>. Standard weekdays must use weekday:<day>; custom:<original phrase> is only for genuinely non-standard date expressions. Never put a Japanese time-of-day phrase in dateExpression.',
     'Use namedTimePeriod morning, afternoon, evening, night, before_sleep, before_meal, after_meal, or custom:<original phrase>. Use null when exact startTime/endTime are supplied or no named time period exists.',
     'Keep relative date expressions symbolic. Do not calculate ISO dates. Normalize explicit clock times to HH:mm when certain.',
     'Use unitCode exam_year for 1年分 or 2年分 of past questions. Specific calendar years belong only in rangeStart and rangeEnd.',
     'Keep unrelated activities as separate tasks. Preserve before, after, dependency, priority, and sequence relations with response-local task IDs.',
+    'Every task/component must set existingPublicId: use the exact publicId from publicStateSummary when current userText continues the same accepted entity, otherwise null. Do not create a duplicate task/component merely to add workload, effort, time, recurrence, or detail. If identity is ambiguous, emit uncertainty instead of guessing.',
+    'A quantity, duration, date, recurrence, or other modifier must have a uniquely supported semantic target before it is attached to a fact. When the same modifier can grammatically apply to more than one independently schedulable candidate, emit uncertainty for the unresolved target and do not assign, duplicate, distribute, or attach it by proximity, list order, or convenience.',
+    'Scope rule: after two or more coordinated or listed candidate tasks/components have been introduced, a following standalone modifier phrase or sentence with no explicit target remains unresolved across those candidates. In that structure you MUST emit uncertainty for modifier_target and MUST NOT attach the modifier to the first, last, nearest, or otherwise preferred candidate. Only an explicit grammatical link or unambiguous conversation context may resolve it.',
     'External timetable, existing plan, and calendar contents are authoritative application data. Never reproduce, summarize, or invent their events.',
     'Create a constraintSourceRequest only when the user explicitly asks to use or stop using timetable, existing plans, or calendar. selector must be active.',
     'For an ambiguous source request, return an uncertainty targeting document field constraintSource instead of choosing a source.',
     'Use corrections and decisions only for explicit user corrections or explicit decisions about a previously presented public item. Otherwise return empty arrays.',
     'Do not invent facts. Preserve a short supporting excerpt in every sourceText.',
-    'Return empty availabilityDeclarations and constraintSourceRequests arrays when none are explicitly present.',
+    'Return empty availabilityDeclarations, constraintSourceRequests, and userContextFacts arrays when none are explicitly present.',
   ].join('\n');
 }
 

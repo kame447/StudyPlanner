@@ -1,10 +1,3 @@
-import { useEffect, useState } from 'react';
-import {
-  getWeeklyPlanningRuntimeMode,
-  setWeeklyPlanningRuntimeMode,
-  WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
-  type WeeklyPlanningRuntimeMode,
-} from '../features/weeklyPlanning/application/weeklyPlanningRuntimeMode';
 import type { WeeklyPlanningMessage } from '../features/weeklyPlanning/types';
 
 interface WeeklyPlanningConversationProps {
@@ -12,88 +5,19 @@ interface WeeklyPlanningConversationProps {
   isAnalyzing: boolean;
 }
 
-const RUNTIME_LABELS: Record<WeeklyPlanningRuntimeMode, string> = {
-  legacy: '現行方式',
-  stable_v5: 'Stable V5',
-};
-
 export function WeeklyPlanningConversation({
   messages,
   isAnalyzing,
 }: WeeklyPlanningConversationProps) {
-  const [runtimeMode, setRuntimeModeState] = useState<WeeklyPlanningRuntimeMode>(() =>
-    getWeeklyPlanningRuntimeMode(),
-  );
-
-  useEffect(() => {
-    if (
-      typeof window === 'undefined'
-      || typeof window.addEventListener !== 'function'
-      || typeof window.removeEventListener !== 'function'
-    ) {
-      return undefined;
-    }
-
-    const syncRuntimeMode = () => setRuntimeModeState(getWeeklyPlanningRuntimeMode());
-    window.addEventListener(WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT, syncRuntimeMode);
-    return () => window.removeEventListener(
-      WEEKLY_PLANNING_RUNTIME_MODE_CHANGE_EVENT,
-      syncRuntimeMode,
-    );
-  }, []);
-
-  function changeRuntimeMode(nextMode: WeeklyPlanningRuntimeMode): void {
-    if (nextMode === runtimeMode || isAnalyzing) return;
-    if (
-      messages.length > 0
-      && typeof window !== 'undefined'
-      && typeof window.confirm === 'function'
-      && !window.confirm(
-        '実行方式を切り替えると、現在の週間計画の会話と未保存previewを初期化します。切り替えますか？',
-      )
-    ) {
-      return;
-    }
-
-    setWeeklyPlanningRuntimeMode(nextMode);
-    setRuntimeModeState(getWeeklyPlanningRuntimeMode());
-  }
-
   return (
     <div className="section-stack">
       <div className="assistant-feedback-card" aria-label="週間計画AIの実行方式">
         <div className="label-row">
-          <strong>週間計画AIの実行方式</strong>
-          <span className="confidence-badge">現在実行中: {RUNTIME_LABELS[runtimeMode]}</span>
-        </div>
-        <div
-          className="segmented-control"
-          role="radiogroup"
-          aria-label="週間計画AIの実行方式を選択"
-        >
-          <button
-            aria-checked={runtimeMode === 'legacy'}
-            className={runtimeMode === 'legacy' ? 'segment active' : 'segment'}
-            disabled={isAnalyzing}
-            onClick={() => changeRuntimeMode('legacy')}
-            role="radio"
-            type="button"
-          >
-            現行方式
-          </button>
-          <button
-            aria-checked={runtimeMode === 'stable_v5'}
-            className={runtimeMode === 'stable_v5' ? 'segment active' : 'segment'}
-            disabled={isAnalyzing}
-            onClick={() => changeRuntimeMode('stable_v5')}
-            role="radio"
-            type="button"
-          >
-            Stable V5
-          </button>
+          <strong>週間計画AI</strong>
+          <span className="confidence-badge">Stable V5</span>
         </div>
         <p className="detail-note">
-          Stable V5では、AIが意味構造だけを作り、質問選択と予定配置はアプリ側が決定します。切替時は新旧の状態を混在させないため会話を初期化します。
+          発話の意味構造化、質問選択、予定配置、訂正、承認をStable V5経路で処理します。
         </p>
       </div>
 

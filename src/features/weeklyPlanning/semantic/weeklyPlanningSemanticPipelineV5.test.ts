@@ -173,6 +173,63 @@ describe('Stable V5 semantic pipeline', () => {
     expect(result.scheduler).toBeNull();
   });
 
+
+  it('collapses an existing-entity-only semantic shell to a graph no-op', async () => {
+    const pipeline = createWeeklyPlanningSemanticPipelineV5(acceptedNormalizer());
+    const first = await pipeline.run({
+      conversationId: 'conversation-noop',
+      turnId: 'turn-create',
+      expectedRevision: 0,
+      userText: '24日に英単語を30分進めたい',
+      schedulerContext,
+    });
+    const existingTaskId = first.graph.tasks[0]?.id;
+    expect(existingTaskId).toBeTruthy();
+    const shell = document();
+    shell.planningIntent = 'update_plan';
+    shell.planningWindow = null;
+    shell.tasks = [{
+      ...shell.tasks[0],
+      localId: 'existing-task-shell',
+      existingPublicId: existingTaskId ?? null,
+      workloads: [],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: '英単語',
+    }];
+    shell.relations = [];
+    shell.availabilityDeclarations = [];
+    shell.constraintSourceRequests = [];
+    shell.uncertainties = [];
+    shell.corrections = [];
+    shell.decisions = [];
+
+    const second = await createWeeklyPlanningSemanticPipelineV5(
+      acceptedNormalizer(shell),
+    ).run({
+      graph: first.graph,
+      conversationId: 'conversation-noop',
+      turnId: 'turn-noop',
+      expectedRevision: first.graph.revision,
+      userText: 'これで追加して',
+      schedulerContext,
+    });
+
+    expect(second.canonicalization?.diff).toMatchObject({
+      fromRevision: first.graph.revision,
+      toRevision: first.graph.revision,
+      added: [],
+      superseded: [],
+      removed: [],
+    });
+    expect(second.graph).not.toBe(first.graph);
+    expect(second.graph.revision).toBe(first.graph.revision);
+    expect(second.graph.tasks).toEqual(first.graph.tasks);
+    expect(second.graph.workloads).toEqual(first.graph.workloads);
+    expect(second.graph.appliedTurnKeys).toContain('conversation-noop:turn-noop');
+  });
+
   it('keeps duplicate turns idempotent while compiling the existing graph', async () => {
     const pipeline = createWeeklyPlanningSemanticPipelineV5(acceptedNormalizer());
     const first = await pipeline.run({

@@ -1,145 +1,175 @@
 # weeklyPlanning current contract status
 
 Status: canonical / active status overlay
-Updated: 2026-07-31
+Updated: 2026-08-11
 
-- Runtime contract: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
-- Semantic contract: [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md)
-- Roadmap: [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
-- Active-task inventory: [audits/20260731-weekly-planning-active-task-inventory.md](audits/20260731-weekly-planning-active-task-inventory.md)
-- Semantic handoff audit: [audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md](audits/20260731-weekly-planning-semantic-state-handoff-seven-audit.md)
+- Main roadmap: [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
+- Semantic roadmap: [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)
+- Test philosophy: [testing/weekly-planning-test-philosophy.md](testing/weekly-planning-test-philosophy.md)
+- Current execution sequence: [tasks/20260811-weekly-planning-merge-cleanup-refactor-sequence.md](tasks/20260811-weekly-planning-merge-cleanup-refactor-sequence.md)
 
-## 1. AI意味解釈とdeterministic core
+## 1. 現在のフェーズ
 
-- raw user textの初期意味構造化はAI semantic normalizerだけが担当する。
-- provider failure、不正JSON、schema/repair failureでparser fallbackへ戻さない。
-- deterministic coreはschema、reference、revision、lifecycle、question target、readiness、scheduler、preview、saveを管理する。
-- failed/rejected turnで以前のGraphとquestion contextを破壊しない。
+PR #109は新機能追加を凍結し、merge-readiness確認だけを行う。
 
-PR #107では、直前の質問をrenderer textから逆推定せず、次のmachine stateを正とする。
+次の順番を固定する。
 
 ```text
-pendingQuestion:
-  actionId
-  questionCode
-  targetFactId
-  graphRevision
+#109 merge-readiness確定
+→ #109 merge
+→ legacy / 過去経路削除
+→ Stable V5挙動不変リファクタ
+→ 7視点再棚卸し
+→ 新規改善再開
 ```
 
-short answerはこのtargetへだけ適用する。rendererの日本語表現は次turnの状態遷移へ使用しない。
+legacy削除とリファクタを同一PRへ混ぜない。
 
-## 2. Semantic/Fact Graph status
+## 2. AI意味理解とdeterministic core
 
-実装済み:
+現在の正本:
 
-- Stable V5 strict document、validator、max one repair
-- Fact Graph V5とactive/superseded/removed lifecycle
-- staged Graph commit
-- generic work item/scheduler input
-- planningWindow single-active enforcement
+- 自然言語、会話文脈、訂正、承認、数量役割、日付・時間帯の意味理解はAIが担当する。
+- provider failureやvalidation failureから自然言語parserへfallbackしない。
+- deterministic codeはschema、reference、revision、formal binding、Fact Graph lifecycle、readiness、scheduler、preview、approval、save、persistenceを担当する。
+- deterministic codeはraw user textを読み直してAIの意味を上書きしない。
+- focused / generic semanticへorchestrateする場合も、routeはmachine stateで選び、意味解釈自体はAIに残す。
+- renderer textからquestion/target/stateを逆推定しない。
 
-PR #107で実装中・検証待ち:
+## 3. Semantic / Fact Graph
 
-- `明日`planningWindow omission repair
-- machine pending question
-- exact target quantity/effort binding
-- renderer typed action contract
+実装・回帰確認済み:
 
-未実装:
+- Stable V5 strict semantic document
+- initial semantic + validator + AI repair最大1回
+- Fact Graph V5 active/superseded/removed lifecycle
+- staged apply / rollback
+- machine-readable pending question
+- existing entity formal binding
+- effort estimate → workload target
+- current-turn grounding / copied prior fact rejection
+- planning window copied-state normalization
+- duplicate/no-op normalization
+- no-op時のrevision抑止
+- no-op時もapplied turn / idempotency履歴保持
+- quantity structural consistency validation
+- reload可能なGraph/checkpoint validation
 
-- generic semantic turn delta
-- generic lifecycle applier
-- evidence coverage registry
+未着手または後続再評価:
 
-## 3. Dialogue renderer contract
+- partial semantic acceptance
+- ambiguity / unresolved fact lifecycle
+- generic semantic turn delta / generic lifecycle applier
+- cloud authoritative Graph repository
 
-rendererへ会話履歴、current user message、Fact Graph summary、current questionを渡す。
+これらは#109へ追加しない。
 
-renderer responseは次をcore decisionと一致させる。
+## 4. Semantic orchestration / prompt
 
-```text
-actionId
-actionKind
-questionCode
-text
-```
+汎用semantic promptへ責務を無制限に積まない。
 
-不一致、文脈にない日時、誤preview件数、未実行の作成・追加・保存claimではdeterministic fallbackへ戻す。ただし自然な説明と言い換えの自由度は維持する。
+machine stateから責務を限定できるturnはfocused semanticへ分離してよい。ただし意味解釈はfocused AI自身が行う。
 
-## 4. Application/session
+実測では、作成許可のfocused semantic化により、generic semantic約25KB級のrequestに対して約1.3KB級まで縮小できた。
 
-実装済み:
+prompt policy budgetは既存上限を維持し、上限緩和で肥大化を隠さない。
+
+## 5. Dialogue / scheduler
+
+確認済み:
+
+- 複数taskの一部だけworkloadがある状態をreadyとしない。
+- quantity role未確定をeffort estimateより先に解消する。
+- explicit weekday / preferred time windowをschedulerへ保持する。
+- scheduler既定時間帯はユーザーの明示preferred windowより弱い。
+- preview後の修正をAIが`update_plan`として解釈しても、実変更があれば再previewへ進める。
+- 実変更がないturnでは不要なscheduler再実行をしない。
+
+実APIで確認した配置例:
+
+- 数学: 2026-08-18 21:00–24:00
+- 英語レポート: 2026-08-20 12:00–14:00
+
+## 6. Preview / approval / save
+
+確認済み:
+
+- preview訂正後に修正版を再生成できる。
+- no-op turnで既存previewを失わない。
+- stale preview / stale revisionを承認させない既存契約がある。
+- preview候補をUIからdraft blockへ昇格できる。
+- draft状態の「一括承認して保存」がapplication approval callbackへ到達するコンポーネント回帰を追加済み。
+- approval coreの二重処理抑止とsave application境界は決定論的テスト対象。
+
+実ブラウザ上の最終クリック操作とproduction backend保存は、merge後の運用/ブラウザ検証とは区別する。
+
+## 7. Persistence / recovery / trace
+
+実装・回帰対象:
 
 - conversation/turn/request/revision/week identity
-- one active request、stale discard
-- modal closeとcancelの分離
-- IME guard、focus restoration
-- owner/week/conversation-bound local envelope
-- Graph/messages/preview/draft復元
+- one active request / stale discard
+- close/reopen continuity
+- Graph/messages/preview/draft checkpoint復元
+- owner/week/conversation-bound storage
+- same logical conversation trace continuity
+- renderer request/raw response/final decision trace
+- request budget / bounded trace payload
 
-未実装:
+production secret/TTL/Rules、cross-device authoritative store、offline conflict等は後続で再評価する。
 
-- cloud authoritative session
-- cross-tab/server sequence reservation
-- cross-device/offline conflict handling
+## 8. テスト方針
 
-## 5. Current-time boundary
+自動テストは決定論的内部契約だけを保証する。
 
-request時刻より前の同日slot除外は未実装。Stable V5 previewは既定`09:00–22:00`を現在時刻でclipしないため、P0 taskとして残る。
+禁止:
 
-## 6. Preview/approval
+- AIの特定日本語返答を正解として固定する。
+- 固定scenarioのsemantic結果をquality PASSとして扱う。
+- model比較実験を通常CIへ残す。
+- prompt wordingそのものを回帰契約にする。
 
-preview/approval core idempotencyは実装済み。production Rules/TTL、Emulator、2tab/2端末検証は未完了。
+実API会話はhuman-reviewed observationとして一turnずつ確認する。
 
-## 7. Quality trace
+## 9. 2026-08-10〜11 改善ループで修正した主要問題
 
-実装済み:
+- copied planning windowがvalidator repairを誘発し、正しいtaskまで消える問題
+- 総量と完了量の数量意味不整合
+- 一部taskだけ完成していてもscheduler readyになる問題
+- pending effort answerが元workloadへbindingされない問題
+- Fact Graph validatorがworkload targetを拒否する問題
+- current-turnに根拠のない過去Factコピーを許可する問題
+- preview後曜日訂正がschedulerへ反映されない問題
+- preferred night windowが既定09:00–22:00に切られる問題
+- no-op turnでrevisionが増える問題
+- no-op turnでpreviewが消える問題
+- no-op revision抑止でidempotency履歴まで消える問題
+- preview→draft→approvalのUI結合テスト不足
+- semantic prompt policy overhead超過
 
-- same-handle recoveryとserver IDs
-- frontend/Worker event catalog
-- redaction/HMAC/admin export
-- request/entry size batching
-- renderer request、prompt context、raw response、fallback、final decision
-- persistent outbox/Worker境界の将来field・truncation test
+## 10. Dependency / CI
 
-未完了:
+2026-08-11の監査で、transitive dependencyの`nanoid` highと`postcss` moderateを検出した。
 
-- Issue #89 same-conversation production verification
-- production secret/TTL/Rules/Worker
-- abrupt-close final delivery
-- pagination/versioned decoder
+`npm audit fix`でpackage.jsonを変更せずlockfileのみ更新可能であり、更新後にtypecheck、全Vitest、production buildを通す手順を実施している。
 
-## 8. External source / Personalization
+GitHub Actionsの`actions/checkout@v4` / `actions/setup-node@v4`にはNode runtime deprecation警告がある。これは週間計画機能とは独立したCI保守として、#109へ追加の構造変更を混ぜず後続で扱う。
 
-External source pure loaderは実装済みだがproduction adapter未接続。Personalization foundationは実装済みだがobservation、aggregate、score、governanceは未実装。
+## 11. merge gate
 
-## 9. Active task root
+#109をmergeしてよいのは次がすべて成立した場合だけ。
 
-Current execution targetは次の8件だけ。
+- unresolved BLOCKER / MAJORなし
+- Stable V5 production path固定
+- AI semantic ownership gate green
+- 実API主要経路確認済み
+- preview / correction / re-preview / approval境界green
+- reload / stale / idempotency回帰green
+- typecheck green
+- full Vitest green
+- production build green
+- diff check green
+- dependency auditに未判断high/criticalなし
+- PR本文とcanonical docsが最新headと一致
 
-1. `20260731-weekly-planning-midweek-current-time-start-boundary.md`
-2. `20260731-weekly-planning-stable-v5-verification-and-cutover.md`
-3. `20260731-weekly-planning-runtime-followups.md`
-4. `20260731-weekly-planning-synced-conversation-session-store.md`
-5. `20260731-weekly-planning-trace-privacy-and-lifecycle.md`
-6. `20260731-weekly-planning-approval-operational-rollout.md`
-7. `20260731-weekly-planning-external-source-production-adapter.md`
-8. `20260731-weekly-planning-personalization-rollout.md`
-
-旧日付の8件は、未完了条件を再監査したうえで上記current recordsへ置換済みである。完了済みtaskの閉じ忘れは確認されなかった。
-
-## 10. Default cutover gate
-
-次が残る場合、Stable V5をdefaultへ変更しない。
-
-- PR #107 automated verificationがred
-- renderer text依存の状態遷移
-- generic semantic handoffの重大欠陥
-- current-time boundary未実装
-- actual AI/browser未実施
-- trace split/loss再発
-- external source adapter未検証
-- migration/rollback未検証
-- unresolved blocker/major audit finding
-
-module implemented、runtime connected、automated verified、browser verified、cloud synced、operationally deployed、default enabledを明確に区別する。
+merge後はlegacy削除へ進み、その後に挙動不変リファクタを行う。新機能を先に始めない。

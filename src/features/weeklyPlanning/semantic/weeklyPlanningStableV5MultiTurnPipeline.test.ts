@@ -291,7 +291,8 @@ describe('Stable V5 multi-turn pipeline', () => {
       schedulerContext,
     });
     expect(third.status).toBe('scheduler_ready');
-    expect(third.graph.revision).toBe(3);
+    expect(third.graph.revision).toBe(second.graph.revision);
+    expect(third.graph.appliedTurnKeys).toContain('conversation-1:turn-3');
     expect(third.graph.tasks).toHaveLength(1);
     expect(third.graph.workloads).toHaveLength(1);
     expect(third.graph.effortEstimates).toHaveLength(1);

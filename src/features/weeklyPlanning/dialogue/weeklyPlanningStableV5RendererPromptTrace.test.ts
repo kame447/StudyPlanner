@@ -46,7 +46,7 @@ const renderInput: WeeklyPlanningStableV5DialogueRenderInput = {
   actionKind: 'question',
   questionCode: 'quantity_role_unresolved',
   requiredLabels: ['院試', '第2分野'],
-  fallbackText: '第2分野の3時間は、今回進める量ですか、それとも残っている全体量ですか？',
+  fallbackText: '第2分野の3時間は、今回進めたい量ですか、それとも残っている全体量ですか？',
   previewCount: 0,
 };
 
@@ -100,7 +100,7 @@ afterEach(() => {
 });
 
 describe('Stable V5 renderer prompt trace', () => {
-  it('captures the exact messages sent to the renderer and attaches them at the trace boundary', async () => {
+  it('captures the exact compact messages sent to the renderer', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => rawResponse()),
     };
@@ -113,10 +113,10 @@ describe('Stable V5 renderer prompt trace', () => {
     expect(promptContext.messages).toEqual(actualRequest.messages);
     expect(promptContext.requestBytes).toBeGreaterThan(0);
     const userPayload = JSON.parse(promptContext.messages[1].content) as Record<string, unknown>;
+    expect(userPayload).not.toHaveProperty('planningInformation');
     expect(userPayload).toMatchObject({
       currentUserMessage: 'どういうこと？',
       recentConversation: renderInput.recentConversation,
-      planningInformation: renderInput.planningInformation,
       applicationDecision: {
         actionKind: 'question',
         questionCode: 'quantity_role_unresolved',
@@ -124,11 +124,11 @@ describe('Stable V5 renderer prompt trace', () => {
       planningStateSummary: {
         decidedFacts: expect.any(Object),
         undecidedItems: expect.any(Array),
-        currentQuestion: {
-          questionCode: 'quantity_role_unresolved',
-        },
       },
     });
+    expect(
+      (userPayload.planningStateSummary as Record<string, unknown>),
+    ).not.toHaveProperty('currentQuestion');
   });
 
   it('keeps the attempted prompt when the renderer provider fails', async () => {

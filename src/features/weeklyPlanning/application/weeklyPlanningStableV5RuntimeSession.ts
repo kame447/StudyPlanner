@@ -215,6 +215,19 @@ export function commitWeeklyPlanningStableV5RuntimeGraph(params: {
   return cloneSession(session);
 }
 
+export function getWeeklyPlanningStableV5StagedGraph(params: {
+  ownerId: string;
+  conversationId: string;
+  requestId: string;
+}): WeeklyPlanningFactGraphV5 | null {
+  const staged = stagedGraphs.get(stagedKey(params.conversationId, params.requestId));
+  if (!staged || staged.ownerId !== params.ownerId) return null;
+  if (staged.conversationId !== params.conversationId || staged.requestId !== params.requestId) {
+    return null;
+  }
+  return structuredClone(staged.graph);
+}
+
 export function finalizeWeeklyPlanningStableV5RuntimeGraph(params: {
   ownerId: string;
   conversationId: string;

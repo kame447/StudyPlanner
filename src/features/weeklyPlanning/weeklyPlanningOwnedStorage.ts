@@ -51,19 +51,19 @@ function belongsToUser(state: PlanningState, userId: string): boolean {
   );
 }
 
-export function loadOwnedWeeklyPlanningState(
+function removeStorageKey(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage cleanup is best effort. Invalid payloads are still rejected in memory.
+  }
+}
+
+function loadOwnedCompatibilityState(
   userId: string,
   weekStartDate: string,
+  key: string,
 ): PlanningState {
-  if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
-  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    return loadWeeklyPlanningStableV5PersistedSession({
-      ownerId: userId,
-      weekStartDate,
-    })?.planningState ?? createInitialPlanningState(weekStartDate);
-  }
-  const key = getStorageKey(userId, weekStartDate);
-
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return createInitialPlanningState(weekStartDate);
@@ -71,12 +71,12 @@ export function loadOwnedWeeklyPlanningState(
 
     if (isOwnedEnvelope(parsed)) {
       if (parsed.ownerId !== userId) {
-        window.localStorage.removeItem(key);
+        removeStorageKey(key);
         return createInitialPlanningState(weekStartDate);
       }
       const state = decodeWeeklyPlanningStatePayload(parsed.payload, weekStartDate);
       if (!belongsToUser(state, userId)) {
-        window.localStorage.removeItem(key);
+        removeStorageKey(key);
         return createInitialPlanningState(weekStartDate);
       }
       return state;
@@ -84,46 +84,22 @@ export function loadOwnedWeeklyPlanningState(
 
     const legacyState = loadLegacyWeeklyPlanningState(userId, weekStartDate);
     if (!belongsToUser(legacyState, userId)) {
-      window.localStorage.removeItem(key);
+      removeStorageKey(key);
       return createInitialPlanningState(weekStartDate);
     }
-    saveOwnedWeeklyPlanningState(userId, legacyState);
+    saveCompatibilityEnvelope(userId, legacyState, key);
     return legacyState;
   } catch {
-    window.localStorage.removeItem(key);
+    removeStorageKey(key);
     return createInitialPlanningState(weekStartDate);
   }
 }
 
-export function saveOwnedWeeklyPlanningState(
+function saveCompatibilityEnvelope(
   userId: string,
   state: PlanningState,
+  key = getStorageKey(userId, state.weekStartDate),
 ): void {
-  if (typeof window === 'undefined') return;
-  const key = getStorageKey(userId, state.weekStartDate);
-
-  if (!belongsToUser(state, userId)) {
-    window.localStorage.removeItem(key);
-    return;
-  }
-
-  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    if (state.pendingTurn || state.pendingApproval) return;
-    const runtimeSession = getWeeklyPlanningStableV5RuntimeSessionForScope({
-      ownerId: userId,
-      weekStartDate: state.weekStartDate,
-    });
-    if (!runtimeSession) return;
-    saveWeeklyPlanningStableV5PersistedSession({
-      ownerId: userId,
-      weekStartDate: state.weekStartDate,
-      conversationId: runtimeSession.conversationId,
-      graph: runtimeSession.graph,
-      planningState: state,
-    });
-    return;
-  }
-
   saveLegacyWeeklyPlanningState(userId, state);
   const payloadRaw = window.localStorage.getItem(key);
   if (!payloadRaw) return;
@@ -136,6 +112,62 @@ export function saveOwnedWeeklyPlanningState(
     };
     window.localStorage.setItem(key, JSON.stringify(envelope));
   } catch {
-    window.localStorage.removeItem(key);
+    removeStorageKey(key);
   }
+}
+
+export function loadOwnedWeeklyPlanningState(
+  userId: string,
+  weekStartDate: string,
+): PlanningState {
+  if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
+  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
+    const persisted = loadWeeklyPlanningStableV5PersistedSession({
+      ownerId: userId,
+      weekStartDate,
+    });
+    if (persisted) return persisted.planningState;
+  }
+
+  return loadOwnedCompatibilityState(
+    userId,
+    weekStartDate,
+    getStorageKey(userId, weekStartDate),
+  );
+}
+
+export function saveOwnedWeeklyPlanningState(
+  userId: string,
+  state: PlanningState,
+): void {
+  if (typeof window === 'undefined') return;
+  const key = getStorageKey(userId, state.weekStartDate);
+
+  if (!belongsToUser(state, userId)) {
+    removeStorageKey(key);
+    return;
+  }
+
+  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
+    if (state.pendingTurn || state.pendingApproval) return;
+    const runtimeSession = getWeeklyPlanningStableV5RuntimeSessionForScope({
+      ownerId: userId,
+      weekStartDate: state.weekStartDate,
+    });
+    if (runtimeSession) {
+      const saved = saveWeeklyPlanningStableV5PersistedSession({
+        ownerId: userId,
+        weekStartDate: state.weekStartDate,
+        conversationId: runtimeSession.conversationId,
+        graph: runtimeSession.graph,
+        planningState: state,
+      });
+      if (saved) {
+        removeStorageKey(key);
+        return;
+      }
+    }
+  }
+
+  saveCompatibilityEnvelope(userId, state, key);
 }

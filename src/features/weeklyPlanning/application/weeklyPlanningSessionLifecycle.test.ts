@@ -20,6 +20,7 @@ function createServices(overrides: Partial<WeeklyPlanningSessionLifecycleService
     isStableV5Enabled: vi.fn(() => true),
     loadPersistedSession: vi.fn(() => null),
     hydrateRuntimeSession: vi.fn(),
+    bindRuntimeSessionScope: vi.fn(),
     clearPersistedSession: vi.fn(),
     clearRuntimeSession: vi.fn(),
     clearRuntimeSessionsForScope: vi.fn(),
@@ -74,6 +75,29 @@ describe('weeklyPlanningSessionLifecycle', () => {
     expect(services.hydrateRuntimeSession).not.toHaveBeenCalled();
   });
 
+  it('binds a new Stable V5 runtime scope even without persisted state', () => {
+    const services = createServices();
+    const session = createWeeklyPlanningControllerSession(
+      'user-1',
+      '2026-07-27',
+      'conversation-1',
+    );
+
+    const restored = synchronizeWeeklyPlanningApplicationSession({
+      session,
+      ownerId: 'user-1',
+      weekStartDate: '2026-07-27',
+      services,
+    });
+
+    expect(restored).toBeNull();
+    expect(services.bindRuntimeSessionScope).toHaveBeenCalledWith({
+      ownerId: 'user-1',
+      weekStartDate: '2026-07-27',
+      conversationId: 'conversation-1',
+    });
+  });
+
   it('restores the persisted conversation and synchronizes controller identity', () => {
     const persisted = persistedSession('conversation-2');
     const services = createServices({
@@ -101,6 +125,11 @@ describe('weeklyPlanningSessionLifecycle', () => {
     }));
     expect(session.conversationId).toBe('conversation-2');
     expect(session.requestSequence).toBe(0);
+    expect(services.bindRuntimeSessionScope).toHaveBeenCalledWith({
+      ownerId: 'user-1',
+      weekStartDate: '2026-07-27',
+      conversationId: 'conversation-2',
+    });
   });
 
   it('explicit reset clears the current runtime and every runtime in the same scope', () => {

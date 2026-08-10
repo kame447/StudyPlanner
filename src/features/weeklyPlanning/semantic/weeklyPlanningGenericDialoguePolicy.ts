@@ -332,12 +332,24 @@ function questionForIssue(params: {
   }
 }
 
+function firstTaskWithoutSchedulableWorkload(
+  graph: WeeklyPlanningFactGraph,
+): PlanningTaskFact | null {
+  const taskIdsWithWork = new Set(
+    graph.workloads
+      .filter((workload) => workload.quantityRole !== 'completed')
+      .map((workload) => workload.taskId),
+  );
+  return graph.tasks.find((task) => !taskIdsWithWork.has(task.id)) ?? null;
+}
+
 export function deriveGenericDialoguePolicy(params: {
   graph: WeeklyPlanningFactGraph;
   diff: WeeklyPlanningFactDiff | null;
   compilation: GenericWorkItemCompilationResult;
 }): GenericDialoguePolicySnapshot {
   const blockingIssue = selectBlockingIssue(params.compilation);
+  const taskWithoutWorkload = firstTaskWithoutSchedulableWorkload(params.graph);
   let readinessStage: GenericDialogueReadinessStage;
   let nextQuestion: GenericDialogueQuestion | null;
 
@@ -348,12 +360,12 @@ export function deriveGenericDialoguePolicy(params: {
       targetFactId: null,
       text: '計画に入れたいタスクを教えてください。',
     };
-  } else if (params.graph.workloads.length === 0) {
+  } else if (taskWithoutWorkload) {
     readinessStage = 'needs_workload';
     nextQuestion = {
       issueCode: 'missing_workload',
-      targetFactId: params.graph.tasks[0].id,
-      text: `「${params.graph.tasks[0].title}」をどれくらい進めたいですか？`,
+      targetFactId: taskWithoutWorkload.id,
+      text: `「${taskWithoutWorkload.title}」をどれくらい進めたいですか？`,
     };
   } else if (blockingIssue) {
     readinessStage = 'needs_resolution';

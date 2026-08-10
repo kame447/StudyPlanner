@@ -153,4 +153,72 @@ describe('Stable V5 preview scheduler', () => {
     expect(result.candidates).toEqual([]);
     expect(result.unscheduledWorkItemIds).toEqual(['work-item-1']);
   });
+
+  it('lets an explicit preferred night window outrank the default daytime heuristic', () => {
+    const preferredGraph: WeeklyPlanningFactGraphV5 = {
+      ...graph(),
+      revision: 2,
+      temporalConstraints: [{
+        id: 'preferred-night-1',
+        taskId: 'task-1',
+        targetFactId: 'task-1',
+        kind: 'preferred_window',
+        constraintLevel: 'soft',
+        dateExpression: 'weekday:tuesday',
+        namedTimePeriod: 'night',
+        startTime: null,
+        endTime: null,
+        precision: 'unspecified',
+        source: {
+          conversationId: 'conversation-1',
+          turnId: 'turn-2',
+          semanticLocalId: 'preferred-local-1',
+          sourceText: '火曜の夜にして',
+          origin: 'user',
+        },
+        createdRevision: 2,
+      }],
+      factLifecycles: [{
+        factId: 'preferred-night-1',
+        status: 'active',
+        createdRevision: 2,
+        terminalRevision: null,
+        supersededByFactId: null,
+      }],
+    };
+    const item = workItem({
+      estimatedMinutes: 180,
+      splitPolicy: 'unknown',
+      quantity: {
+        amount: 50,
+        unitCode: 'page',
+        unitLabel: 'ページ',
+        ordinalRange: { start: 1, end: 50 },
+        actualRange: null,
+      },
+    });
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: schedulerInput({
+        graphRevision: 2,
+        horizon: {
+          startDate: '2026-08-17',
+          endDate: '2026-08-23',
+          timeZone: 'Asia/Tokyo',
+          planningWindowFactIds: [],
+        },
+        movableWorkItems: [item],
+      }),
+      graph: preferredGraph,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({
+      date: '2026-08-18',
+      startTime: '21:00',
+      endTime: '24:00',
+      durationMinutes: 180,
+    });
+  });
+
 });

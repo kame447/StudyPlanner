@@ -247,6 +247,7 @@ export async function submitWeeklyPlanningControlledTurn(
       intakeState: executionResult.state,
       assistantMessage,
       draftCandidates: executionResult.draftCandidates,
+      preservePreviewCandidates: executionResult.preserveExistingPreview,
     });
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate

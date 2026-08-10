@@ -7,6 +7,9 @@ import {
 import {
   rememberWeeklyPlanningDialogueRendererPromptContext,
 } from '../trace/weeklyPlanningDialogueRendererTrace';
+import {
+  groundedDateExpressionsFromPlanningInformation,
+} from './weeklyPlanningDialogueDateGrounding';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -181,11 +184,6 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
       ...unresolvedDeclarations(planningInformation, 'availabilityDeclarations'),
       ...unresolvedDeclarations(planningInformation, 'constraintSourceRequests'),
     ],
-    currentQuestion: {
-      questionCode: input.questionCode,
-      relevantLabels: input.requiredLabels,
-      referenceResponse: input.fallbackText,
-    },
   };
 }
 
@@ -197,16 +195,17 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
 } {
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。',
-    '会話履歴、ユーザーの最新発話、アプリが把握している情報を踏まえて、次に返す自然な日本語を考えてください。',
-    'アプリが把握していない予定や事実は作らないでください。',
-    '指定されたJSON形式で、actionId、actionKind、questionCodeを変えずに返してください。',
+    '会話とアプリ状態に基づいて、次の自然な日本語を返してください。',
+    '内部状態や入力フォームを埋めさせるような聞き方ではなく、相談相手として自然に一つずつ確認してください。',
+    '一度に複数の独立した回答を要求せず、現在のユーザーが答えやすい一つの確認を優先してください。',
+    '入力にない具体情報は、例としても補わないでください。',
+    '指定されたJSON形式とaction識別子を変更しないでください。',
   ].join('\n');
 
   const userPrompt = JSON.stringify({
     actionId: input.actionId,
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
-    planningInformation: input.planningInformation,
     planningStateSummary: createWeeklyPlanningStableV5DialogueStateSummary(input),
     applicationDecision: {
       actionKind: input.actionKind,
@@ -216,12 +215,11 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewCount: input.previewCount,
     },
     request: [
-      '上記の情報を踏まえて、現在のユーザーに返す自然な日本語を考えてください。',
-      'actionId、applicationDecision.actionKind、applicationDecision.questionCodeをそのままJSONへ返してください。',
-      'planningStateSummaryのdecidedFactsはターンを跨いで確定している情報、undecidedItemsはまだ確認が必要な情報です。',
-      'referenceResponseはアプリ側の参考情報であり、そのまま繰り返したり、単に言い換えたりする必要はありません。',
-      '最新発話が説明要求や聞き返しなら、直前の質問を繰り返さず、何を確認したいのかを分かりやすく説明してください。',
-      'applicationDecision.actionKindがquestionなら、説明要求への説明を除き、必要な情報を尋ねてください。まだ実行されていない予定の作成・追加・保存を開始または完了したとは言わないでください。',
+      '現在のユーザーに返す自然な日本語を一つ作成してください。',
+      'actionId、actionKind、questionCodeはapplicationDecisionどおりに返してください。',
+      'decidedFactsは確定情報、undecidedItemsは確認が必要な情報です。referenceResponseはアプリが必要としている確認意図の参考であり、文型・列挙順・語句をコピーする必要はありません。',
+      'undecidedItemsにfieldがwork_breakdownの項目がある場合だけ、その対象の中身を分ける質問をしてください。questionCodeがmissing_schedulable_workの場合は追加の分解を求めません。対象について現在の全体範囲や進捗をまだ把握していないなら、まずその教材・作業で自然な単位を使って、全体の範囲と現在どこまで終わっているかを一つの確認として尋ねてください。ページに固定せず、問題数、単語数、章、節、回、時間など、planningStateSummaryや会話から分かる対象に合う粒度を使ってください。完了済み・現在位置がすでにdecidedFactsまたはrecentConversationから分かる場合に限って、次に今回の計画期間でどこまで進めたいかを尋ねてください。semantic_uncertaintyの場合はsourceTextとreasonを使い、意味を決め打ちせず、その曖昧さを解消する一つの確認だけをしてください。',
+      '説明要求には説明し、questionでは必要情報だけを尋ね、未実行の作成・保存を完了したとは言わないでください。',
     ].join(''),
   }, null, 2);
 
@@ -240,8 +238,14 @@ function addsUnsupportedExpression(
   rendered: string,
   groundingInformation: string,
   pattern: RegExp,
+  additionalAllowedValues: readonly string[] = [],
 ): boolean {
   const allowed = new Set(expressions(groundingInformation, pattern));
+  for (const value of additionalAllowedValues) {
+    for (const expression of expressions(value, pattern)) {
+      allowed.add(expression);
+    }
+  }
   return expressions(rendered, pattern).some((expression) => !allowed.has(expression));
 }
 
@@ -294,9 +298,17 @@ function validateRenderedText(
     referenceResponse: input.fallbackText,
     previewCount: input.previewCount,
   });
+  const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
+    input.planningInformation,
+  );
   if (
     addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
-    || addsUnsupportedExpression(text, groundingInformation, DATE_EXPRESSION)
+    || addsUnsupportedExpression(
+      text,
+      groundingInformation,
+      DATE_EXPRESSION,
+      groundedDateExpressions,
+    )
     || hasIncorrectPreviewCount(text, input)
     || hasUnsupportedActionShape(text, input)
   ) {
