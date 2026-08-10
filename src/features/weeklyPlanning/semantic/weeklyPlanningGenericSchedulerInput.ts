@@ -368,6 +368,13 @@ export function compileGenericSchedulerInput(params: {
     return { status: 'needs_resolution', input: null, issues };
   }
 
+  const movableTasksWithoutWorkload = params.graph.tasks.filter((task) =>
+    !fixedTaskIds.has(task.id)
+    && !params.graph.workloads.some((workload) => workload.taskId === task.id));
+  if (movableTasksWithoutWorkload.length > 0) {
+    return { status: 'needs_resolution', input: null, issues };
+  }
+
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
     return { status: 'empty', input: null, issues };
   }
