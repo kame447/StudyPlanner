@@ -265,7 +265,10 @@ function collapseWeeklyPlanningNoOpCanonicalizationV5(params: {
   if (hasFactChanges) return params.canonicalization;
   return {
     ...params.canonicalization,
-    graph: params.originalGraph,
+    graph: {
+      ...params.originalGraph,
+      appliedTurnKeys: params.canonicalization.graph.appliedTurnKeys,
+    },
     diff: {
       ...diff,
       toRevision: params.originalGraph.revision,

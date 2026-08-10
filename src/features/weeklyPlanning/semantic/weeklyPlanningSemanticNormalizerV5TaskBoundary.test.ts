@@ -50,7 +50,7 @@ function groupedDocument(): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [],
       temporalConstraints: [],
       recurrence: [],
-      sourceText: '物理と化学',
+      sourceText: '物理',
     }],
     relations: [],
     availabilityDeclarations: [],

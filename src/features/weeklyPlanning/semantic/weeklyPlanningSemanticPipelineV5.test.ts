@@ -223,8 +223,11 @@ describe('Stable V5 semantic pipeline', () => {
       superseded: [],
       removed: [],
     });
-    expect(second.graph).toBe(first.graph);
+    expect(second.graph).not.toBe(first.graph);
     expect(second.graph.revision).toBe(first.graph.revision);
+    expect(second.graph.tasks).toEqual(first.graph.tasks);
+    expect(second.graph.workloads).toEqual(first.graph.workloads);
+    expect(second.graph.appliedTurnKeys).toContain('conversation-noop:turn-noop');
   });
 
   it('keeps duplicate turns idempotent while compiling the existing graph', async () => {

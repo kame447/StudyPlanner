@@ -29,12 +29,12 @@ function task(title: string, amount: number): SemanticTaskV5 {
       rangeEnd: null,
       perOccurrence: false,
       periodExpression: null,
-      sourceText: `${title}${amount}`,
+      sourceText: `${title}を${amount}`,
     }],
     effortEstimates: [],
     temporalConstraints: [],
     recurrence: [],
-    sourceText: `${title}${amount}`,
+    sourceText: `${title}を${amount}`,
   };
 }
 

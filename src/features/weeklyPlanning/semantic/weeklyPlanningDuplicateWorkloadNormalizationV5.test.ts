@@ -89,7 +89,7 @@ describe('Stable V5 duplicate workload placement normalization', () => {
     };
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
-      userText: '分野1を2時間進めます',
+      userText: '学習として分野1を2時間進めます',
       traceRequestId: 'duplicate-workload-receiver',
     });
 

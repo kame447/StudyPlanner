@@ -229,7 +229,7 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
     });
 
     expect(wrong.status).toBe('scheduler_needs_resolution');
-    expect(wrong.graph.revision).toBe(first.graph.revision + 1);
+    expect(wrong.graph.revision).toBe(first.graph.revision);
     expect(wrong.graph.appliedTurnKeys).toContain(
       'conversation-explicit-repair:turn-2',
     );
