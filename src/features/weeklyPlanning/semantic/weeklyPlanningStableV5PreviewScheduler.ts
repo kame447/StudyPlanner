@@ -9,7 +9,12 @@ import type {
 import type {
   GenericSchedulerInput,
 } from './weeklyPlanningGenericSchedulerInput';
-import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
+import {
+  calendarWeekday,
+  canonicalWeekdayIndex,
+  listCalendarDatesInclusive,
+  resolveCanonicalDateExpression,
+} from './weeklyPlanningCalendarResolver';
 
 export const WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION =
   'weekly-planning-stable-v5-preview-scheduler-v1' as const;
@@ -38,6 +43,11 @@ interface MinuteInterval {
 interface PlacementWindow {
   start: number;
   end: number;
+}
+
+interface PreferredPlacement {
+  dates: string[];
+  window: PlacementWindow | null;
 }
 
 const DEFAULT_DAY_START = '09:00';
@@ -244,15 +254,85 @@ function eligibleDates(params: {
   return allowed.filter((date) => params.dates.includes(date) && !excluded.has(date));
 }
 
+function datesForExpression(params: {
+  expression: string | null;
+  dates: string[];
+}): string[] | null {
+  if (!params.expression) return [...params.dates];
+  const weekdayIndex = canonicalWeekdayIndex(params.expression);
+  if (weekdayIndex !== null) {
+    return params.dates.filter((date) => calendarWeekday(date) === weekdayIndex);
+  }
+  if (params.expression.startsWith('custom:')) return null;
+  const resolved = resolveCanonicalDateExpression({
+    expression: params.expression,
+    currentDate: params.dates[0] ?? '',
+  });
+  if (resolved.status !== 'resolved') return null;
+  return params.dates.filter(
+    (date) => date >= resolved.range.start && date <= resolved.range.end,
+  );
+}
+
+function preferredPlacements(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  item: GenericPlanningWorkItem;
+  dates: string[];
+  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
+}): PreferredPlacement[] {
+  const activeIds = new Set(
+    params.graph.factLifecycles
+      .filter((entry) => entry.status === 'active')
+      .map((entry) => entry.factId),
+  );
+  return params.graph.temporalConstraints
+    .filter((constraint) =>
+      activeIds.has(constraint.id)
+      && constraint.taskId === params.item.taskId
+      && constraint.kind === 'preferred_window')
+    .flatMap((constraint) => {
+      const dates = datesForExpression({
+        expression: constraint.dateExpression,
+        dates: params.dates,
+      });
+      if (!dates || dates.length === 0) return [];
+
+      let window: PlacementWindow | null = null;
+      if (constraint.startTime && constraint.endTime) {
+        window = {
+          start: minutesFromTime(constraint.startTime),
+          end: minutesFromTime(constraint.endTime),
+        };
+      } else if (constraint.namedTimePeriod) {
+        const resolved = params.namedTimePeriods?.[constraint.namedTimePeriod];
+        if (!resolved) return [];
+        window = {
+          start: minutesFromTime(resolved.startTime),
+          end: minutesFromTime(resolved.endTime),
+        };
+      }
+      if (window && window.end <= window.start) return [];
+      return [{ dates, window }];
+    });
+}
+
 function findSlot(params: {
   dates: string[];
   duration: number;
   windowsByDate: Map<string, PlacementWindow[]>;
   busy: MinuteInterval[];
   breakMinutes: number;
+  overrideWindow?: PlacementWindow | null;
 }): MinuteInterval | null {
   for (const date of params.dates) {
-    const windows = params.windowsByDate.get(date) ?? [];
+    const baseWindows = params.windowsByDate.get(date) ?? [];
+    const windows = params.overrideWindow
+      ? baseWindows.flatMap((base) => {
+          const start = Math.max(base.start, params.overrideWindow!.start);
+          const end = Math.min(base.end, params.overrideWindow!.end);
+          return end > start ? [{ start, end }] : [];
+        })
+      : baseWindows;
     for (const window of windows) {
       let cursor = window.start;
       while (cursor + params.duration <= window.end) {
@@ -269,6 +349,27 @@ function findSlot(params: {
         cursor = Math.max(cursor + 1, conflict.end + params.breakMinutes);
       }
     }
+  }
+  return null;
+}
+
+function findPreferredSlot(params: {
+  placements: PreferredPlacement[];
+  duration: number;
+  windowsByDate: Map<string, PlacementWindow[]>;
+  busy: MinuteInterval[];
+  breakMinutes: number;
+}): MinuteInterval | null {
+  for (const placement of params.placements) {
+    const slot = findSlot({
+      dates: placement.dates,
+      duration: params.duration,
+      windowsByDate: params.windowsByDate,
+      busy: params.busy,
+      breakMinutes: params.breakMinutes,
+      overrideWindow: placement.window,
+    });
+    if (slot) return slot;
   }
   return null;
 }
@@ -301,6 +402,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   dayStartTime?: string;
   dayEndTime?: string;
   breakMinutes?: number;
+  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
 }): WeeklyPlanningStableV5PreviewSchedulerResult {
   const dates = listCalendarDatesInclusive(
     params.input.horizon.startDate,
@@ -337,11 +439,26 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   for (const item of params.input.movableWorkItems) {
     const chunks = sessionChunks(item);
     const allowedDates = eligibleDates({ input: params.input, item, dates });
+    const preferences = preferredPlacements({
+      graph: params.graph,
+      item,
+      dates: allowedDates,
+      namedTimePeriods: params.namedTimePeriods,
+    });
     const itemCandidates: WeeklyDraftCandidate[] = [];
     let failed = chunks.length === 0;
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
       const duration = chunks[chunkIndex];
-      const slot = findSlot({
+      const preferredSlot = preferences.length > 0
+        ? findPreferredSlot({
+            placements: preferences,
+            duration,
+            windowsByDate,
+            busy,
+            breakMinutes,
+          })
+        : null;
+      const slot = preferredSlot ?? findSlot({
         dates: allowedDates,
         duration,
         windowsByDate,
