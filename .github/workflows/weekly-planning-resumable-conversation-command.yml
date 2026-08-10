@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  run-one-turn:
+  observe-one-turn:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -73,7 +73,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: test -n "$OPENAI_API_KEY"
 
-      - name: Execute exactly one real API conversation turn
+      - name: Observe exactly one human-supplied real API turn
         env:
           WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
           WEEKLY_PLANNING_RESUMABLE_USER_TEXT: ${{ env.USER_TEXT }}
@@ -90,13 +90,9 @@ jobs:
           VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VITE_AI_MAX_PROCESS_REQUESTS: '3'
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
-        run: |
-          node ./node_modules/vitest/vitest.mjs \
-            --config vite.config.mjs run \
-            src/features/weeklyPlanning/evals/weeklyPlanningResumableConversation.real-eval.test.ts \
-            --reporter=verbose
+        run: npm run observe:weekly-ai:conversation:turn
 
-      - name: Emit turn transcript and diagnostics
+      - name: Emit transcript and internal diagnostics
         if: always()
         run: |
           if [ -f "$OUTPUT_DIR/transcript.md" ]; then
@@ -108,7 +104,7 @@ jobs:
             cat "$OUTPUT_DIR/latest-turn.json"
           fi
 
-      - name: Upload resumable conversation artifact
+      - name: Upload observation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:

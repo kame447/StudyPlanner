@@ -45,23 +45,19 @@ function clientReturning(
   };
 }
 
-describe('Stable V5 dialogue prompt grounding contract', () => {
-  it('states the no-invention invariant once and avoids raw state duplication', () => {
+describe('Stable V5 dialogue grounding boundary', () => {
+  it('passes summarized state and typed application decisions without exposing the raw planning object', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt(input());
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
-    const combined = `${prompt.systemPrompt}\n${prompt.userPrompt}`;
 
-    expect(prompt.systemPrompt).toContain(
-      '入力にない具体情報は、例としても補わないでください',
-    );
-    expect(combined.match(/入力にない/g)).toHaveLength(1);
     expect(payload).not.toHaveProperty('planningInformation');
     expect(payload).toHaveProperty('planningStateSummary');
-    expect(prompt.userPrompt).not.toContain('仮の作業名');
-    expect(prompt.userPrompt).not.toContain('仮の数量');
+    expect(payload).toHaveProperty('applicationDecision');
+    expect(payload).toHaveProperty('request');
+    expect(Array.isArray(payload.request)).toBe(true);
   });
 
-  it('accepts a grounded abstract question and still rejects invented examples', async () => {
+  it('validates generated text against grounded facts without prescribing one correct wording', async () => {
     const renderInput = input();
     const grounded = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,

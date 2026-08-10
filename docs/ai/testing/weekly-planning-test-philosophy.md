@@ -1,0 +1,14 @@
+# 週間計画 AI テスト方針
+
+Status: canonical
+Updated: 2026-08-10
+
+週間計画の自動テストは、AIの自然言語理解や会話品質に唯一の正解があるとは仮定しない。自動化する対象は、決定論的に正誤を定義できる内部契約に限定する。
+
+自動テストで保証するのは、schemaと型、参照整合性、Fact Graph revisionとlifecycle、pending questionのformal target、transaction、scheduler input、preview、approval、save、persistence、recovery、trace、安全境界、request budgetである。日本語のfixtureを使う場合も、その文からAIが特定の意味構造を必ず返すことを正解として固定しない。fixtureは、deterministic codeがraw user textを再解釈しないこと、または既に与えられたAI出力を構造的に正しく検証することの確認にだけ使う。
+
+AI rendererについても、特定の日本語文面や語句を正解としてassertしない。自動テストではtyped application decisionとの整合、未根拠情報の拒否、action identity、安全性などの機械判定可能な境界だけを検証する。
+
+実APIを使う会話確認は、固定シナリオを自動採点するquality testとして扱わない。人間が実際の発話を一ターンずつ与え、同一conversation checkpointを継続し、生成されたtranscriptを読んで自然さ、文脈理解、聞き返し、訂正、予定作成までの流れを判断する。ハーネスが失敗として扱ってよいのは、turn rejection、provider failure、state corruption、checkpoint破損などの実行上の失敗だけであり、会話内容の品質は人間の評価対象とする。
+
+過去のmodel比較、旧semantic schema、scenario固有oracle、固定期待文面を持つevalはcanonicalな回帰テストに含めない。モデル比較が再度必要になった場合は一時的な実験として分離し、結論が得られた後はactive test suiteから除去する。
