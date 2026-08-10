@@ -228,6 +228,33 @@ function placementWindowsByDate(params: {
   return result;
 }
 
+function hardAvailableWindowsByDate(params: {
+  input: GenericSchedulerInput;
+  dates: string[];
+}): Map<string, PlacementWindow[]> {
+  const dateSet = new Set(params.dates);
+  const result = new Map<string, PlacementWindow[]>();
+  params.input.availabilityWindows
+    .filter((window) =>
+      window.constraintLevel === 'hard'
+      && window.kind === 'available'
+      && window.start.date === window.end.date
+      && dateSet.has(window.start.date))
+    .forEach((window) => {
+      const start = minutesFromTime(window.start.time);
+      const end = minutesFromTime(window.end.time);
+      if (end <= start) return;
+      result.set(window.start.date, [
+        ...(result.get(window.start.date) ?? []),
+        { start, end },
+      ]);
+    });
+  for (const [date, windows] of result) {
+    result.set(date, windows.sort((left, right) => left.start - right.start));
+  }
+  return result;
+}
+
 function sessionChunks(item: GenericPlanningWorkItem): number[] {
   const total = item.estimatedMinutes ?? 0;
   if (total <= 0) return [];
@@ -361,23 +388,42 @@ function findSlot(params: {
   return null;
 }
 
+function intersectPlacementWindows(
+  bases: readonly PlacementWindow[],
+  preferred: PlacementWindow,
+): PlacementWindow[] {
+  return bases.flatMap((base) => {
+    const start = Math.max(base.start, preferred.start);
+    const end = Math.min(base.end, preferred.end);
+    return end > start ? [{ start, end }] : [];
+  });
+}
+
 function findPreferredSlot(params: {
   placements: PreferredPlacement[];
   duration: number;
   windowsByDate: Map<string, PlacementWindow[]>;
+  hardAvailableByDate: Map<string, PlacementWindow[]>;
   busy: MinuteInterval[];
   breakMinutes: number;
 }): MinuteInterval | null {
   for (const placement of params.placements) {
-    const slot = findSlot({
-      dates: placement.dates,
-      duration: params.duration,
-      windowsByDate: params.windowsByDate,
-      busy: params.busy,
-      breakMinutes: params.breakMinutes,
-      overrideWindow: placement.window,
-    });
-    if (slot) return slot;
+    for (const date of placement.dates) {
+      const hardAvailable = params.hardAvailableByDate.get(date);
+      const windows = placement.window
+        ? hardAvailable
+          ? intersectPlacementWindows(hardAvailable, placement.window)
+          : [placement.window]
+        : hardAvailable ?? params.windowsByDate.get(date) ?? [];
+      const slot = findSlot({
+        dates: [date],
+        duration: params.duration,
+        windowsByDate: new Map([[date, windows]]),
+        busy: params.busy,
+        breakMinutes: params.breakMinutes,
+      });
+      if (slot) return slot;
+    }
   }
   return null;
 }
@@ -440,6 +486,10 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     dayStartTime: params.dayStartTime ?? DEFAULT_DAY_START,
     dayEndTime: params.dayEndTime ?? DEFAULT_DAY_END,
   });
+  const hardAvailableByDate = hardAvailableWindowsByDate({
+    input: params.input,
+    dates,
+  });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledWorkItemIds: string[] = [];
   const breakMinutes = params.breakMinutes ?? DEFAULT_BREAK_MINUTES;
@@ -462,6 +512,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
             placements: preferences,
             duration,
             windowsByDate,
+            hardAvailableByDate,
             busy,
             breakMinutes,
           })
