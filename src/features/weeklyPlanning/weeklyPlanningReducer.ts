@@ -173,7 +173,9 @@ export function weeklyPlanningReducer(
 
     case 'commit_turn': {
       if (!canCommitTurn(state, action.pending)) return state;
-      const draftCandidates = action.draftCandidates ?? [];
+      const draftCandidates = action.preservePreviewCandidates
+        ? state.previewCandidates ?? []
+        : action.draftCandidates ?? [];
       return withMutation(state, {
         ...state,
         ...appendAssistantMessage(state, action.assistantMessage),

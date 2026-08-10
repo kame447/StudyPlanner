@@ -203,14 +203,22 @@ describe('Stable V5 runtime executor', () => {
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'draft_ready',
       planningIntent: 'update_plan',
+      semanticChanged: true,
     })).toBe(true);
+    expect(isWeeklyPlanningStableV5PreviewAuthorized({
+      previousStatus: 'draft_ready',
+      planningIntent: 'update_plan',
+      semanticChanged: false,
+    })).toBe(false);
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'needs_scope',
       planningIntent: 'update_plan',
+      semanticChanged: true,
     })).toBe(false);
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'draft_ready',
       planningIntent: 'discuss',
+      semanticChanged: false,
     })).toBe(false);
   });
 

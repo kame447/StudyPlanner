@@ -251,6 +251,28 @@ function applyCanonicalCorrectionResult(params: {
   };
 }
 
+function collapseWeeklyPlanningNoOpCanonicalizationV5(params: {
+  originalGraph: WeeklyPlanningFactGraphV5;
+  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
+}): WeeklyPlanningSemanticCanonicalizationResultV5 {
+  const diff = params.canonicalization.diff;
+  if (params.canonicalization.status !== 'applied' || !diff) {
+    return params.canonicalization;
+  }
+  const hasFactChanges = diff.added.length > 0
+    || diff.superseded.length > 0
+    || diff.removed.length > 0;
+  if (hasFactChanges) return params.canonicalization;
+  return {
+    ...params.canonicalization,
+    graph: params.originalGraph,
+    diff: {
+      ...diff,
+      toRevision: params.originalGraph.revision,
+    },
+  };
+}
+
 function contextualBindingObservations(params: {
   graph: WeeklyPlanningFactGraphV5;
   normalization: WeeklyPlanningSemanticNormalizerResultV5;
@@ -478,7 +500,10 @@ export function createWeeklyPlanningSemanticPipelineV5(
         canonicalization: boundCanonicalization,
         operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
       });
-      const canonicalization = correctionResult.canonicalization;
+      const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+        originalGraph: graph,
+        canonicalization: correctionResult.canonicalization,
+      });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'canonical_correction_application_evaluated',

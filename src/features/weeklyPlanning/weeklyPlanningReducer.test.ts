@@ -187,6 +187,55 @@ describe('weeklyPlanningReducer', () => {
     expect(mismatched).toBe(begun);
   });
 
+
+  it('preserves an existing preview when a committed no-op turn explicitly requests preservation', () => {
+    const initial = createInitialPlanningState('2026-06-22');
+    const preview = [{
+      stableKey: 'preview-1',
+      date: '2026-06-23',
+      startTime: '21:00',
+      endTime: '22:00',
+      durationMinutes: 60,
+      title: '数学 10ページ',
+      field: '数学',
+      year: 0,
+      estimatedMinutes: 60,
+      source: 'weekly_exam_prep' as const,
+      approvalStatus: 'unapproved' as const,
+      workItemKey: 'work-1',
+    }];
+    const withPreview = { ...initial, previewCandidates: preview, mode: 'draft_created' as const };
+    const pending = {
+      conversationId: 'conversation-preview',
+      turnId: 'conversation-preview:turn:1',
+      requestId: 'conversation-preview:request:1',
+      weekStartDate: withPreview.weekStartDate,
+      baseRevision: withPreview.revision,
+      startedAt: '2026-06-19T00:00:00.000Z',
+    };
+    const begun = weeklyPlanningReducer(withPreview, {
+      type: 'begin_turn',
+      pending,
+      userMessage: {
+        id: 'preview-user-1',
+        role: 'user',
+        content: 'これで追加して',
+        createdAt: '2026-06-19T00:00:00.000Z',
+      },
+    });
+    const committed = weeklyPlanningReducer(begun, {
+      type: 'commit_turn',
+      pending,
+      intakeState: { status: 'draft_ready' } as never,
+      assistantMessage: assistantMessage('preview-assistant-1', '下のボタンを押してください。'),
+      draftCandidates: [],
+      preservePreviewCandidates: true,
+    });
+
+    expect(committed.previewCandidates).toEqual(preview);
+    expect(committed.mode).toBe('draft_created');
+  });
+
   it('allows session reset to invalidate an active turn', () => {
     const initial = createInitialPlanningState('2026-06-22');
     const pending = {

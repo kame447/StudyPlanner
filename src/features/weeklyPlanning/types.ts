@@ -125,6 +125,7 @@ export type WeeklyPlanningAction =
       intakeState: PlanningIntakeState;
       assistantMessage: WeeklyPlanningMessage;
       draftCandidates?: WeeklyDraftCandidate[];
+      preservePreviewCandidates?: boolean;
     }
   | {
       type: 'fail_turn';

@@ -100,12 +100,14 @@ function compatibilityState(params: {
   questionCode?: string;
   questionFactId?: string;
   authorized: boolean;
+  preserveExistingPreview?: boolean;
 }): PlanningIntakeState {
   const previous = params.previousState ?? emptyCompatibilityState();
   const hasDraft = params.draftCandidates.length > 0;
+  const hasPreview = hasDraft || Boolean(params.preserveExistingPreview);
   return {
     ...previous,
-    status: hasDraft
+    status: hasPreview
       ? 'draft_ready'
       : params.questionCode
         ? 'revision_pending'
@@ -121,9 +123,11 @@ function compatibilityState(params: {
           topicId: params.questionFactId,
         }
       : undefined,
-    shouldCreateDraft: hasDraft,
+    shouldCreateDraft: params.preserveExistingPreview ? previous.shouldCreateDraft : hasDraft,
     shouldSavePlan: false,
-    draftGenerationIntent: params.authorized ? 'user_authorized' : 'not_requested',
+    draftGenerationIntent: params.preserveExistingPreview
+      ? previous.draftGenerationIntent
+      : params.authorized ? 'user_authorized' : 'not_requested',
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
   };
 }
@@ -734,9 +738,17 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   const dialogue = decideWeeklyPlanningStableDialogueV5(compilation);
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;
+  const semanticDiff = semantic.canonicalization?.diff;
+  const semanticChanged = Boolean(
+    semanticDiff
+    && (semanticDiff.added.length > 0
+      || semanticDiff.superseded.length > 0
+      || semanticDiff.removed.length > 0),
+  );
   const authorized = isWeeklyPlanningStableV5PreviewAuthorized({
     previousStatus: input.previousState?.status ?? null,
     planningIntent,
+    semanticChanged,
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
@@ -778,7 +790,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       selectedQuestion: dialogue.status === 'ask_question' ? dialogue.question : null,
       authorization: {
         planningIntent,
-        criterion: 'planningIntent === create_plan',
+        semanticChanged,
+        criterion: 'create_plan OR (draft_ready + update_plan + semanticChanged)',
         authorized,
       },
     },
@@ -839,6 +852,37 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       },
       output,
       severity: 'warn',
+    });
+    return output;
+  }
+  if (
+    !authorized
+    && input.previousState?.status === 'draft_ready'
+    && !semanticChanged
+  ) {
+    const message = '仮予定候補は変更していません。内容を修正する場合は条件を入力してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。';
+    const output = {
+      state: compatibilityState({
+        previousState: input.previousState,
+        userText: input.userText,
+        message,
+        draftCandidates: [],
+        authorized: false,
+        preserveExistingPreview: true,
+      }),
+      message,
+      draftCandidates: [],
+      preserveExistingPreview: true,
+    };
+    traceBranch({
+      requestId: input.traceRequestId,
+      branch: 'preview_unchanged',
+      basis: {
+        planningIntent,
+        semanticChanged,
+        previousStatus: input.previousState.status,
+      },
+      output,
     });
     return output;
   }
@@ -948,7 +992,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     schedulerStatus: compilation.status,
     candidateCount: preview.candidates.length,
   });
-  const message = `${preview.candidates.length}件の仮予定候補を作りました。内容を確認して、問題なければ仮予定へ追加してください。`;
+  const message = `${preview.candidates.length}件の仮予定候補を作りました。内容を確認して、問題なければ下の「この内容で仮予定にする」ボタンを押してください。`;
   const output = {
     state: compatibilityState({
       previousState: input.previousState,
@@ -977,9 +1021,14 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   previousStatus: PlanningIntakeState['status'] | null;
   planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
+  semanticChanged: boolean;
 }): boolean {
   return params.planningIntent === 'create_plan'
-    || (params.previousStatus === 'draft_ready' && params.planningIntent === 'update_plan');
+    || (
+      params.previousStatus === 'draft_ready'
+      && params.planningIntent === 'update_plan'
+      && params.semanticChanged
+    );
 }
 
 export function getWeeklyPlanningStableV5BlockingIssueCode(

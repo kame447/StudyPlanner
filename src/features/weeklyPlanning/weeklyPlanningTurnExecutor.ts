@@ -80,6 +80,7 @@ export interface WeeklyPlanningTurnExecutionResult {
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
+  preserveExistingPreview?: boolean;
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;

@@ -35,6 +35,9 @@ export function requiredLabelsForStableV5Dialogue(params: {
   fallbackText: string;
 }): string[] {
   const labels = new Set(recognizedTaskLabels(params.questionCode, params.fallbackText));
+  if (params.fallbackText.includes('「この内容で仮予定にする」')) {
+    labels.add('この内容で仮予定にする');
+  }
   const pattern = params.questionCode
     ? QUESTION_TARGET_PATTERNS[params.questionCode]
     : undefined;
