@@ -1,9 +1,9 @@
 {
   "scenario": "human-reviewed-planning-20260810",
-  "turn": 2,
-  "attempt": 2,
-  "user_text": "数学のワークと英語のレポートを進めたいです。",
-  "previous_run_id": "31363282116",
+  "turn": 3,
+  "attempt": 1,
+  "user_text": "数学のワークは全部で80ページあって、今30ページまで終わっています。",
+  "previous_run_id": "31363660270",
   "conversation_id": "weekly-human-reviewed-20260810-01",
   "owner_id": "resumable-real-api-eval-user-human-review-1",
   "week_start_date": "2026-08-10",
