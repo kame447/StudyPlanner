@@ -22,7 +22,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: python3 .github/scripts/apply-weekly-evidence-patch.py
+      - name: Apply evidence patch and align invalid legacy fixtures
+        run: python3 .github/scripts/apply-weekly-evidence-patch.py
       - run: npm ci
       - run: >-
           npm test -- --run
@@ -43,5 +44,6 @@ jobs:
           git rm .github/scripts/apply-weekly-evidence-patch.py
           git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.ts
           git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.test.ts
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts
           git commit -m 'fix: validate current-turn evidence on stable v5 updates'
           git push origin HEAD:agent/weekly-ai-conversation-eval
