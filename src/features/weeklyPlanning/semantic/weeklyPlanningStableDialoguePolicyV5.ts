@@ -44,9 +44,25 @@ const DOMAIN_PRIORITY: Record<GenericSchedulerInputIssue['domain'], number> = {
   deduplication: 7,
 };
 
+const WORK_ITEM_CODE_PRIORITY: Record<string, number> = {
+  orphan_workload: 0,
+  invalid_actual_range: 1,
+  non_integral_discrete_amount: 2,
+  quantity_role_unresolved: 3,
+  ambiguous_effort_estimate: 4,
+  missing_effort_estimate: 5,
+  completed_workload_skipped: 99,
+};
+
+function codePriority(issue: GenericSchedulerInputIssue): number {
+  if (issue.domain !== 'work_item') return 0;
+  return WORK_ITEM_CODE_PRIORITY[issue.code] ?? 50;
+}
+
 function issueKey(issue: GenericSchedulerInputIssue): string {
   return [
     String(DOMAIN_PRIORITY[issue.domain]).padStart(2, '0'),
+    String(codePriority(issue)).padStart(3, '0'),
     issue.domain,
     issue.code,
     issue.factId ?? '',
