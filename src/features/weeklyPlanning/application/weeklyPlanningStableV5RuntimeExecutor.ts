@@ -316,6 +316,7 @@ function publicStateSummary(
   return {
     runtime: 'weekly-planning-stable-v5',
     graphRevision: graph.revision,
+    previousCompatibilityStatus: previousState?.status ?? null,
     pendingQuestion: pendingQuestionFromState(previousState, graph.revision),
     planningWindows: active.planningWindows.map((fact) => ({
       publicId: fact.id,

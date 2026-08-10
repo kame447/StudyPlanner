@@ -340,7 +340,7 @@ describe('Stable V5 runtime executor', () => {
           data: expect.objectContaining({
             branch: 'nothing_to_schedule',
             basis: expect.objectContaining({
-              compilationStatus: 'empty',
+              compilationStatus: 'needs_resolution',
               dialogueStatus: 'nothing_to_schedule',
             }),
             output: expect.objectContaining({
