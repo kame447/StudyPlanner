@@ -67,6 +67,21 @@ function createGraph(): WeeklyPlanningFactGraph {
         source: source('workload-os', '1年分'),
         createdRevision: 1,
       },
+      {
+        id: 'workload-research',
+        taskId: 'task-research',
+        componentId: null,
+        quantityRole: 'target',
+        amount: 60,
+        unitCode: 'minute',
+        unitLabel: '分',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        source: source('workload-research', '60分'),
+        createdRevision: 1,
+      },
     ],
     effortEstimates: [
       {
@@ -116,6 +131,7 @@ function createDiff(): WeeklyPlanningFactDiff {
       { kind: 'task', id: 'task-study' },
       { kind: 'task', id: 'task-research' },
       { kind: 'workload', id: 'workload-os' },
+      { kind: 'workload', id: 'workload-research' },
       { kind: 'effort_estimate', id: 'estimate-os' },
       { kind: 'temporal_constraint', id: 'constraint-research-end' },
       { kind: 'relation', id: 'relation-research-before-study' },
@@ -152,6 +168,28 @@ function readyCompilation(): GenericWorkItemCompilationResult {
         periodExpression: null,
         sourceFactRefs: ['task-study', 'component-os', 'workload-os', 'estimate-os'],
       },
+      {
+        version: 'weekly-planning-generic-work-item-v1',
+        id: 'item-research',
+        taskId: 'task-research',
+        componentId: null,
+        workloadFactId: 'workload-research',
+        label: '研究 60分',
+        quantityRole: 'target',
+        actionability: 'actionable',
+        quantity: {
+          amount: 60,
+          unitCode: 'minute',
+          unitLabel: '分',
+          ordinalRange: null,
+          actualRange: null,
+        },
+        estimatedMinutes: 60,
+        estimateSourceFactIds: [],
+        splitPolicy: 'splittable',
+        periodExpression: null,
+        sourceFactRefs: ['task-research', 'workload-research'],
+      },
     ],
   };
 }
@@ -170,6 +208,7 @@ describe('generic weekly planning dialogue policy', () => {
       '「院試の過去問」',
       '「研究」',
       'OSとネットワークを1年分',
+      '研究を60分',
       'OSとネットワークは1年分あたり約120分',
       '研究は15:00頃まで',
       '研究を院試の過去問より先に進める',
@@ -220,6 +259,35 @@ describe('generic weekly planning dialogue policy', () => {
         text: '「院試の過去問」をどれくらい進めたいですか？',
       },
     });
+  });
+
+  it('does not declare preview readiness while another task still lacks workload', () => {
+    const graph = createGraph();
+    graph.workloads = graph.workloads.filter((workload) => workload.taskId === 'task-study');
+    const compilation = readyCompilation();
+    compilation.items = compilation.items.filter((item) => item.taskId === 'task-study');
+
+    const policy = deriveGenericDialoguePolicy({ graph, diff: null, compilation });
+
+    expect(policy).toMatchObject({
+      readinessStage: 'needs_workload',
+      nextQuestion: {
+        issueCode: 'missing_workload',
+        targetFactId: 'task-research',
+        text: '「研究」をどれくらい進めたいですか？',
+      },
+    });
+    expect(evaluateGenericPreviewGate({
+      conversationId: 'conversation-1',
+      graph,
+      policy,
+      compilation,
+      authorization: {
+        status: 'user_authorized',
+        conversationId: 'conversation-1',
+        graphRevision: 1,
+      },
+    })).toEqual({ allowed: false, reasons: ['readiness_not_ready'] });
   });
 
   it('acknowledges only facts included in the accepted diff', () => {
