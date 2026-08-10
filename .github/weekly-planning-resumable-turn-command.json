@@ -1,9 +1,9 @@
 {
   "scenario": "human-reviewed-planning-20260810",
-  "turn": 5,
-  "attempt": 3,
-  "user_text": "英語のレポートは全体で3000字くらいで、今1000字くらい書けています。",
-  "previous_run_id": "31367098208",
+  "turn": 6,
+  "attempt": 1,
+  "user_text": "残り2000字なら、2時間くらいだと思います。",
+  "previous_run_id": "31367762377",
   "conversation_id": "weekly-human-reviewed-20260810-01",
   "owner_id": "resumable-real-api-eval-user-human-review-1",
   "week_start_date": "2026-08-10",
