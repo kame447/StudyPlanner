@@ -25,37 +25,6 @@ function normalized(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function hasArrayValues(value: unknown): boolean {
-  return Array.isArray(value) && value.length > 0;
-}
-
-function hasAcceptedPublicFacts(
-  publicStateSummary: Record<string, unknown> | undefined,
-): boolean {
-  if (!publicStateSummary) return false;
-  return [
-    'planningWindows',
-    'tasks',
-    'components',
-    'workloads',
-    'effortEstimates',
-    'temporalConstraints',
-    'recurrences',
-    'uncertainties',
-  ].some((key) => hasArrayValues(publicStateSummary[key]));
-}
-
-function hasPendingQuestion(
-  publicStateSummary: Record<string, unknown> | undefined,
-): boolean {
-  const pendingQuestion = publicStateSummary?.pendingQuestion;
-  return Boolean(
-    pendingQuestion
-    && typeof pendingQuestion === 'object'
-    && !Array.isArray(pendingQuestion),
-  );
-}
-
 function componentEvidence(
   component: SemanticStudyComponentV5,
   path: string,
@@ -249,14 +218,6 @@ export function validateWeeklyPlanningSemanticEvidenceV5(params: {
     userContextEvidence(params.document),
     params.input.userText,
   );
-  const contextualTurn = hasPendingQuestion(params.input.publicStateSummary);
-  const authorizationOverAcceptedState =
-    params.document.planningIntent === 'create_plan'
-    && hasAcceptedPublicFacts(params.input.publicStateSummary);
-  if (!contextualTurn && !authorizationOverAcceptedState) {
-    return [...new Set([...progressErrors, ...userContextErrors])];
-  }
-
   const includeWorkloadEvidence = !allowsInheritedWorkloadEvidenceForContextualAnswerV5({
     document: params.document,
     publicStateSummary: params.input.publicStateSummary,

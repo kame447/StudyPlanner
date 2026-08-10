@@ -26,7 +26,7 @@ function document(): WeeklyPlanningSemanticDocumentV5 {
       recurrenceKind: 'weekdays',
       days: [],
       constraintLevel: 'hard',
-      sourceText: '平日は18時まで勉強できない',
+      sourceText: '平日は18時まで勉強できません',
     }],
     constraintSourceRequests: [{
       localId: 'source-1',
@@ -161,7 +161,11 @@ describe('Stable V5 semantic normalizer', () => {
   });
 
   it('does not manufacture an omitted planning window from the user wording', async () => {
-    const response = document();
+    const response = {
+      ...document(),
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+    };
     const fake = client([JSON.stringify(response)]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '明日の予定を立てたいです',
@@ -174,7 +178,8 @@ describe('Stable V5 semantic normalizer', () => {
   });
 
   it('repairs at most once and never falls back to a parser', async () => {
-    const fake = client(['not-json', JSON.stringify(document())]);
+    const repaired = { ...document(), availabilityDeclarations: [] };
+    const fake = client(['not-json', JSON.stringify(repaired)]);
     const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({
       userText: '時間割も使って',
     });
