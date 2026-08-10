@@ -1,7 +1,7 @@
 {
   "scenario": "human-reviewed-planning-20260810",
   "turn": 7,
-  "attempt": 1,
+  "attempt": 2,
   "user_text": "この条件で予定を作って",
   "previous_run_id": "31368138800",
   "conversation_id": "weekly-human-reviewed-20260810-01",
