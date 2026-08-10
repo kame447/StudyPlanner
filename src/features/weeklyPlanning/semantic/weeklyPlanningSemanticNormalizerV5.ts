@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  JsonSchemaResponseFormat,
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -51,6 +52,32 @@ export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
   'weekly-planning-semantic-normalizer-v5' as const;
 
 const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
+const FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS = 80;
+const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'weekly_planning_focused_authorization_v5',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['decision'],
+      properties: {
+        decision: {
+          type: 'string',
+          enum: ['create_plan', 'fallback'],
+        },
+      },
+    },
+  },
+};
+const FOCUSED_AUTHORIZATION_SYSTEM_PROMPT = [
+  'You are a focused semantic interpreter for one planning-conversation decision.',
+  'Meaning interpretation is your responsibility. Deterministic code will only route this request and apply your structured decision.',
+  'Return create_plan only when the current user utterance, in the supplied immediate dialogue context, purely authorizes creating the draft/preview from conditions that are already collected.',
+  'If the utterance adds, changes, removes, corrects, or qualifies any planning fact, or if its meaning is not clearly a pure authorization, return fallback.',
+  'Do not decide readiness, scheduling, placement, persistence, or wording. Return only the schema.',
+].join('\n');
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'You alone interpret user meaning and context; deterministic code only validates structure, safety, state consistency, scheduling, and persistence boundaries.',
   'Current SemanticDocument is a delta. publicStateSummary/recentConversation are context, not facts to copy. Emit only facts stated or changed in current userText; when current userText does not state a planning window, planningWindow must be null. Every sourceText must be supported by current userText, not prior turns.',
@@ -73,6 +100,10 @@ interface SemanticValidationAttemptV5 {
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
   algorithmicRepairs: string[];
+}
+
+interface FocusedAuthorizationDecisionV5 {
+  decision: 'create_plan' | 'fallback';
 }
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
@@ -112,6 +143,10 @@ function byteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   return 'Unknown Stable V5 semantic provider error.';
@@ -132,6 +167,45 @@ function errorDetails(error: unknown): Record<string, unknown> {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function focusedAuthorizationEligible(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): boolean {
+  const summary = input.publicStateSummary;
+  if (!isRecord(summary)) return false;
+  if (summary.pendingQuestion !== null && summary.pendingQuestion !== undefined) return false;
+  return Array.isArray(summary.tasks) && summary.tasks.length > 0;
+}
+
+function parseFocusedAuthorizationDecision(
+  raw: string,
+): FocusedAuthorizationDecisionV5 | null {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!isRecord(value)) return null;
+    const decision = value.decision;
+    if (decision !== 'create_plan' && decision !== 'fallback') return null;
+    return { decision };
+  } catch {
+    return null;
+  }
+}
+
+function focusedAuthorizationDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'create_plan',
+    planningWindow: null,
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    userContextFacts: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
 }
 
 function validateSemanticResponse(
@@ -253,7 +327,7 @@ function repairDirectivesForErrors(
     directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Preserve every otherwise-valid current-turn fact from the invalid response, including its planningWindow and listed tasks/components, but remove the guessed modifier attachment only. Emit exactly one uncertainty for that modifier with targetLocalId exactly "document", field exactly "modifier_target", and the modifier excerpt as sourceText. Never use null or the string "null" for targetLocalId, and do not choose a candidate by order or proximity.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
-    directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Do not invent replacement sourceText.');
+    directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Preserve unrelated semantic fields that were already valid, including planningIntent, unless a listed validation error specifically invalidates them. Do not invent replacement sourceText.');
   }
   if (errors.some((error) => error.includes('unknown-key') || error.includes('missing-key'))) {
     directives.push('Return exactly the required Stable V5 schema keys with no unknown keys.');
@@ -300,6 +374,92 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const requestBytes: number[] = [];
       const responseLengths: number[] = [];
       const algorithmicRepairs: string[] = [];
+
+      if (focusedAuthorizationEligible(input)) {
+        const focusedMessages: ChatMessage[] = [
+          { role: 'system', content: FOCUSED_AUTHORIZATION_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              currentUserText: input.userText,
+              lastAssistantMessage: isRecord(input.publicStateSummary)
+                && typeof input.publicStateSummary.lastAssistantMessage === 'string'
+                ? input.publicStateSummary.lastAssistantMessage
+                : null,
+            }),
+          },
+        ];
+        const focusedRequest = {
+          messages: focusedMessages,
+          temperature: 0,
+          responseFormat: FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5,
+          purpose: 'weekly_planning_semantic_normalizer' as const,
+          maxCompletionTokens: FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
+        };
+        const focusedBytes = byteLength(focusedRequest);
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_orchestrator_route',
+          data: {
+            route: 'focused_authorization_candidate',
+            meaningOwner: 'ai',
+            deterministicResponsibilities: ['route_from_machine_state', 'apply_structured_decision'],
+            requestBytes: focusedBytes,
+          },
+        });
+        try {
+          const focusedResponse = await client.createChatCompletion(focusedRequest);
+          const focusedDecision = parseFocusedAuthorizationDecision(focusedResponse);
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_focused_authorization_result',
+            data: {
+              decision: focusedDecision?.decision ?? 'invalid_response',
+              responseLength: focusedResponse.length,
+              rawResponse: focusedResponse,
+            },
+          });
+          if (focusedDecision?.decision === 'create_plan') {
+            const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+              status: 'accepted',
+              document: focusedAuthorizationDocument(),
+              diagnostics: {
+                schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+                jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+                normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+                attemptCount: 1,
+                repairAttempted: false,
+                requestBytes: [focusedBytes],
+                responseLengths: [focusedResponse.length],
+                latencyMs: Math.round(performance.now() - startedAt),
+                validationErrors: [],
+                algorithmicRepairs: [],
+                providerError: null,
+              },
+            };
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_normalizer_decision',
+              data: {
+                ...result,
+                orchestrationRoute: 'focused_authorization',
+              },
+            });
+            return result;
+          }
+        } catch (error) {
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_focused_authorization_error',
+            severity: 'warn',
+            data: {
+              error: errorDetails(error),
+              fallback: 'generic_semantic',
+            },
+          });
+        }
+      }
+
       const baseMessages = createWeeklyPlanningSemanticBaseMessagesV5(input);
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
