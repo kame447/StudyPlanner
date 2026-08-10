@@ -90,10 +90,10 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
   'Non-consecutive explicit dates use separate allowed_date constraints.',
-  'For an explicit standard weekday used as a date constraint, encode dateExpression as exactly one of weekday:sunday, weekday:monday, weekday:tuesday, weekday:wednesday, weekday:thursday, weekday:friday, or weekday:saturday. Never encode a standard weekday as custom:<original phrase>.',
-  'Any explicit recurring cadence in workload.periodExpression needs a matching recurrence; recurring explicit weekdays belong in one weekly recurrence with its stated days.',
-  'Task relations use task localIds and require explicit scheduling relation meaning; workload amount/size comparisons alone are not priority/order/dependency.',
-  'Clock fields require explicit user clocks. Use either namedTimePeriod or exact clock fields, not both.',
+  'Standard weekday date constraints must use weekday:<english-day>; never custom:<original phrase>.',
+  'Recurring workload periods require matching recurrence; recurring weekdays use one weekly recurrence.',
+  'Task relations require task localIds and explicit scheduling meaning; workload size alone is not a relation.',
+  'Clock fields need explicit clocks; use namedTimePeriod or exact clocks, not both.',
 ].join('\n');
 
 interface SemanticValidationAttemptV5 {
