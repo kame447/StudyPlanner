@@ -88,3 +88,20 @@ describe('Stable V5 semantic evidence', () => {
   });
 });
 ''')
+
+normalizer_test = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts')
+text = normalizer_test.read_text()
+text = text.replace(
+    "sourceText: '平日は18時まで勉強できない',",
+    "sourceText: '平日は18時まで勉強できません',",
+    1,
+)
+old = """    const response = document();\n    const fake = client([JSON.stringify(response)]);\n    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({\n      userText: '明日の予定を立てたいです',\n    });"""
+new = """    const response = {\n      ...document(),\n      availabilityDeclarations: [],\n      constraintSourceRequests: [],\n    };\n    const fake = client([JSON.stringify(response)]);\n    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({\n      userText: '明日の予定を立てたいです',\n    });"""
+assert old in text
+text = text.replace(old, new, 1)
+old = """    const fake = client(['not-json', JSON.stringify(document())]);\n    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({\n      userText: '時間割も使って',\n    });"""
+new = """    const repaired = { ...document(), availabilityDeclarations: [] };\n    const fake = client(['not-json', JSON.stringify(repaired)]);\n    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.value).normalize({\n      userText: '時間割も使って',\n    });"""
+assert old in text
+text = text.replace(old, new, 1)
+normalizer_test.write_text(text)
