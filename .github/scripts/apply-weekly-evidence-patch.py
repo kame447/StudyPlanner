@@ -1,0 +1,90 @@
+from pathlib import Path
+
+path = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.ts')
+text = path.read_text()
+old_helpers = """function hasArrayValues(value: unknown): boolean {\n  return Array.isArray(value) && value.length > 0;\n}\n\nfunction hasAcceptedPublicFacts(\n  publicStateSummary: Record<string, unknown> | undefined,\n): boolean {\n  if (!publicStateSummary) return false;\n  return [\n    'planningWindows',\n    'tasks',\n    'components',\n    'workloads',\n    'effortEstimates',\n    'temporalConstraints',\n    'recurrences',\n    'uncertainties',\n  ].some((key) => hasArrayValues(publicStateSummary[key]));\n}\n\nfunction hasPendingQuestion(\n  publicStateSummary: Record<string, unknown> | undefined,\n): boolean {\n  const pendingQuestion = publicStateSummary?.pendingQuestion;\n  return Boolean(\n    pendingQuestion\n    && typeof pendingQuestion === 'object'\n    && !Array.isArray(pendingQuestion),\n  );\n}\n\n"""
+assert old_helpers in text
+text = text.replace(old_helpers, '', 1)
+
+old_body = """  const contextualTurn = hasPendingQuestion(params.input.publicStateSummary);\n  const authorizationOverAcceptedState =\n    params.document.planningIntent === 'create_plan'\n    && hasAcceptedPublicFacts(params.input.publicStateSummary);\n  if (!contextualTurn && !authorizationOverAcceptedState) {\n    return [...new Set([...progressErrors, ...userContextErrors])];\n  }\n\n  const includeWorkloadEvidence = !allowsInheritedWorkloadEvidenceForContextualAnswerV5({\n    document: params.document,\n    publicStateSummary: params.input.publicStateSummary,\n  });\n\n  return [...new Set([\n"""
+new_body = """  const includeWorkloadEvidence = !allowsInheritedWorkloadEvidenceForContextualAnswerV5({\n    document: params.document,\n    publicStateSummary: params.input.publicStateSummary,\n  });\n\n  return [...new Set([\n"""
+assert old_body in text
+path.write_text(text.replace(old_body, new_body, 1))
+
+test = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.test.ts')
+test.write_text(r'''import { describe, expect, it } from 'vitest';
+import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import { validateWeeklyPlanningSemanticEvidenceV5 } from './weeklyPlanningSemanticEvidenceV5';
+
+function updateDocument(sourceText: string): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: 'weekly-planning-semantic-v5',
+    planningIntent: 'update_plan',
+    planningWindow: null,
+    tasks: [{
+      localId: 'task_1',
+      existingPublicId: 'wpf_task_math',
+      decompositionStatus: 'atomic',
+      category: 'study',
+      title: '数学のワーク',
+      study: { purpose: 'practice', contextLabel: null, components: [] },
+      workloads: [],
+      effortEstimates: [],
+      temporalConstraints: [{
+        localId: 'tc_1',
+        targetLocalId: 'task_1',
+        kind: 'preferred_window',
+        constraintLevel: 'soft',
+        dateExpression: 'weekday:tuesday',
+        namedTimePeriod: 'night',
+        startTime: null,
+        endTime: null,
+        precision: 'unspecified',
+        sourceText,
+      }],
+      recurrence: [],
+      durableContextSignals: [],
+      sourceText,
+    }],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    userContextFacts: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+describe('Stable V5 semantic evidence', () => {
+  it('rejects previous-turn temporal facts copied into an ordinary update delta', () => {
+    const errors = validateWeeklyPlanningSemanticEvidenceV5({
+      document: updateDocument('数学は火曜の夜にして'),
+      input: {
+        userText: 'これで追加して',
+        publicStateSummary: {
+          pendingQuestion: null,
+          tasks: [{ publicId: 'wpf_task_math', title: '数学のワーク' }],
+        },
+      },
+    });
+    expect(errors).toContain(
+      'document.tasks[0].temporalConstraints[0].sourceText:not-grounded-in-current-user-text',
+    );
+  });
+
+  it('accepts a temporal update grounded in the current user utterance', () => {
+    const errors = validateWeeklyPlanningSemanticEvidenceV5({
+      document: updateDocument('数学は火曜の夜にして'),
+      input: {
+        userText: '数学は火曜の夜にして',
+        publicStateSummary: {
+          pendingQuestion: null,
+          tasks: [{ publicId: 'wpf_task_math', title: '数学のワーク' }],
+        },
+      },
+    });
+    expect(errors).toEqual([]);
+  });
+});
+''')
