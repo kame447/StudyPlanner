@@ -13,6 +13,7 @@ import type {
 } from './weeklyPlanningFactGraphV5';
 import type {
   SemanticQuantityRoleV5,
+  SemanticTaskV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import type {
@@ -119,6 +120,28 @@ function correctionsOnlyRestatePendingTarget(
     && correction.target.localId === null);
 }
 
+function taskCarriesCurrentSemanticDelta(task: SemanticTaskV5): boolean {
+  return task.workloads.length > 0
+    || task.effortEstimates.length > 0
+    || task.temporalConstraints.length > 0
+    || task.recurrence.length > 0
+    || (task.durableContextSignals?.length ?? 0) > 0
+    || (task.study?.components.length ?? 0) > 0;
+}
+
+function taskIsExistingIdentityShell(task: SemanticTaskV5): boolean {
+  return typeof task.existingPublicId === 'string'
+    && task.existingPublicId.length > 0
+    && !taskCarriesCurrentSemanticDelta(task);
+}
+
+function hasOneContextualPayloadTask(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  const payloadTasks = document.tasks.filter(taskCarriesCurrentSemanticDelta);
+  if (payloadTasks.length !== 1) return false;
+  const payloadTask = payloadTasks[0];
+  return document.tasks.every((task) => task === payloadTask || taskIsExistingIdentityShell(task));
+}
+
 function isMinimalWorkloadContextualReply(
   input: WeeklyPlanningStableV5ContextualAnswerInput,
 ): boolean {
@@ -129,7 +152,7 @@ function isMinimalWorkloadContextualReply(
     && input.pendingQuestion.targetFactId.length > 0
     && input.document.planningIntent !== 'create_plan'
     && input.document.planningWindow === null
-    && input.document.tasks.length === 1
+    && hasOneContextualPayloadTask(input.document)
     && input.document.relations.length === 0
     && input.document.availabilityDeclarations.length === 0
     && input.document.constraintSourceRequests.length === 0
