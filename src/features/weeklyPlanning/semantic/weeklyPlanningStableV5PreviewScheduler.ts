@@ -55,6 +55,13 @@ const DEFAULT_DAY_END = '22:00';
 const DEFAULT_BREAK_MINUTES = 10;
 const DEFAULT_SESSION_MINUTES = 60;
 const EXISTING_PLAN_BUFFER_MINUTES = 10;
+const DEFAULT_NAMED_TIME_PERIODS: Record<string, { startTime: string; endTime: string }> = {
+  morning: { startTime: '06:00', endTime: '12:00' },
+  afternoon: { startTime: '12:00', endTime: '17:00' },
+  evening: { startTime: '17:00', endTime: '21:00' },
+  night: { startTime: '21:00', endTime: '24:00' },
+  before_sleep: { startTime: '21:00', endTime: '24:00' },
+};
 
 function minutesFromTime(time: string): number {
   if (time === '24:00') return 24 * 60;
@@ -285,6 +292,7 @@ function preferredPlacements(params: {
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
+  const namedTimePeriods = params.namedTimePeriods ?? DEFAULT_NAMED_TIME_PERIODS;
   return params.graph.temporalConstraints
     .filter((constraint) =>
       activeIds.has(constraint.id)
@@ -304,7 +312,7 @@ function preferredPlacements(params: {
           end: minutesFromTime(constraint.endTime),
         };
       } else if (constraint.namedTimePeriod) {
-        const resolved = params.namedTimePeriods?.[constraint.namedTimePeriod];
+        const resolved = namedTimePeriods[constraint.namedTimePeriod];
         if (!resolved) return [];
         window = {
           start: minutesFromTime(resolved.startTime),
