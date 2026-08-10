@@ -1,0 +1,57 @@
+name: Temporary Weekly Planning Prompt Budget Fix
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/temporary-weekly-planning-prompt-budget-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Compress semantic policy without weakening weekday contract
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts')
+          text = path.read_text()
+          old = "  'For an explicit standard weekday used as a date constraint, encode dateExpression as exactly one of weekday:sunday, weekday:monday, weekday:tuesday, weekday:wednesday, weekday:thursday, weekday:friday, or weekday:saturday. Never encode a standard weekday as custom:<original phrase>.',"
+          new = "  'Standard weekday date constraints must use weekday:<english-day>; never custom:<original phrase>.',"
+          assert old in text
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run prompt and semantic regressions
+        run: >-
+          npm test -- --run
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPromptBudget.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5Authorization.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDateRuleValidation.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningStableV5PreviewScheduler.test.ts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git rm .github/workflows/temporary-weekly-planning-prompt-budget-fix.yml
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts
+          git commit -m 'fix: keep stable v5 semantic policy within prompt budget'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
