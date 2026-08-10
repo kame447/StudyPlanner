@@ -53,8 +53,8 @@ describe('Stable V5 dialogue grounding boundary', () => {
     expect(payload).not.toHaveProperty('planningInformation');
     expect(payload).toHaveProperty('planningStateSummary');
     expect(payload).toHaveProperty('applicationDecision');
-    expect(payload).toHaveProperty('request');
-    expect(Array.isArray(payload.request)).toBe(true);
+    expect(typeof payload.request).toBe('string');
+    expect(String(payload.request).length).toBeGreaterThan(0);
   });
 
   it('validates generated text against grounded facts without prescribing one correct wording', async () => {
