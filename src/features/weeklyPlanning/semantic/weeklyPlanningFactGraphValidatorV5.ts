@@ -381,6 +381,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     ...planningWindowIds,
   ]);
   const taskOrComponentIds = new Set([...taskIds, ...componentIds]);
+  const effortTargetIds = new Set([...taskIds, ...componentIds, ...workloadIds]);
 
   studyContexts.forEach((fact, index) => {
     validateReference(fact.taskId, taskIds, `graph.studyContexts[${index}].taskId`, errors);
@@ -407,7 +408,7 @@ export function validateWeeklyPlanningFactGraphValueV5(
     validateReference(fact.taskId, taskIds, `graph.effortEstimates[${index}].taskId`, errors);
     validateReference(
       fact.targetFactId,
-      taskOrComponentIds,
+      effortTargetIds,
       `graph.effortEstimates[${index}].targetFactId`,
       errors,
     );
