@@ -1,0 +1,42 @@
+name: Temporary Weekly Planning Patch
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/temporary-weekly-planning-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python3 .github/scripts/apply-weekly-ui-approval-test.py
+      - run: npm ci
+      - run: >-
+          npm test -- --run
+          src/components/NaturalLanguageAssistant.weeklyPlanningControls.test.tsx
+          src/components/WeeklyPlanningQuickEntryModal.test.tsx
+          src/features/weeklyPlanning/weeklyPlanningPreviewSessionLifecycle.test.tsx
+      - run: npm run typecheck
+      - name: Commit tests
+        shell: bash
+        run: |
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git rm .github/workflows/temporary-weekly-planning-patch.yml
+          git rm .github/scripts/apply-weekly-ui-approval-test.py
+          git add src/components/NaturalLanguageAssistant.weeklyPlanningControls.test.tsx
+          git commit -m 'test: cover weekly preview promotion and approval controls'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
