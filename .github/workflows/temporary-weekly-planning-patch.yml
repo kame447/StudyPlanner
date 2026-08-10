@@ -1,0 +1,56 @@
+name: Temporary Weekly Planning Patch
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/temporary-weekly-planning-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python3 .github/scripts/apply-weekly-noop-preview-patch.py
+      - run: npm ci
+      - run: >-
+          npm test -- --run
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPipelineV5.test.ts
+          src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+          src/features/weeklyPlanning/weeklyPlanningReducer.test.ts
+          src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueContext.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticEvidenceV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningStableV5PreviewScheduler.test.ts
+      - run: npm run typecheck
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git rm .github/workflows/temporary-weekly-planning-patch.yml
+          git rm .github/scripts/apply-weekly-noop-preview-patch.py
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPipelineV5.ts
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
+          git add src/features/weeklyPlanning/weeklyPlanningTurnExecutor.ts
+          git add src/features/weeklyPlanning/types.ts
+          git add src/features/weeklyPlanning/weeklyPlanningTurnController.ts
+          git add src/features/weeklyPlanning/weeklyPlanningReducer.ts
+          git add src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueContext.ts
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticPipelineV5.test.ts
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+          git add src/features/weeklyPlanning/weeklyPlanningReducer.test.ts
+          git add src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueContext.test.ts
+          git commit -m 'fix: preserve unchanged stable v5 previews without revision churn'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
