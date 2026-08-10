@@ -65,7 +65,7 @@ const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
       properties: {
         decision: {
           type: 'string',
-          enum: ['create_plan', 'fallback'],
+          enum: ['create_plan', 'revise_preview', 'fallback'],
         },
       },
     },
@@ -73,9 +73,11 @@ const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
 };
 const FOCUSED_AUTHORIZATION_SYSTEM_PROMPT = [
   'You are a focused semantic interpreter for one planning-conversation decision.',
-  'Meaning interpretation is your responsibility. Deterministic code will only route this request and apply your structured decision.',
-  'Return create_plan only when the current user utterance, in the supplied immediate dialogue context, purely authorizes creating the draft/preview from conditions that are already collected.',
-  'If the utterance adds, changes, removes, corrects, or qualifies any planning fact, or if its meaning is not clearly a pure authorization, return fallback.',
+  'Meaning interpretation is your responsibility. Deterministic code will only route this request and combine your structured decision with other AI-derived semantic facts.',
+  'Return create_plan only when the current user utterance purely authorizes creating the draft/preview from conditions that are already collected.',
+  'Return revise_preview only when the immediately preceding assistant message presented a draft/preview and the current utterance asks to change that presented draft/preview, with the natural conversational expectation that a revised preview should be generated after applying the change.',
+  'Return fallback for ordinary discussion, new planning facts that are not revisions of a presented preview, ambiguous intent, or anything else.',
+  'Do not interpret the detailed changed facts here; the generic semantic interpreter will do that after revise_preview.',
   'Do not decide readiness, scheduling, placement, persistence, or wording. Return only the schema.',
 ].join('\n');
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
@@ -103,7 +105,7 @@ interface SemanticValidationAttemptV5 {
 }
 
 interface FocusedAuthorizationDecisionV5 {
-  decision: 'create_plan' | 'fallback';
+  decision: 'create_plan' | 'revise_preview' | 'fallback';
 }
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
@@ -185,7 +187,11 @@ function parseFocusedAuthorizationDecision(
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
     const decision = value.decision;
-    if (decision !== 'create_plan' && decision !== 'fallback') return null;
+    if (
+      decision !== 'create_plan'
+      && decision !== 'revise_preview'
+      && decision !== 'fallback'
+    ) return null;
     return { decision };
   } catch {
     return null;
@@ -205,6 +211,17 @@ function focusedAuthorizationDocument(): WeeklyPlanningSemanticDocumentV5 {
     uncertainties: [],
     corrections: [],
     decisions: [],
+  };
+}
+
+function applyFocusedPreviewRevisionAuthorization(
+  document: WeeklyPlanningSemanticDocumentV5,
+  focusedDecision: FocusedAuthorizationDecisionV5['decision'] | null,
+): WeeklyPlanningSemanticDocumentV5 {
+  if (focusedDecision !== 'revise_preview') return document;
+  return {
+    ...document,
+    planningIntent: 'create_plan',
   };
 }
 
@@ -374,6 +391,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const requestBytes: number[] = [];
       const responseLengths: number[] = [];
       const algorithmicRepairs: string[] = [];
+      let focusedConversationDecision: FocusedAuthorizationDecisionV5['decision'] | null = null;
 
       if (focusedAuthorizationEligible(input)) {
         const focusedMessages: ChatMessage[] = [
@@ -401,25 +419,26 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           requestId: input.traceRequestId,
           stage: 'semantic_orchestrator_route',
           data: {
-            route: 'focused_authorization_candidate',
+            route: 'focused_conversation_intent_candidate',
             meaningOwner: 'ai',
-            deterministicResponsibilities: ['route_from_machine_state', 'apply_structured_decision'],
+            deterministicResponsibilities: ['route_from_machine_state', 'combine_ai_semantic_outputs'],
             requestBytes: focusedBytes,
           },
         });
         try {
           const focusedResponse = await client.createChatCompletion(focusedRequest);
           const focusedDecision = parseFocusedAuthorizationDecision(focusedResponse);
+          focusedConversationDecision = focusedDecision?.decision ?? null;
           recordWeeklyPlanningStableV5DebugTrace({
             requestId: input.traceRequestId,
             stage: 'semantic_focused_authorization_result',
             data: {
-              decision: focusedDecision?.decision ?? 'invalid_response',
+              decision: focusedConversationDecision ?? 'invalid_response',
               responseLength: focusedResponse.length,
               rawResponse: focusedResponse,
             },
           });
-          if (focusedDecision?.decision === 'create_plan') {
+          if (focusedConversationDecision === 'create_plan') {
             const result: WeeklyPlanningSemanticNormalizerResultV5 = {
               status: 'accepted',
               document: focusedAuthorizationDocument(),
@@ -468,6 +487,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
           schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
           input,
+          orchestrationContext: {
+            focusedConversationDecision,
+          },
           request: {
             purpose: 'weekly_planning_semantic_normalizer',
             messages: baseMessages,
@@ -576,9 +598,13 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         },
       });
       if (initialValidation.document) {
+        const document = applyFocusedPreviewRevisionAuthorization(
+          initialValidation.document,
+          focusedConversationDecision,
+        );
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
-          document: initialValidation.document,
+          document,
           diagnostics: diagnostics({
             attemptCount: 1,
             repairAttempted: false,
@@ -589,7 +615,12 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         recordWeeklyPlanningStableV5DebugTrace({
           requestId: input.traceRequestId,
           stage: 'semantic_normalizer_decision',
-          data: result,
+          data: {
+            ...result,
+            orchestrationRoute: focusedConversationDecision === 'revise_preview'
+              ? 'focused_preview_revision_plus_generic_semantic'
+              : 'generic_semantic',
+          },
         });
         return result;
       }
@@ -671,9 +702,13 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         return result;
       }
 
+      const document = applyFocusedPreviewRevisionAuthorization(
+        repairedValidation.document,
+        focusedConversationDecision,
+      );
       const result: WeeklyPlanningSemanticNormalizerResultV5 = {
         status: 'accepted',
-        document: repairedValidation.document,
+        document,
         diagnostics: diagnostics({
           attemptCount: 2,
           repairAttempted: true,
@@ -684,7 +719,12 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
         stage: 'semantic_normalizer_decision',
-        data: result,
+        data: {
+          ...result,
+          orchestrationRoute: focusedConversationDecision === 'revise_preview'
+            ? 'focused_preview_revision_plus_generic_semantic_repair'
+            : 'generic_semantic_repair',
+        },
       });
       return result;
     },
