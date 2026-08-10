@@ -54,6 +54,14 @@ jobs:
           assert old in text
           text = text.replace(old, new, 1)
           runtime.write_text(text)
+
+          runtime_test = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts')
+          text = runtime_test.read_text()
+          old = """              compilationStatus: 'empty',\n              dialogueStatus: 'nothing_to_schedule',"""
+          new = """              compilationStatus: 'needs_resolution',\n              dialogueStatus: 'nothing_to_schedule',"""
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          runtime_test.write_text(text)
           PY
       - name: Install dependencies
         run: npm ci
@@ -73,5 +81,6 @@ jobs:
           git rm .github/workflows/temporary-weekly-planning-patch.yml
           git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts
           git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
           git commit -m 'fix: route focused planning semantics by machine phase'
           git push origin HEAD:agent/weekly-ai-conversation-eval
