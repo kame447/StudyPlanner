@@ -26,9 +26,27 @@ function storedContexts(publicStateSummary?: Record<string, unknown>): Record<st
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function storedPlanningWindows(
+  publicStateSummary?: Record<string, unknown>,
+): Record<string, unknown>[] {
+  const value = publicStateSummary?.planningWindows;
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
 function sameNullable(left: unknown, right: unknown): boolean {
   if (left === null || left === undefined) return right === null || right === undefined;
   return normalized(left) === normalized(right);
+}
+
+function matchesStoredPlanningWindow(
+  fact: Record<string, unknown>,
+  stored: Record<string, unknown>[],
+): boolean {
+  return stored.some((record) =>
+    normalized(record.kind) === normalized(fact.kind)
+    && sameNullable(record.value, fact.value)
+    && sameNullable(record.start, fact.start)
+    && sameNullable(record.end, fact.end));
 }
 
 function matchesStoredFact(
@@ -54,8 +72,13 @@ function matchesStoredConcern(
 }
 
 /**
- * Removes accepted owner-context facts that a provider copied back into the
- * current semantic delta.
+ * Removes accepted facts that a provider copied back into the current semantic
+ * delta without current-turn evidence.
+ *
+ * This normalization never infers user meaning. It only removes an emitted fact
+ * when the same fact already exists in publicStateSummary and the emitted
+ * sourceText is not grounded in the current userText. Newly stated facts remain
+ * AI-owned and are left untouched.
  *
  * Concern records are value-stable owner facts. Re-emitting the same
  * label/value does not create new information, even if the current utterance
@@ -83,11 +106,22 @@ export function normalizeCopiedUserContextDeltaV5(params: {
   if (!isRecord(parsed)) return { rawResponse: params.rawResponse, repairs: [] };
 
   const stored = storedContexts(params.publicStateSummary);
-  if (stored.length === 0) return { rawResponse: params.rawResponse, repairs: [] };
+  const windows = storedPlanningWindows(params.publicStateSummary);
   const repairs: string[] = [];
   let changed = false;
 
-  if (Array.isArray(parsed.userContextFacts)) {
+  if (
+    isRecord(parsed.planningWindow)
+    && windows.length > 0
+    && matchesStoredPlanningWindow(parsed.planningWindow, windows)
+    && !grounded(parsed.planningWindow.sourceText, params.userText)
+  ) {
+    parsed.planningWindow = null;
+    changed = true;
+    repairs.push('copied-planning-window-removed');
+  }
+
+  if (stored.length > 0 && Array.isArray(parsed.userContextFacts)) {
     parsed.userContextFacts = parsed.userContextFacts.filter((value, index) => {
       if (!isRecord(value)) return true;
       const storedMatch = matchesStoredFact(value, stored);
@@ -100,7 +134,7 @@ export function normalizeCopiedUserContextDeltaV5(params: {
     });
   }
 
-  if (Array.isArray(parsed.tasks)) {
+  if (stored.length > 0 && Array.isArray(parsed.tasks)) {
     parsed.tasks = parsed.tasks.map((taskValue, taskIndex) => {
       if (!isRecord(taskValue)) return taskValue;
       let task = taskValue;
