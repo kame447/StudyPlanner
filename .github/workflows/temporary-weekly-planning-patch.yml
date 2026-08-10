@@ -22,7 +22,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: python3 .github/scripts/apply-weekly-ci-noop-fix.py
+      - name: Apply no-op idempotency and grounded fixture fixes
+        run: python3 .github/scripts/apply-weekly-ci-noop-fix.py
       - run: npm ci
       - run: >-
           npm test -- --run
