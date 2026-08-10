@@ -1,0 +1,125 @@
+name: Temporary Weekly Planning Patch
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/temporary-weekly-planning-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply targeted patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          doc = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts')
+          text = doc.read_text()
+          old = "    'Use dateExpression only for today, tomorrow, day_after_tomorrow, this_week, next_week, an explicit YYYY-MM-DD date, or custom:<original phrase>. Never put a Japanese time-of-day phrase in dateExpression.',"
+          new = "    'Use dateExpression only for today, tomorrow, day_after_tomorrow, this_week, next_week, weekday:sunday, weekday:monday, weekday:tuesday, weekday:wednesday, weekday:thursday, weekday:friday, weekday:saturday, an explicit YYYY-MM-DD date, or custom:<original phrase>. Standard weekdays must use weekday:<day>; custom:<original phrase> is only for genuinely non-standard date expressions. Never put a Japanese time-of-day phrase in dateExpression.',"
+          assert text.count(old) == 1
+          doc.write_text(text.replace(old, new, 1))
+
+          normalizer = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts')
+          text = normalizer.read_text()
+          text = text.replace("enum: ['create_plan', 'revise_preview', 'fallback'],", "enum: ['create_plan', 'fallback'],", 1)
+          text = text.replace("  'Return revise_preview only when the immediately preceding assistant message presented a draft/preview and the current utterance asks to change that presented draft/preview, with the natural conversational expectation that a revised preview should be generated after applying the change.',\n", "", 1)
+          text = text.replace("  'Return fallback for ordinary discussion, new planning facts that are not revisions of a presented preview, ambiguous intent, or anything else.',", "  'Return fallback for any utterance that adds, changes, removes, corrects, or qualifies planning facts, as well as ordinary discussion or ambiguous intent.',", 1)
+          text = text.replace("  'Do not interpret the detailed changed facts here; the generic semantic interpreter will do that after revise_preview.',\n", "", 1)
+          text = text.replace("  'When the immediately preceding assistant turn presented a draft or preview and the current user asks to revise that presented draft or preview, interpret that conversational intent as planningIntent create_plan while emitting only the changed facts from the current userText. The scheduler still decides whether and where a revised preview can be produced.',\n", "", 1)
+          text = text.replace("  decision: 'create_plan' | 'revise_preview' | 'fallback';", "  decision: 'create_plan' | 'fallback';", 1)
+          old = """    if (\n      decision !== 'create_plan'\n      && decision !== 'revise_preview'\n      && decision !== 'fallback'\n    ) return null;"""
+          new = """    if (decision !== 'create_plan' && decision !== 'fallback') return null;"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          start = text.index('function applyFocusedPreviewRevisionAuthorization(')
+          end = text.index('\nfunction validateSemanticResponse(', start)
+          text = text[:start] + text[end+1:]
+          text = text.replace("      let focusedConversationDecision: FocusedAuthorizationDecisionV5['decision'] | null = null;", "      let focusedConversationDecision: FocusedAuthorizationDecisionV5['decision'] | null = null;", 1)
+          old = """        const document = applyFocusedPreviewRevisionAuthorization(\n          initialValidation.document,\n          focusedConversationDecision,\n        );\n        const result: WeeklyPlanningSemanticNormalizerResultV5 = {\n          status: 'accepted',\n          document,"""
+          new = """        const result: WeeklyPlanningSemanticNormalizerResultV5 = {\n          status: 'accepted',\n          document: initialValidation.document,"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = """            orchestrationRoute: focusedConversationDecision === 'revise_preview'\n              ? 'focused_preview_revision_plus_generic_semantic'\n              : 'generic_semantic',"""
+          new = """            orchestrationRoute: 'generic_semantic',"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = """      const document = applyFocusedPreviewRevisionAuthorization(\n        repairedValidation.document,\n        focusedConversationDecision,\n      );\n      const result: WeeklyPlanningSemanticNormalizerResultV5 = {\n        status: 'accepted',\n        document,"""
+          new = """      const result: WeeklyPlanningSemanticNormalizerResultV5 = {\n        status: 'accepted',\n        document: repairedValidation.document,"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = """          orchestrationRoute: focusedConversationDecision === 'revise_preview'\n            ? 'focused_preview_revision_plus_generic_semantic_repair'\n            : 'generic_semantic_repair',"""
+          new = """          orchestrationRoute: 'generic_semantic_repair',"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          normalizer.write_text(text)
+
+          runtime = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts')
+          text = runtime.read_text()
+          old = "  const authorized = semantic.normalization.document?.planningIntent === 'create_plan';"
+          new = """  const planningIntent = semantic.normalization.document?.planningIntent ?? null;\n  const authorized = isWeeklyPlanningStableV5PreviewAuthorized({\n    previousStatus: input.previousState?.status ?? null,\n    planningIntent,\n  });"""
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          text = text.replace("        planningIntent: semantic.normalization.document?.planningIntent ?? null,", "        planningIntent,", 1)
+          text = text.replace("        planningIntent: semantic.normalization.document?.planningIntent ?? null,\n        criterion: 'planningIntent !== create_plan',", "        planningIntent,\n        criterion: 'not create_plan and not draft_ready + update_plan',", 1)
+          marker = "export function getWeeklyPlanningStableV5BlockingIssueCode("
+          idx = text.index(marker)
+          helper = """export function isWeeklyPlanningStableV5PreviewAuthorized(params: {\n  previousStatus: PlanningIntakeState['status'] | null;\n  planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;\n}): boolean {\n  return params.planningIntent === 'create_plan'\n    || (params.previousStatus === 'draft_ready' && params.planningIntent === 'update_plan');\n}\n\n"""
+          text = text[:idx] + helper + text[idx:]
+          runtime.write_text(text)
+
+          test = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts')
+          text = test.read_text()
+          old_import = "  getWeeklyPlanningStableV5BlockingIssueCode,"
+          if old_import in text:
+            text = text.replace(old_import, "  getWeeklyPlanningStableV5BlockingIssueCode,\n  isWeeklyPlanningStableV5PreviewAuthorized,", 1)
+          else:
+            anchor = "executeWeeklyPlanningStableV5RuntimeTurn,"
+            assert anchor in text
+            text = text.replace(anchor, anchor + "\n  isWeeklyPlanningStableV5PreviewAuthorized,", 1)
+          insert = """\n  it('re-authorizes preview generation when AI interprets a draft-ready turn as update_plan', () => {\n    expect(isWeeklyPlanningStableV5PreviewAuthorized({\n      previousStatus: 'draft_ready',\n      planningIntent: 'update_plan',\n    })).toBe(true);\n    expect(isWeeklyPlanningStableV5PreviewAuthorized({\n      previousStatus: 'needs_scope',\n      planningIntent: 'update_plan',\n    })).toBe(false);\n    expect(isWeeklyPlanningStableV5PreviewAuthorized({\n      previousStatus: 'draft_ready',\n      planningIntent: 'discuss',\n    })).toBe(false);\n  });\n"""
+          anchor = "describe('Stable V5 runtime executor', () => {"
+          assert anchor in text
+          text = text.replace(anchor, anchor + insert, 1)
+          test.write_text(text)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run regressions
+        run: >-
+          npm test -- --run
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5Authorization.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5CopiedContext.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningCrossTurnEntityBindingV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticRequestBudgetV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticStableV5.test.ts
+          src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git rm .github/workflows/temporary-weekly-planning-patch.yml
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticDocumentV5.ts
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+          git commit -m 'fix: re-preview AI updates from draft-ready state'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
