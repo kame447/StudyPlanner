@@ -733,7 +733,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     externalSources: sources,
   });
   const dialogue = decideWeeklyPlanningStableDialogueV5(compilation);
-  const authorized = semantic.normalization.document?.planningIntent === 'create_plan';
+  const planningIntent = semantic.normalization.document?.planningIntent ?? null;
+  const authorized = isWeeklyPlanningStableV5PreviewAuthorized({
+    previousStatus: input.previousState?.status ?? null,
+    planningIntent,
+  });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
     stage: 'runtime_scheduler_dialogue_evaluated',
@@ -773,7 +777,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       firstBlockingIssueCodeInCompilationOrder: blockingQuestionCode(compilation) ?? null,
       selectedQuestion: dialogue.status === 'ask_question' ? dialogue.question : null,
       authorization: {
-        planningIntent: semantic.normalization.document?.planningIntent ?? null,
+        planningIntent,
         criterion: 'planningIntent === create_plan',
         authorized,
       },
@@ -855,8 +859,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       requestId: input.traceRequestId,
       branch: 'authorization_required',
       basis: {
-        planningIntent: semantic.normalization.document?.planningIntent ?? null,
-        criterion: 'planningIntent !== create_plan',
+        planningIntent,
+        criterion: 'not create_plan and not draft_ready + update_plan',
       },
       output,
     });
@@ -968,6 +972,14 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     output,
   });
   return output;
+}
+
+export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
+  previousStatus: PlanningIntakeState['status'] | null;
+  planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
+}): boolean {
+  return params.planningIntent === 'create_plan'
+    || (params.previousStatus === 'draft_ready' && params.planningIntent === 'update_plan');
 }
 
 export function getWeeklyPlanningStableV5BlockingIssueCode(

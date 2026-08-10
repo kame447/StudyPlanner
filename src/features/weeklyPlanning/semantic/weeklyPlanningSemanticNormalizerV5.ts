@@ -65,7 +65,7 @@ const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
       properties: {
         decision: {
           type: 'string',
-          enum: ['create_plan', 'revise_preview', 'fallback'],
+          enum: ['create_plan', 'fallback'],
         },
       },
     },
@@ -75,9 +75,7 @@ const FOCUSED_AUTHORIZATION_SYSTEM_PROMPT = [
   'You are a focused semantic interpreter for one planning-conversation decision.',
   'Meaning interpretation is your responsibility. Deterministic code will only route this request and combine your structured decision with other AI-derived semantic facts.',
   'Return create_plan only when the current user utterance purely authorizes creating the draft/preview from conditions that are already collected.',
-  'Return revise_preview only when the immediately preceding assistant message presented a draft/preview and the current utterance asks to change that presented draft/preview, with the natural conversational expectation that a revised preview should be generated after applying the change.',
-  'Return fallback for ordinary discussion, new planning facts that are not revisions of a presented preview, ambiguous intent, or anything else.',
-  'Do not interpret the detailed changed facts here; the generic semantic interpreter will do that after revise_preview.',
+  'Return fallback for any utterance that adds, changes, removes, corrects, or qualifies planning facts, as well as ordinary discussion or ambiguous intent.',
   'Do not decide readiness, scheduling, placement, persistence, or wording. Return only the schema.',
 ].join('\n');
 const AI_OWNERSHIP_INSTRUCTION_V5 = [
@@ -88,7 +86,6 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'For semantic_uncertainty, answer only the unresolved semantic target; if ambiguity remains, keep uncertainty rather than guessing.',
   'An effortEstimate may target the exact task, component, or workload localId supported by the current answer.',
   'Use localIds for response-local references and exact existingPublicId only for accepted cross-turn entity identity. Creation authorization uses planningIntent create_plan without replaying accepted facts.',
-  'When the immediately preceding assistant turn presented a draft or preview and the current user asks to revise that presented draft or preview, interpret that conversational intent as planningIntent create_plan while emitting only the changed facts from the current userText. The scheduler still decides whether and where a revised preview can be produced.',
   'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',
 ].join('\n');
 const TEMPORAL_STRUCTURE_INSTRUCTION_V5 = [
@@ -107,7 +104,7 @@ interface SemanticValidationAttemptV5 {
 }
 
 interface FocusedAuthorizationDecisionV5 {
-  decision: 'create_plan' | 'revise_preview' | 'fallback';
+  decision: 'create_plan' | 'fallback';
 }
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
@@ -190,11 +187,7 @@ function parseFocusedAuthorizationDecision(
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
     const decision = value.decision;
-    if (
-      decision !== 'create_plan'
-      && decision !== 'revise_preview'
-      && decision !== 'fallback'
-    ) return null;
+    if (decision !== 'create_plan' && decision !== 'fallback') return null;
     return { decision };
   } catch {
     return null;
@@ -214,17 +207,6 @@ function focusedAuthorizationDocument(): WeeklyPlanningSemanticDocumentV5 {
     uncertainties: [],
     corrections: [],
     decisions: [],
-  };
-}
-
-function applyFocusedPreviewRevisionAuthorization(
-  document: WeeklyPlanningSemanticDocumentV5,
-  focusedDecision: FocusedAuthorizationDecisionV5['decision'] | null,
-): WeeklyPlanningSemanticDocumentV5 {
-  if (focusedDecision !== 'revise_preview') return document;
-  return {
-    ...document,
-    planningIntent: 'create_plan',
   };
 }
 
@@ -601,13 +583,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         },
       });
       if (initialValidation.document) {
-        const document = applyFocusedPreviewRevisionAuthorization(
-          initialValidation.document,
-          focusedConversationDecision,
-        );
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
-          document,
+          document: initialValidation.document,
           diagnostics: diagnostics({
             attemptCount: 1,
             repairAttempted: false,
@@ -620,9 +598,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           stage: 'semantic_normalizer_decision',
           data: {
             ...result,
-            orchestrationRoute: focusedConversationDecision === 'revise_preview'
-              ? 'focused_preview_revision_plus_generic_semantic'
-              : 'generic_semantic',
+            orchestrationRoute: 'generic_semantic',
           },
         });
         return result;
@@ -705,13 +681,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         return result;
       }
 
-      const document = applyFocusedPreviewRevisionAuthorization(
-        repairedValidation.document,
-        focusedConversationDecision,
-      );
       const result: WeeklyPlanningSemanticNormalizerResultV5 = {
         status: 'accepted',
-        document,
+        document: repairedValidation.document,
         diagnostics: diagnostics({
           attemptCount: 2,
           repairAttempted: true,
@@ -724,9 +696,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         stage: 'semantic_normalizer_decision',
         data: {
           ...result,
-          orchestrationRoute: focusedConversationDecision === 'revise_preview'
-            ? 'focused_preview_revision_plus_generic_semantic_repair'
-            : 'generic_semantic_repair',
+          orchestrationRoute: 'generic_semantic_repair',
         },
       });
       return result;

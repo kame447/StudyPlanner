@@ -195,9 +195,25 @@ vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
 
 import {
   executeWeeklyPlanningStableV5RuntimeTurn,
+  isWeeklyPlanningStableV5PreviewAuthorized,
 } from './weeklyPlanningStableV5RuntimeExecutor';
 
 describe('Stable V5 runtime executor', () => {
+  it('re-authorizes preview generation when AI interprets a draft-ready turn as update_plan', () => {
+    expect(isWeeklyPlanningStableV5PreviewAuthorized({
+      previousStatus: 'draft_ready',
+      planningIntent: 'update_plan',
+    })).toBe(true);
+    expect(isWeeklyPlanningStableV5PreviewAuthorized({
+      previousStatus: 'needs_scope',
+      planningIntent: 'update_plan',
+    })).toBe(false);
+    expect(isWeeklyPlanningStableV5PreviewAuthorized({
+      previousStatus: 'draft_ready',
+      planningIntent: 'discuss',
+    })).toBe(false);
+  });
+
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     resetWeeklyPlanningStableV5DebugTraceForTest();
