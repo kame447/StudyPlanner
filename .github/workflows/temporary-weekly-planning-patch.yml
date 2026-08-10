@@ -1,0 +1,77 @@
+name: Temporary Weekly Planning Patch
+
+on:
+  push:
+    branches:
+      - agent/weekly-ai-conversation-eval
+    paths:
+      - .github/workflows/temporary-weekly-planning-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/weekly-ai-conversation-eval
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply targeted semantic ownership patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          normalizer = Path('src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts')
+          text = normalizer.read_text()
+
+          old = """  'Use localIds for response-local references and exact existingPublicId only for accepted cross-turn entity identity. Creation authorization uses planningIntent create_plan without replaying accepted facts.',\n  'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',"""
+          new = """  'Use localIds for response-local references and exact existingPublicId only for accepted cross-turn entity identity. Creation authorization uses planningIntent create_plan without replaying accepted facts.',\n  'When the immediately preceding assistant turn presented a draft or preview and the current user asks to revise that presented draft or preview, interpret that conversational intent as planningIntent create_plan while emitting only the changed facts from the current userText. The scheduler still decides whether and where a revised preview can be produced.',\n  'Do not invent or emit application commands, scheduling/readiness/preview/save decisions, or prose.',"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """  'Non-consecutive explicit dates use separate allowed_date constraints.',\n  'Any explicit recurring cadence in workload.periodExpression needs a matching recurrence; explicit weekdays belong in one weekly recurrence with its stated days.',"""
+          new = """  'Non-consecutive explicit dates use separate allowed_date constraints.',\n  'For an explicit standard weekday used as a date constraint, encode dateExpression as exactly one of weekday:sunday, weekday:monday, weekday:tuesday, weekday:wednesday, weekday:thursday, weekday:friday, or weekday:saturday. Never encode a standard weekday as custom:<original phrase>.',\n  'Any explicit recurring cadence in workload.periodExpression needs a matching recurrence; recurring explicit weekdays belong in one weekly recurrence with its stated days.',"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """  if (summary.pendingQuestion !== null && summary.pendingQuestion !== undefined) return false;\n  return Array.isArray(summary.tasks) && summary.tasks.length > 0;"""
+          new = """  if (summary.pendingQuestion !== null && summary.pendingQuestion !== undefined) return false;\n  if (summary.previousCompatibilityStatus !== 'needs_scope') return false;\n  return Array.isArray(summary.tasks) && summary.tasks.length > 0;"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          normalizer.write_text(text)
+
+          runtime = Path('src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts')
+          text = runtime.read_text()
+          old = """    runtime: 'weekly-planning-stable-v5',\n    graphRevision: graph.revision,\n    pendingQuestion: pendingQuestionFromState(previousState, graph.revision),"""
+          new = """    runtime: 'weekly-planning-stable-v5',\n    graphRevision: graph.revision,\n    previousCompatibilityStatus: previousState?.status ?? null,\n    pendingQuestion: pendingQuestionFromState(previousState, graph.revision),"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          runtime.write_text(text)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run focused regressions
+        run: >-
+          npm test -- --run
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5Authorization.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5CopiedContext.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningCrossTurnEntityBindingV5.test.ts
+          src/features/weeklyPlanning/semantic/weeklyPlanningSemanticRequestBudgetV5.test.ts
+          src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.test.ts
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'kame447'
+          git config user.email '76802107+kame447@users.noreply.github.com'
+          git rm .github/workflows/temporary-weekly-planning-patch.yml
+          git add src/features/weeklyPlanning/semantic/weeklyPlanningSemanticNormalizerV5.ts
+          git add src/features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeExecutor.ts
+          git commit -m 'fix: route focused planning semantics by machine phase'
+          git push origin HEAD:agent/weekly-ai-conversation-eval
