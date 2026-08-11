@@ -17,6 +17,9 @@ import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlannin
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
 import {
+  createWeeklyPlanningSelfRepairNoticeV5,
+} from './semantic/weeklyPlanningSelfRepairV5';
+import {
   createWeeklyPlanningStableV5DialogueProjection,
 } from './semantic/weeklyPlanningStableV5DialogueProjection';
 import {
@@ -130,6 +133,22 @@ function systemDialogueRendererTrace(message: string): WeeklyPlanningDialogueRen
   };
 }
 
+function selfRepairNotice(params: {
+  input: WeeklyPlanningTurnExecutionInput;
+  result: WeeklyPlanningTurnExecutionResult;
+}): string | null {
+  if (!params.result.stableV5Graph) return null;
+  return createWeeklyPlanningSelfRepairNoticeV5({
+    graph: params.result.stableV5Graph,
+    currentTurnId: params.input.traceRequestId,
+  })?.message ?? null;
+}
+
+function withSelfRepairNotice(message: string, notice: string | null): string {
+  if (!notice || message.includes(notice)) return message;
+  return `${notice} ${message}`;
+}
+
 async function renderStableV5AssistantMessage(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -153,6 +172,7 @@ async function renderStableV5AssistantMessage(params: {
     return result;
   }
 
+  const notice = selfRepairNotice(params);
   const actionKind = stableV5DialogueActionKind(params.result);
   const questionCode = stableV5QuestionCode(params.result.state);
   const actionId = [
@@ -167,7 +187,10 @@ async function renderStableV5AssistantMessage(params: {
       .slice(-RECENT_TURN_LIMIT)
       .map(({ role, content }) => ({ role, content })),
     planningInformation: params.result.stableV5Graph
-      ? createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph)
+      ? {
+          ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
+          selfRepairNotice: notice,
+        }
       : null,
     actionKind,
     questionCode,
@@ -175,7 +198,7 @@ async function renderStableV5AssistantMessage(params: {
       questionCode,
       fallbackText: params.result.message,
     }),
-    fallbackText: params.result.message,
+    fallbackText: withSelfRepairNotice(params.result.message, notice),
     previewCount: params.result.draftCandidates.length,
   } as const;
   recordWeeklyPlanningStableV5DebugTrace({
@@ -199,10 +222,12 @@ async function renderStableV5AssistantMessage(params: {
       status: rendered.status,
       reason: rendered.status === 'fallback' ? rendered.reason : null,
       rawResponse: rendered.rawResponse,
+      selfRepairNotice: notice,
     },
   });
 
   if (rendered.status === 'fallback') {
+    const finalMessage = withSelfRepairNotice(params.result.message, notice);
     const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
       actionId,
       actionKind,
@@ -222,11 +247,16 @@ async function renderStableV5AssistantMessage(params: {
       decision: {
         branch: 'deterministic_fallback',
         responseSource: 'deterministic_fallback',
-        finalMessage: params.result.message,
+        finalMessage,
       },
     };
+    const state = params.result.state.questions.length > 0
+      ? { ...params.result.state, questions: [finalMessage] }
+      : params.result.state;
     const result = {
       ...params.result,
+      state,
+      message: finalMessage,
       responseSource: 'deterministic_fallback' as const,
       dialogueRendererTrace,
     };
@@ -240,13 +270,15 @@ async function renderStableV5AssistantMessage(params: {
         reason: rendered.reason,
         responseSource: result.responseSource,
         message: result.message,
+        selfRepairNotice: notice,
       },
     });
     return result;
   }
 
+  const finalMessage = withSelfRepairNotice(rendered.text, notice);
   const state = params.result.state.questions.length > 0
-    ? { ...params.result.state, questions: [rendered.text] }
+    ? { ...params.result.state, questions: [finalMessage] }
     : params.result.state;
   const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
     actionId,
@@ -267,13 +299,13 @@ async function renderStableV5AssistantMessage(params: {
     decision: {
       branch: 'ai_rendered',
       responseSource: 'ai',
-      finalMessage: rendered.text,
+      finalMessage,
     },
   };
   const result = {
     ...params.result,
     state,
-    message: rendered.text,
+    message: finalMessage,
     responseSource: 'ai' as const,
     dialogueRendererTrace,
   };
@@ -285,6 +317,7 @@ async function renderStableV5AssistantMessage(params: {
       actionId,
       responseSource: result.responseSource,
       message: result.message,
+      selfRepairNotice: notice,
       preservedQuestionContext: result.state.lastQuestionContext ?? null,
     },
   });
