@@ -29,6 +29,11 @@ export interface GenericWorkItemQuantity {
   } | null;
 }
 
+export type GenericWorkItemEstimateBasis =
+  | 'intrinsic_duration'
+  | 'direct_effort'
+  | 'observed_pace';
+
 export interface GenericPlanningWorkItem {
   version: typeof GENERIC_WORK_ITEM_VERSION;
   id: string;
@@ -40,7 +45,9 @@ export interface GenericPlanningWorkItem {
   actionability: 'actionable' | 'needs_resolution';
   quantity: GenericWorkItemQuantity;
   estimatedMinutes: number | null;
+  estimateBasis: GenericWorkItemEstimateBasis | null;
   estimateSourceFactIds: string[];
+  estimateSourceWorkloadFactIds: string[];
   splitPolicy: 'splittable' | 'atomic' | 'unknown';
   periodExpression: string | null;
   sourceFactRefs: string[];
@@ -146,37 +153,57 @@ function targetMatches(
 
 interface EstimateResolution {
   estimatedMinutes: number | null;
+  basis: GenericWorkItemEstimateBasis | null;
   sourceFactIds: string[];
+  sourceWorkloadFactIds: string[];
   ambiguous: boolean;
 }
 
-function resolveEstimatedMinutes(params: {
+function intrinsicEstimate(workload: WorkloadFact): EstimateResolution | null {
+  if (workload.unitCode === 'minute') {
+    return {
+      estimatedMinutes: workload.amount,
+      basis: 'intrinsic_duration',
+      sourceFactIds: [],
+      sourceWorkloadFactIds: [],
+      ambiguous: false,
+    };
+  }
+  if (workload.unitCode === 'hour') {
+    return {
+      estimatedMinutes: workload.amount * 60,
+      basis: 'intrinsic_duration',
+      sourceFactIds: [],
+      sourceWorkloadFactIds: [],
+      ambiguous: false,
+    };
+  }
+  return null;
+}
+
+function directEstimate(params: {
   workload: WorkloadFact;
   estimates: ReadonlyArray<EffortEstimateFact>;
 }): EstimateResolution {
   const workload = params.workload;
-
-  if (workload.unitCode === 'minute') {
-    return { estimatedMinutes: workload.amount, sourceFactIds: [], ambiguous: false };
-  }
-  if (workload.unitCode === 'hour') {
-    return { estimatedMinutes: workload.amount * 60, sourceFactIds: [], ambiguous: false };
-  }
-
   const matching = params.estimates.filter((estimate) => targetMatches(estimate, workload));
   const perUnit = matching.filter((estimate) =>
     estimate.kind === 'duration_per_unit' && estimate.unitCode === workload.unitCode);
   if (perUnit.length === 1) {
     return {
       estimatedMinutes: perUnit[0].minutes * workload.amount,
+      basis: 'direct_effort',
       sourceFactIds: [perUnit[0].id],
+      sourceWorkloadFactIds: [],
       ambiguous: false,
     };
   }
   if (perUnit.length > 1) {
     return {
       estimatedMinutes: null,
+      basis: null,
       sourceFactIds: perUnit.map((value) => value.id),
+      sourceWorkloadFactIds: [],
       ambiguous: true,
     };
   }
@@ -185,14 +212,18 @@ function resolveEstimatedMinutes(params: {
   if (total.length === 1) {
     return {
       estimatedMinutes: total[0].minutes,
+      basis: 'direct_effort',
       sourceFactIds: [total[0].id],
+      sourceWorkloadFactIds: [],
       ambiguous: false,
     };
   }
   if (total.length > 1) {
     return {
       estimatedMinutes: null,
+      basis: null,
       sourceFactIds: total.map((value) => value.id),
+      sourceWorkloadFactIds: [],
       ambiguous: true,
     };
   }
@@ -201,19 +232,99 @@ function resolveEstimatedMinutes(params: {
   if (workload.unitCode === 'session' && session.length === 1) {
     return {
       estimatedMinutes: session[0].minutes * workload.amount,
+      basis: 'direct_effort',
       sourceFactIds: [session[0].id],
+      sourceWorkloadFactIds: [],
       ambiguous: false,
     };
   }
   if (workload.unitCode === 'session' && session.length > 1) {
     return {
       estimatedMinutes: null,
+      basis: null,
       sourceFactIds: session.map((value) => value.id),
+      sourceWorkloadFactIds: [],
       ambiguous: true,
     };
   }
 
-  return { estimatedMinutes: null, sourceFactIds: [], ambiguous: false };
+  return {
+    estimatedMinutes: null,
+    basis: null,
+    sourceFactIds: [],
+    sourceWorkloadFactIds: [],
+    ambiguous: false,
+  };
+}
+
+function samePaceScope(left: WorkloadFact, right: WorkloadFact): boolean {
+  return left.taskId === right.taskId
+    && left.componentId === right.componentId
+    && left.unitCode === right.unitCode;
+}
+
+function observedPaceEstimate(params: {
+  workload: WorkloadFact;
+  workloads: ReadonlyArray<WorkloadFact>;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): EstimateResolution {
+  if (params.workload.amount <= 0) {
+    return {
+      estimatedMinutes: null,
+      basis: null,
+      sourceFactIds: [],
+      sourceWorkloadFactIds: [],
+      ambiguous: false,
+    };
+  }
+
+  const completed = params.workloads.filter((candidate) =>
+    candidate.quantityRole === 'completed'
+    && candidate.amount > 0
+    && samePaceScope(candidate, params.workload));
+  const evidence = completed.flatMap((completedWorkload) => {
+    const durations = params.estimates.filter((estimate) =>
+      estimate.taskId === completedWorkload.taskId
+      && estimate.targetFactId === completedWorkload.id
+      && estimate.kind === 'total_duration');
+    return durations.map((estimate) => ({ completedWorkload, estimate }));
+  });
+
+  if (evidence.length !== 1) {
+    return {
+      estimatedMinutes: null,
+      basis: null,
+      sourceFactIds: evidence.map(({ estimate }) => estimate.id),
+      sourceWorkloadFactIds: evidence.map(({ completedWorkload }) => completedWorkload.id),
+      ambiguous: evidence.length > 1,
+    };
+  }
+
+  const [{ completedWorkload, estimate }] = evidence;
+  return {
+    estimatedMinutes: (estimate.minutes / completedWorkload.amount) * params.workload.amount,
+    basis: 'observed_pace',
+    sourceFactIds: [estimate.id],
+    sourceWorkloadFactIds: [completedWorkload.id],
+    ambiguous: false,
+  };
+}
+
+function resolveEstimatedMinutes(params: {
+  workload: WorkloadFact;
+  workloads: ReadonlyArray<WorkloadFact>;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): EstimateResolution {
+  const intrinsic = intrinsicEstimate(params.workload);
+  if (intrinsic) return intrinsic;
+
+  const direct = directEstimate({
+    workload: params.workload,
+    estimates: params.estimates,
+  });
+  if (direct.ambiguous || direct.estimatedMinutes !== null) return direct;
+
+  return observedPaceEstimate(params);
 }
 
 function deriveSplitPolicy(workload: WorkloadFact): GenericPlanningWorkItem['splitPolicy'] {
@@ -282,6 +393,7 @@ export function compileGenericPlanningWorkItems(
 
     const estimate = resolveEstimatedMinutes({
       workload,
+      workloads: graph.workloads,
       estimates: graph.effortEstimates,
     });
     if (estimate.ambiguous) {
@@ -316,13 +428,16 @@ export function compileGenericPlanningWorkItems(
         actualRange: range,
       },
       estimatedMinutes: estimate.estimatedMinutes,
+      estimateBasis: estimate.basis,
       estimateSourceFactIds: estimate.sourceFactIds,
+      estimateSourceWorkloadFactIds: estimate.sourceWorkloadFactIds,
       splitPolicy: deriveSplitPolicy(workload),
       periodExpression: workload.periodExpression,
       sourceFactRefs: [
         workload.taskId,
         ...(workload.componentId ? [workload.componentId] : []),
         workload.id,
+        ...estimate.sourceWorkloadFactIds,
         ...estimate.sourceFactIds,
       ],
     });
