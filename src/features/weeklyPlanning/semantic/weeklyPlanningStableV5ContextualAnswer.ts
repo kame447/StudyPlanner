@@ -1,4 +1,7 @@
 import {
+  createWeeklyPlanningEffortQuestionPlanV5,
+} from './weeklyPlanningEffortQuestionPolicyV5';
+import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import {
@@ -277,13 +280,14 @@ function applyEffortAnswer(
     || input.graph.appliedTurnKeys.includes(turnKey(input))
   ) return null;
 
+  const questionPlan = createWeeklyPlanningEffortQuestionPlanV5(target);
   const fact: EffortEstimateFactV5 = {
     id,
     taskId: target.taskId,
     targetFactId: target.id,
-    kind: 'total_duration',
+    kind: questionPlan.kind,
     minutes: candidate.minutes,
-    unitCode: null,
+    unitCode: questionPlan.unitCode as EffortEstimateFactV5['unitCode'],
     precision: candidate.precision,
     source: {
       conversationId: input.conversationId,
