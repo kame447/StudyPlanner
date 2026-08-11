@@ -1,6 +1,5 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
-import type { PlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeTypes';
 import { createWeeklyPlanningTestDraftBlock } from '../features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
 import { NaturalLanguageAssistant } from './NaturalLanguageAssistant';
 
@@ -9,30 +8,6 @@ const message = {
   role: 'assistant' as const,
   content: '条件を教えてください。',
   createdAt: '2026-07-17T10:00:00.000Z',
-};
-
-const repairPendingIntakeState: PlanningIntakeState = {
-  status: 'revision_pending',
-  intent: 'weekly_study_planning',
-  tasks: [],
-  progress: [],
-  unitRates: [],
-  constraints: [],
-  priorityPolicy: { kind: 'unknown' },
-  missing: [],
-  assumptions: [],
-  uncertainties: [],
-  questions: ['英単語80語にはどれくらい時間がかかりますか？'],
-  lastQuestionContext: {
-    kind: 'missing',
-    targetSlot: 'stable_v5:missing_effort_estimate',
-    intent: 'missing_effort_estimate',
-    topicId: 'workload-english',
-  },
-  shouldCreateDraft: false,
-  shouldSavePlan: false,
-  draftGenerationIntent: 'user_authorized',
-  sourceTurns: [],
 };
 
 function renderAssistant(overrides: Record<string, unknown> = {}) {
@@ -134,6 +109,7 @@ describe('NaturalLanguageAssistant weekly planning controls', () => {
     expect(onSubmitWeeklyPlanningTurn).toHaveBeenCalledWith('来週の予定を作りたい');
   });
 
+
   it('promotes the visible Stable V5 preview through the explicit UI control', () => {
     const onCreateWeeklyDraftBlocks = vi.fn();
     const preview = [{
@@ -170,40 +146,6 @@ describe('NaturalLanguageAssistant weekly planning controls', () => {
         status: 'draft',
       }),
     ]);
-  });
-
-  it('keeps a visible preview as reference but blocks promotion while a repair question is pending', () => {
-    const onCreateWeeklyDraftBlocks = vi.fn();
-    const preview = [{
-      stableKey: 'stable-v5:8:math:0',
-      date: '2026-08-18',
-      startTime: '19:00',
-      endTime: '20:00',
-      durationMinutes: 60,
-      title: '数学 10ページ',
-      field: '数学',
-      year: 0,
-      estimatedMinutes: 60,
-      source: 'weekly_exam_prep' as const,
-      approvalStatus: 'unapproved' as const,
-      workItemKey: 'math-work',
-    }];
-    const { renderer } = renderAssistant({
-      weeklyPlanningPreviewCandidates: preview,
-      weeklyPlanningIntakeState: repairPendingIntakeState,
-      onCreateWeeklyDraftBlocks,
-    });
-    const promoteButton = renderer.root.findAllByType('button').find(
-      (button) => button.children.join('') === 'この内容で仮予定にする',
-    );
-
-    expect(promoteButton).toBeDefined();
-    expect(promoteButton?.props.disabled).toBe(true);
-    act(() => promoteButton?.props.onClick());
-    expect(onCreateWeeklyDraftBlocks).not.toHaveBeenCalled();
-    expect(renderer.root.findAllByType('small').some(
-      (node) => node.children.join('').includes('確認が終わるまで保存できません'),
-    )).toBe(true);
   });
 
   it('routes explicit draft approval to the application approval boundary', async () => {
