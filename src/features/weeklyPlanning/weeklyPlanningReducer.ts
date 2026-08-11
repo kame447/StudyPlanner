@@ -149,6 +149,13 @@ export function weeklyPlanningReducer(
     case 'load_state':
       return action.state;
 
+    case 'set_week_anchor':
+      if (action.weekStartDate === state.weekStartDate) return state;
+      return withMutation(state, {
+        ...state,
+        weekStartDate: action.weekStartDate,
+      });
+
     case 'begin_turn': {
       const currentRequestSequence = state.conversationRequestSequence ?? 0;
       const requestSequence = action.requestSequence ?? currentRequestSequence + 1;
