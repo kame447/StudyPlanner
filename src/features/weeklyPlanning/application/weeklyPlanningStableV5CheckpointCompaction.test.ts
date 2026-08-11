@@ -12,7 +12,7 @@ import {
   installWeeklyPlanningTestStorage,
   type MemoryStorageHarness,
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
-import type { WeeklyPlanningMessage } from '../types';
+import type { PlanningState, WeeklyPlanningMessage } from '../types';
 import { createInitialPlanningState } from '../weeklyPlanningReducer';
 import {
   loadOwnedWeeklyPlanningState,
@@ -65,10 +65,10 @@ describe('Stable V5 checkpoint compaction', () => {
   });
 
   it('stores the newest recurrent state instead of falling back to an older checkpoint when raw history exceeds storage limits', () => {
-    const oldState = {
+    const oldState: PlanningState = {
       ...createInitialPlanningState(WEEK_START),
       conversationRequestSequence: 1,
-      mode: 'collecting_tasks' as const,
+      mode: 'collecting_tasks',
       messages: [
         message({ turn: 1, role: 'user', content: 'old-user' }),
         message({ turn: 1, role: 'assistant', content: 'old-assistant' }),
@@ -78,28 +78,28 @@ describe('Stable V5 checkpoint compaction', () => {
     saveOwnedWeeklyPlanningState(OWNER_ID, oldState);
 
     const messages = longConversationMessages(120);
-    const newestState = {
+    const newestState: PlanningState = {
       ...createInitialPlanningState(WEEK_START),
       revision: 240,
       conversationRequestSequence: 120,
-      mode: 'collecting_tasks' as const,
+      mode: 'collecting_tasks',
       messages,
       lastAssistantMessage: messages[messages.length - 1].content,
       intakeState: {
-        status: 'revision_pending' as const,
-        intent: 'weekly_study_planning' as const,
+        status: 'revision_pending',
+        intent: 'weekly_study_planning',
         tasks: [],
         progress: [],
         unitRates: [],
         constraints: [],
-        priorityPolicy: { kind: 'unknown' as const },
+        priorityPolicy: { kind: 'unknown' },
         missing: [],
         assumptions: [],
         uncertainties: [],
         questions: ['次の条件を教えてください。'],
         shouldCreateDraft: false,
         shouldSavePlan: false,
-        draftGenerationIntent: 'user_authorized' as const,
+        draftGenerationIntent: 'user_authorized',
         sourceTurns: ['最初に予定作成を依頼した'],
       },
     };
@@ -121,32 +121,35 @@ describe('Stable V5 checkpoint compaction', () => {
     expect(persisted.planningState.conversationRequestSequence).toBe(120);
     expect(persisted.planningState.messages.length).toBeLessThanOrEqual(200);
     expect(persisted.planningState.messages.length).toBeGreaterThan(0);
-    expect(persisted.planningState.messages.at(-1)?.id).toBe(
-      `${CONVERSATION_ID}:turn:120:assistant`,
-    );
+    const persistedLastMessage = persisted.planningState.messages[
+      persisted.planningState.messages.length - 1
+    ];
+    expect(persistedLastMessage?.id).toBe(`${CONVERSATION_ID}:turn:120:assistant`);
     expect(persisted.planningState.intakeState?.draftGenerationIntent).toBe('user_authorized');
 
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     const restored = loadOwnedWeeklyPlanningState(OWNER_ID, WEEK_START);
     expect(restored.conversationRequestSequence).toBe(120);
-    expect(restored.messages.at(-1)?.id).toBe(`${CONVERSATION_ID}:turn:120:assistant`);
+    expect(restored.messages[restored.messages.length - 1]?.id).toBe(
+      `${CONVERSATION_ID}:turn:120:assistant`,
+    );
     expect(restored.intakeState?.draftGenerationIntent).toBe('user_authorized');
   });
 
   it('removes a stale Stable V5 checkpoint before using compatibility fallback', () => {
-    const oldState = {
+    const oldState: PlanningState = {
       ...createInitialPlanningState(WEEK_START),
       conversationRequestSequence: 1,
-      mode: 'collecting_tasks' as const,
+      mode: 'collecting_tasks',
       messages: [message({ turn: 1, role: 'user', content: 'old-state' })],
     };
     saveOwnedWeeklyPlanningState(OWNER_ID, oldState);
 
-    const invalidForStableCheckpoint = {
+    const invalidForStableCheckpoint: PlanningState = {
       ...createInitialPlanningState(WEEK_START),
       revision: 2,
       conversationRequestSequence: 2,
-      mode: 'awaiting_approval' as const,
+      mode: 'awaiting_approval',
       draftBlocks: Array.from({ length: 501 }, (_, index) =>
         createWeeklyPlanningTestDraftBlock({
           id: `draft-${index + 1}`,
