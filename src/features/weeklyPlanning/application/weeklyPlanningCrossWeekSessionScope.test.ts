@@ -50,7 +50,7 @@ describe('cross-week weekly planning session scope', () => {
     });
   });
 
-  it('updates the controller week anchor without rotating conversation identity or request sequence', () => {
+  it('updates the controller week anchor without consulting week-scoped persistence or rotating identity', () => {
     const services = lifecycleServices();
     const session = createWeeklyPlanningControllerSession(
       'user-1',
@@ -72,6 +72,8 @@ describe('cross-week weekly planning session scope', () => {
       weekStartDate: '2026-08-17',
       requestSequence: 4,
     });
+    expect(services.loadPersistedSession).not.toHaveBeenCalled();
+    expect(services.hydrateRuntimeSession).not.toHaveBeenCalled();
     expect(services.resetControllerSession).not.toHaveBeenCalled();
     expect(services.bindRuntimeSessionScope).toHaveBeenCalledWith({
       ownerId: 'user-1',
