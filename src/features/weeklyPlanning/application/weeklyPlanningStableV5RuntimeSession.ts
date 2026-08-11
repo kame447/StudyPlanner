@@ -110,6 +110,15 @@ export function getWeeklyPlanningStableV5RuntimeSessionForScope(params: {
   return matching ? cloneSession(matching) : null;
 }
 
+export function getWeeklyPlanningStableV5RuntimeSessionForOwner(
+  ownerId: string,
+): WeeklyPlanningStableV5RuntimeSession | null {
+  const matching = [...sessions.values()]
+    .filter((session) => session.ownerId === ownerId)
+    .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+  return matching ? cloneSession(matching) : null;
+}
+
 export function getOrCreateWeeklyPlanningStableV5RuntimeSession(params: {
   ownerId: string;
   conversationId: string;
@@ -143,9 +152,6 @@ export function bindWeeklyPlanningStableV5RuntimeSessionScope(params: {
   if (current && current.ownerId !== params.ownerId) {
     throw new Error('Stable V5 runtime session owner mismatch.');
   }
-  if (current && current.weekStartDate && current.weekStartDate !== params.weekStartDate) {
-    throw new Error('Stable V5 runtime session week mismatch.');
-  }
   const next: WeeklyPlanningStableV5RuntimeSession = current
     ? {
         ...current,
@@ -174,9 +180,6 @@ export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
   const existing = sessions.get(params.conversationId);
   if (existing && existing.ownerId !== params.ownerId) {
     throw new Error('Stable V5 runtime session owner mismatch.');
-  }
-  if (existing && existing.weekStartDate && existing.weekStartDate !== params.weekStartDate) {
-    throw new Error('Stable V5 runtime session week mismatch.');
   }
   discardAllStagedGraphsForConversation(params.conversationId);
   const hydrated: WeeklyPlanningStableV5RuntimeSession = {
