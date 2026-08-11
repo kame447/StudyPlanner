@@ -1,16 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import {
   createWeeklyPlanningTestDraftBlock,
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import {
+  createEmptyWeeklyPlanningFactGraphV5,
+} from '../semantic/weeklyPlanningFactGraphV5';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
+import {
+  hydrateWeeklyPlanningStableV5RuntimeSession,
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './weeklyPlanningStableV5RuntimeSession';
 import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplication';
 
 const OWNER_ID = 'user-estimate-metadata';
 const CONVERSATION_ID = 'conversation-estimate-metadata';
 const WEEK_START = '2026-08-10';
+
+function runtimeGraph() {
+  return {
+    ...createEmptyWeeklyPlanningFactGraphV5(),
+    revision: 1,
+  };
+}
 
 function store(): {
   getState(): PlanningState;
@@ -95,6 +109,20 @@ function store(): {
 }
 
 describe('weekly planning estimate metadata approval', () => {
+  beforeEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: OWNER_ID,
+      weekStartDate: WEEK_START,
+      conversationId: CONVERSATION_ID,
+      graph: runtimeGraph(),
+    });
+  });
+
+  afterEach(() => {
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  });
+
   it('persists the unrounded baseline separately from the 75-minute calendar allocation', async () => {
     const state = store();
     let savedDraft: PlanDraft | null = null;
