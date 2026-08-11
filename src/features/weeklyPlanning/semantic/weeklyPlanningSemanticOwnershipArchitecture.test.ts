@@ -1,11 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { createGroundedContextualAnswerDocumentV5 } from './weeklyPlanningContextualAnswerDocumentV5';
-import { createGroundedCreationAuthorizationDocumentV5 } from './weeklyPlanningCreationAuthorizationV5';
-import {
-  directWorkCoverageErrorsV5,
-  extractDirectWorkExpectationsV5,
-} from './weeklyPlanningDirectWorkCoverageV5';
-import { normalizeTaskBoundariesV5 } from './weeklyPlanningTaskBoundaryContractV5';
 import {
   normalizePlanningWindowCanonicalV5,
   relativeWindowSourceExpectationV5,
@@ -32,73 +25,6 @@ function emptyDocument(): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 semantic ownership architecture', () => {
-  it('does not synthesize creation authorization from user wording', () => {
-    expect(createGroundedCreationAuthorizationDocumentV5('この条件で予定を作って'))
-      .toBeNull();
-  });
-
-  it('does not synthesize a contextual answer document from a short reply', () => {
-    expect(createGroundedContextualAnswerDocumentV5({
-      userText: '3時間です',
-      publicStateSummary: {
-        graphRevision: 4,
-        pendingQuestion: {
-          questionCode: 'missing_effort_estimate',
-          targetFactId: 'workload:40-problems',
-          graphRevision: 4,
-        },
-      },
-    })).toBeNull();
-  });
-
-  it('does not re-extract work meaning from user text', () => {
-    expect(extractDirectWorkExpectationsV5('英語を40問、数学を20問進める')).toEqual([]);
-    expect(directWorkCoverageErrorsV5({
-      userText: '英語を40問、数学を20問進める',
-      document: emptyDocument(),
-    })).toEqual([]);
-  });
-
-  it('does not rename or split AI-selected task boundaries', () => {
-    const document = emptyDocument();
-    document.tasks.push({
-      localId: 'task-1',
-      category: 'study',
-      title: '英語',
-      study: {
-        purpose: 'practice',
-        contextLabel: null,
-        components: [
-          {
-            localId: 'component-1',
-            parentLocalId: null,
-            role: 'material',
-            label: '英語',
-            workloads: [],
-            sourceText: '英語',
-          },
-          {
-            localId: 'component-2',
-            parentLocalId: null,
-            role: 'material',
-            label: '数学',
-            workloads: [],
-            sourceText: '数学',
-          },
-        ],
-      },
-      workloads: [],
-      effortEstimates: [],
-      temporalConstraints: [],
-      recurrence: [],
-      sourceText: '英語と数学',
-    });
-
-    const normalized = normalizeTaskBoundariesV5(document);
-    expect(normalized.document).toBe(document);
-    expect(normalized.repairs).toEqual([]);
-  });
-
   it('does not reinterpret relative dates from sourceText', () => {
     const window = {
       localId: 'window-1',

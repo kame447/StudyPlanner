@@ -13,9 +13,6 @@ const {
   renderDialogueMock: vi.fn(),
 }));
 
-vi.mock('./application/weeklyPlanningRuntimeMode', () => ({
-  isWeeklyPlanningStableV5RuntimeEnabled: () => true,
-}));
 
 vi.mock('./application/weeklyPlanningStableV5InstrumentedRuntimeExecutor', () => ({
   executeWeeklyPlanningStableV5RuntimeTurn: executeRuntimeMock,

@@ -1,241 +1,209 @@
 # weeklyPlanning current contract v5
 
-Status: canonical / active for Stable V5 trial and remaining migration
-Updated: 2026-07-27
-Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
+Status: canonical / Stable V5 production baseline
+Updated: 2026-08-11
 
-- Runtime state: [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
-- Development full debug trace: [weekly-planning-stable-v5-full-debug-trace.md](weekly-planning-stable-v5-full-debug-trace.md)
-- Schema registry: [weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md)
-- Stable V5 migration plan: [strategy/weekly-planning-semantic-stable-v5-migration-plan.md](strategy/weekly-planning-semantic-stable-v5-migration-plan.md)
-- Implementation status: [strategy/weekly-planning-semantic-stable-v5-implementation-status.md](strategy/weekly-planning-semantic-stable-v5-implementation-status.md)
-- Architecture: [weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md)
-- Availability architecture: [weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md)
-- Roadmap: [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)
+Canonical references:
 
-この文書はsemantic v5とStable V5 runtime trialの最優先contractである。runtime接続、browser persistence、conversation identity、trace continuity、rollbackについてはruntime trial contractを優先する。schemaの実在世代と廃止条件はschema registryを正とする。実ユーザー投入前の観測内容についてはdevelopment full debug trace contractを優先する。
+- [current contract status](weekly-planning-current-contract-status.md)
+- [runtime contract](weekly-planning-stable-v5-runtime-trial-contract.md)
+- [test philosophy](testing/weekly-planning-test-philosophy.md)
+- [main roadmap](strategy/weekly-planning-roadmap.md)
+- [semantic roadmap](strategy/weekly-planning-semantic-v5-roadmap.md)
+- [execution sequence](tasks/20260811-weekly-planning-merge-cleanup-refactor-sequence.md)
+- [semantic schema](../architecture/weekly-planning-semantic-schema-v5.md)
+- [dialogue architecture](../architecture/weekly-planning-dialogue-architecture-v5.md)
 
-## 1. 意味解釈境界
+この文書は週間計画Stable V5のAI/core責務と主要machine contractの正本である。過去のAlpha、feature-flag trial、legacy runtime、固定scenario eval文書と競合する場合は本書を優先する。
 
-raw user textからtask、quantity、time、relation、availability、correction、decision、明示的な外部予定source requestを生成する主体はsingle AI semantic normalizerだけとする。
+## 1. Runtime baseline
 
-AI出力は`WeeklyPlanningSemanticDocumentV5`であり、database state、reducer command、scheduler requestではない。AIは内部mutation command、missing slot、質問、readiness、preview可否、配置、approval、saveを決定しない。
-
-validator、canonicalizer、resolver、readiness、dialogue、scheduler、safety層はraw textを再解釈しない。provider failure、空応答、不正JSON、schema不一致、全拒否、repair失敗でもparserへfallbackしない。repairはJSON/schema修復に限り、一turn最大一回とする。
-
-failed/rejected turnはaccepted facts、question context、preview、proposal、draft、committed Graphを変更しない。
-
-## 2. 汎用task model
-
-唯一の大枠は`PlanningTask`である。
+Stable V5が唯一のproduction週間計画runtimeである。legacy interpreter、parser fallback、semantic V1/V2、runtime mode selectorへ戻すproduction経路を持たない。
 
 ```text
-PlanningTask
-├─ category: study | non_study | unknown
-├─ title
-├─ study context / components
-├─ workloads
-├─ effort estimates
-├─ temporal constraints
-└─ recurrence
+NaturalLanguageAssistant
+→ weeklyPlanningTurnExecutor
+→ Stable V5 semantic AI
+→ validator / optional one-shot AI repair
+→ deterministic Fact Graph V5
+→ readiness / scheduler / dialogue decision
+→ AI renderer
+→ preview UI
+→ draft / approval / Plan save
 ```
 
-院試、資格試験、大学受験等をtop-level専用型にしない。院試は`category=study`、`purpose=exam`、`contextLabel=大学院入試`として表す。科目、分野、教材、章、単元、技能はcomponentで表す。
+旧保存形式を現在形式へ読むmigration compatibilityと、現行trace/storage decoderに必要な過去形式互換はruntime切替ではない。production dataを安全に読むために必要な間は残してよい。
 
-componentとworkloadの対応をID参照で保持し、配列位置へ依存しない。分類が不明なら`unknown`を許可し、計画を妨げない低影響不明を即時質問しない。
+## 2. AI意味理解責務
 
-## 3. 数量、時間、availability
+raw user textから次を理解する主体はAIである。
 
-- workloadは作業量を表す。
-- effort estimateは所要時間見積りを表す。
-- temporal constraintは特定taskの開始、終了、固定区間、締切、希望、回避時間を表す。
-- task date ruleは特定taskの許可日・除外日を表す。
-- recurrenceはtaskまたはavailabilityの繰り返しを表す。
-- planning windowは計画全体の期間だけを表す。
-- plan-wide availability declarationはtaskを持たない空き、利用不可、希望、回避時間を表す。
-- external source requestはtimetable、existing plans、calendarを使うという要求だけを表す。
+- task / component
+- workloadとquantity role
+- effort estimate
+- planning window
+- 曜日、日付、時間帯、task-local temporal constraint
+- recurrence / availability / relation
+- correction / decision / authorization intent
+- 会話文脈に基づく短答の意味
 
-workloadのquantity roleは次とする。
+AIはformal fact ID、revision、lifecycle mutation、readiness、質問優先度、scheduler placement、preview freshness、approval、saveを決めない。
+
+deterministic codeはraw user textを再解析してAIの意味を上書きしない。日本語regex、特定フレーズ、固定scenario分岐で意味を復元しない。
+
+provider failure、空応答、不正JSON、schema rejection、repair failureからparserへfallbackしない。semantic repairは最大1回とする。
+
+focused semanticを使う場合も意味解釈はfocused AIが担当する。deterministic routerはmachine stateから「どの限定責務へ渡すか」を選ぶだけとする。
+
+## 3. Semantic document contract
+
+AI出力はcurrent-turn semantic deltaであり、現在の計画全体のsnapshotではない。
+
+現在発話で新規に述べた、変更した、訂正した、または判断した内容だけを返す。public state summaryに存在する過去factを根拠なく再出力しない。
+
+`sourceText`はcurrent user textに根拠を持つ。過去発話をcurrent deltaのevidenceとして扱わない。
+
+主要構造は次である。
+
+```text
+WeeklyPlanningSemanticDocumentV5
+├─ planningIntent
+├─ planningWindow
+├─ tasks
+│  ├─ components
+│  ├─ workloads
+│  ├─ effortEstimates
+│  ├─ temporalConstraints
+│  └─ recurrence
+├─ relations
+├─ availabilityDeclarations
+├─ constraintSourceRequests
+├─ uncertainties
+├─ corrections
+└─ decisions
+```
+
+workloadのquantity roleは次を使用する。
 
 ```text
 declared | target | remaining | completed | unknown
 ```
 
-量が明示されたが総量・残量・今回目標を確定できない場合は`declared`とする。task局所の「今週」「明日」をplanning windowへ無条件に昇格させない。
+総量と完了量が同時に与えられた場合、総量そのものをremainingとして扱わない。構造的一貫性違反はvalidatorで検出し、AI repairへ返す。deterministic codeが自然言語から差分量を再計算して意味を作らない。
 
-## 4. 日付、時間帯、曜日集合
+## 4. Date / time contract
 
-AI境界で日付と時間帯を分離する。
+AI境界で日付、曜日、時間帯をcanonical表現へ構造化する。
 
 ```text
 dateExpression:
   today | tomorrow | day_after_tomorrow | this_week | next_week
   | YYYY-MM-DD | custom:<原文>
 
+weekday:
+  sun | mon | tue | wed | thu | fri | sat
+
 namedTimePeriod:
   morning | afternoon | evening | night
   | before_sleep | before_meal | after_meal | custom:<原文>
-
-weekday:
-  sun | mon | tue | wed | thu | fri | sat
 ```
 
-validator以降で日本語日時を再解析しない。ISO形だけでなく実在日付を検証する。`custom:`は捏造して解決せず、未解決としてreadinessへ返す。
+標準曜日を`custom:`へ逃がさない。validator以降で日本語曜日を再解釈しない。解決不能な`custom:`は捏造せずreadinessへ返す。
 
-非連続日を最小日から最大日までのrangeへ変換しない。曜日rangeはAI境界でcanonical weekday集合へ展開し、task-level recurrenceはplanning window内の具体日へ決定論的に解決する。exact excluded dateはrecurrence由来候補から差し引く。明示的allowed/excludedが同一日に直接衝突した場合だけblocking conflictとする。
+scheduler既定時間帯はユーザーの明示preferred windowより弱い。明示された曜日・時間帯を既定09:00–22:00等のヒューリスティックで切り落とさない。
 
-## 5. canonical stateとtransaction
+## 5. Fact Graph / transaction
 
-AI出力をそのまま永続化しない。deterministic coreが`WeeklyPlanningFactGraphV5`へ変換する。
+AI documentはそのまま永続化せず、deterministic coreが`WeeklyPlanningFactGraphV5`へcanonicalizeする。
 
-- 正式ID、revision、owner、trusted metadataはcoreが発行する。
+- formal ID / revision / trusted metadataはcoreが発行する。
 - local IDは一response内参照に限定する。
-- accepted factをtask、study context、component、workload、effort、temporal constraint、task date rule、recurrence、relation、window、availability declaration、source request、uncertaintyへ分離する。
-- correction、delete、decisionはstable public refとlifecycleへ適用する。
-- 不完全なfactを保持し、根拠なしに補完しない。
-- 一turnのcanonical commitはatomicとし、検証失敗時はrevisionを進めない。
+- correction / delete / decisionはformal referenceとlifecycleへ適用する。
+- canonical commitはatomicとする。
+- validation failure時はaccepted graphを変更しない。
+- no-op turnではfact revisionを進めない。
+- no-opでもapplied turn/idempotency履歴は保持する。
+- staged graphはPlanningState commit成功後だけfinalizeする。
+- stale / cancel / week change / commit rejection / failureではstageを破棄する。
 
-Stable V5 document、validator、canonicalizer、Fact GraphはAlpha 1 / Alpha 2またはFact Graph V1/V2へprojectionしない。Alpha世代はlegacy evaluationと互換性記録のため残す。
+既存entityのidentity、同一workload、pending targetはformal bindingで扱う。raw textの類似だけで別factを同一視しない。
 
-runtime executorはGraph更新をrequest単位にstageする。PlanningState reducerが同じpending turnのcommitを受理した後だけGraphをfinalizeし、stale、cancel、week change、commit rejection、failure時はstageを破棄する。
+## 6. Readiness / scheduler
 
-## 6. external source acquisition
+readinessはaccepted machine stateだけから決める。
 
-外部予定取得結果は次の二つだけとする。
+- 認識済み各taskに予定化可能なworkloadが必要。
+- quantity role未確定はeffort不足より先に解消する。
+- missing情報は原則一件ずつ質問する。
+- partial placementを成功previewとして返さない。
+- existing plan / timetable / fixed commitmentはAIへ本文を送らずschedulerで扱う。
+- task-local weekday / allowed / excluded / preferred timeをplacementへ保持する。
 
-```text
-success(events)
-failure(reason)
-```
+AIはmissing slot、question target、preview gate、placementを決めない。
 
-`success(events=[])`は正常な予定なしである。pagination等の途中結果を上位へ渡さず、途中失敗時は全体を破棄する。timeout、network、rate limit、一時的server errorは既定最大3回まで再試行する。authentication、permission、source未設定、invalid responseは自動再試行しない。
+## 7. Dialogue / renderer
 
-failureを予定0件とみなさない。conversationとaccepted factsを保持し、ユーザーがsourceを使わず進めると明示した場合だけ依存を解除する。owner mismatchまたは不正eventが一件でもあればimport全体を拒否する。
+applicationがtyped dialogue decisionを作り、AI rendererが自然な日本語へ表現する。
 
-## 7. readinessとdialogue
+rendererはsemantic meaningを再決定しない。question target、Graph state、preview stateをrenderer textから逆推定しない。
 
-accepted fact diffからgrounded acknowledgementをdeterministicに生成し、readiness policyが次の質問を選ぶ。previewを妨げる高影響不足を一度に原則一件だけ確認する。
+AI返答の自然さを固定文言で自動合否にしない。deterministic fallback/UI固定文言だけは必要に応じてexact contractを持てる。
 
-AI normalizerはquestion target、missing優先順位、preview gateを決めない。短答結合はexpected revision、短答形、単一target、単一candidateを満たす場合だけ行う。長い別件入力、create-plan turn、availabilityやrelationを同時に含む入力を短答として誤結合しない。
+## 8. Preview / approval / save
 
-provider/schema failure、security rejection、external source failureでも入力済み内容を破棄せず、最初からやり直しを要求しない。
+previewはowner、conversation、Graph revision、source factsへ拘束する。
 
-## 8. scheduler境界
+- Graph revisionが変わったstale previewは承認しない。
+- preview後の実変更は再previewする。
+- no-op turnではschedulerを再実行せず既存previewを保持する。
+- preview candidateは既存UIからdraft blockへ昇格する。
+- approval/saveはapplicationの決定論的責務である。
+- 二重承認・二重保存・owner mismatch・stale操作を拒否する。
 
-schedulerへ渡す正本はgeneric scheduler inputである。
+チャット文面だけからdeterministic codeが直接保存を実行しない。AIがauthorization intentを理解しても、保存は既存application/UI contractを通す。
 
-```text
-planning window
-generic work items
-task commitment reservations
-task date eligibilities
-availability windows
-task relations
-source fact refs
-```
+## 9. Persistence / recovery / trace
 
-`exam_year`は単位の一つであり、全work itemの必須fieldではない。estimated minutes不足は推測せずreadinessへ返す。fixed taskを可動work itemとして二重配置しない。hard occupied/unavailableへ配置しない。named time period policyがなければ時刻を捏造しない。
+Stable V5 sessionはowner・week・conversationに拘束する。
 
-全作業を配置できない場合はpartial previewを返さない。previewはowner、conversation、Graph revision、source fact refs、task ID、PlanTypeへ拘束する。
+保存・復元対象はconversation identity、完了済みPlanningState、Fact Graph、preview、draft等を一貫したenvelopeとして扱い、部分復元を避ける。pending turn / pending approvalの半端なstateを永続化しない。
 
-## 9. conversation identityとbrowser persistence
+legacy storage payloadのmigration decoderは、既存利用者データを安全に読むための互換層であり、旧runtimeを再導入する理由にはしない。
 
-conversation、turn、request、message、local trace session、server trace handleを区別する。
+traceは同一logical conversationのidentityを維持し、request/turn/revision/sourceを観測可能にする。raw conversationやsemantic payloadのprivacy/retention契約を破らない。
 
-```text
-conversation ID: 一つの対話系列
-turn ID: conversation内のuser/assistant対
-request ID: 一回の非同期実行
-local trace session ID: browser側の連続trace entry列
-server trace handle: server repository上のcanonical session identity
-```
+## 10. Testing contract
 
-同じconversationを復元した場合、turn/request/message IDを再利用しない。controllerは保存済みmessage IDとPlanningState revisionから単調なsequence下限を復元して次番号を発行する。
+自動テストで保証するのは決定論的契約である。
 
-`clear_conversation`は画面に表示されるmessage履歴と最後のassistant表示だけを消す。同じconversation ID、request sequence、compatibility intake state、Fact Graph、preview、draft、approval作業状態、planning mode、persisted Stable V5 session、trace continuityを維持する。`clear_conversation`から`reset_session`を呼ばず、runtime、Graph、persisted session、trace sessionを削除しない。messagesが空になっても過去のrequest IDへ戻らない。
+対象:
 
-`reset_session`は「最初からやり直す」操作である。messages、intake、preview、draft、approval、request sequence、conversation identity、Fact Graph、persisted Stable V5 sessionを初期化し、新しいconversationを発行する。
+- schema / evidence validation
+- binding / lifecycle / revision / idempotency
+- readiness / scheduler / preview
+- correction / approval / save
+- storage / checkpoint / recovery
+- trace / request budget / prompt budget
+- production dependency boundary
 
-Stable V5 browser envelopeはowner、week、conversationに拘束し、完了済みPlanningState、Fact Graph、preview、draftを一体保存する。pending turn / approval中の半端なstateは保存しない。不正envelopeを部分復元しない。
+禁止:
 
-versioned payloadのdecodeは純粋処理として行い、検証のためにlive localStorage keyへpayloadを一時書込みしない。明示的saveまたはlegacy migration commit以外で保存領域を変更しない。
+- 特定AI返答文を正解に固定する。
+- 固定scenarioのsemantic結果をquality PASSとする。
+- model比較実験を通常CIへ残す。
+- prompt wording自体を回帰契約にする。
 
-これは同一browser内の保存であり、server/cross-device Graph persistenceではない。旧stateからGraph V5へのmigration decoderは未実装である。
+実AIの意味理解・自然さはhuman-reviewed real-API observationで確認し、明確な欠陥は最終ユーザー判断前に開発ループ内で修正する。
 
-## 10. trace、privacy、observability
+## 11. Current execution order
 
-Stable V5 traceはuser/assistant turn、structured internal event、snapshot、preview、failureを既存repositoryへ保存する。
-
-production向けの平常契約ではraw provider response、stack trace、external event本文を保存しない。ただし実ユーザー投入前のデバッグ期間は、[weekly-planning-stable-v5-full-debug-trace.md](weekly-planning-stable-v5-full-debug-trace.md)を優先し、credentialを除くprompt、provider raw response、stack、AI semantic document、Graph、validation、repair、canonicalization、scheduler、dialogue、preview、全判断基準を暗号化せず保存する。
-
-full debug traceは各logical stageを独立した`stable_v5_debug_stage` internal eventとして同じrequestIdへ保存する。大容量stageはUTF-8 JSONをbase64 chunkへ分割し、全chunkを保存する。state snapshotにはevent本文を重複保存せず要約だけを残す。
-
-staleまたはcommit rejectで実行結果を破棄した場合もdebug stageを保存する。ただし破棄されたassistant messageやcandidateを実際のassistant turn、preview、`hasPreview`として記録しない。
-
-基礎traceのinput revisionは最終revisionから推測せず、runtimeが実際に使用したGraph revisionをdebug stageから取得する。実入力revisionを取得できない旧traceだけは互換fallbackとして`graphRevision - 1`を使用する。
-
-physical trace continuityのscopeは`owner ID + logical conversation ID`とする。同じscopeでは、module memory消失、ページ再読込、remote repository再生成、30分を超えるidle、表示message履歴の消去があっても同じlocal trace session、連続sequence、連続turn index、同じserver-issued handleへ追記する。idle時間または空のmessage配列をconversation終了条件にしない。
-
-metadata-only cursorからsession ID、entry sequence、turn index、recent request IDを復元する。cursorへconversation本文、Graph、semantic documentを保存しない。trace counterとrequest dedupeはrepository append成功後だけcommitし、write failureはsequenceを消費しない。
-
-server-issued handleはowner・local sessionに拘束したlocal mappingへ保存し、repository instance再生成後も再利用する。serverがsession不存在、ownership conflict、legacy read-only、conversation conflictを明示した場合だけ再発行する。一時的network failureは同じcanonical payloadを再送する。
-
-stored handleをowner認証の正本として扱わない。Firebase認証、server-side owner token、immutable entry、retention、admin access audit契約を維持する。過去に分割済みのlogsは自動mergeしない。
-
-## 11. personalization
-
-個人最適化係数をSemanticDocumentまたはFact Graphへ混ぜない。profileはaccount単位、schema version付きで保持し、coefficient、scope、context、provenance、confidence、updatedAt、feature version、weight versionを持つ。
-
-単発のAI出力から長期係数を直接永続化せず、明示設定または計画と実績の集計を根拠に更新する。raw conversation本文をprofileへ保存しない。
-
-## 12. migrationとcutover
-
-新旧semantic resultを同一turnでmergeしない。production切替はexecutor単位かつsession generation単位で行う。Stable Graphを旧形式へdowngrade保存しない。
-
-現在の順序は次とする。
+Stable V5主要経路はPR #109でmainへmerge済みである。以降は次の順番を変更しない。
 
 ```text
-Stable V5 runtime trial
-→ automated test / typecheck / build
-→ Stable V5 real-eval
-→ read-only production shadow
-→ old state migration decoder / dry-run
-→ cutover rehearsal / rollback verification
-→ default cutover判断
-→ rollback observation
-→ legacy runtime deletion
+legacy / 過去経路削除
+→ 挙動不変リファクタ
+→ 7視点再棚卸し
+→ 新規改善再開
 ```
 
-pre-V5 fixtureとrunnerはGit履歴だけへ退避せずlegacy-eval領域で保持する。実AIを実行していない場合はreal-eval成功と書かない。runnerがstep開始前に失敗した場合は実行基盤失敗とtest failureを区別する。
-
-## 13. current status
-
-```text
-Stable direct schema / prompt / validator       implemented
-Stable normalizer / Fact Graph / lifecycle      implemented
-resolver / scheduler / deterministic dialogue   runtime connected
-preview / approval / Plan save                  runtime connected
-browser conversation / Graph persistence        implemented
-staged Graph atomic commit                       implemented
-Stable V5 trace recording                        implemented
-trace continuity across reload / idle            merged to main in PR #83
-controller ID continuity after clear / reload    merged to main in PR #83
-remote server handle continuity                  merged to main in PR #83
-message-only clear conversation boundary         implemented in Draft PR #86
-pure owner-bound storage decoder                 implemented in Draft PR #86
-full request-scoped debug stage trace             implemented in Draft PR #86
-oversized debug stage chunk reconstruction        implemented in Draft PR #86
-actual input Graph revision trace                 implemented in Draft PR #86
-stale / commit-rejected execution trace           implemented in Draft PR #86
-default runtime                                  legacy
-server / cross-device Graph persistence          not implemented
-old state migration decoder                      not implemented
-production shadow invocation                     not connected
-Stable V5 actual AI real-eval                     not confirmed
-full browser roleplay                             not confirmed
-default cutover                                   not started
-```
-
-PR #86のfocused test、full Vitest、typecheck、buildは未確認である。GitHub Actionsはstep 0件・logsなしでrunner起動前に失敗しており、code test failureとは判定しない。PR #86はDraftのまま維持する。
-
-七視点監査は[audits/20260724-stable-v5-trace-continuity/final-overseer.md](audits/20260724-stable-v5-trace-continuity/final-overseer.md)を参照する。
+legacy削除とリファクタを同一PRへ混ぜない。削除フェーズでは挙動改善を追加しない。リファクタフェーズでは原則public behaviorを変えない。

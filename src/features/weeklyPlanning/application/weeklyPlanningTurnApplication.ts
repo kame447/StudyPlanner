@@ -10,7 +10,6 @@ import {
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
 import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
-import { isWeeklyPlanningStableV5RuntimeEnabled } from './weeklyPlanningRuntimeMode';
 import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
 import {
   discardWeeklyPlanningApplicationTurn,
@@ -23,7 +22,6 @@ import {
 export interface WeeklyPlanningTurnApplicationServices {
   submitControlledTurn: typeof submitWeeklyPlanningControlledTurn;
   executeTurn: typeof executeWeeklyPlanningTurn;
-  isStableV5Enabled: typeof isWeeklyPlanningStableV5RuntimeEnabled;
   bindStableV5SessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
   saveOwnedState: typeof saveOwnedWeeklyPlanningState;
   finalizeTurn: typeof finalizeWeeklyPlanningApplicationTurn;
@@ -36,7 +34,6 @@ export interface WeeklyPlanningTurnApplicationServices {
 const defaultServices: WeeklyPlanningTurnApplicationServices = {
   submitControlledTurn: submitWeeklyPlanningControlledTurn,
   executeTurn: executeWeeklyPlanningTurn,
-  isStableV5Enabled: isWeeklyPlanningStableV5RuntimeEnabled,
   bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
   saveOwnedState: saveOwnedWeeklyPlanningState,
   finalizeTurn: finalizeWeeklyPlanningApplicationTurn,
@@ -71,13 +68,11 @@ export function submitWeeklyPlanningApplicationTurn(
     getState: params.getState,
     dispatch: params.dispatch,
     async execute({ snapshot, pending, userText }) {
-      if (services.isStableV5Enabled()) {
-        services.bindStableV5SessionScope({
-          ownerId: params.userId,
-          weekStartDate: snapshot.weekStartDate,
-          conversationId: pending.conversationId,
-        });
-      }
+      services.bindStableV5SessionScope({
+        ownerId: params.userId,
+        weekStartDate: snapshot.weekStartDate,
+        conversationId: pending.conversationId,
+      });
       return services.executeTurn({
         previousState: snapshot.intakeState,
         messages: snapshot.messages,

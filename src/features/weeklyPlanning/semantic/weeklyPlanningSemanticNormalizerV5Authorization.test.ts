@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
-  createGroundedCreationAuthorizationDocumentV5,
-} from './weeklyPlanningCreationAuthorizationV5';
-import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from './weeklyPlanningSemanticNormalizerV5';
 
@@ -21,14 +18,6 @@ const authorizationDocument = JSON.stringify({
 });
 
 describe('Stable V5 creation authorization ownership', () => {
-  it.each([
-    'この条件で予定を作って',
-    'その内容で仮予定を作成してください',
-    'これでスケジュールを組んでほしい',
-  ])('does not parse authorization before validating the AI response: %s', (userText) => {
-    expect(createGroundedCreationAuthorizationDocumentV5(userText)).toBeNull();
-  });
-
   it('accepts creation authorization when the AI explicitly returns create_plan', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => authorizationDocument),

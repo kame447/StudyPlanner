@@ -30,7 +30,6 @@ function createServices(overrides: Partial<WeeklyPlanningTurnApplicationServices
       message: '確認しました。',
       draftCandidates: [],
     })),
-    isStableV5Enabled: vi.fn(() => true),
     bindStableV5SessionScope: vi.fn(),
     saveOwnedState: vi.fn(),
     finalizeTurn: vi.fn(),
@@ -134,16 +133,6 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     expect(services.recordCommittedTurn).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'normalized-owner',
     }));
-  });
-
-  it('does not bind Stable V5 runtime when the legacy runtime is active', async () => {
-    const { params } = baseParams();
-    const services = createServices({ isStableV5Enabled: vi.fn(() => false) });
-
-    await submitWeeklyPlanningApplicationTurn(params, services);
-
-    expect(services.bindStableV5SessionScope).not.toHaveBeenCalled();
-    expect(services.executeTurn).toHaveBeenCalledOnce();
   });
 
   it('persists and traces the controlled failure state before rethrowing', async () => {

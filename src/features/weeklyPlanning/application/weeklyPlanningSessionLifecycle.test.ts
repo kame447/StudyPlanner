@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { WeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
 import {
-  resetWeeklyPlanningApplicationForRuntimeModeChange,
   resetWeeklyPlanningApplicationSession,
-  restoreWeeklyPlanningApplicationSession,
   synchronizeWeeklyPlanningApplicationSession,
   type WeeklyPlanningSessionLifecycleServices,
 } from './weeklyPlanningSessionLifecycle';
@@ -17,7 +15,6 @@ import {
 
 function createServices(overrides: Partial<WeeklyPlanningSessionLifecycleServices> = {}) {
   return {
-    isStableV5Enabled: vi.fn(() => true),
     loadPersistedSession: vi.fn(() => null),
     hydrateRuntimeSession: vi.fn(),
     bindRuntimeSessionScope: vi.fn(),
@@ -63,18 +60,6 @@ function persistedSession(conversationId: string): WeeklyPlanningStableV5Persist
 }
 
 describe('weeklyPlanningSessionLifecycle', () => {
-  it('does not read or hydrate Stable V5 persistence while Stable V5 is disabled', () => {
-    const services = createServices({ isStableV5Enabled: vi.fn(() => false) });
-
-    expect(restoreWeeklyPlanningApplicationSession(
-      'user-1',
-      '2026-07-27',
-      services,
-    )).toBeNull();
-    expect(services.loadPersistedSession).not.toHaveBeenCalled();
-    expect(services.hydrateRuntimeSession).not.toHaveBeenCalled();
-  });
-
   it('binds a new Stable V5 runtime scope even without persisted state', () => {
     const services = createServices();
     const session = createWeeklyPlanningControllerSession(
@@ -163,24 +148,5 @@ describe('weeklyPlanningSessionLifecycle', () => {
     expect(session.requestSequence).toBe(0);
   });
 
-  it('runtime mode change resets state without clearing unrelated sessions in the same scope', () => {
-    const store = createStateHarness();
-    const services = createServices();
-    const session = createWeeklyPlanningControllerSession(
-      'user-1',
-      '2026-07-27',
-      'conversation-1',
-    );
 
-    const reset = resetWeeklyPlanningApplicationForRuntimeModeChange({
-      session,
-      ownerId: 'user-1',
-      ...store,
-    }, services);
-
-    expect(services.clearPersistedSession).toHaveBeenCalledOnce();
-    expect(services.clearRuntimeSession).toHaveBeenCalledWith('conversation-1');
-    expect(services.clearRuntimeSessionsForScope).not.toHaveBeenCalled();
-    expect(reset.messages).toEqual([]);
-  });
 });

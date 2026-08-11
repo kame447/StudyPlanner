@@ -27,10 +27,6 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import {
-  resetWeeklyPlanningRuntimeModeForTest,
-  setWeeklyPlanningRuntimeMode,
-} from './weeklyPlanningRuntimeMode';
-import {
   getOrCreateWeeklyPlanningStableV5RuntimeSession,
   hydrateWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
@@ -176,16 +172,14 @@ describe('Stable V5 persisted runtime session', () => {
   beforeEach(() => {
     storageHarness = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storageHarness.storage);
-    setWeeklyPlanningRuntimeMode('stable_v5');
-    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     renderer = null;
   });
 
   afterEach(() => {
     renderer?.unmount();
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-    resetWeeklyPlanningRuntimeModeForTest();
-    restoreWindow();
+      restoreWindow();
   });
 
   it('restores conversation and Fact Graph together after runtime memory is lost', () => {

@@ -1,115 +1,108 @@
 # weeklyPlanning documentation index
 
 Status: canonical / active
-最終更新: 2026-07-28
-Current branch: `agent/trace-empty-session-seven-audit`
+Updated: 2026-08-11
+Current phase: Phase 3 legacy cleanup
+Current cleanup branch: `cleanup/weekly-planning-legacy-removal`
 
-## 1. 現行判断に使用する文書
+## 1. 現行判断に使用する正本
 
-| document | role |
-| --- | --- |
-| [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md) | Stable V5 runtime mode、browser persistence、conversation identity、rollbackの正本 |
-| [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md) | AI/core責務、semantic V5、scheduler、storage、traceの最優先contract |
-| [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md) | request ownership、preview、approval、trace、personalization、cloud sessionのstatus overlay |
-| [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md) | 全体current queueと依存順 |
-| [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md) | Stable V5 verification、migration、shadow、cutover queue |
-| [strategy/weekly-planning-semantic-stable-v5-implementation-status.md](strategy/weekly-planning-semantic-stable-v5-implementation-status.md) | Stable V5実装到達点と未完了gate |
-| [../architecture/weekly-planning-semantic-schema-registry.md](../architecture/weekly-planning-semantic-schema-registry.md) | semantic/Fact Graph世代と廃止条件 |
-| [../architecture/weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md) | Stable V5 documentとscheduler入力構造 |
-| [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md) | Fact Graph、dialogue、generic work item architecture |
-| [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md) | availability、fixed commitment、external source境界 |
-| [../architecture/weekly-planning-conversation-trace.md](../architecture/weekly-planning-conversation-trace.md) | trace privacy、retention、admin exportの基礎契約 |
-| [audits/20260727-stable-v5-trace-empty-session-seven-audit.md](audits/20260727-stable-v5-trace-empty-session-seven-audit.md) | 空session重複の七視点監査 |
-| [audits/20260728-weekly-planning-active-task-inventory.md](audits/20260728-weekly-planning-active-task-inventory.md) | root task 18件の全件分類と配置正本 |
-| [../testing/weekly-planning-roleplay-test-plan.md](../testing/weekly-planning-roleplay-test-plan.md) | roleplay scenarioとstrict contract |
-| [../testing/weekly-planning-roleplay-status.md](../testing/weekly-planning-roleplay-status.md) | module、production、自動、browser verification status |
-
-v4以前のarchitecture、旧task、過去PR本文はhistorical sourceである。現行contractと競合する記述をcurrent判断へ使用しない。
+1. [weekly-planning-current-contract-v5.md](weekly-planning-current-contract-v5.md)
+   - AI/core責務、Fact Graph、scheduler、preview、approval、persistenceの最優先contract
+2. [weekly-planning-current-contract-status.md](weekly-planning-current-contract-status.md)
+   - 現在フェーズと実装到達点
+3. [weekly-planning-stable-v5-runtime-trial-contract.md](weekly-planning-stable-v5-runtime-trial-contract.md)
+   - ファイル名はhistoricalだが、内容は現在のStable V5 sole-runtime contract
+4. [strategy/weekly-planning-roadmap.md](strategy/weekly-planning-roadmap.md)
+   - 全体ロードマップ
+5. [strategy/weekly-planning-semantic-v5-roadmap.md](strategy/weekly-planning-semantic-v5-roadmap.md)
+   - semantic固有ロードマップ
+6. [testing/weekly-planning-test-philosophy.md](testing/weekly-planning-test-philosophy.md)
+   - AI会話と自動テストの境界
+7. [tasks/20260811-weekly-planning-merge-cleanup-refactor-sequence.md](tasks/20260811-weekly-planning-merge-cleanup-refactor-sequence.md)
+   - cleanup → refactor → 7視点棚卸しの実行順序
+8. [../architecture/weekly-planning-semantic-schema-v5.md](../architecture/weekly-planning-semantic-schema-v5.md)
+   - Stable V5 semantic schema
+9. [../architecture/weekly-planning-dialogue-architecture-v5.md](../architecture/weekly-planning-dialogue-architecture-v5.md)
+   - dialogue / state architecture
+10. [../architecture/weekly-planning-availability-architecture-v5.md](../architecture/weekly-planning-availability-architecture-v5.md)
+   - availability / external constraint architecture
 
 ## 2. 読む順序
 
 ```text
-weekly-planning-stable-v5-runtime-trial-contract.md
-→ weekly-planning-current-contract-v5.md
-→ weekly-planning-current-contract-status.md
-→ weekly-planning-semantic-schema-registry.md
-→ weekly-planning-semantic-stable-v5-implementation-status.md
-→ weekly-planning-semantic-v5-roadmap.md
-→ weekly-planning-roadmap.md
-→ active-task-inventory.md
-→ 対象active task
-→ historical closed/superseded records
+current contract v5
+→ current contract status
+→ runtime contract
+→ test philosophy
+→ execution sequence
+→ 必要なarchitecture
+→ roadmap
+→ 対象task
 ```
 
-## 3. active task root
+過去PR、Alpha、feature-flag trial、旧runtime、固定scenario evalの文書はhistorical sourceであり、現行判断へ使用しない。
 
-`docs/ai/tasks/`直下のtask recordは次の8件だけをcurrent execution targetとする。
+## 3. Current execution order
 
-### P0-P1 safety / adoption
-
-1. [20260716-weekly-planning-midweek-current-time-start-boundary.md](tasks/20260716-weekly-planning-midweek-current-time-start-boundary.md)
-   - current time以前へ配置し得るhard-safety gap
-2. [20260728-weekly-planning-stable-v5-verification-and-cutover.md](tasks/20260728-weekly-planning-stable-v5-verification-and-cutover.md)
-   - actual AI eval、browser roleplay、migration、shadow、rollback、cutover
-3. [20260724-weekly-planning-runtime-followups.md](tasks/20260724-weekly-planning-runtime-followups.md)
-   - cross-tab、grounding、final trace durability、source semantics、reset cleanup
-
-### P1-P2 production boundaries
-
-4. [20260716-weekly-planning-synced-conversation-session-store.md](tasks/20260716-weekly-planning-synced-conversation-session-store.md)
-   - cloud authoritative conversation/Fact Graph repository
-5. [20260728-weekly-planning-external-source-production-adapter.md](tasks/20260728-weekly-planning-external-source-production-adapter.md)
-   - verified atomic loaderのproduction adapter接続
-6. [20260716-weekly-planning-trace-privacy-and-lifecycle.md](tasks/20260716-weekly-planning-trace-privacy-and-lifecycle.md)
-   - secret、deploy、TTL、delete、access、pagination、decoder、Issue #89 post-merge確認
-7. [20260718-weekly-planning-approval-operational-rollout.md](tasks/20260718-weekly-planning-approval-operational-rollout.md)
-   - Rules、TTL、Emulator、multi-client verification
-
-### Later personalization
-
-8. [20260728-weekly-planning-personalization-rollout.md](tasks/20260728-weekly-planning-personalization-rollout.md)
-   - observation、reset validity、time decay、score、governance
-
-`codex-task-guide.md`と`task-brief-template.md`はtask recordではないためrootに置く。
-
-## 4. 直近closed record
-
-[closed/20260727-weekly-planning-trace-empty-session-recovery.md](tasks/closed/20260727-weekly-planning-trace-empty-session-recovery.md)
-
-最終確認:
+順番を変更しない。
 
 ```text
-focused: 5 files / 46 tests passed
-trace full: 18 files / 79 tests passed
-typecheck: passed
-typecheck:build: passed
-production build: passed
-git diff --check: passed
+完了: PR #109 merge-readiness
+完了: PR #109 squash merge
+現在: legacy / 過去経路削除
+次:   Stable V5挙動不変リファクタ
+次:   7視点再棚卸し
+最後: 新規改善
 ```
 
-main deploy後の管理者viewer確認だけをtrace production operations taskとIssue #89へ移管した。
+legacy削除とリファクタは別PRにする。
 
-## 5. placement rule
+## 4. Task placement rule
 
 ```text
-実装・必要検証が完了
-→ tasks/closed/
-
-未完了だが別の現行taskへ統合済み
-→ tasks/superseded/
-
 現在独立して実行する問題
-→ tasks/ root
+→ docs/ai/tasks/
+
+実装・必要検証が完了
+→ docs/ai/tasks/closed/
+
+別の現行taskへ統合済み、または過去設計としてのみ残す
+→ docs/ai/tasks/superseded/
 ```
 
-browser/production verificationだけが残る場合、過去のimplementation taskをrootへ残さず、現行verification/operations taskへ移管する。未実装内容を虚偽のclosedへ移さない。
+rootにある古いtaskの`Status: active`を無条件に信用しない。2026-08-11以前のtaskはcurrent contract / roadmap / execution sequenceと照合してから実行する。
 
-## 6. 運用規則
+## 5. Legacy cleanup classification
 
-- module implemented、runtime connected、local persisted、automated verified、browser verified、cloud synced、operationally deployedを区別する。
-- 実行していないtest、build、real-eval、browser verificationを成功済みと書かない。
-- runnerがstep開始前に失敗した場合はexecution infrastructure failureとcode test failureを区別する。
-- trace変更時はconversation ID、local session ID、server handle、request ID、entry sequence、privacy、retention、server authorityを一つの結合境界として監査する。
-- root taskを追加する場合はroadmapと本indexを同じ変更で更新する。
-- task完了または統合時は同じ変更で`closed/`または`superseded/`へ移す。
-- main merge後にbaseline、verification evidence、active task一覧を更新する。
+Phase 3ではコード・テスト・文書を次で分類する。
+
+```text
+A. productionから到達不能かつ現行test-supportにも不要
+   → 削除
+
+B. productionから到達不能だが現行observation/test-supportに必要
+   → 残す。Phase 4で配置・命名を整理可能
+
+C. productionが参照している
+   → legacyという名前だけでは削除しない
+```
+
+保存migration、trace decoder、approval ledger migrationなどは既存data互換のためのC分類になり得る。旧runtimeを復活させる互換性とは区別する。
+
+## 6. Testing rule
+
+AI意味理解・自然さを固定期待値でPASSにしない。
+
+自動テスト対象はschema、validation、binding、Fact Graph lifecycle、readiness、scheduler、preview、approval、save、persistence、trace、budget等の決定論的契約である。
+
+実API会話はhuman-reviewed observationとして扱う。
+
+## 7. Documentation rule
+
+- canonical文書には現在実装だけを書く。
+- 完了済みmigration planをcanonicalのまま残さない。
+- `default runtime=legacy`、runtime selector、fixed scenario quality eval等の廃止済み前提をcurrent docsへ残さない。
+- historical filenameを互換上残す場合は、本文冒頭で現在の役割を明示する。
+- roadmapとcurrent statusが競合した場合は、より新しいcurrent statusとexecution sequenceを確認して修正する。
+- Phase 3完了時、cleanup結果をcurrent statusとexecution sequenceへ反映する。
