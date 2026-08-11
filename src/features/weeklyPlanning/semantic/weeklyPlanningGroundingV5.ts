@@ -76,9 +76,10 @@ export function reconcileWeeklyPlanningGroundingRecordsV5(params: {
   const windows = activePlanningWindows(params.nextGraph);
   if (windows.length !== 1 || !params.resolvedHorizon) return reconciled;
   const window = windows[0];
-  if (window.kind !== 'relative_day' && window.kind !== 'relative_week') {
-    return reconciled;
-  }
+  // Phase 3 deliberately grounds week-scale deictic expressions first. Relative
+  // days already use the captured request clock, but their conversational
+  // proposal wording is kept unchanged until the dedicated day-grounding unit.
+  if (window.kind !== 'relative_week') return reconciled;
 
   const id = recordId({
     targetFactId: window.id,
