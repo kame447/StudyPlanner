@@ -2,6 +2,7 @@ import {
   getWeeklyPlanningStableV5RuntimeSessionForScope,
 } from './application/weeklyPlanningStableV5RuntimeSession';
 import {
+  clearWeeklyPlanningStableV5PersistedSession,
   loadWeeklyPlanningStableV5PersistedSession,
   saveWeeklyPlanningStableV5PersistedSession,
 } from './application/weeklyPlanningStableV5SessionStorage';
@@ -160,6 +161,10 @@ export function saveOwnedWeeklyPlanningState(
       removeStorageKey(key);
       return;
     }
+    clearWeeklyPlanningStableV5PersistedSession({
+      ownerId: userId,
+      weekStartDate: state.weekStartDate,
+    });
   }
 
   saveCompatibilityEnvelope(userId, state, key);
