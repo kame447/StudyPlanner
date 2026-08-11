@@ -55,7 +55,9 @@ interface RenderedHarness {
   unmount(): Promise<void>;
 }
 
-async function renderHarness(): Promise<RenderedHarness> {
+async function renderHarness(
+  overrides: Partial<UseWeeklyPlanningApplicationInput> = {},
+): Promise<RenderedHarness> {
   const ref = createRef<WeeklyPlanningApplication>();
   let props: UseWeeklyPlanningApplicationInput = {
     userId: 'user-1',
@@ -66,6 +68,7 @@ async function renderHarness(): Promise<RenderedHarness> {
       ...createPlanFromDraft(draft),
       id: 'plan-1',
     }),
+    ...overrides,
   };
   let renderer!: ReactTestRenderer;
 
@@ -75,8 +78,8 @@ async function renderHarness(): Promise<RenderedHarness> {
 
   return {
     ref,
-    async update(overrides) {
-      props = { ...props, ...overrides };
+    async update(nextOverrides) {
+      props = { ...props, ...nextOverrides };
       await act(async () => {
         renderer.update(<Harness ref={ref} {...props} />);
       });
@@ -185,5 +188,42 @@ describe('cross-week weekly planning conversation continuity', () => {
       '確認しました: 数学の予定を相談したい',
     ]);
     await harness.unmount();
+  });
+
+  it('restores the active conversation after remounting from another displayed week', async () => {
+    const conversationIds: string[] = [];
+    const requestIds: string[] = [];
+    executeWeeklyPlanningTurnMock.mockImplementation(
+      async (input: WeeklyPlanningTurnExecutionInput) => {
+        conversationIds.push(input.conversationId);
+        requestIds.push(input.traceRequestId);
+        return turnResult(input.userText);
+      },
+    );
+
+    const firstHarness = await renderHarness();
+    await act(async () => {
+      await firstHarness.ref.current!.submitTurn('数学の予定を相談したい');
+    });
+    const firstMessages = firstHarness.ref.current!.state.messages.map((message) => message.content);
+    await firstHarness.unmount();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+
+    const restoredHarness = await renderHarness({ selectedDate: '2026-08-18' });
+    expect(restoredHarness.ref.current!.state.messages.map((message) => message.content)).toEqual(
+      firstMessages,
+    );
+
+    await act(async () => {
+      await restoredHarness.ref.current!.submitTurn('英語も追加したい');
+    });
+
+    expect(conversationIds).toHaveLength(2);
+    expect(conversationIds[1]).toBe(conversationIds[0]);
+    expect(requestIds).toEqual([
+      `${conversationIds[0]}:request:1`,
+      `${conversationIds[0]}:request:2`,
+    ]);
+    await restoredHarness.unmount();
   });
 });
