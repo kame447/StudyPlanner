@@ -36,7 +36,7 @@ function workOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
       localId: 'task-math',
       category: 'study',
       title: '数学',
-      study: { purpose: 'school', contextLabel: '数学', components: [] },
+      study: { purpose: 'homework', contextLabel: '数学', components: [] },
       workloads: [{
         localId: 'workload-math', quantityRole: 'target', amount: 30,
         unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
