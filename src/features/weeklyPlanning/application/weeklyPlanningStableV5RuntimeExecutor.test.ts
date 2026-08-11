@@ -8,6 +8,7 @@ import {
   takeWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
+  finalizeWeeklyPlanningStableV5RuntimeGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -71,6 +72,42 @@ function todayOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
       sourceText: '今日',
     },
     tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+function workOnlyDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'discuss',
+    planningWindow: null,
+    tasks: [{
+      localId: 'task-follow-up',
+      category: 'non_study',
+      title: '部屋の掃除',
+      study: null,
+      workloads: [{
+        localId: 'workload-follow-up',
+        quantityRole: 'target',
+        amount: 60,
+        unitCode: 'minute',
+        unitLabel: '分',
+        rangeStart: null,
+        rangeEnd: null,
+        perOccurrence: false,
+        periodExpression: null,
+        sourceText: '部屋の掃除を1時間',
+      }],
+      effortEstimates: [],
+      temporalConstraints: [],
+      recurrence: [],
+      sourceText: '部屋の掃除を1時間',
+    }],
     relations: [],
     availabilityDeclarations: [],
     constraintSourceRequests: [],
@@ -199,24 +236,34 @@ import {
 } from './weeklyPlanningStableV5RuntimeExecutor';
 
 describe('Stable V5 runtime executor', () => {
-  it('re-authorizes preview generation when AI interprets a draft-ready turn as update_plan', () => {
+  it('keeps authorization durable through clarification while preserving draft-ready update semantics', () => {
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'draft_ready',
+      previousDraftGenerationIntent: 'user_authorized',
       planningIntent: 'update_plan',
       semanticChanged: true,
     })).toBe(true);
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'draft_ready',
+      previousDraftGenerationIntent: 'user_authorized',
       planningIntent: 'update_plan',
       semanticChanged: false,
     })).toBe(false);
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
+      previousStatus: 'revision_pending',
+      previousDraftGenerationIntent: 'user_authorized',
+      planningIntent: 'discuss',
+      semanticChanged: true,
+    })).toBe(true);
+    expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'needs_scope',
-      planningIntent: 'update_plan',
+      previousDraftGenerationIntent: null,
+      planningIntent: 'discuss',
       semanticChanged: true,
     })).toBe(false);
     expect(isWeeklyPlanningStableV5PreviewAuthorized({
       previousStatus: 'draft_ready',
+      previousDraftGenerationIntent: 'user_authorized',
       planningIntent: 'discuss',
       semanticChanged: false,
     })).toBe(false);
@@ -284,6 +331,87 @@ describe('Stable V5 runtime executor', () => {
     ]));
   });
 
+  it('preserves a create-plan authorization across a clarification turn and previews as soon as work becomes schedulable', async () => {
+    normalizeMock.mockResolvedValueOnce(acceptedResult(todayOnlyDocument()));
+
+    const first = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined,
+      messages: [],
+      userText: '今日の計画を立ててください',
+      selectedDate: '2026-07-24',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-durable-authorization',
+      traceRequestId: 'request-durable-authorization-1',
+    });
+
+    expect(first.state).toMatchObject({
+      status: 'revision_pending',
+      draftGenerationIntent: 'user_authorized',
+      lastQuestionContext: {
+        targetSlot: 'stable_v5:missing_schedulable_work',
+      },
+    });
+    finalizeWeeklyPlanningStableV5RuntimeGraph({
+      ownerId: 'owner-1',
+      conversationId: 'conversation-durable-authorization',
+      requestId: 'request-durable-authorization-1',
+    });
+
+    normalizeMock.mockResolvedValueOnce(acceptedResult(workOnlyDocument()));
+    const second = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: first.state,
+      messages: [
+        {
+          id: 'turn-1:user',
+          role: 'user',
+          content: '今日の計画を立ててください',
+          createdAt: '2026-07-24T09:00:00.000Z',
+        },
+        {
+          id: 'turn-1:assistant',
+          role: 'assistant',
+          content: first.message,
+          createdAt: '2026-07-24T09:00:01.000Z',
+        },
+      ],
+      userText: '部屋の掃除を1時間',
+      selectedDate: '2026-07-24',
+      userId: 'owner-1',
+      plans: [],
+      scheduleTemplates: [],
+      conversationId: 'conversation-durable-authorization',
+      traceRequestId: 'request-durable-authorization-2',
+    });
+
+    expect(second.state).toMatchObject({
+      status: 'draft_ready',
+      draftGenerationIntent: 'user_authorized',
+      shouldCreateDraft: true,
+    });
+    expect(second.draftCandidates).toHaveLength(1);
+    expect(second.message).toContain('仮予定候補');
+    expect(second.message).not.toContain('この条件で予定を作って');
+    expect(takeWeeklyPlanningStableV5DebugTrace('request-durable-authorization-2')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'runtime_scheduler_dialogue_evaluated',
+          data: expect.objectContaining({
+            authorization: expect.objectContaining({
+              previousDraftGenerationIntent: 'user_authorized',
+              authorized: true,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          stage: 'runtime_branch_selected',
+          data: expect.objectContaining({ branch: 'preview_ready' }),
+        }),
+      ]),
+    );
+  });
+
   it('accepts 今日 as the planning window and asks for the missing work instead of rejecting normalization', async () => {
     normalizeMock.mockResolvedValueOnce(acceptedResult(todayOnlyDocument()));
 
@@ -302,6 +430,7 @@ describe('Stable V5 runtime executor', () => {
     expect(result.state).toMatchObject({
       status: 'revision_pending',
       shouldCreateDraft: false,
+      draftGenerationIntent: 'user_authorized',
       lastQuestionContext: {
         targetSlot: 'stable_v5:missing_schedulable_work',
         intent: 'missing_schedulable_work',
@@ -341,6 +470,7 @@ describe('Stable V5 runtime executor', () => {
     expect(result.state).toMatchObject({
       status: 'revision_pending',
       shouldCreateDraft: false,
+      draftGenerationIntent: 'user_authorized',
       lastQuestionContext: {
         targetSlot: 'stable_v5:missing_schedulable_work',
         intent: 'missing_schedulable_work',

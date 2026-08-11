@@ -325,6 +325,8 @@ function schedulerProjection(data: Record<string, unknown>): Record<string, unkn
     },
     authorization: {
       planningIntent: stringValue(authorization.planningIntent),
+      previousDraftGenerationIntent:
+        stringValue(authorization.previousDraftGenerationIntent),
       authorized: authorization.authorized === true,
     },
     firstBlockingIssueCodeInCompilationOrder:

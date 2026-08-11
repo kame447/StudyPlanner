@@ -15,6 +15,7 @@ import type {
   WeeklyPlanningPendingApproval,
 } from '../types';
 import { createPlanDraftFromWeeklyDraftBlock } from '../weeklyPlanningTransforms';
+import type { WeeklyPlanningEstimateMetadataV1 } from '../personalization/weeklyPlanningEstimateCalibration';
 import {
   createWeeklyPlanningApplicationMessage,
   createWeeklyPlanningApplicationRequestId,
@@ -30,6 +31,10 @@ interface WeeklyPlanningApprovalApplicationInput {
   dispatch: (action: WeeklyPlanningAction) => PlanningState;
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
 }
+
+type PlanDraftWithEstimateMetadata = PlanDraft & {
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
+};
 
 function approvalErrorMessage(kind: string, reason?: string): string {
   if (reason === 'session-runtime-unavailable') {
@@ -58,6 +63,16 @@ function ownsPendingApproval(
       && current.blockIds.length === pending.blockIds.length
       && current.blockIds.every((blockId, index) => blockId === pending.blockIds[index]),
   );
+}
+
+function cloneEstimateMetadata(
+  metadata: WeeklyPlanningEstimateMetadataV1 | undefined,
+): WeeklyPlanningEstimateMetadataV1 | undefined {
+  if (!metadata) return undefined;
+  return {
+    ...metadata,
+    sourceFactRefs: [...metadata.sourceFactRefs],
+  };
 }
 
 export async function approveWeeklyPlanningDraftBlocks({
@@ -124,7 +139,16 @@ export async function approveWeeklyPlanningDraftBlocks({
           )?.id;
         },
         async saveBlock({ block, source }) {
-          const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId);
+          const draft = createPlanDraftFromWeeklyDraftBlock(
+            block,
+            authenticatedUserId,
+          ) as PlanDraftWithEstimateMetadata;
+          const estimateMetadata = cloneEstimateMetadata(
+            block.behaviorMetadata?.estimateMetadata,
+          );
+          if (estimateMetadata) {
+            draft.weeklyPlanningEstimate = estimateMetadata;
+          }
           const sourceId = buildWeeklyPlanningPlanSourceId({
             approvalOperationId: source.approvalOperationId,
             sourceDraftBlockId: source.sourceDraftBlockId,

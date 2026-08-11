@@ -235,6 +235,7 @@ function serializablePlanningState(state: PlanningState): PlanningState {
     conversationRequestSequence: state.conversationRequestSequence ?? 0,
     draftBlocks: state.draftBlocks.filter((block) => block.status === 'draft'),
     previewCandidates: state.previewCandidates ?? [],
+    messages: state.messages.slice(-MAX_MESSAGES),
     intakeState,
   })) as PlanningState;
 }
@@ -249,6 +250,109 @@ function isEmptySession(
     && state.draftBlocks.length === 0
     && (state.previewCandidates?.length ?? 0) === 0
     && !state.intakeState;
+}
+
+function createPersistedEnvelope(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+}): WeeklyPlanningStableV5PersistedSession {
+  return {
+    version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+    ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
+    conversationId: params.conversationId,
+    graph: params.graph,
+    planningState: params.planningState,
+    savedAt: params.savedAt,
+  };
+}
+
+function serializeEnvelopeWithinBudget(
+  envelope: WeeklyPlanningStableV5PersistedSession,
+): string | null {
+  try {
+    const raw = JSON.stringify(envelope);
+    return new TextEncoder().encode(raw).byteLength <= MAX_STORED_SESSION_BYTES
+      ? raw
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function largestRecentMessageCheckpoint(params: {
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+}): { raw: string; messageCount: number } | null {
+  const messages = params.planningState.messages;
+  let low = 0;
+  let high = messages.length;
+  let best: { raw: string; messageCount: number } | null = null;
+
+  while (low <= high) {
+    const messageCount = Math.floor((low + high) / 2);
+    const candidateState: PlanningState = {
+      ...params.planningState,
+      messages: messageCount > 0 ? messages.slice(-messageCount) : [],
+    };
+    const raw = serializeEnvelopeWithinBudget(createPersistedEnvelope({
+      ...params,
+      planningState: candidateState,
+    }));
+    if (raw) {
+      best = { raw, messageCount };
+      low = messageCount + 1;
+    } else {
+      high = messageCount - 1;
+    }
+  }
+
+  return best;
+}
+
+function writeCheckpointWithQuotaFallback(params: {
+  key: string;
+  ownerId: string;
+  weekStartDate: string;
+  conversationId: string;
+  graph: WeeklyPlanningFactGraphV5;
+  planningState: PlanningState;
+  savedAt: string;
+}): boolean {
+  const initial = largestRecentMessageCheckpoint(params);
+  if (!initial) return false;
+
+  let messageCount = initial.messageCount;
+  let raw = initial.raw;
+  while (true) {
+    try {
+      window.localStorage.setItem(params.key, raw);
+      return true;
+    } catch {
+      if (messageCount === 0) return false;
+      messageCount = Math.floor(messageCount / 2);
+      const candidateState: PlanningState = {
+        ...params.planningState,
+        messages: messageCount > 0
+          ? params.planningState.messages.slice(-messageCount)
+          : [],
+      };
+      const nextRaw = serializeEnvelopeWithinBudget(createPersistedEnvelope({
+        ...params,
+        planningState: candidateState,
+      }));
+      if (!nextRaw) return false;
+      raw = nextRaw;
+    }
+  }
 }
 
 export function loadWeeklyPlanningStableV5PersistedSession(params: {
@@ -345,23 +449,15 @@ export function saveWeeklyPlanningStableV5PersistedSession(params: {
     return false;
   }
 
-  const envelope: WeeklyPlanningStableV5PersistedSession = {
-    version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
+  return writeCheckpointWithQuotaFallback({
+    key,
     ownerId: params.ownerId,
     weekStartDate: params.weekStartDate,
     conversationId: params.conversationId,
     graph: params.graph,
     planningState,
     savedAt: new Date().toISOString(),
-  };
-  try {
-    const raw = JSON.stringify(envelope);
-    if (new TextEncoder().encode(raw).byteLength > MAX_STORED_SESSION_BYTES) return false;
-    window.localStorage.setItem(key, raw);
-    return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 export function clearWeeklyPlanningStableV5PersistedSession(params: {

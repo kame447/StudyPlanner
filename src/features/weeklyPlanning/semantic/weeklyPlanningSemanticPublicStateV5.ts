@@ -1,6 +1,9 @@
 import type {
   WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
+import {
+  buildWeeklyPlanningGraphSourceMemoryV5,
+} from './weeklyPlanningEpisodicMemoryV5';
 
 export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
   version: 'weekly-planning-correction-targeting-contract-v5',
@@ -97,14 +100,28 @@ function correctionTargetPublicFacts(
   };
 }
 
+function pendingQuestionFactId(summary: Record<string, unknown> | undefined): string | null {
+  const pending = summary?.pendingQuestion;
+  if (!pending || typeof pending !== 'object' || Array.isArray(pending)) return null;
+  const targetFactId = (pending as Record<string, unknown>).targetFactId;
+  return typeof targetFactId === 'string' && targetFactId.trim()
+    ? targetFactId
+    : null;
+}
+
 export function createWeeklyPlanningSemanticPublicStateSummaryV5(
   summary: Record<string, unknown> | undefined,
   graph: WeeklyPlanningFactGraphV5,
 ): Record<string, unknown> {
+  const episodicMemory = buildWeeklyPlanningGraphSourceMemoryV5({
+    graph,
+    priorityFactId: pendingQuestionFactId(summary),
+  });
   return {
     ...(summary ?? {}),
     ...correctionTargetPublicFacts(graph),
     graphRevision: graph.revision,
     correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
+    episodicMemory,
   };
 }

@@ -5,6 +5,10 @@ import type {
   WorkloadFact,
 } from './weeklyPlanningFactGraph';
 import type { SemanticWorkloadUnitCode } from './weeklyPlanningSemanticDocument';
+import {
+  allocateWeeklyPlanningEffort,
+  type WeeklyPlanningAllocationStepMinutes,
+} from './weeklyPlanningEffortAllocation';
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
 
@@ -19,15 +23,14 @@ export interface GenericWorkItemQuantity {
   amount: number;
   unitCode: SemanticWorkloadUnitCode;
   unitLabel: string;
-  ordinalRange: {
-    start: number;
-    end: number;
-  } | null;
-  actualRange: {
-    start: string;
-    end: string;
-  } | null;
+  ordinalRange: { start: number; end: number } | null;
+  actualRange: { start: string; end: string } | null;
 }
+
+export type GenericWorkItemEstimateBasis =
+  | 'intrinsic_duration'
+  | 'direct_effort'
+  | 'observed_pace';
 
 export interface GenericPlanningWorkItem {
   version: typeof GENERIC_WORK_ITEM_VERSION;
@@ -40,7 +43,12 @@ export interface GenericPlanningWorkItem {
   actionability: 'actionable' | 'needs_resolution';
   quantity: GenericWorkItemQuantity;
   estimatedMinutes: number | null;
+  baseEstimatedMinutes?: number | null;
+  calibrationMultiplier?: number | null;
+  roundingStepMinutes?: WeeklyPlanningAllocationStepMinutes | null;
+  estimateBasis: GenericWorkItemEstimateBasis | null;
   estimateSourceFactIds: string[];
+  estimateSourceWorkloadFactIds: string[];
   splitPolicy: 'splittable' | 'atomic' | 'unknown';
   periodExpression: string | null;
   sourceFactRefs: string[];
@@ -69,15 +77,8 @@ export interface GenericWorkItemCompilationResult {
 }
 
 const DISCRETE_UNITS = new Set<SemanticWorkloadUnitCode>([
-  'page',
-  'problem',
-  'word',
-  'lesson',
-  'chapter',
-  'section',
-  'exam_year',
-  'mock_exam',
-  'session',
+  'page', 'problem', 'word', 'lesson', 'chapter', 'section',
+  'exam_year', 'mock_exam', 'session',
 ]);
 
 function stableHash(input: string): string {
@@ -93,15 +94,11 @@ function createWorkItemId(workloadFactId: string): string {
   return `wpwi_${stableHash(`${GENERIC_WORK_ITEM_VERSION}|${workloadFactId}`)}`;
 }
 
-function taskById(
-  graph: WeeklyPlanningGenericWorkGraphView,
-): Map<string, PlanningTaskFact> {
+function taskById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, PlanningTaskFact> {
   return new Map(graph.tasks.map((task) => [task.id, task]));
 }
 
-function componentById(
-  graph: WeeklyPlanningGenericWorkGraphView,
-): Map<string, StudyComponentFact> {
+function componentById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, StudyComponentFact> {
   return new Map(graph.components.map((component) => [component.id, component]));
 }
 
@@ -118,9 +115,7 @@ function buildLabel(params: {
 }
 
 function ordinalRange(workload: WorkloadFact): GenericWorkItemQuantity['ordinalRange'] {
-  if (!DISCRETE_UNITS.has(workload.unitCode) || !Number.isInteger(workload.amount)) {
-    return null;
-  }
+  if (!DISCRETE_UNITS.has(workload.unitCode) || !Number.isInteger(workload.amount)) return null;
   return { start: 1, end: workload.amount };
 }
 
@@ -129,15 +124,7 @@ function actualRange(workload: WorkloadFact): GenericWorkItemQuantity['actualRan
   return { start: workload.rangeStart, end: workload.rangeEnd };
 }
 
-/*
- * Exact reference matching only. The semantic AI has already selected the
- * target. Scheduler compilation must not infer a target from labels or source
- * text; it accepts only the task, component, or exact workload ID.
- */
-function targetMatches(
-  estimate: EffortEstimateFact,
-  workload: WorkloadFact,
-): boolean {
+function targetMatches(estimate: EffortEstimateFact, workload: WorkloadFact): boolean {
   return estimate.taskId === workload.taskId
     && (estimate.targetFactId === workload.id
       || estimate.targetFactId === workload.taskId
@@ -146,74 +133,92 @@ function targetMatches(
 
 interface EstimateResolution {
   estimatedMinutes: number | null;
+  basis: GenericWorkItemEstimateBasis | null;
   sourceFactIds: string[];
+  sourceWorkloadFactIds: string[];
   ambiguous: boolean;
+}
+
+function intrinsicEstimate(workload: WorkloadFact): EstimateResolution | null {
+  if (workload.unitCode === 'minute') {
+    return { estimatedMinutes: workload.amount, basis: 'intrinsic_duration', sourceFactIds: [], sourceWorkloadFactIds: [], ambiguous: false };
+  }
+  if (workload.unitCode === 'hour') {
+    return { estimatedMinutes: workload.amount * 60, basis: 'intrinsic_duration', sourceFactIds: [], sourceWorkloadFactIds: [], ambiguous: false };
+  }
+  return null;
+}
+
+function directEstimate(params: {
+  workload: WorkloadFact;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): EstimateResolution {
+  const matching = params.estimates.filter((estimate) => targetMatches(estimate, params.workload));
+  const perUnit = matching.filter((estimate) =>
+    estimate.kind === 'duration_per_unit' && estimate.unitCode === params.workload.unitCode);
+  if (perUnit.length === 1) return { estimatedMinutes: perUnit[0].minutes * params.workload.amount, basis: 'direct_effort', sourceFactIds: [perUnit[0].id], sourceWorkloadFactIds: [], ambiguous: false };
+  if (perUnit.length > 1) return { estimatedMinutes: null, basis: null, sourceFactIds: perUnit.map((value) => value.id), sourceWorkloadFactIds: [], ambiguous: true };
+
+  const total = matching.filter((estimate) => estimate.kind === 'total_duration');
+  if (total.length === 1) return { estimatedMinutes: total[0].minutes, basis: 'direct_effort', sourceFactIds: [total[0].id], sourceWorkloadFactIds: [], ambiguous: false };
+  if (total.length > 1) return { estimatedMinutes: null, basis: null, sourceFactIds: total.map((value) => value.id), sourceWorkloadFactIds: [], ambiguous: true };
+
+  const session = matching.filter((estimate) => estimate.kind === 'session_duration');
+  if (params.workload.unitCode === 'session' && session.length === 1) return { estimatedMinutes: session[0].minutes * params.workload.amount, basis: 'direct_effort', sourceFactIds: [session[0].id], sourceWorkloadFactIds: [], ambiguous: false };
+  if (params.workload.unitCode === 'session' && session.length > 1) return { estimatedMinutes: null, basis: null, sourceFactIds: session.map((value) => value.id), sourceWorkloadFactIds: [], ambiguous: true };
+
+  return { estimatedMinutes: null, basis: null, sourceFactIds: [], sourceWorkloadFactIds: [], ambiguous: false };
+}
+
+function samePaceScope(left: WorkloadFact, right: WorkloadFact): boolean {
+  return left.taskId === right.taskId
+    && left.componentId === right.componentId
+    && left.unitCode === right.unitCode;
+}
+
+function observedPaceEstimate(params: {
+  workload: WorkloadFact;
+  workloads: ReadonlyArray<WorkloadFact>;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): EstimateResolution {
+  if (params.workload.amount <= 0) return { estimatedMinutes: null, basis: null, sourceFactIds: [], sourceWorkloadFactIds: [], ambiguous: false };
+  const completed = params.workloads.filter((candidate) =>
+    candidate.quantityRole === 'completed' && candidate.amount > 0 && samePaceScope(candidate, params.workload));
+  const evidence = completed.flatMap((completedWorkload) =>
+    params.estimates
+      .filter((estimate) => estimate.taskId === completedWorkload.taskId
+        && estimate.targetFactId === completedWorkload.id
+        && estimate.kind === 'total_duration')
+      .map((estimate) => ({ completedWorkload, estimate })));
+  if (evidence.length !== 1) {
+    return {
+      estimatedMinutes: null,
+      basis: null,
+      sourceFactIds: evidence.map(({ estimate }) => estimate.id),
+      sourceWorkloadFactIds: evidence.map(({ completedWorkload }) => completedWorkload.id),
+      ambiguous: evidence.length > 1,
+    };
+  }
+  const [{ completedWorkload, estimate }] = evidence;
+  return {
+    estimatedMinutes: (estimate.minutes / completedWorkload.amount) * params.workload.amount,
+    basis: 'observed_pace',
+    sourceFactIds: [estimate.id],
+    sourceWorkloadFactIds: [completedWorkload.id],
+    ambiguous: false,
+  };
 }
 
 function resolveEstimatedMinutes(params: {
   workload: WorkloadFact;
+  workloads: ReadonlyArray<WorkloadFact>;
   estimates: ReadonlyArray<EffortEstimateFact>;
 }): EstimateResolution {
-  const workload = params.workload;
-
-  if (workload.unitCode === 'minute') {
-    return { estimatedMinutes: workload.amount, sourceFactIds: [], ambiguous: false };
-  }
-  if (workload.unitCode === 'hour') {
-    return { estimatedMinutes: workload.amount * 60, sourceFactIds: [], ambiguous: false };
-  }
-
-  const matching = params.estimates.filter((estimate) => targetMatches(estimate, workload));
-  const perUnit = matching.filter((estimate) =>
-    estimate.kind === 'duration_per_unit' && estimate.unitCode === workload.unitCode);
-  if (perUnit.length === 1) {
-    return {
-      estimatedMinutes: perUnit[0].minutes * workload.amount,
-      sourceFactIds: [perUnit[0].id],
-      ambiguous: false,
-    };
-  }
-  if (perUnit.length > 1) {
-    return {
-      estimatedMinutes: null,
-      sourceFactIds: perUnit.map((value) => value.id),
-      ambiguous: true,
-    };
-  }
-
-  const total = matching.filter((estimate) => estimate.kind === 'total_duration');
-  if (total.length === 1) {
-    return {
-      estimatedMinutes: total[0].minutes,
-      sourceFactIds: [total[0].id],
-      ambiguous: false,
-    };
-  }
-  if (total.length > 1) {
-    return {
-      estimatedMinutes: null,
-      sourceFactIds: total.map((value) => value.id),
-      ambiguous: true,
-    };
-  }
-
-  const session = matching.filter((estimate) => estimate.kind === 'session_duration');
-  if (workload.unitCode === 'session' && session.length === 1) {
-    return {
-      estimatedMinutes: session[0].minutes * workload.amount,
-      sourceFactIds: [session[0].id],
-      ambiguous: false,
-    };
-  }
-  if (workload.unitCode === 'session' && session.length > 1) {
-    return {
-      estimatedMinutes: null,
-      sourceFactIds: session.map((value) => value.id),
-      ambiguous: true,
-    };
-  }
-
-  return { estimatedMinutes: null, sourceFactIds: [], ambiguous: false };
+  const intrinsic = intrinsicEstimate(params.workload);
+  if (intrinsic) return intrinsic;
+  const direct = directEstimate({ workload: params.workload, estimates: params.estimates });
+  if (direct.ambiguous || direct.estimatedMinutes !== null) return direct;
+  return observedPaceEstimate(params);
 }
 
 function deriveSplitPolicy(workload: WorkloadFact): GenericPlanningWorkItem['splitPolicy'] {
@@ -234,70 +239,34 @@ export function compileGenericPlanningWorkItems(
     const task = tasks.get(workload.taskId);
     const component = workload.componentId ? components.get(workload.componentId) ?? null : null;
     if (!task || (workload.componentId && !component)) {
-      issues.push({
-        code: 'orphan_workload',
-        workloadFactId: workload.id,
-        blocking: true,
-      });
+      issues.push({ code: 'orphan_workload', workloadFactId: workload.id, blocking: true });
       continue;
     }
-
     if (workload.quantityRole === 'completed') {
-      issues.push({
-        code: 'completed_workload_skipped',
-        workloadFactId: workload.id,
-        blocking: false,
-      });
+      issues.push({ code: 'completed_workload_skipped', workloadFactId: workload.id, blocking: false });
       continue;
     }
 
-    const unresolvedRole = workload.quantityRole === 'declared'
-      || workload.quantityRole === 'unknown';
-    if (unresolvedRole) {
-      issues.push({
-        code: 'quantity_role_unresolved',
-        workloadFactId: workload.id,
-        blocking: true,
-        details: { quantityRole: workload.quantityRole },
-      });
-    }
-
+    const unresolvedRole = workload.quantityRole === 'declared' || workload.quantityRole === 'unknown';
+    if (unresolvedRole) issues.push({ code: 'quantity_role_unresolved', workloadFactId: workload.id, blocking: true, details: { quantityRole: workload.quantityRole } });
     if (DISCRETE_UNITS.has(workload.unitCode) && !Number.isInteger(workload.amount)) {
-      issues.push({
-        code: 'non_integral_discrete_amount',
-        workloadFactId: workload.id,
-        blocking: true,
-        details: { amount: workload.amount, unitCode: workload.unitCode },
-      });
+      issues.push({ code: 'non_integral_discrete_amount', workloadFactId: workload.id, blocking: true, details: { amount: workload.amount, unitCode: workload.unitCode } });
     }
-
     const range = actualRange(workload);
     if ((workload.rangeStart === null) !== (workload.rangeEnd === null)) {
-      issues.push({
-        code: 'invalid_actual_range',
-        workloadFactId: workload.id,
-        blocking: true,
-      });
+      issues.push({ code: 'invalid_actual_range', workloadFactId: workload.id, blocking: true });
     }
 
-    const estimate = resolveEstimatedMinutes({
-      workload,
-      estimates: graph.effortEstimates,
-    });
+    const estimate = resolveEstimatedMinutes({ workload, workloads: graph.workloads, estimates: graph.effortEstimates });
     if (estimate.ambiguous) {
-      issues.push({
-        code: 'ambiguous_effort_estimate',
-        workloadFactId: workload.id,
-        blocking: true,
-        details: { matchingEstimateCount: estimate.sourceFactIds.length },
-      });
+      issues.push({ code: 'ambiguous_effort_estimate', workloadFactId: workload.id, blocking: true, details: { matchingEstimateCount: estimate.sourceFactIds.length } });
     } else if (estimate.estimatedMinutes === null) {
-      issues.push({
-        code: 'missing_effort_estimate',
-        workloadFactId: workload.id,
-        blocking: true,
-      });
+      issues.push({ code: 'missing_effort_estimate', workloadFactId: workload.id, blocking: true });
     }
+
+    const allocation = estimate.estimatedMinutes === null
+      ? null
+      : allocateWeeklyPlanningEffort({ baseEstimateMinutes: estimate.estimatedMinutes });
 
     items.push({
       version: GENERIC_WORK_ITEM_VERSION,
@@ -315,14 +284,20 @@ export function compileGenericPlanningWorkItems(
         ordinalRange: ordinalRange(workload),
         actualRange: range,
       },
-      estimatedMinutes: estimate.estimatedMinutes,
+      estimatedMinutes: allocation?.allocationMinutes ?? null,
+      baseEstimatedMinutes: estimate.estimatedMinutes,
+      calibrationMultiplier: allocation?.calibrationMultiplier ?? null,
+      roundingStepMinutes: allocation?.roundingStepMinutes ?? null,
+      estimateBasis: estimate.basis,
       estimateSourceFactIds: estimate.sourceFactIds,
+      estimateSourceWorkloadFactIds: estimate.sourceWorkloadFactIds,
       splitPolicy: deriveSplitPolicy(workload),
       periodExpression: workload.periodExpression,
       sourceFactRefs: [
         workload.taskId,
         ...(workload.componentId ? [workload.componentId] : []),
         workload.id,
+        ...estimate.sourceWorkloadFactIds,
         ...estimate.sourceFactIds,
       ],
     });
@@ -332,10 +307,6 @@ export function compileGenericPlanningWorkItems(
   return {
     items,
     issues,
-    readiness: items.length === 0
-      ? 'empty'
-      : blocking
-        ? 'needs_resolution'
-        : 'ready',
+    readiness: items.length === 0 ? 'empty' : blocking ? 'needs_resolution' : 'ready',
   };
 }

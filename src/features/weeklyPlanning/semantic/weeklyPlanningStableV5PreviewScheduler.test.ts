@@ -32,7 +32,9 @@ function workItem(overrides: Partial<GenericPlanningWorkItem> = {}): GenericPlan
       actualRange: null,
     },
     estimatedMinutes: 60,
+    estimateBasis: 'intrinsic_duration',
     estimateSourceFactIds: [],
+    estimateSourceWorkloadFactIds: [],
     splitPolicy: 'splittable',
     periodExpression: null,
     sourceFactRefs: ['task-1', 'workload-1'],
@@ -188,6 +190,7 @@ describe('Stable V5 preview scheduler', () => {
     };
     const item = workItem({
       estimatedMinutes: 180,
+      estimateBasis: 'direct_effort',
       splitPolicy: 'unknown',
       quantity: {
         amount: 50,
