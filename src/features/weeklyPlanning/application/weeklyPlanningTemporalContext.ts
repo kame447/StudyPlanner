@@ -1,3 +1,6 @@
+import type {
+  WeeklyPlanningGroundingRecord,
+} from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import {
   addCalendarDays,
@@ -125,6 +128,7 @@ export function createWeeklyPlanningLegacyRequestContext(params: {
 }
 
 function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
+  if (graph.factLifecycles.length === 0) return [...graph.planningWindows];
   const activeIds = new Set(
     graph.factLifecycles
       .filter((entry) => entry.status === 'active')
@@ -133,10 +137,28 @@ function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
   return graph.planningWindows.filter((window) => activeIds.has(window.id));
 }
 
+function frozenGroundingRange(params: {
+  windowId: string;
+  groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
+}): { startDate: string; endDate: string } | null {
+  const record = [...(params.groundingRecords ?? [])]
+    .reverse()
+    .find((candidate) =>
+      candidate.targetFactId === params.windowId
+      && candidate.status !== 'rejected'
+      && isValidCalendarDate(candidate.startDate)
+      && isValidCalendarDate(candidate.endDate)
+      && candidate.startDate <= candidate.endDate);
+  return record
+    ? { startDate: record.startDate, endDate: record.endDate }
+    : null;
+}
+
 export function resolveWeeklyPlanningPlanningHorizon(params: {
   graph: WeeklyPlanningTemporalGraphView;
   selectedDate: string;
   requestContext: WeeklyPlanningTurnRequestContext;
+  groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
 }): { startDate: string; endDate: string } | null {
   const windows = activePlanningWindows(params.graph);
   if (windows.length > 1) return null;
@@ -156,6 +178,12 @@ export function resolveWeeklyPlanningPlanningHorizon(params: {
     }
     return null;
   }
+
+  const frozen = frozenGroundingRange({
+    windowId: window.id,
+    groundingRecords: params.groundingRecords,
+  });
+  if (frozen) return frozen;
 
   const resolution = resolveCanonicalDateExpression({
     expression: window.value.trim(),
