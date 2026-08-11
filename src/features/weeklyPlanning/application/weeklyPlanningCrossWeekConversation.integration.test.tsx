@@ -12,6 +12,7 @@ import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntake
 import {
   createDeferred,
   createMemoryStorageHarness,
+  createWeeklyPlanningTestDraftBlock,
   installWeeklyPlanningTestStorage,
   type MemoryStorageHarness,
 } from '../testUtils/weeklyPlanningApplicationTestHarness';
@@ -187,6 +188,64 @@ describe('cross-week weekly planning conversation continuity', () => {
       '数学の予定を相談したい',
       '確認しました: 数学の予定を相談したい',
     ]);
+    await harness.unmount();
+  });
+
+  it('does not interrupt an in-flight approval when the displayed week changes', async () => {
+    const saveGate = createDeferred<void>();
+    let saveCount = 0;
+    const harness = await renderHarness({
+      saveWeeklyApprovedPlan: async (draft) => {
+        saveCount += 1;
+        await saveGate.promise;
+        return {
+          ...createPlanFromDraft(draft),
+          id: `saved-plan-${saveCount}`,
+        };
+      },
+    });
+    const block = createWeeklyPlanningTestDraftBlock({
+      id: 'cross-week-approval-block',
+      previewMetadata: {
+        previewId: 'cross-week-approval-preview',
+        stateRevision: 0,
+        assumptionDependencies: [],
+        approvalEligibility: 'eligible',
+        stale: false,
+        authorizedUserId: 'user-1',
+      },
+      overrides: {
+        date: '2026-08-12',
+      },
+    });
+
+    await act(async () => {
+      harness.ref.current!.createDraftBlocks([block]);
+    });
+    const originalWeek = harness.ref.current!.state.weekStartDate;
+    let approval!: Promise<void>;
+    await act(async () => {
+      approval = harness.ref.current!.approveDraftBlocks();
+      await Promise.resolve();
+    });
+    expect(harness.ref.current!.state.pendingApproval).toBeDefined();
+
+    await harness.update({ selectedDate: '2026-08-18' });
+    expect(harness.ref.current!.state.weekStartDate).toBe(originalWeek);
+    expect(harness.ref.current!.state.pendingApproval).toBeDefined();
+    expect(harness.ref.current!.pendingDraftBlocks.map((item) => item.id)).toEqual([
+      'cross-week-approval-block',
+    ]);
+
+    await act(async () => {
+      saveGate.resolve();
+      await approval;
+    });
+
+    expect(saveCount).toBe(1);
+    expect(harness.ref.current!.state.pendingApproval).toBeUndefined();
+    expect(harness.ref.current!.pendingDraftBlocks).toEqual([]);
+    expect(harness.ref.current!.state.weekStartDate).toBe('2026-08-17');
     await harness.unmount();
   });
 
