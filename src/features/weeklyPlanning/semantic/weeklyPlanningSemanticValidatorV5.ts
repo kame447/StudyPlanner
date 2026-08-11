@@ -10,8 +10,8 @@ import {
   isCanonicalDateExpressionSyntax,
 } from './weeklyPlanningCalendarResolver';
 import {
-  validateWeeklyPlanningSemanticValueV5 as validateLegacySemanticValueV5,
-} from './weeklyPlanningSemanticValidatorLegacyV5';
+  validateWeeklyPlanningSemanticValueV5 as validateBaseSemanticValueV5,
+} from './weeklyPlanningSemanticBaseValidatorV5';
 import {
   validateWeeklyPlanningUserContextConsistencyV5,
 } from './weeklyPlanningUserContextConsistencyV5';
@@ -19,9 +19,9 @@ import {
 /*
  * Semantic ownership boundary
  *
- * The legacy core retains the existing structural, range, date, reference, and
- * lifecycle checks. This wrapper changes only schema-boundary mechanics that
- * are intentionally outside the legacy graph model:
+ * The base validator owns the structural, range, date, reference, and lifecycle
+ * checks for the core semantic document. This wrapper adds extension checks that
+ * are intentionally outside that base structural layer:
  *
  * - effort estimates may target a workload inside the same task
  * - userContextFacts are validated separately and never canonicalized into the
@@ -283,17 +283,17 @@ function validateUserContextFacts(
 export function validateWeeklyPlanningSemanticValueV5(
   value: unknown,
 ): WeeklyPlanningSemanticValidationResultV5 {
-  if (!isRecord(value)) return validateLegacySemanticValueV5(value);
+  if (!isRecord(value)) return validateBaseSemanticValueV5(value);
 
   const weeklyValue = Object.fromEntries(
     Object.entries(value).filter(([key]) => key !== 'userContextFacts'),
   );
-  const legacyWeeklyValue = stripSemanticExtensions(weeklyValue);
-  const legacy = validateLegacySemanticValueV5(legacyWeeklyValue);
-  const legacyErrors = legacy.errors.filter(
-    (error) => !isValidWorkloadEffortTargetError(error, legacyWeeklyValue),
+  const baseWeeklyValue = stripSemanticExtensions(weeklyValue);
+  const base = validateBaseSemanticValueV5(baseWeeklyValue);
+  const baseErrors = base.errors.filter(
+    (error) => !isValidWorkloadEffortTargetError(error, baseWeeklyValue),
   );
-  const baseLocalIds = collectLocalIds(legacyWeeklyValue);
+  const baseLocalIds = collectLocalIds(baseWeeklyValue);
   const existingPublicIdErrors = validateExistingPublicIds(weeklyValue);
   const decompositionErrors = validateTaskDecompositionStatuses(weeklyValue);
   const signalErrors = validateDurableContextSignals(weeklyValue, baseLocalIds);
@@ -302,7 +302,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     collectLocalIds(weeklyValue),
   );
   const structuralErrors = [
-    ...legacyErrors,
+    ...baseErrors,
     ...existingPublicIdErrors,
     ...decompositionErrors,
     ...signalErrors,

@@ -1,6 +1,6 @@
 # weeklyPlanning current contract status
 
-Status: canonical / Phase 3 legacy cleanup
+Status: canonical / Phase 4 behavior-preserving refactor
 Updated: 2026-08-11
 
 - [current contract v5](weekly-planning-current-contract-v5.md)
@@ -12,120 +12,108 @@ Updated: 2026-08-11
 
 ## 1. 現在のフェーズ
 
-PR #109は監査済みheadをsquash mergeし、merge後main CIもgreenである。
+PR #109でStable V5主要経路をmainへ固定し、PR #112でproductionから到達不能なlegacy interpreter/parser/runtime/semantic experiment経路を削除した。両PRともmerge後main CI greenを確認済みである。
 
-現在はPhase 3のlegacy / 過去経路削除だけを行う。
+現在はPhase 4の挙動不変リファクタだけを行う。
 
 ```text
-完了: #109 merge-readiness
-完了: #109 merge
-現在: legacy / 過去経路削除
-次:   挙動不変リファクタ
-次:   7視点再棚卸し
+完了: #109 merge-readiness / merge
+完了: #112 legacy / 過去経路削除
+現在: Stable V5挙動不変リファクタ
+次:   7視点ゼロベース再棚卸し
 最後: 新規改善再開
 ```
 
-legacy削除とリファクタを同一PRへ混ぜない。Phase 3では挙動改善を追加しない。
+Phase 4では新機能、semantic意味変更、scheduler policy変更、UI workflow変更を意図的に入れない。
 
 ## 2. Stable V5 production baseline
 
 Stable V5が唯一のproduction週間計画runtimeである。
 
-削除済みまたは削除対象として確定した旧経路:
+削除済み:
 
 - old interpreter / parser fallback
+- old intake/dialogue pipeline
 - semantic V1 / V2 experiment cluster
-- fixed legacy runtime branch
-- runtime mode selector / runtime mode change event
-- production-unreachable semantic/cutover prototype modules
-- obsolete fixed real-API scenario eval / model comparison workflow
-- prompt wordingをAI品質oracleにするtest
+- fixed legacy runtime branch / runtime selector
+- production-unreachable semantic/cutover prototypes
+- obsolete fixed AI quality eval / model comparison infra
 
-残す互換層:
+現在も残す互換層:
 
-- 旧保存形式を現在形式へ読むmigration decoder
-- 既存利用者dataのowner検証・approval ledger migration
-- 現行trace/exportが過去保存形式を安全に読むためのdecoder
-- human-guided observation専用checkpoint helper
-- repository/trace契約を守るtest-support
+- 既存保存data migration decoder
+- approval ledger / owner migration
+- 現行trace/exportが過去保存形式を読むdecoder
+- human-guided observation checkpoint helper
+- repository/trace用test-support
 
-「legacy」という名前だけを理由に消さない。production data migrationまたは現在の回帰契約に必要なものはPhase 4以降で名前・配置を整理する。
+これらは旧runtimeではない。Phase 4では必要なら命名・配置を整理するが、読み取り互換を削らない。
 
 ## 3. AI / deterministic責務
 
-現在の正本:
+変更禁止の基準線:
 
-- 自然言語、会話文脈、訂正、数量役割、曜日・時間帯、authorization intentの意味理解はAIが担当する。
-- focused / generic semanticへ分けても意味解釈は各AIが担当する。
-- deterministic routerはmachine stateから処理経路を選ぶだけで、raw user textを意味解析しない。
-- validator、binding、Fact Graph lifecycle、revision、readiness、scheduler、preview、approval、saveはdeterministic coreが担当する。
+- raw user text、会話文脈、訂正、quantity role、曜日・時間帯、authorization intentの意味理解はAI。
+- focused / generic semanticへ分けても意味解釈はAI。
+- deterministic routerはmachine stateから経路を選ぶだけで、raw user textを意味解析しない。
+- validator、formal binding、Fact Graph lifecycle、revision、readiness、scheduler、preview、approval、saveはdeterministic core。
 - provider/validation failureから自然言語parserへfallbackしない。
 
-## 4. 主要経路の確認済み事項
+Phase 4の抽出・rename・module分割によってこの境界を変えない。
 
-PR #109 baselineで実API・回帰確認済み:
+## 4. Phase 4 refactor targets
 
-- planning window / multi-task取り込み
-- total + completedからremainingを正しく扱うsemantic repair
-- pending effort answerの既存workload binding
-- reload可能なGraph/checkpoint
-- current-turn evidence validation
-- copied prior fact rejection
-- no-op時のrevision抑止とidempotency履歴保持
-- taskごとのworkload readiness
-- 曜日・preferred time scheduler保持
-- preview訂正 → re-preview
-- no-op時preview保持
-- preview → draft → approval callback
+優先順:
 
-実APIで確認した配置例:
+1. current validator内部に残る`Legacy`命名・wrapper/core二層構造を現行名称へ整理
+2. semantic orchestration / focused vs generic semanticの責務境界とprompt assemblyの重複整理
+3. existing entity binding / canonicalization / no-op detectionの責務整理
+4. Fact Graph revision / idempotency mutationの責務整理
+5. runtime executor / application lifecycle / persistenceの巨大境界整理
+6. dialogue decision / renderer contract整理
+7. test fixture builderと重複fixture整理
 
-- 数学: 2026-08-18 21:00–24:00
-- 英語レポート: 2026-08-20 12:00–14:00
+各batchは小さくし、挙動差がないことを対象回帰→typecheck→必要に応じfull regression/buildで確認する。
 
 ## 5. Prompt / orchestration
 
-汎用semantic promptへ責務を無制限に積まない。
+汎用semantic promptへ新規ルールを追加しない。既存prompt内容を分割・共通化する場合もserialized request budgetを悪化させない。
 
-作成許可のfocused semanticではgeneric semantic約25KB級に対し約1.3KB級までrequestを縮小できた。今後のfocused分割拡大はPhase 3では行わず、Phase 4の挙動不変リファクタとPhase 5の7視点再棚卸しで評価する。
+focused semanticの適用範囲拡大は挙動変更なのでPhase 4では行わない。作成許可focused semanticなど既存経路の責務を整理するだけとする。
 
-prompt budget上限を緩めて肥大化を隠さない。
-
-## 6. Test philosophy
+## 6. Testing contract
 
 自動テストは決定論的内部契約を保証する。
 
-自動PASSにしないもの:
+Phase 4で禁止:
 
-- AIの特定日本語返答
-- 固定scenarioのsemantic解釈
-- 自然さ・会話品質
-- model比較
+- AIの特定日本語返答をexpectedにする
+- 固定scenarioのsemantic結果を品質PASSにする
+- refactorを通すために有効な回帰testを削る
+- prompt budget上限を緩める
 
-実AI会話はhuman-reviewed observationで確認し、開発側で明確な欠陥を修正してから最終判断を人間へ渡す。
+renameやmodule splitでtest importだけ変える場合も、testの意味は維持する。
 
-## 7. Phase 3 verification
+## 7. 各batchの7視点監査
 
-legacy削除はbatchごとに7視点監査する。
-
-1. AI意味理解責務
+1. AI意味理解責務 / orchestration / prompt
 2. state / Fact Graph / revision / idempotency
 3. dialogue / pending question / renderer
-4. scheduler / preview / approval / save
-5. test妥当性
+4. scheduler / preview / correction / approval / save
+5. test妥当性 / regression coverage
 6. trace / checkpoint / persistence / recovery
-7. CI / dependency / deployment
+7. CI / dependency / build / operational safety
 
-現在までのcleanup batchでは、targeted regressions、typecheck、conversation foundation、full Vitest、production buildをgreen確認してからbranchへ固定している。
+新しい仕様問題を見つけても、データ破壊・security・save不整合等のBLOCKERでなければPhase 5 backlogへ記録し、Phase 4で挙動変更しない。
 
-## 8. Phase 3完了条件
+## 8. Phase 4完了条件
 
-- production dependency graphに旧runtime/interpreter/parser/semantic experiment経路が残らない。
-- production-unreachable非test moduleは、現行observation/test-supportとして必要なものだけになる。
-- runtime mode selectorが存在しない。
-- obsolete fixed-AI-quality evalが存在しない。
-- canonical docsがStable V5 sole runtimeを前提とする。
-- full CI / typecheck / buildがgreen。
-- cleanup PRの7視点監査でBLOCKER/MAJORなし。
+- production current coreに歴史的wrapper/duplicate責務が不必要に残っていない。
+- semantic ownership境界がコード構造から追いやすい。
+- validator / canonicalizer / graph mutation / runtime executorの責務が明確。
+- prompt budgetが悪化していない。
+- deterministic regression coverageを維持。
+- typecheck / full Vitest / production build / diff check green。
+- refactor PRの7視点監査でBLOCKER/MAJORなし。
 
-この条件を満たしたらcleanup PRをmergeし、そのmain CI成功後にだけPhase 4の挙動不変リファクタbranchを作る。
+完了後にmainへmergeし、merge後main CI greenを確認してからPhase 5の7視点再棚卸しへ進む。
