@@ -6,7 +6,10 @@ import {
   type SemanticWorkloadUnitCodeV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
-import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
+import {
+  finalizeWeeklyPlanningStableV5RuntimeGraph,
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './weeklyPlanningStableV5RuntimeSession';
 
 const { normalizeMock } = vi.hoisted(() => ({ normalizeMock: vi.fn() }));
 
@@ -165,6 +168,14 @@ function turnInput(params: {
   };
 }
 
+function finalizeTurn(conversationId: string, requestId: string): void {
+  finalizeWeeklyPlanningStableV5RuntimeGraph({
+    ownerId: 'owner-human-scale',
+    conversationId,
+    requestId,
+  });
+}
+
 describe('Stable V5 human-scale conversation integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
@@ -189,6 +200,8 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(first.draftCandidates).toEqual([]);
     expect(first.message).toContain('70語・70語・80語');
     expect(first.message).toContain('1回分（70〜80語）');
+    expect(first.state.draftGenerationIntent).toBe('user_authorized');
+    finalizeTurn('conversation-vocabulary-220', 'request-vocabulary-220-1');
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(30)));
     const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
@@ -237,6 +250,8 @@ describe('Stable V5 human-scale conversation integration', () => {
 
     expect(first.message).toContain('80語をまとめて覚えるのに');
     expect(first.message).not.toContain('1語あたり');
+    expect(first.state.draftGenerationIntent).toBe('user_authorized');
+    finalizeTurn('conversation-vocabulary-80', 'request-vocabulary-80-1');
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(35)));
     const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
@@ -277,6 +292,8 @@ describe('Stable V5 human-scale conversation integration', () => {
     }));
 
     expect(first.message).toContain('1問あたりどれくらい時間がかかりますか');
+    expect(first.state.draftGenerationIntent).toBe('user_authorized');
+    finalizeTurn('conversation-problems-40', 'request-problems-40-1');
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(8)));
     const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
