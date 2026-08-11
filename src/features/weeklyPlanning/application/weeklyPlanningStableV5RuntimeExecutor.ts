@@ -105,6 +105,10 @@ function compatibilityState(params: {
   const previous = params.previousState ?? emptyCompatibilityState();
   const hasDraft = params.draftCandidates.length > 0;
   const hasPreview = hasDraft || Boolean(params.preserveExistingPreview);
+  const durableDraftGenerationIntent = params.authorized
+    || previous.draftGenerationIntent === 'user_authorized'
+    ? 'user_authorized'
+    : 'not_requested';
   return {
     ...previous,
     status: hasPreview
@@ -127,7 +131,7 @@ function compatibilityState(params: {
     shouldSavePlan: false,
     draftGenerationIntent: params.preserveExistingPreview
       ? previous.draftGenerationIntent
-      : params.authorized ? 'user_authorized' : 'not_requested',
+      : durableDraftGenerationIntent,
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
   };
 }
@@ -745,8 +749,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       || semanticDiff.superseded.length > 0
       || semanticDiff.removed.length > 0),
   );
+  const previousDraftGenerationIntent = input.previousState?.draftGenerationIntent ?? null;
   const authorized = isWeeklyPlanningStableV5PreviewAuthorized({
     previousStatus: input.previousState?.status ?? null,
+    previousDraftGenerationIntent,
     planningIntent,
     semanticChanged,
   });
@@ -791,7 +797,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       authorization: {
         planningIntent,
         semanticChanged,
-        criterion: 'create_plan OR (draft_ready + update_plan + semanticChanged)',
+        previousDraftGenerationIntent,
+        criterion: 'create_plan OR durable user_authorized before draft_ready OR (draft_ready + update_plan + semanticChanged)',
         authorized,
       },
     },
@@ -904,7 +911,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       branch: 'authorization_required',
       basis: {
         planningIntent,
-        criterion: 'not create_plan and not draft_ready + update_plan',
+        previousDraftGenerationIntent,
+        criterion: 'no current create_plan, no durable user_authorized, and no draft_ready update_plan change',
       },
       output,
     });
@@ -1020,15 +1028,15 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 
 export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   previousStatus: PlanningIntakeState['status'] | null;
+  previousDraftGenerationIntent: PlanningIntakeState['draftGenerationIntent'] | null;
   planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
   semanticChanged: boolean;
 }): boolean {
-  return params.planningIntent === 'create_plan'
-    || (
-      params.previousStatus === 'draft_ready'
-      && params.planningIntent === 'update_plan'
-      && params.semanticChanged
-    );
+  if (params.planningIntent === 'create_plan') return true;
+  if (params.previousStatus === 'draft_ready') {
+    return params.planningIntent === 'update_plan' && params.semanticChanged;
+  }
+  return params.previousDraftGenerationIntent === 'user_authorized';
 }
 
 export function getWeeklyPlanningStableV5BlockingIssueCode(
