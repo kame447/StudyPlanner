@@ -202,20 +202,25 @@ describe('generic weekly planning work item compiler', () => {
         ordinalRange: { start: 1, end: 2 },
         actualRange: null,
       },
+      baseEstimatedMinutes: 240,
       estimatedMinutes: 240,
+      roundingStepMinutes: 15,
     });
     expect(item).not.toHaveProperty('field');
     expect(item).not.toHaveProperty('year');
   });
 
-  it('calculates duration_per_unit without confusing workload and effort', () => {
+  it('calculates duration_per_unit without confusing base estimate and calendar allocation', () => {
     const result = compileGenericPlanningWorkItems(createGraph());
     const item = result.items.find((candidate) =>
       candidate.workloadFactId === 'workload-problems');
 
     expect(item).toMatchObject({
       quantity: { amount: 20, unitCode: 'problem' },
-      estimatedMinutes: 200,
+      baseEstimatedMinutes: 200,
+      estimatedMinutes: 210,
+      calibrationMultiplier: 1,
+      roundingStepMinutes: 15,
       estimateSourceFactIds: ['estimate-problem'],
     });
   });
@@ -227,7 +232,10 @@ describe('generic weekly planning work item compiler', () => {
 
     expect(item).toMatchObject({
       quantity: { amount: 1, unitCode: 'hour' },
+      baseEstimatedMinutes: 60,
       estimatedMinutes: 60,
+      calibrationMultiplier: 1,
+      roundingStepMinutes: 5,
       splitPolicy: 'splittable',
     });
   });
@@ -242,6 +250,7 @@ describe('generic weekly planning work item compiler', () => {
       candidate.workloadFactId === 'workload-exam-years');
 
     expect(item?.estimatedMinutes).toBeNull();
+    expect(item?.baseEstimatedMinutes).toBeNull();
     expect(result.readiness).toBe('needs_resolution');
     expect(result.issues).toContainEqual({
       code: 'missing_effort_estimate',
