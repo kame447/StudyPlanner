@@ -1,3 +1,4 @@
+import type { WeeklyPlanningRepairObligation } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { isWeeklyPlanningFactActiveV5 } from './weeklyPlanningFactLifecycleV5';
 import type {
@@ -9,24 +10,7 @@ import {
   type WeeklyPlanningStableQuestionV5,
 } from './weeklyPlanningStableDialoguePolicyV5';
 
-export type WeeklyPlanningRepairObligationStatusV5 =
-  | 'open'
-  | 'deferred'
-  | 'resolved'
-  | 'dropped';
-
-export interface WeeklyPlanningRepairObligationV5 {
-  id: string;
-  issueFactId: string;
-  targetFactId: string | null;
-  domain: GenericSchedulerInputIssue['domain'];
-  code: string;
-  impact: 'low' | 'medium' | 'high';
-  status: WeeklyPlanningRepairObligationStatusV5;
-  createdRevision: number;
-  sourceTurnId: string;
-  reopenBefore: 'preview' | 'save';
-}
+export type WeeklyPlanningRepairObligationV5 = WeeklyPlanningRepairObligation;
 
 export interface WeeklyPlanningStableRepairDecisionV5 {
   mode: 'explicit_repair' | 'pass_over' | 'continue';
