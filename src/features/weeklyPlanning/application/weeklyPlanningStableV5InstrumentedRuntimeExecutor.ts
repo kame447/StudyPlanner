@@ -1,5 +1,8 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
+  rewriteWeeklyPlanningEffortQuestionV5,
+} from '../semantic/weeklyPlanningEffortQuestionRendererV5';
+import {
   beginWeeklyPlanningStableV5DebugTrace,
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -101,6 +104,36 @@ function withFreshestAvailableGraph(
   };
 }
 
+function withHumanScaleEffortQuestion(
+  result: WeeklyPlanningTurnExecutionResult,
+): WeeklyPlanningTurnExecutionResult {
+  const context = result.state.lastQuestionContext;
+  const workloadFactId = context?.targetSlot === 'stable_v5:missing_effort_estimate'
+    ? context.topicId
+    : undefined;
+  if (!result.stableV5Graph || !workloadFactId) return result;
+
+  const message = rewriteWeeklyPlanningEffortQuestionV5({
+    graph: result.stableV5Graph,
+    workloadFactId,
+    message: result.message,
+  });
+  if (message === result.message) return result;
+  return {
+    ...result,
+    message,
+    state: {
+      ...result.state,
+      questions: result.state.questions.map((question) =>
+        rewriteWeeklyPlanningEffortQuestionV5({
+          graph: result.stableV5Graph!,
+          workloadFactId,
+          message: question,
+        })),
+    },
+  };
+}
+
 function previousTurnMayHoldPreview(
   previousState: PlanningIntakeState | undefined,
 ): boolean {
@@ -193,10 +226,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 
   try {
     const coreResult = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
-    const result = withRepairSafePreview(
-      input,
+    const projected = withHumanScaleEffortQuestion(
       withFreshestAvailableGraph(input, coreResult),
     );
+    const result = withRepairSafePreview(input, projected);
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
