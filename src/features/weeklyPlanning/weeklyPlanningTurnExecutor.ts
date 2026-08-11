@@ -3,6 +3,7 @@ import type { Plan, ScheduleTemplate } from '../../types/domain';
 import {
   executeWeeklyPlanningStableV5RuntimeTurn,
 } from './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
 import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
   type WeeklyPlanningStableV5DialogueActionKind,
@@ -45,6 +46,7 @@ export interface WeeklyPlanningTurnExecutionInput {
   conversationId: string;
   traceRequestId: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
+  requestContext?: WeeklyPlanningTurnRequestContext;
 }
 
 export type WeeklyPlanningTurnFailureCode =
@@ -404,6 +406,8 @@ export async function executeWeeklyPlanningTurn(
     timetableTermId: input.timetableTermId,
     conversationId: input.conversationId,
     traceRequestId: input.traceRequestId,
+    weekStartsOn: input.weekStartsOn,
+    requestContext: input.requestContext,
   });
   const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
   if (!recordedFailure) {
