@@ -170,36 +170,42 @@ describe('useWeeklyPlanningApplication', () => {
     await harness.unmount();
   });
 
-  it('discards an old turn result after the selected week changes', async () => {
+  it('keeps an in-flight turn valid and re-anchors only after a displayed-week change completes', async () => {
     const pendingTurn = createDeferred<WeeklyPlanningTurnExecutionResult>();
     executeWeeklyPlanningTurnMock.mockImplementation(() => pendingTurn.promise);
     const harness = await renderApplicationHarness();
     let submission!: Promise<WeeklyPlanningTurnSubmissionResult>;
 
     await act(async () => {
-      submission = harness.ref.current!.submitTurn('旧週の送信');
+      submission = harness.ref.current!.submitTurn('旧表示週からの送信');
       await Promise.resolve();
     });
     expect(harness.ref.current!.state.pendingTurn).toBeDefined();
 
     await harness.update({ selectedDate: '2026-07-21' });
-    expect(harness.ref.current!.state.weekStartDate).toBe('2026-07-20');
-    expect(harness.ref.current!.state.pendingTurn).toBeUndefined();
+    expect(harness.ref.current!.state.weekStartDate).toBe('2026-07-13');
+    expect(harness.ref.current!.state.pendingTurn).toBeDefined();
 
     let result: WeeklyPlanningTurnSubmissionResult | undefined;
     await act(async () => {
-      pendingTurn.resolve(turnResult('旧週の送信'));
+      pendingTurn.resolve(turnResult('旧表示週からの送信'));
       result = await submission;
     });
 
-    expect(result).toEqual({ accepted: false, draftCandidates: [] });
+    expect(result?.accepted).toBe(true);
     expect(harness.ref.current!.state.weekStartDate).toBe('2026-07-20');
-    expect(harness.ref.current!.state.messages).toEqual([]);
-    expect(harness.ref.current!.state.intakeState).toBeUndefined();
+    expect(harness.ref.current!.state.pendingTurn).toBeUndefined();
+    expect(harness.ref.current!.state.messages.map((message) => message.content)).toEqual([
+      '旧表示週からの送信',
+      '確認しました: 旧表示週からの送信',
+    ]);
+    expect(harness.ref.current!.state.intakeState?.sourceTurns).toEqual([
+      '旧表示週からの送信',
+    ]);
     await harness.unmount();
   });
 
-  it('passes the pending conversationId and rotates it after user and week changes', async () => {
+  it('rotates conversation identity on user change but preserves it on displayed-week change', async () => {
     const conversationIds: string[] = [];
     const traceRequestIds: string[] = [];
     executeWeeklyPlanningTurnMock.mockImplementation(
@@ -220,16 +226,19 @@ describe('useWeeklyPlanningApplication', () => {
     });
     await harness.update({ selectedDate: '2026-07-21' });
     await act(async () => {
-      await harness.ref.current!.submitTurn('別週の送信');
+      await harness.ref.current!.submitTurn('別表示週の送信');
     });
 
     expect(conversationIds).toHaveLength(3);
-    expect(new Set(conversationIds).size).toBe(3);
+    expect(new Set(conversationIds).size).toBe(2);
+    expect(conversationIds[0]).not.toBe(conversationIds[1]);
+    expect(conversationIds[2]).toBe(conversationIds[1]);
     expect(conversationIds.every((conversationId) => conversationId.startsWith('weekly-conversation-'))).toBe(true);
-    expect(traceRequestIds).toHaveLength(3);
-    expect(traceRequestIds.every((requestId, index) =>
-      requestId === `${conversationIds[index]}:request:1`,
-    )).toBe(true);
+    expect(traceRequestIds).toEqual([
+      `${conversationIds[0]}:request:1`,
+      `${conversationIds[1]}:request:1`,
+      `${conversationIds[1]}:request:2`,
+    ]);
     await harness.unmount();
   });
 
