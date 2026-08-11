@@ -4,7 +4,6 @@ import {
   resetWeeklyPlanningControllerSession,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
-import { isWeeklyPlanningStableV5RuntimeEnabled } from './weeklyPlanningRuntimeMode';
 import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   clearWeeklyPlanningStableV5RuntimeSession,
@@ -18,7 +17,6 @@ import {
 } from './weeklyPlanningStableV5SessionStorage';
 
 export interface WeeklyPlanningSessionLifecycleServices {
-  isStableV5Enabled: typeof isWeeklyPlanningStableV5RuntimeEnabled;
   loadPersistedSession: typeof loadWeeklyPlanningStableV5PersistedSession;
   hydrateRuntimeSession: typeof hydrateWeeklyPlanningStableV5RuntimeSession;
   bindRuntimeSessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
@@ -30,7 +28,6 @@ export interface WeeklyPlanningSessionLifecycleServices {
 }
 
 const defaultServices: WeeklyPlanningSessionLifecycleServices = {
-  isStableV5Enabled: isWeeklyPlanningStableV5RuntimeEnabled,
   loadPersistedSession: loadWeeklyPlanningStableV5PersistedSession,
   hydrateRuntimeSession: hydrateWeeklyPlanningStableV5RuntimeSession,
   bindRuntimeSessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
@@ -56,7 +53,6 @@ export function restoreWeeklyPlanningApplicationSession(
   weekStartDate: string,
   services: WeeklyPlanningSessionLifecycleServices = defaultServices,
 ): WeeklyPlanningStableV5PersistedSession | null {
-  if (!services.isStableV5Enabled()) return null;
   const persisted = services.loadPersistedSession({ ownerId, weekStartDate });
   if (!persisted) return null;
   services.hydrateRuntimeSession({
@@ -94,24 +90,12 @@ export function synchronizeWeeklyPlanningApplicationSession(params: {
       restored?.conversationId,
     );
   }
-  if (services.isStableV5Enabled()) {
-    services.bindRuntimeSessionScope({
-      ownerId: params.ownerId,
-      weekStartDate: params.weekStartDate,
-      conversationId: params.session.conversationId,
-    });
-  }
+  services.bindRuntimeSessionScope({
+    ownerId: params.ownerId,
+    weekStartDate: params.weekStartDate,
+    conversationId: params.session.conversationId,
+  });
   return restored;
-}
-
-export function resetWeeklyPlanningApplicationForRuntimeModeChange(
-  params: WeeklyPlanningSessionResetParams,
-  services: WeeklyPlanningSessionLifecycleServices = defaultServices,
-): PlanningState {
-  const weekStartDate = params.getState().weekStartDate;
-  services.clearPersistedSession({ ownerId: params.ownerId, weekStartDate });
-  services.clearRuntimeSession(params.session.conversationId);
-  return services.resetControlledSession(params);
 }
 
 export function resetWeeklyPlanningApplicationSession(

@@ -1,12 +1,8 @@
-import { getAiConfig, getAiConfigValidationMessage } from '../../lib/aiConfig';
+import { getAiConfig } from '../../lib/aiConfig';
 import type { Plan, ScheduleTemplate } from '../../types/domain';
-import {
-  isWeeklyPlanningStableV5RuntimeEnabled,
-} from './application/weeklyPlanningRuntimeMode';
 import {
   executeWeeklyPlanningStableV5RuntimeTurn,
 } from './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
-import { createAiWeeklyPlanningDialogueRenderer } from './dialogue/weeklyPlanningAiDialogueRenderer';
 import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
   type WeeklyPlanningStableV5DialogueActionKind,
@@ -15,14 +11,8 @@ import {
   isStableV5QuestionLikeText,
   requiredLabelsForStableV5Dialogue,
 } from './dialogue/weeklyPlanningStableV5DialogueContext';
-import { renderWeeklyPlanningDialogueMessage } from './dialogue/weeklyPlanningDialogueRenderer';
-import { createAiWeeklyPlanningInterpreter } from './intake/weeklyPlanningAiInterpreter';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
-import {
-  runWeeklyPlanningBehaviorAwarePipelineWithInterpreter,
-} from './pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlanningWeek';
-import { WeeklyPlanningSemanticInterpreterError } from './pipeline/weeklyPlanningSemanticInterpreterError';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
 import {
@@ -402,151 +392,76 @@ async function renderStableV5AssistantMessage(params: {
 export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
-  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
-    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
-      previousState: input.previousState,
-      messages: input.messages,
-      userText: input.userText,
-      selectedDate: input.selectedDate,
-      userId: input.userId,
-      plans: input.plans,
-      scheduleTemplates: input.scheduleTemplates,
-      timetableTermId: input.timetableTermId,
-      conversationId: input.conversationId,
-      traceRequestId: input.traceRequestId,
-    });
-    const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
-    if (!recordedFailure) {
-      const renderedResult = await renderStableV5AssistantMessage({ input, result });
-      recordWeeklyPlanningStableV5DebugTrace({
-        requestId: input.traceRequestId,
-        stage: 'turn_executor_result_projected',
-        data: {
-          branch: 'no_recorded_failure',
-          criteria: 'failure diagnostics repository returned null',
-          projectedResult: renderedResult,
-        },
-      });
-      return renderedResult;
-    }
-
-    const failureCode = `stable_v5_${recordedFailure.status}` as WeeklyPlanningTurnFailureCode;
-    const projected: WeeklyPlanningTurnExecutionResult = {
-      ...result,
-      state: {
-        ...result.state,
-        status: 'revision_pending',
-        missing: [],
-        questions: [],
-        lastQuestionContext: undefined,
-        shouldCreateDraft: false,
-        draftGenerationIntent: 'not_requested',
-      },
-      failure: {
-        code: failureCode,
-        userMessage: result.message,
-        traceCode: recordedFailure.traceCode,
-        diagnostics: {
-          attemptCount: recordedFailure.attemptCount,
-          repairAttempted: recordedFailure.repairAttempted,
-          validationErrorCategories: recordedFailure.validationErrorCategories,
-          providerErrorCategory: recordedFailure.providerErrorCategory,
-        },
-      },
-      responseSource: 'system',
-      dialogueRendererTrace: systemDialogueRendererTrace(result.message),
-    };
-    recordWeeklyPlanningStableV5DebugTrace({
-      requestId: input.traceRequestId,
-      stage: 'turn_executor_result_projected',
-      severity: 'error',
-      data: {
-        branch: 'recorded_failure_projected',
-        criteria: {
-          recordedFailureExists: true,
-          projectedStatus: 'revision_pending',
-          questionsCleared: true,
-          draftAuthorizationCleared: true,
-        },
-        recordedFailure,
-        originalResult: result,
-        projectedResult: projected,
-      },
-    });
-    return projected;
-  }
-
-  const pipelineInput = {
+  takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
+  const result = await executeWeeklyPlanningStableV5RuntimeTurn({
     previousState: input.previousState,
-    recentTurns: input.messages
-      .slice(-RECENT_TURN_LIMIT)
-      .map(({ role, content }) => ({ role, content })),
+    messages: input.messages,
     userText: input.userText,
-    planningStartDate: input.selectedDate,
-    planningDayCount: 7,
-    sessionPolicy: {
-      firstDayStartTime: '09:00',
-      dayStartTime: '09:00',
-      dayEndTime: '22:00',
-      breakMinutes: 10,
-    },
-    existingPlans: input.plans,
+    selectedDate: input.selectedDate,
+    userId: input.userId,
+    plans: input.plans,
     scheduleTemplates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
-    weekStartsOn: input.weekStartsOn,
-  };
-  const aiConfig = getAiConfig();
-  const aiConfigError = getAiConfigValidationMessage(aiConfig);
-  if (aiConfig.provider === 'rules' || aiConfigError) {
-    throw new WeeklyPlanningSemanticInterpreterError(
-      'interpreter_unavailable',
-      aiConfigError ?? 'rules provider is not permitted for weekly-planning interpretation',
-    );
-  }
-  const pipelineOutput = await runWeeklyPlanningBehaviorAwarePipelineWithInterpreter({
-    ...pipelineInput,
-    interpreter: createAiWeeklyPlanningInterpreter(aiConfig),
-  }, {
-    useAiDialoguePlanner: true,
-    userId: input.userId,
     conversationId: input.conversationId,
     traceRequestId: input.traceRequestId,
   });
-  const isExamFlow = Boolean(pipelineOutput.state.examPrepScope);
-  const semanticInterpretationSuppressed = pipelineOutput.interpretationOutcome === 'failed'
-    || pipelineOutput.interpretationOutcome === 'rejected';
-  const shouldRenderExamDialogue = isExamFlow && !semanticInterpretationSuppressed;
-  const dialogueRenderer = shouldRenderExamDialogue
-    ? createAiWeeklyPlanningDialogueRenderer(aiConfig)
-    : undefined;
-  const message = shouldRenderExamDialogue
-    ? await renderWeeklyPlanningDialogueMessage({
-      state: pipelineOutput.state,
-      previousState: input.previousState,
-      decision: pipelineOutput.decision,
-      renderer: dialogueRenderer,
-      userId: input.userId,
-      existingPlans: input.plans,
-    })
-    : pipelineOutput.behaviorDialogue.message;
-  const firstRenderedQuestion = shouldRenderExamDialogue
-    ? pipelineOutput.decision.questionPlan?.[0]
-    : undefined;
-  const state: PlanningIntakeState = firstRenderedQuestion
-    ? {
-        ...pipelineOutput.state,
-        lastQuestionContext: {
-          kind: pipelineOutput.decision.kind === 'offer_dry_run_preview' ? 'preview' : 'missing',
-          targetSlot: firstRenderedQuestion.targetSlot,
-          intent: firstRenderedQuestion.intent,
-        },
-      }
-    : pipelineOutput.state;
+  const recordedFailure = takeWeeklyPlanningStableV5FailureDiagnostics(input.traceRequestId);
+  if (!recordedFailure) {
+    const renderedResult = await renderStableV5AssistantMessage({ input, result });
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: input.traceRequestId,
+      stage: 'turn_executor_result_projected',
+      data: {
+        branch: 'no_recorded_failure',
+        criteria: 'failure diagnostics repository returned null',
+        projectedResult: renderedResult,
+      },
+    });
+    return renderedResult;
+  }
 
-  return {
-    state,
-    message,
-    draftCandidates: pipelineOutput.draftCandidates ?? [],
+  const failureCode = `stable_v5_${recordedFailure.status}` as WeeklyPlanningTurnFailureCode;
+  const projected: WeeklyPlanningTurnExecutionResult = {
+    ...result,
+    state: {
+      ...result.state,
+      status: 'revision_pending',
+      missing: [],
+      questions: [],
+      lastQuestionContext: undefined,
+      shouldCreateDraft: false,
+      draftGenerationIntent: 'not_requested',
+    },
+    failure: {
+      code: failureCode,
+      userMessage: result.message,
+      traceCode: recordedFailure.traceCode,
+      diagnostics: {
+        attemptCount: recordedFailure.attemptCount,
+        repairAttempted: recordedFailure.repairAttempted,
+        validationErrorCategories: recordedFailure.validationErrorCategories,
+        providerErrorCategory: recordedFailure.providerErrorCategory,
+      },
+    },
+    responseSource: 'system',
+    dialogueRendererTrace: systemDialogueRendererTrace(result.message),
   };
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'turn_executor_result_projected',
+    severity: 'error',
+    data: {
+      branch: 'recorded_failure_projected',
+      criteria: {
+        recordedFailureExists: true,
+        projectedStatus: 'revision_pending',
+        questionsCleared: true,
+        draftAuthorizationCleared: true,
+      },
+      recordedFailure,
+      originalResult: result,
+      projectedResult: projected,
+    },
+  });
+  return projected;
 }

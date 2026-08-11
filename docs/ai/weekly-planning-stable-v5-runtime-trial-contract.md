@@ -1,56 +1,59 @@
-# Weekly Planning Stable V5 Runtime Trial Contract
+# Weekly Planning Stable V5 Runtime Contract
 
-Status: canonical for current runtime connection and browser persistence
-最終更新: 2026-07-24
-Reviewed main baseline: `14e2184856fdbdb1f6513735e9eae3efb45c9822`
+Status: canonical / Stable V5 sole production runtime
+Updated: 2026-08-11
 
-この文書はStable V5の実環境接続、browser保存、conversation identity、trace continuity、rollback境界を定める。semantic model、availability、migrationの詳細はcurrent contractとarchitectureを継承する。runtime接続状態または保存状態について競合する文書がある場合、この文書を優先する。
+注: ファイル名 `weekly-planning-stable-v5-runtime-trial-contract.md` は既存リンク互換のため残しているが、trial contractではない。本文が現在のruntime contractである。
 
-## 1. 現在の接続状態
+## 1. Current runtime
 
-Stable V5は既存週間計画UIへfeature flag付きで接続済みであり、PR #77、PR #79、PR #83はmainへmerge済みである。
+Stable V5は週間計画の唯一のproduction runtimeである。
 
 ```text
 NaturalLanguageAssistant
 → weeklyPlanningTurnExecutor
-→ Stable V5 structured output
-→ direct validation
-→ Fact Graph V5 lifecycle
-→ deterministic dialogue / scheduler
-→ existing preview UI
-→ existing approval / Plan save
+→ Stable V5 semantic normalization
+→ validation / optional AI repair
+→ Fact Graph V5
+→ deterministic readiness / scheduler / dialogue decision
+→ AI renderer
+→ preview
+→ draft / approval / save
 ```
 
-default runtimeは`legacy`である。Stable V5は利用者または開発者が明示的に選択したsessionだけで使用する。
+legacy runtime selector、runtime mode setting、query parameterによる旧経路切替、runtime generation切替は存在しない。
 
-## 2. 有効化とrollback
+旧保存形式・旧trace形式を読み取るmigration decoderは、既存data互換のために残ることがある。これは旧runtimeへrollbackする機構ではない。
 
-```text
-アプリ設定 → 週間計画AI → Stable V5
-```
+## 2. AI / core boundary
 
-開発・preview用:
+AIはraw user textと会話文脈からsemantic meaningを構造化する。
 
-```text
-?weeklyPlanningRuntime=stable-v5
-VITE_WEEKLY_PLANNING_RUNTIME_MODE=stable_v5
-```
+AIが担当する:
 
-「現行方式」へ戻すとruntime generationを切り替え、会話、preview、draft、Fact Graph、persisted Stable V5 sessionを同時に初期化する。同じconversationへlegacy stateとStable V5 graphを混在させない。
+- task / quantity / effort
+- date / weekday / time period
+- relation / availability / recurrence
+- correction / decision / authorization intent
+- pending questionに対する自然言語回答の意味
 
-## 3. AIとdeterministic coreの責務
+coreが担当する:
 
-AIはraw user textをStable V5 semantic documentへ構造化する。target fact、formal ID、revision、missing優先順位、質問、readiness、placement、preview、approval、save、external event本文を決めない。
+- schema / evidence validation
+- formal ID / revision
+- existing fact binding
+- lifecycle / no-op / idempotency
+- readiness / question target
+- scheduler placement
+- preview freshness
+- approval / save
+- persistence / recovery
 
-provider failure、空応答、不正JSON、schema rejection、repair failureでparserへfallbackしない。repairはJSON/schema修復に限定し、一turn最大一回とする。
+provider failure、schema rejection、repair failureで自然言語parserへfallbackしない。
 
-## 4. runtime safety
+## 3. Session identity
 
-existing planとtimetable本文はAIへ送らずschedulerへ直接渡す。Graph revision不一致、stale preview、partial placement、owner・week・conversation mismatchを拒否する。staged GraphはPlanningStateのturn commit受理後だけfinalizeし、stale、cancel、commit rejection、failure時は破棄する。
-
-## 5. multi-turn identity
-
-conversation IDは一つの対話系列を表す。turn ID、request ID、message IDはconversation内で再利用しない。
+conversation IDは一つの論理対話系列を表す。turn ID、request ID、message IDはconversation内で再利用しない。
 
 ```text
 <conversationId>:turn:<sequence>
@@ -59,94 +62,94 @@ conversation IDは一つの対話系列を表す。turn ID、request ID、messag
 <conversationId>:turn:<sequence>:assistant
 ```
 
-再マウントまたはページ再読込後は、復元済みmessage IDとPlanningState revisionからsequenceの単調下限を決め、その次を発行する。
+ページ再読込・再マウント後はpersisted stateからsequenceの単調下限を復元する。
 
-`clear_conversation`は表示中のmessage履歴だけを消す。同じconversation ID、request sequence、compatibility intake state、Fact Graph、preview、draft、approval作業状態、runtime session、persisted session、trace continuityを維持する。`clear_conversation`から`reset_session`を呼ばず、Graphまたはtrace sessionを削除しない。messagesが空になっても、同じconversation内の過去request IDへ戻らない。
+`clear_conversation`は表示messageだけを対象とし、同一sessionのGraph / preview / draft / request sequence / trace continuityを壊さない。
 
-`reset_session`は「最初からやり直す」操作である。messages、intake、preview、draft、approval、request sequence、conversation identity、Fact Graph、persisted sessionを初期化し、新しいconversationを発行する。
+`reset_session`は明示的に新規conversationへ移行し、conversation-scoped stateを初期化する。
 
-短答結合はexpected revision、短答形、単一target、単一candidateを満たす場合だけ行う。authorization turnではAIへ既存fact全文の再出力を要求しない。
+## 4. Browser persistence
 
-## 6. browser persistence boundary
+Stable V5 sessionはowner・week・conversationへ拘束する。
 
-Stable V5はowner・week・conversationに拘束したlocalStorage envelopeへconversation ID、完了済みPlanningState、Fact Graph V5、preview candidates、draft blocks、savedAtを一体保存する。
+一貫したenvelopeとして扱う対象:
 
-pending turnまたはpending approval中の半端なstateは保存しない。復元時にowner、week、conversation、Graph source、preview freshness、size、schemaを検証し、一部だけを復元しない。
+- conversation ID
+- 完了済みPlanningState
+- Fact Graph V5
+- preview candidates
+- draft blocks
+- saved timestamp / schema metadata
 
-versioned payloadのdecodeは純粋処理として行う。検証のためにlive localStorage keyへpayloadを一時書込みしてはならない。保存領域のmutationは明示的saveまたはlegacy migration commitだけで行う。
+pending turnやpending approval中の半端なstateを保存しない。復元時にowner、week、conversation、Graph source、preview freshness、size、schemaを検証し、一部分だけ復元しない。
 
-これは同一browser内のruntime persistenceであり、server repositoryまたはcross-device Graph persistenceではない。旧PlanningStateからStable V5 Graphへのmigration decoderも未実装である。
+旧PlanningState/local payloadを読むmigrationは、owner整合性を検証してから現在形式へ移す。migration失敗を空stateとして黙って扱わない。
 
-## 7. trace continuity boundary
+## 5. Fact Graph transaction
 
-Stable V5 traceは既存trace repositoryへuser/assistant turn、internal event、snapshotを保存する。physical trace identityのscopeは次とする。
+runtime executorはGraph変更をrequest単位でstageする。PlanningState側の同一turn commit成功後だけfinalizeする。
+
+次ではstageを破棄する。
+
+- stale request
+- cancel
+- week change
+- commit rejection
+- validation / provider failure
+
+no-op turnではfact revisionを増やさないが、applied turn/idempotency履歴は保持する。
+
+## 6. Preview / approval
+
+previewはowner、conversation、Graph revision、source factsへ拘束する。
+
+- Graph変更後のstale previewは承認不可。
+- preview後の実変更は再preview。
+- no-op turnでは既存previewを保持。
+- preview candidateからdraft blockへの昇格は既存application contractを通す。
+- approval/saveはdeterministic application責務。
+- 二重承認、二重保存、owner mismatchを拒否する。
+
+## 7. Trace continuity
+
+trace scopeはowner + logical conversation IDである。
+
+ページ再読込、module memory消失、表示messageのclearだけでphysical trace identityを切らない。明示reset、owner変更、week scope変更、新conversationだけが新しいidentityを作る。
+
+traceはrequest、turn、revision、adopted response source、renderer decision等を観測可能にする一方、privacy/retention contractを守る。
+
+legacy trace decoderが必要な場合はread compatibilityとして扱い、新しいruntime write pathへlegacy shapeを再導入しない。
+
+## 8. External constraints
+
+existing plans / timetable / fixed commitmentsの本文はsemantic AIへ送らずschedulerへ直接渡す。
+
+external source acquisitionはsuccess(events) / failure(reason)を区別し、failureを予定0件として扱わない。
+
+## 9. Verification
+
+Stable V5 runtime変更では少なくとも次を確認する。
+
+- typecheck
+- deterministic weekly-planning regressions
+- conversation foundation
+- full Vitest
+- production build
+- storage/checkpoint recovery
+- preview/approval freshness
+- trace continuity
+
+AIの意味理解・自然さはhuman-reviewed real-API observationで確認する。固定返答文を自動PASS条件にしない。
+
+## 10. Current maintenance sequence
+
+PR #109はmainへmerge済みである。
 
 ```text
-trace scope = owner ID + logical conversation ID
+legacy / 過去経路削除
+→ 挙動不変リファクタ
+→ 7視点再棚卸し
+→ 新規改善
 ```
 
-同じscopeでは、ページ再読込、module memory消失、remote repository再生成、30分を超えるidle、表示messageの消去があっても、同じlocal trace session ID、entry sequence、turn index、server-issued handleへ継続する。idle時間またはmessage履歴の空配列をconversation終了条件にしない。新conversation、明示reset、owner変更、week scope変更だけが新しいidentityを作る。
-
-metadata-only cursorへ次を保存する。
-
-```text
-local trace session ID
-next entry sequence
-next turn index
-recent request IDs
-last activity
-```
-
-cursorへraw user text、assistant本文、semantic document、Fact Graphを保存しない。repository append成功後だけcursorとcounterを更新し、失敗したwriteはsequenceまたはrequest IDを消費しない。cursorは最大24件、各64 KiB、保持90日とする。
-
-remote repositoryはserver-issued handleをowner・local sessionに拘束して保存する。repository再生成後は`startSession`を再実行せず同じhandleを使用する。serverがsession不存在、ownership conflict、legacy read-only、conversation conflictを明示した場合だけ再発行する。一時的network failureでは同じcanonical payloadを一度再送する。
-
-過去に分割済みのtrace documentは誤結合を避けるため自動mergeしない。
-
-## 8. current verification state
-
-PR #83で次のtestと実装がmainへ統合済みである。
-
-```text
-controller / reducer / traceを跨ぐ二turn結合
-runtime memory loss後のsession・sequence継続
-1時間idle後の同一session継続
-clear conversation + reload後のrequest ID非再利用
-repository再生成後のserver handle継続
-stale handle recovery
-transient append failureのsame-payload retry
-write failure retryのcounter atomicity
-cursorのcontent非保存、owner・schema・counter・unknown field拒否
-storage key境界の衝突回帰
-```
-
-Draft PR #86では、表示messageだけを消す`clear_conversation`の契約、structured planning state・preview・draft・conversation identity・request sequence維持、owner-bound storage decodeの無副作用化を追加している。
-
-PR #86のGitHub Actionsは`verify` jobを生成したが、step 0件・logsなしでrunner起動前に失敗した。code test failureとは判定しない一方、focused test、full Vitest、typecheck、buildの成功証跡はまだない。
-
-## 9. remaining gates
-
-```text
-PR #86 focused tests
-full Vitest
-typecheck
-Vite build
-branch previewでreload・idle・clear後再送を実操作
-admin exportで同一session継続
-cross-tab sequence reservation
-server / cross-device Graph persistence
-old state migration decoderとdry-run
-Stable V5実AI real-eval
-production shadow telemetry
-full browser roleplay
-default cutover判断
-legacy runtime削除
-```
-
-## 10. merge gate
-
-PR #83は2026-07-24にmainへmerge済みである。PR #83をDraftまたは未mergeと記載する文書はhistorical recordを除き更新する。
-
-Draft PR #86はfocused test、full Vitest、typecheck、build、diff check、clear/resetのbrowser roleplayを確認するまでmergeしない。検証未実施を成功扱いしない。
-
-七視点監査は[20260724-stable-v5-trace-continuity](audits/20260724-stable-v5-trace-continuity/final-overseer.md)を参照する。
+runtime contractを変更する新仕様はPhase 3 legacy cleanupへ混ぜない。

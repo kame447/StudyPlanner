@@ -1,7 +1,4 @@
 import {
-  isWeeklyPlanningStableV5RuntimeEnabled,
-} from './application/weeklyPlanningRuntimeMode';
-import {
   getWeeklyPlanningStableV5RuntimeSessionForScope,
 } from './application/weeklyPlanningStableV5RuntimeSession';
 import {
@@ -121,13 +118,11 @@ export function loadOwnedWeeklyPlanningState(
   weekStartDate: string,
 ): PlanningState {
   if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
-  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    const persisted = loadWeeklyPlanningStableV5PersistedSession({
-      ownerId: userId,
-      weekStartDate,
-    });
-    if (persisted) return persisted.planningState;
-  }
+  const persisted = loadWeeklyPlanningStableV5PersistedSession({
+    ownerId: userId,
+    weekStartDate,
+  });
+  if (persisted) return persisted.planningState;
 
   return loadOwnedCompatibilityState(
     userId,
@@ -148,24 +143,22 @@ export function saveOwnedWeeklyPlanningState(
     return;
   }
 
-  if (isWeeklyPlanningStableV5RuntimeEnabled()) {
-    if (state.pendingTurn || state.pendingApproval) return;
-    const runtimeSession = getWeeklyPlanningStableV5RuntimeSessionForScope({
+  if (state.pendingTurn || state.pendingApproval) return;
+  const runtimeSession = getWeeklyPlanningStableV5RuntimeSessionForScope({
+    ownerId: userId,
+    weekStartDate: state.weekStartDate,
+  });
+  if (runtimeSession) {
+    const saved = saveWeeklyPlanningStableV5PersistedSession({
       ownerId: userId,
       weekStartDate: state.weekStartDate,
+      conversationId: runtimeSession.conversationId,
+      graph: runtimeSession.graph,
+      planningState: state,
     });
-    if (runtimeSession) {
-      const saved = saveWeeklyPlanningStableV5PersistedSession({
-        ownerId: userId,
-        weekStartDate: state.weekStartDate,
-        conversationId: runtimeSession.conversationId,
-        graph: runtimeSession.graph,
-        planningState: state,
-      });
-      if (saved) {
-        removeStorageKey(key);
-        return;
-      }
+    if (saved) {
+      removeStorageKey(key);
+      return;
     }
   }
 

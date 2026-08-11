@@ -19,9 +19,6 @@ vi.mock('../../lib/aiConfig', () => ({
   getAiConfigValidationMessage: () => undefined,
 }));
 
-vi.mock('./application/weeklyPlanningRuntimeMode', () => ({
-  isWeeklyPlanningStableV5RuntimeEnabled: () => true,
-}));
 
 vi.mock('./application/weeklyPlanningStableV5InstrumentedRuntimeExecutor', () => ({
   executeWeeklyPlanningStableV5RuntimeTurn: stableV5RuntimeMock,

@@ -45,7 +45,6 @@ function createServices(overrides: Partial<WeeklyPlanningTurnSideEffectServices>
     ],
   };
   return {
-    isStableV5Enabled: vi.fn(() => true),
     hasStagedGraph: vi.fn(() => true),
     finalizeRuntimeGraph: vi.fn(),
     discardStagedGraph: vi.fn(),
@@ -66,29 +65,6 @@ afterEach(() => {
 });
 
 describe('weeklyPlanningTurnSideEffects', () => {
-  it('does nothing when Stable V5 is disabled', async () => {
-    const services = createServices({ isStableV5Enabled: vi.fn(() => false) });
-
-    finalizeWeeklyPlanningApplicationTurn({ ownerId: 'user-1', pending }, services);
-    discardWeeklyPlanningApplicationTurn(pending, services);
-    const trace = recordCommittedWeeklyPlanningApplicationTurn({
-      ownerId: 'user-1',
-      pending,
-      userText: '予定を作りたい',
-      result: {
-        state: createInitialPlanningIntakeState(),
-        message: '確認しました。',
-        draftCandidates: [],
-      },
-    }, services);
-
-    expect(trace).toBeNull();
-    expect(services.hasStagedGraph).not.toHaveBeenCalled();
-    expect(services.finalizeRuntimeGraph).not.toHaveBeenCalled();
-    expect(services.discardStagedGraph).not.toHaveBeenCalled();
-    expect(services.recordTurnTrace).not.toHaveBeenCalled();
-  });
-
   it('finalizes only an existing staged graph and discards by conversation and request', () => {
     const services = createServices();
 

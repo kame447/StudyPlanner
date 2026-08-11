@@ -1,8 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  resetWeeklyPlanningRuntimeModeForTest,
-  setWeeklyPlanningRuntimeMode,
-} from './application/weeklyPlanningRuntimeMode';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import {
   createWeeklyPlanningSemanticPipelineV5,
@@ -79,14 +75,12 @@ function rejectedNormalizer() {
 describe('Stable V5 failure contract', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5FailureDiagnosticsForTest();
-    setWeeklyPlanningRuntimeMode('stable_v5');
-    stableExecutorMock.mockReset();
+      stableExecutorMock.mockReset();
   });
 
   afterEach(() => {
     resetWeeklyPlanningStableV5FailureDiagnosticsForTest();
-    resetWeeklyPlanningRuntimeModeForTest();
-  });
+    });
 
   it('does not disguise normalization rejection as needs_scope and keeps only redacted diagnostics', async () => {
     const traceRequestId = 'conversation-1:request:1';

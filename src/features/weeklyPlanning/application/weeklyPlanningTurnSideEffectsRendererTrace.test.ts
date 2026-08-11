@@ -51,7 +51,6 @@ function createServices() {
     async () => undefined,
   );
   const services: WeeklyPlanningTurnSideEffectServices = {
-    isStableV5Enabled: vi.fn(() => true),
     hasStagedGraph: vi.fn(() => true),
     finalizeRuntimeGraph: vi.fn(),
     discardStagedGraph: vi.fn(),

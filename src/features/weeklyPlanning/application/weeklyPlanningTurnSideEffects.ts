@@ -20,7 +20,6 @@ import type {
   WeeklyPlanningPendingTurn,
 } from '../types';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
-import { isWeeklyPlanningStableV5RuntimeEnabled } from './weeklyPlanningRuntimeMode';
 import {
   discardWeeklyPlanningStableV5StagedGraph,
   finalizeWeeklyPlanningStableV5RuntimeGraph,
@@ -29,7 +28,6 @@ import {
 } from './weeklyPlanningStableV5RuntimeSession';
 
 export interface WeeklyPlanningTurnSideEffectServices {
-  isStableV5Enabled: typeof isWeeklyPlanningStableV5RuntimeEnabled;
   hasStagedGraph: typeof hasWeeklyPlanningStableV5StagedGraphForTest;
   finalizeRuntimeGraph: typeof finalizeWeeklyPlanningStableV5RuntimeGraph;
   discardStagedGraph: typeof discardWeeklyPlanningStableV5StagedGraph;
@@ -38,7 +36,6 @@ export interface WeeklyPlanningTurnSideEffectServices {
 }
 
 const defaultServices: WeeklyPlanningTurnSideEffectServices = {
-  isStableV5Enabled: isWeeklyPlanningStableV5RuntimeEnabled,
   hasStagedGraph: hasWeeklyPlanningStableV5StagedGraphForTest,
   finalizeRuntimeGraph: finalizeWeeklyPlanningStableV5RuntimeGraph,
   discardStagedGraph: discardWeeklyPlanningStableV5StagedGraph,
@@ -128,7 +125,6 @@ export function finalizeWeeklyPlanningApplicationTurn(params: {
   ownerId: string;
   pending: WeeklyPlanningPendingTurn;
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): void {
-  if (!services.isStableV5Enabled()) return;
   const hasGraph = services.hasStagedGraph({
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
@@ -164,7 +160,6 @@ export function discardWeeklyPlanningApplicationTurn(
   pending: WeeklyPlanningPendingTurn,
   services: WeeklyPlanningTurnSideEffectServices = defaultServices,
 ): void {
-  if (!services.isStableV5Enabled()) return;
   discardStagedUserPlanningContextV1({
     conversationId: pending.conversationId,
     requestId: pending.requestId,
@@ -181,7 +176,6 @@ export function recordCommittedWeeklyPlanningApplicationTurn(params: {
   userText: string;
   result: WeeklyPlanningTurnExecutionResult;
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
-  if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
   const dialogueRendererTrace = rendererTraceForPersistence(params.result);
   const debugTraceEvents = debugTraceEventsForPersistence(
@@ -217,7 +211,6 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
   result: WeeklyPlanningTurnExecutionResult;
   reason: 'stale' | 'commit_rejected';
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
-  if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
   const dialogueRendererTrace = rendererTraceForPersistence(params.result);
   const debugTraceEvents = debugTraceEventsForPersistence(
@@ -249,7 +242,6 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
   error: unknown;
   assistantMessage: WeeklyPlanningMessage;
 }, services: WeeklyPlanningTurnSideEffectServices = defaultServices): Promise<void> | null {
-  if (!services.isStableV5Enabled()) return null;
   const range = stableV5PlanningRange(params.pending.conversationId, services);
   const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, false);
   return services.recordTurnTrace({

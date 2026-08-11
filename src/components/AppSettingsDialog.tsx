@@ -228,7 +228,7 @@ export function AppSettingsDialog({
                     <span className="confidence-badge">固定</span>
                   </div>
                   <p className="detail-note">
-                    週間計画はStable V5経路だけを使用します。旧方式の実装は内部互換用に保持していますが、アプリからは選択・実行できません。
+                    週間計画はStable V5経路だけを使用します。
                   </p>
                 </div>
               </section>

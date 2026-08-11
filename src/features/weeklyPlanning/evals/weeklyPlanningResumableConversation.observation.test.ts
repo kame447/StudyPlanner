@@ -22,10 +22,6 @@ import {
   submitWeeklyPlanningApplicationTurn,
   type WeeklyPlanningTurnApplicationServices,
 } from '../application/weeklyPlanningTurnApplication';
-import {
-  resetWeeklyPlanningRuntimeModeForTest,
-  setWeeklyPlanningRuntimeMode,
-} from '../application/weeklyPlanningRuntimeMode';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import {
   resetWeeklyPlanningStableV5DebugTraceForTest,
@@ -74,8 +70,6 @@ function resetRuntime(): void {
   resetWeeklyPlanningStableV5DebugTraceForTest();
   clearWeeklyPlanningSessionRuntime();
   resetUserPlanningContextRuntimeForTestV1();
-  resetWeeklyPlanningRuntimeModeForTest();
-  setWeeklyPlanningRuntimeMode('stable_v5');
 }
 
 function createStore(initialState: PlanningState) {
@@ -251,7 +245,6 @@ run('weekly planning resumable real API turn', () => {
         capture.result = await executeWeeklyPlanningTurn(input);
         return capture.result;
       },
-      isStableV5Enabled: () => true,
       bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
       saveOwnedState: () => undefined,
       finalizeTurn: finalizeWeeklyPlanningApplicationTurn,
