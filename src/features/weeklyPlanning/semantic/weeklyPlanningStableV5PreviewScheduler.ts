@@ -197,13 +197,20 @@ function placementWindowsByDate(params: {
   dates: string[];
   dayStartTime: string;
   dayEndTime: string;
+  notBefore?: { date: string; time: string };
 }): Map<string, PlacementWindow[]> {
-  const defaultWindow = {
-    start: minutesFromTime(params.dayStartTime),
-    end: minutesFromTime(params.dayEndTime),
+  const defaultStart = minutesFromTime(params.dayStartTime);
+  const defaultEnd = minutesFromTime(params.dayEndTime);
+  const baseWindowForDate = (date: string): PlacementWindow[] => {
+    const cutoff = params.notBefore?.date === date
+      ? minutesFromTime(params.notBefore.time)
+      : defaultStart;
+    const start = Math.max(defaultStart, cutoff);
+    return defaultEnd > start ? [{ start, end: defaultEnd }] : [];
   };
+
   const result = new Map<string, PlacementWindow[]>();
-  params.dates.forEach((date) => result.set(date, [defaultWindow]));
+  params.dates.forEach((date) => result.set(date, baseWindowForDate(date)));
 
   const hardAvailable = params.input.availabilityWindows.filter((window) =>
     window.constraintLevel === 'hard' && window.kind === 'available');
@@ -212,8 +219,10 @@ function placementWindowsByDate(params: {
   const byDate = new Map<string, PlacementWindow[]>();
   hardAvailable.forEach((window) => {
     if (window.start.date !== window.end.date) return;
-    const start = Math.max(defaultWindow.start, minutesFromTime(window.start.time));
-    const end = Math.min(defaultWindow.end, minutesFromTime(window.end.time));
+    const base = baseWindowForDate(window.start.date)[0];
+    if (!base) return;
+    const start = Math.max(base.start, minutesFromTime(window.start.time));
+    const end = Math.min(base.end, minutesFromTime(window.end.time));
     if (end <= start) return;
     byDate.set(window.start.date, [
       ...(byDate.get(window.start.date) ?? []),
@@ -223,35 +232,10 @@ function placementWindowsByDate(params: {
   params.dates.forEach((date) => {
     if (byDate.has(date)) {
       result.set(date, byDate.get(date)!.sort((left, right) => left.start - right.start));
+    } else if (hardAvailable.some((window) => window.start.date === date)) {
+      result.set(date, []);
     }
   });
-  return result;
-}
-
-function hardAvailableWindowsByDate(params: {
-  input: GenericSchedulerInput;
-  dates: string[];
-}): Map<string, PlacementWindow[]> {
-  const dateSet = new Set(params.dates);
-  const result = new Map<string, PlacementWindow[]>();
-  params.input.availabilityWindows
-    .filter((window) =>
-      window.constraintLevel === 'hard'
-      && window.kind === 'available'
-      && window.start.date === window.end.date
-      && dateSet.has(window.start.date))
-    .forEach((window) => {
-      const start = minutesFromTime(window.start.time);
-      const end = minutesFromTime(window.end.time);
-      if (end <= start) return;
-      result.set(window.start.date, [
-        ...(result.get(window.start.date) ?? []),
-        { start, end },
-      ]);
-    });
-  for (const [date, windows] of result) {
-    result.set(date, windows.sort((left, right) => left.start - right.start));
-  }
   return result;
 }
 
@@ -403,18 +387,15 @@ function findPreferredSlot(params: {
   placements: PreferredPlacement[];
   duration: number;
   windowsByDate: Map<string, PlacementWindow[]>;
-  hardAvailableByDate: Map<string, PlacementWindow[]>;
   busy: MinuteInterval[];
   breakMinutes: number;
 }): MinuteInterval | null {
   for (const placement of params.placements) {
     for (const date of placement.dates) {
-      const hardAvailable = params.hardAvailableByDate.get(date);
+      const baseWindows = params.windowsByDate.get(date) ?? [];
       const windows = placement.window
-        ? hardAvailable
-          ? intersectPlacementWindows(hardAvailable, placement.window)
-          : [placement.window]
-        : hardAvailable ?? params.windowsByDate.get(date) ?? [];
+        ? intersectPlacementWindows(baseWindows, placement.window)
+        : baseWindows;
       const slot = findSlot({
         dates: [date],
         duration: params.duration,
@@ -457,6 +438,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   dayEndTime?: string;
   breakMinutes?: number;
   namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
+  notBefore?: { date: string; time: string };
 }): WeeklyPlanningStableV5PreviewSchedulerResult {
   const dates = listCalendarDatesInclusive(
     params.input.horizon.startDate,
@@ -485,10 +467,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     dates,
     dayStartTime: params.dayStartTime ?? DEFAULT_DAY_START,
     dayEndTime: params.dayEndTime ?? DEFAULT_DAY_END,
-  });
-  const hardAvailableByDate = hardAvailableWindowsByDate({
-    input: params.input,
-    dates,
+    notBefore: params.notBefore,
   });
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledWorkItemIds: string[] = [];
@@ -512,7 +491,6 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
             placements: preferences,
             duration,
             windowsByDate,
-            hardAvailableByDate,
             busy,
             breakMinutes,
           })
