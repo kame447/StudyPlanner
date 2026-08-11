@@ -11,6 +11,7 @@ import {
   collectUserPlanningContextFactsV5,
 } from '../semantic/weeklyPlanningDurableContextSignalsV5';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningMessage } from '../types';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
@@ -24,15 +25,11 @@ import type {
   ExternalConstraintSourceSnapshot,
 } from '../semantic/weeklyPlanningAvailabilityResolver';
 import {
-  addCalendarDays,
-  isValidCalendarDate,
   listCalendarDatesInclusive,
-  resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
-  type GenericSchedulerInputContext,
   type GenericSchedulerInputIssue,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -51,12 +48,17 @@ import {
   WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
 } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import {
+  createWeeklyPlanningLegacyRequestContext,
+  createWeeklyPlanningSchedulerContext,
+  resolveWeeklyPlanningPlanningHorizon,
+  type WeeklyPlanningTurnRequestContext,
+} from './weeklyPlanningTemporalContext';
+import {
   commitWeeklyPlanningStableV5RuntimeGraph,
   getOrCreateWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 const RECENT_TURN_LIMIT = 8;
-const DEFAULT_PLANNING_DAY_COUNT = 7;
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
 
 export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
@@ -70,6 +72,8 @@ export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   timetableTermId?: string;
   conversationId: string;
   traceRequestId: string;
+  weekStartsOn?: WeeklyPlanningWeekStartsOn;
+  requestContext?: WeeklyPlanningTurnRequestContext;
 }
 
 function emptyCompatibilityState(): PlanningIntakeState {
@@ -145,61 +149,23 @@ function activePlanningWindows(graph: WeeklyPlanningFactGraphV5) {
   return graph.planningWindows.filter((window) => activeIds.has(window.id));
 }
 
-function resolvePlanningHorizon(params: {
-  graph: WeeklyPlanningFactGraphV5;
-  selectedDate: string;
-}): { startDate: string; endDate: string } | null {
-  const windows = activePlanningWindows(params.graph);
-  if (windows.length > 1) return null;
-  if (windows.length === 0) {
-    const endDate = addCalendarDays(params.selectedDate, DEFAULT_PLANNING_DAY_COUNT - 1);
-    return endDate ? { startDate: params.selectedDate, endDate } : null;
-  }
-
-  const window = windows[0];
-  if (window.start && window.end) {
-    if (
-      isValidCalendarDate(window.start)
-      && isValidCalendarDate(window.end)
-      && window.start <= window.end
-    ) {
-      return { startDate: window.start, endDate: window.end };
-    }
-    return null;
-  }
-
-  const expression = window.value.trim();
-  const resolution = resolveCanonicalDateExpression({
-    expression,
-    currentDate: params.selectedDate,
-  });
-  return resolution.status === 'resolved'
-    ? { startDate: resolution.range.start, endDate: resolution.range.end }
-    : null;
-}
-
-function timeZone(): string {
+function systemTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo';
 }
 
-function schedulerContext(params: {
-  ownerId: string;
-  selectedDate: string;
-  horizon: { startDate: string; endDate: string } | null;
-}): GenericSchedulerInputContext {
+function requestContextForInput(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+): { context: WeeklyPlanningTurnRequestContext; source: 'captured_request' | 'legacy_selected_date_fallback' } {
+  if (input.requestContext) {
+    return { context: input.requestContext, source: 'captured_request' };
+  }
   return {
-    ownerId: params.ownerId,
-    currentDate: params.selectedDate,
-    planningStartDate: params.horizon?.startDate ?? '',
-    planningEndDate: params.horizon?.endDate ?? '',
-    timeZone: timeZone(),
-    namedTimePeriods: {
-      morning: { startTime: '06:00', endTime: '12:00' },
-      afternoon: { startTime: '12:00', endTime: '17:00' },
-      evening: { startTime: '17:00', endTime: '21:00' },
-      night: { startTime: '21:00', endTime: '24:00' },
-      before_sleep: { startTime: '21:00', endTime: '24:00' },
-    },
+    context: createWeeklyPlanningLegacyRequestContext({
+      selectedDate: input.selectedDate,
+      timeZone: systemTimeZone(),
+      weekStartsOn: input.weekStartsOn ?? 'monday',
+    }),
+    source: 'legacy_selected_date_fallback',
   };
 }
 
@@ -207,6 +173,7 @@ function existingPlanSource(params: {
   ownerId: string;
   plans: readonly Plan[];
   horizon: { startDate: string; endDate: string } | null;
+  timeZone: string;
 }): ExternalConstraintSourceSnapshot {
   const dates = params.horizon
     ? new Set(listCalendarDatesInclusive(params.horizon.startDate, params.horizon.endDate) ?? [])
@@ -224,7 +191,7 @@ function existingPlanSource(params: {
         ownerId: params.ownerId,
         start: { date: plan.date, time: plan.startTime },
         end: { date: plan.date, time: plan.endTime },
-        timeZone: timeZone(),
+        timeZone: params.timeZone,
         constraintLevel: 'hard' as const,
       })),
   };
@@ -235,6 +202,7 @@ function timetableSource(params: {
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
   horizon: { startDate: string; endDate: string } | null;
+  timeZone: string;
 }): ExternalConstraintSourceSnapshot {
   const termId = params.timetableTermId ?? 'default';
   const dates = params.horizon
@@ -260,7 +228,7 @@ function timetableSource(params: {
         ownerId: params.ownerId,
         start: { date, time: candidate.startTime },
         end: { date, time: candidate.endTime },
-        timeZone: timeZone(),
+        timeZone: params.timeZone,
         constraintLevel: 'hard' as const,
       }))),
   };
@@ -272,18 +240,21 @@ function externalSources(params: {
   templates: readonly ScheduleTemplate[];
   timetableTermId?: string;
   horizon: { startDate: string; endDate: string } | null;
+  timeZone: string;
 }): ExternalConstraintSourceSnapshot[] {
   return [
     existingPlanSource({
       ownerId: params.ownerId,
       plans: params.plans,
       horizon: params.horizon,
+      timeZone: params.timeZone,
     }),
     timetableSource({
       ownerId: params.ownerId,
       templates: params.templates,
       timetableTermId: params.timetableTermId,
       horizon: params.horizon,
+      timeZone: params.timeZone,
     }),
     {
       kind: 'calendar',
@@ -535,14 +506,17 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     throw new Error(configError ?? 'Stable V5にはAI structured output接続が必要です。');
   }
 
+  const temporal = requestContextForInput(input);
+  const requestContext = temporal.context;
   const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({
     ownerId: input.userId,
     conversationId: input.conversationId,
   });
   const activeWindowsBefore = activePlanningWindows(runtimeSession.graph);
-  const fallbackHorizon = resolvePlanningHorizon({
+  const fallbackHorizon = resolveWeeklyPlanningPlanningHorizon({
     graph: runtimeSession.graph,
     selectedDate: input.selectedDate,
+    requestContext,
   });
   const recentConversation = input.messages
     .slice(-RECENT_TURN_LIMIT)
@@ -552,12 +526,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     input.messages,
     input.previousState,
     input.userId,
-    input.selectedDate,
+    requestContext.currentDate,
   );
-  const initialSchedulerContext = schedulerContext({
+  const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
-    selectedDate: input.selectedDate,
     horizon: fallbackHorizon,
+    requestContext,
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
@@ -567,12 +541,14 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       graphRevision: runtimeSession.graph.revision,
       activePlanningWindows: activeWindowsBefore,
       selectedDate: input.selectedDate,
+      requestContext,
+      requestContextSource: temporal.source,
       fallbackHorizon,
       horizonCriteria: {
         moreThanOneActiveWindow: 'return null',
-        noActiveWindow: `selectedDate plus ${DEFAULT_PLANNING_DAY_COUNT - 1} days`,
+        noActiveWindow: 'selectedDate is display/fallback seed only',
         explicitStartEnd: 'valid dates and start <= end',
-        otherwise: 'resolveCanonicalDateExpression(window.value, selectedDate)',
+        otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
       },
       recentTurnLimit: RECENT_TURN_LIMIT,
       recentConversation,
@@ -685,7 +661,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     ownerId: input.userId,
     conversationId: input.conversationId,
     requestId: input.traceRequestId,
-    observedDate: input.selectedDate,
+    observedDate: requestContext.currentDate,
     facts: userContextFacts,
   });
   recordWeeklyPlanningStableV5DebugTrace({
@@ -695,6 +671,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       ownerId: input.userId,
       conversationId: input.conversationId,
       requestId: input.traceRequestId,
+      observedDate: requestContext.currentDate,
       userContextFacts,
     },
   });
@@ -718,14 +695,15 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   const activeWindowsAfter = activePlanningWindows(semantic.graph);
-  const horizon = resolvePlanningHorizon({
+  const horizon = resolveWeeklyPlanningPlanningHorizon({
     graph: semantic.graph,
     selectedDate: input.selectedDate,
+    requestContext,
   });
-  const context = schedulerContext({
+  const context = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
-    selectedDate: input.selectedDate,
     horizon,
+    requestContext,
   });
   const sources = externalSources({
     ownerId: input.userId,
@@ -733,6 +711,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     templates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
     horizon,
+    timeZone: requestContext.timeZone,
   });
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
   const compilation = compileGenericSchedulerInput({
@@ -762,12 +741,14 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     severity: dialogue.status === 'ask_question' ? 'warn' : 'info',
     data: {
       activePlanningWindows: activeWindowsAfter,
+      selectedDate: input.selectedDate,
+      requestContext,
       resolvedHorizon: horizon,
       horizonCriteria: {
         moreThanOneActiveWindow: 'return null',
-        noActiveWindow: `selectedDate plus ${DEFAULT_PLANNING_DAY_COUNT - 1} days`,
+        noActiveWindow: 'selectedDate is display/fallback seed only',
         explicitStartEnd: 'valid dates and start <= end',
-        otherwise: 'resolveCanonicalDateExpression(window.value, selectedDate)',
+        otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
       },
       schedulerInput: {
         graph: activeGraph,
@@ -925,6 +906,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     plans: input.plans,
     scheduleTemplates: input.scheduleTemplates,
     timetableTermId: input.timetableTermId,
+    notBefore: {
+      date: requestContext.notBeforeDate,
+      time: requestContext.notBeforeTime,
+    },
   };
   const preview = scheduleWeeklyPlanningStableV5Preview(previewInput);
   recordWeeklyPlanningStableV5DebugTrace({
@@ -941,6 +926,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         defaultSessionMinutes: 60,
         existingPlanBufferMinutes: 10,
         splittableThresholdMinutes: 120,
+        todayNotBefore: `${requestContext.notBeforeDate} ${requestContext.notBeforeTime}`,
         allOrNothing: 'any unscheduled work item returns insufficient_capacity with no partial candidates',
       },
       result: preview,
