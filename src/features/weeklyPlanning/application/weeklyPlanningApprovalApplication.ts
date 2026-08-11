@@ -11,10 +11,16 @@ import {
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import type {
   PlanningState,
+  WeeklyPlanDraftBlock,
   WeeklyPlanningAction,
   WeeklyPlanningPendingApproval,
 } from '../types';
 import { createPlanDraftFromWeeklyDraftBlock } from '../weeklyPlanningTransforms';
+import { compileGenericPlanningWorkItems } from '../semantic/weeklyPlanningGenericWorkItems';
+import type { WeeklyPlanningEstimateMetadataV1 } from '../personalization/weeklyPlanningEstimateCalibration';
+import {
+  getWeeklyPlanningStableV5RuntimeSession,
+} from './weeklyPlanningStableV5RuntimeSession';
 import {
   createWeeklyPlanningApplicationMessage,
   createWeeklyPlanningApplicationRequestId,
@@ -30,6 +36,10 @@ interface WeeklyPlanningApprovalApplicationInput {
   dispatch: (action: WeeklyPlanningAction) => PlanningState;
   onOperationCompleted: (operation: WeeklyDraftApprovalOperation) => void;
 }
+
+type PlanDraftWithEstimateMetadata = PlanDraft & {
+  weeklyPlanningEstimate?: WeeklyPlanningEstimateMetadataV1;
+};
 
 function approvalErrorMessage(kind: string, reason?: string): string {
   if (reason === 'session-runtime-unavailable') {
@@ -58,6 +68,74 @@ function ownsPendingApproval(
       && current.blockIds.length === pending.blockIds.length
       && current.blockIds.every((blockId, index) => blockId === pending.blockIds[index]),
   );
+}
+
+function timeToMinutes(value: string): number | null {
+  if (value === '24:00') return 24 * 60;
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function blockDurationMinutes(block: WeeklyPlanDraftBlock): number | null {
+  const start = timeToMinutes(block.startTime);
+  const end = timeToMinutes(block.endTime);
+  if (start === null || end === null || end <= start) return null;
+  return end - start;
+}
+
+function estimateMetadataByBlock(
+  blocks: readonly WeeklyPlanDraftBlock[],
+): Map<string, WeeklyPlanningEstimateMetadataV1> {
+  const result = new Map<string, WeeklyPlanningEstimateMetadataV1>();
+  const byConversation = new Map<string, WeeklyPlanDraftBlock[]>();
+  blocks.forEach((block) => {
+    const conversationId = block.behaviorMetadata?.conversationId?.trim();
+    if (!conversationId || block.behaviorMetadata?.compatibility.candidateSource !== 'stable_v5') return;
+    byConversation.set(conversationId, [
+      ...(byConversation.get(conversationId) ?? []),
+      block,
+    ]);
+  });
+
+  for (const [conversationId, conversationBlocks] of byConversation) {
+    const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
+    if (!runtime) continue;
+    const compilation = compileGenericPlanningWorkItems(runtime.graph);
+    for (const item of compilation.items) {
+      if (
+        item.baseEstimatedMinutes === null
+        || item.baseEstimatedMinutes === undefined
+        || item.baseEstimatedMinutes <= 0
+        || (item.roundingStepMinutes !== 5 && item.roundingStepMinutes !== 15)
+      ) {
+        continue;
+      }
+      const matchingBlocks = conversationBlocks.filter((block) =>
+        block.behaviorMetadata?.taskRef === item.taskId
+        && block.behaviorMetadata.sourceFactRefs.includes(item.workloadFactId));
+      const durations = matchingBlocks.map((block) => ({
+        block,
+        duration: blockDurationMinutes(block),
+      })).filter((entry): entry is { block: WeeklyPlanDraftBlock; duration: number } =>
+        entry.duration !== null && entry.duration > 0);
+      const allocationTotal = durations.reduce((sum, entry) => sum + entry.duration, 0);
+      if (allocationTotal <= 0) continue;
+
+      durations.forEach(({ block, duration }) => {
+        result.set(block.id, {
+          version: 1,
+          baseEstimateMinutes: item.baseEstimatedMinutes! * (duration / allocationTotal),
+          estimateBasis: item.estimateBasis,
+          calibrationMultiplier: item.calibrationMultiplier ?? 1,
+          allocationMinutes: duration,
+          roundingStepMinutes: item.roundingStepMinutes!,
+          sourceFactRefs: [...item.sourceFactRefs],
+        });
+      });
+    }
+  }
+  return result;
 }
 
 export async function approveWeeklyPlanningDraftBlocks({
@@ -99,6 +177,7 @@ export async function approveWeeklyPlanningDraftBlocks({
       throw new Error(approvalErrorMessage(guard.attempt.kind, reason));
     }
 
+    const estimateMetadata = estimateMetadataByBlock(blocks);
     const existingOperation = approvalOperations.find((operation) =>
       operation.userId === authenticatedUserId
       && operation.previewId === guard.metadata.previewId
@@ -124,7 +203,10 @@ export async function approveWeeklyPlanningDraftBlocks({
           )?.id;
         },
         async saveBlock({ block, source }) {
-          const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId);
+          const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId)
+            as PlanDraftWithEstimateMetadata;
+          const metadata = estimateMetadata.get(block.id);
+          if (metadata) draft.weeklyPlanningEstimate = metadata;
           const sourceId = buildWeeklyPlanningPlanSourceId({
             approvalOperationId: source.approvalOperationId,
             sourceDraftBlockId: source.sourceDraftBlockId,
