@@ -76,6 +76,7 @@ describe('weeklyPlanningSessionLifecycle', () => {
     });
 
     expect(restored).toBeNull();
+    expect(services.loadPersistedSession).not.toHaveBeenCalled();
     expect(services.bindRuntimeSessionScope).toHaveBeenCalledWith({
       ownerId: 'user-1',
       weekStartDate: '2026-07-27',
@@ -83,14 +84,14 @@ describe('weeklyPlanningSessionLifecycle', () => {
     });
   });
 
-  it('restores the persisted conversation and synchronizes controller identity', () => {
+  it('restores the persisted conversation when application ownership changes', () => {
     const persisted = persistedSession('conversation-2');
     const services = createServices({
       loadPersistedSession: vi.fn(() => persisted),
     });
     const session = createWeeklyPlanningControllerSession(
-      'user-1',
-      '2026-07-27',
+      'user-old',
+      '2026-07-20',
       'conversation-1',
     );
     session.requestSequence = 8;
@@ -108,6 +109,8 @@ describe('weeklyPlanningSessionLifecycle', () => {
       weekStartDate: '2026-07-27',
       conversationId: 'conversation-2',
     }));
+    expect(session.ownerId).toBe('user-1');
+    expect(session.weekStartDate).toBe('2026-07-27');
     expect(session.conversationId).toBe('conversation-2');
     expect(session.requestSequence).toBe(0);
     expect(services.bindRuntimeSessionScope).toHaveBeenCalledWith({
@@ -147,6 +150,4 @@ describe('weeklyPlanningSessionLifecycle', () => {
     expect(session.conversationId).not.toBe('conversation-1');
     expect(session.requestSequence).toBe(0);
   });
-
-
 });
