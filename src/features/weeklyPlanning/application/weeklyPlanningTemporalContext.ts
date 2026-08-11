@@ -4,8 +4,6 @@ import {
   isValidCalendarDate,
   resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
-import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { GenericSchedulerInputContext } from '../semantic/weeklyPlanningGenericSchedulerInput';
 
 const DEFAULT_PLANNING_DAY_COUNT = 7;
@@ -18,6 +16,19 @@ export interface WeeklyPlanningTurnRequestContext {
   notBeforeDate: string;
   notBeforeTime: string;
   weekStartsOn: WeeklyPlanningWeekStartsOn;
+}
+
+export interface WeeklyPlanningTemporalGraphView {
+  planningWindows: ReadonlyArray<{
+    id: string;
+    value: string;
+    start: string | null;
+    end: string | null;
+  }>;
+  factLifecycles: ReadonlyArray<{
+    factId: string;
+    status: string;
+  }>;
 }
 
 interface ZonedClockParts {
@@ -113,12 +124,21 @@ export function createWeeklyPlanningLegacyRequestContext(params: {
   };
 }
 
+function activePlanningWindows(graph: WeeklyPlanningTemporalGraphView) {
+  const activeIds = new Set(
+    graph.factLifecycles
+      .filter((entry) => entry.status === 'active')
+      .map((entry) => entry.factId),
+  );
+  return graph.planningWindows.filter((window) => activeIds.has(window.id));
+}
+
 export function resolveWeeklyPlanningPlanningHorizon(params: {
-  graph: WeeklyPlanningFactGraphV5;
+  graph: WeeklyPlanningTemporalGraphView;
   selectedDate: string;
   requestContext: WeeklyPlanningTurnRequestContext;
 }): { startDate: string; endDate: string } | null {
-  const windows = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph).planningWindows;
+  const windows = activePlanningWindows(params.graph);
   if (windows.length > 1) return null;
   if (windows.length === 0) {
     const endDate = addCalendarDays(params.selectedDate, DEFAULT_PLANNING_DAY_COUNT - 1);
