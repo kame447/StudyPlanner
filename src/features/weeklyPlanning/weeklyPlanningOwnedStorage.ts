@@ -316,6 +316,21 @@ function clearPreviousCheckpointIfMoved(params: {
   removeStorageKey(getStorageKey(params.userId, previousWeek));
 }
 
+function activateRecoveredState(
+  userId: string,
+  recovered: {
+    state: PlanningState;
+    conversationId: string | null;
+  },
+): PlanningState {
+  writeActiveSessionIndex({
+    userId,
+    weekStartDate: recovered.state.weekStartDate,
+    conversationId: recovered.conversationId,
+  });
+  return recovered.state;
+}
+
 export function loadOwnedWeeklyPlanningState(
   userId: string,
   weekStartDate: string,
@@ -340,6 +355,10 @@ export function loadOwnedWeeklyPlanningState(
     if (hasActiveConversationState(compatibility) && active.conversationId === null) {
       return compatibility;
     }
+
+    const recovered = migrateMostRecentActiveState(userId);
+    if (recovered) return activateRecoveredState(userId, recovered);
+
     writeActiveSessionIndex({
       userId,
       weekStartDate: null,
@@ -349,14 +368,7 @@ export function loadOwnedWeeklyPlanningState(
   }
 
   const migrated = migrateMostRecentActiveState(userId);
-  if (migrated) {
-    writeActiveSessionIndex({
-      userId,
-      weekStartDate: migrated.state.weekStartDate,
-      conversationId: migrated.conversationId,
-    });
-    return migrated.state;
-  }
+  if (migrated) return activateRecoveredState(userId, migrated);
 
   writeActiveSessionIndex({ userId, weekStartDate: null, conversationId: null });
   return createInitialPlanningState(weekStartDate);
