@@ -25,7 +25,7 @@ describe('weekly planning calendar resolver', () => {
     expect(addCalendarDays('invalid', 1)).toBeNull();
   });
 
-  it('uses Monday as the weekly planning boundary', () => {
+  it('uses Monday as the legacy weekly planning boundary', () => {
     expect(mondayOfCalendarWeek('2026-07-22')).toBe('2026-07-20');
     expect(mondayOfCalendarWeek('2026-07-26')).toBe('2026-07-20');
     expect(calendarWeekday('2026-07-20')).toBe(1);
@@ -59,6 +59,33 @@ describe('weekly planning calendar resolver', () => {
     })).toEqual({
       status: 'resolved',
       range: { start: '2026-07-27', end: '2026-08-02' },
+    });
+  });
+
+  it('uses the configured week boundary for relative week expressions', () => {
+    expect(resolveCanonicalDateExpression({
+      expression: 'this_week',
+      currentDate: '2026-08-11',
+      weekStartsOn: 'sunday',
+    })).toEqual({
+      status: 'resolved',
+      range: { start: '2026-08-09', end: '2026-08-15' },
+    });
+    expect(resolveCanonicalDateExpression({
+      expression: 'next_week',
+      currentDate: '2026-08-11',
+      weekStartsOn: 'sunday',
+    })).toEqual({
+      status: 'resolved',
+      range: { start: '2026-08-16', end: '2026-08-22' },
+    });
+    expect(resolveCanonicalDateExpression({
+      expression: 'next_week',
+      currentDate: '2026-08-11',
+      weekStartsOn: 'monday',
+    })).toEqual({
+      status: 'resolved',
+      range: { start: '2026-08-17', end: '2026-08-23' },
     });
   });
 
