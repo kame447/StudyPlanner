@@ -84,6 +84,31 @@ describe('weekly planning temporal context', () => {
     })).toEqual({ startDate: '2026-08-16', endDate: '2026-08-22' });
   });
 
+  it('reuses a previously proposed absolute range instead of shifting the same relative fact on a later date', () => {
+    const laterRequestContext = createWeeklyPlanningTurnRequestContext({
+      startedAtIso: '2026-08-18T05:55:00.000Z',
+      timeZone: 'Asia/Tokyo',
+      weekStartsOn: 'monday',
+    });
+
+    expect(resolveWeeklyPlanningPlanningHorizon({
+      graph: graphWithWindow('next_week'),
+      selectedDate: '2026-09-10',
+      requestContext: laterRequestContext,
+      groundingRecords: [{
+        id: 'grounding:window-1:2026-08-17:2026-08-23',
+        targetFactId: 'window-1',
+        interpretationKind: 'relative_date_resolution',
+        status: 'proposed',
+        sourceExpression: 'next_week',
+        startDate: '2026-08-17',
+        endDate: '2026-08-23',
+        proposedAtTurnId: 'request-1',
+        acceptedAtTurnId: null,
+      }],
+    })).toEqual({ startDate: '2026-08-17', endDate: '2026-08-23' });
+  });
+
   it('uses selectedDate only as the fallback seed when the user has no planning window', () => {
     const requestContext = createWeeklyPlanningTurnRequestContext({
       startedAtIso: '2026-08-11T05:55:00.000Z',
