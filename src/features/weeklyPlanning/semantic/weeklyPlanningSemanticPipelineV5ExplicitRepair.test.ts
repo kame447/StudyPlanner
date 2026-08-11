@@ -261,11 +261,12 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
         taskId: first.graph.tasks[0]?.id,
         targetFactId: workloadId,
         minutes: 180,
-        kind: 'total_duration',
+        kind: 'duration_per_unit',
+        unitCode: 'problem',
       }),
     ]);
     expect(repaired.scheduler?.input?.movableWorkItems).toEqual([
-      expect.objectContaining({ estimatedMinutes: 180 }),
+      expect.objectContaining({ estimatedMinutes: 7200 }),
     ]);
   });
 
