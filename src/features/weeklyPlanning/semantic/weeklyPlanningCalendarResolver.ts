@@ -37,6 +37,8 @@ export const CANONICAL_RELATIVE_DATE_EXPRESSIONS = [
 export type CanonicalRelativeDateExpression =
   (typeof CANONICAL_RELATIVE_DATE_EXPRESSIONS)[number];
 
+export type CalendarWeekStartsOn = 'monday' | 'sunday';
+
 export interface CalendarDateRange {
   start: string;
   end: string;
@@ -139,10 +141,19 @@ export function calendarWeekday(value: string): number | null {
   return parseCalendarDate(value)?.getUTCDay() ?? null;
 }
 
-export function mondayOfCalendarWeek(value: string): string | null {
+export function startOfCalendarWeek(
+  value: string,
+  weekStartsOn: CalendarWeekStartsOn = 'monday',
+): string | null {
   const weekday = calendarWeekday(value);
   if (weekday === null) return null;
-  return addCalendarDays(value, weekday === 0 ? -6 : 1 - weekday);
+  const startWeekday = weekStartsOn === 'sunday' ? 0 : 1;
+  const offset = -((weekday - startWeekday + 7) % 7);
+  return addCalendarDays(value, offset);
+}
+
+export function mondayOfCalendarWeek(value: string): string | null {
+  return startOfCalendarWeek(value, 'monday');
 }
 
 export function listCalendarDatesInclusive(
@@ -183,6 +194,7 @@ export function intersectCalendarDates(
 export function resolveCanonicalDateExpression(params: {
   expression: string;
   currentDate: string;
+  weekStartsOn?: CalendarWeekStartsOn;
 }): CalendarDateExpressionResolution {
   if (!isValidCalendarDate(params.currentDate)) {
     return { status: 'invalid_current_date', range: null };
@@ -217,11 +229,14 @@ export function resolveCanonicalDateExpression(params: {
   }
 
   if (params.expression === 'this_week' || params.expression === 'next_week') {
-    const monday = mondayOfCalendarWeek(params.currentDate);
-    if (!monday) return { status: 'invalid_current_date', range: null };
+    const weekStart = startOfCalendarWeek(
+      params.currentDate,
+      params.weekStartsOn ?? 'monday',
+    );
+    if (!weekStart) return { status: 'invalid_current_date', range: null };
     const offset = params.expression === 'next_week' ? 7 : 0;
-    const start = addCalendarDays(monday, offset);
-    const end = addCalendarDays(monday, offset + 6);
+    const start = addCalendarDays(weekStart, offset);
+    const end = addCalendarDays(weekStart, offset + 6);
     return start && end
       ? { status: 'resolved', range: { start, end } }
       : { status: 'invalid_current_date', range: null };
