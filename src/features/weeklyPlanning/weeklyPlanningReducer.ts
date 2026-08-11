@@ -120,6 +120,11 @@ function appendAssistantMessage(
   };
 }
 
+function hasPendingRepairQuestion(state: PlanningState): boolean {
+  return state.intakeState?.status === 'revision_pending'
+    && (state.intakeState.questions?.length ?? 0) > 0;
+}
+
 export function weeklyPlanningReducer(
   state: PlanningState,
   action: WeeklyPlanningAction,
@@ -247,7 +252,7 @@ export function weeklyPlanningReducer(
       });
 
     case 'add_draft_blocks': {
-      if (action.blocks.length === 0) return state;
+      if (action.blocks.length === 0 || hasPendingRepairQuestion(state)) return state;
       return withMutation(state, {
         ...state,
         mode: 'awaiting_approval',
