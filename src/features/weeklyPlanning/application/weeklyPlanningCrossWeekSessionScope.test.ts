@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createEmptyWeeklyPlanningFactGraphV5,
+} from '../semantic/weeklyPlanningFactGraphV5';
+import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   getWeeklyPlanningStableV5RuntimeSession,
+  hydrateWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 import {
@@ -28,12 +32,18 @@ function lifecycleServices(): WeeklyPlanningSessionLifecycleServices {
 }
 
 describe('cross-week weekly planning session scope', () => {
-  it('allows one runtime conversation to move its display-week anchor without losing identity', () => {
+  it('reanchors one runtime conversation without losing its committed Fact Graph', () => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
-    bindWeeklyPlanningStableV5RuntimeSessionScope({
+    const graph = {
+      ...createEmptyWeeklyPlanningFactGraphV5(),
+      revision: 3,
+      appliedTurnKeys: ['conversation-1:request:3'],
+    };
+    hydrateWeeklyPlanningStableV5RuntimeSession({
       ownerId: 'user-1',
       weekStartDate: '2026-08-10',
       conversationId: 'conversation-1',
+      graph,
     });
 
     expect(() => bindWeeklyPlanningStableV5RuntimeSessionScope({
@@ -48,6 +58,7 @@ describe('cross-week weekly planning session scope', () => {
       conversationId: 'conversation-1',
       weekStartDate: '2026-08-17',
     });
+    expect(session?.graph).toEqual(graph);
   });
 
   it('updates the controller week anchor without consulting week-scoped persistence or rotating identity', () => {
