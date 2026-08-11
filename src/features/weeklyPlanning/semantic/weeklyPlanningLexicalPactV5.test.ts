@@ -21,7 +21,7 @@ describe('Stable V5 lexical pact contracts', () => {
     expect(system).toContain('do not expand');
   });
 
-  it('tells the dialogue renderer to reuse decided user-facing labels instead of formalizing them', () => {
+  it('carries the established user-facing label into renderer decided facts and relevant labels unchanged', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt({
       actionId: 'action-1',
       currentUserMessage: 'それでお願い',
@@ -36,7 +36,7 @@ describe('Stable V5 lexical pact contracts', () => {
       previewCount: 0,
     });
 
-    expect(prompt.systemPrompt).toContain('ユーザーとの会話で確立した呼び方');
-    expect(prompt.systemPrompt).toContain('勝手に正式名称へ言い換え');
+    expect(prompt.userPrompt).toContain('共テ模試の数学');
+    expect(prompt.userPrompt).not.toContain('共通テスト模擬試験');
   });
 });
