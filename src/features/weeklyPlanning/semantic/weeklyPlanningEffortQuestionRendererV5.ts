@@ -47,3 +47,17 @@ export function renderWeeklyPlanningEffortQuestionV5(params: {
 
   return `${label}について、指定した量を進めるのに合計でどれくらい時間がかかりますか？`;
 }
+
+export function rewriteWeeklyPlanningEffortQuestionV5(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  workloadFactId: string;
+  message: string;
+}): string {
+  const workload = params.graph.workloads.find((fact) => fact.id === params.workloadFactId);
+  if (!workload) return params.message;
+  const label = targetLabel(params.graph, workload.taskId, workload.componentId);
+  const previous = `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
+  const next = renderWeeklyPlanningEffortQuestionV5(params);
+  if (!next || !params.message.includes(previous)) return params.message;
+  return params.message.replace(previous, next);
+}
