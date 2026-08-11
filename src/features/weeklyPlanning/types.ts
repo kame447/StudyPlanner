@@ -104,6 +104,7 @@ export interface PlanningState {
 
 export type WeeklyPlanningAction =
   | { type: 'load_state'; state: PlanningState }
+  | { type: 'set_week_anchor'; weekStartDate: string }
   | { type: 'add_draft_blocks'; blocks: WeeklyPlanDraftBlock[] }
   | { type: 'remove_draft_block'; blockId: string }
   | { type: 'remove_draft_blocks'; blockIds: string[] }
