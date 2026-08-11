@@ -52,6 +52,15 @@ function targetSoftPreferenceConstraint(
   );
 }
 
+function semanticUncertaintyTargetFactId(
+  issue: GenericSchedulerInputIssue,
+): string | null {
+  if (issue.domain !== 'semantic_uncertainty') return null;
+  return typeof issue.details.targetFactId === 'string'
+    ? issue.details.targetFactId
+    : null;
+}
+
 /**
  * Pass-over is intentionally narrow. An uncertainty is deferrable only when its
  * exact target is an active soft preference. Deadlines, quantities, effort,
@@ -62,11 +71,10 @@ export function isWeeklyPlanningDeferrableIssueV5(params: {
   graph: WeeklyPlanningFactGraphV5;
   issue: GenericSchedulerInputIssue;
 }): boolean {
-  if (params.issue.domain !== 'semantic_uncertainty') return false;
-  const targetFactId = typeof params.issue.details?.targetFactId === 'string'
-    ? params.issue.details.targetFactId
-    : null;
-  return targetSoftPreferenceConstraint(params.graph, targetFactId);
+  return targetSoftPreferenceConstraint(
+    params.graph,
+    semanticUncertaintyTargetFactId(params.issue),
+  );
 }
 
 function issueFactId(issue: GenericSchedulerInputIssue): string | null {
@@ -81,13 +89,10 @@ function obligationFromIssue(params: {
 }): WeeklyPlanningRepairObligationV5 | null {
   const factId = issueFactId(params.issue);
   if (!factId) return null;
-  const targetFactId = typeof params.issue.details?.targetFactId === 'string'
-    ? params.issue.details.targetFactId
-    : null;
   return {
     id: `repair:${factId}`,
     issueFactId: factId,
-    targetFactId,
+    targetFactId: semanticUncertaintyTargetFactId(params.issue),
     domain: params.issue.domain,
     code: params.issue.code,
     impact: 'low',
