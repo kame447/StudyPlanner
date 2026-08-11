@@ -17,6 +17,9 @@ import type { WeeklyPlanningWeekStartsOn } from './personalization/weeklyPlannin
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningFactGraphV5 } from './semantic/weeklyPlanningFactGraphV5';
 import {
+  createWeeklyPlanningStableV5DialogueProjection,
+} from './semantic/weeklyPlanningStableV5DialogueProjection';
+import {
   takeWeeklyPlanningStableV5FailureDiagnostics,
 } from './semantic/weeklyPlanningStableV5FailureDiagnostics';
 import {
@@ -107,111 +110,6 @@ function isStableV5SystemResult(result: WeeklyPlanningTurnExecutionResult): bool
     || STABLE_V5_SYSTEM_MESSAGE_PREFIXES.some((prefix) => result.message.startsWith(prefix));
 }
 
-function stableV5PlanningInformation(
-  graph: WeeklyPlanningFactGraphV5 | undefined,
-): Record<string, unknown> | null {
-  if (!graph) return null;
-
-  return {
-    revision: graph.revision,
-    planningWindows: graph.planningWindows.map((fact) => ({
-      kind: fact.kind,
-      value: fact.value,
-      start: fact.start,
-      end: fact.end,
-    })),
-    tasks: graph.tasks.map((fact) => ({
-      id: fact.id,
-      category: fact.category,
-      title: fact.title,
-    })),
-    studyContexts: graph.studyContexts.map((fact) => ({
-      taskId: fact.taskId,
-      purpose: fact.purpose,
-      contextLabel: fact.contextLabel,
-    })),
-    components: graph.components.map((fact) => ({
-      id: fact.id,
-      taskId: fact.taskId,
-      parentComponentId: fact.parentComponentId,
-      role: fact.role,
-      label: fact.label,
-    })),
-    workloads: graph.workloads.map((fact) => ({
-      taskId: fact.taskId,
-      componentId: fact.componentId,
-      quantityRole: fact.quantityRole,
-      amount: fact.amount,
-      unitCode: fact.unitCode,
-      unitLabel: fact.unitLabel,
-      rangeStart: fact.rangeStart,
-      rangeEnd: fact.rangeEnd,
-      perOccurrence: fact.perOccurrence,
-      periodExpression: fact.periodExpression,
-    })),
-    effortEstimates: graph.effortEstimates.map((fact) => ({
-      taskId: fact.taskId,
-      targetFactId: fact.targetFactId,
-      kind: fact.kind,
-      minutes: fact.minutes,
-      unitCode: fact.unitCode,
-      precision: fact.precision,
-    })),
-    temporalConstraints: graph.temporalConstraints.map((fact) => ({
-      taskId: fact.taskId,
-      targetFactId: fact.targetFactId,
-      kind: fact.kind,
-      constraintLevel: fact.constraintLevel,
-      dateExpression: fact.dateExpression,
-      namedTimePeriod: fact.namedTimePeriod,
-      startTime: fact.startTime,
-      endTime: fact.endTime,
-      precision: fact.precision,
-    })),
-    taskDateRules: graph.taskDateRules.map((fact) => ({
-      taskId: fact.taskId,
-      targetFactId: fact.targetFactId,
-      kind: fact.kind,
-      dateExpression: fact.dateExpression,
-      constraintLevel: fact.constraintLevel,
-    })),
-    recurrences: graph.recurrences.map((fact) => ({
-      taskId: fact.taskId,
-      targetFactId: fact.targetFactId,
-      kind: fact.kind,
-      count: fact.count,
-      days: fact.days,
-    })),
-    relations: graph.relations.map((fact) => ({
-      kind: fact.kind,
-      fromTaskId: fact.fromTaskId,
-      toTaskId: fact.toTaskId,
-    })),
-    uncertainties: graph.uncertainties.map((fact) => ({
-      targetFactId: fact.targetFactId,
-      field: fact.field,
-      reason: fact.reason,
-    })),
-    availabilityDeclarations: graph.availabilityDeclarations.map((fact) => ({
-      kind: fact.kind,
-      dateExpression: fact.dateExpression,
-      namedTimePeriod: fact.namedTimePeriod,
-      startTime: fact.startTime,
-      endTime: fact.endTime,
-      recurrenceKind: fact.recurrenceKind,
-      days: fact.days,
-      constraintLevel: fact.constraintLevel,
-      resolutionStatus: fact.resolutionStatus,
-    })),
-    constraintSourceRequests: graph.constraintSourceRequests.map((fact) => ({
-      kind: fact.kind,
-      selector: fact.selector,
-      requestedAction: fact.requestedAction,
-      resolutionStatus: fact.resolutionStatus,
-    })),
-  };
-}
-
 function systemDialogueRendererTrace(message: string): WeeklyPlanningDialogueRendererTrace {
   return {
     actionId: null,
@@ -268,7 +166,9 @@ async function renderStableV5AssistantMessage(params: {
     recentConversation: params.input.messages
       .slice(-RECENT_TURN_LIMIT)
       .map(({ role, content }) => ({ role, content })),
-    planningInformation: stableV5PlanningInformation(params.result.stableV5Graph),
+    planningInformation: params.result.stableV5Graph
+      ? createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph)
+      : null,
     actionKind,
     questionCode,
     requiredLabels: requiredLabelsForStableV5Dialogue({
