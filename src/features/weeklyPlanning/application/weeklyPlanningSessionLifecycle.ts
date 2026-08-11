@@ -72,17 +72,15 @@ export function synchronizeWeeklyPlanningApplicationSession(params: {
   services?: WeeklyPlanningSessionLifecycleServices;
 }): WeeklyPlanningStableV5PersistedSession | null {
   const services = params.services ?? defaultServices;
-  const restored = restoreWeeklyPlanningApplicationSession(
-    params.ownerId,
-    params.weekStartDate,
-    services,
-  );
   const ownerChanged = params.session.ownerId !== params.ownerId;
-  const conversationChanged = Boolean(
-    restored?.conversationId && params.session.conversationId !== restored.conversationId,
-  );
+  let restored: WeeklyPlanningStableV5PersistedSession | null = null;
 
-  if (ownerChanged || conversationChanged) {
+  if (ownerChanged) {
+    restored = restoreWeeklyPlanningApplicationSession(
+      params.ownerId,
+      params.weekStartDate,
+      services,
+    );
     services.resetControllerSession(
       params.session,
       params.ownerId,
