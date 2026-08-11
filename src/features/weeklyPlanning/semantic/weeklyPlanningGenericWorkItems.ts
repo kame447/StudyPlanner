@@ -9,6 +9,9 @@ import {
   allocateWeeklyPlanningEffort,
   type WeeklyPlanningAllocationStepMinutes,
 } from './weeklyPlanningEffortAllocation';
+import {
+  splitVocabularyIntoLearningSessionsV5,
+} from './weeklyPlanningEffortQuestionPolicyV5';
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
 
@@ -32,6 +35,16 @@ export type GenericWorkItemEstimateBasis =
   | 'direct_effort'
   | 'observed_pace';
 
+export interface GenericPlanningWorkSession {
+  kind: 'learning';
+  quantityAmount: number;
+  quantityUnitCode: SemanticWorkloadUnitCode;
+  quantityUnitLabel: string;
+  baseDurationMinutes: number;
+  durationMinutes: number;
+  label: string;
+}
+
 export interface GenericPlanningWorkItem {
   version: typeof GENERIC_WORK_ITEM_VERSION;
   id: string;
@@ -49,6 +62,7 @@ export interface GenericPlanningWorkItem {
   estimateBasis: GenericWorkItemEstimateBasis | null;
   estimateSourceFactIds: string[];
   estimateSourceWorkloadFactIds: string[];
+  plannedSessions?: GenericPlanningWorkSession[];
   splitPolicy: 'splittable' | 'atomic' | 'unknown';
   periodExpression: string | null;
   sourceFactRefs: string[];
@@ -102,16 +116,23 @@ function componentById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, S
   return new Map(graph.components.map((component) => [component.id, component]));
 }
 
+function targetLabel(params: {
+  task: PlanningTaskFact;
+  component: StudyComponentFact | null;
+}): string {
+  return params.component?.label ?? params.task.title;
+}
+
 function buildLabel(params: {
   task: PlanningTaskFact;
   component: StudyComponentFact | null;
   workload: WorkloadFact;
 }): string {
-  const targetLabel = params.component?.label ?? params.task.title;
+  const label = targetLabel(params);
   const range = params.workload.rangeStart && params.workload.rangeEnd
     ? `（${params.workload.rangeStart}〜${params.workload.rangeEnd}）`
     : '';
-  return `${targetLabel} ${params.workload.amount}${params.workload.unitLabel}${range}`;
+  return `${label} ${params.workload.amount}${params.workload.unitLabel}${range}`;
 }
 
 function ordinalRange(workload: WorkloadFact): GenericWorkItemQuantity['ordinalRange'] {
@@ -163,7 +184,21 @@ function directEstimate(params: {
   if (total.length === 1) return { estimatedMinutes: total[0].minutes, basis: 'direct_effort', sourceFactIds: [total[0].id], sourceWorkloadFactIds: [], ambiguous: false };
   if (total.length > 1) return { estimatedMinutes: null, basis: null, sourceFactIds: total.map((value) => value.id), sourceWorkloadFactIds: [], ambiguous: true };
 
-  const session = matching.filter((estimate) => estimate.kind === 'session_duration');
+  const session = matching.filter((estimate) =>
+    estimate.kind === 'session_duration' && estimate.unitCode === params.workload.unitCode);
+  if (params.workload.unitCode === 'word' && session.length === 1) {
+    const sessionCount = splitVocabularyIntoLearningSessionsV5(params.workload.amount).length;
+    return {
+      estimatedMinutes: session[0].minutes * sessionCount,
+      basis: 'direct_effort',
+      sourceFactIds: [session[0].id],
+      sourceWorkloadFactIds: [],
+      ambiguous: false,
+    };
+  }
+  if (params.workload.unitCode === 'word' && session.length > 1) {
+    return { estimatedMinutes: null, basis: null, sourceFactIds: session.map((value) => value.id), sourceWorkloadFactIds: [], ambiguous: true };
+  }
   if (params.workload.unitCode === 'session' && session.length === 1) return { estimatedMinutes: session[0].minutes * params.workload.amount, basis: 'direct_effort', sourceFactIds: [session[0].id], sourceWorkloadFactIds: [], ambiguous: false };
   if (params.workload.unitCode === 'session' && session.length > 1) return { estimatedMinutes: null, basis: null, sourceFactIds: session.map((value) => value.id), sourceWorkloadFactIds: [], ambiguous: true };
 
@@ -227,6 +262,47 @@ function deriveSplitPolicy(workload: WorkloadFact): GenericPlanningWorkItem['spl
   return 'unknown';
 }
 
+function compileVocabularySessions(params: {
+  task: PlanningTaskFact;
+  component: StudyComponentFact | null;
+  workload: WorkloadFact;
+  estimates: ReadonlyArray<EffortEstimateFact>;
+}): {
+  sessions: GenericPlanningWorkSession[];
+  baseEstimatedMinutes: number;
+  estimatedMinutes: number;
+  calibrationMultiplier: number;
+  roundingStepMinutes: WeeklyPlanningAllocationStepMinutes;
+} | null {
+  if (params.workload.unitCode !== 'word') return null;
+  const matching = params.estimates.filter((estimate) =>
+    targetMatches(estimate, params.workload)
+    && estimate.kind === 'session_duration'
+    && estimate.unitCode === 'word');
+  if (matching.length !== 1) return null;
+  const quantities = splitVocabularyIntoLearningSessionsV5(params.workload.amount);
+  if (quantities.length <= 1) return null;
+  const estimate = matching[0];
+  const allocation = allocateWeeklyPlanningEffort({ baseEstimateMinutes: estimate.minutes });
+  const label = targetLabel(params);
+  const sessions = quantities.map((quantity): GenericPlanningWorkSession => ({
+    kind: 'learning',
+    quantityAmount: quantity,
+    quantityUnitCode: 'word',
+    quantityUnitLabel: params.workload.unitLabel,
+    baseDurationMinutes: estimate.minutes,
+    durationMinutes: allocation.allocationMinutes,
+    label: `${label} ${quantity}${params.workload.unitLabel}`,
+  }));
+  return {
+    sessions,
+    baseEstimatedMinutes: estimate.minutes * sessions.length,
+    estimatedMinutes: allocation.allocationMinutes * sessions.length,
+    calibrationMultiplier: allocation.calibrationMultiplier,
+    roundingStepMinutes: allocation.roundingStepMinutes,
+  };
+}
+
 export function compileGenericPlanningWorkItems(
   graph: WeeklyPlanningGenericWorkGraphView,
 ): GenericWorkItemCompilationResult {
@@ -264,7 +340,13 @@ export function compileGenericPlanningWorkItems(
       issues.push({ code: 'missing_effort_estimate', workloadFactId: workload.id, blocking: true });
     }
 
-    const allocation = estimate.estimatedMinutes === null
+    const vocabularySessions = compileVocabularySessions({
+      task,
+      component,
+      workload,
+      estimates: graph.effortEstimates,
+    });
+    const allocation = estimate.estimatedMinutes === null || vocabularySessions
       ? null
       : allocateWeeklyPlanningEffort({ baseEstimateMinutes: estimate.estimatedMinutes });
 
@@ -284,13 +366,14 @@ export function compileGenericPlanningWorkItems(
         ordinalRange: ordinalRange(workload),
         actualRange: range,
       },
-      estimatedMinutes: allocation?.allocationMinutes ?? null,
-      baseEstimatedMinutes: estimate.estimatedMinutes,
-      calibrationMultiplier: allocation?.calibrationMultiplier ?? null,
-      roundingStepMinutes: allocation?.roundingStepMinutes ?? null,
+      estimatedMinutes: vocabularySessions?.estimatedMinutes ?? allocation?.allocationMinutes ?? null,
+      baseEstimatedMinutes: vocabularySessions?.baseEstimatedMinutes ?? estimate.estimatedMinutes,
+      calibrationMultiplier: vocabularySessions?.calibrationMultiplier ?? allocation?.calibrationMultiplier ?? null,
+      roundingStepMinutes: vocabularySessions?.roundingStepMinutes ?? allocation?.roundingStepMinutes ?? null,
       estimateBasis: estimate.basis,
       estimateSourceFactIds: estimate.sourceFactIds,
       estimateSourceWorkloadFactIds: estimate.sourceWorkloadFactIds,
+      plannedSessions: vocabularySessions?.sessions,
       splitPolicy: deriveSplitPolicy(workload),
       periodExpression: workload.periodExpression,
       sourceFactRefs: [
