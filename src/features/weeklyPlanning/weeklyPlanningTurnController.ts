@@ -129,9 +129,11 @@ function ensureSessionScope(
   ownerId: string,
   weekStartDate: string,
 ): void {
-  if (session.ownerId !== ownerId || session.weekStartDate !== weekStartDate) {
+  if (session.ownerId !== ownerId) {
     resetWeeklyPlanningControllerSession(session, ownerId, weekStartDate);
+    return;
   }
+  session.weekStartDate = weekStartDate;
 }
 
 export function isSameWeeklyPlanningPendingTurn(
