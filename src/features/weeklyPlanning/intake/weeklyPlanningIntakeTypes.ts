@@ -28,6 +28,25 @@ export type PlanningDraftGenerationIntent =
   | 'assistant_suggested'
   | 'user_authorized';
 
+export type WeeklyPlanningGroundingStatus =
+  | 'proposed'
+  | 'continuation_accepted'
+  | 'explicitly_accepted'
+  | 'contested'
+  | 'rejected';
+
+export interface WeeklyPlanningGroundingRecord {
+  id: string;
+  targetFactId: string;
+  interpretationKind: 'relative_date_resolution';
+  status: WeeklyPlanningGroundingStatus;
+  sourceExpression: string;
+  startDate: string;
+  endDate: string;
+  proposedAtTurnId: string;
+  acceptedAtTurnId: string | null;
+}
+
 export type PlanningRangeConfidence = 'explicit' | 'inferred' | 'missing';
 
 export interface PlanningRange {
@@ -283,6 +302,7 @@ export interface PlanningIntakeState {
   shouldSavePlan: false;
   draftGenerationIntent?: PlanningDraftGenerationIntent;
   draftGenerationAuthorizedAtRevision?: number;
+  groundingRecords?: WeeklyPlanningGroundingRecord[];
   /**
    * Session-local proposal ledger. UI stateと一緒に次turnへ渡すが、repository/localStorageへは保存しない。
    */
