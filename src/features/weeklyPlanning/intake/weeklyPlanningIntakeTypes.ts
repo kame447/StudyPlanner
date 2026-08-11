@@ -47,6 +47,35 @@ export interface WeeklyPlanningGroundingRecord {
   acceptedAtTurnId: string | null;
 }
 
+export type WeeklyPlanningRepairAgendaDomain =
+  | 'semantic_uncertainty'
+  | 'planning_horizon'
+  | 'work_item'
+  | 'commitment'
+  | 'task_date_rule'
+  | 'availability'
+  | 'relation'
+  | 'deduplication';
+
+export type WeeklyPlanningRepairAgendaStatus =
+  | 'open'
+  | 'deferred'
+  | 'resolved'
+  | 'dropped';
+
+export interface WeeklyPlanningRepairObligation {
+  id: string;
+  issueFactId: string;
+  targetFactId: string | null;
+  domain: WeeklyPlanningRepairAgendaDomain;
+  code: string;
+  impact: 'low' | 'medium' | 'high';
+  status: WeeklyPlanningRepairAgendaStatus;
+  createdRevision: number;
+  sourceTurnId: string;
+  reopenBefore: 'preview' | 'save';
+}
+
 export type PlanningRangeConfidence = 'explicit' | 'inferred' | 'missing';
 
 export interface PlanningRange {
@@ -303,6 +332,7 @@ export interface PlanningIntakeState {
   draftGenerationIntent?: PlanningDraftGenerationIntent;
   draftGenerationAuthorizedAtRevision?: number;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
+  repairAgenda?: WeeklyPlanningRepairObligation[];
   /**
    * Session-local proposal ledger. UI stateと一緒に次turnへ渡すが、repository/localStorageへは保存しない。
    */
