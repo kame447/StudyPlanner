@@ -805,7 +805,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     },
   });
 
-  const semanticDiff = semantic.canonicalization?.diff;
+  const semanticDiff = semantic.canonicalization?.diff ?? undefined;
   const preliminaryHorizon = resolveWeeklyPlanningPlanningHorizon({
     graph: semantic.graph,
     selectedDate: input.selectedDate,
