@@ -90,6 +90,29 @@ export function createWeeklyPlanningTurnRequestContext(params: {
   };
 }
 
+/**
+ * Compatibility-only context for direct runtime callers that predate request-clock capture.
+ * Production application turns must provide createWeeklyPlanningTurnRequestContext instead.
+ */
+export function createWeeklyPlanningLegacyRequestContext(params: {
+  selectedDate: string;
+  timeZone: string;
+  weekStartsOn: WeeklyPlanningWeekStartsOn;
+}): WeeklyPlanningTurnRequestContext {
+  if (!isValidCalendarDate(params.selectedDate)) {
+    throw new Error('Invalid weekly planning legacy selected date.');
+  }
+  return {
+    startedAtIso: `${params.selectedDate}T00:00:00.000Z`,
+    timeZone: params.timeZone,
+    currentDate: params.selectedDate,
+    currentTime: '00:00',
+    notBeforeDate: params.selectedDate,
+    notBeforeTime: '00:00',
+    weekStartsOn: params.weekStartsOn,
+  };
+}
+
 export function resolveWeeklyPlanningPlanningHorizon(params: {
   graph: WeeklyPlanningFactGraphV5;
   selectedDate: string;
