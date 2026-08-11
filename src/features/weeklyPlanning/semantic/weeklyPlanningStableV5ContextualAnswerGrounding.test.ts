@@ -120,7 +120,8 @@ describe('Stable V5 contextual answer semantic ownership', () => {
         taskId: 'task-english',
         targetFactId: 'workload-english',
         minutes,
-        kind: 'total_duration',
+        kind: 'duration_per_unit',
+        unitCode: 'problem',
       }),
     ]);
   });
