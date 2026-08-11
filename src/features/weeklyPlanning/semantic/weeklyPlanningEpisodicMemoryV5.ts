@@ -183,3 +183,27 @@ export function buildWeeklyPlanningEpisodicMemoryV5(params: {
     items,
   };
 }
+
+export function buildWeeklyPlanningGraphSourceMemoryV5(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  priorityFactId?: string | null;
+  maxEpisodes?: number;
+  maxBytes?: number;
+}): WeeklyPlanningEpisodicMemoryV5 {
+  const conversationId = activeSourcedFacts(params.graph)[0]?.source.conversationId;
+  if (!conversationId) {
+    return {
+      version: WEEKLY_PLANNING_EPISODIC_MEMORY_VERSION_V5,
+      items: [],
+    };
+  }
+  return buildWeeklyPlanningEpisodicMemoryV5({
+    graph: params.graph,
+    messages: [],
+    recentMessages: [],
+    conversationId,
+    priorityFactId: params.priorityFactId,
+    maxEpisodes: params.maxEpisodes,
+    maxBytes: params.maxBytes,
+  });
+}
