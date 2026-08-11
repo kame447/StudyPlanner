@@ -10,6 +10,7 @@ import {
 import type {
   PlanningIntakeState,
   WeeklyPlanningGroundingRecord,
+  WeeklyPlanningRepairObligation,
 } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
@@ -49,6 +50,9 @@ import {
   decideWeeklyPlanningStableDialogueV5,
   type WeeklyPlanningStableQuestionV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
+import {
+  decideWeeklyPlanningStableRepairPolicyV5,
+} from '../semantic/weeklyPlanningStableRepairPolicyV5';
 import {
   scheduleWeeklyPlanningStableV5Preview,
   WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
@@ -99,6 +103,7 @@ function emptyCompatibilityState(): PlanningIntakeState {
     shouldSavePlan: false,
     draftGenerationIntent: 'not_requested',
     groundingRecords: [],
+    repairAgenda: [],
     sourceTurns: [],
   };
 }
@@ -113,6 +118,7 @@ function compatibilityState(params: {
   authorized: boolean;
   preserveExistingPreview?: boolean;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
+  repairAgenda?: WeeklyPlanningRepairObligation[];
 }): PlanningIntakeState {
   const previous = params.previousState ?? emptyCompatibilityState();
   const hasDraft = params.draftCandidates.length > 0;
@@ -145,6 +151,7 @@ function compatibilityState(params: {
       ? previous.draftGenerationIntent
       : durableDraftGenerationIntent,
     groundingRecords: params.groundingRecords ?? previous.groundingRecords ?? [],
+    repairAgenda: params.repairAgenda ?? previous.repairAgenda ?? [],
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
   };
 }
@@ -317,6 +324,18 @@ function publicStateSummary(
         sourceExpression: record.sourceExpression,
         startDate: record.startDate,
         endDate: record.endDate,
+      })),
+    repairAgenda: (previousState?.repairAgenda ?? [])
+      .filter((item) => item.status === 'open' || item.status === 'deferred')
+      .slice(-16)
+      .map((item) => ({
+        issueFactId: item.issueFactId,
+        targetFactId: item.targetFactId,
+        domain: item.domain,
+        code: item.code,
+        impact: item.impact,
+        status: item.status,
+        reopenBefore: item.reopenBefore,
       })),
     planningWindows: active.planningWindows.map((fact) => ({
       publicId: fact.id,
@@ -548,6 +567,7 @@ function displayGroundedRange(startDate: string, endDate: string): string {
   const start = monthDay(startDate);
   const end = monthDay(endDate);
   if (!start || !end) return `${startDate}〜${endDate}`;
+  if (startDate === endDate) return `${start.month}月${start.day}日`;
   if (start.year === end.year && start.month === end.month) {
     return `${start.month}月${start.day}日〜${end.day}日`;
   }
@@ -850,7 +870,17 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     context,
     externalSources: sources,
   });
-  const dialogue = decideWeeklyPlanningStableDialogueV5(compilation);
+  const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
+    graph: semantic.graph,
+    compilation,
+    previousAgenda: input.previousState?.repairAgenda ?? [],
+    graphRevision: semantic.graph.revision,
+    turnId: input.traceRequestId,
+  });
+  const baselineDialogue = decideWeeklyPlanningStableDialogueV5(compilation);
+  const dialogue = repairDecision.question
+    ? { status: 'ask_question' as const, question: repairDecision.question }
+    : baselineDialogue;
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;
   const semanticChanged = Boolean(
     semanticDiff
@@ -878,6 +908,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         continuationAccepted,
         records: groundingRecords,
       },
+      repair: {
+        mode: repairDecision.mode,
+        deferredIssueIds: repairDecision.deferredIssueIds,
+        reopenedIssueIds: repairDecision.reopenedIssueIds,
+        agenda: repairDecision.agenda,
+      },
       horizonCriteria: {
         moreThanOneActiveWindow: 'return null',
         noActiveWindow: 'selectedDate is display/fallback seed only',
@@ -894,6 +930,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       dialogue,
       dialoguePolicyCriteria: {
         blockingIssuesFirst: true,
+        repairPassOver: 'only active soft preference semantic uncertainty may be deferred while another blocking issue is repaired',
+        repairReopen: 'a deferred issue is reopened before preview once it is the remaining blocker',
         domainPriority: [
           'semantic_uncertainty',
           'planning_horizon',
@@ -936,6 +974,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         questionFactId: dialogue.question.factId ?? undefined,
         authorized,
         groundingRecords,
+        repairAgenda: repairDecision.agenda,
       }),
       message,
       draftCandidates: [],
@@ -948,6 +987,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         renderedQuestion: message,
         issueLabel: issueTaskLabel(semantic.graph, dialogue.question),
         groundingRecords,
+        repairDecision,
       },
       output,
       severity: 'warn',
@@ -970,6 +1010,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         questionCode: missingWork.questionCode,
         authorized,
         groundingRecords,
+        repairAgenda: repairDecision.agenda,
       }),
       message,
       draftCandidates: [],
@@ -984,6 +1025,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         recognizedTaskTitles: missingWork.taskTitles,
         questionCode: missingWork.questionCode ?? null,
         groundingRecords,
+        repairDecision,
       },
       output,
       severity: 'warn',
@@ -1009,6 +1051,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         authorized: false,
         preserveExistingPreview: true,
         groundingRecords,
+        repairAgenda: repairDecision.agenda,
       }),
       message,
       draftCandidates: [],
@@ -1022,6 +1065,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         semanticChanged,
         previousStatus: input.previousState.status,
         groundingRecords,
+        repairDecision,
       },
       output,
     });
@@ -1041,6 +1085,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         draftCandidates: [],
         authorized: false,
         groundingRecords,
+        repairAgenda: repairDecision.agenda,
       }),
       message,
       draftCandidates: [],
@@ -1053,6 +1098,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         previousDraftGenerationIntent,
         criterion: 'no current create_plan, no durable user_authorized, and no draft_ready update_plan change',
         groundingRecords,
+        repairDecision,
       },
       output,
     });
@@ -1106,6 +1152,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         questionCode: 'insufficient_capacity',
         authorized: true,
         groundingRecords,
+        repairAgenda: repairDecision.agenda,
       }),
       message,
       draftCandidates: [],
@@ -1113,7 +1160,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     traceBranch({
       requestId: input.traceRequestId,
       branch: 'preview_insufficient_capacity',
-      basis: { preview, groundingRecords },
+      basis: { preview, groundingRecords, repairDecision },
       output,
       severity: 'warn',
     });
@@ -1133,6 +1180,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         draftCandidates: [],
         authorized: true,
         groundingRecords,
+        repairAgenda: repairDecision.agenda,
       }),
       message,
       draftCandidates: [],
@@ -1140,7 +1188,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     traceBranch({
       requestId: input.traceRequestId,
       branch: 'preview_empty',
-      basis: { preview, groundingRecords },
+      basis: { preview, groundingRecords, repairDecision },
       output,
       severity: 'warn',
     });
@@ -1168,6 +1216,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       draftCandidates: preview.candidates,
       authorized: true,
       groundingRecords,
+      repairAgenda: repairDecision.agenda,
     }),
     message,
     draftCandidates: preview.candidates,
@@ -1181,6 +1230,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       authorized,
       preview,
       groundingRecords,
+      repairDecision,
     },
     output,
   });
