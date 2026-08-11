@@ -203,8 +203,10 @@ export async function approveWeeklyPlanningDraftBlocks({
           )?.id;
         },
         async saveBlock({ block, source }) {
-          const draft = createPlanDraftFromWeeklyDraftBlock(block, authenticatedUserId)
-            as PlanDraftWithEstimateMetadata;
+          const draft = createPlanDraftFromWeeklyDraftBlock(
+            block,
+            authenticatedUserId,
+          ) as PlanDraftWithEstimateMetadata;
           const metadata = estimateMetadata.get(block.id);
           if (metadata) draft.weeklyPlanningEstimate = metadata;
           const sourceId = buildWeeklyPlanningPlanSourceId({
