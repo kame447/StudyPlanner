@@ -3,6 +3,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
+import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 
 const { normalizeMock } = vi.hoisted(() => ({ normalizeMock: vi.fn() }));
@@ -157,7 +158,12 @@ const requestContext = {
   weekStartsOn: 'monday' as const,
 };
 
-function turnInput(overrides: Record<string, unknown>) {
+function turnInput(
+  overrides: Pick<
+    ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+    'userText' | 'traceRequestId' | 'previousState'
+  >,
+): ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
   return {
     messages: [],
     selectedDate: '2026-08-17',
