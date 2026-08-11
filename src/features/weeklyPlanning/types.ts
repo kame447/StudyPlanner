@@ -1,5 +1,6 @@
 import type { PlanType } from '../../types/domain';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import type { WeeklyPlanningEstimateMetadataV1 } from './personalization/weeklyPlanningEstimateCalibration';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PreviewAssumptionDependency,
@@ -38,6 +39,7 @@ export interface WeeklyPlanningBehaviorMetadata {
     candidateSource: 'weekly_exam_prep' | 'stable_v5';
   };
   previewMetadata?: WeeklyPreviewMetadata;
+  estimateMetadata?: WeeklyPlanningEstimateMetadataV1;
 }
 
 export interface WeeklyPlanDraftBlock {
