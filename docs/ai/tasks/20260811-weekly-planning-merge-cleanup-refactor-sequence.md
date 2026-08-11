@@ -1,10 +1,11 @@
 # 週間計画 Stable V5 マージ・整理・リファクタ順序
 
-Status: active / Phase 3 legacy cleanup
+Status: active / Phase 4 behavior-preserving refactor
 Date: 2026-08-11
 Issue: #108
 Baseline merge: PR #109
-Cleanup branch: `cleanup/weekly-planning-legacy-removal`
+Legacy cleanup merge: PR #112
+Refactor branch: `refactor/weekly-planning-stable-v5-boundaries`
 
 ## 目的
 
@@ -15,8 +16,8 @@ Stable V5主要経路を基準線として固定し、「legacy削除」「リ�
 ```text
 1. PR #109 merge-readiness確定        完了
 2. PR #109をmainへsquash merge       完了
-3. legacy / 過去経路削除             進行中
-4. Stable V5挙動不変リファクタ       未着手
+3. legacy / 過去経路削除             完了（PR #112）
+4. Stable V5挙動不変リファクタ       進行中
 5. 7視点でゼロベース再棚卸し        未着手
 6. 新規会話品質改善・機能追加        未着手
 ```
@@ -24,12 +25,11 @@ Stable V5主要経路を基準線として固定し、「legacy削除」「リ�
 ## 非交渉ルール
 
 - Phase 3とPhase 4を同じPRへ混ぜない。
-- Phase 3では利用者向け挙動を意図的に改善しない。
-- Phase 4では原則public behaviorを変えない。
+- Phase 4ではpublic behavior、semantic meaning、scheduler policy、approval/save flowを意図的に変えない。
 - AI意味理解責務をdeterministic parserへ戻さない。
 - AIの自然さ・意味理解に固定期待文面を置く自動testを復活させない。
-- 旧経路は名前ではなくdependency reachabilityと現在のmigration/test-support必要性で分類する。
-- cleanup/refactor中に見つけた新しい仕様問題はPhase 5 backlogへ記録する。データ破壊・security・save不整合等のBLOCKERだけは例外。
+- refactor中に見つけた新しい仕様問題はPhase 5 backlogへ記録する。データ破壊・security・save不整合等のBLOCKERだけは例外。
+- testを通すための仕様変更をrefactorとして偽装しない。
 
 ## Phase 1: merge-readiness — 完了
 
@@ -37,65 +37,41 @@ PR #109の機能追加を凍結し、実API主要経路、preview訂正、re-pre
 
 ## Phase 2: merge — 完了
 
-PR #109は監査済みheadをsquash mergeした。merge後main CIもgreen確認後にPhase 3へ進んだ。
+PR #109は監査済みheadをsquash mergeし、merge後main CI greenを確認した。
 
-## Phase 3: legacy / 過去経路削除 — 進行中
+## Phase 3: legacy / 過去経路削除 — 完了
 
-独立branch / PRで実施する。構造改善を混ぜない。
+PR #112で独立実施した。
 
-分類:
+削除済み:
 
-```text
-A. productionから到達不能かつ現行test-supportにも不要
-   → 削除
+- weeklyPlanningTurnExecutorの到達不能legacy branch
+- old interpreter / parser fallback / old intake/dialogue pipeline
+- semantic V1 / V2 experiment cluster
+- runtime mode selector / runtime mode change event
+- production-unreachable semantic/cutover prototypes
+- 旧経路だけを支えるtest-support / fixed scenario tests
+- obsolete Stable V5 migration/status docs
 
-B. productionから到達不能だがobservation/test-supportに必要
-   → 残す。Phase 4で隔離・命名整理可能
+残したもの:
 
-C. productionが参照、または既存data migrationに必要
-   → legacyという名前だけでは削除しない
-```
-
-### 完了済みcleanup batch
-
-- weeklyPlanningTurnExecutorの到達不能legacy branch削除
-- old interpreter / parser fallback / semantic V1/V2 cluster削除
-- fixed runtime mode selector / runtime mode change event削除
-- runtime modeを前提にした設定・test injection削除
-- production-unreachable semantic/cutover prototype群削除
-- prototypeだけを検証していた旧test / foundation entry削除
-- obsolete fixed real-API quality eval / model comparison workflow削除済みを再確認
-- current docsをStable V5 sole runtime前提へ更新
-
-各大規模batchはtargeted regressions、typecheck、conversation foundation、full regression、production buildがgreenになった後だけbranchへ固定している。
-
-### Phase 3で残すもの
-
-- human-guided observation checkpoint helper
-- trace in-memory repository等の現行test-support
-- 旧保存dataを安全に読むmigration decoder
+- 既存保存data migration decoder
 - approval ledger / owner migration
-- current trace/exportが既存formatを読むために必要なdecoder
-- productionから現に参照されるStable V5 core
+- trace/export read compatibility
+- human-guided observation checkpoint helper
+- current repository/trace test-support
 
-### Phase 3終了前の確認
+production reachability、legacy marker、canonical docs、dependency、typecheck、foundation、full regression、build、diff checkをgreen確認してmergeし、merge後main CIもgreen確認済み。
 
-- production reachabilityを再計算する。
-- runtime mode / old interpreter / parser fallback / semantic experiment markerを再検索する。
-- production-unreachable non-testがB分類だけであることを確認する。
-- obsolete canonical migration/status docsを削除する。
-- current docs内に`default runtime=legacy`等の廃止済み前提が残らないことを確認する。
-- full CI、typecheck、buildをgreenにする。
-- cleanup PRを7視点監査する。
+## Phase 4: 挙動不変リファクタ — 進行中
 
-## Phase 4: 挙動不変リファクタ — Phase 3 merge後のみ
-
-mainのcleanup mergeとmain CI成功後に新branchを作る。
+独立branch / PRで実施する。
 
 重点対象:
 
+- current validatorの歴史的`Legacy`命名とwrapper/core分離
 - semantic orchestration / focused vs generic semantic
-- prompt責務とbudget
+- prompt assembly / budget responsibility
 - validator chain / evidence validation
 - existing entity binding / canonicalization / no-op detection
 - Fact Graph mutation / revision / idempotency
@@ -103,19 +79,45 @@ mainのcleanup mergeとmain CI成功後に新branchを作る。
 - application executor / reducer / persistence
 - dialogue decision / renderer contract
 - fixture builder / 重複test setup
-- `Legacy`等の歴史的命名が現行coreに残る場合のrename
 
-受け入れ条件:
+### Phase 4で許可する変更
 
-- public contractを変えない。
-- AI意味理解責務を変えない。
-- prompt budgetを悪化させない。
-- deterministic regressionを減らさない。
-- productionへ削除済みlegacy dependencyを再導入しない。
+- rename
+- pure helper extraction
+- module split / module merge
+- duplicate code removal
+- dependency directionの明確化
+- fixture builder導入
+- type/interface整理
+-同じ入力に同じmachine結果を返す範囲の内部実装整理
+
+### Phase 4で禁止する変更
+
+- semantic promptへ新しい意味規則を追加
+- focused semanticの適用範囲拡大
+- validatorのaccept/reject policy変更
+- readiness優先度変更
+- scheduler配置policy変更
+- renderer意味契約変更
+- preview / approval / save workflow変更
+- migration compatibility削除
+
+### batch gate
+
+各batchで最低限:
+
+1. 変更対象のdeterministic回帰
+2. AI ownership境界確認
+3. typecheck
+4. conversation foundationへの影響確認
+5. 変更範囲に応じfull regression / build
+6. 7視点監査
+
+大規模batchはgreenになるまでbranchへ固定しない。
 
 ## Phase 5: 7視点再棚卸し
 
-cleanup + refactor後のmainを新基準線としてゼロベース監査する。
+Phase 4 PR mergeとmain CI成功後に開始する。
 
 1. AI意味理解責務 / orchestration / prompt
 2. state / Fact Graph / revision / idempotency

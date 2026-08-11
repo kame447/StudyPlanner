@@ -2,16 +2,9 @@ import type {
   ExternalConstraintSourceSnapshot,
 } from './weeklyPlanningAvailabilityResolver';
 import {
-  applyWeeklyPlanningCanonicalCorrectionsV5,
-} from './weeklyPlanningCanonicalCorrectionApplicationV5';
-import {
   createEmptyWeeklyPlanningFactGraphV5,
-  type WeeklyPlanningFactDiffEntryV5,
   type WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
-import {
-  applyWeeklyPlanningExistingEntityBindingsV5,
-} from './weeklyPlanningExistingEntityBindingApplicationV5';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
@@ -43,18 +36,22 @@ import type {
 import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
+import {
+  finalizeWeeklyPlanningSemanticCanonicalizationV5,
+} from './weeklyPlanningSemanticCommitV5';
+export {
+  shouldApplyWeeklyPlanningExistingEntityBindingsV5,
+} from './weeklyPlanningSemanticCommitV5';
+import {
+  createWeeklyPlanningSemanticPublicStateSummaryV5,
+} from './weeklyPlanningSemanticPublicStateV5';
+export {
+  WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
+} from './weeklyPlanningSemanticPublicStateV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5 =
   'weekly-planning-semantic-pipeline-v5' as const;
 
-export const WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 = {
-  version: 'weekly-planning-correction-targeting-contract-v5',
-  targetIdentity: 'For an explicit correction of an accepted public fact, set correction.target.publicId to the exact publicId from publicStateSummary and set correction.target.kind to the matching fact kind.',
-  replacementIdentity: 'Create only the replacement fact stated by the user in the current semantic document and set correction.replacementLocalId to that fact localId.',
-  minimalDelta: 'Do not copy unrelated accepted facts from publicStateSummary. Include only facts newly stated or changed in the current utterance.',
-  multipleTargets: 'For multiple explicit corrections, emit one correction per exact target and do not exchange targets between tasks.',
-  ambiguity: 'When the corrected target cannot be identified uniquely from publicStateSummary, do not guess a publicId. Emit an uncertainty describing the unresolved correction target.',
-} as const;
 
 export interface WeeklyPlanningSemanticPipelineInputV5
   extends WeeklyPlanningSemanticNormalizerInputV5 {
@@ -75,10 +72,6 @@ export type WeeklyPlanningSemanticPipelineStatusV5 =
   | 'scheduler_empty'
   | 'scheduler_ready';
 
-export function shouldApplyWeeklyPlanningExistingEntityBindingsV5(params: { contextualAnswer: boolean; questionCode: string | null }): boolean {
-  return !params.contextualAnswer || params.questionCode === 'semantic_uncertainty';
-}
-
 export interface WeeklyPlanningSemanticPipelineResultV5 {
   pipelineVersion: typeof WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5;
   status: WeeklyPlanningSemanticPipelineStatusV5;
@@ -94,186 +87,6 @@ function schedulerStatus(
   if (compilation.status === 'ready') return 'scheduler_ready';
   if (compilation.status === 'empty') return 'scheduler_empty';
   return 'scheduler_needs_resolution';
-}
-
-function activeFactIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
-  return new Set(
-    graph.factLifecycles
-      .filter((entry) => entry.status === 'active')
-      .map((entry) => entry.factId),
-  );
-}
-
-function correctionTargetPublicFacts(
-  graph: WeeklyPlanningFactGraphV5,
-): Record<string, unknown> {
-  const activeIds = activeFactIds(graph);
-  return {
-    planningWindows: graph.planningWindows
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        kind: fact.kind,
-        value: fact.value,
-        start: fact.start,
-        end: fact.end,
-      })),
-    tasks: graph.tasks
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        category: fact.category,
-        title: fact.title,
-      })),
-    components: graph.components
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        taskPublicId: fact.taskId,
-        parentComponentPublicId: fact.parentComponentId,
-        role: fact.role,
-        label: fact.label,
-      })),
-    workloads: graph.workloads
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        taskPublicId: fact.taskId,
-        componentPublicId: fact.componentId,
-        quantityRole: fact.quantityRole,
-        amount: fact.amount,
-        unitCode: fact.unitCode,
-        unitLabel: fact.unitLabel,
-      })),
-    effortEstimates: graph.effortEstimates
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        taskPublicId: fact.taskId,
-        targetPublicId: fact.targetFactId,
-        kind: fact.kind,
-        minutes: fact.minutes,
-        unitCode: fact.unitCode,
-        precision: fact.precision,
-      })),
-    temporalConstraints: graph.temporalConstraints
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        taskPublicId: fact.taskId,
-        targetPublicId: fact.targetFactId,
-        kind: fact.kind,
-        constraintLevel: fact.constraintLevel,
-        dateExpression: fact.dateExpression,
-        namedTimePeriod: fact.namedTimePeriod,
-        startTime: fact.startTime,
-        endTime: fact.endTime,
-      })),
-    recurrences: graph.recurrences
-      .filter((fact) => activeIds.has(fact.id))
-      .map((fact) => ({
-        publicId: fact.id,
-        taskPublicId: fact.taskId,
-        targetPublicId: fact.targetFactId,
-        kind: fact.kind,
-        count: fact.count,
-        days: fact.days,
-      })),
-  };
-}
-
-function normalizerPublicStateSummary(
-  summary: Record<string, unknown> | undefined,
-  graph: WeeklyPlanningFactGraphV5,
-): Record<string, unknown> {
-  return {
-    ...(summary ?? {}),
-    ...correctionTargetPublicFacts(graph),
-    graphRevision: graph.revision,
-    correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
-  };
-}
-
-function uniqueDiffEntries(
-  entries: readonly WeeklyPlanningFactDiffEntryV5[],
-): WeeklyPlanningFactDiffEntryV5[] {
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${entry.kind}:${entry.id}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function applyCanonicalCorrectionResult(params: {
-  originalGraph: WeeklyPlanningFactGraphV5;
-  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
-  operationKeyPrefix: string;
-}): {
-  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
-  application: ReturnType<typeof applyWeeklyPlanningCanonicalCorrectionsV5>;
-} {
-  const application = applyWeeklyPlanningCanonicalCorrectionsV5(params);
-  if (application.status === 'rejected') {
-    return {
-      application,
-      canonicalization: {
-        status: 'rejected',
-        graph: params.originalGraph,
-        diff: null,
-        errors: application.errors.map((error) => `correction-application:${error}`),
-        localToFactId: params.canonicalization.localToFactId,
-      },
-    };
-  }
-  if (application.status !== 'applied' || !params.canonicalization.diff) {
-    return { application, canonicalization: params.canonicalization };
-  }
-  return {
-    application,
-    canonicalization: {
-      ...params.canonicalization,
-      graph: application.graph,
-      diff: {
-        ...params.canonicalization.diff,
-        toRevision: application.graph.revision,
-        superseded: uniqueDiffEntries([
-          ...params.canonicalization.diff.superseded,
-          ...application.superseded,
-        ]),
-        removed: uniqueDiffEntries([
-          ...params.canonicalization.diff.removed,
-          ...application.removed,
-        ]),
-      },
-    },
-  };
-}
-
-function collapseWeeklyPlanningNoOpCanonicalizationV5(params: {
-  originalGraph: WeeklyPlanningFactGraphV5;
-  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
-}): WeeklyPlanningSemanticCanonicalizationResultV5 {
-  const diff = params.canonicalization.diff;
-  if (params.canonicalization.status !== 'applied' || !diff) {
-    return params.canonicalization;
-  }
-  const hasFactChanges = diff.added.length > 0
-    || diff.superseded.length > 0
-    || diff.removed.length > 0;
-  if (hasFactChanges) return params.canonicalization;
-  return {
-    ...params.canonicalization,
-    graph: {
-      ...params.originalGraph,
-      appliedTurnKeys: params.canonicalization.graph.appliedTurnKeys,
-    },
-    diff: {
-      ...diff,
-      toRevision: params.originalGraph.revision,
-    },
-  };
 }
 
 function contextualBindingObservations(params: {
@@ -339,7 +152,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
   return {
     async run(input) {
       const graph = input.graph ?? createEmptyWeeklyPlanningFactGraphV5();
-      const publicStateSummary = normalizerPublicStateSummary(
+      const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(
         input.publicStateSummary,
         graph,
       );
@@ -476,44 +289,33 @@ export function createWeeklyPlanningSemanticPipelineV5(
           document: normalization.document,
           context: canonicalizationContext,
         });
-      const entityBindingApplication = shouldApplyWeeklyPlanningExistingEntityBindingsV5({
+      const commitResult = finalizeWeeklyPlanningSemanticCanonicalizationV5({
+        originalGraph: graph,
+        document: normalization.document,
+        baseCanonicalization,
         contextualAnswer: Boolean(contextualAnswer),
         questionCode: pendingQuestion?.questionCode ?? null,
-      })
-        ? applyWeeklyPlanningExistingEntityBindingsV5({
-            originalGraph: graph,
-            document: normalization.document,
-            canonicalization: baseCanonicalization,
-          })
-        : {
-            version: 'weekly-planning-existing-entity-binding-application-v5' as const,
-            status: 'not_applicable' as const,
-            canonicalization: baseCanonicalization,
-            errors: [],
-          };
-      const boundCanonicalization = entityBindingApplication.canonicalization;
+        operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
+      });
+      const {
+        entityBindingApplication,
+        boundCanonicalization,
+        correctionApplication,
+        canonicalization,
+      } = commitResult;
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'existing_entity_binding_application_evaluated',
         severity: entityBindingApplication.status === 'rejected' ? 'error' : 'info',
         data: entityBindingApplication,
       });
-      const correctionResult = applyCanonicalCorrectionResult({
-        originalGraph: graph,
-        canonicalization: boundCanonicalization,
-        operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
-      });
-      const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
-        originalGraph: graph,
-        canonicalization: correctionResult.canonicalization,
-      });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'canonical_correction_application_evaluated',
-        severity: correctionResult.application.status === 'rejected' ? 'error' : 'info',
+        severity: correctionApplication.status === 'rejected' ? 'error' : 'info',
         data: {
           inputCanonicalization: boundCanonicalization,
-          application: correctionResult.application,
+          application: correctionApplication,
           resultingCanonicalization: canonicalization,
         },
       });
