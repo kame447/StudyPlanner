@@ -12,6 +12,9 @@ import {
 import { saveOwnedWeeklyPlanningState } from '../weeklyPlanningOwnedStorage';
 import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
 import {
+  createWeeklyPlanningTurnRequestContext,
+} from './weeklyPlanningTemporalContext';
+import {
   discardWeeklyPlanningApplicationTurn,
   finalizeWeeklyPlanningApplicationTurn,
   recordCommittedWeeklyPlanningApplicationTurn,
@@ -43,6 +46,10 @@ const defaultServices: WeeklyPlanningTurnApplicationServices = {
   recordFailedTurn: recordFailedWeeklyPlanningApplicationTurn,
 };
 
+function resolvedTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo';
+}
+
 export interface SubmitWeeklyPlanningApplicationTurnParams {
   session: WeeklyPlanningControllerSession;
   userId: string;
@@ -53,6 +60,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
+  timeZone?: string;
+  now?: () => string;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -67,11 +76,17 @@ export function submitWeeklyPlanningApplicationTurn(
     userText: params.userText,
     getState: params.getState,
     dispatch: params.dispatch,
+    now: params.now,
     async execute({ snapshot, pending, userText }) {
       services.bindStableV5SessionScope({
         ownerId: params.userId,
         weekStartDate: snapshot.weekStartDate,
         conversationId: pending.conversationId,
+      });
+      const requestContext = createWeeklyPlanningTurnRequestContext({
+        startedAtIso: pending.startedAt,
+        timeZone: params.timeZone ?? resolvedTimeZone(),
+        weekStartsOn: params.weekStartsOn ?? 'monday',
       });
       return services.executeTurn({
         previousState: snapshot.intakeState,
@@ -84,7 +99,8 @@ export function submitWeeklyPlanningApplicationTurn(
         timetableTermId: params.timetableTermId,
         conversationId: pending.conversationId,
         traceRequestId: pending.requestId,
-        weekStartsOn: params.weekStartsOn,
+        weekStartsOn: requestContext.weekStartsOn,
+        requestContext,
       });
     },
     commitExecutionResult({ pending }) {
