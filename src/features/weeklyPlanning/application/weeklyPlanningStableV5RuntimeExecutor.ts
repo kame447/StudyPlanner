@@ -7,10 +7,10 @@ import {
   stageUserPlanningContextFactsV1,
   userPlanningContextPromptSummaryV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
-import {
-  collectUserPlanningContextFactsV5,
-} from '../semantic/weeklyPlanningDurableContextSignalsV5';
-import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import type {
+  PlanningIntakeState,
+  WeeklyPlanningGroundingRecord,
+} from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningMessage } from '../types';
@@ -28,11 +28,17 @@ import {
   listCalendarDatesInclusive,
 } from '../semantic/weeklyPlanningCalendarResolver';
 import {
+  collectUserPlanningContextFactsV5,
+} from '../semantic/weeklyPlanningDurableContextSignalsV5';
+import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
   type GenericSchedulerInputIssue,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import {
+  reconcileWeeklyPlanningGroundingRecordsV5,
+} from '../semantic/weeklyPlanningGroundingV5';
 import {
   createWeeklyPlanningSemanticNormalizerV5,
 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
@@ -92,6 +98,7 @@ function emptyCompatibilityState(): PlanningIntakeState {
     shouldCreateDraft: false,
     shouldSavePlan: false,
     draftGenerationIntent: 'not_requested',
+    groundingRecords: [],
     sourceTurns: [],
   };
 }
@@ -105,6 +112,7 @@ function compatibilityState(params: {
   questionFactId?: string;
   authorized: boolean;
   preserveExistingPreview?: boolean;
+  groundingRecords?: WeeklyPlanningGroundingRecord[];
 }): PlanningIntakeState {
   const previous = params.previousState ?? emptyCompatibilityState();
   const hasDraft = params.draftCandidates.length > 0;
@@ -136,11 +144,13 @@ function compatibilityState(params: {
     draftGenerationIntent: params.preserveExistingPreview
       ? previous.draftGenerationIntent
       : durableDraftGenerationIntent,
+    groundingRecords: params.groundingRecords ?? previous.groundingRecords ?? [],
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
   };
 }
 
 function activePlanningWindows(graph: WeeklyPlanningFactGraphV5) {
+  if (graph.factLifecycles.length === 0) return [...graph.planningWindows];
   const activeIds = new Set(
     graph.factLifecycles
       .filter((entry) => entry.status === 'active')
@@ -297,6 +307,17 @@ function publicStateSummary(
     graphRevision: graph.revision,
     previousCompatibilityStatus: previousState?.status ?? null,
     pendingQuestion: pendingQuestionFromState(previousState, graph.revision),
+    groundingRecords: (previousState?.groundingRecords ?? [])
+      .filter((record) => record.status !== 'rejected')
+      .slice(-16)
+      .map((record) => ({
+        targetFactId: record.targetFactId,
+        interpretationKind: record.interpretationKind,
+        status: record.status,
+        sourceExpression: record.sourceExpression,
+        startDate: record.startDate,
+        endDate: record.endDate,
+      })),
     planningWindows: active.planningWindows.map((fact) => ({
       publicId: fact.id,
       kind: fact.kind,
@@ -482,6 +503,94 @@ function traceBranch(params: {
   });
 }
 
+function planningWindowTouched(
+  diff: { added: Array<{ kind: string }>; superseded: Array<{ kind: string }>; removed: Array<{ kind: string }> } | undefined,
+): boolean {
+  if (!diff) return false;
+  return [...diff.added, ...diff.superseded, ...diff.removed]
+    .some((entry) => entry.kind === 'planning_window');
+}
+
+function relevantContinuationAccepted(params: {
+  previousState?: PlanningIntakeState;
+  diff: { added: Array<{ kind: string }>; superseded: Array<{ kind: string }>; removed: Array<{ kind: string }> } | undefined;
+}): boolean {
+  const hasProposal = (params.previousState?.groundingRecords ?? [])
+    .some((record) => record.status === 'proposed');
+  if (!hasProposal) return false;
+  if (params.previousState?.lastQuestionContext?.targetSlot !== 'stable_v5:missing_schedulable_work') {
+    return false;
+  }
+  if (!params.diff || planningWindowTouched(params.diff)) return false;
+  const workKinds = new Set([
+    'task',
+    'study_context',
+    'component',
+    'workload',
+    'effort_estimate',
+    'temporal_constraint',
+    'task_date_rule',
+    'recurrence',
+    'relation',
+    'availability_declaration',
+    'constraint_source_request',
+  ]);
+  return params.diff.added.some((entry) => workKinds.has(entry.kind));
+}
+
+function monthDay(date: string): { year: string; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return null;
+  return { year: match[1], month: Number(match[2]), day: Number(match[3]) };
+}
+
+function displayGroundedRange(startDate: string, endDate: string): string {
+  const start = monthDay(startDate);
+  const end = monthDay(endDate);
+  if (!start || !end) return `${startDate}〜${endDate}`;
+  if (start.year === end.year && start.month === end.month) {
+    return `${start.month}月${start.day}日〜${end.day}日`;
+  }
+  if (start.year === end.year) {
+    return `${start.month}月${start.day}日〜${end.month}月${end.day}日`;
+  }
+  return `${start.year}年${start.month}月${start.day}日〜${end.year}年${end.month}月${end.day}日`;
+}
+
+function relativeExpressionLabel(expression: string): string {
+  switch (expression) {
+    case 'next_week': return '来週';
+    case 'this_week': return '今週';
+    case 'today': return '今日';
+    case 'tomorrow': return '明日';
+    case 'day_after_tomorrow': return '明後日';
+    default: return '対象期間';
+  }
+}
+
+function newGroundingProposalPrefix(params: {
+  records: readonly WeeklyPlanningGroundingRecord[];
+  currentTurnId: string;
+}): string {
+  const record = params.records.find((candidate) =>
+    candidate.status === 'proposed'
+    && candidate.proposedAtTurnId === params.currentTurnId);
+  if (!record) return '';
+  return `${relativeExpressionLabel(record.sourceExpression)}は${displayGroundedRange(record.startDate, record.endDate)}として考えますね。`;
+}
+
+function withGroundingProposal(params: {
+  message: string;
+  records: readonly WeeklyPlanningGroundingRecord[];
+  currentTurnId: string;
+}): string {
+  const prefix = newGroundingProposalPrefix({
+    records: params.records,
+    currentTurnId: params.currentTurnId,
+  });
+  return prefix ? `${prefix}${params.message}` : params.message;
+}
+
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
@@ -517,6 +626,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     graph: runtimeSession.graph,
     selectedDate: input.selectedDate,
     requestContext,
+    groundingRecords: input.previousState?.groundingRecords,
   });
   const recentConversation = input.messages
     .slice(-RECENT_TURN_LIMIT)
@@ -548,6 +658,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         moreThanOneActiveWindow: 'return null',
         noActiveWindow: 'selectedDate is display/fallback seed only',
         explicitStartEnd: 'valid dates and start <= end',
+        groundedRelativeWindow: 'reuse the persisted absolute grounding range until the source fact is corrected',
         otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
       },
       recentTurnLimit: RECENT_TURN_LIMIT,
@@ -694,11 +805,31 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     },
   });
 
+  const semanticDiff = semantic.canonicalization?.diff;
+  const preliminaryHorizon = resolveWeeklyPlanningPlanningHorizon({
+    graph: semantic.graph,
+    selectedDate: input.selectedDate,
+    requestContext,
+    groundingRecords: input.previousState?.groundingRecords,
+  });
+  const continuationAccepted = relevantContinuationAccepted({
+    previousState: input.previousState,
+    diff: semanticDiff,
+  });
+  const groundingRecords = reconcileWeeklyPlanningGroundingRecordsV5({
+    previousRecords: input.previousState?.groundingRecords ?? [],
+    previousGraph: runtimeSession.graph,
+    nextGraph: semantic.graph,
+    resolvedHorizon: preliminaryHorizon,
+    currentTurnId: input.traceRequestId,
+    continuationAccepted,
+  });
   const activeWindowsAfter = activePlanningWindows(semantic.graph);
   const horizon = resolveWeeklyPlanningPlanningHorizon({
     graph: semantic.graph,
     selectedDate: input.selectedDate,
     requestContext,
+    groundingRecords,
   });
   const context = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
@@ -721,7 +852,6 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   const dialogue = decideWeeklyPlanningStableDialogueV5(compilation);
   const planningIntent = semantic.normalization.document?.planningIntent ?? null;
-  const semanticDiff = semantic.canonicalization?.diff;
   const semanticChanged = Boolean(
     semanticDiff
     && (semanticDiff.added.length > 0
@@ -744,10 +874,15 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       selectedDate: input.selectedDate,
       requestContext,
       resolvedHorizon: horizon,
+      grounding: {
+        continuationAccepted,
+        records: groundingRecords,
+      },
       horizonCriteria: {
         moreThanOneActiveWindow: 'return null',
         noActiveWindow: 'selectedDate is display/fallback seed only',
         explicitStartEnd: 'valid dates and start <= end',
+        groundedRelativeWindow: 'reuse the persisted absolute grounding range until the source fact is corrected',
         otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
       },
       schedulerInput: {
@@ -786,7 +921,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (dialogue.status === 'ask_question') {
-    const message = renderQuestion(semantic.graph, dialogue.question);
+    const message = withGroundingProposal({
+      message: renderQuestion(semantic.graph, dialogue.question),
+      records: groundingRecords,
+      currentTurnId: input.traceRequestId,
+    });
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -796,6 +935,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         questionCode: dialogue.question.code,
         questionFactId: dialogue.question.factId ?? undefined,
         authorized,
+        groundingRecords,
       }),
       message,
       draftCandidates: [],
@@ -807,6 +947,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         dialogue,
         renderedQuestion: message,
         issueLabel: issueTaskLabel(semantic.graph, dialogue.question),
+        groundingRecords,
       },
       output,
       severity: 'warn',
@@ -815,7 +956,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   }
   if (dialogue.status === 'nothing_to_schedule' || !compilation.input) {
     const missingWork = missingSchedulableWorkQuestion(semantic.graph);
-    const message = missingWork.message;
+    const message = withGroundingProposal({
+      message: missingWork.message,
+      records: groundingRecords,
+      currentTurnId: input.traceRequestId,
+    });
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -824,6 +969,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         draftCandidates: [],
         questionCode: missingWork.questionCode,
         authorized,
+        groundingRecords,
       }),
       message,
       draftCandidates: [],
@@ -837,6 +983,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         compilationInputExists: Boolean(compilation.input),
         recognizedTaskTitles: missingWork.taskTitles,
         questionCode: missingWork.questionCode ?? null,
+        groundingRecords,
       },
       output,
       severity: 'warn',
@@ -848,7 +995,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     && input.previousState?.status === 'draft_ready'
     && !semanticChanged
   ) {
-    const message = '仮予定候補は変更していません。内容を修正する場合は条件を入力してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。';
+    const message = withGroundingProposal({
+      message: '仮予定候補は変更していません。内容を修正する場合は条件を入力してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。',
+      records: groundingRecords,
+      currentTurnId: input.traceRequestId,
+    });
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -857,6 +1008,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         draftCandidates: [],
         authorized: false,
         preserveExistingPreview: true,
+        groundingRecords,
       }),
       message,
       draftCandidates: [],
@@ -869,13 +1021,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         planningIntent,
         semanticChanged,
         previousStatus: input.previousState.status,
+        groundingRecords,
       },
       output,
     });
     return output;
   }
   if (!authorized) {
-    const message = '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。';
+    const message = withGroundingProposal({
+      message: '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。',
+      records: groundingRecords,
+      currentTurnId: input.traceRequestId,
+    });
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -883,6 +1040,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         message,
         draftCandidates: [],
         authorized: false,
+        groundingRecords,
       }),
       message,
       draftCandidates: [],
@@ -894,6 +1052,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         planningIntent,
         previousDraftGenerationIntent,
         criterion: 'no current create_plan, no durable user_authorized, and no draft_ready update_plan change',
+        groundingRecords,
       },
       output,
     });
@@ -933,7 +1092,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     },
   });
   if (preview.status === 'insufficient_capacity') {
-    const message = '指定された期間と空き時間には、すべての作業を安全に配置できませんでした。期間を広げるか、作業量または利用できる時間を調整してください。';
+    const message = withGroundingProposal({
+      message: '指定された期間と空き時間には、すべての作業を安全に配置できませんでした。期間を広げるか、作業量または利用できる時間を調整してください。',
+      records: groundingRecords,
+      currentTurnId: input.traceRequestId,
+    });
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -942,6 +1105,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         draftCandidates: [],
         questionCode: 'insufficient_capacity',
         authorized: true,
+        groundingRecords,
       }),
       message,
       draftCandidates: [],
@@ -949,14 +1113,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     traceBranch({
       requestId: input.traceRequestId,
       branch: 'preview_insufficient_capacity',
-      basis: preview,
+      basis: { preview, groundingRecords },
       output,
       severity: 'warn',
     });
     return output;
   }
   if (preview.status === 'empty') {
-    const message = '固定予定は把握しましたが、新しく配置する作業がありません。予定に入れたい作業を教えてください。';
+    const message = withGroundingProposal({
+      message: '固定予定は把握しましたが、新しく配置する作業がありません。予定に入れたい作業を教えてください。',
+      records: groundingRecords,
+      currentTurnId: input.traceRequestId,
+    });
     const output = {
       state: compatibilityState({
         previousState: input.previousState,
@@ -964,6 +1132,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         message,
         draftCandidates: [],
         authorized: true,
+        groundingRecords,
       }),
       message,
       draftCandidates: [],
@@ -971,7 +1140,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     traceBranch({
       requestId: input.traceRequestId,
       branch: 'preview_empty',
-      basis: preview,
+      basis: { preview, groundingRecords },
       output,
       severity: 'warn',
     });
@@ -986,7 +1155,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     schedulerStatus: compilation.status,
     candidateCount: preview.candidates.length,
   });
-  const message = `${preview.candidates.length}件の仮予定候補を作りました。内容を確認して、問題なければ下の「この内容で仮予定にする」ボタンを押してください。`;
+  const message = withGroundingProposal({
+    message: `${preview.candidates.length}件の仮予定候補を作りました。内容を確認して、問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
+    records: groundingRecords,
+    currentTurnId: input.traceRequestId,
+  });
   const output = {
     state: compatibilityState({
       previousState: input.previousState,
@@ -994,6 +1167,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       message,
       draftCandidates: preview.candidates,
       authorized: true,
+      groundingRecords,
     }),
     message,
     draftCandidates: preview.candidates,
@@ -1006,6 +1180,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       dialogueStatus: dialogue.status,
       authorized,
       preview,
+      groundingRecords,
     },
     output,
   });
