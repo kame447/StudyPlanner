@@ -32,7 +32,16 @@ describe('weekly planning effort allocation', () => {
     });
   });
 
-  it('chooses the rounding step from the uncalibrated base estimate', () => {
+  it('ceil-rounds calibrated effort instead of rounding to the nearest slot', () => {
+    expect(allocateWeeklyPlanningEffort({
+      baseEstimateMinutes: 60,
+      calibrationMultiplier: 1.05,
+    })).toMatchObject({
+      calibratedEstimateMinutes: 63,
+      roundingStepMinutes: 5,
+      allocationMinutes: 65,
+    });
+
     expect(allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 60,
       calibrationMultiplier: 1.15,
@@ -41,6 +50,7 @@ describe('weekly planning effort allocation', () => {
       roundingStepMinutes: 5,
       allocationMinutes: 70,
     });
+
     expect(allocateWeeklyPlanningEffort({
       baseEstimateMinutes: 61,
       calibrationMultiplier: 1.05,
@@ -48,5 +58,25 @@ describe('weekly planning effort allocation', () => {
       roundingStepMinutes: 15,
       allocationMinutes: 75,
     });
+  });
+
+  it('never lets an upward calibration disappear into the same base allocation', () => {
+    const baseEstimates = [5, 10, 55, 58, 60, 61, 75, 90, 120];
+    const multipliers = [1.001, 1.01, 1.05, 1.15, 1.5];
+
+    for (const baseEstimateMinutes of baseEstimates) {
+      for (const calibrationMultiplier of multipliers) {
+        const allocation = allocateWeeklyPlanningEffort({
+          baseEstimateMinutes,
+          calibrationMultiplier,
+        });
+
+        expect(allocation.calibrationMultiplier).toBeGreaterThan(1);
+        expect(allocation.allocationMinutes).toBeGreaterThan(baseEstimateMinutes);
+        expect(allocation.allocationMinutes).toBeGreaterThanOrEqual(
+          allocation.calibratedEstimateMinutes,
+        );
+      }
+    }
   });
 });
