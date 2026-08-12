@@ -175,13 +175,16 @@ function addVocabularyReviews(params: {
     learningDurationMinutes: params.learningDuration,
     dates: params.context.dates,
   });
+  const usedReviewDates = new Set<string>();
 
   for (const review of reviewTargets) {
     const reviewWorkItemKey = `${params.item.id}:review-${review.round}`;
     const reviewRawDates = reviewCandidateDatesV5({
       preferredDate: review.preferredDate,
       dates: params.context.dates,
-    }).filter((date) => params.rawAllowedDates.includes(date));
+    }).filter((date) =>
+      params.rawAllowedDates.includes(date)
+      && !usedReviewDates.has(date));
     const reviewDates = orderedDates({
       context: params.context,
       allowedDates: reviewRawDates,
@@ -197,6 +200,7 @@ function addVocabularyReviews(params: {
       preferLongSegment: false,
     });
     if (!reviewSlot) return reviewWorkItemKey;
+    usedReviewDates.add(reviewSlot.date);
 
     params.itemCandidates.push(createPlacementCandidate({
       input: params.context.input,
