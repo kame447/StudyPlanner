@@ -19,12 +19,11 @@ function cloneDocument(document: WeeklyPlanningSemanticDocumentV5): MutableRecor
   return structuredClone(document) as unknown as MutableRecord;
 }
 
-function referencedLocalIds(
+function idsMatching(
   errors: readonly string[],
-  prefix: 'availabilityDeclarations' | 'temporalConstraints' | 'recurrence',
+  pattern: RegExp,
 ): Set<string> {
   const ids = new Set<string>();
-  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\[([^\\]]+)\\]`);
   for (const error of errors) {
     const match = pattern.exec(error);
     if (match?.[1]) ids.add(match[1]);
@@ -66,8 +65,8 @@ function redactAvailabilityRepresentation(
 
 function redactTaskNestedRepresentation(
   document: MutableRecord,
-  temporalIds: ReadonlySet<string>,
-  recurrenceIds: ReadonlySet<string>,
+  temporalClockIds: ReadonlySet<string>,
+  recurrenceWeekdayIds: ReadonlySet<string>,
 ): void {
   const tasks = document.tasks;
   if (!Array.isArray(tasks)) return;
@@ -80,7 +79,7 @@ function redactTaskNestedRepresentation(
         if (!constraint || typeof constraint !== 'object' || Array.isArray(constraint)) continue;
         const record = constraint as MutableRecord;
         const localId = typeof record.localId === 'string' ? record.localId : null;
-        if (localId && temporalIds.has(localId)) {
+        if (localId && temporalClockIds.has(localId)) {
           record.namedTimePeriod = '__REPAIRABLE_NAMED_TIME_PERIOD__';
           record.startTime = '__REPAIRABLE_START_TIME__';
           record.endTime = '__REPAIRABLE_END_TIME__';
@@ -93,7 +92,7 @@ function redactTaskNestedRepresentation(
         if (!recurrence || typeof recurrence !== 'object' || Array.isArray(recurrence)) continue;
         const record = recurrence as MutableRecord;
         const localId = typeof record.localId === 'string' ? record.localId : null;
-        if (localId && recurrenceIds.has(localId)) {
+        if (localId && recurrenceWeekdayIds.has(localId)) {
           record.days = ['__REPAIRABLE_WEEKDAY_TOKENS__'];
         }
       }
@@ -144,17 +143,14 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
     redactPlanningWindowRepresentation(repaired);
   }
 
-  const availabilityClockIds = referencedLocalIds(
+  const availabilityClockIds = idsMatching(
     params.initialErrors,
-    'availabilityDeclarations',
+    /^availabilityDeclarations\[([^\]]+)\]: (?:namedTimePeriod must be null|explicit clock text must use startTime\/endTime)/,
   );
-  const availabilityWeekdayIds = new Set(
-    [...availabilityClockIds].filter(() => false),
+  const availabilityWeekdayIds = idsMatching(
+    params.initialErrors,
+    /^availabilityDeclarations\[([^\]]+)\]\.days:canonical-weekday-required:/,
   );
-  for (const error of params.initialErrors) {
-    const match = /^availabilityDeclarations\[([^\]]+)\]\.days:canonical-weekday-required:/.exec(error);
-    if (match?.[1]) availabilityWeekdayIds.add(match[1]);
-  }
   redactAvailabilityRepresentation(
     initial,
     availabilityClockIds,
@@ -166,10 +162,16 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
     availabilityWeekdayIds,
   );
 
-  const temporalIds = referencedLocalIds(params.initialErrors, 'temporalConstraints');
-  const recurrenceIds = referencedLocalIds(params.initialErrors, 'recurrence');
-  redactTaskNestedRepresentation(initial, temporalIds, recurrenceIds);
-  redactTaskNestedRepresentation(repaired, temporalIds, recurrenceIds);
+  const temporalClockIds = idsMatching(
+    params.initialErrors,
+    /^temporalConstraints\[([^\]]+)\]: (?:namedTimePeriod must be null|explicit clock text must use startTime\/endTime)/,
+  );
+  const recurrenceWeekdayIds = idsMatching(
+    params.initialErrors,
+    /^recurrence\[([^\]]+)\]\.days:canonical-weekday-required:/,
+  );
+  redactTaskNestedRepresentation(initial, temporalClockIds, recurrenceWeekdayIds);
+  redactTaskNestedRepresentation(repaired, temporalClockIds, recurrenceWeekdayIds);
 
   if (stableSerialize(initial) === stableSerialize(repaired)) return [];
   return [
