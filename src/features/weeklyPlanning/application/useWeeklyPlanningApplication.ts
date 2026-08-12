@@ -39,6 +39,7 @@ export interface UseWeeklyPlanningApplicationInput {
   plans: Plan[];
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
+  estimateCalibrationMultiplier?: number;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation?: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
 }
@@ -71,6 +72,7 @@ export function useWeeklyPlanningApplication({
   plans,
   scheduleTemplates,
   timetableTermId,
+  estimateCalibrationMultiplier,
   saveWeeklyApprovedPlan,
   completeWeeklyApprovalOperation,
 }: UseWeeklyPlanningApplicationInput): WeeklyPlanningApplication {
@@ -131,7 +133,6 @@ export function useWeeklyPlanningApplication({
     saveWeeklyPlanningApprovalOperations(ownerId, approvalLedger.operations);
   }, [approvalLedger, ownerId]);
 
-
   const approvalOperations = approvalLedger.ownerId === ownerId
     ? approvalLedger.operations
     : [];
@@ -158,6 +159,7 @@ export function useWeeklyPlanningApplication({
       scheduleTemplates,
       timetableTermId,
       weekStartsOn,
+      estimateCalibrationMultiplier,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
     });
