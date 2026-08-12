@@ -23,6 +23,14 @@ import {
   type FocusedAuthorizationDecisionV5,
 } from './weeklyPlanningFocusedAuthorizationV5';
 import {
+  FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
+  FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5,
+  createFocusedContextualAnswerDocumentV5,
+  createFocusedContextualAnswerMessagesV5,
+  focusedContextualAnswerEligibleV5,
+  parseFocusedContextualAnswerDecisionV5,
+} from './weeklyPlanningFocusedContextualAnswerV5';
+import {
   validateWeeklyPlanningSemanticResponseV5,
 } from './weeklyPlanningSemanticResponseValidationV5';
 import {
@@ -36,7 +44,6 @@ export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
   'weekly-planning-semantic-normalizer-v5' as const;
 
 const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
-
 
 export interface WeeklyPlanningSemanticNormalizerInputV5 {
   userText: string;
@@ -75,7 +82,6 @@ function byteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   return 'Unknown Stable V5 semantic provider error.';
@@ -98,7 +104,6 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-
 export function createWeeklyPlanningSemanticNormalizerV5(
   client: OpenAiCompatibleClient,
 ): WeeklyPlanningSemanticNormalizerV5 {
@@ -108,6 +113,87 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const requestBytes: number[] = [];
       const responseLengths: number[] = [];
       const algorithmicRepairs: string[] = [];
+
+      if (focusedContextualAnswerEligibleV5(input)) {
+        const focusedMessages = createFocusedContextualAnswerMessagesV5(input);
+        const focusedRequest = {
+          messages: focusedMessages,
+          temperature: 0,
+          responseFormat: FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5,
+          purpose: 'weekly_planning_semantic_normalizer' as const,
+          maxCompletionTokens: FOCUSED_CONTEXTUAL_ANSWER_MAX_COMPLETION_TOKENS,
+        };
+        const focusedBytes = byteLength(focusedRequest);
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_orchestrator_route',
+          data: {
+            route: 'focused_contextual_answer_candidate',
+            meaningOwner: 'ai',
+            deterministicResponsibilities: [
+              'route_from_machine_pending_question',
+              'bind_ai_semantic_value_to_exact_pending_target',
+            ],
+            requestBytes: focusedBytes,
+          },
+        });
+        try {
+          const focusedResponse = await client.createChatCompletion(focusedRequest);
+          const focusedDecision = parseFocusedContextualAnswerDecisionV5(focusedResponse);
+          const focusedDocument = focusedDecision
+            ? createFocusedContextualAnswerDocumentV5({ input, decision: focusedDecision })
+            : null;
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_focused_contextual_answer_result',
+            data: {
+              decision: focusedDecision?.decision ?? 'invalid_response',
+              responseLength: focusedResponse.length,
+              rawResponse: focusedResponse,
+              documentCreated: Boolean(focusedDocument),
+            },
+          });
+          if (focusedDocument) {
+            const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+              status: 'accepted',
+              document: focusedDocument,
+              diagnostics: {
+                schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+                jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+                normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
+                attemptCount: 1,
+                repairAttempted: false,
+                requestBytes: [focusedBytes],
+                responseLengths: [focusedResponse.length],
+                latencyMs: Math.round(performance.now() - startedAt),
+                validationErrors: [],
+                algorithmicRepairs: [],
+                providerError: null,
+              },
+            };
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_normalizer_decision',
+              data: {
+                ...result,
+                orchestrationRoute: 'focused_contextual_answer',
+              },
+            });
+            return result;
+          }
+        } catch (error) {
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_focused_contextual_answer_error',
+            severity: 'warn',
+            data: {
+              error: errorDetails(error),
+              fallback: 'generic_semantic',
+            },
+          });
+        }
+      }
+
       let focusedConversationDecision: FocusedAuthorizationDecisionV5['decision'] | null = null;
 
       if (focusedAuthorizationEligibleV5(input)) {
