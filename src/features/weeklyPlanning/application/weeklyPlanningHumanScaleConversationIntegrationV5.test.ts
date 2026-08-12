@@ -202,11 +202,12 @@ async function runTwoTurnPlanningConversation(params: {
   return { first, second };
 }
 
-function candidateRole(candidate: { stableV5Metadata?: unknown }): {
+function candidateRole(candidate: unknown): {
   sessionRole?: 'learning' | 'review';
   reviewRound?: 1 | 2;
 } {
-  return (candidate.stableV5Metadata ?? {}) as {
+  const metadata = (candidate as { stableV5Metadata?: unknown }).stableV5Metadata;
+  return (metadata ?? {}) as {
     sessionRole?: 'learning' | 'review';
     reviewRound?: 1 | 2;
   };
