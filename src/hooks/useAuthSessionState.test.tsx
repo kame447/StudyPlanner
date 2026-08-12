@@ -109,27 +109,47 @@ describe('useAuthSessionState', () => {
     expect(renderedState(renderer)).toBe('ready:user-1');
   });
 
-  it('does not expose an authenticated app state before the root auth boundary takes over', async () => {
+  it('hands a successful password sign-in back to the root without starting local hydration', async () => {
     authRepositoryMock.signInWithPassword.mockResolvedValue(currentUser);
     const { renderer } = renderHarness(true);
-    let result: User | null = null;
+    let result: User | null | undefined = null;
 
     await act(async () => {
       result = await latestState!.signInWithPassword('user@example.com', 'password');
     });
 
-    expect(result).toEqual(currentUser);
+    expect(authRepositoryMock.signInWithPassword).toHaveBeenCalledWith(
+      'user@example.com',
+      'password',
+    );
+    expect(result).toBeUndefined();
+    expect(renderedState(renderer)).toBe('booting:anonymous');
+  });
+
+  it('hands a successful Google sign-in back to the root without starting local hydration', async () => {
+    authRepositoryMock.signInWithGoogle.mockResolvedValue(currentUser);
+    const { renderer } = renderHarness(true);
+    let result: User | null | undefined = null;
+
+    await act(async () => {
+      result = await latestState!.signInWithGoogle();
+    });
+
+    expect(authRepositoryMock.signInWithGoogle).toHaveBeenCalledOnce();
+    expect(result).toBeUndefined();
     expect(renderedState(renderer)).toBe('booting:anonymous');
   });
 
   it('preserves self-managed authentication when no root auth boundary is present', async () => {
     authRepositoryMock.signInWithGoogle.mockResolvedValue(currentUser);
     const { renderer } = renderHarness();
+    let result: User | null | undefined = null;
 
     await act(async () => {
-      await latestState!.signInWithGoogle();
+      result = await latestState!.signInWithGoogle();
     });
 
+    expect(result).toEqual(currentUser);
     expect(renderedState(renderer)).toBe('booting:user-1');
   });
 });
