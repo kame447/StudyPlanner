@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RootManagedAuthenticationProvider } from '../components/RootManagedAuthenticationContext';
+import { RootStartupReadyProvider } from '../components/RootStartupReadyContext';
 import type { User } from '../types/domain';
 import { useAuthSessionState } from './useAuthSessionState';
 import type { ShowNotice } from './useNoticeState';
@@ -53,20 +54,32 @@ function AuthSessionHarness({ showNotice }: { showNotice: ShowNotice }) {
   );
 }
 
-function renderHarness(rootManaged = false) {
+function renderHarness(
+  rootManaged = false,
+  onStartupReady?: () => void,
+) {
   const showNotice = vi.fn<ShowNotice>();
   let renderer!: ReactTestRenderer;
+  let content = <AuthSessionHarness showNotice={showNotice} />;
+
+  if (rootManaged) {
+    content = (
+      <RootManagedAuthenticationProvider>
+        {content}
+      </RootManagedAuthenticationProvider>
+    );
+  }
+
+  if (onStartupReady) {
+    content = (
+      <RootStartupReadyProvider onReady={onStartupReady}>
+        {content}
+      </RootStartupReadyProvider>
+    );
+  }
 
   act(() => {
-    renderer = create(
-      rootManaged ? (
-        <RootManagedAuthenticationProvider>
-          <AuthSessionHarness showNotice={showNotice} />
-        </RootManagedAuthenticationProvider>
-      ) : (
-        <AuthSessionHarness showNotice={showNotice} />
-      ),
-    );
+    renderer = create(content);
   });
 
   return { renderer, showNotice };
@@ -107,6 +120,46 @@ describe('useAuthSessionState', () => {
     });
 
     expect(renderedState(renderer)).toBe('ready:user-1');
+  });
+
+  it('releases the persistent root splash only after planner bootstrap completes', async () => {
+    authRepositoryMock.getCurrentUser.mockResolvedValue(currentUser);
+    const plannerData = createDeferred<void>();
+    const loadPlannerData = vi.fn(() => plannerData.promise);
+    const onStartupReady = vi.fn();
+    renderHarness(false, onStartupReady);
+    let bootstrapPromise!: Promise<void>;
+
+    act(() => {
+      bootstrapPromise = latestState!.bootstrapSession(loadPlannerData);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onStartupReady).not.toHaveBeenCalled();
+
+    await act(async () => {
+      plannerData.resolve();
+      await bootstrapPromise;
+    });
+
+    expect(onStartupReady).toHaveBeenCalledOnce();
+  });
+
+  it('releases the persistent root splash when planner bootstrap fails', async () => {
+    authRepositoryMock.getCurrentUser.mockResolvedValue(currentUser);
+    const loadPlannerData = vi.fn().mockRejectedValue(new Error('load failed'));
+    const onStartupReady = vi.fn();
+    renderHarness(false, onStartupReady);
+
+    await act(async () => {
+      await latestState!.bootstrapSession(loadPlannerData);
+    });
+
+    expect(onStartupReady).toHaveBeenCalledOnce();
   });
 
   it('hands a successful password sign-in back to the root without starting local hydration', async () => {
