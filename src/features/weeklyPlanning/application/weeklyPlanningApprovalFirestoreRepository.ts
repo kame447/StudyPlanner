@@ -21,7 +21,7 @@ import {
 } from './weeklyPlanningApprovalPersistencePolicy';
 import type {
   WeeklyPlanningApprovalPlanRepository,
-} from './weeklyPlanningApprovalPlanRepository';
+} from './weeklyPlanningApprovalPlanRepositoryContract';
 
 const OPERATION_COLLECTION = 'weekly_planning_approval_operations';
 const ITEM_COLLECTION = 'weekly_planning_approval_items';
