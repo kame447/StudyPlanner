@@ -14,7 +14,7 @@ const USER_TEXT = '8月17日から23日で、英単語220語を進める予定�
 
 function document(params: {
   canonicalWindow: boolean;
-  canonicalWeekday?: boolean;
+  clockAsCustomPeriod?: boolean;
   includeTask?: boolean;
   includeAvailability?: boolean;
   planningIntent?: 'create_plan' | 'update_plan' | 'discuss' | 'unknown';
@@ -86,11 +86,11 @@ function document(params: {
           localId: 'a1',
           kind: 'unavailable',
           dateExpression: 'weekday:tuesday',
-          namedTimePeriod: null,
-          startTime: '18:00',
-          endTime: '20:00',
+          namedTimePeriod: params.clockAsCustomPeriod ? 'custom:18時から20時' : null,
+          startTime: params.clockAsCustomPeriod ? null : '18:00',
+          endTime: params.clockAsCustomPeriod ? null : '20:00',
           recurrenceKind: 'weekly',
-          days: [params.canonicalWeekday === false ? 'tuesday' : 'weekday:tuesday'],
+          days: ['weekday:tuesday'],
           constraintLevel: 'hard',
           sourceText: '火曜日の18時から20時は予定があるので避けてください',
         }],
@@ -153,11 +153,11 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     expect(isRepresentationOnlySemanticRepairV5(validation.errors)).toBe(true);
   });
 
-  it('rejects destructive full-document repair on a non-focused representation error', async () => {
+  it('rejects destructive full-document repair when meaning must still be recovered', async () => {
     const responses = [
       JSON.stringify(document({
         canonicalWindow: true,
-        canonicalWeekday: false,
+        clockAsCustomPeriod: true,
       })),
       JSON.stringify(document({
         canonicalWindow: true,
