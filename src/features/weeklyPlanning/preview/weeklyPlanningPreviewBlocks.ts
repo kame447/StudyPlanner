@@ -6,15 +6,10 @@ import type {
 import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
+import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
 
-export interface WeeklyPlanningStableV5PreviewMetadata {
-  runtime: 'stable_v5';
-  conversationId: string;
-  graphRevision: number;
-  taskId: string;
-  sourceFactRefs: string[];
-  planType: PlanType;
-}
+export type WeeklyPlanningStableV5PreviewMetadata =
+  WeeklyPlanningStableV5PreviewProvenance;
 
 type RuntimeStableV5PreviewMetadata = Omit<
   WeeklyPlanningStableV5PreviewMetadata,
@@ -165,7 +160,8 @@ export function createWeeklyPlanningPreviewBlocks(
       ...(stableV5Metadata
         ? { planType: stableV5Metadata.planType, stableV5Metadata }
         : {}),
-      ...(behaviorMetadata ? { behaviorMetadata } : {}),
+      ...(behaviorMetadata ? { behaviorMetadata }
+        : {}),
     };
   });
 }
