@@ -287,7 +287,14 @@ function resolveEstimatedMinutes(params: {
 }
 
 function deriveSplitPolicy(workload: WorkloadFact): GenericPlanningWorkItem['splitPolicy'] {
-  if (workload.unitCode === 'minute' || workload.unitCode === 'hour') return 'splittable';
+  if (
+    workload.unitCode === 'minute'
+    || workload.unitCode === 'hour'
+    || workload.unitCode === 'page'
+    || workload.unitCode === 'problem'
+  ) {
+    return 'splittable';
+  }
   if (workload.unitCode === 'mock_exam') return 'atomic';
   return 'unknown';
 }
