@@ -2,7 +2,6 @@ import type { Plan, PlanDraft } from '../../../types/domain';
 import {
   createWeeklyDraftApprovalOperation,
   validateWeeklyPreviewApproval,
-  type WeeklyPreviewApprovalRuntimeSnapshot,
 } from '../planning/weeklyPlanningApproval';
 import { executeInterruptibleWeeklyDraftApproval } from '../planning/weeklyPlanningInterruptibleApproval';
 import {
@@ -10,10 +9,8 @@ import {
   WEEKLY_PLANNING_PLAN_SOURCE_TYPE,
 } from '../planning/weeklyPlanningPlanProvenance';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
-import { getWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type {
   PlanningState,
-  WeeklyPlanDraftBlock,
   WeeklyPlanningAction,
   WeeklyPlanningPendingApproval,
 } from '../types';
@@ -24,8 +21,8 @@ import {
   createWeeklyPlanningApplicationRequestId,
 } from './weeklyPlanningApplicationIdentity';
 import {
-  getWeeklyPlanningStableV5RuntimeSession,
-} from './weeklyPlanningStableV5RuntimeSession';
+  resolveWeeklyPlanningApprovalRuntime,
+} from './weeklyPlanningApprovalRuntimeResolver';
 
 interface WeeklyPlanningApprovalApplicationInput {
   userId: string | null | undefined;
@@ -81,39 +78,6 @@ function cloneEstimateMetadata(
   };
 }
 
-function approvalRuntimeSnapshot(params: {
-  blocks: readonly WeeklyPlanDraftBlock[];
-  userId: string;
-}): WeeklyPreviewApprovalRuntimeSnapshot | null {
-  const stableFlags = params.blocks.map(
-    (block) => block.behaviorMetadata?.compatibility.candidateSource === 'stable_v5',
-  );
-  const hasStableV5Block = stableFlags.some(Boolean);
-  const allStableV5 = stableFlags.length > 0 && stableFlags.every(Boolean);
-  if (hasStableV5Block && !allStableV5) return null;
-
-  const conversationId = params.blocks[0]?.behaviorMetadata?.previewMetadata?.conversationId?.trim();
-  if (!conversationId) return null;
-
-  if (allStableV5) {
-    const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
-    if (!runtime || runtime.ownerId !== params.userId) return null;
-    return {
-      conversationId: runtime.conversationId,
-      stateRevision: runtime.graph.revision,
-      proposalRecords: [],
-    };
-  }
-
-  const runtime = getWeeklyPlanningSessionRuntime();
-  if (!runtime) return null;
-  return {
-    conversationId: runtime.conversationId,
-    stateRevision: runtime.stateRevision,
-    proposalRecords: runtime.proposalRecords,
-  };
-}
-
 export async function approveWeeklyPlanningDraftBlocks({
   userId,
   plans,
@@ -142,15 +106,16 @@ export async function approveWeeklyPlanningDraftBlocks({
   if (!ownsPendingApproval(begun, pending)) return;
 
   try {
+    const runtimeResolution = resolveWeeklyPlanningApprovalRuntime({
+      blocks,
+      userId: authenticatedUserId,
+    });
     const guard = validateWeeklyPreviewApproval({
       blocks,
       currentStateRevision: snapshot.intakeState?.sourceTurns.length ?? 0,
       userId: authenticatedUserId,
       proposalRecords: snapshot.intakeState?.assumptionProposalRecords ?? [],
-      runtimeSnapshot: approvalRuntimeSnapshot({
-        blocks,
-        userId: authenticatedUserId,
-      }),
+      runtimeSnapshot: runtimeResolution.runtimeSnapshot,
     });
     if (!guard.allowed) {
       const reason = 'reason' in guard.attempt ? guard.attempt.reason : undefined;
