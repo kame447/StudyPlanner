@@ -104,7 +104,7 @@ function document(params: {
 describe('Stable V5 targeted semantic repair preservation', () => {
   it('recognizes only representation-local validator failures as preservation-guarded repairs', () => {
     expect(isRepresentationOnlySemanticRepairV5([
-      'document.planningWindow:absolute-iso-range-required',
+      'document.planningWindow:absolute-range',
       'availabilityDeclarations[a1].days:canonical-weekday-required:tuesday',
     ])).toBe(true);
     expect(isRepresentationOnlySemanticRepairV5([
@@ -116,7 +116,7 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     expect(validateWeeklyPlanningSemanticRepairPreservationV5({
       initialDocument: document({ canonicalWindow: false }),
       repairedDocument: document({ canonicalWindow: true }),
-      initialErrors: ['document.planningWindow:absolute-iso-range-required'],
+      initialErrors: ['document.planningWindow:absolute-range'],
     })).toEqual([]);
   });
 
@@ -129,13 +129,13 @@ describe('Stable V5 targeted semantic repair preservation', () => {
         includeAvailability: false,
         planningIntent: 'unknown',
       }),
-      initialErrors: ['document.planningWindow:absolute-iso-range-required'],
+      initialErrors: ['document.planningWindow:absolute-range'],
     })).toEqual([
       'semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
     ]);
   });
 
-  it('keeps the exact real-API fixture schema-valid before the representation guard', () => {
+  it('keeps the exact real-API fixture available as a comparison baseline before repair', () => {
     const initial = document({ canonicalWindow: false });
     const validation = validateWeeklyPlanningSemanticResponseV5(
       JSON.stringify(initial),
@@ -147,7 +147,7 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     }
     expect(validation.document).toBeNull();
     expect(validation.errors).toEqual([
-      'document.planningWindow:absolute-iso-range-required',
+      'document.planningWindow:absolute-range',
     ]);
     expect(isRepresentationOnlySemanticRepairV5(validation.errors)).toBe(true);
   });
