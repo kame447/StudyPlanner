@@ -6,7 +6,7 @@ import {
 } from './weeklyPlanningCalendarResolver';
 import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-} from './weeklyPlanningSemanticDocumentV5';
+} from './weeklyPlanningSemanticSchemaV5';
 
 const ISO_DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$';
 
