@@ -13,7 +13,7 @@ import {
 } from './weeklyPlanningApprovalPersistencePolicy';
 import type {
   WeeklyPlanningApprovalPlanRepository,
-} from './weeklyPlanningApprovalPlanRepository';
+} from './weeklyPlanningApprovalPlanRepositoryContract';
 
 export interface WeeklyPlanningApprovalMemoryState {
   readonly plans: Map<string, Plan>;
