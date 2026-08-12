@@ -1,5 +1,3 @@
-import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
-import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
   stageUserPlanningContextFactsV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
@@ -17,12 +15,6 @@ import {
 import {
   reconcileWeeklyPlanningGroundingRecordsV5,
 } from '../semantic/weeklyPlanningGroundingV5';
-import {
-  createWeeklyPlanningSemanticNormalizerV5,
-} from '../semantic/weeklyPlanningSemanticNormalizerV5';
-import {
-  createWeeklyPlanningSemanticPipelineV5,
-} from '../semantic/weeklyPlanningSemanticPipelineV5';
 import {
   decideWeeklyPlanningStableDialogueV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
@@ -58,17 +50,16 @@ import {
 } from './weeklyPlanningStableV5RuntimeQuestions';
 import {
   activeStableV5PlanningWindows,
-  createStableV5SemanticPublicStateSummary,
-  stableV5RequestContextForInput,
-  STABLE_V5_RECENT_TURN_LIMIT,
 } from './weeklyPlanningStableV5SemanticContext';
+import {
+  executeWeeklyPlanningStableV5SemanticTurn,
+} from './weeklyPlanningStableV5SemanticTurn';
 import {
   createWeeklyPlanningSchedulerContext,
   resolveWeeklyPlanningPlanningHorizon,
 } from './weeklyPlanningTemporalContext';
 import {
   commitWeeklyPlanningStableV5RuntimeGraph,
-  getOrCreateWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 export type {
@@ -94,29 +85,6 @@ function traceRuntimeBranch(params: {
   });
 }
 
-function semanticFailureOutput(params: {
-  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
-  branch: 'provider_failure' | 'normalization_rejected' | 'canonicalization_rejected';
-  message: string;
-  basis: unknown;
-}): WeeklyPlanningTurnExecutionResult {
-  const output = projectStableV5CompatibilityOutput({
-    previousState: params.input.previousState,
-    userText: params.input.userText,
-    message: params.message,
-    draftCandidates: [],
-    authorized: false,
-  });
-  traceRuntimeBranch({
-    requestId: params.input.traceRequestId,
-    branch: params.branch,
-    basis: params.basis,
-    output,
-    severity: 'error',
-  });
-  return output;
-}
-
 function groundedMessage(params: {
   message: string;
   records: Parameters<typeof withStableV5GroundingProposal>[0]['records'];
@@ -128,133 +96,10 @@ function groundedMessage(params: {
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
-  const aiConfig = getAiConfig();
-  const configError = getAiConfigValidationMessage(aiConfig);
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: input.traceRequestId,
-    stage: 'runtime_configuration_evaluated',
-    severity: aiConfig.provider === 'rules' || configError ? 'error' : 'info',
-    data: {
-      provider: aiConfig.provider,
-      baseUrl: aiConfig.baseUrl,
-      model: aiConfig.model,
-      configError,
-      criteria: {
-        rulesProviderRejected: true,
-        validConfigurationRequired: true,
-      },
-    },
-  });
-  if (aiConfig.provider === 'rules' || configError) {
-    throw new Error(configError ?? 'Stable V5にはAI structured output接続が必要です。');
-  }
+  const semanticTurn = await executeWeeklyPlanningStableV5SemanticTurn(input);
+  if (semanticTurn.status === 'failure') return semanticTurn.output;
 
-  const temporal = stableV5RequestContextForInput(input);
-  const requestContext = temporal.context;
-  const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({
-    ownerId: input.userId,
-    conversationId: input.conversationId,
-  });
-  const activeWindowsBefore = activeStableV5PlanningWindows(runtimeSession.graph);
-  const fallbackHorizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: runtimeSession.graph,
-    selectedDate: input.selectedDate,
-    requestContext,
-    groundingRecords: input.previousState?.groundingRecords,
-  });
-  const recentConversation = input.messages
-    .slice(-STABLE_V5_RECENT_TURN_LIMIT)
-    .map(({ role, content }) => ({ role, content }));
-  const stateSummary = createStableV5SemanticPublicStateSummary({
-    graph: runtimeSession.graph,
-    messages: input.messages,
-    previousState: input.previousState,
-    ownerId: input.userId,
-    currentDate: requestContext.currentDate,
-  });
-  const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
-    ownerId: input.userId,
-    horizon: fallbackHorizon,
-    requestContext,
-  });
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: input.traceRequestId,
-    stage: 'runtime_session_context_prepared',
-    data: {
-      runtimeSession,
-      graphRevision: runtimeSession.graph.revision,
-      activePlanningWindows: activeWindowsBefore,
-      selectedDate: input.selectedDate,
-      requestContext,
-      requestContextSource: temporal.source,
-      fallbackHorizon,
-      horizonCriteria: {
-        moreThanOneActiveWindow: 'return null',
-        noActiveWindow: 'selectedDate is display/fallback seed only',
-        explicitStartEnd: 'valid dates and start <= end',
-        groundedRelativeWindow: 'reuse the persisted absolute grounding range until the source fact is corrected',
-        otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
-      },
-      recentTurnLimit: STABLE_V5_RECENT_TURN_LIMIT,
-      recentConversation,
-      publicStateSummary: stateSummary,
-      schedulerContext: initialSchedulerContext,
-    },
-  });
-
-  const semantic = await createWeeklyPlanningSemanticPipelineV5(
-    createWeeklyPlanningSemanticNormalizerV5(createOpenAiCompatibleClient(aiConfig)),
-  ).run({
-    graph: runtimeSession.graph,
-    conversationId: input.conversationId,
-    turnId: input.traceRequestId,
-    expectedRevision: runtimeSession.graph.revision,
-    userText: input.userText,
-    recentConversation,
-    publicStateSummary: stateSummary,
-    schedulerContext: initialSchedulerContext,
-  });
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: input.traceRequestId,
-    stage: 'runtime_semantic_result_received',
-    severity: semantic.status === 'normalization_rejected'
-      || semantic.status === 'provider_failure'
-      || semantic.status === 'canonicalization_rejected'
-      ? 'error'
-      : 'info',
-    data: semantic,
-  });
-
-  if (semantic.status === 'provider_failure') {
-    return semanticFailureOutput({
-      input,
-      branch: 'provider_failure',
-      message: 'AIに接続できなかったため、入力内容は変更していません。接続を確認してもう一度送ってください。',
-      basis: { semanticStatus: semantic.status },
-    });
-  }
-  if (semantic.status === 'normalization_rejected') {
-    return semanticFailureOutput({
-      input,
-      branch: 'normalization_rejected',
-      message: 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
-      basis: { semanticStatus: semantic.status, normalization: semantic.normalization },
-    });
-  }
-  if (semantic.status === 'canonicalization_rejected') {
-    return semanticFailureOutput({
-      input,
-      branch: 'canonicalization_rejected',
-      message: '直前の会話状態と構造化結果が一致しなかったため、変更は反映していません。直前に確認していた項目だけ、短く一つ教えてください。',
-      basis: {
-        semanticStatus: semantic.status,
-        expectedRevision: runtimeSession.graph.revision,
-        actualInputGraphRevision: runtimeSession.graph.revision,
-        canonicalization: semantic.canonicalization,
-      },
-    });
-  }
-
+  const { requestContext, runtimeSession, semantic } = semanticTurn;
   const userContextFacts = semantic.normalization.document
     ? collectUserPlanningContextFactsV5(semantic.normalization.document)
     : [];
