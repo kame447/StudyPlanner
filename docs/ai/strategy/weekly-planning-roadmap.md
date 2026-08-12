@@ -110,21 +110,19 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - runtime session registryからrequest単位のFact Graph staging bufferを`weeklyPlanningStableV5GraphStaging.ts`へ分離。既存facade/APIとfinalize publication順序を維持し、full CI #2614 green
 - graph staging bufferへ128件上限とoldest eviction、同一request置換contractを追加し、resource leakを防止。full CI #2617 green
 - Stable V5 preview candidate metadataへcanonical task Fact由来のconversation provenanceを必須伝播し、ambient global stateからconversationを補わなくてもproduction候補が自己記述できるようにした。full CI #2622 green
+- Stable V5 approval availabilityをpreview自身のconversationIdからconversation-scoped runtime sessionへ接続。別conversationのcurrent snapshotに影響されず、owner/revisionを対象conversationで検証する。初回CI #2625でproduction isolation登録漏れを検出し、監査を弱めず正式接続点として登録したうえでfull CI #2627 green
 
 現在のloop:
 
-- Stable V5のapproval availabilityが、preview自身のconversation provenanceを持つようになった後もglobal `weeklyPlanningSessionRuntime`を参照していた依存を解消する。
-- Stable V5 blockはpreview metadataのconversationIdを使って`getWeeklyPlanningStableV5RuntimeSession(conversationId)`から対象conversationを直接取得し、そのownerとFact Graph revisionを検証する。
-- 別conversationが後から開かれてglobal runtimeのcurrent snapshotが変わっても、元conversationのruntime sessionが残っていれば元previewの承認可否へ影響しない。
-- 対象conversationが存在しない場合、revisionが進んでいる場合、runtime ownerが異なる場合は従来どおり安全側へ倒す。
-- legacy / behavior-aware互換経路はこのloopでは変更せず、従来のglobal runtime contractを維持する。Stable V5だけを1変更理由として切り替える。
-- `weeklyPlanningApprovalAvailability.test.ts`へ、別conversationがcurrentでも対象Stable V5 previewがeligibleであること、対象session消失・revision mismatchでrecomputeになること、owner mismatchを拒否することを追加した。
-- この判定はtyped preview provenanceとdeterministic runtime stateだけを見る。raw user textやAI出力を再解釈しないため最上位設計原則を維持する。
-- 初回full CI #2625では追加した承認回帰を含む機能テスト1429件は通過したが、`weeklyPlanningApprovalAvailability.ts`がStable V5 runtimeへの新しい直接接続点になったことをproduction isolation監査へ登録しておらず、architecture testだけが失敗した。
-- architecture testを緩めたり除外したりせず、`weeklyPlanningApprovalAvailability.ts`を明示的に監査済みproduction importerへ追加した。Stable V5への接続点を列挙する契約を維持したまま再CIする。
-- このloopの完了判定は修正後最終headのfull CI greenを必要とする。
+- `weeklyPlanningPreviewBlocks.ts`に残っていたStable V5 conversationIdのambient global runtime補完を削除する。
+- production Stable V5候補は前loopでcanonical task Fact由来conversationIdを必須保持しているため、preview変換時に「現在の会話」を推測する必要はない。
+- `WeeklyPlanningStableV5PreviewMetadata`ではconversationIdを必須契約にし、通常経路は候補自身のprovenanceをそのままpreview/draftへ伝播する。
+- 旧checkpoint等からconversationId欠落Stable V5候補が入った場合だけruntime compatibilityとして空のprovenanceへ正規化し、global stateから補完しない。approval側はStable V5のconversationId欠落を`recompute_required`としてfail closedする。
+- `weeklyPlanningStableV5PreviewBlocks.test.ts`に、同revisionのambient global runtimeが存在してもconversationId欠落候補へ別conversationを補完しない回帰を追加した。
+- raw user textやsemantic内容は参照せず、既に確定したprovenanceの保持・欠落検証だけをdeterministic codeが担当するため最上位設計原則を維持する。
+- このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。preview compatibility fallbackに残るambient global dependency、RuntimeSession publication bridge、RuntimeExecutor deterministic planning phase、その他singleton依存を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionからlegacy global runtimeへのpublication bridge、Stable V5 preview metadata型の重複、RuntimeExecutor deterministic planning phase、その他singleton依存を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
