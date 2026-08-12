@@ -1,7 +1,9 @@
 import type {
   PlanningTaskFact,
   StudyComponentFact,
+  StudyContextFact,
   TaskRelationFact,
+  WorkloadFact,
 } from './weeklyPlanningFactGraph';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
@@ -10,10 +12,17 @@ import {
   distributeMinutesAcrossWeeklyBucketsV5,
   resolveWeeklySpreadSessionCountV5,
 } from './weeklyPlanningStableV5DistributionPolicy';
+import {
+  deriveWeeklyPlanningSessionPolicyV5,
+  inferWeeklyPlanningExecutionProfileV5,
+  splitWeeklyPlanningSessionMinutesV5,
+} from './weeklyPlanningStableV5ExecutionPolicy';
 
 export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
+  readonly studyContexts: ReadonlyArray<StudyContextFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
+  readonly workloads: ReadonlyArray<WorkloadFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
 }
 
@@ -120,6 +129,76 @@ function distributedSlices(params: {
   });
 }
 
+function executionPolicySlices(params: {
+  graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
+  item: GenericPlanningWorkItem;
+  preferredSessionMinutes?: number | null;
+}): GenericPlanningWorkItem[] {
+  const total = params.item.estimatedMinutes;
+  if (
+    params.item.splitPolicy !== 'splittable'
+    || total === null
+    || !Number.isFinite(total)
+    || total <= 0
+  ) {
+    return [params.item];
+  }
+  const profile = inferWeeklyPlanningExecutionProfileV5({
+    graph: params.graph,
+    item: params.item,
+  });
+  const policy = deriveWeeklyPlanningSessionPolicyV5({
+    profile,
+    preferredSessionMinutes: params.preferredSessionMinutes,
+  });
+  const chunks = splitWeeklyPlanningSessionMinutesV5({
+    totalMinutes: total,
+    policy,
+    profile,
+  });
+  if (chunks.length <= 1) return [params.item];
+
+  const label = displayTargetLabel(params.graph, params.item);
+  const totalQuantity = params.item.quantity.amount;
+  let consumedMinutes = 0;
+  return chunks.map((durationMinutes, index) => {
+    const ratio = durationMinutes / total;
+    const quantityAmount = index === chunks.length - 1
+      ? Math.max(0, totalQuantity - chunks
+          .slice(0, -1)
+          .reduce((sum, chunk) => sum + totalQuantity * (chunk / total), 0))
+      : totalQuantity * ratio;
+    consumedMinutes += durationMinutes;
+    const displayQuantity = params.item.quantity.unitCode === 'minute'
+      ? durationMinutes
+      : params.item.quantity.unitCode === 'hour'
+        ? durationMinutes / 60
+        : quantityAmount;
+    const quantityLabel = Number.isInteger(displayQuantity)
+      ? String(displayQuantity)
+      : String(Math.round(displayQuantity * 100) / 100);
+    const baseEstimatedMinutes = params.item.baseEstimatedMinutes === null
+      || params.item.baseEstimatedMinutes === undefined
+      ? params.item.baseEstimatedMinutes
+      : params.item.baseEstimatedMinutes * ratio;
+    return {
+      ...params.item,
+      id: `${params.item.id}:session:${index + 1}`,
+      label: `${label} ${quantityLabel}${params.item.quantity.unitLabel}（${index + 1}/${chunks.length}）`,
+      quantity: {
+        ...params.item.quantity,
+        amount: displayQuantity,
+        ordinalRange: null,
+        actualRange: null,
+      },
+      estimatedMinutes: durationMinutes,
+      baseEstimatedMinutes,
+      plannedSessions: undefined,
+      splitPolicy: 'atomic',
+    };
+  });
+}
+
 function relationEdge(
   relation: TaskRelationFact,
 ): { before: string; after: string } | null {
@@ -177,9 +256,6 @@ export function orderGenericSchedulerWorkItemsByRelationsV5(params: {
     }
   }
 
-  // A cycle is an unresolved semantic contradiction. Do not invent an arbitrary
-  // order here; preserve the canonical input order so a higher-level audit can
-  // surface the cycle without silently changing the user's intent.
   if (orderedTaskIds.length !== taskIds.length) return [...params.items];
   const taskRank = new Map(orderedTaskIds.map((taskId, index) => [taskId, index]));
   return params.items
@@ -197,16 +273,23 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   items: readonly GenericPlanningWorkItem[];
   startDate: string;
   endDate: string;
+  preferredSessionMinutes?: number | null;
 }): GenericPlanningWorkItem[] {
   const dates = listCalendarDatesInclusive(params.startDate, params.endDate) ?? [];
-  const distributed = dates.length === 0
+  const dayDistributed = dates.length === 0
     ? [...params.items]
     : params.items.flatMap((item) =>
         isDistributableDiscreteItem(item)
           ? distributedSlices({ graph: params.graph, item, dates })
           : [item]);
+  const sessionDistributed = dayDistributed.flatMap((item) =>
+    executionPolicySlices({
+      graph: params.graph,
+      item,
+      preferredSessionMinutes: params.preferredSessionMinutes,
+    }));
   return orderGenericSchedulerWorkItemsByRelationsV5({
-    items: distributed,
+    items: sessionDistributed,
     relations: params.graph.relations ?? [],
   });
 }
