@@ -41,6 +41,7 @@ import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
 import {
+  normalizeWeeklyPlanningTemporalClockRawV5,
   validateWeeklyPlanningTemporalClockEncodingV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
 import {
@@ -75,18 +76,22 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
+  const clockNormalization = normalizeWeeklyPlanningTemporalClockRawV5(
+    workloadNormalization.rawResponse,
+  );
   const preParseRepairs = [
     ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
     ...componentParentNormalization.repairs,
     ...workloadNormalization.repairs,
+    ...clockNormalization.repairs,
   ];
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(workloadNormalization.rawResponse);
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(clockNormalization.rawResponse);
   if (!parsed.document) {
     return {
       document: null,
       parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
-        rawResponse: workloadNormalization.rawResponse,
+        rawResponse: clockNormalization.rawResponse,
         validationErrors: parsed.errors,
       }),
       errors: parsed.errors,
