@@ -90,9 +90,9 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 
 ### 3.1 構造負債 hardening loop
 
-構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離 → roadmap同期 → full CI」の順で処理する。CIが赤い間は次loopへ進まない。
+構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離または明示的安全境界修正 → roadmap同期 → full CI」の順で処理する。CIが赤い間は次loopへ進まない。
 
-2026-08-12時点で完了済みの分離:
+2026-08-12時点で完了済みの分離・hardening:
 
 - execution profile / session policy / session splittingを分離し、旧public APIはfacadeで維持
 - generic work item compilationからeffort estimation strategyを分離
@@ -107,17 +107,18 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - approval memory adapterをcomposition rootから分離し、full CI #2601 green
 - approval local planner adapterをcomposition rootから分離し、full CI #2604 green
 - approval repository contractをcomposition rootから分離し、全adapterとcompositionが共通抽象へ依存するDIPへ修正。full CI #2610 green
+- runtime session registryからrequest単位のFact Graph staging bufferを`weeklyPlanningStableV5GraphStaging.ts`へ分離。既存facade/APIとfinalize publication順序を維持し、full CI #2614 green
 
 現在のloop:
 
-- `weeklyPlanningStableV5RuntimeSession.ts`に同居していた公開runtime session registryと、request単位の未確定Fact Graph staging bufferを分離した。
-- staging map、turn keyからのrequestId検証、stage/read/discard/clear/resetを`weeklyPlanningStableV5GraphStaging.ts`へ移し、RuntimeSessionはscope、hydrate、published graph、session prune、approval runtime連携へ集中させた。
-- finalize時のowner検証、session存在確認、published session更新、staged graph削除、session runtime publishの順序は既存contractを維持する。旧`commit/get/finalize/discard/has` APIはRuntimeSession facadeから維持する。
-- stagingはtyped `WeeklyPlanningFactGraphV5`とmachine-generated turn keyだけを扱い、raw user textの意味を解釈しない。Fact lifecycle/revisionのtransaction境界はdeterministic codeが担うという最上位設計原則を維持する。
-- 新しいstaging moduleはFact Graph V5へ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録した。
+- 分離後の`weeklyPlanningStableV5GraphStaging.ts`を敵対的に再確認し、異常終了や取り残しが続いた場合にstaged graph mapが無制限に増加できるresource leakを検出した。
+- `MAX_STAGED_GRAPHS = 128`をstaging境界へ追加し、上限超過時はMap挿入順で最古のstaged entryから削除する。runtime session上限24件に対して十分なheadroomを残し、通常のlive turnよりorphan accumulationを対象にする。
+- 同一conversation/requestの再stageでは既存keyを削除してから最新graphを挿入し、slot数を増やさず最新entryとして扱う。
+- `weeklyPlanningStableV5GraphStaging.test.ts`で129件投入時のoldest evictionと、同一request再stage時のrevision置換をdeterministic regressionとして固定した。
+- この境界はmachine-generated request keyとtyped Fact Graphだけを扱う。semantic意味判断は追加しておらず、「resource/persistence safetyはdeterministic code」という設計原則に沿う。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionのregistry/publication、RuntimeExecutorのdeterministic planning phase、application orchestration、staging resource boundsを変更理由と安全性の両面から疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionのregistry/publication、RuntimeExecutorのdeterministic planning phase、application orchestration、その他bounded resourceを変更理由と安全性の両面から疑う。
 
 ## 4. Prompt / orchestration方針
 
