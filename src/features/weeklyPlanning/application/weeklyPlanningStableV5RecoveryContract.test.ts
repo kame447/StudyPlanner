@@ -5,6 +5,10 @@ const runtimeSource = readFileSync(
   new URL('./weeklyPlanningStableV5RuntimeExecutor.ts', import.meta.url),
   'utf8',
 );
+const planningEvaluationSource = readFileSync(
+  new URL('./weeklyPlanningStableV5PlanningEvaluation.ts', import.meta.url),
+  'utf8',
+);
 const semanticTurnSource = readFileSync(
   new URL('./weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
   'utf8',
@@ -35,7 +39,9 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(runtimeQuestionsSource).toContain(
       '「${sourceText}」の意味を一つに決められませんでした。',
     );
-    expect(runtimeSource).toContain('decideWeeklyPlanningStableDialogueV5(compilation)');
+    expect(planningEvaluationSource).toContain(
+      'decideWeeklyPlanningStableDialogueV5(compilation)',
+    );
     expect(runtimeSource).toContain('renderStableV5RuntimeQuestion(semantic.graph, dialogue.question)');
   });
 
