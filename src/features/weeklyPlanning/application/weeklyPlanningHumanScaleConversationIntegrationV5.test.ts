@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  type WeeklyPlanningSemanticDocumentV5,
   type SemanticWorkloadUnitCodeV5,
+  type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
@@ -168,12 +168,38 @@ function turnInput(params: {
   };
 }
 
-function finalizeTurn(conversationId: string, requestId: string): void {
+async function runTwoTurnPlanningConversation(params: {
+  conversationId: string;
+  firstUserText: string;
+  planningDocument: WeeklyPlanningSemanticDocumentV5;
+  answerMinutes: number;
+}) {
+  normalizeMock.mockResolvedValueOnce(acceptedResult(params.planningDocument));
+  const firstRequestId = `${params.conversationId}:request:1`;
+  const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    conversationId: params.conversationId,
+    userText: params.firstUserText,
+    traceRequestId: firstRequestId,
+  }));
+  expect(first.state.draftGenerationIntent).toBe('user_authorized');
   finalizeWeeklyPlanningStableV5RuntimeGraph({
     ownerId: 'owner-human-scale',
-    conversationId,
-    requestId,
+    conversationId: params.conversationId,
+    requestId: firstRequestId,
   });
+
+  normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(params.answerMinutes)));
+  const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    conversationId: params.conversationId,
+    previousState: first.state,
+    userText: `${params.answerMinutes}分くらい`,
+    traceRequestId: `${params.conversationId}:request:2`,
+    messages: [
+      { id: 'u1', role: 'user', content: params.firstUserText, createdAt: '2026-08-12T00:00:00.000Z' },
+      { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
+    ],
+  }));
+  return { first, second };
 }
 
 function candidateRole(candidate: { stableV5Metadata?: unknown }): {
@@ -193,41 +219,24 @@ describe('Stable V5 human-scale conversation integration', () => {
   });
 
   it('splits 220 vocabulary words into 70/70/80 and carries each batch through two spaced reviews', async () => {
-    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
-      title: '英単語',
-      amount: 220,
-      unitCode: 'word',
-      unitLabel: '語',
-      sourceText: '英単語220語',
-    })));
-    const firstUserText = '8月17日から23日で英単語220語を覚える予定を作りたい';
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-vocabulary-220',
-      userText: firstUserText,
-      traceRequestId: 'request-vocabulary-220-1',
-    }));
+      firstUserText: '8月17日から23日で英単語220語を覚える予定を作りたい',
+      planningDocument: planningDocument({
+        title: '英単語',
+        amount: 220,
+        unitCode: 'word',
+        unitLabel: '語',
+        sourceText: '英単語220語',
+      }),
+      answerMinutes: 30,
+    });
 
     expect(first.draftCandidates).toEqual([]);
     expect(first.message).toContain('70語・70語・80語');
     expect(first.message).toContain('1回分（70〜80語）');
-    expect(first.state.draftGenerationIntent).toBe('user_authorized');
-    finalizeTurn('conversation-vocabulary-220', 'request-vocabulary-220-1');
-
-    normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(30)));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
-      conversationId: 'conversation-vocabulary-220',
-      previousState: first.state,
-      userText: '30分くらい',
-      traceRequestId: 'request-vocabulary-220-2',
-      messages: [
-        { id: 'u1', role: 'user', content: firstUserText, createdAt: '2026-08-12T00:00:00.000Z' },
-        { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
-      ],
-    }));
-
     expect(second.state.status).toBe('draft_ready');
     expect(second.message).toContain('9件の仮予定候補');
-    expect(second.draftCandidates).toHaveLength(9);
 
     const learning = second.draftCandidates.filter(
       (candidate) => candidateRole(candidate).sessionRole === 'learning',
@@ -235,20 +244,15 @@ describe('Stable V5 human-scale conversation integration', () => {
     const reviews = second.draftCandidates.filter(
       (candidate) => candidateRole(candidate).sessionRole === 'review',
     );
-    expect(learning.map((candidate) => candidate.title)).toEqual([
-      '英単語 70語（1/3）',
-      '英単語 70語（2/3）',
-      '英単語 80語（3/3）',
-    ]);
     expect(learning.map((candidate) => ({
+      title: candidate.title,
       date: candidate.date,
       durationMinutes: candidate.durationMinutes,
     }))).toEqual([
-      { date: '2026-08-17', durationMinutes: 30 },
-      { date: '2026-08-18', durationMinutes: 30 },
-      { date: '2026-08-19', durationMinutes: 30 },
+      { title: '英単語 70語（1/3）', date: '2026-08-17', durationMinutes: 30 },
+      { title: '英単語 70語（2/3）', date: '2026-08-18', durationMinutes: 30 },
+      { title: '英単語 80語（3/3）', date: '2026-08-19', durationMinutes: 30 },
     ]);
-    expect(reviews).toHaveLength(6);
     expect(reviews.map((candidate) => ({
       title: candidate.title,
       date: candidate.date,
@@ -266,37 +270,21 @@ describe('Stable V5 human-scale conversation integration', () => {
   });
 
   it('asks for the whole-batch time for 80 vocabulary words and adds shorter spaced reviews', async () => {
-    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
-      title: '英単語',
-      amount: 80,
-      unitCode: 'word',
-      unitLabel: '語',
-      sourceText: '英単語80語',
-    })));
-    const firstUserText = '8月17日から23日で英単語80語を覚える予定を作りたい';
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-vocabulary-80',
-      userText: firstUserText,
-      traceRequestId: 'request-vocabulary-80-1',
-    }));
+      firstUserText: '8月17日から23日で英単語80語を覚える予定を作りたい',
+      planningDocument: planningDocument({
+        title: '英単語',
+        amount: 80,
+        unitCode: 'word',
+        unitLabel: '語',
+        sourceText: '英単語80語',
+      }),
+      answerMinutes: 35,
+    });
 
     expect(first.message).toContain('80語をまとめて覚えるのに');
     expect(first.message).not.toContain('1語あたり');
-    expect(first.state.draftGenerationIntent).toBe('user_authorized');
-    finalizeTurn('conversation-vocabulary-80', 'request-vocabulary-80-1');
-
-    normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(35)));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
-      conversationId: 'conversation-vocabulary-80',
-      previousState: first.state,
-      userText: '35分くらい',
-      traceRequestId: 'request-vocabulary-80-2',
-      messages: [
-        { id: 'u1', role: 'user', content: firstUserText, createdAt: '2026-08-12T00:00:00.000Z' },
-        { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
-      ],
-    }));
-
     expect(second.state.status).toBe('draft_ready');
     expect(second.message).toContain('3件の仮予定候補');
     expect(second.draftCandidates.map((candidate) => ({
@@ -306,69 +294,43 @@ describe('Stable V5 human-scale conversation integration', () => {
       sessionRole: candidateRole(candidate).sessionRole,
       reviewRound: candidateRole(candidate).reviewRound,
     }))).toEqual([
-      {
-        title: '英単語 80語',
-        date: '2026-08-17',
-        durationMinutes: 35,
-        sessionRole: 'learning',
-        reviewRound: undefined,
-      },
-      {
-        title: '英単語 80語・復習1回目',
-        date: '2026-08-18',
-        durationMinutes: 20,
-        sessionRole: 'review',
-        reviewRound: 1,
-      },
-      {
-        title: '英単語 80語・復習2回目',
-        date: '2026-08-20',
-        durationMinutes: 15,
-        sessionRole: 'review',
-        reviewRound: 2,
-      },
+      { title: '英単語 80語', date: '2026-08-17', durationMinutes: 35, sessionRole: 'learning', reviewRound: undefined },
+      { title: '英単語 80語・復習1回目', date: '2026-08-18', durationMinutes: 20, sessionRole: 'review', reviewRound: 1 },
+      { title: '英単語 80語・復習2回目', date: '2026-08-20', durationMinutes: 15, sessionRole: 'review', reviewRound: 2 },
     ]);
   });
 
-  it('asks per problem for discrete problem workloads and uses that scale in the preview estimate', async () => {
-    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
-      title: '数学',
-      amount: 40,
-      unitCode: 'problem',
-      unitLabel: '問',
-      sourceText: '数学40問',
-    })));
-    const firstUserText = '8月17日から23日で数学40問を進める予定を作りたい';
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+  it('splits a long problem workload into quantity-preserving daily quotas', async () => {
+    const { first, second } = await runTwoTurnPlanningConversation({
       conversationId: 'conversation-problems-40',
-      userText: firstUserText,
-      traceRequestId: 'request-problems-40-1',
-    }));
+      firstUserText: '8月17日から23日で数学40問を進める予定を作りたい',
+      planningDocument: planningDocument({
+        title: '数学',
+        amount: 40,
+        unitCode: 'problem',
+        unitLabel: '問',
+        sourceText: '数学40問',
+      }),
+      answerMinutes: 8,
+    });
 
     expect(first.message).toContain('1問あたりどれくらい時間がかかりますか');
-    expect(first.state.draftGenerationIntent).toBe('user_authorized');
-    finalizeTurn('conversation-problems-40', 'request-problems-40-1');
-
-    normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(8)));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
-      conversationId: 'conversation-problems-40',
-      previousState: first.state,
-      userText: '8分くらい',
-      traceRequestId: 'request-problems-40-2',
-      messages: [
-        { id: 'u1', role: 'user', content: firstUserText, createdAt: '2026-08-12T00:00:00.000Z' },
-        { id: 'a1', role: 'assistant', content: first.message, createdAt: '2026-08-12T00:00:01.000Z' },
-      ],
-    }));
-
     expect(second.state.status).toBe('draft_ready');
-    expect(second.draftCandidates).toHaveLength(1);
-    expect(second.draftCandidates[0]).toMatchObject({
-      title: '数学 40問',
-      date: '2026-08-17',
-      startTime: '09:00',
-      endTime: '14:30',
-      durationMinutes: 330,
-    });
+    expect(second.message).toContain('5件の仮予定候補');
+    expect(second.draftCandidates.map((candidate) => ({
+      title: candidate.title,
+      date: candidate.date,
+      durationMinutes: candidate.durationMinutes,
+    }))).toEqual([
+      { title: '数学 8問（1〜8問）', date: '2026-08-17', durationMinutes: 70 },
+      { title: '数学 8問（9〜16問）', date: '2026-08-18', durationMinutes: 65 },
+      { title: '数学 8問（17〜24問）', date: '2026-08-19', durationMinutes: 65 },
+      { title: '数学 8問（25〜32問）', date: '2026-08-20', durationMinutes: 65 },
+      { title: '数学 8問（33〜40問）', date: '2026-08-21', durationMinutes: 65 },
+    ]);
+    expect(second.draftCandidates.reduce(
+      (sum, candidate) => sum + candidate.durationMinutes,
+      0,
+    )).toBe(330);
   });
 });
