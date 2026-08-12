@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  distributeDiscreteQuantityAcrossWeeklyBucketsV5,
+  distributeMinutesAcrossWeeklyBucketsV5,
   partitionWeeklyPlanningDatesV5,
   preferredDistributedDateV5,
   preferredVocabularyLearningDateV5,
+  resolveWeeklySpreadSessionCountV5,
   reviewCandidateDatesV5,
   vocabularyLearningCandidateDatesV5,
   vocabularyReviewDurationMinutesV5,
@@ -28,16 +31,25 @@ describe('Stable V5 distribution policy migrated from the legacy weekly schedule
     });
   });
 
-  it('distributes three ordinary sessions across the six normal days', () => {
+  it('assigns ordinary daily quotas to consecutive normal days like the legacy scheduler', () => {
     expect([0, 1, 2].map((index) => preferredDistributedDateV5({
       index,
       count: 3,
       dates: WEEK,
     }))).toEqual([
       '2026-08-17',
+      '2026-08-18',
       '2026-08-19',
-      '2026-08-21',
     ]);
+  });
+
+  it('derives daily quota count and preserves both minutes and discrete quantity', () => {
+    expect(resolveWeeklySpreadSessionCountV5({ totalMinutes: 180, dates: WEEK })).toBe(3);
+    expect(resolveWeeklySpreadSessionCountV5({ totalMinutes: 330, dates: WEEK })).toBe(5);
+    expect(resolveWeeklySpreadSessionCountV5({ totalMinutes: 720, dates: WEEK })).toBe(6);
+    expect(distributeMinutesAcrossWeeklyBucketsV5(330, 5)).toEqual([70, 65, 65, 65, 65]);
+    expect(distributeDiscreteQuantityAcrossWeeklyBucketsV5(40, 5)).toEqual([8, 8, 8, 8, 8]);
+    expect(distributeDiscreteQuantityAcrossWeeklyBucketsV5(41, 5)).toEqual([9, 8, 8, 8, 8]);
   });
 
   it('front-loads three vocabulary learning sessions so two spaced reviews still fit before reserve day', () => {
