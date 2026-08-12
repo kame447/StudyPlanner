@@ -117,7 +117,10 @@ describe('Stable V5 placement engine adversarial integration', () => {
       end: { date: '2026-08-21', time: '11:00' },
       timeZone: 'Asia/Tokyo',
       temporalConstraintFactId: 'fixed-a-fact',
-      sourceFactIds: ['fixed-a-fact'],
+      constraintLevel: 'hard',
+      sourceKind: 'user_commitment',
+      sourceRef: 'fixed-a-fact',
+      graphRevision: 1,
     }];
     value.relations = [{
       factId: 'depends',
