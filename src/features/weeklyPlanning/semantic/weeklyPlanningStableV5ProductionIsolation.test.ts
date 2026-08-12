@@ -32,6 +32,7 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'dialogue/weeklyPlanningStableV5DialogueRouting.ts',
   'dialogue/weeklyPlanningStableV5DialogueValidation.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts',
+  'dialogue/weeklyPlanningStableV5TurnDialogueTrace.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',
   'trace/weeklyPlanningTraceOutbox.ts',
   'trace/weeklyPlanningTraceRemoteRepository.ts',
