@@ -120,7 +120,9 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - legacy / behavior-aware互換経路はこのloopでは変更せず、従来のglobal runtime contractを維持する。Stable V5だけを1変更理由として切り替える。
 - `weeklyPlanningApprovalAvailability.test.ts`へ、別conversationがcurrentでも対象Stable V5 previewがeligibleであること、対象session消失・revision mismatchでrecomputeになること、owner mismatchを拒否することを追加した。
 - この判定はtyped preview provenanceとdeterministic runtime stateだけを見る。raw user textやAI出力を再解釈しないため最上位設計原則を維持する。
-- このloopの完了判定は最終headのfull CI greenを必要とする。
+- 初回full CI #2625では追加した承認回帰を含む機能テスト1429件は通過したが、`weeklyPlanningApprovalAvailability.ts`がStable V5 runtimeへの新しい直接接続点になったことをproduction isolation監査へ登録しておらず、architecture testだけが失敗した。
+- architecture testを緩めたり除外したりせず、`weeklyPlanningApprovalAvailability.ts`を明示的に監査済みproduction importerへ追加した。Stable V5への接続点を列挙する契約を維持したまま再CIする。
+- このloopの完了判定は修正後最終headのfull CI greenを必要とする。
 
 次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。preview compatibility fallbackに残るambient global dependency、RuntimeSession publication bridge、RuntimeExecutor deterministic planning phase、その他singleton依存を優先して疑う。
 
