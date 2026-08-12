@@ -46,6 +46,23 @@ export function preferredDistributedDateV5(params: {
   return normalDates[safeIndex % normalDates.length] ?? null;
 }
 
+export function preferredTaskDistributedDateV5(params: {
+  taskIndex: number;
+  sessionIndex: number;
+  sessionCount: number;
+  dates: readonly string[];
+}): string | null {
+  const { normalDates } = partitionWeeklyPlanningDatesV5(params.dates);
+  if (normalDates.length === 0 || params.sessionCount <= 0) return null;
+  const safeTaskIndex = Math.max(0, Math.floor(params.taskIndex));
+  const safeSessionIndex = Math.max(
+    0,
+    Math.min(Math.floor(params.sessionIndex), params.sessionCount - 1),
+  );
+  const startIndex = safeTaskIndex % normalDates.length;
+  return normalDates[(startIndex + safeSessionIndex) % normalDates.length] ?? null;
+}
+
 export function resolveWeeklySpreadSessionCountV5(params: {
   totalMinutes: number;
   dates: readonly string[];
