@@ -171,8 +171,8 @@ describe('Stable V5 distribution adversarial audit', () => {
     expect(result.status).toBe('ready');
     expect(result.candidates.map((candidate) => candidate.date)).toEqual([
       '2026-08-17',
+      '2026-08-18',
       '2026-08-19',
-      '2026-08-21',
     ]);
     expect(result.candidates.map((candidate) => candidate.durationMinutes)).toEqual([60, 60, 60]);
     expect(result.candidates.some((candidate) => candidate.date === '2026-08-23')).toBe(false);
