@@ -99,21 +99,21 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - weekly placement orchestrationから単一work item placementを分離
 - turn dialogue orchestrationからrenderer trace組み立て・記録を分離
 - work distributionからtask relation orderingを分離。既存export path、cycle時に勝者を推測しないcontractを維持し、full CI #2578 greenを確認
-- approval repositoryからidentity解決、record validation、atomic save/completion invariantを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離。Firestore / memory / local adapterがpure policyへ依存する向きにし、full CI #2581 greenを確認
-- session storageからschema/ownership validationと2MB budget compactionを`weeklyPlanningStableV5SessionCodec.ts`へ分離。storage transportとcodecを分け、production isolationへ明示登録し、full CI #2585 greenを確認
-- RuntimeExecutorからAI config検証、request-time semantic context、semantic pipeline、semantic failureを`weeklyPlanningStableV5SemanticTurn.ts`へ分離。初回CIでsource ownership監査の追従漏れを検出し、監査を弱めず新ownerへ移管したうえでfull CI #2591 greenを確認
-- turn side effectsからdebug/renderer traceの圧縮・transport projection・永続化を`weeklyPlanningTurnTraceSideEffects.ts`へ分離。commit/rollback transactionとobservabilityの失敗モードを分け、旧記録APIをre-exportで維持し、full CI #2595 greenを確認
+- approval repositoryからidentity解決、record validation、atomic save/completion invariantを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離し、full CI #2581 greenを確認
+- session storageからschema/ownership validationと2MB budget compactionを`weeklyPlanningStableV5SessionCodec.ts`へ分離し、full CI #2585 greenを確認
+- RuntimeExecutorからsemantic phaseを`weeklyPlanningStableV5SemanticTurn.ts`へ分離し、source ownership監査を新ownerへ追従させてfull CI #2591 greenを確認
+- turn side effectsからtrace projection/persistenceを`weeklyPlanningTurnTraceSideEffects.ts`へ分離し、full CI #2595 greenを確認
+- approval repositoryからproduction Firestore transaction adapterを`weeklyPlanningApprovalFirestoreRepository.ts`へ分離。旧factoryをre-exportで維持し、full CI #2598 greenを確認
 
 現在のloop:
 
-- `weeklyPlanningApprovalPlanRepository.ts`に残っていたproduction Firestore transaction adapterを`weeklyPlanningApprovalFirestoreRepository.ts`へ分離した。
-- Firestore adapterはdocument path、transaction read/write、Firestore record normalizationを担当し、既に分離済みのpure approval persistence policyへ依存する。元repositoryはmemory/local adapterとcomposition rootへ縮小した。
-- `createFirestoreWeeklyPlanningApprovalPlanRepository`は旧repositoryからre-exportし、既存import pathを維持する。
-- Firestore adapterはtyped `PlanDraft`とapproval operationをformal persistence contractへ写像するだけで、raw user textやAI出力の意味を解釈しない。「approval/save/persistenceはdeterministic code」という最上位設計原則を維持する。
-- production I/O詳細がpure policyから逆依存されない構造を維持し、SRPとDIPを改善する。
+- `weeklyPlanningApprovalPlanRepository.ts`に残っていたtest-oriented memory store、排他queue、memory persistence adapterを`weeklyPlanningApprovalMemoryRepository.ts`へ分離した。
+- memory adapterはpure approval persistence policyへ依存し、production composition rootはMap/queueやtest metricsを知らない。test adapter変更とproduction repository selectionの変更理由を分け、SRPとDIPを改善する。
+- `createWeeklyPlanningApprovalMemoryState`、`createMemoryWeeklyPlanningApprovalPlanRepository`、`WeeklyPlanningApprovalMemoryState`は旧repositoryからre-exportし、既存test/import pathを維持する。
+- memory adapterはtyped approval stateだけを扱い、raw user textやAI semantic判断へ介入しない。「approval/save/persistenceはdeterministic code」という最上位設計原則を維持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。approval memory/local adapter、RuntimeSession、RuntimeExecutorのdeterministic planning phase、application orchestrationを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。approval local fallback、RuntimeSession、RuntimeExecutorのdeterministic planning phase、application orchestrationを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
