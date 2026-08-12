@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   createWeeklyPlanningSemanticSystemPromptV5,
+  type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+} from './weeklyPlanningSemanticProviderResponseFormatV5';
 import {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticNormalizerV5';
@@ -16,12 +19,18 @@ import {
   FOCUSED_CONTEXTUAL_ANSWER_RESPONSE_FORMAT_V5,
   createFocusedContextualAnswerMessagesV5,
 } from './weeklyPlanningFocusedContextualAnswerV5';
+import {
+  FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS,
+  FOCUSED_PLANNING_WINDOW_REPAIR_RESPONSE_FORMAT_V5,
+  createFocusedPlanningWindowRepairMessagesV5,
+} from './weeklyPlanningFocusedPlanningWindowRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 11_000;
 const GENERIC_REQUEST_MAX_BYTES = 24_000;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 2_500;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 4_000;
+const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
 
 function byteLength(value: unknown): number {
   return new TextEncoder().encode(
@@ -72,6 +81,37 @@ function representativeGenericMessages() {
   });
 }
 
+function invalidPlanningWindowDocument(): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: 'weekly-planning-semantic-v5',
+    planningIntent: 'create_plan',
+    planningWindow: {
+      localId: 'pw1',
+      kind: 'absolute',
+      value: '8月17日から23日',
+      start: null,
+      end: null,
+      sourceText: '8月17日から23日',
+    },
+    tasks: [],
+    relations: [],
+    availabilityDeclarations: [],
+    constraintSourceRequests: [],
+    userContextFacts: [],
+    uncertainties: [],
+    corrections: [],
+    decisions: [],
+  };
+}
+
+function representativeGenericRequestBytes(): number {
+  return requestBytes({
+    messages: representativeGenericMessages(),
+    responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+    maxCompletionTokens: GENERIC_MAX_COMPLETION_TOKENS,
+  });
+}
+
 describe('Stable V5 semantic prompt budget', () => {
   it('keeps normalizer policy overhead small and scenario independent', () => {
     const corePrompt = createWeeklyPlanningSemanticSystemPromptV5();
@@ -104,22 +144,14 @@ describe('Stable V5 semantic prompt budget', () => {
     );
   });
 
-  it('caps a representative full generic semantic request including JSON schema', () => {
-    const bytes = requestBytes({
-      messages: representativeGenericMessages(),
-      responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-      maxCompletionTokens: GENERIC_MAX_COMPLETION_TOKENS,
-    });
-
-    expect(bytes).toBeLessThanOrEqual(GENERIC_REQUEST_MAX_BYTES);
+  it('caps the actual representative generic request including hardened provider schema', () => {
+    expect(representativeGenericRequestBytes()).toBeLessThanOrEqual(
+      GENERIC_REQUEST_MAX_BYTES,
+    );
   });
 
   it('keeps machine-state focused authorization materially smaller than generic semantic', () => {
-    const genericBytes = requestBytes({
-      messages: representativeGenericMessages(),
-      responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-      maxCompletionTokens: GENERIC_MAX_COMPLETION_TOKENS,
-    });
+    const genericBytes = representativeGenericRequestBytes();
     const focusedBytes = requestBytes({
       messages: createFocusedAuthorizationMessagesV5({
         userText: 'この条件で作って',
@@ -141,11 +173,7 @@ describe('Stable V5 semantic prompt budget', () => {
   });
 
   it('keeps exact pending-answer interpretation materially smaller than generic semantic', () => {
-    const genericBytes = requestBytes({
-      messages: representativeGenericMessages(),
-      responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
-      maxCompletionTokens: GENERIC_MAX_COMPLETION_TOKENS,
-    });
+    const genericBytes = representativeGenericRequestBytes();
     const focusedBytes = requestBytes({
       messages: createFocusedContextualAnswerMessagesV5({
         userText: '30分くらいです',
@@ -172,5 +200,27 @@ describe('Stable V5 semantic prompt budget', () => {
       FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES,
     );
     expect(focusedBytes).toBeLessThan(genericBytes / 4);
+  });
+
+  it('keeps planning-window representation repair tiny and evidence-local', () => {
+    const genericBytes = representativeGenericRequestBytes();
+    const focusedBytes = requestBytes({
+      messages: createFocusedPlanningWindowRepairMessagesV5({
+        userText: '8月17日から23日で、英単語220語も進めたいです',
+        invalidDocument: invalidPlanningWindowDocument(),
+        validationErrors: ['document.planningWindow:absolute-range'],
+        calendarContext: {
+          currentDate: '2026-08-12',
+          timeZone: 'Asia/Tokyo',
+        },
+      }),
+      responseFormat: FOCUSED_PLANNING_WINDOW_REPAIR_RESPONSE_FORMAT_V5,
+      maxCompletionTokens: FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS,
+    });
+
+    expect(focusedBytes).toBeLessThanOrEqual(
+      FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES,
+    );
+    expect(focusedBytes).toBeLessThan(genericBytes / 8);
   });
 });
