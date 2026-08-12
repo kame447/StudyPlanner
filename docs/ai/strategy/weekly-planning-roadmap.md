@@ -99,16 +99,18 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - weekly placement orchestrationから単一work item placementを分離
 - turn dialogue orchestrationからrenderer trace組み立て・記録を分離
 - work distributionからtask relation orderingを分離。既存export path、cycle時に勝者を推測しないcontractを維持し、full CI #2578 greenを確認
+- approval repositoryからidentity解決、record validation、atomic save/completion invariantを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離。Firestore / memory / local adapterがpure policyへ依存する向きにし、full CI #2581 greenを確認
 
 現在のloop:
 
-- `weeklyPlanningApprovalPlanRepository.ts`に混在していた承認保存の純粋な不変条件・identity解決・record validation・atomic save/completion resolutionを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離した。
-- repository側はFirestore / memory / local planner adapterとrepository選択を担当し、policy側はstorage実装を知らない。domain policy変更とstorage変更の変更理由を分け、SRPとDIPを改善する。
-- policyは`PlanDraft`、typed approval operation、保存済みrecordだけを入力とし、raw user textやrenderer文面を参照しない。したがって「意味理解はAI、approval/save/persistenceのformal invariantはdeterministic code」という最上位設計原則を維持する。
-- `WeeklyPlanningApprovalPersistenceError`、memory repository factory等の既存public import pathはrepositoryからre-exportして互換性を維持する。
+- `weeklyPlanningStableV5SessionStorage.ts`に混在していたsession schema validation、Fact Graph conversation ownership validation、transient state除去、2MB budget内のmessage compactionを`weeklyPlanningStableV5SessionCodec.ts`へ分離した。
+- storage moduleはlocalStorage key、read/write/remove、quota failure時の再試行というtransport責務へ寄せた。codec/persistence policyはWeb Storage APIを知らないためSRPとDIPを改善する。
+- codecはtyped `PlanningState`と`WeeklyPlanningFactGraphV5`の形式・所有権を検証するだけでraw user textの意味を解釈しない。「意味理解はAI、persistence validationはdeterministic code」という最上位設計原則を維持する。
+- storage versionとpersisted session typeは旧storage moduleからre-exportし、既存import pathを維持する。
+- 新しいcodecはFact Graph validatorへ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録し、監査境界を弱めず可視化した。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にこのroadmapとcurrent execution taskを再読して決める。RuntimeExecutor、approval adapter群、session storage等を候補として比較し、ファイルサイズだけでは決めない。
+次の敵対的監査対象は、最新headがgreenになった後にこのroadmapとcurrent execution taskを再読して決める。RuntimeExecutor、approval adapter群、runtime session、turn side effects等を変更理由ベースで比較する。
 
 ## 4. Prompt / orchestration方針
 
