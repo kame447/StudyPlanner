@@ -1,41 +1,18 @@
-import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
-import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
 import {
   stageUserPlanningContextFactsV1,
-  userPlanningContextPromptSummaryV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
-import type {
-  PlanningIntakeState,
-  WeeklyPlanningGroundingRecord,
-  WeeklyPlanningRepairObligation,
-} from '../intake/weeklyPlanningIntakeTypes';
-import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
-import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
-import type { WeeklyPlanningMessage } from '../types';
-import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutor';
-import {
-  recordWeeklyPlanningStableV5DebugTrace,
-} from '../trace/weeklyPlanningStableV5DebugTrace';
+import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import type {
-  ExternalConstraintSourceSnapshot,
-} from '../semantic/weeklyPlanningAvailabilityResolver';
-import {
-  listCalendarDatesInclusive,
-} from '../semantic/weeklyPlanningCalendarResolver';
 import {
   collectUserPlanningContextFactsV5,
 } from '../semantic/weeklyPlanningDurableContextSignalsV5';
-import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   compileGenericSchedulerInput,
   type GenericSchedulerInputCompilationResult,
-  type GenericSchedulerInputIssue,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
   reconcileWeeklyPlanningGroundingRecordsV5,
@@ -48,7 +25,6 @@ import {
 } from '../semantic/weeklyPlanningSemanticPipelineV5';
 import {
   decideWeeklyPlanningStableDialogueV5,
-  type WeeklyPlanningStableQuestionV5,
 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 import {
   decideWeeklyPlanningStableRepairPolicyV5,
@@ -58,452 +34,48 @@ import {
   WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
 } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import {
-  createWeeklyPlanningLegacyRequestContext,
+  recordWeeklyPlanningStableV5DebugTrace,
+} from '../trace/weeklyPlanningStableV5DebugTrace';
+import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
+import {
+  projectStableV5CompatibilityOutput,
+} from './weeklyPlanningStableV5CompatibilityState';
+import {
+  createStableV5ExternalConstraintSources,
+} from './weeklyPlanningStableV5ExternalSources';
+import {
+  stableV5RelevantContinuationAccepted,
+  withStableV5GroundingProposal,
+} from './weeklyPlanningStableV5GroundingFlow';
+import type {
+  ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+} from './weeklyPlanningStableV5RuntimeContracts';
+import {
+  stableV5BlockingIssueCode,
+  stableV5IssueTaskLabel,
+  stableV5MissingSchedulableWorkQuestion,
+  renderStableV5RuntimeQuestion,
+} from './weeklyPlanningStableV5RuntimeQuestions';
+import {
+  activeStableV5PlanningWindows,
+  createStableV5SemanticPublicStateSummary,
+  stableV5RequestContextForInput,
+  STABLE_V5_RECENT_TURN_LIMIT,
+} from './weeklyPlanningStableV5SemanticContext';
+import {
   createWeeklyPlanningSchedulerContext,
   resolveWeeklyPlanningPlanningHorizon,
-  type WeeklyPlanningTurnRequestContext,
 } from './weeklyPlanningTemporalContext';
 import {
   commitWeeklyPlanningStableV5RuntimeGraph,
   getOrCreateWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
 
-const RECENT_TURN_LIMIT = 8;
-const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
+export type {
+  ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+} from './weeklyPlanningStableV5RuntimeContracts';
 
-export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
-  previousState?: PlanningIntakeState;
-  messages: readonly WeeklyPlanningMessage[];
-  userText: string;
-  selectedDate: string;
-  userId: string;
-  plans: Plan[];
-  scheduleTemplates: ScheduleTemplate[];
-  timetableTermId?: string;
-  conversationId: string;
-  traceRequestId: string;
-  weekStartsOn?: WeeklyPlanningWeekStartsOn;
-  requestContext?: WeeklyPlanningTurnRequestContext;
-}
-
-function emptyCompatibilityState(): PlanningIntakeState {
-  return {
-    status: 'idle',
-    intent: 'weekly_study_planning',
-    tasks: [],
-    progress: [],
-    unitRates: [],
-    constraints: [],
-    priorityPolicy: { kind: 'unknown' },
-    missing: [],
-    assumptions: [],
-    uncertainties: [],
-    questions: [],
-    shouldCreateDraft: false,
-    shouldSavePlan: false,
-    draftGenerationIntent: 'not_requested',
-    groundingRecords: [],
-    repairAgenda: [],
-    sourceTurns: [],
-  };
-}
-
-function compatibilityState(params: {
-  previousState?: PlanningIntakeState;
-  userText: string;
-  message: string;
-  draftCandidates: WeeklyDraftCandidate[];
-  questionCode?: string;
-  questionFactId?: string;
-  authorized: boolean;
-  preserveExistingPreview?: boolean;
-  groundingRecords?: WeeklyPlanningGroundingRecord[];
-  repairAgenda?: WeeklyPlanningRepairObligation[];
-}): PlanningIntakeState {
-  const previous = params.previousState ?? emptyCompatibilityState();
-  const hasDraft = params.draftCandidates.length > 0;
-  const hasPreview = hasDraft || Boolean(params.preserveExistingPreview);
-  const durableDraftGenerationIntent = params.authorized
-    || previous.draftGenerationIntent === 'user_authorized'
-    ? 'user_authorized'
-    : 'not_requested';
-  return {
-    ...previous,
-    status: hasPreview
-      ? 'draft_ready'
-      : params.questionCode
-        ? 'revision_pending'
-        : 'needs_scope',
-    intent: 'weekly_study_planning',
-    missing: [],
-    questions: params.questionCode ? [params.message] : [],
-    lastQuestionContext: params.questionCode
-      ? {
-          kind: 'missing',
-          targetSlot: `stable_v5:${params.questionCode}`,
-          intent: params.questionCode,
-          topicId: params.questionFactId,
-        }
-      : undefined,
-    shouldCreateDraft: params.preserveExistingPreview ? previous.shouldCreateDraft : hasDraft,
-    shouldSavePlan: false,
-    draftGenerationIntent: params.preserveExistingPreview
-      ? previous.draftGenerationIntent
-      : durableDraftGenerationIntent,
-    groundingRecords: params.groundingRecords ?? previous.groundingRecords ?? [],
-    repairAgenda: params.repairAgenda ?? previous.repairAgenda ?? [],
-    sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
-  };
-}
-
-function activePlanningWindows(graph: WeeklyPlanningFactGraphV5) {
-  if (graph.factLifecycles.length === 0) return [...graph.planningWindows];
-  const activeIds = new Set(
-    graph.factLifecycles
-      .filter((entry) => entry.status === 'active')
-      .map((entry) => entry.factId),
-  );
-  return graph.planningWindows.filter((window) => activeIds.has(window.id));
-}
-
-function systemTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo';
-}
-
-function requestContextForInput(
-  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-): { context: WeeklyPlanningTurnRequestContext; source: 'captured_request' | 'legacy_selected_date_fallback' } {
-  if (input.requestContext) {
-    return { context: input.requestContext, source: 'captured_request' };
-  }
-  return {
-    context: createWeeklyPlanningLegacyRequestContext({
-      selectedDate: input.selectedDate,
-      timeZone: systemTimeZone(),
-      weekStartsOn: input.weekStartsOn ?? 'monday',
-    }),
-    source: 'legacy_selected_date_fallback',
-  };
-}
-
-function existingPlanSource(params: {
-  ownerId: string;
-  plans: readonly Plan[];
-  horizon: { startDate: string; endDate: string } | null;
-  timeZone: string;
-}): ExternalConstraintSourceSnapshot {
-  const dates = params.horizon
-    ? new Set(listCalendarDatesInclusive(params.horizon.startDate, params.horizon.endDate) ?? [])
-    : new Set<string>();
-  return {
-    kind: 'existing_plans',
-    status: 'success',
-    ownerId: params.ownerId,
-    activeSourceId: 'studyplanner-existing-plans',
-    attemptCount: 1,
-    events: params.plans
-      .filter((plan) => dates.has(plan.date))
-      .map((plan) => ({
-        eventId: plan.id,
-        ownerId: params.ownerId,
-        start: { date: plan.date, time: plan.startTime },
-        end: { date: plan.date, time: plan.endTime },
-        timeZone: params.timeZone,
-        constraintLevel: 'hard' as const,
-      })),
-  };
-}
-
-function timetableSource(params: {
-  ownerId: string;
-  templates: readonly ScheduleTemplate[];
-  timetableTermId?: string;
-  horizon: { startDate: string; endDate: string } | null;
-  timeZone: string;
-}): ExternalConstraintSourceSnapshot {
-  const termId = params.timetableTermId ?? 'default';
-  const dates = params.horizon
-    ? listCalendarDatesInclusive(params.horizon.startDate, params.horizon.endDate) ?? []
-    : [];
-  const templates = params.templates.filter(
-    (template) => (template.termId || 'default') === termId,
-  );
-  return {
-    kind: 'timetable',
-    status: 'success',
-    ownerId: params.ownerId,
-    activeSourceId: `studyplanner-timetable:${termId}`,
-    attemptCount: 1,
-    events: dates.flatMap((date) =>
-      buildTimetableImportCandidates({
-        templates,
-        date,
-        weekday: getRecurrenceWeekday(date),
-        termId,
-      }).map((candidate) => ({
-        eventId: candidate.sourceId,
-        ownerId: params.ownerId,
-        start: { date, time: candidate.startTime },
-        end: { date, time: candidate.endTime },
-        timeZone: params.timeZone,
-        constraintLevel: 'hard' as const,
-      }))),
-  };
-}
-
-function externalSources(params: {
-  ownerId: string;
-  plans: readonly Plan[];
-  templates: readonly ScheduleTemplate[];
-  timetableTermId?: string;
-  horizon: { startDate: string; endDate: string } | null;
-  timeZone: string;
-}): ExternalConstraintSourceSnapshot[] {
-  return [
-    existingPlanSource({
-      ownerId: params.ownerId,
-      plans: params.plans,
-      horizon: params.horizon,
-      timeZone: params.timeZone,
-    }),
-    timetableSource({
-      ownerId: params.ownerId,
-      templates: params.templates,
-      timetableTermId: params.timetableTermId,
-      horizon: params.horizon,
-      timeZone: params.timeZone,
-    }),
-    {
-      kind: 'calendar',
-      status: 'failure',
-      ownerId: params.ownerId,
-      activeSourceId: null,
-      failureKind: 'source_not_configured',
-      attemptCount: 1,
-    },
-  ];
-}
-
-function pendingQuestionFromState(
-  state: PlanningIntakeState | undefined,
-  graphRevision: number,
-): Record<string, unknown> | null {
-  const context = state?.lastQuestionContext;
-  const targetSlot = context?.targetSlot;
-  if (!targetSlot?.startsWith('stable_v5:')) return null;
-  const questionCode = targetSlot.slice('stable_v5:'.length).trim();
-  if (!questionCode) return null;
-  return {
-    actionId: context?.actionId ?? null,
-    questionCode,
-    targetFactId: context?.topicId ?? null,
-    graphRevision,
-  };
-}
-
-function publicStateSummary(
-  graph: WeeklyPlanningFactGraphV5,
-  messages: readonly WeeklyPlanningMessage[],
-  previousState?: PlanningIntakeState,
-  ownerId?: string,
-  currentDate?: string,
-): Record<string, unknown> {
-  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
-  return {
-    runtime: 'weekly-planning-stable-v5',
-    graphRevision: graph.revision,
-    previousCompatibilityStatus: previousState?.status ?? null,
-    pendingQuestion: pendingQuestionFromState(previousState, graph.revision),
-    groundingRecords: (previousState?.groundingRecords ?? [])
-      .filter((record) => record.status !== 'rejected')
-      .slice(-16)
-      .map((record) => ({
-        targetFactId: record.targetFactId,
-        interpretationKind: record.interpretationKind,
-        status: record.status,
-        sourceExpression: record.sourceExpression,
-        startDate: record.startDate,
-        endDate: record.endDate,
-      })),
-    repairAgenda: (previousState?.repairAgenda ?? [])
-      .filter((item) => item.status === 'open' || item.status === 'deferred')
-      .slice(-16)
-      .map((item) => ({
-        issueFactId: item.issueFactId,
-        targetFactId: item.targetFactId,
-        domain: item.domain,
-        code: item.code,
-        impact: item.impact,
-        status: item.status,
-        reopenBefore: item.reopenBefore,
-      })),
-    planningWindows: active.planningWindows.map((fact) => ({
-      publicId: fact.id,
-      kind: fact.kind,
-      value: fact.value,
-      start: fact.start,
-      end: fact.end,
-    })),
-    tasks: active.tasks.map((task) => ({
-      publicId: task.id,
-      category: task.category,
-      title: task.title,
-    })),
-    components: active.components.map((component) => ({
-      publicId: component.id,
-      taskPublicId: component.taskId,
-      label: component.label,
-      role: component.role,
-    })),
-    workloads: active.workloads.map((workload) => ({
-      publicId: workload.id,
-      taskPublicId: workload.taskId,
-      componentPublicId: workload.componentId,
-      quantityRole: workload.quantityRole,
-      amount: workload.amount,
-      unitCode: workload.unitCode,
-      unitLabel: workload.unitLabel,
-    })),
-    uncertainties: active.uncertainties.map((uncertainty) => ({
-      publicId: uncertainty.id,
-      targetPublicId: uncertainty.targetFactId,
-      field: uncertainty.field,
-      reason: uncertainty.reason,
-      sourceText: uncertainty.source.sourceText,
-    })),
-    userPlanningContext: ownerId && currentDate
-      ? userPlanningContextPromptSummaryV1({ ownerId, currentDate })
-      : [],
-    lastAssistantMessage:
-      [...messages].reverse().find((message) => message.role === 'assistant')?.content ?? null,
-  };
-}
-
-function missingSchedulableWorkQuestion(
-  graph: WeeklyPlanningFactGraphV5,
-): { message: string; questionCode?: string; taskTitles: string[] } {
-  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
-  const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
-  const componentWithNoWorkload = active.components.find(
-    (component) => !active.workloads.some((workload) => workload.componentId === component.id),
-  );
-  if (componentWithNoWorkload) {
-    return {
-      message: `「${componentWithNoWorkload.label}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。問題数・ページ数・単語数・章など、分かる単位で大丈夫です。`,
-      questionCode: 'missing_schedulable_work',
-      taskTitles,
-    };
-  }
-  const taskWithNoWorkload = active.tasks.find(
-    (task) => !active.workloads.some((workload) => workload.taskId === task.id),
-  );
-  if (taskWithNoWorkload) {
-    return {
-      message: `「${taskWithNoWorkload.title}」について、まず全体の範囲と、今どこまで終わっているかを教えてください。分かる単位で大丈夫です。`,
-      questionCode: 'missing_schedulable_work',
-      taskTitles,
-    };
-  }
-  return {
-    message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
-    questionCode: 'missing_schedulable_work',
-    taskTitles,
-  };
-}
-
-function issueTaskLabel(
-  graph: WeeklyPlanningFactGraphV5,
-  issue: WeeklyPlanningStableQuestionV5,
-): string {
-  const taskId = typeof issue.details.taskId === 'string'
-    ? issue.details.taskId
-    : graph.workloads.find((workload) => workload.id === issue.factId)?.taskId;
-  const task = taskId ? graph.tasks.find((fact) => fact.id === taskId) : null;
-  const workload = issue.factId
-    ? graph.workloads.find((fact) => fact.id === issue.factId)
-    : null;
-  const component = workload?.componentId
-    ? graph.components.find((fact) => fact.id === workload.componentId)
-    : null;
-  return component?.label || task?.title || 'この予定';
-}
-
-function questionSourceExcerpt(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= QUESTION_SOURCE_EXCERPT_LIMIT) return normalized;
-  return `${normalized.slice(0, QUESTION_SOURCE_EXCERPT_LIMIT)}…`;
-}
-
-function semanticUncertaintyQuestion(
-  graph: WeeklyPlanningFactGraphV5,
-  question: WeeklyPlanningStableQuestionV5,
-): string {
-  const uncertainty = question.factId
-    ? graph.uncertainties.find((fact) => fact.id === question.factId)
-    : null;
-  if (uncertainty?.field === 'work_breakdown' && uncertainty.targetFactId) {
-    const task = graph.tasks.find((fact) => fact.id === uncertainty.targetFactId);
-    const label = task?.title?.trim() || 'この予定';
-    return `「${label}」は、まず中身を分けて考えましょう。今残っているものをざっくり教えてもらえますか？`;
-  }
-  const sourceText = uncertainty
-    ? questionSourceExcerpt(uncertainty.source.sourceText)
-    : '';
-  if (!sourceText) {
-    return '意味を一つに決められない条件があります。曖昧な部分だけ、もう少し具体的に教えてください。';
-  }
-  return `「${sourceText}」の意味を一つに決められませんでした。この部分だけ、もう少し具体的に教えてください。`;
-}
-
-function renderQuestion(
-  graph: WeeklyPlanningFactGraphV5,
-  question: WeeklyPlanningStableQuestionV5,
-): string {
-  const label = issueTaskLabel(graph, question);
-  switch (question.code) {
-    case 'semantic_uncertainty':
-      return semanticUncertaintyQuestion(graph, question);
-    case 'invalid_planning_horizon':
-      return 'いつからいつまでの予定を作るか教えてください。例: 今日、今週、来週、7月25日から7月31日。';
-    case 'ambiguous_planning_window':
-      return '計画期間が複数あります。今回使う期間を一つ教えてください。';
-    case 'quantity_role_unresolved':
-      return `${label}の量は、今回進めたい量ですか、それとも残っている全体量ですか？`;
-    case 'missing_effort_estimate':
-      return `${label}を指定した量だけ進めるのに、合計でどれくらい時間がかかりますか？`;
-    case 'ambiguous_effort_estimate':
-      return `${label}の所要時間が複数あります。今回使う見積りを一つ教えてください。`;
-    case 'missing_availability_date_scope':
-      return 'その空き時間または予定を入れられない時間は、どの日に適用しますか？';
-    case 'missing_time_bounds':
-    case 'invalid_time_interval':
-      return 'その時間条件の開始時刻と終了時刻を教えてください。';
-    case 'named_time_period_unresolved':
-      return 'その時間帯が何時から何時までか教えてください。';
-    case 'missing_commitment_date_scope':
-      return `${label}は何日の固定予定ですか？`;
-    case 'invalid_commitment_interval':
-      return `${label}の開始時刻と終了時刻を教えてください。`;
-    case 'conflicting_task_date_rule':
-      return `${label}を同じ日に「行う」と「行わない」の両方で指定しています。どちらを採用しますか？`;
-    case 'constraint_source_unavailable':
-    case 'active_constraint_source_missing':
-      return '指定された外部予定を確認できませんでした。時間割・登録済み予定・カレンダーのどれを使うか確認してください。';
-    case 'orphan_relation_task':
-    case 'self_relation':
-      return 'タスクの順序関係を確認できませんでした。どの予定を先にするか教えてください。';
-    default:
-      return `${label}について、予定作成に必要な条件をもう少し具体的に教えてください。`;
-  }
-}
-
-function blockingQuestionCode(
-  compilation: GenericSchedulerInputCompilationResult,
-): string | undefined {
-  return compilation.issues.find((issue: GenericSchedulerInputIssue) => issue.blocking)?.code;
-}
-
-function traceBranch(params: {
+function traceRuntimeBranch(params: {
   requestId: string;
   branch: string;
   basis: unknown;
@@ -522,93 +94,35 @@ function traceBranch(params: {
   });
 }
 
-function planningWindowTouched(
-  diff: { added: Array<{ kind: string }>; superseded: Array<{ kind: string }>; removed: Array<{ kind: string }> } | undefined,
-): boolean {
-  if (!diff) return false;
-  return [...diff.added, ...diff.superseded, ...diff.removed]
-    .some((entry) => entry.kind === 'planning_window');
-}
-
-function relevantContinuationAccepted(params: {
-  previousState?: PlanningIntakeState;
-  diff: { added: Array<{ kind: string }>; superseded: Array<{ kind: string }>; removed: Array<{ kind: string }> } | undefined;
-}): boolean {
-  const hasProposal = (params.previousState?.groundingRecords ?? [])
-    .some((record) => record.status === 'proposed');
-  if (!hasProposal) return false;
-  if (params.previousState?.lastQuestionContext?.targetSlot !== 'stable_v5:missing_schedulable_work') {
-    return false;
-  }
-  if (!params.diff || planningWindowTouched(params.diff)) return false;
-  const workKinds = new Set([
-    'task',
-    'study_context',
-    'component',
-    'workload',
-    'effort_estimate',
-    'temporal_constraint',
-    'task_date_rule',
-    'recurrence',
-    'relation',
-    'availability_declaration',
-    'constraint_source_request',
-  ]);
-  return params.diff.added.some((entry) => workKinds.has(entry.kind));
-}
-
-function monthDay(date: string): { year: string; month: number; day: number } | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!match) return null;
-  return { year: match[1], month: Number(match[2]), day: Number(match[3]) };
-}
-
-function displayGroundedRange(startDate: string, endDate: string): string {
-  const start = monthDay(startDate);
-  const end = monthDay(endDate);
-  if (!start || !end) return `${startDate}〜${endDate}`;
-  if (startDate === endDate) return `${start.month}月${start.day}日`;
-  if (start.year === end.year && start.month === end.month) {
-    return `${start.month}月${start.day}日〜${end.day}日`;
-  }
-  if (start.year === end.year) {
-    return `${start.month}月${start.day}日〜${end.month}月${end.day}日`;
-  }
-  return `${start.year}年${start.month}月${start.day}日〜${end.year}年${end.month}月${end.day}日`;
-}
-
-function relativeExpressionLabel(expression: string): string {
-  switch (expression) {
-    case 'next_week': return '来週';
-    case 'this_week': return '今週';
-    case 'today': return '今日';
-    case 'tomorrow': return '明日';
-    case 'day_after_tomorrow': return '明後日';
-    default: return '対象期間';
-  }
-}
-
-function newGroundingProposalPrefix(params: {
-  records: readonly WeeklyPlanningGroundingRecord[];
-  currentTurnId: string;
-}): string {
-  const record = params.records.find((candidate) =>
-    candidate.status === 'proposed'
-    && candidate.proposedAtTurnId === params.currentTurnId);
-  if (!record) return '';
-  return `${relativeExpressionLabel(record.sourceExpression)}は${displayGroundedRange(record.startDate, record.endDate)}として考えますね。`;
-}
-
-function withGroundingProposal(params: {
+function semanticFailureOutput(params: {
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
+  branch: 'provider_failure' | 'normalization_rejected' | 'canonicalization_rejected';
   message: string;
-  records: readonly WeeklyPlanningGroundingRecord[];
+  basis: unknown;
+}): WeeklyPlanningTurnExecutionResult {
+  const output = projectStableV5CompatibilityOutput({
+    previousState: params.input.previousState,
+    userText: params.input.userText,
+    message: params.message,
+    draftCandidates: [],
+    authorized: false,
+  });
+  traceRuntimeBranch({
+    requestId: params.input.traceRequestId,
+    branch: params.branch,
+    basis: params.basis,
+    output,
+    severity: 'error',
+  });
+  return output;
+}
+
+function groundedMessage(params: {
+  message: string;
+  records: Parameters<typeof withStableV5GroundingProposal>[0]['records'];
   currentTurnId: string;
 }): string {
-  const prefix = newGroundingProposalPrefix({
-    records: params.records,
-    currentTurnId: params.currentTurnId,
-  });
-  return prefix ? `${prefix}${params.message}` : params.message;
+  return withStableV5GroundingProposal(params);
 }
 
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
@@ -635,13 +149,13 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     throw new Error(configError ?? 'Stable V5にはAI structured output接続が必要です。');
   }
 
-  const temporal = requestContextForInput(input);
+  const temporal = stableV5RequestContextForInput(input);
   const requestContext = temporal.context;
   const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({
     ownerId: input.userId,
     conversationId: input.conversationId,
   });
-  const activeWindowsBefore = activePlanningWindows(runtimeSession.graph);
+  const activeWindowsBefore = activeStableV5PlanningWindows(runtimeSession.graph);
   const fallbackHorizon = resolveWeeklyPlanningPlanningHorizon({
     graph: runtimeSession.graph,
     selectedDate: input.selectedDate,
@@ -649,15 +163,15 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     groundingRecords: input.previousState?.groundingRecords,
   });
   const recentConversation = input.messages
-    .slice(-RECENT_TURN_LIMIT)
+    .slice(-STABLE_V5_RECENT_TURN_LIMIT)
     .map(({ role, content }) => ({ role, content }));
-  const stateSummary = publicStateSummary(
-    runtimeSession.graph,
-    input.messages,
-    input.previousState,
-    input.userId,
-    requestContext.currentDate,
-  );
+  const stateSummary = createStableV5SemanticPublicStateSummary({
+    graph: runtimeSession.graph,
+    messages: input.messages,
+    previousState: input.previousState,
+    ownerId: input.userId,
+    currentDate: requestContext.currentDate,
+  });
   const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
     horizon: fallbackHorizon,
@@ -681,18 +195,16 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         groundedRelativeWindow: 'reuse the persisted absolute grounding range until the source fact is corrected',
         otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
       },
-      recentTurnLimit: RECENT_TURN_LIMIT,
+      recentTurnLimit: STABLE_V5_RECENT_TURN_LIMIT,
       recentConversation,
       publicStateSummary: stateSummary,
       schedulerContext: initialSchedulerContext,
     },
   });
 
-  const normalizer = createWeeklyPlanningSemanticNormalizerV5(
-    createOpenAiCompatibleClient(aiConfig),
-  );
-  const pipeline = createWeeklyPlanningSemanticPipelineV5(normalizer);
-  const semantic = await pipeline.run({
+  const semantic = await createWeeklyPlanningSemanticPipelineV5(
+    createWeeklyPlanningSemanticNormalizerV5(createOpenAiCompatibleClient(aiConfig)),
+  ).run({
     graph: runtimeSession.graph,
     conversationId: input.conversationId,
     turnId: input.traceRequestId,
@@ -714,75 +226,33 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (semantic.status === 'provider_failure') {
-    const message = 'AIに接続できなかったため、入力内容は変更していません。接続を確認してもう一度送ってください。';
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        authorized: false,
-      }),
-      message,
-      draftCandidates: [],
-    };
-    traceBranch({
-      requestId: input.traceRequestId,
+    return semanticFailureOutput({
+      input,
       branch: 'provider_failure',
+      message: 'AIに接続できなかったため、入力内容は変更していません。接続を確認してもう一度送ってください。',
       basis: { semanticStatus: semantic.status },
-      output,
-      severity: 'error',
     });
-    return output;
   }
   if (semantic.status === 'normalization_rejected') {
-    const message = 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。';
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        authorized: false,
-      }),
-      message,
-      draftCandidates: [],
-    };
-    traceBranch({
-      requestId: input.traceRequestId,
+    return semanticFailureOutput({
+      input,
       branch: 'normalization_rejected',
+      message: 'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
       basis: { semanticStatus: semantic.status, normalization: semantic.normalization },
-      output,
-      severity: 'error',
     });
-    return output;
   }
   if (semantic.status === 'canonicalization_rejected') {
-    const message = '直前の会話状態と構造化結果が一致しなかったため、変更は反映していません。直前に確認していた項目だけ、短く一つ教えてください。';
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        authorized: false,
-      }),
-      message,
-      draftCandidates: [],
-    };
-    traceBranch({
-      requestId: input.traceRequestId,
+    return semanticFailureOutput({
+      input,
       branch: 'canonicalization_rejected',
+      message: '直前の会話状態と構造化結果が一致しなかったため、変更は反映していません。直前に確認していた項目だけ、短く一つ教えてください。',
       basis: {
         semanticStatus: semantic.status,
         expectedRevision: runtimeSession.graph.revision,
         actualInputGraphRevision: runtimeSession.graph.revision,
         canonicalization: semantic.canonicalization,
       },
-      output,
-      severity: 'error',
     });
-    return output;
   }
 
   const userContextFacts = semantic.normalization.document
@@ -832,7 +302,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     requestContext,
     groundingRecords: input.previousState?.groundingRecords,
   });
-  const continuationAccepted = relevantContinuationAccepted({
+  const continuationAccepted = stableV5RelevantContinuationAccepted({
     previousState: input.previousState,
     diff: semanticDiff,
   });
@@ -844,19 +314,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     currentTurnId: input.traceRequestId,
     continuationAccepted,
   });
-  const activeWindowsAfter = activePlanningWindows(semantic.graph);
   const horizon = resolveWeeklyPlanningPlanningHorizon({
     graph: semantic.graph,
     selectedDate: input.selectedDate,
     requestContext,
     groundingRecords,
   });
-  const context = createWeeklyPlanningSchedulerContext({
+  const schedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
     horizon,
     requestContext,
   });
-  const sources = externalSources({
+  const externalSources = createStableV5ExternalConstraintSources({
     ownerId: input.userId,
     plans: input.plans,
     templates: input.scheduleTemplates,
@@ -867,8 +336,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
   const compilation = compileGenericSchedulerInput({
     graph: activeGraph,
-    context,
-    externalSources: sources,
+    context: schedulerContext,
+    externalSources,
   });
   const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
     graph: semantic.graph,
@@ -900,53 +369,25 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     stage: 'runtime_scheduler_dialogue_evaluated',
     severity: dialogue.status === 'ask_question' ? 'warn' : 'info',
     data: {
-      activePlanningWindows: activeWindowsAfter,
+      activePlanningWindows: activeStableV5PlanningWindows(semantic.graph),
       selectedDate: input.selectedDate,
       requestContext,
       resolvedHorizon: horizon,
-      grounding: {
-        continuationAccepted,
-        records: groundingRecords,
-      },
+      grounding: { continuationAccepted, records: groundingRecords },
       repair: {
         mode: repairDecision.mode,
         deferredIssueIds: repairDecision.deferredIssueIds,
         reopenedIssueIds: repairDecision.reopenedIssueIds,
         agenda: repairDecision.agenda,
       },
-      horizonCriteria: {
-        moreThanOneActiveWindow: 'return null',
-        noActiveWindow: 'selectedDate is display/fallback seed only',
-        explicitStartEnd: 'valid dates and start <= end',
-        groundedRelativeWindow: 'reuse the persisted absolute grounding range until the source fact is corrected',
-        otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
-      },
       schedulerInput: {
         graph: activeGraph,
-        context,
-        externalSources: sources,
+        context: schedulerContext,
+        externalSources,
       },
       compilation,
       dialogue,
-      dialoguePolicyCriteria: {
-        blockingIssuesFirst: true,
-        repairPassOver: 'only active soft preference semantic uncertainty may be deferred while another blocking issue is repaired',
-        repairReopen: 'a deferred issue is reopened before preview once it is the remaining blocker',
-        domainPriority: [
-          'semantic_uncertainty',
-          'planning_horizon',
-          'availability',
-          'commitment',
-          'task_date_rule',
-          'work_item',
-          'relation',
-          'deduplication',
-        ],
-        blockingIssueSortKey: 'domainPriority|domain|code|factId',
-        readyForPreview: 'no blocking issue and compilation.status === ready and compilation.input exists',
-        otherwise: 'nothing_to_schedule',
-      },
-      firstBlockingIssueCodeInCompilationOrder: blockingQuestionCode(compilation) ?? null,
+      firstBlockingIssueCodeInCompilationOrder: stableV5BlockingIssueCode(compilation) ?? null,
       selectedQuestion: dialogue.status === 'ask_question' ? dialogue.question : null,
       authorization: {
         planningIntent,
@@ -959,33 +400,29 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (dialogue.status === 'ask_question') {
-    const message = withGroundingProposal({
-      message: renderQuestion(semantic.graph, dialogue.question),
+    const message = groundedMessage({
+      message: renderStableV5RuntimeQuestion(semantic.graph, dialogue.question),
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        questionCode: dialogue.question.code,
-        questionFactId: dialogue.question.factId ?? undefined,
-        authorized,
-        groundingRecords,
-        repairAgenda: repairDecision.agenda,
-      }),
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
       message,
       draftCandidates: [],
-    };
-    traceBranch({
+      questionCode: dialogue.question.code,
+      questionFactId: dialogue.question.factId ?? undefined,
+      authorized,
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+    });
+    traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'ask_question',
       basis: {
         dialogue,
         renderedQuestion: message,
-        issueLabel: issueTaskLabel(semantic.graph, dialogue.question),
+        issueLabel: stableV5IssueTaskLabel(semantic.graph, dialogue.question),
         groundingRecords,
         repairDecision,
       },
@@ -994,28 +431,25 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return output;
   }
+
   if (dialogue.status === 'nothing_to_schedule' || !compilation.input) {
-    const missingWork = missingSchedulableWorkQuestion(semantic.graph);
-    const message = withGroundingProposal({
+    const missingWork = stableV5MissingSchedulableWorkQuestion(semantic.graph);
+    const message = groundedMessage({
       message: missingWork.message,
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        questionCode: missingWork.questionCode,
-        authorized,
-        groundingRecords,
-        repairAgenda: repairDecision.agenda,
-      }),
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
       message,
       draftCandidates: [],
-    };
-    traceBranch({
+      questionCode: missingWork.questionCode,
+      authorized,
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+    });
+    traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'nothing_to_schedule',
       basis: {
@@ -1023,7 +457,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         compilationStatus: compilation.status,
         compilationInputExists: Boolean(compilation.input),
         recognizedTaskTitles: missingWork.taskTitles,
-        questionCode: missingWork.questionCode ?? null,
+        questionCode: missingWork.questionCode,
         groundingRecords,
         repairDecision,
       },
@@ -1032,32 +466,24 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return output;
   }
-  if (
-    !authorized
-    && input.previousState?.status === 'draft_ready'
-    && !semanticChanged
-  ) {
-    const message = withGroundingProposal({
+
+  if (!authorized && input.previousState?.status === 'draft_ready' && !semanticChanged) {
+    const message = groundedMessage({
       message: '仮予定候補は変更していません。内容を修正する場合は条件を入力してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。',
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        authorized: false,
-        preserveExistingPreview: true,
-        groundingRecords,
-        repairAgenda: repairDecision.agenda,
-      }),
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
       message,
       draftCandidates: [],
+      authorized: false,
       preserveExistingPreview: true,
-    };
-    traceBranch({
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+    });
+    traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'preview_unchanged',
       basis: {
@@ -1071,26 +497,23 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return output;
   }
+
   if (!authorized) {
-    const message = withGroundingProposal({
+    const message = groundedMessage({
       message: '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。',
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        authorized: false,
-        groundingRecords,
-        repairAgenda: repairDecision.agenda,
-      }),
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
       message,
       draftCandidates: [],
-    };
-    traceBranch({
+      authorized: false,
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+    });
+    traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'authorization_required',
       basis: {
@@ -1137,27 +560,24 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       result: preview,
     },
   });
+
   if (preview.status === 'insufficient_capacity') {
-    const message = withGroundingProposal({
+    const message = groundedMessage({
       message: '指定された期間と空き時間には、すべての作業を安全に配置できませんでした。期間を広げるか、作業量または利用できる時間を調整してください。',
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        questionCode: 'insufficient_capacity',
-        authorized: true,
-        groundingRecords,
-        repairAgenda: repairDecision.agenda,
-      }),
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
       message,
       draftCandidates: [],
-    };
-    traceBranch({
+      questionCode: 'insufficient_capacity',
+      authorized: true,
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+    });
+    traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'preview_insufficient_capacity',
       basis: { preview, groundingRecords, repairDecision },
@@ -1166,26 +586,23 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     });
     return output;
   }
+
   if (preview.status === 'empty') {
-    const message = withGroundingProposal({
+    const message = groundedMessage({
       message: '固定予定は把握しましたが、新しく配置する作業がありません。予定に入れたい作業を教えてください。',
       records: groundingRecords,
       currentTurnId: input.traceRequestId,
     });
-    const output = {
-      state: compatibilityState({
-        previousState: input.previousState,
-        userText: input.userText,
-        message,
-        draftCandidates: [],
-        authorized: true,
-        groundingRecords,
-        repairAgenda: repairDecision.agenda,
-      }),
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState,
+      userText: input.userText,
       message,
       draftCandidates: [],
-    };
-    traceBranch({
+      authorized: true,
+      groundingRecords,
+      repairAgenda: repairDecision.agenda,
+    });
+    traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'preview_empty',
       basis: { preview, groundingRecords, repairDecision },
@@ -1203,25 +620,21 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     schedulerStatus: compilation.status,
     candidateCount: preview.candidates.length,
   });
-  const message = withGroundingProposal({
+  const message = groundedMessage({
     message: `${preview.candidates.length}件の仮予定候補を作りました。内容を確認して、問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
     records: groundingRecords,
     currentTurnId: input.traceRequestId,
   });
-  const output = {
-    state: compatibilityState({
-      previousState: input.previousState,
-      userText: input.userText,
-      message,
-      draftCandidates: preview.candidates,
-      authorized: true,
-      groundingRecords,
-      repairAgenda: repairDecision.agenda,
-    }),
+  const output = projectStableV5CompatibilityOutput({
+    previousState: input.previousState,
+    userText: input.userText,
     message,
     draftCandidates: preview.candidates,
-  };
-  traceBranch({
+    authorized: true,
+    groundingRecords,
+    repairAgenda: repairDecision.agenda,
+  });
+  traceRuntimeBranch({
     requestId: input.traceRequestId,
     branch: 'preview_ready',
     basis: {
@@ -1253,5 +666,5 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
 export function getWeeklyPlanningStableV5BlockingIssueCode(
   compilation: GenericSchedulerInputCompilationResult,
 ): string | undefined {
-  return blockingQuestionCode(compilation);
+  return stableV5BlockingIssueCode(compilation);
 }
