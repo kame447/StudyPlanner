@@ -32,18 +32,18 @@ import {
   validateWeeklyPlanningStandaloneModifierTargetsV5,
 } from './weeklyPlanningStandaloneModifierTargetV5';
 import {
-  normalizePlanningWindowCanonicalV5,
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
+import {
+  canonicalizeWeeklyPlanningSemanticRepresentationV5,
+} from './weeklyPlanningSemanticRepresentationCanonicalizationV5';
 import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
 import {
-  normalizeWeeklyPlanningTemporalClockEncodingV5,
   validateWeeklyPlanningTemporalClockEncodingV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
 import {
-  normalizeWeeklyPlanningWeekdayEncodingV5,
   validateWeeklyPlanningWeekdayEncodingV5,
 } from './weeklyPlanningWeekdayEncodingV5';
 
@@ -57,26 +57,6 @@ export interface WeeklyPlanningSemanticValidationAttemptV5 {
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
   algorithmicRepairs: string[];
-}
-
-function normalizeParsedRepresentationV5(
-  document: WeeklyPlanningSemanticDocumentV5,
-): { document: WeeklyPlanningSemanticDocumentV5; repairs: string[] } {
-  const planningWindow = normalizePlanningWindowCanonicalV5(document.planningWindow);
-  const withPlanningWindow = planningWindow.window === document.planningWindow
-    ? document
-    : { ...document, planningWindow: planningWindow.window };
-  const weekday = normalizeWeeklyPlanningWeekdayEncodingV5(withPlanningWindow);
-  const temporalClock = normalizeWeeklyPlanningTemporalClockEncodingV5(weekday.document);
-
-  return {
-    document: temporalClock.document,
-    repairs: [
-      ...planningWindow.repairs,
-      ...weekday.repairs,
-      ...temporalClock.repairs,
-    ],
-  };
 }
 
 export function validateWeeklyPlanningSemanticResponseV5(
@@ -114,7 +94,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     };
   }
 
-  const normalized = normalizeParsedRepresentationV5(parsed.document);
+  const normalized = canonicalizeWeeklyPlanningSemanticRepresentationV5(parsed.document);
   const algorithmicRepairs = [...preParseRepairs, ...normalized.repairs];
   const document = normalized.document;
   const errors = [
