@@ -3,9 +3,11 @@ import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatib
 import {
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  createWeeklyPlanningSemanticSystemPromptV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  createWeeklyPlanningSemanticMeaningPolicyV5,
+} from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
   validateWeeklyPlanningSemanticEvidenceV5,
 } from './weeklyPlanningSemanticEvidenceV5';
@@ -157,10 +159,10 @@ describe('Stable V5 durable user planning context semantic boundary', () => {
     expect(result.document?.userContextFacts ?? []).toEqual([]);
   });
 
-  it('states the generic event-vs-work-deadline rule without scenario-specific patches', () => {
-    const prompt = createWeeklyPlanningSemanticSystemPromptV5();
-    expect(prompt).toContain('event itself occurs is not a work deadline');
-    expect(prompt).toContain('goal_event');
+  it('keeps the event-vs-work-deadline rule in the semantic meaning policy', () => {
+    const prompt = createWeeklyPlanningSemanticMeaningPolicyV5();
+    expect(prompt).toContain('Use deadline only for completion-by meaning');
+    expect(prompt).toContain('goal event');
     expect(prompt).toContain('concern');
     expect(prompt).not.toContain('共通テスト模試');
     expect(prompt).not.toContain('2週間後');
