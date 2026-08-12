@@ -6,10 +6,12 @@ import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
-  WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
+} from './weeklyPlanningSemanticProviderResponseFormatV5';
 import {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticPromptAssemblyV5';
@@ -30,6 +32,14 @@ import {
   focusedContextualAnswerEligibleV5,
   parseFocusedContextualAnswerDecisionV5,
 } from './weeklyPlanningFocusedContextualAnswerV5';
+import {
+  FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS,
+  FOCUSED_PLANNING_WINDOW_REPAIR_RESPONSE_FORMAT_V5,
+  applyFocusedPlanningWindowRepairV5,
+  createFocusedPlanningWindowRepairMessagesV5,
+  focusedPlanningWindowRepairEligibleV5,
+  parseFocusedPlanningWindowRepairDecisionV5,
+} from './weeklyPlanningFocusedPlanningWindowRepairV5';
 import {
   validateWeeklyPlanningSemanticResponseV5,
 } from './weeklyPlanningSemanticResponseValidationV5';
@@ -57,7 +67,7 @@ export interface WeeklyPlanningSemanticNormalizerInputV5 {
 
 export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
   schemaVersion: typeof WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5;
-  jsonSchemaName: typeof WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name;
+  jsonSchemaName: string;
   normalizerVersion: typeof WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5;
   attemptCount: number;
   repairAttempted: boolean;
@@ -105,6 +115,18 @@ function errorDetails(error: unknown): Record<string, unknown> {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function focusedRepairCalendarContext(
+  input: WeeklyPlanningSemanticNormalizerInputV5,
+): { currentDate?: string | null; timeZone?: string | null } | null {
+  const value = input.publicStateSummary?.calendarContext;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return {
+    currentDate: typeof record.currentDate === 'string' ? record.currentDate : null,
+    timeZone: typeof record.timeZone === 'string' ? record.timeZone : null,
+  };
 }
 
 export function createWeeklyPlanningSemanticNormalizerV5(
@@ -162,7 +184,8 @@ export function createWeeklyPlanningSemanticNormalizerV5(
               document: focusedDocument,
               diagnostics: {
                 schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-                jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+                jsonSchemaName:
+                  WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5.json_schema.name,
                 normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
                 attemptCount: 1,
                 repairAttempted: false,
@@ -238,7 +261,8 @@ export function createWeeklyPlanningSemanticNormalizerV5(
               document: createFocusedAuthorizationDocumentV5(),
               diagnostics: {
                 schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-                jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+                jsonSchemaName:
+                  WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5.json_schema.name,
                 normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
                 attemptCount: 1,
                 repairAttempted: false,
@@ -288,7 +312,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             purpose: 'weekly_planning_semantic_normalizer',
             messages: baseMessages,
             temperature: 0,
-            responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
+            responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
             maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
           },
         },
@@ -301,7 +325,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         const request = {
           messages,
           temperature: 0,
-          responseFormat: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
+          responseFormat: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
           purpose: 'weekly_planning_semantic_normalizer' as const,
           maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
         };
@@ -343,7 +367,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         providerError: string | null;
       }): WeeklyPlanningSemanticNormalizerDiagnosticsV5 => ({
         schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-        jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5.json_schema.name,
+        jsonSchemaName: WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5.json_schema.name,
         normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
         attemptCount: params.attemptCount,
         repairAttempted: params.repairAttempted,
@@ -411,6 +435,178 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           },
         });
         return result;
+      }
+
+      if (initialValidation.parsedDocument) {
+        const focusedRepairInput = {
+          userText: input.userText,
+          invalidDocument: initialValidation.parsedDocument,
+          validationErrors: initialValidation.errors,
+          calendarContext: focusedRepairCalendarContext(input),
+        };
+        if (focusedPlanningWindowRepairEligibleV5(focusedRepairInput)) {
+          const focusedMessages = createFocusedPlanningWindowRepairMessagesV5(
+            focusedRepairInput,
+          );
+          const focusedRequest = {
+            messages: focusedMessages,
+            temperature: 0,
+            responseFormat: FOCUSED_PLANNING_WINDOW_REPAIR_RESPONSE_FORMAT_V5,
+            purpose: 'weekly_planning_semantic_normalizer' as const,
+            maxCompletionTokens: FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS,
+          };
+          const focusedBytes = byteLength(focusedRequest);
+          requestBytes.push(focusedBytes);
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_orchestrator_route',
+            severity: 'warn',
+            data: {
+              route: 'focused_planning_window_repair_candidate',
+              meaningOwner: 'ai',
+              deterministicResponsibilities: [
+                'route_from_validation_scope',
+                'merge_only_planning_window_representation_fields',
+                'revalidate_complete_document',
+              ],
+              initialValidationErrors: initialValidation.errors,
+              requestBytes: focusedBytes,
+            },
+          });
+
+          let focusedResponse: string;
+          try {
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_provider_request',
+              data: {
+                attempt: 'focused_planning_window_repair',
+                requestBytes: focusedBytes,
+                request: focusedRequest,
+              },
+            });
+            focusedResponse = await client.createChatCompletion(focusedRequest);
+            responseLengths.push(focusedResponse.length);
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_provider_response',
+              data: {
+                attempt: 'focused_planning_window_repair',
+                responseLength: focusedResponse.length,
+                rawResponse: focusedResponse,
+              },
+            });
+          } catch (error) {
+            const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+              status: 'provider_failure',
+              document: null,
+              diagnostics: diagnostics({
+                attemptCount: 2,
+                repairAttempted: true,
+                validationErrors: initialValidation.errors,
+                providerError: errorMessage(error),
+              }),
+            };
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_normalizer_decision',
+              severity: 'error',
+              data: result,
+            });
+            return result;
+          }
+
+          const focusedDecision = parseFocusedPlanningWindowRepairDecisionV5(
+            focusedResponse,
+          );
+          if (!focusedDecision) {
+            const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+              status: 'rejected',
+              document: null,
+              diagnostics: diagnostics({
+                attemptCount: 2,
+                repairAttempted: true,
+                validationErrors: [
+                  ...initialValidation.errors.map((value) => `initial:${value}`),
+                  'repair:focused-planning-window:invalid-response',
+                ],
+                providerError: null,
+              }),
+            };
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_normalizer_decision',
+              severity: 'error',
+              data: result,
+            });
+            return result;
+          }
+
+          const focusedMergedDocument = applyFocusedPlanningWindowRepairV5({
+            document: initialValidation.parsedDocument,
+            decision: focusedDecision,
+          });
+          const focusedValidation = validateWeeklyPlanningSemanticResponseV5(
+            JSON.stringify(focusedMergedDocument),
+            input,
+          );
+          algorithmicRepairs.push(...focusedValidation.algorithmicRepairs);
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_validation_result',
+            severity: focusedValidation.document ? 'info' : 'error',
+            data: {
+              attempt: 'focused_planning_window_repair',
+              accepted: Boolean(focusedValidation.document),
+              errors: focusedValidation.errors,
+              algorithmicRepairs: focusedValidation.algorithmicRepairs,
+              parsedDocument: focusedValidation.parsedDocument,
+            },
+          });
+
+          if (!focusedValidation.document) {
+            const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+              status: 'rejected',
+              document: null,
+              diagnostics: diagnostics({
+                attemptCount: 2,
+                repairAttempted: true,
+                validationErrors: [
+                  ...initialValidation.errors.map((value) => `initial:${value}`),
+                  ...focusedValidation.errors.map((value) => `repair:${value}`),
+                ],
+                providerError: null,
+              }),
+            };
+            recordWeeklyPlanningStableV5DebugTrace({
+              requestId: input.traceRequestId,
+              stage: 'semantic_normalizer_decision',
+              severity: 'error',
+              data: result,
+            });
+            return result;
+          }
+
+          const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+            status: 'accepted',
+            document: focusedValidation.document,
+            diagnostics: diagnostics({
+              attemptCount: 2,
+              repairAttempted: true,
+              validationErrors: initialValidation.errors,
+              providerError: null,
+            }),
+          };
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_normalizer_decision',
+            data: {
+              ...result,
+              orchestrationRoute: 'focused_planning_window_repair',
+            },
+          });
+          return result;
+        }
       }
 
       const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
