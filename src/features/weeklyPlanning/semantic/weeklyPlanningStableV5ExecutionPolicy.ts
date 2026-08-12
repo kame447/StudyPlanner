@@ -35,7 +35,7 @@ export interface WeeklyPlanningSessionPolicyV5 {
 
 export interface WeeklyPlanningExecutionPolicyGraphViewV5 {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
-  readonly studyContexts: ReadonlyArray<StudyContextFact>;
+  readonly studyContexts?: ReadonlyArray<StudyContextFact>;
   readonly workloads: ReadonlyArray<WorkloadFact>;
 }
 
@@ -70,7 +70,7 @@ export function inferWeeklyPlanningExecutionProfileV5(params: {
   item: GenericPlanningWorkItem;
 }): WeeklyPlanningExecutionProfileV5 {
   const workload = params.graph.workloads.find((fact) => fact.id === params.item.workloadFactId);
-  const studyContext = params.graph.studyContexts.find((fact) => fact.taskId === params.item.taskId);
+  const studyContext = params.graph.studyContexts?.find((fact) => fact.taskId === params.item.taskId);
   let profile = { ...DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5 };
 
   // These mappings deliberately use canonical structured facts only. The legacy
