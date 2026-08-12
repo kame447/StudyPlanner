@@ -117,18 +117,18 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - Stable V5 runtime sessionからlegacy global runtimeへのpublish/clear bridgeを削除し、新旧runtimeを独立管理へ変更。hydrate/finalize/clear/resetでlegacy snapshotを上書き・消去しない回帰を追加してfull CI #2657 green
 - Stable V5 scheduler candidateとpreview/draftで重複していたprovenance型を`weeklyPlanningPreviewProvenance.ts`へ単一化。既存型名はaliasで維持し、review情報を含む同一contractを生成からpreviewまで利用してfull CI #2662 green
 - RuntimeExecutorからsemantic成功後のdeterministic planning evaluationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ分離。horizon、grounding、scheduler compilation、repair/dialogue、authorizationの所有者を明確化し、architecture testも新ownerへ追従させてfull CI #2667 green
+- RuntimeExecutorからpreview scheduler実行を`weeklyPlanningStableV5PreviewExecution.ts`へ分離。scheduler inputから配置、not-before、version/default/result traceまでを専用責務へ移し、full CI #2671 green
 
 現在のloop:
 
-- RuntimeExecutorに残っていた「scheduler inputから実際の仮予定を配置する処理」と「配置結果を見てユーザーへ何を返すか」という別の変更理由を分離する。
-- schedulerへの入力組み立て、today not-before反映、preview scheduler実行、scheduler version/defaults/resultのdebug traceを`weeklyPlanningStableV5PreviewExecution.ts`へ移した。
-- RuntimeExecutorはplanning evaluation結果を受け、質問・authorization・capacity不足・empty・preview readyのresponse branchを選ぶ責務へさらに縮小した。
-- preview executionは既に決定済みのscheduler inputとFact Graphを使うだけで、raw user textの意味を解釈しない。placement/schedulerはdeterministic codeが担当するという最上位設計原則をそのまま保つ。
-- 新しいpreview execution moduleはStable V5 preview schedulerへの正式なproduction support接続点なのでproduction isolation監査へ明示登録した。
-- 既存のscheduler trace stage、version、default criteria、all-or-nothing診断は移動前と同じ内容を保持する。
+- RuntimeExecutorに残っていた、semantic成功後にuser planning context factsとStable V5 Fact Graphをstagingし、そのdebug traceを記録する副作用をresponse orchestrationから分離する。
+- `weeklyPlanningStableV5TurnStaging.ts`へ、durable context fact収集・user context staging・graph staging・それぞれのtraceを移した。
+- RuntimeExecutorはsemantic成功後にstagingを一度呼び、その後planning evaluationとresponse orchestrationへ進む。staging内容や順序は移動前と同じで、graphはfinal commitではなく従来どおりrequest単位の未確定stageへ置く。
+- 新moduleはFact Graph V5とdurable context extractionへ直接依存するproduction support moduleなので、production isolation監査へ明示登録した。
+- この分離はAIが出したsemantic document/Fact Graphの意味を変えず、commit前のtransactional stagingとobservabilityだけをdeterministic side effectとして扱う。意味理解をdeterministic codeへ移していない。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのresponse branch構築、user context/graph staging side effects、legacy runtimeの残存production reachability、その他application orchestrationを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのresponse branch構築・trace、legacy runtimeの残存production reachability、その他application orchestrationを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
