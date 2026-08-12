@@ -1,5 +1,6 @@
 import { getWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type { WeeklyPlanDraftBlock } from '../types';
+import { getWeeklyPlanningStableV5RuntimeSession } from './weeklyPlanningStableV5RuntimeSession';
 
 export type WeeklyPlanningApprovalAvailability =
   | {
@@ -30,6 +31,43 @@ const RECOMPUTE_MESSAGE =
   '再読み込み前の仮予定です。最新条件で作り直してください。';
 const BLOCKED_MESSAGE =
   'この仮予定は現在承認できません。最新条件で作り直してください。';
+
+function isStableV5Block(block: WeeklyPlanDraftBlock): boolean {
+  return block.behaviorMetadata?.compatibility.candidateSource === 'stable_v5';
+}
+
+function stableV5ApprovalAvailability(params: {
+  firstConversationId: string | undefined;
+  stateRevision: number;
+  userId: string;
+}): WeeklyPlanningApprovalAvailability {
+  if (!params.firstConversationId) {
+    return {
+      kind: 'recompute_required',
+      reason: 'session_runtime_unavailable',
+      message: RECOMPUTE_MESSAGE,
+    };
+  }
+  const runtime = getWeeklyPlanningStableV5RuntimeSession(params.firstConversationId);
+  if (!runtime) {
+    return {
+      kind: 'recompute_required',
+      reason: 'session_runtime_unavailable',
+      message: RECOMPUTE_MESSAGE,
+    };
+  }
+  if (runtime.ownerId !== params.userId) {
+    return { kind: 'blocked', reason: 'user_mismatch', message: BLOCKED_MESSAGE };
+  }
+  if (runtime.graph.revision !== params.stateRevision) {
+    return {
+      kind: 'recompute_required',
+      reason: 'state_revision_mismatch',
+      message: RECOMPUTE_MESSAGE,
+    };
+  }
+  return { kind: 'eligible', reason: 'current_session' };
+}
 
 export function classifyWeeklyPlanningApprovalAvailability(params: {
   blocks: readonly WeeklyPlanDraftBlock[];
@@ -76,6 +114,14 @@ export function classifyWeeklyPlanningApprovalAvailability(params: {
     || first.approvalEligibility !== 'eligible'
   ) {
     return { kind: 'blocked', reason: 'metadata_ineligible', message: BLOCKED_MESSAGE };
+  }
+
+  if (blocks.every(isStableV5Block)) {
+    return stableV5ApprovalAvailability({
+      firstConversationId: first.conversationId,
+      stateRevision: first.stateRevision,
+      userId: params.userId,
+    });
   }
 
   if (!first.conversationId) {
