@@ -60,7 +60,6 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   scheduleTemplates: ScheduleTemplate[];
   timetableTermId?: string;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
-  estimateCalibrationMultiplier?: number;
   timeZone?: string;
   now?: () => string;
   getState(): PlanningState;
@@ -101,7 +100,6 @@ export function submitWeeklyPlanningApplicationTurn(
         conversationId: pending.conversationId,
         traceRequestId: pending.requestId,
         weekStartsOn: requestContext.weekStartsOn,
-        estimateCalibrationMultiplier: params.estimateCalibrationMultiplier,
         requestContext,
       });
     },
