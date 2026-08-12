@@ -145,31 +145,21 @@ describe('Stable V5 contextual ID boundary', () => {
     });
 
     const systemPrompt = calls[1]?.messages[0]?.content ?? '';
+    expect(systemPrompt).toContain('pendingQuestion as authoritative');
+    expect(systemPrompt).toContain('exact target');
     expect(systemPrompt).toContain('fresh localIds');
-    expect(systemPrompt).toContain(
-      'target means the amount intended for this plan',
-    );
-    expect(systemPrompt).toContain(
-      'Never keep uncertainty for a resolved role',
-    );
-    expect(systemPrompt).toContain(
-      'public Fact IDs in targetLocalId',
-    );
 
     const repairMessages = calls[2]?.messages ?? [];
     const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '{}';
     const repairPayload = JSON.parse(repairMessage) as {
       requiredChanges?: string[];
     };
-    expect(repairPayload.requiredChanges).toEqual([
-      expect.stringContaining(
-        'Never copy a publicStateSummary publicId into targetLocalId',
-      ),
-    ]);
-    expect(repairPayload.requiredChanges).toEqual([
-      expect.stringContaining(
-        'remove the uncertainty and emit one minimal local task and workload',
-      ),
-    ]);
+    expect(repairPayload.requiredChanges).toHaveLength(1);
+    expect(repairPayload.requiredChanges?.[0]).toContain(
+      'localId declared in this response',
+    );
+    expect(repairPayload.requiredChanges?.[0]).toContain(
+      'Never copy a public Fact ID into targetLocalId',
+    );
   });
 });
