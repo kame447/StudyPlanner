@@ -144,6 +144,51 @@ function nextUserReply(params: {
   );
 }
 
+function writeFailureOutput(params: {
+  turnIndex: number;
+  userText: string;
+  requestId: string;
+  result: WeeklyPlanningTurnExecutionResult;
+  trace: unknown[];
+  turns: ObservedTurn[];
+  state: PlanningState;
+  graph: WeeklyPlanningFactGraphV5 | null;
+}): void {
+  mkdirSync(outputDir, { recursive: true });
+  const payload = {
+    turnIndex: params.turnIndex,
+    userText: params.userText,
+    requestId: params.requestId,
+    failure: params.result.failure ?? null,
+    result: params.result,
+    priorTurns: params.turns,
+    planningState: params.state,
+    graph: params.graph,
+    trace: params.trace,
+  };
+  writeFileSync(`${outputDir}/failure.json`, `${JSON.stringify(payload, null, 2)}\n`);
+  writeFileSync(`${outputDir}/transcript.md`, [
+    '# Weekly Planning Full Real API Conversation — Failure',
+    '',
+    ...params.turns.flatMap((turn) => [
+      `## Turn ${turn.index}`,
+      '',
+      `ユーザー: ${turn.userText}`,
+      '',
+      `アプリ: ${turn.assistantText}`,
+      '',
+    ]),
+    `## Failed Turn ${params.turnIndex}`,
+    '',
+    `ユーザー: ${params.userText}`,
+    '',
+    `Failure: ${params.result.failure?.code ?? 'unknown'}`,
+    '',
+  ].join('\n'));
+  console.log('--- FULL CONVERSATION FAILURE DIAGNOSTICS ---');
+  console.log(JSON.stringify(payload, null, 2));
+}
+
 function writeOutputs(params: {
   turns: ObservedTurn[];
   state: PlanningState;
@@ -226,7 +271,19 @@ run('weekly planning full real API conversation', () => {
 
       expect(submission.accepted).toBe(true);
       const { result, requestId } = requireCapturedTurn(capture, index);
+      const trace = takeWeeklyPlanningStableV5DebugTrace(requestId);
       if (result.failure) {
+        const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
+        writeFailureOutput({
+          turnIndex: index,
+          userText,
+          requestId,
+          result,
+          trace,
+          turns,
+          state: store.getState(),
+          graph: runtime?.graph ?? null,
+        });
         throw new Error(
           `Turn ${index} failed: ${result.failure.code} ${result.failure.traceCode}`,
         );
@@ -235,7 +292,6 @@ run('weekly planning full real API conversation', () => {
       if (!assistantText.trim()) throw new Error(`Turn ${index} assistant response was empty.`);
       const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
       if (!runtime) throw new Error(`Turn ${index} runtime session disappeared.`);
-      const trace = takeWeeklyPlanningStableV5DebugTrace(requestId);
       turns.push({
         index,
         userText,
