@@ -265,9 +265,13 @@ describe('Stable V5 semantic pipeline explicit repair', () => {
         unitCode: 'problem',
       }),
     ]);
-    expect(repaired.scheduler?.input?.movableWorkItems).toEqual([
-      expect.objectContaining({ estimatedMinutes: 7200 }),
-    ]);
+
+    const workItems = repaired.scheduler?.input?.movableWorkItems ?? [];
+    expect(workItems).toHaveLength(6);
+    expect(workItems.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(7200);
+    expect(workItems.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
+    expect(workItems.map((item) => item.quantity.amount)).toEqual([7, 7, 7, 7, 6, 6]);
+    expect(workItems.every((item) => item.estimatedMinutes === 1200)).toBe(true);
   });
 
   it('rejects a short reply atomically when the pending target disappeared', async () => {
