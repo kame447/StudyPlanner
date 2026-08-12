@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
-import { validateWeeklyPlanningWeekdayEncodingV5 } from './weeklyPlanningWeekdayEncodingV5';
+import {
+  normalizeWeeklyPlanningWeekdayEncodingV5,
+  validateWeeklyPlanningWeekdayEncodingV5,
+} from './weeklyPlanningWeekdayEncodingV5';
 
 function documentWithDay(day: string): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -39,28 +42,36 @@ function documentWithDay(day: string): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Stable V5 weekday encoding', () => {
-  it('accepts canonical weekday:<english-day> tokens and rejects bare weekdays', () => {
+  it('accepts canonical weekday tokens and still rejects unknown aliases', () => {
     expect(validateWeeklyPlanningWeekdayEncodingV5(
       documentWithDay('weekday:tuesday'),
     )).toEqual([]);
     expect(validateWeeklyPlanningWeekdayEncodingV5(
-      documentWithDay('tuesday'),
+      documentWithDay('tue'),
     )).toEqual([
-      'availabilityDeclarations[a1].days:canonical-weekday-required:tuesday',
+      'availabilityDeclarations[a1].days:canonical-weekday-required:tue',
     ]);
   });
 
-  it('still validates and repairs a mocked provider violation without prompt-wording coupling', async () => {
-    const responses = [
-      JSON.stringify(documentWithDay('tuesday')),
-      JSON.stringify(documentWithDay('weekday:tuesday')),
-    ];
+  it('canonicalizes an exact bare weekday alias without semantic inference', () => {
+    const normalized = normalizeWeeklyPlanningWeekdayEncodingV5(
+      documentWithDay('tuesday'),
+    );
+
+    expect(normalized.document.availabilityDeclarations[0]?.days).toEqual([
+      'weekday:tuesday',
+    ]);
+    expect(normalized.repairs).toEqual([
+      'weekday-token-canonicalized:availability:a1:tuesday->weekday:tuesday',
+    ]);
+  });
+
+  it('accepts a mocked bare weekday provider violation in one call', async () => {
+    const response = JSON.stringify(documentWithDay('tuesday'));
     const requests: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(request) {
         requests.push(request);
-        const response = responses.shift();
-        if (!response) throw new Error('response sequence exhausted');
         return response;
       },
     };
@@ -71,15 +82,15 @@ describe('Stable V5 weekday encoding', () => {
 
     expect(result.status).toBe('accepted');
     expect(result.diagnostics).toMatchObject({
-      attemptCount: 2,
-      repairAttempted: true,
+      attemptCount: 1,
+      repairAttempted: false,
     });
+    expect(result.diagnostics.algorithmicRepairs).toContain(
+      'weekday-token-canonicalized:availability:a1:tuesday->weekday:tuesday',
+    );
     expect(result.document?.availabilityDeclarations[0]?.days).toEqual([
       'weekday:tuesday',
     ]);
-    expect(requests).toHaveLength(2);
-    expect(requests[1].responseFormat?.json_schema.name).toBe(
-      'weekly_planning_semantic_document_v5',
-    );
+    expect(requests).toHaveLength(1);
   });
 });
