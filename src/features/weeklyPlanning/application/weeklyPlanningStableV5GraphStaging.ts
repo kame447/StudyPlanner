@@ -7,10 +7,19 @@ export interface StagedWeeklyPlanningStableV5Graph {
   graph: WeeklyPlanningFactGraphV5;
 }
 
+const MAX_STAGED_GRAPHS = 128;
 const stagedGraphs = new Map<string, StagedWeeklyPlanningStableV5Graph>();
 
 function stagedKey(conversationId: string, requestId: string): string {
   return `${conversationId}:${requestId}`;
+}
+
+function trimStagedGraphs(): void {
+  while (stagedGraphs.size > MAX_STAGED_GRAPHS) {
+    const oldestKey = stagedGraphs.keys().next().value;
+    if (typeof oldestKey !== 'string') return;
+    stagedGraphs.delete(oldestKey);
+  }
 }
 
 function requestIdFromGraph(
@@ -32,12 +41,15 @@ export function stageWeeklyPlanningStableV5Graph(params: {
   graph: WeeklyPlanningFactGraphV5;
 }): string {
   const requestId = requestIdFromGraph(params.graph, params.conversationId);
-  stagedGraphs.set(stagedKey(params.conversationId, requestId), {
+  const key = stagedKey(params.conversationId, requestId);
+  stagedGraphs.delete(key);
+  stagedGraphs.set(key, {
     ownerId: params.ownerId,
     conversationId: params.conversationId,
     requestId,
     graph: structuredClone(params.graph),
   });
+  trimStagedGraphs();
   return requestId;
 }
 
