@@ -3,7 +3,7 @@ import { WEEKLY_PLANNING_PLAN_SOURCE_TYPE } from '../planning/weeklyPlanningPlan
 import { resolveApprovalDraftIdentity } from './weeklyPlanningApprovalPersistencePolicy';
 import type {
   WeeklyPlanningApprovalPlanRepository,
-} from './weeklyPlanningApprovalPlanRepository';
+} from './weeklyPlanningApprovalPlanRepositoryContract';
 
 export function createPlannerBackedWeeklyPlanningApprovalPlanRepository(): WeeklyPlanningApprovalPlanRepository {
   return {
