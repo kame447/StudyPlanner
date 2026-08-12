@@ -44,6 +44,9 @@ import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
 import {
   distributeGenericSchedulerWorkItemsV5,
 } from './weeklyPlanningSchedulerWorkDistributionV5';
+import {
+  detectWeeklyPlanningRelationCycleV5,
+} from './weeklyPlanningRelationCycleV5';
 
 export const GENERIC_SCHEDULER_INPUT_VERSION =
   'weekly-planning-generic-scheduler-input-v2' as const;
@@ -136,7 +139,7 @@ export type GenericSchedulerInputIssue =
     }
   | {
       domain: 'relation';
-      code: 'orphan_relation_task' | 'self_relation';
+      code: 'orphan_relation_task' | 'self_relation' | 'relation_cycle';
       blocking: true;
       factId: string;
       details?: Record<string, string | number | boolean | null>;
@@ -216,6 +219,7 @@ function compileRelations(params: {
 }): GenericSchedulerTaskRelation[] {
   const taskIds = new Set(params.graph.tasks.map((task) => task.id));
   const relations: GenericSchedulerTaskRelation[] = [];
+  const validFacts: TaskRelationFact[] = [];
   for (const relation of params.graph.relations) {
     if (!taskIds.has(relation.fromTaskId) || !taskIds.has(relation.toTaskId)) {
       params.issues.push({
@@ -239,11 +243,25 @@ function compileRelations(params: {
       });
       continue;
     }
+    validFacts.push(relation);
     relations.push({
       factId: relation.id,
       kind: relation.kind,
       fromTaskId: relation.fromTaskId,
       toTaskId: relation.toTaskId,
+    });
+  }
+  const cycle = detectWeeklyPlanningRelationCycleV5(validFacts);
+  if (cycle) {
+    params.issues.push({
+      domain: 'relation',
+      code: 'relation_cycle',
+      blocking: true,
+      factId: cycle.relationFactIds[0] ?? validFacts[0]?.id ?? 'relation-cycle',
+      details: {
+        relationFactIds: cycle.relationFactIds.join(','),
+        taskIds: cycle.taskIds.join(','),
+      },
     });
   }
   return relations;
