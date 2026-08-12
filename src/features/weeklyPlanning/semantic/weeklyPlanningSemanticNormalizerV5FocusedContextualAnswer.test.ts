@@ -1,0 +1,144 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
+
+function publicStateSummary(questionCode: 'missing_effort_estimate' | 'quantity_role_unresolved') {
+  return {
+    graphRevision: 2,
+    previousCompatibilityStatus: 'revision_pending',
+    pendingQuestion: {
+      actionId: null,
+      questionCode,
+      targetFactId: 'workload-vocab',
+      graphRevision: 2,
+    },
+    workloads: [{
+      publicId: 'workload-vocab',
+      taskPublicId: 'task-vocab',
+      componentPublicId: 'component-vocab',
+      quantityRole: questionCode === 'quantity_role_unresolved' ? 'declared' : 'target',
+      amount: 220,
+      unitCode: 'word',
+      unitLabel: '語',
+    }],
+    tasks: [{ publicId: 'task-vocab', category: 'study', title: '英単語を進める' }],
+  };
+}
+
+describe('Stable V5 focused contextual-answer semantic route', () => {
+  it('interprets a direct pending effort reply without invoking the generic full-plan normalizer', async () => {
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        decision: 'effort_answer',
+        minutes: 30,
+        precision: 'approximate',
+        quantityRole: null,
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '30分くらいです。',
+      publicStateSummary: publicStateSummary('missing_effort_estimate'),
+      traceRequestId: 'turn-3',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 1,
+      repairAttempted: false,
+      validationErrors: [],
+    });
+    expect(result.document).toMatchObject({
+      planningIntent: 'update_plan',
+      planningWindow: null,
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    });
+    expect(result.document?.tasks).toHaveLength(1);
+    expect(result.document?.tasks[0].workloads).toEqual([]);
+    expect(result.document?.tasks[0].effortEstimates).toEqual([
+      expect.objectContaining({
+        minutes: 30,
+        precision: 'approximate',
+        sourceText: '30分くらいです。',
+      }),
+    ]);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+
+    const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    expect(request.responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
+    });
+    expect(JSON.stringify(request.messages)).not.toContain('英単語220語');
+  });
+
+  it('interprets a direct quantity-role reply through the same exact-pending-target route', async () => {
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn(async () => JSON.stringify({
+        decision: 'quantity_role_answer',
+        minutes: null,
+        precision: null,
+        quantityRole: 'remaining',
+      })),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '残っている量です。',
+      publicStateSummary: publicStateSummary('quantity_role_unresolved'),
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks[0].workloads).toEqual([
+      expect.objectContaining({
+        quantityRole: 'remaining',
+        amount: 220,
+        unitCode: 'word',
+        sourceText: '残っている量です。',
+      }),
+    ]);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to generic semantics when the focused AI says the turn changes other planning facts', async () => {
+    const genericDocument = JSON.stringify({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'discuss',
+      planningWindow: null,
+      tasks: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+    });
+    const client: OpenAiCompatibleClient = {
+      createChatCompletion: vi.fn()
+        .mockResolvedValueOnce(JSON.stringify({
+          decision: 'fallback',
+          minutes: null,
+          precision: null,
+          quantityRole: null,
+        }))
+        .mockResolvedValueOnce(genericDocument),
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '30分くらい。あと火曜じゃなくて水曜を空けて。',
+      publicStateSummary: publicStateSummary('missing_effort_estimate'),
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks).toEqual([]);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    const secondRequest = vi.mocked(client.createChatCompletion).mock.calls[1][0];
+    expect(secondRequest.responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_semantic_document_v5' },
+    });
+  });
+});
