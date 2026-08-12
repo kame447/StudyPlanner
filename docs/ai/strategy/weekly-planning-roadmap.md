@@ -109,7 +109,8 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - semanticルールやrouting条件は変更せず、既存のAI pipelineを同じ入力で呼ぶ。deterministic側へraw text解釈を移していないため「意味理解はAI、formal planning decisionはdeterministic code」という最上位設計原則を維持する。
 - semantic failure時のcompatibility outputとtrace contractもSemanticTurnへ同時に移し、failure branchの挙動を維持する。
 - 新しいSemanticTurnはsemantic normalizer/pipelineへ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録した。
-- このloopの完了判定は最終headのfull CI greenを必要とする。
+- 初回CI #2588では実挙動ではなく`weeklyPlanningStableV5RecoveryContract.test.ts`のsource ownership監査2件が旧RuntimeExecutorを参照したままで失敗した。監査を削除・緩和せず、semantic public state summaryとstructural rejection recovery文面の所有者を新しいSemanticTurnへ追従させた。question-policy / deterministic dialogueの監査は引き続きRuntimeExecutor / RuntimeQuestionsを参照する。
+- このloopの完了判定は修正後最終headのfull CI greenを必要とする。
 
 次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor内部のdeterministic planning phase、approval adapter群、runtime session、turn side effectsを引き続き変更理由ベースで疑う。
 
