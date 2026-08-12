@@ -1,26 +1,12 @@
 import {
   stageUserPlanningContextFactsV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
-import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import {
-  createWeeklyPlanningActiveSchedulerGraphViewV5,
-} from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
   collectUserPlanningContextFactsV5,
 } from '../semantic/weeklyPlanningDurableContextSignalsV5';
-import {
-  compileGenericSchedulerInput,
-  type GenericSchedulerInputCompilationResult,
+import type {
+  GenericSchedulerInputCompilationResult,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
-import {
-  reconcileWeeklyPlanningGroundingRecordsV5,
-} from '../semantic/weeklyPlanningGroundingV5';
-import {
-  decideWeeklyPlanningStableDialogueV5,
-} from '../semantic/weeklyPlanningStableDialoguePolicyV5';
-import {
-  decideWeeklyPlanningStableRepairPolicyV5,
-} from '../semantic/weeklyPlanningStableRepairPolicyV5';
 import {
   scheduleWeeklyPlanningStableV5Preview,
   WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
@@ -33,12 +19,11 @@ import {
   projectStableV5CompatibilityOutput,
 } from './weeklyPlanningStableV5CompatibilityState';
 import {
-  createStableV5ExternalConstraintSources,
-} from './weeklyPlanningStableV5ExternalSources';
-import {
-  stableV5RelevantContinuationAccepted,
   withStableV5GroundingProposal,
 } from './weeklyPlanningStableV5GroundingFlow';
+import {
+  evaluateWeeklyPlanningStableV5Planning,
+} from './weeklyPlanningStableV5PlanningEvaluation';
 import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
@@ -55,16 +40,15 @@ import {
   executeWeeklyPlanningStableV5SemanticTurn,
 } from './weeklyPlanningStableV5SemanticTurn';
 import {
-  createWeeklyPlanningSchedulerContext,
-  resolveWeeklyPlanningPlanningHorizon,
-} from './weeklyPlanningTemporalContext';
-import {
   commitWeeklyPlanningStableV5RuntimeGraph,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
+export {
+  isWeeklyPlanningStableV5PreviewAuthorized,
+} from './weeklyPlanningStableV5PlanningEvaluation';
 
 function traceRuntimeBranch(params: {
   requestId: string;
@@ -140,75 +124,26 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     },
   });
 
-  const semanticDiff = semantic.canonicalization?.diff ?? undefined;
-  const preliminaryHorizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: semantic.graph,
-    selectedDate: input.selectedDate,
-    requestContext,
-    groundingRecords: input.previousState?.groundingRecords,
+  const evaluation = evaluateWeeklyPlanningStableV5Planning({
+    input,
+    semanticTurn,
   });
-  const continuationAccepted = stableV5RelevantContinuationAccepted({
-    previousState: input.previousState,
-    diff: semanticDiff,
-  });
-  const groundingRecords = reconcileWeeklyPlanningGroundingRecordsV5({
-    previousRecords: input.previousState?.groundingRecords ?? [],
-    previousGraph: runtimeSession.graph,
-    nextGraph: semantic.graph,
-    resolvedHorizon: preliminaryHorizon,
-    currentTurnId: input.traceRequestId,
+  const {
     continuationAccepted,
-  });
-  const horizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: semantic.graph,
-    selectedDate: input.selectedDate,
-    requestContext,
     groundingRecords,
-  });
-  const schedulerContext = createWeeklyPlanningSchedulerContext({
-    ownerId: input.userId,
     horizon,
-    requestContext,
-  });
-  const externalSources = createStableV5ExternalConstraintSources({
-    ownerId: input.userId,
-    plans: input.plans,
-    templates: input.scheduleTemplates,
-    timetableTermId: input.timetableTermId,
-    horizon,
-    timeZone: requestContext.timeZone,
-  });
-  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
-  const compilation = compileGenericSchedulerInput({
-    graph: activeGraph,
-    context: schedulerContext,
+    schedulerContext,
     externalSources,
-  });
-  const repairDecision = decideWeeklyPlanningStableRepairPolicyV5({
-    graph: semantic.graph,
+    activeGraph,
     compilation,
-    previousAgenda: input.previousState?.repairAgenda ?? [],
-    graphRevision: semantic.graph.revision,
-    turnId: input.traceRequestId,
-  });
-  const baselineDialogue = decideWeeklyPlanningStableDialogueV5(compilation);
-  const dialogue = repairDecision.question
-    ? { status: 'ask_question' as const, question: repairDecision.question }
-    : baselineDialogue;
-  const planningIntent = semantic.normalization.document?.planningIntent ?? null;
-  const semanticChanged = Boolean(
-    semanticDiff
-    && (semanticDiff.added.length > 0
-      || semanticDiff.superseded.length > 0
-      || semanticDiff.removed.length > 0),
-  );
-  const previousDraftGenerationIntent = input.previousState?.draftGenerationIntent ?? null;
-  const authorized = isWeeklyPlanningStableV5PreviewAuthorized({
-    previousStatus: input.previousState?.status ?? null,
-    previousDraftGenerationIntent,
+    repairDecision,
+    dialogue,
     planningIntent,
     semanticChanged,
-  });
+    previousDraftGenerationIntent,
+    authorized,
+  } = evaluation;
+
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
     stage: 'runtime_scheduler_dialogue_evaluated',
@@ -493,19 +428,6 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     output,
   });
   return output;
-}
-
-export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
-  previousStatus: PlanningIntakeState['status'] | null;
-  previousDraftGenerationIntent: PlanningIntakeState['draftGenerationIntent'] | null;
-  planningIntent: 'create_plan' | 'update_plan' | 'discuss' | 'unknown' | null;
-  semanticChanged: boolean;
-}): boolean {
-  if (params.planningIntent === 'create_plan') return true;
-  if (params.previousStatus === 'draft_ready') {
-    return params.planningIntent === 'update_plan' && params.semanticChanged;
-  }
-  return params.previousDraftGenerationIntent === 'user_authorized';
 }
 
 export function getWeeklyPlanningStableV5BlockingIssueCode(
