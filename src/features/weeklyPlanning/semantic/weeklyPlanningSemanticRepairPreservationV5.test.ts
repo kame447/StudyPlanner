@@ -10,9 +10,12 @@ import {
   validateWeeklyPlanningSemanticRepairPreservationV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
 
+const USER_TEXT = '8月17日から23日で、英単語220語を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。';
+
 function document(params: {
   canonicalWindow: boolean;
   includeTask?: boolean;
+  includeAvailability?: boolean;
   planningIntent?: 'create_plan' | 'update_plan' | 'discuss' | 'unknown';
 }): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -35,8 +38,9 @@ function document(params: {
           end: null,
           sourceText: '8月17日から23日',
         },
-    tasks: params.includeTask
-      ? [{
+    tasks: params.includeTask === false
+      ? []
+      : [{
           localId: 't1',
           existingPublicId: null,
           decompositionStatus: 'decomposed',
@@ -54,17 +58,17 @@ function document(params: {
               workloads: [{
                 localId: 'w1',
                 quantityRole: 'target',
-                amount: 80,
+                amount: 220,
                 unitCode: 'word',
                 unitLabel: '語',
                 rangeStart: null,
                 rangeEnd: null,
                 perOccurrence: false,
                 periodExpression: null,
-                sourceText: '英単語80語',
+                sourceText: '英単語220語',
               }],
               durableContextSignals: [],
-              sourceText: '英単語80語',
+              sourceText: '英単語220語',
             }],
           },
           workloads: [],
@@ -72,11 +76,23 @@ function document(params: {
           temporalConstraints: [],
           recurrence: [],
           durableContextSignals: [],
-          sourceText: '英単語80語',
-        }]
-      : [],
+          sourceText: '英単語220語',
+        }],
     relations: [],
-    availabilityDeclarations: [],
+    availabilityDeclarations: params.includeAvailability === false
+      ? []
+      : [{
+          localId: 'a1',
+          kind: 'unavailable',
+          dateExpression: 'weekday:tuesday',
+          namedTimePeriod: null,
+          startTime: '18:00',
+          endTime: '20:00',
+          recurrenceKind: 'weekly',
+          days: ['weekday:tuesday'],
+          constraintLevel: 'hard',
+          sourceText: '火曜日の18時から20時は予定があるので避けてください',
+        }],
     constraintSourceRequests: [],
     userContextFacts: [],
     uncertainties: [],
@@ -98,27 +114,32 @@ describe('Stable V5 targeted semantic repair preservation', () => {
 
   it('allows the targeted planning-window representation to change while preserving all other facts', () => {
     expect(validateWeeklyPlanningSemanticRepairPreservationV5({
-      initialDocument: document({ canonicalWindow: false, includeTask: true }),
-      repairedDocument: document({ canonicalWindow: true, includeTask: true }),
+      initialDocument: document({ canonicalWindow: false }),
+      repairedDocument: document({ canonicalWindow: true }),
       initialErrors: ['document.planningWindow:absolute-iso-range-required'],
     })).toEqual([]);
   });
 
-  it('rejects a repair that fixes the window but silently drops an unrelated accepted task', () => {
+  it('rejects a repair that fixes the window but silently drops unrelated current-turn facts', () => {
     expect(validateWeeklyPlanningSemanticRepairPreservationV5({
-      initialDocument: document({ canonicalWindow: false, includeTask: true }),
-      repairedDocument: document({ canonicalWindow: true, includeTask: false }),
+      initialDocument: document({ canonicalWindow: false }),
+      repairedDocument: document({
+        canonicalWindow: true,
+        includeTask: false,
+        includeAvailability: false,
+        planningIntent: 'unknown',
+      }),
       initialErrors: ['document.planningWindow:absolute-iso-range-required'],
     })).toEqual([
       'semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
     ]);
   });
 
-  it('keeps the normalizer fixture representation-only before testing destructive repair rejection', () => {
-    const initial = document({ canonicalWindow: false, includeTask: true });
+  it('keeps the exact real-API fixture schema-valid before the representation guard', () => {
+    const initial = document({ canonicalWindow: false });
     const validation = validateWeeklyPlanningSemanticResponseV5(
       JSON.stringify(initial),
-      { userText: '8月17日から23日で英単語80語の予定を作りたい' },
+      { userText: USER_TEXT },
     );
 
     expect(validation.parsedDocument).not.toBeNull();
@@ -131,10 +152,11 @@ describe('Stable V5 targeted semantic repair preservation', () => {
 
   it('rejects a schema-valid destructive AI repair at the normalizer boundary', async () => {
     const responses = [
-      JSON.stringify(document({ canonicalWindow: false, includeTask: true })),
+      JSON.stringify(document({ canonicalWindow: false })),
       JSON.stringify(document({
         canonicalWindow: true,
         includeTask: false,
+        includeAvailability: false,
         planningIntent: 'unknown',
       })),
     ];
@@ -147,7 +169,7 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     };
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
-      userText: '8月17日から23日で英単語80語の予定を作りたい',
+      userText: USER_TEXT,
     });
 
     expect(result.status).toBe('rejected');
