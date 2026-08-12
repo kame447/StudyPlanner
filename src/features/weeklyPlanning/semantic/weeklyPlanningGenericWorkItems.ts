@@ -12,6 +12,12 @@ import {
 import {
   splitVocabularyIntoLearningSessionsV5,
 } from './weeklyPlanningEffortQuestionPolicyV5';
+import {
+  distributeDiscreteQuantityAcrossWeeklyBucketsV5,
+  distributeMinutesAcrossWeeklyBucketsV5,
+  WEEKLY_PLANNING_STABLE_V5_MIN_DAILY_WORK_MINUTES,
+  WEEKLY_PLANNING_STABLE_V5_NORMAL_WEEK_DAYS,
+} from './weeklyPlanningStableV5DistributionPolicy';
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
 
@@ -117,6 +123,15 @@ function createVocabularySessionWorkItemId(
   )}`;
 }
 
+function createDiscreteSessionWorkItemId(
+  workloadFactId: string,
+  sessionIndex: number,
+): string {
+  return `wpwi_${stableHash(
+    `${GENERIC_WORK_ITEM_VERSION}|${workloadFactId}|discrete-session:${sessionIndex}`,
+  )}`;
+}
+
 function taskById(graph: WeeklyPlanningGenericWorkGraphView): Map<string, PlanningTaskFact> {
   return new Map(graph.tasks.map((task) => [task.id, task]));
 }
@@ -154,7 +169,7 @@ function actualRange(workload: WorkloadFact): GenericWorkItemQuantity['actualRan
   return { start: workload.rangeStart, end: workload.rangeEnd };
 }
 
-function vocabularySessionActualRange(params: {
+function discreteSessionActualRange(params: {
   workload: WorkloadFact;
   ordinalStart: number;
   ordinalEnd: number;
@@ -287,15 +302,14 @@ function resolveEstimatedMinutes(params: {
 }
 
 function deriveSplitPolicy(workload: WorkloadFact): GenericPlanningWorkItem['splitPolicy'] {
+  if (workload.unitCode === 'minute' || workload.unitCode === 'hour') return 'splittable';
   if (
-    workload.unitCode === 'minute'
-    || workload.unitCode === 'hour'
-    || workload.unitCode === 'page'
+    workload.unitCode === 'page'
     || workload.unitCode === 'problem'
+    || workload.unitCode === 'mock_exam'
   ) {
-    return 'splittable';
+    return 'atomic';
   }
-  if (workload.unitCode === 'mock_exam') return 'atomic';
   return 'unknown';
 }
 
@@ -367,7 +381,7 @@ function compileVocabularySessionWorkItems(params: {
     const ordinalStart = consumedWords + 1;
     consumedWords += session.quantityAmount;
     const ordinalEnd = consumedWords;
-    const explicitRange = vocabularySessionActualRange({
+    const explicitRange = discreteSessionActualRange({
       workload: params.workload,
       ordinalStart,
       ordinalEnd,
@@ -399,6 +413,96 @@ function compileVocabularySessionWorkItems(params: {
       estimateSourceFactIds: params.estimate.sourceFactIds,
       estimateSourceWorkloadFactIds: params.estimate.sourceWorkloadFactIds,
       splitPolicy: 'atomic',
+      periodExpression: params.workload.periodExpression,
+      sourceFactRefs: [...refs],
+    };
+  });
+}
+
+function compileDiscreteStudySessionWorkItems(params: {
+  task: PlanningTaskFact;
+  component: StudyComponentFact | null;
+  workload: WorkloadFact;
+  estimate: EstimateResolution;
+  allocationMinutes: number;
+  calibrationMultiplier: number;
+  roundingStepMinutes: WeeklyPlanningAllocationStepMinutes;
+  unresolvedRole: boolean;
+}): GenericPlanningWorkItem[] | null {
+  if (
+    params.workload.unitCode !== 'page'
+    && params.workload.unitCode !== 'problem'
+  ) {
+    return null;
+  }
+  if (!Number.isInteger(params.workload.amount) || params.workload.amount <= 1) return null;
+  const possibleSpreadSessions = Math.max(
+    1,
+    Math.floor(
+      params.allocationMinutes / WEEKLY_PLANNING_STABLE_V5_MIN_DAILY_WORK_MINUTES,
+    ),
+  );
+  const sessionCount = Math.min(
+    WEEKLY_PLANNING_STABLE_V5_NORMAL_WEEK_DAYS,
+    possibleSpreadSessions,
+    params.workload.amount,
+  );
+  if (sessionCount <= 1) return null;
+
+  const durations = distributeMinutesAcrossWeeklyBucketsV5(
+    params.allocationMinutes,
+    sessionCount,
+  );
+  const quantities = distributeDiscreteQuantityAcrossWeeklyBucketsV5(
+    params.workload.amount,
+    sessionCount,
+  );
+  if (durations.length !== quantities.length || durations.length !== sessionCount) return null;
+
+  const refs = sourceFactRefs({ workload: params.workload, estimate: params.estimate });
+  const label = targetLabel(params);
+  let consumedQuantity = 0;
+  return quantities.map((quantity, sessionIndex) => {
+    const ordinalStart = consumedQuantity + 1;
+    consumedQuantity += quantity;
+    const ordinalEnd = consumedQuantity;
+    const explicitRange = discreteSessionActualRange({
+      workload: params.workload,
+      ordinalStart,
+      ordinalEnd,
+    });
+    const rangeMarker = explicitRange
+      ? `（${explicitRange.start}〜${explicitRange.end}${params.workload.unitLabel}）`
+      : `（${ordinalStart}〜${ordinalEnd}${params.workload.unitLabel}）`;
+    const durationMinutes = durations[sessionIndex];
+    const baseEstimatedMinutes = params.estimate.estimatedMinutes === null
+      || params.allocationMinutes <= 0
+      ? null
+      : params.estimate.estimatedMinutes * (durationMinutes / params.allocationMinutes);
+    return {
+      version: GENERIC_WORK_ITEM_VERSION,
+      id: createDiscreteSessionWorkItemId(params.workload.id, sessionIndex),
+      taskId: params.workload.taskId,
+      componentId: params.workload.componentId,
+      workloadFactId: params.workload.id,
+      label: `${label} ${quantity}${params.workload.unitLabel}${rangeMarker}`,
+      quantityRole: params.workload.quantityRole,
+      actionability: params.unresolvedRole ? 'needs_resolution' : 'actionable',
+      quantity: {
+        amount: quantity,
+        unitCode: params.workload.unitCode,
+        unitLabel: params.workload.unitLabel,
+        ordinalRange: { start: ordinalStart, end: ordinalEnd },
+        actualRange: explicitRange,
+      },
+      estimatedMinutes: durationMinutes,
+      baseEstimatedMinutes,
+      calibrationMultiplier: params.calibrationMultiplier,
+      roundingStepMinutes: params.roundingStepMinutes,
+      estimateBasis: params.estimate.basis,
+      estimateSourceFactIds: params.estimate.sourceFactIds,
+      estimateSourceWorkloadFactIds: params.estimate.sourceWorkloadFactIds,
+      splitPolicy: 'atomic' as const,
       periodExpression: params.workload.periodExpression,
       sourceFactRefs: [...refs],
     };
@@ -463,6 +567,22 @@ export function compileGenericPlanningWorkItems(
     const allocation = estimate.estimatedMinutes === null
       ? null
       : allocateWeeklyPlanningEffort({ baseEstimateMinutes: estimate.estimatedMinutes });
+    if (allocation) {
+      const discreteSessions = compileDiscreteStudySessionWorkItems({
+        task,
+        component,
+        workload,
+        estimate,
+        allocationMinutes: allocation.allocationMinutes,
+        calibrationMultiplier: allocation.calibrationMultiplier,
+        roundingStepMinutes: allocation.roundingStepMinutes,
+        unresolvedRole,
+      });
+      if (discreteSessions) {
+        items.push(...discreteSessions);
+        continue;
+      }
+    }
 
     items.push({
       version: GENERIC_WORK_ITEM_VERSION,
