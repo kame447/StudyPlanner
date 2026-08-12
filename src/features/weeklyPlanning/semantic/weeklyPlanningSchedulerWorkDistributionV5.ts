@@ -20,7 +20,7 @@ import {
 
 export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
-  readonly studyContexts: ReadonlyArray<StudyContextFact>;
+  readonly studyContexts?: ReadonlyArray<StudyContextFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
   readonly workloads: ReadonlyArray<WorkloadFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
