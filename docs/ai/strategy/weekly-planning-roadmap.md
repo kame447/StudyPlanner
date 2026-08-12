@@ -108,17 +108,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - approval local planner adapterをcomposition rootから分離し、full CI #2604 green
 - approval repository contractをcomposition rootから分離し、全adapterとcompositionが共通抽象へ依存するDIPへ修正。full CI #2610 green
 - runtime session registryからrequest単位のFact Graph staging bufferを`weeklyPlanningStableV5GraphStaging.ts`へ分離。既存facade/APIとfinalize publication順序を維持し、full CI #2614 green
+- graph staging bufferへ128件上限とoldest eviction、同一request置換contractを追加し、resource leakを防止。full CI #2617 green
 
 現在のloop:
 
-- 分離後の`weeklyPlanningStableV5GraphStaging.ts`を敵対的に再確認し、異常終了や取り残しが続いた場合にstaged graph mapが無制限に増加できるresource leakを検出した。
-- `MAX_STAGED_GRAPHS = 128`をstaging境界へ追加し、上限超過時はMap挿入順で最古のstaged entryから削除する。runtime session上限24件に対して十分なheadroomを残し、通常のlive turnよりorphan accumulationを対象にする。
-- 同一conversation/requestの再stageでは既存keyを削除してから最新graphを挿入し、slot数を増やさず最新entryとして扱う。
-- `weeklyPlanningStableV5GraphStaging.test.ts`で129件投入時のoldest evictionと、同一request再stage時のrevision置換をdeterministic regressionとして固定した。
-- この境界はmachine-generated request keyとtyped Fact Graphだけを扱う。semantic意味判断は追加しておらず、「resource/persistence safetyはdeterministic code」という設計原則に沿う。
+- Stable V5 preview candidateのconversation provenanceがmetadataに存在せず、preview block化時にglobal `weeklyPlanningSessionRuntime`からconversationIdを補う設計を敵対的に追跡した。
+- `WeeklyPlanningStableV5CandidateMetadata`へ`conversationId`を必須追加し、candidate生成時にcanonical task Factの`source.conversationId`を直接写す。意味推測ではなくFact provenanceの伝播である。
+- scheduler candidate生成はtask Factが存在しない場合に明示的に失敗し、`taskId`とprovenanceの対応が崩れた候補を黙って生成しない。
+- `weeklyPlanningStableV5PreviewScheduler.test.ts`でproduction scheduler candidateが`conversation-1`を保持するcontractを追加した。
+- application後付けhelper案はcanonical Fact provenanceの方が適切と判断して未接続のまま残さず削除した。
+- preview側には既存candidate互換のglobal fallbackがまだあるが、Stable V5 production scheduler outputは今後そのfallbackを必要としない。次loop以降でapproval/previewのambient global dependencyを段階的に除去する。
+- raw user textの再解釈はなく、AIが確定したFact source provenanceをdeterministic schedulerが保持するだけなので最上位設計原則に沿う。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionのregistry/publication、RuntimeExecutorのdeterministic planning phase、application orchestration、その他bounded resourceを変更理由と安全性の両面から疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。Stable V5 approval availabilityのglobal singleton依存、preview compatibility fallback、RuntimeSession publication bridge、RuntimeExecutor deterministic planning phaseを優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
