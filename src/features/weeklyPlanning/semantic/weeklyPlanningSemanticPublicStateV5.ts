@@ -115,6 +115,18 @@ function pendingQuestionFactId(summary: Record<string, unknown> | undefined): st
     : null;
 }
 
+function baseRuntimeSummary(
+  summary: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!summary) return {};
+  const {
+    correctionContract: _staleCorrectionContract,
+    episodicMemory: _staleEpisodicMemory,
+    ...runtimeSummary
+  } = summary;
+  return runtimeSummary;
+}
+
 export function createWeeklyPlanningSemanticPublicStateSummaryV5(
   summary: Record<string, unknown> | undefined,
   graph: WeeklyPlanningFactGraphV5,
@@ -125,7 +137,7 @@ export function createWeeklyPlanningSemanticPublicStateSummaryV5(
   });
   const correctionTargets = correctionTargetPublicFacts(graph);
   return {
-    ...(summary ?? {}),
+    ...baseRuntimeSummary(summary),
     ...correctionTargets,
     graphRevision: graph.revision,
     ...(hasCorrectionTargets(correctionTargets)
