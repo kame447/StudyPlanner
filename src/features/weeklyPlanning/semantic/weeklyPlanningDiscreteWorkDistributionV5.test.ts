@@ -83,7 +83,6 @@ describe('quantity-preserving discrete work distribution', () => {
     expect(result.items.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
     expect(result.items.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(330);
     expect(result.items.every((item) => item.splitPolicy === 'atomic')).toBe(true);
-    expect(new Set(result.items.map((item) => item.id).size)).toBeTruthy();
     expect(new Set(result.items.map((item) => item.id)).size).toBe(5);
   });
 
