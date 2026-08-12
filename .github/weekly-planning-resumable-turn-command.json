@@ -1,11 +1,11 @@
 {
   "scenario": "initial-turn-semantic-variability-diagnostic-20260812",
   "turn": 1,
-  "attempt": 2,
+  "attempt": 3,
   "user_text": "8月17日から23日で、英単語220語と数学の問題40問を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。",
   "previous_run_id": "",
-  "conversation_id": "weekly-initial-semantic-diagnostic-20260812-02",
-  "owner_id": "real-api-initial-semantic-diagnostic-user-2",
+  "conversation_id": "weekly-initial-semantic-diagnostic-20260812-03",
+  "owner_id": "real-api-initial-semantic-diagnostic-user-3",
   "week_start_date": "2026-08-17",
   "selected_date": "2026-08-17"
 }
