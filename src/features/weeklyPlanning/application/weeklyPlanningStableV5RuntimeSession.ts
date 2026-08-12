@@ -1,9 +1,4 @@
 import {
-  clearWeeklyPlanningSessionRuntime,
-  getWeeklyPlanningSessionRuntime,
-  publishWeeklyPlanningSessionRuntime,
-} from '../planning/weeklyPlanningSessionRuntime';
-import {
   createEmptyWeeklyPlanningFactGraphV5,
   type WeeklyPlanningFactGraphV5,
 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -52,20 +47,6 @@ function pruneSessions(): void {
   oldest.forEach((session) => {
     sessions.delete(session.conversationId);
     discardAllWeeklyPlanningStableV5GraphStagesForConversation(session.conversationId);
-  });
-}
-
-function clearApprovalRuntimeForConversation(conversationId: string): void {
-  if (getWeeklyPlanningSessionRuntime()?.conversationId === conversationId) {
-    clearWeeklyPlanningSessionRuntime();
-  }
-}
-
-function publishSession(session: WeeklyPlanningStableV5RuntimeSession): void {
-  publishWeeklyPlanningSessionRuntime({
-    conversationId: session.conversationId,
-    stateRevision: session.graph.revision,
-    proposalRecords: [],
   });
 }
 
@@ -166,7 +147,6 @@ export function hydrateWeeklyPlanningStableV5RuntimeSession(params: {
     updatedAt: params.updatedAt ?? Date.now(),
   };
   sessions.set(params.conversationId, hydrated);
-  publishSession(hydrated);
   pruneSessions();
   return cloneSession(hydrated);
 }
@@ -222,7 +202,6 @@ export function finalizeWeeklyPlanningStableV5RuntimeGraph(params: {
   };
   sessions.set(params.conversationId, next);
   discardWeeklyPlanningStableV5GraphStage(params);
-  publishSession(next);
   pruneSessions();
   return cloneSession(next);
 }
@@ -249,7 +228,6 @@ export function clearWeeklyPlanningStableV5RuntimeSession(
 ): void {
   sessions.delete(conversationId);
   discardAllWeeklyPlanningStableV5GraphStagesForConversation(conversationId);
-  clearApprovalRuntimeForConversation(conversationId);
 }
 
 export function clearWeeklyPlanningStableV5RuntimeSessionsForScope(params: {
@@ -260,7 +238,6 @@ export function clearWeeklyPlanningStableV5RuntimeSessionsForScope(params: {
     if (sameScope(session, params.ownerId, params.weekStartDate)) {
       sessions.delete(conversationId);
       discardAllWeeklyPlanningStableV5GraphStagesForConversation(conversationId);
-      clearApprovalRuntimeForConversation(conversationId);
     }
   }
 }
@@ -272,7 +249,6 @@ export function clearWeeklyPlanningStableV5RuntimeSessionsForOwner(
     if (session.ownerId === ownerId) {
       sessions.delete(conversationId);
       discardAllWeeklyPlanningStableV5GraphStagesForConversation(conversationId);
-      clearApprovalRuntimeForConversation(conversationId);
     }
   }
 }
@@ -280,5 +256,4 @@ export function clearWeeklyPlanningStableV5RuntimeSessionsForOwner(
 export function resetWeeklyPlanningStableV5RuntimeSessionsForTest(): void {
   sessions.clear();
   resetWeeklyPlanningStableV5GraphStagesForTest();
-  clearWeeklyPlanningSessionRuntime();
 }
