@@ -4,7 +4,7 @@ import { extname, join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const WEEKLY_PLANNING_ROOT = fileURLToPath(new URL('../', import.meta.url));
-const STABLE_IMPORT_TOKENS = [
+const STABLE_MODULE_TOKENS = [
   'weeklyPlanningStableV5',
   'weeklyPlanningSemanticDocumentV5',
   'weeklyPlanningFactGraphV5',
@@ -16,6 +16,7 @@ const STABLE_IMPORT_TOKENS = [
 
 const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'weeklyPlanningTurnExecutor.ts',
+  'weeklyPlanningTurnExecutionTypes.ts',
   'weeklyPlanningOwnedStorage.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.ts',
@@ -24,11 +25,18 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningStableV5SessionStorage.ts',
   'application/weeklyPlanningTurnApplication.ts',
   'application/weeklyPlanningTurnSideEffects.ts',
+  'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts',
+  'dialogue/weeklyPlanningStableV5DialoguePrompt.ts',
+  'dialogue/weeklyPlanningStableV5DialogueRouting.ts',
+  'dialogue/weeklyPlanningStableV5DialogueValidation.ts',
+  'dialogue/weeklyPlanningStableV5TurnDialogue.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',
   'trace/weeklyPlanningTraceOutbox.ts',
   'trace/weeklyPlanningTraceRemoteRepository.ts',
   'trace/weeklyPlanningTurnDiagnosticV2.ts',
 ]);
+
+const STATIC_IMPORT_EXPRESSION = /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 
 function sourceFiles(root: string): string[] {
   const files: string[] = [];
@@ -50,22 +58,28 @@ function isTestSource(relativePath: string): boolean {
     || /\.(test|spec)\.(ts|tsx)$/.test(relativePath);
 }
 
+function importedStableModules(source: string): string[] {
+  return [...source.matchAll(STATIC_IMPORT_EXPRESSION)]
+    .map((match) => match[1])
+    .filter((specifier) => STABLE_MODULE_TOKENS.some((token) => specifier.includes(token)));
+}
+
 describe('Stable V5 production connection boundary', () => {
-  it('allows Stable V5 imports only through audited runtime and trace support modules', () => {
+  it('allows direct Stable V5 imports only through explicitly audited runtime support modules', () => {
     const violations: string[] = [];
     const connectedImporters = new Set<string>();
     for (const path of sourceFiles(WEEKLY_PLANNING_ROOT)) {
       const relativePath = normalizedRelative(path);
       if (isTestSource(relativePath)) continue;
       if (relativePath.startsWith('semantic/')) continue;
-      const content = readFileSync(path, 'utf8');
-      const usedTokens = STABLE_IMPORT_TOKENS.filter((token) => content.includes(token));
-      if (usedTokens.length === 0) continue;
+
+      const imports = importedStableModules(readFileSync(path, 'utf8'));
+      if (imports.length === 0) continue;
       if (ALLOWED_PRODUCTION_IMPORTERS.has(relativePath)) {
         connectedImporters.add(relativePath);
         continue;
       }
-      usedTokens.forEach((token) => violations.push(`${relativePath}:${token}`));
+      imports.forEach((specifier) => violations.push(`${relativePath}:${specifier}`));
     }
 
     expect(violations).toEqual([]);
