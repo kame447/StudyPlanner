@@ -8,10 +8,6 @@ import type {
   GenericSchedulerInputCompilationResult,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
-  scheduleWeeklyPlanningStableV5Preview,
-  WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
-} from '../semantic/weeklyPlanningStableV5PreviewScheduler';
-import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
@@ -24,6 +20,9 @@ import {
 import {
   evaluateWeeklyPlanningStableV5Planning,
 } from './weeklyPlanningStableV5PlanningEvaluation';
+import {
+  executeWeeklyPlanningStableV5Preview,
+} from './weeklyPlanningStableV5PreviewExecution';
 import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
@@ -308,37 +307,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return output;
   }
 
-  const previewInput = {
-    input: compilation.input,
+  const preview = executeWeeklyPlanningStableV5Preview({
+    input,
     graph: semantic.graph,
-    plans: input.plans,
-    scheduleTemplates: input.scheduleTemplates,
-    timetableTermId: input.timetableTermId,
-    notBefore: {
-      date: requestContext.notBeforeDate,
-      time: requestContext.notBeforeTime,
-    },
-  };
-  const preview = scheduleWeeklyPlanningStableV5Preview(previewInput);
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: input.traceRequestId,
-    stage: 'runtime_preview_scheduler_evaluated',
-    severity: preview.status === 'ready' ? 'info' : 'warn',
-    data: {
-      schedulerVersion: WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
-      input: previewInput,
-      defaultsAndCriteria: {
-        dayStartTime: '09:00',
-        dayEndTime: '22:00',
-        breakMinutes: 10,
-        defaultSessionMinutes: 60,
-        existingPlanBufferMinutes: 10,
-        splittableThresholdMinutes: 120,
-        todayNotBefore: `${requestContext.notBeforeDate} ${requestContext.notBeforeTime}`,
-        allOrNothing: 'any unscheduled work item returns insufficient_capacity with no partial candidates',
-      },
-      result: preview,
-    },
+    schedulerInput: compilation.input,
+    requestContext,
   });
 
   if (preview.status === 'insufficient_capacity') {
