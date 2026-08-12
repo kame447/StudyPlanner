@@ -4,6 +4,10 @@ import {
   type WeeklyPlanningFactGraph,
 } from './weeklyPlanningFactGraph';
 import { compileGenericPlanningWorkItems } from './weeklyPlanningGenericWorkItems';
+import { distributeGenericSchedulerWorkItemsV5 } from './weeklyPlanningSchedulerWorkDistributionV5';
+
+const WEEK_START = '2026-08-17';
+const WEEK_END = '2026-08-23';
 
 function graphForDiscreteWork(params: {
   amount: number;
@@ -60,34 +64,52 @@ function graphForDiscreteWork(params: {
   };
 }
 
+function compileAndDistribute(graph: WeeklyPlanningFactGraph) {
+  const compiled = compileGenericPlanningWorkItems(graph);
+  const distributed = distributeGenericSchedulerWorkItemsV5({
+    graph,
+    items: compiled.items,
+    startDate: WEEK_START,
+    endDate: WEEK_END,
+  });
+  return { compiled, distributed };
+}
+
 describe('quantity-preserving discrete work distribution', () => {
-  it('turns 40 problems at eight minutes each into five daily work items without duplicating quantity', () => {
-    const result = compileGenericPlanningWorkItems(graphForDiscreteWork({
+  it('keeps the compiler aggregate, then turns 40 problems into five scheduler work items', () => {
+    const { compiled, distributed } = compileAndDistribute(graphForDiscreteWork({
       amount: 40,
       unitCode: 'problem',
       unitLabel: '問',
       minutesPerUnit: 8,
     }));
 
-    expect(result.readiness).toBe('ready');
-    expect(result.issues).toEqual([]);
-    expect(result.items.map((item) => item.quantity.amount)).toEqual([8, 8, 8, 8, 8]);
-    expect(result.items.map((item) => item.estimatedMinutes)).toEqual([70, 65, 65, 65, 65]);
-    expect(result.items.map((item) => item.label)).toEqual([
+    expect(compiled.readiness).toBe('ready');
+    expect(compiled.issues).toEqual([]);
+    expect(compiled.items).toHaveLength(1);
+    expect(compiled.items[0]).toMatchObject({
+      quantity: { amount: 40, unitCode: 'problem' },
+      baseEstimatedMinutes: 320,
+      estimatedMinutes: 330,
+    });
+
+    expect(distributed.map((item) => item.quantity.amount)).toEqual([8, 8, 8, 8, 8]);
+    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([70, 65, 65, 65, 65]);
+    expect(distributed.map((item) => item.label)).toEqual([
       '数学 8問（1〜8問）',
       '数学 8問（9〜16問）',
       '数学 8問（17〜24問）',
       '数学 8問（25〜32問）',
       '数学 8問（33〜40問）',
     ]);
-    expect(result.items.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
-    expect(result.items.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(330);
-    expect(result.items.every((item) => item.splitPolicy === 'atomic')).toBe(true);
-    expect(new Set(result.items.map((item) => item.id)).size).toBe(5);
+    expect(distributed.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
+    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(330);
+    expect(distributed.every((item) => item.splitPolicy === 'atomic')).toBe(true);
+    expect(new Set(distributed.map((item) => item.id)).size).toBe(5);
   });
 
-  it('preserves an explicit numeric page range across distributed sessions', () => {
-    const result = compileGenericPlanningWorkItems(graphForDiscreteWork({
+  it('preserves an explicit numeric page range across scheduler slices', () => {
+    const { distributed } = compileAndDistribute(graphForDiscreteWork({
       amount: 40,
       unitCode: 'page',
       unitLabel: 'ページ',
@@ -96,34 +118,58 @@ describe('quantity-preserving discrete work distribution', () => {
       rangeEnd: '60',
     }));
 
-    expect(result.items.map((item) => item.quantity.actualRange)).toEqual([
+    expect(distributed.map((item) => item.quantity.actualRange)).toEqual([
       { start: '21', end: '40' },
       { start: '41', end: '60' },
     ]);
-    expect(result.items.map((item) => item.label)).toEqual([
+    expect(distributed.map((item) => item.label)).toEqual([
       '数学 20ページ（21〜40ページ）',
       '数学 20ページ（41〜60ページ）',
     ]);
-    expect(result.items.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
+    expect(distributed.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(40);
+    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(165);
   });
 
   it('does not fake-split one extremely long discrete unit into repeated copies', () => {
-    const result = compileGenericPlanningWorkItems(graphForDiscreteWork({
+    const { compiled, distributed } = compileAndDistribute(graphForDiscreteWork({
       amount: 1,
       unitCode: 'problem',
       unitLabel: '問',
       minutesPerUnit: 320,
     }));
 
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0]).toMatchObject({
+    expect(compiled.items).toHaveLength(1);
+    expect(distributed).toHaveLength(1);
+    expect(distributed[0]).toMatchObject({
       label: '数学 1問',
       estimatedMinutes: 330,
-      splitPolicy: 'atomic',
       quantity: {
         amount: 1,
         ordinalRange: { start: 1, end: 1 },
       },
     });
+  });
+
+  it('uses the actual horizon length instead of hard-coding a weekly split count', () => {
+    const graph = graphForDiscreteWork({
+      amount: 40,
+      unitCode: 'problem',
+      unitLabel: '問',
+      minutesPerUnit: 8,
+    });
+    const compiled = compileGenericPlanningWorkItems(graph);
+    const distributed = distributeGenericSchedulerWorkItemsV5({
+      graph,
+      items: compiled.items,
+      startDate: '2026-08-17',
+      endDate: '2026-08-18',
+    });
+
+    expect(distributed.map((item) => item.quantity.amount)).toEqual([20, 20]);
+    expect(distributed.map((item) => item.estimatedMinutes)).toEqual([165, 165]);
+    expect(distributed.map((item) => item.label)).toEqual([
+      '数学 20問（1〜20問）',
+      '数学 20問（21〜40問）',
+    ]);
   });
 });
