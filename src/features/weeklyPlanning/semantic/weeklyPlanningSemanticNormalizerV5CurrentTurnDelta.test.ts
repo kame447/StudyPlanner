@@ -80,8 +80,8 @@ describe('Stable V5 current-turn semantic delta contract', () => {
     const system = messages[0]?.content ?? '';
     expect(system).toContain('Current SemanticDocument is a delta');
     expect(system).toContain('publicStateSummary/recentConversation are context, not facts to copy');
-    expect(system).toContain('planningWindow must be null');
     expect(system).toContain('Emit only facts stated or changed in current userText');
+    expect(system).toContain('every sourceText must be supported by current userText');
   });
 
   it('removes a copied accepted planning window algorithmically while preserving current-turn facts', async () => {
