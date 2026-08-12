@@ -17,6 +17,7 @@ import {
   type WeeklyPlanningTurnApplicationServices,
 } from '../application/weeklyPlanningTurnApplication';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
+import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   resetWeeklyPlanningStableV5DebugTraceForTest,
   takeWeeklyPlanningStableV5DebugTrace,
@@ -50,6 +51,11 @@ interface ObservedTurn {
   trace: unknown[];
 }
 
+interface TurnCapture {
+  result: WeeklyPlanningTurnExecutionResult | null;
+  requestId: string | null;
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required.`);
@@ -78,6 +84,19 @@ function createStore(initialState: PlanningState) {
       state = weeklyPlanningReducer(state, action);
       return state;
     },
+  };
+}
+
+function requireCapturedTurn(
+  capture: TurnCapture,
+  index: number,
+): { result: WeeklyPlanningTurnExecutionResult; requestId: string } {
+  if (!capture.result || !capture.requestId) {
+    throw new Error(`Turn ${index} did not expose execution diagnostics.`);
+  }
+  return {
+    result: capture.result,
+    requestId: capture.requestId,
   };
 }
 
@@ -128,9 +147,7 @@ function nextUserReply(params: {
 function writeOutputs(params: {
   turns: ObservedTurn[];
   state: PlanningState;
-  graph: ReturnType<typeof getWeeklyPlanningStableV5RuntimeSession> extends infer T
-    ? T extends { graph: infer G } ? G : never
-    : never;
+  graph: WeeklyPlanningFactGraphV5;
 }): void {
   mkdirSync(outputDir, { recursive: true });
   const transcript = params.turns.flatMap((turn) => [
@@ -172,10 +189,7 @@ run('weekly planning full real API conversation', () => {
     const session = createWeeklyPlanningControllerSession(ownerId, weekStartDate, conversationId);
     const turns: ObservedTurn[] = [];
 
-    const capture: {
-      result: WeeklyPlanningTurnExecutionResult | null;
-      requestId: string | null;
-    } = { result: null, requestId: null };
+    const capture: TurnCapture = { result: null, requestId: null };
     const services: WeeklyPlanningTurnApplicationServices = {
       submitControlledTurn: submitWeeklyPlanningControlledTurn,
       executeTurn: async (input) => {
@@ -211,11 +225,7 @@ run('weekly planning full real API conversation', () => {
       }, services);
 
       expect(submission.accepted).toBe(true);
-      const result = capture.result;
-      const requestId = capture.requestId;
-      if (!result || !requestId) {
-        throw new Error(`Turn ${index} did not expose execution diagnostics.`);
-      }
+      const { result, requestId } = requireCapturedTurn(capture, index);
       if (result.failure) {
         throw new Error(
           `Turn ${index} failed: ${result.failure.code} ${result.failure.traceCode}`,
