@@ -52,7 +52,7 @@ describe('Stable V5 distribution policy migrated from the legacy weekly schedule
     expect(distributeDiscreteQuantityAcrossWeeklyBucketsV5(41, 5)).toEqual([9, 8, 8, 8, 8]);
   });
 
-  it('front-loads three vocabulary learning sessions so two spaced reviews still fit before reserve day', () => {
+  it('front-loads vocabulary learning but keeps later dates as graceful fallback capacity', () => {
     expect([0, 1, 2].map((sessionIndex) => preferredVocabularyLearningDateV5({
       sessionIndex,
       sessionCount: 3,
@@ -70,6 +70,9 @@ describe('Stable V5 distribution policy migrated from the legacy weekly schedule
       '2026-08-17',
       '2026-08-18',
       '2026-08-20',
+      '2026-08-21',
+      '2026-08-22',
+      '2026-08-23',
     ]);
   });
 
