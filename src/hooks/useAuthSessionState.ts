@@ -8,6 +8,8 @@ interface UseAuthSessionStateOptions {
   showNotice: ShowNotice;
 }
 
+type SignInResult = User | null | undefined;
+
 interface UseAuthSessionStateResult {
   booting: boolean;
   user: User | null;
@@ -19,8 +21,8 @@ interface UseAuthSessionStateResult {
     password: string,
     username: string,
   ) => Promise<boolean>;
-  signInWithPassword: (email: string, password: string) => Promise<User | null>;
-  signInWithGoogle: () => Promise<User | null>;
+  signInWithPassword: (email: string, password: string) => Promise<SignInResult>;
+  signInWithGoogle: () => Promise<SignInResult>;
   sendPasswordReset: (email: string) => Promise<void>;
   saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
   signOut: () => Promise<void>;
@@ -95,9 +97,13 @@ export function useAuthSessionState({
     async (email: string, password: string) => {
       try {
         const currentUser = await authRepository.signInWithPassword(email, password);
-        if (!rootManagedAuthentication) {
-          setUser(currentUser);
+
+        if (rootManagedAuthentication) {
+          showNotice('ログインしました。', 'success');
+          return undefined;
         }
+
+        setUser(currentUser);
         showNotice('ログインしました。', 'success');
         return currentUser;
       } catch (error) {
@@ -114,9 +120,13 @@ export function useAuthSessionState({
   const signInWithGoogle = useCallback(async () => {
     try {
       const currentUser = await authRepository.signInWithGoogle();
-      if (!rootManagedAuthentication) {
-        setUser(currentUser);
+
+      if (rootManagedAuthentication) {
+        showNotice('Googleでログインしました。', 'success');
+        return undefined;
       }
+
+      setUser(currentUser);
       showNotice('Googleでログインしました。', 'success');
       return currentUser;
     } catch (error) {
