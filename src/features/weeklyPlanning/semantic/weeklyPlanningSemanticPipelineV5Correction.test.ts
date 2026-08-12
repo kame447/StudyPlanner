@@ -162,7 +162,7 @@ function activeIds(graph: {
 }
 
 describe('Stable V5 semantic pipeline correction application', () => {
-  it('passes the machine-readable correction contract and active Graph facts', async () => {
+  it('omits correction instructions while the graph has no active correction target', async () => {
     const capture: { input: WeeklyPlanningSemanticNormalizerInputV5 | null } = {
       input: null,
     };
@@ -185,8 +185,8 @@ describe('Stable V5 semantic pipeline correction application', () => {
       effortEstimates: [],
       temporalConstraints: [],
       recurrences: [],
-      correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
     });
+    expect(capture.input?.publicStateSummary).not.toHaveProperty('correctionContract');
     expect(capture.input?.publicStateSummary).not.toEqual(
       expect.objectContaining({
         tasks: [{ publicId: 'stale-task-id', title: '古い表示' }],
