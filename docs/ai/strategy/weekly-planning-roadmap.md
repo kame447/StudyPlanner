@@ -114,18 +114,19 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - Stable V5 preview変換からambient global runtimeによるconversation補完を削除。conversation欠落旧候補は別conversationを推測せずfail closedし、初回CI #2630で古いtest fixtureの暗黙依存を検出、fixtureを現production contractへ修正したうえでfull CI #2632 green
 - 保存直前のapproval guardからglobal runtime参照を削除し、application境界が検証対象runtimeを明示入力する純粋contractへ変更。Stable V5は対象conversation以外へfallbackせず、actual saveの回帰も追加してfull CI #2644 green
 - approval runtime選択を`weeklyPlanningApprovalRuntimeResolver.ts`へ集約し、availabilityとactual saveの二重実装を解消。Stable V5への直接接続点も2箇所から1箇所へ狭め、production isolation監査を縮小したうえでfull CI #2651 green
+- Stable V5 runtime sessionからlegacy global runtimeへのpublish/clear bridgeを削除し、新旧runtimeを独立管理へ変更。hydrate/finalize/clear/resetでlegacy snapshotを上書き・消去しない回帰を追加してfull CI #2657 green
 
 現在のloop:
 
-- Stable V5 runtime sessionがhydrate/finalize時にlegacy `weeklyPlanningSessionRuntime`へpublishし、Stable sessionのclear/reset時には同じlegacy singletonを消去するbridgeが残っていたため、新旧runtimeの相互汚染を解消する。
-- behavior-aware互換側は`runHardenedBehaviorAwarePlanningPreviewBridge`で自分自身のlegacy runtime snapshotをpublishしており、Stable V5 approvalは前loopまでにconversation-scoped Stable V5 runtimeを直接参照するようになったため、Stable V5がlegacy singletonを代理更新する必要はない。
-- `weeklyPlanningStableV5RuntimeSession.ts`からlegacy runtimeのpublish/get/clear依存を削除し、hydrate/finalize/clear/resetはStable V5 session registryとgraph stagingだけを変更する。
-- 専用回帰で、legacy runtimeを先にpublishした状態でもStable V5のhydrate/finalize/clear/resetがそのlegacy snapshotを上書き・消去しないことを固定する。
-- legacy behavior-aware runtimeの責務はlegacy bridge側に残し、Stable V5 runtimeはStable V5のFact Graph session lifecycleだけを担当するためSRPを改善する。
-- raw user textやsemantic意味判断には触れず、runtime ownershipとstate isolationだけをdeterministic codeで厳密化するため最上位設計原則を維持する。
+- Stable V5 scheduler candidate側のmetadataとpreview/draft側のmetadataが、conversationId、graph revision、taskId、source fact、plan typeを別interfaceで重複定義していたため、provenance contractを単一化する。
+- feature-levelの`weeklyPlanningPreviewProvenance.ts`へ共通のStable V5 preview provenance contractを置き、semantic scheduler側とpreview側の両方がそのcontractへ依存する。preview層からsemantic実装へ依存させず、DIP上も中立なcontractへ寄せる。
+- 従来公開していたcandidate metadata / preview metadataの型名はtype aliasとして維持し、外部import pathを壊さない。
+- learning/review session roleとreview roundも共通provenanceへ含め、生成側に存在する追加情報がpreview側の型から欠落する状態を解消する。
+- preview回帰でsession role / review roundを含むprovenanceが変換後も保持されることを固定する。
+- raw user textやsemantic判断には触れず、AIが確定したFact由来の出所情報をdeterministic scheduling/preview境界で一貫して保持するだけなので最上位設計原則を維持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。Stable V5 preview metadata型重複、RuntimeExecutor deterministic planning phase、legacy runtime自体の残存production reachability、その他singleton/ambient state依存を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor deterministic planning phase、legacy runtimeの残存production reachability、preview metadata変換責務、その他重複contract/singleton依存を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
