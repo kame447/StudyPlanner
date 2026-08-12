@@ -1,0 +1,98 @@
+name: Weekly Planning Full Conversation Command
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-human-grounding-repair
+    paths:
+      - '.github/weekly-planning-full-conversation-command.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-planning-full-conversation-command
+  cancel-in-progress: false
+
+jobs:
+  observe-full-conversation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+      OUTPUT_DIR: artifacts/weekly-planning-full-conversation
+      COMMAND_FILE: .github/weekly-planning-full-conversation-command.json
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Read full-conversation command
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$COMMAND_FILE"
+          echo "INITIAL_USER_TEXT=$(jq -r '.initial_user_text' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "CONVERSATION_ID=$(jq -r '.conversation_id' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "OWNER_ID=$(jq -r '.owner_id' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "WEEK_START_DATE=$(jq -r '.week_start_date' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+          echo "SELECTED_DATE=$(jq -r '.selected_date' "$COMMAND_FILE")" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate command
+        run: |
+          test -n "$INITIAL_USER_TEXT"
+          test -n "$CONVERSATION_ID"
+          test -n "$OWNER_ID"
+          echo "$WEEK_START_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          echo "$SELECTED_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+
+      - name: Verify OpenAI secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+
+      - name: Run the whole production conversation with the real OpenAI API
+        env:
+          WEEKLY_PLANNING_FULL_REAL_API_CONVERSATION: '1'
+          WEEKLY_PLANNING_FULL_CONVERSATION_OUTPUT_DIR: artifacts/weekly-planning-full-conversation
+          WEEKLY_PLANNING_FULL_CONVERSATION_OWNER_ID: ${{ env.OWNER_ID }}
+          WEEKLY_PLANNING_FULL_CONVERSATION_ID: ${{ env.CONVERSATION_ID }}
+          WEEKLY_PLANNING_FULL_CONVERSATION_WEEK_START_DATE: ${{ env.WEEK_START_DATE }}
+          WEEKLY_PLANNING_FULL_CONVERSATION_SELECTED_DATE: ${{ env.SELECTED_DATE }}
+          WEEKLY_PLANNING_FULL_CONVERSATION_INITIAL_USER_TEXT: ${{ env.INITIAL_USER_TEXT }}
+          WEEKLY_PLANNING_FULL_CONVERSATION_TIMEOUT_MS: '90000'
+          VITE_AI_PROVIDER: openai
+          VITE_AI_BASE_URL: https://api.openai.com/v1
+          VITE_AI_MODEL: gpt-5.4-mini
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_MAX_PROCESS_REQUESTS: '3'
+          VITE_CLOUDFLARE_AI_PROXY_URL: ''
+        run: node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningFullConversation.observation.test.ts --reporter=verbose
+
+      - name: Emit transcript and final schedule
+        if: always()
+        run: |
+          if [ -f "$OUTPUT_DIR/transcript.md" ]; then
+            echo '--- TRANSCRIPT ---'
+            cat "$OUTPUT_DIR/transcript.md"
+          fi
+          if [ -f "$OUTPUT_DIR/result.json" ]; then
+            echo '--- RESULT ---'
+            cat "$OUTPUT_DIR/result.json"
+          fi
+
+      - name: Upload full-conversation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-full-conversation
+          path: artifacts/weekly-planning-full-conversation/
+          if-no-files-found: error
+          retention-days: 30
