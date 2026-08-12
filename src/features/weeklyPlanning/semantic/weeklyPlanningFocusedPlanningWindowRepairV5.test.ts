@@ -77,7 +77,7 @@ describe('Stable V5 focused planning-window repair', () => {
     })).toBe(false);
   });
 
-  it('sends only the invalid planning-window representation and compact calendar context', () => {
+  it('sends only the invalid planning-window evidence and compact calendar context', () => {
     const messages = createFocusedPlanningWindowRepairMessagesV5({
       userText: '8月17日から23日で予定を作りたい',
       invalidDocument: document(),
@@ -90,7 +90,6 @@ describe('Stable V5 focused planning-window repair', () => {
 
     const payload = JSON.parse(messages[1]?.content ?? '{}') as Record<string, unknown>;
     expect(payload).toEqual({
-      currentUserText: '8月17日から23日で予定を作りたい',
       sourceText: '8月17日から23日',
       invalidRepresentation: {
         value: '8月17日から23日',
@@ -103,7 +102,17 @@ describe('Stable V5 focused planning-window repair', () => {
       },
     });
     expect(messages[1]?.content).not.toContain('英単語を進める');
+    expect(messages[1]?.content).not.toContain('英単語220語');
     expect(messages[1]?.content).not.toContain('18:00');
+  });
+
+  it('rejects extra semantic fields even if value/start/end are present', () => {
+    expect(parseFocusedPlanningWindowRepairDecisionV5(JSON.stringify({
+      value: '2026-08-17/2026-08-23',
+      start: '2026-08-17',
+      end: '2026-08-23',
+      tasks: [],
+    }))).toBeNull();
   });
 
   it('merges only value/start/end and preserves all unrelated semantic facts', () => {
