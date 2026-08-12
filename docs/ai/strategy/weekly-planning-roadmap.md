@@ -1,7 +1,7 @@
 # 週間計画 AI ロードマップ
 
 Status: canonical / PR #120 hardening and selective orchestration
-最終更新: 2026-08-12
+最終更新: 2026-08-13
 
 - Current status: [../weekly-planning-current-contract-status.md](../weekly-planning-current-contract-status.md)
 - Semantic V5 roadmap: [weekly-planning-semantic-v5-roadmap.md](weekly-planning-semantic-v5-roadmap.md)
@@ -92,7 +92,7 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 
 構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離または明示的安全境界修正 → roadmap同期 → full CI」の順で処理する。CIが赤い間は次loopへ進まない。
 
-2026-08-12時点で完了済みの分離・hardening:
+完了済みの分離・hardening:
 
 - execution profile / session policy / session splittingを分離し、旧public APIはfacadeで維持
 - generic work item compilationからeffort estimation strategyを分離
@@ -109,19 +109,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - approval repository contractをcomposition rootから分離し、全adapterとcompositionが共通抽象へ依存するDIPへ修正。full CI #2610 green
 - runtime session registryからrequest単位のFact Graph staging bufferを`weeklyPlanningStableV5GraphStaging.ts`へ分離。既存facade/APIとfinalize publication順序を維持し、full CI #2614 green
 - graph staging bufferへ128件上限とoldest eviction、同一request置換contractを追加し、resource leakを防止。full CI #2617 green
+- Stable V5 preview candidate metadataへcanonical task Fact由来のconversation provenanceを必須伝播し、ambient global stateからconversationを補わなくてもproduction候補が自己記述できるようにした。full CI #2622 green
 
 現在のloop:
 
-- Stable V5 preview candidateのconversation provenanceがmetadataに存在せず、preview block化時にglobal `weeklyPlanningSessionRuntime`からconversationIdを補う設計を敵対的に追跡した。
-- `WeeklyPlanningStableV5CandidateMetadata`へ`conversationId`を必須追加し、candidate生成時にcanonical task Factの`source.conversationId`を直接写す。意味推測ではなくFact provenanceの伝播である。
-- scheduler candidate生成はtask Factが存在しない場合に明示的に失敗し、`taskId`とprovenanceの対応が崩れた候補を黙って生成しない。
-- `weeklyPlanningStableV5PreviewScheduler.test.ts`でproduction scheduler candidateが`conversation-1`を保持するcontractを追加した。
-- application後付けhelper案はcanonical Fact provenanceの方が適切と判断して未接続のまま残さず削除した。
-- preview側には既存candidate互換のglobal fallbackがまだあるが、Stable V5 production scheduler outputは今後そのfallbackを必要としない。次loop以降でapproval/previewのambient global dependencyを段階的に除去する。
-- raw user textの再解釈はなく、AIが確定したFact source provenanceをdeterministic schedulerが保持するだけなので最上位設計原則に沿う。
+- Stable V5のapproval availabilityが、preview自身のconversation provenanceを持つようになった後もglobal `weeklyPlanningSessionRuntime`を参照していた依存を解消する。
+- Stable V5 blockはpreview metadataのconversationIdを使って`getWeeklyPlanningStableV5RuntimeSession(conversationId)`から対象conversationを直接取得し、そのownerとFact Graph revisionを検証する。
+- 別conversationが後から開かれてglobal runtimeのcurrent snapshotが変わっても、元conversationのruntime sessionが残っていれば元previewの承認可否へ影響しない。
+- 対象conversationが存在しない場合、revisionが進んでいる場合、runtime ownerが異なる場合は従来どおり安全側へ倒す。
+- legacy / behavior-aware互換経路はこのloopでは変更せず、従来のglobal runtime contractを維持する。Stable V5だけを1変更理由として切り替える。
+- `weeklyPlanningApprovalAvailability.test.ts`へ、別conversationがcurrentでも対象Stable V5 previewがeligibleであること、対象session消失・revision mismatchでrecomputeになること、owner mismatchを拒否することを追加した。
+- この判定はtyped preview provenanceとdeterministic runtime stateだけを見る。raw user textやAI出力を再解釈しないため最上位設計原則を維持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。Stable V5 approval availabilityのglobal singleton依存、preview compatibility fallback、RuntimeSession publication bridge、RuntimeExecutor deterministic planning phaseを優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。preview compatibility fallbackに残るambient global dependency、RuntimeSession publication bridge、RuntimeExecutor deterministic planning phase、その他singleton依存を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
