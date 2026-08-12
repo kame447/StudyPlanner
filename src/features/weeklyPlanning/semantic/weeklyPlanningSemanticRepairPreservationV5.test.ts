@@ -14,6 +14,7 @@ const USER_TEXT = '8月17日から23日で、英単語220語を進める予定�
 
 function document(params: {
   canonicalWindow: boolean;
+  canonicalWeekday?: boolean;
   includeTask?: boolean;
   includeAvailability?: boolean;
   planningIntent?: 'create_plan' | 'update_plan' | 'discuss' | 'unknown';
@@ -89,7 +90,7 @@ function document(params: {
           startTime: '18:00',
           endTime: '20:00',
           recurrenceKind: 'weekly',
-          days: ['weekday:tuesday'],
+          days: [params.canonicalWeekday === false ? 'tuesday' : 'weekday:tuesday'],
           constraintLevel: 'hard',
           sourceText: '火曜日の18時から20時は予定があるので避けてください',
         }],
@@ -152,9 +153,12 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     expect(isRepresentationOnlySemanticRepairV5(validation.errors)).toBe(true);
   });
 
-  it('rejects a schema-valid destructive AI repair at the normalizer boundary', async () => {
+  it('rejects destructive full-document repair on a non-focused representation error', async () => {
     const responses = [
-      JSON.stringify(document({ canonicalWindow: false })),
+      JSON.stringify(document({
+        canonicalWindow: true,
+        canonicalWeekday: false,
+      })),
       JSON.stringify(document({
         canonicalWindow: true,
         includeTask: false,
