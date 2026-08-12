@@ -1,0 +1,151 @@
+import {
+  groundedDateExpressionsFromPlanningInformation,
+} from './weeklyPlanningDialogueDateGrounding';
+import type {
+  WeeklyPlanningStableV5DialogueFallbackReason,
+  WeeklyPlanningStableV5DialogueRenderInput,
+  WeeklyPlanningStableV5DialogueRenderResult,
+} from './weeklyPlanningStableV5DialogueContracts';
+import {
+  isWeeklyPlanningStableV5DialogueExplanationRequest,
+} from './weeklyPlanningStableV5DialogueRouting';
+
+const MAX_RENDERED_TEXT_LENGTH = 800;
+const FORBIDDEN_CONTENT = /https?:\/\/|(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
+const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*[0-5]?\d\s*分)?/g;
+const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
+const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
+const QUESTION_RESPONSE_EXPRESSION = /[?？]|(?:教えて(?:ください)?|確認させて(?:ください)?|確認したい|どれ|どの|どちら|何|いつ|どこ|どう|ありますか|ですか|ますか|でしょうか)/;
+const EXECUTION_CLAIM_EXPRESSION = /(?:(?:予定|仮予定|計画).{0,16}(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します)|(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します).{0,16}(?:予定|仮予定|計画))/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeProtectedExpression(value: string): string {
+  return value.replace(/[\s：]/g, '').replace(/:/g, '');
+}
+
+function expressions(value: string, pattern: RegExp): string[] {
+  return [...value.matchAll(pattern)].map((match) => normalizeProtectedExpression(match[0]));
+}
+
+function addsUnsupportedExpression(
+  rendered: string,
+  groundingInformation: string,
+  pattern: RegExp,
+  additionalAllowedValues: readonly string[] = [],
+): boolean {
+  const allowed = new Set(expressions(groundingInformation, pattern));
+  for (const value of additionalAllowedValues) {
+    for (const expression of expressions(value, pattern)) {
+      allowed.add(expression);
+    }
+  }
+  return expressions(rendered, pattern).some((expression) => !allowed.has(expression));
+}
+
+function hasIncorrectPreviewCount(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  if (input.actionKind !== 'preview_ready') return false;
+  const mentionedCounts = [...text.matchAll(PREVIEW_COUNT_EXPRESSION)]
+    .map((match) => Number(match[1]));
+  return mentionedCounts.some((count) => count !== input.previewCount);
+}
+
+function hasUnsupportedActionShape(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  if (
+    input.actionKind !== 'preview_ready'
+    && EXECUTION_CLAIM_EXPRESSION.test(text)
+    && !/[?？]|(?:ますか|でしょうか)/.test(text)
+  ) {
+    return true;
+  }
+  return input.actionKind === 'question'
+    && !isWeeklyPlanningStableV5DialogueExplanationRequest(input.currentUserMessage)
+    && !QUESTION_RESPONSE_EXPRESSION.test(text);
+}
+
+function validateRenderedText(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): WeeklyPlanningStableV5DialogueFallbackReason | null {
+  if (
+    text.length === 0
+    || text.length > MAX_RENDERED_TEXT_LENGTH
+    || FORBIDDEN_CONTENT.test(text)
+  ) {
+    return 'unsafe_text';
+  }
+
+  const groundingInformation = JSON.stringify({
+    currentUserMessage: input.currentUserMessage,
+    recentConversation: input.recentConversation,
+    planningInformation: input.planningInformation,
+    referenceResponse: input.fallbackText,
+    previewCount: input.previewCount,
+  });
+  const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
+    input.planningInformation,
+  );
+  if (
+    addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
+    || addsUnsupportedExpression(
+      text,
+      groundingInformation,
+      DATE_EXPRESSION,
+      groundedDateExpressions,
+    )
+    || hasIncorrectPreviewCount(text, input)
+    || hasUnsupportedActionShape(text, input)
+  ) {
+    return 'ungrounded_text';
+  }
+
+  return null;
+}
+
+export function parseWeeklyPlanningStableV5DialogueRendererResponse(
+  rawResponse: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): WeeklyPlanningStableV5DialogueRenderResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { status: 'fallback', reason: 'invalid_json', rawResponse };
+  }
+
+  if (
+    !isRecord(parsed)
+    || typeof parsed.actionId !== 'string'
+    || typeof parsed.actionKind !== 'string'
+    || (parsed.questionCode !== null && typeof parsed.questionCode !== 'string')
+    || typeof parsed.text !== 'string'
+  ) {
+    return { status: 'fallback', reason: 'invalid_shape', rawResponse };
+  }
+
+  if (parsed.actionId !== input.actionId) {
+    return { status: 'fallback', reason: 'action_mismatch', rawResponse };
+  }
+  if (
+    parsed.actionKind !== input.actionKind
+    || parsed.questionCode !== input.questionCode
+  ) {
+    return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
+  }
+
+  const text = parsed.text.replace(/\r\n/g, '\n').trim();
+  const validationError = validateRenderedText(text, input);
+  if (validationError) {
+    return { status: 'fallback', reason: validationError, rawResponse };
+  }
+
+  return { status: 'rendered', text, rawResponse };
+}
