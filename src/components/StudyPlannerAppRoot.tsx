@@ -1,5 +1,5 @@
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import App from '../App';
 import {
   WeeklyPlanningPersonalizationProvider,
@@ -13,6 +13,7 @@ import { getFirebaseAuth } from '../lib/firebaseClient';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
+import { RootStartupReadyProvider } from './RootStartupReadyContext';
 import { SplashScreen } from './SplashScreen';
 
 function isPasswordUserWaitingForVerification(user: {
@@ -23,12 +24,38 @@ function isPasswordUserWaitingForVerification(user: {
     && user.providerData.some((provider) => provider.providerId === 'password');
 }
 
-function ConsentedStudyPlannerApp({ userId }: { userId: string }) {
+function StartupSurface({
+  children,
+  loading,
+}: PropsWithChildren<{ loading: boolean }>) {
+  return (
+    <>
+      <div style={loading ? { display: 'none' } : undefined}>
+        {children}
+      </div>
+      {loading ? <SplashScreen /> : null}
+    </>
+  );
+}
+
+function ConsentedStudyPlannerApp({
+  userId,
+  onStartupReady,
+}: {
+  userId: string;
+  onStartupReady: () => void;
+}) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
   const auth = getFirebaseAuth();
 
+  useEffect(() => {
+    if (!personalization.loading && !personalization.profile?.weekStartsOn) {
+      onStartupReady();
+    }
+  }, [onStartupReady, personalization.loading, personalization.profile?.weekStartsOn]);
+
   if (personalization.loading) {
-    return <SplashScreen />;
+    return null;
   }
 
   if (!personalization.profile?.weekStartsOn) {
@@ -55,12 +82,33 @@ function ConsentedStudyPlannerApp({ userId }: { userId: string }) {
   );
 }
 
-function AuthenticatedStudyPlannerApp({ userId }: { userId: string }) {
+function AuthenticatedStudyPlannerApp({
+  userId,
+  onStartupReady,
+}: {
+  userId: string;
+  onStartupReady: () => void;
+}) {
   const policy = useWeeklyPlanningTracePolicy(userId);
   const auth = getFirebaseAuth();
 
+  useEffect(() => {
+    if (
+      policy.status !== 'loading'
+      && policy.status !== 'accepted'
+      && policy.status !== 'disabled'
+    ) {
+      onStartupReady();
+    }
+  }, [onStartupReady, policy.status]);
+
   if (policy.status === 'accepted') {
-    return <ConsentedStudyPlannerApp userId={userId} />;
+    return (
+      <ConsentedStudyPlannerApp
+        userId={userId}
+        onStartupReady={onStartupReady}
+      />
+    );
   }
 
   if (policy.status === 'disabled') {
@@ -68,7 +116,7 @@ function AuthenticatedStudyPlannerApp({ userId }: { userId: string }) {
   }
 
   if (policy.status === 'loading') {
-    return <SplashScreen />;
+    return null;
   }
 
   return (
@@ -106,6 +154,7 @@ export function StudyPlannerAppRoot() {
         ? undefined
         : null,
   );
+  const [startupReadyUserId, setStartupReadyUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth) {
@@ -122,17 +171,32 @@ export function StudyPlannerAppRoot() {
     });
   }, [auth]);
 
+  const markAuthenticatedStartupReady = useCallback(() => {
+    if (typeof authenticatedUserId === 'string') {
+      setStartupReadyUserId(authenticatedUserId);
+    }
+  }, [authenticatedUserId]);
+
   if (isLegalPage || !traceEnabled || !auth) {
     return <App />;
   }
 
-  if (authenticatedUserId === undefined) {
-    return <SplashScreen />;
-  }
+  const authenticatedStartupPending = typeof authenticatedUserId === 'string'
+    && startupReadyUserId !== authenticatedUserId;
+  const startupLoading = authenticatedUserId === undefined || authenticatedStartupPending;
 
-  if (authenticatedUserId === null) {
-    return <RootManagedUnauthenticatedApp />;
-  }
-
-  return <AuthenticatedStudyPlannerApp userId={authenticatedUserId} />;
+  return (
+    <StartupSurface loading={startupLoading}>
+      {authenticatedUserId === null ? (
+        <RootManagedUnauthenticatedApp />
+      ) : typeof authenticatedUserId === 'string' ? (
+        <RootStartupReadyProvider onReady={markAuthenticatedStartupReady}>
+          <AuthenticatedStudyPlannerApp
+            userId={authenticatedUserId}
+            onStartupReady={markAuthenticatedStartupReady}
+          />
+        </RootStartupReadyProvider>
+      ) : null}
+    </StartupSurface>
+  );
 }
