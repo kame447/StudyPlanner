@@ -1,8 +1,8 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import {
-  createWeeklyPlanningSemanticSystemPromptV5,
-  createWeeklyPlanningSemanticUserPromptV5,
-} from './weeklyPlanningSemanticDocumentV5';
+  createWeeklyPlanningSemanticMeaningPolicyV5,
+  createWeeklyPlanningSemanticUserContextPayloadV5,
+} from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
   readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5,
 } from './weeklyPlanningWorkBreakdownResponseContractV5';
@@ -26,10 +26,9 @@ const AI_OWNERSHIP_INSTRUCTION_V5 = [
   'Do not emit application, scheduling, readiness, preview, save commands, or prose.',
 ].join('\n');
 
-const SEMANTIC_RELATION_INSTRUCTION_V5 = [
+const CROSS_FACT_INSTRUCTION_V5 = [
   'Non-consecutive allowed dates remain separate date constraints rather than an invented continuous range.',
   'A recurring workload needs matching recurrence semantics.',
-  'Relations require explicit scheduling meaning between tasks; workload size alone is not a relation.',
 ].join('\n');
 
 function contextualInstructionV5(
@@ -50,12 +49,12 @@ export function createWeeklyPlanningSemanticBaseMessagesV5(
     {
       role: 'system',
       content: [
-        createWeeklyPlanningSemanticSystemPromptV5(),
+        createWeeklyPlanningSemanticMeaningPolicyV5(),
         AI_OWNERSHIP_INSTRUCTION_V5,
-        SEMANTIC_RELATION_INSTRUCTION_V5,
+        CROSS_FACT_INSTRUCTION_V5,
         contextualInstruction,
       ].filter((value): value is string => Boolean(value)).join('\n'),
     },
-    { role: 'user', content: createWeeklyPlanningSemanticUserPromptV5(input) },
+    { role: 'user', content: createWeeklyPlanningSemanticUserContextPayloadV5(input) },
   ];
 }
