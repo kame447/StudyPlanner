@@ -36,6 +36,9 @@ import {
 import {
   createWeeklyPlanningSemanticRepairMessagesV5,
 } from './weeklyPlanningSemanticRepairPromptV5';
+import {
+  validateWeeklyPlanningSemanticRepairPreservationV5,
+} from './weeklyPlanningSemanticRepairPreservationV5';
 export {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticPromptAssemblyV5';
@@ -452,19 +455,30 @@ export function createWeeklyPlanningSemanticNormalizerV5(
 
       const repairedValidation = validateWeeklyPlanningSemanticResponseV5(repairedResponse, input);
       algorithmicRepairs.push(...repairedValidation.algorithmicRepairs);
+      const repairPreservationErrors =
+        validateWeeklyPlanningSemanticRepairPreservationV5({
+          initialDocument: initialValidation.parsedDocument,
+          repairedDocument: repairedValidation.document,
+          initialErrors: initialValidation.errors,
+        });
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
         stage: 'semantic_validation_result',
-        severity: repairedValidation.document ? 'info' : 'error',
+        severity: repairedValidation.document && repairPreservationErrors.length === 0
+          ? 'info'
+          : 'error',
         data: {
           attempt: 'repair',
-          accepted: Boolean(repairedValidation.document),
-          errors: repairedValidation.errors,
+          accepted: Boolean(repairedValidation.document) && repairPreservationErrors.length === 0,
+          errors: [
+            ...repairedValidation.errors,
+            ...repairPreservationErrors,
+          ],
           algorithmicRepairs: repairedValidation.algorithmicRepairs,
           parsedDocument: repairedValidation.parsedDocument,
         },
       });
-      if (!repairedValidation.document) {
+      if (!repairedValidation.document || repairPreservationErrors.length > 0) {
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'rejected',
           document: null,
@@ -474,6 +488,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             validationErrors: [
               ...initialValidation.errors.map((value) => `initial:${value}`),
               ...repairedValidation.errors.map((value) => `repair:${value}`),
+              ...repairPreservationErrors.map((value) => `repair:${value}`),
             ],
             providerError: null,
           }),
