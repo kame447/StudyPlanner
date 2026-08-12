@@ -142,11 +142,12 @@ function input(params: {
   };
 }
 
-function role(candidate: { stableV5Metadata?: unknown }): {
+function role(candidate: unknown): {
   sessionRole?: 'learning' | 'review';
   reviewRound?: 1 | 2;
 } {
-  return (candidate.stableV5Metadata ?? {}) as {
+  const metadata = (candidate as { stableV5Metadata?: unknown }).stableV5Metadata;
+  return (metadata ?? {}) as {
     sessionRole?: 'learning' | 'review';
     reviewRound?: 1 | 2;
   };
@@ -231,6 +232,30 @@ describe('Stable V5 distribution adversarial audit', () => {
     expect(result.status).toBe('ready');
     const secondReview = result.candidates.find((candidate) => role(candidate).reviewRound === 2);
     expect(secondReview?.date).toBe('2026-08-23');
+  });
+
+  it('degrades to one review instead of rejecting a late-week learning slot', () => {
+    const result = scheduleWeeklyPlanningStableV5Preview({
+      input: input({
+        unavailableDates: [
+          '2026-08-17',
+          '2026-08-18',
+          '2026-08-19',
+          '2026-08-20',
+        ],
+      }),
+      graph: graph(),
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.candidates.map((candidate) => ({
+      date: candidate.date,
+      sessionRole: role(candidate).sessionRole,
+      reviewRound: role(candidate).reviewRound,
+    }))).toEqual([
+      { date: '2026-08-21', sessionRole: 'learning', reviewRound: undefined },
+      { date: '2026-08-22', sessionRole: 'review', reviewRound: 1 },
+    ]);
   });
 
   it('respects explicit task-date eligibility for both learning and derived reviews', () => {
