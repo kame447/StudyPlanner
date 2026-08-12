@@ -105,17 +105,17 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - turn trace persistenceをcommit/rollback side effectsから分離し、full CI #2595 green
 - approval Firestore adapterをcomposition rootから分離し、full CI #2598 green
 - approval memory adapterをcomposition rootから分離し、full CI #2601 green
+- approval local planner adapterをcomposition rootから分離し、full CI #2604 green
 
 現在のloop:
 
-- `weeklyPlanningApprovalPlanRepository.ts`に最後まで残っていたlocal plannerRepository fallback実装を`weeklyPlanningApprovalLocalRepository.ts`へ分離した。
-- 元repositoryは`WeeklyPlanningApprovalPlanRepository`契約、Firestore/local adapter選択、test overrideだけを保持するcomposition rootへ縮小した。
-- local adapterは既存plannerRepositoryとの橋渡しとidempotent source lookupを担当し、approval persistence policyから解決済みidentityを利用する。composition変更とlocal storage実装変更の変更理由を分離してSRPを改善する。
-- local adapterはtyped `PlanDraft`のみを扱い、raw user textやAI semantic出力の意味を再解釈しない。「approval/save/persistenceはdeterministic code」という最上位設計原則を維持する。
-- Firestore/memoryの既存factory public pathはそのまま維持する。local factoryは従来privateだったため新たなpublic APIにはしない。
+- `WeeklyPlanningApprovalPlanRepository` interfaceをcomposition rootから`weeklyPlanningApprovalPlanRepositoryContract.ts`へ移した。
+- Firestore/memory/local adapterはcomposition moduleを型参照せず、独立contractへ直接依存する。composition rootも同じcontractへ依存するため「high-level compositionとlow-level adapterが共通抽象へ依存する」DIPの向きに修正した。
+- 旧`weeklyPlanningApprovalPlanRepository.ts`からcontract typeをre-exportし、既存import pathを維持する。
+- この変更はtyped persistence abstractionだけを扱い、raw user textやsemantic判断には触れない。最上位設計原則を維持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。approval contract依存方向、RuntimeSession、RuntimeExecutorのdeterministic planning phase、application orchestrationを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSession、RuntimeExecutorのdeterministic planning phase、application orchestration、残存adapter couplingを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
