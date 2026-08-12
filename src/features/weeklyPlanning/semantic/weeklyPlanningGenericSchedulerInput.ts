@@ -35,6 +35,9 @@ import type {
   TaskDateRuleResolutionIssue,
 } from './weeklyPlanningTaskDateRuleResolver';
 import { isValidCalendarDate } from './weeklyPlanningCalendarResolver';
+import {
+  distributeGenericSchedulerWorkItemsV5,
+} from './weeklyPlanningSchedulerWorkDistributionV5';
 
 export const GENERIC_SCHEDULER_INPUT_VERSION =
   'weekly-planning-generic-scheduler-input-v2' as const;
@@ -322,7 +325,7 @@ export function compileGenericSchedulerInput(params: {
   );
 
   const work = compileGenericPlanningWorkItems(params.graph);
-  const movableWorkItems = work.items.filter((item) => {
+  const aggregateMovableWorkItems = work.items.filter((item) => {
     if (!fixedTaskIds.has(item.taskId)) return true;
     issues.push({
       domain: 'deduplication',
@@ -374,6 +377,13 @@ export function compileGenericSchedulerInput(params: {
   if (movableTasksWithoutWorkload.length > 0) {
     return { status: 'needs_resolution', input: null, issues };
   }
+
+  const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
+    graph: params.graph,
+    items: aggregateMovableWorkItems,
+    startDate: params.context.planningStartDate,
+    endDate: params.context.planningEndDate,
+  });
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
     return { status: 'empty', input: null, issues };
