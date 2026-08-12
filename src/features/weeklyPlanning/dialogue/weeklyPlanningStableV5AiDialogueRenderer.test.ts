@@ -73,7 +73,7 @@ function clientReturning(contentOrError: string | Error): OpenAiCompatibleClient
 }
 
 describe('Stable V5 AI dialogue renderer', () => {
-  it('sends one state summary and the typed application decision to the model', async () => {
+  it('sends one state summary and the typed application decision to the model for explanation requests', async () => {
     const renderInput = input();
     const client = clientReturning(rendererResponse(
       renderInput,
@@ -159,8 +159,8 @@ describe('Stable V5 AI dialogue renderer', () => {
     await expect(renderer.render(renderInput)).resolves.toMatchObject({ status: 'rendered' });
   });
 
-  it('rejects a false creation claim for a missing-work question and accepts a natural question', async () => {
-    const missingWorkInput = input({
+  it('bypasses AI for an ordinary machine-decided slot question', async () => {
+    const renderInput = input({
       actionId: 'stable-v5:request-tomorrow:missing_schedulable_work',
       currentUserMessage: '明日',
       recentConversation: [
@@ -177,29 +177,18 @@ describe('Stable V5 AI dialogue renderer', () => {
       fallbackText: '予定に入れる作業量がまだありません。何をどれくらい進めたいか教えてください。',
       previewCount: 0,
     });
-    const falseClaim = createAiWeeklyPlanningStableV5DialogueRenderer(
-      config,
-      clientReturning(rendererResponse(
-        missingWorkInput,
-        '明日1日分の予定ですね。では、明日の予定を作ります。',
-      )),
-    );
-    const naturalQuestion = createAiWeeklyPlanningStableV5DialogueRenderer(
-      config,
-      clientReturning(rendererResponse(
-        missingWorkInput,
-        '明日の予定には、何をどれくらい入れたいですか？',
-      )),
-    );
+    const client = clientReturning(rendererResponse(
+      renderInput,
+      '明日の予定には、何をどれくらい入れたいですか？',
+    ));
+    const renderer = createAiWeeklyPlanningStableV5DialogueRenderer(config, client);
 
-    await expect(falseClaim.render(missingWorkInput)).resolves.toMatchObject({
+    await expect(renderer.render(renderInput)).resolves.toEqual({
       status: 'fallback',
-      reason: 'ungrounded_text',
+      reason: 'deterministic_question',
+      rawResponse: null,
     });
-    await expect(naturalQuestion.render(missingWorkInput)).resolves.toMatchObject({
-      status: 'rendered',
-      text: '明日の予定には、何をどれくらい入れたいですか？',
-    });
+    expect(client.createChatCompletion).not.toHaveBeenCalled();
   });
 
   it('falls back when the model changes the action identity or question contract', async () => {
@@ -231,7 +220,7 @@ describe('Stable V5 AI dialogue renderer', () => {
     });
   });
 
-  it('falls back only when the model invents a clock time or date absent from all context', async () => {
+  it('falls back only when an explanation invents a clock time or date absent from all context', async () => {
     const baseInput = input();
     const invented = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
@@ -241,7 +230,7 @@ describe('Stable V5 AI dialogue renderer', () => {
       )),
     );
     const groundedInput = input({
-      currentUserMessage: '明日の20時からやる分です',
+      currentUserMessage: '明日の20時ってどういう意味？',
     });
     const grounded = createAiWeeklyPlanningStableV5DialogueRenderer(
       config,
