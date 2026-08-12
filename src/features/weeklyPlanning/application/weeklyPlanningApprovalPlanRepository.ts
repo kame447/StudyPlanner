@@ -1,13 +1,17 @@
 import { getFirestoreDb } from '../../../lib/firebaseClient';
-import type { Plan, PlanDraft } from '../../../types/domain';
-import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
 import {
   createFirestoreWeeklyPlanningApprovalPlanRepository,
 } from './weeklyPlanningApprovalFirestoreRepository';
 import {
   createPlannerBackedWeeklyPlanningApprovalPlanRepository,
 } from './weeklyPlanningApprovalLocalRepository';
+import type {
+  WeeklyPlanningApprovalPlanRepository,
+} from './weeklyPlanningApprovalPlanRepositoryContract';
 
+export type {
+  WeeklyPlanningApprovalPlanRepository,
+} from './weeklyPlanningApprovalPlanRepositoryContract';
 export {
   createFirestoreWeeklyPlanningApprovalPlanRepository,
 } from './weeklyPlanningApprovalFirestoreRepository';
@@ -24,11 +28,6 @@ export {
 export type {
   WeeklyPlanningApprovalPersistenceErrorCode,
 } from './weeklyPlanningApprovalPersistencePolicy';
-
-export interface WeeklyPlanningApprovalPlanRepository {
-  saveApprovedPlan(draft: PlanDraft): Promise<Plan>;
-  completeOperation(operation: WeeklyDraftApprovalOperation): Promise<void>;
-}
 
 let repository: WeeklyPlanningApprovalPlanRepository | null = null;
 
