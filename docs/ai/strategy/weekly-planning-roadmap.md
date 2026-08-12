@@ -116,19 +116,19 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - approval runtime選択を`weeklyPlanningApprovalRuntimeResolver.ts`へ集約し、availabilityとactual saveの二重実装を解消。Stable V5への直接接続点も2箇所から1箇所へ狭め、production isolation監査を縮小したうえでfull CI #2651 green
 - Stable V5 runtime sessionからlegacy global runtimeへのpublish/clear bridgeを削除し、新旧runtimeを独立管理へ変更。hydrate/finalize/clear/resetでlegacy snapshotを上書き・消去しない回帰を追加してfull CI #2657 green
 - Stable V5 scheduler candidateとpreview/draftで重複していたprovenance型を`weeklyPlanningPreviewProvenance.ts`へ単一化。既存型名はaliasで維持し、review情報を含む同一contractを生成からpreviewまで利用してfull CI #2662 green
+- RuntimeExecutorからsemantic成功後のdeterministic planning evaluationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ分離。horizon、grounding、scheduler compilation、repair/dialogue、authorizationの所有者を明確化し、architecture testも新ownerへ追従させてfull CI #2667 green
 
 現在のloop:
 
-- `weeklyPlanningStableV5RuntimeExecutor.ts`に、semantic成功後のdeterministic planning evaluationと、結果に応じたresponse branch / preview executionが同居しているため、変更理由を分離する。
-- horizon解決、grounding reconcile、scheduler context、external constraints、scheduler input compilation、repair agenda、dialogue decision、semantic change判定、preview authorizationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ移した。
-- RuntimeExecutorはsemantic/user-context/graph staging、評価結果のtrace、質問・承認・previewのresponse branchingへ集中する。実際のpreview scheduler実行はこのloopでは移さず、1 loop 1変更理由を守る。
-- preview authorizationの既存公開関数は旧RuntimeExecutorからre-exportし、既存import pathを維持する。
-- ambiguity/recovery architecture testは削除せず、dialogue orderingの所有者が新しいplanning evaluation moduleへ移ったことを明示検査するよう追従した。
-- 新しいplanning evaluation moduleはStable V5 semantic/policy modulesへの正式なproduction support接続点なのでproduction isolation監査へ明示登録した。
-- この分離はAIの意味理解をdeterministic codeへ移さない。AIが確定したFact Graphとmachine stateを入力として、readiness / scheduler / question priority / authorizationだけを決定論的に評価するため最上位設計原則と一致する。
+- RuntimeExecutorに残っていた「scheduler inputから実際の仮予定を配置する処理」と「配置結果を見てユーザーへ何を返すか」という別の変更理由を分離する。
+- schedulerへの入力組み立て、today not-before反映、preview scheduler実行、scheduler version/defaults/resultのdebug traceを`weeklyPlanningStableV5PreviewExecution.ts`へ移した。
+- RuntimeExecutorはplanning evaluation結果を受け、質問・authorization・capacity不足・empty・preview readyのresponse branchを選ぶ責務へさらに縮小した。
+- preview executionは既に決定済みのscheduler inputとFact Graphを使うだけで、raw user textの意味を解釈しない。placement/schedulerはdeterministic codeが担当するという最上位設計原則をそのまま保つ。
+- 新しいpreview execution moduleはStable V5 preview schedulerへの正式なproduction support接続点なのでproduction isolation監査へ明示登録した。
+- 既存のscheduler trace stage、version、default criteria、all-or-nothing診断は移動前と同じ内容を保持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのpreview scheduler実行とresponse branching、user context/graph staging side effects、legacy runtimeの残存production reachability、その他application orchestrationを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのresponse branch構築、user context/graph staging side effects、legacy runtimeの残存production reachability、その他application orchestrationを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
