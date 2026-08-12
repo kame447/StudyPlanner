@@ -17,9 +17,6 @@ import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
-  normalizeTaskDecompositionUncertaintiesV5,
-} from './weeklyPlanningTaskDecompositionNormalizationV5';
-import {
   readWeeklyPlanningRepresentationRepairBaselineV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
 import {
