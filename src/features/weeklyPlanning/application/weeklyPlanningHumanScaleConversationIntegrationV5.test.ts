@@ -176,13 +176,23 @@ function finalizeTurn(conversationId: string, requestId: string): void {
   });
 }
 
+function candidateRole(candidate: { stableV5Metadata?: unknown }): {
+  sessionRole?: 'learning' | 'review';
+  reviewRound?: 1 | 2;
+} {
+  return (candidate.stableV5Metadata ?? {}) as {
+    sessionRole?: 'learning' | 'review';
+    reviewRound?: 1 | 2;
+  };
+}
+
 describe('Stable V5 human-scale conversation integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     normalizeMock.mockReset();
   });
 
-  it('splits 220 vocabulary words into 70/70/80 and previews three independent learning sessions', async () => {
+  it('splits 220 vocabulary words into 70/70/80 and carries each batch through two spaced reviews', async () => {
     normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
       title: '英単語',
       amount: 220,
@@ -216,24 +226,46 @@ describe('Stable V5 human-scale conversation integration', () => {
     }));
 
     expect(second.state.status).toBe('draft_ready');
-    expect(second.draftCandidates.map((candidate) => candidate.title)).toEqual([
+    expect(second.message).toContain('9件の仮予定候補');
+    expect(second.draftCandidates).toHaveLength(9);
+
+    const learning = second.draftCandidates.filter(
+      (candidate) => candidateRole(candidate).sessionRole === 'learning',
+    );
+    const reviews = second.draftCandidates.filter(
+      (candidate) => candidateRole(candidate).sessionRole === 'review',
+    );
+    expect(learning.map((candidate) => candidate.title)).toEqual([
       '英単語 70語（1/3）',
       '英単語 70語（2/3）',
       '英単語 80語（3/3）',
     ]);
-    expect(second.draftCandidates.map((candidate) => ({
+    expect(learning.map((candidate) => ({
       date: candidate.date,
-      startTime: candidate.startTime,
-      endTime: candidate.endTime,
       durationMinutes: candidate.durationMinutes,
     }))).toEqual([
-      { date: '2026-08-17', startTime: '09:00', endTime: '09:30', durationMinutes: 30 },
-      { date: '2026-08-17', startTime: '09:40', endTime: '10:10', durationMinutes: 30 },
-      { date: '2026-08-17', startTime: '10:20', endTime: '10:50', durationMinutes: 30 },
+      { date: '2026-08-17', durationMinutes: 30 },
+      { date: '2026-08-18', durationMinutes: 30 },
+      { date: '2026-08-19', durationMinutes: 30 },
     ]);
+    expect(reviews).toHaveLength(6);
+    expect(reviews.map((candidate) => ({
+      title: candidate.title,
+      date: candidate.date,
+      durationMinutes: candidate.durationMinutes,
+      reviewRound: candidateRole(candidate).reviewRound,
+    }))).toEqual([
+      { title: '英単語 70語（1/3）・復習1回目', date: '2026-08-18', durationMinutes: 15, reviewRound: 1 },
+      { title: '英単語 70語（2/3）・復習1回目', date: '2026-08-19', durationMinutes: 15, reviewRound: 1 },
+      { title: '英単語 70語（1/3）・復習2回目', date: '2026-08-20', durationMinutes: 15, reviewRound: 2 },
+      { title: '英単語 80語（3/3）・復習1回目', date: '2026-08-20', durationMinutes: 15, reviewRound: 1 },
+      { title: '英単語 70語（2/3）・復習2回目', date: '2026-08-21', durationMinutes: 15, reviewRound: 2 },
+      { title: '英単語 80語（3/3）・復習2回目', date: '2026-08-22', durationMinutes: 15, reviewRound: 2 },
+    ]);
+    expect(second.draftCandidates.some((candidate) => candidate.date === '2026-08-23')).toBe(false);
   });
 
-  it('asks for the whole-batch time for 80 vocabulary words and previews one learning block', async () => {
+  it('asks for the whole-batch time for 80 vocabulary words and adds shorter spaced reviews', async () => {
     normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
       title: '英単語',
       amount: 80,
@@ -266,14 +298,36 @@ describe('Stable V5 human-scale conversation integration', () => {
     }));
 
     expect(second.state.status).toBe('draft_ready');
-    expect(second.draftCandidates).toHaveLength(1);
-    expect(second.draftCandidates[0]).toMatchObject({
-      title: '英単語 80語',
-      date: '2026-08-17',
-      startTime: '09:00',
-      endTime: '09:35',
-      durationMinutes: 35,
-    });
+    expect(second.message).toContain('3件の仮予定候補');
+    expect(second.draftCandidates.map((candidate) => ({
+      title: candidate.title,
+      date: candidate.date,
+      durationMinutes: candidate.durationMinutes,
+      sessionRole: candidateRole(candidate).sessionRole,
+      reviewRound: candidateRole(candidate).reviewRound,
+    }))).toEqual([
+      {
+        title: '英単語 80語',
+        date: '2026-08-17',
+        durationMinutes: 35,
+        sessionRole: 'learning',
+        reviewRound: undefined,
+      },
+      {
+        title: '英単語 80語・復習1回目',
+        date: '2026-08-18',
+        durationMinutes: 20,
+        sessionRole: 'review',
+        reviewRound: 1,
+      },
+      {
+        title: '英単語 80語・復習2回目',
+        date: '2026-08-20',
+        durationMinutes: 15,
+        sessionRole: 'review',
+        reviewRound: 2,
+      },
+    ]);
   });
 
   it('asks per problem for discrete problem workloads and uses that scale in the preview estimate', async () => {
