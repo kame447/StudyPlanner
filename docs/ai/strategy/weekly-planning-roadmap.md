@@ -119,8 +119,10 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - `WeeklyPlanningStableV5PreviewMetadata`ではconversationIdを必須契約にし、通常経路は候補自身のprovenanceをそのままpreview/draftへ伝播する。
 - 旧checkpoint等からconversationId欠落Stable V5候補が入った場合だけruntime compatibilityとして空のprovenanceへ正規化し、global stateから補完しない。approval側はStable V5のconversationId欠落を`recompute_required`としてfail closedする。
 - `weeklyPlanningStableV5PreviewBlocks.test.ts`に、同revisionのambient global runtimeが存在してもconversationId欠落候補へ別conversationを補完しない回帰を追加した。
+- 初回full CI #2630では新しいfail-closed回帰自体はgreenだったが、session storage testの手書きStable V5 candidate fixtureがconversationIdを持たず、過去のambient補完に暗黙依存していたため保存時の厳格なownership validationで破棄された。
+- persistence decoderを緩めたりambient補完を戻したりせず、session storage test fixtureを現在のproduction scheduler contractと同じくconversationIdを明示保持する形へ修正した。preview candidate復元でもconversation provenance保持を明示検証する。
 - raw user textやsemantic内容は参照せず、既に確定したprovenanceの保持・欠落検証だけをdeterministic codeが担当するため最上位設計原則を維持する。
-- このloopの完了判定は最終headのfull CI greenを必要とする。
+- このloopの完了判定は修正後最終headのfull CI greenを必要とする。
 
 次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionからlegacy global runtimeへのpublication bridge、Stable V5 preview metadata型の重複、RuntimeExecutor deterministic planning phase、その他singleton依存を優先して疑う。
 
@@ -135,7 +137,7 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 1. JSON Schemaで表現可能ならschema
 2. 意味を変えないrepresentation normalizationならdeterministic canonicalizer
 3. exact pending targetがmachine stateで既知ならfocused AI
-4. AI修復対象fieldが限定できるならfield-scoped focused repair
+4. AI修復対象fieldが限定されるならfield-scoped focused repair
 5. 複数意味を同時に統合する自由入力だけgeneric AI
 
 validator errorが出るたびにsystem prompt、validator、repair promptへ同じ規則を重複追加しない。
