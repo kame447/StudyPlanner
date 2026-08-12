@@ -141,10 +141,7 @@ export function vocabularyLearningCandidateDatesV5(params: {
   preferredDate: string | null;
   dates: readonly string[];
 }): string[] {
-  const offsets = vocabularyReviewOffsetsV5(params.dates.length);
-  const maxReviewOffset = offsets.length > 0 ? Math.max(...offsets) : 0;
-  const latestLearningIndex = Math.max(0, params.dates.length - 1 - maxReviewOffset);
-  const candidates = params.dates.slice(0, latestLearningIndex + 1);
+  const candidates = [...params.dates];
   if (!params.preferredDate || !candidates.includes(params.preferredDate)) return candidates;
   return [
     params.preferredDate,
