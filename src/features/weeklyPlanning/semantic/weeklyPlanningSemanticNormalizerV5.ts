@@ -41,6 +41,14 @@ import {
   parseFocusedPlanningWindowRepairDecisionV5,
 } from './weeklyPlanningFocusedPlanningWindowRepairV5';
 import {
+  FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
+  FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
+  applyFocusedTemporalScopeRepairV5,
+  createFocusedTemporalScopeRepairMessagesV5,
+  parseFocusedTemporalScopeRepairDecisionV5,
+  readFocusedTemporalScopeRepairCandidateV5,
+} from './weeklyPlanningFocusedTemporalScopeRepairV5';
+import {
   validateWeeklyPlanningSemanticResponseV5,
 } from './weeklyPlanningSemanticResponseValidationV5';
 import {
@@ -607,6 +615,180 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           });
           return result;
         }
+      }
+
+      const temporalScopeCandidate = readFocusedTemporalScopeRepairCandidateV5({
+        rawResponse: initialResponse,
+        validationErrors: initialValidation.errors,
+      });
+      if (temporalScopeCandidate) {
+        const focusedMessages = createFocusedTemporalScopeRepairMessagesV5(
+          temporalScopeCandidate,
+        );
+        const focusedRequest = {
+          messages: focusedMessages,
+          temperature: 0,
+          responseFormat: FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
+          purpose: 'weekly_planning_semantic_normalizer' as const,
+          maxCompletionTokens: FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
+        };
+        const focusedBytes = byteLength(focusedRequest);
+        requestBytes.push(focusedBytes);
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_orchestrator_route',
+          severity: 'warn',
+          data: {
+            route: 'focused_temporal_scope_repair_candidate',
+            meaningOwner: 'ai',
+            deterministicResponsibilities: [
+              'route_from_exact_validation_path',
+              'preserve_interpreted_date_and_clock',
+              'move_only_the_invalid_temporal_fact_or_emit_uncertainty',
+              'revalidate_complete_document',
+            ],
+            initialValidationErrors: initialValidation.errors,
+            requestBytes: focusedBytes,
+          },
+        });
+
+        let focusedResponse: string;
+        try {
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_provider_request',
+            data: {
+              attempt: 'focused_temporal_scope_repair',
+              requestBytes: focusedBytes,
+              request: focusedRequest,
+            },
+          });
+          focusedResponse = await client.createChatCompletion(focusedRequest);
+          responseLengths.push(focusedResponse.length);
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_provider_response',
+            data: {
+              attempt: 'focused_temporal_scope_repair',
+              responseLength: focusedResponse.length,
+              rawResponse: focusedResponse,
+            },
+          });
+        } catch (error) {
+          const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+            status: 'provider_failure',
+            document: null,
+            diagnostics: diagnostics({
+              attemptCount: 2,
+              repairAttempted: true,
+              validationErrors: initialValidation.errors,
+              providerError: errorMessage(error),
+            }),
+          };
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_normalizer_decision',
+            severity: 'error',
+            data: result,
+          });
+          return result;
+        }
+
+        const focusedDecision = parseFocusedTemporalScopeRepairDecisionV5(
+          focusedResponse,
+        );
+        const focusedPatchedResponse = focusedDecision
+          ? applyFocusedTemporalScopeRepairV5({
+              rawResponse: initialResponse,
+              candidate: temporalScopeCandidate,
+              decision: focusedDecision,
+            })
+          : null;
+        if (!focusedDecision || !focusedPatchedResponse) {
+          const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+            status: 'rejected',
+            document: null,
+            diagnostics: diagnostics({
+              attemptCount: 2,
+              repairAttempted: true,
+              validationErrors: [
+                ...initialValidation.errors.map((value) => `initial:${value}`),
+                'repair:focused-temporal-scope:invalid-response',
+              ],
+              providerError: null,
+            }),
+          };
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_normalizer_decision',
+            severity: 'error',
+            data: result,
+          });
+          return result;
+        }
+
+        const focusedValidation = validateWeeklyPlanningSemanticResponseV5(
+          focusedPatchedResponse,
+          input,
+        );
+        algorithmicRepairs.push(...focusedValidation.algorithmicRepairs);
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_validation_result',
+          severity: focusedValidation.document ? 'info' : 'error',
+          data: {
+            attempt: 'focused_temporal_scope_repair',
+            accepted: Boolean(focusedValidation.document),
+            decision: focusedDecision.decision,
+            errors: focusedValidation.errors,
+            algorithmicRepairs: focusedValidation.algorithmicRepairs,
+            parsedDocument: focusedValidation.parsedDocument,
+          },
+        });
+
+        if (!focusedValidation.document) {
+          const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+            status: 'rejected',
+            document: null,
+            diagnostics: diagnostics({
+              attemptCount: 2,
+              repairAttempted: true,
+              validationErrors: [
+                ...initialValidation.errors.map((value) => `initial:${value}`),
+                ...focusedValidation.errors.map((value) => `repair:${value}`),
+              ],
+              providerError: null,
+            }),
+          };
+          recordWeeklyPlanningStableV5DebugTrace({
+            requestId: input.traceRequestId,
+            stage: 'semantic_normalizer_decision',
+            severity: 'error',
+            data: result,
+          });
+          return result;
+        }
+
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+          status: 'accepted',
+          document: focusedValidation.document,
+          diagnostics: diagnostics({
+            attemptCount: 2,
+            repairAttempted: true,
+            validationErrors: initialValidation.errors,
+            providerError: null,
+          }),
+        };
+        recordWeeklyPlanningStableV5DebugTrace({
+          requestId: input.traceRequestId,
+          stage: 'semantic_normalizer_decision',
+          data: {
+            ...result,
+            orchestrationRoute: 'focused_temporal_scope_repair',
+            focusedTemporalScopeDecision: focusedDecision.decision,
+          },
+        });
+        return result;
       }
 
       const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
