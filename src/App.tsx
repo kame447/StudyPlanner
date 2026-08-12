@@ -145,6 +145,7 @@ export default function App() {
     userId: user?.id,
     selectedDate,
     plans,
+    actuals,
     scheduleTemplates,
     timetableTermId: activeTimetableTermId,
     saveWeeklyApprovedPlan,
