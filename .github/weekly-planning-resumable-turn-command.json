@@ -1,9 +1,9 @@
 {
   "scenario": "final-pr120-real-api-conversation-20260812",
-  "turn": 1,
-  "attempt": 3,
-  "user_text": "8月17日から23日で、英単語220語と数学の問題40問を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。",
-  "previous_run_id": "",
+  "turn": 2,
+  "attempt": 1,
+  "user_text": "8分くらいです。",
+  "previous_run_id": "31573454596",
   "conversation_id": "weekly-pr120-final-real-api-20260812-03",
   "owner_id": "real-api-pr120-final-user-3",
   "week_start_date": "2026-08-17",
