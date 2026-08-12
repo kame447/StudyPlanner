@@ -4,6 +4,7 @@ import type {
   WeeklyPlanningRepairObligation,
 } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
+import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 
 function emptyCompatibilityState(): PlanningIntakeState {
   return {
@@ -27,7 +28,7 @@ function emptyCompatibilityState(): PlanningIntakeState {
   };
 }
 
-export function projectStableV5CompatibilityState(params: {
+export interface StableV5CompatibilityProjectionInput {
   previousState?: PlanningIntakeState;
   userText: string;
   message: string;
@@ -38,7 +39,11 @@ export function projectStableV5CompatibilityState(params: {
   preserveExistingPreview?: boolean;
   groundingRecords?: WeeklyPlanningGroundingRecord[];
   repairAgenda?: WeeklyPlanningRepairObligation[];
-}): PlanningIntakeState {
+}
+
+export function projectStableV5CompatibilityState(
+  params: StableV5CompatibilityProjectionInput,
+): PlanningIntakeState {
   const previous = params.previousState ?? emptyCompatibilityState();
   const hasDraft = params.draftCandidates.length > 0;
   const hasPreview = hasDraft || Boolean(params.preserveExistingPreview);
@@ -73,5 +78,16 @@ export function projectStableV5CompatibilityState(params: {
     groundingRecords: params.groundingRecords ?? previous.groundingRecords ?? [],
     repairAgenda: params.repairAgenda ?? previous.repairAgenda ?? [],
     sourceTurns: [...previous.sourceTurns, params.userText].slice(-32),
+  };
+}
+
+export function projectStableV5CompatibilityOutput(
+  params: StableV5CompatibilityProjectionInput,
+): WeeklyPlanningTurnExecutionResult {
+  return {
+    state: projectStableV5CompatibilityState(params),
+    message: params.message,
+    draftCandidates: params.draftCandidates,
+    ...(params.preserveExistingPreview ? { preserveExistingPreview: true } : {}),
   };
 }
