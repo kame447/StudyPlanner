@@ -12,7 +12,6 @@ import {
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
 import {
-  partitionWeeklyPlanningDatesV5,
   preferredTaskDistributedDateV5,
   preferredVocabularyLearningDateV5,
   reviewCandidateDatesV5,
