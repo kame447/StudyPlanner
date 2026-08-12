@@ -17,6 +17,12 @@ import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
 import {
+  normalizeTaskDecompositionUncertaintiesV5,
+} from './weeklyPlanningTaskDecompositionNormalizationV5';
+import {
+  readWeeklyPlanningRepresentationRepairBaselineV5,
+} from './weeklyPlanningSemanticRepairPreservationV5';
+import {
   validateWeeklyPlanningWorkBreakdownResponseContractV5,
 } from './weeklyPlanningWorkBreakdownResponseContractV5';
 import type {
@@ -79,7 +85,10 @@ export function validateWeeklyPlanningSemanticResponseV5(
   if (!parsed.document) {
     return {
       document: null,
-      parsedDocument: null,
+      parsedDocument: readWeeklyPlanningRepresentationRepairBaselineV5({
+        rawResponse: workloadNormalization.rawResponse,
+        validationErrors: parsed.errors,
+      }),
       errors: parsed.errors,
       algorithmicRepairs,
     };
