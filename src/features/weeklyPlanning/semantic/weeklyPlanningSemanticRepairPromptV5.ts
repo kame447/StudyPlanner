@@ -32,6 +32,9 @@ function repairDirectivesForErrors(
     || error.includes('document.planningWindow.value:absolute-canonical-range'))) {
     directives.push('Repair only the malformed absolute planningWindow representation. Interpret the explicit date range from current userText and conversation date context into valid YYYY-MM-DD start/end values, require start <= end, and set value exactly to "<start>/<end>". Preserve planningIntent and every otherwise-valid current-turn task, component, workload, availability declaration, relation, user-context fact, uncertainty, correction, and decision from the invalid response; do not drop unrelated facts while repairing the date range.');
   }
+  if (errors.some((error) => error.includes('canonical-weekday-required'))) {
+    directives.push('Every entry in availabilityDeclarations.days and recurrence.days must use the canonical weekday:<english-day> token, for example weekday:tuesday. Do not use bare names such as tuesday, tue, or Japanese weekday text. Preserve the rest of the current-turn semantic document unchanged.');
+  }
   if (errors.some((error) =>
     error.includes(':missing-start')
     || error.includes(':missing-end')
