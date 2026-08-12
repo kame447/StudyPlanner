@@ -19,6 +19,7 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'weeklyPlanningTurnExecutionTypes.ts',
   'weeklyPlanningOwnedStorage.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
+  'application/weeklyPlanningStableV5GraphStaging.ts',
   'application/weeklyPlanningStableV5InstrumentedRuntimeExecutor.ts',
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',
   'application/weeklyPlanningStableV5RuntimeQuestions.ts',
