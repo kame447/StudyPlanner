@@ -53,7 +53,7 @@ describe('Stable V5 placement policy adversarial audit', () => {
       totalMovableMinutes: 360,
     });
     expect(ordered[0]).toBe('2026-08-17');
-    expect(ordered.at(-1)).toBe('2026-08-23');
+    expect(ordered[ordered.length - 1]).toBe('2026-08-23');
     expect(ordered.indexOf('2026-08-18')).toBeGreaterThan(ordered.indexOf('2026-08-19'));
     expect(normalDailyLoadSoftCapMinutesV5({
       totalMovableMinutes: 360,
