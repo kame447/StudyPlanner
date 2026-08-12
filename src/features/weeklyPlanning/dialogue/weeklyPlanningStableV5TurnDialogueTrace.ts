@@ -159,7 +159,7 @@ export function recordWeeklyPlanningDialogueDecisionV5(params: {
   branch: 'system_message_bypass' | 'deterministic_question_bypass' | 'deterministic_fallback' | 'ai_rendered';
   actionId?: string | null;
   questionCode?: string | null;
-  responseSource: 'ai' | 'deterministic_fallback' | 'rules' | 'system';
+  responseSource: WeeklyPlanningDialogueRendererTrace['decision']['responseSource'] | undefined;
   message: string;
   selfRepairNotice?: string | null;
   reason?: string | null;
