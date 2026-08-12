@@ -36,6 +36,8 @@ const ABSOLUTE_WINDOW_REPRESENTATION_ERRORS = [
   /^document\.planningWindow\.value:absolute-canonical-range:/,
 ] as const;
 
+const FOCUSED_REPAIR_KEYS = new Set(['value', 'start', 'end']);
+
 export interface FocusedPlanningWindowRepairInputV5 {
   userText: string;
   invalidDocument: WeeklyPlanningSemanticDocumentV5;
@@ -118,6 +120,8 @@ export function parseFocusedPlanningWindowRepairDecisionV5(
   try {
     const value = JSON.parse(raw) as unknown;
     if (!isRecord(value)) return null;
+    if (Object.keys(value).some((key) => !FOCUSED_REPAIR_KEYS.has(key))) return null;
+    if (Object.keys(value).length !== FOCUSED_REPAIR_KEYS.size) return null;
     if (
       typeof value.value !== 'string'
       || typeof value.start !== 'string'
