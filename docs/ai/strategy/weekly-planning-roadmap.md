@@ -106,16 +106,18 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - approval Firestore adapterをcomposition rootから分離し、full CI #2598 green
 - approval memory adapterをcomposition rootから分離し、full CI #2601 green
 - approval local planner adapterをcomposition rootから分離し、full CI #2604 green
+- approval repository contractをcomposition rootから分離し、全adapterとcompositionが共通抽象へ依存するDIPへ修正。full CI #2610 green
 
 現在のloop:
 
-- `WeeklyPlanningApprovalPlanRepository` interfaceをcomposition rootから`weeklyPlanningApprovalPlanRepositoryContract.ts`へ移した。
-- Firestore/memory/local adapterはcomposition moduleを型参照せず、独立contractへ直接依存する。composition rootも同じcontractへ依存するため「high-level compositionとlow-level adapterが共通抽象へ依存する」DIPの向きに修正した。
-- 旧`weeklyPlanningApprovalPlanRepository.ts`からcontract typeをre-exportし、既存import pathを維持する。
-- この変更はtyped persistence abstractionだけを扱い、raw user textやsemantic判断には触れない。最上位設計原則を維持する。
+- `weeklyPlanningStableV5RuntimeSession.ts`に同居していた公開runtime session registryと、request単位の未確定Fact Graph staging bufferを分離した。
+- staging map、turn keyからのrequestId検証、stage/read/discard/clear/resetを`weeklyPlanningStableV5GraphStaging.ts`へ移し、RuntimeSessionはscope、hydrate、published graph、session prune、approval runtime連携へ集中させた。
+- finalize時のowner検証、session存在確認、published session更新、staged graph削除、session runtime publishの順序は既存contractを維持する。旧`commit/get/finalize/discard/has` APIはRuntimeSession facadeから維持する。
+- stagingはtyped `WeeklyPlanningFactGraphV5`とmachine-generated turn keyだけを扱い、raw user textの意味を解釈しない。Fact lifecycle/revisionのtransaction境界はdeterministic codeが担うという最上位設計原則を維持する。
+- 新しいstaging moduleはFact Graph V5へ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録した。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSession、RuntimeExecutorのdeterministic planning phase、application orchestration、残存adapter couplingを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionのregistry/publication、RuntimeExecutorのdeterministic planning phase、application orchestration、staging resource boundsを変更理由と安全性の両面から疑う。
 
 ## 4. Prompt / orchestration方針
 
