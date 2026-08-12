@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  createEmptyWeeklyPlanningFactGraph,
-  type WeeklyPlanningFactGraph,
-} from './weeklyPlanningFactGraph';
+  createEmptyWeeklyPlanningFactGraphV5,
+  type WeeklyPlanningFactGraphV5,
+} from './weeklyPlanningFactGraphV5';
 import { compileGenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import {
   clearWeeklyPlanningEstimateCalibrationRuntimeV5,
@@ -17,8 +17,8 @@ const source = {
   origin: 'user' as const,
 };
 
-function graph(): WeeklyPlanningFactGraph {
-  const value = createEmptyWeeklyPlanningFactGraph();
+function graph(): WeeklyPlanningFactGraphV5 {
+  const value = createEmptyWeeklyPlanningFactGraphV5();
   return {
     ...value,
     revision: 1,
