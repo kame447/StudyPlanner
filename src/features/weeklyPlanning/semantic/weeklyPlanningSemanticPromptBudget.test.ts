@@ -24,6 +24,11 @@ import {
   FOCUSED_PLANNING_WINDOW_REPAIR_RESPONSE_FORMAT_V5,
   createFocusedPlanningWindowRepairMessagesV5,
 } from './weeklyPlanningFocusedPlanningWindowRepairV5';
+import {
+  FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
+  FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
+  createFocusedTemporalScopeRepairMessagesV5,
+} from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 11_000;
@@ -31,6 +36,7 @@ const GENERIC_REQUEST_MAX_BYTES = 24_000;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 2_500;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 4_000;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
+const FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES = 2_000;
 
 function byteLength(value: unknown): number {
   return new TextEncoder().encode(
@@ -73,6 +79,10 @@ function representativeGenericMessages() {
       effortEstimates: [],
       temporalConstraints: [],
       recurrences: [],
+      calendarContext: {
+        currentDate: '2026-08-12',
+        timeZone: 'Asia/Tokyo',
+      },
       episodicMemory: {
         version: 'weekly-planning-episodic-memory-v5',
         items: [],
@@ -144,7 +154,7 @@ describe('Stable V5 semantic prompt budget', () => {
     );
   });
 
-  it('caps the actual representative generic request including hardened provider schema', () => {
+  it('caps the actual representative generic request including hardened provider schema and calendar context', () => {
     expect(representativeGenericRequestBytes()).toBeLessThanOrEqual(
       GENERIC_REQUEST_MAX_BYTES,
     );
@@ -220,6 +230,32 @@ describe('Stable V5 semantic prompt budget', () => {
 
     expect(focusedBytes).toBeLessThanOrEqual(
       FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES,
+    );
+    expect(focusedBytes).toBeLessThan(genericBytes / 8);
+  });
+
+  it('keeps temporal-scope repair tiny instead of regenerating the semantic document', () => {
+    const genericBytes = representativeGenericRequestBytes();
+    const focusedBytes = requestBytes({
+      messages: createFocusedTemporalScopeRepairMessagesV5({
+        taskIndex: 1,
+        constraintIndex: 0,
+        taskTitle: '数学の問題を進める',
+        taskLocalId: 't2',
+        constraintLocalId: 'tc1',
+        sourceText: '火曜日の18時から20時は予定があるので避けてください',
+        dateExpression: 'weekday:tuesday',
+        namedTimePeriod: null,
+        startTime: '18:00',
+        endTime: '20:00',
+        constraintLevel: 'hard',
+      }),
+      responseFormat: FOCUSED_TEMPORAL_SCOPE_REPAIR_RESPONSE_FORMAT_V5,
+      maxCompletionTokens: FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS,
+    });
+
+    expect(focusedBytes).toBeLessThanOrEqual(
+      FOCUSED_TEMPORAL_SCOPE_REPAIR_REQUEST_MAX_BYTES,
     );
     expect(focusedBytes).toBeLessThan(genericBytes / 8);
   });
