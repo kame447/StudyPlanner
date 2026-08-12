@@ -5,6 +5,10 @@ const runtimeSource = readFileSync(
   new URL('./weeklyPlanningStableV5RuntimeExecutor.ts', import.meta.url),
   'utf8',
 );
+const semanticTurnSource = readFileSync(
+  new URL('./weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
+  'utf8',
+);
 const semanticContextSource = readFileSync(
   new URL('./weeklyPlanningStableV5SemanticContext.ts', import.meta.url),
   'utf8',
@@ -23,7 +27,7 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(semanticContextSource).toContain('targetPublicId: uncertainty.targetFactId');
     expect(semanticContextSource).toContain('reason: uncertainty.reason');
     expect(semanticContextSource).toContain('sourceText: uncertainty.source.sourceText');
-    expect(runtimeSource).toContain('createStableV5SemanticPublicStateSummary');
+    expect(semanticTurnSource).toContain('createStableV5SemanticPublicStateSummary');
   });
 
   it('keeps ambiguity wording and issue ordering in the question-policy owner', () => {
@@ -36,10 +40,10 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
   });
 
   it('never asks the user to resend the same content after structural rejection', () => {
-    expect(runtimeSource).not.toContain(
+    expect(semanticTurnSource).not.toContain(
       '同じ内容をそのままもう一度送ってください。',
     );
-    expect(runtimeSource).toContain(
+    expect(semanticTurnSource).toContain(
       '予定条件には反映していません。まず、いつの予定を作るか、または何を進めるかを一つだけ教えてください。',
     );
   });
