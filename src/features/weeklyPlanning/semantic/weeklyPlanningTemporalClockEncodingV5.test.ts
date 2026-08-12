@@ -94,7 +94,7 @@ describe('Stable V5 temporal clock encoding', () => {
     ).toEqual([]);
   });
 
-  it('sends the real observed invalid shape through one AI repair and preserves its meaning', async () => {
+  it('sends a clock expression that still needs semantic interpretation through one AI repair', async () => {
     const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
     const responses = [
       JSON.stringify(invalidClockAsCustomPeriod()),
@@ -137,10 +137,9 @@ describe('Stable V5 temporal clock encoding', () => {
     const repairPayload = JSON.parse(
       repairMessages[repairMessages.length - 1]?.content ?? '{}',
     ) as { requiredChanges?: string[] };
-    expect(repairPayload.requiredChanges).toEqual([
-      expect.stringContaining(
-        'putting the normalized HH:mm values in startTime/endTime',
-      ),
-    ]);
+    expect(repairPayload.requiredChanges).toHaveLength(1);
+    expect(repairPayload.requiredChanges?.[0]).toContain('startTime/endTime');
+    expect(repairPayload.requiredChanges?.[0]).toContain('namedTimePeriod null');
+    expect(repairPayload.requiredChanges?.[0]).toContain('do not invent clock bounds');
   });
 });
