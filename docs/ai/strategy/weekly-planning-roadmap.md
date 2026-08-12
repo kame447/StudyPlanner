@@ -90,7 +90,7 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 
 ### 3.1 構造負債 hardening loop
 
-構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離 → full CI → roadmap同期」の順で処理する。CIが赤い間は次loopへ進まない。
+構造負債は、1件を1 loopとして「このroadmapとcurrent execution taskを再参照 → 設計原則との整合確認 → 挙動不変の責務分離 → roadmap同期 → full CI」の順で処理する。CIが赤い間は次loopへ進まない。
 
 2026-08-12時点で完了済みの分離:
 
@@ -98,16 +98,17 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - generic work item compilationからeffort estimation strategyを分離
 - weekly placement orchestrationから単一work item placementを分離
 - turn dialogue orchestrationからrenderer trace組み立て・記録を分離
+- work distributionからtask relation orderingを分離。既存export path、cycle時に勝者を推測しないcontractを維持し、full CI #2578 greenを確認
 
 現在のloop:
 
-- `weeklyPlanningSchedulerWorkDistributionV5.ts`からtask relation orderingを`weeklyPlanningSchedulerRelationOrderingV5.ts`へ分離した。
-- work distributionは日別・session別slice生成、relation orderingはtask graph順序制約の解決という別の変更理由を持つためSRP上分離する。
-- relation orderingはFact Graph上のtyped relationだけを入力とし、raw user textを解釈しない。したがって「意味理解はAI、scheduler順序制約はdeterministic code」という最上位設計原則を維持する。
-- cycle時に勝者を推測せず入力順へ戻す既存contract、既存export path、relation ordering test contractは維持する。
+- `weeklyPlanningApprovalPlanRepository.ts`に混在していた承認保存の純粋な不変条件・identity解決・record validation・atomic save/completion resolutionを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離した。
+- repository側はFirestore / memory / local planner adapterとrepository選択を担当し、policy側はstorage実装を知らない。domain policy変更とstorage変更の変更理由を分け、SRPとDIPを改善する。
+- policyは`PlanDraft`、typed approval operation、保存済みrecordだけを入力とし、raw user textやrenderer文面を参照しない。したがって「意味理解はAI、approval/save/persistenceのformal invariantはdeterministic code」という最上位設計原則を維持する。
+- `WeeklyPlanningApprovalPersistenceError`、memory repository factory等の既存public import pathはrepositoryからre-exportして互換性を維持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後に改めてこのroadmapを読み直して決める。現時点の有力候補はStable V5 runtime executorの責務集中だが、先に対象を固定しない。
+次の敵対的監査対象は、最新headがgreenになった後にこのroadmapとcurrent execution taskを再読して決める。RuntimeExecutor、approval adapter群、session storage等を候補として比較し、ファイルサイズだけでは決めない。
 
 ## 4. Prompt / orchestration方針
 
