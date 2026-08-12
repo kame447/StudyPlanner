@@ -98,17 +98,12 @@ function observedInitialInvalidResponse(): string {
   });
 }
 
-function repairedResponse(): string {
-  const parsed = JSON.parse(observedInitialInvalidResponse()) as Record<string, unknown>;
-  parsed.planningWindow = {
-    localId: 'pw1',
-    kind: 'absolute',
+function focusedRepairResponse(): string {
+  return JSON.stringify({
     value: '2026-08-17/2026-08-23',
     start: '2026-08-17',
     end: '2026-08-23',
-    sourceText: '8月17日から23日',
-  };
-  return JSON.stringify(parsed);
+  });
 }
 
 describe('Stable V5 planning window validation boundary', () => {
@@ -193,9 +188,9 @@ describe('Stable V5 planning window validation boundary', () => {
     ]);
   });
 
-  it('repairs the observed missing absolute range while preserving valid current-turn facts', async () => {
+  it('repairs only the observed missing absolute range while preserving valid current-turn facts', async () => {
     const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
-    const responses = [observedInitialInvalidResponse(), repairedResponse()];
+    const responses = [observedInitialInvalidResponse(), focusedRepairResponse()];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(request) {
         calls.push(request);
@@ -207,6 +202,12 @@ describe('Stable V5 planning window validation boundary', () => {
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
       userText: '8月17日から23日で、英単語220語を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。',
+      publicStateSummary: {
+        calendarContext: {
+          currentDate: '2026-08-12',
+          timeZone: 'Asia/Tokyo',
+        },
+      },
     });
 
     expect(result.status).toBe('accepted');
@@ -220,31 +221,42 @@ describe('Stable V5 planning window validation boundary', () => {
       value: '2026-08-17/2026-08-23',
       start: '2026-08-17',
       end: '2026-08-23',
+      sourceText: '8月17日から23日',
     });
     expect(result.document?.tasks).toHaveLength(1);
     expect(result.document?.availabilityDeclarations).toHaveLength(1);
 
-    const repairPayload = JSON.parse(
-      calls[1].messages[calls[1].messages.length - 1]?.content ?? '{}',
-    ) as { requiredChanges?: string[] };
-    expect(repairPayload.requiredChanges).toEqual([
-      expect.stringContaining('valid YYYY-MM-DD start/end values'),
-    ]);
-    expect(repairPayload.requiredChanges).toEqual([
-      expect.stringContaining('do not drop unrelated facts'),
-    ]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].responseFormat?.json_schema.name).toBe(
+      'weekly_planning_focused_planning_window_repair_v5',
+    );
+    const repairPayload = JSON.parse(calls[1].messages[1]?.content ?? '{}') as Record<string, unknown>;
+    expect(repairPayload).toMatchObject({
+      sourceText: '8月17日から23日',
+      invalidRepresentation: {
+        value: '8月17日から23日',
+        start: null,
+        end: null,
+      },
+      calendarContext: {
+        currentDate: '2026-08-12',
+        timeZone: 'Asia/Tokyo',
+      },
+    });
+    expect(calls[1].messages[1]?.content).not.toContain('英単語220語');
+    expect(JSON.stringify(calls[1]).length).toBeLessThan(JSON.stringify(calls[0]).length / 4);
   });
 
-  it('rejects the destructive repair shape observed in the real API trace', async () => {
-    const destructive = JSON.stringify({
+  it('rejects a full-document payload at the focused repair boundary', async () => {
+    const destructiveFullDocument = JSON.stringify({
       schemaVersion: 'weekly-planning-semantic-v5',
       planningIntent: 'unknown',
       planningWindow: {
         localId: 'pw1',
         kind: 'absolute',
-        value: '8月17日から23日',
-        start: '8月17日',
-        end: '8月23日',
+        value: '2026-08-17/2026-08-23',
+        start: '2026-08-17',
+        end: '2026-08-23',
         sourceText: '8月17日から23日',
       },
       tasks: [],
@@ -256,7 +268,7 @@ describe('Stable V5 planning window validation boundary', () => {
       corrections: [],
       decisions: [],
     });
-    const responses = [observedInitialInvalidResponse(), destructive];
+    const responses = [observedInitialInvalidResponse(), destructiveFullDocument];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion() {
         const response = responses.shift();
@@ -271,8 +283,8 @@ describe('Stable V5 planning window validation boundary', () => {
 
     expect(result.status).toBe('rejected');
     expect(result.document).toBeNull();
-    expect(result.diagnostics.validationErrors).toEqual(expect.arrayContaining([
-      expect.stringContaining('repair:document.planningWindow:absolute-iso-range-required'),
-    ]));
+    expect(result.diagnostics.validationErrors).toContain(
+      'repair:focused-planning-window:invalid-response',
+    );
   });
 });
