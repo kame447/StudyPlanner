@@ -10,6 +10,7 @@ import {
   createWeeklyPlanningSemanticBaseMessagesV5,
 } from './weeklyPlanningSemanticPromptAssemblyV5';
 import {
+  WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
   type WeeklyPlanningSemanticNormalizerInputV5,
   type WeeklyPlanningSemanticNormalizerResultV5,
   type WeeklyPlanningSemanticNormalizerV5,
@@ -71,7 +72,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         requestId: input.traceRequestId,
         stage: 'semantic_normalizer_prepared',
         data: {
-          normalizerVersion: 'weekly-planning-semantic-normalizer-v5',
+          normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
           schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
           input,
           orchestrationContext: {
