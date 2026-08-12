@@ -29,7 +29,6 @@ import {
   rollbackPlacementCandidates,
   sortPlacementCandidates,
   workItemGroupPositions,
-  type WeeklyPlanningStableV5CandidateMetadata,
 } from './weeklyPlanningStableV5PlacementCandidates';
 import {
   laterNotBeforeV5,
