@@ -111,24 +111,25 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - graph staging bufferへ128件上限とoldest eviction、同一request置換contractを追加し、resource leakを防止。full CI #2617 green
 - Stable V5 preview candidate metadataへcanonical task Fact由来のconversation provenanceを必須伝播し、ambient global stateからconversationを補わなくてもproduction候補が自己記述できるようにした。full CI #2622 green
 - Stable V5 approval availabilityをpreview自身のconversationIdからconversation-scoped runtime sessionへ接続。別conversationのcurrent snapshotに影響されず、owner/revisionを対象conversationで検証する。初回CI #2625でproduction isolation登録漏れを検出し、監査を弱めず正式接続点として登録したうえでfull CI #2627 green
+- Stable V5 preview変換からambient global runtimeによるconversation補完を削除。conversation欠落旧候補は別conversationを推測せずfail closedし、初回CI #2630で古いtest fixtureの暗黙依存を検出、fixtureを現production contractへ修正したうえでfull CI #2632 green
 
 現在のloop:
 
-- `weeklyPlanningPreviewBlocks.ts`に残っていたStable V5 conversationIdのambient global runtime補完を削除する。
-- production Stable V5候補は前loopでcanonical task Fact由来conversationIdを必須保持しているため、preview変換時に「現在の会話」を推測する必要はない。
-- `WeeklyPlanningStableV5PreviewMetadata`ではconversationIdを必須契約にし、通常経路は候補自身のprovenanceをそのままpreview/draftへ伝播する。
-- 旧checkpoint等からconversationId欠落Stable V5候補が入った場合だけruntime compatibilityとして空のprovenanceへ正規化し、global stateから補完しない。approval側はStable V5のconversationId欠落を`recompute_required`としてfail closedする。
-- `weeklyPlanningStableV5PreviewBlocks.test.ts`に、同revisionのambient global runtimeが存在してもconversationId欠落候補へ別conversationを補完しない回帰を追加した。
-- 初回full CI #2630では新しいfail-closed回帰自体はgreenだったが、session storage testの手書きStable V5 candidate fixtureがconversationIdを持たず、過去のambient補完に暗黙依存していたため保存時の厳格なownership validationで破棄された。
-- persistence decoderを緩めたりambient補完を戻したりせず、session storage test fixtureを現在のproduction scheduler contractと同じくconversationIdを明示保持する形へ修正した。preview candidate復元でもconversation provenance保持を明示検証する。
-- raw user textやsemantic内容は参照せず、既に確定したprovenanceの保持・欠落検証だけをdeterministic codeが担当するため最上位設計原則を維持する。
-- このloopの完了判定は修正後最終headのfull CI greenを必要とする。
+- 実際の保存直前に使う`validateWeeklyPreviewApproval`がplanning層内部からglobal `weeklyPlanningSessionRuntime`を直接読んでいた依存を解消する。
+- approval guardへ検証対象runtime snapshotを明示入力する純粋なcontractを追加し、guard自身からsingleton参照を削除した。conversation-bound previewは明示runtimeがなければ`session-runtime-unavailable`としてfail closedする。
+- application境界でpreview blockの出所を確認し、Stable V5ならpreview metadataのconversationIdからconversation-scoped Stable V5 runtimeを取得する。owner不一致・session欠落では他runtimeへfallbackしない。
+- behavior-aware互換経路は従来どおりlegacy runtime snapshotをapplication境界から明示的に渡す。conversation未紐付けlegacy previewはcurrent state/proposal recordsをそのまま使用する。
+- planning層のapproval guardテストをglobal runtimeのpublish/clearに依存しない純粋テストへ変更した。
+- application回帰として、別のlegacy current conversationが存在してもStable V5 previewを自身のconversation runtimeで保存できること、Stable V5 runtime欠落時は同じconversationIdのlegacy runtimeがあっても代用しないことを追加した。
+- `weeklyPlanningApprovalApplication.ts`はStable V5 runtimeへの正式なapplication接続点になったためproduction isolation監査へ明示登録した。監査の許容範囲を曖昧化していない。
+- 意味判断は一切追加せず、typed preview provenanceとdeterministic runtime stateの選択・検証だけをapplication/deterministic codeが担うため最上位設計原則を維持する。
+- このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionからlegacy global runtimeへのpublication bridge、Stable V5 preview metadata型の重複、RuntimeExecutor deterministic planning phase、その他singleton依存を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。approval runtime選択の重複、RuntimeSessionからlegacy global runtimeへのpublication bridge、Stable V5 preview metadata型重複、RuntimeExecutor deterministic planning phaseを優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
-2026-08-12のreal API traceではopen-ended generic semantic requestが23,014 bytesだった。focused route導入前には`8分くらいです。`というmachine-pending短答にも25,239 bytesのgeneric semantic requestを送っていた。
+2026-08-12のreal API traceではopen-ended generic semantic requestが23,014 bytesだった。focused contextual route導入前には`8分くらいです。`というmachine-pending短答にも25,239 bytesのgeneric semantic requestを送っていた。
 
 このため、generic promptは「まだcontext上限に余裕がある」ことを理由に拡張しない。問題はcontext上限よりinstruction density、相互制約、repair時の意味保持である。
 
@@ -140,7 +141,7 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 4. AI修復対象fieldが限定されるならfield-scoped focused repair
 5. 複数意味を同時に統合する自由入力だけgeneric AI
 
-validator errorが出るたびにsystem prompt、validator、repair promptへ同じ規則を重複追加しない。
+validator errorが増えたという理由だけで、同じ規則をsystem prompt、validator、repair promptへ重複追加しない。
 
 Prompt budget gate:
 
