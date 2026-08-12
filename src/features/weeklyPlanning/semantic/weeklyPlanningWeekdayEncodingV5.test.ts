@@ -50,7 +50,7 @@ describe('Stable V5 weekday encoding', () => {
     ]);
   });
 
-  it('routes the observed bare weekday through one AI repair', async () => {
+  it('still validates and repairs a mocked provider violation without prompt-wording coupling', async () => {
     const responses = [
       JSON.stringify(documentWithDay('tuesday')),
       JSON.stringify(documentWithDay('weekday:tuesday')),
@@ -77,11 +77,9 @@ describe('Stable V5 weekday encoding', () => {
     expect(result.document?.availabilityDeclarations[0]?.days).toEqual([
       'weekday:tuesday',
     ]);
-    const repairPayload = JSON.parse(
-      requests[1].messages[requests[1].messages.length - 1]?.content ?? '{}',
-    ) as { requiredChanges?: string[] };
-    expect(repairPayload.requiredChanges).toEqual([
-      expect.stringContaining('canonical weekday:<english-day> token'),
-    ]);
+    expect(requests).toHaveLength(2);
+    expect(requests[1].responseFormat?.json_schema.name).toBe(
+      'weekly_planning_semantic_document_v5',
+    );
   });
 });
