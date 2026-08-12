@@ -1,14 +1,12 @@
-import { createPlanFromDraft } from '../../../domain/planner';
 import { getFirestoreDb } from '../../../lib/firebaseClient';
 import type { Plan, PlanDraft } from '../../../types/domain';
 import type { WeeklyDraftApprovalOperation } from '../planning/weeklyPlanningApprovalTypes';
-import { WEEKLY_PLANNING_PLAN_SOURCE_TYPE } from '../planning/weeklyPlanningPlanProvenance';
 import {
   createFirestoreWeeklyPlanningApprovalPlanRepository,
 } from './weeklyPlanningApprovalFirestoreRepository';
 import {
-  resolveApprovalDraftIdentity,
-} from './weeklyPlanningApprovalPersistencePolicy';
+  createPlannerBackedWeeklyPlanningApprovalPlanRepository,
+} from './weeklyPlanningApprovalLocalRepository';
 
 export {
   createFirestoreWeeklyPlanningApprovalPlanRepository,
@@ -30,29 +28,6 @@ export type {
 export interface WeeklyPlanningApprovalPlanRepository {
   saveApprovedPlan(draft: PlanDraft): Promise<Plan>;
   completeOperation(operation: WeeklyDraftApprovalOperation): Promise<void>;
-}
-
-function createPlannerBackedWeeklyPlanningApprovalPlanRepository(): WeeklyPlanningApprovalPlanRepository {
-  return {
-    async saveApprovedPlan(draft) {
-      const identity = resolveApprovalDraftIdentity(draft);
-      const { plannerRepository } = await import('../../../repositories');
-      const existing = (await plannerRepository.getPlans(identity.userId)).find(
-        (plan) => plan.sourceType === WEEKLY_PLANNING_PLAN_SOURCE_TYPE
-          && plan.sourceId === identity.sourceId,
-      );
-      if (existing) return existing;
-      const plan = {
-        ...createPlanFromDraft(draft),
-        id: identity.planId,
-        seriesId: identity.planId,
-      };
-      return plannerRepository.upsertPlan(plan);
-    },
-    async completeOperation() {
-      // Local development storage has no distributed operation ledger.
-    },
-  };
 }
 
 let repository: WeeklyPlanningApprovalPlanRepository | null = null;
