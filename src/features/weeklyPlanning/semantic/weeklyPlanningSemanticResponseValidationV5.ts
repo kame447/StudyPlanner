@@ -32,15 +32,18 @@ import {
   validateWeeklyPlanningStandaloneModifierTargetsV5,
 } from './weeklyPlanningStandaloneModifierTargetV5';
 import {
+  normalizePlanningWindowCanonicalV5,
   planningWindowCanonicalValueErrors,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import {
   parseWeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticValidatorV5';
 import {
+  normalizeWeeklyPlanningTemporalClockEncodingV5,
   validateWeeklyPlanningTemporalClockEncodingV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
 import {
+  normalizeWeeklyPlanningWeekdayEncodingV5,
   validateWeeklyPlanningWeekdayEncodingV5,
 } from './weeklyPlanningWeekdayEncodingV5';
 
@@ -54,6 +57,26 @@ export interface WeeklyPlanningSemanticValidationAttemptV5 {
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
   algorithmicRepairs: string[];
+}
+
+function normalizeParsedRepresentationV5(
+  document: WeeklyPlanningSemanticDocumentV5,
+): { document: WeeklyPlanningSemanticDocumentV5; repairs: string[] } {
+  const planningWindow = normalizePlanningWindowCanonicalV5(document.planningWindow);
+  const withPlanningWindow = planningWindow.window === document.planningWindow
+    ? document
+    : { ...document, planningWindow: planningWindow.window };
+  const weekday = normalizeWeeklyPlanningWeekdayEncodingV5(withPlanningWindow);
+  const temporalClock = normalizeWeeklyPlanningTemporalClockEncodingV5(weekday.document);
+
+  return {
+    document: temporalClock.document,
+    repairs: [
+      ...planningWindow.repairs,
+      ...weekday.repairs,
+      ...temporalClock.repairs,
+    ],
+  };
 }
 
 export function validateWeeklyPlanningSemanticResponseV5(
@@ -72,7 +95,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const workloadNormalization = normalizeExactDuplicateWorkloadPlacementV5(
     componentParentNormalization.rawResponse,
   );
-  const algorithmicRepairs = [
+  const preParseRepairs = [
     ...decompositionNormalization.repairs,
     ...copiedContextNormalization.repairs,
     ...componentParentNormalization.repairs,
@@ -87,36 +110,39 @@ export function validateWeeklyPlanningSemanticResponseV5(
         validationErrors: parsed.errors,
       }),
       errors: parsed.errors,
-      algorithmicRepairs,
+      algorithmicRepairs: preParseRepairs,
     };
   }
 
+  const normalized = normalizeParsedRepresentationV5(parsed.document);
+  const algorithmicRepairs = [...preParseRepairs, ...normalized.repairs];
+  const document = normalized.document;
   const errors = [
-    ...planningWindowCanonicalValueErrors(parsed.document.planningWindow),
-    ...validateWeeklyPlanningTemporalClockEncodingV5(parsed.document),
-    ...validateWeeklyPlanningWeekdayEncodingV5(parsed.document),
+    ...planningWindowCanonicalValueErrors(document.planningWindow),
+    ...validateWeeklyPlanningTemporalClockEncodingV5(document),
+    ...validateWeeklyPlanningWeekdayEncodingV5(document),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
-      document: parsed.document,
+      document,
       publicStateSummary: input.publicStateSummary,
     }),
-    ...validateWeeklyPlanningRecurrenceConsistencyV5(parsed.document),
+    ...validateWeeklyPlanningRecurrenceConsistencyV5(document),
     ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
-      document: parsed.document,
+      document,
       userText: input.userText,
       publicStateSummary: input.publicStateSummary,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({
-      document: parsed.document,
+      document,
       input,
     }),
     ...validateWeeklyPlanningStandaloneModifierTargetsV5({
-      document: parsed.document,
+      document,
       userText: input.userText,
     }),
   ];
   return {
-    document: errors.length === 0 ? parsed.document : null,
-    parsedDocument: parsed.document,
+    document: errors.length === 0 ? document : null,
+    parsedDocument: document,
     errors,
     algorithmicRepairs,
   };
