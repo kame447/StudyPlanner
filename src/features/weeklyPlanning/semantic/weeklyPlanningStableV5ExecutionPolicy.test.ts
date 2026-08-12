@@ -153,7 +153,7 @@ describe('Stable V5 structured execution policy', () => {
     })).toEqual([75, 75]);
   });
 
-  it('rebalances long work around the target instead of emitting a tiny tail', () => {
+  it('matches the legacy balanced scorer for 220 minutes without a tiny tail', () => {
     const policy = deriveWeeklyPlanningSessionPolicyV5({
       profile: DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5,
     });
@@ -161,7 +161,7 @@ describe('Stable V5 structured execution policy', () => {
       totalMinutes: 220,
       policy,
       profile: DEFAULT_WEEKLY_PLANNING_EXECUTION_PROFILE_V5,
-    })).toEqual([110, 110]);
+    })).toEqual([90, 70, 60]);
   });
 
   it('preserves total minutes and max-session bound across an adversarial range', () => {
