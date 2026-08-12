@@ -15,6 +15,14 @@ import {
   listCalendarDatesInclusive,
   resolveCanonicalDateExpression,
 } from './weeklyPlanningCalendarResolver';
+import {
+  partitionWeeklyPlanningDatesV5,
+  preferredDistributedDateV5,
+  preferredVocabularyLearningDateV5,
+  reviewCandidateDatesV5,
+  vocabularyLearningCandidateDatesV5,
+  vocabularyReviewTargetsV5,
+} from './weeklyPlanningStableV5DistributionPolicy';
 
 export const WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION =
   'weekly-planning-stable-v5-preview-scheduler-v1' as const;
@@ -25,6 +33,8 @@ export interface WeeklyPlanningStableV5CandidateMetadata {
   taskId: string;
   sourceFactRefs: string[];
   planType: PlanType;
+  sessionRole?: 'learning' | 'review';
+  reviewRound?: 1 | 2;
 }
 
 export interface WeeklyPlanningStableV5PreviewSchedulerResult {
@@ -497,6 +507,135 @@ function fieldLabelForItem(
   return graph.tasks.find((task) => task.id === item.taskId)?.title.trim() || '予定';
 }
 
+function groupPositions(
+  items: readonly GenericPlanningWorkItem[],
+  keyForItem: (item: GenericPlanningWorkItem) => string,
+): Map<string, { index: number; count: number }> {
+  const groups = new Map<string, GenericPlanningWorkItem[]>();
+  for (const item of items) {
+    const key = keyForItem(item);
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  const positions = new Map<string, { index: number; count: number }>();
+  groups.forEach((group) => {
+    group.forEach((item, index) => positions.set(item.id, { index, count: group.length }));
+  });
+  return positions;
+}
+
+function orderAllowedDates(params: {
+  allowedDates: readonly string[];
+  allDates: readonly string[];
+  preferredDate: string | null;
+  dayLoads: ReadonlyMap<string, number>;
+}): string[] {
+  const { normalDates, reserveDates } = partitionWeeklyPlanningDatesV5(params.allDates);
+  const normalSet = new Set(normalDates);
+  const reserveSet = new Set(reserveDates);
+  const preferredIndex = params.preferredDate
+    ? params.allDates.indexOf(params.preferredDate)
+    : -1;
+  return [...params.allowedDates].sort((left, right) => {
+    if (left === params.preferredDate) return right === params.preferredDate ? 0 : -1;
+    if (right === params.preferredDate) return 1;
+    const leftReserve = reserveSet.has(left) ? 1 : normalSet.has(left) ? 0 : 1;
+    const rightReserve = reserveSet.has(right) ? 1 : normalSet.has(right) ? 0 : 1;
+    if (leftReserve !== rightReserve) return leftReserve - rightReserve;
+    const loadDelta = (params.dayLoads.get(left) ?? 0) - (params.dayLoads.get(right) ?? 0);
+    if (loadDelta !== 0) return loadDelta;
+    if (preferredIndex >= 0) {
+      const leftDistance = Math.abs(params.allDates.indexOf(left) - preferredIndex);
+      const rightDistance = Math.abs(params.allDates.indexOf(right) - preferredIndex);
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+    }
+    return left.localeCompare(right);
+  });
+}
+
+function createCandidate(params: {
+  input: GenericSchedulerInput;
+  graph: WeeklyPlanningFactGraphV5;
+  item: GenericPlanningWorkItem;
+  slot: MinuteInterval;
+  duration: number;
+  chunkIndex: number;
+  title?: string;
+  workItemKey?: string;
+  sessionRole?: 'learning' | 'review';
+  reviewRound?: 1 | 2;
+}): WeeklyDraftCandidate {
+  const planType = planTypeForTask(params.graph, params.item.taskId);
+  const metadata: WeeklyPlanningStableV5CandidateMetadata = {
+    runtime: 'stable_v5',
+    graphRevision: params.input.graphRevision,
+    taskId: params.item.taskId,
+    sourceFactRefs: [...params.item.sourceFactRefs],
+    planType,
+    ...(params.sessionRole ? { sessionRole: params.sessionRole } : {}),
+    ...(params.reviewRound ? { reviewRound: params.reviewRound } : {}),
+  };
+  const workItemKey = params.workItemKey ?? params.item.id;
+  return {
+    stableKey: `stable-v5:${params.input.graphRevision}:${workItemKey}:${params.chunkIndex}`,
+    date: params.slot.date,
+    startTime: timeFromMinutes(params.slot.start),
+    endTime: timeFromMinutes(params.slot.end),
+    durationMinutes: params.duration,
+    title: params.title ?? params.item.label,
+    field: fieldLabelForItem(params.graph, params.item),
+    year: 0,
+    estimatedMinutes: params.duration,
+    source: 'weekly_exam_prep',
+    approvalStatus: 'unapproved',
+    workItemKey,
+    stableV5Metadata: metadata,
+  } as WeeklyDraftCandidate;
+}
+
+function addPlacedSlot(params: {
+  slot: MinuteInterval;
+  busy: MinuteInterval[];
+  dayLoads: Map<string, number>;
+}): void {
+  params.busy.push(params.slot);
+  params.dayLoads.set(
+    params.slot.date,
+    (params.dayLoads.get(params.slot.date) ?? 0) + (params.slot.end - params.slot.start),
+  );
+}
+
+function rollbackCandidates(params: {
+  candidates: readonly WeeklyDraftCandidate[];
+  busy: MinuteInterval[];
+  dayLoads: Map<string, number>;
+}): void {
+  for (const candidate of params.candidates) {
+    const start = minutesFromTime(candidate.startTime);
+    const end = minutesFromTime(candidate.endTime);
+    const index = params.busy.findIndex((interval) =>
+      interval.date === candidate.date
+      && interval.start === start
+      && interval.end === end);
+    if (index >= 0) params.busy.splice(index, 1);
+    params.dayLoads.set(
+      candidate.date,
+      Math.max(0, (params.dayLoads.get(candidate.date) ?? 0) - candidate.durationMinutes),
+    );
+  }
+}
+
+function sortCandidatesChronologically(
+  candidates: WeeklyDraftCandidate[],
+): WeeklyDraftCandidate[] {
+  return candidates.slice().sort((left, right) => {
+    const dateOrder = left.date.localeCompare(right.date);
+    if (dateOrder !== 0) return dateOrder;
+    const timeOrder = left.startTime.localeCompare(right.startTime);
+    if (timeOrder !== 0) return timeOrder;
+    return left.stableKey.localeCompare(right.stableKey);
+  });
+}
+
 export function scheduleWeeklyPlanningStableV5Preview(params: {
   input: GenericSchedulerInput;
   graph: WeeklyPlanningFactGraphV5;
@@ -546,20 +685,54 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   const candidates: WeeklyDraftCandidate[] = [];
   const unscheduledWorkItemIds: string[] = [];
   const breakMinutes = params.breakMinutes ?? DEFAULT_BREAK_MINUTES;
+  const dayLoads = new Map<string, number>(dates.map((date) => [date, 0]));
+  const taskPositions = groupPositions(
+    params.input.movableWorkItems,
+    (item) => item.taskId,
+  );
+  const vocabularyPositions = groupPositions(
+    params.input.movableWorkItems.filter((item) => item.quantity.unitCode === 'word'),
+    (item) => item.workloadFactId,
+  );
 
   for (const item of params.input.movableWorkItems) {
     const chunks = sessionChunks(item);
-    const allowedDates = eligibleDates({ input: params.input, item, dates });
-    const preferences = preferredPlacements({
-      graph: params.graph,
-      item,
-      dates: allowedDates,
-      namedTimePeriods: params.namedTimePeriods,
-    });
+    const rawAllowedDates = eligibleDates({ input: params.input, item, dates });
+    const taskPosition = taskPositions.get(item.id) ?? { index: 0, count: 1 };
+    const vocabularyPosition = vocabularyPositions.get(item.id) ?? { index: 0, count: 1 };
     const itemCandidates: WeeklyDraftCandidate[] = [];
     let failed = chunks.length === 0;
+    let failedWorkItemId = item.id;
+
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
       const duration = chunks[chunkIndex];
+      const isVocabulary = item.quantity.unitCode === 'word';
+      const preferredDate = isVocabulary
+        ? preferredVocabularyLearningDateV5({
+            sessionIndex: vocabularyPosition.index,
+            sessionCount: vocabularyPosition.count,
+            dates,
+          })
+        : preferredDistributedDateV5({
+            index: chunks.length > 1 ? chunkIndex : taskPosition.index,
+            count: chunks.length > 1 ? chunks.length : taskPosition.count,
+            dates,
+          });
+      const vocabularyCandidateDates = isVocabulary
+        ? vocabularyLearningCandidateDatesV5({ preferredDate, dates })
+        : [...rawAllowedDates];
+      const allowedDates = orderAllowedDates({
+        allowedDates: vocabularyCandidateDates.filter((date) => rawAllowedDates.includes(date)),
+        allDates: dates,
+        preferredDate,
+        dayLoads,
+      });
+      const preferences = preferredPlacements({
+        graph: params.graph,
+        item,
+        dates: allowedDates,
+        namedTimePeriods: params.namedTimePeriods,
+      });
       const preferredSlot = preferences.length > 0
         ? findPreferredSlot({
             placements: preferences,
@@ -582,41 +755,88 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
         failed = true;
         break;
       }
-      const planType = planTypeForTask(params.graph, item.taskId);
-      const metadata: WeeklyPlanningStableV5CandidateMetadata = {
-        runtime: 'stable_v5',
-        graphRevision: params.input.graphRevision,
-        taskId: item.taskId,
-        sourceFactRefs: [...item.sourceFactRefs],
-        planType,
-      };
-      const candidate = {
-        stableKey: `stable-v5:${params.input.graphRevision}:${item.id}:${chunkIndex}`,
-        date: slot.date,
-        startTime: timeFromMinutes(slot.start),
-        endTime: timeFromMinutes(slot.end),
-        durationMinutes: duration,
-        title: item.label,
-        field: fieldLabelForItem(params.graph, item),
-        year: 0,
-        estimatedMinutes: item.estimatedMinutes ?? duration,
-        source: 'weekly_exam_prep',
-        approvalStatus: 'unapproved',
-        workItemKey: item.id,
-        stableV5Metadata: metadata,
-      } as WeeklyDraftCandidate;
-      itemCandidates.push(candidate);
-      busy.push(slot);
-    }
-    if (failed) {
-      unscheduledWorkItemIds.push(item.id);
-      itemCandidates.forEach((candidate) => {
-        const index = busy.findIndex((interval) =>
-          interval.date === candidate.date
-          && interval.start === minutesFromTime(candidate.startTime)
-          && interval.end === minutesFromTime(candidate.endTime));
-        if (index >= 0) busy.splice(index, 1);
+
+      const candidate = createCandidate({
+        input: params.input,
+        graph: params.graph,
+        item,
+        slot,
+        duration,
+        chunkIndex,
+        ...(isVocabulary ? { sessionRole: 'learning' as const } : {}),
       });
+      itemCandidates.push(candidate);
+      addPlacedSlot({ slot, busy, dayLoads });
+
+      if (!isVocabulary) continue;
+
+      const reviewTargets = vocabularyReviewTargetsV5({
+        learningDate: slot.date,
+        learningDurationMinutes: duration,
+        dates,
+      });
+      for (const review of reviewTargets) {
+        const reviewWorkItemKey = `${item.id}:review-${review.round}`;
+        const reviewRawDates = reviewCandidateDatesV5({
+          preferredDate: review.preferredDate,
+          dates,
+        }).filter((date) => rawAllowedDates.includes(date));
+        const reviewDates = orderAllowedDates({
+          allowedDates: reviewRawDates,
+          allDates: dates,
+          preferredDate: review.preferredDate,
+          dayLoads,
+        });
+        const reviewPreferences = preferredPlacements({
+          graph: params.graph,
+          item,
+          dates: reviewDates,
+          namedTimePeriods: params.namedTimePeriods,
+        });
+        const reviewPreferredSlot = reviewPreferences.length > 0
+          ? findPreferredSlot({
+              placements: reviewPreferences,
+              duration: review.durationMinutes,
+              windowsByDate,
+              hardAvailableByDate,
+              busy,
+              breakMinutes,
+              notBefore: params.notBefore,
+            })
+          : null;
+        const reviewSlot = reviewPreferredSlot ?? findSlot({
+          dates: reviewDates,
+          duration: review.durationMinutes,
+          windowsByDate,
+          busy,
+          breakMinutes,
+        });
+        if (!reviewSlot) {
+          failed = true;
+          failedWorkItemId = reviewWorkItemKey;
+          break;
+        }
+        const reviewCandidate = createCandidate({
+          input: params.input,
+          graph: params.graph,
+          item,
+          slot: reviewSlot,
+          duration: review.durationMinutes,
+          chunkIndex: 0,
+          title: `${item.label}・復習${review.round}回目`,
+          workItemKey: reviewWorkItemKey,
+          sessionRole: 'review',
+          reviewRound: review.round,
+        });
+        itemCandidates.push(reviewCandidate);
+        addPlacedSlot({ slot: reviewSlot, busy, dayLoads });
+      }
+      if (failed) break;
+    }
+
+    if (failed) {
+      unscheduledWorkItemIds.push(failedWorkItemId);
+      rollbackCandidates({ candidates: itemCandidates, busy, dayLoads });
     } else {
       candidates.push(...itemCandidates);
     }
@@ -633,7 +853,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   return {
     schedulerVersion: WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,
     status: 'ready',
-    candidates,
+    candidates: sortCandidatesChronologically(candidates),
     unscheduledWorkItemIds: [],
   };
 }
