@@ -100,6 +100,12 @@ function correctionTargetPublicFacts(
   };
 }
 
+function hasCorrectionTargets(facts: Record<string, unknown>): boolean {
+  return Object.values(facts).some(
+    (value) => Array.isArray(value) && value.length > 0,
+  );
+}
+
 function pendingQuestionFactId(summary: Record<string, unknown> | undefined): string | null {
   const pending = summary?.pendingQuestion;
   if (!pending || typeof pending !== 'object' || Array.isArray(pending)) return null;
@@ -117,11 +123,14 @@ export function createWeeklyPlanningSemanticPublicStateSummaryV5(
     graph,
     priorityFactId: pendingQuestionFactId(summary),
   });
+  const correctionTargets = correctionTargetPublicFacts(graph);
   return {
     ...(summary ?? {}),
-    ...correctionTargetPublicFacts(graph),
+    ...correctionTargets,
     graphRevision: graph.revision,
-    correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5,
+    ...(hasCorrectionTargets(correctionTargets)
+      ? { correctionContract: WEEKLY_PLANNING_CORRECTION_TARGETING_CONTRACT_V5 }
+      : {}),
     episodicMemory,
   };
 }
