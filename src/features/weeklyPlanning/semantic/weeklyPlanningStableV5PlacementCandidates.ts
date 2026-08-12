@@ -1,5 +1,5 @@
-import type { PlanType } from '../../../types/domain';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
+import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
@@ -14,16 +14,8 @@ import {
   type WeeklyPlanningPlacedTaskBlockV5,
 } from './weeklyPlanningStableV5PlacementPolicy';
 
-export interface WeeklyPlanningStableV5CandidateMetadata {
-  runtime: 'stable_v5';
-  conversationId: string;
-  graphRevision: number;
-  taskId: string;
-  sourceFactRefs: string[];
-  planType: PlanType;
-  sessionRole?: 'learning' | 'review';
-  reviewRound?: 1 | 2;
-}
+export type WeeklyPlanningStableV5CandidateMetadata =
+  WeeklyPlanningStableV5PreviewProvenance;
 
 function taskForCandidate(
   graph: WeeklyPlanningFactGraphV5,
@@ -88,7 +80,7 @@ export function createPlacementCandidate(params: {
   reviewRound?: 1 | 2;
 }): WeeklyDraftCandidate {
   const task = taskForCandidate(params.graph, params.item.taskId);
-  const planType: PlanType = task.category === 'study' ? 'study' : 'other';
+  const planType = task.category === 'study' ? 'study' : 'other';
   const metadata: WeeklyPlanningStableV5CandidateMetadata = {
     runtime: 'stable_v5',
     conversationId: task.source.conversationId,
