@@ -12,7 +12,6 @@ import type {
   WeeklyDraftApprovalOperationStatus,
   WeeklyPreviewMetadata,
 } from './weeklyPlanningApprovalTypes';
-import { getWeeklyPlanningSessionRuntime } from './weeklyPlanningSessionRuntime';
 
 export const WEEKLY_APPROVAL_LEDGER_VERSION = 1;
 export const WEEKLY_APPROVAL_LEDGER_MAX_ITEMS = 200;
@@ -22,6 +21,12 @@ export type WeeklyPreviewApprovalGuardResult =
   | { allowed: false; attempt: StalePreviewApprovalAttempt }
   | { allowed: false; attempt: PendingAssumptionPreviewApprovalAttempt }
   | { allowed: false; attempt: InvalidPreviewApprovalAttempt };
+
+export interface WeeklyPreviewApprovalRuntimeSnapshot {
+  conversationId: string;
+  stateRevision: number;
+  proposalRecords: readonly AssumptionProposalRecord[];
+}
 
 export interface WeeklyApprovalLedgerEnvelope {
   version: typeof WEEKLY_APPROVAL_LEDGER_VERSION;
@@ -125,6 +130,7 @@ export function validateWeeklyPreviewApproval(params: {
   currentStateRevision: number;
   userId: string;
   proposalRecords: readonly AssumptionProposalRecord[];
+  runtimeSnapshot: WeeklyPreviewApprovalRuntimeSnapshot | null;
 }): WeeklyPreviewApprovalGuardResult {
   const metadata = metadataFromBlocks(params);
   if (!metadata) return invalidAttempt(undefined, 'missing-or-mixed-preview-metadata');
@@ -136,7 +142,7 @@ export function validateWeeklyPreviewApproval(params: {
     return invalidAttempt(metadata.previewId, 'unauthorized-or-invalid-preview');
   }
 
-  const runtime = metadata.conversationId ? getWeeklyPlanningSessionRuntime() : null;
+  const runtime = metadata.conversationId ? params.runtimeSnapshot : null;
   if (metadata.conversationId && !runtime) {
     return invalidAttempt(metadata.previewId, 'session-runtime-unavailable');
   }
