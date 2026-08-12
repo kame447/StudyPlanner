@@ -1,9 +1,3 @@
-import {
-  stageUserPlanningContextFactsV1,
-} from '../../userPlanningContext/userPlanningContextSpace';
-import {
-  collectUserPlanningContextFactsV5,
-} from '../semantic/weeklyPlanningDurableContextSignalsV5';
 import type {
   GenericSchedulerInputCompilationResult,
 } from '../semantic/weeklyPlanningGenericSchedulerInput';
@@ -39,8 +33,8 @@ import {
   executeWeeklyPlanningStableV5SemanticTurn,
 } from './weeklyPlanningStableV5SemanticTurn';
 import {
-  commitWeeklyPlanningStableV5RuntimeGraph,
-} from './weeklyPlanningStableV5RuntimeSession';
+  stageWeeklyPlanningStableV5Turn,
+} from './weeklyPlanningStableV5TurnStaging';
 
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
@@ -82,46 +76,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   const semanticTurn = await executeWeeklyPlanningStableV5SemanticTurn(input);
   if (semanticTurn.status === 'failure') return semanticTurn.output;
 
-  const { requestContext, runtimeSession, semantic } = semanticTurn;
-  const userContextFacts = semantic.normalization.document
-    ? collectUserPlanningContextFactsV5(semantic.normalization.document)
-    : [];
-  stageUserPlanningContextFactsV1({
-    ownerId: input.userId,
-    conversationId: input.conversationId,
-    requestId: input.traceRequestId,
-    observedDate: requestContext.currentDate,
-    facts: userContextFacts,
-  });
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: input.traceRequestId,
-    stage: 'runtime_user_context_staged',
-    data: {
-      ownerId: input.userId,
-      conversationId: input.conversationId,
-      requestId: input.traceRequestId,
-      observedDate: requestContext.currentDate,
-      userContextFacts,
-    },
-  });
-
-  commitWeeklyPlanningStableV5RuntimeGraph({
-    ownerId: input.userId,
-    conversationId: input.conversationId,
-    graph: semantic.graph,
-  });
-  recordWeeklyPlanningStableV5DebugTrace({
-    requestId: input.traceRequestId,
-    stage: 'runtime_graph_staged',
-    data: {
-      ownerId: input.userId,
-      conversationId: input.conversationId,
-      requestId: input.traceRequestId,
-      previousGraphRevision: runtimeSession.graph.revision,
-      stagedGraph: semantic.graph,
-      canonicalization: semantic.canonicalization,
-    },
-  });
+  const { requestContext, semantic } = semanticTurn;
+  stageWeeklyPlanningStableV5Turn({ input, semanticTurn });
 
   const evaluation = evaluateWeeklyPlanningStableV5Planning({
     input,
