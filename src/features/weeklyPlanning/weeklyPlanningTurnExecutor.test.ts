@@ -75,57 +75,42 @@ describe('executeWeeklyPlanningTurn', () => {
     recordStableV5DebugTraceMock.mockReset();
   });
 
-  it('renders a Stable V5 deterministic question with AI while preserving question context', async () => {
+  it('keeps a machine-decided question deterministic while preserving question context', async () => {
     stableV5RuntimeMock.mockResolvedValue(stableV5QuestionResult());
-    stableV5RendererMock.mockResolvedValue({
-      status: 'rendered',
-      text: '院試の勉強について確認です。今回進めたい量ですか、それとも残っている全体量ですか？',
-      rawResponse: '{"actionId":"ok"}',
-    });
 
     const result = await executeWeeklyPlanningTurn(input);
 
-    expect(result.message).toBe(
-      '院試の勉強について確認です。今回進めたい量ですか、それとも残っている全体量ですか？',
-    );
+    expect(result.message).toBe(stableV5QuestionResult().message);
     expect(result.state.questions).toEqual([result.message]);
     expect(result.state.lastQuestionContext).toEqual({
       kind: 'missing',
       targetSlot: 'stable_v5:quantity_role_unresolved',
       intent: 'quantity_role_unresolved',
     });
-    expect(result.responseSource).toBe('ai');
+    expect(result.responseSource).toBe('rules');
     expect(result.dialogueRendererTrace).toMatchObject({
       actionKind: 'question',
       questionCode: 'quantity_role_unresolved',
-      request: {
-        purpose: 'weekly_planning_renderer',
-        requiredLabels: ['院試の勉強'],
-        fallbackText: stableV5QuestionResult().message,
-        previewCount: 0,
-      },
+      request: null,
       response: {
-        status: 'rendered',
-        reason: null,
-        rawResponse: '{"actionId":"ok"}',
-        renderedText: result.message,
+        status: 'bypassed',
+        reason: 'deterministic_question',
+        rawResponse: null,
+        renderedText: null,
       },
       decision: {
-        branch: 'ai_rendered',
-        responseSource: 'ai',
+        branch: 'deterministic_question_bypass',
+        responseSource: 'rules',
         finalMessage: result.message,
       },
     });
-    expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
-      actionKind: 'question',
-      questionCode: 'quantity_role_unresolved',
-      requiredLabels: ['院試の勉強'],
-      fallbackText: stableV5QuestionResult().message,
-      previewCount: 0,
-    }));
+    expect(stableV5RendererMock).not.toHaveBeenCalled();
     expect(recordStableV5DebugTraceMock).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'dialogue_renderer_decision',
-      data: expect.objectContaining({ branch: 'ai_rendered', responseSource: 'ai' }),
+      data: expect.objectContaining({
+        branch: 'deterministic_question_bypass',
+        responseSource: 'rules',
+      }),
     }));
     expect(recordStableV5DebugTraceMock).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'turn_executor_result_projected',
@@ -136,7 +121,7 @@ describe('executeWeeklyPlanningTurn', () => {
     }));
   });
 
-  it('keeps the deterministic Stable V5 text when renderer validation or provider access fails', async () => {
+  it('uses the deterministic text if an AI-routed explanation cannot be rendered', async () => {
     stableV5RuntimeMock.mockResolvedValue(stableV5QuestionResult());
     stableV5RendererMock.mockResolvedValue({
       status: 'fallback',
@@ -144,12 +129,19 @@ describe('executeWeeklyPlanningTurn', () => {
       rawResponse: null,
     });
 
-    const result = await executeWeeklyPlanningTurn(input);
+    const result = await executeWeeklyPlanningTurn({
+      ...input,
+      userText: 'それってどういう意味？',
+    });
 
     expect(result.message).toBe(stableV5QuestionResult().message);
     expect(result.state.questions).toEqual([stableV5QuestionResult().message]);
     expect(result.responseSource).toBe('deterministic_fallback');
     expect(result.dialogueRendererTrace).toMatchObject({
+      request: {
+        purpose: 'weekly_planning_renderer',
+        fallbackText: stableV5QuestionResult().message,
+      },
       response: {
         status: 'fallback',
         reason: 'provider_error',
@@ -162,6 +154,7 @@ describe('executeWeeklyPlanningTurn', () => {
         finalMessage: stableV5QuestionResult().message,
       },
     });
+    expect(stableV5RendererMock).toHaveBeenCalledTimes(1);
   });
 
   it('does not send Stable V5 system and normalization failure messages to the dialogue renderer', async () => {
