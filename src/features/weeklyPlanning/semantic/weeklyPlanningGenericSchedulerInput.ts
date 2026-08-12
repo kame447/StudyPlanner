@@ -12,6 +12,9 @@ import {
   type WeeklyPlanningGenericWorkGraphView,
 } from './weeklyPlanningGenericWorkItems';
 import {
+  calibrateGenericPlanningWorkItemsV5,
+} from './weeklyPlanningGenericWorkItemCalibrationV5';
+import {
   type AvailabilityResolutionContext,
   type AvailabilityResolutionIssue,
   type AvailabilityWindowFact,
@@ -275,6 +278,7 @@ export function compileGenericSchedulerInput(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   context: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
+  estimateCalibrationMultiplier?: number | null;
 }): GenericSchedulerInputCompilationResult {
   const issues: GenericSchedulerInputIssue[] = [
     ...semanticUncertaintyIssues(params.graph),
@@ -339,6 +343,10 @@ export function compileGenericSchedulerInput(params: {
     });
     return false;
   });
+  const calibratedAggregateMovableWorkItems = calibrateGenericPlanningWorkItemsV5({
+    items: aggregateMovableWorkItems,
+    calibrationMultiplier: params.estimateCalibrationMultiplier,
+  });
 
   for (const issue of work.issues) {
     const issueTaskId = workloadTaskById.get(issue.workloadFactId);
@@ -380,7 +388,7 @@ export function compileGenericSchedulerInput(params: {
 
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
-    items: aggregateMovableWorkItems,
+    items: calibratedAggregateMovableWorkItems,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
   });
