@@ -37,6 +37,9 @@ import {
 import {
   validateWeeklyPlanningTemporalClockEncodingV5,
 } from './weeklyPlanningTemporalClockEncodingV5';
+import {
+  validateWeeklyPlanningWeekdayEncodingV5,
+} from './weeklyPlanningWeekdayEncodingV5';
 
 export interface WeeklyPlanningSemanticResponseValidationInputV5 {
   userText: string;
@@ -85,6 +88,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const errors = [
     ...planningWindowCanonicalValueErrors(parsed.document.planningWindow),
     ...validateWeeklyPlanningTemporalClockEncodingV5(parsed.document),
+    ...validateWeeklyPlanningWeekdayEncodingV5(parsed.document),
     ...validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({
       document: parsed.document,
       publicStateSummary: input.publicStateSummary,
