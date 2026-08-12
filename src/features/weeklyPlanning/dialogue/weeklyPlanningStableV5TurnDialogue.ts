@@ -12,19 +12,27 @@ import {
   shouldUseAiWeeklyPlanningStableV5DialogueRenderer,
 } from './weeklyPlanningStableV5DialogueRouting';
 import {
+  createWeeklyPlanningAiRenderedDialogueTrace,
+  createWeeklyPlanningDeterministicQuestionDialogueTrace,
+  createWeeklyPlanningFallbackDialogueTrace,
+  createWeeklyPlanningSystemDialogueRendererTrace,
+  recordWeeklyPlanningDialogueDecisionV5,
+  recordWeeklyPlanningDialogueRendererRequestV5,
+  recordWeeklyPlanningDialogueRendererResponseV5,
+} from './weeklyPlanningStableV5TurnDialogueTrace';
+import {
   createWeeklyPlanningSelfRepairNoticeV5,
 } from '../semantic/weeklyPlanningSelfRepairV5';
 import {
   createWeeklyPlanningStableV5DialogueProjection,
 } from '../semantic/weeklyPlanningStableV5DialogueProjection';
-import {
-  recordWeeklyPlanningStableV5DebugTrace,
-} from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type {
   WeeklyPlanningTurnExecutionInput,
   WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutionTypes';
+
+export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlanningStableV5TurnDialogueTrace';
 
 const RECENT_TURN_LIMIT = 6;
 const STABLE_V5_SYSTEM_MESSAGE_PREFIXES = [
@@ -55,28 +63,6 @@ function isSystemResult(result: WeeklyPlanningTurnExecutionResult): boolean {
   return Boolean(result.failure)
     || result.responseSource === 'system'
     || STABLE_V5_SYSTEM_MESSAGE_PREFIXES.some((prefix) => result.message.startsWith(prefix));
-}
-
-export function createWeeklyPlanningSystemDialogueRendererTrace(
-  message: string,
-): WeeklyPlanningDialogueRendererTrace {
-  return {
-    actionId: null,
-    actionKind: null,
-    questionCode: null,
-    request: null,
-    response: {
-      status: 'bypassed',
-      reason: 'system_message',
-      rawResponse: null,
-      renderedText: null,
-    },
-    decision: {
-      branch: 'system_message_bypass',
-      responseSource: 'system',
-      finalMessage: message,
-    },
-  };
 }
 
 function selfRepairNotice(params: {
@@ -134,40 +120,26 @@ function deterministicQuestionBypass(params: {
   actionId: string;
 }): WeeklyPlanningTurnExecutionResult {
   const finalMessage = withSelfRepairNotice(params.result.message, params.notice);
-  const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
+  const dialogueRendererTrace = createWeeklyPlanningDeterministicQuestionDialogueTrace({
     actionId: params.actionId,
     actionKind: params.actionKind,
     questionCode: params.questionCode,
-    request: null,
-    response: {
-      status: 'bypassed',
-      reason: 'deterministic_question',
-      rawResponse: null,
-      renderedText: null,
-    },
-    decision: {
-      branch: 'deterministic_question_bypass',
-      responseSource: 'rules',
-      finalMessage,
-    },
-  };
+    finalMessage,
+  });
   const result = withAssistantMessage({
     result: params.result,
     message: finalMessage,
     responseSource: 'rules',
     dialogueRendererTrace,
   });
-  recordWeeklyPlanningStableV5DebugTrace({
+  recordWeeklyPlanningDialogueDecisionV5({
     requestId: params.input.traceRequestId,
-    stage: 'dialogue_renderer_decision',
-    data: {
-      branch: 'deterministic_question_bypass',
-      actionId: params.actionId,
-      questionCode: params.questionCode,
-      responseSource: result.responseSource,
-      message: result.message,
-      selfRepairNotice: params.notice,
-    },
+    branch: 'deterministic_question_bypass',
+    actionId: params.actionId,
+    questionCode: params.questionCode,
+    responseSource: result.responseSource,
+    message: result.message,
+    selfRepairNotice: params.notice,
   });
   return result;
 }
@@ -203,17 +175,6 @@ function createRenderInput(params: {
   };
 }
 
-function rendererRequestTrace(
-  input: WeeklyPlanningStableV5DialogueRenderInput,
-): NonNullable<WeeklyPlanningDialogueRendererTrace['request']> {
-  return {
-    purpose: 'weekly_planning_renderer',
-    requiredLabels: [...input.requiredLabels],
-    fallbackText: input.fallbackText,
-    previewCount: input.previewCount,
-  };
-}
-
 export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -228,14 +189,11 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
       responseSource: 'system',
       dialogueRendererTrace,
     });
-    recordWeeklyPlanningStableV5DebugTrace({
+    recordWeeklyPlanningDialogueDecisionV5({
       requestId: params.input.traceRequestId,
-      stage: 'dialogue_renderer_decision',
-      data: {
-        branch: 'system_message_bypass',
-        responseSource: result.responseSource,
-        message: result.message,
-      },
+      branch: 'system_message_bypass',
+      responseSource: result.responseSource,
+      message: result.message,
     });
     return result;
   }
@@ -270,107 +228,73 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     questionCode: currentQuestionCode,
     actionId: currentActionId,
   });
-  recordWeeklyPlanningStableV5DebugTrace({
+  recordWeeklyPlanningDialogueRendererRequestV5({
     requestId: params.input.traceRequestId,
-    stage: 'dialogue_renderer_request',
-    data: {
-      purpose: 'weekly_planning_renderer',
-      input: renderInput,
-    },
+    input: renderInput,
   });
 
   const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(getAiConfig()).render(
     renderInput,
   );
-  recordWeeklyPlanningStableV5DebugTrace({
+  recordWeeklyPlanningDialogueRendererResponseV5({
     requestId: params.input.traceRequestId,
-    stage: 'dialogue_renderer_response',
-    severity: rendered.status === 'rendered' ? 'info' : 'warn',
-    data: {
-      actionId: currentActionId,
-      status: rendered.status,
-      reason: rendered.status === 'fallback' ? rendered.reason : null,
-      rawResponse: rendered.rawResponse,
-      selfRepairNotice: notice,
-    },
+    actionId: currentActionId,
+    rendered,
+    selfRepairNotice: notice,
   });
 
   if (rendered.status === 'fallback') {
     const finalMessage = renderInput.fallbackText;
-    const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
+    const dialogueRendererTrace = createWeeklyPlanningFallbackDialogueTrace({
       actionId: currentActionId,
       actionKind,
       questionCode: currentQuestionCode,
-      request: rendererRequestTrace(renderInput),
-      response: {
-        status: 'fallback',
-        reason: rendered.reason,
-        rawResponse: rendered.rawResponse,
-        renderedText: null,
-      },
-      decision: {
-        branch: 'deterministic_fallback',
-        responseSource: 'deterministic_fallback',
-        finalMessage,
-      },
-    };
+      renderInput,
+      rendered,
+      finalMessage,
+    });
     const result = withAssistantMessage({
       result: params.result,
       message: finalMessage,
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace,
     });
-    recordWeeklyPlanningStableV5DebugTrace({
+    recordWeeklyPlanningDialogueDecisionV5({
       requestId: params.input.traceRequestId,
-      stage: 'dialogue_renderer_decision',
+      branch: 'deterministic_fallback',
+      actionId: currentActionId,
+      reason: rendered.reason,
+      responseSource: result.responseSource,
+      message: result.message,
+      selfRepairNotice: notice,
       severity: 'warn',
-      data: {
-        branch: 'deterministic_fallback',
-        actionId: currentActionId,
-        reason: rendered.reason,
-        responseSource: result.responseSource,
-        message: result.message,
-        selfRepairNotice: notice,
-      },
     });
     return result;
   }
 
   const finalMessage = withSelfRepairNotice(rendered.text, notice);
-  const dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace = {
+  const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,
     questionCode: currentQuestionCode,
-    request: rendererRequestTrace(renderInput),
-    response: {
-      status: 'rendered',
-      reason: null,
-      rawResponse: rendered.rawResponse,
-      renderedText: rendered.text,
-    },
-    decision: {
-      branch: 'ai_rendered',
-      responseSource: 'ai',
-      finalMessage,
-    },
-  };
+    renderInput,
+    rendered,
+    finalMessage,
+  });
   const result = withAssistantMessage({
     result: params.result,
     message: finalMessage,
     responseSource: 'ai',
     dialogueRendererTrace,
   });
-  recordWeeklyPlanningStableV5DebugTrace({
+  recordWeeklyPlanningDialogueDecisionV5({
     requestId: params.input.traceRequestId,
-    stage: 'dialogue_renderer_decision',
-    data: {
-      branch: 'ai_rendered',
-      actionId: currentActionId,
-      responseSource: result.responseSource,
-      message: result.message,
-      selfRepairNotice: notice,
-      preservedQuestionContext: result.state.lastQuestionContext ?? null,
-    },
+    branch: 'ai_rendered',
+    actionId: currentActionId,
+    responseSource: result.responseSource,
+    message: result.message,
+    selfRepairNotice: notice,
+    preservedQuestionContext: result.state.lastQuestionContext ?? null,
   });
   return result;
 }
