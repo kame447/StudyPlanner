@@ -11,6 +11,15 @@ export interface TemporalClockEncodingNormalizationV5 {
   repairs: string[];
 }
 
+export interface TemporalClockRawNormalizationV5 {
+  rawResponse: string;
+  repairs: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function normalizeClockFields<T extends {
   localId: string;
   namedTimePeriod: string | null;
@@ -31,6 +40,73 @@ function normalizeClockFields<T extends {
     value: { ...value, namedTimePeriod: null },
     repairs: [`named-time-period-cleared-for-explicit-clock:${owner}:${value.localId}`],
   };
+}
+
+function normalizeRawClockEntry(
+  value: unknown,
+  owner: string,
+  fallbackId: string,
+  repairs: string[],
+): void {
+  if (!isRecord(value)) return;
+  if (
+    typeof value.namedTimePeriod !== 'string'
+    || (typeof value.startTime !== 'string' && typeof value.endTime !== 'string')
+  ) {
+    return;
+  }
+
+  value.namedTimePeriod = null;
+  const localId = typeof value.localId === 'string' && value.localId
+    ? value.localId
+    : fallbackId;
+  repairs.push(`named-time-period-cleared-for-explicit-clock:${owner}:${localId}`);
+}
+
+/**
+ * Clears a redundant named period before strict semantic validation when the AI
+ * has already supplied explicit clock fields. This changes representation only:
+ * no clock is parsed or inferred from natural language here.
+ */
+export function normalizeWeeklyPlanningTemporalClockRawV5(
+  rawResponse: string,
+): TemporalClockRawNormalizationV5 {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { rawResponse, repairs: [] };
+  }
+  if (!isRecord(parsed)) return { rawResponse, repairs: [] };
+
+  const repairs: string[] = [];
+  if (Array.isArray(parsed.tasks)) {
+    parsed.tasks.forEach((task, taskIndex) => {
+      if (!isRecord(task) || !Array.isArray(task.temporalConstraints)) return;
+      task.temporalConstraints.forEach((constraint, constraintIndex) => {
+        normalizeRawClockEntry(
+          constraint,
+          'temporal-constraint',
+          `${taskIndex}:${constraintIndex}`,
+          repairs,
+        );
+      });
+    });
+  }
+  if (Array.isArray(parsed.availabilityDeclarations)) {
+    parsed.availabilityDeclarations.forEach((declaration, index) => {
+      normalizeRawClockEntry(
+        declaration,
+        'availability',
+        String(index),
+        repairs,
+      );
+    });
+  }
+
+  return repairs.length === 0
+    ? { rawResponse, repairs: [] }
+    : { rawResponse: JSON.stringify(parsed), repairs };
 }
 
 export function normalizeWeeklyPlanningTemporalClockEncodingV5(
