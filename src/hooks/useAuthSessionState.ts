@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useRootManagedAuthentication } from '../components/RootManagedAuthenticationContext';
+import { useRootStartupReady } from '../components/RootStartupReadyContext';
 import { authRepository } from '../repositories';
 import type { User, UserProfileDraft } from '../types/domain';
 import type { ShowNotice } from './useNoticeState';
@@ -32,6 +33,7 @@ export function useAuthSessionState({
   showNotice,
 }: UseAuthSessionStateOptions): UseAuthSessionStateResult {
   const rootManagedAuthentication = useRootManagedAuthentication();
+  const markRootStartupReady = useRootStartupReady();
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<User | null>(null);
 
@@ -68,9 +70,10 @@ export function useAuthSessionState({
         );
       } finally {
         setBooting(false);
+        markRootStartupReady?.();
       }
     },
-    [showNotice],
+    [markRootStartupReady, showNotice],
   );
 
   const signUpWithPassword = useCallback(
