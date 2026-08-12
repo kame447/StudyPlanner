@@ -6,6 +6,67 @@ import type {
 
 const CLOCKISH_CUSTOM_PERIOD = /^custom:.*(?:\b(?:[01]?\d|2[0-3]):[0-5]\d\b|(?:[01]?\d|2[0-3])\s*時)/u;
 
+export interface TemporalClockEncodingNormalizationV5 {
+  document: WeeklyPlanningSemanticDocumentV5;
+  repairs: string[];
+}
+
+function normalizeClockFields<T extends {
+  localId: string;
+  namedTimePeriod: string | null;
+  startTime: string | null;
+  endTime: string | null;
+}>(
+  value: T,
+  owner: string,
+): { value: T; repairs: string[] } {
+  if (
+    value.namedTimePeriod === null
+    || (value.startTime === null && value.endTime === null)
+  ) {
+    return { value, repairs: [] };
+  }
+
+  return {
+    value: { ...value, namedTimePeriod: null },
+    repairs: [`named-time-period-cleared-for-explicit-clock:${owner}:${value.localId}`],
+  };
+}
+
+export function normalizeWeeklyPlanningTemporalClockEncodingV5(
+  document: WeeklyPlanningSemanticDocumentV5,
+): TemporalClockEncodingNormalizationV5 {
+  const repairs: string[] = [];
+  const tasks = document.tasks.map((task) => {
+    const temporalConstraints = task.temporalConstraints.map((constraint) => {
+      const normalized = normalizeClockFields(
+        constraint,
+        'temporal-constraint',
+      );
+      repairs.push(...normalized.repairs);
+      return normalized.value;
+    });
+    return temporalConstraints.some((item, index) => item !== task.temporalConstraints[index])
+      ? { ...task, temporalConstraints }
+      : task;
+  });
+  const availabilityDeclarations = document.availabilityDeclarations.map((declaration) => {
+    const normalized = normalizeClockFields(declaration, 'availability');
+    repairs.push(...normalized.repairs);
+    return normalized.value;
+  });
+
+  if (repairs.length === 0) return { document, repairs: [] };
+  return {
+    document: {
+      ...document,
+      tasks,
+      availabilityDeclarations,
+    },
+    repairs,
+  };
+}
+
 function validateClockFields(params: {
   localId: string;
   namedTimePeriod: string | null;
