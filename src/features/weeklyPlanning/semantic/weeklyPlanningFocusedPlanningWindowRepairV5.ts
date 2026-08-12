@@ -101,7 +101,6 @@ export function createFocusedPlanningWindowRepairMessagesV5(
     {
       role: 'user',
       content: JSON.stringify({
-        currentUserText: input.userText,
         sourceText: window.sourceText,
         invalidRepresentation: {
           value: window.value,
