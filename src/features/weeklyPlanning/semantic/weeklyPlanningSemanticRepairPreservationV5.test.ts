@@ -142,7 +142,9 @@ describe('Stable V5 targeted semantic repair preservation', () => {
       { userText: USER_TEXT },
     );
 
-    expect(validation.parsedDocument).not.toBeNull();
+    if (!validation.parsedDocument) {
+      throw new Error(`fixture parse errors: ${JSON.stringify(validation.errors)}`);
+    }
     expect(validation.document).toBeNull();
     expect(validation.errors).toEqual([
       'document.planningWindow:absolute-iso-range-required',
