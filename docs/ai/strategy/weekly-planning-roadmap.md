@@ -115,18 +115,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - 保存直前のapproval guardからglobal runtime参照を削除し、application境界が検証対象runtimeを明示入力する純粋contractへ変更。Stable V5は対象conversation以外へfallbackせず、actual saveの回帰も追加してfull CI #2644 green
 - approval runtime選択を`weeklyPlanningApprovalRuntimeResolver.ts`へ集約し、availabilityとactual saveの二重実装を解消。Stable V5への直接接続点も2箇所から1箇所へ狭め、production isolation監査を縮小したうえでfull CI #2651 green
 - Stable V5 runtime sessionからlegacy global runtimeへのpublish/clear bridgeを削除し、新旧runtimeを独立管理へ変更。hydrate/finalize/clear/resetでlegacy snapshotを上書き・消去しない回帰を追加してfull CI #2657 green
+- Stable V5 scheduler candidateとpreview/draftで重複していたprovenance型を`weeklyPlanningPreviewProvenance.ts`へ単一化。既存型名はaliasで維持し、review情報を含む同一contractを生成からpreviewまで利用してfull CI #2662 green
 
 現在のloop:
 
-- Stable V5 scheduler candidate側のmetadataとpreview/draft側のmetadataが、conversationId、graph revision、taskId、source fact、plan typeを別interfaceで重複定義していたため、provenance contractを単一化する。
-- feature-levelの`weeklyPlanningPreviewProvenance.ts`へ共通のStable V5 preview provenance contractを置き、semantic scheduler側とpreview側の両方がそのcontractへ依存する。preview層からsemantic実装へ依存させず、DIP上も中立なcontractへ寄せる。
-- 従来公開していたcandidate metadata / preview metadataの型名はtype aliasとして維持し、外部import pathを壊さない。
-- learning/review session roleとreview roundも共通provenanceへ含め、生成側に存在する追加情報がpreview側の型から欠落する状態を解消する。
-- preview回帰でsession role / review roundを含むprovenanceが変換後も保持されることを固定する。
-- raw user textやsemantic判断には触れず、AIが確定したFact由来の出所情報をdeterministic scheduling/preview境界で一貫して保持するだけなので最上位設計原則を維持する。
+- `weeklyPlanningStableV5RuntimeExecutor.ts`に、semantic成功後のdeterministic planning evaluationと、結果に応じたresponse branch / preview executionが同居しているため、変更理由を分離する。
+- horizon解決、grounding reconcile、scheduler context、external constraints、scheduler input compilation、repair agenda、dialogue decision、semantic change判定、preview authorizationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ移した。
+- RuntimeExecutorはsemantic/user-context/graph staging、評価結果のtrace、質問・承認・previewのresponse branchingへ集中する。実際のpreview scheduler実行はこのloopでは移さず、1 loop 1変更理由を守る。
+- preview authorizationの既存公開関数は旧RuntimeExecutorからre-exportし、既存import pathを維持する。
+- ambiguity/recovery architecture testは削除せず、dialogue orderingの所有者が新しいplanning evaluation moduleへ移ったことを明示検査するよう追従した。
+- 新しいplanning evaluation moduleはStable V5 semantic/policy modulesへの正式なproduction support接続点なのでproduction isolation監査へ明示登録した。
+- この分離はAIの意味理解をdeterministic codeへ移さない。AIが確定したFact Graphとmachine stateを入力として、readiness / scheduler / question priority / authorizationだけを決定論的に評価するため最上位設計原則と一致する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor deterministic planning phase、legacy runtimeの残存production reachability、preview metadata変換責務、その他重複contract/singleton依存を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのpreview scheduler実行とresponse branching、user context/graph staging side effects、legacy runtimeの残存production reachability、その他application orchestrationを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
