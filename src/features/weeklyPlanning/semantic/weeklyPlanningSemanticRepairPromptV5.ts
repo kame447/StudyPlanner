@@ -35,6 +35,11 @@ function repairDirectivesForErrors(
   if (errors.some((error) => error.includes('namedTimePeriod:cannot-combine-with-clock'))) {
     directives.push('Keep either a named time period or exact clock fields, not both.');
   }
+  if (errors.some((error) =>
+    error.includes('explicit clock text must use startTime/endTime')
+    || error.includes('do not encode clock times as a custom namedTimePeriod'))) {
+    directives.push('The user stated explicit clock time bounds. Preserve that meaning by putting the normalized HH:mm values in startTime/endTime and set namedTimePeriod to null. Do not encode explicit clock times inside custom:<text>.');
+  }
   if (errors.some((error) => error.includes('targetLocalId'))) {
     directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. If a pending quantity-role answer selects target, remaining, or completed, remove the uncertainty and emit one minimal local task and workload; pendingQuestion binds the existing public target.');
   }
