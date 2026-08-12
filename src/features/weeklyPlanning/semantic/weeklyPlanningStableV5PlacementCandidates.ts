@@ -16,6 +16,7 @@ import {
 
 export interface WeeklyPlanningStableV5CandidateMetadata {
   runtime: 'stable_v5';
+  conversationId: string;
   graphRevision: number;
   taskId: string;
   sourceFactRefs: string[];
@@ -24,10 +25,15 @@ export interface WeeklyPlanningStableV5CandidateMetadata {
   reviewRound?: 1 | 2;
 }
 
-function planTypeForTask(graph: WeeklyPlanningFactGraphV5, taskId: string): PlanType {
-  return graph.tasks.find((task) => task.id === taskId)?.category === 'study'
-    ? 'study'
-    : 'other';
+function taskForCandidate(
+  graph: WeeklyPlanningFactGraphV5,
+  taskId: string,
+) {
+  const task = graph.tasks.find((candidate) => candidate.id === taskId);
+  if (!task) {
+    throw new Error(`Stable V5 placement candidate task was not found: ${taskId}`);
+  }
+  return task;
 }
 
 function fieldLabelForItem(
@@ -81,9 +87,11 @@ export function createPlacementCandidate(params: {
   sessionRole?: 'learning' | 'review';
   reviewRound?: 1 | 2;
 }): WeeklyDraftCandidate {
-  const planType = planTypeForTask(params.graph, params.item.taskId);
+  const task = taskForCandidate(params.graph, params.item.taskId);
+  const planType: PlanType = task.category === 'study' ? 'study' : 'other';
   const metadata: WeeklyPlanningStableV5CandidateMetadata = {
     runtime: 'stable_v5',
+    conversationId: task.source.conversationId,
     graphRevision: params.input.graphRevision,
     taskId: params.item.taskId,
     sourceFactRefs: [...params.item.sourceFactRefs],
