@@ -113,19 +113,19 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - Stable V5 approval availabilityをpreview自身のconversationIdからconversation-scoped runtime sessionへ接続。別conversationのcurrent snapshotに影響されず、owner/revisionを対象conversationで検証する。初回CI #2625でproduction isolation登録漏れを検出し、監査を弱めず正式接続点として登録したうえでfull CI #2627 green
 - Stable V5 preview変換からambient global runtimeによるconversation補完を削除。conversation欠落旧候補は別conversationを推測せずfail closedし、初回CI #2630で古いtest fixtureの暗黙依存を検出、fixtureを現production contractへ修正したうえでfull CI #2632 green
 - 保存直前のapproval guardからglobal runtime参照を削除し、application境界が検証対象runtimeを明示入力する純粋contractへ変更。Stable V5は対象conversation以外へfallbackせず、actual saveの回帰も追加してfull CI #2644 green
+- approval runtime選択を`weeklyPlanningApprovalRuntimeResolver.ts`へ集約し、availabilityとactual saveの二重実装を解消。Stable V5への直接接続点も2箇所から1箇所へ狭め、production isolation監査を縮小したうえでfull CI #2651 green
 
 現在のloop:
 
-- 画面上の承認可否判定と実保存時の最終判定で、Stable V5かlegacyかを判別して対象runtimeを選ぶ処理が二重実装されていたため、`weeklyPlanningApprovalRuntimeResolver.ts`へ集約する。
-- resolverはpreview metadataとtyped compatibility metadataだけを見て、Stable V5ならconversation-scoped Stable V5 runtime、behavior-aware互換ならlegacy runtimeを返す。raw user textやrenderer文面から意味を推測しない。
-- Stable V5 runtimeのsession欠落・owner不一致ではlegacy runtimeへfallbackしない。legacyのconversation未紐付けpreviewは従来どおりunboundとして扱う。
-- `weeklyPlanningApprovalAvailability.ts`と`weeklyPlanningApprovalApplication.ts`は同じresolverを利用し、表示上の承認可否と実保存時のruntime選択が将来ずれない構造へ変更した。
-- Stable V5 runtimeへの直接接続点をapproval application / availabilityの2箇所からresolver 1箇所へ狭め、production isolation監査も2箇所を削除してresolverだけを明示登録した。監査範囲を広げず接続面を縮小している。
-- mixed runtime sourceはresolverで明示的に識別し、availabilityではmetadata mismatchとしてfail closedする。保存側でもconversation-bound metadataに有効runtimeが供給されない限りguardが拒否する。
-- 意味判断は追加せず、既に確定したpreview provenanceとdeterministic runtime stateの選択だけをapplication層に集約するため、最上位設計原則を維持する。
+- Stable V5 runtime sessionがhydrate/finalize時にlegacy `weeklyPlanningSessionRuntime`へpublishし、Stable sessionのclear/reset時には同じlegacy singletonを消去するbridgeが残っていたため、新旧runtimeの相互汚染を解消する。
+- behavior-aware互換側は`runHardenedBehaviorAwarePlanningPreviewBridge`で自分自身のlegacy runtime snapshotをpublishしており、Stable V5 approvalは前loopまでにconversation-scoped Stable V5 runtimeを直接参照するようになったため、Stable V5がlegacy singletonを代理更新する必要はない。
+- `weeklyPlanningStableV5RuntimeSession.ts`からlegacy runtimeのpublish/get/clear依存を削除し、hydrate/finalize/clear/resetはStable V5 session registryとgraph stagingだけを変更する。
+- 専用回帰で、legacy runtimeを先にpublishした状態でもStable V5のhydrate/finalize/clear/resetがそのlegacy snapshotを上書き・消去しないことを固定する。
+- legacy behavior-aware runtimeの責務はlegacy bridge側に残し、Stable V5 runtimeはStable V5のFact Graph session lifecycleだけを担当するためSRPを改善する。
+- raw user textやsemantic意味判断には触れず、runtime ownershipとstate isolationだけをdeterministic codeで厳密化するため最上位設計原則を維持する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeSessionからlegacy global runtimeへのpublication bridge、Stable V5 preview metadata型重複、RuntimeExecutor deterministic planning phase、その他singleton/ambient state依存を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。Stable V5 preview metadata型重複、RuntimeExecutor deterministic planning phase、legacy runtime自体の残存production reachability、その他singleton/ambient state依存を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
