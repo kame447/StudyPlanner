@@ -1,11 +1,11 @@
 {
-  "scenario": "human-reviewed-planning-20260810",
-  "turn": 9,
-  "attempt": 3,
-  "user_text": "これで追加して",
-  "previous_run_id": "31395849728",
-  "conversation_id": "weekly-human-reviewed-20260810-01",
-  "owner_id": "resumable-real-api-eval-user-human-review-1",
-  "week_start_date": "2026-08-10",
-  "selected_date": "2026-08-10"
+  "scenario": "legacy-concept-migration-audit-20260812",
+  "turn": 1,
+  "attempt": 1,
+  "user_text": "8月17日から23日で、英単語220語と数学の問題40問を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。",
+  "previous_run_id": "",
+  "conversation_id": "weekly-legacy-migration-audit-20260812-01",
+  "owner_id": "real-api-legacy-migration-audit-user-1",
+  "week_start_date": "2026-08-17",
+  "selected_date": "2026-08-17"
 }
