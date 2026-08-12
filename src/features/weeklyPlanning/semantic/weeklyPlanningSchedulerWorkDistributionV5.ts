@@ -162,13 +162,15 @@ function executionPolicySlices(params: {
   const totalQuantity = params.item.quantity.amount;
   let consumedMinutes = 0;
   return chunks.map((durationMinutes, index) => {
-    const ratio = durationMinutes / total;
+    const remainingMinutes = total - consumedMinutes;
+    const effectiveDuration = Math.min(durationMinutes, remainingMinutes);
+    const ratio = effectiveDuration / total;
     const quantityAmount = index === chunks.length - 1
       ? Math.max(0, totalQuantity - chunks
           .slice(0, -1)
           .reduce((sum, chunk) => sum + totalQuantity * (chunk / total), 0))
       : totalQuantity * ratio;
-    consumedMinutes += durationMinutes;
+    consumedMinutes += effectiveDuration;
     const displayQuantity = params.item.quantity.unitCode === 'minute'
       ? durationMinutes
       : params.item.quantity.unitCode === 'hour'
