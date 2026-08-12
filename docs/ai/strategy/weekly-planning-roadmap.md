@@ -73,8 +73,8 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - repair agendaによる確認優先度
 - 局所self-repair
 - human-scale effort質問
-- page/problem per-unit effort
-- vocabulary total/session effort
+- page/problemのper-unit effort
+- vocabularyのtotal/session effort
 - vocabulary 100語上限session分割
 - vocabulary sessionをpreviewまで保持
 - session chunking / daily load distribution
@@ -101,22 +101,22 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - work distributionからtask relation orderingを分離。既存export path、cycle時に勝者を推測しないcontractを維持し、full CI #2578 greenを確認
 - approval repositoryからidentity解決、record validation、atomic save/completion invariantを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離。Firestore / memory / local adapterがpure policyへ依存する向きにし、full CI #2581 greenを確認
 - session storageからschema/ownership validationと2MB budget compactionを`weeklyPlanningStableV5SessionCodec.ts`へ分離。storage transportとcodecを分け、production isolationへ明示登録し、full CI #2585 greenを確認
+- RuntimeExecutorからAI config検証、request-time semantic context、semantic pipeline、semantic failureを`weeklyPlanningStableV5SemanticTurn.ts`へ分離。初回CIでsource ownership監査の追従漏れを検出し、監査を弱めず新ownerへ移管したうえでfull CI #2591 greenを確認
 
 現在のloop:
 
-- `weeklyPlanningStableV5RuntimeExecutor.ts`からAI config検証、request-time semantic context準備、semantic normalizer/pipeline実行、provider/normalization/canonicalization failure処理を`weeklyPlanningStableV5SemanticTurn.ts`へ分離した。
-- `SemanticTurn`はsemantic phase、`RuntimeExecutor`はsemantic成功後のFact commit、grounding、readiness、repair/dialogue、scheduler、previewというdeterministic planning phaseへ寄せる。phaseごとの変更理由を分離しSRPを改善する。
-- semanticルールやrouting条件は変更せず、既存のAI pipelineを同じ入力で呼ぶ。deterministic側へraw text解釈を移していないため「意味理解はAI、formal planning decisionはdeterministic code」という最上位設計原則を維持する。
-- semantic failure時のcompatibility outputとtrace contractもSemanticTurnへ同時に移し、failure branchの挙動を維持する。
-- 新しいSemanticTurnはsemantic normalizer/pipelineへ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録した。
-- 初回CI #2588では実挙動ではなく`weeklyPlanningStableV5RecoveryContract.test.ts`のsource ownership監査2件が旧RuntimeExecutorを参照したままで失敗した。監査を削除・緩和せず、semantic public state summaryとstructural rejection recovery文面の所有者を新しいSemanticTurnへ追従させた。question-policy / deterministic dialogueの監査は引き続きRuntimeExecutor / RuntimeQuestionsを参照する。
-- このloopの完了判定は修正後最終headのfull CI greenを必要とする。
+- `weeklyPlanningTurnSideEffects.ts`に混在していたstaged graph/contextのcommit・rollback lifecycleと、debug/renderer traceの圧縮・transport projection・永続化を分離した。
+- trace責務を`weeklyPlanningTurnTraceSideEffects.ts`へ移し、既存`weeklyPlanningTurnSideEffects.ts`はapplication turnのfinalize/discard transactionへ集中させた。trace記録関数は旧moduleからre-exportして既存import pathを維持する。
+- commit lifecycleはuser planning contextとStable V5 graphのatomicityを扱い、trace側はobservability transportを扱うため、失敗モードと変更理由が独立している。これを分けることでSRPを改善する。
+- trace side-effect moduleはruntime sessionから確定済みplanning rangeを読むだけで、raw user textを再解釈しない。semantic意味決定には介入しないため最上位設計原則を維持する。
+- 新しいtrace side-effect moduleはStable V5 trace/runtime sessionへ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録した。
+- このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor内部のdeterministic planning phase、approval adapter群、runtime session、turn side effectsを引き続き変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorのdeterministic planning phase、RuntimeSession、approval adapter群、application orchestrationを引き続き変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
-2026-08-12のreal API traceではopen-ended generic semantic requestが23,014 bytesだった。focused route導入前には`8分くらいです。`というmachine-pending短答にも25,239 bytesのgeneric requestを送っていた。
+2026-08-12のreal API traceではopen-ended generic semantic requestが23,014 bytesだった。focused route導入前には`8分くらいです。`というmachine-pending短答にも25,239 bytesのgeneric semantic requestを送っていた。
 
 このため、generic promptは「まだcontext上限に余裕がある」ことを理由に拡張しない。問題はcontext上限よりinstruction density、相互制約、repair時の意味保持である。
 
