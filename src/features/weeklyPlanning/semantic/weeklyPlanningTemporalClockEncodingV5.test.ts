@@ -5,7 +5,10 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
-import { validateWeeklyPlanningTemporalClockEncodingV5 } from './weeklyPlanningTemporalClockEncodingV5';
+import {
+  normalizeWeeklyPlanningTemporalClockRawV5,
+  validateWeeklyPlanningTemporalClockEncodingV5,
+} from './weeklyPlanningTemporalClockEncodingV5';
 
 function baseDocument(): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -64,8 +67,14 @@ function repairedClockFields(): WeeklyPlanningSemanticDocumentV5 {
   return document;
 }
 
+function redundantNamedPeriodWithClock(): WeeklyPlanningSemanticDocumentV5 {
+  const document = repairedClockFields();
+  document.availabilityDeclarations[0].namedTimePeriod = 'evening';
+  return document;
+}
+
 describe('Stable V5 temporal clock encoding', () => {
-  it('rejects exact clock values encoded inside custom namedTimePeriod', () => {
+  it('rejects exact clock values encoded only inside custom namedTimePeriod', () => {
     const errors = validateWeeklyPlanningTemporalClockEncodingV5(
       invalidClockAsCustomPeriod(),
     );
@@ -77,14 +86,19 @@ describe('Stable V5 temporal clock encoding', () => {
     ]);
   });
 
-  it('rejects namedTimePeriod combined with exact clock fields', () => {
-    const document = repairedClockFields();
-    document.availabilityDeclarations[0].namedTimePeriod = 'evening';
+  it('canonicalizes redundant namedTimePeriod when exact clocks already exist', () => {
+    const raw = normalizeWeeklyPlanningTemporalClockRawV5(
+      JSON.stringify(redundantNamedPeriodWithClock()),
+    );
+    const parsed = JSON.parse(raw.rawResponse) as WeeklyPlanningSemanticDocumentV5;
 
-    expect(validateWeeklyPlanningTemporalClockEncodingV5(document)).toEqual([
-      expect.stringContaining(
-        'namedTimePeriod must be null when startTime or endTime is supplied',
-      ),
+    expect(parsed.availabilityDeclarations[0]).toMatchObject({
+      namedTimePeriod: null,
+      startTime: '18:00',
+      endTime: '20:00',
+    });
+    expect(raw.repairs).toEqual([
+      'named-time-period-cleared-for-explicit-clock:availability:availability-tuesday',
     ]);
   });
 
@@ -92,6 +106,35 @@ describe('Stable V5 temporal clock encoding', () => {
     expect(
       validateWeeklyPlanningTemporalClockEncodingV5(repairedClockFields()),
     ).toEqual([]);
+  });
+
+  it('accepts redundant exact-clock representation in one provider call', async () => {
+    const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
+    const client: OpenAiCompatibleClient = {
+      async createChatCompletion(request) {
+        calls.push(request);
+        return JSON.stringify(redundantNamedPeriodWithClock());
+      },
+    };
+
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '8月17日から23日で、火曜日の18時から20時は予定があるので避けてください。',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.diagnostics).toMatchObject({
+      attemptCount: 1,
+      repairAttempted: false,
+    });
+    expect(result.diagnostics.algorithmicRepairs).toContain(
+      'named-time-period-cleared-for-explicit-clock:availability:availability-tuesday',
+    );
+    expect(result.document?.availabilityDeclarations[0]).toMatchObject({
+      namedTimePeriod: null,
+      startTime: '18:00',
+      endTime: '20:00',
+    });
+    expect(calls).toHaveLength(1);
   });
 
   it('sends a clock expression that still needs semantic interpretation through one AI repair', async () => {
