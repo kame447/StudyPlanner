@@ -39,6 +39,7 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'invalid_shape'
   | 'action_mismatch'
   | 'action_contract_mismatch'
+  | 'deterministic_question'
   | 'unsafe_text'
   | 'ungrounded_text';
 
@@ -378,6 +379,18 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
 ): WeeklyPlanningStableV5DialogueRenderer {
   return {
     async render(input) {
+      if (
+        input.actionKind === 'question'
+        && input.questionCode
+        && !isExplanationRequest(input)
+      ) {
+        return {
+          status: 'fallback',
+          reason: 'deterministic_question',
+          rawResponse: null,
+        };
+      }
+
       try {
         const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
         rememberWeeklyPlanningDialogueRendererPromptContext(
