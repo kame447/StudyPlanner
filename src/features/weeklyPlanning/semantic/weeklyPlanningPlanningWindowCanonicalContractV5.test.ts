@@ -8,7 +8,6 @@ import {
 import {
   normalizePlanningWindowCanonicalV5,
   planningWindowCanonicalValueErrors,
-  relativeWindowSourceExpectationV5,
 } from './weeklyPlanningPlanningWindowCanonicalContractV5';
 import type { SemanticPlanningWindowV5 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
@@ -119,11 +118,6 @@ describe('Stable V5 planning window validation boundary', () => {
     }
   });
 
-  it.each(['次の日', '翌日', '明日', '翌週', '来週', '今週'])
-    ('does not infer a canonical value from sourceText: %s', (sourceText) => {
-      expect(relativeWindowSourceExpectationV5(sourceText)).toBeNull();
-    });
-
   it('does not overwrite an AI-selected relative value from conflicting sourceText', () => {
     const window = {
       localId: 'planning-window-1',
@@ -136,6 +130,14 @@ describe('Stable V5 planning window validation boundary', () => {
     expect(normalizePlanningWindowCanonicalV5(window)).toEqual({
       window,
       repairs: [],
+    });
+  });
+
+  it('canonicalizes only the derived absolute value when start/end are already valid', () => {
+    const window = absoluteWindow({ value: '2026-08-17 to 2026-08-23' });
+    expect(normalizePlanningWindowCanonicalV5(window)).toEqual({
+      window: absoluteWindow(),
+      repairs: ['planning-window-value-canonicalized-from-validated-range'],
     });
   });
 
@@ -188,7 +190,7 @@ describe('Stable V5 planning window validation boundary', () => {
     ]);
   });
 
-  it('repairs only the observed missing absolute range while preserving valid current-turn facts', async () => {
+  it('repairs only a missing absolute range while preserving valid current-turn facts', async () => {
     const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
     const responses = [observedInitialInvalidResponse(), focusedRepairResponse()];
     const client: OpenAiCompatibleClient = {
