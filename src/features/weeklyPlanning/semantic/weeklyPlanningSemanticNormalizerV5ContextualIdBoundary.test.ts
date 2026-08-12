@@ -11,6 +11,15 @@ import {
 
 type ClientRequest = Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
 
+function focusedFallback(): string {
+  return JSON.stringify({
+    decision: 'fallback',
+    minutes: null,
+    precision: null,
+    quantityRole: null,
+  });
+}
+
 function invalidPublicIdUncertainty(): string {
   return JSON.stringify({
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -73,9 +82,9 @@ function repairedLocalAnswer(): string {
 }
 
 describe('Stable V5 contextual ID boundary', () => {
-  it('repairs a public-ID local reference into minimal local answer facts', async () => {
+  it('keeps public-ID repair in the generic fallback path without treating public IDs as local IDs', async () => {
     const calls: ClientRequest[] = [];
-    const responses = [invalidPublicIdUncertainty(), repairedLocalAnswer()];
+    const responses = [focusedFallback(), invalidPublicIdUncertainty(), repairedLocalAnswer()];
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(request) {
         calls.push(request);
@@ -130,8 +139,12 @@ describe('Stable V5 contextual ID boundary', () => {
     expect(JSON.stringify(result.document)).not.toContain(
       'wpf_workload_existing-public-id',
     );
+    expect(calls).toHaveLength(3);
+    expect(calls[0]?.responseFormat).toMatchObject({
+      json_schema: { name: 'weekly_planning_focused_contextual_answer_v5' },
+    });
 
-    const systemPrompt = calls[0]?.messages[0]?.content ?? '';
+    const systemPrompt = calls[1]?.messages[0]?.content ?? '';
     expect(systemPrompt).toContain('fresh localIds');
     expect(systemPrompt).toContain(
       'target means the amount intended for this plan',
@@ -143,7 +156,7 @@ describe('Stable V5 contextual ID boundary', () => {
       'public Fact IDs in targetLocalId',
     );
 
-    const repairMessages = calls[1]?.messages ?? [];
+    const repairMessages = calls[2]?.messages ?? [];
     const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '{}';
     const repairPayload = JSON.parse(repairMessage) as {
       requiredChanges?: string[];
