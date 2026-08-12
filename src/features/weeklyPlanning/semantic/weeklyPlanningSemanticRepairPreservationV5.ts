@@ -1,4 +1,7 @@
-import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+  type WeeklyPlanningSemanticDocumentV5,
+} from './weeklyPlanningSemanticDocumentV5';
 
 const REPRESENTATION_ONLY_ERROR_PATTERNS = [
   /^document\.planningWindow:/,
@@ -13,6 +16,21 @@ const REPRESENTATION_ONLY_ERROR_PATTERNS = [
 
 interface MutableRecord {
   [key: string]: unknown;
+}
+
+const REQUIRED_ARRAY_KEYS = [
+  'tasks',
+  'relations',
+  'availabilityDeclarations',
+  'constraintSourceRequests',
+  'userContextFacts',
+  'uncertainties',
+  'corrections',
+  'decisions',
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function cloneDocument(document: WeeklyPlanningSemanticDocumentV5): MutableRecord {
@@ -122,6 +140,24 @@ export function isRepresentationOnlySemanticRepairV5(
       REPRESENTATION_ONLY_ERROR_PATTERNS.some((pattern) => pattern.test(error)));
 }
 
+export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
+  rawResponse: string;
+  validationErrors: readonly string[];
+}): WeeklyPlanningSemanticDocumentV5 | null {
+  if (!isRepresentationOnlySemanticRepairV5(params.validationErrors)) return null;
+  try {
+    const value = JSON.parse(params.rawResponse) as unknown;
+    if (!isRecord(value)) return null;
+    if (value.schemaVersion !== WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5) return null;
+    if (typeof value.planningIntent !== 'string') return null;
+    if (value.planningWindow !== null && !isRecord(value.planningWindow)) return null;
+    if (REQUIRED_ARRAY_KEYS.some((key) => !Array.isArray(value[key]))) return null;
+    return structuredClone(value) as unknown as WeeklyPlanningSemanticDocumentV5;
+  } catch {
+    return null;
+  }
+}
+
 export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
   initialDocument: WeeklyPlanningSemanticDocumentV5 | null;
   repairedDocument: WeeklyPlanningSemanticDocumentV5 | null;
@@ -151,16 +187,8 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
     params.initialErrors,
     /^availabilityDeclarations\[([^\]]+)\]\.days:canonical-weekday-required:/,
   );
-  redactAvailabilityRepresentation(
-    initial,
-    availabilityClockIds,
-    availabilityWeekdayIds,
-  );
-  redactAvailabilityRepresentation(
-    repaired,
-    availabilityClockIds,
-    availabilityWeekdayIds,
-  );
+  redactAvailabilityRepresentation(initial, availabilityClockIds, availabilityWeekdayIds);
+  redactAvailabilityRepresentation(repaired, availabilityClockIds, availabilityWeekdayIds);
 
   const temporalClockIds = idsMatching(
     params.initialErrors,
