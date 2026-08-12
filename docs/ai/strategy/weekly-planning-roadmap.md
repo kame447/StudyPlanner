@@ -100,17 +100,18 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - turn dialogue orchestrationからrenderer trace組み立て・記録を分離
 - work distributionからtask relation orderingを分離。既存export path、cycle時に勝者を推測しないcontractを維持し、full CI #2578 greenを確認
 - approval repositoryからidentity解決、record validation、atomic save/completion invariantを`weeklyPlanningApprovalPersistencePolicy.ts`へ分離。Firestore / memory / local adapterがpure policyへ依存する向きにし、full CI #2581 greenを確認
+- session storageからschema/ownership validationと2MB budget compactionを`weeklyPlanningStableV5SessionCodec.ts`へ分離。storage transportとcodecを分け、production isolationへ明示登録し、full CI #2585 greenを確認
 
 現在のloop:
 
-- `weeklyPlanningStableV5SessionStorage.ts`に混在していたsession schema validation、Fact Graph conversation ownership validation、transient state除去、2MB budget内のmessage compactionを`weeklyPlanningStableV5SessionCodec.ts`へ分離した。
-- storage moduleはlocalStorage key、read/write/remove、quota failure時の再試行というtransport責務へ寄せた。codec/persistence policyはWeb Storage APIを知らないためSRPとDIPを改善する。
-- codecはtyped `PlanningState`と`WeeklyPlanningFactGraphV5`の形式・所有権を検証するだけでraw user textの意味を解釈しない。「意味理解はAI、persistence validationはdeterministic code」という最上位設計原則を維持する。
-- storage versionとpersisted session typeは旧storage moduleからre-exportし、既存import pathを維持する。
-- 新しいcodecはFact Graph validatorへ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録し、監査境界を弱めず可視化した。
+- `weeklyPlanningStableV5RuntimeExecutor.ts`からAI config検証、request-time semantic context準備、semantic normalizer/pipeline実行、provider/normalization/canonicalization failure処理を`weeklyPlanningStableV5SemanticTurn.ts`へ分離した。
+- `SemanticTurn`はsemantic phase、`RuntimeExecutor`はsemantic成功後のFact commit、grounding、readiness、repair/dialogue、scheduler、previewというdeterministic planning phaseへ寄せる。phaseごとの変更理由を分離しSRPを改善する。
+- semanticルールやrouting条件は変更せず、既存のAI pipelineを同じ入力で呼ぶ。deterministic側へraw text解釈を移していないため「意味理解はAI、formal planning decisionはdeterministic code」という最上位設計原則を維持する。
+- semantic failure時のcompatibility outputとtrace contractもSemanticTurnへ同時に移し、failure branchの挙動を維持する。
+- 新しいSemanticTurnはsemantic normalizer/pipelineへ直接依存するproduction support moduleなので、production isolation allowlistへ明示登録した。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にこのroadmapとcurrent execution taskを再読して決める。RuntimeExecutor、approval adapter群、runtime session、turn side effects等を変更理由ベースで比較する。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor内部のdeterministic planning phase、approval adapter群、runtime session、turn side effectsを引き続き変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
