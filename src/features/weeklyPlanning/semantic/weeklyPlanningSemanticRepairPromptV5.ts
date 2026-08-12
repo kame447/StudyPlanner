@@ -19,11 +19,12 @@ function repairDirectivesForErrors(
   const directives: string[] = [];
   const pendingWorkBreakdownTarget =
     readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(input.publicStateSummary);
+
   if (pendingWorkBreakdownTarget) {
-    directives.push(`This turn answers the pending work_breakdown uncertainty for exact target ${pendingWorkBreakdownTarget}. Return exactly one task, bind it with existingPublicId to that target, and use current-userText evidence on that task. Put newly identified study constituents on that target task and mark it decomposed. Do not emit extra top-level tasks, prior planning state, old uncertainty, user context, or task relations in this focused resolution delta.`);
+    directives.push(`Resolve only the pending work_breakdown target ${pendingWorkBreakdownTarget}. Return exactly that task with existingPublicId=${pendingWorkBreakdownTarget} and only structure supported by current userText. Do not replay the planning window, unrelated tasks, stored context, relations, or the old uncertainty.`);
   }
   if (errors.some((error) => error.includes('canonical-relative-'))) {
-    directives.push('Use one allowed canonical relative-day or relative-week value that matches the original utterance and conversation context.');
+    directives.push('Choose the canonical relative-day or relative-week value that matches the user meaning and conversation context.');
   }
   if (errors.some((error) =>
     error.includes(':missing-start')
@@ -32,40 +33,31 @@ function repairDirectivesForErrors(
     || error.includes(':missing-deadline'))) {
     directives.push('Remove or change unsupported temporal constraints instead of inventing a missing clock or date boundary.');
   }
-  if (errors.some((error) => error.includes('namedTimePeriod:cannot-combine-with-clock'))) {
-    directives.push('Keep either a named time period or exact clock fields, not both.');
-  }
   if (errors.some((error) =>
     error.includes('explicit clock text must use startTime/endTime')
     || error.includes('do not encode clock times as a custom namedTimePeriod'))) {
-    directives.push('The user stated explicit clock time bounds. Preserve that meaning by putting the normalized HH:mm values in startTime/endTime and set namedTimePeriod to null. Do not encode explicit clock times inside custom:<text>.');
+    directives.push('Interpret the explicit clock expression into startTime/endTime and leave namedTimePeriod null; do not invent clock bounds not supported by userText.');
   }
   if (errors.some((error) => error.includes('targetLocalId'))) {
-    directives.push('targetLocalId must name a localId declared in the same returned JSON. Never copy a publicStateSummary publicId into targetLocalId. If a pending quantity-role answer selects target, remaining, or completed, remove the uncertainty and emit one minimal local task and workload; pendingQuestion binds the existing public target.');
+    directives.push('Resolve references semantically, then use a localId declared in this response as targetLocalId. Never copy a public Fact ID into targetLocalId.');
   }
   if (errors.some((error) => error.includes('existing-task-binding-required') || error.includes('existing-component-binding-required') || error.includes('unknown-active-task') || error.includes('unknown-active-component') || error.includes('component-task-binding-mismatch'))) {
-    directives.push('For each continued accepted task/component, set existingPublicId to the exact candidate publicId from publicStateSummary. Keep existingPublicId null only for genuinely new entities. Never duplicate an accepted entity just to add current-turn facts.');
+    directives.push('Bind continued accepted task/component identity with the exact existingPublicId from publicStateSummary; keep null only for genuinely new entities.');
   }
   if (errors.some((error) => error.includes('explicit-recurrence-missing'))) {
-    directives.push('When a per-occurrence workload explicitly represents a recurring cadence, add the matching recurrence targeting the same task/component localId. periodExpression does not replace recurrence.');
-  }
-  if (errors.some((error) => error.includes('work-breakdown-'))) {
-    directives.push('This turn answers the pending work_breakdown uncertainty. Return only the exact target task identified by the pending uncertainty targetPublicId, using that ID as existingPublicId. Represent only the current user answer on that task. Do not copy the accepted planning window, unrelated accepted tasks, stored user context, or the old uncertainty. If constituents are identified, use decompositionStatus decomposed and encode them on the target task; if the user clarifies one schedulable unit, use atomic; use needs_breakdown only when the current answer itself remains insufficient.');
+    directives.push('If current userText states recurring cadence, emit the matching recurrence for that same semantic target; periodExpression alone does not express recurrence.');
   }
   if (errors.some((error) => error.includes('document.relations') && (error.includes('fromLocalId') || error.includes('toLocalId')))) {
-    directives.push('Task relations may reference task localIds only. Do not convert a comparison of workload size or amount into priority/order/dependency unless the user explicitly stated that scheduling relation.');
+    directives.push('Emit a task relation only when the user stated scheduling order, dependency, or priority, and reference task localIds only.');
   }
   if (errors.some((error) => error.includes('ambiguous-standalone-modifier-target'))) {
-    directives.push('A standalone modifier after multiple listed candidate tasks/components has no unique target. Preserve every otherwise-valid current-turn fact from the invalid response, including its planningWindow and listed tasks/components, but remove the guessed modifier attachment only. Emit exactly one uncertainty for that modifier with targetLocalId exactly "document", field exactly "modifier_target", and the modifier excerpt as sourceText. Never use null or the string "null" for targetLocalId, and do not choose a candidate by order or proximity.');
+    directives.push('The standalone modifier has no uniquely supported target. Remove the guessed attachment and emit one modifier_target uncertainty instead of choosing by order or proximity; preserve unrelated current-turn facts.');
   }
   if (errors.some((error) => error.includes('not-grounded-in-current-user-text'))) {
-    directives.push('Treat the response as a current-userText delta, not a full-plan snapshot. Remove every fact copied from prior turns whose sourceText is not grounded in current userText. Set an unstated planningWindow to null even if publicStateSummary contains one; remove stale collection items instead of replacing their sourceText. Keep newly stated current-turn facts. Preserve unrelated semantic fields that were already valid, including planningIntent, unless a listed validation error specifically invalidates them. Do not invent replacement sourceText.');
-  }
-  if (errors.some((error) => error.includes('unknown-key') || error.includes('missing-key'))) {
-    directives.push('Return exactly the required Stable V5 schema keys with no unknown keys.');
+    directives.push('Return a current-userText delta: remove facts copied from prior turns whose sourceText is not grounded in current userText, preserve unrelated valid current-turn facts, and do not invent replacement evidence.');
   }
   if (directives.length === 0) {
-    directives.push('Correct only the listed schema, type, range, reference, or structural validation failures while preserving the meaning you derived from the original context.');
+    directives.push('Correct only the listed validation failures while preserving all unrelated current-turn meaning.');
   }
   return unique(directives);
 }
@@ -79,7 +71,7 @@ export function createWeeklyPlanningSemanticRepairMessagesV5(params: {
   const repairInstruction: ChatMessage = {
     role: 'user',
     content: JSON.stringify({
-      instruction: 'Return the complete corrected Stable V5 JSON document only. Complete means all required JSON Schema top-level keys are present; it does not mean restating the accepted plan. The document must remain a delta for current userText. Do not invent facts or application decisions.',
+      instruction: 'Return the corrected current-turn Stable V5 semantic delta only. Do not invent facts or application decisions.',
       requiredChanges: repairDirectivesForErrors(params.validationErrors, params.input),
       validationErrors: params.validationErrors,
     }),
