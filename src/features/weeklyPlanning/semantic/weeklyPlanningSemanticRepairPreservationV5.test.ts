@@ -3,6 +3,9 @@ import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatib
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
 import {
+  validateWeeklyPlanningSemanticResponseV5,
+} from './weeklyPlanningSemanticResponseValidationV5';
+import {
   isRepresentationOnlySemanticRepairV5,
   validateWeeklyPlanningSemanticRepairPreservationV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
@@ -100,6 +103,21 @@ describe('Stable V5 targeted semantic repair preservation', () => {
     })).toEqual([
       'semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
     ]);
+  });
+
+  it('keeps the normalizer fixture representation-only before testing destructive repair rejection', () => {
+    const initial = document({ canonicalWindow: false, includeTask: true });
+    const validation = validateWeeklyPlanningSemanticResponseV5(
+      JSON.stringify(initial),
+      { userText: '8月17日から23日で英単語80語の予定を作りたい' },
+    );
+
+    expect(validation.parsedDocument).not.toBeNull();
+    expect(validation.document).toBeNull();
+    expect(validation.errors).toEqual([
+      'document.planningWindow:absolute-iso-range-required',
+    ]);
+    expect(isRepresentationOnlySemanticRepairV5(validation.errors)).toBe(true);
   });
 
   it('rejects a schema-valid destructive AI repair at the normalizer boundary', async () => {
