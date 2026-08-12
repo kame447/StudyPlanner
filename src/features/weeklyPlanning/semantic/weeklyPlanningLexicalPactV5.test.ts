@@ -18,7 +18,7 @@ describe('Stable V5 lexical pact contracts', () => {
     const system = messages.find((message) => message.role === 'system')?.content ?? '';
     expect(system).toContain('partner-specific');
     expect(system).toContain('title/contextLabel');
-    expect(system).toContain('do not expand');
+    expect(system).toContain('unless the user renames it');
   });
 
   it('carries the established user-facing label into renderer decided facts and relevant labels unchanged', () => {
