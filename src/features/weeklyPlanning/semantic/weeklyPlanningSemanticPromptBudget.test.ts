@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createWeeklyPlanningSemanticSystemPromptV5,
-  type WeeklyPlanningSemanticDocumentV5,
+import type {
+  WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  createWeeklyPlanningSemanticMeaningPolicyV5,
+} from './weeklyPlanningSemanticMeaningPolicyV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_PROVIDER_RESPONSE_FORMAT_V5,
 } from './weeklyPlanningSemanticProviderResponseFormatV5';
@@ -31,8 +33,9 @@ import {
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
 const GENERIC_MAX_COMPLETION_TOKENS = 3200;
-const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 11_000;
-const GENERIC_REQUEST_MAX_BYTES = 24_000;
+const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 9_000;
+const GENERIC_REQUEST_MAX_BYTES = 23_000;
+const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 2_200;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 2_500;
 const FOCUSED_CONTEXTUAL_REQUEST_MAX_BYTES = 4_000;
 const FOCUSED_PLANNING_WINDOW_REPAIR_REQUEST_MAX_BYTES = 2_000;
@@ -123,8 +126,8 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
-  it('keeps normalizer policy overhead small and scenario independent', () => {
-    const corePrompt = createWeeklyPlanningSemanticSystemPromptV5();
+  it('keeps supplemental orchestration policy small and scenario independent', () => {
+    const meaningPolicy = createWeeklyPlanningSemanticMeaningPolicyV5();
     const messages = createWeeklyPlanningSemanticBaseMessagesV5({
       userText: '申請書を2件、参考資料を4ページ確認したいです',
       recentConversation: [
@@ -135,15 +138,17 @@ describe('Stable V5 semantic prompt budget', () => {
       },
     });
     const systemPrompt = messages[0]?.content ?? '';
-    const policyOverhead = systemPrompt.slice(corePrompt.length);
+    const policyOverhead = systemPrompt.slice(meaningPolicy.length);
 
-    expect(systemPrompt.startsWith(corePrompt)).toBe(true);
-    expect(byteLength(policyOverhead)).toBeLessThanOrEqual(2500);
+    expect(systemPrompt.startsWith(meaningPolicy)).toBe(true);
+    expect(byteLength(policyOverhead)).toBeLessThanOrEqual(
+      GENERIC_POLICY_OVERHEAD_MAX_BYTES,
+    );
     expect(systemPrompt).not.toContain('申請書');
     expect(systemPrompt).not.toContain('参考資料');
-    expect(systemPrompt).not.toContain('Do not drop a later coordinated item');
-    expect(systemPrompt).not.toContain('split the independent subjects');
-    expect(systemPrompt).not.toContain('次の日, 翌日, and 明日 mean tomorrow');
+    expect(systemPrompt).not.toContain('weekday:tuesday, weekday:wednesday');
+    expect(systemPrompt).not.toContain('Return empty availabilityDeclarations');
+    expect(systemPrompt).not.toContain('selector must be active');
   });
 
   it('caps the always-on generic system prompt itself', () => {
