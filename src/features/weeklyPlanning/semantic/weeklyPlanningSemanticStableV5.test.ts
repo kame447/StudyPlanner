@@ -7,9 +7,11 @@ import {
 } from './weeklyPlanningSemanticCanonicalizerV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
-  createWeeklyPlanningSemanticSystemPromptV5,
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import {
+  createWeeklyPlanningSemanticBaseMessagesV5,
+} from './weeklyPlanningSemanticPromptAssemblyV5';
 import {
   parseWeeklyPlanningSemanticDocumentV5,
   validateWeeklyPlanningSemanticValueV5,
@@ -238,10 +240,12 @@ describe('Stable V5 semantic document', () => {
   });
 
   it('keeps AI responsibility limited to semantic normalization', () => {
-    const prompt = createWeeklyPlanningSemanticSystemPromptV5();
-    expect(prompt).toContain('Never emit application commands');
-    expect(prompt).toContain('readiness decisions');
-    expect(prompt).toContain('save decisions');
-    expect(prompt).toContain('Never reproduce, summarize, or invent their events');
+    const system = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: '来週の予定を作りたい',
+    })[0]?.content ?? '';
+    expect(system).toContain('interpret user meaning and context');
+    expect(system).toContain('deterministic code validates representation/state');
+    expect(system).toContain('Do not emit application, scheduling, readiness, preview, save commands');
+    expect(system).toContain('do not reproduce or invent external events');
   });
 });
