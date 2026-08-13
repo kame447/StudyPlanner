@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AI_CHAT_PURPOSE_MODELS,
   DEFAULT_ALLOWED_CHAT_MODELS,
+  WEEKLY_PLANNING_SEMANTIC_REPAIR_MODEL,
   resolveChatModel,
 } from './modelPolicy';
 
@@ -11,11 +12,39 @@ describe('ai-proxy chat model policy', () => {
       model: 'gpt-5.4-nano-2026-03-17',
     });
     expect(resolveChatModel({ purpose: 'weekly_planning_semantic_normalizer' })).toEqual({
-      model: 'gpt-5.4-mini-2026-03-17',
+      model: 'gpt-5.6-luna',
     });
     expect(resolveChatModel({ purpose: 'weekly_planning_renderer' })).toEqual({
       model: 'gpt-5.4-mini-2026-03-17',
     });
+  });
+
+  it('keeps weekly planning semantic repair on mini', () => {
+    expect(
+      resolveChatModel({
+        purpose: 'weekly_planning_semantic_normalizer',
+        messages: [
+          { role: 'system', content: 'Return valid JSON.' },
+          { role: 'assistant', content: '{"invalid":true}' },
+          {
+            role: 'user',
+            content: '{"validationErrors":["invalid"],"requiredChanges":["repair"]}',
+          },
+        ],
+      }),
+    ).toEqual({ model: 'gpt-5.4-mini-2026-03-17' });
+  });
+
+  it('does not classify an ordinary semantic request as repair', () => {
+    expect(
+      resolveChatModel({
+        purpose: 'weekly_planning_semantic_normalizer',
+        messages: [
+          { role: 'system', content: 'Normalize the user request.' },
+          { role: 'user', content: '来週の予定を立てたい' },
+        ],
+      }),
+    ).toEqual({ model: 'gpt-5.6-luna' });
   });
 
   it('lets purpose win and ignores a client-supplied model for a known purpose', () => {
@@ -46,5 +75,6 @@ describe('ai-proxy chat model policy', () => {
     for (const model of Object.values(AI_CHAT_PURPOSE_MODELS)) {
       expect(DEFAULT_ALLOWED_CHAT_MODELS).toContain(model);
     }
+    expect(DEFAULT_ALLOWED_CHAT_MODELS).toContain(WEEKLY_PLANNING_SEMANTIC_REPAIR_MODEL);
   });
 });
