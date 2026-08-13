@@ -1,4 +1,3 @@
-import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
   beginWeeklyPlanningStableV5DebugTrace,
   recordWeeklyPlanningStableV5DebugTrace,
@@ -14,8 +13,8 @@ import {
   type ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
-  getWeeklyPlanningStableV5RuntimeSession,
-} from './weeklyPlanningStableV5RuntimeSession';
+  weeklyPlanningStableV5IdempotencyGate,
+} from './weeklyPlanningStableV5TurnIdempotency';
 
 function errorDetails(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
@@ -25,52 +24,6 @@ function errorDetails(error: unknown): Record<string, unknown> {
     };
   }
   return { name: 'UnknownError', message: String(error) };
-}
-
-function emptyCompatibilityState(): PlanningIntakeState {
-  return {
-    status: 'idle',
-    intent: 'weekly_study_planning',
-    tasks: [],
-    progress: [],
-    unitRates: [],
-    constraints: [],
-    priorityPolicy: { kind: 'unknown' },
-    missing: [],
-    assumptions: [],
-    uncertainties: [],
-    questions: [],
-    shouldCreateDraft: false,
-    shouldSavePlan: false,
-    draftGenerationIntent: 'not_requested',
-    sourceTurns: [],
-  };
-}
-
-function duplicateTurnResult(
-  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-): WeeklyPlanningTurnExecutionResult {
-  const previous = input.previousState ?? emptyCompatibilityState();
-  const message = '同じ送信はすでに処理済みのため、予定を重複して作成しませんでした。';
-  return {
-    state: {
-      ...previous,
-      shouldCreateDraft: false,
-      shouldSavePlan: false,
-      draftGenerationIntent: 'not_requested',
-    },
-    message,
-    draftCandidates: [],
-    responseSource: 'system',
-  };
-}
-
-function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput): boolean {
-  const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
-  if (!session || session.ownerId !== input.userId) return false;
-  return session.graph.appliedTurnKeys.includes(
-    `${input.conversationId}:${input.traceRequestId}`,
-  );
 }
 
 function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
@@ -108,11 +61,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     },
   });
 
-  if (isDuplicateCommittedTurn(input)) {
-    const result = weeklyPlanningStableV5ResultProjector.duplicate({
-      input,
-      result: duplicateTurnResult(input),
-    });
+  const idempotency = weeklyPlanningStableV5IdempotencyGate.evaluate(input);
+  if (idempotency.kind === 'duplicate') {
+    const { result } = idempotency;
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_duplicate_turn_suppressed',
