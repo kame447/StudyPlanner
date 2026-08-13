@@ -92,3 +92,16 @@ export function discardWeeklyPlanningApplicationTurn(
     requestId: pending.requestId,
   });
 }
+
+export interface WeeklyPlanningTurnStagingLifecycle {
+  finalize(params: {
+    ownerId: string;
+    pending: WeeklyPlanningPendingTurn;
+  }): void;
+  discard(pending: WeeklyPlanningPendingTurn): void;
+}
+
+export const weeklyPlanningTurnStagingLifecycle: WeeklyPlanningTurnStagingLifecycle = {
+  finalize: finalizeWeeklyPlanningApplicationTurn,
+  discard: discardWeeklyPlanningApplicationTurn,
+};
