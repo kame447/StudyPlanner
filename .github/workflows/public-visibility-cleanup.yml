@@ -1,0 +1,66 @@
+name: Public Visibility Cleanup
+
+on:
+  public:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  remove-private-era-action-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Snapshot pre-public workflow run IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[].id' \
+            | awk -v current="${GITHUB_RUN_ID}" '$1 != current' \
+            > /tmp/pre-public-run-ids.txt
+
+          echo "Queued $(wc -l < /tmp/pre-public-run-ids.txt) pre-public workflow runs for deletion."
+
+      - name: Delete pre-public workflow runs and their artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          delete_run() {
+            local run_id="$1"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if gh api --silent --method DELETE \
+                -H 'Accept: application/vnd.github+json' \
+                "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"; then
+                return 0
+              fi
+              sleep "$((attempt * 2))"
+            done
+            return 1
+          }
+
+          failed=0
+          while IFS= read -r run_id; do
+            if [ -z "$run_id" ]; then
+              continue
+            fi
+            if ! delete_run "$run_id"; then
+              echo "Failed to delete workflow run ${run_id}." >&2
+              failed=$((failed + 1))
+            fi
+            sleep 0.05
+          done < /tmp/pre-public-run-ids.txt
+
+          if [ "$failed" -ne 0 ]; then
+            echo "${failed} workflow runs could not be deleted." >&2
+            exit 1
+          fi
+
+          echo "Pre-public Actions history cleanup completed."
