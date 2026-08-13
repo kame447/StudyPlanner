@@ -129,17 +129,15 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - InstrumentedRuntimeExecutorからduplicate detection/result constructionを`weeklyPlanningStableV5TurnIdempotency.ts`へ分離。初回CI #2703で構造監査の旧期待とtrace文字列経由の`appliedTurnKeys`漏出を検出し、duplicate専用projection/traceをidempotency境界へ移してfull CI #2709 green
 - InstrumentedRuntimeExecutorのtrace開始、turn input/output/error trace、final decision projection、error detail projectionを`weeklyPlanningStableV5RuntimeTraceLifecycle.ts`へ集約。`start / complete / fail`の小さいfacadeだけを公開し、duplicate固有traceはidempotency境界に残してfull CI #2714 green
 - `weeklyPlanningTurnExecutor.ts`のfailure diagnostics lifecycle、failure state/code projection、AI renderer、最終result traceを`weeklyPlanningStableV5TurnResultProjection.ts`へ集約。公開executorは`begin / project` facadeとinstrumented runtimeだけを組み合わせ、failure status→codeも型付き対応表へ変更してfull CI #2719 green
+- `weeklyPlanningTurnApplication.ts`のflatなside-effect service surfaceを、transactionalな`WeeklyPlanningTurnStagingLifecycle`とbest-effortな`WeeklyPlanningTurnOutcomeLifecycle`へ分割。初回CI #2726で旧test fixtureとmock typingの追従漏れを検出し、facadeを戻さずreal API observationを含むfixtureを新contractへ移行してfull CI #2731 green
 
 現在のloop:
 
-- `weeklyPlanningTurnApplication.ts`がcommit / discard / failごとに個別の保存、trace、staged graph/context処理を知っているservice surfaceを縮小する。
-- 必須のtransactional staging確定/破棄と、commit後のbest-effortな保存/traceは失敗意味が異なるため一つへ混ぜない。`WeeklyPlanningTurnStagingLifecycle`の`finalize / discard`と、`WeeklyPlanningTurnOutcomeLifecycle`の`committed / discarded / failed`という2つの小さいfacadeに分ける。
-- `weeklyPlanningTurnSideEffects.ts`は既存のfinalize/discard実装を内部に保持しつつ`weeklyPlanningTurnStagingLifecycle`を公開する。
-- `weeklyPlanningTurnOutcomeLifecycle.ts`を新設し、owned state保存とcommitted/discarded/failed traceの組み合わせを内部へ隠す。`failed`理由のdiscard traceは既存どおり重複記録せず、failure trace側へ任せる。
-- `weeklyPlanningTurnApplication.ts`のservices contractから`saveOwnedState`、個別record関数、個別finalize/discard関数を除き、2つのlifecycle facadeへ依存させる。authenticated runtime identityとnormalized storage ownerの分離は維持する。
-- application testはfacadeへの委譲を検証し、outcome lifecycle unit testで保存→trace順序とfailed discard抑止を検証する。architecture testで低レベルside-effect関数がapplication orchestrationへ戻らないことを固定する。
-- 初回CI #2726ではproduction本体ではなく、旧flat service contractを使うtemporal/real-API observation fixtureと、unit testでinterfaceへcastしたため失われたVitest mock型をTypeScriptが検出した。facadeを戻さず、fixtureを`stagingLifecycle / outcomeLifecycle`契約へ移し、mockは構造的型付けのまま保持して修正する。
-- AI意味理解・controllerのcommit semantics・scheduler・preview・approvalには触れず、application side-effect APIのSRP / ISP / encapsulationだけを改善する。
+- facade導入後も`weeklyPlanningTurnSideEffects.ts`がtrace functionsをre-exportし、stagingの個別finalize/discard関数をpublicにしていたため、公開面とテスト所有者を責務境界へ合わせる。
+- staging moduleからtrace runtime / trace side-effect依存とtrace function re-exportを削除し、`WeeklyPlanningTurnStagingLifecycleServices`、`createWeeklyPlanningTurnStagingLifecycle()`、`weeklyPlanningTurnStagingLifecycle`だけを公開する。実際のfinalize/discard helperはmodule-privateにする。
+- staging testはfactory経由でtransactional finalize/discardだけを検証する。従来同じtest fileに混在していたcommitted/discarded/failed trace検証は`weeklyPlanningTurnTraceSideEffects.test.ts`へ移し、trace owner自身を直接検証する。
+- application lifecycle architecture testでstaging moduleがtrace functionを再exportせず、private helper + factory + singleton facadeという公開面を維持することを固定する。
+- AI意味理解・controller・scheduler・preview・approval・trace payload contract自体は変更せず、SRP / ISP / encapsulationとtest ownershipだけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
 次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。legacy runtime production reachability、singleton依存、類似contract / helper重複、application service interfaceの残りを優先して疑う。
