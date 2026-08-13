@@ -76,7 +76,7 @@ export function AiRuntimeSettings({
                         model: event.target.value,
                       }))
                     }
-                    placeholder="gpt-5.4-mini"
+                    placeholder="gpt-5.6-luna"
                   />
                 </label>
               ) : null}
