@@ -38,7 +38,7 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningStableV5TurnIdempotency.ts',
   'application/weeklyPlanningStableV5TurnResultProjection.ts',
   'application/weeklyPlanningStableV5TurnStaging.ts',
-  'application/weeklyPlanningTurnApplication.ts',
+  'application/weeklyPlanningTurnRuntimeGateway.ts',
   'application/weeklyPlanningTurnSideEffects.ts',
   'application/weeklyPlanningTurnTraceSideEffects.ts',
   'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts',
