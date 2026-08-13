@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   observe-full-conversation:
+    if: ${{ github.event.repository.private }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -25,6 +26,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -76,23 +79,16 @@ jobs:
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
         run: node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/weeklyPlanning/evals/weeklyPlanningFullConversation.observation.test.ts --reporter=verbose
 
-      - name: Emit transcript and final schedule
+      - name: Record private observation completion
         if: always()
         run: |
-          if [ -f "$OUTPUT_DIR/transcript.md" ]; then
-            echo '--- TRANSCRIPT ---'
-            cat "$OUTPUT_DIR/transcript.md"
-          fi
-          if [ -f "$OUTPUT_DIR/result.json" ]; then
-            echo '--- RESULT ---'
-            cat "$OUTPUT_DIR/result.json"
-          fi
+          echo "Real-API conversation details are intentionally omitted from GitHub logs."
 
-      - name: Upload full-conversation artifact
+      - name: Upload private full-conversation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-planning-full-conversation
           path: artifacts/weekly-planning-full-conversation/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
