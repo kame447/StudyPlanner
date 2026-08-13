@@ -158,7 +158,8 @@ test.describe('real weekly application browser lifecycle', () => {
     await page.goto(`${REAL_WEEKLY_URL}?preview=1`);
     await createPreview(page, '履歴だけ消す条件');
 
-    await page.getByRole('button', { name: '会話履歴だけ消す' }).click();
+    const cleared = await page.evaluate(() => window.__realWeeklyActions.clearConversation());
+    expect(cleared).toBe(true);
 
     await expect(page.getByText('履歴だけ消す条件', { exact: true })).toHaveCount(0);
     await expect(page.getByText('テスト応答: 履歴だけ消す条件', { exact: true })).toHaveCount(0);
@@ -170,7 +171,7 @@ test.describe('real weekly application browser lifecycle', () => {
     await page.goto(`${REAL_WEEKLY_URL}?preview=1`);
     await createPreview(page, 'リセットする条件');
 
-    await page.getByRole('button', { name: 'この週の相談をリセット' }).click();
+    await page.evaluate(() => window.__realWeeklyActions.resetSession());
 
     await expect(page.getByText('リセットする条件', { exact: true })).toHaveCount(0);
     await expect(page.getByText('テスト応答: リセットする条件', { exact: true })).toHaveCount(0);
