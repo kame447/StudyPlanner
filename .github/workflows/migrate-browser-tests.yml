@@ -37,3 +37,5 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git commit -m 'test: migrate skeptical browser regression suite'
           git push origin HEAD:agent/browser-regression-main-integration
+
+# This workflow is intentionally temporary and must be deleted after the migration commit lands.
