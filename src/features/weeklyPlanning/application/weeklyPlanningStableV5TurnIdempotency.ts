@@ -1,4 +1,5 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
   weeklyPlanningStableV5ResultProjector,
@@ -60,16 +61,31 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
   );
 }
 
+function traceDuplicateSuppression(input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput): void {
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: input.traceRequestId,
+    stage: 'runtime_duplicate_turn_suppressed',
+    severity: 'warn',
+    data: {
+      criterion: 'committed turn key already exists in the conversation-scoped runtime graph',
+      coreExecutorInvoked: false,
+      previewCandidateCount: 0,
+    },
+  });
+}
+
 function evaluateIdempotency(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 ): WeeklyPlanningStableV5IdempotencyDecision {
   if (!isDuplicateCommittedTurn(input)) return { kind: 'proceed' };
+  const result = weeklyPlanningStableV5ResultProjector.duplicate({
+    input,
+    result: duplicateTurnResult(input),
+  });
+  traceDuplicateSuppression(input);
   return {
     kind: 'duplicate',
-    result: weeklyPlanningStableV5ResultProjector.duplicate({
-      input,
-      result: duplicateTurnResult(input),
-    }),
+    result,
   };
 }
 
