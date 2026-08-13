@@ -44,6 +44,7 @@ concurrency:
 
 jobs:
   prepare-and-optionally-observe-one-turn:
+    if: ${{ github.event.repository.private }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -53,6 +54,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -69,10 +72,7 @@ jobs:
           PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
         run: |
           mkdir -p previous-artifact
-          gh run download "$PREVIOUS_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "$ARTIFACT_NAME" \
-            --dir previous-artifact
+          gh run download "$PREVIOUS_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir previous-artifact
           test -f previous-artifact/checkpoint.json
 
       - name: Validate turn inputs without calling API
@@ -110,7 +110,7 @@ jobs:
           No StudyPlanner turn and no OpenAI API request were executed.
           EOF
 
-      - name: Verify OpenAI secret
+      - name: Verify API credential
         if: ${{ inputs.execute_turn }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -135,18 +135,15 @@ jobs:
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
         run: npm run observe:weekly-ai:conversation:turn
 
-      - name: Publish transcript for human judgment
-        if: ${{ always() && inputs.execute_turn }}
-        run: |
-          if [ -f "$OUTPUT_DIR/transcript.md" ]; then
-            cat "$OUTPUT_DIR/transcript.md" >> "$GITHUB_STEP_SUMMARY"
-          fi
+      - name: Record observation completion
+        if: always()
+        run: echo "Observation details omitted from GitHub logs."
 
-      - name: Upload observation artifact
+      - name: Upload private observation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-planning-resumable-conversation
           path: artifacts/weekly-planning-resumable-conversation/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
