@@ -75,9 +75,12 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 2 | `src/main.tsx` | bootstrap・admin route split・trace setup・preloadだけを所有する薄いcomposition root。no-change。 | `AdminApp` / `StudyPlannerAppRoot`へのentrypoint依存を確認。 | 本台帳へLoop 2を追記。 | done |
 | 3 | `src/App.tsx` | view navigation表示を`AppViewSwitcher`へ抽出し、7つのview定義を単一データへ集約。Appはcompositionへ寄せた。 | `AppViewSwitcher.test.tsx`を追加。既存`ViewMode`型を使用し状態契約は不変。 | 本台帳へLoop 3を追記。 | done |
 | 4 | `src/components/StudyPlannerAppRoot.tsx` | startup/consent/week-startのlocal component分割は妥当。`App.tsx`とのlegal route判定重複を発見。 | route重複をrepository searchで確認。抽出module作成はconnector safety blockのため未適用。 | 本台帳へdeferred refactorを記録。 | done |
+| 5 | `src/features/weeklyPlanning/parsing/weeklyPlanningText.ts` | raw text normalizationとlegacy semantic predicatesが同居。`looksLikeWeeklyPlanningRequest`はproduction entry routingのsemantic ownership違反。`isPlacementConditionOnly`も到達性監査が必要。 | `looksLikeWeeklyPlanningRequest`が`NaturalLanguageAssistant`から参照されることを確認。Issue #115と一致。 | 本台帳へIssue #115との対応を記録。 | done |
 
 ## Remaining-problem register
 
 - Issue #116 はstale cleanup対象がcurrent repositoryから消えていることを確認し、completedでclose済み。
+- Issue #115: fresh-session weekly routingをraw-text regexが所有している。SOLID整理だけで黙って削除せず、semantic router契約として実装する必要がある。
+- `isPlacementConditionOnly`のproduction reachabilityを継続監査する。
 - `App.tsx` / `StudyPlannerAppRoot.tsx` のlegal route policy重複は小規模なdeferred refactor。
 - その他のopen Issueとコード/MDを照合中。
