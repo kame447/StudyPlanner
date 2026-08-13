@@ -28,8 +28,6 @@ describe('weekly planning turn application lifecycle architecture', () => {
     expect(applicationSource).not.toContain('recordCommittedWeeklyPlanningApplicationTurn');
     expect(applicationSource).not.toContain('recordDiscardedWeeklyPlanningApplicationTurn');
     expect(applicationSource).not.toContain('recordFailedWeeklyPlanningApplicationTurn');
-    expect(applicationSource).not.toContain('finalizeWeeklyPlanningApplicationTurn');
-    expect(applicationSource).not.toContain('discardWeeklyPlanningApplicationTurn');
   });
 
   it('keeps persistence and tracing inside the outcome lifecycle', () => {
@@ -40,9 +38,16 @@ describe('weekly planning turn application lifecycle architecture', () => {
     expect(outcomeSource).toContain('weeklyPlanningTurnOutcomeLifecycle =');
   });
 
-  it('keeps mandatory finalize/discard semantics behind the staging lifecycle', () => {
-    expect(stagingSource).toContain('weeklyPlanningTurnStagingLifecycle: WeeklyPlanningTurnStagingLifecycle');
-    expect(stagingSource).toContain('finalize: finalizeWeeklyPlanningApplicationTurn');
-    expect(stagingSource).toContain('discard: discardWeeklyPlanningApplicationTurn');
+  it('exposes staging only through a factory and lifecycle facade', () => {
+    expect(stagingSource).toContain('function finalizeStaging(');
+    expect(stagingSource).toContain('function discardStaging(');
+    expect(stagingSource).toContain('createWeeklyPlanningTurnStagingLifecycle(');
+    expect(stagingSource).toContain('weeklyPlanningTurnStagingLifecycle = createWeeklyPlanningTurnStagingLifecycle()');
+    expect(stagingSource).not.toContain('export function finalizeStaging(');
+    expect(stagingSource).not.toContain('export function discardStaging(');
+    expect(stagingSource).not.toContain("from './weeklyPlanningTurnTraceSideEffects'");
+    expect(stagingSource).not.toContain('recordCommittedWeeklyPlanningApplicationTurn');
+    expect(stagingSource).not.toContain('recordDiscardedWeeklyPlanningApplicationTurn');
+    expect(stagingSource).not.toContain('recordFailedWeeklyPlanningApplicationTurn');
   });
 });
