@@ -142,3 +142,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     authorized,
   };
 }
+
+export type WeeklyPlanningStableV5PlanningEvaluation = ReturnType<
+  typeof evaluateWeeklyPlanningStableV5Planning
+>;
