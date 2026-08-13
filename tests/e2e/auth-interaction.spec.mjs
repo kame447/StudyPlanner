@@ -56,7 +56,7 @@ test.describe('AuthScreen browser interactions', () => {
   test('login intent submits credentials through the sign-in boundary rather than sign-up', async ({ page }) => {
     await openAuth(page);
 
-    await page.getByRole('button', { name: 'ログイン', exact: true }).click();
+    await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
     await page.getByLabel('メールアドレス').fill('browser-regression@example.com');
     await page.getByLabel('パスワード', { exact: true }).fill('abcdef12');
     await page.getByRole('button', { name: 'ログインする' }).click();
@@ -72,8 +72,8 @@ test.describe('AuthScreen browser interactions', () => {
   test('keyboard-only navigation can reach the other authentication intent without assuming one exact tab step', async ({ page }) => {
     await openAuth(page);
 
-    const signUp = page.getByRole('button', { name: '新規会員登録', exact: true });
-    const login = page.getByRole('button', { name: 'ログイン', exact: true });
+    const signUp = page.getByRole('tab', { name: '新規会員登録', exact: true });
+    const login = page.getByRole('tab', { name: 'ログイン', exact: true });
     await signUp.focus();
     await tabUntilFocused(page, login);
   });
