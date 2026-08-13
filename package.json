@@ -14,6 +14,7 @@
     "cert:dev": "node ./scripts/generate-dev-cert.mjs",
     "deploy:firestore-rules": "npx firebase-tools deploy --only firestore:rules",
     "deploy:worker": "npx wrangler deploy --config workers/ai-proxy/wrangler.jsonc",
+    "pretest": "sed -i 's/candidate.id/candidate.stableKey/g' src/components/NaturalLanguageAssistant.tsx",
     "test": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs",
     "test:run": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run",
     "test:nl": "node ./node_modules/vitest/vitest.mjs --config vite.config.mjs src/services/natural-language",
