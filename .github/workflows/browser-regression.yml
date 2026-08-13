@@ -1,0 +1,78 @@
+name: Browser Regression (test-only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/test-only-browser-regression
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMPLEMENTATION_BRANCH: agent/weekly-planning-human-grounding-repair
+
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Overlay latest PR 120 implementation without committing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${IMPLEMENTATION_BRANCH}"
+          implementation_sha="$(git rev-parse FETCH_HEAD)"
+          echo "BROWSER_IMPLEMENTATION_SHA=${implementation_sha}" >> "${GITHUB_ENV}"
+          echo "Implementation SHA: ${implementation_sha}" >> "${GITHUB_STEP_SUMMARY}"
+          git -c user.name='StudyPlanner Browser Test' \
+              -c user.email='browser-test@localhost' \
+              merge --no-commit --no-ff FETCH_HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.55.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run browser regression tests
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.config.mjs
+
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-artifacts-${{ env.BROWSER_IMPLEMENTATION_SHA }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
