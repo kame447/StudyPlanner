@@ -81,6 +81,13 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     );
   });
 
+  it('keeps the runtime executor surface narrow and removes unused low-level diagnostics', () => {
+    expect(runtimeSource).toContain('executeWeeklyPlanningStableV5RuntimeTurn');
+    expect(runtimeSource).toContain('isWeeklyPlanningStableV5PreviewAuthorized');
+    expect(runtimeSource).not.toContain('getWeeklyPlanningStableV5BlockingIssueCode');
+    expect(planningStageSource).not.toContain('getWeeklyPlanningStableV5BlockingIssueCode');
+  });
+
   it('encapsulates response completion versus preview scheduling behind a typed facade', () => {
     expect(responseRoutingSource).toContain("kind: 'respond'");
     expect(responseRoutingSource).toContain("kind: 'schedule_preview'");
