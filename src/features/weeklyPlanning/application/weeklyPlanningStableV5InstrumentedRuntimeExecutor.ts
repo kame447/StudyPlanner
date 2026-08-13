@@ -1,8 +1,5 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
-  rewriteWeeklyPlanningEffortQuestionV5,
-} from '../semantic/weeklyPlanningEffortQuestionRendererV5';
-import {
   beginWeeklyPlanningStableV5DebugTrace,
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -10,12 +7,14 @@ import type {
   WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutor';
 import {
+  weeklyPlanningStableV5ResultProjector,
+} from './weeklyPlanningStableV5ResultProjection';
+import {
   executeWeeklyPlanningStableV5RuntimeTurn as executeWeeklyPlanningStableV5RuntimeTurnCore,
   type ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
   getWeeklyPlanningStableV5RuntimeSession,
-  getWeeklyPlanningStableV5StagedGraph,
 } from './weeklyPlanningStableV5RuntimeSession';
 
 function errorDetails(error: unknown): Record<string, unknown> {
@@ -74,100 +73,6 @@ function isDuplicateCommittedTurn(input: ExecuteWeeklyPlanningStableV5RuntimeTur
   );
 }
 
-function withFreshestAvailableGraph(
-  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-  result: WeeklyPlanningTurnExecutionResult,
-): WeeklyPlanningTurnExecutionResult {
-  const stagedGraph = getWeeklyPlanningStableV5StagedGraph({
-    ownerId: input.userId,
-    conversationId: input.conversationId,
-    requestId: input.traceRequestId,
-  });
-  if (stagedGraph) {
-    return {
-      ...result,
-      stableV5Graph: stagedGraph,
-    };
-  }
-
-  const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
-  if (!session || session.ownerId !== input.userId) return result;
-
-  const resultGraph = result.stableV5Graph;
-  if (resultGraph && resultGraph.revision >= session.graph.revision) {
-    return result;
-  }
-
-  return {
-    ...result,
-    stableV5Graph: session.graph,
-  };
-}
-
-function withHumanScaleEffortQuestion(
-  result: WeeklyPlanningTurnExecutionResult,
-): WeeklyPlanningTurnExecutionResult {
-  const context = result.state.lastQuestionContext;
-  const workloadFactId = context?.targetSlot === 'stable_v5:missing_effort_estimate'
-    ? context.topicId
-    : undefined;
-  if (!result.stableV5Graph || !workloadFactId) return result;
-
-  const message = rewriteWeeklyPlanningEffortQuestionV5({
-    graph: result.stableV5Graph,
-    workloadFactId,
-    message: result.message,
-  });
-  if (message === result.message) return result;
-  return {
-    ...result,
-    message,
-    state: {
-      ...result.state,
-      questions: result.state.questions.map((question) =>
-        rewriteWeeklyPlanningEffortQuestionV5({
-          graph: result.stableV5Graph!,
-          workloadFactId,
-          message: question,
-        })),
-    },
-  };
-}
-
-function previousTurnMayHoldPreview(
-  previousState: PlanningIntakeState | undefined,
-): boolean {
-  if (!previousState) return false;
-  return previousState.status === 'draft_ready'
-    || (
-      previousState.status === 'revision_pending'
-      && previousState.draftGenerationIntent === 'user_authorized'
-    );
-}
-
-function withRepairSafePreview(
-  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-  result: WeeklyPlanningTurnExecutionResult,
-): WeeklyPlanningTurnExecutionResult {
-  const repairPending = result.draftCandidates.length === 0
-    && result.state.questions.length > 0;
-  if (!repairPending || !previousTurnMayHoldPreview(input.previousState)) {
-    return result;
-  }
-
-  return {
-    ...result,
-    preserveExistingPreview: true,
-    state: {
-      ...result.state,
-      status: 'revision_pending',
-      shouldCreateDraft: false,
-      shouldSavePlan: false,
-      draftGenerationIntent: 'user_authorized',
-    },
-  };
-}
-
 function finalDecision(result: WeeklyPlanningTurnExecutionResult) {
   return {
     compatibilityStatus: result.state.status,
@@ -204,7 +109,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   if (isDuplicateCommittedTurn(input)) {
-    const result = withFreshestAvailableGraph(input, duplicateTurnResult(input));
+    const result = weeklyPlanningStableV5ResultProjector.duplicate({
+      input,
+      result: duplicateTurnResult(input),
+    });
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_duplicate_turn_suppressed',
@@ -226,10 +134,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
 
   try {
     const coreResult = await executeWeeklyPlanningStableV5RuntimeTurnCore(input);
-    const projected = withHumanScaleEffortQuestion(
-      withFreshestAvailableGraph(input, coreResult),
-    );
-    const result = withRepairSafePreview(input, projected);
+    const result = weeklyPlanningStableV5ResultProjector.core({
+      input,
+      result: coreResult,
+    });
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: input.traceRequestId,
       stage: 'runtime_turn_output',
