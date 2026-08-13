@@ -30,17 +30,20 @@ describe('weekly planning application temporal context', () => {
       message: '確認しました。',
       draftCandidates: [],
     }));
-    const services = {
+    const services: WeeklyPlanningTurnApplicationServices = {
       submitControlledTurn: submitWeeklyPlanningControlledTurn,
       executeTurn,
       bindStableV5SessionScope: vi.fn(),
-      saveOwnedState: vi.fn(),
-      finalizeTurn: vi.fn(),
-      discardTurn: vi.fn(),
-      recordCommittedTurn: vi.fn(() => null),
-      recordDiscardedTurn: vi.fn(() => null),
-      recordFailedTurn: vi.fn(() => null),
-    } as WeeklyPlanningTurnApplicationServices;
+      stagingLifecycle: {
+        finalize: vi.fn(),
+        discard: vi.fn(),
+      },
+      outcomeLifecycle: {
+        committed: vi.fn(),
+        discarded: vi.fn(),
+        failed: vi.fn(),
+      },
+    };
 
     await submitWeeklyPlanningApplicationTurn({
       session: createWeeklyPlanningControllerSession(
