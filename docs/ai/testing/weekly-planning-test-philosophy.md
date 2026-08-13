@@ -1,7 +1,7 @@
 # 週間計画 AI テスト方針
 
 Status: canonical
-Updated: 2026-08-10
+Updated: 2026-08-13
 
 週間計画の自動テストは、AIの自然言語理解や会話品質に唯一の正解があるとは仮定しない。自動化する対象は、決定論的に正誤を定義できる内部契約に限定する。
 
@@ -15,7 +15,7 @@ AI rendererについても、特定の日本語文面や語句を正解として
 
 修正先は症状ではなく原因層で決める。semantic raw responseが誤っている場合はsemantic context/prompt/contract、raw responseが正しくschemaやvalidatorが拒否する場合はschema/validator、formal targetやFact Graphで壊れる場合はbinding/lifecycle、machine dialogue decisionが不適切な場合はquestion/readiness policy、decisionは正しく文面だけ不自然な場合はrendererを修正する。raw user textを後段のregex、keyword、dictionaryで再解釈してAI出力を上書きしない。
 
-AI出力のstructural/reference/contract violationに対する通常repairは、gpt-5.4-miniで最大1回とする。semantic ambiguityをrepairで無理に確定させない。広範なdeterministic repairは導入せず、意味保存を機械的に保証できるcanonicalizationを実測に基づいて限定的に扱う場合だけ例外とする。
+OpenAIを使う内部AI経路は、interpreter、semantic normalization、validator後のsemantic repair、rendererを含めてgpt-5.6-lunaへ統一する。OCRだけはGemini経路を維持する。AI出力のstructural/reference/contract violationに対する通常repairは最大1回とし、semantic ambiguityをrepairで無理に確定させない。広範なdeterministic repairは導入せず、意味保存を機械的に保証できるcanonicalizationを実測に基づいて限定的に扱う場合だけ例外とする。
 
 会話品質に関する最終意思決定は人間が行う。開発エージェントはその前段で明確な問題を修正して一定水準まで持ち上げ、最終的な実API transcriptを人間へ提示する。単なる文体の好みだけを理由にAIの表現を固定化しない。
 
