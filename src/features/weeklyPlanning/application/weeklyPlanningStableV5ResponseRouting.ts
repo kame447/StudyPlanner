@@ -1,4 +1,5 @@
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
@@ -20,6 +21,16 @@ type SuccessfulSemanticTurn = Extract<
   WeeklyPlanningStableV5SemanticTurnResult,
   { status: 'success' }
 >;
+
+export type WeeklyPlanningStableV5PrePreviewRoute =
+  | {
+      kind: 'respond';
+      output: WeeklyPlanningTurnExecutionResult;
+    }
+  | {
+      kind: 'schedule_preview';
+      schedulerInput: GenericSchedulerInput;
+    };
 
 function traceRuntimeBranch(params: {
   requestId: string;
@@ -48,11 +59,15 @@ function groundedMessage(params: {
   return withStableV5GroundingProposal(params);
 }
 
-export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
+function respond(output: WeeklyPlanningTurnExecutionResult): WeeklyPlanningStableV5PrePreviewRoute {
+  return { kind: 'respond', output };
+}
+
+function routeBeforePreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   graph: WeeklyPlanningFactGraphV5;
   evaluation: PlanningEvaluation;
-}): WeeklyPlanningTurnExecutionResult | null {
+}): WeeklyPlanningStableV5PrePreviewRoute {
   const { input, graph, evaluation } = params;
   const {
     groundingRecords,
@@ -64,6 +79,7 @@ export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
     previousDraftGenerationIntent,
     authorized,
   } = evaluation;
+  const schedulerInput = compilation.input;
 
   if (dialogue.status === 'ask_question') {
     const message = groundedMessage({
@@ -95,10 +111,10 @@ export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
       output,
       severity: 'warn',
     });
-    return output;
+    return respond(output);
   }
 
-  if (dialogue.status === 'nothing_to_schedule' || !compilation.input) {
+  if (dialogue.status === 'nothing_to_schedule' || !schedulerInput) {
     const missingWork = stableV5MissingSchedulableWorkQuestion(graph);
     const message = groundedMessage({
       message: missingWork.message,
@@ -121,7 +137,7 @@ export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
       basis: {
         dialogueStatus: dialogue.status,
         compilationStatus: compilation.status,
-        compilationInputExists: Boolean(compilation.input),
+        compilationInputExists: Boolean(schedulerInput),
         recognizedTaskTitles: missingWork.taskTitles,
         questionCode: missingWork.questionCode,
         groundingRecords,
@@ -130,7 +146,7 @@ export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
       output,
       severity: 'warn',
     });
-    return output;
+    return respond(output);
   }
 
   if (!authorized && input.previousState?.status === 'draft_ready' && !semanticChanged) {
@@ -161,7 +177,7 @@ export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
       },
       output,
     });
-    return output;
+    return respond(output);
   }
 
   if (!authorized) {
@@ -191,13 +207,16 @@ export function resolveWeeklyPlanningStableV5PrePreviewResponse(params: {
       },
       output,
     });
-    return output;
+    return respond(output);
   }
 
-  return null;
+  return {
+    kind: 'schedule_preview',
+    schedulerInput,
+  };
 }
 
-export function resolveWeeklyPlanningStableV5PreviewResponse(params: {
+function routeAfterPreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   semanticTurn: SuccessfulSemanticTurn;
   evaluation: PlanningEvaluation;
@@ -301,3 +320,8 @@ export function resolveWeeklyPlanningStableV5PreviewResponse(params: {
   });
   return output;
 }
+
+export const weeklyPlanningStableV5ResponseRouter = {
+  beforePreview: routeBeforePreview,
+  afterPreview: routeAfterPreview,
+} as const;
