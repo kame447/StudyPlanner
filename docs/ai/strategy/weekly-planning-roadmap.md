@@ -131,19 +131,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - `weeklyPlanningTurnExecutor.ts`のfailure diagnostics lifecycle、failure state/code projection、AI renderer、最終result traceを`weeklyPlanningStableV5TurnResultProjection.ts`へ集約。公開executorは`begin / project` facadeとinstrumented runtimeだけを組み合わせ、failure status→codeも型付き対応表へ変更してfull CI #2719 green
 - `weeklyPlanningTurnApplication.ts`のflatなside-effect service surfaceを、transactionalな`WeeklyPlanningTurnStagingLifecycle`とbest-effortな`WeeklyPlanningTurnOutcomeLifecycle`へ分割。初回CI #2726で旧test fixtureとmock typingの追従漏れを検出し、facadeを戻さずreal API observationを含むfixtureを新contractへ移行してfull CI #2731 green
 - `weeklyPlanningTurnSideEffects.ts`からtrace function re-exportとpublic finalize/discard helperを除去し、factory + staging lifecycle facadeだけを公開。初回CI #2736でrenderer-trace testの旧re-export依存を検出し、test owner自体をtrace side-effect側へ移してfull CI #2739 green
+- Stable V5 session bind・request clock生成・turn executor input mappingを`weeklyPlanningTurnRuntimeGateway.ts`へ集約。applicationは`runtimeGateway.execute()`だけを使い、full/resumable real API observationも同じgateway境界へ統一。production isolationのStable V5直接接続点もgeneric applicationからgatewayへ移し、full CI #2751 green
 
 現在のloop:
 
-- `weeklyPlanningTurnApplication.ts`に残っていたStable V5 session scope bind、発話時刻からのrequest context生成、`executeWeeklyPlanningTurn`への詳細input mappingを「turn runtimeを準備して実行する」同一責務としてカプセル化する。
-- `weeklyPlanningTurnRuntimeGateway.ts`を新設し、`createWeeklyPlanningTurnRuntimeGateway()`と`weeklyPlanningTurnRuntimeGateway`を公開する。application callerには`runtimeGateway.execute()`だけを見せ、Stable V5 session、timezone fallback、requestContext、traceRequestId等の内部配線を隠す。
-- `weeklyPlanningTurnApplication.ts`のservices surfaceを`submitControlledTurn + runtimeGateway + stagingLifecycle + outcomeLifecycle`へ縮小し、Stable V5 runtime/session/temporal helperを直接importしない。型は具体executorのre-exportではなく共通turn execution contractへ依存させる。
-- temporal context testはapplication ownerからruntime gateway ownerへ移し、gateway unit testでauthenticated userによるsession bind、selectedDateとrequest clockの分離、executor mappingを検証する。application testはgatewayへの委譲とlifecycle orchestrationだけを検証する。
-- full/resumable real API observation fixtureも低レベルexecutor直呼びをやめ、正式なruntime gatewayをwrapperしてrequestId/resultだけcaptureする。production pathと観測pathのapplication境界を一致させる。
-- production isolation監査では`weeklyPlanningTurnApplication.ts`をStable V5直接接続allowlistから外し、`weeklyPlanningTurnRuntimeGateway.ts`を唯一のapplication runtime bridgeとして登録する。
-- AI意味理解・controller commit semantics・scheduler・preview・approval・runtime core自体は変更せず、application APIのSRP / ISP / DIP / encapsulationだけを改善する。
+- approval時の`weeklyPlanningApprovalRuntimeResolver.ts`がpreview source分類と、Stable V5 session singleton / legacy global runtime singletonの具体取得を同時に担当しているため分離する。
+- `weeklyPlanningApprovalRuntimeLookup.ts`を新設し、`stableV5({ conversationId, userId })`と`compatibility()`の小さいlookup APIを公開する。Stable V5 runtimeのowner/revision mappingとlegacy global runtimeのproposalRecords mappingを内部へ隠す。
+- resolverは`candidateSource`によるStable V5 / compatibility / mixedの分類とconversationId抽出だけを担当し、具体singleton getterを直接importしない。lookup結果へ`stableV5` source flagを付けて既存resolution contractを維持する。
+- lookupはfactoryでgetter依存を注入可能にし、unit testでStable V5のconversation/owner/revisionとlegacy proposal records contractをsingleton実状態なしに検証する。既存approval availability回帰は変更せず、旧behavior-aware互換挙動をそのまま保証する。
+- production isolation監査ではgeneric resolverをStable V5直接接続allowlistから外し、具体runtime lookupだけを担当する`weeklyPlanningApprovalRuntimeLookup.ts`へ接続点を移す。architecture testでresolverへ両singleton getterが戻らないことを固定する。
+- 旧behavior-aware承認は現行回帰でmatching global runtime時のeligible、reload時のrecompute、conversation/revision mismatchを明示的に要求しているため、このloopでは削除しない。削除は別途production reachability / migration evidenceを揃えた独立判断とする。
+- AI意味理解・scheduler・preview生成・approval policy自体は変更せず、approval runtime取得のSRP / DIP / encapsulationだけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。legacy runtime production reachability、singleton依存、類似contract / helper重複、application service interfaceの残りを優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。legacy behavior-aware pipelineのproduction reachability、singleton依存、類似contract / helper重複を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
