@@ -136,6 +136,7 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - facade導入後も`weeklyPlanningTurnSideEffects.ts`がtrace functionsをre-exportし、stagingの個別finalize/discard関数をpublicにしていたため、公開面とテスト所有者を責務境界へ合わせる。
 - staging moduleからtrace runtime / trace side-effect依存とtrace function re-exportを削除し、`WeeklyPlanningTurnStagingLifecycleServices`、`createWeeklyPlanningTurnStagingLifecycle()`、`weeklyPlanningTurnStagingLifecycle`だけを公開する。実際のfinalize/discard helperはmodule-privateにする。
 - staging testはfactory経由でtransactional finalize/discardだけを検証する。従来同じtest fileに混在していたcommitted/discarded/failed trace検証は`weeklyPlanningTurnTraceSideEffects.test.ts`へ移し、trace owner自身を直接検証する。
+- 初回CI #2736では、もう1本のrenderer-trace testがstaging moduleの旧trace re-exportと旧combined service型へ依存していることをTypeScriptが検出した。re-exportは戻さず、test file自体をtrace owner名へ移して`WeeklyPlanningTurnTraceSideEffectServices`へ直接接続する。
 - application lifecycle architecture testでstaging moduleがtrace functionを再exportせず、private helper + factory + singleton facadeという公開面を維持することを固定する。
 - AI意味理解・controller・scheduler・preview・approval・trace payload contract自体は変更せず、SRP / ISP / encapsulationとtest ownershipだけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
