@@ -3,8 +3,10 @@ import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanni
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../types';
 import {
   executeWeeklyPlanningTurn,
-  type WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutor';
+import type {
+  WeeklyPlanningTurnExecutionResult,
+} from '../weeklyPlanningTurnExecutionTypes';
 import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
 import {
   createWeeklyPlanningTurnRequestContext,
