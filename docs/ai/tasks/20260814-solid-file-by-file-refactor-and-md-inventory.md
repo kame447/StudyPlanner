@@ -73,6 +73,7 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 0 | repository / workflow preflight | PR #127 はmerge済みで再利用不可。削除済み同名branchを current main から復元。既存open Issue/PRに同一SOLID監査タスクなし。 | branch baseline = main `621c117...` | 本台帳作成。`AGENTS.md`仕様競合を保留登録。 | done |
 | 1 | `src/components/DisplaySettingsDialog.tsx` | deprecated `export {}` shimで参照元がなく、dead compatibility surfaceのため削除。 | repository code searchで`DisplaySettingsDialog`参照0件。behavior changeなし。 | 本台帳にLoop 1とstale-active MD候補を追記。 | done |
 | 2 | `src/main.tsx` | bootstrap・admin route split・trace setup・preloadだけを所有する薄いcomposition root。no-change。 | `AdminApp` / `StudyPlannerAppRoot`へのentrypoint依存を確認。 | 本台帳へLoop 2を追記。 | done |
+| 3 | `src/App.tsx` | view navigation表示を`AppViewSwitcher`へ抽出し、7つのview定義を単一データへ集約。Appはcompositionへ寄せた。 | `AppViewSwitcher.test.tsx`を追加。既存`ViewMode`型を使用し状態契約は不変。 | 本台帳へLoop 3を追記。 | done |
 
 ## Remaining-problem register
 
