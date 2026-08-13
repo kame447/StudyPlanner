@@ -5,8 +5,8 @@ import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningS
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
-import {
-  evaluateWeeklyPlanningStableV5Planning,
+import type {
+  WeeklyPlanningStableV5PlanningEvaluation,
 } from './weeklyPlanningStableV5PlanningEvaluation';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 import {
@@ -16,7 +16,6 @@ import {
 } from './weeklyPlanningStableV5RuntimeQuestions';
 import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurn';
 
-type PlanningEvaluation = ReturnType<typeof evaluateWeeklyPlanningStableV5Planning>;
 type SuccessfulSemanticTurn = Extract<
   WeeklyPlanningStableV5SemanticTurnResult,
   { status: 'success' }
@@ -66,7 +65,7 @@ function respond(output: WeeklyPlanningTurnExecutionResult): WeeklyPlanningStabl
 function routeBeforePreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   graph: WeeklyPlanningFactGraphV5;
-  evaluation: PlanningEvaluation;
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
 }): WeeklyPlanningStableV5PrePreviewRoute {
   const { input, graph, evaluation } = params;
   const {
@@ -219,7 +218,7 @@ function routeBeforePreview(params: {
 function routeAfterPreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   semanticTurn: SuccessfulSemanticTurn;
-  evaluation: PlanningEvaluation;
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
   preview: WeeklyPlanningStableV5PreviewSchedulerResult;
 }): WeeklyPlanningTurnExecutionResult {
   const { input, semanticTurn, evaluation, preview } = params;
