@@ -127,16 +127,17 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - RuntimeExecutor / planning stageの公開surfaceを監査し、実利用のない`getWeeklyPlanningStableV5BlockingIssueCode` wrapper/re-exportを削除。authorization互換re-exportは既存contractとして維持し、不要APIだけを選別して閉じてfull CI #2695 green
 - InstrumentedRuntimeExecutorのfreshest graph付与・human-scale effort question rewrite・repair-safe preview保持を`weeklyPlanningStableV5ResultProjection.ts`へ集約。`core` / `duplicate`の小さいProjector facadeを公開し、graph non-null assertionも除去してfull CI #2700 green
 - InstrumentedRuntimeExecutorからduplicate detection/result constructionを`weeklyPlanningStableV5TurnIdempotency.ts`へ分離。初回CI #2703で構造監査の旧期待とtrace文字列経由の`appliedTurnKeys`漏出を検出し、duplicate専用projection/traceをidempotency境界へ移してfull CI #2709 green
+- InstrumentedRuntimeExecutorのtrace開始、turn input/output/error trace、final decision projection、error detail projectionを`weeklyPlanningStableV5RuntimeTraceLifecycle.ts`へ集約。`start / complete / fail`の小さいfacadeだけを公開し、duplicate固有traceはidempotency境界に残してfull CI #2714 green
 
 現在のloop:
 
-- InstrumentedRuntimeExecutorに残っていたtrace開始、turn input/output/error trace、final decision projection、error detail projectionを同じobservability責務として分離する。
-- `weeklyPlanningStableV5RuntimeTraceLifecycle.ts`を新設し、`start / complete / fail`の3操作だけを公開する。trace event名、入力件数schema、final decision shape、error serializationは内部へ隠す。
-- InstrumentedRuntimeExecutorはtrace lifecycle facade、idempotency gate、core runtime実行、通常result projectionだけを組み合わせる薄い横断orchestrationへ縮小する。
-- duplicate固有の`runtime_duplicate_turn_suppressed` traceは一般trace lifecycleへ戻さず、idempotency boundaryが所有する。一般turn lifecycleとduplicate policy observabilityを分離する。
-- 新しいtrace lifecycle moduleはStable V5 debug traceへ直接接続する正式なproduction support moduleなのでproduction isolation監査へ明示登録した。
-- architecture testで`runtime_turn_input` / `runtime_turn_output` / `runtime_turn_threw`、finalDecision、errorDetailsがInstrumentedRuntimeExecutorへ戻らず、`start / complete / fail` facadeだけが見えることを固定する。
-- AI意味理解・planning policy・scheduler・preview・approvalには触れず、observabilityのSRPとカプセル化だけを改善する。
+- `weeklyPlanningTurnExecutor.ts`に残っていたfailure diagnostics lifecycle、failure state projection、failure-code生成、AI renderer呼び出し、最終result traceを「runtime結果を最終ユーザー結果へ投影する」同一責務として分離する。
+- `weeklyPlanningStableV5TurnResultProjection.ts`を新設し、callerには`weeklyPlanningStableV5TurnResultProjector.begin()` / `.project()`だけを公開する。failure repository、renderer、system dialogue trace、projection traceの詳細は内部へ隠す。
+- failure statusからpublic failure codeへの変換はテンプレート文字列＋型castではなく明示的な型付き対応表にし、status追加時にTypeScriptが更新漏れを検出できるようにする。
+- `weeklyPlanningTurnExecutor.ts`はStable V5 instrumented runtimeを実行し、結果をprojectorへ渡すだけのproduction入口へ縮小する。failure時にどのstate fieldをclearするか、rendererをbypassする条件、trace payloadをcallerへ漏らさない。
+- 新しいturn result projectorはStable V5 failure diagnostics / dialogue / debug traceへ接続する正式なproduction support moduleとしてproduction isolation監査へ登録する。
+- architecture testでfailure diagnostics、renderer、debug trace、system dialogue trace、failure code/state projectionが公開executorへ戻らず、`begin / project` facadeだけが見えることを固定する。
+- AI意味理解・planning policy・scheduler・preview・approvalには触れず、public turn application boundaryのSRP / encapsulation / type safetyだけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
 次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutor/InstrumentedRuntimeExecutor間のapplication API、legacy runtime production reachability、singleton依存、類似contract / helper重複を優先して疑う。
