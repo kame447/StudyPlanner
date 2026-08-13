@@ -9,6 +9,9 @@ import {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from '../application/weeklyPlanningStableV5RuntimeSession';
 import {
+  weeklyPlanningTurnRuntimeGateway,
+} from '../application/weeklyPlanningTurnRuntimeGateway';
+import {
   weeklyPlanningTurnStagingLifecycle,
 } from '../application/weeklyPlanningTurnSideEffects';
 import {
@@ -26,9 +29,8 @@ import {
   createWeeklyPlanningControllerSession,
   submitWeeklyPlanningControlledTurn,
 } from '../weeklyPlanningTurnController';
-import {
-  executeWeeklyPlanningTurn,
-  type WeeklyPlanningTurnExecutionResult,
+import type {
+  WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutor';
 import {
   createInitialPlanningState,
@@ -236,12 +238,13 @@ run('weekly planning full real API conversation', () => {
     const capture: TurnCapture = { result: null, requestId: null };
     const services: WeeklyPlanningTurnApplicationServices = {
       submitControlledTurn: submitWeeklyPlanningControlledTurn,
-      executeTurn: async (input) => {
-        capture.requestId = input.traceRequestId;
-        capture.result = await executeWeeklyPlanningTurn(input);
-        return capture.result;
+      runtimeGateway: {
+        async execute(params) {
+          capture.requestId = params.pending.requestId;
+          capture.result = await weeklyPlanningTurnRuntimeGateway.execute(params);
+          return capture.result;
+        },
       },
-      bindStableV5SessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
       stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
       outcomeLifecycle: {
         committed: () => undefined,
