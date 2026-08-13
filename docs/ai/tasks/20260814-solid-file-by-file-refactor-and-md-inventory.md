@@ -62,9 +62,9 @@ Green化だけを目的に regression を削除・弱体化しない。
 
 ### stale-active candidates
 
-- `docs/ai/tasks/20260730-weekly-planning-stable-v5-ai-dialogue-renderer.md`: active表記だがclosed記録あり。
-- `docs/ai/tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md`: 未実装表記だがPR #120で実装済み、closed記録あり。
-- `docs/ai/tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md`: pre-cutoverのactive gateを保持しているがclosed記録あり。
+- `docs/ai/tasks/20260730-weekly-planning-stable-v5-ai-dialogue-renderer.md`: closed record確認後、active queueから削除済み。
+- `docs/ai/tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md`: 未実装表記だがPR #120で実装済み、closed記録あり。active queue削除候補。
+- `docs/ai/tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md`: pre-cutoverのactive gateを保持しているがclosed記録あり。active queue削除候補。
 
 ## Loop ledger
 
@@ -74,8 +74,10 @@ Green化だけを目的に regression を削除・弱体化しない。
 | 1 | `src/components/DisplaySettingsDialog.tsx` | deprecated `export {}` shimで参照元がなく、dead compatibility surfaceのため削除。 | repository code searchで`DisplaySettingsDialog`参照0件。behavior changeなし。 | 本台帳にLoop 1とstale-active MD候補を追記。 | done |
 | 2 | `src/main.tsx` | bootstrap・admin route split・trace setup・preloadだけを所有する薄いcomposition root。no-change。 | `AdminApp` / `StudyPlannerAppRoot`へのentrypoint依存を確認。 | 本台帳へLoop 2を追記。 | done |
 | 3 | `src/App.tsx` | view navigation表示を`AppViewSwitcher`へ抽出し、7つのview定義を単一データへ集約。Appはcompositionへ寄せた。 | `AppViewSwitcher.test.tsx`を追加。既存`ViewMode`型を使用し状態契約は不変。 | 本台帳へLoop 3を追記。 | done |
+| 4 | `src/components/StudyPlannerAppRoot.tsx` | startup/consent/week-startのlocal component分割は妥当。`App.tsx`とのlegal route判定重複を発見。 | route重複をrepository searchで確認。抽出module作成はconnector safety blockのため未適用。 | 本台帳へdeferred refactorを記録。 | done |
 
 ## Remaining-problem register
 
 - Issue #116 はstale cleanup対象がcurrent repositoryから消えていることを確認し、completedでclose済み。
+- `App.tsx` / `StudyPlannerAppRoot.tsx` のlegal route policy重複は小規模なdeferred refactor。
 - その他のopen Issueとコード/MDを照合中。
