@@ -124,18 +124,21 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - ask-question / authorization / preview result等のresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へ集約し、`beforePreview` / `afterPreview`の小さいfacadeとして公開。pre-preview遷移は`respond` / `schedule_preview`のdiscriminated unionにし、caller側のnullable判定と内部条件重複を除去。初回CI #2676ではproduction isolation登録漏れだけを検出し、正式接続点として追従後full CI #2681 green
 - planning evaluationと`runtime_scheduler_dialogue_evaluated` observabilityを`weeklyPlanningStableV5PlanningStage.ts`へカプセル化。pure evaluatorを副作用なしで維持し、RuntimeExecutorからevaluation内部fieldとtrace schemaを隠した。blocking-issue互換helperもstage経由へ寄せてfull CI #2687 green
 - response facadeのplanning evaluator実装依存を除去し、`WeeklyPlanningStableV5PlanningEvaluation`出力contractへのtype-only依存へ変更。policy実装とresponse projectionの変更理由を分離し、full CI #2690 green
+- RuntimeExecutor / planning stageの公開surfaceを監査し、実利用のない`getWeeklyPlanningStableV5BlockingIssueCode` wrapper/re-exportを削除。authorization互換re-exportは既存contractとして維持し、不要APIだけを選別して閉じてfull CI #2695 green
 
 現在のloop:
 
-- Stable V5 RuntimeExecutor / planning-stage facadeの公開面を監査し、利用されていない低レベルhelperを外部APIとして残さない。
-- `getWeeklyPlanningStableV5BlockingIssueCode`はRuntimeExecutorから再exportされ、planning stageにもwrapperが存在したが、production参照がなくtrace内部では元の`stableV5BlockingIssueCode`を直接利用していたためdead APIと判定した。
-- RuntimeExecutorからblocking-issue helperのimport/re-exportを削除し、planning stageから未使用wrapper自体も削除する。diagnostic calculationはplanning-stage内部のobservability実装へ閉じる。
-- `isWeeklyPlanningStableV5PreviewAuthorized`は既存runtime contract testが互換公開口として検証しているため、このloopでは破壊的に削除せずre-exportを維持する。不要なAPIだけを選別して狭める。
-- recovery architecture testでunused blocking helperがRuntimeExecutor / planning stageへ復活しないことを固定する。
-- scheduling / authorization / semantic挙動には触れず、ISPとカプセル化の観点で公開surfaceだけを縮小する。
+- InstrumentedRuntimeExecutorに同居していた、最新graph付与・human-scale effort question rewrite・repair中preview保持という類似した「core result → application result」変換を一責務へ集約する。
+- `weeklyPlanningStableV5ResultProjection.ts`を新設し、内部に`withFreshestAvailableGraph`、`withHumanScaleEffortQuestion`、`withRepairSafePreview`を隠す。callerには`weeklyPlanningStableV5ResultProjector.core()`と`.duplicate()`だけを公開する。
+- duplicate抑止結果は従来どおりfreshest graph付与だけ、通常core結果は従来どおりfreshest graph → effort question rewrite → repair-safe previewの順で投影し、挙動順序を変えない。
+- graph-aware question rewriteでは`stableV5Graph!`のnon-null assertionを廃止し、narrowing済みlocal `graph`を使って型安全に処理する。
+- InstrumentedRuntimeExecutorはduplicate判定、core実行、trace / exception境界に集中し、result transformationの個別実装を知らない。
+- Result ProjectorはStable V5 graph/sessionとeffort rendererへ直接依存する正式なproduction support moduleなのでproduction isolation監査へ登録する。
+- architecture testで3つの類似変換がProjector内に留まり、InstrumentedRuntimeExecutorがProjector facadeだけを使うこと、non-null assertionが戻らないことを固定する。
+- AI意味理解やscheduler/policyには触れず、SRP・カプセル化・DRY・型安全性の改善だけを行う。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。authorization互換公開口の所属、InstrumentedRuntimeExecutor / RuntimeExecutorの二層facade、legacy runtime production reachability、singleton依存、類似contract / helper重複を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。duplicate/idempotency policyとtrace lifecycleの分離、InstrumentedRuntimeExecutorの残存責務、legacy runtime production reachability、singleton依存、類似contract / helper重複を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
