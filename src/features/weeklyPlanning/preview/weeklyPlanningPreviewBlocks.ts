@@ -3,10 +3,10 @@ import type {
   WeeklyPlanDraftBlock,
   WeeklyPlanningBehaviorMetadata,
 } from '../types';
-import type { BehaviorAwarePreviewMetadata } from '../planning/weeklyPlanningBehaviorAwarePreviewBridge';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import { recordWeeklyPlanningDraftPromotion } from '../trace/weeklyPlanningTraceRuntime';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
+import type { BehaviorAwarePreviewMetadata } from './weeklyPlanningPreviewCompatibility';
 
 export type WeeklyPlanningStableV5PreviewMetadata =
   WeeklyPlanningStableV5PreviewProvenance;
