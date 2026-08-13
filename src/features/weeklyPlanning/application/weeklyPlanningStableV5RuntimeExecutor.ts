@@ -1,6 +1,5 @@
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
-  getWeeklyPlanningStableV5BlockingIssueCode,
   runWeeklyPlanningStableV5PlanningStage,
 } from './weeklyPlanningStableV5PlanningStage';
 import {
@@ -22,12 +21,6 @@ import {
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
-export {
-  isWeeklyPlanningStableV5PreviewAuthorized,
-} from './weeklyPlanningStableV5PlanningEvaluation';
-export {
-  getWeeklyPlanningStableV5BlockingIssueCode,
-};
 
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
