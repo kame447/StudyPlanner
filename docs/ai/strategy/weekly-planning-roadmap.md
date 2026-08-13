@@ -134,13 +134,14 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - Stable V5 session bind・request clock生成・turn executor input mappingを`weeklyPlanningTurnRuntimeGateway.ts`へ集約。applicationは`runtimeGateway.execute()`だけを使い、full/resumable real API observationも同じgateway境界へ統一。production isolationのStable V5直接接続点もgeneric applicationからgatewayへ移し、full CI #2751 green
 - approval preview source分類と具体runtime singleton取得を分離し、`weeklyPlanningApprovalRuntimeLookup.ts`へStable V5 / legacy compatibility lookupを集約。resolverはsource分類だけを担当し、既存behavior-aware承認互換を維持したままfull CI #2758 green
 - `weeklyPlanningBehaviorAware*` clusterへのproduction依存をTypeScript ASTで監査。初回CI #2760で外部import 3本を検出したが、全て`import type`でruntime実行入口ではないことを確認した。監査をruntime edgeとtype-only edgeへ分離し、runtime edge 0本、既知type-only edge 3本を固定してfull CI #2761 green
-- behavior-aware preview metadataを保存済み/旧preview互換の中立contract `weeklyPlanningPreviewCompatibility.ts`へ単一化。legacy preview bridgeは旧型名のtype re-exportだけを残し、production `weeklyPlanningPreviewBlocks.ts`は中立contractを直接参照するよう変更した。architecture監査はruntime edge 0本を維持し、既知type-only edgeを3本から2本へ縮小。コード変更時full CI #2767 green
+- behavior-aware preview metadataを保存済み/旧preview互換の中立contract `weeklyPlanningPreviewCompatibility.ts`へ単一化。legacy preview bridgeは旧型名のtype re-exportだけを残し、production `weeklyPlanningPreviewBlocks.ts`は中立contractを直接参照するよう変更した。architecture監査はruntime edge 0本を維持し、既知type-only edgeを3本から2本へ縮小。コード変更時full CI #2767、roadmap同期後full CI #2768 green
+- `weeklyPlanningRenderedQuestionContext.ts`のimport graphを確認し、現行productionで共有されるmoduleではなくbehavior-aware intake pipeline専用supportであることを確認。型をshared化せずlegacy closureの明示的support sourceとしてarchitecture contractへ含め、新たなproduction callerが生えれば検出する境界に変更した。runtime edge 0本を維持し、外部type-only edgeを2本から1本へ縮小。コード変更時full CI #2769 green
 
 現在のloop:
 
-- 第35ループでは、現productionが必要とするpreview compatibility metadataだけをlegacy behavior-aware実行moduleから切り離した。legacy helper同士をshared化して延命する変更は行っていない。
-- behavior-aware clusterへのruntime edgeは0本を維持し、残るtype-only edgeは`weeklyPlanningRenderedQuestionContext.ts`と`weeklyPlanningTraceRuntime.ts`から`weeklyPlanningBehaviorAwareIntakePipeline.ts`への2本としてarchitecture testで固定している。
-- 第36ループは、このroadmap同期後の最終HEADがfull CI greenであることを確認し、roadmapとcurrent execution taskを再読してから選ぶ。残る2本をshared contractへ移す前に、利用側module自体がmodern productionで本当に必要かをimport graphで確認する。
+- 第36ループでは、`weeklyPlanningRenderedQuestionContext.ts`をshared contractへ延命せず、実際のimport graphに沿ってlegacy behavior-aware closureへ分類した。現在のarchitecture監査でruntime edgeは0本、外部type-only edgeは`weeklyPlanningTraceRuntime.ts`から`weeklyPlanningBehaviorAwareIntakePipeline.ts`への1本だけである。
+- 第37ループは、このroadmap同期後の最終HEADがfull CI greenであることを確認し、roadmapとcurrent execution taskを再読してから選ぶ。
+- 残る`weeklyPlanningTraceRuntime.ts`は現行productionでも利用されるmoduleだが、behavior-aware pipeline型を使う`prepareWeeklyPlanningTraceOptions` / `recordWeeklyPlanningPipelineTrace`は旧pipeline専用である。型だけをshared化する前に、legacy trace adapterを現行trace runtimeから分離できるか、trace側の狭いcontractへ依存反転すべきか、旧pipeline closureとともに削除できるかをimport graphと利用箇所から判定する。
 - 旧behavior-aware approval compatibilityは保存済みpreview metadata/runtime互換の問題であり、behavior-aware実行clusterのruntime到達性とは別に扱う。import isolationだけを根拠に削除しない。
 
 ## 4. Prompt / orchestration方針
