@@ -12,14 +12,18 @@ import { describe, expect, it } from 'vitest';
 const SRC_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const LEGACY_TOKEN = 'weeklyPlanningBehaviorAware';
 
-const REQUIRED_LEGACY_ROOTS = new Set([
+const LEGACY_SUPPORT_SOURCES = new Set([
+  'features/weeklyPlanning/pipeline/weeklyPlanningRenderedQuestionContext.ts',
+]);
+
+const REQUIRED_LEGACY_SOURCES = new Set([
   'features/weeklyPlanning/planning/weeklyPlanningBehaviorAwarePreviewBridge.ts',
   'features/weeklyPlanning/planning/weeklyPlanningBehaviorAwarePreviewBridgeHardened.ts',
   'features/weeklyPlanning/pipeline/weeklyPlanningBehaviorAwareIntakePipeline.ts',
+  ...LEGACY_SUPPORT_SOURCES,
 ]);
 
 const EXPECTED_TYPE_ONLY_EDGES = new Set([
-  'features/weeklyPlanning/pipeline/weeklyPlanningRenderedQuestionContext.ts:./weeklyPlanningBehaviorAwareIntakePipeline',
   'features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:../pipeline/weeklyPlanningBehaviorAwareIntakePipeline',
 ]);
 
@@ -46,6 +50,11 @@ function isTestSource(relativePath: string): boolean {
   return relativePath.startsWith('__tests__/')
     || relativePath.includes('/__tests__/')
     || /\.(test|spec)\.(ts|tsx)$/.test(relativePath);
+}
+
+function isLegacySource(path: string): boolean {
+  const relativePath = normalizedRelative(path);
+  return relativePath.includes(LEGACY_TOKEN) || LEGACY_SUPPORT_SOURCES.has(relativePath);
 }
 
 function importDeclarationIsTypeOnly(node: ts.ImportDeclaration): boolean {
@@ -148,15 +157,13 @@ describe('legacy behavior-aware production isolation', () => {
     const productionSources = allSources.filter(
       (path) => !isTestSource(normalizedRelative(path)),
     );
-    const legacySources = new Set(
-      productionSources.filter((path) => normalizedRelative(path).includes(LEGACY_TOKEN)),
-    );
-    const discoveredLegacyRoots = new Set(
+    const legacySources = new Set(productionSources.filter(isLegacySource));
+    const discoveredLegacySources = new Set(
       [...legacySources].map(normalizedRelative),
     );
 
-    for (const requiredRoot of REQUIRED_LEGACY_ROOTS) {
-      expect(discoveredLegacyRoots.has(requiredRoot)).toBe(true);
+    for (const requiredSource of REQUIRED_LEGACY_SOURCES) {
+      expect(discoveredLegacySources.has(requiredSource)).toBe(true);
     }
 
     const runtimeEdges: string[] = [];
