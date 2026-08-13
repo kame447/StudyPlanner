@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   observe-one-turn:
-    if: ${{ github.event.repository.private }}
+    if: ${{ github.actor == github.repository_owner }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -95,13 +95,13 @@ jobs:
 
       - name: Record observation completion
         if: always()
-        run: echo "Observation details omitted from GitHub logs."
+        run: echo "Observation details are available in the uploaded artifact."
 
-      - name: Upload private observation artifact
+      - name: Upload observation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-planning-resumable-conversation
           path: artifacts/weekly-planning-resumable-conversation/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
