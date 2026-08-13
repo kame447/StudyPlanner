@@ -1,0 +1,39 @@
+name: Migrate browser tests once
+
+on:
+  push:
+    branches:
+      - agent/browser-regression-main-integration
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor == 'kame447'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Copy browser tests from audited source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha='185015363a603c3621b6333207a64ada48e766ae'
+          git checkout "${source_sha}" -- tests/e2e
+          git status --short
+
+      - name: Commit migrated browser tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo 'Browser tests already match source commit.'
+            exit 0
+          fi
+          git config user.name 'StudyPlanner Test Migration'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'test: migrate skeptical browser regression suite'
+          git push origin HEAD:agent/browser-regression-main-integration
