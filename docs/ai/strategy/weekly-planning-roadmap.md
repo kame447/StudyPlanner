@@ -132,19 +132,20 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - `weeklyPlanningTurnApplication.ts`のflatなside-effect service surfaceを、transactionalな`WeeklyPlanningTurnStagingLifecycle`とbest-effortな`WeeklyPlanningTurnOutcomeLifecycle`へ分割。初回CI #2726で旧test fixtureとmock typingの追従漏れを検出し、facadeを戻さずreal API observationを含むfixtureを新contractへ移行してfull CI #2731 green
 - `weeklyPlanningTurnSideEffects.ts`からtrace function re-exportとpublic finalize/discard helperを除去し、factory + staging lifecycle facadeだけを公開。初回CI #2736でrenderer-trace testの旧re-export依存を検出し、test owner自体をtrace side-effect側へ移してfull CI #2739 green
 - Stable V5 session bind・request clock生成・turn executor input mappingを`weeklyPlanningTurnRuntimeGateway.ts`へ集約。applicationは`runtimeGateway.execute()`だけを使い、full/resumable real API observationも同じgateway境界へ統一。production isolationのStable V5直接接続点もgeneric applicationからgatewayへ移し、full CI #2751 green
+- approval preview source分類と具体runtime singleton取得を分離し、`weeklyPlanningApprovalRuntimeLookup.ts`へStable V5 / legacy compatibility lookupを集約。resolverはsource分類だけを担当し、既存behavior-aware承認互換を維持したままfull CI #2758 green
 
 現在のloop:
 
-- approval時の`weeklyPlanningApprovalRuntimeResolver.ts`がpreview source分類と、Stable V5 session singleton / legacy global runtime singletonの具体取得を同時に担当しているため分離する。
-- `weeklyPlanningApprovalRuntimeLookup.ts`を新設し、`stableV5({ conversationId, userId })`と`compatibility()`の小さいlookup APIを公開する。Stable V5 runtimeのowner/revision mappingとlegacy global runtimeのproposalRecords mappingを内部へ隠す。
-- resolverは`candidateSource`によるStable V5 / compatibility / mixedの分類とconversationId抽出だけを担当し、具体singleton getterを直接importしない。lookup結果へ`stableV5` source flagを付けて既存resolution contractを維持する。
-- lookupはfactoryでgetter依存を注入可能にし、unit testでStable V5のconversation/owner/revisionとlegacy proposal records contractをsingleton実状態なしに検証する。既存approval availability回帰は変更せず、旧behavior-aware互換挙動をそのまま保証する。
-- production isolation監査ではgeneric resolverをStable V5直接接続allowlistから外し、具体runtime lookupだけを担当する`weeklyPlanningApprovalRuntimeLookup.ts`へ接続点を移す。architecture testでresolverへ両singleton getterが戻らないことを固定する。
-- 旧behavior-aware承認は現行回帰でmatching global runtime時のeligible、reload時のrecompute、conversation/revision mismatchを明示的に要求しているため、このloopでは削除しない。削除は別途production reachability / migration evidenceを揃えた独立判断とする。
-- AI意味理解・scheduler・preview生成・approval policy自体は変更せず、approval runtime取得のSRP / DIP / encapsulationだけを改善する。
+- `weeklyPlanningBehaviorAware*` legacy clusterがproductionから実際に到達できるかを、削除前に静的import graphで証明する。
+- `weeklyPlanningLegacyBehaviorAwareProductionIsolation.test.ts`を追加し、`src`全体の非test `.ts/.tsx`を走査する。static import/exportとdynamic `import()`の両方を対象にし、behavior-aware cluster外のproduction sourceからcluster内moduleへ1本でもimport edgeがあればCIをfailさせる。
+- clusterはfilename/pathに`weeklyPlanningBehaviorAware`を含むproduction sourceとして自動検出し、既知の`weeklyPlanningBehaviorAwarePreviewBridge.ts`、`weeklyPlanningBehaviorAwarePreviewBridgeHardened.ts`、`weeklyPlanningBehaviorAwareIntakePipeline.ts`が実際に検出されることもassertして空振り監査を防ぐ。
+- relative importは実ファイルへ解決してcluster membershipを確認し、specifier自体にlegacy tokenが含まれるalias/importも別途検出する。
+- このloopではlegacy moduleを削除しない。まず「外部production入口なし」をformal architecture contractとして固定し、その結果を次loopのlegacy依存棚卸し・削除判断のコード根拠にする。
+- 旧behavior-aware approval compatibilityはpreview保存データ側の互換契約として別問題であり、このimport isolation監査だけを理由に削除しない。
+- AI意味理解・Stable V5 runtime・scheduler・preview・approval policyには触れず、legacy production reachabilityの証明だけを行う。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。legacy behavior-aware pipelineのproduction reachability、singleton依存、類似contract / helper重複を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。behavior-aware clusterがisolatedならcluster内部が依存するlegacy interpreter/dialogue/helperまで含めた削除可能範囲をimport graphで棚卸しし、compatibility data pathとproduction execution pathを混同せず判断する。
 
 ## 4. Prompt / orchestration方針
 
