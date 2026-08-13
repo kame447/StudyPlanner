@@ -72,7 +72,9 @@ Green化だけを目的に regression を削除・弱体化しない。
 |---|---|---|---|---|---|
 | 0 | repository / workflow preflight | PR #127 はmerge済みで再利用不可。削除済み同名branchを current main から復元。既存open Issue/PRに同一SOLID監査タスクなし。 | branch baseline = main `621c117...` | 本台帳作成。`AGENTS.md`仕様競合を保留登録。 | done |
 | 1 | `src/components/DisplaySettingsDialog.tsx` | deprecated `export {}` shimで参照元がなく、dead compatibility surfaceのため削除。 | repository code searchで`DisplaySettingsDialog`参照0件。behavior changeなし。 | 本台帳にLoop 1とstale-active MD候補を追記。 | done |
+| 2 | `src/main.tsx` | bootstrap・admin route split・trace setup・preloadだけを所有する薄いcomposition root。no-change。 | `AdminApp` / `StudyPlannerAppRoot`へのentrypoint依存を確認。 | 本台帳へLoop 2を追記。 | done |
 
 ## Remaining-problem register
 
-棚卸し中。既存Issueとコード/MDを照合し、実際に未完のものだけをここへ集約する。
+- Issue #116 はstale cleanup対象がcurrent repositoryから消えていることを確認し、completedでclose済み。
+- その他のopen Issueとコード/MDを照合中。
