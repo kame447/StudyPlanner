@@ -9,6 +9,10 @@ const planningEvaluationSource = readFileSync(
   new URL('./weeklyPlanningStableV5PlanningEvaluation.ts', import.meta.url),
   'utf8',
 );
+const planningStageSource = readFileSync(
+  new URL('./weeklyPlanningStableV5PlanningStage.ts', import.meta.url),
+  'utf8',
+);
 const responseRoutingSource = readFileSync(
   new URL('./weeklyPlanningStableV5ResponseRouting.ts', import.meta.url),
   'utf8',
@@ -50,6 +54,16 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
       'renderStableV5RuntimeQuestion(graph, dialogue.question)',
     );
     expect(runtimeSource).not.toContain('renderStableV5RuntimeQuestion');
+  });
+
+  it('encapsulates planning evaluation observability behind the planning-stage facade', () => {
+    expect(planningStageSource).toContain('evaluateWeeklyPlanningStableV5Planning(params)');
+    expect(planningStageSource).toContain("stage: 'runtime_scheduler_dialogue_evaluated'");
+    expect(planningStageSource).toContain('firstBlockingIssueCodeInCompilationOrder');
+    expect(runtimeSource).toContain('runWeeklyPlanningStableV5PlanningStage');
+    expect(runtimeSource).not.toContain("stage: 'runtime_scheduler_dialogue_evaluated'");
+    expect(runtimeSource).not.toContain('activeStableV5PlanningWindows');
+    expect(runtimeSource).not.toContain('firstBlockingIssueCodeInCompilationOrder');
   });
 
   it('encapsulates response completion versus preview scheduling behind a typed facade', () => {
