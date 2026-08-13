@@ -121,19 +121,21 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - RuntimeExecutorからsemantic成功後のdeterministic planning evaluationを`weeklyPlanningStableV5PlanningEvaluation.ts`へ分離。horizon、grounding、scheduler compilation、repair/dialogue、authorizationの所有者を明確化し、architecture testも新ownerへ追従させてfull CI #2667 green
 - RuntimeExecutorからpreview scheduler実行を`weeklyPlanningStableV5PreviewExecution.ts`へ分離。scheduler inputから配置、not-before、version/default/result traceまでを専用責務へ移し、full CI #2671 green
 - RuntimeExecutorからsemantic成功後のuser planning context / Fact Graph staging副作用を`weeklyPlanningStableV5TurnStaging.ts`へ分離。durable context収集、transactional graph staging、対応traceの所有者を明確化し、full CI #2675 green
+- ask-question / authorization / preview result等のresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へ集約し、`beforePreview` / `afterPreview`の小さいfacadeとして公開。pre-preview遷移は`respond` / `schedule_preview`のdiscriminated unionにし、caller側のnullable判定と内部条件重複を除去。初回CI #2676ではproduction isolation登録漏れだけを検出し、正式接続点として追従後full CI #2681 green
 
 現在のloop:
 
-- RuntimeExecutorに残っていたask-question / nothing-to-schedule / authorization-required / preview-unchanged / insufficient-capacity / preview-empty / preview-readyのresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へカプセル化する。
-- response module内部のgrounding付与、compatibility projection、branch trace、question renderingを外部へ露出せず、callerには`weeklyPlanningStableV5ResponseRouter.beforePreview`と`afterPreview`だけを公開する。
-- pre-preview APIは`null`やcaller側の`compilation.input`再検査を要求せず、`respond`または`schedule_preview`のdiscriminated unionを返す。preview実行に進む場合は有効な`GenericSchedulerInput`をroute結果自身が保持するため、RuntimeExecutorは内部条件を推測しない。
-- RuntimeExecutorはsemantic turn → staging → planning evaluation → response facade → 必要時preview execution → response facadeという薄いorchestrationへ縮小する。response文面やbranch条件は保持しない。
-- recovery architecture testはquestion priorityの所有者をplanning evaluation、question rendering / response完了の所有者をresponse facadeとして別々に検査する。RuntimeExecutorへ個別response wordingが戻らないことも固定する。
-- 新しいresponse facadeはStable V5 internalsへの正式なproduction support接続点としてproduction isolation監査へ登録する。初回CI #2676ではこの登録漏れだけが失敗し、typecheckおよび他1438 testsはpassしていた。監査を削除・緩和せず正式接続点として追従する。
-- この分離はAIの意味理解やdeterministic planning policyを変更せず、既に決定されたapplication resultのprojection / response routingだけを一責務へ集約する。SRP、カプセル化、caller側の依存縮小を目的とする。
+- RuntimeExecutorに残るplanning evaluationの内部field展開と`runtime_scheduler_dialogue_evaluated` trace組み立てを、callerから隠す。
+- `weeklyPlanningStableV5PlanningEvaluation.ts`はhorizon / grounding / compilation / repair / dialogue / authorizationを計算するpure deterministic evaluatorとして維持し、trace副作用を混ぜない。
+- その外側に`weeklyPlanningStableV5PlanningStage.ts`を設け、evaluation実行とevaluation observabilityをapplication-stage facadeとしてカプセル化する。RuntimeExecutorは`runWeeklyPlanningStableV5PlanningStage()`だけを呼び、evaluation内部fieldやtrace schemaを知らない。
+- planning evaluationの戻り値は`WeeklyPlanningStableV5PlanningEvaluation`として型contract化し、stage側が明示的に利用する。blocking issue互換helperもplanning stageから再公開し、RuntimeExecutor自身の低レベルquestion-policy依存を減らす。
+- RuntimeExecutorはsemantic turn → staging → planning stage → response facade → 必要時preview execution → response facadeというpipeline接続だけを担当する。
+- recovery architecture testではplanning policy owner、planning-stage observability owner、response ownerを別々に検査し、evaluation traceの組み立てがRuntimeExecutorへ戻らないことを固定する。
+- 新しいplanning stageはStable V5 planning internalsとtraceへ接続する正式なproduction support moduleなのでproduction isolation監査へ明示登録する。
+- pure evaluatorとside-effecting stage facadeを分けることでSRPを維持しつつ、外部callerには一つの使いやすいapplication APIだけを見せる。意味理解はAI、readiness / scheduler / question priorityはdeterministicという責務境界は変更しない。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。RuntimeExecutorに残るevaluation trace組み立て、application module間の類似facade/API、legacy runtimeの残存production reachability、その他singleton/重複contractを変更理由ベースで疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。response facadeのplanning evaluator実装依存、application facadeの公開面、legacy runtimeの残存production reachability、その他singleton/重複contractを変更理由ベースで疑う。
 
 ## 4. Prompt / orchestration方針
 
