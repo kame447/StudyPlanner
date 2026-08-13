@@ -9,6 +9,10 @@ const planningEvaluationSource = readFileSync(
   new URL('./weeklyPlanningStableV5PlanningEvaluation.ts', import.meta.url),
   'utf8',
 );
+const responseRoutingSource = readFileSync(
+  new URL('./weeklyPlanningStableV5ResponseRouting.ts', import.meta.url),
+  'utf8',
+);
 const semanticTurnSource = readFileSync(
   new URL('./weeklyPlanningStableV5SemanticTurn.ts', import.meta.url),
   'utf8',
@@ -34,7 +38,7 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(semanticTurnSource).toContain('createStableV5SemanticPublicStateSummary');
   });
 
-  it('keeps ambiguity wording and issue ordering in the question-policy owner', () => {
+  it('keeps ambiguity ordering in planning policy and response wording in the routing facade', () => {
     expect(runtimeQuestionsSource).toContain("case 'semantic_uncertainty':");
     expect(runtimeQuestionsSource).toContain(
       '「${sourceText}」の意味を一つに決められませんでした。',
@@ -42,7 +46,20 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(planningEvaluationSource).toContain(
       'decideWeeklyPlanningStableDialogueV5(compilation)',
     );
-    expect(runtimeSource).toContain('renderStableV5RuntimeQuestion(semantic.graph, dialogue.question)');
+    expect(responseRoutingSource).toContain(
+      'renderStableV5RuntimeQuestion(graph, dialogue.question)',
+    );
+    expect(runtimeSource).not.toContain('renderStableV5RuntimeQuestion');
+  });
+
+  it('encapsulates response completion versus preview scheduling behind a typed facade', () => {
+    expect(responseRoutingSource).toContain("kind: 'respond'");
+    expect(responseRoutingSource).toContain("kind: 'schedule_preview'");
+    expect(responseRoutingSource).toContain('weeklyPlanningStableV5ResponseRouter = {');
+    expect(runtimeSource).toContain('weeklyPlanningStableV5ResponseRouter.beforePreview');
+    expect(runtimeSource).toContain('weeklyPlanningStableV5ResponseRouter.afterPreview');
+    expect(runtimeSource).toContain("responseRoute.kind === 'respond'");
+    expect(runtimeSource).not.toContain('compilation.input!');
   });
 
   it('never asks the user to resend the same content after structural rejection', () => {
