@@ -1,11 +1,10 @@
 import type {
   WeeklyPreviewApprovalRuntimeSnapshot,
 } from '../planning/weeklyPlanningApproval';
-import { getWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import type { WeeklyPlanDraftBlock } from '../types';
 import {
-  getWeeklyPlanningStableV5RuntimeSession,
-} from './weeklyPlanningStableV5RuntimeSession';
+  weeklyPlanningApprovalRuntimeLookup,
+} from './weeklyPlanningApprovalRuntimeLookup';
 
 export type WeeklyPlanningApprovalRuntimeResolution =
   | {
@@ -56,35 +55,19 @@ export function resolveWeeklyPlanningApprovalRuntime(params: {
   }
 
   if (stableV5) {
-    const runtime = getWeeklyPlanningStableV5RuntimeSession(conversationId);
-    if (!runtime) {
-      return { kind: 'unavailable', stableV5: true, runtimeSnapshot: null };
-    }
-    if (runtime.ownerId !== params.userId) {
-      return { kind: 'owner_mismatch', stableV5: true, runtimeSnapshot: null };
-    }
+    const resolution = weeklyPlanningApprovalRuntimeLookup.stableV5({
+      conversationId,
+      userId: params.userId,
+    });
     return {
-      kind: 'available',
+      ...resolution,
       stableV5: true,
-      runtimeSnapshot: {
-        conversationId: runtime.conversationId,
-        stateRevision: runtime.graph.revision,
-        proposalRecords: [],
-      },
     };
   }
 
-  const runtime = getWeeklyPlanningSessionRuntime();
-  if (!runtime) {
-    return { kind: 'unavailable', stableV5: false, runtimeSnapshot: null };
-  }
+  const resolution = weeklyPlanningApprovalRuntimeLookup.compatibility();
   return {
-    kind: 'available',
+    ...resolution,
     stableV5: false,
-    runtimeSnapshot: {
-      conversationId: runtime.conversationId,
-      stateRevision: runtime.stateRevision,
-      proposalRecords: runtime.proposalRecords,
-    },
   };
 }
