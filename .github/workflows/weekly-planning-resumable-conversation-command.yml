@@ -17,7 +17,6 @@ concurrency:
 
 jobs:
   observe-one-turn:
-    if: ${{ github.event.repository.private }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -95,16 +94,23 @@ jobs:
           VITE_CLOUDFLARE_AI_PROXY_URL: ''
         run: npm run observe:weekly-ai:conversation:turn
 
-      - name: Record private observation completion
+      - name: Emit transcript and internal diagnostics
         if: always()
         run: |
-          echo "Real-API conversation details are intentionally omitted from GitHub logs."
+          if [ -f "$OUTPUT_DIR/transcript.md" ]; then
+            echo '--- TRANSCRIPT ---'
+            cat "$OUTPUT_DIR/transcript.md"
+          fi
+          if [ -f "$OUTPUT_DIR/latest-turn.json" ]; then
+            echo '--- LATEST TURN ---'
+            cat "$OUTPUT_DIR/latest-turn.json"
+          fi
 
-      - name: Upload private observation artifact
+      - name: Upload observation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-planning-resumable-conversation
           path: artifacts/weekly-planning-resumable-conversation/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
