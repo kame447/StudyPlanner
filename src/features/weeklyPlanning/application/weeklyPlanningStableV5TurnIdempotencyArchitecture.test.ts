@@ -25,8 +25,10 @@ describe('Stable V5 turn idempotency architecture', () => {
     expect(instrumentedSource).not.toContain('getWeeklyPlanningStableV5RuntimeSession');
   });
 
-  it('keeps duplicate result graph projection inside the idempotency boundary', () => {
+  it('keeps duplicate result graph projection and duplicate-specific trace inside the idempotency boundary', () => {
     expect(idempotencySource).toContain('weeklyPlanningStableV5ResultProjector.duplicate');
+    expect(idempotencySource).toContain("stage: 'runtime_duplicate_turn_suppressed'");
     expect(instrumentedSource).not.toContain('weeklyPlanningStableV5ResultProjector.duplicate');
+    expect(instrumentedSource).not.toContain("stage: 'runtime_duplicate_turn_suppressed'");
   });
 });
