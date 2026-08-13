@@ -21,6 +21,9 @@ import {
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
+export {
+  isWeeklyPlanningStableV5PreviewAuthorized,
+} from './weeklyPlanningStableV5PlanningEvaluation';
 
 export async function executeWeeklyPlanningStableV5RuntimeTurn(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
