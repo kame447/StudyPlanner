@@ -9,7 +9,7 @@ export interface AiConfig {
 
 const AI_RUNTIME_STORAGE_KEY = 'studyplanner.ai.runtime.v1';
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
-const OPENAI_DEFAULT_MODEL = 'gpt-5.4-mini';
+const OPENAI_DEFAULT_MODEL = 'gpt-5.6-luna';
 const CLOUDFLARE_PROXY_URL = import.meta.env.VITE_CLOUDFLARE_AI_PROXY_URL?.trim() ?? '';
 
 function isAiProvider(value: string): value is AiProvider {
