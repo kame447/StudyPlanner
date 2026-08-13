@@ -1,10 +1,10 @@
 import { getFirebaseAuth } from '../../../lib/firebaseClient';
 import type { WeeklyPlanDraftBlock } from '../types';
-import type {
-  WeeklyPlanningBehaviorAwarePipelineOptions,
-  WeeklyPlanningBehaviorAwarePipelineOutput,
-} from '../pipeline/weeklyPlanningBehaviorAwareIntakePipeline';
 import type { WeeklyPlanningIntakePipelineInput } from '../pipeline/weeklyPlanningIntakePipeline';
+import type {
+  WeeklyPlanningTracePipelineOptions,
+  WeeklyPlanningTracePipelineOutput,
+} from './weeklyPlanningTracePipelineObservation';
 import { sanitizeWeeklyPlanningTraceValue } from './weeklyPlanningTraceRedaction';
 import { getWeeklyPlanningTraceRepository, isWeeklyPlanningTraceEnabled } from './weeklyPlanningTraceRepository';
 import {
@@ -74,7 +74,7 @@ function resolveTraceUserId(explicitUserId?: string): string | null {
   return import.meta.env.DEV ? 'local-debug-user' : null;
 }
 
-function correlationUserId(options: WeeklyPlanningBehaviorAwarePipelineOptions): string {
+function correlationUserId(options: WeeklyPlanningTracePipelineOptions): string {
   return options.userId?.trim()
     || getFirebaseAuth()?.currentUser?.uid?.trim()
     || 'session-local-user';
@@ -82,7 +82,7 @@ function correlationUserId(options: WeeklyPlanningBehaviorAwarePipelineOptions):
 
 function resolveLogicalConversationId(params: {
   input: WeeklyPlanningIntakePipelineInput;
-  options: WeeklyPlanningBehaviorAwarePipelineOptions;
+  options: WeeklyPlanningTracePipelineOptions;
   cached?: TraceRequestContext;
 }): string {
   const explicit = params.options.conversationId?.trim();
@@ -98,10 +98,10 @@ function resolveLogicalConversationId(params: {
   return randomId('weekly-planning-conversation');
 }
 
-export function prepareWeeklyPlanningTraceOptions(
+export function prepareWeeklyPlanningTraceOptions<T extends WeeklyPlanningTracePipelineOptions>(
   input: WeeklyPlanningIntakePipelineInput,
-  options: WeeklyPlanningBehaviorAwarePipelineOptions,
-): WeeklyPlanningBehaviorAwarePipelineOptions {
+  options: T,
+): T {
   const cached = input && typeof input === 'object' ? traceContextByInput.get(input) : undefined;
   const conversationId = resolveLogicalConversationId({ input, options, cached });
   const explicitRequestId = options.traceRequestId?.trim();
@@ -366,7 +366,7 @@ async function appendBestEffort(
 
 function pipelineEventEntries(params: {
   active: ActiveTraceSession;
-  output: WeeklyPlanningBehaviorAwarePipelineOutput;
+  output: WeeklyPlanningTracePipelineOutput;
   requestId: string;
   occurredAt: string;
   stateRevision: number;
@@ -586,8 +586,8 @@ function pipelineEventEntries(params: {
 }
 
 function behaviorResponseSource(
-  output: WeeklyPlanningBehaviorAwarePipelineOutput,
-  options: WeeklyPlanningBehaviorAwarePipelineOptions,
+  output: WeeklyPlanningTracePipelineOutput,
+  options: WeeklyPlanningTracePipelineOptions,
 ): WeeklyPlanningTraceResponseSource {
   if (output.behaviorDialogue.source === 'ai') return 'ai';
   if (output.behaviorDialogue.source === 'system') return 'system';
@@ -597,8 +597,8 @@ function behaviorResponseSource(
 
 export function recordWeeklyPlanningPipelineTrace(params: {
   input: WeeklyPlanningIntakePipelineInput;
-  options: WeeklyPlanningBehaviorAwarePipelineOptions;
-  output: WeeklyPlanningBehaviorAwarePipelineOutput;
+  options: WeeklyPlanningTracePipelineOptions;
+  output: WeeklyPlanningTracePipelineOutput;
 }): void {
   const logicalConversationId = resolveLogicalConversationId({
     input: params.input,
