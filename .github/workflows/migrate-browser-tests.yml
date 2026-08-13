@@ -1,4 +1,4 @@
-name: Migrate browser tests once
+name: Apply audited browser fixes once
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  migrate:
+  apply:
     if: github.actor == 'kame447'
     runs-on: ubuntu-latest
     steps:
@@ -17,25 +17,82 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Copy browser tests from audited source commit
+      - name: Apply audited fixes
         shell: bash
         run: |
-          set -euo pipefail
-          source_sha='185015363a603c3621b6333207a64ada48e766ae'
-          git checkout "${source_sha}" -- tests/e2e
-          git status --short
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Commit migrated browser tests
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'expected text not found in {path}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          p = Path('src/lib/quickEntryDrafts.ts')
+          text = p.read_text()
+          anchor = "export function resolveQuickEntryEndTime(\n  startTime: string,\n  estimatedMinutes: number,\n): string {\n"
+          validators = """export function isValidQuickEntryDate(value: string): boolean {\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const [year, month, day] = value.split('-').map(Number);\n  const date = new Date(year, month - 1, day);\n  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;\n}\n\nexport function isValidQuickEntryStartTime(value: string): boolean {\n  return /^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(value);\n}\n\nexport function isValidQuickEntryDuration(value: number | null): value is number {\n  return Number.isInteger(value) && value !== null && value > 0 && value < 24 * 60;\n}\n\n"""
+          if validators not in text:
+              text = text.replace(anchor, validators + anchor, 1)
+          text = text.replace(
+              """  const startMinutes = parseTimeToMinutes(startTime, 'start');\n  const endMinutes =\n    estimatedMinutes > 0 && estimatedMinutes < 24 * 60\n      ? Math.min(startMinutes + estimatedMinutes, 24 * 60)\n      : startMinutes;\n\n  return formatMinutesToTime(endMinutes, 'end');\n""",
+              """  const startMinutes = parseTimeToMinutes(startTime, 'start');\n  const endMinutes = isValidQuickEntryDuration(estimatedMinutes)\n    ? (startMinutes + estimatedMinutes) % (24 * 60)\n    : startMinutes;\n\n  return formatMinutesToTime(endMinutes, 'start');\n""",
+              1,
+          )
+          text = text.replace(
+              """  if (!title || input.estimatedMinutes === null) {\n    return null;\n  }\n""",
+              """  if (\n    !title ||\n    !isValidQuickEntryDate(input.date) ||\n    !isValidQuickEntryStartTime(input.startTime) ||\n    !isValidQuickEntryDuration(input.estimatedMinutes)\n  ) {\n    return null;\n  }\n""",
+              1,
+          )
+          p.write_text(text)
+
+          replace(
+              'src/lib/quickEntryDrafts.test.ts',
+              """  it('clamps quick-entry end times to the end of the same day', () => {\n    expect(resolveQuickEntryEndTime('23:30', 60)).toBe('24:00');\n    expect(resolveQuickEntryEndTime('23:55', 30)).toBe('24:00');\n    expect(resolveQuickEntryEndTime('21:00', 60)).toBe('22:00');\n    expect(resolveQuickEntryEndTime('00:00', 60)).toBe('01:00');\n  });\n""",
+              """  it('preserves representable durations across midnight', () => {\n    expect(resolveQuickEntryEndTime('23:30', 60)).toBe('00:30');\n    expect(resolveQuickEntryEndTime('23:55', 30)).toBe('00:25');\n    expect(resolveQuickEntryEndTime('21:00', 60)).toBe('22:00');\n    expect(resolveQuickEntryEndTime('00:00', 60)).toBe('01:00');\n    expect(resolveQuickEntryEndTime('19:00', 1439)).toBe('18:59');\n  });\n\n  it('rejects invalid schedule boundaries before building a draft', () => {\n    expect(buildQuickEntryPlanDraft({ ...baseInput, mode: 'scheduled', repeatKind: 'daily', date: '' })).toBeNull();\n    expect(buildQuickEntryPlanDraft({ ...baseInput, mode: 'scheduled', repeatKind: 'daily', date: '2026-02-30' })).toBeNull();\n    expect(buildQuickEntryPlanDraft({ ...baseInput, mode: 'scheduled', repeatKind: 'daily', startTime: '' })).toBeNull();\n    expect(buildQuickEntryPlanDraft({ ...baseInput, mode: 'scheduled', repeatKind: 'daily', startTime: '24:00' })).toBeNull();\n    expect(buildQuickEntryPlanDraft({ ...baseInput, mode: 'scheduled', repeatKind: 'daily', estimatedMinutes: 0 })).toBeNull();\n    expect(buildQuickEntryPlanDraft({ ...baseInput, mode: 'scheduled', repeatKind: 'daily', estimatedMinutes: 1440 })).toBeNull();\n  });\n""",
+          )
+
+          replace('src/components/QuickEntryModal.tsx', "import { useEffect, useMemo, useState, type FormEvent } from 'react';", "import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';")
+          replace('src/components/QuickEntryModal.tsx', """  buildQuickEntryPlanDraft,\n  isSupportedQuickEntryRepeatKind,\n  SUPPORTED_QUICK_ENTRY_REPEAT_KINDS,\n""", """  buildQuickEntryPlanDraft,\n  isSupportedQuickEntryRepeatKind,\n  isValidQuickEntryDate,\n  isValidQuickEntryDuration,\n  isValidQuickEntryStartTime,\n  SUPPORTED_QUICK_ENTRY_REPEAT_KINDS,\n""")
+          replace('src/components/QuickEntryModal.tsx', """  const [isSubmitting, setIsSubmitting] = useState(false);\n  const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);\n""", """  const [isSubmitting, setIsSubmitting] = useState(false);\n  const submissionInFlightRef = useRef(false);\n  const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);\n""")
+          replace('src/components/QuickEntryModal.tsx', """        (mode === 'later' ||\n          (mode === 'scheduled' && estimatedMinutes !== null) ||\n          (mode === 'repeat' &&\n            estimatedMinutes !== null &&\n            isSupportedRepeatKind &&\n""", """        (mode === 'later' ||\n          (mode === 'scheduled' &&\n            isValidQuickEntryDate(date) &&\n            isValidQuickEntryStartTime(startTime) &&\n            isValidQuickEntryDuration(estimatedMinutes)) ||\n          (mode === 'repeat' &&\n            isValidQuickEntryDate(date) &&\n            isValidQuickEntryStartTime(startTime) &&\n            isValidQuickEntryDuration(estimatedMinutes) &&\n            isSupportedRepeatKind &&\n""")
+          replace('src/components/QuickEntryModal.tsx', """  async function handleSaveLinkedActual(plan: Plan) {\n    if (!actualEndTime || !title.trim()) {\n      return;\n    }\n\n    setIsSubmitting(true);\n""", """  async function handleSaveLinkedActual(plan: Plan) {\n    if (submissionInFlightRef.current || !actualEndTime || !title.trim()) {\n      return;\n    }\n\n    submissionInFlightRef.current = true;\n    setIsSubmitting(true);\n""")
+          text = Path('src/components/QuickEntryModal.tsx').read_text()
+          first = text.find("    } finally {\n      setIsSubmitting(false);\n    }\n  }\n\n  async function handleSubmit")
+          if first < 0: raise SystemExit('linked actual finally not found')
+          text = text[:first] + text[first:].replace("    } finally {\n      setIsSubmitting(false);\n    }\n  }\n\n  async function handleSubmit", "    } finally {\n      submissionInFlightRef.current = false;\n      setIsSubmitting(false);\n    }\n  }\n\n  async function handleSubmit", 1)
+          text = text.replace("""    if (!canSave) {\n      return;\n    }\n\n    setIsSubmitting(true);\n""", """    if (submissionInFlightRef.current || !canSave) {\n      return;\n    }\n\n    submissionInFlightRef.current = true;\n    setIsSubmitting(true);\n""", 1)
+          marker = """      onClose();\n    } finally {\n      setIsSubmitting(false);\n    }\n  }\n\n  return (\n"""
+          if marker not in text: raise SystemExit('submit finally not found')
+          text = text.replace(marker, """      onClose();\n    } finally {\n      submissionInFlightRef.current = false;\n      setIsSubmitting(false);\n    }\n  }\n\n  return (\n""", 1)
+          text = text.replace("""      <form\n        className=\"modal-card quick-entry-modal\"\n""", """      <form\n        className=\"modal-card quick-entry-modal\"\n        role=\"dialog\"\n        aria-modal=\"true\"\n        aria-label=\"予定・記録の追加\"\n""", 1)
+          Path('src/components/QuickEntryModal.tsx').write_text(text)
+
+          replace('src/components/AuthScreen.tsx', """                  onClick={() => setIntent('sign-up')}\n                  type=\"button\"\n                >\n                  新規会員登録\n""", """                  onClick={() => setIntent('sign-up')}\n                  type=\"button\"\n                  role=\"tab\"\n                  aria-selected={intent === 'sign-up'}\n                >\n                  新規会員登録\n""")
+          replace('src/components/AuthScreen.tsx', """                  onClick={() => setIntent('sign-in')}\n                  type=\"button\"\n                >\n                  ログイン\n""", """                  onClick={() => setIntent('sign-in')}\n                  type=\"button\"\n                  role=\"tab\"\n                  aria-selected={intent === 'sign-in'}\n                >\n                  ログイン\n""")
+
+          replace('src/components/NaturalLanguageAssistant.tsx', """                <div className=\"weekly-draft-preview-switch\" role=\"tablist\">\n""", """                <div\n                  className=\"weekly-draft-preview-switch\"\n                  role=\"tablist\"\n                  aria-label=\"週間計画プレビュー表示\"\n                >\n""")
+          replace('src/components/NaturalLanguageAssistant.tsx', """                    onClick={() => setWeeklyDraftPreviewMode('overview')}\n                    type=\"button\"\n                  >\n                    全体\n""", """                    onClick={() => setWeeklyDraftPreviewMode('overview')}\n                    type=\"button\"\n                    role=\"tab\"\n                    aria-selected={weeklyDraftPreviewMode === 'overview'}\n                  >\n                    全体\n""")
+          replace('src/components/NaturalLanguageAssistant.tsx', """                    onClick={() => setWeeklyDraftPreviewMode('day')}\n                    type=\"button\"\n                    disabled={pendingWeeklyDraftDates.length === 0}\n                  >\n                    日別\n""", """                    onClick={() => setWeeklyDraftPreviewMode('day')}\n                    type=\"button\"\n                    role=\"tab\"\n                    aria-selected={weeklyDraftPreviewMode === 'day'}\n                    disabled={pendingWeeklyDraftDates.length === 0}\n                  >\n                    日別\n""")
+          replace('src/components/NaturalLanguageAssistant.tsx', """  const canCreateWeeklyDraft = text.trim().length > 0 && !isWeeklyPlanningBusy;\n""", """  const canCreateWeeklyDraft = text.trim().length > 0 && !isWeeklyPlanningBusy;\n  const promotedPreviewSignatureRef = useRef<string | null>(null);\n""")
+          replace('src/components/NaturalLanguageAssistant.tsx', """  function handlePromoteWeeklyPreviewToDrafts() {\n    if (!onCreateWeeklyDraftBlocks || weeklyPlanningPreviewCandidates.length === 0) {\n      return;\n    }\n\n    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({\n""", """  function handlePromoteWeeklyPreviewToDrafts() {\n    if (!onCreateWeeklyDraftBlocks || weeklyPlanningPreviewCandidates.length === 0) {\n      return;\n    }\n\n    const previewSignature = weeklyPlanningPreviewCandidates.map((candidate) => candidate.id).join('\\u0000');\n    if (promotedPreviewSignatureRef.current === previewSignature) {\n      return;\n    }\n\n    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({\n""")
+          replace('src/components/NaturalLanguageAssistant.tsx', """    if (blocks.length === 0) {\n      return;\n    }\n\n    onCreateWeeklyDraftBlocks(blocks);\n""", """    if (blocks.length === 0) {\n      return;\n    }\n\n    promotedPreviewSignatureRef.current = previewSignature;\n    onCreateWeeklyDraftBlocks(blocks);\n""")
+          PY
+
+      - name: Verify focused tests and types
+        run: |
+          npm ci
+          npm test -- --run src/lib/quickEntryDrafts.test.ts src/components/WeeklyPlanningQuickEntryModal.test.tsx src/components/NaturalLanguageAssistant.weeklyPlanningControls.test.tsx
+          npm run typecheck
+
+      - name: Commit fixes
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --cached --quiet; then
-            echo 'Browser tests already match source commit.'
-            exit 0
-          fi
-          git config user.name 'StudyPlanner Test Migration'
+          git config user.name 'StudyPlanner Browser Contract Fixes'
           git config user.email 'actions@users.noreply.github.com'
-          git commit -m 'test: migrate skeptical browser regression suite'
+          git add src/lib/quickEntryDrafts.ts src/lib/quickEntryDrafts.test.ts src/components/QuickEntryModal.tsx src/components/AuthScreen.tsx src/components/NaturalLanguageAssistant.tsx
+          git commit -m 'fix: honor audited browser interaction contracts'
           git push origin HEAD:agent/browser-regression-main-integration
-
-# This workflow is intentionally temporary and must be deleted after the migration commit lands.
