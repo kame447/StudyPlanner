@@ -25,12 +25,13 @@ function createHarness() {
 function createServices(overrides: Partial<WeeklyPlanningTurnApplicationServices> = {}) {
   return {
     submitControlledTurn: submitWeeklyPlanningControlledTurn,
-    executeTurn: vi.fn(async () => ({
-      state: createInitialPlanningIntakeState(),
-      message: '確認しました。',
-      draftCandidates: [],
-    })),
-    bindStableV5SessionScope: vi.fn(),
+    runtimeGateway: {
+      execute: vi.fn(async () => ({
+        state: createInitialPlanningIntakeState(),
+        message: '確認しました。',
+        draftCandidates: [],
+      })),
+    },
     stagingLifecycle: {
       finalize: vi.fn(),
       discard: vi.fn(),
@@ -69,35 +70,36 @@ function baseParams() {
 }
 
 describe('submitWeeklyPlanningApplicationTurn', () => {
-  it('binds Stable V5 scope, executes the semantic turn and delegates committed lifecycle work', async () => {
+  it('delegates runtime execution and committed lifecycle work', async () => {
     const { store, params } = baseParams();
     const resultState = createInitialPlanningIntakeState();
-    const services = createServices({
-      executeTurn: vi.fn(async () => ({
+    const runtimeGateway = {
+      execute: vi.fn(async () => ({
         state: resultState,
         message: '期間を確認しました。',
         draftCandidates: [],
       })),
-    });
+    };
+    const services = createServices({ runtimeGateway });
 
     const submission = await submitWeeklyPlanningApplicationTurn(params, services);
 
     expect(submission.accepted).toBe(true);
-    expect(services.bindStableV5SessionScope).toHaveBeenCalledWith({
-      ownerId: 'user-1',
-      weekStartDate: '2026-07-27',
-      conversationId: 'conversation-1',
-    });
-    expect(services.executeTurn).toHaveBeenCalledWith(expect.objectContaining({
-      previousState: undefined,
-      messages: [],
+    expect(runtimeGateway.execute).toHaveBeenCalledWith(expect.objectContaining({
+      snapshot: expect.objectContaining({
+        weekStartDate: '2026-07-27',
+        messages: [],
+      }),
+      pending: expect.objectContaining({
+        conversationId: 'conversation-1',
+        requestId: 'conversation-1:request:1',
+      }),
       userText: '来週の予定を作りたい',
       selectedDate: '2026-07-27',
       userId: 'user-1',
       timetableTermId: '2026-full-year',
-      conversationId: 'conversation-1',
-      traceRequestId: 'conversation-1:request:1',
       weekStartsOn: 'monday',
+      timeZone: undefined,
     }));
     expect(services.stagingLifecycle.finalize).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'user-1',
@@ -123,10 +125,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
 
     await submitWeeklyPlanningApplicationTurn(params, services);
 
-    expect(services.bindStableV5SessionScope).toHaveBeenCalledWith(expect.objectContaining({
-      ownerId: 'user-1',
-    }));
-    expect(services.executeTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(services.runtimeGateway.execute).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
     }));
     expect(services.stagingLifecycle.finalize).toHaveBeenCalledWith(expect.objectContaining({
@@ -141,7 +140,9 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     const { store, params } = baseParams();
     const failure = new Error('provider unavailable');
     const services = createServices({
-      executeTurn: vi.fn(async () => { throw failure; }),
+      runtimeGateway: {
+        execute: vi.fn(async () => { throw failure; }),
+      },
     });
 
     await expect(submitWeeklyPlanningApplicationTurn(params, services)).rejects.toBe(failure);
