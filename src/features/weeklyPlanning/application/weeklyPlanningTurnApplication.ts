@@ -3,7 +3,7 @@ import type { PlanningState, WeeklyPlanningAction } from '../types';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
   WeeklyPlanningTurnSubmissionResult,
-} from '../weeklyPlanningTurnExecutor';
+} from '../weeklyPlanningTurnExecutionTypes';
 import {
   submitWeeklyPlanningControlledTurn,
   type WeeklyPlanningControllerSession,
