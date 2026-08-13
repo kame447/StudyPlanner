@@ -4,50 +4,31 @@ import {
   hasStagedUserPlanningContextV1,
   rollbackFinalizedUserPlanningContextV1,
 } from '../../userPlanningContext/userPlanningContextSpace';
-import {
-  recordWeeklyPlanningStableV5TurnTrace,
-} from '../trace/weeklyPlanningStableV5TraceRuntime';
 import type {
   WeeklyPlanningPendingTurn,
 } from '../types';
 import {
   discardWeeklyPlanningStableV5StagedGraph,
   finalizeWeeklyPlanningStableV5RuntimeGraph,
-  getWeeklyPlanningStableV5RuntimeSession,
   hasWeeklyPlanningStableV5StagedGraphForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
-import type {
-  WeeklyPlanningTurnTraceSideEffectServices,
-} from './weeklyPlanningTurnTraceSideEffects';
 
-export {
-  recordCommittedWeeklyPlanningApplicationTurn,
-  recordDiscardedWeeklyPlanningApplicationTurn,
-  recordFailedWeeklyPlanningApplicationTurn,
-} from './weeklyPlanningTurnTraceSideEffects';
-export type {
-  WeeklyPlanningTurnTraceSideEffectServices,
-} from './weeklyPlanningTurnTraceSideEffects';
-
-export interface WeeklyPlanningTurnSideEffectServices
-  extends WeeklyPlanningTurnTraceSideEffectServices {
+export interface WeeklyPlanningTurnStagingLifecycleServices {
   hasStagedGraph: typeof hasWeeklyPlanningStableV5StagedGraphForTest;
   finalizeRuntimeGraph: typeof finalizeWeeklyPlanningStableV5RuntimeGraph;
   discardStagedGraph: typeof discardWeeklyPlanningStableV5StagedGraph;
 }
 
-const defaultServices: WeeklyPlanningTurnSideEffectServices = {
+const defaultServices: WeeklyPlanningTurnStagingLifecycleServices = {
   hasStagedGraph: hasWeeklyPlanningStableV5StagedGraphForTest,
   finalizeRuntimeGraph: finalizeWeeklyPlanningStableV5RuntimeGraph,
   discardStagedGraph: discardWeeklyPlanningStableV5StagedGraph,
-  getRuntimeSession: getWeeklyPlanningStableV5RuntimeSession,
-  recordTurnTrace: recordWeeklyPlanningStableV5TurnTrace,
 };
 
-export function finalizeWeeklyPlanningApplicationTurn(params: {
+function finalizeStaging(params: {
   ownerId: string;
   pending: WeeklyPlanningPendingTurn;
-}, services: WeeklyPlanningTurnSideEffectServices = defaultServices): void {
+}, services: WeeklyPlanningTurnStagingLifecycleServices): void {
   const hasGraph = services.hasStagedGraph({
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
@@ -79,9 +60,9 @@ export function finalizeWeeklyPlanningApplicationTurn(params: {
   }
 }
 
-export function discardWeeklyPlanningApplicationTurn(
+function discardStaging(
   pending: WeeklyPlanningPendingTurn,
-  services: WeeklyPlanningTurnSideEffectServices = defaultServices,
+  services: WeeklyPlanningTurnStagingLifecycleServices,
 ): void {
   discardStagedUserPlanningContextV1({
     conversationId: pending.conversationId,
@@ -101,7 +82,17 @@ export interface WeeklyPlanningTurnStagingLifecycle {
   discard(pending: WeeklyPlanningPendingTurn): void;
 }
 
-export const weeklyPlanningTurnStagingLifecycle: WeeklyPlanningTurnStagingLifecycle = {
-  finalize: finalizeWeeklyPlanningApplicationTurn,
-  discard: discardWeeklyPlanningApplicationTurn,
-};
+export function createWeeklyPlanningTurnStagingLifecycle(
+  services: WeeklyPlanningTurnStagingLifecycleServices = defaultServices,
+): WeeklyPlanningTurnStagingLifecycle {
+  return {
+    finalize(params) {
+      finalizeStaging(params, services);
+    },
+    discard(pending) {
+      discardStaging(pending, services);
+    },
+  };
+}
+
+export const weeklyPlanningTurnStagingLifecycle = createWeeklyPlanningTurnStagingLifecycle();
