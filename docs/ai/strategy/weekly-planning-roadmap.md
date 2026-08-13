@@ -123,17 +123,19 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - RuntimeExecutorからsemantic成功後のuser planning context / Fact Graph staging副作用を`weeklyPlanningStableV5TurnStaging.ts`へ分離。durable context収集、transactional graph staging、対応traceの所有者を明確化し、full CI #2675 green
 - ask-question / authorization / preview result等のresponse構築を`weeklyPlanningStableV5ResponseRouting.ts`へ集約し、`beforePreview` / `afterPreview`の小さいfacadeとして公開。pre-preview遷移は`respond` / `schedule_preview`のdiscriminated unionにし、caller側のnullable判定と内部条件重複を除去。初回CI #2676ではproduction isolation登録漏れだけを検出し、正式接続点として追従後full CI #2681 green
 - planning evaluationと`runtime_scheduler_dialogue_evaluated` observabilityを`weeklyPlanningStableV5PlanningStage.ts`へカプセル化。pure evaluatorを副作用なしで維持し、RuntimeExecutorからevaluation内部fieldとtrace schemaを隠した。blocking-issue互換helperもstage経由へ寄せてfull CI #2687 green
+- response facadeのplanning evaluator実装依存を除去し、`WeeklyPlanningStableV5PlanningEvaluation`出力contractへのtype-only依存へ変更。policy実装とresponse projectionの変更理由を分離し、full CI #2690 green
 
 現在のloop:
 
-- `weeklyPlanningStableV5ResponseRouting.ts`がplanning evaluationの型を得るためだけに`evaluateWeeklyPlanningStableV5Planning`実装関数をimportし、`ReturnType<typeof ...>`で具体実装へ結合していた依存を切る。
-- pure evaluator側が`WeeklyPlanningStableV5PlanningEvaluation`を正式な出力contractとしてexportし、planning stageとresponse facadeはこのcontractへ依存する。
-- response facadeは`import type`だけでplanning evaluation contractを受け取り、evaluator実装関数をruntime importしない。response projectionの変更理由とplanning policy実装の変更理由を分離する。
-- recovery architecture testで、response facadeが`ReturnType<typeof evaluateWeeklyPlanningStableV5Planning>`やevaluator実装importへ戻らないことを固定する。
-- 挙動、planning policy、response branch、trace内容は変更しない。DIPとカプセル化の改善だけを行う。
+- Stable V5 RuntimeExecutor / planning-stage facadeの公開面を監査し、利用されていない低レベルhelperを外部APIとして残さない。
+- `getWeeklyPlanningStableV5BlockingIssueCode`はRuntimeExecutorから再exportされ、planning stageにもwrapperが存在したが、production参照がなくtrace内部では元の`stableV5BlockingIssueCode`を直接利用していたためdead APIと判定した。
+- RuntimeExecutorからblocking-issue helperのimport/re-exportを削除し、planning stageから未使用wrapper自体も削除する。diagnostic calculationはplanning-stage内部のobservability実装へ閉じる。
+- `isWeeklyPlanningStableV5PreviewAuthorized`は既存runtime contract testが互換公開口として検証しているため、このloopでは破壊的に削除せずre-exportを維持する。不要なAPIだけを選別して狭める。
+- recovery architecture testでunused blocking helperがRuntimeExecutor / planning stageへ復活しないことを固定する。
+- scheduling / authorization / semantic挙動には触れず、ISPとカプセル化の観点で公開surfaceだけを縮小する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
-次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。application facadeの公開面、legacy runtimeの残存production reachability、singleton依存、類似contract / helperの重複を優先して疑う。
+次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。authorization互換公開口の所属、InstrumentedRuntimeExecutor / RuntimeExecutorの二層facade、legacy runtime production reachability、singleton依存、類似contract / helper重複を優先して疑う。
 
 ## 4. Prompt / orchestration方針
 
