@@ -4,7 +4,6 @@ import type { WeeklyPlanningPendingTurn } from '../types';
 import { createInitialPlanningState } from '../weeklyPlanningReducer';
 import {
   createWeeklyPlanningTurnOutcomeLifecycle,
-  type WeeklyPlanningTurnOutcomeLifecycleServices,
 } from './weeklyPlanningTurnOutcomeLifecycle';
 
 function pending(): WeeklyPlanningPendingTurn {
@@ -32,7 +31,7 @@ function services() {
     recordCommittedTurn: vi.fn(() => null),
     recordDiscardedTurn: vi.fn(() => null),
     recordFailedTurn: vi.fn(() => null),
-  } as WeeklyPlanningTurnOutcomeLifecycleServices;
+  };
 }
 
 describe('weeklyPlanningTurnOutcomeLifecycle', () => {
