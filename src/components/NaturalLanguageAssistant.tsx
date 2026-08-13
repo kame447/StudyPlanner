@@ -275,7 +275,6 @@ export function NaturalLanguageAssistant({
   const weeklyPlanningInputRef = useRef<HTMLTextAreaElement | null>(null);
   const wasWeeklyPlanningBusyRef = useRef(isWeeklyPlanningBusy);
   void weeklyPlanningWeekStartDate;
-  void weeklyPlanningRevision;
 
   function scheduleWeeklyPlanningInputFocus() {
     const focus = () => weeklyPlanningInputRef.current?.focus();
@@ -405,6 +404,7 @@ export function NaturalLanguageAssistant({
     '--weekly-draft-preview-ten-minute-height': `${WEEKLY_DRAFT_DAY_HOUR_HEIGHT / 6}px`,
   } as CSSProperties;
   const canCreateWeeklyDraft = text.trim().length > 0 && !isWeeklyPlanningBusy;
+  const promotedPreviewSignatureRef = useRef<string | null>(null);
 
   function resetWeeklyPlanningSession() {
     onResetWeeklyPlanningSession();
@@ -561,6 +561,14 @@ export function NaturalLanguageAssistant({
       return;
     }
 
+    const previewSignature = [
+      String(weeklyPlanningRevision),
+      ...weeklyPlanningPreviewCandidates.map((candidate) => candidate.stableKey),
+    ].join('\u0000');
+    if (promotedPreviewSignatureRef.current === previewSignature) {
+      return;
+    }
+
     const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
       candidates: weeklyPlanningPreviewCandidates,
       userId,
@@ -571,6 +579,7 @@ export function NaturalLanguageAssistant({
       return;
     }
 
+    promotedPreviewSignatureRef.current = previewSignature;
     onCreateWeeklyDraftBlocks(blocks);
     setSelectedWeeklyDraftDate('');
     setWeeklyDraftPreviewMode('overview');
@@ -1030,7 +1039,11 @@ export function NaturalLanguageAssistant({
                 </div>
               </div>
               <div className="weekly-draft-preview" aria-label="未承認週間計画の時間割確認">
-                <div className="weekly-draft-preview-switch" role="tablist">
+                <div
+                  className="weekly-draft-preview-switch"
+                  role="tablist"
+                  aria-label="週間計画プレビュー表示"
+                >
                   <button
                     className={
                       weeklyDraftPreviewMode === 'overview'
@@ -1039,6 +1052,8 @@ export function NaturalLanguageAssistant({
                     }
                     onClick={() => setWeeklyDraftPreviewMode('overview')}
                     type="button"
+                    role="tab"
+                    aria-selected={weeklyDraftPreviewMode === 'overview'}
                   >
                     全体
                   </button>
@@ -1050,6 +1065,8 @@ export function NaturalLanguageAssistant({
                     }
                     onClick={() => setWeeklyDraftPreviewMode('day')}
                     type="button"
+                    role="tab"
+                    aria-selected={weeklyDraftPreviewMode === 'day'}
                     disabled={pendingWeeklyDraftDates.length === 0}
                   >
                     日別

@@ -36,17 +36,35 @@ export function isSupportedQuickEntryRepeatKind(
   return SUPPORTED_QUICK_ENTRY_REPEAT_KINDS.has(repeatKind);
 }
 
+export function isValidQuickEntryDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+export function isValidQuickEntryStartTime(value: string): boolean {
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+export function isValidQuickEntryDuration(value: number | null): value is number {
+  return Number.isInteger(value) && value !== null && value > 0 && value < 24 * 60;
+}
+
 export function resolveQuickEntryEndTime(
   startTime: string,
   estimatedMinutes: number,
 ): string {
   const startMinutes = parseTimeToMinutes(startTime, 'start');
-  const endMinutes =
-    estimatedMinutes > 0 && estimatedMinutes < 24 * 60
-      ? Math.min(startMinutes + estimatedMinutes, 24 * 60)
-      : startMinutes;
+  const endMinutes = isValidQuickEntryDuration(estimatedMinutes)
+    ? (startMinutes + estimatedMinutes) % (24 * 60)
+    : startMinutes;
 
-  return formatMinutesToTime(endMinutes, 'end');
+  return formatMinutesToTime(endMinutes, 'start');
 }
 
 export function buildQuickEntryPlanDraft(
@@ -54,7 +72,12 @@ export function buildQuickEntryPlanDraft(
 ): PlanDraft | null {
   const title = input.title.trim();
 
-  if (!title || input.estimatedMinutes === null) {
+  if (
+    !title ||
+    !isValidQuickEntryDate(input.date) ||
+    !isValidQuickEntryStartTime(input.startTime) ||
+    !isValidQuickEntryDuration(input.estimatedMinutes)
+  ) {
     return null;
   }
 

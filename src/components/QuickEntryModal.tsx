@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
@@ -10,6 +10,9 @@ import {
 import {
   buildQuickEntryPlanDraft,
   isSupportedQuickEntryRepeatKind,
+  isValidQuickEntryDate,
+  isValidQuickEntryDuration,
+  isValidQuickEntryStartTime,
   SUPPORTED_QUICK_ENTRY_REPEAT_KINDS,
   type QuickEntryRepeatKind,
 } from '../lib/quickEntryDrafts';
@@ -178,6 +181,7 @@ export function QuickEntryModal({
     getRecurrenceWeekday(selectedDate),
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionInFlightRef = useRef(false);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
   const dayPlans = useMemo(
@@ -218,9 +222,14 @@ export function QuickEntryModal({
       ? estimatedMinutes !== null && actualEndTime !== null
       : inputMethod === 'manual' &&
         (mode === 'later' ||
-          (mode === 'scheduled' && estimatedMinutes !== null) ||
+          (mode === 'scheduled' &&
+            isValidQuickEntryDate(date) &&
+            isValidQuickEntryStartTime(startTime) &&
+            isValidQuickEntryDuration(estimatedMinutes)) ||
           (mode === 'repeat' &&
-            estimatedMinutes !== null &&
+            isValidQuickEntryDate(date) &&
+            isValidQuickEntryStartTime(startTime) &&
+            isValidQuickEntryDuration(estimatedMinutes) &&
             isSupportedRepeatKind &&
             (repeatKind !== 'weekly' || weekdays.length > 0))));
 
@@ -431,10 +440,11 @@ export function QuickEntryModal({
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
-    if (!actualEndTime || !title.trim()) {
+    if (submissionInFlightRef.current || !actualEndTime || !title.trim()) {
       return;
     }
 
+    submissionInFlightRef.current = true;
     setIsSubmitting(true);
     try {
       await onSaveLinkedActual(plan, {
@@ -451,6 +461,7 @@ export function QuickEntryModal({
       });
       onClose();
     } finally {
+      submissionInFlightRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -458,10 +469,11 @@ export function QuickEntryModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSave) {
+    if (submissionInFlightRef.current || !canSave) {
       return;
     }
 
+    submissionInFlightRef.current = true;
     setIsSubmitting(true);
     try {
       if (entryKind === 'actual') {
@@ -517,6 +529,7 @@ export function QuickEntryModal({
       }
       onClose();
     } finally {
+      submissionInFlightRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -525,6 +538,9 @@ export function QuickEntryModal({
     <div className="overlay modal-overlay quick-entry-overlay" onClick={onClose}>
       <form
         className="modal-card quick-entry-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="予定・記録の追加"
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
         onTouchStart={(event) => event.stopPropagation()}
