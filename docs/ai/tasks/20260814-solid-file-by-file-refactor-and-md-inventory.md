@@ -60,11 +60,18 @@ Green化だけを目的に regression を削除・弱体化しない。
 
 - `AGENTS.md`: `Natural language scheduling rules` が staged parser (`normalize → tokenize → clause parsing → AST → IR → compile → validate`) と旧planner/fallback維持を規定しており、現在の Stable V5 の AI semantic ownership / deterministic control 方針と競合している。古い仕様文書のため未変更。
 
+### stale-active candidates
+
+- `docs/ai/tasks/20260730-weekly-planning-stable-v5-ai-dialogue-renderer.md`: active表記だがclosed記録あり。
+- `docs/ai/tasks/20260731-weekly-planning-midweek-current-time-start-boundary.md`: 未実装表記だがPR #120で実装済み、closed記録あり。
+- `docs/ai/tasks/20260731-weekly-planning-stable-v5-verification-and-cutover.md`: pre-cutoverのactive gateを保持しているがclosed記録あり。
+
 ## Loop ledger
 
 | Loop | Primary file | Result | Verification | MD update | Status |
 |---|---|---|---|---|---|
 | 0 | repository / workflow preflight | PR #127 はmerge済みで再利用不可。削除済み同名branchを current main から復元。既存open Issue/PRに同一SOLID監査タスクなし。 | branch baseline = main `621c117...` | 本台帳作成。`AGENTS.md`仕様競合を保留登録。 | done |
+| 1 | `src/components/DisplaySettingsDialog.tsx` | deprecated `export {}` shimで参照元がなく、dead compatibility surfaceのため削除。 | repository code searchで`DisplaySettingsDialog`参照0件。behavior changeなし。 | 本台帳にLoop 1とstale-active MD候補を追記。 | done |
 
 ## Remaining-problem register
 
