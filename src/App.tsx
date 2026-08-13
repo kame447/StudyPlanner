@@ -4,6 +4,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { LegalPage } from './components/LegalPage';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
+import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
 import { MonthView } from './components/MonthView';
 import { MyPageDialog } from './components/MyPageDialog';
@@ -218,17 +219,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className="toolbar panel app-view-switcher print-hide">
-        <div className="segmented-control">
-          <button className={viewMode === 'month' ? 'segment active' : 'segment'} onClick={() => setViewMode('month')} type="button">月</button>
-          <button className={viewMode === 'week' ? 'segment active' : 'segment'} onClick={() => setViewMode('week')} type="button">週</button>
-          <button className={viewMode === 'day' ? 'segment active' : 'segment'} onClick={() => setViewMode('day')} type="button">日</button>
-          <button className={viewMode === 'todo' ? 'segment active' : 'segment'} onClick={() => setViewMode('todo')} type="button">Todo</button>
-          <button className={viewMode === 'report' ? 'segment active' : 'segment'} onClick={() => setViewMode('report')} type="button">レポート</button>
-          <button className={viewMode === 'timetable' ? 'segment active' : 'segment'} onClick={() => setViewMode('timetable')} type="button">時間割</button>
-          <button className={viewMode === 'bookshelf' ? 'segment active' : 'segment'} onClick={() => setViewMode('bookshelf')} type="button">本棚</button>
-        </div>
-      </div>
+      <AppViewSwitcher viewMode={viewMode} onChange={setViewMode} />
 
       {notice ? (
         <div className={`app-toast-layer print-hide ${notice.placement ?? 'top'}`} aria-live="polite">
