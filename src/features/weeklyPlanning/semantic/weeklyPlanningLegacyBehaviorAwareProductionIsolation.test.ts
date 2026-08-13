@@ -20,7 +20,6 @@ const REQUIRED_LEGACY_ROOTS = new Set([
 
 const EXPECTED_TYPE_ONLY_EDGES = new Set([
   'features/weeklyPlanning/pipeline/weeklyPlanningRenderedQuestionContext.ts:./weeklyPlanningBehaviorAwareIntakePipeline',
-  'features/weeklyPlanning/preview/weeklyPlanningPreviewBlocks.ts:../planning/weeklyPlanningBehaviorAwarePreviewBridge',
   'features/weeklyPlanning/trace/weeklyPlanningTraceRuntime.ts:../pipeline/weeklyPlanningBehaviorAwareIntakePipeline',
 ]);
 
