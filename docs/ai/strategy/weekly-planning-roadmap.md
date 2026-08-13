@@ -130,15 +130,17 @@ PR #109でStable V5主要経路を固定し、PR #112でproductionから到達�
 - InstrumentedRuntimeExecutorのtrace開始、turn input/output/error trace、final decision projection、error detail projectionを`weeklyPlanningStableV5RuntimeTraceLifecycle.ts`へ集約。`start / complete / fail`の小さいfacadeだけを公開し、duplicate固有traceはidempotency境界に残してfull CI #2714 green
 - `weeklyPlanningTurnExecutor.ts`のfailure diagnostics lifecycle、failure state/code projection、AI renderer、最終result traceを`weeklyPlanningStableV5TurnResultProjection.ts`へ集約。公開executorは`begin / project` facadeとinstrumented runtimeだけを組み合わせ、failure status→codeも型付き対応表へ変更してfull CI #2719 green
 - `weeklyPlanningTurnApplication.ts`のflatなside-effect service surfaceを、transactionalな`WeeklyPlanningTurnStagingLifecycle`とbest-effortな`WeeklyPlanningTurnOutcomeLifecycle`へ分割。初回CI #2726で旧test fixtureとmock typingの追従漏れを検出し、facadeを戻さずreal API observationを含むfixtureを新contractへ移行してfull CI #2731 green
+- `weeklyPlanningTurnSideEffects.ts`からtrace function re-exportとpublic finalize/discard helperを除去し、factory + staging lifecycle facadeだけを公開。初回CI #2736でrenderer-trace testの旧re-export依存を検出し、test owner自体をtrace side-effect側へ移してfull CI #2739 green
 
 現在のloop:
 
-- facade導入後も`weeklyPlanningTurnSideEffects.ts`がtrace functionsをre-exportし、stagingの個別finalize/discard関数をpublicにしていたため、公開面とテスト所有者を責務境界へ合わせる。
-- staging moduleからtrace runtime / trace side-effect依存とtrace function re-exportを削除し、`WeeklyPlanningTurnStagingLifecycleServices`、`createWeeklyPlanningTurnStagingLifecycle()`、`weeklyPlanningTurnStagingLifecycle`だけを公開する。実際のfinalize/discard helperはmodule-privateにする。
-- staging testはfactory経由でtransactional finalize/discardだけを検証する。従来同じtest fileに混在していたcommitted/discarded/failed trace検証は`weeklyPlanningTurnTraceSideEffects.test.ts`へ移し、trace owner自身を直接検証する。
-- 初回CI #2736では、もう1本のrenderer-trace testがstaging moduleの旧trace re-exportと旧combined service型へ依存していることをTypeScriptが検出した。re-exportは戻さず、test file自体をtrace owner名へ移して`WeeklyPlanningTurnTraceSideEffectServices`へ直接接続する。
-- application lifecycle architecture testでstaging moduleがtrace functionを再exportせず、private helper + factory + singleton facadeという公開面を維持することを固定する。
-- AI意味理解・controller・scheduler・preview・approval・trace payload contract自体は変更せず、SRP / ISP / encapsulationとtest ownershipだけを改善する。
+- `weeklyPlanningTurnApplication.ts`に残っていたStable V5 session scope bind、発話時刻からのrequest context生成、`executeWeeklyPlanningTurn`への詳細input mappingを「turn runtimeを準備して実行する」同一責務としてカプセル化する。
+- `weeklyPlanningTurnRuntimeGateway.ts`を新設し、`createWeeklyPlanningTurnRuntimeGateway()`と`weeklyPlanningTurnRuntimeGateway`を公開する。application callerには`runtimeGateway.execute()`だけを見せ、Stable V5 session、timezone fallback、requestContext、traceRequestId等の内部配線を隠す。
+- `weeklyPlanningTurnApplication.ts`のservices surfaceを`submitControlledTurn + runtimeGateway + stagingLifecycle + outcomeLifecycle`へ縮小し、Stable V5 runtime/session/temporal helperを直接importしない。型は具体executorのre-exportではなく共通turn execution contractへ依存させる。
+- temporal context testはapplication ownerからruntime gateway ownerへ移し、gateway unit testでauthenticated userによるsession bind、selectedDateとrequest clockの分離、executor mappingを検証する。application testはgatewayへの委譲とlifecycle orchestrationだけを検証する。
+- full/resumable real API observation fixtureも低レベルexecutor直呼びをやめ、正式なruntime gatewayをwrapperしてrequestId/resultだけcaptureする。production pathと観測pathのapplication境界を一致させる。
+- production isolation監査では`weeklyPlanningTurnApplication.ts`をStable V5直接接続allowlistから外し、`weeklyPlanningTurnRuntimeGateway.ts`を唯一のapplication runtime bridgeとして登録する。
+- AI意味理解・controller commit semantics・scheduler・preview・approval・runtime core自体は変更せず、application APIのSRP / ISP / DIP / encapsulationだけを改善する。
 - このloopの完了判定は最終headのfull CI greenを必要とする。
 
 次の敵対的監査対象は、最新headがgreenになった後にroadmapとcurrent execution taskを再読して選ぶ。legacy runtime production reachability、singleton依存、類似contract / helper重複、application service interfaceの残りを優先して疑う。
